@@ -153,6 +153,12 @@ type mockZot struct {
 func (z *mockZot) ListRepositories(ctx context.Context, q registry.RepoListQuery) ([]*domain.Repository, string, error) {
 	return nil, "", nil
 }
+
+// ListRepositoryNames — движок пуст: у общего мока проекции нет вовсе (ListRepositories
+// тоже отдаёт пусто), поэтому все строки наложения попадают в полосу durable-empty.
+func (z *mockZot) ListRepositoryNames(ctx context.Context, registryID string) ([]string, error) {
+	return nil, nil
+}
 func (z *mockZot) ListTags(ctx context.Context, q registry.TagListQuery) ([]*domain.Tag, string, error) {
 	z.mu.Lock()
 	defer z.mu.Unlock()

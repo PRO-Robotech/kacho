@@ -16,7 +16,11 @@ package registry
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 	"log/slog"
+	"strconv"
+	"strings"
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
@@ -121,6 +125,13 @@ type RegistryRepo interface {
 type ZotClient interface {
 	// ListRepositories возвращает repos namespace (проекция из zot).
 	ListRepositories(ctx context.Context, q RepoListQuery) ([]*domain.Repository, string, error)
+	// ListRepositoryNames возвращает ИМЕНА repos namespace, реально присутствующих в
+	// движке (без namespace-префикса, ASC) — одним дешёвым запросом, БЕЗ per-repo
+	// fan-out. Нужен объединению overlay ⊔ projection, чтобы отличить durable-empty
+	// строку наложения (имени в движке нет ⇒ тегов нет) от строки, лежащей в другой
+	// странице проекции — разностью множеств, а не поштучным опросом проекции.
+	// zot недоступен → ErrUnavailable (fail-closed).
+	ListRepositoryNames(ctx context.Context, registryID string) ([]string, error)
 	// ListTags возвращает теги repo (проекция из zot).
 	ListTags(ctx context.Context, q TagListQuery) ([]*domain.Tag, string, error)
 	// DeleteTag удаляет тег/манифест repo в zot.
@@ -340,19 +351,37 @@ func (u *UseCase) List(ctx context.Context, q ListQuery) ([]*domain.Registry, st
 }
 
 // ListRepositories возвращает объединение overlay ⊔ projection repos namespace (A20,
-// D-1): projection-окно из zot (offset-пагинация) обогащается overlay-полями
-// (description/labels/visibility/created_at) там, где есть durable-строка; durable-empty
-// репозитории (overlay без единого тега) — переживают пустоту и присутствуют в List
-// (изменённая семантика: раньше пустой repo в List не появлялся). Ephemeral (проекция без
-// overlay) несёт visibility=PRIVATE by default. Per-repo v_list row-filter (existence-
-// hiding: hidden/svc не течёт принципалу без v_list) — В ХЕНДЛЕРЕ ПОСЛЕ union. Durable-only
-// строки добавляются на ПЕРВОЙ странице (page_token==""), чтобы не дублироваться между
-// страницами; их точный tagCount берётся per-row projection-lookup (durable-empty → 0).
+// D-1) СТРАНИЦАМИ. Ephemeral (проекция без overlay) несёт visibility=PRIVATE и
+// lifecycle=EPHEMERAL; durable (проекция + overlay-строка) обогащается overlay-полями
+// (description/labels/visibility/created_at/lifecycle); durable-empty (overlay без
+// единого тега) переживает пустоту и присутствует в выдаче. Per-repo v_list row-filter
+// (existence-hiding) — В ХЕНДЛЕРЕ ПОСЛЕ union.
+//
+// Объединение — ДВЕ НЕПЕРЕСЕКАЮЩИЕСЯ полосы, проходимые последовательно одним опаковым
+// курсором: (1) durable-empty строки наложения — те, чьего имени НЕТ в движке вовсе
+// (значит тегов нет by construction, проекцию по ним запрашивать не у чего); (2) окно
+// проекции движка. Полосы не пересекаются, поэтому ни одна строка не приходит дважды и
+// ни одна не теряется, а размер страницы соблюдается в обеих.
+//
+// Число обращений к движку на страницу — КОНСТАНТА (перечень имён namespace + окно
+// проекции), а не функция размера реестра: durable-only строки определяются разностью
+// множеств, а не поштучным опросом проекции. Прежняя реализация дописывала К ОКНУ все
+// строки наложения на первой странице, каждую отдельным обращением к движку — страница
+// раздувалась до размера реестра, обращений выходило N−page_size+1, а строка, лежащая в
+// другой странице проекции, приходила ДВАЖДЫ.
+//
+// Курсор опаковый и имён не несёт (existence-oracle): полоса + позиция внутри неё.
+// Позиции — offset'ы, поэтому push/удаление между страницами может сдвинуть границу —
+// то же свойство, что у offset-курсора проекции.
 func (u *UseCase) ListRepositories(ctx context.Context, q RepoListQuery) ([]*domain.Repository, string, error) {
 	if err := u.assertRepoWired(); err != nil {
 		return nil, "", err
 	}
-	window, next, err := u.zot.ListRepositories(ctx, q)
+	size, err := validatePageSize(q.PageSize)
+	if err != nil {
+		return nil, "", err
+	}
+	lane, cursor, err := decodeRepoCursor(q.PageToken)
 	if err != nil {
 		return nil, "", err
 	}
@@ -366,35 +395,132 @@ func (u *UseCase) ListRepositories(ctx context.Context, q RepoListQuery) ([]*dom
 		byName[c.Name] = c
 	}
 
-	inWindow := make(map[string]struct{}, len(window))
+	var out []*domain.Repository
+	if lane == repoLaneDurable {
+		page, next, derr := u.durableEmptyPage(ctx, q.RegistryID, configs, size, cursor)
+		if derr != nil {
+			return nil, "", derr
+		}
+		out = page
+		if next != "" {
+			return out, encodeRepoCursor(repoLaneDurable, next), nil
+		}
+		cursor = "" // полоса наложения исчерпана — дальше только проекция, с её начала
+	}
+
+	remaining := size - int64(len(out))
+	if remaining <= 0 {
+		// Страница заполнена ровно полосой наложения: следующую начинаем с проекции.
+		return out, encodeRepoCursor(repoLaneProjection, cursor), nil
+	}
+
+	window, next, zerr := u.zot.ListRepositories(ctx, RepoListQuery{
+		RegistryID: q.RegistryID,
+		PageSize:   remaining,
+		PageToken:  cursor,
+	})
+	if zerr != nil {
+		return nil, "", zerr
+	}
 	for _, r := range window {
-		inWindow[r.Name] = struct{}{}
 		if c := byName[r.Name]; c != nil { // durable — обогащаем overlay-полями
 			r.Description = c.Description
 			r.Labels = c.Labels
 			r.Visibility = c.Visibility
 			r.CreatedAt = c.CreatedAt
-		} else { // ephemeral — visibility PRIVATE by default (overlay-полей нет)
+			r.Lifecycle = c.Lifecycle
+		} else { // ephemeral — overlay-строки нет: PRIVATE + register-on-first-push
 			r.Visibility = domain.VisibilityPrivate
+			r.Lifecycle = domain.LifecycleEphemeral
 		}
+		out = append(out, r)
+	}
+	if next == "" {
+		return out, "", nil
+	}
+	return out, encodeRepoCursor(repoLaneProjection, next), nil
+}
+
+// durableEmptyPage — страница полосы (1): строки наложения, которых НЕТ в движке.
+// «Нет в движке» ⇒ тегов нет, поэтому projection-часть таких строк — нули, и поштучно
+// опрашивать движок незачем (ровно это и делало прежнее объединение). Возвращает
+// страницу + позицию следующей ("" — полоса исчерпана).
+func (u *UseCase) durableEmptyPage(
+	ctx context.Context, registryID string, configs []*domain.RepositoryConfig, size int64, cursor string,
+) ([]*domain.Repository, string, error) {
+	off, err := decodeRepoOffset(cursor)
+	if err != nil {
+		return nil, "", err
+	}
+	names, nerr := u.zot.ListRepositoryNames(ctx, registryID)
+	if nerr != nil {
+		return nil, "", nerr
+	}
+	inEngine := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		inEngine[n] = struct{}{}
 	}
 
-	// Durable-only строки (не попали в projection-окно — durable-empty либо в другой
-	// projection-странице) добавляем на первой странице. Point-lookup projection даёт
-	// точный tagCount (durable-empty → nil → 0), а не ложный ноль.
-	if q.PageToken == "" {
-		for _, c := range configs {
-			if _, ok := inWindow[c.Name]; ok {
-				continue
-			}
-			proj, perr := u.zot.RepositoryProjection(ctx, q.RegistryID, c.Name)
-			if perr != nil {
-				return nil, "", mapRepoErr(perr)
-			}
-			window = append(window, mergeRepository(q.RegistryID, c.Name, c, proj))
+	durable := make([]*domain.RepositoryConfig, 0, len(configs))
+	for _, c := range configs {
+		if _, ok := inEngine[c.Name]; !ok {
+			durable = append(durable, c)
 		}
 	}
-	return window, next, nil
+	if off > len(durable) {
+		off = len(durable)
+	}
+	end := min(off+int(size), len(durable))
+	out := make([]*domain.Repository, 0, end-off)
+	for _, c := range durable[off:end] {
+		out = append(out, mergeRepository(registryID, c.Name, c, nil))
+	}
+	if end < len(durable) {
+		return out, strconv.Itoa(end), nil
+	}
+	return out, "", nil
+}
+
+// Полосы объединения overlay ⊔ projection (порядок обхода — durable-empty, затем
+// проекция движка).
+const (
+	repoLaneDurable    = "d"
+	repoLaneProjection = "p"
+)
+
+// encodeRepoCursor кодирует (полоса, позиция) в опаковый токен. Имён не несёт: per-repo
+// фильтр применяется ПОСЛЕ страницы, поэтому name-курсор раскрыл бы имя скрытого репо.
+func encodeRepoCursor(lane, cursor string) string {
+	return base64.StdEncoding.EncodeToString([]byte(lane + ":" + cursor))
+}
+
+// decodeRepoCursor разбирает токен в (полоса, позиция). Пустой токен — начало обхода
+// (полоса наложения). Битый → ErrInvalidArg (маппинг в gRPC — на границе mapErr).
+func decodeRepoCursor(token string) (string, string, error) {
+	if token == "" {
+		return repoLaneDurable, "", nil
+	}
+	raw, err := base64.StdEncoding.DecodeString(token)
+	if err != nil {
+		return "", "", fmt.Errorf("%w: invalid page_token", regerrors.ErrInvalidArg)
+	}
+	lane, cursor, found := strings.Cut(string(raw), ":")
+	if !found || (lane != repoLaneDurable && lane != repoLaneProjection) {
+		return "", "", fmt.Errorf("%w: invalid page_token", regerrors.ErrInvalidArg)
+	}
+	return lane, cursor, nil
+}
+
+// decodeRepoOffset разбирает позицию внутри полосы наложения (пусто → 0).
+func decodeRepoOffset(cursor string) (int, error) {
+	if cursor == "" {
+		return 0, nil
+	}
+	off, err := strconv.Atoi(cursor)
+	if err != nil || off < 0 {
+		return 0, fmt.Errorf("%w: invalid page_token", regerrors.ErrInvalidArg)
+	}
+	return off, nil
 }
 
 // ListTags возвращает проекцию тегов repo из zot.

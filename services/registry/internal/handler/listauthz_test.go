@@ -440,6 +440,17 @@ func (f *fakeZotH) ListRepositories(_ context.Context, q registry.RepoListQuery)
 	return namepage.Window(f.repos, func(r *domain.Repository) string { return r.Name },
 		q.PageSize, q.PageToken)
 }
+
+// ListRepositoryNames — имена репо, реально присутствующих в «движке» (все, что
+// заведены в фикстуре): полоса durable-empty объединения вычисляется разностью с ними.
+func (f *fakeZotH) ListRepositoryNames(context.Context, string) ([]string, error) {
+	out := make([]string, 0, len(f.repos))
+	for _, r := range f.repos {
+		out = append(out, r.Name)
+	}
+	sort.Strings(out)
+	return out, nil
+}
 func (f *fakeZotH) ListTags(context.Context, registry.TagListQuery) ([]*domain.Tag, string, error) {
 	return f.tags, "", nil
 }

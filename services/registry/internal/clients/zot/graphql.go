@@ -110,6 +110,34 @@ func (c *Client) ListRepositories(ctx context.Context, q registry.RepoListQuery)
 	return out, next, nil
 }
 
+// ListRepositoryNames возвращает имена repos namespace, присутствующих в движке (без
+// namespace-префикса, ASC) — ТОЛЬКО имена, одним GlobalSearch, БЕЗ per-repo ImageList.
+// Ровно тот же дешёвый запрос, что открывает ListRepositories; здесь он не разворачивается
+// в проекции, поэтому стоимость не зависит от размера namespace сверх одного ответа.
+//
+// Потребитель — объединение overlay ⊔ projection: имя, которого в движке НЕТ, означает
+// строку наложения без единого тега (durable-empty). Это отношение вычисляется разностью
+// множеств; поштучный опрос проекции по каждой строке наложения для этого не нужен.
+func (c *Client) ListRepositoryNames(ctx context.Context, registryID string) ([]string, error) {
+	if err := c.ready(); err != nil {
+		return nil, err
+	}
+	prefix := registryID + "/"
+	var gs gqlGlobalSearchData
+	if err := c.gqlQuery(ctx, globalSearchQuery(prefix), &gs); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(gs.GlobalSearch.Repos))
+	for _, rs := range gs.GlobalSearch.Repos {
+		// GlobalSearch — substring-поиск: оставляем только свой namespace (defence-in-depth).
+		if strings.HasPrefix(rs.Name, prefix) {
+			out = append(out, strings.TrimPrefix(rs.Name, prefix))
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
 // repositoryFromSummaries собирает проекцию repo из GlobalSearch-агрегата (rs) и тегов
 // (results из ImageList). tag_count — число тегов; artifact_types — упорядоченно-
 // уникальный набор ClassifyArtifact по тегам (mixed-repo несёт оба значения), без

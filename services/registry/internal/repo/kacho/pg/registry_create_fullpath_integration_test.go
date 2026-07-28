@@ -31,6 +31,9 @@ type stubZotFP struct{}
 func (stubZotFP) ListRepositories(context.Context, registry.RepoListQuery) ([]*domain.Repository, string, error) {
 	return nil, "", nil
 }
+func (stubZotFP) ListRepositoryNames(context.Context, string) ([]string, error) {
+	return nil, nil
+}
 func (stubZotFP) ListTags(context.Context, registry.TagListQuery) ([]*domain.Tag, string, error) {
 	return nil, "", nil
 }
