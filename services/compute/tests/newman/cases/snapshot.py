@@ -209,8 +209,12 @@ CASES.append(Case(
     id="SNAP-UPD-MASK-IMMUTABLE-SOURCE-DISK",
     title="Update snapshot mask=source_disk_id → 400 InvalidArgument (immutable) или 404",
     classes=["STATE", "VAL", "CONF"], priority="P1",
+    # Утверждение ведёт МАСКА: `source_disk_id` вне known-set UpdateSnapshotRequest
+    # (сообщение несёт только name/description/labels), и отвергается именно маска.
+    # Одноимённый ключ в теле полем запроса не является, до сервиса не доходит и на
+    # исход не влияет.
     steps=[Step(name="patch-imm-src", method="PATCH", path=f"{SNAPS}/{{{{garbageImageId}}}}",
-                body={"updateMask": "source_disk_id", "sourceDiskId": "{{garbageComputeId}}"},
+                body={"updateMask": "source_disk_id"},
                 test_script=["pm.test('rejected (400 immutable or 404)', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
                              "if (pm.response.code === 400) { const j = pm.response.json(); pm.test('code 3', () => pm.expect(j.code).to.eql(3)); }"])],
 ))
@@ -235,9 +239,14 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="SNAP-UPD-MASK-EMPTY-FULL-PATCH",
-    title="Update snapshot без update_mask → full PATCH; immutable source_disk_id из body silently игнорируется",
-    # ECP: mask=empty (full-PATCH класс) · state-transition: mutable(description) применяется,
-    # immutable(source_disk_id) молча игнорируется (update_mask discipline api-conventions).
+    title="Update snapshot без update_mask → full PATCH: применяются ВСЕ мутабельные поля тела "
+          "(description+labels), исходный диск снимка это не касается",
+    # ECP: mask=empty (full-PATCH класс) · state-transition: мутабельные поля применяются.
+    # Прежняя формулировка — «immutable source_disk_id из body молча игнорируется» — была
+    # недоказуема ЭТИМ запросом: `sourceDiskId` полем UpdateSnapshotRequest не является,
+    # поэтому ключ умирал на краю и mask-дисциплину сервиса не проверял. Чтобы «full PATCH»
+    # был утверждением, тело меняет ДВА мутабельных поля; проверка «исходный диск не
+    # изменился» оставлена — она локает, что full-PATCH не задевает атрибуты вне контракта.
     classes=["STATE", "VAL"], priority="P2",
     steps=[
         *_pre_disk("empmask"),
@@ -247,14 +256,15 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.snapshotId", "snapshotId")]),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="patch-no-mask", method="PATCH", path=f"{SNAPS}/{{{{snapshotId}}}}",
-             body={"description": "full-patch-desc", "sourceDiskId": "{{garbageComputeId}}"},
+             body={"description": "full-patch-desc", "labels": {"tier": "gold"}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(), assert_op_success(),
         Step(name="verify", method="GET", path=f"{SNAPS}/{{{{snapshotId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('description applied', () => pm.expect(j.description).to.eql('full-patch-desc'));",
-                          "pm.test('sourceDiskId NOT changed (immutable, silently ignored)', () => pm.expect(j.sourceDiskId).to.eql(pm.environment.get('baseDiskId')));"]),
+                          "pm.test('labels applied (второе мутабельное поле той же пустой маски)', () => pm.expect(j.labels && j.labels.tier).to.eql('gold'));",
+                          "pm.test('sourceDiskId NOT changed', () => pm.expect(j.sourceDiskId).to.eql(pm.environment.get('baseDiskId')));"]),
         Step(name="del-snap", method="DELETE", path=f"{SNAPS}/{{{{snapshotId}}}}", test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         *_cleanup_base_disk(),

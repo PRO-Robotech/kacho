@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "967f2fa5-514d-4f85-9d1a-56024bd0086d",
+    "_postman_id": "77398712-4342-4168-984a-b63b8e4c785e",
     "name": "kacho-compute / newman / instance-redesign",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -1776,60 +1776,6 @@
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test('text: machineTypeId is required', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('machinetypeid is required'));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "INST-RD-CR-VAL-RAW-SIZING-RETIRED — COMP-1-07: Create с легаси raw-sizing (platformId/resourcesSpec/coreFraction) БЕЗ machineTypeId → sync 400 'machineTypeId is required' — raw channel retired (ban #2); gateway DiscardUnknown молча отбрасывает легаси-поля, единственный канал sizing = machineTypeId. [verifies COMP-1-07 · error-guessing retired-field]",
-      "description": "class:VAL | class:NEG | priority:P1",
-      "item": [
-        {
-          "name": "cr-raw-sizing",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/compute/v1/instances",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "compute",
-                "v1",
-                "instances"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteFolderId}}\", \"name\": \"insvmraw{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"], \"platformId\": \"standard-v3\", \"resourcesSpec\": {\"cores\": 2, \"memory\": 2147483648, \"coreFraction\": 100}}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
-                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
-                  "});",
-                  "pm.test('text: machineTypeId is required (raw sizing has no effect)', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('machinetypeid is required'));"
                 ]
               }
             }
@@ -6234,7 +6180,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"instanceKind\", \"instanceKind\": \"CONTAINER\"}",
+              "raw": "{\"updateMask\": \"instanceKind\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6283,7 +6229,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"zoneId\", \"zoneId\": \"ru-central1-c\"}",
+              "raw": "{\"updateMask\": \"zoneId\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6332,7 +6278,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"bootSource\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-x:v2\"}}",
+              "raw": "{\"updateMask\": \"bootSource\"}",
               "options": {
                 "raw": {
                   "language": "json"

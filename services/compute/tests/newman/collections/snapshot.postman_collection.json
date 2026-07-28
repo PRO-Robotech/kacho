@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "871ebd25-859c-49a9-8670-e2a4f5a38d48",
+    "_postman_id": "4b7055a2-16f2-4768-9b88-9c4bd23bb421",
     "name": "kacho-compute / newman / snapshot",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -2359,7 +2359,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"source_disk_id\", \"sourceDiskId\": \"{{garbageComputeId}}\"}",
+              "raw": "{\"updateMask\": \"source_disk_id\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2487,7 +2487,7 @@
       ]
     },
     {
-      "name": "SNAP-UPD-MASK-EMPTY-FULL-PATCH — Update snapshot без update_mask → full PATCH; immutable source_disk_id из body silently игнорируется",
+      "name": "SNAP-UPD-MASK-EMPTY-FULL-PATCH — Update snapshot без update_mask → full PATCH: применяются ВСЕ мутабельные поля тела (description+labels), исходный диск снимка это не касается",
       "description": "class:STATE | class:VAL | priority:P2",
       "item": [
         {
@@ -2712,7 +2712,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"description\": \"full-patch-desc\", \"sourceDiskId\": \"{{garbageComputeId}}\"}",
+              "raw": "{\"description\": \"full-patch-desc\", \"labels\": {\"tier\": \"gold\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2865,7 +2865,8 @@
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('description applied', () => pm.expect(j.description).to.eql('full-patch-desc'));",
-                  "pm.test('sourceDiskId NOT changed (immutable, silently ignored)', () => pm.expect(j.sourceDiskId).to.eql(pm.environment.get('baseDiskId')));"
+                  "pm.test('labels applied (второе мутабельное поле той же пустой маски)', () => pm.expect(j.labels && j.labels.tier).to.eql('gold'));",
+                  "pm.test('sourceDiskId NOT changed', () => pm.expect(j.sourceDiskId).to.eql(pm.environment.get('baseDiskId')));"
                 ]
               }
             }

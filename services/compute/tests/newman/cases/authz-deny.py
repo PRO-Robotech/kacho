@@ -54,25 +54,33 @@ def allow_or_authzfirst_asserts(case_id):
     по-прежнему FAIL. Паритет с gen.py assert_unscoped_rejected/assert_absent_id_rejected
     (403|400|404) и vpc authz-deny (list_grant oneOf 200/403, garbage-id mutation-deny 403).
 
-    Два defensible-403 flavor'а покрыты:
-      * CR-OWN/CR-CROSS, LS-OWN/LS-CROSS — collection-op, чей project-scope НЕ резолвится
-        gateway'ем ('no path: unscoped resource') → 403 ОДИНАКОВО всем субъектам (и ALLOW,
-        и DENY), так что авторизованный субъект не может утверждать жёсткий 'not 403';
-      * UP/DL garbage-id — мутация над несуществующим объектом ('subject ... no relation'
-        на absent target): scope garbage-id не резолвится → fail-close 403 (либо backend 404).
+    Толерантность НЕ маскирует security-инвариант: DENY/UNAUTH/READ-DENY остаются строгими
+    (утечка 200-где-нужен-deny всё так же валит suite), и применяется она ТОЛЬКО к
+    project-scoped ALLOW; catalog-read ALLOW (DiskType, публичный read → 200) сохраняет
+    строгий allow_asserts.
 
-    NB (root-cause, follow-up): OWN/CROSS 403 здесь усилен ТЕСТОВЫМ багом — эти кейсы шлют
-    scope-поле `folderId`, тогда как compute-API и gateway scope_extractor читают `projectId`
-    (рабочие instance.py/disk.py и vpc/authz-deny.py используют `projectId`; List ?projectId=…
-    → 200). Из-за misnamed-scope запрос всегда unscoped → 403 для ВСЕХ. Чистая правка
-    folderId→projectId невозможна БЕЗ стенд-верификации: compute List scope-фильтрует
-    (security.md → 200+empty для no-access), поэтому смена поля отрегрессила бы сейчас
-    зелёные DENY-LS кейсы (ждут 403, получили бы 200+empty) в list-mode-семантику (как vpc
-    mode='list'). Толерантность НЕ маскирует security-инвариант: DENY/UNAUTH/READ-DENY
-    остаются строгими (must-DENY-утечка 200-где-нужен-deny всё так же валит suite).
+    Живые defensible-403 flavor'ы:
+      * LS-OWN/LS-CROSS — List всё ещё адресуется query-ключом `?folderId=`, а каталог прав
+        извлекает scope из `project_id` (`InstanceService/List` → scope_extractor
+        {project, project_id}). Ключ вне контракта до сервиса не доходит ⇒ запрос unscoped
+        ⇒ 403 ОДИНАКОВО всем субъектам, и авторизованный не может утверждать 'not 403';
+      * UP/DL garbage-id — мутация над несуществующим объектом: scope garbage-id не
+        резолвится → fail-close 403 (либо backend 404).
 
-    Толерантность применяется ТОЛЬКО к project-scoped ALLOW; catalog-read ALLOW (DiskType,
-    публичный read → 200) сохраняет строгий allow_asserts."""
+    NB (обязательный follow-up, требует ЖИВОГО стенда): для CR-OWN/CR-CROSS этот flavor
+    БОЛЬШЕ НЕ ДЕЙСТВУЕТ. Тело Create теперь несёт `projectId` — ровно то поле, которое
+    извлекает каталог (`{Instance,Disk,Image,Snapshot}Service/Create` → scope_extractor
+    {project, project_id}), — поэтому scope резолвится и защитимого 403 у ALLOW-субъекта
+    не остаётся. Пока здесь стоит толерантный oneOf, CR-ALLOW-строка не утверждает почти
+    ничего: она зеленеет и на 403, то есть ровно на том отказе, который обязана поймать.
+    Первый прогон на живом стенде обязан перевести CR-OWN/CR-CROSS на строгий
+    allow_asserts (`not 403`); здесь этого не сделано осознанно — это утверждение о
+    ПОВЕДЕНИИ, а правка статическая, стенда нет, и «зелёное по догадке» было бы той же
+    формой без содержания с обратным знаком.
+
+    Симметричный долг на LS: `?folderId=` → `?projectId=` снимет и второй flavor, но
+    поменяет ожидания DENY-LS (scope-фильтрация List: 200+empty вместо 403), поэтому
+    делается тем же прогоном со стендом, а не вслепую."""
     return [
         f"pm.test('[{case_id}] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => "
         f"pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
@@ -168,10 +176,10 @@ def define_resource_cases(resource_name, plural, create_body_extra=None, support
     create_body_extra = create_body_extra or {}
     plural_path = f"/compute/v1/{plural}"
     for subj in SUBJECTS:
-        body_own = {"folderId": "{{projectA1Id}}", "name": f"authz-{resource_name}-{subj[0].lower()}-own-{{{{runId}}}}", **create_body_extra}
+        body_own = {"projectId": "{{projectA1Id}}", "name": f"authz-{resource_name}-{subj[0].lower()}-own-{{{{runId}}}}", **create_body_extra}
         emit(f"{resource_name.upper()}-CR-OWN", f"Create {resource_name} в project-A1",
              "project-A1", "POST", plural_path, body_own, subj)
-        body_cross = {"folderId": "{{projectB1Id}}", "name": f"authz-{resource_name}-{subj[0].lower()}-cross-{{{{runId}}}}", **create_body_extra}
+        body_cross = {"projectId": "{{projectB1Id}}", "name": f"authz-{resource_name}-{subj[0].lower()}-cross-{{{{runId}}}}", **create_body_extra}
         emit(f"{resource_name.upper()}-CR-CROSS", f"Create {resource_name} в project-B1 (cross-account)",
              "project-B1", "POST", plural_path, body_cross, subj)
         emit(f"{resource_name.upper()}-LS-OWN", f"List {plural} в project-A1",
@@ -188,10 +196,23 @@ def define_resource_cases(resource_name, plural, create_body_extra=None, support
 
 
 # Project-scoped compute ресурсы.
+#
+# Тело Create — по ДЕЙСТВУЮЩЕМУ контракту ресурса. Матрица меряет authz, а не
+# создание, и на DENY-строках до разбора тела дело не доходит вовсе — но кейс
+# документирует контракт, поэтому легаси-имена в нём становятся ложью, которую
+# нечему опровергнуть. Сюда уже уехали снятые редизайном `platformId`/
+# `resourcesSpec`/`bootDiskSpec` (в proto — `reserved` по номеру И имени) и
+# доредизайновый scope-ключ `folderId`: край их молча отбрасывал, поэтому вреда
+# не было видно, а Create вдобавок оставался unscoped (см. allow_or_authzfirst_asserts).
+# Значения намеренно НЕ резолвятся (`mt-` вне каталога): предмет — решение о
+# доступе, оно принимается раньше любого резолва.
 define_resource_cases("instance", "instances", create_body_extra={
-    "zoneId": "ru-central1-a", "platformId": "standard-v3",
-    "resourcesSpec": {"memory": "1073741824", "cores": 2},
-    "bootDiskSpec": {"diskSpec": {"size": "8589934592", "typeId": "network-ssd"}},
+    "zoneId": "ru-central1-a",
+    "instanceKind": "VM",
+    "machineTypeId": "mt-placeholder0000000",
+    "bootSource": {"type": "storage.image", "id": "img-9k2m4x7q1n8p:22.04-lts"},
+    "vmSpec": {"userData": "#cloud-config\n{}"},
+    "useDefaultNetwork": True,
 })
 define_resource_cases("disk", "disks", create_body_extra={
     "zoneId": "ru-central1-a", "typeId": "network-ssd", "size": "8589934592"
@@ -218,10 +239,15 @@ for name, list_path, get_path in CATALOG_READ_RESOURCES:
 
 # Catalog-mutate (admin-only — via Internal*Service на cluster-internal listener).
 # Все 6 субъектов DENY: они либо не admin (anon/NOB/PA1/INV), либо account-level (AAA/AAB).
+#
+# У DiskType человекочитаемого `name` НЕТ и никогда не было: тип диска адресуется
+# стабильным слагом `id` (`network-ssd`), а текст живёт в `description`
+# (CreateDiskTypeRequest{id, description, zone_ids}; core #15 — адресация по id).
+# Кейс слал `name`, которого в контракте нет, — край его отбрасывал.
 for name, list_path, _ in CATALOG_READ_RESOURCES:
     for subj in SUBJECTS:
         emit(f"{name.upper()}-CR", f"Create {name} (catalog admin)", "catalog-mutate",
-             "POST", list_path, {"id": f"authz-{name}-{subj[0].lower()}", "name": "authz"}, subj)
+             "POST", list_path, {"id": f"authz-{name}-{subj[0].lower()}", "description": "authz"}, subj)
 
 
 # ---------------------------------------------------------------------------
