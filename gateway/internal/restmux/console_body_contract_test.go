@@ -195,7 +195,7 @@ func TestConsoleFormsSendNoUnknownRequestFields(t *testing.T) {
 	sanitized, synthesized := 0, 0
 
 	for _, file := range files {
-		blob, err := os.ReadFile(file) //nolint:gosec // путь получен обходом дерева репозитория
+		blob, err := os.ReadFile(file)
 		if err != nil {
 			t.Fatalf("%s: %v", file, err)
 		}
@@ -324,7 +324,7 @@ func consoleExportedStringConsts(root string) (map[string]string, error) {
 		if ext := filepath.Ext(path); ext != ".ts" && ext != ".tsx" {
 			return nil
 		}
-		blob, err := os.ReadFile(path) //nolint:gosec // путь получен обходом дерева репозитория
+		blob, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
@@ -618,7 +618,7 @@ func TestConsoleMutationSurfaceIsAccountedFor(t *testing.T) {
 		if strings.Contains(name, ".test.") {
 			return nil
 		}
-		blob, err := os.ReadFile(path) //nolint:gosec // путь получен обходом дерева репозитория
+		blob, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}

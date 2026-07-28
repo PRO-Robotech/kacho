@@ -40,7 +40,7 @@ import (
 func umbrellaValues(t *testing.T, profile string) map[string]any {
 	t.Helper()
 	path := filepath.Join("..", "..", "deploy", "helm", "umbrella", profile)
-	raw, err := os.ReadFile(path) //nolint:gosec // fixed in-repo path
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
 	}

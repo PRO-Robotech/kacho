@@ -452,12 +452,28 @@ func scanSubjectPrivilege(row scanner) (domain.SubjectPrivilege, error) {
 	if scopeI < 0 || scopeI > 3 {
 		sp.Scope = domain.ScopeUnspecified
 	} else {
-		sp.Scope = domain.Scope(scopeI) //nolint:gosec // bound-checked above
+		sp.Scope = domain.Scope(scopeI)
 	}
 	return sp, nil
 }
 
 // listWithConds — общий path-builder для ListByScope/ListBySubject.
+//
+// ОГРАНИЧЕНИЕ НА ВЫЗЫВАЮЩИХ: `condTmpls` попадает в fmt.Sprintf как СТРОКА
+// ФОРМАТА и уезжает в ТЕКСТ запроса. Значит каждый элемент обязан быть
+// литералом кода вида `"<колонка> = $%d"` — ровно один глагол `%d` под номер
+// плейсхолдера. Данные вызывающего идут ТОЛЬКО через `condArgs` (их связывает
+// pgx), в шаблон — НИКОГДА.
+//
+// Сегодня это выполняется: метод неэкспортирован, вызывающих двое
+// (ListByScope/ListBySubject), оба передают литеральные срезы. Но ни сигнатура,
+// ни тип этого не держат — `[]string` примет что угодно, поэтому ограничение
+// записано здесь. Вызывающий, собравший элемент из значения запроса, получит
+// прямую SQL-инъекцию, и ни компилятор, ни сканер не возразят: правила
+// инъекции (G201/G202) эту форму не матчат — приёмник pgx, Sprintf инлайном.
+//
+// Два смежных капкана той же строки: шаблон без `%d` молча вставит в SQL
+// `%!(EXTRA int=…)`, а шаблон с `%s` съест номер плейсхолдера как текст.
 func (r *abReader) listWithConds(ctx context.Context, f access_binding.PageFilter, condTmpls []string, condArgs []any) ([]domain.AccessBinding, string, error) {
 	pageSize := int64(f.PageSize)
 	if pageSize <= 0 {
@@ -930,7 +946,7 @@ func scanABWithVersion(row scanner, versionOut ...*string) (domain.AccessBinding
 	if scopeI < 0 || scopeI > 3 {
 		ab.Scope = domain.ScopeUnspecified
 	} else {
-		ab.Scope = domain.Scope(scopeI) //nolint:gosec // bound-checked above
+		ab.Scope = domain.Scope(scopeI)
 	}
 	return ab, nil
 }

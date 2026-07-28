@@ -283,7 +283,7 @@ func decodeTemplatedJSONObject(raw string) (map[string]any, error) {
 // parseNewmanCollection извлекает все запросы коллекции вместе с номером строки
 // их тела (для адресуемости находки).
 func parseNewmanCollection(path string) ([]newmanRequest, error) {
-	content, err := os.ReadFile(path) //nolint:gosec // путь собирается гейтом из фиксированного glob по дереву репозитория
+	content, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
