@@ -4,6 +4,7 @@
 package dto
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -108,4 +109,48 @@ func TestOptString_RoundTrip(t *testing.T) {
 	_, ok2 := empty.Maybe()
 	assert.False(t, ok2, "empty string → None")
 	assert.Equal(t, "", OptString(empty))
+}
+
+// TestDurationToSeconds_RejectsWhatTheColumnCannotHold locks the conversion's
+// own guarantee: a duration whose whole seconds fall outside the column's range
+// is reported, never handed to the driver wrapped around. Before this was
+// enforced here, +2147483648s arrived as -2147483648.
+func TestDurationToSeconds_RejectsWhatTheColumnCannotHold(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   domain.LbDuration
+	}{
+		{"one second past the top", domain.LbDuration((int64(math.MaxInt32) + 1) * int64(time.Second))},
+		{"one second past the bottom", domain.LbDuration((int64(math.MinInt32) - 1) * int64(time.Second))},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := DurationToSeconds(tc.in)
+			require.Error(t, err, "out-of-range duration must be reported, not truncated")
+			assert.Zero(t, got)
+		})
+	}
+}
+
+// TestDurationToSeconds_AcceptsTheDomainRange — the two fields this conversion
+// serves are bounded by domain.TargetGroup.Validate to [0s,3600s] and [0s,900s];
+// the range check must not disturb them, nor the column's own edges.
+func TestDurationToSeconds_AcceptsTheDomainRange(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   domain.LbDuration
+		want int32
+	}{
+		{"zero", domain.LbDuration(0), 0},
+		{"deregistration delay max", domain.DeregistrationDelayMax, 3600},
+		{"slow start max", domain.SlowStartMax, 900},
+		{"column top", domain.LbDuration(int64(math.MaxInt32) * int64(time.Second)), math.MaxInt32},
+		{"column bottom", domain.LbDuration(int64(math.MinInt32) * int64(time.Second)), math.MinInt32},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := DurationToSeconds(tc.in)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+			assert.Equal(t, tc.in, SecondsToDuration(got), "round-trip through the column")
+		})
+	}
 }

@@ -14,6 +14,7 @@ package dto
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/H-BF/corlib/pkg/option"
@@ -27,8 +28,22 @@ import (
 // runner's `make_interval(secs => …)` SQL intact). domain.TargetGroup.Validate
 // rejects sub-second precision for these two fields, so the division to whole
 // seconds is lossless (no silent truncation / read-after-write mismatch).
-func DurationToSeconds(d domain.LbDuration) int32 {
-	return int32(time.Duration(d) / time.Second)
+//
+// The range, unlike the precision, is checked HERE and not left to the caller.
+// `int32` is the width of the column, not of the domain type: a duration whose
+// whole seconds fall outside it would otherwise reach the driver wrapped around
+// — a positive delay stored as a negative one, which the drain runner then feeds
+// to `make_interval(secs => …)`. Today every write path runs
+// domain.TargetGroup.Validate first, and its [0s,3600s] / [0s,900s] bounds keep
+// the value far inside int32; that is a property of those two callers, not of
+// this conversion, and this conversion is exported. Out of range is reported,
+// never truncated.
+func DurationToSeconds(d domain.LbDuration) (int32, error) {
+	secs := int64(time.Duration(d) / time.Second)
+	if secs < math.MinInt32 || secs > math.MaxInt32 {
+		return 0, fmt.Errorf("duration %s is %d seconds, outside the range the column stores", time.Duration(d), secs)
+	}
+	return int32(secs), nil
 }
 
 // SecondsToDuration — inverse of DurationToSeconds (int seconds column →
