@@ -27,8 +27,7 @@ Configurable values:
   opaSidecar.jwks.bootstrapKeyPem — base64-or-PEM seed value. Empty by default;
                                     Phase 2 rotator writes the real key.
 
-Multi-JWK support: during 2h key rotation grace window
-(KACHO_OPA_BUNDLE_KEY_ROTATION_GRACE_SECONDS), this ConfigMap may contain
+Multi-JWK support: during a key rotation grace window this ConfigMap may contain
 BOTH `<old-kid>.pem` and `<new-kid>.pem` entries — OPA loads both keys per
 `opaSidecar.signingKeyId` mapping; bundle signature verifies against whichever
 JWK has the matching kid in the JWS header.

@@ -29,14 +29,13 @@ spec:
         kacho.cloud/openfga-model-id-rev: "pending"
         {{- if .Values.opaSidecar.enabled }}
         # config-checksum выше хэширует ТОЛЬКО configmap.yaml, а с включённым
-        # OPA-сайдкаром под потребляет ещё три ConfigMap'а: политику сайдкара,
-        # конфиг bundle-сервера и JWKS. Без привязки к ИХ содержимому правка
+        # OPA-сайдкаром под потребляет ещё два ConfigMap'а: политику сайдкара
+        # и JWKS. Без привязки к ИХ содержимому правка
         # любого из них не перекатывает под — процесс и сайдкар продолжают
         # применять то, что загрузили на старте, при уже переписанном ConfigMap.
         # Класс инцидента kacho-storage (2026-07-25), здесь — на authz-политике
         # и на ключах верификации, то есть с более высокой ценой расхождения.
         kacho.cloud/opa-sidecar-checksum: {{ include (print $.Template.BasePath "/opa-sidecar-configmap.yaml") . | sha256sum }}
-        kacho.cloud/opa-bundle-server-checksum: {{ include (print $.Template.BasePath "/opa-bundle-server-configmap.yaml") . | sha256sum }}
         kacho.cloud/jwks-checksum: {{ include (print $.Template.BasePath "/jwks-configmap.yaml") . | sha256sum }}
         {{- end }}
     spec:
@@ -290,12 +289,6 @@ spec:
             # падает на старте. api-gateway internal gRPC = cmux-порт 8080 (cluster-internal).
             - name: KACHO_IAM_GATEWAY_INTERNAL_ADDR
               value: {{ .Values.gatewayInternalAddr | default "api-gateway.kacho.svc.cluster.local:8080" | quote }}
-            # OPA bundle server — список knobs для build-side bundle generation
-            # (kacho-iam serves bundle.tar.gz). См. opa-bundle-server-configmap.yaml.
-            {{- if .Values.opaSidecar.enabled }}
-            - name: KACHO_BUILD_SHA
-              value: {{ .Values.image.tag | quote }}   # CI sets tag = git sha (or :dev for local).
-            {{- end }}
             # ─── KAC-127 Phase 2 — AuthN core env vars ──────────────────
             # Hydra ↔ kacho-iam shared secret для token_hook / refresh_hook.
             # Создаётся отдельным Secret kacho-iam-hook-token (см. cluster overrides);
@@ -315,14 +308,6 @@ spec:
                   name: {{ .Values.kacho.iam.jwks.encKeySecretName }}
                   key: {{ .Values.kacho.iam.jwks.encKeySecretKey }}
                   optional: true
-            # Cache knobs (acceptance §2.5 + §2.6) — дублируются как env для
-            # сервисов, читающих их напрямую (api-gateway, kacho-iam).
-            - name: KACHO_IAM_SESSION_REVOCATIONS_CACHE_TTL_SECONDS
-              value: {{ .Values.kacho.iam.sessionRevocations.cacheTTLSeconds | quote }}
-            - name: KACHO_IAM_DPOP_REPLAY_CACHE_TTL_SECONDS
-              value: {{ .Values.kacho.iam.dpopReplay.cacheTTLSeconds | quote }}
-            - name: KACHO_IAM_DPOP_REPLAY_CACHE_SIZE
-              value: {{ .Values.kacho.iam.dpopReplay.cacheSize | quote }}
             # SA-key lifetime discipline. A service-account key is the machine's
             # credential; machine principals are exempt from step-up (a machine
             # has no second factor), which holds only while the credential is
@@ -355,9 +340,6 @@ spec:
               value: "true"
             {{- end }}
             {{- end }}
-            # Domain — для self-issued tokens / OIDC discovery / WebAuthn RP-id.
-            - name: KACHO_IAM_DOMAIN
-              value: {{ .Values.kacho.domain | quote }}
             - name: KACHO_IAM_HYDRA_ISSUER
               value: {{ printf "https://%s.%s" .Values.kacho.subdomains.hydra .Values.kacho.domain | quote }}
             # Bootstrap-token (#58) — requested token audience the gateway accepts
@@ -408,14 +390,6 @@ spec:
             - name: {{ $k }}
               value: {{ $v | quote }}
             {{- end }}
-          {{- if .Values.opaSidecar.enabled }}
-          # KAC-127 Phase 3: bulk-import OPA bundle-server knobs (see
-          # umbrella/templates/opa-bundle-server-configmap.yaml).
-          envFrom:
-            - configMapRef:
-                name: opa-bundle-server-config
-                optional: false
-          {{- end }}
           readinessProbe:
             tcpSocket:
               port: grpc

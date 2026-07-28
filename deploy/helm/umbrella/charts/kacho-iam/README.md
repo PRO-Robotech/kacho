@@ -16,12 +16,17 @@ ConfigMap / RBAC / Service objects.
 |---|---|
 | OPA sidecar | `templates/deployment.yaml` injects container `opa` when `opaSidecar.enabled=true`. |
 | `KACHO_IAM_OPENFGA_MODEL_ID` env | Read from Secret `openfga-model-id`, key `current`. |
-| `envFrom: opa-bundle-server-config` | Bulk-import bundle TTL / signing / revision knobs. |
 | Pod label `kacho.cloud/opa-sidecar=true` | Matched by umbrella NetworkPolicy `opa-sidecar-egress-allowlist`. |
 | Annotation `kacho.cloud/openfga-model-id-rev` | Bumped by `openfga-bootstrap-job` to trigger rolling restart on model change. |
-| Config `extapi.openfga.authorization-model-id-from-env` | Sources model id from env at runtime (P3-D1 immutable pinning). |
-| Config `authz.opaSidecar.url` | Backend interceptor's localhost OPA endpoint (intra-pod, port 8181). |
-| Config `authz.conditions.context-cache-ttl-seconds` | Conditions Context map per-Principal cache (60s default). |
+
+> [!warning] Снято как мёртвая поверхность.
+> `envFrom: opa-bundle-server-config` и его ConfigMap удалены: iam не
+> регистрирует bundle-сервис, и ни одну из шести переменных не читал ни один
+> процесс. Вместе с ними сняты секции конфига `extapi:` и `authz:` — их не
+> разбирает `Config` вовсе (виперу нечего в них класть), поэтому пин
+> model-id, таймауты Check/ListObjects и адрес OPA-сайдкара «настраивались»
+> в файле, который сервис не читает. Реально работающие значения приходят из
+> `KACHO_IAM_OPENFGA_*` / `KACHO_IAM_FGA_*` env.
 
 ## Bundle signing key rotation (180d schedule)
 
@@ -60,8 +65,9 @@ Day 0:
    retains `valid=true` (still usable for verification).
 4. Rotator updates ConfigMap `kacho-iam-jwks` — both old kid and new kid
    PEM entries present.
-5. `kacho-iam` bundle server reads `KACHO_OPA_BUNDLE_KEY_ROTATION_GRACE_SECONDS`
-   (default 7200 = 2h) and signs bundles with new key during the grace window.
+5. `kacho-iam` bundle server would sign bundles with the new key during a
+   grace window. (The knobs that carried that window were removed — nothing
+   read them; a real implementation brings its own.)
 
 Day 0 + 2h (grace expiry):
 6. Rotator marks old row `valid=false`. Bundle server stops accepting old kid.
@@ -85,13 +91,10 @@ If the **private** signing key leaks (e.g., dev-cluster Secret leak):
    должен появиться его собственный механизм ротации.
 2. After rotation completes, force rolling restart of every kacho-*
    pod: `kubectl rollout restart deployment -n kacho-system -l app.kubernetes.io/part-of=kacho`.
-3. Set `bundle.keyRotationGraceSeconds=60` for the duration of incident
-   response (compressed window — accept temporary fail-closed during sidecar
-   pull lag).
-4. Invalidate ALL existing OPA bundles in CDN/cache (force re-pull): bump
-   `KACHO_BUILD_SHA` env on kacho-iam Deployment (annotation change forces
-   re-render of `.manifest.revision`, OPA sidecars detect new revision and
-   re-pull).
+3. Compress the rotation grace window for the duration of incident response
+   (accept temporary fail-closed during sidecar pull lag).
+4. Invalidate ALL existing OPA bundles in CDN/cache (force re-pull) by making
+   the pod template change, so sidecars detect a new revision and re-pull.
 5. Audit: query `oidc_jwks_keys` for any `current=true, valid=true` rows older
    than incident timestamp — anything else is suspect.
 
