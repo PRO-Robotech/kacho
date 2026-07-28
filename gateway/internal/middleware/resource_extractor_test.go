@@ -377,3 +377,35 @@ func TestResourceExtractor_DefinitionTierScope_UnrelatedFQN_NotResolved(t *testi
 	_, _, ok = e.ResolveDefinitionTierScopeHTTP(otherFQN, r)
 	assert.False(t, ok, "HTTP arm: anchor must not resolve on an FQN that does not declare it")
 }
+
+// The method decides which source is authoritative, so it must be read the same
+// way the router read it when it picked the route — and therefore the catalog
+// row. RestRouter.Resolve upper-cases; an unusually-cased method must not route
+// as a create while being scoped as a read.
+func TestResourceExtractor_FromHTTP_MethodCasing_DoesNotChangeTheSource(t *testing.T) {
+	e := middleware.NewResourceExtractor(nil)
+	entry := middleware.CatalogEntry{
+		ScopeExtractor: middleware.ScopeExtractor{FromRequestField: "project_id"},
+	}
+	r := httptest.NewRequest("post", "/vpc/v1/networks?projectId=prj_query",
+		strings.NewReader(`{"projectId":"prj_body"}`))
+	r.Header.Set("Content-Type", "application/json")
+	id, conflict := e.ExtractFromHTTP(r, "kacho.cloud.vpc.v1.NetworkService/Create", entry)
+	require.NotNil(t, conflict, "an unusually-cased body-bearing method is still body-bearing")
+	assert.Equal(t, "prj_body", id.String())
+}
+
+// An unrecognised method is treated as body-bearing: guessing "bodyless" would
+// hand the scope back to the query string on a route whose handler reads the
+// body. Guessing this way costs at most an unresolved scope, i.e. a denial.
+func TestResourceExtractor_FromHTTP_UnknownMethod_IsTreatedAsBodyBearing(t *testing.T) {
+	e := middleware.NewResourceExtractor(nil)
+	entry := middleware.CatalogEntry{
+		ScopeExtractor: middleware.ScopeExtractor{FromRequestField: "project_id"},
+	}
+	r := httptest.NewRequest("PROPFIND", "/vpc/v1/networks?projectId=prj_query", nil)
+	id, conflict := e.ExtractFromHTTP(r, "kacho.cloud.vpc.v1.NetworkService/Create", entry)
+	require.NotNil(t, conflict)
+	assert.True(t, id.IsWildcard(),
+		"an unrecognised method must not take its scope from the query string")
+}

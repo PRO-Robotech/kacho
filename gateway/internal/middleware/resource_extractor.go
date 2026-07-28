@@ -151,13 +151,15 @@ func (e *ResourceExtractor) ExtractFromHTTP(r *http.Request, fqn string, entry C
 //
 // The binding rule, which mirrors `google.api.http`:
 //
-//   - A method that carries a body (POST/PUT/PATCH) binds the WHOLE body
-//     (`body: "*"` — the form every Kachō route with a body uses). For that
-//     binding grpc-gateway does not read query parameters AT ALL, so a query
-//     parameter names nothing the handler will see. The body is the source.
-//   - A method without a body (GET/DELETE) binds its non-path fields from the
-//     query string. The query is the source — this is how `List` narrows by
-//     parent (`?projectId=…`), and it must keep working.
+//   - A method that carries a body binds the WHOLE body (`body: "*"` — the form
+//     every Kachō route with a body uses). For that binding grpc-gateway does not
+//     read query parameters AT ALL, so a query parameter names nothing the
+//     handler will see. The body is the source.
+//   - A bodyless method binds its non-path fields from the query string. The
+//     query is the source — this is how `List` narrows by parent
+//     (`?projectId=…`), and it must keep working.
+//
+// Which methods fall on which side is decided by methodCarriesBody.
 //
 // Spellings: the catalog names the snake_case proto field (`account_id`) while
 // REST carries camelCase (`accountId`), so both are tried on both sources.
@@ -172,6 +174,7 @@ func httpScopeField(r *http.Request, field string) (value string, conflict bool)
 	if !methodCarriesBody(r.Method) {
 		return query, false
 	}
+	// From here the body is the source the handler is built from.
 	body := extractFromJSONBody(r, field)
 	if query != "" && query != body {
 		return body, true
@@ -191,14 +194,22 @@ func httpQueryField(r *http.Request, field string) string {
 }
 
 // methodCarriesBody reports whether an HTTP method binds its request message
-// from a body. grpc-gateway attaches a `body:` rule only to these three, and a
-// route without a body rule binds from path + query instead.
+// from a body. It enumerates the BODYLESS methods and treats everything else as
+// body-bearing, which is the fail-safe direction: mistaking a body-bearing
+// method for a bodyless one would hand the scope back to the query string on a
+// route whose handler reads the body, which is the whole class this guards
+// against. Mistaking the other way only costs an unresolved scope, i.e. a denial.
+//
+// The method is upper-cased first because RestRouter.Resolve upper-cases before
+// picking the route — and therefore the catalog row. Both halves of one decision
+// must normalise identically, or a request could be routed as a create while
+// being scoped as a read.
 func methodCarriesBody(method string) bool {
-	switch method {
-	case http.MethodPost, http.MethodPut, http.MethodPatch:
-		return true
-	default:
+	switch strings.ToUpper(method) {
+	case http.MethodGet, http.MethodHead, http.MethodDelete, http.MethodOptions, http.MethodTrace:
 		return false
+	default:
+		return true
 	}
 }
 
