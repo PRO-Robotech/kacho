@@ -986,7 +986,13 @@ type UpdateAddressRequest struct {
 	// 2. Add or remove a label in this set.
 	// 3. Send the new set in this field.
 	Labels map[string]string `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// Specifies if address is reserved or not.
+	// Whether the address is held by the project in its own right. See
+	// [Address.reserved] for what that means and what it does not.
+	//
+	// This is the only door through which the flag moves. An address is created
+	// reserved — `Create` has no such field because there is nothing to choose —
+	// and clearing it here is the tenant saying the address may be let go with
+	// whatever borrows it.
 	Reserved bool `protobuf:"varint,6,opt,name=reserved,proto3" json:"reserved,omitempty"`
 	// Specifies if address protected from deletion.
 	DeletionProtection bool `protobuf:"varint,7,opt,name=deletion_protection,json=deletionProtection,proto3" json:"deletion_protection,omitempty"`

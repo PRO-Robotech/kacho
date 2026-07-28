@@ -241,7 +241,7 @@ Subnet с IPv4 CIDR-префиксом длиннее `/28` (`/29`, `/30`, `/31`
 ### REQ-IPAM-02 — external Address → IP из резолвленного pool; internal → IP в subnet [P1]
 `Create` external Address (с `zone_id`) → IP выделяется из pool по cascade-резолву (см. `docs/architecture/03-ipam.md`).
 `Create` internal Address → IP в пределах `v4_cidr_blocks` указанного Subnet; explicit IP вне CIDR → `InvalidArgument`.
-- Validated-by: `*-CR-CRUD-EXT`, `*-CR-CRUD-INT`, `*-CR-STATE-RESERVED-NOT-SETTABLE-AT-CREATE`
+- Validated-by: `*-CR-CRUD-EXT`, `*-CR-CRUD-INT`
 - Проверка: `internal/service/address.go` doCreate (inline allocate, cascade); `internal/service/address_pool_service.go`.
 
 ### REQ-IPAM-03 — аллокатор race-free [P0]
@@ -255,6 +255,22 @@ Subnet с IPv4 CIDR-префиксом длиннее `/28` (`/29`, `/30`, `/31`
 Отсутствующий IP → `NOT_FOUND` (см. REQ-AUTHZ-04).
 - Validated-by: `*-GBV-VAL-INVALID-IP`, `*-GBV-NEG-NF`, `*-GBV-CRUD-OK`
 - Проверка: `internal/service/address.go` GetByValue — `netip.ParseAddr` sync, затем `repo.GetByValue`.
+
+### REQ-IPAM-05 — свежий Address зарезервирован; снять резерв — через Update [P2]
+`reserved` означает, что адрес удерживается **за проектом сам по себе**: тенант заказал
+именно адрес, поэтому адрес переживает любого потребителя и исчезает только по явному
+`Delete`. `AddressService.Create` — и есть заказ адреса тенантом, других способов родить
+адрес в сервисе нет, поэтому `Create` ДОЛЖЕН отдавать `reserved=true` (`used=false` —
+ссылок пока нет). Отсутствие поля в `CreateAddressRequest` означает, что вызывающий не
+может **выбрать** значение, а не что значение равно `false`. Отказ от резерва — решение
+тенанта: `Update` с `updateMask=reserved`, `reserved=false` → адрес читается `reserved=false`.
+Ср. `InternalAddressService.MarkAddressEphemeralInUse` — RPC существует, чтобы **снимать**
+флаг с адреса, авто-выделенного под интерфейс, и прямо фиксирует, что такие адреса
+«создаются через публичный `AddressService.Create` с `reserved = true`».
+- Validated-by: `*-CR-STATE-RESERVED-AT-BIRTH-CLEARED-BY-UPDATE`
+- Проверка: `internal/apps/kacho/api/address/create.go` (`Reserved: true` в `doCreate`);
+  `internal/apps/kacho/api/address/update.go` (`case "reserved"` в `applyAddressMask`).
+  Unit-lock: `internal/apps/kacho/api/address/create_reserved_at_birth_test.go`.
 
 ### REQ-IPL-CR-01 — Create v4-only AddressPool [P0]
 `InternalAddressPoolService.Create` с `v4_cidr_blocks` непустым и `v6_cidr_blocks=[]` →

@@ -208,7 +208,7 @@
 | `*-CR-VAL-REQ-NAME` | VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Create без required поля 'name' → 400 InvalidArgument |
 | `*-CR-VAL-REQ-NETWORKID` | VAL | P0 | 3 (rou,sec,sub) | Create без required поля 'networkId' → 400 InvalidArgument |
 | `*-CR-VAL-REQ-ZONEID` | VAL | P0 | 1 (sub) | Create без required поля 'zoneId' → 400 InvalidArgument |
-| `*-CR-STATE-RESERVED-NOT-SETTABLE-AT-CREATE` | VAL,STATE | P2 | 1 (add) | Create address не принимает reserved — свежий адрес читается reserved=false (флаг только через Update) |
+| `*-CR-STATE-RESERVED-AT-BIRTH-CLEARED-BY-UPDATE` | STATE | P2 | 1 (add) | Свежий адрес читается `reserved=true`, `used=false` — тенант заказал сам адрес; `Update` с `updateMask=reserved,reserved=false` снимает резерв (REQ-IPAM-05) |
 | `*-CR-VAL-ROUTE-EMPTY-HOP` | NEG,VAL | P1 | 1 (rou) | static_routes validation: RT-CR-VAL-ROUTE-EMPTY-HOP |
 | `*-CR-VAL-ROUTE-EMPTY-PREFIX` | NEG,VAL | P1 | 1 (rou) | static_routes validation: RT-CR-VAL-ROUTE-EMPTY-PREFIX |
 | `*-CR-VAL-ROUTE-INVALID-HOP` | NEG,VAL | P1 | 1 (rou) | static_routes validation: RT-CR-VAL-ROUTE-INVALID-HOP |

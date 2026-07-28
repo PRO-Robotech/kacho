@@ -471,17 +471,26 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
-    id="ADR-CR-STATE-RESERVED-NOT-SETTABLE-AT-CREATE",
-    title="Create address не принимает reserved — свежий адрес reserved=false (флаг только через Update)",
-    classes=["VAL", "STATE"], priority="P2",
+    id="ADR-CR-STATE-RESERVED-AT-BIRTH-CLEARED-BY-UPDATE",
+    title="Свежий адрес reserved=true (тенант заказал сам адрес); снять резерв — через Update",
+    classes=["STATE"], priority="P2",
     steps=[
-        # `reserved` is a field of UpdateAddressRequest, NOT of CreateAddressRequest:
-        # an address is reserved by a later PATCH, never at birth. The product statement
-        # is therefore about the RESULT — a freshly created address is not reserved —
-        # and it is checked by reading the address back. The previous version of this
-        # case tried to say it by sending `reserved: true` (plus `used`, which is
-        # output-only on the resource and settable nowhere) and then accepting either
-        # 200 or 400, so it neither set the flag nor established that it was refused.
+        # `reserved` says the address is held by the project in its own right: the
+        # tenant asked for the address itself, so it outlives every consumer and goes
+        # away only on an explicit Delete. `AddressService.Create` IS the tenant asking,
+        # and nothing else in this service creates an address — so every address born
+        # here is a reservation, and Create sets the flag.
+        #
+        # That the field is absent from CreateAddressRequest means the caller cannot
+        # CHOOSE the value; it says nothing about which value the service picks. The
+        # contract states the value out loud: InternalAddressService.MarkAddressEphemeralInUse
+        # exists to CLEAR the flag on an address auto-allocated for an interface, and
+        # records that such addresses "создаются через публичный AddressService.Create
+        # с `reserved = true`". A flag that must be cleared afterwards was set before.
+        #
+        # Two legs, because one would not separate anything: read the value at birth,
+        # then move it through the only door that opens — Update — and read it again.
+        # An assertion that restated a constant could not pass both.
         Step(name="cr-plain", method="POST", path="/vpc/v1/addresses",
              body={"projectId": "{{_suiteProjectId}}", "name": "adr-flg-{{runId}}",
                    "externalIpv4AddressSpec": {"zoneId": "{{existingZoneId}}"}},
@@ -489,10 +498,25 @@ CASES.append(Case(
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "addrId")]),
         poll_operation_until_done(),
-        retry_until_authorized(Step(name="get-not-reserved", method="GET", path="/vpc/v1/addresses/{{addrId}}",
+        retry_until_authorized(Step(name="get-reserved-at-birth", method="GET", path="/vpc/v1/addresses/{{addrId}}",
              test_script=[*assert_status(200),
-                          "pm.test('fresh address is not reserved', () => "
-                          "pm.expect(pm.response.json().reserved || false).to.eql(false));"])),
+                          "pm.test('fresh address is reserved', () => "
+                          "pm.expect(pm.response.json().reserved).to.eql(true));",
+                          "pm.test('and not yet used by anything', () => "
+                          "pm.expect(pm.response.json().used || false).to.eql(false));"])),
+        retry_until_authorized(Step(name="upd-unreserve", method="PATCH", path="/vpc/v1/addresses/{{addrId}}",
+             body={"updateMask": "reserved", "reserved": False},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(),
+        # Same RYW wrap as ADR-UPD-CRUD-OK's verify, and for the same reason: a read of
+        # the caller's own address right after Update can briefly 404 behind the
+        # existence-hiding authz gate. It cannot mask the subject of this case —
+        # retry_until_authorized retries on 403/404 only, so a 200 carrying the wrong
+        # `reserved` fails on the spot, without a single retry.
+        retry_until_authorized(Step(name="get-unreserved", method="GET", path="/vpc/v1/addresses/{{addrId}}",
+             test_script=[*assert_status(200),
+                          "pm.test('giving up the reservation is a tenant decision, taken through Update', "
+                          "() => pm.expect(pm.response.json().reserved || false).to.eql(false));"])),
         retry_until_authorized(Step(name="cleanup", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
              test_script=["pm.test('cleanup', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
                           *save_from_response("j.id", "opId")]), retry_on=(403,)),
