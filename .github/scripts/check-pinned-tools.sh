@@ -74,6 +74,7 @@ check_one golangci-lint golangci/golangci-lint "$(pinned '.github/workflows/ci.y
 check_one buf           bufbuild/buf           "$(pinned '.github/workflows/ci.yaml'          'version: ([0-9]+\.[0-9]+\.[0-9]+)')"
 check_one kind          kubernetes-sigs/kind   "$(pinned '.github/workflows/e2e-newman.yml'   'dl/v?([0-9]+\.[0-9]+\.[0-9]+)/kind-linux')"
 check_one grpcurl       fullstorydev/grpcurl   "$(pinned '.github/workflows/e2e-newman.yml'   'grpcurl_([0-9]+\.[0-9]+\.[0-9]+)_linux')"
+check_one gosec         securego/gosec         "$(pinned '.github/workflows/security-scan.yml' 'gosec@v?([0-9]+\.[0-9]+\.[0-9]+)')"
 
 printf '%s' "$stale"
 exit $rc
