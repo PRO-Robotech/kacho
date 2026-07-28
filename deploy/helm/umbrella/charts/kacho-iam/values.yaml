@@ -14,7 +14,6 @@ kacho:
     app: app
     hydra: hydra
     kratos: kratos
-    api: ""
   iam:
     # In-cluster Hydra token-эндпоинт (POST /oauth2/token) для client_credentials-обмена
     # в registry `/iam/token` shim. Пусто → env не эмитится, сервис падает на внешний
@@ -47,19 +46,14 @@ kacho:
     # Оставшиеся ключи потребляются ещё живыми конзюмерами (см. комментарии).
     jwks:
       # rotationDays СНЯТ: он объявлялся «читается GetJWKSStatus как ожидаемый
-      # интервал», но этот метод теперь безусловно возвращает пустой ответ (его
-      # хранилище ретайрено вместе с ротатором), и ни одна строка Go не читает ни
-      # env, ни ключ конфигмапа. Настройка, которую никто не читает, выглядит
-      # действующей — и следующий контрибьютор потратит время, меняя её.
+      # интервал», но ни одна строка Go не читала ни env, ни ключ конфигмапа.
+      # Сам GetJWKSStatus с тех пор тоже снят с обслуживания. Настройка, которую
+      # никто не читает, выглядит действующей — и следующий контрибьютор
+      # потратит время, меняя её.
       # encKey* — требуется production boot-guard'ом (config.validateProduction
       # AuthNSecrets); без него iam refuse-to-start в production-mode.
       encKeySecretName: kacho-iam-jwks-enc-key
       encKeySecretKey: enc_key
-    sessionRevocations:
-      cacheTTLSeconds: 5
-    dpopReplay:
-      cacheTTLSeconds: 120
-      cacheSize: 100000
     # saKey — lifetime discipline for service-account keys (the machine
     # credential). Go duration strings.
     #   defaultTtl    — applied when the caller omits ttl_seconds. Finite by
@@ -215,10 +209,6 @@ config:
     registryToken:
       issuer: ""
       service: ""
-  metrics:
-    enable: true
-  healthcheck:
-    enable: true
   repository:
     postgres:
       maxConns: 100
@@ -291,25 +281,13 @@ config:
       - spiffe://kacho.cloud/ns/kacho/sa/kacho-geo
       - spiffe://kacho.cloud/ns/kacho-vpc-operator/sa/kacho-vpc-operator
   extapi:
-    # KAC-127: zitadel config удалён — identity/OIDC tier на Ory Kratos + Hydra.
     openfga:
-      endpoint: openfga:8081
+      # Only the Secret coordinates are consumed (deployment.yaml wires
+      # KACHO_IAM_OPENFGA_STORE_ID from them). The endpoint and the Check/
+      # ListObjects budgets come from KACHO_IAM_OPENFGA_ENDPOINT /
+      # KACHO_IAM_FGA_*_TIMEOUT_MS in the composition root, never from here.
       storeIdSecretName: kacho-iam-openfga-store
       storeIdSecretKey: store_id
-      # KAC-127 Phase 3 — Check timing budgets (acceptance §4.4):
-      checkTimeoutMs: 200          # FGA Check hard ceiling
-      listObjectsTimeoutMs: 1000   # ListObjects (Phase 4) hard ceiling
-      checkCacheTtlSeconds: 5      # subject-level Check cache TTL (LISTEN-invalidated)
-  # KAC-127 Phase 3 — authz core (Conditions context + OPA sidecar contract).
-  authz:
-    conditions:
-      contextCacheTtlSeconds: 60   # short-lived per-Principal Conditions context cache
-    opaSidecar:
-      url: http://localhost:8181
-      timeoutMs: 100
-      # read-fail-open=false → fail-closed even for read RPCs (production-safe).
-      # Set to true ONLY for read-only emergencies (logged WARN + Critical alert).
-      readFailOpen: false
 
 initContainer:
   migrator:
@@ -414,9 +392,7 @@ opaSidecar:
     limits:
       cpu: 200m
       memory: 256Mi
-  # Bundle endpoint topology — OPA pulls the signed Rego bundle from kacho-iam's
-  # Internal RPC (loopback in the same pod). Consumed by opa-sidecar-configmap.yaml.
-  iamInternalHost: kacho-iam-internal
+  # Bundle endpoint port — consumed by opa-sidecar-configmap.yaml (loopback).
   iamInternalPort: 9092
   # Bundle resource path → OPA fetches `<service.url>/<resource>`.
   bundleResource: bundle.tar.gz
@@ -427,14 +403,6 @@ opaSidecar:
   bundleSigningEnabled: false
   # kid of the current JWS signing key (matches the JWKS rotator output).
   signingKeyId: kacho-iam-signing-key-current
-  # Bundle server-side knobs (mirrored into opa-bundle-server-config ConfigMap).
-  bundle:
-    ttlSeconds: 3600
-    signingAlgorithm: ES256
-    signingKeyKid: kacho-iam-signing-key-current
-    buildShaEnvVar: KACHO_BUILD_SHA
-    cacheStaleAfterSeconds: 7200
-    keyRotationGraceSeconds: 7200
   # Public-key ConfigMap (managed by the Phase 2 JWKS rotator at runtime).
   jwks:
     configMapName: kacho-iam-jwks
