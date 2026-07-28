@@ -166,12 +166,7 @@ jobs:
       # рапортовал зелёными.
       #
       # При переезде в монорепу вызов гейта потерялся вовсе, и краснота шла с кейсов,
-      # RED-by-design: SEC-C-A-* (fga-proxy Register/UnregisterResource) — это
-      # cluster-internal :9091-RPC БЕЗ `google.api.http` mapping (ban #6), grpc-gateway
-      # REST-хендлер для них не генерирует вообще → как black-box REST они неисполнимы
-      # (покрыты fgaproxy_test.go). Все 9 проверок падали «expected 403 to deeply equal
-      # 200» — притом что 403 и есть ПРАВИЛЬНОЕ поведение продукта, прячущего Internal*
-      # с публичного порта.
+      # которые вносились в whitelist по тикету.
       #
       # Whitelist вычитает только известные (каждый — с тикетом); НОВОЕ падение и
       # отсутствие отчёта («(no-report)») гейт по-прежнему валит.
