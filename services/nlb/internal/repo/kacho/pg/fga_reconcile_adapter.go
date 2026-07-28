@@ -42,6 +42,10 @@ type FGAReconcileAdapter struct {
 
 // NewFGAReconcileAdapter constructs the per-service reconciler adapter. table is
 // the full register-outbox table name the drainer/reconciler share.
+//
+// table is interpolated into SQL as an identifier, which no placeholder can carry,
+// so it MUST stay a compile-time constant — never config, env or request data.
+// Both call sites pass the nlbFGAOutboxTable const.
 func NewFGAReconcileAdapter(pool *pgxpool.Pool, table string) *FGAReconcileAdapter {
 	return &FGAReconcileAdapter{pool: pool, table: table}
 }
@@ -61,7 +65,7 @@ func (a *FGAReconcileAdapter) ListResources(ctx context.Context) ([]reconciler.R
 	var out []reconciler.ResourceRow
 	for _, rt := range nlbResourceTables {
 		rows, err := a.pool.Query(ctx,
-			fmt.Sprintf(`SELECT id, project_id FROM %s`, rt.table)) //nolint:gosec // trusted literal
+			fmt.Sprintf(`SELECT id, project_id FROM %s`, rt.table))
 		if err != nil {
 			return nil, fmt.Errorf("nlb reconcile enumerate %s: %w", rt.table, err)
 		}
@@ -89,7 +93,7 @@ func (a *FGAReconcileAdapter) ResourceExists(ctx context.Context, kind, id strin
 	}
 	var exists bool
 	if err := a.pool.QueryRow(ctx,
-		fmt.Sprintf(`SELECT EXISTS (SELECT 1 FROM %s WHERE id = $1)`, table), //nolint:gosec // trusted literal
+		fmt.Sprintf(`SELECT EXISTS (SELECT 1 FROM %s WHERE id = $1)`, table),
 		id,
 	).Scan(&exists); err != nil {
 		return false, fmt.Errorf("nlb reconcile exists %s/%s: %w", kind, id, err)
@@ -107,7 +111,7 @@ func (a *FGAReconcileAdapter) ListRegistered(ctx context.Context) ([]reconciler.
 		SELECT DISTINCT ON (resource_id) resource_kind, resource_id, event_type
 		  FROM %s
 		 WHERE resource_id <> '' AND sent_at IS NOT NULL
-		 ORDER BY resource_id, id DESC`, a.table)) //nolint:gosec // trusted literal
+		 ORDER BY resource_id, id DESC`, a.table))
 	if err != nil {
 		return nil, fmt.Errorf("nlb reconcile list-registered: %w", err)
 	}

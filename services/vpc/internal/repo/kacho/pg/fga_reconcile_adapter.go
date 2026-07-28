@@ -70,7 +70,7 @@ func (a *FGAReconcileAdapter) ListResources(ctx context.Context) ([]reconciler.R
 	var out []reconciler.ResourceRow
 	for _, rt := range vpcResourceTables {
 		rows, err := a.pool.Query(ctx,
-			fmt.Sprintf(`SELECT id, project_id FROM %s`, rt.table)) //nolint:gosec // trusted literal table name
+			fmt.Sprintf(`SELECT id, project_id FROM %s`, rt.table))
 		if err != nil {
 			return nil, fmt.Errorf("vpc reconcile enumerate %s: %w", rt.table, err)
 		}
@@ -101,7 +101,7 @@ func (a *FGAReconcileAdapter) ResourceExists(ctx context.Context, kind, id strin
 	}
 	var exists bool
 	if err := a.pool.QueryRow(ctx,
-		fmt.Sprintf(`SELECT EXISTS (SELECT 1 FROM %s WHERE id = $1)`, table), //nolint:gosec // trusted literal
+		fmt.Sprintf(`SELECT EXISTS (SELECT 1 FROM %s WHERE id = $1)`, table),
 		id,
 	).Scan(&exists); err != nil {
 		return false, fmt.Errorf("vpc reconcile exists %s/%s: %w", kind, id, err)
