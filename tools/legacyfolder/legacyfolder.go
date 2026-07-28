@@ -197,7 +197,6 @@ var exemptFiles = map[string]string{
 	"services/iam/internal/migrations/0070_conditions_folder_to_project.sql":      "applied migration: the record of the last rename — it must keep naming what it renamed",
 	"services/compute/internal/handler/tenant_interceptor_project_header_test.go": "conformance test: it sends the retired header to prove the server does not honour it; removing the name would remove the proof",
 
-	"proto/kacho/cloud/maintenance/v2/common.proto": "reserves the retired folder_id field name so it can never be reused; the reservation IS the withdrawal, and dropping it would re-open the number and the name",
 }
 
 // awaitingPass is the price of splitting this sweep across two passes: these
