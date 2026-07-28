@@ -273,7 +273,7 @@ export function snakeToCamelPath(p: string): string {
 }
 
 /** Keys whose CHILDREN are tenant data, not field names (parity with lib/case.ts). */
-const OPAQUE_FIELDS = new Set(["labels", "annotations"]);
+const OPAQUE_FIELDS = new Set(["labels", "annotations", "match_labels", "matchLabels"]);
 
 /**
  * Drop form-only keys (leading `_`) at every depth.

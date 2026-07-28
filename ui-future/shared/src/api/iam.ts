@@ -215,8 +215,10 @@ export interface GroupMemberList {
 // Публичная поверхность роли — набор правил `rules[]` (источник истины для UI).
 // Каждое Rule — однородный грант глаголов `verbs` над декартовым произведением
 // `module × resources`, опц. суженный `resource_names[]` (pin-by-id) XOR
-// `match_labels{}` (AND-equality). На проводе после конверсии ключи camelCase
-// (`resourceNames`/`matchLabels`); `module` — scalar (ровно один модуль на правило).
+// `match_labels{}` (AND-equality). На проводе имена ПОЛЕЙ camelCase
+// (`resourceNames`/`matchLabels`), а КЛЮЧИ самой карты — нет: это метки тенанта,
+// и `match_labels` входит в opaque-исключение конвертера наравне с `labels`.
+// `module` — scalar (ровно один модуль на правило).
 export interface Rule {
   module: string;
   resources: string[];

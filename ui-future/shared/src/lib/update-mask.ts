@@ -27,7 +27,7 @@ import { getByPath, setByPath } from "@shared/lib/path";
 import type { FormField } from "@shared/lib/form-schema";
 
 /** Keys whose CHILDREN are tenant data, not field names (parity with lib/case.ts). */
-const OPAQUE_FIELDS = new Set(["labels", "annotations"]);
+const OPAQUE_FIELDS = new Set(["labels", "annotations", "match_labels", "matchLabels"]);
 
 export function computeUpdateMask(
   original: Record<string, unknown>,

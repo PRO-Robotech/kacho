@@ -9,7 +9,11 @@
 // Opaque-keys: ключи user-defined map'ов (labels, annotations) НЕ трансформируем —
 // "team_lead" должен остаться "team_lead", а не превратиться в "teamLead".
 
-const OPAQUE_FIELDS = new Set(["labels", "annotations"]);
+// `match_labels` is the label-EQUALITY selector of iam.v1.Rule: its keys are the
+// tenant's own label keys (`[a-z][-_0-9a-z]*` — underscores legal), not field
+// names. Renaming them ships a selector on `team_lead` as `teamLead`, which
+// parses cleanly (matchLabels IS a declared field) and matches nothing.
+const OPAQUE_FIELDS = new Set(["labels", "annotations", "match_labels", "matchLabels"]);
 
 function toCamel(s: string): string {
   // foo_bar → fooBar; не трогаем строки начинающиеся с "@" (Any-tag) или
