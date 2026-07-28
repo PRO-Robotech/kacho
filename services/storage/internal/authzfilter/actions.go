@@ -11,6 +11,12 @@ const (
 	ResourceTypeVolume   = "storage_volume"
 	ResourceTypeSnapshot = "storage_snapshot"
 	ResourceTypeImage    = "storage_image"
+	// ResourceTypeComputeInstance — тип объекта ЧУЖОГО домена, и это осознанно.
+	// InternalVolumeService/ListAttachments перечисляет привязки инстансов, которые
+	// назвал вызывающий; право видеть эти привязки вытекает из права на ИНСТАНС, а
+	// не на каждый том в отдельности. Модель прав общая для всех доменов, поэтому
+	// вопрос задаётся напрямую — вызова в compute не происходит, цикла нет.
+	ResourceTypeComputeInstance = "compute_instance"
 )
 
 // Action-строки storage-домена, формат `<domain>.<resource>.<verb>`.
@@ -29,4 +35,8 @@ const (
 	ActionVolumeList   = "storage.volumes.list"
 	ActionSnapshotList = "storage.snapshots.list"
 	ActionImageList    = "storage.images.list"
+	// ActionAttachmentsList — аудит-строка перечисления привязок; совпадает с
+	// permission-строкой этого RPC в каталоге, чтобы аудит iam отличал перечисление
+	// привязок от перечисления томов.
+	ActionAttachmentsList = "storage.volumes.listAttachments"
 )

@@ -60,10 +60,28 @@ func attPair() []*domain.VolumeAttachment {
 // readerAttachments — Reader, отдающий заданную страницу привязок.
 func readerAttachments(att []*domain.VolumeAttachment) *portmock.VolumeReader {
 	return &portmock.VolumeReader{
-		ListAttachmentsFunc: func(context.Context, []string) ([]*domain.VolumeAttachment, error) {
-			return att, nil
+		ListAttachmentsFunc: func(_ context.Context, ids []string) ([]*domain.VolumeAttachment, error) {
+			return rowsForInstances(att, ids), nil
 		},
 	}
+}
+
+// rowsForInstances воспроизводит то, что делает настоящий репозиторий:
+// `WHERE instance_id = ANY($1)`. Фейк, игнорирующий переданные id, отдавал бы
+// строки инстансов, о которых его не спрашивали, — и тест на всё-или-ничего по
+// инстансу проходил бы или падал по причине, не связанной с предметом.
+func rowsForInstances(att []*domain.VolumeAttachment, ids []string) []*domain.VolumeAttachment {
+	want := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		want[id] = struct{}{}
+	}
+	out := make([]*domain.VolumeAttachment, 0, len(att))
+	for _, a := range att {
+		if _, ok := want[a.InstanceID]; ok {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // countingReader — Reader, отдающий полную страницу и считающий обращения. Отдаёт
@@ -76,9 +94,9 @@ type countingReader struct {
 
 func newCountingReader(att []*domain.VolumeAttachment) *countingReader {
 	r := &countingReader{}
-	r.ListAttachmentsFunc = func(context.Context, []string) ([]*domain.VolumeAttachment, error) {
+	r.ListAttachmentsFunc = func(_ context.Context, ids []string) ([]*domain.VolumeAttachment, error) {
 		r.calls++
-		return att, nil
+		return rowsForInstances(att, ids), nil
 	}
 	return r
 }
@@ -91,10 +109,17 @@ func volumeIDsOf(att []*domain.VolumeAttachment) []string {
 	return out
 }
 
+// УСТАРЕЛО ПО ЗАМЫСЛУ. Сужение по видимости ТОМА было первой попыткой, и оно
+// ломало снос: привязку, которую сервис отказывался вернуть, цикл отцепления
+// пропускал, а строку инстанса удалял безусловно — том оставался занят навсегда,
+// операция рапортовала успех. Заменено вопросом про ИНСТАНС (всё-или-ничего),
+// см. TestListAttachments_TeardownSeesEveryAttachmentOfAnInstanceItMayDelete и
+// TestListAttachments_ForeignInstanceReturnsNothing.
+//
 // TestListAttachments_ReturnsOnlyAttachmentsOfVolumesTheSubjectMaySee — ГЛАВНАЯ
 // регрессия. Субъект вправе видеть один том из двух; назвав чужой инстанс, он не
 // должен получить привязку чужого тома.
-func TestListAttachments_ReturnsOnlyAttachmentsOfVolumesTheSubjectMaySee(t *testing.T) {
+func retiredListAttachmentsVolumeScopedVisibility(t *testing.T) {
 	f := &fakeListFilter{allow: map[string]bool{"vol00000000000000001": true}}
 	uc := newListUC(readerAttachments(attPair()), f)
 
@@ -158,8 +183,10 @@ func TestListAttachments_EmptySubjectFailsClosed(t *testing.T) {
 	uc := newListUC(reader, f)
 
 	got, err := uc.ListAttachments(context.Background(), []string{"ins-mine", "ins-theirs"})
-	if err != nil {
-		t.Fatalf("ListAttachments: %v", err)
+	// Пустой ответ здесь означал бы «у этих инстансов привязок нет», и снос,
+	// поверив, удалил бы инстанс, оставив привязку сиротой. Отказ, не пустота.
+	if status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("err = %v, want PermissionDenied — an empty answer would read as \"no attachments\"", err)
 	}
 	if len(got) != 0 {
 		t.Fatalf("ListAttachments without a caller identity returned %v, want nothing", volumeIDsOf(got))
@@ -184,8 +211,8 @@ func TestListAttachments_EmptySubjectFailsClosedEvenWithoutFilter(t *testing.T) 
 	uc := newListUC(reader, nil)
 
 	got, err := uc.ListAttachments(context.Background(), []string{"ins-mine", "ins-theirs"})
-	if err != nil {
-		t.Fatalf("ListAttachments: %v", err)
+	if status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("err = %v, want PermissionDenied", err)
 	}
 	if len(got) != 0 {
 		t.Fatalf("ListAttachments without a caller identity returned %v with no filter configured, "+
@@ -208,8 +235,8 @@ func TestListAttachments_SystemPrincipalFailsClosed(t *testing.T) {
 	ctx := operations.WithPrincipal(context.Background(),
 		operations.Principal{Type: "system", ID: "bootstrap"})
 	got, err := uc.ListAttachments(ctx, []string{"ins-mine"})
-	if err != nil {
-		t.Fatalf("ListAttachments: %v", err)
+	if status.Code(err) != codes.PermissionDenied {
+		t.Fatalf("err = %v, want PermissionDenied", err)
 	}
 	if len(got) != 0 || f.calls != 0 || reader.calls != 0 {
 		t.Fatalf("system principal: rows=%v filter-calls=%d reader-calls=%d, want none/0/0",
@@ -238,16 +265,93 @@ func TestListAttachments_FilterErrorFailsClosed(t *testing.T) {
 	}
 }
 
-// TestListAttachments_EmptyPageSkipsIAM — пустой ответ БД не стоит round-trip'а.
-func TestListAttachments_EmptyPageSkipsIAM(t *testing.T) {
+// TestListAttachments_NoInstancesNamedAsksNothingAndReadsNothing — вызывающий не
+// назвал ни одного инстанса, значит спрашивать модель не о чем и читать нечего.
+//
+// Прежняя версия этого теста утверждала, что пустой ОТВЕТ БД не стоит round-trip'а
+// в iam. С вопросом про инстансы такой формулировки больше нет: строки читаются
+// уже ПОСЛЕ сужения, поэтому «пустой ответ БД» наступает только когда у видимых
+// инстансов и правда нет привязок — утверждать там нечего. Осмысленный остаток —
+// пустой вход.
+func TestListAttachments_NoInstancesNamedAsksNothingAndReadsNothing(t *testing.T) {
 	f := &fakeListFilter{}
-	uc := newListUC(readerAttachments(nil), f)
+	reader := newCountingReader(attPair())
+	uc := newListUC(reader, f)
+
+	got, err := uc.ListAttachments(aliceCtx(), nil)
+	if err != nil {
+		t.Fatalf("ListAttachments: %v", err)
+	}
+	if len(got) != 0 || f.calls != 0 || reader.calls != 0 {
+		t.Fatalf("no instances named: rows=%v filter-calls=%d reader-calls=%d, want none/0/0",
+			volumeIDsOf(got), f.calls, reader.calls)
+	}
+}
+
+// TestListAttachments_TeardownSeesEveryAttachmentOfAnInstanceItMayDelete is the
+// completeness half, and it is the one that was missing.
+//
+// The only consumers of this listing act destructively on the answer. compute's
+// instance teardown enumerates the attachments, detaches each returned one, and
+// deletes the instance row LAST — unconditionally. So a row this service declines
+// to return is indistinguishable from "this instance has no attachment": the loop
+// skips it, the instance disappears, and the attachment row survives pointing at
+// an instance that no longer exists. The volume stays IN USE forever, cannot be
+// attached and cannot be deleted, and the operation reports success.
+//
+// Narrowing the page by VOLUME visibility produced exactly that. The caller's
+// right to a volume and their right to the instance it hangs on are granted
+// separately: revoke the volume grant while it stays attached, or let an account
+// administrator delete somebody else's instance, or simply delete an instance
+// whose fresh volume tuples have not been materialised yet — and the teardown
+// silently leaves an orphan. Before the narrowing existed, the row came back, the
+// per-object gate on Detach refused, and the operation failed CLOSED with the
+// instance still alive and recoverable. A loud refusal became quiet corruption.
+//
+// The question this RPC must ask is the one the caller actually named: may you
+// see this INSTANCE. Answer it and the page is all-or-nothing per instance —
+// complete for anyone entitled to tear it down (delete implies admin implies
+// viewer in the model), empty for anyone naming an instance that is not theirs.
+func TestListAttachments_TeardownSeesEveryAttachmentOfAnInstanceItMayDelete(t *testing.T) {
+	// The subject may see the instance. One of its two volumes is not separately
+	// visible to them — irrelevant to whether the instance can be torn down.
+	f := &fakeListFilter{allow: map[string]bool{"ins-mine": true}}
+	uc := newListUC(readerAttachments([]*domain.VolumeAttachment{
+		{VolumeID: "vol00000000000000001", InstanceID: "ins-mine", ProjectID: "prj-mine", DeviceName: "vda", IsBoot: true},
+		{VolumeID: "vol00000000000000009", InstanceID: "ins-mine", ProjectID: "prj-mine", DeviceName: "vdb"},
+	}), f)
 
 	got, err := uc.ListAttachments(aliceCtx(), []string{"ins-mine"})
 	if err != nil {
 		t.Fatalf("ListAttachments: %v", err)
 	}
-	if len(got) != 0 || f.calls != 0 {
-		t.Fatalf("empty page: rows=%v filter-calls=%d, want none/0", volumeIDsOf(got), f.calls)
+	if len(got) != 2 {
+		var ids []string
+		for _, a := range got {
+			ids = append(ids, a.VolumeID)
+		}
+		t.Fatalf("teardown got %v (%d rows), want both attachments of an instance the caller may delete — "+
+			"a withheld row is skipped by the detach loop and orphaned when the instance row is deleted", ids, len(got))
+	}
+}
+
+// TestListAttachments_ForeignInstanceReturnsNothing is the disclosure half: the
+// caller names an instance that is not theirs and learns nothing about it. This
+// is the defect the narrowing was introduced for, restated against the instance.
+func TestListAttachments_ForeignInstanceReturnsNothing(t *testing.T) {
+	f := &fakeListFilter{allow: map[string]bool{"ins-mine": true}}
+	uc := newListUC(readerAttachments(attPair()), f) // ins-mine + ins-theirs
+
+	got, err := uc.ListAttachments(aliceCtx(), []string{"ins-mine", "ins-theirs"})
+	if err != nil {
+		t.Fatalf("ListAttachments: %v", err)
+	}
+	for _, a := range got {
+		if a.InstanceID == "ins-theirs" {
+			t.Fatalf("returned a binding of an instance the caller may not see: %+v", a)
+		}
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d rows, want the single binding of the instance the caller may see", len(got))
 	}
 }

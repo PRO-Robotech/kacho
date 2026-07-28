@@ -18,6 +18,9 @@ import (
 	"fmt"
 	"log/slog"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/emptypb"
 
@@ -458,20 +461,29 @@ func (u *UseCase) Detach(ctx context.Context, volumeID, instanceID string) (*dom
 // дыра, ради которой сюда пришли.
 func (u *UseCase) ListAttachments(ctx context.Context, instanceIDs []string) ([]*domain.VolumeAttachment, error) {
 	if authzfilter.SubjectFromPrincipal(ctx) == "" {
-		return nil, nil
+		// Пустой ответ здесь означал бы «привязок нет», а единственные потребители
+		// этого RPC действуют по ответу РАЗРУШИТЕЛЬНО (см. godoc выше). Отказ.
+		return nil, status.Error(codes.PermissionDenied, "permission denied")
 	}
-	att, err := u.reader.ListAttachments(ctx, instanceIDs)
-	if err != nil {
-		return nil, u.errStatus(err)
-	}
-	visible, ferr := authzfilter.FilterVisiblePage(ctx, u.listFilter,
-		authzfilter.ResourceTypeVolume, authzfilter.ActionVolumeList, att,
-		func(a *domain.VolumeAttachment) string { return a.VolumeID })
+	// Спрашиваем про ИНСТАНСЫ, которые назвал вызывающий, а не про тома. Ответ
+	// становится «всё или ничего» на инстанс, и это несущее свойство: снос видит
+	// ВСЕ привязки инстанса, который вправе снести, а на чужой инстанс не получает
+	// ни строки.
+	visibleInstances, ferr := authzfilter.FilterVisiblePage(ctx, u.listFilter,
+		authzfilter.ResourceTypeComputeInstance, authzfilter.ActionAttachmentsList,
+		instanceIDs, func(id string) string { return id })
 	if ferr != nil {
 		// Fail-closed: ошибка iam НИКОГДА не отдаёт нефильтрованную страницу.
 		return nil, u.errStatus(ferr)
 	}
-	return visible, nil
+	if len(visibleInstances) == 0 {
+		return nil, nil
+	}
+	att, err := u.reader.ListAttachments(ctx, visibleInstances)
+	if err != nil {
+		return nil, u.errStatus(err)
+	}
+	return att, nil
 }
 
 // GetInternal — full (infra) проекция Volume (internal :9091) — S2/data-plane.
