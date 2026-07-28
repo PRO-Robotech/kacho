@@ -211,6 +211,17 @@ opaSidecar:
         - key: app
           operator: In
           values: [vpc, compute, kacho-nlb, kacho-storage, kacho-geo, registry]
+    # Egress-сторона (policy 3). NetworkPolicy действует на ПОД, а не на контейнер,
+    # поэтому список исходящих правил обязан покрывать зависимости ОСНОВНОГО
+    # контейнера помеченного пода, а не только OPA-сайдкара. Для kacho-iam это его
+    # собственная Postgres и Hydra, фасадом к которой он является; без них политика
+    # не «сужает трафик», а роняет весь authN/authZ-ярус.
+    datastorePodSelector:
+      matchLabels:
+        app.kubernetes.io/name: pg-iam
+    hydraPodSelector:
+      matchLabels:
+        app.kubernetes.io/name: hydra
 
 # ─── Per-datastore Postgres ingress allowlist (templates/networkpolicy-datastore) ─
 # Each backing Postgres StatefulSet (bitnami sub-chart, pod label

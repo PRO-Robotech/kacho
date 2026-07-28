@@ -127,9 +127,12 @@ jobs:
         if: always()
         run: kubectl -n kacho get pods -o wide
 
-      # Наборы гоняем по сервисам, которые dev-профиль реально поднимает. storage и
-      # registry в dev выключены (registry.enabled=false) — их коллекции здесь не
-      # запускаются, иначе job краснел бы за отсутствующий сервис, а не за регрессию.
+      # Наборы гоняем по сервисам, которые dev-профиль реально поднимает. Список —
+      # умолчание SERVICES в scripts/newman-parallel.sh: iam vpc compute nlb storage
+      # registry geo api-gateway. Все восемь dev-профиль поднимает (values.dev.yaml:
+      # storage.enabled=true, registry.enabled=true), и у каждого ниже свой шаг-гейт
+      # и своя строка в маске артефактов — исполнение без гейта означало бы прогон,
+      # результат которого ни на что не влияет.
       #
       # ПАРАЛЛЕЛЬНО (newman-parallel.sh): ОДИН seed (per-service изолированные accounts/
       # projects — директива #2, фикстуры не коллизят) + port-forward один раз → fan-out
@@ -210,6 +213,25 @@ jobs:
         working-directory: services/geo/tests/newman
         run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
 
+      # api-gateway: суита ИСПОЛНЯЛАСЬ (сервис входит в умолчание SERIVCES
+      # newman-parallel.sh), но шага-гейта у неё не было, и её отчёты не попадали
+      # под маску артефактов — то есть прогон шёл, а результат не влиял ни на что и
+      # не сохранялся. Она покрывает cluster-RBAC админ-поверхность
+      # (InternalClusterService на cluster-internal REST-листенере), которой нет ни
+      # в одной per-service суите. Суита живёт в gateway/, а не в services/ —
+      # отсюда отдельный working-directory и отдельная строка в маске ниже.
+      - name: гейт — newman зелёный (api-gateway)
+        if: always()
+        working-directory: gateway/tests/newman
+        run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
+
+      # Ни один сервис из умолчания SERVICES не должен снова оказаться исполняемым
+      # без гейта и без артефакта: список сервисов живёт в одном файле, а его
+      # следствия — в другом, и разъезжаются молча.
+      - name: гейт — у каждой исполняемой суиты есть свой шаг-гейт и артефакт
+        if: always()
+        run: python3 .github/scripts/check-newman-suite-gates.py
+
       # coverage-гейт: proto RPC → newman case-id. Тоже был в polyrepo и тоже потерялся.
       # Порог — не «сколько получилось», а ПОЛ, ниже которого падаем: он ловит регресс
       # (RPC добавили, кейс — нет). Замерено на монорепе: iam 54/96 RPC (56%).
@@ -235,7 +257,11 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: newman-out-reports
-          path: services/*/tests/newman/out/*.json
+          # Две строки, потому что суита api-gateway живёт в gateway/, а не в
+          # services/ — одна маска её не покрывает, и её отчёты терялись.
+          path: |
+            services/*/tests/newman/out/*.json
+            gateway/tests/newman/out/*.json
           if-no-files-found: ignore
           retention-days: 7
 

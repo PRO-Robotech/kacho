@@ -207,16 +207,25 @@ for row in $SERVICES; do
     # применялось только к сервисам, у которых это измерение есть.
     if needs_forwarder_narrowing "$svc"; then need_fwd=true; else need_fwd=false; fi
 
+    # `shown` вместо `//`: оператор `//` считает отсутствующим И `null`, И `false`,
+    # поэтому измерение, о котором сервис ЧЕСТНО доложил `false`, печаталось как
+    # «<нет>» — то есть текст отказа говорил «сервис ничего не сообщил» ровно там,
+    # где сервис сообщил «выключено». Различие не косметическое: «не доложил»
+    # чинится в composition root сервиса (строка самоотчёта неполна), «доложил
+    # false» — в настройках стенда. Оператор гейта шёл не туда. Ключ проверяем
+    # через has(), поэтому false печатается как false, а «<нет>» остаётся ровно
+    # за отсутствием ключа.
     verdict="$(printf '%s' "$line" | jq -r --argjson need_fwd "$need_fwd" '
+      def shown($k): if has($k) then (.[$k] | tostring) else "<нет>" end;
       [ (if (.auth_mode // "")   | test("^production(-strict)?$") then empty
-         else "auth_mode=\(.auth_mode // "<нет>")" end),
+         else "auth_mode=\(shown("auth_mode"))" end),
         (if (.db_sslmode // "")  | test("^(require|verify-ca|verify-full|n/a)$") then empty
-         else "db_sslmode=\(.db_sslmode // "<нет>")" end),
-        (if (.public_mtls   == true) then empty else "public_mtls=\(.public_mtls // "<нет>")"   end),
-        (if (.internal_mtls == true) then empty else "internal_mtls=\(.internal_mtls // "<нет>")" end),
-        (if (.authz_check   == true) then empty else "authz_check=\(.authz_check // "<нет>")"   end),
+         else "db_sslmode=\(shown("db_sslmode"))" end),
+        (if (.public_mtls   == true) then empty else "public_mtls=\(shown("public_mtls"))"   end),
+        (if (.internal_mtls == true) then empty else "internal_mtls=\(shown("internal_mtls"))" end),
+        (if (.authz_check   == true) then empty else "authz_check=\(shown("authz_check"))"   end),
         (if ($need_fwd | not) or (.trusted_forwarders == true) then empty
-         else "trusted_forwarders=\(.trusted_forwarders // "<нет>")" end)
+         else "trusted_forwarders=\(shown("trusted_forwarders"))" end)
       ] | join(", ")')"
 
     if [ -n "$verdict" ]; then
@@ -227,7 +236,13 @@ for row in $SERVICES; do
       echo "      перезапускался, поэтому и не падал. Настройки могли уже быть"
       echo "      переписаны в production, но процесс живёт со СТАРЫМ окружением."
     else
-      ok "$svc/$p $(printf '%s' "$line" | jq -r '"auth_mode=\(.auth_mode) db_sslmode=\(.db_sslmode) public_mtls=\(.public_mtls) internal_mtls=\(.internal_mtls) authz_check=\(.authz_check) trusted_forwarders=\(.trusted_forwarders)"')"
+      # Та же `shown`, что и в отказе: успешная строка обязана печатать измерение
+      # ровно так же, как печатал бы отказ, иначе два текста об одном и том же
+      # поле расходятся (а `trusted_forwarders` здесь законно отсутствует —
+      # у сервисов без этого измерения).
+      ok "$svc/$p $(printf '%s' "$line" | jq -r '
+        def shown($k): if has($k) then (.[$k] | tostring) else "<нет>" end;
+        "auth_mode=\(shown("auth_mode")) db_sslmode=\(shown("db_sslmode")) public_mtls=\(shown("public_mtls")) internal_mtls=\(shown("internal_mtls")) authz_check=\(shown("authz_check")) trusted_forwarders=\(shown("trusted_forwarders"))"')"
     fi
   done
 done

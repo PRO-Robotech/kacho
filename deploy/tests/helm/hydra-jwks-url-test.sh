@@ -16,9 +16,9 @@
 # (verified: `helm template ... charts/hydra/templates/service-public.yaml`).
 #
 # This renders BOTH:
-#   (1) the sibling api-gateway chart standalone (source the umbrella vendors via
-#       file://../../../kacho-api-gateway/deploy — same pattern as
-#       service-mtls-wiring-test.sh) with values that set hydra.jwksUrl, and
+#   (1) the api-gateway chart standalone (the source the umbrella vendors via
+#       `repository: file://../../../gateway/deploy` in helm/umbrella/Chart.yaml)
+#       with values that set hydra.jwksUrl, and
 #   (2) the umbrella with values.dev.yaml (the actual dev stand) restricted to
 #       the api-gateway Deployment.
 # It asserts the rendered KACHO_HYDRA_JWKS_URL is the cluster-internal hydra-public
@@ -29,9 +29,15 @@ set -euo pipefail
 
 SCRIPT="$(basename "$0")"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-PROJ="$(cd "$REPO_ROOT/.." && pwd)"   # project/  (siblings live next to kacho-deploy)
+MONOREPO="$(cd "$REPO_ROOT/.." && pwd)"
 UMBRELLA="$REPO_ROOT/helm/umbrella"
-AGW="$PROJ/kacho-api-gateway/deploy"
+# Путь берётся из Chart.yaml умбреллы, а не пишется рядом второй раз: пока чарт
+# шлюза жил соседним репозиторием, тут стояло `../kacho-api-gateway/deploy`, и
+# после переезда в монорепу проверка падала первой же строкой. Читаем ОБЪЯВЛЕННЫЙ
+# источник — тогда следующий переезд чинит сам себя.
+AGW="$(sed -nE 's#^[[:space:]]*repository:[[:space:]]*file://\.\./\.\./\.\./(.*)$#\1#p' \
+        "$UMBRELLA/Chart.yaml" | grep -m1 'gateway')"
+AGW="$MONOREPO/$AGW"
 WANT="http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/.well-known/jwks.json"
 N=0
 fail() { echo "FAIL: $1"; exit 1; }
@@ -43,7 +49,7 @@ env_val() {
     "select(.kind==\"Deployment\") | .spec.template.spec.containers[].env[] | select(.name==\"$1\") | .value" -
 }
 
-[ -d "$AGW" ] || fail "kacho-api-gateway chart not found at $AGW"
+[ -d "$AGW" ] || fail "api-gateway chart not found at $AGW (объявлен в $UMBRELLA/Chart.yaml)"
 
 # ── (1) sibling chart standalone — hydra.jwksUrl drives the env ───────────────
 ON="$(helm template ag "$AGW" --set hydra.jwksUrl="$WANT" 2>/dev/null)"

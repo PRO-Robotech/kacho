@@ -1,7 +1,7 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 .PHONY: dev-up dev-down dev-prod-up assert-rollout-ready assert-jobs-healthy assert-production-posture \
-        assert-outbox-autovacuum \
+        assert-outbox-autovacuum helm-manifest-test \
         reload-svc logs-svc psql preflight e2e-test helm-lint \
         loadtest-address-allocate loadtest-address-allocate-clean \
         reload-svc-iam psql-iam logs-iam fga-bootstrap build-services openfga-model-json \
@@ -231,8 +231,20 @@ dev-down:
 # разъедется с оригиналом. Здесь мы переиспользуем проверенный bring-up и затем
 # ПЕРЕВОДИМ стенд в production-posture — каждый под перезапускается с production-
 # конфигом и обязан снова стать Ready. Именно это и есть boot-guard-тест.
+#
+# ПРЕДУСЛОВИЕ — СЕКРЕТЫ, И ОНО ИСПОЛНЯЕТСЯ, А НЕ ОПИСЫВАЕТСЯ. Профиль
+# values.dev-prod.yaml ссылается на `kacho-iam-hook-token` ОБЯЗАТЕЛЬНОЙ ссылкой
+# (secretKeyRef без optional) из пода Hydra и её automigrate-Job'а. Ни один шаблон
+# чарта этот секрет не создаёт — его заводит только scripts/dev-prod-secrets.sh.
+# Раньше цель его НЕ звала, а требование жило одним комментарием в values: на
+# чистом кластере Hydra уходила в CreateContainerConfigError, и `helm --wait`
+# выстаивал 12 минут до таймаута. Профиль dev такой ссылки не содержит, поэтому
+# `dev-up` работал и предусловие не было заметно — оно проявлялось ровно на
+# production-профиле, то есть там, где его и проверяют.
 dev-prod-up: dev-up
 	@set -e; \
+	echo "=== prerequisite secrets (БЕЗ них production-профиль не поднимается) ==="; \
+	./scripts/dev-prod-secrets.sh; \
 	echo "=== helm phase 3: PRODUCTION posture (values.dev-prod.yaml поверх dev) ==="; \
 	helm upgrade kacho-umbrella ./helm/umbrella -n kacho \
 	  -f ./helm/umbrella/values.dev.yaml \
@@ -362,12 +374,58 @@ helm-lint:
 # Offline helm manifest-assertion suite (tests/helm/). Asserts kept-stack wiring
 # against the rendered umbrella — e.g. hydra-jwks-url-test.sh checks that
 # api-gateway points at the in-cluster Hydra JWKS endpoint. No kind cluster needed.
+#
+# ЦЕЛЬ ВЫЗЫВАЕТСЯ ИЗ CI (.github/workflows/ci.yaml, job `helm`). До этого её не
+# звал никто — ни один workflow, ни одна другая цель: полтора десятка проверок и
+# около двух тысяч строк не исполнялись НИ РАЗУ. Прогон «как есть» это подтвердил
+# — две проверки утверждали неправду (путь чарта шлюза от прежнего polyrepo;
+# небезопасное умолчание authMode у geo, которое чарт с тех пор осознанно
+# сменил на production).
+#
+# ТРИ ВЕЩИ ДЕЛАЕТ САМА ЦЕЛЬ, а не «предполагает у запускающего».
+#
+# 1. Собирает зависимости чарта. Проверки рендерят умбреллу, а её `charts/*.tgz`
+#    в git не лежат (deploy/.gitignore). На свежем checkout'е рендер падал у
+#    всех, кроме одной проверки, которая сама зовёт `helm dep update` — то есть
+#    результат зависел от АЛФАВИТНОГО ПОРЯДКА имён файлов. Собираем один раз,
+#    заранее, для всех.
+#
+# 2. Проверяет, что `yq` — тот самый. В PATH бывают две разные программы с этим
+#    именем: mikefarah yq (v4, YAML) и python-yq (обёртка над jq). Фильтры
+#    проверок написаны под первую; вторая на них молча отдаёт ПУСТО, и
+#    утверждения проходят, ничего не сверив. Одна проверка это ловила сама и
+#    отказывалась работать — остальные тринадцать нет. Отказ здесь общий.
+#
+# 3. Прогоняет ВСЕ и печатает сводку. Прежний `|| exit 1` обрывался на первой
+#    же красной, и правка вслепую превращалась в серию прогонов по одной находке.
+#
+# Локально: `make helm-manifest-test`; одну проверку — `bash tests/helm/<имя>.sh`.
 helm-manifest-test:
-	@for t in tests/helm/*-test.sh; do \
-		echo "=== $$t ==="; \
-		bash "$$t" || exit 1; \
-	done
-	@echo "helm-manifest-test: all green"
+	@set -e; \
+	if ! command -v yq >/dev/null 2>&1; then \
+	  echo "ERROR: нужен yq (mikefarah v4) — фильтры проверок написаны под него."; \
+	  echo "       https://github.com/mikefarah/yq/releases"; exit 1; \
+	fi; \
+	if ! yq --version 2>&1 | grep -qE 'mikefarah|version v?4'; then \
+	  echo "ERROR: в PATH не тот yq: $$(command -v yq) → $$(yq --version 2>&1)"; \
+	  echo "       Нужен mikefarah yq v4. python-yq (обёртка над jq) на этих"; \
+	  echo "       фильтрах молча отдаёт ПУСТО — утверждения пройдут, ничего не сверив."; \
+	  exit 1; \
+	fi; \
+	echo "=== helm dependency build (проверки рендерят умбреллу; charts/*.tgz не в git) ==="; \
+	( cd helm/umbrella && helm dep update >/dev/null ); \
+	rm -rf helm/umbrella/tmpcharts-*; \
+	failed=""; total=0; \
+	for t in tests/helm/*-test.sh; do \
+	  total=$$((total+1)); \
+	  echo "=== $$t ==="; \
+	  if ! bash "$$t"; then failed="$$failed $$(basename $$t)"; fi; \
+	done; \
+	rm -rf helm/umbrella/tmpcharts-*; \
+	if [ -n "$$failed" ]; then \
+	  echo; echo "!!! helm-manifest-test: провалено$$failed (из $$total)"; exit 1; \
+	fi; \
+	echo; echo "helm-manifest-test: all green ($$total проверок)"
 
 reload-svc:
 ifndef SVC
