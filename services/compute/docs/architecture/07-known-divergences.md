@@ -198,7 +198,7 @@ create/attach/detach + эфемерный Address IPAM).
 | `Disk.Relocate` (cross-zone disk move) | — (частично; нужен реальный cross-zone disk relocation pipeline) | меняет `zone_id` с проверкой «disk не attached»; cross-zone semantics simplified (нет реального переноса данных — control-plane) | по сути закрыто на control-plane уровне; «полное» закрытие требует data-plane (не делается) |
 | `Instance.Relocate` (cross-zone instance move) | `Disk.Relocate` + restart-семантика | `Unimplemented` / частично | реализовать cross-zone disk move для всех attached disks + restart-логику |
 | `Instance.SimulateMaintenanceEvent` | — (control-plane: нечего симулировать) | no-op (operation сразу done, Empty) | по сути закрыто на control-plane уровне; «реальное» поведение требует data-plane |
-| Ресурсы `InstanceGroup`, `DiskPlacementGroup`, `PlacementGroup`, `HostGroup`, `HostType`, `GpuCluster`, `Filesystem`, `SnapshotSchedule`, `ReservedInstancePool`, `Maintenance` | каждый — отдельный store/домен | proto vendored, сервисы не реализованы (`enhancement` / `blocked:*`); связанные поля в Instance/Disk хранятся, но не интерпретируются | реализовать соответствующие домены (отдельные acceptance-документы) |
+| Ресурсы `DiskPlacementGroup`, `PlacementGroup`, `HostGroup`, `HostType`, `GpuCluster`, `Filesystem`, `SnapshotSchedule`, `ReservedInstancePool`, `Maintenance` | каждый — отдельный store/домен | proto vendored, сервисы не реализованы (`enhancement` / `blocked:*`); связанные поля в Instance/Disk хранятся, но не интерпретируются | реализовать соответствующие домены (отдельные acceptance-документы) |
 
 > Каждый `blocked:*` пункт также имеет (или должен иметь) GitHub Issue в
 > `PRO-Robotech/kacho-compute` с меткой `blocked:<service>` и описанием «при

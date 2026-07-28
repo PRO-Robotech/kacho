@@ -1007,9 +1007,10 @@ hydra:
           otlp:
             server_url: otel-collector.observability.svc.cluster.local:4317
             insecure: true
-  # Phase 3c — Federation OUT: public Hydra ingress for external IdP federation
-  # (AWS STS AssumeRoleWithWebIdentity / GCP Workload Identity Federation /
-  # Azure AD federated credentials). Production uses cert-manager + Let's
+  # Phase 3c — Federation OUT: public Hydra ingress for external IdP federation.
+  # The counterpart is any OIDC-conformant workload-identity endpoint that
+  # exchanges a signed workload assertion for its own credential; Kachō speaks
+  # the standard, not one vendor's dialect. Production uses cert-manager + Let's
   # Encrypt — see values.prod.yaml. Dev defaults below are DISABLED — local
   # smoke runs via host-port 28080 + relative URLs (current `urls.self.issuer`
   # http://localhost:28080/.ory/hydra/public/). Enable when you need to
@@ -1303,8 +1304,8 @@ kacho-iam:
   # falls back to PATCH/Delete-Recreate to converge.
   #
   # For dev: pre-register GitHub Actions, GitLab CI, and in-cluster k8s SA
-  # tokens. Customer-specific IdPs (Okta/Azure/etc) are registered per-tenant
-  # via admin tooling — NOT here in shared helm values.
+  # tokens. A customer's own identity provider is registered per-tenant via
+  # admin tooling — NOT here in shared helm values.
   federationIn:
     # Default OFF in dev too. The Phase 3b bootstrap Job needs REAL JWKs for
     # each trusted issuer (Hydra v26 rejects the placeholder JWK template),

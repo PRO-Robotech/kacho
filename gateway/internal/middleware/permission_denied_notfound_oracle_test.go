@@ -59,12 +59,13 @@ var hideExistenceReachableTypes = map[string]string{
 // but have NO owning-service implementation yet, so there is no genuine-miss text
 // to byte-match. They must fall through to the neutral message; inventing a text
 // here would be a guess, and echoing the FGA token would be an oracle.
-var hideExistenceNoBackendTypes = map[string]string{
-	// InstanceGroupService is declared in proto + routed in the REST table, but
-	// services/compute carries no instance-group implementation (no repo, no
-	// handler) — no genuine NotFound text exists to match.
-	"compute_instance_group": "no backend implementation in services/compute",
-}
+// Empty on purpose. The one entry it ever held — compute_instance_group — was a
+// service declared in proto and routed at the edge with no implementation behind
+// it anywhere; it has since been withdrawn from the contract entirely, so the
+// exemption has nothing left to exempt. An entry here is a standing admission
+// that a reachable route has no owner, so it stays empty unless that is true
+// again and written down.
+var hideExistenceNoBackendTypes = map[string]string{}
 
 // TestNotFoundMessage_NoFGATokenLeak is the existence-oracle regression lock.
 //

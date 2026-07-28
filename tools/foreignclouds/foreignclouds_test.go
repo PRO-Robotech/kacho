@@ -5,6 +5,7 @@ package foreignclouds
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -176,5 +177,71 @@ func TestCIRunsThisGate(t *testing.T) {
 	const invocation = "go run ./tools/foreignclouds/cmd/verify-no-foreign-clouds"
 	if !strings.Contains(string(b), invocation) {
 		t.Fatalf("ci.yaml does not run %q — wire it back in", invocation)
+	}
+}
+
+// TestScan_SkipsWhatVersionControlIgnores pins the gate's verdict to the
+// repository's CONTENT, not to whatever happens to sit in a working tree.
+//
+// Build output is the difference. A UI remote's bundled vendor chunk carries
+// other clouds' names because the third-party library it bundles does; that
+// chunk is ignored by version control and exists only on a machine that has run
+// a build. Scanning it made the gate answer differently in a fresh checkout
+// than on a developer's machine — the same tree, two verdicts, and the one CI
+// reports is the one nobody sees locally. A gate whose result depends on
+// unversioned local state cannot be a gate.
+//
+// Files that are merely untracked-and-not-ignored are STILL scanned: a newly
+// authored file that has not been added yet is exactly what a pre-commit check
+// must catch.
+func TestScan_SkipsWhatVersionControlIgnores(t *testing.T) {
+	root := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init", "-q")
+	run("config", "user.email", "t@example.invalid")
+	run("config", "user.name", "t")
+
+	mustWrite := func(rel, body string) {
+		t.Helper()
+		full := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	mustWrite(".gitignore", "dist/\n")
+	// Ignored build output — must NOT be scanned.
+	mustWrite("dist/bundle.js", "// deployed on aws by the vendor\n")
+	// Authored, untracked, not ignored — must STILL be scanned.
+	mustWrite("notes.md", "we behave like aws here\n")
+	run("add", ".gitignore", "notes.md")
+
+	findings, err := Scan(root)
+	if err != nil {
+		t.Fatalf("Scan: %v", err)
+	}
+	for _, f := range findings {
+		if strings.HasPrefix(f.Path, "dist/") {
+			t.Errorf("scanned ignored build output: %s", f)
+		}
+	}
+	var sawAuthored bool
+	for _, f := range findings {
+		if f.Path == "notes.md" {
+			sawAuthored = true
+		}
+	}
+	if !sawAuthored {
+		t.Error("authored untracked file was not scanned — the gate must still catch it")
 	}
 }

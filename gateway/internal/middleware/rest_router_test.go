@@ -136,11 +136,6 @@ func TestRestRouter_Resolve_RegeneratedCoverage(t *testing.T) {
 	cases := []struct {
 		method, path, wantFQN string
 	}{
-		// Compute InstanceGroup — whole service (own proto sub-package
-		// `kacho.cloud.compute.v1.instancegroup`) was absent from the table.
-		{"POST", "/compute/v1/instanceGroups", "kacho.cloud.compute.v1.instancegroup.InstanceGroupService/Create"},
-		{"POST", "/compute/v1/instanceGroups/igr0000000000000001:start", "kacho.cloud.compute.v1.instancegroup.InstanceGroupService/Start"},
-		{"POST", "/compute/v1/instanceGroups/igr0000000000000001:rollingRestart", "kacho.cloud.compute.v1.instancegroup.InstanceGroupService/RollingRestart"},
 		// VPC RouteTable mutation verbs (kebab-case suffix-actions).
 		{"POST", "/vpc/v1/routeTables/rtb0000000000000001:add-routes", "kacho.cloud.vpc.v1.RouteTableService/AddRoutes"},
 		{"POST", "/vpc/v1/routeTables/rtb0000000000000001:remove-routes", "kacho.cloud.vpc.v1.RouteTableService/RemoveRoutes"},

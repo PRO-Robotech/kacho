@@ -117,13 +117,15 @@ func TestPermissionCatalog_EmbeddedAsset_Loads(t *testing.T) {
 // the registry.v1 RPCs, so those methods hit "no entry for method" → denied.
 // The generic embed test's floor (>=240) sits well below the buggy value and
 // therefore cannot catch a re-regression. This test pins the actual floor
-// (357 entries) AND asserts registry.v1 RPCs are present, so any drop of the
+// (334 entries) AND asserts registry.v1 RPCs are present, so any drop of the
 // registry surface or a shrink of the catalog fails CI without Postgres.
 //
 // The floor tracks DELIBERATE surface removals — it is re-pinned to the exact
 // regenerated size, never loosened to make a run pass. 434 → 398 when the
 // stillborn DiskPlacementGroup / Filesystem / SnapshotSchedule contracts went;
-// 398 → 357 when the born-dead GpuCluster / HostGroup / PlacementGroup /
+// 357 → 334 when the compute InstanceGroup service was withdrawn — declared in
+// proto, routed at the edge, implemented nowhere, and naming another cloud in its
+// own field names. Before that, 398 → 357 when the born-dead GpuCluster / HostGroup / PlacementGroup /
 // ReservedInstancePool / HostType contracts went with the fga-model drift-gate
 // restoration (41 RPCs that were never served on any listener and had no type in
 // the enforced authorization model). Authority for "is the catalog correct" is
@@ -133,7 +135,7 @@ func TestPermissionCatalog_RegistryV1Present_EntryFloor(t *testing.T) {
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
 
-	assert.GreaterOrEqual(t, c.Size(), 357,
+	assert.GreaterOrEqual(t, c.Size(), 334,
 		"embedded catalog shrank below the known floor — stale `make sync-permission-catalog`?")
 
 	// registry.v1 methods MUST be present (the regressed surface).

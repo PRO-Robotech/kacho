@@ -98,8 +98,13 @@ prefix `epd`).
   переходит детерминированной state-машиной без реального data-plane; disk data
   не существует; serial-port output синтетический; image download (uri-source)
   мгновенный. См. [`07-known-divergences.md`](07-known-divergences.md) §5.
-- **`InstanceGroupService`** (`kacho.cloud.compute.v1.instancegroup`) — отдельный
-  крупный домен, отложен (метка `enhancement`, не `blocked`).
+- **`InstanceGroupService`** — **снят с контракта.** Он был объявлен в proto и
+  разведён 21 маршрутом на краю, но реализации не существовало нигде: ни
+  репозитория, ни хендлера, ни регистрации — маршруты отвечали 404, а 23 записи
+  каталога прав гейтили пустоту. Вдобавок его поля называли чужое облако прямо
+  на нашем проводе (`gceHttpEndpoint`), чего ban #2 не допускает. Группы
+  инстансов — самостоятельный домен и заводятся со своим acceptance, а не
+  оставленным заранее каркасом.
 - **`MaintenanceService`** — proto-файл есть в `proto/kacho/cloud/compute/v1/`,
   но реализация отложена (`blocked:*` либо `enhancement`).
   `PlacementGroupService` / `HostGroupService` / `HostTypeService` /

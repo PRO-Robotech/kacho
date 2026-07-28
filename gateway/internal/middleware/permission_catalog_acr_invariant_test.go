@@ -5,7 +5,7 @@ package middleware_test
 
 // permission_catalog_acr_invariant_test.go — SEC-acr-stepup-refinement (R3).
 //
-// Locks the step-up allowlist invariant (SEC-ACR-13 / I1 / I2): EXACTLY the 30
+// Locks the step-up allowlist invariant (SEC-ACR-13 / I1 / I2): EXACTLY the 28
 // named grant/credential/tenancy-root FQNs carry required_acr_min="2"; every
 // other non-exempt RPC carries "1" (routine, AAL1 floor); exempt RPCs carry ""
 // (no step-up requirement). Both embedded catalog copies (gateway + iam) are
@@ -73,8 +73,6 @@ func sensitiveACR2Set() map[string]struct{} {
 		"kacho.cloud.compute.v1.InstanceService/UpdateAccessBindings",
 		"kacho.cloud.compute.v1.SnapshotService/SetAccessBindings",
 		"kacho.cloud.compute.v1.SnapshotService/UpdateAccessBindings",
-		"kacho.cloud.compute.v1.instancegroup.InstanceGroupService/SetAccessBindings",
-		"kacho.cloud.compute.v1.instancegroup.InstanceGroupService/UpdateAccessBindings",
 		// D — group membership grant + group destroy (3; Delete = revoke-by-all, R3/B-2)
 		"kacho.cloud.iam.v1.GroupService/AddMember",
 		"kacho.cloud.iam.v1.GroupService/RemoveMember",
@@ -106,7 +104,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	require.NoError(t, err)
 
 	sensitive := sensitiveACR2Set()
-	require.Len(t, sensitive, 30, "the acceptance-doc sensitive set must contain exactly 30 FQNs")
+	require.Len(t, sensitive, 28, "the acceptance-doc sensitive set must contain exactly 28 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -127,7 +125,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 30, "exactly 30 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 28, "exactly 28 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -208,7 +206,7 @@ func TestPermissionCatalog_ACR_CreateNetStrengthening(t *testing.T) {
 }
 
 // TestPermissionCatalog_ACR_CountsAndByteIdentity — SEC-ACR-13 / I2: the whole
-// catalog splits 30×"2" / 262×"1" / 65×"" = 357, and both embedded copies
+// catalog splits 28×"2" / 241×"1" / 65×"" = 334, and both embedded copies
 // (gateway + iam) are byte-identical. (NLB CONTRACT removed the 4 routine
 // loadbalancer RPCs Start/Stop/AttachTargetGroup/DetachTargetGroup: 332→328;
 // the UserService/Invite grant-surface correction moved one more 1→2: 328→327.
@@ -218,7 +216,11 @@ func TestPermissionCatalog_ACR_CreateNetStrengthening(t *testing.T) {
 // 42→36 sensitive, 327→297 routine, 434→398 total. The fga-model drift-gate
 // restoration then dropped the 41 RPCs of the born-dead GpuCluster / HostGroup /
 // PlacementGroup / ReservedInstancePool / HostType services:
-// 36→30 sensitive, 297→262 routine, 398→357 total.)
+// 36→30 sensitive, 297→262 routine, 398→357 total. Then 30→28 / 262→241 /
+// 357→334 when the compute InstanceGroup service was withdrawn: it was declared
+// in proto and routed at the edge, but no implementation existed anywhere, so
+// its 23 entries pointed at paths that answered 404 — and its field names named
+// another cloud on our own wire, which ban #2 does not allow.)
 func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
@@ -237,10 +239,10 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 			t.Fatalf("unexpected required_acr_min %q on %s", e.RequiredACRMin, fqn)
 		}
 	}
-	assert.Equal(t, 30, n2, "sensitive count")
-	assert.Equal(t, 262, n1, "routine count")
+	assert.Equal(t, 28, n2, "sensitive count")
+	assert.Equal(t, 241, n1, "routine count")
 	assert.Equal(t, 65, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 357, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 334, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

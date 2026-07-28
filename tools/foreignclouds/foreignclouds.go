@@ -62,6 +62,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -206,6 +207,7 @@ func (f Finding) String() string {
 // sorted. An empty result means no other cloud is named anywhere in the tree.
 func Scan(repoRoot string) ([]Finding, error) {
 	var findings []Finding
+	ignored := ignoredPaths(repoRoot)
 
 	err := filepath.WalkDir(repoRoot, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -213,6 +215,9 @@ func Scan(repoRoot string) ([]Finding, error) {
 		}
 		if d.IsDir() {
 			if skipDirs[d.Name()] {
+				return fs.SkipDir
+			}
+			if rel, relErr := filepath.Rel(repoRoot, path); relErr == nil && ignored.covers(filepath.ToSlash(rel)+"/") {
 				return fs.SkipDir
 			}
 			return nil
@@ -228,6 +233,9 @@ func Scan(repoRoot string) ([]Finding, error) {
 		if _, exempt := exemptFiles[rel]; exempt {
 			return nil
 		}
+		if ignored.covers(rel) {
+			return nil
+		}
 
 		findings = append(findings, scanPath(rel)...)
 		findings = append(findings, scanContent(rel, readText(path))...)
@@ -238,6 +246,66 @@ func Scan(repoRoot string) ([]Finding, error) {
 	}
 	sortFindings(findings)
 	return findings, nil
+}
+
+// ignoreSet is what version control refuses to carry, as slash-separated paths
+// from the repository root. Entries ending in "/" cover everything beneath them.
+type ignoreSet struct {
+	exact  map[string]bool
+	prefix []string
+}
+
+// covers reports whether rel (a file path, or a directory path ending in "/")
+// is ignored.
+func (s ignoreSet) covers(rel string) bool {
+	if s.exact[rel] {
+		return true
+	}
+	for _, p := range s.prefix {
+		if strings.HasPrefix(rel, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// ignoredPaths asks version control what it ignores under repoRoot.
+//
+// The gate's subject is this repository's CONTENT, not whatever sits in a
+// working tree. Build output is where the two diverge: a UI remote's bundled
+// vendor chunk names other clouds because the third-party library it bundles
+// does, and that chunk exists only on a machine that has run a build. Scanning
+// it made the same tree answer differently in a fresh checkout than locally,
+// and the verdict CI reports is the one nobody can reproduce. A gate whose
+// result depends on unversioned local state is not a gate.
+//
+// Only IGNORED paths are dropped. A file that is merely untracked stays in
+// scope: a newly authored file nobody has added yet is exactly what this must
+// catch before it lands.
+//
+// Outside a repository (or without git) nothing is ignored and the whole tree
+// is scanned — scanning too much is a loud, fixable answer; scanning too little
+// is a silent one.
+func ignoredPaths(repoRoot string) ignoreSet {
+	set := ignoreSet{exact: map[string]bool{}}
+	cmd := exec.Command("git", "ls-files", "--others", "--ignored", "--exclude-standard", "--directory")
+	cmd.Dir = repoRoot
+	out, err := cmd.Output()
+	if err != nil {
+		return set
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasSuffix(line, "/") {
+			set.prefix = append(set.prefix, line)
+			continue
+		}
+		set.exact[line] = true
+	}
+	return set
 }
 
 // IsRepositoryRoot reports whether root is the tree the exemption list was

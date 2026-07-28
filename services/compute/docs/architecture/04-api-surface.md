@@ -201,8 +201,7 @@ kacho-proto/proto/kacho/cloud/compute/v1/
 │
 └── (vendored, реализация отложена) disk_placement_group*.proto, placement_group*.proto,
     host_group*.proto, host_type*.proto, gpu_cluster*.proto, filesystem*.proto,
-    snapshot_schedule*.proto, reserved_instance_pool*.proto, maintenance_service.proto,
-    instancegroup/*.proto
+    snapshot_schedule*.proto, reserved_instance_pool*.proto, maintenance_service.proto
 ```
 
 Generated stubs: `kacho-proto/gen/go/kacho/cloud/compute/v1/...`. Импорт:
