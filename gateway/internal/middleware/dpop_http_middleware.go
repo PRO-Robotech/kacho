@@ -18,12 +18,19 @@
 // `Authorization: Bearer|DPoP ...` header runs through:
 //
 //  1. JWT verifier (Hydra JWKS, alg whitelist, iss/aud/exp).
-//  2. If token.cnf.jkt set → DPoP header validation (htm/htu/iat/jti/jkt).
-//  3. If token.cnf.x5t#S256 set → mTLS-bound (client cert vs cnf).
-//  4. Step-up gate: required ACR / mfa_max_age from permission catalog.
+//  2. Revocation check — the provider is asked whether this token is still
+//     live, through a short-TTL cache. A signature cannot answer that: a
+//     sign-out or a revoked key leaves a valid signature behind. Runs only
+//     when an introspection endpoint is configured (it is never derived).
+//  3. If token.cnf.jkt set → DPoP header validation (htm/htu/iat/jti/jkt).
+//  4. If token.cnf.x5t#S256 set → mTLS-bound (client cert vs cnf).
+//  5. Step-up gate: required ACR / mfa_max_age from permission catalog.
 //
-// On any failure → 401 with RFC 6750 `WWW-Authenticate` challenge header;
-// no forwarding to backend. The principal headers (X-Kacho-Principal-*) are
+// A rejected credential → 401 with an RFC 6750 `WWW-Authenticate` challenge.
+// The one exception is a revocation check that cannot answer because it is
+// addressed wrongly: that is this deployment's fault, not the caller's, so it
+// answers 503 and offers no challenge — re-authenticating cannot fix it.
+// Either way nothing is forwarded. The principal headers (X-Kacho-Principal-*) are
 // then injected exactly as the legacy AuthInterceptor does, so backends see
 // a unified shape regardless of whether the token came from dev-HMAC or
 // from Hydra.

@@ -782,9 +782,15 @@ hydra:
       #
       # This block was ABSENT here, and its absence is not a neutral default:
       # the provider's built-in access-token strategy is `opaque` — a handle
-      # carrying no signature and no claims, verifiable only by calling back to
-      # introspect it, which the gateway does not do. So the canonical
-      # production profile minted tokens the gateway could not verify at all.
+      # carrying no signature and no claims, which the gateway's verifier has
+      # nothing to check. So the canonical production profile minted tokens the
+      # gateway could not verify at all.
+      #
+      # (This note used to add "…verifiable only by introspecting it, which the
+      # gateway does not do". The gateway DOES introspect — see the revocation
+      # block under api-gateway.hydra above — but for revocation, after the
+      # signature has already been verified. Introspection is not, and is not
+      # meant to be, a substitute for a token the verifier can read.)
       # It was declared only in values.dev.yaml, and the profiles are NOT
       # layered (this file renders standalone, never on top of the dev one), so
       # nothing in the dev profile ever reached production. Same class as the

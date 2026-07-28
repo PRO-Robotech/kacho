@@ -893,8 +893,10 @@ hydra:
         system: ["please-change-this-32-bytes-A1Bx"]
       # ─── OAuth 2.1 / DPoP / mTLS-bound / JWT strategy (acceptance §5.2) ──
       strategies:
-        # Self-contained JWT access tokens (allows api-gateway локальную validation
-        # без trip-к-Hydra introspect — acceptance §2.3 token shape).
+        # Self-contained JWT access tokens: api-gateway проверяет ПОДПИСЬ локально,
+        # по JWKS, без обращения к провайдеру (acceptance §2.3 token shape).
+        # Отзыв — отдельный вопрос и отдельный поход: см. блок revocation в
+        # api-gateway.hydra выше. Подпись локальна, отзыв — нет.
         access_token: jwt
         jwt:
           scope_claim: list
