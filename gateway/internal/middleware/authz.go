@@ -468,7 +468,7 @@ func (m *AuthzMiddleware) HTTP(next http.Handler) http.Handler {
 			writeHTTPUnauth(w, decision.descriptor, decision.reasons)
 		case outcomeInvalidArgument:
 			// Malformed resource id → 400 + code 3, Check not run.
-			writeHTTPInvalidArg(w, decision.invalidArgID)
+			writeHTTPInvalidArg(w, decision.invalidArgMessage)
 		case outcomeNotFound:
 			// Hide existence: read-deny on a verb-bearing IAM read → 404, no reasons.
 			writeHTTPNotFound(w, decision.descriptor)
@@ -546,9 +546,10 @@ type decision struct {
 	descriptor permissionDeniedDescriptor
 	checkErr   error
 	entry      CatalogEntry
-	// invalidArgID — the malformed resource id, set only for
-	// outcomeInvalidArgument. Surfaced unchanged in the 400 message.
-	invalidArgID string
+	// invalidArgMessage — the flat message rendered for outcomeInvalidArgument,
+	// on both the gRPC and the REST arm. Set by whichever phase produced the
+	// outcome (malformed resource id, contradictory scope sources).
+	invalidArgMessage string
 }
 
 func (d decision) gRPCStatus() *status.Status {
@@ -556,7 +557,7 @@ func (d decision) gRPCStatus() *status.Status {
 	case outcomeUnauthenticated:
 		return buildGRPCUnauthStatus(d.descriptor, d.reasons)
 	case outcomeInvalidArgument:
-		return buildGRPCInvalidArgStatus(d.invalidArgID)
+		return buildGRPCInvalidArgStatus(d.invalidArgMessage)
 	case outcomeNotFound:
 		return buildGRPCNotFoundStatus(d.descriptor)
 	default:
@@ -857,9 +858,12 @@ func (m *AuthzMiddleware) phaseScopeFiltered(dr decisionRequest, entry CatalogEn
 // scope + descriptor for the Check phase.
 func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, subj ResolvedSubject) (ResourceID, string, permissionDeniedDescriptor, decision, bool) {
 	var resourceID ResourceID
+	// scopeConflict — set when the raw HTTP request named its scope in two
+	// sources that disagree. Refused below, once the descriptor exists.
+	var scopeConflict *ScopeConflict
 	switch {
 	case dr.HTTPReq != nil:
-		resourceID, _ = m.cfg.Resources.ExtractFromHTTP(dr.HTTPReq, dr.FQN, entry)
+		resourceID, scopeConflict = m.cfg.Resources.ExtractFromHTTP(dr.HTTPReq, dr.FQN, entry)
 	case dr.ProtoReq != nil:
 		resourceID, _ = m.cfg.Resources.ExtractFromProto(dr.ProtoReq, entry)
 	default:
@@ -914,7 +918,11 @@ func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, 
 	if otField := strings.TrimSpace(entry.ScopeExtractor.ObjectTypeFromRequestField); otField != "" {
 		var dynType string
 		if dr.HTTPReq != nil {
-			dynType = m.cfg.Resources.ScopeTypeFromHTTP(dr.HTTPReq, otField)
+			var typeConflict *ScopeConflict
+			dynType, typeConflict = m.cfg.Resources.ScopeTypeFromHTTP(dr.HTTPReq, otField)
+			if scopeConflict == nil {
+				scopeConflict = typeConflict
+			}
 		} else if dr.ProtoReq != nil {
 			dynType = m.cfg.Resources.ScopeTypeFromProto(dr.ProtoReq, otField)
 		}
@@ -998,6 +1006,32 @@ func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, 
 		ResourceID:   resourceID.String(),
 	}
 
+	// 5a. Scope-source contradiction short-circuit.
+	//
+	// The request named its authorization scope twice, in two sources that
+	// disagree, and only one of them is the source grpc-gateway will bind the
+	// handler's message from. Resolving that by precedence would decide, silently
+	// and on the caller's behalf, which of the two objects the platform treats as
+	// the subject of the request — and any answer makes the checked object and the
+	// acted-on object potentially different. There is no correct winner, so the
+	// request is refused: InvalidArgument, naming the field, before the Check runs.
+	if scopeConflict != nil {
+		m.metrics.RecordDeny()
+		m.cfg.Logger.Info("authz scope named in two disagreeing sources — refusing",
+			"fqn", dr.FQN,
+			"subject", subj.FGA,
+			"action", entry.Permission,
+			"field", scopeConflict.Field,
+		)
+		return resourceID, resourceType, descriptor, decision{
+			outcome:           outcomeInvalidArgument,
+			reasons:           []string{"request names its scope in two sources that disagree"},
+			descriptor:        descriptor,
+			entry:             entry,
+			invalidArgMessage: scopeSourceConflictMessage(scopeConflict.Field),
+		}, true
+	}
+
 	// 5b. Malformed-id short-circuit.
 	//
 	// For an entry whose scope is a CONCRETE per-resource id (the
@@ -1022,11 +1056,11 @@ func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, 
 				"resource", descriptor.ResourceType+":"+descriptor.ResourceID,
 			)
 			return resourceID, resourceType, descriptor, decision{
-				outcome:      outcomeInvalidArgument,
-				reasons:      []string{"resource id is malformed"},
-				descriptor:   descriptor,
-				entry:        entry,
-				invalidArgID: resourceID.String(),
+				outcome:           outcomeInvalidArgument,
+				reasons:           []string{"resource id is malformed"},
+				descriptor:        descriptor,
+				entry:             entry,
+				invalidArgMessage: invalidResourceIDMessage(resourceID.String()),
 			}, true
 		}
 	}

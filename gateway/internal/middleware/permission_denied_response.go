@@ -412,22 +412,32 @@ func invalidResourceIDMessage(id string) string {
 	return "invalid resource id '" + id + "'"
 }
 
-// buildGRPCInvalidArgStatus constructs a *status.Status{Code: InvalidArgument}
-// for a malformed resource id. No PreconditionFailure / ErrorInfo details — the
-// flat message IS the contract (mirrors corevalidate.ResourceID).
-func buildGRPCInvalidArgStatus(id string) *status.Status {
-	return status.New(codes.InvalidArgument, invalidResourceIDMessage(id))
+// scopeSourceConflictMessage — the flat-message contract for a request whose
+// query string names the authorization scope as something other than what the
+// request body names it. It names the field so the caller can fix the request,
+// and says which source decides: on a route that carries a body the handler is
+// built from the body alone, so a query parameter there can only mislead.
+func scopeSourceConflictMessage(field string) string {
+	return field + " in the query string does not match the request body; " +
+		"this route reads " + field + " from the body only"
 }
 
-// writeHTTPInvalidArg renders a 400 response for a malformed resource id. Body
-// shape matches the gRPC-gateway default `{code, message}` with code 3
+// buildGRPCInvalidArgStatus constructs a *status.Status{Code: InvalidArgument}
+// with the supplied flat message. No PreconditionFailure / ErrorInfo details —
+// the flat message IS the contract (mirrors corevalidate.ResourceID).
+func buildGRPCInvalidArgStatus(message string) *status.Status {
+	return status.New(codes.InvalidArgument, message)
+}
+
+// writeHTTPInvalidArg renders a 400 response carrying the supplied flat message.
+// Body shape matches the gRPC-gateway default `{code, message}` with code 3
 // (INVALID_ARGUMENT).
-func writeHTTPInvalidArg(w http.ResponseWriter, id string) {
+func writeHTTPInvalidArg(w http.ResponseWriter, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusBadRequest)
 	body := map[string]any{
 		"code":    3, // gRPC code InvalidArgument
-		"message": invalidResourceIDMessage(id),
+		"message": message,
 	}
 	_ = json.NewEncoder(w).Encode(body)
 }
