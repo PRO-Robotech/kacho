@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "71b44026-bd17-4162-8ed7-34ef23fe893a",
+    "_postman_id": "a85e9604-28c0-4ec6-97f5-7394e5206ed0",
     "name": "kacho-nlb / newman / listener",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -11904,7 +11904,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"loadBalancerId\", \"loadBalancerId\": \"nlbany00000000000000\"}",
+              "raw": "{\"updateMask\": \"loadBalancerId\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -11960,7 +11960,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"protocol\", \"protocol\": \"UDP\"}",
+              "raw": "{\"updateMask\": \"protocol\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -12016,7 +12016,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"port\", \"port\": 9999}",
+              "raw": "{\"updateMask\": \"port\"}",
               "options": {
                 "raw": {
                   "language": "json"

@@ -126,7 +126,7 @@ INTERNAL / EXTERNAL happy source-resolution (inline vpc fixtures, tolerant):
 - `*-CR-CRUD-INTERNAL-LINK` — CRUD/P1 — INTERNAL LB linking a pre-created internal Address (8.1-04)
 - `*-CR-CRUD-EXTERNAL-LINK` — CRUD/P1 — EXTERNAL LB linking a pre-created public Address (BYO) (8.1-07)
 - `*-CR-CRUD-DUALSTACK-MIXED` — CRUD/P2 — INTERNAL REGIONAL dualstack: v4 subnet-auto + v6 address-link (8.1-05)
-- `*-CR-CRUD-REMOVED-FIELDS-IGNORED` — CRUD,CONF/P2 — fields absent from Create proto (networkId/anycastPoolId) dropped by grpc-gateway, not echoed on Get (8.1-32)
+- `*-CR-CRUD-REMOVED-FIELDS-ABSENT` — CRUD,CONF/P2 — networkId/anycastPoolId are gone from the LoadBalancer model; a created LB carries neither on Get (8.1-32)
 
 Immutability + drain toggle + lean projection + delete-release:
 - `*-UPD-STATE-IMMUTABLE-PLACEMENT` — STATE,VAL/P0 — placementType immutable after Create (8.1-25)
@@ -437,7 +437,7 @@ chain on the seeded umbrella stack).
 ### UC-2 — INTERNAL NLB (private VIP from a subnet source) (6.0-35 → 8.1)
 - `XRES-E2E-INTERNAL-FULL-FLOW` — CRUD,STATE/P0 — INTERNAL LB(inline zonal subnet source, placementType=ZONAL, CLIENT_IP_ONLY)→listener→TG→attach→GetTargetStates
 - `XRES-E2E-INTERNAL-NO-NETWORK-INVALID` — NEG,VAL/P0 — INTERNAL LB without placementType/VIP source → InvalidArgument (8.1 replaces the network_id requirement)
-- `XRES-E2E-EXTERNAL-WITH-NETWORK-INVALID` — CRUD,CONF/P1 — EXTERNAL carrying the removed networkId + valid public source → created, field ignored (8.1-32)
+- `XRES-E2E-EXTERNAL-NO-NETWORK-FIELD` — CRUD,CONF/P1 — EXTERNAL LB with a public VIP source binds no network; the removed networkId is absent from the projection (8.1-32)
 - `XRES-E2E-INTERNAL-SG-FOREIGN-REJECTED` — NEG,VAL,CONF/P2 — EXTERNAL LB carrying securityGroupIds → sync 400 'security_group_ids is only valid for INTERNAL load balancer' (NLB-1b revived SG as INTERNAL-only firewall)
 
 ### UC-5 — bottom-up teardown with correct address lifecycle (6.0-36)

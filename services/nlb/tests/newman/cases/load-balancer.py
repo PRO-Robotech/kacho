@@ -36,6 +36,12 @@ Cross-domain fixture tolerance (deliberate, mirrors cross-resource.py):
   case asserts the lawful fixture-absent rejection instead — the suite stays green either way. The
   sync source×type×placement negatives (the bulk) are strict and fixture-free.
 
+  This tolerance covers the LANE (pool / authz / seeded network absent). It must never absorb a
+  malformed REQUEST: an unasserted provisioning step cannot tell the two apart, and for the whole
+  archived history of this suite it did not — see _SPEC_REACHED_VPC below, where the address-link
+  fixture failed on every run and four cases silently took the tolerant branch. Any provisioning
+  step added here owes a discriminator that stays green on a bare lane and red on a bad body.
+
 REST base path: /nlb/v1/networkLoadBalancers
 """
 
@@ -113,14 +119,42 @@ def _provision_subnet(placement, suffix, save_var="vpcSubnetId"):
     ]
 
 
+# `address_spec` is a proto ONEOF (proto/kacho/cloud/vpc/v1/address_service.proto), and
+# protojson renders a oneof TRANSPARENTLY: the body carries the selected BRANCH key at the top
+# level (`externalIpv4AddressSpec` / `internalIpv4AddressSpec` / …), never the oneof's own name.
+# The vpc suite's own address cases (services/vpc/tests/newman/cases/address.py) are the
+# reference form. Both helpers below used to nest the branch inside an `"addressSpec": {…}`
+# wrapper. That wrapper is not a field of CreateAddressRequest, so the edge dropped it WHOLE
+# (unknown keys are discarded): what reached vpc was projectId+name with NO branch selected,
+# and vpc answered `400 "address_spec required"`. Every archived run from 2026-07-18 through
+# 2026-07-25 shows exactly that on all four call sites — not one address was ever provisioned
+# by this suite.
+#
+# It stayed invisible because the step asserted nothing and merely `unset` the id on non-200;
+# the four dependent cases then took their fixture-absent tolerance branch, which cannot tell
+# "this lane has no AddressPool" from "we sent a body the contract does not have".
+# _SPEC_REACHED_VPC is the discriminator that was missing: it stays green when the fixture
+# legitimately cannot materialise (pool / authz / network absent → some other message) and
+# goes red the moment the body stops matching the request contract again.
+_SPEC_REACHED_VPC = [
+    "pm.test('address spec reached vpc (body matches CreateAddressRequest)', () => {",
+    "  let m = '';",
+    "  try { m = (pm.response.json() || {}).message || ''; } catch (e) { m = pm.response.text() || ''; }",
+    "  pm.expect(m, 'the edge discarded the request body — the spec never arrived')"
+    ".to.not.match(/address_spec required/i);",
+    "});",
+]
+
+
 def _provision_internal_address(subnet_var, suffix, save_var="vpcAddrId", family="v4"):
     """Provision an INTERNAL vpc Address bound to a subnet (auto-allocated IP); save its id."""
     spec = "internalIpv4AddressSpec" if family == "v4" else "internalIpv6AddressSpec"
     return [
         Step(name=f"provision-internal-addr-{suffix}", method="POST", path=_VPC_ADDRESSES,
              body={"projectId": "{{_suiteProjectId}}", "name": f"nlb81-adr-{suffix}-{{{{runId}}}}",
-                   "addressSpec": {spec: {"subnetId": f"{{{{{subnet_var}}}}}"}}},
+                   spec: {"subnetId": f"{{{{{subnet_var}}}}}"}},
              test_script=[
+                 *_SPEC_REACHED_VPC,
                  f"pm.environment.unset('{save_var}');",
                  f"if (pm.response.code === 200 && pm.environment.get('{subnet_var}')) {{",
                  "  const j = pm.response.json();",
@@ -137,8 +171,9 @@ def _provision_external_address(suffix, save_var="vpcAddrId"):
     return [
         Step(name=f"provision-external-addr-{suffix}", method="POST", path=_VPC_ADDRESSES,
              body={"projectId": "{{_suiteProjectId}}", "name": f"nlb81-extadr-{suffix}-{{{{runId}}}}",
-                   "addressSpec": {"externalIpv4AddressSpec": {"zoneId": "{{existingZoneId}}"}}},
+                   "externalIpv4AddressSpec": {"zoneId": "{{existingZoneId}}"}},
              test_script=[
+                 *_SPEC_REACHED_VPC,
                  f"pm.environment.unset('{save_var}');",
                  "if (pm.response.code === 200) {",
                  "  const j = pm.response.json();",
@@ -485,9 +520,11 @@ CASES.append(Case(
         # Wire the TG to the LB via a listener (attach/detach RPCs removed) — a listener
         # referencing the TG is what now blocks the LB Move ("has a listener wired to a
         # target group; repoint before Move").
+        # No `ipVersion`: it is `reserved 8` in CreateListenerRequest (the VIP moved
+        # Listener→LoadBalancer). The listener inherits the parent's per-family VIP.
         retry_until_authorized(Step(name="wire-listener", method="POST", path="/nlb/v1/listeners",
              body={"loadBalancerId": "{{nlbId}}", "name": "mv-att-lst-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4",
+                   "protocol": "TCP", "port": 80, "targetPort": 8080,
                    "targetGroupId": "{{tgId}}"},
              test_script=[*save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
@@ -1226,6 +1263,13 @@ CASES.append(Case(
 
 # ---------------------------------------------------------------------------
 # STATE — immutable fields + delete protection
+#
+# In every probe below the assertion is carried ENTIRELY by `update_mask`: the
+# immutable-field check reads the mask, not the body. None of `type` / `regionId` /
+# `projectId` / `placementType` / `v4Source` / `v4AddressId` is a field of
+# UpdateNetworkLoadBalancerRequest, so the same-named body key these cases used to
+# carry alongside the mask was discarded at the edge and never reached the check it
+# appeared to feed. Dropping it changes what is sent, not what is asserted.
 # ---------------------------------------------------------------------------
 
 CASES.append(Case(
@@ -1235,7 +1279,7 @@ CASES.append(Case(
     steps=[
         *_setup_lb("im-type"),
         Step(name="upd-type", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
-             body={"updateMask": "type", "type": "INTERNAL"},
+             body={"updateMask": "type"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('mentions immutable', () => "
                           "  pm.expect((pm.response.json().message||'').toLowerCase()).to.include('immutable'));"]),
@@ -1250,7 +1294,7 @@ CASES.append(Case(
     steps=[
         *_setup_lb("im-region"),
         Step(name="upd-region", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
-             body={"updateMask": "regionId", "regionId": "{{_suiteRegionAltId}}"},
+             body={"updateMask": "regionId"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
         *_cleanup_lb(),
     ],
@@ -1263,7 +1307,7 @@ CASES.append(Case(
     steps=[
         *_setup_lb("im-proj"),
         Step(name="upd-proj", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
-             body={"updateMask": "projectId", "projectId": "{{_suiteProjectCrossId}}"},
+             body={"updateMask": "projectId"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
         *_cleanup_lb(),
     ],
@@ -1350,9 +1394,10 @@ CASES.append(Case(
     classes=["STATE", "NEG"], priority="P0",
     steps=[
         *_setup_lb("del-has-lst"),
+        # No `ipVersion`: `reserved 8` in CreateListenerRequest (VIP lives on the LB).
         Step(name="setup-listener", method="POST", path="/nlb/v1/listeners",
              body={"loadBalancerId": "{{nlbId}}", "name": "del-has-lst-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4"},
+                   "protocol": "TCP", "port": 80, "targetPort": 8080},
              test_script=[*save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
         poll_operation_until_done(),
@@ -1817,31 +1862,42 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
-    id="NLB-CR-CRUD-REMOVED-FIELDS-IGNORED",
-    title="Create carrying fields absent from the Create proto (networkId/anycastPoolId) → "
-          "silently dropped by grpc-gateway; not echoed on Get (Verifies 8.1-32)",
+    id="NLB-CR-CRUD-REMOVED-FIELDS-ABSENT",
+    title="networkId / anycastPoolId are gone from the LoadBalancer model — a created LB "
+          "carries neither on Get (Verifies 8.1-32)",
     classes=["CRUD", "CONF"], priority="P2",
-    # NLB-1b/1c: only networkId + anycastPoolId are absent from CreateNetworkLoadBalancerRequest
-    # (grpc-gateway drops unknown JSON keys). crossZoneEnabled (REGIONAL-only) and
-    # securityGroupIds (INTERNAL-only, revived NLB-1-51) are LIVE fields that ARE validated —
-    # sending them on this EXTERNAL LB is a 400 ("... only valid for INTERNAL"/ZONAL-guard),
-    # not a silent-drop. Those live-field validations are covered elsewhere; here we assert
-    # only the genuinely-removed keys are dropped.
+    # 8.1-32 is a statement about the MODEL: `networkId` and `anycastPoolId` were removed
+    # from NetworkLoadBalancer (and from CreateNetworkLoadBalancerRequest) in the VIP
+    # redesign. What this case can observe is the projection — a lawfully created LB carries
+    # neither field — and that is asserted below.
+    #
+    # It used to SEND both keys and assert "created anyway, not echoed". That premise was
+    # about the EDGE's JSON policy (unknown keys discarded), not about nlb, and it was the one
+    # place in this suite deliberately exercising the very shape the platform forbids: a
+    # request field the service does not read, answered `200`. A field accepted and thrown
+    # away is a defect, not a contract worth pinning — the caller is told the parameter
+    # applied. The request-side half is now proven statically and exhaustively for every
+    # collection by TestNewmanCollectionsSendNoUnknownRequestFields. The projection assertions
+    # below are unchanged — they never depended on what the request carried, since the response
+    # message has no such fields to echo in the first place.
+    #
+    # crossZoneEnabled (REGIONAL-only) and securityGroupIds (INTERNAL-only, revived NLB-1-51)
+    # are LIVE fields that ARE validated — sending them on this EXTERNAL LB is a 400, not a
+    # drop. Those validations are covered elsewhere.
     steps=[
-        Step(name="cr-removed", method="POST", path=_CREATE_BASE,
-             body={**_LB_BODY, "name": "removed-{{runId}}",
-                   "networkId": "{{existingNetworkId}}", "anycastPoolId": "aap00000000000000000"},
+        Step(name="cr-lawful", method="POST", path=_CREATE_BASE,
+             body={**_LB_BODY, "name": "removed-{{runId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="get", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
-                          "pm.test('created despite dropped fields', () => "
+                          "pm.test('LB created', () => "
                           "  pm.expect(j.id).to.eql(pm.environment.get('nlbId')));",
-                          "pm.test('output does not echo networkId (absent from Create proto)', () => "
+                          "pm.test('projection carries no networkId (removed from the model)', () => "
                           "  pm.expect(j).to.not.have.property('networkId'));",
-                          "pm.test('output does not echo anycastPoolId (absent from Create proto)', () => "
+                          "pm.test('projection carries no anycastPoolId (removed from the model)', () => "
                           "  pm.expect(j).to.not.have.property('anycastPoolId'));"])),
         Step(name="cleanup", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -2566,7 +2622,7 @@ CASES.append(Case(
     steps=[
         *_setup_lb("im-placement"),
         Step(name="upd-placement", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
-             body={"updateMask": "placementType", "placementType": "REGIONAL"},
+             body={"updateMask": "placementType"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
         *_cleanup_lb(),
     ],
@@ -2579,10 +2635,10 @@ CASES.append(Case(
     steps=[
         *_setup_lb("im-vipsrc"),
         Step(name="upd-v4source", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
-             body={"updateMask": "v4Source", "v4Source": {"public": {}}},
+             body={"updateMask": "v4Source"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
         Step(name="upd-v4addr", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
-             body={"updateMask": "v4AddressId", "v4AddressId": "adrx00000000000000000"},
+             body={"updateMask": "v4AddressId"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
         *_cleanup_lb(),
     ],

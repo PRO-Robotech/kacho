@@ -497,7 +497,7 @@ CASES.append(Case(
     classes=["STATE", "VAL"], priority="P0",
     steps=[
         Step(name="upd-prj", method="PATCH", path=f"{_TG_BASE}/{{{{garbageTgrId}}}}",
-             body={"updateMask": "projectId", "projectId": "{{_suiteProjectCrossId}}"},
+             body={"updateMask": "projectId"},
              test_script=[*assert_absent_id_rejected()]),
     ],
 ))
@@ -508,7 +508,7 @@ CASES.append(Case(
     classes=["STATE", "VAL"], priority="P0",
     steps=[
         Step(name="upd-reg", method="PATCH", path=f"{_TG_BASE}/{{{{garbageTgrId}}}}",
-             body={"updateMask": "regionId", "regionId": "{{_suiteRegionAltId}}"},
+             body={"updateMask": "regionId"},
              test_script=[*assert_absent_id_rejected()]),
     ],
 ))
@@ -539,9 +539,10 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
+        # No `ipVersion`: `reserved 8` in CreateListenerRequest (VIP lives on the LB).
         Step(name="wire-listener", method="POST", path="/nlb/v1/listeners",
              body={"loadBalancerId": "{{nlbId}}", "name": "tgr-del-lst-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4",
+                   "protocol": "TCP", "port": 80, "targetPort": 8080,
                    "targetGroupId": "{{tgId}}"},
              test_script=[*save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
@@ -638,9 +639,10 @@ CASES.append(Case(
         poll_operation_until_done(),
         # Wire the TG to the LB via a listener (default_target_group_id) — a listener
         # referencing the TG is what now blocks the TG Move (attach/detach removed).
+        # No `ipVersion`: `reserved 8` in CreateListenerRequest (VIP lives on the LB).
         Step(name="wire-listener", method="POST", path="/nlb/v1/listeners",
              body={"loadBalancerId": "{{nlbId}}", "name": "tgr-mv-lst-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080, "ipVersion": "IPV4",
+                   "protocol": "TCP", "port": 80, "targetPort": 8080,
                    "targetGroupId": "{{tgId}}"},
              test_script=[*save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),

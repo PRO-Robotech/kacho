@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "2e3f983d-a7e8-4b82-9403-c37dbe4a7e8a",
+    "_postman_id": "a0f21b70-66e8-4c9d-8c1b-bc79980a6f5c",
     "name": "kacho-nlb / newman / load-balancer",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -4362,7 +4362,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"mv-att-lst-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080, \"ipVersion\": \"IPV4\", \"targetGroupId\": \"{{tgId}}\"}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"mv-att-lst-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080, \"targetGroupId\": \"{{tgId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -10940,7 +10940,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"type\", \"type\": \"INTERNAL\"}",
+              "raw": "{\"updateMask\": \"type\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -11368,7 +11368,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"regionId\", \"regionId\": \"{{_suiteRegionAltId}}\"}",
+              "raw": "{\"updateMask\": \"regionId\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -11795,7 +11795,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"projectId\", \"projectId\": \"{{_suiteProjectCrossId}}\"}",
+              "raw": "{\"updateMask\": \"projectId\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -13701,7 +13701,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"del-has-lst-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080, \"ipVersion\": \"IPV4\"}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"del-has-lst-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -17442,11 +17442,11 @@
       ]
     },
     {
-      "name": "NLB-CR-CRUD-REMOVED-FIELDS-IGNORED — Create carrying fields absent from the Create proto (networkId/anycastPoolId) → silently dropped by grpc-gateway; not echoed on Get (Verifies 8.1-32)",
+      "name": "NLB-CR-CRUD-REMOVED-FIELDS-ABSENT — networkId / anycastPoolId are gone from the LoadBalancer model — a created LB carries neither on Get (Verifies 8.1-32)",
       "description": "class:CRUD | class:CONF | priority:P2",
       "item": [
         {
-          "name": "cr-removed",
+          "name": "cr-lawful",
           "request": {
             "method": "POST",
             "header": [
@@ -17468,7 +17468,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}, \"name\": \"removed-{{runId}}\", \"networkId\": \"{{existingNetworkId}}\", \"anycastPoolId\": \"aap00000000000000000\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}, \"name\": \"removed-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -17594,9 +17594,9 @@
                   "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
-                  "pm.test('created despite dropped fields', () =>   pm.expect(j.id).to.eql(pm.environment.get('nlbId')));",
-                  "pm.test('output does not echo networkId (absent from Create proto)', () =>   pm.expect(j).to.not.have.property('networkId'));",
-                  "pm.test('output does not echo anycastPoolId (absent from Create proto)', () =>   pm.expect(j).to.not.have.property('anycastPoolId'));"
+                  "pm.test('LB created', () =>   pm.expect(j.id).to.eql(pm.environment.get('nlbId')));",
+                  "pm.test('projection carries no networkId (removed from the model)', () =>   pm.expect(j).to.not.have.property('networkId'));",
+                  "pm.test('projection carries no anycastPoolId (removed from the model)', () =>   pm.expect(j).to.not.have.property('anycastPoolId'));"
                 ]
               }
             }
@@ -21479,7 +21479,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nlb81-extadr-kind-mm-{{runId}}\", \"addressSpec\": {\"externalIpv4AddressSpec\": {\"zoneId\": \"{{existingZoneId}}\"}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nlb81-extadr-kind-mm-{{runId}}\", \"externalIpv4AddressSpec\": {\"zoneId\": \"{{existingZoneId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -21493,6 +21493,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "pm.test('address spec reached vpc (body matches CreateAddressRequest)', () => {",
+                  "  let m = '';",
+                  "  try { m = (pm.response.json() || {}).message || ''; } catch (e) { m = pm.response.text() || ''; }",
+                  "  pm.expect(m, 'the edge discarded the request body — the spec never arrived').to.not.match(/address_spec required/i);",
+                  "});",
                   "pm.environment.unset('vpcAddrId');",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
@@ -23074,7 +23079,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nlb81-adr-int-link-{{runId}}\", \"addressSpec\": {\"internalIpv4AddressSpec\": {\"subnetId\": \"{{vpcSubnetId}}\"}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nlb81-adr-int-link-{{runId}}\", \"internalIpv4AddressSpec\": {\"subnetId\": \"{{vpcSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -23088,6 +23093,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "pm.test('address spec reached vpc (body matches CreateAddressRequest)', () => {",
+                  "  let m = '';",
+                  "  try { m = (pm.response.json() || {}).message || ''; } catch (e) { m = pm.response.text() || ''; }",
+                  "  pm.expect(m, 'the edge discarded the request body — the spec never arrived').to.not.match(/address_spec required/i);",
+                  "});",
                   "pm.environment.unset('vpcAddrId');",
                   "if (pm.response.code === 200 && pm.environment.get('vpcSubnetId')) {",
                   "  const j = pm.response.json();",
@@ -23617,7 +23627,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nlb81-extadr-ext-link-{{runId}}\", \"addressSpec\": {\"externalIpv4AddressSpec\": {\"zoneId\": \"{{existingZoneId}}\"}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nlb81-extadr-ext-link-{{runId}}\", \"externalIpv4AddressSpec\": {\"zoneId\": \"{{existingZoneId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -23631,6 +23641,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "pm.test('address spec reached vpc (body matches CreateAddressRequest)', () => {",
+                  "  let m = '';",
+                  "  try { m = (pm.response.json() || {}).message || ''; } catch (e) { m = pm.response.text() || ''; }",
+                  "  pm.expect(m, 'the edge discarded the request body — the spec never arrived').to.not.match(/address_spec required/i);",
+                  "});",
                   "pm.environment.unset('vpcAddrId');",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
@@ -24831,7 +24846,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"placementType\", \"placementType\": \"REGIONAL\"}",
+              "raw": "{\"updateMask\": \"placementType\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -25258,7 +25273,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"v4Source\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"updateMask\": \"v4Source\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -25306,7 +25321,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"v4AddressId\", \"v4AddressId\": \"adrx00000000000000000\"}",
+              "raw": "{\"updateMask\": \"v4AddressId\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -26559,7 +26574,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nlb81-extadr-rel-link-{{runId}}\", \"addressSpec\": {\"externalIpv4AddressSpec\": {\"zoneId\": \"{{existingZoneId}}\"}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"nlb81-extadr-rel-link-{{runId}}\", \"externalIpv4AddressSpec\": {\"zoneId\": \"{{existingZoneId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -26573,6 +26588,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "pm.test('address spec reached vpc (body matches CreateAddressRequest)', () => {",
+                  "  let m = '';",
+                  "  try { m = (pm.response.json() || {}).message || ''; } catch (e) { m = pm.response.text() || ''; }",
+                  "  pm.expect(m, 'the edge discarded the request body — the spec never arrived').to.not.match(/address_spec required/i);",
+                  "});",
                   "pm.environment.unset('vpcAddrId');",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",

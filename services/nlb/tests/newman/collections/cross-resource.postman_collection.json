@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "14ac230c-1513-456a-9b2b-29a80a0ac53a",
+    "_postman_id": "34be91ec-36ca-4781-a70e-27d751d4df0d",
     "name": "kacho-nlb / newman / cross-resource",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -3886,11 +3886,11 @@
       ]
     },
     {
-      "name": "XRES-E2E-EXTERNAL-WITH-NETWORK-INVALID — EXTERNAL LB carrying a removed networkId field + valid public source → created (grpc-gateway ignores the removed field) (Verifies 8.1-32)",
+      "name": "XRES-E2E-EXTERNAL-NO-NETWORK-FIELD — EXTERNAL LB with a public VIP source binds no network — the removed networkId is absent from the projection (Verifies 8.1-32)",
       "description": "class:CRUD | class:CONF | priority:P1",
       "item": [
         {
-          "name": "create-external-with-removed-network",
+          "name": "create-external-public-vip",
           "request": {
             "method": "POST",
             "header": [
@@ -3912,7 +3912,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"name\": \"ext-net-{{runId}}\", \"networkId\": \"{{garbageNetworkId}}\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"name\": \"ext-net-{{runId}}\", \"v4Source\": {\"public\": {}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4038,7 +4038,7 @@
                   "pm.environment.unset('_authRetryStarted');",
                   "if (pm.response.code === 200 && !pm.environment.get('lastOpError')) {",
                   "  pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "  pm.test('output does not echo the removed networkId', () =>     pm.expect(pm.response.json()).to.not.have.property('networkId'));",
+                  "  pm.test('projection carries no networkId (removed from the model)', () =>     pm.expect(pm.response.json()).to.not.have.property('networkId'));",
                   "}"
                 ]
               }
