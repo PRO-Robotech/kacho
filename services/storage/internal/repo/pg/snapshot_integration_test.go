@@ -15,10 +15,10 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/snapshot"
 )
 
 // mkSnapshot создаёт Snapshot из тома через репо (state=READY, size из тома) и

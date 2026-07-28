@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-package image_test
+package volume_test
 
 import (
 	"context"
@@ -12,18 +12,20 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/ports/portmock"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/serviceerr"
 )
 
 // violatedFields returns the field names carried by the google.rpc.BadRequest
-// detail of err. Empty result ⇒ the status carries no field violation at all.
+// detail of err, in order. An empty result means the status carries no field
+// violation at all.
 //
-// The status MESSAGE is deliberately not asserted here: by contract pkg/validate
-// returns the generic "invalid argument" text and puts the field name in the
-// DETAILS, so a message assertion would lock the wrong half of the contract.
+// The status MESSAGE is deliberately NOT asserted in this file. By contract
+// pkg/validate returns the generic "invalid argument" text and puts the offending
+// field name in the DETAILS — asserting the message would lock the wrong half of
+// the contract and would keep passing while the details stayed empty.
 func violatedFields(err error) []string {
 	st, ok := status.FromError(err)
 	if !ok {
@@ -53,41 +55,43 @@ func hasField(fields []string, want string) bool {
 }
 
 // TestCreateOverLimitNamesTheField locks the observable half of the field-violation
-// contract for Image.Create: an over-limit description / labels map must come back
+// contract for Volume.Create: an over-limit description / labels map must come back
 // as INVALID_ARGUMENT whose details name the offending field.
 //
-// Companion to TestCreateBVADescriptionLabels, which asserts only the CODE. That
-// weaker assertion stayed green while the field name was being thrown away.
+// The use-case used to rebuild pkg/validate's rich error from its TEXT
+// (`fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error())`). That threw the
+// BadRequest detail away and left the caller with a correct code, a message quoting
+// gRPC's own wire framing, and no way to tell WHICH field was rejected.
 func TestCreateOverLimitNamesTheField(t *testing.T) {
-	base := func() *domain.Image {
-		return &domain.Image{
-			ProjectID: "prj-1", RegionID: "ru-central1", Name: "bva",
-			SourceVolume: "vol00000000000000000",
+	base := func() *domain.Volume {
+		return &domain.Volume{
+			ProjectID: "prj-1", ZoneID: "zone-a", DiskTypeID: "block-balanced",
+			Name: "bva", SizeBytes: 1 << 30,
 		}
 	}
-	newUC := func() *image.UseCase {
-		return image.New(&portmock.ImageReader{}, &portmock.ImageWriter{},
+	newUC := func() *volume.UseCase {
+		return volume.New(&portmock.VolumeReader{}, &portmock.VolumeWriter{},
 			&portmock.PeerClient{}, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
 	}
 
 	cases := []struct {
 		name  string
-		mut   func(*domain.Image)
+		mut   func(*domain.Volume)
 		field string
 	}{
 		{
 			name:  "description over 256",
-			mut:   func(i *domain.Image) { i.Description = strings.Repeat("x", 257) },
+			mut:   func(v *domain.Volume) { v.Description = strings.Repeat("x", 257) },
 			field: "description",
 		},
 		{
 			name: "labels over 64 pairs",
-			mut: func(i *domain.Image) {
+			mut: func(v *domain.Volume) {
 				labels := make(map[string]string, 65)
-				for n := 0; n < 65; n++ {
-					labels["k"+strings.Repeat("z", n)] = "v"
+				for i := 0; i < 65; i++ {
+					labels["k"+strings.Repeat("z", i)] = "v"
 				}
-				i.Labels = labels
+				v.Labels = labels
 			},
 			field: "labels",
 		},
@@ -95,9 +99,9 @@ func TestCreateOverLimitNamesTheField(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			img := base()
-			tc.mut(img)
-			_, err := newUC().Create(context.Background(), img)
+			v := base()
+			tc.mut(v)
+			_, err := newUC().Create(context.Background(), v)
 			if status.Code(err) != codes.InvalidArgument {
 				t.Fatalf("code = %v, want InvalidArgument (err=%v)", status.Code(err), err)
 			}

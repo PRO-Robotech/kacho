@@ -12,9 +12,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/ports/portmock"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/serviceerr"
 )
 

@@ -14,10 +14,10 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/disktype"
 )
 
 // TestDiskTypeGetSeeded — Get seeded-типа (миграция 0004) читает поля.

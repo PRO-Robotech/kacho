@@ -27,6 +27,10 @@ import (
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/check"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/clients"
@@ -34,10 +38,6 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/handler"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/disktype"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/image"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/snapshot"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/serviceerr"
 )
 

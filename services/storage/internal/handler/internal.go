@@ -26,11 +26,11 @@ import (
 
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/protoconv"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/disktype"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/image"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/serviceerr"
 )
 

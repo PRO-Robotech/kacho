@@ -21,9 +21,9 @@ import (
 	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
 
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/image"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/volume"
 )
 
 // peerCallTimeout — per-call deadline любого peer-RPC (geo/iam). Configured, не

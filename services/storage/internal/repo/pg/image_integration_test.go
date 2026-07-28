@@ -15,10 +15,10 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/image"
 )
 
 // mkSnapshotRow вставляет строку snapshots напрямую (source для Image) с заданным

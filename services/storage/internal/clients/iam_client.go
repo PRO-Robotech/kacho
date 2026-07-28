@@ -14,10 +14,10 @@ import (
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
 
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/image"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/snapshot"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/volume"
 )
 
 // IAMClient — клиент ребра storage→iam (валидация project_id через

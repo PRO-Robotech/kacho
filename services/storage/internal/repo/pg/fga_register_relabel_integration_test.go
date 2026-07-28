@@ -30,11 +30,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/image"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/snapshot"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/volume"
 )
 
 // registerRowsFor filters the outbox down to register intents naming one resource.
