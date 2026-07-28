@@ -122,8 +122,9 @@ DEV_SECRET="$DEV_SECRET" PATCH_ENV=true SETUP_NS="$NS" \
 
 # nlb EXTERNAL suites auto-allocate a public VIP + self-provision a zonal external
 # vpc Address; both resolve GetDefaultForZone(zone, EXTERNAL_PUBLIC) → need a DEFAULT
-# EXTERNAL_PUBLIC AddressPool in the zone. seed-ipam is a deliberate NOOP, so provision
-# it here (idempotent, best-effort) via the already-up internal-rest port-forward.
+# EXTERNAL_PUBLIC AddressPool in the zone. Nothing seeds it earlier - pool creation is
+# an explicit admin act, not part of bringing a stand up - so provision it here
+# (idempotent, best-effort) via the already-up internal-rest port-forward.
 # Only for nlb — no other suite needs the external pool. `|| true`: a failure degrades
 # to the pre-seed behaviour (external-create cases red → whitelist), never aborts the run.
 # In PRODUCTION posture setup.sh delegates to prodseed_all.py, which already drives

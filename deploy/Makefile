@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: BUSL-1.1
 .PHONY: dev-up dev-down dev-prod-up assert-rollout-ready assert-jobs-healthy assert-production-posture \
         assert-outbox-autovacuum \
-        reload-svc logs-svc psql preflight e2e-test helm-lint seed-ipam \
+        reload-svc logs-svc psql preflight e2e-test helm-lint \
         loadtest-address-allocate loadtest-address-allocate-clean \
         reload-svc-iam psql-iam logs-iam fga-bootstrap build-services openfga-model-json \
         reload-svc-nlb psql-nlb logs-nlb seed-nlb e2e-newman
@@ -352,19 +352,6 @@ ifndef SVC
 	$(error SVC variable is required)
 endif
 	kubectl exec -it -n kacho statefulset/pg-$(SVC) -- psql -U $(SVC) -d kacho_$(SVC)
-
-seed-ipam:
-	@echo "seed-ipam: NOOP. Auto-seeding отключён — admin должен явно создать AddressPool через kachoctl-ipam."
-	@echo
-	@echo "  cd ../services/vpc && make build-ipam"
-	@echo "  kubectl -n kacho port-forward svc/vpc 19091:9091 &"
-	@echo "  ./bin/kachoctl-ipam -addr localhost:19091 pool create \\"
-	@echo "    --folder <real_folder_id_from_resource_manager> \\"
-	@echo "    --kind EXTERNAL_PUBLIC \\"
-	@echo "    --region-id ru-central1 \\"
-	@echo "    --cidr 198.51.100.0/24 \\"
-	@echo "    --is-default \\"
-	@echo "    --name production-pool"
 
 e2e-test:
 	@for sh in e2e/0.1/*.sh; do \

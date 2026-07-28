@@ -492,8 +492,8 @@ esac
 # = `WHERE zone_id=$zone AND kind='EXTERNAL_PUBLIC' AND is_default=true` (vpc
 # address_pool.go). Without a DEFAULT external pool in the zone that query returns
 # NotFound → Address.Create / EXTERNAL LB.Create fails ("zone_id is empty" / no VIP)
-# → whole external-nlb chain reds. seed-ipam is a deliberate NOOP (admin-explicit),
-# so provision it here. AddressPool is InternalAddressPoolService → internal mux only
+# → whole external-nlb chain reds. Nothing seeds a pool earlier - creating one is an
+# explicit admin act, not part of bringing a stand up - so provision it here. AddressPool is InternalAddressPoolService → internal mux only
 # (ban #6), returns the resource DIRECTLY (not an Operation). Idempotent by name;
 # best-effort (|| true) so a stand without the internal port-forward degrades to the
 # pre-existing behaviour instead of aborting the whole seed.
