@@ -355,8 +355,6 @@ export interface NetworkLoadBalancer {
   // Аллоцированные VIP Address-ресурсы (output-only, резолв id → vpc Address).
   v4_address_id?: string;
   v6_address_id?: string;
-  // Снимок приаттаченных target-групп (pivot, output-only).
-  attached_target_groups?: { target_group_id: string; name?: string }[];
   status?: string;
 }
 

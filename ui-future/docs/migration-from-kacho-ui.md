@@ -66,9 +66,10 @@ NLB-spec уже живёт в `vpc/resource-registry.tsx` + `App.tsx NLB_SCOPED`
 Аналог `vpc/src/api/*`. Перенести из `kacho-ui` доменные хелперы NLB, переиспользуя
 generic client/DPoP/case (НЕ новый fetch-слой):
 - `nlb/src/api/{client,types,auth,resources,iam,cluster}.ts` (client/auth/iam = копии vpc).
-- `resources.ts` — LB/Listener/TargetGroup list/get/create/update/delete + `:attachTargetGroup`/
-  `:detachTargetGroup` actions. `types.ts` — request/response, `placement_type`,
-  `disabled_announce_zones`, VIP-address-spec.
+- `resources.ts` — LB/Listener/TargetGroup list/get/create/update/delete. Действий-глаголов
+  у балансировщика нет: `:start`/`:stop` и `:attachTargetGroup`/`:detachTargetGroup` сняты с
+  контракта (посадка — `admin_state`, целевая группа — `Listener.target_group_id`).
+  `types.ts` — request/response, `placement_type`, `disabled_announce_zones`, VIP-address-spec.
 
 **Гейт:** typecheck зелёный, ручки бьют реальный gateway (proxy-правила из Фазы 1).
 
