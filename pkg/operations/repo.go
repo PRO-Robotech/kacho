@@ -47,6 +47,12 @@ type Repo interface {
 	// List возвращает список операций с постраничной навигацией.
 	List(ctx context.Context, filter ListFilter) ([]Operation, string, error)
 	// MarkDone переводит операцию в done=true, записывает финальный ресурс (response).
+	//
+	// ВНИМАНИЕ: третий параметр — RESPONSE, не metadata. metadata остаётся
+	// такой, какой её вписал Create; этот переход её не трогает. Если
+	// owning-ресурс становится известен только ПОСЛЕ мутации (id приходит из
+	// БД), объявленное поле метаданных так и останется пустым — для этого
+	// случая есть MarkDoneWithMetadata (см. MetadataFinalizer).
 	MarkDone(ctx context.Context, id string, response *anypb.Any) error
 	// MarkError переводит операцию в done=true, записывает ошибку (google.rpc.Status).
 	MarkError(ctx context.Context, id string, err *status.Status) error
@@ -62,6 +68,42 @@ type Repo interface {
 	// уже авторизованных иначе. Симметрично IDOR-warning на Get выше.
 	Cancel(ctx context.Context, id string) error
 }
+
+// MetadataFinalizer — терминальная запись успеха, которая ВМЕСТЕ с response
+// заменяет metadata операции.
+//
+// Кому нужно: синхронной мутации, чей owning-ресурс становится известен только
+// ПОСЛЕ записи — id строки выдаёт БД, а на идемпотентном повторе это id уже
+// существующей строки, поэтому «сгенерировать заранее и вписать в Create» не
+// работает by construction. Строку операции при этом ОБЯЗАНО создавать ДО
+// мутации (иначе сбой Create оставляет закоммиченную мутацию без pollable
+// операции — Get(id) отвечает NotFound навсегда), то есть на Create метаданные
+// заведомо неполны. Без этого перехода объявленное контрактом поле метаданных
+// не заполняется никогда.
+//
+// Денормализованные индекс-колонки (resource_id / account_id) выставляются на
+// Create и здесь НЕ пересчитываются: финальная metadata не обязана нести их
+// поля, а перевычисление молча обнулило бы уже выставленный ключ.
+type MetadataFinalizer interface {
+	// MarkDoneWithMetadata переводит операцию в done=true, ЗАМЕНЯЯ metadata и
+	// записывая response. Идемпотентна и durable — тот же CAS-on-`done`, что у
+	// MarkDone: уже терминальная строка не перезаписывается (ErrAlreadyDone),
+	// отсутствующая → ErrNotFound.
+	MarkDoneWithMetadata(ctx context.Context, id string, metadata, response *anypb.Any) error
+}
+
+// FullRepo — то, что действительно возвращает NewRepo: Repo плюс все
+// опциональные апгрейды конкретной pgxpool-реализации. Метод-сет шире Repo,
+// поэтому значение присваивается в любую переменную/поле/параметр типа Repo —
+// расширение обратно совместимо, а use-case, которому апгрейд НУЖЕН, получает
+// его проверку на компиляции, а не type-assert'ом в рантайме.
+type FullRepo interface {
+	Repo
+	OwnedOperationRepo
+	MetadataFinalizer
+}
+
+var _ FullRepo = (*pgRepo)(nil)
 
 // executionClaimer — опциональный upgrade Repo, который Worker использует ПЕРЕД
 // исполнением fn: атомарно re-arm'ит liveness операции (modified_at=now) и
@@ -149,6 +191,48 @@ func markDoneCAS(ctx context.Context, q rowQuerier, table, id string, response *
 	return ErrNotFound
 }
 
+// markDoneWithMetadataCAS — markDoneCAS, дополнительно ЗАМЕНЯЮЩИЙ metadata.
+// Та же CAS-on-`done` семантика (updated=1 → nil; строка есть → ErrAlreadyDone;
+// строки нет → ErrNotFound), поэтому терминальная запись остаётся
+// идемпотентной и не перезатирает уже завершённую операцию.
+//
+// resource_id / account_id намеренно не пересчитываются — см. MetadataFinalizer.
+func markDoneWithMetadataCAS(ctx context.Context, q rowQuerier, table, id string, metadata, response *anypb.Any) error {
+	metaType, metaData, err := marshalAny(metadata)
+	if err != nil {
+		return fmt.Errorf("repo.MarkDoneWithMetadata: marshal metadata: %w", err)
+	}
+	respType, respData, err := marshalAny(response)
+	if err != nil {
+		return fmt.Errorf("repo.MarkDoneWithMetadata: marshal response: %w", err)
+	}
+	sql := fmt.Sprintf(`
+		WITH upd AS (
+			UPDATE %s
+			   SET done = true, modified_at = $2,
+			       metadata_type = $3, metadata_data = $4,
+			       response_type = $5, response_data = $6
+			 WHERE id = $1 AND done = false
+			RETURNING 1
+		)
+		SELECT (SELECT count(*) FROM upd) AS updated,
+		       EXISTS(SELECT 1 FROM %s WHERE id = $1) AS present`,
+		table, table)
+	var updated int
+	var present bool
+	if err := q.QueryRow(ctx, sql, id, time.Now().UTC(), metaType, metaData, respType, respData).
+		Scan(&updated, &present); err != nil {
+		return fmt.Errorf("repo.MarkDoneWithMetadata: %w", err)
+	}
+	if updated == 1 {
+		return nil
+	}
+	if present {
+		return ErrAlreadyDone
+	}
+	return ErrNotFound
+}
+
 // markErrorCAS — симметрия markDoneCAS для терминальной записи ошибки.
 func markErrorCAS(ctx context.Context, q rowQuerier, table, id string, errStatus *status.Status) error {
 	errCode, errMsg, errDetails := marshalStatus(errStatus)
@@ -219,7 +303,11 @@ type pgRepo struct {
 // NewRepo создает Repo для указанного пула и схемы.
 // schema используется как квалификатор таблицы (schema.operations).
 // Для схемы "public" передавайте "public".
-func NewRepo(pool *pgxpool.Pool, schema string) Repo {
+//
+// Возвращает FullRepo (Repo + опциональные апгрейды реализации) — присваивается
+// в любое место, ожидающее Repo; composition root, которому нужен апгрейд,
+// получает его без type-assert'а.
+func NewRepo(pool *pgxpool.Pool, schema string) FullRepo {
 	return &pgRepo{pool: pool, schema: schema}
 }
 
@@ -468,6 +556,13 @@ func (r *pgRepo) listWithOwner(ctx context.Context, filter ListFilter, owner *Ow
 // durable: CAS-on-`done` не перезатирает уже-терминальную строку (см. markDoneCAS).
 func (r *pgRepo) MarkDone(ctx context.Context, id string, response *anypb.Any) error {
 	return markDoneCAS(ctx, r.pool, r.tableName(), id, response)
+}
+
+// MarkDoneWithMetadata переводит операцию в done=true, заменяя metadata и
+// записывая финальный ресурс. Идемпотентна и durable — тот же CAS-on-`done`,
+// что у MarkDone (см. markDoneWithMetadataCAS).
+func (r *pgRepo) MarkDoneWithMetadata(ctx context.Context, id string, metadata, response *anypb.Any) error {
+	return markDoneWithMetadataCAS(ctx, r.pool, r.tableName(), id, metadata, response)
 }
 
 // MarkError переводит операцию в done=true с ошибкой. Симметрично MarkDone:
