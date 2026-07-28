@@ -134,6 +134,12 @@ func (h *hydraFixture) issueDPoPBoundToken(t *testing.T) (rawToken string, dpopP
 			"kacho_external_id":    "krt_id_xxx",
 			"kacho_active_account": "acc_a1b2",
 			"kacho_principal_type": "user",
+			// The token has to SAY who it is. This fixture used to state only the
+			// type and let the assertion below pass because the middleware
+			// substituted `sub` for the missing identifier — and the sub happened
+			// to be spelled like a principal id, which made the substitution
+			// invisible. It is a token for a principal; it names one.
+			"kacho_principal_id": "usr_alice_acc_a1b2",
 		},
 	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
@@ -349,7 +355,16 @@ func TestE2E_BearerToken_NoCnf_Accepted(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	body, _ := io.ReadAll(rec.Result().Body)
-	assert.Contains(t, string(body), `"principal_id":"usr_bearer"`)
+	// What this test is about: a token minted WITHOUT a key binding is not
+	// rejected for lacking one. It is not about identity — this token names no
+	// principal, only the provider's `sub`, and turning that into a caller is
+	// the substitution this middleware no longer performs. Resolving an
+	// unclaimed `sub` to a principal is the job of the authN layer that runs
+	// ahead of this one and does a real lookup; here that layer is not mounted,
+	// so the request arrives unnamed and stays unnamed.
+	assert.NotContains(t, string(body), `"principal_id":"usr_bearer"`,
+		"the provider's subject must not be served as a principal identifier")
+	assert.Contains(t, string(body), `"principal_id":""`)
 }
 
 func TestE2E_HealthEndpoint_BypassesAuth(t *testing.T) {
