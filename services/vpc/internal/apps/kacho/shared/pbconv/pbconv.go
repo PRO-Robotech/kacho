@@ -10,7 +10,6 @@ import (
 
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -40,28 +39,24 @@ func OperationToProto(op *operations.Operation) *operationpb.Operation {
 }
 
 // SubjectFromContext — извлекает FGA-subject ("user:usr_x"/"service_account:sva_x")
-// из Principal запроса. Различает ТРИ случая (раньше все три коллапсировали в "",
-// из-за чего List-фильтр трактовал «identity не извлечен» как «доверенный system»
-// и отдавал нефильтрованный список — leak):
-//   - реальный user/service_account → "<type>:<id>" (идет в per-page BatchCheck-фильтр);
-//   - доверенный system-principal → authzfilter.SystemSubject (явный passthrough);
-//   - identity не извлечен (anon / gateway не проставил principal) → "" — это
-//     «не знаю, кто ты», List-use-case обязан fail-closed (пустой список), НЕ passthrough.
+// из Principal запроса. Различает ДВА случая:
+//   - реальный user/service_account → "<type>:<id>" (идёт в per-page BatchCheck-фильтр);
+//   - никого не названо → "" — это «не знаю, кто ты», и потребитель обязан
+//     fail-closed (пустой результат), НИКОГДА не passthrough.
+//
+// «Никого не названо» покрывает и отсутствие принципала в ctx, и ЯРЛЫК АНОНИМНОСТИ
+// `system`: этот тип край подставляет запросу БЕЗ удостоверения (`{system,
+// anonymous}`), а fallback без auth-интерсептора даёт `{system, bootstrap}`. Тип
+// приезжает в заголовке, то есть назначается самим вызывающим, поэтому «тип равен
+// system» не может означать «доверенный вызов»: такое прочтение выдавало полное
+// доверие и подделавшему заголовок, и вообще неаутентифицированному вызывающему.
+// Ни один законный путь платформы этим типом не пользуется — служебные вызовы
+// несут `user:system.<сервис>-<роль>` (pkg/auth.SystemPrincipalFor), а межсервисный
+// вызов передаёт личность инициатора. Тот же предикат применяют compute и storage
+// (internal/authzfilter/subject.go) — vpc был единственным, кто читал его иначе.
 func SubjectFromContext(ctx context.Context) string {
-	// PrincipalFromContextOK различает АНОНИМНЫЙ ctx (principal не устанавливался —
-	// ok=false) от ЯВНО установленного principal. Без этого различения anonymous и
-	// system-principal оба коллапсировали в SystemPrincipal → List-фильтр трактовал
-	// anon как доверенный system и отдавал нефильтрованный список (leak).
-	p, ok := operations.PrincipalFromContextOK(ctx)
-	if !ok {
-		// principal не извлечен (anon / gateway не проставил identity) → fail-closed.
-		return ""
-	}
-	if p.Type == "system" {
-		// явный доверенный system-вызов → passthrough-sentinel.
-		return authzfilter.SystemSubject
-	}
-	if p.Type == "" || p.ID == "" {
+	p := operations.PrincipalFromContext(ctx)
+	if p.Type == "" || p.ID == "" || p.Type == "system" {
 		return ""
 	}
 	return p.Type + ":" + p.ID

@@ -399,19 +399,25 @@ func runServe(cfg config.Config) error {
 	// register-drainer'ом). Ловит panic и из вложенных интерсепторов, и из
 	// handler'а → opaque codes.Internal (без leak'а panic-текста), stack — в лог.
 	// Симметрично async-guard'у (operations.Run / network/create.go defer recover).
+	//
+	// forwarders — круг отправителей, которым разрешено передавать личность
+	// конечного пользователя; читается из ТОЙ ЖЕ функции, что и стража старта и
+	// самоотчёт о посадке, поэтому проводка и отчёт разъехаться не могут.
+	forwarders := cfg.TrustedForwarders()
 	publicUnary := []grpc.UnaryServerInterceptor{
 		handler.UnaryRecoveryInterceptor(logger),
 		handler.UnaryTimeoutInterceptor(reqTimeout),
 		fgaboot.GuardCreateUnary(bootGate),
-		grpcsrv.UnaryPrincipalExtract(),
-		handler.AuthNUnaryInterceptor(productionMode),
 	}
+	publicUnary = append(publicUnary, principalExtractUnary(forwarders)...)
+	publicUnary = append(publicUnary, handler.AuthNUnaryInterceptor(productionMode))
+
 	publicStream := []grpc.StreamServerInterceptor{
 		handler.StreamRecoveryInterceptor(logger),
 		handler.StreamTimeoutInterceptor(reqTimeout),
-		grpcsrv.StreamPrincipalExtract(),
-		handler.AuthNStreamInterceptor(productionMode),
 	}
+	publicStream = append(publicStream, principalExtractStream(forwarders)...)
+	publicStream = append(publicStream, handler.AuthNStreamInterceptor(productionMode))
 
 	// internal listener :9091 — цепочка ТА ЖЕ, что у public, и это принципиально:
 	// «internal = доверенный» — запрещённое допущение. principal-extract стоит первым
@@ -426,15 +432,16 @@ func runServe(cfg config.Config) error {
 	internalUnary := []grpc.UnaryServerInterceptor{
 		handler.UnaryRecoveryInterceptor(logger),
 		handler.UnaryTimeoutInterceptor(reqTimeout),
-		grpcsrv.UnaryPrincipalExtract(),
-		handler.AuthNUnaryInterceptor(productionMode),
 	}
+	internalUnary = append(internalUnary, principalExtractUnary(forwarders)...)
+	internalUnary = append(internalUnary, handler.AuthNUnaryInterceptor(productionMode))
+
 	internalStream := []grpc.StreamServerInterceptor{
 		handler.StreamRecoveryInterceptor(logger),
 		handler.StreamTimeoutInterceptor(reqTimeout),
-		grpcsrv.StreamPrincipalExtract(),
-		handler.AuthNStreamInterceptor(productionMode),
 	}
+	internalStream = append(internalStream, principalExtractStream(forwarders)...)
+	internalStream = append(internalStream, handler.AuthNStreamInterceptor(productionMode))
 
 	// authzConn (kacho-iam internal :9091, InternalIAMService.Check) собран один раз
 	// выше и общий с project-level List authz.

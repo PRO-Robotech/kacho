@@ -64,7 +64,7 @@ func (u *ListSubnetsUseCase) Execute(ctx context.Context, subjectID string, f Su
 	if lerr != nil {
 		return nil, "", lerr
 	}
-	if u.filter == nil || subjectID == authzfilter.SystemSubject || len(subs) == 0 {
+	if u.filter == nil || len(subs) == 0 {
 		return subs, next, nil
 	}
 	visible, ferr := filterVisibleSubnets(ctx, u.filter, subjectID, subs)

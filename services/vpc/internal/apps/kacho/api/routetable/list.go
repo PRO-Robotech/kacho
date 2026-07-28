@@ -63,7 +63,7 @@ func (u *ListRouteTablesUseCase) Execute(ctx context.Context, subjectID string, 
 	if lerr != nil {
 		return nil, "", lerr
 	}
-	if u.filter == nil || subjectID == authzfilter.SystemSubject || len(rts) == 0 {
+	if u.filter == nil || len(rts) == 0 {
 		return rts, next, nil
 	}
 	visible, ferr := filterVisibleRouteTables(ctx, u.filter, subjectID, rts)

@@ -5,16 +5,20 @@ package handler
 
 import (
 	"context"
+	"crypto/tls"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/check"
@@ -27,13 +31,33 @@ import (
 // перед ним отвечает ровно на один вопрос — предъявлен ли принципал — и собственного
 // решения о доступе не принимает.
 //
-// Тесты ниже прогоняют РЕАЛЬНУЮ цепочку (authn → authz, в том же порядке, что
-// cmd/vpc/main.go собирает internalUnary) по матрице форм вызывающего и фиксируют
-// исход. Матрица — не украшение: она и есть доказательство, что снятие самодельного
-// admin-гейта ничего не расширило. Единственный источник «да» — модель.
+// Тесты ниже прогоняют РЕАЛЬНУЮ цепочку — извлечение личности (доверенная пара
+// grpcsrv) → AuthN → authz, в том же порядке, что cmd/vpc/main.go собирает
+// internalUnary, — по матрице форм вызывающего и фиксируют исход. Матрица — не
+// украшение: она и есть доказательство, что снятие самодельного admin-гейта ничего
+// не расширило. Единственный источник «да» — модель.
+//
+// Личность приходит ТУДА, откуда приходит на проводе: в метаданные запроса, и её
+// подхватывает первое звено цепочки. Раньше тест клал принципала прямо в ctx через
+// operations.WithPrincipal, то есть заявленное первое звено не исполнял вовсе — и
+// не заметил бы, если бы извлечение принимало личность от кого попало. Пир здесь
+// намеренно ЗАКОННЫЙ отправитель: предмет этого файла — кто принимает решение о
+// доступе; кому вообще разрешено передавать личность, проверяется отдельно
+// (cmd/vpc/trusted_forwarders_test.go).
 
-// chainOutcome — прогон AuthN-интерсептора и следом authz-интерсептора; сообщает,
-// добрался ли вызов до handler'а.
+// forwarderPeerCtx — ctx с пиром, прошедшим проверку клиентского сертификата, чей
+// SAN входит в круг доверенных отправителей этого теста.
+func forwarderPeerCtx(t *testing.T, ctx context.Context) context.Context {
+	t.Helper()
+	return grpcsrv.WithCertIdentity(
+		peer.NewContext(ctx, &peer.Peer{AuthInfo: credentials.TLSInfo{State: tls.ConnectionState{}}}),
+		testForwarderSAN, true)
+}
+
+const testForwarderSAN = "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
+
+// chainOutcome — прогон доверенной пары извлечения, AuthN-интерсептора и следом
+// authz-интерсептора; сообщает, добрался ли вызов до handler'а.
 func chainOutcome(
 	t *testing.T,
 	productionMode bool,
@@ -45,10 +69,13 @@ func chainOutcome(
 ) (reached bool, err error) {
 	t.Helper()
 
-	ctx := metadata.NewIncomingContext(context.Background(), md)
+	md = md.Copy()
 	if principal != nil {
-		ctx = operations.WithPrincipal(ctx, *principal)
+		md.Set(grpcsrv.MDKeyPrincipalType, principal.Type)
+		md.Set(grpcsrv.MDKeyPrincipalID, principal.ID)
+		md.Set(grpcsrv.MDKeyPrincipalDisplay, principal.DisplayName)
 	}
+	ctx := forwarderPeerCtx(t, metadata.NewIncomingContext(context.Background(), md))
 
 	authzIntr := authz.NewInterceptor(authz.InterceptorOptions{
 		ServiceName: "kacho-vpc-test",
@@ -64,12 +91,18 @@ func chainOutcome(
 	}
 	info := &grpc.UnaryServerInfo{FullMethod: fullMethod}
 
-	// authz — последним, ровно как в composition root.
+	// Порядок ровно тот, что собирает composition root: извлечение личности →
+	// AuthN → authz. Первое звено пары (cert-identity) здесь уже отработало —
+	// forwarderPeerCtx кладёт его результат, — поэтому исполняем второе.
 	inner := authzIntr.Unary()
 	authnIntr := AuthNUnaryInterceptor(productionMode)
+	trustIntr := grpcsrv.UnaryTrustedPrincipalExtract(
+		grpcsrv.WithTrustedForwarders(testForwarderSAN))
 
-	_, err = authnIntr(ctx, req, info, func(ctx context.Context, req any) (any, error) {
-		return inner(ctx, req, info, handler)
+	_, err = trustIntr(ctx, req, info, func(ctx context.Context, req any) (any, error) {
+		return authnIntr(ctx, req, info, func(ctx context.Context, req any) (any, error) {
+			return inner(ctx, req, info, handler)
+		})
 	})
 	return reached, err
 }

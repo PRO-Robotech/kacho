@@ -13,7 +13,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 )
@@ -192,20 +191,6 @@ func TestRouteTableListPerObject_NilFilterPassthrough(t *testing.T) {
 	rts, _, err := uc.Execute(context.Background(), "user:usr_alice", RouteTableFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, rts, 2)
-}
-
-// явный system principal → нефильтрованный passthrough (без вызова FGA).
-func TestRouteTableListPerObject_SystemSubjectPassthrough(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedRouteTablesLabeled(t, kr, "prj_1", "enp_net1", "rtb_a", "rtb_b")
-
-	filter := &fakeListFilter{allowed: []string{"rtb_a"}}
-	uc := NewListRouteTablesUseCase(kr, filter)
-
-	rts, _, err := uc.Execute(context.Background(), authzfilter.SystemSubject, RouteTableFilter{ProjectID: "prj_1"}, Pagination{})
-	require.NoError(t, err)
-	assert.Len(t, rts, 2)
-	assert.Equal(t, 0, filter.calls, "explicit system principal → passthrough, no authz call")
 }
 
 // project_id по-прежнему обязателен (контракт не меняется).

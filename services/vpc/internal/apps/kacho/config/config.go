@@ -96,6 +96,60 @@ type AuthZConfig struct {
 	// выставлены, каждый успешный resource Create публикует
 	// `vpc_<resource>:<id>#project@project:<project_id>` tuple.
 	TupleWrite TupleWriteConfig `mapstructure:"tuple-write"`
+
+	// TrustedForwarderSANs — круг отправителей (личности сертификата,
+	// SPIFFE-SAN), которым РАЗРЕШЕНО передавать личность конечного пользователя в
+	// метаданных `x-kacho-principal-*`. Уезжает в grpcsrv.WithTrustedForwarders на
+	// ОБОИХ листенерах (см. cmd/vpc/principal_chain.go).
+	//
+	// Почему это ручка, а не константа: список отличается от стенда к стенду
+	// (пространства имён, имена служебных учёток), а перечислять его надо ПОЛНО —
+	// иначе законный отправитель перестаёт обслуживаться. У vpc законных
+	// отправителей ЧЕТЫРЕ, и все найдены по графу вызовов, а не по догадке
+	// «наверное только шлюз»:
+	//   - api-gateway — тенантский трафик на публичный :9090;
+	//   - compute     — привязка/отвязка интерфейса и резолв подсети под личностью
+	//     инициатора (services/compute/internal/clients/vpc_{nic,subnet}_client.go);
+	//   - nlb         — резолв подсети/адреса/группы безопасности/интерфейса
+	//     (services/nlb/internal/clients/vpc/*.go);
+	//   - vpc-operator — SEC-G sync-poll read.
+	// Канонические значения — в values.prod.
+	//
+	// Пусто допустимо ТОЛЬКО в dev (in-process фикстуры): contract corelib сужает
+	// круг лишь на НЕПУСТОМ списке, поэтому пусто означает «доверяем любому пиру с
+	// сертификатом внутреннего CA», а не «никому». В любом боевом режиме Validate()
+	// отказывает в старте (fail-closed, зеркалит geo/compute/nlb/storage/registry/iam).
+	//
+	// ENV `KACHO_VPC_AUTHZ__TRUSTED_FORWARDER_SANS` (через запятую).
+	TrustedForwarderSANs []string `mapstructure:"trusted-forwarder-sans"`
+}
+
+// TrustedForwarders — круг отправителей, который РЕАЛЬНО уезжает в
+// grpcsrv.WithTrustedForwarders на обоих листенерах.
+//
+// Единственный источник этого значения на процесс: его читает и проводка
+// (cmd/vpc/main.go), и стража старта (Validate), и самоотчёт о посадке
+// (cmd/vpc/bootposture.go). Поэтому «стража пропустила» ⟺ «круг реально сужен» —
+// по построению, а не по совпадению.
+//
+// Отбрасывает пустые записи, потому что их отбрасывает и corelib
+// (WithTrustedForwarders пропускает только s != ""): список из одних пустых строк
+// (`SANS=","`) вырождается там в пустое множество, то есть снова «доверяем любому».
+// Стража, считающая длину сырого среза, такое значение пропустила бы.
+//
+// Пробелы по краям срезаются — осознанное расхождение с corelib: тот сравнивает
+// личность сертификата побайтово, поэтому запись " spiffe://…" не совпала бы ни с
+// одним сертификатом, и оператор, написавший список через «запятая-пробел», получил
+// бы не отказ старта, а молчаливый отказ в обслуживании законному отправителю. Круг
+// от этого не расширяется: в него попадают ровно перечисленные строки.
+func (c Config) TrustedForwarders() []string {
+	out := make([]string, 0, len(c.AuthZ.TrustedForwarderSANs))
+	for _, s := range c.AuthZ.TrustedForwarderSANs {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // TupleWriteConfig — конфигурация write-side FGA.

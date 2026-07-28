@@ -14,7 +14,6 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/pbconv"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
@@ -58,13 +57,45 @@ func TestSubjectFromCtx_ServiceAccountPrincipal(t *testing.T) {
 	assert.Equal(t, "service_account:sva_bot", got)
 }
 
-// Явно установленный system-principal → SystemSubject-sentinel (доверенный
-// passthrough), НЕ обычный FGA-subject и НЕ пустой. Отличается от анонимного ctx
-// (principal не устанавливался) → "" → fail-closed.
-func TestSubjectFromCtx_SystemPrincipalReturnsSentinel(t *testing.T) {
-	ctx := operations.WithPrincipal(context.Background(), operations.SystemPrincipal())
-	got := pbconv.SubjectFromContext(ctx)
-	assert.Equal(t, authzfilter.SystemSubject, got, "explicit system principal → SystemSubject sentinel")
+// Тип принципала пишет себе сам вызывающий, и `system` на платформе служит
+// ЯРЛЫКОМ АНОНИМНОСТИ (`{system, anonymous}` край ставит запросу без
+// удостоверения). Поэтому он обязан означать «никого не названо», а не
+// «доверенный вызов»: иначе полное доверие получают и подделавший заголовок, и
+// вообще неаутентифицированный вызывающий. Тот же предикат применяют compute и
+// storage; vpc был единственным, кто читал его иначе.
+func TestSubjectFromCtx_DeclaredSystemTypeNamesNobody(t *testing.T) {
+	for name, p := range map[string]operations.Principal{
+		"fallback без auth":  operations.SystemPrincipal(),
+		"метка анонимности":  {Type: "system", ID: "anonymous"},
+		"подделанный system": {Type: "system", ID: "sva_attacker"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctx := operations.WithPrincipal(context.Background(), p)
+			assert.Empty(t, pbconv.SubjectFromContext(ctx),
+				"объявленный вызывающим тип не может быть основанием доверять ему всё")
+		})
+	}
+}
+
+// Сквозной замок на том же свойстве, но на НАБЛЮДАЕМОМ уровне use-case'а: субъект
+// не подставляется тестом, а выводится из ctx, как в проде. Вызывающий, объявивший
+// себя `system`, не получает ни строки — и модель о нём не спрашивают, потому что
+// спрашивать не о ком.
+func TestNetworkList_DeclaredSystemTypeSeesNothing(t *testing.T) {
+	kr := kachomock.NewRepository()
+	seedNetworksLabeled(t, kr, "prj_1", "net_a", "net_b")
+
+	filter := &fakeListFilter{allowAll: true}
+	uc := NewListNetworksUseCase(kr, filter)
+
+	ctx := operations.WithPrincipal(context.Background(),
+		operations.Principal{Type: "system", ID: "anonymous"})
+	nets, _, err := uc.Execute(ctx, pbconv.SubjectFromContext(ctx),
+		NetworkFilter{ProjectID: "prj_1"}, Pagination{})
+
+	require.NoError(t, err)
+	assert.Empty(t, nets, "объявленный тип принципала не открывает чужие сети")
+	assert.Zero(t, filter.calls)
 }
 
 func TestSubjectFromCtx_NoPrincipalReturnsEmpty(t *testing.T) {

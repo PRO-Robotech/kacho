@@ -158,20 +158,12 @@ func TestListByInstance_EmptySubjectFailsClosed(t *testing.T) {
 	assert.Zero(t, filter.calls, "no identity means there is nothing to ask the model about")
 }
 
-// A trusted system caller carries the explicit sentinel and is passed through — that
-// is a different case from "identity missing" and must stay distinguishable.
-func TestListByInstance_SystemSubjectPassesThrough(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedAttachedNIC(t, kr, "prj_a", "e9b_sub1", "nic_a", "ins_a")
-
-	filter := &fakeNICFilter{}
-	svc := NewService(kr).WithListFilter(filter)
-
-	att, err := svc.ListByInstance(context.Background(), authzfilter.SystemSubject, []string{"ins_a"})
-	require.NoError(t, err)
-	assert.Equal(t, []string{"nic_a"}, nicIDsOf(att))
-	assert.Zero(t, filter.calls)
-}
+// There is no subject value that skips the filter any more, and that is the point:
+// the only thing that ever produced one was a principal TYPE the caller writes into
+// its own request headers — the same token the edge stamps on an unauthenticated
+// request. A caller declaring it is nobody, and nobody sees nothing.
+// The end-to-end lock over the handler seam lives in
+// internal/handler/forged_system_principal_test.go.
 
 // The model being unreachable must not turn into "show everything".
 func TestListByInstance_FilterErrorFailsClosed(t *testing.T) {

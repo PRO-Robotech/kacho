@@ -112,7 +112,15 @@ case "$vpc_mode" in production|production-strict) ;; *) violation "kacho-vpc aut
 vpc_lf_fo="$(echo "$VPC_CM" | yq '.data."config.yaml"' - | yq '.authz."list-filter"."fail-open"' -)"
 vpc_bg="$(echo "$VPC_CM" | yq '.data."config.yaml"' - | yq '.authz.breakglass' -)"
 [ "$vpc_lf_fo" = "false" ] || violation "kacho-vpc authz.list-filter.fail-open=$vpc_lf_fo (must be false — fail-closed)"
-[ "$vpc_bg" = "false" ] || violation "kacho-vpc authz.breakglass=$vpc_bg (must be false in production)"; ok
+[ "$vpc_bg" = "false" ] || violation "kacho-vpc authz.breakglass=$vpc_bg (must be false in production)"
+# Who may FORWARD an end-user identity to vpc. An empty list does not mean
+# "nobody": corelib narrows the circle only when the list is non-empty, so empty
+# means any peer holding an internal-CA certificate may act as any tenant — and
+# vpc's public :9090 carries the whole tenant surface. The service refuses to boot
+# on an empty list; this asserts the shipped profile never asks it to. Counted with
+# `select(. != "")` because a list of empty strings degenerates to empty in corelib.
+vpc_fwd="$(echo "$VPC_CM" | yq '.data."config.yaml"' - | yq '[.authz."trusted-forwarder-sans"[] | select(. != "")] | length' -)"
+[ "${vpc_fwd:-0}" -gt 0 ] || violation "kacho-vpc authz.trusted-forwarder-sans is empty (any certificate-verified peer could then act as any tenant)"; ok
 
 # ── 3. kacho-nlb — production + sslmode != disable + breakglass off ──────────
 NLB_CM="$(render_only "$PROD" charts/kacho-nlb/templates/configmap.yaml)"

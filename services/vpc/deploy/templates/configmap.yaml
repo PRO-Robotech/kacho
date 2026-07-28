@@ -67,6 +67,13 @@ data:
     authz:
       iam-endpoint: {{ default "kacho-iam-internal.kacho.svc.cluster.local:9091" .Values.authz.iamEndpoint | quote }}
       breakglass: {{ default false .Values.authz.breakglass }}
+      # Круг отправителей, которым разрешено передавать личность конечного
+      # пользователя. Пустой список НЕ запрещает — он не сужает (см. values.yaml);
+      # производственная посадка на нём не стартует.
+      trusted-forwarder-sans:
+        {{- range .Values.authz.trustedForwarderSANs }}
+        - {{ . | quote }}
+        {{- end }}
       check-timeout: {{ default "2s" .Values.authz.checkTimeout | quote }}
       cache-ttl: {{ default "5s" .Values.authz.cacheTtl | quote }}
       deny-rate-limit-per-sec: {{ default 100 .Values.authz.denyRateLimitPerSec }}

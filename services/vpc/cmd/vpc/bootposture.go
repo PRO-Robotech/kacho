@@ -25,13 +25,21 @@ import (
 //     отработал).
 //   - authz_check   — поднято ли ребро vpc→iam InternalIAMService.Check: пустой
 //     endpoint → интерсептор не навешивается.
+//   - trusted_forwarders — сужен ли круг отправителей, которым разрешено передавать
+//     личность конечного пользователя. Читается из cfg.TrustedForwarders() — из ТОЙ
+//     ЖЕ функции, значение которой main.go отдаёт в grpcsrv.WithTrustedForwarders,
+//     поэтому отчёт не может разойтись с проводкой. Измерение ОТДЕЛЬНОЕ от mTLS:
+//     сертификат доказывает, ЧЕЙ это пир, но не даёт права представляться другим —
+//     это решает список. Без строки в отчёте гейт посадки, читающий живой процесс,
+//     измерения бы не видел вовсе (и не видел — vpc был из его списка исключён).
 func bootPosture(cfg config.Config, mtlsCfg config.MTLSConfig) observability.BootPosture {
 	return observability.BootPosture{
-		Service:      "vpc",
-		AuthMode:     cfg.AuthN.Mode.String(),
-		DBSSLMode:    coredb.SSLModeFromDSN(cfg.DSN()),
-		PublicMTLS:   mtlsCfg.PublicServerMTLS.Enable,
-		InternalMTLS: mtlsCfg.InternalServerMTLS.Enable,
-		AuthZCheck:   cfg.AuthZ.IAMEndpoint != "",
+		Service:           "vpc",
+		AuthMode:          cfg.AuthN.Mode.String(),
+		DBSSLMode:         coredb.SSLModeFromDSN(cfg.DSN()),
+		PublicMTLS:        mtlsCfg.PublicServerMTLS.Enable,
+		InternalMTLS:      mtlsCfg.InternalServerMTLS.Enable,
+		AuthZCheck:        cfg.AuthZ.IAMEndpoint != "",
+		TrustedForwarders: len(cfg.TrustedForwarders()) > 0,
 	}
 }

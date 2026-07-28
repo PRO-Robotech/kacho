@@ -501,6 +501,14 @@ vpc:
   # store so per-resource Get/Update/Delete Checks resolve. store-id / model-id
   # are bootstrap-job-populated Secrets, injected as config ENV-override.
   authz:
+    # Круг отправителей чужой личности — см. values.prod.yaml (там же обоснование
+    # состава). Пустой список НЕ запрещает, а не сужает; боевая посадка на нём не
+    # стартует, поэтому профиль обязан его нести.
+    trustedForwarderSANs:
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-compute
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb
+      - spiffe://kacho.cloud/ns/kacho-vpc-operator/sa/kacho-vpc-operator
     # KAC-127 Phase 4 — FGA-filtered List: List RPCs return 200 with only the
     # caller-visible ids instead of a per-RPC 403. Required for the authz
     # matrix *-LS-*-EMPTY scope-filter cases.

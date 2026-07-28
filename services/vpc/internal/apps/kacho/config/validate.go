@@ -53,6 +53,23 @@ const (
 	errBreakglassForbiddenInProduction = "authz.breakglass: forbidden in production mode (%s) — " +
 		"it bypasses ALL per-RPC authz Check on both listeners; breakglass is a dev-only emergency escape"
 
+	// errTrustedForwardersRequired — круг отправителей чужой личности обязан быть
+	// сужен. %s = Mode.String(). Текст — наблюдаемая причина отказа старта: он
+	// называет ручку и то, что означает её отсутствие, иначе стенд не поднять.
+	//
+	// Почему отказ старта, а не WARN: contract corelib (pkg/grpcsrv
+	// principalIsTrusted) сверяет личность сертификата со списком ТОЛЬКО когда
+	// список непуст; на пустом он отвечает «доверяем» ЛЮБОМУ пиру, прошедшему
+	// проверку клиентского сертификата, и переданная в метаданных личность
+	// становится субъектом проверки прав. То есть пустой список — это «не
+	// сужаем», а не «запрещаем», а внутренний периметр у нас объявлен НЕдоверенным
+	// (security.md). Слой TLS имён не сверяет — сужает только этот список.
+	errTrustedForwardersRequired = "production mode (%s): authz.trusted-forwarder-sans must be non-empty " +
+		"(set KACHO_VPC_AUTHZ__TRUSTED_FORWARDER_SANS) — an empty list does NOT mean \"nobody\": the corelib " +
+		"trust contract narrows the circle only when the list is non-empty, so empty means ANY peer holding " +
+		"an internal-CA client certificate may forward an end-user identity and act as that tenant. Pin the " +
+		"SPIFFE SANs of the senders that legitimately forward one: api-gateway, compute, nlb, vpc-operator"
+
 	// S4-гардрейлы (транспорт исходящих vpc→iam рёбер обязан быть verified в
 	// production). %s = Mode.String(). Тексты — часть контракта (наблюдаемый отказ
 	// старта), меняются только осознанно.
@@ -145,6 +162,19 @@ func (c Config) Validate() error {
 		!c.AuthZ.Breakglass {
 		errs = multierr.Append(errs,
 			fmt.Errorf(errAuthzEndpointRequired, c.AuthN.Mode))
+	}
+
+	// S1c: круг отправителей чужой личности обязан быть сужен в ЛЮБОМ
+	// production-режиме. Проверяем результат TrustedForwarders() — то самое
+	// значение, что уезжает в grpcsrv.WithTrustedForwarders, — а НЕ длину сырого
+	// среза: там же, где сужение реально произойдёт, пустые записи отбрасываются,
+	// поэтому `SANS=","` (срез из двух пустых строк) прошёл бы проверку длины и
+	// вернул дыру. Стража и проводка обязаны считать ОДНО И ТО ЖЕ, иначе
+	// разойдутся. dev осознанно терпит пусто (in-process фикстуры); на развёрнутом
+	// стенде dev-посадка запрещена отдельным правилом (production-mode ВЕЗДЕ).
+	if c.AuthN.Mode.IsProduction() && len(c.TrustedForwarders()) == 0 {
+		errs = multierr.Append(errs,
+			fmt.Errorf(errTrustedForwardersRequired, c.AuthN.Mode))
 	}
 
 	// S1b: защищённый DB-транспорт требуется в ЛЮБОМ production-режиме, не только

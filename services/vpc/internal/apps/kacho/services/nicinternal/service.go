@@ -211,11 +211,12 @@ func (s *Service) Detach(ctx context.Context, nicID, instanceID string) (*kachor
 //
 // Инстансы называет ВЫЗЫВАЮЩИЙ, поэтому набор привязок сужается до тех, что модель
 // разрешает subject'у видеть — per-object, на идентификаторах прочитанной страницы
-// (см. package doc). Три случая subject'а различаются намеренно:
+// (см. package doc). Случаев subject'а ровно два:
 //   - реальный `user:`/`service_account:` → спрашиваем модель;
-//   - `authzfilter.SystemSubject` → доверенный system-вызов, passthrough;
-//   - "" (identity не извлечена) → это «не знаю, кто ты», а НЕ «доверенный»:
-//     fail-closed, пустой результат.
+//   - "" (никого не названо) → это «не знаю, кто ты», а НЕ «доверенный»:
+//     fail-closed, пустой результат. Сюда же попадает объявленный вызывающим тип
+//     `system` — он служит ярлыком анонимности, а не признаком доверия
+//     (см. shared/pbconv.SubjectFromContext).
 //
 // Пустой subject отсекается БЕЗУСЛОВНО — в отличие от публичных List, где тот же
 // guard стоит под `s.filter != nil`. Разница не косметическая: у публичных List
@@ -236,7 +237,7 @@ func (s *Service) ListByInstance(ctx context.Context, subject string, instanceID
 	if err != nil {
 		return nil, serviceerr.MapRepoErrLeakSafe(err, "list network interfaces by instance failed")
 	}
-	if s.filter == nil || subject == authzfilter.SystemSubject || len(att) == 0 {
+	if s.filter == nil || len(att) == 0 {
 		return att, nil
 	}
 	return s.filterVisible(ctx, subject, att)

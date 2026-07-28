@@ -13,7 +13,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 )
@@ -194,20 +193,6 @@ func TestAddressListPerObject_NilFilterPassthrough(t *testing.T) {
 	addrs, _, err := uc.Execute(context.Background(), "user:usr_alice", AddressFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, addrs, 2)
-}
-
-// явный system principal → нефильтрованный passthrough (без вызова FGA).
-func TestAddressListPerObject_SystemSubjectPassthrough(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedAddressesLabeled(t, kr, "prj_1", "adr_a", "adr_b")
-
-	filter := &fakeListFilter{allowed: []string{"adr_a"}}
-	uc := NewListAddressesUseCase(kr, filter)
-
-	addrs, _, err := uc.Execute(context.Background(), authzfilter.SystemSubject, AddressFilter{ProjectID: "prj_1"}, Pagination{})
-	require.NoError(t, err)
-	assert.Len(t, addrs, 2)
-	assert.Equal(t, 0, filter.calls, "explicit system principal → passthrough, no authz call")
 }
 
 // project_id по-прежнему обязателен (контракт не меняется).
