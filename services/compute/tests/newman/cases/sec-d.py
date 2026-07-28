@@ -59,12 +59,17 @@ CASES.append(Case(
     classes=["CONF", "IDM"], priority="P1",
     steps=[
         *_seed_mt("ok"),
+        # sshPublicKeys снимает F5 unreachable-guard (COMP-1, 3aa7883c): VM без ssh-ключей
+        # И без внешнего адреса отвергается sync FAILED_PRECONDITION. Кейс про owner-tuple
+        # и per-resource Check, а не про достижимость — гейт снимаем ключом, как в
+        # соседних instance-redesign/list-filter.
         Step(name="create", method="POST", path=INSTANCES,
              body={"projectId": "{{_suiteProjectId}}", "name": f"secdins{{{{runId}}}}",
                    "zoneId": "{{existingZoneId}}", "instanceKind": "VM", "machineTypeId": "{{mtId}}",
                    "bootSource": dict(_BOOT_STORAGE),
                    "vmSpec": {"userData": "#cloud-config\n{}",
                               "metadataOptions": {"metadataEndpoint": "ENABLED", "metadataTokenRequired": True}},
+                   "sshPublicKeys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey sd@team"],
                    "networkInterfaceSpecs": [{"subnetId": "{{existingSubnetId}}",
                                               "securityGroupIds": ["{{existingSgId}}"]}],
                    "labels": {"suite": "sec-d"}},
