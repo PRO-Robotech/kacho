@@ -12,9 +12,29 @@
 name: security-scan
 
 on:
-  # Только pre-merge гейт для PR в main (не на push в main после мерджа).
+  # Pre-merge гейт для PR в main (не на push в main после мерджа: PR-дерево уже
+  # провалидировано).
   pull_request:
     branches: [main]
+
+  # …и на push в интеграционную ветку. Одного условия на PR в main НЕ ХВАТИЛО:
+  # redesign/integration живёт месяцами и в main не мержится, поэтому этот гейт на
+  # ней не отработал НИ РАЗУ — вся ветка шла в слепой зоне, и первый же ручной
+  # прогон нашёл находки обоих сканеров сразу.
+  #
+  # Очередь это не растит, и вот почему — проверять надо оба пункта, а не один:
+  #   * оба job'а тут `runs-on: ubuntu-latest`, то есть GitHub-hosted. За ЕДИНСТВЕННЫЙ
+  #     self-hosted-ранер соперничают e2e-newman / docker-build / production-posture,
+  #     а этот workflow к нему не обращается вовсе;
+  #   * `concurrency` ниже уже с `cancel-in-progress`, поэтому серия пушей подряд
+  #     держит один живой прогон на ветку, а не N.
+  #
+  # Фильтра по путям СОЗНАТЕЛЬНО нет: оба сканера читают дерево целиком (gosec —
+  # весь Go-граф, trivy — все локи и манифесты), и любой список путей стал бы
+  # слепой зоной ровно того же рода, что и отсутствующий триггер.
+  push:
+    branches: [redesign/integration]
+
   workflow_dispatch:
 
 permissions:
@@ -43,8 +63,14 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # ЗАПИНЕНО. С `@latest` вердикт гейта менялся без единой правки кода: новый
+      # релиз добавляет правило — и main краснеет на коммите, который ничего не
+      # трогал; а воспроизвести локально то, что увидел CI, нельзя вообще, потому
+      # что «latest» у них и у тебя в разные дни разный. Свежесть пина стережёт
+      # pinned-tools-freshness (см. .github/scripts/check-pinned-tools.sh) — она
+      # заведёт issue, когда апстрим уйдёт вперёд.
       - name: install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.28.0
 
       - name: run gosec
         run: |
@@ -105,6 +131,19 @@ jobs:
       # (exit-code 1 — реальный гейт). Причина: с `format: sarif` trivy-action
       # срабатывает на ЛЮБОЕ правило в SARIF независимо от фильтра `severity`
       # (известное поведение action'а) → sarif-проход гейтить нельзя.
+      #
+      # ПОРЯДОК ШАГОВ НЕСУЩИЙ: сначала ОБА sarif-прохода и обе выгрузки, и только
+      # потом оба гейта. Раньше шаги чередовались (fs-sarif, fs-upload, fs-гейт,
+      # config-sarif, config-upload, config-гейт) и это давало два отдельных сбоя:
+      #   1) красный fs-гейт останавливал job → шаг, который ПИШЕТ
+      #      trivy-config.sarif, пропускался, а выгрузка ниже с `if: always()`
+      #      всё равно запускалась и падала «Path does not exist:
+      #      trivy-config.sarif». В логе это выглядит как отказ выгрузки SARIF —
+      #      то есть как проблема прав токена, — хотя причина в порядке шагов;
+      #   2) красный fs-гейт скрывал вердикт IaC-гейта: чинишь fs, гоняешь
+      #      заново и только тогда узнаёшь, что красный ещё и config.
+      # Теперь один прогон отвечает на оба вопроса, а выгрузка не может сослаться
+      # на файл, который никто не создавал.
       - name: trivy fs (SARIF → Security)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -114,22 +153,6 @@ jobs:
           output: 'trivy-fs.sarif'
           severity: 'CRITICAL,HIGH'
           exit-code: '0'
-          ignore-unfixed: true
-
-      - uses: github/codeql-action/upload-sarif@v4
-        if: always()
-        with:
-          sarif_file: trivy-fs.sarif
-          category: trivy-fs
-
-      - name: trivy fs (гейт CRITICAL/HIGH)
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'table'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '1'
           ignore-unfixed: true
 
       - name: trivy config (SARIF → Security)
@@ -145,10 +168,31 @@ jobs:
       - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+      - uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
           sarif_file: trivy-config.sarif
           category: trivy-config
 
+      - name: trivy fs (гейт CRITICAL/HIGH)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+          ignore-unfixed: true
+
+      # `!cancelled()` (а не `always()`) — чтобы красный fs-гейт не прятал вердикт
+      # IaC, но отменённый прогон не запускал скан впустую: выше стоит
+      # cancel-in-progress, отмена здесь штатна. Оба гейта роняют job независимо;
+      # job зелёный только когда зелены оба.
       - name: trivy config (гейт CRITICAL/HIGH)
+        if: '!cancelled()'
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'config'

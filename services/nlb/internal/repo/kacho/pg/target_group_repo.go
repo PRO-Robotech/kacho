@@ -295,6 +295,14 @@ func (w *targetGroupWriter) Insert(ctx context.Context, tg *domain.TargetGroup) 
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", kacho.ErrInvalidArg, err)
 	}
+	deregSecs, err := dto.DurationToSeconds(tg.DeregistrationDelay)
+	if err != nil {
+		return nil, fmt.Errorf("%w: deregistration_delay: %v", kacho.ErrInvalidArg, err)
+	}
+	slowSecs, err := dto.DurationToSeconds(tg.SlowStart)
+	if err != nil {
+		return nil, fmt.Errorf("%w: slow_start: %v", kacho.ErrInvalidArg, err)
+	}
 	q := fmt.Sprintf(`
         INSERT INTO kacho_nlb.target_groups
             (id, project_id, region_id, name, description, labels, health_check,
@@ -304,7 +312,7 @@ func (w *targetGroupWriter) Insert(ctx context.Context, tg *domain.TargetGroup) 
 	row := w.tx.QueryRow(ctx, q,
 		string(tg.ID), string(tg.ProjectID), string(tg.RegionID),
 		string(tg.Name), string(tg.Description), labelsJSON, hcJSON,
-		dto.DurationToSeconds(tg.DeregistrationDelay), dto.DurationToSeconds(tg.SlowStart),
+		deregSecs, slowSecs,
 		int32(tg.Port), string(tg.Status),
 	)
 	rec, err := scanTG(row)
@@ -338,6 +346,14 @@ func (w *targetGroupWriter) Update(ctx context.Context, tg *domain.TargetGroup, 
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", kacho.ErrInvalidArg, err)
 	}
+	deregSecs, err := dto.DurationToSeconds(tg.DeregistrationDelay)
+	if err != nil {
+		return nil, fmt.Errorf("%w: deregistration_delay: %v", kacho.ErrInvalidArg, err)
+	}
+	slowSecs, err := dto.DurationToSeconds(tg.SlowStart)
+	if err != nil {
+		return nil, fmt.Errorf("%w: slow_start: %v", kacho.ErrInvalidArg, err)
+	}
 	// OCC на read-modify-write (`WHERE xmin::text=$exp`): concurrent-modify между
 	// Get и этим UPDATE → 0 rows → FailedPrecondition (защита от lost update на
 	// partial-mask Update). См. data-integrity.md OCC / LoadBalancerRecord.Xmin.
@@ -359,7 +375,7 @@ func (w *targetGroupWriter) Update(ctx context.Context, tg *domain.TargetGroup, 
 	row := w.tx.QueryRow(ctx, q,
 		string(tg.ID),
 		string(tg.Name), string(tg.Description), labelsJSON, hcJSON,
-		dto.DurationToSeconds(tg.DeregistrationDelay), dto.DurationToSeconds(tg.SlowStart),
+		deregSecs, slowSecs,
 		int32(tg.Port),
 		expectedXmin,
 	)
