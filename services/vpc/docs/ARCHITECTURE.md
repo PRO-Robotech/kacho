@@ -281,7 +281,7 @@ Cross-cutting и internal transport (`internal/handler/`):
 | `operation_handler.go` | `OperationService.Get` / `Cancel` |
 | `internal_address_allocate_handler.go` | `InternalAddressService.AllocateInternalIP/IPv6/External` + referrer-tracking |
 | `internal_network_handler.go` | `InternalNetworkService` (`GetNetwork` — internal-only `vrf_id`; `SetDefaultSecurityGroupId`) |
-| `tenant_interceptor.go` | `TenantUnaryInterceptor`, `TenantStreamInterceptor` (tenant-context из gRPC metadata; `TenantCtx` — в `internal/tenant`) |
+| `authn_interceptor.go` | `AuthNUnaryInterceptor`, `AuthNStreamInterceptor` (требуют предъявленного принципала в production-mode; решений о доступе не принимают) |
 | `internal_maperr.go` | Общий маппер ошибок internal-handlers без info-leak |
 
 Конвертация `Operation` в proto — пакет `internal/apps/kacho/shared/pbconv`
@@ -494,44 +494,39 @@ Immutable-поля по ресурсам:
 | Address | `external_ipv4_address_spec`, `internal_ipv4_address_spec`, `project_id` |
 | Прочие | `project_id` |
 
-### 4.9 AuthN/AuthZ scaffolding
+### 4.9 AuthN — предъявлен ли принципал, и всё
 
-В отсутствие IAM — interceptor читает metadata-headers:
+Личность приходит одним способом: forwarded-принципал `x-kacho-principal-*`,
+который кладёт в ctx `grpcsrv.Unary/StreamPrincipalExtract` (api-gateway для
+пользовательских вызовов, `pkg/auth.PropagateOutgoing` для service→service).
+`AuthNUnaryInterceptor` / `AuthNStreamInterceptor` проверяют его наличие и больше
+ничего не решают; читают принципала `pbconv.SubjectFromContext` (per-object
+видимость) и per-RPC authz-интерсептор (Check).
 
-| Header | Семантика |
+| AuthMode | Вызов без предъявленного принципала |
 |---|---|
-| `x-kacho-project-id` (повторяемый) | Project'ы, **заявленные** caller'ом. НЕ выдают доступ: объектную авторизацию решает per-RPC FGA-Check. Питает только `IsAnonymous` |
-| `x-kacho-admin: true` | Cluster-wide админ, минует admin-gate :9091 |
-
-В context кладется `TenantCtx{ProjectIDs, Admin}`. Она несёт только identity:
-из неё выводятся production-mode AuthN-guard (`IsAnonymous`) и admin-gate
-internal-листенера. **Объектная авторизация в handler-ах не живёт** — она
-выражена в permission-модели (`internal/apps/kacho/check.PermissionMap`) и
-энфорсится per-RPC authz-интерсептором (`InternalIAMService.Check` → OpenFGA)
-на обоих листенерах, fail-closed для не описанных в карте RPC.
-
-Anonymous (нет ни Admin, ни ProjectIDs) ведет себя по-разному в зависимости
-от `KACHO_VPC_AUTH_MODE`:
-
-| AuthMode | Поведение anonymous |
-|---|---|
-| `dev` | Полный доступ (backward-compat для тестов без AuthN) |
+| `dev` | Пропускается (только in-process фикстуры; на развёрнутом стенде режим запрещён) |
 | `production` | `PERMISSION_DENIED` сразу в interceptor (fail-closed) |
-| `production-strict` | То же + dополнительные проверки cross-service TLS и DB sslmode |
+| `production-strict` | То же + дополнительные проверки cross-service TLS и DB sslmode |
 
-`requireAdmin=true` (для :9091 listener'а) — отвергает caller'а без
-admin-flag. Точная семантика `assertAdminAccess`:
+**Объектная авторизация в handler-ах не живёт** — она выражена в permission-модели
+(`internal/apps/kacho/check.PermissionMap`) и энфорсится per-RPC
+authz-интерсептором (`InternalIAMService.Check` → OpenFGA) на обоих листенерах,
+fail-closed для не описанных в карте RPC.
 
-| Сценарий | Поведение |
-|---|---|
-| Anonymous (нет ни Admin, ни ProjectIDs) | Пропускается. В production-mode уже отвергнут вышестоящим guard-ом, в dev-mode это backward-compat для тестов без AuthN |
-| Non-anonymous + Admin=true | Пропускается |
-| Non-anonymous + Admin=false + method ∈ `/kacho.cloud.vpc.v1.Internal*` | `PERMISSION_DENIED "Permission denied"` |
-| Non-anonymous + Admin=false + method не из Internal family | `NOT_FOUND "not found"` — camouflage, чтобы не светить структуру admin-listener'а |
+#### Что отсюда снято
 
-Префикс-чек выполняется через `strings.HasPrefix`, а не `Contains` — это
-защита от будущих сервисов со словом "Internal" в произвольной позиции
-названия, которые могли бы случайно попасть в admin-listener.
+`x-kacho-project-id` и `x-kacho-admin` больше **не читаются**. Их не форвардил ни
+один компонент платформы, то есть заполнить их мог только сам звонящий: как
+identity они позволяли неаутентифицированному вызывающему пройти production-mode
+guard одной строкой в metadata, а `x-kacho-admin: true` на `:9091` вдобавок
+поднимал «cluster-admin» — привилегию, которую субъект объявлял о себе сам.
+
+Вместе с ними снят **admin-гейт internal-листенера**. Он не только опирался на этот
+заголовок, но и решал за модель в обратную сторону: вызывающего, которому модель
+говорит «да», он отвергал, если тот прислал `x-kacho-project-id` без
+admin-заголовка. Привилегию выдаёт и отзывает модель прав; матрица «форма metadata
+× RPC» зафиксирована в `internal/handler/internal_listener_authorization_test.go`.
 
 ---
 
@@ -1237,8 +1232,8 @@ baseline в `tests/k6/results/BASELINE.md`.)
 3. Get/Update/Delete делают `repo.Get` (через service) ради existence-контракта
    (`NOT_FOUND`); объектную авторизацию делает per-RPC authz-интерсептор по
    `internal/apps/kacho/check.PermissionMap`, а не handler.
-4. В `internal/handler/tenant_interceptor.go` — unary и stream interceptors поверх
-   `TenantCtx` и AuthMode.
+4. В `internal/handler/authn_interceptor.go` — unary и stream interceptors,
+   требующие предъявленного принципала в production-mode.
 5. В `internal/handler/internal_address_allocate_handler.go` — обертка над
    `AddressService.Allocate*`.
 6. В `internal/handler/operation_handler.go` — `Get` / `Cancel` через `ops`.
@@ -1328,7 +1323,7 @@ kacho-vpc/
 │   │   ├── operation_handler.go             — OperationService.Get/Cancel
 │   │   ├── internal_address_allocate_handler.go — InternalAddressService (IPAM)
 │   │   ├── internal_network_handler.go     — InternalNetworkService (vrf_id / default-SG)
-│   │   ├── tenant_interceptor.go  — AuthN/AuthZ scaffolding
+│   │   ├── authn_interceptor.go   — AuthN-guard (принципал предъявлен?)
 │   │   └── internal_maperr.go     — info-leak-safe mapper
 │   └── migrations/
 │       ├── 0001_initial.sql       — baseline schema
@@ -1353,7 +1348,7 @@ kacho-vpc/
 | Containment | `selector_labels @>` — pool описывает whitelist допустимых labels |
 | xmin OCC | Optimistic concurrency control через системную колонку Postgres `xmin` |
 | AuthMode | Уровень строгости AuthN-проверок (`dev/production/production-strict`) |
-| TenantCtx | Caller identity, извлекаемый из gRPC metadata, кладется в context |
+| Принципал | Личность вызывающего (`x-kacho-principal-*` → `pkg/operations`), из неё выводится FGA-subject |
 | Composition root | Единственное место сборки зависимостей (`cmd/vpc/main.go`) |
 
 ### C. Связанные документы

@@ -11,8 +11,11 @@
 //
 // Тонкий transport: malformed-id-first (apiconv) → service → DTO. Бизнес-логика и
 // error-контракт (in-use / zone-mismatch / not-found) живут в services/nicinternal.
-// AuthN(mTLS)+AuthZ(per-RPC Check) энфорсятся цепочкой интерсепторов :9091
+// AuthN(mTLS) и авторизация Attach/Detach энфорсятся цепочкой интерсепторов :9091
 // (cmd/vpc/main.go internalUnary + check.PermissionMap) — не в этом handler'е.
+// ListByInstance — исключение: единичного объекта для per-RPC Check у него нет
+// (инстансы называет вызывающий), поэтому он помечен ScopeFiltered, а видимость
+// решается per-object в use-case'е; здесь только извлекается subject.
 package handler
 
 import (
@@ -26,6 +29,7 @@ import (
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/services/nicinternal"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/pbconv"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/dto"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 
@@ -99,8 +103,13 @@ func (h *InternalNetworkInterfaceHandler) Detach(ctx context.Context, req *vpcv1
 }
 
 // ListByInstance — batched read NIC-привязок для compute-side зеркала.
+//
+// Единственный RPC этого сервиса, авторизуемый НА УРОВНЕ ДАННЫХ: инстансы называет
+// вызывающий, поэтому per-RPC Check пропущен (ScopeFiltered в check.PermissionMap), а
+// видимость решается по каждому возвращаемому NIC в use-case'е. Здесь — только
+// извлечение subject'а из принципала запроса (тот же шов, что публичные List).
 func (h *InternalNetworkInterfaceHandler) ListByInstance(ctx context.Context, req *vpcv1.ListNetworkInterfacesByInstanceRequest) (*vpcv1.ListNetworkInterfacesByInstanceResponse, error) {
-	att, err := h.svc.ListByInstance(ctx, req.GetInstanceIds())
+	att, err := h.svc.ListByInstance(ctx, pbconv.SubjectFromContext(ctx), req.GetInstanceIds())
 	if err != nil {
 		return nil, err
 	}

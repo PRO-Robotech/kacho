@@ -15,9 +15,11 @@ package check_test
 //     NOTHING in the system emits those. api-gateway forwards identity only as
 //     `x-kacho-principal-*` (+ `x-kacho-token-acr`); service→service calls use
 //     `pkg/auth.PropagateOutgoing`, which forwards only `x-kacho-principal-*`.
-//   - with the header absent, `TenantCtx.ProjectIDs` is empty, and
+//   - with the header absent the caller's project set was empty, and
 //     `HasProjectAccess` returned true for EVERY project — i.e. its default was
-//     fail-OPEN, not fail-closed.
+//     fail-OPEN, not fail-closed. (Those headers are no longer read at all: see
+//     handler/authn_interceptor.go, which withdrew the same class on the internal
+//     listener.)
 //   - to the extent the header can be smuggled at all, it is supplied by the
 //     CALLER, so it could only ever narrow a caller against itself. A check an
 //     attacker can switch off by omitting a header is not a boundary.

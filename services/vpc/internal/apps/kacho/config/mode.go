@@ -23,12 +23,13 @@ import (
 //
 //	ModeDev              — СТРОГО локальный fixture-режим (unit/integration-тесты и
 //	                       локальная разработка), НИКОГДА не для развернутого стенда:
-//	                       interceptor пропускает callers без AuthN-headers как admin,
+//	                       AuthN-guard пропускает вызовы без предъявленного принципала,
 //	                       insecure-defaults (TLS off, sslmode=disable) только
 //	                       логируются. В проде — ModeProduction (fail-closed).
-//	ModeProduction       — fail-closed: каждый запрос обязан иметь не-пустой
-//	                       TenantCtx (Admin или ProjectIDs). Anonymous →
-//	                       PermissionDenied.
+//	ModeProduction       — fail-closed: каждый запрос обязан нести forwarded
+//	                       принципала (`x-kacho-principal-*`). Личность, которую
+//	                       вызывающий объявил о себе сам, аутентификацией не
+//	                       является; anonymous → PermissionDenied.
 //	ModeProductionStrict — production + дополнительно валидирует extapi.*.tls.*
 //	                       и repository.postgres.ssl-mode (require|verify-ca|verify-full).
 type Mode int

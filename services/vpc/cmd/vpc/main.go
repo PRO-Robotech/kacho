@@ -404,35 +404,36 @@ func runServe(cfg config.Config) error {
 		handler.UnaryTimeoutInterceptor(reqTimeout),
 		fgaboot.GuardCreateUnary(bootGate),
 		grpcsrv.UnaryPrincipalExtract(),
-		handler.TenantUnaryInterceptor(false, productionMode),
+		handler.AuthNUnaryInterceptor(productionMode),
 	}
 	publicStream := []grpc.StreamServerInterceptor{
 		handler.StreamRecoveryInterceptor(logger),
 		handler.StreamTimeoutInterceptor(reqTimeout),
 		grpcsrv.StreamPrincipalExtract(),
-		handler.TenantStreamInterceptor(false, productionMode),
+		handler.AuthNStreamInterceptor(productionMode),
 	}
 
-	// internal listener :9091 — с тем же FGA-гейтом, что и public (security-инвариант:
-	// authN+authZ и на internal'е тоже). principal-extract СТОИТ ПЕРВЫМ (как в public):
-	// authzIntr читает principal'а из ctx (x-kacho-principal-* metadata), а
-	// subject-extractor — из него subject для Check'а. TenantUnaryInterceptor(true,...)
-	// — admin-metadata gate, сохраняется для defense-in-depth. authzIntr навешивается
-	// ниже (когда != nil): mapped cluster-scoped internal RPC
-	// (InternalNetworkService.GetNetwork/..., InternalAddressPoolService.*) проходят
-	// Check; IPAM InternalAddressService.* — object-scoped verb-bearing Check на
-	// `vpc_address` (v_update/v_get), все в PermissionMap.
+	// internal listener :9091 — цепочка ТА ЖЕ, что у public, и это принципиально:
+	// «internal = доверенный» — запрещённое допущение. principal-extract стоит первым
+	// (authzIntr читает принципала из ctx и делает из него subject для Check'а),
+	// AuthN-guard требует, чтобы принципал вообще был, а решение о доступе принимает
+	// authzIntr ниже — mapped cluster-scoped internal RPC (InternalNetworkService.*,
+	// InternalAddressPoolService.*) на singleton `cluster:cluster_kacho_root`, IPAM
+	// InternalAddressService.* — per-object на `vpc_address` (v_update/v_get).
+	// Отдельного admin-гейта здесь больше нет: он поднимал привилегию из клиентского
+	// заголовка (её объявлял о себе сам звонящий) и вдобавок отвергал вызывающих,
+	// которым модель говорит «да». Привилегию выдаёт модель — см. authn_interceptor.go.
 	internalUnary := []grpc.UnaryServerInterceptor{
 		handler.UnaryRecoveryInterceptor(logger),
 		handler.UnaryTimeoutInterceptor(reqTimeout),
 		grpcsrv.UnaryPrincipalExtract(),
-		handler.TenantUnaryInterceptor(true, productionMode),
+		handler.AuthNUnaryInterceptor(productionMode),
 	}
 	internalStream := []grpc.StreamServerInterceptor{
 		handler.StreamRecoveryInterceptor(logger),
 		handler.StreamTimeoutInterceptor(reqTimeout),
 		grpcsrv.StreamPrincipalExtract(),
-		handler.TenantStreamInterceptor(true, productionMode),
+		handler.AuthNStreamInterceptor(productionMode),
 	}
 
 	// authzConn (kacho-iam internal :9091, InternalIAMService.Check) собран один раз
@@ -1043,8 +1044,13 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		// Работает напрямую через CQRS-Repository (kachoRepo): attach/detach — writer-TX
 		// с атомарным CAS, ListByInstance — batched reader. geoClient резолвит зону
 		// инстанса в регион для региональной полосы placement-coherence (anycast-
-		// подсеть зоны не несёт) — регион из имени зоны не выводится.
-		networkInterfaceInternal: nicinternal.NewService(kachoRepo).WithZoneRegistry(geoClient),
+		// подсеть зоны не несёт) — регион из имени зоны не выводится. listFilter даёт
+		// per-object видимость для ListByInstance: инстансы называет вызывающий, и
+		// per-RPC Check тут семантически невозможен (ScopeFiltered, см. PermissionMap);
+		// в production его наличие гарантирует boot-guard ValidateListFilter.
+		networkInterfaceInternal: nicinternal.NewService(kachoRepo).
+			WithZoneRegistry(geoClient).
+			WithListFilter(listFilter),
 	}
 }
 

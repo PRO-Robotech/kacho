@@ -35,24 +35,40 @@ FGA-Check'ом** из `internal/apps/kacho/check.PermissionMap` (`v_get`/`v_list
 top-level List/Create), на **обоих** листенерах, fail-closed для RPC вне карты.
 Handler'ы (address/network/subnet/route_table/security_group/gateway) собственной
 ownership-проверки НЕ делают и НЕ дублируют её: их `repo.Get` остаётся только
-ради existence-контракта (`NOT_FOUND`). Tenant-context (`internal/handler/
-tenant_interceptor.go`) несёт identity для AuthN-guard и admin-gate, но не
-авторизует. Deny на существующий-но-недоступный ресурс маскируется под тот же
-`404`, что и настоящий miss (info-leak prevention).
+ради existence-контракта (`NOT_FOUND`). `internal/handler/authn_interceptor.go`
+отвечает ровно на один вопрос — предъявлен ли принципал — и не авторизует. Deny на
+существующий-но-недоступный ресурс маскируется под тот же `404`, что и настоящий
+miss (info-leak prevention).
+
+Единственное исключение из «решает per-RPC Check» —
+`InternalNetworkInterfaceService/ListByInstance`: инстансы называет вызывающий, а
+ответ касается интерфейсов с разными владельцами, поэтому единичного объекта для
+вопроса нет. Он помечен `ScopeFiltered` и сужает страницу per-object через ту же
+модель (`viewer ∪ v_list` на `vpc_network_interface:<id>`); production boot-guard
+`ValidateListFilter` не даёт стартовать без включённого фильтра.
 
 `KACHO_VPC_AUTH_MODE` (`internal/config/config.go`):
 - `dev` — anonymous-mode, callers без AuthN-headers пропускаются как admin
   (только для локальных фикстур; в развернутом стенде/проде недопустимо).
-- `production` — **fail-closed**: запрос без не-пустого TenantCtx → `PermissionDenied`
-  (защита от misconfigured prod-deploy, где IAM-sidecar/reverse-proxy забыт).
+- `production` — **fail-closed**: запрос без forwarded-принципала (`x-kacho-principal-*`)
+  → `PermissionDenied` (защита от misconfigured prod-deploy, где IAM-sidecar/
+  reverse-proxy забыт). Личность, объявленная вызывающим о себе в plaintext-заголовке,
+  аутентификацией не является и больше не читается.
 - `production-strict` — то же + дополнительно требует `ResourceManagerTLS=true` && `DBSSLMode != disable`.
 
 ### Internal-port (:9091) — оборона
 
 `:9091` (`Internal*` RPC) защищен несколькими слоями:
 1. **NetworkPolicy** (helm) — ingress на `:9091` только от api-gateway и admin-tooling pod'ов.
-2. **admin-only interceptor** — `Internal*` методы требуют admin-claim.
-3. **production-mode fail-closed** — без валидного context'а отказ.
+2. **mTLS** — verified client-cert на обоих листенерах.
+3. **per-RPC FGA-Check** — та же цепочка, что на public: cluster-scoped admin-RPC на
+   `cluster:cluster_kacho_root` (`system_admin`/`system_viewer`), IPAM-примитивы —
+   per-object на `vpc_address`. «Internal = доверенный» — запрещённое допущение.
+4. **production-mode fail-closed** — без forwarded-принципала отказ.
+
+Отдельного admin-гейта здесь **нет**: он поднимал привилегию из клиентского заголовка
+`x-kacho-admin`, то есть звонящий объявлял себя администратором сам. Привилегию
+выдаёт и отзывает модель прав.
 
 `Internal*` методы **не регистрируются** на external TLS endpoint
 (`api.kacho.local:443`, advertised для внешних клиентов) — только на

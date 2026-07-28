@@ -33,12 +33,33 @@ func TestScopeFilteredRPCs_MatchesMap(t *testing.T) {
 	require.True(t, sort.StringsAreSorted(got), "результат детерминирован (отсортирован)")
 }
 
-// TestScopeFilteredRPCs_CurrentlyEmpty — фиксирует текущее состояние карты после
-// SEC-фикса 2026-07-05: НИ ОДИН RPC не ScopeFiltered (NetworkService/List снят с
-// ScopeFiltered). Если кто-то вернёт ScopeFiltered — этот guard подсветит, что
-// production-boot теперь требует list-filter (S3).
-func TestScopeFilteredRPCs_CurrentlyEmpty(t *testing.T) {
-	require.Empty(t, check.ScopeFilteredRPCs())
+// scopeFilteredByDesign — единственные RPC, авторизуемые на уровне данных вместо
+// единичного per-RPC Check'а. Список закрытый, и это принципиально: пометка снимает
+// Check, поэтому она допустима ТОЛЬКО там, где единичного объекта для вопроса просто
+// нет, и обязана сопровождаться реальным per-object сужением ответа.
+//
+//   - InternalNetworkInterfaceService/ListByInstance — инстансы называет вызывающий,
+//     а ответ касается интерфейсов, у каждого из которых свой владелец. Прежний
+//     cluster-scoped `viewer` пропускал КАЖДОГО аутентифицированного субъекта
+//     (bootstrap пишет `cluster:<root>#viewer@user:*` ради глобального справочника),
+//     то есть был формой без содержания. Видимость решается в nicinternal per-object.
+//
+// Публичные List (NetworkService/List и соседи) сюда НЕ входят намеренно: у них есть
+// осмысленный объект (`project:<project_id>`), и per-RPC Check там — единственная
+// авторизация при выключенном фильтре (SEC audit 2026-07-05, CWE-862/CWE-639).
+var scopeFilteredByDesign = []string{
+	"/kacho.cloud.vpc.v1.InternalNetworkInterfaceService/ListByInstance",
+}
+
+// TestScopeFilteredRPCs_MatchesDesignList — набор ScopeFiltered-методов равен
+// закрытому списку выше. Новый метод в наборе роняет тест: снятие per-RPC Check'а —
+// решение, а не деталь, и оно вдобавок делает list-filter обязательным для старта
+// сервиса в production (config.ValidateListFilter, S3). Исчезнувший — тоже роняет,
+// чтобы запись не пережила свою причину.
+func TestScopeFilteredRPCs_MatchesDesignList(t *testing.T) {
+	want := append([]string(nil), scopeFilteredByDesign...)
+	sort.Strings(want)
+	require.Equal(t, want, check.ScopeFilteredRPCs())
 }
 
 // TestScopeFilteredRPCs_DetectsScopeFiltered — при наличии ScopeFiltered entry

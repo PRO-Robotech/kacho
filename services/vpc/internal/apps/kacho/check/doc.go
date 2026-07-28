@@ -25,11 +25,11 @@
 //	if authzIntr != nil {
 //	    grpcSrv := grpcsrv.NewServer(
 //	        grpc.ChainUnaryInterceptor(
-//	            handler.TenantUnaryInterceptor(false, productionMode),
+//	            handler.AuthNUnaryInterceptor(productionMode),
 //	            authzIntr.Unary(),
 //	        ),
 //	        grpc.ChainStreamInterceptor(
-//	            handler.TenantStreamInterceptor(false, productionMode),
+//	            handler.AuthNStreamInterceptor(productionMode),
 //	            authzIntr.Stream(),
 //	        ),
 //	    )
