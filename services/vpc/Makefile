@@ -8,7 +8,7 @@ MIGRATOR_BIN   := kacho-migrator
 MIGRATOR_CMD   := ./cmd/migrator
 IMAGE          := kacho-vpc:dev
 
-.PHONY: build build-migrator test test-short vet lint docker sync-migrations audit-list-filter proto-install-plugins proto-vendor proto-lint proto-gen
+.PHONY: build build-migrator test test-short vet lint docker audit-list-filter proto-install-plugins proto-vendor proto-lint proto-gen
 
 build:
 	CGO_ENABLED=0 go build -o bin/$(BINARY) $(CMD)
@@ -33,12 +33,6 @@ audit-list-filter:
 
 lint:
 	golangci-lint run ./...
-
-sync-migrations:
-	@echo "sync-migrations is a no-op after the migration squash baseline."
-	@echo "The operations table is now inline in internal/migrations/0001_initial.sql,"
-	@echo "schema kacho_vpc. Re-copying corelib's common/0001_operations.sql would"
-	@echo "create a conflicting unqualified 'operations' table in public schema."
 
 docker:
 	cd .. && docker build -f kacho-vpc/Dockerfile -t $(IMAGE) .

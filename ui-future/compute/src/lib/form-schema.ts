@@ -121,7 +121,7 @@ export interface ArrayField extends BaseField {
   newItem?: () => Record<string, unknown>;
 }
 
-// Editor для map<string,string> (Yandex Cloud labels). Хранится в obj как
+// Editor для map<string,string> (labels ресурса). Хранится в obj как
 // объект {key: value}; UI рендерит через LabelsEditor с rows-style редактором.
 export interface LabelsField extends BaseField {
   type: "labels";

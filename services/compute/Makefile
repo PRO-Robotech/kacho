@@ -5,7 +5,7 @@ BINARY         := kacho-compute
 CMD            := ./cmd/compute
 IMAGE          := kacho-compute:dev
 
-.PHONY: build test test-short vet lint docker sync-migrations audit-list-filter proto-install-plugins proto-lint proto-vendor proto-gen
+.PHONY: build test test-short vet lint docker audit-list-filter proto-install-plugins proto-lint proto-vendor proto-gen
 
 build:
 	CGO_ENABLED=0 go build -o bin/$(BINARY) $(CMD)
@@ -28,9 +28,6 @@ audit-list-filter:
 
 lint:
 	golangci-lint run ./...
-
-sync-migrations:
-	cp ../kacho-corelib/migrations/common/*.sql migrations/
 
 docker:
 	cd .. && docker build -f kacho-compute/Dockerfile -t $(IMAGE) .

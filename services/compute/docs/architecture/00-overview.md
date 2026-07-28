@@ -234,8 +234,8 @@ Instance, те же precondition-ошибки. Осознанные текущи
 - KMS-ключи (`kms_key_id`) — `kacho-kms` (нет → blocked).
 - Marketplace-продукты (`os_product_ids`) — `kacho-marketplace` (нет → blocked).
 - Snapshot-расписания (`snapshot_schedule_ids`) — `kacho-snapshot-schedule` (нет → blocked).
-- Operations worker-логика — `kacho-corelib/operations` (таблица `operations`
-  копируется через `make sync-migrations`, но включена в `0001_initial.sql`).
+- Operations worker-логика — `pkg/operations` (таблицу `operations` compute
+  заводит сам, в `0001_initial.sql`, схема `kacho_compute`).
 - Реальный data-plane (гипервизоры, фактическое forwarding) — другой проект.
 
 ## Quick links

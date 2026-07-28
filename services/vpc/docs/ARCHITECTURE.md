@@ -305,8 +305,8 @@ Cross-cutting и internal transport (`internal/handler/`):
   security_groups/gateways/addresses объявлен здесь же.
 - Инкрементные миграции `0002`+ — каждая отдельным файлом (см.
   [`architecture/05-database.md`](architecture/05-database.md)); примененную не редактируем.
-- `migrations/` (в корне репо) — staging для `make sync-migrations`
-  (только `0001_operations.sql` от corelib, источник истины не здесь).
+- Таблица `operations` объявлена здесь же, в схеме `kacho_vpc`; отдельного
+  набора «общих» миграций, который бы применялся, не существует.
 
 ### 3.8 `cmd/vpc/main.go` — composition root
 
@@ -1002,7 +1002,6 @@ SIGTERM ------>           |                       |                      |      
 | `make build` | Сборка `bin/kacho-vpc` |
 | `make test-short` | Unit-тесты без testcontainers |
 | `make test` | Unit + integration (нужен Docker) |
-| `make sync-migrations` | Копирует `0001_operations.sql` из corelib в staging |
 
 ### 10.2 Запуск миграций
 
@@ -1143,7 +1142,6 @@ baseline в `tests/k6/results/BASELINE.md`.)
 | `retry` | retry helper для transient gRPC ошибок |
 | `shutdown`, `backoff` | вспомогательные |
 | `audit` | `AuditLogger` (no-op в текущей фазе) |
-| `migrations/common/0001_operations.sql` | синхронизируется через `make sync-migrations` |
 
 ---
 

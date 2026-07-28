@@ -127,9 +127,11 @@
   served surface). Появляются только в редизайне **COMP-1** (`project/kacho`, not-yet-landed) — покроются, когда
   `rpc-implementer` их зальёт.
 
-## Conformance-зеркало против реального YC
+## Conformance
 
-Каждый кейс спроектирован так, чтобы зеленеть и против реального YC Compute API (verbatim parity).
-Прогон против YC — через `scripts/yc-proxy.js` + `ENV=environments/yc.postman_environment.json`
-(см. README §«Прогон против реального YC»). Кейсы с `# probe-needed:` фиксируют наше текущее
-поведение там, где точный YC-контракт ещё не verified — список — в `REQUIREMENTS.md`.
+Conformance-класс проверяет контракт Kachō против его собственного источника истины —
+proto-определений и APPROVED acceptance-дока: форма ресурса, id-префиксы, усечение
+timestamp'ов до секунд, тон сообщений об ошибке, sync-vs-async. Прогон против чужого
+облака как эталона не существует (второй non-negotiable); харнесс, который для этого
+держали, удалён. Кейсы с `# probe-needed:` фиксируют текущее поведение там, где спека
+ещё не высказалась — список в `REQUIREMENTS.md`.

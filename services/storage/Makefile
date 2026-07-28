@@ -10,9 +10,8 @@ IMAGE          := kacho-storage:dev
 # Local polyrepo: go.mod pins kacho-proto/kacho-corelib via `replace ../` → docker
 # build-context is the PARENT dir (siblings must be COPY-able). See Dockerfile.
 DOCKER_CONTEXT ?= ..
-CORELIB_COMMON ?= ../kacho-corelib/migrations/common
 
-.PHONY: build build-migrator test test-short vet lint audit-list-filter docker sync-migrations generate-mocks sqlc-gen \
+.PHONY: build build-migrator test test-short vet lint audit-list-filter docker generate-mocks sqlc-gen \
         migrate-up migrate-down migrate-status
 
 build:
@@ -59,15 +58,6 @@ audit-list-filter:
 # каталог, чтобы COPY подтянул siblings kacho-proto/kacho-corelib (replace ../).
 docker:
 	docker build -f Dockerfile -t $(IMAGE) $(DOCKER_CONTEXT)
-
-# sync-migrations — подтягивает общую LRO-таблицу operations из corelib в
-# internal/migrations/common/. Источник истины — kacho-corelib; rpc-implementer
-# встраивает синканные файлы при реализации первого async-RPC.
-sync-migrations:
-	@test -d "$(CORELIB_COMMON)" || { echo "corelib common не найден: $(CORELIB_COMMON) (переопредели CORELIB_COMMON=...)"; exit 1; }
-	mkdir -p internal/migrations/common
-	cp $(CORELIB_COMMON)/*.sql internal/migrations/common/
-	@echo "synced corelib operations migrations → internal/migrations/common/"
 
 # generate-mocks — port-моки hand-written (function-field, internal/ports/portmock);
 # таргет компилирует их как guard соответствия портам use-case.

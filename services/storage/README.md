@@ -37,7 +37,6 @@ make build           # bin/storage
 make build-migrator  # bin/kacho-migrator (goose up|down|status)
 make test            # go test ./... -race
 make vet lint        # go vet + golangci-lint
-make sync-migrations # подтянуть corelib operations → internal/migrations/common/
 make docker          # образ (контекст — родительский каталог; см. Dockerfile)
 ```
 

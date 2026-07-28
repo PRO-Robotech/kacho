@@ -1,0 +1,180 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+package foreignclouds
+
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
+
+// write lays one file into a throwaway tree.
+func write(t *testing.T, root, rel, content string) {
+	t.Helper()
+	full := filepath.Join(root, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func scan(t *testing.T, root string) []Finding {
+	t.Helper()
+	f, err := Scan(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return f
+}
+
+// TestFires is the half that matters: every shape of violation must be caught.
+// A gate that cannot be made to fail is not a gate.
+func TestFires(t *testing.T) {
+	cases := []struct {
+		name string
+		rel  string
+		body string
+	}{
+		{"prose in documentation", "docs/x.md", "Behaves like Yandex Cloud does.\n"},
+		{"go comment", "svc/a.go", "// same shape as the AWS metadata service\n"},
+		{"identifier component", "proto/a.proto", "  MetadataOption aws_v1_http_endpoint = 2;\n"},
+		{"environment variable", "deploy/env.yaml", "  KACHO_GCP_PROJECT: x\n"},
+		{"lower-case acronym", "svc/b.go", "// gcp-flavoured token exchange\n"},
+		{"another provider", "docs/y.md", "Deployed on Hetzner.\n"},
+		{"file name", "scripts/yandex-proxy.js", "const x = 1;\n"},
+		{"directory name", "tests/aws/fixture.json", "{}\n"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := t.TempDir()
+			write(t, root, c.rel, c.body)
+			if got := scan(t, root); len(got) == 0 {
+				t.Fatalf("no finding for %s — the gate would pass on a real violation", c.rel)
+			}
+		})
+	}
+}
+
+// TestDoesNotOverFire is the other half. A rule that flags ordinary English
+// teaches contributors to write around the matcher rather than to avoid the
+// vendor, which is why one such rule was deleted from the comment guard.
+func TestDoesNotOverFire(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "docs/prose.md", strings.Join([]string{
+		"The laws of the pool are simple.",
+		"It draws an address from the free list.",
+		"Gceilings and awsome are not words, but neither names a cloud.",
+		"The gateway forwards the request verbatim.",
+		"Amazonite is a mineral; amazons are not a provider.",
+	}, "\n"))
+	write(t, root, "go.sum", "github.com/Azure/go-ansiterm v0.0.0 h1:x=\n")
+	write(t, root, "ui/package-lock.json", `{"name":"@aws-sdk/client-s3"}`)
+	write(t, root, ".github/workflows/ci.yaml", "      - uses: azure/setup-helm@v4\n")
+	write(t, root, "deploy/zot.yaml", "  # credentials arrive as AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY\n")
+
+	if got := scan(t, root); len(got) != 0 {
+		t.Fatalf("gate fired on legitimate content:\n%s", Report(got))
+	}
+}
+
+// TestAmazoniteIsNotAProvider pins the boundary rule on its own, because
+// "amazon" is the token most likely to be widened into ordinary words.
+func TestAmazoniteIsNotAProvider(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "docs/rock.md", "Amazonite polishes well.\n")
+	if got := scan(t, root); len(got) != 0 {
+		t.Fatalf("boundary rule is too wide:\n%s", Report(got))
+	}
+
+	write(t, root, "docs/cloud.md", "Runs on Amazon.\n")
+	if got := scan(t, root); len(got) == 0 {
+		t.Fatal("boundary rule is too narrow: the provider itself went unnoticed")
+	}
+}
+
+// TestCoordinateExemptionIsLocal proves the third-party-coordinate exemption
+// frees the coordinate and nothing else on the same line.
+func TestCoordinateExemptionIsLocal(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "deploy/z.yaml", "  # AWS_ACCESS_KEY_ID comes from the secret, and we also run on Yandex\n")
+	got := scan(t, root)
+	if len(got) != 1 {
+		t.Fatalf("expected exactly the non-coordinate match, got %d:\n%s", len(got), Report(got))
+	}
+	if !strings.Contains(got[0].Text, "yandex") {
+		t.Fatalf("wrong match survived: %s", got[0])
+	}
+}
+
+// TestStaleExemptionIsReported keeps the exemption list from rotting into a
+// blanket allowance: an entry whose file is gone, or which stopped matching,
+// must be noticed rather than accumulate.
+func TestStaleExemptionIsReported(t *testing.T) {
+	root := t.TempDir()
+	got := AuditExemptions(root)
+	// Every file entry dangles, and every coordinate suppresses nothing.
+	if want := len(exemptFiles) + len(coordinates); len(got) != want {
+		t.Fatalf("expected %d dangling-exemption findings in an empty tree, got %d:\n%s",
+			want, len(got), Report(got))
+	}
+
+	// A file that exists but no longer carries a token is stale in the other way.
+	const rel = "tools/foreignclouds/foreignclouds.go"
+	if _, ok := exemptFiles[rel]; !ok {
+		t.Fatalf("%s is expected to be an exemption", rel)
+	}
+	write(t, root, rel, "package foreignclouds\n")
+	for _, f := range AuditExemptions(root) {
+		if f.Path == rel {
+			if !strings.Contains(f.Text, "stale exemption") {
+				t.Fatalf("wrong finding for a token-free exempt file: %s", f)
+			}
+			return
+		}
+	}
+	t.Fatalf("a token-free exempt file went unreported")
+}
+
+// TestRealExemptionsAllEarnTheirPlace runs the same audit against the tree.
+func TestRealExemptionsAllEarnTheirPlace(t *testing.T) {
+	if got := AuditExemptions(repoRoot(t)); len(got) != 0 {
+		t.Fatalf("exemption list has rotted:\n%s", Report(got))
+	}
+}
+
+// repoRoot locates the repository from this file's own position.
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	_, self, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	return filepath.Join(filepath.Dir(self), "..", "..")
+}
+
+// TestRepositoryNamesNoOtherCloud runs the gate against the real tree, so a
+// violation fails `go test ./...` and not only the dedicated CI step.
+func TestRepositoryNamesNoOtherCloud(t *testing.T) {
+	got := scan(t, repoRoot(t))
+	if len(got) != 0 {
+		t.Fatalf("%d violation(s) of the second non-negotiable:\n%s", len(got), Report(got))
+	}
+}
+
+// TestCIRunsThisGate locks the wiring. A gate CI does not call is worth exactly
+// as much as no gate; that pairing has already happened once in this repository.
+func TestCIRunsThisGate(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", "ci.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const invocation = "go run ./tools/foreignclouds/cmd/verify-no-foreign-clouds"
+	if !strings.Contains(string(b), invocation) {
+		t.Fatalf("ci.yaml does not run %q — wire it back in", invocation)
+	}
+}

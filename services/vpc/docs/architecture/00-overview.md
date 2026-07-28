@@ -151,7 +151,7 @@ internal/
   владельца-проекта через ProjectClient.
 - Region/Zone — это `kacho-geo` (leaf-домен Geography). VPC ссылается на `zone_id`
   по TEXT-id без FK, валидирует через `geo.v1.ZoneService.Get`.
-- Operations storage — `operations` таблица из corelib (`make sync-migrations`),
+- Operations storage — таблица `operations` в схеме `kacho_vpc` (объявлена в `0001_initial.sql`),
   логика worker'а — в `kacho-corelib/operations`.
 - Compute/instances/disks — `kacho-compute`.
 

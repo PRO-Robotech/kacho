@@ -237,7 +237,7 @@ Geography (Region/Zone) — **не VPC-ресурс**, а leaf-домен `kacho
   доменных мутаций. Публичного Watch RPC в Kachō нет: клиенты наблюдают изменения
   через polling `List` / `OperationService.Get`.
 
-- `operations` — общая LRO-таблица из `kacho-corelib` (`make sync-migrations`).
+- `operations` — LRO-таблица сервиса, в схеме `kacho_vpc` (`0001_initial.sql`).
   Не редактировать локально.
 
 См. полную схему БД и список миграций → [05-database.md](05-database.md).

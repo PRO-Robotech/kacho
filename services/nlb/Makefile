@@ -7,7 +7,7 @@ CMD_API        := ./cmd/kacho-loadbalancer
 CMD_MIG        := ./cmd/migrator
 IMAGE          := kacho-nlb:dev
 
-.PHONY: build build-api build-migrator test test-short vet lint docker sync-migrations helm-lint helm-render-guard audit-list-filter proto-install-plugins proto-vendor proto-lint proto-gen
+.PHONY: build build-api build-migrator test test-short vet lint docker helm-lint helm-render-guard audit-list-filter proto-install-plugins proto-vendor proto-lint proto-gen
 
 build: build-api build-migrator
 
@@ -74,9 +74,6 @@ proto-gen: proto-vendor
 # List<Resource> обязан фильтровать результат через listauthz.
 audit-list-filter:
 	@./tools/audit-list-filter.sh
-
-sync-migrations:
-	cp ../kacho-corelib/migrations/common/*.sql internal/migrations/
 
 docker:
 	cd .. && docker build -f kacho-nlb/Dockerfile -t $(IMAGE) .

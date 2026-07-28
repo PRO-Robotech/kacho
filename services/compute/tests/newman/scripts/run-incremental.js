@@ -16,7 +16,7 @@
  *   tests/newman/scripts/run-incremental.sh --resume        # продолжить (пропустить уже сделанные)
  *   tests/newman/scripts/run-incremental.sh --service disk  # только один ресурс
  *   tests/newman/scripts/run-incremental.sh --cleanup-only  # только зачистить тест-папки и выйти
- *   ENV=environments/yc.postman_environment.json ... .sh    # другой env-файл
+ *   ENV=environments/<файл>.postman_environment.json ... .sh  # другой env-файл
  *   CLEANUP_EVERY=25  DELAY_REQUEST=30  ... .sh             # тюнинг
  *
  * Outputs (tests/newman/out/incremental/):

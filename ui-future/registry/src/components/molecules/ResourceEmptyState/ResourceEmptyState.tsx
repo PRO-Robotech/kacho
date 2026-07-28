@@ -2,7 +2,7 @@
 // Единый для встроенных дочерних таблиц (ResourceShell/RelatedTable) и базовых
 // list-страниц (ResourceListPage): иллюстрация (иконка ресурса) + заголовок +
 // описание + крупный CTA + блок «Документация». Копирайт — из spec.emptyState
-// (Kachō-style, без «yandex»), с generic-fallback.
+// (Kachō-style, без имён чужих облаков), с generic-fallback.
 
 import { Button, Typography } from "antd";
 import { PlusOutlined, ReadOutlined, RightOutlined } from "@ant-design/icons";
