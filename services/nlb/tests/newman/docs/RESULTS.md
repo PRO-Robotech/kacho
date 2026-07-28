@@ -47,12 +47,23 @@ report (signal preserved), just not gate-blocking**. Same class + rationale as t
 revoke-deny-latency whitelist. Tracked in **kacho#11** (product fix = drainer throughput / nlb
 earlier in queue / per-suite fresh drainer → retire the whitelist).
 
-Whitelisted (23 cases, `.parent.name`): `NLB-{CR-CRUD-OK,CR-CRUD-WITH-DESCRIPTION,
-CR-CRUD-DELETION-PROTECTION-TRUE,UPD-STATE-IMMUTABLE-{VIP-SOURCE,PROJECT,PLACEMENT},
-UPD-STATE-{NO-CHANGE,MASK-EMPTY},UPD-CRUD-DRAIN-TOGGLE,START-CRUD-OK,STOP-CRUD-OK,
-STOP-STATE-ALREADY-STOPPED,MV-{IDM-SAME-PROJECT,CRUD-OK},DEL-{CRUD-OK,STATE-HAS-LISTENER,
-STATE-HAS-ATTACHED},ATT-{STATE-REGION-MISMATCH,NEG-TG-UNKNOWN},LIFECYCLE-CONF}` +
-`LST-{GET-CRUD-OK,UPD-CRUD-OK,UPD-STATE-DEFAULT-TG-REGION-MISMATCH}`.
+Whitelisted — **17** cases, `.parent.name` (re-counted against the gate 2026-07-28;
+this list said 23 and had been wrong since 2026-07-26): `NLB-{CR-CRUD-OK,
+CR-CRUD-WITH-DESCRIPTION,CR-CRUD-DELETION-PROTECTION-TRUE,
+UPD-STATE-IMMUTABLE-{VIP-SOURCE,PROJECT,PLACEMENT},UPD-STATE-{NO-CHANGE,MASK-EMPTY},
+UPD-CRUD-DRAIN-TOGGLE,MV-{IDM-SAME-PROJECT,CRUD-OK},DEL-{CRUD-OK,STATE-HAS-LISTENER},
+LIFECYCLE-CONF}` + `LST-{GET-CRUD-OK,UPD-CRUD-OK,UPD-STATE-DEFAULT-TG-REGION-MISMATCH}`.
+
+Six names this paragraph used to list were pruned from the gate on 2026-07-26 because
+they match nothing: `START-CRUD-OK`, `STOP-CRUD-OK`, `STOP-STATE-ALREADY-STOPPED`,
+`DEL-STATE-HAS-ATTACHED`, `ATT-STATE-REGION-MISMATCH`, `ATT-NEG-TG-UNKNOWN` — Start and
+Stop are no longer product calls and there is no `NLB-ATT-*` folder. Counting them here
+overstated by six how much of this suite was masked.
+
+Still outstanding from round 5 above, and worth doing at the next umbrella run: prune
+`^LST-UPD-CRUD-OK ` and `^LST-UPD-STATE-DEFAULT-TG-REGION-MISMATCH `, which that round
+found "pass genuinely". The third name in its recommendation
+(`^NLB-ATT-STATE-REGION-MISMATCH `) is already gone.
 
 **NOT whitelisted (stay RED / fully gated — never masked):**
 - `NLB-GET-STATE-LEAN-PROJECTION` — carries no-leak assertions; whitelisting the case would

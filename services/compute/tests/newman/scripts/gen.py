@@ -824,7 +824,12 @@ def case_to_postman(case: Case) -> Dict:
 def build_collection(resource: str, cases: List[Case]) -> Dict:
     return {
         "info": {
-            "_postman_id": str(uuid.uuid4()),
+            # Deterministic _postman_id (UUIDv5 over the collection name) so a
+            # regeneration with no source change produces no diff. A random id
+            # here made every regeneration dirty every collection, which meant
+            # "generated matches source" could never be checked and a real drift
+            # had nowhere to show. Postman only needs this to be stable+unique.
+            "_postman_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"kacho-compute/newman/{resource}")),
             "name": f"kacho-compute / newman / {resource}",
             "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
         },

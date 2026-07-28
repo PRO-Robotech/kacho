@@ -62,4 +62,6 @@ Umbrella (CI): `deploy/scripts/newman-parallel.sh` (geo — в PHASE2-волне
 1. `validate-cases.py` (unique + catalogued) — до newman.
 2. `gen.py` (регенерация коллекций).
 3. `run.sh` — целевая + полная; false-green guard роняет на MISSING/failed/rc!=0.
-4. GREEN везде, кроме RED-known-failing (#55, декларированы в RESULTS.md).
+4. GREEN везде. Прежняя оговорка «кроме RED-known-failing (#55)» снята 2026-07-28:
+   оба замка #55 удалены вместе со своими кейсами (см. RESULTS.md), у этого сервиса
+   нет ни одного известного красного и ни одной записи в общем гейте.
