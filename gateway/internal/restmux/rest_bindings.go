@@ -1,0 +1,96 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+package restmux
+
+import (
+	"strings"
+	"sync"
+
+	"google.golang.org/genproto/googleapis/api/annotations"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/reflect/protoregistry"
+)
+
+// rest_bindings.go — полная таблица REST-биндингов Kachō, собранная из
+// proto-дескрипторов, слинкованных в бинарь gateway.
+//
+// internal_routes.go классифицирует «этот запрос — внутренний» и берёт из
+// биндинга только пару (метод, шаблон). Контрактному разбору тела запроса нужно
+// больше: какому RPC принадлежит биндинг, какое у него входное сообщение и
+// КАКАЯ ЕГО ЧАСТЬ приходит телом (`body: "*"` — всё сообщение, `body: "<поле>"`
+// — только это поле, отсутствие `body` — тела нет вовсе). Поэтому таблица
+// строится один раз здесь и переиспользуется обоими потребителями: разойтись
+// они не могут by construction.
+
+// httpBinding — один REST-биндинг одного RPC.
+type httpBinding struct {
+	method   string
+	template string
+	segs     []internalRouteSegment
+	// fqn — канонический gRPC-FQN вида `kacho.cloud.vpc.v1.NetworkService/Create`
+	// (та же форма, что в permission-каталоге и таблице authz-middleware).
+	fqn string
+	// input — дескриптор сообщения запроса RPC.
+	input protoreflect.MessageDescriptor
+	// body — значение `body` из google.api.http: "" (тела нет), "*" (тело —
+	// всё сообщение запроса) либо имя поля, в которое разбирается тело.
+	body string
+	// internal — биндинг принадлежит Internal*-сервису.
+	internal bool
+}
+
+var (
+	httpBindingsOnce sync.Once
+	httpBindings     []httpBinding
+)
+
+// loadedHTTPBindings возвращает таблицу REST-биндингов, собирая её при первом
+// обращении.
+func loadedHTTPBindings() []httpBinding {
+	httpBindingsOnce.Do(func() { httpBindings = buildHTTPBindings() })
+	return httpBindings
+}
+
+// buildHTTPBindings обходит глобальный proto-реестр и собирает REST-биндинги
+// (включая additional_bindings) всех сервисов домена kacho.
+func buildHTTPBindings() []httpBinding {
+	var out []httpBinding
+	protoregistry.GlobalFiles.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
+		if !strings.HasPrefix(string(fd.Package()), "kacho.") {
+			return true
+		}
+		svcs := fd.Services()
+		for i := 0; i < svcs.Len(); i++ {
+			svc := svcs.Get(i)
+			internal := isInternalServiceName(string(svc.Name()))
+			methods := svc.Methods()
+			for j := 0; j < methods.Len(); j++ {
+				m := methods.Get(j)
+				rule, _ := proto.GetExtension(m.Options(), annotations.E_Http).(*annotations.HttpRule)
+				if rule == nil {
+					continue
+				}
+				fqn := string(svc.FullName()) + "/" + string(m.Name())
+				for _, r := range append([]*annotations.HttpRule{rule}, rule.GetAdditionalBindings()...) {
+					verb, tmpl := httpRuleVerbAndPath(r)
+					if verb == "" || tmpl == "" {
+						continue
+					}
+					out = append(out, httpBinding{
+						method:   verb,
+						template: tmpl,
+						segs:     parsePathTemplate(tmpl),
+						fqn:      fqn,
+						input:    m.Input(),
+						body:     r.GetBody(),
+						internal: internal,
+					})
+				}
+			}
+		}
+		return true
+	})
+	return out
+}

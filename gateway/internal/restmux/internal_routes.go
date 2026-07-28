@@ -8,9 +8,6 @@ import (
 	"sync"
 
 	"google.golang.org/genproto/googleapis/api/annotations"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/reflect/protoregistry"
 )
 
 // Классификация «этот REST-запрос — внутренний» строится из proto-дескрипторов,
@@ -71,37 +68,17 @@ func isInternalServiceName(name string) bool {
 	return strings.HasPrefix(name, "Internal") && strings.HasSuffix(name, "Service")
 }
 
-// buildInternalRoutes обходит глобальный proto-реестр и собирает REST-биндинги
-// (включая additional_bindings) всех Internal*-сервисов домена kacho.
+// buildInternalRoutes отбирает из полной таблицы REST-биндингов
+// (rest_bindings.go, собирается из тех же proto-дескрипторов) те, что
+// принадлежат Internal*-сервисам домена kacho.
 func buildInternalRoutes() []internalRoute {
 	var out []internalRoute
-	protoregistry.GlobalFiles.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
-		if !strings.HasPrefix(string(fd.Package()), "kacho.") {
-			return true
+	for _, b := range loadedHTTPBindings() {
+		if !b.internal {
+			continue
 		}
-		svcs := fd.Services()
-		for i := 0; i < svcs.Len(); i++ {
-			svc := svcs.Get(i)
-			if !isInternalServiceName(string(svc.Name())) {
-				continue
-			}
-			methods := svc.Methods()
-			for j := 0; j < methods.Len(); j++ {
-				rule, _ := proto.GetExtension(methods.Get(j).Options(), annotations.E_Http).(*annotations.HttpRule)
-				if rule == nil {
-					continue
-				}
-				for _, r := range append([]*annotations.HttpRule{rule}, rule.GetAdditionalBindings()...) {
-					verb, tmpl := httpRuleVerbAndPath(r)
-					if verb == "" || tmpl == "" {
-						continue
-					}
-					out = append(out, internalRoute{method: verb, segs: parsePathTemplate(tmpl)})
-				}
-			}
-		}
-		return true
-	})
+		out = append(out, internalRoute{method: b.method, segs: b.segs})
+	}
 	return out
 }
 
