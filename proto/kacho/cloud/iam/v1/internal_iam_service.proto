@@ -6,7 +6,6 @@ syntax = "proto3";
 package kacho.cloud.iam.v1;
 
 import "google/api/annotations.proto";
-import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/iam/v1/service_account.proto";
@@ -77,15 +76,17 @@ service InternalIAMService {
     option (kacho.iam.authz.v1.permission) = "<exempt>";
   }
 
-  // admin observability — current state of the
-  // `oidc_jwks_keys` table (per-alg current key id, created_at, rotation
-  // due date, age in days). Used by admin-UI and external monitoring (e.g.
-  // alert when current key age > 80d, rotation overdue).
-  rpc GetJWKSStatus (google.protobuf.Empty) returns (JWKSStatusResponse) {
-    // Cluster-internal listener-protected; admin-UI authz
-    // gating happens at the api-gateway internal mux layer.
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
-  }
+  // GetJWKSStatus снят с контракта. Он отчитывался о таблице ключей, которую
+  // дропнула миграция 0065, и после этого мог отвечать только пустым набором —
+  // навсегда. Ни один вызывающий его не звал: ни сервис, ни шлюз, ни консоль, ни
+  // один чёрный ящик. Read-RPC, который ничего не решает и никому не нужен, не
+  // «оставляют на будущее»: это обещание, за которое никто не отвечает.
+  // Верификация подписи живёт в JWKS-проксировании iam, а не здесь.
+  //
+  // Резервировать нечего: protobuf не знает `reserved` ни для методов сервиса,
+  // ни для имён сообщений верхнего уровня — только для номеров и имён ПОЛЕЙ.
+  // Защита от повторного использования имени — гейт `buf breaking` и объявление
+  // ломающего изменения в сообщении коммита.
 
   // admin force-logout of a user. Writes
   // `session_revocations` rows for every active access token (enumerated via
@@ -337,36 +338,6 @@ message UnregisterResourceRequest {
 // UnregisterResourceResponse — пусто; success implicit (gRPC OK). Удаление
 // отсутствующего tuple → OK (контракт идемпотентности).
 message UnregisterResourceResponse {}
-
-// JWKSStatusResponse — per-alg status row for every signing algorithm
-// currently active in `oidc_jwks_keys`.
-message JWKSStatusResponse {
-  // One entry per algorithm (RS256 / ES256 / EdDSA).
-  repeated JWKSAlgStatus algorithms = 1;
-}
-
-// JWKSAlgStatus — single algorithm's current-key snapshot.
-message JWKSAlgStatus {
-  // JWS `alg` identifier ("RS256" / "ES256" / "EdDSA").
-  string alg = 1;
-
-  // `kid` of the row where `current = true` for this alg.
-  string current_kid = 2;
-
-  // When the current key was created (= when the previous current was
-  // rotated out).
-  google.protobuf.Timestamp current_created_at = 3;
-
-  // Age of the current key (whole days since `created_at`).
-  int32 current_age_days = 4;
-
-  // Configured rotation interval (whole days; from kacho-iam config).
-  int32 rotation_interval_days = 5;
-
-  // True if `current_age_days >= rotation_interval_days` (rotation should
-  // have happened by now — alert condition).
-  bool rotation_overdue = 6;
-}
 
 // ForceLogoutRequest — admin force-logout payload.
 message ForceLogoutRequest {

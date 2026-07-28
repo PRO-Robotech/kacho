@@ -22,7 +22,6 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 // Suppress "imported and not used" errors
@@ -114,33 +113,6 @@ func local_request_InternalIAMService_WriteCreatorTuple_0(ctx context.Context, m
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	msg, err := server.WriteCreatorTuple(ctx, &protoReq)
-	return msg, metadata, err
-}
-
-func request_InternalIAMService_GetJWKSStatus_0(ctx context.Context, marshaler runtime.Marshaler, client InternalIAMServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq emptypb.Empty
-		metadata runtime.ServerMetadata
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	msg, err := client.GetJWKSStatus(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_InternalIAMService_GetJWKSStatus_0(ctx context.Context, marshaler runtime.Marshaler, server InternalIAMServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq emptypb.Empty
-		metadata runtime.ServerMetadata
-	)
-	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	msg, err := server.GetJWKSStatus(ctx, &protoReq)
 	return msg, metadata, err
 }
 
@@ -345,26 +317,6 @@ func RegisterInternalIAMServiceHandlerServer(ctx context.Context, mux *runtime.S
 		}
 		forward_InternalIAMService_WriteCreatorTuple_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_InternalIAMService_GetJWKSStatus_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalIAMService/GetJWKSStatus", runtime.WithHTTPPathPattern("/kacho.cloud.iam.v1.InternalIAMService/GetJWKSStatus"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_InternalIAMService_GetJWKSStatus_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_InternalIAMService_GetJWKSStatus_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
 	mux.Handle(http.MethodPost, pattern_InternalIAMService_ForceLogout_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -556,23 +508,6 @@ func RegisterInternalIAMServiceHandlerClient(ctx context.Context, mux *runtime.S
 		}
 		forward_InternalIAMService_WriteCreatorTuple_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodPost, pattern_InternalIAMService_GetJWKSStatus_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/kacho.cloud.iam.v1.InternalIAMService/GetJWKSStatus", runtime.WithHTTPPathPattern("/kacho.cloud.iam.v1.InternalIAMService/GetJWKSStatus"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_InternalIAMService_GetJWKSStatus_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_InternalIAMService_GetJWKSStatus_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
 	mux.Handle(http.MethodPost, pattern_InternalIAMService_ForceLogout_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
@@ -665,7 +600,6 @@ var (
 	pattern_InternalIAMService_LookupSubject_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 0}, []string{"iam", "v1", "internal"}, "lookupSubject"))
 	pattern_InternalIAMService_Check_0              = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 0}, []string{"iam", "v1", "internal"}, "check"))
 	pattern_InternalIAMService_WriteCreatorTuple_0  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.iam.v1.InternalIAMService", "WriteCreatorTuple"}, ""))
-	pattern_InternalIAMService_GetJWKSStatus_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.iam.v1.InternalIAMService", "GetJWKSStatus"}, ""))
 	pattern_InternalIAMService_ForceLogout_0        = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.iam.v1.InternalIAMService", "ForceLogout"}, ""))
 	pattern_InternalIAMService_PollSubjectChanges_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.iam.v1.InternalIAMService", "PollSubjectChanges"}, ""))
 	pattern_InternalIAMService_RegisterResource_0   = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1}, []string{"kacho.cloud.iam.v1.InternalIAMService", "RegisterResource"}, ""))
@@ -677,7 +611,6 @@ var (
 	forward_InternalIAMService_LookupSubject_0      = runtime.ForwardResponseMessage
 	forward_InternalIAMService_Check_0              = runtime.ForwardResponseMessage
 	forward_InternalIAMService_WriteCreatorTuple_0  = runtime.ForwardResponseMessage
-	forward_InternalIAMService_GetJWKSStatus_0      = runtime.ForwardResponseMessage
 	forward_InternalIAMService_ForceLogout_0        = runtime.ForwardResponseMessage
 	forward_InternalIAMService_PollSubjectChanges_0 = runtime.ForwardResponseMessage
 	forward_InternalIAMService_RegisterResource_0   = runtime.ForwardResponseMessage

@@ -15,7 +15,6 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -27,7 +26,6 @@ const (
 	InternalIAMService_LookupSubject_FullMethodName      = "/kacho.cloud.iam.v1.InternalIAMService/LookupSubject"
 	InternalIAMService_Check_FullMethodName              = "/kacho.cloud.iam.v1.InternalIAMService/Check"
 	InternalIAMService_WriteCreatorTuple_FullMethodName  = "/kacho.cloud.iam.v1.InternalIAMService/WriteCreatorTuple"
-	InternalIAMService_GetJWKSStatus_FullMethodName      = "/kacho.cloud.iam.v1.InternalIAMService/GetJWKSStatus"
 	InternalIAMService_ForceLogout_FullMethodName        = "/kacho.cloud.iam.v1.InternalIAMService/ForceLogout"
 	InternalIAMService_PollSubjectChanges_FullMethodName = "/kacho.cloud.iam.v1.InternalIAMService/PollSubjectChanges"
 	InternalIAMService_RegisterResource_FullMethodName   = "/kacho.cloud.iam.v1.InternalIAMService/RegisterResource"
@@ -71,11 +69,6 @@ type InternalIAMServiceClient interface {
 	// На fail (FGA unavailable): возвращает `Unavailable`; Create handler должен
 	// rollback'нуть TX (никаких partial-state ресурсов без owner-tuple).
 	WriteCreatorTuple(ctx context.Context, in *WriteCreatorTupleRequest, opts ...grpc.CallOption) (*WriteCreatorTupleResponse, error)
-	// admin observability — current state of the
-	// `oidc_jwks_keys` table (per-alg current key id, created_at, rotation
-	// due date, age in days). Used by admin-UI and external monitoring (e.g.
-	// alert when current key age > 80d, rotation overdue).
-	GetJWKSStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*JWKSStatusResponse, error)
 	// admin force-logout of a user. Writes
 	// `session_revocations` rows for every active access token (enumerated via
 	// Hydra introspection) + a `caep_outbox` row so federated downstream RPs
@@ -156,16 +149,6 @@ func (c *internalIAMServiceClient) WriteCreatorTuple(ctx context.Context, in *Wr
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(WriteCreatorTupleResponse)
 	err := c.cc.Invoke(ctx, InternalIAMService_WriteCreatorTuple_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *internalIAMServiceClient) GetJWKSStatus(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*JWKSStatusResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(JWKSStatusResponse)
-	err := c.cc.Invoke(ctx, InternalIAMService_GetJWKSStatus_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -258,11 +241,6 @@ type InternalIAMServiceServer interface {
 	// На fail (FGA unavailable): возвращает `Unavailable`; Create handler должен
 	// rollback'нуть TX (никаких partial-state ресурсов без owner-tuple).
 	WriteCreatorTuple(context.Context, *WriteCreatorTupleRequest) (*WriteCreatorTupleResponse, error)
-	// admin observability — current state of the
-	// `oidc_jwks_keys` table (per-alg current key id, created_at, rotation
-	// due date, age in days). Used by admin-UI and external monitoring (e.g.
-	// alert when current key age > 80d, rotation overdue).
-	GetJWKSStatus(context.Context, *emptypb.Empty) (*JWKSStatusResponse, error)
 	// admin force-logout of a user. Writes
 	// `session_revocations` rows for every active access token (enumerated via
 	// Hydra introspection) + a `caep_outbox` row so federated downstream RPs
@@ -327,9 +305,6 @@ func (UnimplementedInternalIAMServiceServer) Check(context.Context, *CheckReques
 }
 func (UnimplementedInternalIAMServiceServer) WriteCreatorTuple(context.Context, *WriteCreatorTupleRequest) (*WriteCreatorTupleResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method WriteCreatorTuple not implemented")
-}
-func (UnimplementedInternalIAMServiceServer) GetJWKSStatus(context.Context, *emptypb.Empty) (*JWKSStatusResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetJWKSStatus not implemented")
 }
 func (UnimplementedInternalIAMServiceServer) ForceLogout(context.Context, *ForceLogoutRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method ForceLogout not implemented")
@@ -417,24 +392,6 @@ func _InternalIAMService_WriteCreatorTuple_Handler(srv interface{}, ctx context.
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(InternalIAMServiceServer).WriteCreatorTuple(ctx, req.(*WriteCreatorTupleRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _InternalIAMService_GetJWKSStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(InternalIAMServiceServer).GetJWKSStatus(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: InternalIAMService_GetJWKSStatus_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(InternalIAMServiceServer).GetJWKSStatus(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -547,10 +504,6 @@ var InternalIAMService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "WriteCreatorTuple",
 			Handler:    _InternalIAMService_WriteCreatorTuple_Handler,
-		},
-		{
-			MethodName: "GetJWKSStatus",
-			Handler:    _InternalIAMService_GetJWKSStatus_Handler,
 		},
 		{
 			MethodName: "ForceLogout",
