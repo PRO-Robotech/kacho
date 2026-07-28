@@ -144,6 +144,17 @@ main() {
   done
 
   ENV="environments/local.postman_environment.json"
+  # The env file is gitignored (the fixture seed writes live tokens into it) and
+  # NOTHING in the tree creates it: patch-env.py/setup.sh only PATCH a file that
+  # already exists and silently skip a missing one. On a fresh clone the suite died
+  # right here, before newman was ever invoked. So materialization belongs to the run
+  # path, not to a manual step: copy the committed template and let the seed fill in
+  # credentials/ids. An existing file is NEVER overwritten — it may hold the live
+  # session of the current run.
+  if [[ ! -f "$ENV" && -f "${ENV%.json}.template.json" ]]; then
+    cp "${ENV%.json}.template.json" "$ENV"
+    echo "materialized $ENV from ${ENV%.json}.template.json (fixture seed will fill in credentials)" >&2
+  fi
   [[ -f "$ENV" ]] || { echo "missing env: $ENV" >&2; exit 1; }
 
   mkdir -p out

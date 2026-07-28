@@ -135,6 +135,16 @@ main() {
   done
 
   ENV="environments/local.postman_environment.json"
+  # Env-файл gitignore-ится (fixture-seed пишет в него живые токены), но НИКТО его
+  # не создаёт: patch-env.py/setup.sh только ПАТЧАТ уже существующий и молча
+  # пропускают отсутствующий. На свежем клоне суита падала здесь ещё до вызова
+  # newman. Поэтому материализация — часть пути прогона, а не ручной шаг: копируем
+  # закоммиченный шаблон, креды/id допишет fixture-seed. Существующий файл НЕ
+  # перетираем — в нём может лежать живая сессия текущего прогона.
+  if [[ ! -f "$ENV" && -f "${ENV%.json}.template.json" ]]; then
+    cp "${ENV%.json}.template.json" "$ENV"
+    echo "создан $ENV из ${ENV%.json}.template.json (креды допишет fixture-seed)" >&2
+  fi
   [[ -f "$ENV" ]] || { echo "missing env: $ENV" >&2; exit 1; }
 
   mkdir -p out
@@ -152,12 +162,38 @@ main() {
     done < <( { expected_stems; present_stems; } | sort -u )
   fi
 
-  # Параллельный прогон с cap=$JOBS. Каждая коллекция runId-scoped → safe (geo
-  # каталог глобален, но кейсы адресуют СВОИ qa-*-{{runId}} ресурсы и негативы по
-  # фиксированным absent id — общего мутабельного state между коллекциями нет).
+  # serial-collections.txt (optional, one stem per line, '#'-comments ok): коллекции,
+  # которые НЕЛЬЗЯ гонять одновременно с остальными, потому что мутируют GLOBAL
+  # backend-состояние, не изолируемое {{runId}}-суффиксом. Для geo это САМ КАТАЛОГ:
+  # Region/Zone — cluster-singleton'ы (нет projectId, нет per-object listauthz), у них
+  # ОДНО глобальное id-пространство и один общий List на весь стенд. runId-суффикс
+  # разводит писателей по id, но НЕ изолирует общий список: читающие коллекции
+  # (region/zone/authz-deny) делают "List → pick → Get", и строка, выбранная на List,
+  # может быть удалена конкурентным писателем до Get (404 → undefined-field asserts),
+  # а `?pageSize=100`-кейсы (REG-LST-CONF-NO-RAW-STATUS и зональный аналог) итерируют
+  # по КАЖДОМУ элементу каталога, включая полу-видимые чужие qa-строки. Фильтр
+  # `find(!id.startsWith('qa')) || [0]` в region/zone — частичное смягчение (предпочесть
+  # стабильную seed-строку) с fallback'ом на [0], а не граница изоляции.
+  # Поэтому catalog-мутирующие коллекции гоняются ПОСЛЕ параллельного пула, строго по
+  # одной. Файла нет → поведение прежнее (весь набор параллельно).
+  local -a serial_list=()
+  if [[ -f "$NEWMAN_DIR/serial-collections.txt" ]]; then
+    local line
+    while IFS= read -r line; do
+      line="${line%%#*}"; line="${line//[[:space:]]/}"
+      [[ -n "$line" ]] && serial_list+=("$line")
+    done < "$NEWMAN_DIR/serial-collections.txt"
+  fi
+  _is_serial() { local x; for x in "${serial_list[@]:-}"; do [[ "$x" == "$1" ]] && return 0; done; return 1; }
+
+  # Параллельный прогон с cap=$JOBS: все коллекции, КРОМЕ serial-listed (эти —
+  # deferred, см. ниже). Явный `--service <stem>` — escape hatch: одиночный прогон ни
+  # с кем не конкурирует, поэтому идёт на переднем плане без deferral.
   local svc
+  local -a deferred=()
   for svc in "${stems[@]}"; do
     if [[ -z "${SERVICE:-}" ]]; then
+      if _is_serial "$svc"; then deferred+=("$svc"); continue; fi
       while [[ "$(jobs -rp | wc -l)" -ge "$JOBS" ]]; do wait -n; done
       run_one "$svc" &
     else
@@ -165,6 +201,13 @@ main() {
     fi
   done
   wait
+  # serial-listed — строго по одной (не конкурируют ни между собой, ни с пулом).
+  # Вердикт ниже строится по "${stems[@]}" (полный набор), поэтому deferred-коллекции
+  # остаются в таблице и false-green guard на них продолжает действовать.
+  for svc in "${deferred[@]:-}"; do
+    [[ -n "$svc" ]] || continue
+    run_one "$svc"
+  done
 
   echo
   echo "===== Summary ====="

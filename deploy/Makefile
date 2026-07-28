@@ -5,7 +5,7 @@
         reload-svc logs-svc psql preflight e2e-test helm-lint \
         loadtest-address-allocate loadtest-address-allocate-clean \
         reload-svc-iam psql-iam logs-iam fga-bootstrap build-services openfga-model-json \
-        reload-svc-nlb psql-nlb logs-nlb seed-nlb e2e-newman
+        reload-svc-nlb psql-nlb logs-nlb seed-nlb e2e-newman stand-provenance
 
 CLUSTER_NAME := kacho
 
@@ -18,13 +18,66 @@ CLUSTER_NAME := kacho
 # build context is the service's OWN dir (kacho-$svc), NOT the parent — a
 # workspace-root context would `COPY . .` a rootless tree → `go: no modules`.
 SERVICES := iam vpc compute api-gateway nlb geo storage registry
+
+# PROVENANCE — every locally built image records the commit it came from.
+#
+# Every service image is tagged `:dev` and nothing else: no label, no embedded
+# version, no sha anywhere. So "which code is this stand running?" had no direct
+# answer and had to be reconstructed from `docker images` timestamps — which
+# answers "when was it built", a different question, and one that goes wrong the
+# moment two builds happen in a session or a rebuild is skipped.
+#
+# These labels are applied on the `docker build` command line, so no Dockerfile
+# changes are needed and every service gets them uniformly. Read them back with
+# `make stand-provenance`, which reports the RUNNING pods' images, not the
+# intended ones.
+#
+# NB: the Go binaries declare `buildVersion`/`buildCommit` (four services do, and
+# feed them to a Prometheus `*_build_info` metric) with a comment saying they are
+# injected via `-ldflags -X`. No build in this repo does that, so those metrics
+# report version="dev" commit="unknown" everywhere. Populating them means editing
+# the Dockerfiles, which is outside this change; the image labels below are the
+# part that can be done from the build command alone.
+GIT_COMMIT := $(shell git -C .. rev-parse HEAD 2>/dev/null || echo unknown)
+GIT_DIRTY  := $(shell test -n "$$(git -C .. status --porcelain 2>/dev/null)" && echo "-dirty" || echo "")
+GIT_REF    := $(shell git -C .. rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)
+BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+IMAGE_LABELS := \
+  --label org.opencontainers.image.revision="$(GIT_COMMIT)$(GIT_DIRTY)" \
+  --label org.opencontainers.image.version="$(GIT_REF)" \
+  --label org.opencontainers.image.created="$(BUILD_DATE)"
+
 build-services:
+	@echo "=== provenance: $(GIT_REF) @ $(GIT_COMMIT)$(GIT_DIRTY) ==="
 	@for svc in $(SERVICES); do \
 	  echo "=== build kacho-$$svc:dev ==="; \
 	  d=$$(test "$$svc" = api-gateway && echo gateway || echo services/$$svc); \
-	  ( cd .. && docker build -f $$d/Dockerfile -t kacho-$$svc:dev . ) || exit 1; \
+	  ( cd .. && docker build -f $$d/Dockerfile $(IMAGE_LABELS) -t kacho-$$svc:dev . ) || exit 1; \
 	  kind load docker-image kacho-$$svc:dev --name $(CLUSTER_NAME) || exit 1; \
 	done
+
+# stand-provenance — what commit is the stand ACTUALLY running?
+#
+# Deliberately keyed on the image id of the RUNNING container, not on the local
+# `:dev` tag: the tag is mutable, so a rebuild that was never loaded into kind, or
+# a pod that was never restarted, would otherwise be reported as the new commit
+# while serving the old one. That is the same "intent vs outcome" mistake the
+# posture gate made. If the running image id is not present in the host daemon,
+# say so rather than guessing.
+stand-provenance:
+	@echo "workspace: $(GIT_REF) @ $(GIT_COMMIT)$(GIT_DIRTY)"
+	@printf "%-14s %-26s %s\n" "CONTAINER" "IMAGE" "REVISION (label on the RUNNING image)"
+	@kubectl -n kacho get pods -o json 2>/dev/null \
+	  | jq -r '.items[] | select(.status.phase=="Running") | .status.containerStatuses[]? | select(.image|test("kacho-")) | "\(.name) \(.image) \(.imageID)"' \
+	  | sort -u \
+	  | while read -r name image imageid; do \
+	      sha=$${imageid##*@}; \
+	      rev=$$(docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$$sha" 2>/dev/null); \
+	      case "$$rev" in \
+	        ""|"<no value>") rev="(no revision label — image predates provenance, or is not in the host daemon)" ;; \
+	      esac; \
+	      printf "%-14s %-26s %s\n" "$$name" "$${image##*/}" "$$rev"; \
+	    done
 
 # KAC-127: CI docker-compose stack (ci-images / ci-up / ci-seed / ci-down /
 # ci-logs) удалён — он был построен на упразднённом kacho-resource-manager
@@ -37,7 +90,7 @@ preflight:
 	@command -v kubectl >/dev/null || { echo "ERROR: kubectl not installed"; exit 1; }
 	@command -v helm >/dev/null || { echo "ERROR: helm not installed"; exit 1; }
 	@docker info >/dev/null 2>&1 || { echo "ERROR: docker daemon is not running"; exit 1; }
-	@grep -q "api.kacho.local" /etc/hosts || echo "WARN: '127.0.0.1 api.kacho.local' missing in /etc/hosts — ingress will not resolve from host"
+	@grep -q "api.kacho.local" /etc/hosts || echo "note: 'api.kacho.local' is not in /etc/hosts. Nothing in the test path needs it — the e2e harness reaches every listener over kubectl port-forward, including the advertised external TLS one (:8443 -> localhost:18443). The entry is only useful for driving the Ingress by hand, and even then: kind publishes node:80 -> host:28080 (443 is not published at all) and that Ingress is backend-protocol GRPCS, so REST through it answers 502."
 	@echo "preflight OK"
 
 # guard-kind-context — АВАРИЙНЫЙ СТОП, если активный контекст не kind-<CLUSTER_NAME>.
@@ -149,9 +202,9 @@ dev-up: preflight
 	echo "dev-up complete in $$((end-start))s"; \
 	echo; \
 	echo "API endpoint:"; \
-	echo "  REST   http://api.kacho.local         (add '127.0.0.1 api.kacho.local' to /etc/hosts if missing)"; \
-	echo "  TLS    https://api.kacho.local        (cert = /tmp/kacho-tls/tls.crt)"; \
-	echo "  Local  https://localhost:18443        (через kubectl port-forward svc/api-gateway 18443:8443)"
+	echo "  REST   http://localhost:18080         (kubectl port-forward svc/api-gateway 18080:8080)"; \
+	echo "  TLS    https://localhost:18443        (kubectl port-forward svc/api-gateway 18443:8443 — the advertised external listener)"; \
+	echo "  Ingress http://api.kacho.local:28080  (needs '127.0.0.1 api.kacho.local' in /etc/hosts; gRPC only — backend-protocol is GRPCS, REST answers 502, and 443 is not published by kind)"
 
 dev-down:
 	kind delete cluster --name $(CLUSTER_NAME) || true
@@ -336,7 +389,7 @@ endif
 		: ; \
 	else \
 		d=$$(test "$(SVC)" = api-gateway && echo gateway || echo services/$(SVC)); \
-		cd .. && docker build -f $$d/Dockerfile -t kacho-$(SVC):dev .; \
+		cd .. && docker build -f $$d/Dockerfile $(IMAGE_LABELS) -t kacho-$(SVC):dev .; \
 	fi && \
 	kind load docker-image kacho-$(SVC):dev --name $(CLUSTER_NAME) && \
 	kubectl rollout restart -n kacho deployment/$$DEPLOY_NAME
