@@ -1506,14 +1506,31 @@ if [ "$PATCH_ENV" = "true" ]; then
   # непропатченным). Плюс список отставал от жизни: «all 3 services» при семи сервисах —
   # newman-наборы iam/vpc/compute/nlb/storage/registry просто не получали фикстуры.
   # Глоб держит это в синхроне сам: новый сервис с newman-набором подхватится без правок.
+  # Глоб идёт по ШАБЛОНУ, а не по живому env-файлу, и живой файл ЗАВОДИТСЯ здесь,
+  # если его нет.
+  #
+  # Почему: live `local.postman_environment.json` — gitignored артефакт (.gitignore:41),
+  # который материализует run.sh каждой суиты. Но run.sh запускается ПОСЛЕ этого посева,
+  # поэтому на чистом дереве глоб по живому файлу не находил НИЧЕГО: он не раскрывался,
+  # `-f` отбрасывал путь с literal `*`, и ENV_FILES собирался из тех файлов, что случайно
+  # остались от прошлых прогонов. Наблюдалось ровно это: «patching newman env files (1 шт.)»
+  # — пропатчен один iam (файл лежал с прошлого раза), а семь остальных суит стартовали с
+  # ПУСТЫМИ кредами и получали 401 на первом же запросе. Шаг при этом отработал, напечатал
+  # счётчик и никого не насторожил: счётчик 1 вместо 8 сам по себе ничего не утверждал.
+  # Шаблоны — tracked, поэтому глоб по ним устойчив и на чистом checkout.
   ENV_FILES=()
-  for e in "$WORKSPACE_DIR"/services/*/tests/newman/environments/local.postman_environment.json \
-           "$WORKSPACE_DIR"/gateway/tests/newman/environments/local.postman_environment.json; do
-    [ -f "$e" ] && ENV_FILES+=("$e")
+  for t in "$WORKSPACE_DIR"/services/*/tests/newman/environments/local.postman_environment.template.json \
+           "$WORKSPACE_DIR"/gateway/tests/newman/environments/local.postman_environment.template.json; do
+    [ -f "$t" ] || continue
+    e="${t%.template.json}.json"
+    [ -f "$e" ] || cp "$t" "$e"
+    ENV_FILES+=("$e")
   done
   if [ ${#ENV_FILES[@]} -eq 0 ]; then
-    log "    WARN: newman env-файлов не найдено — пропускаю patch-env"
+    log "    WARN: newman env-шаблонов не найдено — пропускаю patch-env"
   else
+    # Счётчик сверяется с числом найденных ШАБЛОНОВ: «пропатчили меньше, чем есть суит» —
+    # это отказ посева, а не деталь вывода (см. историю выше).
     log "    patching newman env files (${#ENV_FILES[@]} шт.)"
     python3 "$SCRIPT_DIR/patch-env.py" "$OUT_DIR/authz-fixtures.json" "${ENV_FILES[@]}"
   fi
