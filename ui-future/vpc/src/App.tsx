@@ -155,10 +155,6 @@ export function AppRoutes() {
           {/* Dashboard with project context in URL. */}
           <Route path="/projects/:projectId/dashboard" element={<DashboardPage />} />
 
-          {/* === IAM hierarchy (KAC-124: заменил Resource Manager) ===
-                Account / Project — flat ресурсы под /iam/accounts и /iam/projects;
-                рендерятся в IAM-section ниже (AccountsPage / ProjectsPage). */}
-
           {/* === Project-scoped VPC ресурсы === */}
           {/* /projects/:projectId/vpc/{networks|subnets|addresses|route-tables|security-groups} */}
           {PROJECT_SCOPED.map((spec) => (

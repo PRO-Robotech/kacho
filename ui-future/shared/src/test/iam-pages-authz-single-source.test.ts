@@ -147,6 +147,27 @@ describe("IAM management lives in exactly one console surface", () => {
     expect(hostApp).toMatch(/path="\/iam\/\*"\s+element=\{<IamRemote/);
   });
 
+  it("приложение, не обслуживающее /iam, туда и не ведёт", () => {
+    // Ремоут `iam` — сама поверхность (хост монтирует её на `/iam/*`), `host`
+    // до неё федерирует. Остальным приложениям открыть `/iam/...` нечем:
+    // предложенный переход упрётся в catch-all и молча вернёт в корень.
+    //
+    // Граница проверки названа честно: смотрим СОБСТВЕННЫЕ исходники приложения.
+    // `shared/` — библиотека, часть её экранов живёт в приложениях, которые
+    // ремоут iam видят, поэтому её ссылки судить этим правилом нельзя.
+    const offenders: string[] = [];
+    for (const app of CONSOLE_APPS) {
+      if (app === "iam" || app === "host" || app === "shared") continue;
+      for (const file of tsxFiles(path.join(repoRoot, app, "src"))) {
+        const src = stripComments(readFileSync(file, "utf8"));
+        if (/(?:navigate\(|to=|href=)["'`]\/iam(?:\/|["'`])/.test(src)) {
+          offenders.push(path.relative(repoRoot, file));
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   for (const page of IAM_PAGES) {
     it(`iam/${page.name} sources authz/mutation/API from @shared only`, () => {
       const abs = path.join(repoRoot, page.iam);
