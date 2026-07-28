@@ -16,7 +16,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 )
 
 // ToStatus переводит ошибку use-case/repo в gRPC-статус, срезая sentinel-префикс,
@@ -29,7 +29,7 @@ import (
 // Он несущий, а не косметический: pkg/validate кладёт имя поля ТОЛЬКО в
 // google.rpc.BadRequest-details, сообщение остаётся общим «invalid argument».
 // Пересборка статуса в sentinel-ветке (`status.Error(code, strip(err))`) детали
-// теряет, поэтому ошибка, обёрнутая через `%w` на ports.Err*, обязана пройти
+// теряет, поэтому ошибка, обёрнутая через `%w` на storageerr.Err*, обязана пройти
 // pass-through ПЕРВОЙ. status с codes.Unknown под pass-through НЕ попадает
 // (guard `!= Unknown`) — он падает в sentinel-switch и дальше в фиксированный
 // INTERNAL, без leak'а.
@@ -41,17 +41,17 @@ func ToStatus(err error) error {
 		return err
 	}
 	switch {
-	case errors.Is(err, ports.ErrNotFound):
-		return status.Error(codes.NotFound, strip(err, ports.ErrNotFound))
-	case errors.Is(err, ports.ErrAlreadyExists):
-		return status.Error(codes.AlreadyExists, strip(err, ports.ErrAlreadyExists))
-	case errors.Is(err, ports.ErrFailedPrecondition):
-		return status.Error(codes.FailedPrecondition, strip(err, ports.ErrFailedPrecondition))
-	case errors.Is(err, ports.ErrInvalidArg):
-		return status.Error(codes.InvalidArgument, strip(err, ports.ErrInvalidArg))
-	case errors.Is(err, ports.ErrUnimplemented):
-		return status.Error(codes.Unimplemented, strip(err, ports.ErrUnimplemented))
-	case errors.Is(err, ports.ErrInternal):
+	case errors.Is(err, storageerr.ErrNotFound):
+		return status.Error(codes.NotFound, strip(err, storageerr.ErrNotFound))
+	case errors.Is(err, storageerr.ErrAlreadyExists):
+		return status.Error(codes.AlreadyExists, strip(err, storageerr.ErrAlreadyExists))
+	case errors.Is(err, storageerr.ErrFailedPrecondition):
+		return status.Error(codes.FailedPrecondition, strip(err, storageerr.ErrFailedPrecondition))
+	case errors.Is(err, storageerr.ErrInvalidArg):
+		return status.Error(codes.InvalidArgument, strip(err, storageerr.ErrInvalidArg))
+	case errors.Is(err, storageerr.ErrUnimplemented):
+		return status.Error(codes.Unimplemented, strip(err, storageerr.ErrUnimplemented))
+	case errors.Is(err, storageerr.ErrInternal):
 		return status.Error(codes.Internal, "internal error")
 	}
 	return status.Error(codes.Internal, "internal database error")

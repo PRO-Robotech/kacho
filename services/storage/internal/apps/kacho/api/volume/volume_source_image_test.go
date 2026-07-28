@@ -14,28 +14,28 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports/portmock"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/repomock"
 )
 
 // A boot volume resolves the region of its zone from the owner of Geography, and
 // a mutation whose precondition cannot be established fails closed rather than
 // proceeding with an unknown region.
 func TestCreateBootVolume_ZoneRegionUnavailable_FailsClosed(t *testing.T) {
-	geo := &portmock.PeerClient{
+	geo := &repomock.PeerClient{
 		EnsureZoneFunc: func(context.Context, string) error { return nil },
 		RegionOfZoneFunc: func(context.Context, string) (string, error) {
 			return "", status.Error(codes.Unavailable, "geo zone validation unavailable")
 		},
 	}
 	uc := volume.New(
-		&portmock.VolumeReader{},
-		&portmock.VolumeWriter{InsertFunc: func(_ context.Context, v *domain.Volume) (*domain.Volume, error) {
+		&repomock.VolumeReader{},
+		&repomock.VolumeWriter{InsertFunc: func(_ context.Context, v *domain.Volume) (*domain.Volume, error) {
 			t.Fatal("writer must not be reached when the zone region is unresolved")
 			return nil, nil
 		}},
 		geo,
-		&portmock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }},
-		portmock.NewOpsRepo(),
+		&repomock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }},
+		repomock.NewOpsRepo(),
 		serviceerr.ToStatus,
 	)
 
@@ -50,7 +50,7 @@ func TestCreateBootVolume_ZoneRegionUnavailable_FailsClosed(t *testing.T) {
 // A source-less volume needs no region at all — geo is never asked for one.
 func TestCreatePlainVolume_DoesNotResolveZoneRegion(t *testing.T) {
 	asked := false
-	geo := &portmock.PeerClient{
+	geo := &repomock.PeerClient{
 		EnsureZoneFunc: func(context.Context, string) error { return nil },
 		RegionOfZoneFunc: func(context.Context, string) (string, error) {
 			asked = true
@@ -58,13 +58,13 @@ func TestCreatePlainVolume_DoesNotResolveZoneRegion(t *testing.T) {
 		},
 	}
 	uc := volume.New(
-		&portmock.VolumeReader{},
-		&portmock.VolumeWriter{InsertFunc: func(_ context.Context, v *domain.Volume) (*domain.Volume, error) {
+		&repomock.VolumeReader{},
+		&repomock.VolumeWriter{InsertFunc: func(_ context.Context, v *domain.Volume) (*domain.Volume, error) {
 			return v, nil
 		}},
 		geo,
-		&portmock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }},
-		portmock.NewOpsRepo(),
+		&repomock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }},
+		repomock.NewOpsRepo(),
 		serviceerr.ToStatus,
 	)
 
@@ -80,8 +80,8 @@ func TestCreatePlainVolume_DoesNotResolveZoneRegion(t *testing.T) {
 // одновременно из snapshot и image → sync InvalidArgument (domain mutual-exclusion,
 // ДО peer-вызовов: geo/iam mocks с nil-func паникнули бы, если бы дошло).
 func TestCreateSourceMutualExclusion(t *testing.T) {
-	uc := volume.New(&portmock.VolumeReader{}, &portmock.VolumeWriter{},
-		&portmock.PeerClient{}, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := volume.New(&repomock.VolumeReader{}, &repomock.VolumeWriter{},
+		&repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 	v := &domain.Volume{
 		ProjectID: "prj-1", ZoneID: "region-1-a", DiskTypeID: "block-balanced", SizeBytes: 1 << 30,
 		SourceSnapshot: "snp00000000000000000", SourceImage: "img00000000000000000",
@@ -95,8 +95,8 @@ func TestCreateSourceMutualExclusion(t *testing.T) {
 // TestUpdateSourceImageImmutable — STOR-1-03/18: source_image_id (и attachments) в
 // маске → sync InvalidArgument "<field> is immutable after Volume.Create".
 func TestUpdateSourceImageImmutable(t *testing.T) {
-	uc := volume.New(&portmock.VolumeReader{}, &portmock.VolumeWriter{},
-		&portmock.PeerClient{}, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := volume.New(&repomock.VolumeReader{}, &repomock.VolumeWriter{},
+		&repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 	for _, f := range []string{"source_image_id", "attachments"} {
 		_, err := uc.Update(context.Background(), "vol00000000000000000", []string{f}, "", "", nil, 0)
 		if status.Code(err) != codes.InvalidArgument {

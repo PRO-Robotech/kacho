@@ -15,7 +15,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports/portmock"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/repomock"
 )
 
 // ListAttachments отвечает на вопрос «какие тома привязаны к этим инстансам» — это
@@ -58,8 +58,8 @@ func attPair() []*domain.VolumeAttachment {
 }
 
 // readerAttachments — Reader, отдающий заданную страницу привязок.
-func readerAttachments(att []*domain.VolumeAttachment) *portmock.VolumeReader {
-	return &portmock.VolumeReader{
+func readerAttachments(att []*domain.VolumeAttachment) *repomock.VolumeReader {
+	return &repomock.VolumeReader{
 		ListAttachmentsFunc: func(_ context.Context, ids []string) ([]*domain.VolumeAttachment, error) {
 			return rowsForInstances(att, ids), nil
 		},
@@ -88,7 +88,7 @@ func rowsForInstances(att []*domain.VolumeAttachment, ids []string) []*domain.Vo
 // именно ПОЛНУЮ страницу нарочно: тест обязан утверждать, что вызывающему не уехало
 // ничего, а не что читать было нечего.
 type countingReader struct {
-	portmock.VolumeReader
+	repomock.VolumeReader
 	calls int
 }
 

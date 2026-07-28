@@ -18,8 +18,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports/portmock"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/repomock"
 )
 
 // fakeListFilter — фейк порта per-object видимости (authzfilter.Filter).
@@ -61,12 +61,12 @@ func imgPage() []*domain.Image {
 }
 
 func newListUC(reader image.Reader, f authzfilter.Filter) *image.UseCase {
-	return image.New(reader, &portmock.ImageWriter{}, &portmock.PeerClient{}, &portmock.PeerClient{},
+	return image.New(reader, &repomock.ImageWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{},
 		nil, serviceerr.ToStatus).WithListFilter(f)
 }
 
-func readerReturning(page []*domain.Image, next string) *portmock.ImageReader {
-	return &portmock.ImageReader{
+func readerReturning(page []*domain.Image, next string) *repomock.ImageReader {
+	return &repomock.ImageReader{
 		ListFunc: func(context.Context, image.Pagination) ([]*domain.Image, string, error) {
 			return page, next, nil
 		},
@@ -135,12 +135,12 @@ func TestList_NoPrincipalYieldsEmptyPage(t *testing.T) {
 // параметров отвергается ДО любого authz-решения (даже без principal'а).
 func TestList_PaginationValidatedBeforeVisibilityShortCircuit(t *testing.T) {
 	f := &fakeListFilter{}
-	reader := &portmock.ImageReader{
+	reader := &repomock.ImageReader{
 		ListFunc: func(_ context.Context, p image.Pagination) ([]*domain.Image, string, error) {
 			if p.PageToken == "" {
 				t.Fatal("page token must reach the repo")
 			}
-			return nil, "", fmt.Errorf("%w: invalid page_token", ports.ErrInvalidArg)
+			return nil, "", fmt.Errorf("%w: invalid page_token", storageerr.ErrInvalidArg)
 		},
 	}
 	uc := newListUC(reader, f)

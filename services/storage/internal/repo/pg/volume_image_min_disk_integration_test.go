@@ -28,7 +28,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
@@ -52,7 +52,7 @@ func TestVolumeSourceImageBelowMinDiskRejected(t *testing.T) {
 		SourceImage: img.ID,
 	}, imageRegionFixture)
 	require.Error(t, err, "a boot volume below the image minimum must not be seeded")
-	require.True(t, stderrors.Is(err, ports.ErrInvalidArg), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrInvalidArg), "got %v", err)
 	require.Equal(t,
 		"Volume size 1073741824 is less than image min_disk_bytes 21474836480",
 		err.Error()[len("invalid argument: "):])
@@ -95,7 +95,7 @@ func TestVolumeSourceImageCrossProjectStillHidesMinDisk(t *testing.T) {
 		SourceImage: img.ID,
 	}, imageRegionFixture)
 	require.Error(t, err)
-	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, "Image "+img.ID+" not found", err.Error()[len("failed precondition: "):],
 		"a foreign image must not leak its minimum through a size refusal")
 }

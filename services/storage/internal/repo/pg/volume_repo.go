@@ -23,8 +23,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
 )
 
 // defaultBlockSize — дефолтный block_size тома (§1.1), если не задан на Create.
@@ -290,7 +290,7 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 	}
 	labels, err := json.Marshal(nonNilLabels(v.Labels))
 	if err != nil {
-		return nil, ports.ErrInternal
+		return nil, storageerr.ErrInternal
 	}
 	var srcSnap *string
 	if v.SourceSnapshot != "" {
@@ -318,7 +318,7 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 		if serr != nil {
 			if errors.Is(serr, pgx.ErrNoRows) {
 				// Стейтмент обязан вернуть строку всегда; пусто = неучтённый исход.
-				return ports.ErrInternal
+				return storageerr.ErrInternal
 			}
 			return serr
 		}
@@ -329,17 +329,17 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 			// вслух. NULL ⟺ строки типа нет — тот же текст, что раньше давал FK
 			// (INSERT теперь до FK не доходит, значит текст выдаём сами).
 			if dtOffered == nil {
-				return fmt.Errorf("%w: DiskType %s not found", ports.ErrFailedPrecondition, v.DiskTypeID)
+				return fmt.Errorf("%w: DiskType %s not found", storageerr.ErrFailedPrecondition, v.DiskTypeID)
 			}
 			if !*dtOffered {
 				return fmt.Errorf("%w: DiskType %s is not offered in zone %s",
-					ports.ErrFailedPrecondition, v.DiskTypeID, v.ZoneID)
+					storageerr.ErrFailedPrecondition, v.DiskTypeID, v.ZoneID)
 			}
 			// Образ разрешился (свой проект + свой регион), не прошёл только размер —
 			// его минимум вызывающему уже виден, называем причину прямо.
 			if srcMinDisk != nil {
 				return fmt.Errorf("%w: Volume size %d is less than image min_disk_bytes %d",
-					ports.ErrInvalidArg, v.SizeBytes, *srcMinDisk)
+					storageerr.ErrInvalidArg, v.SizeBytes, *srcMinDisk)
 			}
 			// Образ СВОЙ (полоса проекта пройдена), но регион не совпал. Вызывающему он
 			// уже виден через Image.Get — скрывать нечего, поэтому отказ называется, а
@@ -347,7 +347,7 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 			// это не mismatch, а fail-closed — уходит в общую ветку ниже.
 			if ownImageRegion != nil && zoneRegionID != "" {
 				return fmt.Errorf("%w: Volume and Image must be in the same region",
-					ports.ErrFailedPrecondition)
+					storageerr.ErrFailedPrecondition)
 			}
 			return volumeSourceUnavailable(v.SourceSnapshot, v.SourceImage)
 		}
@@ -375,11 +375,11 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 func volumeSourceUnavailable(snapshotID, imageID string) error {
 	switch {
 	case snapshotID != "":
-		return fmt.Errorf("%w: Snapshot %s not found", ports.ErrFailedPrecondition, snapshotID)
+		return fmt.Errorf("%w: Snapshot %s not found", storageerr.ErrFailedPrecondition, snapshotID)
 	case imageID != "":
-		return fmt.Errorf("%w: Image %s not found", ports.ErrFailedPrecondition, imageID)
+		return fmt.Errorf("%w: Image %s not found", storageerr.ErrFailedPrecondition, imageID)
 	default:
-		return ports.ErrInternal
+		return storageerr.ErrInternal
 	}
 }
 
@@ -393,7 +393,7 @@ func (r *VolumeRepo) Update(ctx context.Context, id string, u volume.VolumeUpdat
 	if u.LabelsSet {
 		b, err := json.Marshal(nonNilLabels(u.Labels))
 		if err != nil {
-			return nil, ports.ErrInternal
+			return nil, storageerr.ErrInternal
 		}
 		labelsArg = b
 	}
@@ -427,11 +427,11 @@ func (r *VolumeRepo) Update(ctx context.Context, id string, u volume.VolumeUpdat
 		var exists bool
 		if perr := tx.QueryRow(ctx, `SELECT true FROM volumes WHERE id = $1`, id).Scan(&exists); perr != nil {
 			if errors.Is(perr, pgx.ErrNoRows) {
-				return fmt.Errorf("%w: Volume %s not found", ports.ErrNotFound, id)
+				return fmt.Errorf("%w: Volume %s not found", storageerr.ErrNotFound, id)
 			}
 			return perr
 		}
-		return fmt.Errorf("%w: Volume size can only be increased", ports.ErrInvalidArg)
+		return fmt.Errorf("%w: Volume size can only be increased", storageerr.ErrInvalidArg)
 	})
 	if txErr != nil {
 		return nil, mapVolumeErr(txErr, volErrCtx{volumeID: id, volumeName: derefStr(u.Name)})
@@ -450,7 +450,7 @@ func (r *VolumeRepo) Delete(ctx context.Context, id string) error {
 		err := tx.QueryRow(ctx, `DELETE FROM volumes WHERE id = $1 RETURNING project_id`, id).Scan(&projectID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				return fmt.Errorf("%w: Volume %s not found", ports.ErrNotFound, id)
+				return fmt.Errorf("%w: Volume %s not found", storageerr.ErrNotFound, id)
 			}
 			return err
 		}
@@ -509,7 +509,7 @@ func (r *VolumeRepo) Attach(ctx context.Context, a *domain.VolumeAttachment) err
 			return mapVolumeErr(derr, volErrCtx{volumeID: a.VolumeID, instanceID: a.InstanceID})
 		}
 		if device == "" {
-			return fmt.Errorf("%w: no free device name on Instance %s", ports.ErrFailedPrecondition, a.InstanceID)
+			return fmt.Errorf("%w: no free device name on Instance %s", storageerr.ErrFailedPrecondition, a.InstanceID)
 		}
 		err := r.attachOnce(ctx, a, device)
 		if err == nil {
@@ -521,13 +521,13 @@ func (r *VolumeRepo) Attach(ctx context.Context, a *domain.VolumeAttachment) err
 		return mapVolumeErr(err, volErrCtx{volumeID: a.VolumeID, instanceID: a.InstanceID})
 	}
 	// исчерпали bounded-retry под жёсткой конкуренцией → трактуем как «нет свободного».
-	return fmt.Errorf("%w: no free device name on Instance %s", ports.ErrFailedPrecondition, a.InstanceID)
+	return fmt.Errorf("%w: no free device name on Instance %s", storageerr.ErrFailedPrecondition, a.InstanceID)
 }
 
 // attachOnce выполняет ОДИН атомарный CAS-insert строки volume_attachments в своей tx с
 // уже разрешённым device. Возвращает СЫРУЮ pgx/pgconn-ошибку (23505/23P01) — маппинг
 // делает вызывающий Attach, чтобы retry-логика распознала device-collision ДО маппинга.
-// disambiguateAttach возвращает уже-замапленные ports-sentinel'ы (mapVolumeErr
+// disambiguateAttach возвращает уже-замапленные sentinel'ы (mapVolumeErr
 // пробрасывает их идемпотентно).
 func (r *VolumeRepo) attachOnce(ctx context.Context, a *domain.VolumeAttachment, device string) error {
 	return pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
@@ -565,7 +565,7 @@ func disambiguateAttach(ctx context.Context, tx pgx.Tx, a *domain.VolumeAttachme
 		if owner == a.InstanceID {
 			return nil // идемпотентный replay (уже наш)
 		}
-		return fmt.Errorf("%w: Volume %s is in use", ports.ErrFailedPrecondition, a.VolumeID)
+		return fmt.Errorf("%w: Volume %s is in use", storageerr.ErrFailedPrecondition, a.VolumeID)
 	}
 	if !errors.Is(oerr, pgx.ErrNoRows) {
 		return oerr
@@ -576,22 +576,22 @@ func disambiguateAttach(ctx context.Context, tx pgx.Tx, a *domain.VolumeAttachme
 		Scan(&state, &zoneID, &projectID)
 	if verr != nil {
 		if errors.Is(verr, pgx.ErrNoRows) {
-			return fmt.Errorf("%w: Volume is not available for attachment", ports.ErrFailedPrecondition)
+			return fmt.Errorf("%w: Volume is not available for attachment", storageerr.ErrFailedPrecondition)
 		}
 		return verr
 	}
 	if state != "READY" {
-		return fmt.Errorf("%w: Volume is not available for attachment", ports.ErrFailedPrecondition)
+		return fmt.Errorf("%w: Volume is not available for attachment", storageerr.ErrFailedPrecondition)
 	}
 	if zoneID != a.ZoneID {
-		return fmt.Errorf("%w: Volume and Instance must be in the same zone", ports.ErrFailedPrecondition)
+		return fmt.Errorf("%w: Volume and Instance must be in the same zone", storageerr.ErrFailedPrecondition)
 	}
 	if projectID != a.ProjectID {
-		return fmt.Errorf("%w: Volume and Instance must be in the same project", ports.ErrFailedPrecondition)
+		return fmt.Errorf("%w: Volume and Instance must be in the same project", storageerr.ErrFailedPrecondition)
 	}
 	// READY + zone/project совпали + нет привязки, но CAS ничего не вставил — состояние
 	// изменилось между INSERT и disambiguation (attach+detach гонка). Opaque INTERNAL.
-	return ports.ErrInternal
+	return storageerr.ErrInternal
 }
 
 // rowsQuerier — минимальный read-порт (pgxpool.Pool ИЛИ pgx.Tx), чтобы nextFreeDevice
@@ -684,9 +684,9 @@ func (r *VolumeRepo) ListAttachments(ctx context.Context, instanceIDs []string) 
 
 func (r *VolumeRepo) notReady(op string) error {
 	if r.pool == nil {
-		return fmt.Errorf("%w: %s (nil pool)", ports.ErrInternal, op)
+		return fmt.Errorf("%w: %s (nil pool)", storageerr.ErrInternal, op)
 	}
-	return fmt.Errorf("%w: repo.%s", ports.ErrUnimplemented, op)
+	return fmt.Errorf("%w: repo.%s", storageerr.ErrUnimplemented, op)
 }
 
 // GetInternal реализует volume.Reader (full infra-проекция, :9091) — data-plane (§0.3).

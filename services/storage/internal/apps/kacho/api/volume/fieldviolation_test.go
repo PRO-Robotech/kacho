@@ -15,7 +15,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports/portmock"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/repomock"
 )
 
 // violatedFields returns the field names carried by the google.rpc.BadRequest
@@ -59,7 +59,7 @@ func hasField(fields []string, want string) bool {
 // as INVALID_ARGUMENT whose details name the offending field.
 //
 // The use-case used to rebuild pkg/validate's rich error from its TEXT
-// (`fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error())`). That threw the
+// (`fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, err.Error())`). That threw the
 // BadRequest detail away and left the caller with a correct code, a message quoting
 // gRPC's own wire framing, and no way to tell WHICH field was rejected.
 func TestCreateOverLimitNamesTheField(t *testing.T) {
@@ -70,8 +70,8 @@ func TestCreateOverLimitNamesTheField(t *testing.T) {
 		}
 	}
 	newUC := func() *volume.UseCase {
-		return volume.New(&portmock.VolumeReader{}, &portmock.VolumeWriter{},
-			&portmock.PeerClient{}, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+		return volume.New(&repomock.VolumeReader{}, &repomock.VolumeWriter{},
+			&repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 	}
 
 	cases := []struct {

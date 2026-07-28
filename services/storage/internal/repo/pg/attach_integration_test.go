@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
@@ -87,7 +87,7 @@ func TestAttachVolumeNotReady(t *testing.T) {
 	require.NoError(t, err)
 
 	err = r.Attach(ctx, mkAttach(v.ID, "epd00000000000000003", "sdb", false))
-	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, "Volume is not available for attachment", err.Error()[len("failed precondition: "):])
 	require.Equal(t, 0, attachRowCount(t, pool, v.ID))
 }
@@ -106,14 +106,14 @@ func TestAttachZoneProjectMismatch(t *testing.T) {
 	zoneBad := mkAttach(v.ID, "epd00000000000000004", "sdb", false)
 	zoneBad.ZoneID = "region-1-b"
 	err := r.Attach(ctx, zoneBad)
-	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "zone mismatch: %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "zone mismatch: %v", err)
 	require.Equal(t, "Volume and Instance must be in the same zone", err.Error()[len("failed precondition: "):])
 
 	// расходится ТОЛЬКО проект → ОТДЕЛЬНЫЙ project-текст (не zone-строка).
 	projBad := mkAttach(v.ID, "epd00000000000000004", "sdb", false)
 	projBad.ProjectID = "prj-other"
 	err = r.Attach(ctx, projBad)
-	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "project mismatch: %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "project mismatch: %v", err)
 	require.Equal(t, "Volume and Instance must be in the same project", err.Error()[len("failed precondition: "):])
 	require.Equal(t, 0, attachRowCount(t, pool, v.ID))
 }
@@ -141,7 +141,7 @@ func TestAttachDoubleRace(t *testing.T) {
 			switch {
 			case err == nil:
 				ok.Add(1)
-			case stderrors.Is(err, ports.ErrFailedPrecondition):
+			case stderrors.Is(err, storageerr.ErrFailedPrecondition):
 				inUse.Add(1)
 				require.Equal(t, fmt.Sprintf("Volume %s is in use", v.ID), err.Error()[len("failed precondition: "):])
 			default:
@@ -167,7 +167,7 @@ func TestAttachDeviceCollision(t *testing.T) {
 
 	require.NoError(t, r.Attach(ctx, mkAttach(v1.ID, "epd00000000000000005", "sdb", false)))
 	err := r.Attach(ctx, mkAttach(v2.ID, "epd00000000000000005", "sdb", false))
-	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, "device sdb is already in use on Instance epd00000000000000005",
 		err.Error()[len("failed precondition: "):])
 }
@@ -184,7 +184,7 @@ func TestAttachSecondBoot(t *testing.T) {
 
 	require.NoError(t, r.Attach(ctx, mkAttach(v1.ID, ins, "sda", true)))
 	err := r.Attach(ctx, mkAttach(v2.ID, ins, "sdc", true))
-	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, fmt.Sprintf("Instance %s already has a boot volume", ins),
 		err.Error()[len("failed precondition: "):])
 }
@@ -295,7 +295,7 @@ func TestAttachNoFreeDevice(t *testing.T) {
 	}
 	vOver := mkVolume(t, r, "prj-1", "vol-overflow", 10<<30)
 	err := r.Attach(ctx, mkAttach(vOver.ID, ins, "", false)) // auto → нет свободного
-	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, fmt.Sprintf("no free device name on Instance %s", ins), err.Error()[len("failed precondition: "):])
 }
 

@@ -30,8 +30,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/protoconv"
 )
 
@@ -166,7 +166,7 @@ func (u *UseCase) registerOwnerTuple(ctx context.Context, item fgaregister.Item)
 // InvalidArgument "invalid image id '<X>'". well-formed-но-нет → NotFound (repo.Get).
 func idInvalid(id string) error {
 	if !ids.IsValid(id, domain.PrefixImage) {
-		return fmt.Errorf("%w: invalid image id '%s'", ports.ErrInvalidArg, id)
+		return fmt.Errorf("%w: invalid image id '%s'", storageerr.ErrInvalidArg, id)
 	}
 	return nil
 }
@@ -194,7 +194,7 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.Image, stri
 	// scope_extractor {project,project_id}): пустой projectId вернул бы строки ВСЕХ
 	// проектов, поэтому отвергаем СИНХРОННО первым стейтментом (INV-10).
 	if p.ProjectID == "" {
-		return nil, "", u.errStatus(fmt.Errorf("%w: projectId is required", ports.ErrInvalidArg))
+		return nil, "", u.errStatus(fmt.Errorf("%w: projectId is required", storageerr.ErrInvalidArg))
 	}
 	size, err := validate.PageSize("page_size", p.PageSize)
 	if err != nil {
@@ -205,7 +205,7 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.Image, stri
 	if p.Filter != "" {
 		ast, ferr := filter.Parse(p.Filter, []string{"name"})
 		if ferr != nil {
-			return nil, "", u.errStatus(fmt.Errorf("%w: %s", ports.ErrInvalidArg, ferr.Error()))
+			return nil, "", u.errStatus(fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, ferr.Error()))
 		}
 		p.Filter = ast.Value
 	}
@@ -241,7 +241,7 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.Image, stri
 func (u *UseCase) Create(ctx context.Context, i *domain.Image) (*operations.Operation, error) {
 	i.Placement = domain.ImagePlacementRegional
 	if err := i.Validate(); err != nil {
-		return nil, u.errStatus(fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error()))
+		return nil, u.errStatus(fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, err.Error()))
 	}
 	// Sync BVA at the request edge (parity with Volume, #61): reject over-limit
 	// description (>256) / labels (>64) BEFORE any peer/DB call, so an over-limit
@@ -321,7 +321,7 @@ func (u *UseCase) Update(ctx context.Context, id string, mask []string, name, de
 	for _, p := range mask {
 		switch p {
 		case "region_id", "source_snapshot_id", "source_volume_id", "format", "placement_type", "size_bytes", "min_disk_bytes":
-			return nil, u.errStatus(fmt.Errorf("%w: %s is immutable after Image.Create", ports.ErrInvalidArg, p))
+			return nil, u.errStatus(fmt.Errorf("%w: %s is immutable after Image.Create", storageerr.ErrInvalidArg, p))
 		}
 	}
 	if err := validate.UpdateMask("update_mask", mask, knownUpdateFields); err != nil {
@@ -425,7 +425,7 @@ func resolveUpdate(mask []string, name, description string, labels map[string]st
 	}
 	if apply("name") {
 		if err := domain.ImageName(name).Validate(); err != nil {
-			return ImageUpdate{}, fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error())
+			return ImageUpdate{}, fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, err.Error())
 		}
 		n := name
 		u.Name = &n

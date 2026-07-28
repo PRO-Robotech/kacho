@@ -15,7 +15,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports/portmock"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/repomock"
 )
 
 // violatedFields returns the field names carried by the google.rpc.BadRequest
@@ -66,8 +66,8 @@ func TestCreateOverLimitNamesTheField(t *testing.T) {
 		}
 	}
 	newUC := func() *image.UseCase {
-		return image.New(&portmock.ImageReader{}, &portmock.ImageWriter{},
-			&portmock.PeerClient{}, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+		return image.New(&repomock.ImageReader{}, &repomock.ImageWriter{},
+			&repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 	}
 
 	cases := []struct {

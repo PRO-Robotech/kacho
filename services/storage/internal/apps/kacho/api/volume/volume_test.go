@@ -17,8 +17,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports/portmock"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/repomock"
 )
 
 // TestGetDelegatesToReader — read-путь handler→use-case→reader-порт прошит
@@ -26,7 +26,7 @@ import (
 func TestGetDelegatesToReader(t *testing.T) {
 	const wantID = "vol00000000000000000"
 	want := &domain.Volume{ID: wantID, ProjectID: "prj-1"}
-	reader := &portmock.VolumeReader{
+	reader := &repomock.VolumeReader{
 		GetFunc: func(_ context.Context, id string) (*domain.Volume, error) {
 			if id != wantID {
 				t.Fatalf("reader got id %q, want %s", id, wantID)
@@ -34,7 +34,7 @@ func TestGetDelegatesToReader(t *testing.T) {
 			return want, nil
 		},
 	}
-	uc := volume.New(reader, &portmock.VolumeWriter{}, &portmock.PeerClient{}, &portmock.PeerClient{}, nil, nil)
+	uc := volume.New(reader, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, nil)
 	got, err := uc.Get(context.Background(), wantID)
 	if err != nil {
 		t.Fatalf("Get: %v", err)
@@ -47,13 +47,13 @@ func TestGetDelegatesToReader(t *testing.T) {
 // TestGetMalformedID — malformed vol-id первым стейтментом → sync InvalidArgument
 // "invalid volume id '<X>'" (api-conventions.md), repo не вызывается.
 func TestGetMalformedID(t *testing.T) {
-	reader := &portmock.VolumeReader{
+	reader := &repomock.VolumeReader{
 		GetFunc: func(context.Context, string) (*domain.Volume, error) {
 			t.Fatal("reader.Get must not be called on malformed id")
 			return nil, nil
 		},
 	}
-	uc := volume.New(reader, &portmock.VolumeWriter{}, &portmock.PeerClient{}, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := volume.New(reader, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 	_, err := uc.Get(context.Background(), "not-a-vol-id")
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("Get malformed code = %v, want InvalidArgument", status.Code(err))
@@ -69,13 +69,13 @@ func TestGetMalformedID(t *testing.T) {
 // сужает лишь при ProjectID!=""), поэтому отвергаем СИНХРОННО первым стейтментом —
 // кросс-проектной утечки нет by construction (INV-10, CS1-S1-13). reader.List не зовётся.
 func TestListRequiresProjectID(t *testing.T) {
-	reader := &portmock.VolumeReader{
+	reader := &repomock.VolumeReader{
 		ListFunc: func(context.Context, volume.Pagination) ([]*domain.Volume, string, error) {
 			t.Fatal("reader.List must not be called when projectId is empty")
 			return nil, "", nil
 		},
 	}
-	uc := volume.New(reader, &portmock.VolumeWriter{}, &portmock.PeerClient{}, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := volume.New(reader, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 	_, _, err := uc.List(context.Background(), volume.Pagination{PageSize: 50})
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("List empty projectId code = %v, want InvalidArgument", status.Code(err))
@@ -89,13 +89,13 @@ func TestListRequiresProjectID(t *testing.T) {
 // (guard не ложно-положителен); passed-through Pagination несёт тот же projectId.
 func TestListWithProjectIDDelegates(t *testing.T) {
 	var gotProject string
-	reader := &portmock.VolumeReader{
+	reader := &repomock.VolumeReader{
 		ListFunc: func(_ context.Context, p volume.Pagination) ([]*domain.Volume, string, error) {
 			gotProject = p.ProjectID
 			return []*domain.Volume{{ID: "vol00000000000000000", ProjectID: p.ProjectID}}, "", nil
 		},
 	}
-	uc := volume.New(reader, &portmock.VolumeWriter{}, &portmock.PeerClient{}, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := volume.New(reader, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 	got, _, err := uc.List(context.Background(), volume.Pagination{PageSize: 50, ProjectID: "prj-1"})
 	if err != nil {
 		t.Fatalf("List: %v", err)
@@ -108,7 +108,7 @@ func TestListWithProjectIDDelegates(t *testing.T) {
 // TestUpdateImmutableField — immutable-поле в маске → sync InvalidArgument
 // "<field> is immutable after Volume.Create" (immutable-switch ДО UpdateMask, S1-05).
 func TestUpdateImmutableField(t *testing.T) {
-	uc := volume.New(&portmock.VolumeReader{}, &portmock.VolumeWriter{}, &portmock.PeerClient{}, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := volume.New(&repomock.VolumeReader{}, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 	for _, f := range []string{"zone_id", "disk_type_id", "block_size", "source_snapshot_id", "used_by"} {
 		_, err := uc.Update(context.Background(), "vol00000000000000000", []string{f}, "", "", nil, 0)
 		if status.Code(err) != codes.InvalidArgument {
@@ -126,7 +126,7 @@ func TestUpdateImmutableField(t *testing.T) {
 // заглушку реальным ZoneService.Get.
 func TestCreatePeerValidatesZone(t *testing.T) {
 	sentinel := errors.New("geo unavailable")
-	geo := &portmock.PeerClient{
+	geo := &repomock.PeerClient{
 		EnsureZoneFunc: func(_ context.Context, zoneID string) error {
 			if zoneID != "region-1-a" {
 				t.Fatalf("geo got zone %q", zoneID)
@@ -134,10 +134,10 @@ func TestCreatePeerValidatesZone(t *testing.T) {
 			return sentinel
 		},
 	}
-	iam := &portmock.PeerClient{
+	iam := &repomock.PeerClient{
 		EnsureProjectFunc: func(context.Context, string) error { return nil },
 	}
-	uc := volume.New(&portmock.VolumeReader{}, &portmock.VolumeWriter{}, geo, iam, nil, nil)
+	uc := volume.New(&repomock.VolumeReader{}, &repomock.VolumeWriter{}, geo, iam, nil, nil)
 	v := &domain.Volume{ProjectID: "prj-1", ZoneID: "region-1-a", DiskTypeID: "network-ssd", SizeBytes: 1}
 	_, err := uc.Create(context.Background(), v)
 	if !errors.Is(err, sentinel) {
@@ -153,7 +153,7 @@ func TestCreatePeerValidatesZone(t *testing.T) {
 // переводит op в done=true (без error). Проверяем терминал + response-id.
 func TestCreateLROInsertsAndMarksDone(t *testing.T) {
 	var insertedID string
-	writer := &portmock.VolumeWriter{
+	writer := &repomock.VolumeWriter{
 		InsertFunc: func(_ context.Context, v *domain.Volume) (*domain.Volume, error) {
 			insertedID = v.ID // ids.NewID(prefix), присвоен use-case'ом до Run
 			out := *v
@@ -161,10 +161,10 @@ func TestCreateLROInsertsAndMarksDone(t *testing.T) {
 			return &out, nil
 		},
 	}
-	geo := &portmock.PeerClient{EnsureZoneFunc: func(context.Context, string) error { return nil }}
-	iam := &portmock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
-	ops := portmock.NewOpsRepo()
-	uc := volume.New(&portmock.VolumeReader{}, writer, geo, iam, ops, serviceerr.ToStatus)
+	geo := &repomock.PeerClient{EnsureZoneFunc: func(context.Context, string) error { return nil }}
+	iam := &repomock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
+	ops := repomock.NewOpsRepo()
+	uc := volume.New(&repomock.VolumeReader{}, writer, geo, iam, ops, serviceerr.ToStatus)
 
 	op, err := uc.Create(context.Background(), &domain.Volume{
 		ProjectID: "prj-1", Name: "vol-a", ZoneID: "region-1-a", DiskTypeID: "network-ssd", SizeBytes: 1 << 30,
@@ -172,7 +172,7 @@ func TestCreateLROInsertsAndMarksDone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create sync err = %v", err)
 	}
-	done := portmock.AwaitOpDone(t, ops, op.ID)
+	done := repomock.AwaitOpDone(t, ops, op.ID)
 	if done.Error != nil {
 		t.Fatalf("op error = %v, want success terminal", done.Error)
 	}
@@ -192,7 +192,7 @@ func TestCreateLROInsertsAndMarksDone(t *testing.T) {
 // writer.Update, маршалит результат в Operation.response, done=true.
 func TestUpdateLROAppliesAndMarksDone(t *testing.T) {
 	const id = "vol00000000000000000"
-	writer := &portmock.VolumeWriter{
+	writer := &repomock.VolumeWriter{
 		UpdateFunc: func(_ context.Context, gotID string, _ volume.VolumeUpdate) (*domain.Volume, error) {
 			if gotID != id {
 				t.Fatalf("writer.Update id = %q, want %s", gotID, id)
@@ -200,14 +200,14 @@ func TestUpdateLROAppliesAndMarksDone(t *testing.T) {
 			return &domain.Volume{ID: id, Name: "renamed"}, nil
 		},
 	}
-	ops := portmock.NewOpsRepo()
-	uc := volume.New(&portmock.VolumeReader{}, writer, &portmock.PeerClient{}, &portmock.PeerClient{}, ops, serviceerr.ToStatus)
+	ops := repomock.NewOpsRepo()
+	uc := volume.New(&repomock.VolumeReader{}, writer, &repomock.PeerClient{}, &repomock.PeerClient{}, ops, serviceerr.ToStatus)
 
 	op, err := uc.Update(context.Background(), id, []string{"name"}, "renamed", "", nil, 0)
 	if err != nil {
 		t.Fatalf("Update sync err = %v", err)
 	}
-	done := portmock.AwaitOpDone(t, ops, op.ID)
+	done := repomock.AwaitOpDone(t, ops, op.ID)
 	if done.Error != nil {
 		t.Fatalf("op error = %v, want success terminal", done.Error)
 	}
@@ -223,17 +223,17 @@ func TestUpdateLROAppliesAndMarksDone(t *testing.T) {
 // TestDeleteLROMarksDoneEmpty — happy async Delete: worker вызывает writer.Delete,
 // response = Empty, done=true.
 func TestDeleteLROMarksDoneEmpty(t *testing.T) {
-	writer := &portmock.VolumeWriter{
+	writer := &repomock.VolumeWriter{
 		DeleteFunc: func(context.Context, string) error { return nil },
 	}
-	ops := portmock.NewOpsRepo()
-	uc := volume.New(&portmock.VolumeReader{}, writer, &portmock.PeerClient{}, &portmock.PeerClient{}, ops, serviceerr.ToStatus)
+	ops := repomock.NewOpsRepo()
+	uc := volume.New(&repomock.VolumeReader{}, writer, &repomock.PeerClient{}, &repomock.PeerClient{}, ops, serviceerr.ToStatus)
 
 	op, err := uc.Delete(context.Background(), "vol00000000000000000")
 	if err != nil {
 		t.Fatalf("Delete sync err = %v", err)
 	}
-	done := portmock.AwaitOpDone(t, ops, op.ID)
+	done := repomock.AwaitOpDone(t, ops, op.ID)
 	if done.Error != nil {
 		t.Fatalf("op error = %v, want success terminal", done.Error)
 	}
@@ -246,14 +246,14 @@ func TestDeleteLROMarksDoneEmpty(t *testing.T) {
 // возвращает FailedPrecondition-sentinel → worker пишет его в Operation.error
 // (не response), done=true. Проверяем код терминальной ошибки.
 func TestCreateLROWriterErrorMarksError(t *testing.T) {
-	sentinel := fmt.Errorf("%w: DiskType network-ssd not found", ports.ErrFailedPrecondition)
-	writer := &portmock.VolumeWriter{
+	sentinel := fmt.Errorf("%w: DiskType network-ssd not found", storageerr.ErrFailedPrecondition)
+	writer := &repomock.VolumeWriter{
 		InsertFunc: func(context.Context, *domain.Volume) (*domain.Volume, error) { return nil, sentinel },
 	}
-	geo := &portmock.PeerClient{EnsureZoneFunc: func(context.Context, string) error { return nil }}
-	iam := &portmock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
-	ops := portmock.NewOpsRepo()
-	uc := volume.New(&portmock.VolumeReader{}, writer, geo, iam, ops, serviceerr.ToStatus)
+	geo := &repomock.PeerClient{EnsureZoneFunc: func(context.Context, string) error { return nil }}
+	iam := &repomock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
+	ops := repomock.NewOpsRepo()
+	uc := volume.New(&repomock.VolumeReader{}, writer, geo, iam, ops, serviceerr.ToStatus)
 
 	op, err := uc.Create(context.Background(), &domain.Volume{
 		ProjectID: "prj-1", ZoneID: "region-1-a", DiskTypeID: "network-ssd", SizeBytes: 1 << 30,
@@ -261,7 +261,7 @@ func TestCreateLROWriterErrorMarksError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create sync err = %v", err)
 	}
-	done := portmock.AwaitOpDone(t, ops, op.ID)
+	done := repomock.AwaitOpDone(t, ops, op.ID)
 	if done.Response != nil {
 		t.Fatalf("op response = %v, want error terminal", done.Response)
 	}

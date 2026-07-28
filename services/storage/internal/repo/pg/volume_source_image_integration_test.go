@@ -13,7 +13,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
@@ -55,7 +55,7 @@ func TestVolumeSourceImageFKNotFound(t *testing.T) {
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 1 << 30,
 		SourceImage: "img00000000000000000",
 	}, imageRegionFixture)
-	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, "Image img00000000000000000 not found", err.Error()[len("failed precondition: "):])
 }
 
@@ -82,7 +82,7 @@ func TestImageDeleteSetsVolumeSourceImageNull(t *testing.T) {
 
 	// Image ушёл.
 	_, gerr := ir.Get(ctx, img.ID)
-	require.True(t, stderrors.Is(gerr, ports.ErrNotFound), "image hard-deleted, got %v", gerr)
+	require.True(t, stderrors.Is(gerr, storageerr.ErrNotFound), "image hard-deleted, got %v", gerr)
 
 	// boot-Volume цел: sourceImageId очищен (lineage-clear), остальное неизменно.
 	gotV, err := vr.Get(ctx, boot.ID)

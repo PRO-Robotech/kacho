@@ -15,7 +15,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports/portmock"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/repomock"
 )
 
 // ── Update: description / labels are refused at the request edge, by name ────
@@ -50,14 +50,14 @@ func updLabels(n int) map[string]string {
 func TestUpdateOverLimitNamesTheField(t *testing.T) {
 	newUC := func(t *testing.T) *volume.UseCase {
 		t.Helper()
-		writer := &portmock.VolumeWriter{
+		writer := &repomock.VolumeWriter{
 			UpdateFunc: func(context.Context, string, volume.VolumeUpdate) (*domain.Volume, error) {
 				t.Error("writer.Update must not be reached: the request edge rejects the body")
 				return &domain.Volume{ID: volUpdID}, nil
 			},
 		}
-		return volume.New(&portmock.VolumeReader{}, writer,
-			&portmock.PeerClient{}, &portmock.PeerClient{}, portmock.NewOpsRepo(), serviceerr.ToStatus)
+		return volume.New(&repomock.VolumeReader{}, writer,
+			&repomock.PeerClient{}, &repomock.PeerClient{}, repomock.NewOpsRepo(), serviceerr.ToStatus)
 	}
 
 	cases := []struct {
@@ -122,22 +122,22 @@ func TestUpdateOverLimitNamesTheField(t *testing.T) {
 // apply-decision and made unconditional.
 func TestUpdateSkipsFieldsOutsideTheMask(t *testing.T) {
 	var applied volume.VolumeUpdate
-	writer := &portmock.VolumeWriter{
+	writer := &repomock.VolumeWriter{
 		UpdateFunc: func(_ context.Context, _ string, u volume.VolumeUpdate) (*domain.Volume, error) {
 			applied = u
 			return &domain.Volume{ID: volUpdID, Name: "renamed"}, nil
 		},
 	}
-	ops := portmock.NewOpsRepo()
-	uc := volume.New(&portmock.VolumeReader{}, writer,
-		&portmock.PeerClient{}, &portmock.PeerClient{}, ops, serviceerr.ToStatus)
+	ops := repomock.NewOpsRepo()
+	uc := volume.New(&repomock.VolumeReader{}, writer,
+		&repomock.PeerClient{}, &repomock.PeerClient{}, ops, serviceerr.ToStatus)
 
 	op, err := uc.Update(context.Background(), volUpdID, []string{"name"},
 		"renamed", strings.Repeat("x", 257), updLabels(65), 0)
 	if err != nil {
 		t.Fatalf("Update mask=[name] with an unapplied over-limit body: %v", err)
 	}
-	done := portmock.AwaitOpDone(t, ops, op.ID)
+	done := repomock.AwaitOpDone(t, ops, op.ID)
 	if done.Error != nil {
 		t.Fatalf("op error = %v, want success — the body outside the mask is ignored", done.Error)
 	}
@@ -156,21 +156,21 @@ func TestUpdateAcceptsDescriptionAndLabelsAtTheLimit(t *testing.T) {
 	atLimit := updLabels(64)
 
 	for _, mask := range [][]string{{"description", "labels"}, nil} {
-		writer := &portmock.VolumeWriter{
+		writer := &repomock.VolumeWriter{
 			UpdateFunc: func(_ context.Context, _ string, _ volume.VolumeUpdate) (*domain.Volume, error) {
 				return &domain.Volume{ID: volUpdID}, nil
 			},
 		}
-		ops := portmock.NewOpsRepo()
-		uc := volume.New(&portmock.VolumeReader{}, writer,
-			&portmock.PeerClient{}, &portmock.PeerClient{}, ops, serviceerr.ToStatus)
+		ops := repomock.NewOpsRepo()
+		uc := volume.New(&repomock.VolumeReader{}, writer,
+			&repomock.PeerClient{}, &repomock.PeerClient{}, ops, serviceerr.ToStatus)
 
 		op, err := uc.Update(context.Background(), volUpdID, mask,
 			"", strings.Repeat("x", 256), atLimit, 0)
 		if err != nil {
 			t.Fatalf("Update mask=%v at the limit was refused: %v", mask, err)
 		}
-		if done := portmock.AwaitOpDone(t, ops, op.ID); done.Error != nil {
+		if done := repomock.AwaitOpDone(t, ops, op.ID); done.Error != nil {
 			t.Fatalf("Update mask=%v at the limit failed asynchronously: %v", mask, done.Error)
 		}
 	}

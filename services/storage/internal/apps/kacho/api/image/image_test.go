@@ -17,20 +17,20 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports/portmock"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/repomock"
 )
 
 // TestGetMalformedID — STOR-1-21: malformed img-id первым стейтментом → sync
 // InvalidArgument "invalid image id '<X>'"; repo не вызывается.
 func TestGetMalformedID(t *testing.T) {
-	reader := &portmock.ImageReader{
+	reader := &repomock.ImageReader{
 		GetFunc: func(context.Context, string) (*domain.Image, error) {
 			t.Fatal("reader.Get must not be called on malformed id")
 			return nil, nil
 		},
 	}
-	uc := image.New(reader, &portmock.ImageWriter{}, &portmock.PeerClient{}, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := image.New(reader, &repomock.ImageWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 	_, err := uc.Get(context.Background(), "not-an-img-id")
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("Get malformed code = %v, want InvalidArgument", status.Code(err))
@@ -43,13 +43,13 @@ func TestGetMalformedID(t *testing.T) {
 // TestListRequiresProjectID — публичный List без projectId → sync InvalidArgument
 // "projectId is required" (in-service backstop к gateway scope_extractor; audit-list-filter).
 func TestListRequiresProjectID(t *testing.T) {
-	reader := &portmock.ImageReader{
+	reader := &repomock.ImageReader{
 		ListFunc: func(context.Context, image.Pagination) ([]*domain.Image, string, error) {
 			t.Fatal("reader.List must not be called when projectId is empty")
 			return nil, "", nil
 		},
 	}
-	uc := image.New(reader, &portmock.ImageWriter{}, &portmock.PeerClient{}, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := image.New(reader, &repomock.ImageWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 	_, _, err := uc.List(context.Background(), image.Pagination{PageSize: 50})
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("List empty projectId code = %v, want InvalidArgument", status.Code(err))
@@ -62,13 +62,13 @@ func TestListRequiresProjectID(t *testing.T) {
 // TestListValidatePagination — STOR-1-32: pageSize>1000 → InvalidArgument (validate.PageSize,
 // отвергается не clamp'ится) — ДО repo (reader.List не зовётся). Регрессия list-pagination.
 func TestListValidatePagination(t *testing.T) {
-	reader := &portmock.ImageReader{
+	reader := &repomock.ImageReader{
 		ListFunc: func(context.Context, image.Pagination) ([]*domain.Image, string, error) {
 			t.Fatal("reader.List must not be called when page_size is invalid (validate before repo)")
 			return nil, "", nil
 		},
 	}
-	uc := image.New(reader, &portmock.ImageWriter{}, &portmock.PeerClient{}, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := image.New(reader, &repomock.ImageWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 	_, _, err := uc.List(context.Background(), image.Pagination{ProjectID: "prj-1", PageSize: 1001})
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("List pageSize=1001 code = %v, want InvalidArgument", status.Code(err))
@@ -79,7 +79,7 @@ func TestListValidatePagination(t *testing.T) {
 // InvalidArgument (spoken-exclusion); ни одного → InvalidArgument "Image source is
 // required". Sync-reject ДО peer-вызовов (geo/iam mocks с nil-func паникнули бы).
 func TestCreateSourceExactlyOne(t *testing.T) {
-	uc := image.New(&portmock.ImageReader{}, &portmock.ImageWriter{}, &portmock.PeerClient{}, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := image.New(&repomock.ImageReader{}, &repomock.ImageWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 
 	// оба источника → conflict.
 	_, err := uc.Create(context.Background(), &domain.Image{
@@ -106,7 +106,7 @@ func TestCreateSourceExactlyOne(t *testing.T) {
 // на request-path (cross-domain ref, fail-closed).
 func TestCreatePeerValidatesRegion(t *testing.T) {
 	sentinel := errors.New("geo unavailable")
-	geo := &portmock.PeerClient{
+	geo := &repomock.PeerClient{
 		EnsureRegionFunc: func(_ context.Context, regionID string) error {
 			if regionID != "ru-central1" {
 				t.Fatalf("geo got region %q", regionID)
@@ -114,8 +114,8 @@ func TestCreatePeerValidatesRegion(t *testing.T) {
 			return sentinel
 		},
 	}
-	iam := &portmock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
-	uc := image.New(&portmock.ImageReader{}, &portmock.ImageWriter{}, geo, iam, nil, nil)
+	iam := &repomock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
+	uc := image.New(&repomock.ImageReader{}, &repomock.ImageWriter{}, geo, iam, nil, nil)
 	_, err := uc.Create(context.Background(), &domain.Image{
 		ProjectID: "prj-1", RegionID: "ru-central1", Name: "img-a", SourceSnapshot: "snp00000000000000000",
 	})
@@ -127,13 +127,13 @@ func TestCreatePeerValidatesRegion(t *testing.T) {
 // TestCreatePeerValidatesProjectUnavailable — STOR-1-29: iam недоступен → Create
 // fail-closed UNAVAILABLE (ресурс с непроверенным владельцем не создаётся).
 func TestCreatePeerValidatesProjectUnavailable(t *testing.T) {
-	geo := &portmock.PeerClient{EnsureRegionFunc: func(context.Context, string) error { return nil }}
-	iam := &portmock.PeerClient{
+	geo := &repomock.PeerClient{EnsureRegionFunc: func(context.Context, string) error { return nil }}
+	iam := &repomock.PeerClient{
 		EnsureProjectFunc: func(context.Context, string) error {
 			return status.Error(codes.Unavailable, "iam project validation unavailable")
 		},
 	}
-	uc := image.New(&portmock.ImageReader{}, &portmock.ImageWriter{}, geo, iam, nil, serviceerr.ToStatus)
+	uc := image.New(&repomock.ImageReader{}, &repomock.ImageWriter{}, geo, iam, nil, serviceerr.ToStatus)
 	_, err := uc.Create(context.Background(), &domain.Image{
 		ProjectID: "prj-ghost", RegionID: "ru-central1", Name: "img-a", SourceSnapshot: "snp00000000000000000",
 	})
@@ -145,7 +145,7 @@ func TestCreatePeerValidatesProjectUnavailable(t *testing.T) {
 // TestUpdateImmutableField — STOR-1-22: immutable-поле в маске → sync InvalidArgument
 // "<field> is immutable after Image.Create" (immutable-switch ДО UpdateMask).
 func TestUpdateImmutableField(t *testing.T) {
-	uc := image.New(&portmock.ImageReader{}, &portmock.ImageWriter{}, &portmock.PeerClient{}, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := image.New(&repomock.ImageReader{}, &repomock.ImageWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 	for _, f := range []string{"region_id", "source_snapshot_id", "source_volume_id", "format"} {
 		_, err := uc.Update(context.Background(), "img00000000000000000", []string{f}, "", "", nil)
 		if status.Code(err) != codes.InvalidArgument {
@@ -161,17 +161,17 @@ func TestUpdateImmutableField(t *testing.T) {
 // TestCreateLROInsertsAndMarksDone — happy async: sync-фаза создаёт LRO-строку, worker
 // вызывает writer.Insert, маршалит Image в Operation.response, done=true.
 func TestCreateLROInsertsAndMarksDone(t *testing.T) {
-	writer := &portmock.ImageWriter{
+	writer := &repomock.ImageWriter{
 		InsertFunc: func(_ context.Context, i *domain.Image, _ []string) (*domain.Image, error) {
 			out := *i // id уже присвоен use-case'ом (ids.NewID) до Run
 			out.Status = domain.ImageStatusReady
 			return &out, nil
 		},
 	}
-	geo := &portmock.PeerClient{EnsureRegionFunc: func(context.Context, string) error { return nil }}
-	iam := &portmock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
-	ops := portmock.NewOpsRepo()
-	uc := image.New(&portmock.ImageReader{}, writer, geo, iam, ops, serviceerr.ToStatus)
+	geo := &repomock.PeerClient{EnsureRegionFunc: func(context.Context, string) error { return nil }}
+	iam := &repomock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
+	ops := repomock.NewOpsRepo()
+	uc := image.New(&repomock.ImageReader{}, writer, geo, iam, ops, serviceerr.ToStatus)
 
 	op, err := uc.Create(context.Background(), &domain.Image{
 		ProjectID: "prj-1", Name: "img-a", RegionID: "ru-central1", SourceSnapshot: "snp00000000000000000",
@@ -190,7 +190,7 @@ func TestCreateLROInsertsAndMarksDone(t *testing.T) {
 	if meta.GetImageId() == "" || meta.GetImageId()[:3] != domain.PrefixImage {
 		t.Fatalf("metadata imageId = %q, want non-empty img- id present before done", meta.GetImageId())
 	}
-	done := portmock.AwaitOpDone(t, ops, op.ID)
+	done := repomock.AwaitOpDone(t, ops, op.ID)
 	if done.Error != nil {
 		t.Fatalf("op error = %v, want success terminal", done.Error)
 	}
@@ -212,14 +212,14 @@ func TestCreateLROInsertsAndMarksDone(t *testing.T) {
 // TestCreateLROWriterErrorMarksError — error-путь: writer.Insert возвращает
 // FailedPrecondition-sentinel → worker пишет его в Operation.error, done=true.
 func TestCreateLROWriterErrorMarksError(t *testing.T) {
-	sentinel := fmt.Errorf("%w: Snapshot snp00000000000000000 not found", ports.ErrFailedPrecondition)
-	writer := &portmock.ImageWriter{
+	sentinel := fmt.Errorf("%w: Snapshot snp00000000000000000 not found", storageerr.ErrFailedPrecondition)
+	writer := &repomock.ImageWriter{
 		InsertFunc: func(context.Context, *domain.Image, []string) (*domain.Image, error) { return nil, sentinel },
 	}
-	geo := &portmock.PeerClient{EnsureRegionFunc: func(context.Context, string) error { return nil }}
-	iam := &portmock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
-	ops := portmock.NewOpsRepo()
-	uc := image.New(&portmock.ImageReader{}, writer, geo, iam, ops, serviceerr.ToStatus)
+	geo := &repomock.PeerClient{EnsureRegionFunc: func(context.Context, string) error { return nil }}
+	iam := &repomock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
+	ops := repomock.NewOpsRepo()
+	uc := image.New(&repomock.ImageReader{}, writer, geo, iam, ops, serviceerr.ToStatus)
 
 	op, err := uc.Create(context.Background(), &domain.Image{
 		ProjectID: "prj-1", RegionID: "ru-central1", SourceSnapshot: "snp00000000000000000",
@@ -227,7 +227,7 @@ func TestCreateLROWriterErrorMarksError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create sync err = %v", err)
 	}
-	done := portmock.AwaitOpDone(t, ops, op.ID)
+	done := repomock.AwaitOpDone(t, ops, op.ID)
 	if done.Response != nil {
 		t.Fatalf("op response = %v, want error terminal", done.Response)
 	}

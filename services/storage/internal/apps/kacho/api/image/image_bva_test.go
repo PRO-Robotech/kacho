@@ -14,7 +14,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports/portmock"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/repomock"
 )
 
 // TestCreateBVADescriptionLabels — regression against
@@ -26,7 +26,7 @@ import (
 // A valid source is supplied so the reject is provably the BVA, not "source required".
 // Sync-reject happens before peer calls (geo/iam mocks with nil funcs would panic).
 func TestCreateBVADescriptionLabels(t *testing.T) {
-	uc := image.New(&portmock.ImageReader{}, &portmock.ImageWriter{}, &portmock.PeerClient{}, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := image.New(&repomock.ImageReader{}, &repomock.ImageWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 
 	base := func() *domain.Image {
 		return &domain.Image{

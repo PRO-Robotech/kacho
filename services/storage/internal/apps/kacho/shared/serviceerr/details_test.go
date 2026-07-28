@@ -23,7 +23,7 @@ import (
 // ONLY in the details — the message stays the generic "invalid argument" — so a
 // mapper that recognised the error and rebuilt a fresh status.Error(code, text)
 // would silently strip the one machine-readable part of the answer. Today the
-// pass-through happens because a bare validate error carries no ports sentinel and
+// pass-through happens because a bare validate error carries no sentinel and
 // falls to the status.FromError arm; this test makes that an asserted property
 // rather than an accident of the switch order.
 func TestToStatusKeepsFieldViolationDetails(t *testing.T) {

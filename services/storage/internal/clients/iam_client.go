@@ -17,7 +17,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 )
 
 // IAMClient — клиент ребра storage→iam (валидация project_id через
@@ -49,7 +49,7 @@ func (c *IAMClient) EnsureProjectExists(ctx context.Context, projectID string) e
 	if _, err := c.cli.Get(auth.PropagateOutgoing(cctx), &iamv1.GetProjectRequest{ProjectId: projectID}); err != nil {
 		switch status.Code(err) {
 		case codes.NotFound, codes.InvalidArgument:
-			return fmt.Errorf("%w: Project %s not found", ports.ErrFailedPrecondition, projectID)
+			return fmt.Errorf("%w: Project %s not found", storageerr.ErrFailedPrecondition, projectID)
 		default:
 			return status.Error(codes.Unavailable, "iam project validation unavailable")
 		}

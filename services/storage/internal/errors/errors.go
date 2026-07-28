@@ -1,13 +1,18 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// Package ports — чистые sentinel-ошибки, разделяемые между use-case-слоем
-// (internal/service/*) и adapter'ами (internal/repo, internal/clients). Leaf-пакет:
-// НЕ импортирует pgx / grpc (только stdlib errors), поэтому его безопасно тянет
-// use-case, не втягивая Postgres-драйвер в dependency-closure. Трансляция
-// SQLSTATE→sentinel (зависит от pgx) живёт в repo-adjacent adapter, gRPC-статус →
-// в internal/serviceerr.
-package ports
+// Package errors — чистые sentinel-ошибки, разделяемые между use-case-слоем
+// (internal/apps/kacho/api/*) и adapter'ами (internal/repo, internal/clients).
+// Leaf-пакет: НЕ импортирует pgx / grpc (только stdlib errors), поэтому его
+// безопасно тянет use-case, не втягивая Postgres-драйвер в dependency-closure.
+// Трансляция SQLSTATE→sentinel (зависит от pgx) живёт в repo-adjacent adapter,
+// gRPC-статус → в internal/apps/kacho/shared/serviceerr.
+//
+// Порты (интерфейсы) здесь НЕ живут и никогда не жили: каждый порт объявляет
+// сам use-case, который им пользуется (`volume.Reader`/`Writer`/`GeoClient`/
+// `IAMClient`, `image.*`, `snapshot.Repo`, `disktype.Repo`) — так же, как у vpc и
+// nlb. Прежнее имя пакета (`ports`) обещало обратное.
+package errors
 
 import "errors"
 

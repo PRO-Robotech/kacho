@@ -1,13 +1,13 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// Package portmock — in-memory моки port-интерфейсов use-case-слоя kacho-storage
+// Package repomock — in-memory моки port-интерфейсов use-case-слоя kacho-storage
 // (volume.Reader/Writer, volume.GeoClient/IAMClient, snapshot.Repo, disktype.Repo)
 // на функциях-полях + in-memory operations.Repo (OpsRepo) с детерминированным
 // AwaitOpDone-хелпером для async-LRO. Для unit-тестов use-case БЕЗ Postgres/grpc
 // (иначе adapter протёк бы в use-case — architecture.md). Незаданное поле-функция →
 // метод паникует (тест обязан задать нужный путь явно).
-package portmock
+package repomock
 
 import (
 	"context"

@@ -18,20 +18,20 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports/portmock"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/repomock"
 )
 
 // TestGetMalformedID — malformed snp-id первым стейтментом → sync InvalidArgument
 // "invalid snapshot id '<X>'" (api-conventions.md), repo не вызывается.
 func TestGetMalformedID(t *testing.T) {
-	repo := &portmock.SnapshotRepo{
+	repo := &repomock.SnapshotRepo{
 		GetFunc: func(context.Context, string) (*domain.Snapshot, error) {
 			t.Fatal("repo.Get must not be called on malformed id")
 			return nil, nil
 		},
 	}
-	uc := snapshot.New(repo, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 	_, err := uc.Get(context.Background(), "not-a-snp-id")
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("Get malformed code = %v, want InvalidArgument", status.Code(err))
@@ -45,7 +45,7 @@ func TestGetMalformedID(t *testing.T) {
 func TestGetWellFormedDelegates(t *testing.T) {
 	const wantID = "snp00000000000000000"
 	want := &domain.Snapshot{ID: wantID, ProjectID: "prj-1"}
-	repo := &portmock.SnapshotRepo{
+	repo := &repomock.SnapshotRepo{
 		GetFunc: func(_ context.Context, id string) (*domain.Snapshot, error) {
 			if id != wantID {
 				t.Fatalf("repo got id %q", id)
@@ -53,7 +53,7 @@ func TestGetWellFormedDelegates(t *testing.T) {
 			return want, nil
 		},
 	}
-	uc := snapshot.New(repo, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 	got, err := uc.Get(context.Background(), wantID)
 	if err != nil || got != want {
 		t.Fatalf("Get = (%+v, %v)", got, err)
@@ -64,7 +64,7 @@ func TestGetWellFormedDelegates(t *testing.T) {
 // request-path (fail-closed). Peer-ошибка пробрасывается (мутация не создаётся).
 func TestCreatePeerValidatesProject(t *testing.T) {
 	sentinel := errors.New("iam unavailable")
-	iam := &portmock.PeerClient{
+	iam := &repomock.PeerClient{
 		EnsureProjectFunc: func(_ context.Context, projectID string) error {
 			if projectID != "prj-1" {
 				t.Fatalf("iam got project %q", projectID)
@@ -72,7 +72,7 @@ func TestCreatePeerValidatesProject(t *testing.T) {
 			return sentinel
 		},
 	}
-	uc := snapshot.New(&portmock.SnapshotRepo{}, iam, nil, nil)
+	uc := snapshot.New(&repomock.SnapshotRepo{}, iam, nil, nil)
 	s := &domain.Snapshot{ProjectID: "prj-1", SourceVolumeID: "vol00000000000000000"}
 	_, err := uc.Create(context.Background(), s)
 	if !errors.Is(err, sentinel) {
@@ -83,13 +83,13 @@ func TestCreatePeerValidatesProject(t *testing.T) {
 // TestCreateRejectsMissingSource — domain-инвариант: source_volume_id обязателен →
 // sync InvalidArgument (iam не вызывается).
 func TestCreateRejectsMissingSource(t *testing.T) {
-	iam := &portmock.PeerClient{
+	iam := &repomock.PeerClient{
 		EnsureProjectFunc: func(context.Context, string) error {
 			t.Fatal("iam must not be called before domain validation")
 			return nil
 		},
 	}
-	uc := snapshot.New(&portmock.SnapshotRepo{}, iam, nil, serviceerr.ToStatus)
+	uc := snapshot.New(&repomock.SnapshotRepo{}, iam, nil, serviceerr.ToStatus)
 	_, err := uc.Create(context.Background(), &domain.Snapshot{ProjectID: "prj-1"})
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("Create missing source code = %v, want InvalidArgument", status.Code(err))
@@ -102,13 +102,13 @@ func TestCreateRejectsMissingSource(t *testing.T) {
 // сужает лишь при ProjectID!=""), поэтому отвергаем СИНХРОННО первым стейтментом —
 // кросс-проектной утечки нет by construction (INV-10, CS1-S3-07). repo.List не зовётся.
 func TestListRequiresProjectID(t *testing.T) {
-	repo := &portmock.SnapshotRepo{
+	repo := &repomock.SnapshotRepo{
 		ListFunc: func(context.Context, snapshot.Pagination) ([]*domain.Snapshot, string, error) {
 			t.Fatal("repo.List must not be called when projectId is empty")
 			return nil, "", nil
 		},
 	}
-	uc := snapshot.New(repo, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 	_, _, err := uc.List(context.Background(), snapshot.Pagination{PageSize: 50})
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("List empty projectId code = %v, want InvalidArgument", status.Code(err))
@@ -122,13 +122,13 @@ func TestListRequiresProjectID(t *testing.T) {
 // (guard не ложно-положителен); passed-through Pagination несёт тот же projectId.
 func TestListWithProjectIDDelegates(t *testing.T) {
 	var gotProject string
-	repo := &portmock.SnapshotRepo{
+	repo := &repomock.SnapshotRepo{
 		ListFunc: func(_ context.Context, p snapshot.Pagination) ([]*domain.Snapshot, string, error) {
 			gotProject = p.ProjectID
 			return []*domain.Snapshot{{ID: "snp00000000000000000", ProjectID: p.ProjectID}}, "", nil
 		},
 	}
-	uc := snapshot.New(repo, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 	got, _, err := uc.List(context.Background(), snapshot.Pagination{PageSize: 50, ProjectID: "prj-1"})
 	if err != nil {
 		t.Fatalf("List: %v", err)
@@ -141,7 +141,7 @@ func TestListWithProjectIDDelegates(t *testing.T) {
 // TestUpdateImmutableField — immutable-поле в маске → sync InvalidArgument
 // "<field> is immutable after Snapshot.Create" (immutable-switch ДО UpdateMask).
 func TestUpdateImmutableField(t *testing.T) {
-	uc := snapshot.New(&portmock.SnapshotRepo{}, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := snapshot.New(&repomock.SnapshotRepo{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 	for _, f := range []string{"source_volume_id", "project_id", "size_bytes"} {
 		_, err := uc.Update(context.Background(), "snp00000000000000000", []string{f}, "", "", nil)
 		if status.Code(err) != codes.InvalidArgument {
@@ -156,7 +156,7 @@ func TestUpdateImmutableField(t *testing.T) {
 
 // TestUpdateMalformedID — malformed snp-id первым стейтментом → sync InvalidArgument.
 func TestUpdateMalformedID(t *testing.T) {
-	uc := snapshot.New(&portmock.SnapshotRepo{}, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := snapshot.New(&repomock.SnapshotRepo{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 	_, err := uc.Update(context.Background(), "bad-snp", nil, "x", "", nil)
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("Update malformed code = %v, want InvalidArgument", status.Code(err))
@@ -168,7 +168,7 @@ func TestUpdateMalformedID(t *testing.T) {
 
 // TestDeleteMalformedID — malformed snp-id → sync InvalidArgument (repo не вызывается).
 func TestDeleteMalformedID(t *testing.T) {
-	uc := snapshot.New(&portmock.SnapshotRepo{}, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := snapshot.New(&repomock.SnapshotRepo{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 	_, err := uc.Delete(context.Background(), "nope")
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("Delete malformed code = %v, want InvalidArgument", status.Code(err))
@@ -182,7 +182,7 @@ func TestDeleteMalformedID(t *testing.T) {
 // маршалит Snapshot в Operation.response, done=true (без error).
 func TestCreateLROInsertsAndMarksDone(t *testing.T) {
 	var insertedID string
-	repo := &portmock.SnapshotRepo{
+	repo := &repomock.SnapshotRepo{
 		InsertFunc: func(_ context.Context, s *domain.Snapshot) (*domain.Snapshot, error) {
 			insertedID = s.ID // ids.NewID(prefix), присвоен use-case'ом до Run
 			out := *s
@@ -190,8 +190,8 @@ func TestCreateLROInsertsAndMarksDone(t *testing.T) {
 			return &out, nil
 		},
 	}
-	iam := &portmock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
-	ops := portmock.NewOpsRepo()
+	iam := &repomock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
+	ops := repomock.NewOpsRepo()
 	uc := snapshot.New(repo, iam, ops, serviceerr.ToStatus)
 
 	op, err := uc.Create(context.Background(), &domain.Snapshot{
@@ -200,7 +200,7 @@ func TestCreateLROInsertsAndMarksDone(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create sync err = %v", err)
 	}
-	done := portmock.AwaitOpDone(t, ops, op.ID)
+	done := repomock.AwaitOpDone(t, ops, op.ID)
 	if done.Error != nil {
 		t.Fatalf("op error = %v, want success terminal", done.Error)
 	}
@@ -219,17 +219,17 @@ func TestCreateLROInsertsAndMarksDone(t *testing.T) {
 // TestDeleteLROMarksDoneEmpty — happy async Delete: worker вызывает repo.Delete,
 // response = Empty, done=true.
 func TestDeleteLROMarksDoneEmpty(t *testing.T) {
-	repo := &portmock.SnapshotRepo{
+	repo := &repomock.SnapshotRepo{
 		DeleteFunc: func(context.Context, string) error { return nil },
 	}
-	ops := portmock.NewOpsRepo()
-	uc := snapshot.New(repo, &portmock.PeerClient{}, ops, serviceerr.ToStatus)
+	ops := repomock.NewOpsRepo()
+	uc := snapshot.New(repo, &repomock.PeerClient{}, ops, serviceerr.ToStatus)
 
 	op, err := uc.Delete(context.Background(), "snp00000000000000000")
 	if err != nil {
 		t.Fatalf("Delete sync err = %v", err)
 	}
-	done := portmock.AwaitOpDone(t, ops, op.ID)
+	done := repomock.AwaitOpDone(t, ops, op.ID)
 	if done.Error != nil {
 		t.Fatalf("op error = %v, want success terminal", done.Error)
 	}
@@ -242,12 +242,12 @@ func TestDeleteLROMarksDoneEmpty(t *testing.T) {
 // FailedPrecondition-sentinel (source volume не READY) → worker пишет его в
 // Operation.error (не response), done=true.
 func TestCreateLRORepoErrorMarksError(t *testing.T) {
-	sentinel := fmt.Errorf("%w: source volume is not READY", ports.ErrFailedPrecondition)
-	repo := &portmock.SnapshotRepo{
+	sentinel := fmt.Errorf("%w: source volume is not READY", storageerr.ErrFailedPrecondition)
+	repo := &repomock.SnapshotRepo{
 		InsertFunc: func(context.Context, *domain.Snapshot) (*domain.Snapshot, error) { return nil, sentinel },
 	}
-	iam := &portmock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
-	ops := portmock.NewOpsRepo()
+	iam := &repomock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
+	ops := repomock.NewOpsRepo()
 	uc := snapshot.New(repo, iam, ops, serviceerr.ToStatus)
 
 	op, err := uc.Create(context.Background(), &domain.Snapshot{
@@ -256,7 +256,7 @@ func TestCreateLRORepoErrorMarksError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create sync err = %v", err)
 	}
-	done := portmock.AwaitOpDone(t, ops, op.ID)
+	done := repomock.AwaitOpDone(t, ops, op.ID)
 	if done.Response != nil {
 		t.Fatalf("op response = %v, want error terminal", done.Response)
 	}
@@ -285,13 +285,13 @@ func TestCreateLRORepoErrorMarksError(t *testing.T) {
 // продукт не выполняет ни для одного из трёх. Потеря деталей заведена отдельно.
 
 func TestCreateRejectsOverLongDescriptionSynchronously(t *testing.T) {
-	iam := &portmock.PeerClient{
+	iam := &repomock.PeerClient{
 		EnsureProjectFunc: func(context.Context, string) error {
 			t.Fatal("peer must not be called before the request edge rejects the body")
 			return nil
 		},
 	}
-	uc := snapshot.New(&portmock.SnapshotRepo{}, iam, nil, serviceerr.ToStatus)
+	uc := snapshot.New(&repomock.SnapshotRepo{}, iam, nil, serviceerr.ToStatus)
 
 	s := &domain.Snapshot{
 		ProjectID:      "prj-1",
@@ -308,13 +308,13 @@ func TestCreateRejectsOverLongDescriptionSynchronously(t *testing.T) {
 }
 
 func TestCreateRejectsTooManyLabelsSynchronously(t *testing.T) {
-	iam := &portmock.PeerClient{
+	iam := &repomock.PeerClient{
 		EnsureProjectFunc: func(context.Context, string) error {
 			t.Fatal("peer must not be called before the request edge rejects the body")
 			return nil
 		},
 	}
-	uc := snapshot.New(&portmock.SnapshotRepo{}, iam, nil, serviceerr.ToStatus)
+	uc := snapshot.New(&repomock.SnapshotRepo{}, iam, nil, serviceerr.ToStatus)
 
 	labels := make(map[string]string, 65) // предел 64
 	for i := 0; i < 65; i++ {
@@ -336,18 +336,18 @@ func TestCreateRejectsTooManyLabelsSynchronously(t *testing.T) {
 
 // Граница остаётся проходимой: ровно 256 символов и ровно 64 метки — не отказ.
 func TestCreateAcceptsDescriptionAndLabelsAtTheLimit(t *testing.T) {
-	repo := &portmock.SnapshotRepo{
+	repo := &repomock.SnapshotRepo{
 		InsertFunc: func(_ context.Context, s *domain.Snapshot) (*domain.Snapshot, error) {
 			out := *s
 			out.Status = domain.SnapshotStatusReady
 			return &out, nil
 		},
 	}
-	iam := &portmock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
+	iam := &repomock.PeerClient{EnsureProjectFunc: func(context.Context, string) error { return nil }}
 	// Валидный вход доходит до создания операции, поэтому здесь нужен настоящий
 	// репозиторий операций: с пустым вызов падает ещё до утверждения, и тест
 	// краснел бы по причине, к границе отношения не имеющей.
-	uc := snapshot.New(repo, iam, portmock.NewOpsRepo(), serviceerr.ToStatus)
+	uc := snapshot.New(repo, iam, repomock.NewOpsRepo(), serviceerr.ToStatus)
 
 	labels := make(map[string]string, 64)
 	for i := 0; i < 64; i++ {

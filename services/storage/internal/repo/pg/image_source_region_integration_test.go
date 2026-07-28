@@ -30,7 +30,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
@@ -81,7 +81,7 @@ func TestImageSourceVolumeForeignRegionRejected(t *testing.T) {
 		RegionID: "region-1", SourceVolume: volID,
 	}, fixtureRegionZones)
 	require.Error(t, err, "an image must not be captured from a volume in another region")
-	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, "Volume "+volID+" not found", err.Error()[len("failed precondition: "):],
 		"the refusal must be byte-identical to a real miss, or it is an oracle for volumes of other regions")
 }
@@ -119,7 +119,7 @@ func TestImageSourceSnapshotFollowsLineageRegion(t *testing.T) {
 		RegionID: "region-1", SourceSnapshot: snapID,
 	}, fixtureRegionZones)
 	require.Error(t, err, "a snapshot whose volume is in another region must not seed the image")
-	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, "Snapshot "+snapID+" not found", err.Error()[len("failed precondition: "):])
 }
 

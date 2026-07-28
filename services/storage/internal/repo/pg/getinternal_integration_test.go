@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
@@ -27,7 +27,7 @@ func TestVolumeGetInternalUnimplemented(t *testing.T) {
 
 	_, err := r.GetInternal(context.Background(), "vol00000000000000000")
 	require.Error(t, err)
-	require.True(t, stderrors.Is(err, ports.ErrUnimplemented), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrUnimplemented), "got %v", err)
 	require.Equal(t, codes.Unimplemented, status.Code(serviceerr.ToStatus(err)),
 		"GetInternal is the contractual UNIMPLEMENTED answer of CS-1 (data-plane absent)")
 }

@@ -26,7 +26,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
@@ -50,7 +50,7 @@ func TestVolumeRejectedOnDiskTypeNotOfferedInZone(t *testing.T) {
 		ZoneID: "region-1-b", DiskTypeID: "block-zoned-a", SizeBytes: 1 << 30,
 	}, "")
 	require.Error(t, err, "a volume must not be provisioned on a disk type not offered in its zone")
-	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, "DiskType block-zoned-a is not offered in zone region-1-b",
 		err.Error()[len("failed precondition: "):])
 }
@@ -106,7 +106,7 @@ func TestVolumeOnMissingDiskTypeStillReportsMissing(t *testing.T) {
 		ZoneID: "region-1-a", DiskTypeID: "no-such-disk-type", SizeBytes: 1 << 30,
 	}, "")
 	require.Error(t, err)
-	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, "DiskType no-such-disk-type not found",
 		err.Error()[len("failed precondition: "):])
 }

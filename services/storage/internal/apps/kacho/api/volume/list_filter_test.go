@@ -19,8 +19,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports/portmock"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/repomock"
 )
 
 // fakeListFilter — фейк порта per-object видимости (authzfilter.Filter). Отвечает
@@ -71,8 +71,8 @@ func volPage() []*domain.Volume {
 	}
 }
 
-func readerReturning(page []*domain.Volume, next string) *portmock.VolumeReader {
-	return &portmock.VolumeReader{
+func readerReturning(page []*domain.Volume, next string) *repomock.VolumeReader {
+	return &repomock.VolumeReader{
 		ListFunc: func(context.Context, volume.Pagination) ([]*domain.Volume, string, error) {
 			return page, next, nil
 		},
@@ -80,7 +80,7 @@ func readerReturning(page []*domain.Volume, next string) *portmock.VolumeReader 
 }
 
 func newListUC(reader volume.Reader, f authzfilter.Filter) *volume.UseCase {
-	return volume.New(reader, &portmock.VolumeWriter{}, &portmock.PeerClient{}, &portmock.PeerClient{},
+	return volume.New(reader, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{},
 		nil, serviceerr.ToStatus).WithListFilter(f)
 }
 
@@ -205,7 +205,7 @@ func TestList_NoPrincipalYieldsEmptyPage(t *testing.T) {
 // поэтому page_size > MaxPageSize даёт InvalidArgument, а не пустую страницу.
 func TestList_PageSizeValidatedBeforeVisibilityShortCircuit(t *testing.T) {
 	f := &fakeListFilter{}
-	reader := &portmock.VolumeReader{
+	reader := &repomock.VolumeReader{
 		ListFunc: func(context.Context, volume.Pagination) ([]*domain.Volume, string, error) {
 			t.Fatal("repo.List must not run on an invalid page_size")
 			return nil, "", nil
@@ -232,12 +232,12 @@ func TestList_PageSizeValidatedBeforeVisibilityShortCircuit(t *testing.T) {
 // короткого замыкания на пустом гранте / пустом субъекте.
 func TestList_PageTokenValidatedBeforeVisibilityShortCircuit(t *testing.T) {
 	f := &fakeListFilter{}
-	reader := &portmock.VolumeReader{
+	reader := &repomock.VolumeReader{
 		ListFunc: func(_ context.Context, p volume.Pagination) ([]*domain.Volume, string, error) {
 			if p.PageToken == "" {
 				t.Fatal("page token must reach the repo")
 			}
-			return nil, "", fmt.Errorf("%w: invalid page_token", ports.ErrInvalidArg)
+			return nil, "", fmt.Errorf("%w: invalid page_token", storageerr.ErrInvalidArg)
 		},
 	}
 	uc := newListUC(reader, f)

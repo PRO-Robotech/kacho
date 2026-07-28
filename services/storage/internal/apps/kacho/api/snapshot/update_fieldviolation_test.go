@@ -15,7 +15,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports/portmock"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/repomock"
 )
 
 // ── Update: description / labels / name are refused at the request edge ──────
@@ -55,13 +55,13 @@ func updLabels(n int) map[string]string {
 func TestUpdateOverLimitNamesTheField(t *testing.T) {
 	newUC := func(t *testing.T) *snapshot.UseCase {
 		t.Helper()
-		repo := &portmock.SnapshotRepo{
+		repo := &repomock.SnapshotRepo{
 			UpdateFunc: func(context.Context, string, snapshot.SnapshotUpdate) (*domain.Snapshot, error) {
 				t.Error("repo.Update must not be reached: the request edge rejects the body")
 				return &domain.Snapshot{ID: snapUpdID}, nil
 			},
 		}
-		return snapshot.New(repo, &portmock.PeerClient{}, portmock.NewOpsRepo(), serviceerr.ToStatus)
+		return snapshot.New(repo, &repomock.PeerClient{}, repomock.NewOpsRepo(), serviceerr.ToStatus)
 	}
 
 	cases := []struct {
@@ -127,13 +127,13 @@ func TestUpdateOverLimitNamesTheField(t *testing.T) {
 // Here the MESSAGE is asserted, because for the name the contract text itself names
 // the field ("Illegal argument name") — the same text Create returns.
 func TestUpdateRejectsIllegalNameSynchronously(t *testing.T) {
-	repo := &portmock.SnapshotRepo{
+	repo := &repomock.SnapshotRepo{
 		UpdateFunc: func(context.Context, string, snapshot.SnapshotUpdate) (*domain.Snapshot, error) {
 			t.Error("repo.Update must not be reached: the request edge rejects the name")
 			return &domain.Snapshot{ID: snapUpdID}, nil
 		},
 	}
-	uc := snapshot.New(repo, &portmock.PeerClient{}, portmock.NewOpsRepo(), serviceerr.ToStatus)
+	uc := snapshot.New(repo, &repomock.PeerClient{}, repomock.NewOpsRepo(), serviceerr.ToStatus)
 
 	for _, tc := range []struct {
 		label string
@@ -166,21 +166,21 @@ func TestUpdateRejectsIllegalNameSynchronously(t *testing.T) {
 // not a fix.
 func TestUpdateSkipsFieldsOutsideTheMask(t *testing.T) {
 	var applied snapshot.SnapshotUpdate
-	repo := &portmock.SnapshotRepo{
+	repo := &repomock.SnapshotRepo{
 		UpdateFunc: func(_ context.Context, _ string, u snapshot.SnapshotUpdate) (*domain.Snapshot, error) {
 			applied = u
 			return &domain.Snapshot{ID: snapUpdID, Description: "kept"}, nil
 		},
 	}
-	ops := portmock.NewOpsRepo()
-	uc := snapshot.New(repo, &portmock.PeerClient{}, ops, serviceerr.ToStatus)
+	ops := repomock.NewOpsRepo()
+	uc := snapshot.New(repo, &repomock.PeerClient{}, ops, serviceerr.ToStatus)
 
 	op, err := uc.Update(context.Background(), snapUpdID, []string{"description"},
 		"Illegal_Name", "fine", updLabels(65))
 	if err != nil {
 		t.Fatalf("Update mask=[description] with an unapplied illegal name/labels: %v", err)
 	}
-	done := portmock.AwaitOpDone(t, ops, op.ID)
+	done := repomock.AwaitOpDone(t, ops, op.ID)
 	if done.Error != nil {
 		t.Fatalf("op error = %v, want success — the body outside the mask is ignored", done.Error)
 	}
@@ -199,20 +199,20 @@ func TestUpdateAcceptsDescriptionAndLabelsAtTheLimit(t *testing.T) {
 	atLimit := updLabels(64)
 
 	for _, mask := range [][]string{{"description", "labels"}, nil} {
-		repo := &portmock.SnapshotRepo{
+		repo := &repomock.SnapshotRepo{
 			UpdateFunc: func(context.Context, string, snapshot.SnapshotUpdate) (*domain.Snapshot, error) {
 				return &domain.Snapshot{ID: snapUpdID}, nil
 			},
 		}
-		ops := portmock.NewOpsRepo()
-		uc := snapshot.New(repo, &portmock.PeerClient{}, ops, serviceerr.ToStatus)
+		ops := repomock.NewOpsRepo()
+		uc := snapshot.New(repo, &repomock.PeerClient{}, ops, serviceerr.ToStatus)
 
 		op, err := uc.Update(context.Background(), snapUpdID, mask,
 			"", strings.Repeat("x", 256), atLimit)
 		if err != nil {
 			t.Fatalf("Update mask=%v at the limit was refused: %v", mask, err)
 		}
-		if done := portmock.AwaitOpDone(t, ops, op.ID); done.Error != nil {
+		if done := repomock.AwaitOpDone(t, ops, op.ID); done.Error != nil {
 			t.Fatalf("Update mask=%v at the limit failed asynchronously: %v", mask, done.Error)
 		}
 	}

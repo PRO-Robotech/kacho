@@ -16,7 +16,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 )
 
 // Pagination — вход для List с cursor-пагинацией.
@@ -64,7 +64,7 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.DiskType, s
 // id / слишком длинный name → InvalidArgument ДО repo (иначе ” — валидный PK-slug).
 func (u *UseCase) CreateAdmin(ctx context.Context, d *domain.DiskType) (*domain.DiskType, error) {
 	if err := d.Validate(); err != nil {
-		return nil, fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error())
+		return nil, fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, err.Error())
 	}
 	return u.repo.Insert(ctx, d)
 }
@@ -75,7 +75,7 @@ func (u *UseCase) CreateAdmin(ctx context.Context, d *domain.DiskType) (*domain.
 func (u *UseCase) UpdateAdmin(ctx context.Context, id, name, description string, zoneIDs []string, performanceTier string) (*domain.DiskType, error) {
 	d := domain.DiskType{ID: id, Name: name, Description: description, ZoneIDs: zoneIDs, PerformanceTier: performanceTier}
 	if err := d.Validate(); err != nil {
-		return nil, fmt.Errorf("%w: %s", ports.ErrInvalidArg, err.Error())
+		return nil, fmt.Errorf("%w: %s", storageerr.ErrInvalidArg, err.Error())
 	}
 	return u.repo.Update(ctx, id, name, description, zoneIDs, performanceTier)
 }

@@ -14,7 +14,7 @@ import (
 
 	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 )
 
 // TestToStatusFailureBandsCharacterization records the code AND the exact wire
@@ -32,23 +32,23 @@ func TestToStatusFailureBandsCharacterization(t *testing.T) {
 		wantCode codes.Code
 		wantMsg  string
 	}{
-		{"not_found/bare", ports.ErrNotFound, codes.NotFound, "not found"},
-		{"not_found/wrapped", fmt.Errorf("%w: Volume vol-1 not found", ports.ErrNotFound), codes.NotFound, "Volume vol-1 not found"},
+		{"not_found/bare", storageerr.ErrNotFound, codes.NotFound, "not found"},
+		{"not_found/wrapped", fmt.Errorf("%w: Volume vol-1 not found", storageerr.ErrNotFound), codes.NotFound, "Volume vol-1 not found"},
 
-		{"already_exists/bare", ports.ErrAlreadyExists, codes.AlreadyExists, "already exists"},
-		{"already_exists/wrapped", fmt.Errorf("%w: Volume vol-1 already exists", ports.ErrAlreadyExists), codes.AlreadyExists, "Volume vol-1 already exists"},
+		{"already_exists/bare", storageerr.ErrAlreadyExists, codes.AlreadyExists, "already exists"},
+		{"already_exists/wrapped", fmt.Errorf("%w: Volume vol-1 already exists", storageerr.ErrAlreadyExists), codes.AlreadyExists, "Volume vol-1 already exists"},
 
-		{"failed_precondition/bare", ports.ErrFailedPrecondition, codes.FailedPrecondition, "failed precondition"},
-		{"failed_precondition/wrapped", fmt.Errorf("%w: volume is not empty", ports.ErrFailedPrecondition), codes.FailedPrecondition, "volume is not empty"},
+		{"failed_precondition/bare", storageerr.ErrFailedPrecondition, codes.FailedPrecondition, "failed precondition"},
+		{"failed_precondition/wrapped", fmt.Errorf("%w: volume is not empty", storageerr.ErrFailedPrecondition), codes.FailedPrecondition, "volume is not empty"},
 
-		{"invalid_argument/bare", ports.ErrInvalidArg, codes.InvalidArgument, "invalid argument"},
-		{"invalid_argument/wrapped", fmt.Errorf("%w: invalid volume id 'zzz'", ports.ErrInvalidArg), codes.InvalidArgument, "invalid volume id 'zzz'"},
+		{"invalid_argument/bare", storageerr.ErrInvalidArg, codes.InvalidArgument, "invalid argument"},
+		{"invalid_argument/wrapped", fmt.Errorf("%w: invalid volume id 'zzz'", storageerr.ErrInvalidArg), codes.InvalidArgument, "invalid volume id 'zzz'"},
 
-		{"unimplemented/bare", ports.ErrUnimplemented, codes.Unimplemented, "not implemented"},
-		{"unimplemented/wrapped", fmt.Errorf("%w: Volume.Move", ports.ErrUnimplemented), codes.Unimplemented, "Volume.Move"},
+		{"unimplemented/bare", storageerr.ErrUnimplemented, codes.Unimplemented, "not implemented"},
+		{"unimplemented/wrapped", fmt.Errorf("%w: Volume.Move", storageerr.ErrUnimplemented), codes.Unimplemented, "Volume.Move"},
 
-		{"internal/bare", ports.ErrInternal, codes.Internal, "internal error"},
-		{"internal/wrapped", fmt.Errorf("%w: pgx: dial tcp 10.0.0.7:5432", ports.ErrInternal), codes.Internal, "internal error"},
+		{"internal/bare", storageerr.ErrInternal, codes.Internal, "internal error"},
+		{"internal/wrapped", fmt.Errorf("%w: pgx: dial tcp 10.0.0.7:5432", storageerr.ErrInternal), codes.Internal, "internal error"},
 
 		{"unavailable/status", status.Error(codes.Unavailable, "iam unavailable"), codes.Unavailable, "iam unavailable"},
 		{"passthrough/permission_denied", status.Error(codes.PermissionDenied, "denied"), codes.PermissionDenied, "denied"},
@@ -93,7 +93,7 @@ func TestToStatusPreservesDetailsThroughSentinelWrap(t *testing.T) {
 	rich := coreerrors.InvalidArgument().
 		AddFieldViolation("sizeBytes", "sizeBytes must be a multiple of 4096").
 		Err()
-	wrapped := fmt.Errorf("%w: %w", ports.ErrInvalidArg, rich)
+	wrapped := fmt.Errorf("%w: %w", storageerr.ErrInvalidArg, rich)
 
 	got := serviceerr.ToStatus(wrapped)
 

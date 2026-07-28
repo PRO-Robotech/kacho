@@ -18,8 +18,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports/portmock"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/repomock"
 )
 
 // fakeListFilter — фейк порта per-object видимости (authzfilter.Filter).
@@ -61,11 +61,11 @@ func snapPage() []*domain.Snapshot {
 }
 
 func newListUC(repo snapshot.Repo, f authzfilter.Filter) *snapshot.UseCase {
-	return snapshot.New(repo, &portmock.PeerClient{}, nil, serviceerr.ToStatus).WithListFilter(f)
+	return snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithListFilter(f)
 }
 
-func repoReturning(page []*domain.Snapshot, next string) *portmock.SnapshotRepo {
-	return &portmock.SnapshotRepo{
+func repoReturning(page []*domain.Snapshot, next string) *repomock.SnapshotRepo {
+	return &repomock.SnapshotRepo{
 		ListFunc: func(context.Context, snapshot.Pagination) ([]*domain.Snapshot, string, error) {
 			return page, next, nil
 		},
@@ -134,12 +134,12 @@ func TestList_NoPrincipalYieldsEmptyPage(t *testing.T) {
 // параметров отвергается ДО любого authz-решения (даже без principal'а).
 func TestList_PaginationValidatedBeforeVisibilityShortCircuit(t *testing.T) {
 	f := &fakeListFilter{}
-	repo := &portmock.SnapshotRepo{
+	repo := &repomock.SnapshotRepo{
 		ListFunc: func(_ context.Context, p snapshot.Pagination) ([]*domain.Snapshot, string, error) {
 			if p.PageToken == "" {
 				t.Fatal("page token must reach the repo")
 			}
-			return nil, "", fmt.Errorf("%w: invalid page_token", ports.ErrInvalidArg)
+			return nil, "", fmt.Errorf("%w: invalid page_token", storageerr.ErrInvalidArg)
 		},
 	}
 	uc := newListUC(repo, f)

@@ -13,10 +13,10 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 )
 
-// TestMapVolumeErrLeakGuard — некатегоризированный SQLSTATE → ports.ErrInternal, и
+// TestMapVolumeErrLeakGuard — некатегоризированный SQLSTATE → storageerr.ErrInternal, и
 // serviceerr.ToStatus отдаёт РОВНО "internal error" без утечки pgx/connection-текста
 // (S2-10, security.md hardening-инвариант #1; behaviour-level, не только код).
 func TestMapVolumeErrLeakGuard(t *testing.T) {
@@ -25,7 +25,7 @@ func TestMapVolumeErrLeakGuard(t *testing.T) {
 		Message: "connection to server at \"10.0.0.7\", port 5432 failed: FATAL: password for user \"storage\"",
 	}
 	mapped := mapVolumeErr(raw, volErrCtx{volumeID: "vol00000000000000001"})
-	require.True(t, stderrors.Is(mapped, ports.ErrInternal), "uncategorized SQLSTATE → ErrInternal")
+	require.True(t, stderrors.Is(mapped, storageerr.ErrInternal), "uncategorized SQLSTATE → ErrInternal")
 
 	st := serviceerr.ToStatus(mapped)
 	require.Equal(t, codes.Internal, status.Code(st))
@@ -40,7 +40,7 @@ func TestMapVolumeErrLeakGuard(t *testing.T) {
 func TestMapVolumeErrDeviceCollision(t *testing.T) {
 	pgErr := &pgconn.PgError{Code: "23505", ConstraintName: "volume_attachments_instance_device_uniq"}
 	mapped := mapVolumeErr(pgErr, volErrCtx{deviceName: "sdb", instanceID: "ins-1"})
-	require.True(t, stderrors.Is(mapped, ports.ErrFailedPrecondition), "got %v", mapped)
+	require.True(t, stderrors.Is(mapped, storageerr.ErrFailedPrecondition), "got %v", mapped)
 	require.Equal(t, "device sdb is already in use on Instance ins-1",
 		mapped.Error()[len("failed precondition: "):])
 }
@@ -50,7 +50,7 @@ func TestMapVolumeErrDeviceCollision(t *testing.T) {
 func TestMapVolumeErrSecondBoot(t *testing.T) {
 	pgErr := &pgconn.PgError{Code: "23P01", ConstraintName: "volume_attachments_one_boot"}
 	mapped := mapVolumeErr(pgErr, volErrCtx{instanceID: "ins-1"})
-	require.True(t, stderrors.Is(mapped, ports.ErrFailedPrecondition), "got %v", mapped)
+	require.True(t, stderrors.Is(mapped, storageerr.ErrFailedPrecondition), "got %v", mapped)
 	require.Equal(t, "Instance ins-1 already has a boot volume",
 		mapped.Error()[len("failed precondition: "):])
 }
@@ -60,12 +60,12 @@ func TestMapVolumeErrSecondBoot(t *testing.T) {
 func TestMapVolumeErrSourceImageFK(t *testing.T) {
 	pgErr := &pgconn.PgError{Code: "23503", ConstraintName: "volumes_source_image_fk"}
 	mapped := mapVolumeErr(pgErr, volErrCtx{imageID: "img00000000000000001"})
-	require.True(t, stderrors.Is(mapped, ports.ErrFailedPrecondition), "got %v", mapped)
+	require.True(t, stderrors.Is(mapped, storageerr.ErrFailedPrecondition), "got %v", mapped)
 	require.Equal(t, "Image img00000000000000001 not found", mapped.Error()[len("failed precondition: "):])
 }
 
 // TestMapImageErrLeakGuard — STOR-1-26: некатегоризированный SQLSTATE Image-репо →
-// ports.ErrInternal, serviceerr → РОВНО "internal error" без утечки pgx/connection-текста
+// storageerr.ErrInternal, serviceerr → РОВНО "internal error" без утечки pgx/connection-текста
 // (security.md hardening-инвариант #1; behaviour-level, не только код).
 func TestMapImageErrLeakGuard(t *testing.T) {
 	raw := &pgconn.PgError{
@@ -73,7 +73,7 @@ func TestMapImageErrLeakGuard(t *testing.T) {
 		Message: "connection to server at \"10.0.0.9\", port 5432 failed: FATAL: password for user \"storage\"",
 	}
 	mapped := mapImageErr(raw, imgErrCtx{imageID: "img00000000000000001"})
-	require.True(t, stderrors.Is(mapped, ports.ErrInternal), "uncategorized SQLSTATE → ErrInternal")
+	require.True(t, stderrors.Is(mapped, storageerr.ErrInternal), "uncategorized SQLSTATE → ErrInternal")
 
 	st := serviceerr.ToStatus(mapped)
 	require.Equal(t, codes.Internal, status.Code(st))
@@ -87,12 +87,12 @@ func TestMapImageErrLeakGuard(t *testing.T) {
 func TestMapImageErrSourceFK(t *testing.T) {
 	snapFK := &pgconn.PgError{Code: "23503", ConstraintName: "images_source_snapshot_id_fkey"}
 	mapped := mapImageErr(snapFK, imgErrCtx{snapshotID: "snp00000000000000001"})
-	require.True(t, stderrors.Is(mapped, ports.ErrFailedPrecondition), "got %v", mapped)
+	require.True(t, stderrors.Is(mapped, storageerr.ErrFailedPrecondition), "got %v", mapped)
 	require.Equal(t, "Snapshot snp00000000000000001 not found", mapped.Error()[len("failed precondition: "):])
 
 	volFK := &pgconn.PgError{Code: "23503", ConstraintName: "images_source_volume_id_fkey"}
 	mapped = mapImageErr(volFK, imgErrCtx{volumeID: "vol00000000000000001"})
-	require.True(t, stderrors.Is(mapped, ports.ErrFailedPrecondition), "got %v", mapped)
+	require.True(t, stderrors.Is(mapped, storageerr.ErrFailedPrecondition), "got %v", mapped)
 	require.Equal(t, "Volume vol00000000000000001 not found", mapped.Error()[len("failed precondition: "):])
 }
 
@@ -101,7 +101,7 @@ func TestMapImageErrSourceFK(t *testing.T) {
 func TestMapImageErrNameUnique(t *testing.T) {
 	pgErr := &pgconn.PgError{Code: "23505", ConstraintName: "images_name_uniq"}
 	mapped := mapImageErr(pgErr, imgErrCtx{imageName: "ubuntu-24-04"})
-	require.True(t, stderrors.Is(mapped, ports.ErrAlreadyExists), "got %v", mapped)
+	require.True(t, stderrors.Is(mapped, storageerr.ErrAlreadyExists), "got %v", mapped)
 	require.Equal(t, "image with name ubuntu-24-04 already exists in project",
 		mapped.Error()[len("already exists: "):])
 }

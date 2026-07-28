@@ -14,7 +14,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 )
 
 // DiskTypeRepo — реализация disktype.Repo поверх pgxpool. Public read (Get/List) +
@@ -122,7 +122,7 @@ func (r *DiskTypeRepo) List(ctx context.Context, p disktype.Pagination) ([]*doma
 func (r *DiskTypeRepo) Insert(ctx context.Context, d *domain.DiskType) (*domain.DiskType, error) {
 	zoneIDs, err := json.Marshal(nonNilSlice(d.ZoneIDs))
 	if err != nil {
-		return nil, ports.ErrInternal
+		return nil, storageerr.ErrInternal
 	}
 	_, err = r.pool.Exec(ctx,
 		`INSERT INTO disk_types (id, name, description, zone_ids, performance_tier)
@@ -139,7 +139,7 @@ func (r *DiskTypeRepo) Insert(ctx context.Context, d *domain.DiskType) (*domain.
 func (r *DiskTypeRepo) Update(ctx context.Context, id, name, description string, zoneIDs []string, performanceTier string) (*domain.DiskType, error) {
 	zoneJSON, err := json.Marshal(nonNilSlice(zoneIDs))
 	if err != nil {
-		return nil, ports.ErrInternal
+		return nil, storageerr.ErrInternal
 	}
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE disk_types SET name=$2, description=$3, zone_ids=$4::jsonb, performance_tier=$5 WHERE id=$1`,
@@ -148,7 +148,7 @@ func (r *DiskTypeRepo) Update(ctx context.Context, id, name, description string,
 		return nil, mapDiskTypeErr(err, dtErrCtx{diskTypeID: id})
 	}
 	if tag.RowsAffected() == 0 {
-		return nil, fmt.Errorf("%w: DiskType %s not found", ports.ErrNotFound, id)
+		return nil, fmt.Errorf("%w: DiskType %s not found", storageerr.ErrNotFound, id)
 	}
 	return r.Get(ctx, id)
 }
@@ -162,7 +162,7 @@ func (r *DiskTypeRepo) Delete(ctx context.Context, id string) error {
 		return mapDiskTypeErr(err, dtErrCtx{diskTypeID: id})
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("%w: DiskType %s not found", ports.ErrNotFound, id)
+		return fmt.Errorf("%w: DiskType %s not found", storageerr.ErrNotFound, id)
 	}
 	return nil
 }

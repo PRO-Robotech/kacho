@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 )
 
 // volErrCtx — контекстные hint'ы для constraint-aware маппинга ошибок Volume-репо.
@@ -40,26 +40,26 @@ const (
 	cnAttachOneBoot      = "volume_attachments_one_boot"
 )
 
-// mapVolumeErr транслирует pgx/pgconn-ошибку в чистый ports-sentinel с контрактным
+// mapVolumeErr транслирует pgx/pgconn-ошибку в чистый sentinel с контрактным
 // текстом Kachō (§1.7). Сырой pgx/SQL наружу не течёт: некатегоризированный
-// SQLSTATE → ports.ErrInternal (serviceerr → фиксированный "internal error"), но
+// SQLSTATE → storageerr.ErrInternal (serviceerr → фиксированный "internal error"), но
 // сам SQLSTATE логируется на repo-границе (operator-trail, CWE-390).
 func mapVolumeErr(err error, c volErrCtx) error {
 	if err == nil {
 		return nil
 	}
-	// Идемпотентность: уже-замапленный ports-sentinel (напр. hand-crafted
+	// Идемпотентность: уже-замапленный sentinel (напр. hand-crafted
 	// "Volume size can only be increased" / NotFound из disambiguation Update)
 	// пробрасывается как есть — иначе default-ветка ниже коллапсировала бы его в
 	// ErrInternal (теряя контрактный текст).
 	switch {
-	case errors.Is(err, ports.ErrNotFound), errors.Is(err, ports.ErrAlreadyExists),
-		errors.Is(err, ports.ErrFailedPrecondition), errors.Is(err, ports.ErrInvalidArg),
-		errors.Is(err, ports.ErrInternal):
+	case errors.Is(err, storageerr.ErrNotFound), errors.Is(err, storageerr.ErrAlreadyExists),
+		errors.Is(err, storageerr.ErrFailedPrecondition), errors.Is(err, storageerr.ErrInvalidArg),
+		errors.Is(err, storageerr.ErrInternal):
 		return err
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("%w: Volume %s not found", ports.ErrNotFound, c.volumeID)
+		return fmt.Errorf("%w: Volume %s not found", storageerr.ErrNotFound, c.volumeID)
 	}
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
@@ -67,37 +67,37 @@ func mapVolumeErr(err error, c volErrCtx) error {
 		case "23505": // unique_violation
 			switch pgErr.ConstraintName {
 			case cnVolumeNameUniq:
-				return fmt.Errorf("%w: volume with name %s already exists in project", ports.ErrAlreadyExists, c.volumeName)
+				return fmt.Errorf("%w: volume with name %s already exists in project", storageerr.ErrAlreadyExists, c.volumeName)
 			case cnAttachDeviceUniq:
-				return fmt.Errorf("%w: device %s is already in use on Instance %s", ports.ErrFailedPrecondition, c.deviceName, c.instanceID)
+				return fmt.Errorf("%w: device %s is already in use on Instance %s", storageerr.ErrFailedPrecondition, c.deviceName, c.instanceID)
 			}
-			return fmt.Errorf("%w: volume already exists", ports.ErrAlreadyExists)
+			return fmt.Errorf("%w: volume already exists", storageerr.ErrAlreadyExists)
 		case "23503": // foreign_key_violation
 			switch pgErr.ConstraintName {
 			case cnVolumeDiskTypeFK:
-				return fmt.Errorf("%w: DiskType %s not found", ports.ErrFailedPrecondition, c.diskTypeID)
+				return fmt.Errorf("%w: DiskType %s not found", storageerr.ErrFailedPrecondition, c.diskTypeID)
 			case cnVolumeSnapshotFK:
-				return fmt.Errorf("%w: Snapshot %s not found", ports.ErrFailedPrecondition, c.snapshotID)
+				return fmt.Errorf("%w: Snapshot %s not found", storageerr.ErrFailedPrecondition, c.snapshotID)
 			case cnVolumeImageFK:
-				return fmt.Errorf("%w: Image %s not found", ports.ErrFailedPrecondition, c.imageID)
+				return fmt.Errorf("%w: Image %s not found", storageerr.ErrFailedPrecondition, c.imageID)
 			case cnAttachmentVolumeFK:
-				return fmt.Errorf("%w: Volume %s is in use", ports.ErrFailedPrecondition, c.volumeID)
+				return fmt.Errorf("%w: Volume %s is in use", storageerr.ErrFailedPrecondition, c.volumeID)
 			}
-			return fmt.Errorf("%w: volume violates a reference constraint", ports.ErrFailedPrecondition)
+			return fmt.Errorf("%w: volume violates a reference constraint", storageerr.ErrFailedPrecondition)
 		case "23514": // check_violation (size_bytes>0 / block_size>0 / name / labels)
-			return fmt.Errorf("%w: Illegal argument", ports.ErrInvalidArg)
+			return fmt.Errorf("%w: Illegal argument", storageerr.ErrInvalidArg)
 		case "23P01": // exclusion_violation (EXCLUDE … WHERE is_boot)
 			if pgErr.ConstraintName == cnAttachOneBoot {
-				return fmt.Errorf("%w: Instance %s already has a boot volume", ports.ErrFailedPrecondition, c.instanceID)
+				return fmt.Errorf("%w: Instance %s already has a boot volume", storageerr.ErrFailedPrecondition, c.instanceID)
 			}
-			return fmt.Errorf("%w: volume exclusion constraint", ports.ErrFailedPrecondition)
+			return fmt.Errorf("%w: volume exclusion constraint", storageerr.ErrFailedPrecondition)
 		}
 		slog.Error("uncategorized postgres error mapped to internal",
 			"sqlstate", pgErr.Code, "constraint", pgErr.ConstraintName, "volume_id", c.volumeID)
-		return ports.ErrInternal
+		return storageerr.ErrInternal
 	}
 	slog.Error("uncategorized db error mapped to internal", "err", err.Error(), "volume_id", c.volumeID)
-	return ports.ErrInternal
+	return storageerr.ErrInternal
 }
 
 // cnSnapshotNameUniq — partial UNIQUE(project_id,name) WHERE name<>” снапшотов.
@@ -110,42 +110,42 @@ type snapErrCtx struct {
 	sourceVolumeID string
 }
 
-// mapSnapshotErr транслирует pgx/pgconn-ошибку Snapshot-репо в чистый ports-sentinel
+// mapSnapshotErr транслирует pgx/pgconn-ошибку Snapshot-репо в чистый sentinel
 // с контрактным текстом Kachō. Сырой pgx/SQL наружу не течёт (uncategorized →
-// ports.ErrInternal, SQLSTATE логируется на границе). Уже-замапленный sentinel
+// storageerr.ErrInternal, SQLSTATE логируется на границе). Уже-замапленный sentinel
 // (from-READY disambiguation / NotFound) пробрасывается как есть.
 func mapSnapshotErr(err error, c snapErrCtx) error {
 	if err == nil {
 		return nil
 	}
 	switch {
-	case errors.Is(err, ports.ErrNotFound), errors.Is(err, ports.ErrAlreadyExists),
-		errors.Is(err, ports.ErrFailedPrecondition), errors.Is(err, ports.ErrInvalidArg),
-		errors.Is(err, ports.ErrInternal):
+	case errors.Is(err, storageerr.ErrNotFound), errors.Is(err, storageerr.ErrAlreadyExists),
+		errors.Is(err, storageerr.ErrFailedPrecondition), errors.Is(err, storageerr.ErrInvalidArg),
+		errors.Is(err, storageerr.ErrInternal):
 		return err
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("%w: Snapshot %s not found", ports.ErrNotFound, c.snapshotID)
+		return fmt.Errorf("%w: Snapshot %s not found", storageerr.ErrNotFound, c.snapshotID)
 	}
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {
 		case "23505": // unique_violation
 			if pgErr.ConstraintName == cnSnapshotNameUniq {
-				return fmt.Errorf("%w: snapshot with name %s already exists in project", ports.ErrAlreadyExists, c.snapshotName)
+				return fmt.Errorf("%w: snapshot with name %s already exists in project", storageerr.ErrAlreadyExists, c.snapshotName)
 			}
-			return fmt.Errorf("%w: snapshot already exists", ports.ErrAlreadyExists)
+			return fmt.Errorf("%w: snapshot already exists", storageerr.ErrAlreadyExists)
 		case "23503": // foreign_key_violation — source_volume_id → volumes
-			return fmt.Errorf("%w: Volume %s not found", ports.ErrFailedPrecondition, c.sourceVolumeID)
+			return fmt.Errorf("%w: Volume %s not found", storageerr.ErrFailedPrecondition, c.sourceVolumeID)
 		case "23514": // check_violation (name / description / size / labels)
-			return fmt.Errorf("%w: Illegal argument", ports.ErrInvalidArg)
+			return fmt.Errorf("%w: Illegal argument", storageerr.ErrInvalidArg)
 		}
 		slog.Error("uncategorized postgres error mapped to internal",
 			"sqlstate", pgErr.Code, "constraint", pgErr.ConstraintName, "snapshot_id", c.snapshotID)
-		return ports.ErrInternal
+		return storageerr.ErrInternal
 	}
 	slog.Error("uncategorized db error mapped to internal", "err", err.Error(), "snapshot_id", c.snapshotID)
-	return ports.ErrInternal
+	return storageerr.ErrInternal
 }
 
 // Имена DB-constraint'ов образа (миграция 0007_image_and_volume_source_image).
@@ -163,48 +163,48 @@ type imgErrCtx struct {
 	volumeID   string
 }
 
-// mapImageErr транслирует pgx/pgconn-ошибку Image-репо в чистый ports-sentinel с
+// mapImageErr транслирует pgx/pgconn-ошибку Image-репо в чистый sentinel с
 // контрактным текстом Kachō. Сырой pgx/SQL наружу не течёт (uncategorized →
-// ports.ErrInternal, SQLSTATE логируется на границе). Уже-замапленный sentinel
+// storageerr.ErrInternal, SQLSTATE логируется на границе). Уже-замапленный sentinel
 // пробрасывается как есть.
 func mapImageErr(err error, c imgErrCtx) error {
 	if err == nil {
 		return nil
 	}
 	switch {
-	case errors.Is(err, ports.ErrNotFound), errors.Is(err, ports.ErrAlreadyExists),
-		errors.Is(err, ports.ErrFailedPrecondition), errors.Is(err, ports.ErrInvalidArg),
-		errors.Is(err, ports.ErrInternal):
+	case errors.Is(err, storageerr.ErrNotFound), errors.Is(err, storageerr.ErrAlreadyExists),
+		errors.Is(err, storageerr.ErrFailedPrecondition), errors.Is(err, storageerr.ErrInvalidArg),
+		errors.Is(err, storageerr.ErrInternal):
 		return err
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("%w: Image %s not found", ports.ErrNotFound, c.imageID)
+		return fmt.Errorf("%w: Image %s not found", storageerr.ErrNotFound, c.imageID)
 	}
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {
 		case "23505": // unique_violation
 			if pgErr.ConstraintName == cnImageNameUniq {
-				return fmt.Errorf("%w: image with name %s already exists in project", ports.ErrAlreadyExists, c.imageName)
+				return fmt.Errorf("%w: image with name %s already exists in project", storageerr.ErrAlreadyExists, c.imageName)
 			}
-			return fmt.Errorf("%w: image already exists", ports.ErrAlreadyExists)
+			return fmt.Errorf("%w: image already exists", storageerr.ErrAlreadyExists)
 		case "23503": // foreign_key_violation — source_snapshot_id / source_volume_id
 			switch pgErr.ConstraintName {
 			case cnImageSnapshotFK:
-				return fmt.Errorf("%w: Snapshot %s not found", ports.ErrFailedPrecondition, c.snapshotID)
+				return fmt.Errorf("%w: Snapshot %s not found", storageerr.ErrFailedPrecondition, c.snapshotID)
 			case cnImageVolumeFK:
-				return fmt.Errorf("%w: Volume %s not found", ports.ErrFailedPrecondition, c.volumeID)
+				return fmt.Errorf("%w: Volume %s not found", storageerr.ErrFailedPrecondition, c.volumeID)
 			}
-			return fmt.Errorf("%w: image violates a reference constraint", ports.ErrFailedPrecondition)
+			return fmt.Errorf("%w: image violates a reference constraint", storageerr.ErrFailedPrecondition)
 		case "23514": // check_violation (source at-most-one mutual-exclusion / name / description / format / size / labels)
-			return fmt.Errorf("%w: Illegal argument", ports.ErrInvalidArg)
+			return fmt.Errorf("%w: Illegal argument", storageerr.ErrInvalidArg)
 		}
 		slog.Error("uncategorized postgres error mapped to internal",
 			"sqlstate", pgErr.Code, "constraint", pgErr.ConstraintName, "image_id", c.imageID)
-		return ports.ErrInternal
+		return storageerr.ErrInternal
 	}
 	slog.Error("uncategorized db error mapped to internal", "err", err.Error(), "image_id", c.imageID)
-	return ports.ErrInternal
+	return storageerr.ErrInternal
 }
 
 // dtErrCtx — контекстный hint (id) для constraint-aware маппинга ошибок DiskType-репо.
@@ -212,39 +212,39 @@ type dtErrCtx struct {
 	diskTypeID string
 }
 
-// mapDiskTypeErr транслирует pgx/pgconn-ошибку DiskType-репо в чистый ports-sentinel
+// mapDiskTypeErr транслирует pgx/pgconn-ошибку DiskType-репо в чистый sentinel
 // с контрактным текстом Kachō (Q4). FK RESTRICT со стороны volumes → "DiskType <id>
-// is in use". Сырой pgx/SQL наружу не течёт (uncategorized → ports.ErrInternal).
+// is in use". Сырой pgx/SQL наружу не течёт (uncategorized → storageerr.ErrInternal).
 func mapDiskTypeErr(err error, c dtErrCtx) error {
 	if err == nil {
 		return nil
 	}
 	switch {
-	case errors.Is(err, ports.ErrNotFound), errors.Is(err, ports.ErrAlreadyExists),
-		errors.Is(err, ports.ErrFailedPrecondition), errors.Is(err, ports.ErrInvalidArg),
-		errors.Is(err, ports.ErrInternal):
+	case errors.Is(err, storageerr.ErrNotFound), errors.Is(err, storageerr.ErrAlreadyExists),
+		errors.Is(err, storageerr.ErrFailedPrecondition), errors.Is(err, storageerr.ErrInvalidArg),
+		errors.Is(err, storageerr.ErrInternal):
 		return err
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("%w: DiskType %s not found", ports.ErrNotFound, c.diskTypeID)
+		return fmt.Errorf("%w: DiskType %s not found", storageerr.ErrNotFound, c.diskTypeID)
 	}
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		switch pgErr.Code {
 		case "23505": // unique_violation — дубликат PK-слага
-			return fmt.Errorf("%w: DiskType %s already exists", ports.ErrAlreadyExists, c.diskTypeID)
+			return fmt.Errorf("%w: DiskType %s already exists", storageerr.ErrAlreadyExists, c.diskTypeID)
 		case "23503": // foreign_key_violation — volumes.disk_type_id RESTRICT (delete in-use, Q4)
 			if pgErr.ConstraintName == cnVolumeDiskTypeFK {
-				return fmt.Errorf("%w: DiskType %s is in use", ports.ErrFailedPrecondition, c.diskTypeID)
+				return fmt.Errorf("%w: DiskType %s is in use", storageerr.ErrFailedPrecondition, c.diskTypeID)
 			}
-			return fmt.Errorf("%w: disk type violates a reference constraint", ports.ErrFailedPrecondition)
+			return fmt.Errorf("%w: disk type violates a reference constraint", storageerr.ErrFailedPrecondition)
 		case "23514": // check_violation (description length / zone_ids array)
-			return fmt.Errorf("%w: Illegal argument", ports.ErrInvalidArg)
+			return fmt.Errorf("%w: Illegal argument", storageerr.ErrInvalidArg)
 		}
 		slog.Error("uncategorized postgres error mapped to internal",
 			"sqlstate", pgErr.Code, "constraint", pgErr.ConstraintName, "disk_type_id", c.diskTypeID)
-		return ports.ErrInternal
+		return storageerr.ErrInternal
 	}
 	slog.Error("uncategorized db error mapped to internal", "err", err.Error(), "disk_type_id", c.diskTypeID)
-	return ports.ErrInternal
+	return storageerr.ErrInternal
 }

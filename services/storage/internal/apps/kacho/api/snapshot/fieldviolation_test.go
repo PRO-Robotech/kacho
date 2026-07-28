@@ -15,7 +15,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports/portmock"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/repomock"
 )
 
 // violatedFields returns the field names carried by the google.rpc.BadRequest
@@ -66,7 +66,7 @@ func TestCreateOverLimitNamesTheField(t *testing.T) {
 		}
 	}
 	newUC := func() *snapshot.UseCase {
-		return snapshot.New(&portmock.SnapshotRepo{}, &portmock.PeerClient{}, nil, serviceerr.ToStatus)
+		return snapshot.New(&repomock.SnapshotRepo{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
 	}
 
 	cases := []struct {

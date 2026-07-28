@@ -17,7 +17,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
@@ -97,7 +97,7 @@ func TestImageCreateFromVolume(t *testing.T) {
 func TestImageGetNotFound(t *testing.T) {
 	r := pg.NewImageRepo(newTestPool(t))
 	_, err := r.Get(context.Background(), "img00000000000000000")
-	require.True(t, stderrors.Is(err, ports.ErrNotFound), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrNotFound), "got %v", err)
 	require.Equal(t, "Image img00000000000000000 not found", err.Error()[len("not found: "):])
 }
 
@@ -125,7 +125,7 @@ func TestImageNameUniqueRace(t *testing.T) {
 			switch {
 			case err == nil:
 				ok.Add(1)
-			case stderrors.Is(err, ports.ErrAlreadyExists):
+			case stderrors.Is(err, storageerr.ErrAlreadyExists):
 				dup.Add(1)
 				require.Equal(t, "image with name dup-img already exists in project", err.Error()[len("already exists: "):])
 			default:
@@ -158,14 +158,14 @@ func TestImageSourceFKNotFound(t *testing.T) {
 		ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-1", Name: "bad-snap-src",
 		RegionID: "ru-central1", SourceSnapshot: "snp00000000000000000",
 	}, fixtureRegionZones)
-	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, "Snapshot snp00000000000000000 not found", err.Error()[len("failed precondition: "):])
 
 	_, err = r.Insert(ctx, &domain.Image{
 		ID: ids.NewID(domain.PrefixImage), ProjectID: "prj-1", Name: "bad-vol-src",
 		RegionID: "ru-central1", SourceVolume: "vol00000000000000000",
 	}, fixtureRegionZones)
-	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, "Volume vol00000000000000000 not found", err.Error()[len("failed precondition: "):])
 }
 
@@ -230,7 +230,7 @@ func TestImageListCursorFilter(t *testing.T) {
 	require.Equal(t, "img-b", filtered[0].Name)
 
 	_, _, err = r.List(ctx, image.Pagination{PageSize: 50, ProjectID: "prj-1", PageToken: "%%%garbage%%%"})
-	require.True(t, stderrors.Is(err, ports.ErrInvalidArg), "garbage token → InvalidArg, got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrInvalidArg), "garbage token → InvalidArg, got %v", err)
 }
 
 // TestImageUpdateMutableAndNameCollision — STOR-1-22: Update name→existing →
@@ -245,7 +245,7 @@ func TestImageUpdateMutableAndNameCollision(t *testing.T) {
 
 	name := "alpha"
 	_, err := r.Update(ctx, ib.ID, image.ImageUpdate{Name: &name})
-	require.True(t, stderrors.Is(err, ports.ErrAlreadyExists), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrAlreadyExists), "got %v", err)
 
 	desc := "patched-desc"
 	_, err = r.Update(ctx, ib.ID, image.ImageUpdate{Description: &desc})

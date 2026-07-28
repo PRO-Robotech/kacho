@@ -13,7 +13,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
@@ -44,7 +44,7 @@ func TestImageSourceSnapshotDeleteSetNull(t *testing.T) {
 
 	// Снапшот ушёл.
 	_, serr := sr.Get(ctx, snapID)
-	require.True(t, stderrors.Is(serr, ports.ErrNotFound), "snapshot hard-deleted, got %v", serr)
+	require.True(t, stderrors.Is(serr, storageerr.ErrNotFound), "snapshot hard-deleted, got %v", serr)
 
 	// Image цел: source_snapshot_id очищен (lineage-clear), остальное неизменно, всё ещё READY.
 	got, err := ir.Get(ctx, img.ID)
@@ -79,7 +79,7 @@ func TestImageSourceVolumeDeleteSetNull(t *testing.T) {
 
 	// Том ушёл.
 	_, verr := vr.Get(ctx, srcVol.ID)
-	require.True(t, stderrors.Is(verr, ports.ErrNotFound), "volume hard-deleted, got %v", verr)
+	require.True(t, stderrors.Is(verr, storageerr.ErrNotFound), "volume hard-deleted, got %v", verr)
 
 	// Image цел: source_volume_id очищен, всё ещё READY.
 	got, err := ir.Get(ctx, img.ID)
