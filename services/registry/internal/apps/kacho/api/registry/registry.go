@@ -405,7 +405,7 @@ func (u *UseCase) ListRepositories(ctx context.Context, q RepoListQuery) ([]*dom
 		if next != "" {
 			return out, encodeRepoCursor(repoLaneDurable, next), nil
 		}
-		lane, cursor = repoLaneProjection, "" // полоса наложения исчерпана
+		cursor = "" // полоса наложения исчерпана — дальше только проекция, с её начала
 	}
 
 	remaining := size - int64(len(out))
