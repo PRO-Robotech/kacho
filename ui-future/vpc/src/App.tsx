@@ -27,13 +27,6 @@ import { TargetGroupDetailPage } from "@/pages/TargetGroupDetailPage";
 import { OperationsPage } from "@/pages/OperationsPage";
 import { SystemSearchPage } from "@/pages/SystemSearchPage";
 import { DashboardPage } from "@/pages/DashboardPage";
-import { IamLayout } from "@/components/organisms/iam/IamLayout";
-import { IamScopedListShell } from "@/components/organisms/iam/IamScopedListShell";
-import { UsersPage } from "@/pages/iam/UsersPage";
-import { GroupsPage } from "@/pages/iam/GroupsPage";
-import { RolesPage } from "@/pages/iam/RolesPage";
-import { AccessBindingsPage } from "@/pages/iam/AccessBindingsPage";
-import { AccessPage } from "@/pages/iam/AccessPage";
 import { AuthCallback } from "@/pages/auth/AuthCallback";
 import { SignupPage } from "@/pages/auth/SignupPage";
 import { LogoutPage } from "@/pages/auth/Logout";
@@ -324,28 +317,11 @@ export function AppRoutes() {
           />
           <Route path="/system/search" element={<SystemSearchPage />} />
 
-          {/* === IAM section ===
-                Account — global registry-driven (ResourceListPage + ?modal=).
-                Project / ServiceAccount — account-scoped (IamScopedListShell
-                фильтрует по выбранному в IAM-секции Account).
-                User / Group / AccessBinding / Access — кастомные страницы. */}
-          <Route element={<IamLayout />}>
-            <Route path="/iam" element={<Navigate to="/iam/accounts" replace />} />
-            <Route path="/iam/accounts" element={<ResourceListPage spec={REGISTRY.accounts} />} />
-            <Route path="/iam/accounts/:uid" element={<ResourceDetailPage spec={REGISTRY.accounts} />} />
-            <Route path="/iam/projects" element={<IamScopedListShell spec={REGISTRY.projects} />} />
-            <Route path="/iam/service-accounts" element={<IamScopedListShell spec={REGISTRY["service-accounts"]} />} />
-            <Route
-              path="/iam/service-accounts/:uid"
-              element={<ResourceDetailPage spec={REGISTRY["service-accounts"]} />}
-            />
-            <Route path="/iam/users" element={<UsersPage />} />
-            <Route path="/iam/groups" element={<GroupsPage />} />
-            <Route path="/iam/roles" element={<RolesPage />} />
-            <Route path="/iam/access-bindings" element={<AccessBindingsPage />} />
-            {/* KAC-125: «Права доступа» с Cascader + invite. */}
-            <Route path="/iam/access" element={<AccessPage />} />
-          </Route>
+          {/* Управления доступом здесь НЕТ: `/iam/*` обслуживает ремоут iam
+                (хост федерирует его туда), а ремоут vpc наружу отдаёт только
+                `./VpcPage`. Вторая поверхность IAM жила в этом приложении, была
+                достижима лишь в standalone-сборке и успела разойтись с
+                контрактом до неработоспособности. */}
 
           {/* KAC-199: /auth/callback и /logout вынесены наверх под public-
                 routes (Kratos session ещё не доступна в момент рендера

@@ -1,35 +1,39 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * Anti-drift authorization guard (sec-hardening-r3).
+ * Управление доступом живёт РОВНО В ОДНОЙ поверхности консоли — в ремоуте iam.
  *
- * The IAM management screens (Access Bindings / Access / Groups / Roles /
- * Users) are implemented independently in the `vpc` and `iam` micro-frontends
- * because their create/edit UX legitimately differs (vpc uses in-place modals;
- * iam uses dedicated `/iam/<x>/create` routes registered only in the iam app
- * router). See docs/architecture/known-divergences.md.
+ * Так было не всегда. Экраны выдач/доступа/групп/ролей/пользователей были
+ * реализованы ДВАЖДЫ — в `iam` и в `vpc`, — и раздвоение объявлялось допустимым,
+ * пока «security-значимые примитивы» (гейт разрешений, обёртка мутаций, типизованный
+ * клиент, разбор ошибок) остаются общими. Проверялось при этом ПРОИСХОЖДЕНИЕ
+ * импортов, а не поведение, и разъехалось именно поведение:
  *
- * That per-app presentational fork is acceptable ONLY as long as every
- * security-relevant primitive — the permission-gating hook, the IAM mutation
- * wrapper, the typed API layer and the error mapping — stays single-sourced in
- * `@shared`. If one remote were to fork the authorization logic locally, a
- * security fix to the shared path could silently miss it (the exact failure
- * scenario flagged by the 3rd audit).
+ *   форма создания роли в копии vpc слала `permissions` — поле выводимое,
+ *   только на выход, которое сервис отвергает ПЕРВЫМ ЖЕ стейтментом создания, —
+ *   и не слала `rules[]`, без которых роль не создаётся вовсе. Две независимых
+ *   причины отказа; создать роль оттуда было нельзя.
  *
- * This test fails if any IAM page in either remote:
- *   - stops importing the IAM API / mutation layer from `@shared`, or
- *   - defines a local permission-gating hook or a local IAM mutation wrapper,
- *   - calls the network directly (raw fetch / apiFetch) instead of the shared
- *     typed IAM client.
+ * Копия при этом ещё и недостижима из продукта: хост федерирует `/iam/*` в
+ * ремоут iam, а ремоут vpc наружу отдаёт только `./VpcPage`. То есть вторая
+ * поверхность существовала, расходилась и ломалась, никого не обслуживая.
+ *
+ * Поэтому инвариант теперь не «форк допустим, пока импорты общие», а «форка
+ * нет»: реализует IAM только `iam`, маршрутизирует `/iam/*` только `host` (и
+ * только в ремоут). Прежняя гарантия про общие примитивы сохранена — она
+ * по-прежнему нужна оставшейся поверхности.
  */
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
+// Приложения консоли — поимённо: новое приложение обязано попасть под сверку
+// осознанно, а не выпасть из неё молча.
+const CONSOLE_APPS = ["host", "dashboard", "shared", "vpc", "compute", "storage", "nlb", "registry", "iam", "system"];
+
 type PageSpec = {
   name: string;
-  vpc: string;
   iam: string;
   requiresPermissions?: boolean;
   /**
@@ -47,15 +51,14 @@ type PageSpec = {
 const IAM_PAGES: PageSpec[] = [
   {
     name: "AccessBindingsPage",
-    vpc: "vpc/src/pages/iam/AccessBindingsPage.tsx",
     iam: "iam/src/pages/iam/AccessBindingsPage/AccessBindingsPage.tsx",
     requiresPermissions: true,
     iamMutationDelegate: "iam/src/components/organisms/iam/AccessBindingCreateForm/AccessBindingCreateForm.tsx",
   },
-  { name: "AccessPage", vpc: "vpc/src/pages/iam/AccessPage.tsx", iam: "iam/src/pages/iam/AccessPage/AccessPage.tsx" },
-  { name: "GroupsPage", vpc: "vpc/src/pages/iam/GroupsPage.tsx", iam: "iam/src/pages/iam/GroupsPage/GroupsPage.tsx" },
-  { name: "RolesPage", vpc: "vpc/src/pages/iam/RolesPage.tsx", iam: "iam/src/pages/iam/RolesPage/RolesPage.tsx" },
-  { name: "UsersPage", vpc: "vpc/src/pages/iam/UsersPage.tsx", iam: "iam/src/pages/iam/UsersPage/UsersPage.tsx" },
+  { name: "AccessPage", iam: "iam/src/pages/iam/AccessPage/AccessPage.tsx" },
+  { name: "GroupsPage", iam: "iam/src/pages/iam/GroupsPage/GroupsPage.tsx" },
+  { name: "RolesPage", iam: "iam/src/pages/iam/RolesPage/RolesPage.tsx" },
+  { name: "UsersPage", iam: "iam/src/pages/iam/UsersPage/UsersPage.tsx" },
 ];
 
 // The gating hook and the IAM mutation wrapper must never be re-declared
@@ -92,22 +95,70 @@ function assertDelegatedSharedSourced(pageSrc: string, delegateSrc: string, requ
   assertNoLocalAuthzFork(delegateSrc);
 }
 
-describe("IAM pages keep authorization logic single-sourced in @shared", () => {
-  for (const page of IAM_PAGES) {
-    for (const app of ["vpc", "iam"] as const) {
-      const rel = page[app];
-      it(`${app}/${page.name} sources authz/mutation/API from @shared only`, () => {
-        const abs = path.join(repoRoot, rel);
-        expect(existsSync(abs)).toBe(true);
-        const src = readFileSync(abs, "utf8");
-        if (app === "iam" && page.iamMutationDelegate) {
-          const delAbs = path.join(repoRoot, page.iamMutationDelegate);
-          expect(existsSync(delAbs)).toBe(true);
-          assertDelegatedSharedSourced(src, readFileSync(delAbs, "utf8"), !!page.requiresPermissions);
-        } else {
-          assertPageSharedSourced(src, !!page.requiresPermissions);
-        }
-      });
+// tsxFiles — исходники приложения, кроме тестов.
+function tsxFiles(dir: string, out: string[] = []): string[] {
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    if (entry === "node_modules" || entry === "dist") continue;
+    const abs = path.join(dir, entry);
+    if (statSync(abs).isDirectory()) tsxFiles(abs, out);
+    else if (entry.endsWith(".tsx") && !entry.includes(".test.")) out.push(abs);
+  }
+  return out;
+}
+
+// stripComments — гейт судит по ОБЪЯВЛЕНИЯМ маршрутов, а не по прозе рядом:
+// пример в шапке компонента маршрутом не является.
+function stripComments(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+}
+
+describe("IAM management lives in exactly one console surface", () => {
+  it("the iam remote implements every IAM management screen", () => {
+    for (const page of IAM_PAGES) {
+      expect([page.name, existsSync(path.join(repoRoot, page.iam))]).toEqual([page.name, true]);
     }
+  });
+
+  it("no other app ships its own copy of the IAM screens", () => {
+    const forks = CONSOLE_APPS.filter((app) => app !== "iam").filter((app) =>
+      existsSync(path.join(repoRoot, app, "src/pages/iam")),
+    );
+    expect(forks).toEqual([]);
+  });
+
+  it("only the host routes /iam/*, and only into the remote", () => {
+    const routing = new Map<string, number>();
+    for (const app of CONSOLE_APPS) {
+      const hits = tsxFiles(path.join(repoRoot, app, "src")).flatMap((f) =>
+        [...stripComments(readFileSync(f, "utf8")).matchAll(/path="\/iam(?:\/|")/g)].map(() =>
+          path.relative(repoRoot, f),
+        ),
+      );
+      if (hits.length > 0) routing.set(app, hits.length);
+    }
+    expect([...routing.keys()]).toEqual(["host"]);
+    const hostApp = readFileSync(path.join(repoRoot, "host/src/App.tsx"), "utf8");
+    expect(hostApp).toMatch(/path="\/iam\/\*"\s+element=\{<IamRemote/);
+  });
+
+  for (const page of IAM_PAGES) {
+    it(`iam/${page.name} sources authz/mutation/API from @shared only`, () => {
+      const abs = path.join(repoRoot, page.iam);
+      expect(existsSync(abs)).toBe(true);
+      const src = readFileSync(abs, "utf8");
+      if (page.iamMutationDelegate) {
+        const delAbs = path.join(repoRoot, page.iamMutationDelegate);
+        expect(existsSync(delAbs)).toBe(true);
+        assertDelegatedSharedSourced(src, readFileSync(delAbs, "utf8"), !!page.requiresPermissions);
+      } else {
+        assertPageSharedSourced(src, !!page.requiresPermissions);
+      }
+    });
   }
 });

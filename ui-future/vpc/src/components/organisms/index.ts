@@ -1,5 +1,4 @@
 export * from "./form";
-export * from "./iam";
 export * from "@shared/components/organisms/system";
 export { AddressPoolCidrManager } from "@shared/components/organisms/AddressPoolCidrManager";
 export { AdminLayout } from "./AdminLayout";

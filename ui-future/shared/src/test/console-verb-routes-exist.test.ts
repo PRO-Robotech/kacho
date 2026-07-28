@@ -238,7 +238,7 @@ describe("console addresses only verb-routes the contract serves", () => {
     expect(routes.filter((r) => verbTail.test(r)).length).toBeGreaterThan(40);
     // Столько мест консоли адресуют действие-глагол. Число обязано меняться
     // вместе с кодом — молча уехавший в ноль разбор виден именно здесь.
-    expect(uses.length).toBe(44);
+    expect(uses.length).toBe(42);
   });
 
   it("every verb-route the console addresses exists in the contract", () => {
