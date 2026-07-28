@@ -3,7 +3,7 @@
 // substring match. Прорастает project/account breadcrumbs для каждого хита.
 
 import { useState, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useQueries } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { api } from "@shared/api/client";

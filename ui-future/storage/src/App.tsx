@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter } from "react-router";
 import { StoragePage } from "@/pages";
 
 // Standalone-обёртка storage-remote (полная интеграция). В федеративном режиме

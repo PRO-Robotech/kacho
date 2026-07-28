@@ -3,7 +3,7 @@
 // Restart/Start/Stop → POST <spec.apiPath>/{id}:verb → Operation.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams, Link, useSearchParams, useLocation } from "react-router-dom";
+import { useNavigate, useParams, Link, useSearchParams, useLocation } from "react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button, Descriptions, Dropdown, Space, Spin, Tag, Typography } from "antd";
 import type { MenuProps } from "antd";

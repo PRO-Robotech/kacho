@@ -10,7 +10,7 @@
 // На 409 ALREADY_EXISTS → inline Alert с verbatim message (KAC item #3).
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import {
   Alert,
   Button,

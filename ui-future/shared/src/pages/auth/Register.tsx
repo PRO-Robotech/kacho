@@ -12,7 +12,7 @@
 // §6.3.1 (password+TOTP fallback), §6.3.3 (HIBP rejection).
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router";
 import { Button, Form, Input, Typography, Alert, Space, Spin, Divider } from "antd";
 import { KeyOutlined, LockOutlined, MailOutlined, UserOutlined } from "@ant-design/icons";
 import { kratos, type SelfServiceFlow, csrfToken, findNode, flowMessages } from "@shared/lib/kratos";

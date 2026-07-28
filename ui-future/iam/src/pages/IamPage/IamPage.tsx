@@ -1,5 +1,5 @@
 import { useEffect, useMemo, type FC, type ReactNode } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App as AntdApp } from "antd";
 import { ThemeProvider } from "@shared/lib/theme-context";

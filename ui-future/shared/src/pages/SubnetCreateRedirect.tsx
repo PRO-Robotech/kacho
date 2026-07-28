@@ -7,7 +7,7 @@
 // NetworkDetailPage сразу развернул новую форму. Покрывает все entry-points
 // «Создать подсеть» (RowActionsMenu в списке Networks, прямые ссылки, header).
 
-import { Navigate, useParams } from "react-router-dom";
+import { Navigate, useParams } from "react-router";
 
 export function SubnetCreateRedirect() {
   const { projectId, networkId } = useParams();

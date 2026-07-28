@@ -3,7 +3,7 @@
 // со списком member'ов (User/SA) + Add/Remove.
 
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router";
 import { Button, Form, Input, Popconfirm, Select, Space, Table, Tag, Typography } from "antd";
 import { PlusOutlined, DeleteOutlined, EditOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";

@@ -16,7 +16,7 @@
 
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { Menu, Typography, Badge } from "antd";
 import { useDetailHeaderIcon } from "@/components/molecules/PanelHeader";
 

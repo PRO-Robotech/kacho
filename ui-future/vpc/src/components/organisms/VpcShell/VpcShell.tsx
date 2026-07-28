@@ -6,7 +6,7 @@
 // ResourceDetailPage в роутинге, чтобы у каждой VPC-страницы автоматически
 // был mount-point модалки.
 
-import { useParams } from "react-router-dom";
+import { useParams } from "react-router";
 import { ResourceListPage } from "@/components/organisms/ResourceListPage";
 import { ResourceDetailPage } from "@shared/components/organisms/ResourceDetailPage";
 import { ResourceFormModal } from "@shared/components/organisms/ResourceFormModal";

@@ -18,7 +18,7 @@ export default defineConfig({
         "./IamPage": "./src/pages/IamPage/index.ts",
         "./navigation": "./src/navigation.ts",
       },
-      shared: ["antd", "lucide-react", "react", "react-dom", "react-router-dom"],
+      shared: ["antd", "lucide-react", "react", "react-dom", "react-router"],
     }),
   ],
   resolve: {

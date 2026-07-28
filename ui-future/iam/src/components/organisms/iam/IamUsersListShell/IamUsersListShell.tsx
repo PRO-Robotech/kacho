@@ -7,7 +7,7 @@
 // child'ового (у users ops.create=false → generic не ставит свой CTA).
 
 import { useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { Button } from "antd";
 import { UserAddOutlined } from "@ant-design/icons";
 import { ResourceListPage } from "@/components/organisms/ResourceListPage";

@@ -8,7 +8,7 @@
 // Если loading → Spin; если user=null → redirect на /auth/login?return_to=...
 // (preserve original path для post-login redirect).
 
-import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router";
 import { Spin } from "antd";
 import { useAuth } from "@shared/contexts/AuthContext";
 

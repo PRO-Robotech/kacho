@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { jest } from "@jest/globals";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter } from "react-router";
 import { HostShell } from ".";
 
 const jsonResponse = (body: unknown) => {

@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter } from "react-router";
 import { NlbPage } from "@/pages";
 
 // Standalone-обёртка NLB-remote (полная интеграция). В федеративном режиме

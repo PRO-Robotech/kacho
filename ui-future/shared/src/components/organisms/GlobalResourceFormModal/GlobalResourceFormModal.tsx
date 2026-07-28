@@ -7,7 +7,7 @@
 // Это позволяет любой странице ставить `?modal=<spec.id>-create` и не
 // заботиться о mount'е — модалка работает автоматически.
 
-import { useLocation } from "react-router-dom";
+import { useLocation } from "react-router";
 import { ResourceFormModal } from "@shared/components/organisms/ResourceFormModal";
 
 export function GlobalResourceFormModal() {

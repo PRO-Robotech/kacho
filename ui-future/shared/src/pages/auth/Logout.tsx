@@ -9,7 +9,7 @@
 //   3. Redirect на `/` (или `?post_logout_redirect_uri=...`).
 
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import { Result, Spin, Alert, Button } from "antd";
 import { LogoutOutlined } from "@ant-design/icons";
 import { useAuth } from "@shared/contexts/AuthContext";

@@ -5,7 +5,7 @@
 //
 // Project-level Address (внешний IP) использует flat-маршрут и обычный breadcrumb.
 
-import { useParams } from "react-router-dom";
+import { useParams } from "react-router";
 import { ResourceDetailPage } from "@shared/components/organisms/ResourceDetailPage";
 import { REGISTRY } from "@shared/lib/resource-registry";
 import { useNestedBreadcrumb } from "@shared/lib/use-nested-breadcrumb";

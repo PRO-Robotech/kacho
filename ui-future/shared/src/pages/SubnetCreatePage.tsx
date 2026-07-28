@@ -3,7 +3,7 @@
 // Layout), единый panel-флоу с остальным VPC. networkId (из query) — preset +
 // возврат в подсети сети.
 
-import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams, useSearchParams } from "react-router";
 import { useMemo } from "react";
 import { Typography } from "antd";
 import { InlineSubnetCreateForm } from "@shared/components/organisms/InlineSubnetCreateForm";

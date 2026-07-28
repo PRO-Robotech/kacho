@@ -7,7 +7,7 @@
 // субъектом). CTA «Создать привязку доступа» делает navigate на неё.
 
 import { useMemo, useState } from "react";
-import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router";
 import { Button, Empty, Select, Space, Typography } from "antd";
 import { FilterOutlined, PlusOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";

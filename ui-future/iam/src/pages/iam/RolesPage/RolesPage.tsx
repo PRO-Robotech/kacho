@@ -8,7 +8,7 @@
 // редактирование открывается в зоне 3 (ResourceShell mode=edit).
 
 import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import { Button, Input, Popconfirm, Segmented, Space, Table, Tag, Typography } from "antd";
 import { PlusOutlined, DeleteOutlined, EditOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";

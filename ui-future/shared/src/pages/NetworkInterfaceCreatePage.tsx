@@ -4,7 +4,7 @@
 // через ResourceRefChips. Раньше standalone-create шёл через generic
 // ResourceCreatePage → расхождение формата + SG.
 
-import { Navigate, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams, useSearchParams } from "react-router";
 import { useMemo } from "react";
 import { Typography } from "antd";
 import { InlineNetworkInterfaceCreateForm } from "@shared/components/organisms/InlineNetworkInterfaceCreateForm";

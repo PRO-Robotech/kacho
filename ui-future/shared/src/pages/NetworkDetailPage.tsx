@@ -6,7 +6,7 @@
 // Каждый child-tab имеет Title + filter (имя или id substring) над таблицей.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Input, Space, Typography } from "antd";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";

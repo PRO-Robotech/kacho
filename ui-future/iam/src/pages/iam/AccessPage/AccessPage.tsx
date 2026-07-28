@@ -7,7 +7,7 @@
 // - Table: пользователь / роли / идентификатор / федерация / actions.
 
 import { useState, useMemo } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { Button, Cascader, Form, Input, Segmented, Select, Space, Table, Tabs, Tag, Typography, Alert } from "antd";
 import { toast } from "@shared/lib/toast";
 import { PlusOutlined, MailOutlined } from "@ant-design/icons";

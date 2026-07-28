@@ -8,7 +8,7 @@
 // registerInlineForm, а не хардкодится в shared.
 
 import { useMemo, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { PlusOutlined, KeyOutlined, StopOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Popconfirm, Table, Tag, Typography } from "antd";

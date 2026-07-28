@@ -15,7 +15,7 @@
 // как есть; отдельного linked-NIC-блока со ссылкой на vpc NetworkInterface нет.
 
 import { useCallback, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams } from "react-router";
 import { useMutation } from "@tanstack/react-query";
 import { Button, Modal, Space, Typography, Tag } from "antd";
 import { PlusOutlined, MinusOutlined } from "@ant-design/icons";

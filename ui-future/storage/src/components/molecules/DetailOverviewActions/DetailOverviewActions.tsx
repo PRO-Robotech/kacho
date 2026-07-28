@@ -6,7 +6,7 @@
 // Гейтинг: ops.update / ops.delete & not-default-SG. После удаления — переход на список.
 
 import { type ReactNode, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { Button } from "antd";
 import { EditOutlined, DeleteOutlined } from "@ant-design/icons";
 import { DeleteDialog, requiresNameConfirm } from "@/components/molecules/DeleteDialog";

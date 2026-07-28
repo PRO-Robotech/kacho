@@ -1,6 +1,6 @@
 import type { FC } from "react";
 import { Button, Empty, Typography } from "antd";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router";
 
 const MODULE_LABELS: Record<string, string> = {
   vpc: "Virtual Private Cloud",

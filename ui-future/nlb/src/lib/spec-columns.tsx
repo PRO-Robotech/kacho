@@ -4,7 +4,7 @@
 // с теми же колонками, что и /projects/X/addresses).
 
 import type { ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Typography } from "antd";
 import type { Column } from "@/components/organisms/ResourceTable";
 import { CopyableId } from "@/components/atoms/CopyableId";

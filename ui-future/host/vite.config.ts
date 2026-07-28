@@ -32,7 +32,7 @@ export default defineConfig({
         compute: process.env.KACHO_COMPUTE_REMOTE || "http://localhost:4181/assets/remoteEntry.js",
         storage: process.env.KACHO_STORAGE_REMOTE || "http://localhost:4182/assets/remoteEntry.js",
       },
-      shared: ["antd", "lucide-react", "react", "react-dom", "react-router-dom"],
+      shared: ["antd", "lucide-react", "react", "react-dom", "react-router"],
     }),
   ],
   server: {

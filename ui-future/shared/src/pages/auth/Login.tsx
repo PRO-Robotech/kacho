@@ -15,7 +15,7 @@
 // §6.2.3 (phishing-resistance — реализуется самим browser API), §6.2.4 (UV gating).
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router";
 import { Button, Card, Space, Typography, Alert, Input, Form, Divider, Spin } from "antd";
 import { KeyOutlined, LockOutlined, MailOutlined, SafetyOutlined } from "@ant-design/icons";
 import { kratos, type SelfServiceFlow, csrfToken, findNode, flowMessages } from "@shared/lib/kratos";

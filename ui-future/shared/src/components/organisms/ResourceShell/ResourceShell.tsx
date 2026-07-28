@@ -16,7 +16,7 @@
 // DETAIL_EXTENSIONS (доменный React-контент: см. resource-detail-extensions).
 
 import { type ReactNode, useMemo, useState } from "react";
-import { useParams, useNavigate, useLocation, Link } from "react-router-dom";
+import { useParams, useNavigate, useLocation, Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Descriptions, Spin, Typography } from "antd";
 import { PlusOutlined } from "@ant-design/icons";

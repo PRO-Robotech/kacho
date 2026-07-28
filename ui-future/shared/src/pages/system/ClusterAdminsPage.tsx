@@ -15,7 +15,7 @@
 // (для системы прав см. workspace CLAUDE.md §«Инфра-чувствительные данные»).
 
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { Alert, Button, Popconfirm, Space, Spin, Table, Tooltip, Typography } from "antd";
 import { DeleteOutlined, ExclamationCircleOutlined, ReloadOutlined, UserAddOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";

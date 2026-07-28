@@ -5,7 +5,7 @@
 // Протокол | Диапазон портов | Тип источника | Источник | Описание.
 
 import { useCallback, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useParams } from "react-router";
 import { ResourceDetailPage } from "@shared/components/organisms/ResourceDetailPage";
 import { ResourceFormModal } from "@shared/components/organisms/ResourceFormModal";
 import { InlineSecurityGroupEditForm } from "@shared/components/organisms/InlineSecurityGroupEditForm";

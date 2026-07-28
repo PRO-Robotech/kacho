@@ -1,7 +1,7 @@
 // ResourceCreatePage — full-page форма Create (не modal).
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { useMutation } from "@tanstack/react-query";
 import { Alert, Typography } from "antd";
 import { ResourceFormBody } from "@shared/components/organisms/form/ResourceFormBody";

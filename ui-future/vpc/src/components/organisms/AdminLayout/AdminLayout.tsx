@@ -10,7 +10,7 @@
 // "Cluster admins" от не-админов; AddressPool admin тоже admin-only через FGA.
 
 import { useMemo } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router";
 import { Space, Tabs, Typography } from "antd";
 import { GlobalResourceFormModal } from "@shared/components/organisms/GlobalResourceFormModal";
 import { usePermissions } from "@shared/lib/permissions";

@@ -14,7 +14,7 @@
 // Все мутации async → Operation (poll /operations/{id}).
 
 import { lazy, Suspense } from "react";
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router";
 import { Spin } from "antd";
 import { REGISTRY } from "@shared/lib/resource-registry";
 import { AdminLayout } from "@/components/organisms/AdminLayout";

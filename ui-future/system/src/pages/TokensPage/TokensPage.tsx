@@ -8,7 +8,7 @@
 //   User personal tokens — UserTokenService (/iam/v1/users/{id}/tokens)
 // Обе несут required_acr_min="2" (step-up) — friendly notice при отсутствии.
 
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router";
 import { TokensLayout } from "@/components/organisms/TokensLayout";
 import ServiceAccountKeysPage from "@shared/pages/system/ServiceAccountKeysPage";
 import UserTokensPage from "@shared/pages/system/UserTokensPage";

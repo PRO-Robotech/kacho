@@ -12,7 +12,7 @@
 // их много; у NIC ≤2 адреса и обычно ≤несколько SG — компактнее в "Общее").
 
 import { useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Card, Tag, Typography } from "antd";
 import { ResourceDetailPage } from "@shared/components/organisms/ResourceDetailPage";
