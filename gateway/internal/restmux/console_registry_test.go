@@ -83,6 +83,10 @@ type consoleSpec struct {
 	Fields           []consoleField
 	// TemplateKeys — точечные пути ключей объекта, который возвращает `template`.
 	TemplateKeys []string
+	// ExpandedFields — сколько полей ресурса пришло РАСКРЫТИЕМ набора-помощника.
+	// Провенанс нужен затем, что «раскрытие работает» и «раскрытие дало пусто»
+	// выглядят одинаково зелёными: без счётчика утверждать первое нельзя.
+	ExpandedFields int
 	// SanitizeSource — исходный текст `sanitize`, если ресурс его объявляет.
 	// Это последнее, что видит тело перед отправкой, и без него набор ключей
 	// формы — не набор ключей провода.
@@ -98,6 +102,39 @@ type consoleParse struct {
 	// объявленные константой и не использованные ни одним ресурсом). Сверяется с
 	// независимым подсчётом по сырому тексту.
 	FieldDecls int
+}
+
+// consoleScope — что видно в точке разбора значения.
+//
+// Помощник, разворачиваемый в `fields`, читается в СВОЕЙ области видимости:
+// параметры связаны литеральными аргументами вызова, его `const`-связывания —
+// уже разрешёнными значениями. Без этого имя поля, собранное из параметра, не
+// раскрыть — а именно так реестр выражает симметричные наборы.
+type consoleScope struct {
+	consts map[string]jsValue
+	funcs  map[string]jsFunc
+	local  map[string]jsValue
+}
+
+func (s consoleScope) lookup(name string) (jsValue, bool) {
+	if v, ok := s.local[name]; ok {
+		return v, true
+	}
+	v, ok := s.consts[name]
+	return v, ok
+}
+
+// lookupString — вид области видимости, нужный подстановке в шаблон.
+func (s consoleScope) lookupString(name string) (string, bool) {
+	v, ok := s.lookup(name)
+	if !ok || v.kind != jsString {
+		return "", false
+	}
+	return v.str, true
+}
+
+func (s consoleScope) with(local map[string]jsValue) consoleScope {
+	return consoleScope{consts: s.consts, funcs: s.funcs, local: local}
 }
 
 // parseConsoleRegistry разбирает один `resource-registry.tsx`.
@@ -118,6 +155,7 @@ func parseConsoleRegistry(file, src string, extern map[string]string) (consolePa
 		}
 		consts[name] = jsValue{kind: jsString, str: v}
 	}
+	scope := consoleScope{consts: consts, funcs: jsTopLevelArrayFuncs(src)}
 
 	registry, ok := consts["REGISTRY"]
 	if !ok {
@@ -133,9 +171,15 @@ func parseConsoleRegistry(file, src string, extern map[string]string) (consolePa
 	for _, c := range consts {
 		out.FieldDecls += countFieldDecls(c)
 	}
+	// То же и для помощников: набор, вынесенный в функцию, объявлен ОДИН раз,
+	// сколько бы раз его ни разворачивали. Считать по разворотам значило бы
+	// сверять число объявлений с числом употреблений.
+	for _, fn := range scope.funcs {
+		out.FieldDecls += countFieldDecls(fn.body)
+	}
 
 	for _, prop := range registry.obj {
-		spec, tmpl, err := parseConsoleSpec(file, prop.key, prop.val, consts)
+		spec, tmpl, err := parseConsoleSpec(file, prop.key, prop.val, scope)
 		if err != nil {
 			return out, err
 		}
@@ -158,19 +202,19 @@ func parseConsoleRegistry(file, src string, extern map[string]string) (consolePa
 
 // parseConsoleSpec вытаскивает из одного ресурса реестра то, что решает состав
 // тела: путь мутации, поддерживаемые операции, поля и шаблон.
-func parseConsoleSpec(file, id string, v jsValue, consts map[string]jsValue) (consoleSpec, jsValue, error) {
+func parseConsoleSpec(file, id string, v jsValue, scope consoleScope) (consoleSpec, jsValue, error) {
 	if v.kind != jsObject {
 		return consoleSpec{}, jsValue{}, fmt.Errorf("%s:%d: resource %q is %s, expected an object literal", file, v.line, id, v.kind)
 	}
 	s := consoleSpec{File: file, Line: v.line, ID: id}
 
-	apiPath, err := requireStringProp(file, id, v, "apiPath", consts)
+	apiPath, err := requireStringProp(file, id, v, "apiPath", scope)
 	if err != nil {
 		return consoleSpec{}, jsValue{}, err
 	}
 	s.MutationBasePath = apiPath
 	if adminV, ok := v.prop("admin"); ok {
-		resolved, err := resolveConst(adminV, consts)
+		resolved, err := resolveConst(adminV, scope)
 		if err != nil {
 			return consoleSpec{}, jsValue{}, fmt.Errorf("%s:%d: resource %q: `admin`: %w", file, adminV.line, id, err)
 		}
@@ -181,7 +225,7 @@ func parseConsoleSpec(file, id string, v jsValue, consts map[string]jsValue) (co
 		if !ok {
 			return consoleSpec{}, jsValue{}, fmt.Errorf("%s:%d: resource %q: `admin` without `basePath`", file, resolved.line, id)
 		}
-		baseStr, err := resolveString(base, consts)
+		baseStr, err := resolveString(base, scope)
 		if err != nil {
 			return consoleSpec{}, jsValue{}, fmt.Errorf("%s:%d: resource %q: `admin.basePath`: %w", file, base.line, id, err)
 		}
@@ -205,7 +249,7 @@ func parseConsoleSpec(file, id string, v jsValue, consts map[string]jsValue) (co
 	}
 
 	if fieldsV, ok := v.prop("fields"); ok {
-		s.Fields, err = parseConsoleFields(file, id, fieldsV, consts)
+		s.Fields, s.ExpandedFields, err = parseConsoleFields(file, id, fieldsV, scope)
 		if err != nil {
 			return consoleSpec{}, jsValue{}, err
 		}
@@ -230,44 +274,115 @@ func parseConsoleSpec(file, id string, v jsValue, consts map[string]jsValue) (co
 	return s, obj, nil
 }
 
-// parseConsoleFields разбирает массив `fields`. Элемент — либо объект-описание
-// поля, либо ссылка на константу того же файла. Всё прочее — ошибка: молча
-// пропущенный элемент это ровно то «ничего не нашли», ради невозможности
-// которого гейт и пишется.
-func parseConsoleFields(file, id string, v jsValue, consts map[string]jsValue) ([]consoleField, error) {
+// parseConsoleFields разбирает массив `fields`. Элемент — объект-описание поля,
+// ссылка на константу того же файла либо развёрнутый набор от помощника этого же
+// файла. Всё прочее — ошибка: молча пропущенный элемент это ровно то «ничего не
+// нашли», ради невозможности которого гейт и пишется.
+func parseConsoleFields(file, id string, v jsValue, scope consoleScope) ([]consoleField, int, error) {
 	if v.kind != jsArray {
-		return nil, fmt.Errorf("%s:%d: resource %q: `fields` is %s, expected an array literal", file, v.line, id, v.kind)
+		return nil, 0, fmt.Errorf("%s:%d: resource %q: `fields` is %s, expected an array literal", file, v.line, id, v.kind)
 	}
+	// want считается ОТДЕЛЬНО от построения out и по другому источнику: длина
+	// литерала (для развёрнутого набора — длина массива, который возвращает
+	// помощник). Иначе сверка была бы тавтологией и пропуск элемента остался бы
+	// незамеченным: дерево значений при таком дефекте полное, и сверка с сырым
+	// текстом на него не реагирует.
+	want, expanded := 0, 0
 	out := make([]consoleField, 0, len(v.arr))
 	for _, elem := range v.arr {
-		resolved, err := resolveConst(elem, consts)
+		if elem.kind == jsSpread {
+			fields, n, err := expandConsoleFieldSpread(file, id, elem, scope)
+			if err != nil {
+				return nil, 0, err
+			}
+			want += n
+			expanded += n
+			out = append(out, fields...)
+			continue
+		}
+		want++
+		resolved, err := resolveConst(elem, scope)
 		if err != nil {
-			return nil, fmt.Errorf("%s:%d: resource %q: `fields`: %w", file, elem.line, id, err)
+			return nil, 0, fmt.Errorf("%s:%d: resource %q: `fields`: %w", file, elem.line, id, err)
 		}
 		if resolved.kind != jsObject {
-			return nil, fmt.Errorf("%s:%d: resource %q: `fields` entry is %s, expected a field object or a const naming one", file, resolved.line, id, resolved.kind)
+			return nil, 0, fmt.Errorf("%s:%d: resource %q: `fields` entry is %s, expected a field object, a const naming one, or a spread of a helper of this file", file, resolved.line, id, resolved.kind)
 		}
-		f, err := parseConsoleField(file, id, resolved, consts)
+		f, err := parseConsoleField(file, id, resolved, scope)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		out = append(out, f)
 	}
-	// Каждый элемент массива обязан дать ровно одно поле. Пропуск здесь — это
-	// поле, которое форма отправит, а гейт не посмотрит; сверка с сырым текстом
-	// его НЕ поймает, потому что дерево значений при этом остаётся полным.
-	if len(out) != len(v.arr) {
-		return nil, fmt.Errorf("%s:%d: resource %q: `fields` has %d entries, extraction produced %d — extraction is dropping fields the parser already read", file, v.line, id, len(v.arr), len(out))
+	if len(out) != want {
+		return nil, 0, fmt.Errorf("%s:%d: resource %q: `fields` declares %d field(s), extraction produced %d — extraction is dropping fields the parser already read", file, v.line, id, want, len(out))
 	}
-	return out, nil
+	return out, expanded, nil
 }
 
-func parseConsoleField(file, id string, v jsValue, consts map[string]jsValue) (consoleField, error) {
+// expandConsoleFieldSpread раскрывает `...helper(args)` в набор полей.
+//
+// Почему это МОДЕЛИРУЕТСЯ, а не запрещается. Два семейства VIP-источника
+// описываются одним и тем же набором полей, различающимся подставляемым
+// именем семейства; вынести их в помощник — нормальная запись, а не уловка.
+// Требовать литералов значило бы дублировать набор ради ограничения гейта, то
+// есть навязывать стиль зоне, которой гейт не владеет, по причине, не имеющей
+// отношения к продукту.
+//
+// Почему это НЕ послабление. Раскрывается ровно одна форма: вызов помощника
+// ЭТОГО ЖЕ файла, чьё тело — связывания и возврат массива, с ЛИТЕРАЛЬНЫМИ
+// аргументами. Состав набора при этом целиком виден в исходнике и зависит
+// только от аргументов. Всё, что за пределами формы — помощник из другого
+// модуля, вычисляемый аргумент, тело с ветвлением, имя поля из выражения, —
+// по-прежнему ЛОМАЕТ разбор с указанием места.
+func expandConsoleFieldSpread(file, id string, elem jsValue, scope consoleScope) ([]consoleField, int, error) {
+	fail := func(format string, args ...any) ([]consoleField, int, error) {
+		return nil, 0, fmt.Errorf("%s:%d: resource %q: `fields` spreads %s",
+			file, elem.line, id, fmt.Sprintf(format, args...))
+	}
+	call, err := jsParseCall(elem.raw)
+	if err != nil {
+		return fail("%v", err)
+	}
+	fn, ok := scope.funcs[call.callee]
+	if !ok {
+		return fail("%s(…), which is not a helper of this file whose body is `const…; return [ … ]` — a set of fields assembled anywhere else is not declared where it is used", call.callee)
+	}
+	if len(call.args) != len(fn.params) {
+		return fail("%s(…) with %d argument(s), but it declares %d parameter(s)", call.callee, len(call.args), len(fn.params))
+	}
+
+	local := make(map[string]jsValue, len(fn.params)+len(fn.locals))
+	for i, p := range fn.params {
+		local[p] = call.args[i]
+	}
+	inner := scope.with(local)
+	// Связывания раскрываются по порядку: следующее видит предыдущие.
+	for _, l := range fn.locals {
+		v := l.val
+		if v.kind == jsTemplate {
+			s, err := jsResolveTemplate(v.raw, inner.lookupString)
+			if err != nil {
+				return fail("%s(…): local %s: %v", call.callee, l.name, err)
+			}
+			v = jsValue{kind: jsString, str: s, line: l.val.line}
+		}
+		local[l.name] = v
+	}
+
+	fields, _, err := parseConsoleFields(file, id, fn.body, inner)
+	if err != nil {
+		return nil, 0, err
+	}
+	return fields, len(fn.body.arr), nil
+}
+
+func parseConsoleField(file, id string, v jsValue, scope consoleScope) (consoleField, error) {
 	nameV, ok := v.prop("name")
 	if !ok {
 		return consoleField{}, fmt.Errorf("%s:%d: resource %q: a field without `name`", file, v.line, id)
 	}
-	name, err := resolveString(nameV, consts)
+	name, err := resolveString(nameV, scope)
 	if err != nil {
 		return consoleField{}, fmt.Errorf("%s:%d: resource %q: field `name`: %w", file, nameV.line, id, err)
 	}
@@ -292,7 +407,7 @@ func parseConsoleField(file, id string, v jsValue, consts map[string]jsValue) (c
 		*flag.dst = fv.boolV
 	}
 	if itemsV, ok := v.prop("itemFields"); ok {
-		f.ItemFields, err = parseConsoleFields(file, id, itemsV, consts)
+		f.ItemFields, _, err = parseConsoleFields(file, id, itemsV, scope)
 		if err != nil {
 			return consoleField{}, err
 		}
@@ -306,7 +421,10 @@ func countFieldDecls(v jsValue) int {
 	n := 0
 	switch v.kind {
 	case jsObject:
-		if nv, ok := v.prop("name"); ok && nv.kind == jsString {
+		// Имя поля записывается тремя способами — литералом, шаблоном и ссылкой
+		// на связывание. Считать только литералы значило бы объявить остальные
+		// два «не объявлениями» и вывести их из-под сверки.
+		if nv, ok := v.prop("name"); ok && isFieldNameValue(nv.kind) {
 			n++
 		}
 		for _, p := range v.obj {
@@ -320,12 +438,12 @@ func countFieldDecls(v jsValue) int {
 	return n
 }
 
-func requireStringProp(file, id string, v jsValue, key string, consts map[string]jsValue) (string, error) {
+func requireStringProp(file, id string, v jsValue, key string, scope consoleScope) (string, error) {
 	pv, ok := v.prop(key)
 	if !ok {
 		return "", fmt.Errorf("%s:%d: resource %q has no `%s`", file, v.line, id, key)
 	}
-	s, err := resolveString(pv, consts)
+	s, err := resolveString(pv, scope)
 	if err != nil {
 		return "", fmt.Errorf("%s:%d: resource %q: `%s`: %w", file, pv.line, id, key, err)
 	}
@@ -343,29 +461,42 @@ func boolProp(file, id string, ops jsValue, key string) (bool, error) {
 	return pv.boolV, nil
 }
 
-// resolveConst разворачивает ссылку на константу того же файла. Неизвестное имя
-// — ошибка: поле, объявленное там, куда разбор не дотянулся, иначе просто
-// исчезло бы из проверки.
-func resolveConst(v jsValue, consts map[string]jsValue) (jsValue, error) {
+// isFieldNameValue — формы, в которых может быть записано имя поля.
+func isFieldNameValue(k jsKind) bool {
+	return k == jsString || k == jsTemplate || k == jsIdent
+}
+
+// resolveConst разворачивает ссылку на имя, видимое в текущей области. Имя, не
+// разрешающееся ни во что, — ошибка: поле, объявленное там, куда разбор не
+// дотянулся, иначе просто исчезло бы из проверки.
+func resolveConst(v jsValue, scope consoleScope) (jsValue, error) {
 	if v.kind != jsIdent {
 		return v, nil
 	}
-	c, ok := consts[v.str]
+	c, ok := scope.lookup(v.str)
 	if !ok {
-		return jsValue{}, fmt.Errorf("reference to %q, which is not a top-level const of this file", v.str)
+		return jsValue{}, fmt.Errorf("reference to %q, which resolves to nothing visible here: neither a top-level const of this file nor a binding of the helper being expanded", v.str)
 	}
 	return c, nil
 }
 
-func resolveString(v jsValue, consts map[string]jsValue) (string, error) {
-	r, err := resolveConst(v, consts)
+// resolveString приводит значение к строке в текущей области видимости.
+//
+// Шаблон раскрывается подстановкой ГОЛЫХ имён; выражение внутри `${…}` означает,
+// что имя поля вычисляется, а вычисленного имени в контракте нет — отказ.
+func resolveString(v jsValue, scope consoleScope) (string, error) {
+	r, err := resolveConst(v, scope)
 	if err != nil {
 		return "", err
 	}
-	if r.kind != jsString {
+	switch r.kind {
+	case jsString:
+		return r.str, nil
+	case jsTemplate:
+		return jsResolveTemplate(r.raw, scope.lookupString)
+	default:
 		return "", fmt.Errorf("value is %s, expected a string literal", r.kind)
 	}
-	return r.str, nil
 }
 
 // objectKeyPaths раскладывает объектный литерал в точечные пути ключей.

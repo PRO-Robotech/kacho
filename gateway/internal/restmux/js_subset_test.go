@@ -23,6 +23,7 @@ package restmux
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -33,10 +34,16 @@ const (
 	jsObject jsKind = "an object literal"
 	jsArray  jsKind = "an array literal"
 	jsString jsKind = "a string literal"
-	jsNumber jsKind = "a number literal"
-	jsBool   jsKind = "a boolean literal"
-	jsNull   jsKind = "a null literal"
-	jsIdent  jsKind = "an identifier"
+	// jsTemplate — шаблонный литерал с подстановкой (`` `${family}_source` ``).
+	// Строкой он становится только в известной области видимости, поэтому и
+	// хранится отдельно от jsString: «строка, которую ещё некому раскрыть».
+	jsTemplate jsKind = "a template literal"
+	jsNumber   jsKind = "a number literal"
+	jsBool     jsKind = "a boolean literal"
+	jsNull     jsKind = "a null literal"
+	jsIdent    jsKind = "an identifier"
+	// jsSpread — `...expr` элементом массива.
+	jsSpread jsKind = "a spread element"
 	jsOpaque jsKind = "an expression this scanner does not model"
 )
 
@@ -118,6 +125,257 @@ func jsTopLevelConsts(text string) (map[string]jsValue, error) {
 			return nil, fmt.Errorf("line %d: const %s: %w", src.line(off), name, err)
 		}
 		out[name] = v
+	}
+	return out, nil
+}
+
+// jsFunc — top-level функция, ТЕЛО которой сводится к «несколько связываний,
+// затем возврат массива».
+//
+// Это единственная форма композиции, которую разбор моделирует, и она выбрана не
+// произвольно: реестр выносит в помощник симметричные наборы полей (два
+// семейства VIP-источника), различающиеся подставляемым аргументом. Форма
+// остаётся ДЕКЛАРАТИВНОЙ — состав набора виден в исходнике целиком, зависит
+// только от аргументов вызова и ни от чего больше. Функция с ветвлением,
+// циклом или вычислением состава сюда не попадает и, будучи развёрнутой в
+// `fields`, ЛОМАЕТ разбор: моделируется узкая форма, всё прочее — громкий отказ.
+type jsFunc struct {
+	name   string
+	params []string
+	// locals — связывания `const x = …` до возврата, в порядке объявления.
+	locals []jsLocal
+	// body — возвращаемый массив.
+	body jsValue
+	line int
+}
+
+type jsLocal struct {
+	name string
+	val  jsValue
+}
+
+// jsTopLevelArrayFuncs собирает top-level функции описанной выше формы.
+//
+// Сбор best-effort: файл полон функций-компонентов, и требовать формы от всех
+// значило бы сломать разбор на том, что к составу тела отношения не имеет.
+// Строгость наступает в точке использования: развёрнут в `fields` помощник,
+// которого здесь нет, — отказ с его именем.
+func jsTopLevelArrayFuncs(text string) map[string]jsFunc {
+	src := newJSSource(text)
+	out := make(map[string]jsFunc)
+	for _, start := range src.starts {
+		rest := text[start:]
+		decl := rest
+		if strings.HasPrefix(decl, "export ") {
+			decl = decl[len("export "):]
+		}
+		if !strings.HasPrefix(decl, "function ") {
+			continue
+		}
+		off := start + (len(rest) - len(decl)) + len("function ")
+		name, after := jsReadIdent(text, off)
+		if name == "" {
+			continue
+		}
+		fn, ok := jsParseArrayFunc(src, name, src.line(off), after)
+		if !ok {
+			continue
+		}
+		out[name] = fn
+	}
+	return out
+}
+
+func jsParseArrayFunc(src *jsSource, name string, line, i int) (jsFunc, bool) {
+	text := src.text
+	i = jsSkipTrivia(text, i)
+	if i >= len(text) || text[i] != '(' {
+		return jsFunc{}, false
+	}
+	params, i, ok := jsParseParamNames(text, i)
+	if !ok {
+		return jsFunc{}, false
+	}
+	// Между `)` и телом стоит аннотация возвращаемого типа; она к делу не
+	// относится, поэтому просто доходим до открывающей скобки тела.
+	brace := strings.IndexByte(text[i:], '{')
+	if brace < 0 {
+		return jsFunc{}, false
+	}
+	i += brace + 1
+
+	fn := jsFunc{name: name, params: params, line: line}
+	for {
+		i = jsSkipTrivia(text, i)
+		if i >= len(text) {
+			return jsFunc{}, false
+		}
+		switch {
+		case strings.HasPrefix(text[i:], "const "):
+			local, next, ok := jsParseLocalConst(src, i+len("const "))
+			if !ok {
+				return jsFunc{}, false
+			}
+			fn.locals = append(fn.locals, local)
+			i = next
+		case strings.HasPrefix(text[i:], "return "):
+			v, _, err := jsParseValue(src, i+len("return "))
+			if err != nil || v.kind != jsArray {
+				return jsFunc{}, false
+			}
+			fn.body = v
+			return fn, true
+		default:
+			// Любой другой оператор выводит функцию из моделируемой формы.
+			return jsFunc{}, false
+		}
+	}
+}
+
+// jsParseParamNames читает имена параметров, пропуская аннотации типов и
+// значения по умолчанию. Параметр-деструктуризация формой не поддерживается.
+func jsParseParamNames(text string, i int) ([]string, int, bool) {
+	depth := 0
+	var params []string
+	expectName := true
+	for i < len(text) {
+		i = jsSkipTrivia(text, i)
+		if i >= len(text) {
+			return nil, 0, false
+		}
+		switch c := text[i]; {
+		case c == '(' || c == '<' || c == '[' || c == '{':
+			if c == '(' && depth == 0 {
+				depth++
+				i++
+				continue
+			}
+			if c == '{' || c == '[' {
+				return nil, 0, false // деструктуризация — вне формы
+			}
+			depth++
+			i++
+		case c == ')':
+			depth--
+			i++
+			if depth == 0 {
+				return params, i, true
+			}
+		case c == '>':
+			depth--
+			i++
+		case c == ',':
+			expectName = depth == 1
+			i++
+		case c == '"' || c == '\'':
+			end, err := jsSkipQuoted(text, i)
+			if err != nil {
+				return nil, 0, false
+			}
+			i = end
+		case isIdentByte(c, true):
+			name, end := jsReadIdent(text, i)
+			if expectName && depth == 1 {
+				params = append(params, name)
+				expectName = false
+			}
+			i = end
+		default:
+			i++
+		}
+	}
+	return nil, 0, false
+}
+
+func jsParseLocalConst(src *jsSource, i int) (jsLocal, int, bool) {
+	text := src.text
+	name, after := jsReadIdent(text, i)
+	if name == "" {
+		return jsLocal{}, 0, false
+	}
+	eq, err := jsFindAssign(text, after)
+	if err != nil {
+		return jsLocal{}, 0, false
+	}
+	v, end, err := jsParseValue(src, eq+1)
+	if err != nil {
+		return jsLocal{}, 0, false
+	}
+	if end < len(text) && text[end] == ';' {
+		end++
+	}
+	return jsLocal{name: name, val: v}, end, true
+}
+
+// jsCall — разобранный вызов `helper(arg, …)` с литеральными аргументами.
+type jsCall struct {
+	callee string
+	args   []jsValue
+}
+
+// jsParseCall разбирает вызов. Аргумент, не являющийся литералом, — отказ:
+// состав набора обязан быть виден в исходнике, а не вычисляться.
+func jsParseCall(raw string) (jsCall, error) {
+	src := newJSSource(raw)
+	name, i := jsReadIdent(raw, 0)
+	if name == "" {
+		return jsCall{}, fmt.Errorf("%s is not a call to a named helper", jsExcerpt(raw))
+	}
+	i = jsSkipTrivia(raw, i)
+	if i >= len(raw) || raw[i] != '(' {
+		return jsCall{}, fmt.Errorf("%s is not a call to a named helper", jsExcerpt(raw))
+	}
+	call := jsCall{callee: name}
+	i++
+	for {
+		i = jsSkipTrivia(raw, i)
+		if i >= len(raw) {
+			return jsCall{}, fmt.Errorf("unterminated call %s", jsExcerpt(raw))
+		}
+		if raw[i] == ')' {
+			return call, nil
+		}
+		if raw[i] == ',' {
+			i++
+			continue
+		}
+		v, end, err := jsParseValue(src, i)
+		if err != nil {
+			return jsCall{}, err
+		}
+		switch v.kind {
+		case jsString, jsNumber, jsBool, jsNull:
+		default:
+			return jsCall{}, fmt.Errorf("argument %d of %s(…) is %s, expected a literal: a set of fields that depends on a computed argument is not declared anywhere", len(call.args)+1, name, v.kind)
+		}
+		call.args = append(call.args, v)
+		i = end
+	}
+}
+
+// jsTemplateSubstitution — `${…}` внутри шаблонного литерала.
+var jsTemplateSubstitution = regexp.MustCompile(`\$\{([^{}]*)\}`)
+
+// jsResolveTemplate раскрывает шаблонный литерал в области видимости.
+//
+// Подставляется ТОЛЬКО голое имя, разрешающееся в строку: любое выражение внутри
+// `${…}` означает, что имя поля вычисляется, а вычисленного имени поля в
+// контракте нет — такое честнее отвергнуть, чем угадать.
+func jsResolveTemplate(raw string, scope func(string) (string, bool)) (string, error) {
+	var bad string
+	out := jsTemplateSubstitution.ReplaceAllStringFunc(raw, func(m string) string {
+		expr := strings.TrimSpace(jsTemplateSubstitution.FindStringSubmatch(m)[1])
+		v, ok := scope(expr)
+		if !ok {
+			if bad == "" {
+				bad = expr
+			}
+			return m
+		}
+		return v
+	})
+	if bad != "" {
+		return "", fmt.Errorf("template substitution ${%s} does not resolve to a string in scope", bad)
 	}
 	return out, nil
 }
@@ -219,8 +477,9 @@ func jsParseValue(src *jsSource, i int) (jsValue, int, error) {
 		}
 		body := text[i+1 : end-1]
 		if strings.Contains(body, "${") {
-			// Подстановка — уже выражение, а не литерал.
-			return jsValue{kind: jsOpaque, raw: text[i:end], line: line}, end, nil
+			// Строкой станет только в области видимости, где известны
+			// подставляемые имена; до тех пор — шаблон, не строка.
+			return structural(jsValue{kind: jsTemplate, raw: body, line: line}, end)
 		}
 		return structural(jsValue{kind: jsString, str: body, line: line}, end)
 	case c >= '0' && c <= '9', c == '-' || c == '+':
@@ -322,6 +581,16 @@ func jsParseArray(src *jsSource, i int) ([]jsValue, int, error) {
 		}
 		if text[i] == ',' {
 			i++
+			continue
+		}
+		if strings.HasPrefix(text[i:], "...") {
+			line := src.line(i)
+			end, err := jsScanExpr(text, i+3)
+			if err != nil {
+				return nil, 0, err
+			}
+			elems = append(elems, jsValue{kind: jsSpread, raw: strings.TrimSpace(text[i+3 : end]), line: line})
+			i = end
 			continue
 		}
 		v, end, err := jsParseValue(src, i)
