@@ -56,7 +56,8 @@ make docker                             # build context = parent dir (sibling re
 - **Conventional Commits** + `KAC-<N>` в commit-message.
 - **Branch per ticket** — `git checkout -b KAC-<N>` от `main`.
 - **No `Co-Authored-By: Claude*`** trailers (workspace CLAUDE.md).
-- **No `yandex`** в коде / комментариях (workspace CLAUDE.md §запрет 2).
+- **Никаких чужих облаков** в коде / комментариях (workspace CLAUDE.md §запрет 2);
+  гейт — `go run ./tools/foreignclouds/cmd/verify-no-foreign-clouds`.
 - **Test-first** — RED (падающий тест) → код фикса (GREEN). Newman-кейс / integration-тест
   до кода фичи; PR без тестов в том же PR не мерж'ат (запрет #11).
 

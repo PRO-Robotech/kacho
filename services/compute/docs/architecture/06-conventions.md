@@ -16,10 +16,11 @@ Compute-specific правила, error mapping, top-10 gotchas. Workspace-уро
 | Env-переменные | `KACHO_COMPUTE_<NAME>` (`KACHO_COMPUTE_DB_HOST`, `KACHO_COMPUTE_GRPC_PORT`, `KACHO_COMPUTE_INTERNAL_PORT`, `KACHO_COMPUTE_VPC_GRPC_ADDR`, `KACHO_COMPUTE_IAM_GRPC_ADDR`, `KACHO_COMPUTE_SKIP_PEER_VALIDATION`, `KACHO_COMPUTE_WATCH_MAX_STREAMS`, `KACHO_COMPUTE_AUTH_MODE`, ...) |
 | Коммиты | Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`, `test:`, `ci:`, `refactor:`); подпись — git-config репозитория; **НЕ** добавлять `Co-Authored-By` (локальный проект); коммит, закрывающий issue — trailer `Closes #N` |
 
-**НЕ упоминать «yandex»** в handwritten-коде, README, комментариях, env-name,
-именах функций (workspace `CLAUDE.md` §запрет 2). Proto-mirror naming
-(`IpVersion`, `SetXxxId`, `OneToOneNat` и т.п.) сохраняется — переименование
-сломало бы proto-API.
+**НЕ упоминать чужие облака** в handwritten-коде, README, комментариях, env-name,
+именах функций (workspace `CLAUDE.md` §запрет 2). Конкретные имена провайдеров
+перечислены в самом гейте — `tools/foreignclouds`, — а не здесь: документ,
+формулирующий запрет, не обязан его нарушать. Proto-mirror naming (`IpVersion`,
+`SetXxxId`, `OneToOneNat` и т.п.) сохраняется — переименование сломало бы proto-API.
 
 ## Resource ID format
 
@@ -314,7 +315,8 @@ Zero-overhead, миграция не нужна. Используется в `Up
 - НЕ возвращать ресурс синхронно из мутирующих RPC — все мутации через `Operation`.
 - НЕ делать каскадное удаление через границу сервиса — только same-DB FK.
 - НЕ использовать ORM (gorm/ent/bun) — только sqlc + handwritten pgx.
-- НЕ упоминать «yandex» в handwritten-коде/README/комментариях/env-name.
+- НЕ упоминать чужие облака в handwritten-коде/README/комментариях/env-name
+  (гейт — `go run ./tools/foreignclouds/cmd/verify-no-foreign-clouds`).
 
 ## Где фиксировать находки
 

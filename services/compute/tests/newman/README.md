@@ -24,14 +24,12 @@ tests/newman/
 ├── collections/             — СГЕНЕРИРОВАННЫЕ Postman-коллекции (по ресурсу) — НЕ править руками
 │   └── {…}.postman_collection.json
 ├── environments/
-│   ├── local.postman_environment.json   — local stand (port-forward api-gateway → 18080)
-│   └── yc.postman_environment.json       — реальный Yandex Cloud (baseUrl → yc-proxy на :18081)
+│   └── local.postman_environment.json   — local stand (port-forward api-gateway → 18080)
 ├── scripts/
 │   ├── gen.py                — генератор коллекций из cases/* (Postman v2.1 JSON)
 │   ├── run.sh                — прогон одного/всех ресурсов целиком (newman + JSON reporter → out/)
-│   ├── run-incremental.sh    — прогон ПО ОДНОМУ кейсу за раз + зачистка ресурсов после каждого (quota-safe, как для YC); --resume / --failed / --cases / --cleanup-only
-│   ├── run-incremental.js    — драйвер (newman library API — без per-case process startup; env SERVICES=... / CASES=... ограничивает список)
-│   └── yc-proxy.js           — локальный reverse-proxy для прогона против реального YC: /compute/v1/*→compute.api, /operations/*→operation.api, /resource-manager/*→resource-manager.api, /vpc/v1/*→vpc.api, подставляет Bearer (yc iam create-token)
+│   ├── run-incremental.sh    — прогон ПО ОДНОМУ кейсу за раз + зачистка ресурсов после каждого (quota-safe); --resume / --failed / --cases / --cleanup-only
+│   └── run-incremental.js    — драйвер (newman library API — без per-case process startup; env SERVICES=... / CASES=... ограничивает список)
 ├── docs/
 │   ├── TAXONOMY.md            — классы кейсов и naming convention
 │   ├── TEST-PLAN.md           — карта покрытия (RPC × класс)
@@ -65,32 +63,18 @@ python3 scripts/gen.py            # все ресурсы; или: python3 scrip
 #     тюнинг через env: CLEANUP_EVERY (как часто periodic-cleanup, default 25), DELAY_REQUEST (ms, default 30), SERVICES='r1 r2 ...'
 ```
 
-## Прогон против реального YC Compute API (parity-аудит)
-
-Всё, что ≠ YC, считаем багом (или намеренным divergence — в `docs/architecture/07-known-divergences.md`).
-Нужен сконфигурированный `yc` CLI и выделенная throwaway-folder в YC (cleanup-pass стирает в ней
-все instances/snapshots/images/disks). Реальные network/subnet/SG в этой folder — создать заранее
-и подставить в `environments/yc.postman_environment.json` (placeholders `REPLACE-WITH-REAL-YC-*`).
-
-```bash
-node scripts/yc-proxy.js &                            # локальный reverse-proxy :18081 (compute.api / operation.api / resource-manager.api / vpc.api + Bearer)
-#   в environments/yc.postman_environment.json подставь свою throwaway-folder в existingFolderId/CrossId + реальные network/subnet/SG
-ENV=environments/yc.postman_environment.json \
-  SERVICES='disk image snapshot instance disk-type zone operation' \
-  ./scripts/run-incremental.sh                        # результат → out/incremental/{progress.tsv, summary.txt, failed/<id>.json}; упавшие = расхождения с YC
-```
-
 ## Принципы (из testing-product-coach)
 
 - **Black-box**: тестируем продукт через публичный gRPC/REST api-gateway, не код. Тест не знает о
   SQLSTATE, имени constraint'а, конкретной БД.
-- **Источник истины**: acceptance-spec + proto-определения (`kacho-proto/.../compute/v1/`) + reference YC.
+- **Источник истины**: acceptance-spec + proto-определения (`kacho-proto/.../compute/v1/`).
 - **Изоляция**: каждый case-сценарий внутри своего `runId`; suite внутри pre-allocated
   `existingFolderId`/`existingFolderCrossId` (env), Org/Cloud/Folder **не создаёт**; имена суффиксуются `{{runId}}`.
 - **LRO-poll**: каждая мутация (`Create/Update/Delete/Move/Relocate/Start/Stop/Restart/Attach/Detach/NAT/UpdateMetadata`)
   → `Operation` → poll `GET /operations/{id}` (retry до 8 раз через `setNextRequest`) до `done=true` → assert `response`/`error`.
 - **Формальные техники**: ECP, BVA, decision tables, state transition, error guessing, security — все классы кейсов выводятся системно.
-- **Conformance**: каждый кейс должен зеленеть и против YC (`--env yc` через yc-proxy).
+- **Conformance**: кейс проверяет контракт Kachō — форму ресурса, коды и тон ошибок,
+  sync-vs-async — против proto и acceptance-дока, а не против чужого API.
 - **Risk-prioritization**: high-risk зоны (security, data-integrity FK, Instance state-машина, Disk-delete-while-attached) — P0, больше кейсов.
 
 См. подробности в `docs/TAXONOMY.md`. Cross-service зависимости (Instance NIC → kacho-vpc subnet/SG;

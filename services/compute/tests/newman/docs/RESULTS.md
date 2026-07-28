@@ -18,7 +18,8 @@
 ### Сверка с контрактом — задокументированные нюансы (НЕ баги продукта, findings для acceptance-author)
 
 1. **Gateway `DiscardUnknown: true`** (`gateway/internal/restmux/mux.go`) — retired/reserved поля
-   (`platformId`/`resourcesSpec`/`gce_*`/`aws_*`/`hostGroupId`) **молча отбрасываются**, а НЕ `400 unknown field`.
+   (`platformId`/`resourcesSpec`/ретайренные brand-flavoured поля `MetadataOptions`/`hostGroupId`)
+   **молча отбрасываются**, а НЕ `400 unknown field`.
    Поэтому acceptance-формулировка F2/F9 «легаси-поле → 400 unknown field» **не наблюдаема** через gateway.
    Retire залочен наблюдаемыми инвариантами: **single-channel** (`INST-RD-CR-VAL-RAW-SIZING-RETIRED`:
    legacy-only sizing → `400 machineTypeId is required`) + **field-absence на выводе** (`INST-RD-GET-CONF-FIELD-ABSENCE`).
@@ -199,7 +200,7 @@ Attach-path уже конформен (`InstanceService.AttachDisk` вызыва
 | §3.11 Risk-Based | ✅ priority P0..P3 tagging — P0 на security/data-integrity/state-machine/Disk-delete-while-attached |
 | §4.1 Smoke | ✅ P0/P1 кейсы — фактический smoke |
 | §4.2 Functional regression | ✅ полная suite (296 кейсов) |
-| §4.3 Conformance | ✅ CONF class: id-prefix, created_at до секунд, Operation.response=Empty, NF-text формат, BASIC-view metadata omission; зеркало против YC через `yc-proxy.js` |
+| §4.3 Conformance | ✅ CONF class: id-prefix, created_at до секунд, Operation.response=Empty, NF-text формат, BASIC-view metadata omission — против proto + acceptance-дока |
 | §4.4 Performance | → перенесено в k6 (`tests/k6/`) |
 | §4.5-4.8 Load/Stress/Soak/Spike | → k6 |
 | §4.10 Security | ✅ `security_injection_block` (SQLi/union/XSS/cmd/path/longpayload × name + filter) |

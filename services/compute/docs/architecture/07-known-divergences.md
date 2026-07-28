@@ -767,13 +767,15 @@ sentinel→code в отдельный слой (если когда-либо) �
   `service.ValidateCreateInstanceReq` (синхронная pre-flight валидация Create) и
   `handler.CreateReqFromProto` (proto→use-case конвертация); `Create`-методы теперь их
   вызывают. 12s fuzz-burst: 137 new-interesting, 0 crashers.
-- **ban #2 (чужие облака) — literal-токены `yandex`/`Yandex` вычищены из
-  architecture-докладов.** `00-overview.md` (контракт-позиционирование, package-note,
-  секция «Стабильность внешнего контракта»), `ARCHITECTURE.md`, `docs/architecture/README.md`,
+- **ban #2 (чужие облака) — имя провайдера вычищено из architecture-докладов.**
+  `00-overview.md` (контракт-позиционирование, package-note, секция «Стабильность
+  внешнего контракта»), `ARCHITECTURE.md`, `docs/architecture/README.md`,
   `07-known-divergences.md` (шапка) переписаны в own-product терминах (замороженный
   контракт продукта в `kacho.cloud.compute.v1`), без имени/хостнейма чужого облака
-  (finding r9b#6). Rule-statement'ы в `06-conventions.md` (сам запрет «НЕ упоминать
-  yandex») — сохранены осознанно (они формулируют ban).
+  (finding r9b#6). Rule-statement'ы в `06-conventions.md` (сам запрет) прежде
+  сохраняли имя провайдера «осознанно, они формулируют ban» — это отменено:
+  формулировка запрета не обязана его нарушать, а сам запрет теперь энфорсится
+  гейтом `tools/foreignclouds`, который и держит список имён.
 - **LEAN: comment-drift `«LRU eviction»` исправлен.** `authzfilter.Config.CacheMaxEntries`
   / `config.ListFilterCacheMaxEntries` обещали «LRU eviction», а `putCache` сбрасывает
   **произвольную** запись (TTL — первичный механизм). Комментарии приведены в

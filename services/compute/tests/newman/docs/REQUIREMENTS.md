@@ -41,7 +41,7 @@ YC Compute API, чтобы заменить плейсхолдеры `# probe-ne
 | TEST-03 | `existingPlatformId=standard-v3` должен быть в seeded таблице платформ (`internal/service/platforms.go`); если другой набор — поправить env | Instance.Create требует валидный platform_id + соответствующий cores-set |
 | TEST-04 | `existingDiskTypeId=network-ssd` присутствует в seed (✓ — `0001_initial.sql`); проверить что доступен в `existingZoneId` | Disk/Instance boot-disk создаются с этим типом |
 | TEST-05 | Желательно: api-gateway должен резолвить `compute` backend (сейчас на :18080 — 503 "name resolver error: produced zero addresses" — compute не задеплоен) | без задеплоенного compute сьюту нельзя прогнать |
-| TEST-06 | Зеркало против реального YC (`scripts/yc-proxy.js`): нужна выделенная throwaway-folder в YC + реальные network/subnet/SG в ней; подставить в `environments/yc.postman_environment.json` (placeholders `REPLACE-WITH-REAL-YC-*`) | parity-аудит — всё, что ≠ YC = баг |
+| TEST-06 | ~~Зеркало против чужого облака~~ — снято. Reverse-proxy и его environment удалены: они существовали только чтобы ходить в чужой API, что запрещено вторым non-negotiable. Источник истины для conformance — proto + acceptance-док | контракт Kachō проверяется против собственной спеки, а не против чужого продукта |
 
 ## C. Покрытие, которое стоит добавить (enhancement, не блокирует)
 

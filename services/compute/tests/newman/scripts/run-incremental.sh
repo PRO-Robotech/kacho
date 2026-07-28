@@ -10,7 +10,7 @@
 #   ./scripts/run-incremental.sh --service disk # один ресурс
 #   ./scripts/run-incremental.sh --cleanup-only # только зачистить тест-папки
 #   CLEANUP_EVERY=10 DELAY_REQUEST=20 ./scripts/run-incremental.sh   # тюнинг
-#   ENV=environments/yc.postman_environment.json SERVICES='disk image snapshot instance disk-type operation' ./scripts/run-incremental.sh   # против реального YC
+#   ENV=environments/<файл>.postman_environment.json SERVICES='disk image snapshot instance disk-type operation' ./scripts/run-incremental.sh   # другой стенд
 #
 # Требует: api-gateway доступен по baseUrl из env-файла (локально — port-forward на 18080);
 #          newman установлен (`npm install -g newman`); node >= 18.
