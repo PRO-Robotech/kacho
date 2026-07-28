@@ -166,7 +166,9 @@ func (h *RegistryHandler) ListRepositories(ctx context.Context, req *registryv1.
 	}
 	resp := &registryv1.ListRepositoriesResponse{NextPageToken: next}
 	for _, r := range filtered {
-		resp.Repositories = append(resp.Repositories, toProtoRepository(r))
+		// Тот же конвертер, что у поштучного чтения (GetRepository): у одного объекта
+		// одна публичная проекция, независимо от того, как его спросили.
+		resp.Repositories = append(resp.Repositories, h.uc.ProtoRepository(r))
 	}
 	return resp, nil
 }

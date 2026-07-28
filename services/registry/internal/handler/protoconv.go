@@ -20,35 +20,12 @@ type operationProto = operationpb.Operation
 // единый источник в use-case (UseCase.ProtoRegistry), т.к. endpoint зависит от
 // конфигурируемой base. Handler зовёт h.uc.ProtoRegistry, отдельного конвертера
 // Registry в transport-слое нет.
-
-// toProtoRepository конвертирует domain.Repository → registryv1.Repository.
-func toProtoRepository(r *domain.Repository) *registryv1.Repository {
-	if r == nil {
-		return nil
-	}
-	var types []registryv1.ArtifactType
-	if len(r.ArtifactTypes) > 0 {
-		types = make([]registryv1.ArtifactType, len(r.ArtifactTypes))
-		for i, at := range r.ArtifactTypes {
-			types[i] = registryv1.ArtifactType(at) // domain↔proto parity int32
-		}
-	}
-	return &registryv1.Repository{
-		RegistryId:    r.RegistryID,
-		Name:          r.Name,
-		Description:   r.Description,                       // overlay (durable); пусто у ephemeral
-		Labels:        r.Labels,                            // overlay (durable); пусто у ephemeral
-		Visibility:    registryv1.Visibility(r.Visibility), // overlay-authoritative (PRIVATE default)
-		CreatedAt:     prototime.Truncate(r.CreatedAt),     // overlay created_at; пусто у ephemeral
-		TagCount:      r.TagCount,
-		SizeBytes:     r.SizeBytes,
-		UpdatedAt:     prototime.Truncate(r.UpdatedAt),
-		ArtifactType:  registryv1.ArtifactType(r.ArtifactType), // domain↔proto parity int32
-		ArtifactTypes: types,
-		LastPulledAt:  prototime.Truncate(r.LastPulledAt),
-		DownloadCount: r.DownloadCount,
-	}
-}
+//
+// Проекция domain.Repository → registryv1.Repository — тоже ЕДИНЫЙ источник
+// (UseCase.ProtoRepository), и её зовут ОБА пути: поштучное чтение и список. Второй
+// конвертер в transport-слое существовал и не переносил lifecycle, из-за чего один и тот
+// же репозиторий выглядел по-разному в зависимости от того, как его спросили. Два
+// конвертера одного типа расходятся молча — поэтому конвертер один.
 
 // toProtoTag конвертирует domain.Tag → registryv1.Tag.
 func toProtoTag(t *domain.Tag) *registryv1.Tag {

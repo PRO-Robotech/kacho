@@ -11,7 +11,12 @@
 // Authz читает caller-principal из ctx (populated principal-extract интерсептором на
 // public-листенере) и Check'ает через InternalIAMService.Check по mTLS. Fail-closed:
 // iam недоступен → Unavailable (не нефильтрованный список, не «deny»). breakglass
-// (nil Authorizer) → bypass, как и у interceptor'а.
+// (nil Authorizer) → bypass ПРОВЕРКИ ПРАВ, но НЕ требования личности.
+//
+// Личность обязательна БЕЗУСЛОВНО (callerSubject, первым делом в каждом гейте). За этими
+// RPC нет per-RPC Check интерсептора, на который можно откатиться: он отдаёт passthrough
+// ДО извлечения субъекта (ScopeFiltered). Значит запрос, не назвавший никого, обязан
+// отсекаться здесь — и до того, как ветка breakglass успеет что-либо пропустить.
 package handler
 
 import (
@@ -71,46 +76,81 @@ type repoAuthz struct{ az Authorizer }
 
 func newRepoAuthz(az Authorizer) repoAuthz { return repoAuthz{az: az} }
 
-// subjectFromContext — FGA subject-строка аутентифицированного principal из ctx.
-func subjectFromContext(ctx context.Context) string {
-	p := operations.PrincipalFromContext(ctx)
-	return authz.FormatSubject(p.Type, p.ID)
+// callerSubject — FGA subject-строка вызывающего. Ошибка, если запрос не назвал НИКОГО:
+// субъект не подставляется и не выводится, он либо есть, либо запроса нет.
+//
+// Три случая «никого», и все три обязаны отвергаться одинаково:
+//   - ctx не нёс principal'а вовсе (нет credential'а / нет форвардера). Брать здесь
+//     PrincipalFromContext нельзя: он отдаёт fallback {system, bootstrap}, который
+//     форматируется в субъект уровня начальной загрузки — то есть безымянный запрос
+//     спрашивал бы права от имени учётки, которой на кластере разрешено всё;
+//   - principal несёт зарезервированное слово анонимности (edge пометил запрос без
+//     credential'а) — именованная анонимность личностью не является;
+//   - тип principal'а не называет тенантного субъекта (user / service_account) либо id
+//     содержит FGA-разделители: FormatSubject в обоих случаях СОБЕРЁТ какую-то строку
+//     (system→user:<id>, битый id→user:unknown), и вызывающий получил бы субъекта,
+//     которым не является.
+func callerSubject(ctx context.Context) (string, error) {
+	p, ok := operations.PrincipalFromContextOK(ctx)
+	if !ok || p.IsAnonymous() {
+		return "", errUnnamedCaller()
+	}
+	if p.Type != subjectTypeUser && p.Type != subjectTypeServiceAccount {
+		return "", errUnnamedCaller()
+	}
+	subject := authz.FormatSubject(p.Type, p.ID)
+	if subject != p.Type+":"+p.ID {
+		// FormatSubject подменил id (FGA-разделители) — субъект не назван, а сконструирован.
+		return "", errUnnamedCaller()
+	}
+	return subject, nil
 }
 
-// check — единичный Check против объекта. breakglass (nil az) → allow. Ошибка az —
+// Типы principal'ов, которые вправе быть субъектом tenant-facing RPC реестра.
+const (
+	subjectTypeUser           = "user"
+	subjectTypeServiceAccount = "service_account"
+)
+
+// checkAs — единичный Check заданного субъекта против объекта. breakglass (nil az) →
+// allow (субъект к этому моменту уже установлен вызывающим гейтом). Ошибка az —
 // проброс наружу (caller маппит в Unavailable, fail-closed).
-func (a repoAuthz) check(ctx context.Context, relation, object string) (bool, error) {
+func (a repoAuthz) checkAs(ctx context.Context, subject, relation, object string) (bool, error) {
 	if a.az == nil {
 		return true, nil
 	}
-	return a.az.Check(ctx, subjectFromContext(ctx), relation, object)
+	return a.az.Check(ctx, subject, relation, object)
+}
+
+// gate — общая форма всех call-gate'ов: личность → Check → решение. onDeny задаёт, как
+// выглядит отказ этого гейта (existence-hiding NOT_FOUND либо честный PERMISSION_DENIED).
+// Отсутствие личности — отдельный, ПЕРВЫЙ исход: не «deny прав» и не «iam недоступен».
+func (a repoAuthz) gate(ctx context.Context, relation, object string, onDeny error) error {
+	subject, serr := callerSubject(ctx)
+	if serr != nil {
+		return serr
+	}
+	allowed, err := a.checkAs(ctx, subject, relation, object)
+	if err != nil {
+		return errAuthzUnavailable()
+	}
+	if !allowed {
+		return onDeny
+	}
+	return nil
 }
 
 // namespaceGate — call-gate: subject обязан иметь v_list на registry_registry:<reg>.
 // deny → NOT_FOUND (existence-hiding); az-error → UNAVAILABLE (fail-closed).
 func (a repoAuthz) namespaceGate(ctx context.Context, registryID string) error {
-	allowed, err := a.check(ctx, relationVList, registryObjectRef(registryID))
-	if err != nil {
-		return errAuthzUnavailable()
-	}
-	if !allowed {
-		return errHideExistence()
-	}
-	return nil
+	return a.gate(ctx, relationVList, registryObjectRef(registryID), errHideExistence())
 }
 
 // checkRepo — per-repo verb-Check (ListTags v_list / DeleteTag v_delete). deny →
 // NOT_FOUND (existence-hiding — не раскрывать существование чужого repo); az-error →
 // UNAVAILABLE.
 func (a repoAuthz) checkRepo(ctx context.Context, registryID, repository, relation string) error {
-	allowed, err := a.check(ctx, relation, repositoryObjectRef(registryID, repository))
-	if err != nil {
-		return errAuthzUnavailable()
-	}
-	if !allowed {
-		return errHideExistence()
-	}
-	return nil
+	return a.gate(ctx, relation, repositoryObjectRef(registryID, repository), errHideExistence())
 }
 
 // checkRepository — per-repo verb-Check config-overlay Repository RPC (GetRepository
@@ -119,28 +159,14 @@ func (a repoAuthz) checkRepo(ctx context.Context, registryID, repository, relati
 // (existence-hiding, БАЙТ-В-БАЙТ с use-case failNotFound — unauthorized неотличимо от
 // absent, A08/C02/A15); az-error → UNAVAILABLE (fail-closed).
 func (a repoAuthz) checkRepository(ctx context.Context, registryID, repository, relation string) error {
-	allowed, err := a.check(ctx, relation, repositoryObjectRef(registryID, repository))
-	if err != nil {
-		return errAuthzUnavailable()
-	}
-	if !allowed {
-		return errRepoHideExistence()
-	}
-	return nil
+	return a.gate(ctx, relation, repositoryObjectRef(registryID, repository), errRepoHideExistence())
 }
 
 // registryGate — namespace call-gate по заданному verb-relation на registry_registry:
 // <reg> (CreateRepository v_create — невидимый реестр existence-hidden, X04). deny →
 // NOT_FOUND (existence-hiding); az-error → UNAVAILABLE (fail-closed).
 func (a repoAuthz) registryGate(ctx context.Context, registryID, relation string) error {
-	allowed, err := a.check(ctx, relation, registryObjectRef(registryID))
-	if err != nil {
-		return errAuthzUnavailable()
-	}
-	if !allowed {
-		return errHideExistence()
-	}
-	return nil
+	return a.gate(ctx, relation, registryObjectRef(registryID), errHideExistence())
 }
 
 // requireRegistryAdmin — admin-gate any-path-to-PUBLIC (D-6): subject обязан держать
@@ -149,14 +175,7 @@ func (a repoAuthz) registryGate(ctx context.Context, registryID, relation string
 // PERMISSION_DENIED с contract-текстом msg (B02/B08/B10); az-error → UNAVAILABLE.
 // breakglass (nil az) → allow.
 func (a repoAuthz) requireRegistryAdmin(ctx context.Context, registryID, msg string) error {
-	allowed, err := a.check(ctx, relationAdmin, registryObjectRef(registryID))
-	if err != nil {
-		return errAuthzUnavailable()
-	}
-	if !allowed {
-		return status.Error(codes.PermissionDenied, msg)
-	}
-	return nil
+	return a.gate(ctx, relationAdmin, registryObjectRef(registryID), status.Error(codes.PermissionDenied, msg))
 }
 
 // filterRegistries — row-filter коллекции реестров: оставляет только реестры, на
@@ -169,10 +188,13 @@ func (a repoAuthz) requireRegistryAdmin(ctx context.Context, registryID, msg str
 // числу реестров страницы). Результат детерминирован (indexed slice сохраняет входной
 // порядок).
 func (a repoAuthz) filterRegistries(ctx context.Context, regs []*domain.Registry) ([]*domain.Registry, error) {
+	subject, serr := callerSubject(ctx)
+	if serr != nil {
+		return nil, serr
+	}
 	if a.az == nil {
 		return regs, nil
 	}
-	subject := subjectFromContext(ctx)
 	allowed := make([]bool, len(regs))
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(repoAuthzConcurrency)
@@ -207,10 +229,13 @@ func (a repoAuthz) filterRegistries(ctx context.Context, regs []*domain.Registry
 // bounded-concurrency (repoAuthzConcurrency) — паритет с data-plane serveCatalog.
 // Результат детерминирован (indexed slice сохраняет входной порядок имён ASC).
 func (a repoAuthz) filterRepos(ctx context.Context, registryID string, repos []*domain.Repository) ([]*domain.Repository, error) {
+	subject, serr := callerSubject(ctx)
+	if serr != nil {
+		return nil, serr
+	}
 	if a.az == nil {
 		return repos, nil
 	}
-	subject := subjectFromContext(ctx)
 	allowed := make([]bool, len(repos))
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(repoAuthzConcurrency)
@@ -253,10 +278,13 @@ func (a repoAuthz) filterRepos(ctx context.Context, registryID string, repos []*
 // (fail-closed, не отдаём частичный список — паритет с filterRepos/filterRegistries).
 // Fan-out bounded-concurrency (repoAuthzConcurrency), детерминированный порядок.
 func (a repoAuthz) filterOperations(ctx context.Context, registryID string, ops []operations.Operation) ([]operations.Operation, error) {
+	subject, serr := callerSubject(ctx)
+	if serr != nil {
+		return nil, serr
+	}
 	if a.az == nil {
 		return ops, nil
 	}
-	subject := subjectFromContext(ctx)
 	keep := make([]bool, len(ops))
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(repoAuthzConcurrency)
@@ -328,4 +356,13 @@ func errRepoHideExistence() error { return status.Error(codes.NotFound, "reposit
 // errAuthzUnavailable — iam.Check недоступен: fail-closed UNAVAILABLE.
 func errAuthzUnavailable() error {
 	return status.Error(codes.Unavailable, "authorization service unavailable")
+}
+
+// errUnnamedCaller — запрос не назвал никого. Код и текст — те же, что даёт
+// per-RPC-гейт интерсептора безымянному запросу на любом ОСТАЛЬНОМ RPC сервиса
+// (DecisionDenied → PERMISSION_DENIED "permission denied"). Паритет намеренный: иначе
+// сам код ответа сообщал бы неаутентифицированному пробующему, какие RPC авторизуются
+// на уровне данных, а какие — интерсептором.
+func errUnnamedCaller() error {
+	return status.Error(codes.PermissionDenied, "permission denied")
 }

@@ -12,7 +12,7 @@ import (
 )
 
 // TestArtifactType_ProtoParity фиксирует численную parity domain↔proto: маппинг в
-// toProtoRepository — прямой int32-каст, поэтому reorder/renumber одного из enum'ов
+// ProtoRepository — прямой int32-каст, поэтому reorder/renumber одного из enum'ов
 // молча испортил бы тип. Тест ловит такой дрейф (red).
 func TestArtifactType_ProtoParity(t *testing.T) {
 	pairs := []struct {
@@ -49,9 +49,11 @@ func TestArtifactType_RegistryStatusParity(t *testing.T) {
 	}
 }
 
-// TestToProtoRepository_MapsArtifactType проверяет, что transport-конвертер
-// переносит ArtifactType в proto-проекцию (иначе UI-фильтр остался бы слепым).
-func TestToProtoRepository_MapsArtifactType(t *testing.T) {
+// TestProtoRepository_MapsArtifactType проверяет, что конвертер публичной проекции
+// репозитория переносит ArtifactType (иначе UI-фильтр остался бы слепым). Конвертер
+// ОДИН на оба пути чтения (поштучное и списочное) — см. protoconv.go.
+func TestProtoRepository_MapsArtifactType(t *testing.T) {
+	uc := newTestHandler(&fakeZotH{}, nil).uc
 	cases := []struct {
 		in   domain.ArtifactType
 		want registryv1.ArtifactType
@@ -62,9 +64,9 @@ func TestToProtoRepository_MapsArtifactType(t *testing.T) {
 		{domain.ArtifactTypeUnspecified, registryv1.ArtifactType_ARTIFACT_TYPE_UNSPECIFIED},
 	}
 	for _, tc := range cases {
-		got := toProtoRepository(&domain.Repository{RegistryID: "reg-x", Name: "app", ArtifactType: tc.in})
+		got := uc.ProtoRepository(&domain.Repository{RegistryID: "reg-x", Name: "app", ArtifactType: tc.in})
 		if got.GetArtifactType() != tc.want {
-			t.Errorf("toProtoRepository ArtifactType = %s, want %s", got.GetArtifactType(), tc.want)
+			t.Errorf("ProtoRepository ArtifactType = %s, want %s", got.GetArtifactType(), tc.want)
 		}
 	}
 }
