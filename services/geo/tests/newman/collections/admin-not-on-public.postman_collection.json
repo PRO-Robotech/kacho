@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "8c21e5f2-38d4-4e43-b91e-c917503bf7f0",
+    "_postman_id": "347927ef-26fb-4241-9e4c-8cd086c27836",
     "name": "kacho-geo / newman / admin-not-on-public",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -48,15 +48,6 @@
                 "v1",
                 "regions"
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"id\": \"qa-anp-reg-{{runId}}\", \"name\": \"QA ANP Region {{runId}}\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -67,6 +58,13 @@
                 "exec": [
                   "pm.test('public endpoint rejects Internal Create (routing-miss, not 200)', () => {",
                   "  pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.be.oneOf([403, 404, 405, 501]);",
+                  "});",
+                  "let _d; try { _d = pm.response.json(); } catch (e) { _d = null; }",
+                  "pm.test('403 here must be an UNCATALOGUED-method denial, not a permission check on a live route', () => {",
+                  "  if (pm.response.code !== 403) return;",
+                  "  const types = [];",
+                  "  ((_d && _d.details) || []).forEach(d => ((d && d.violations) || []).forEach(v => types.push(v && v.type)));",
+                  "  pm.expect(types, JSON.stringify(_d)).to.include('authz.catalog');",
                   "});"
                 ]
               }
@@ -288,15 +286,6 @@
                 "v1",
                 "zones"
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"id\": \"qa-anp-zr-{{runId}}-a\", \"regionId\": \"qa-anp-zr-{{runId}}\", \"name\": \"QA ANP Zone {{runId}}\", \"status\": \"UP\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -307,6 +296,13 @@
                 "exec": [
                   "pm.test('public endpoint rejects Internal Create (routing-miss, not 200)', () => {",
                   "  pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.be.oneOf([403, 404, 405, 501]);",
+                  "});",
+                  "let _d; try { _d = pm.response.json(); } catch (e) { _d = null; }",
+                  "pm.test('403 here must be an UNCATALOGUED-method denial, not a permission check on a live route', () => {",
+                  "  if (pm.response.code !== 403) return;",
+                  "  const types = [];",
+                  "  ((_d && _d.details) || []).forEach(d => ((d && d.violations) || []).forEach(v => types.push(v && v.type)));",
+                  "  pm.expect(types, JSON.stringify(_d)).to.include('authz.catalog');",
                   "});"
                 ]
               }

@@ -446,8 +446,14 @@ CASES.append(Case(
     title="Update mask=region_id → sync 400 INVALID_ARGUMENT 'region_id is immutable after Image.Create' (immutable-switch ДО UpdateMask)",
     classes=["STATE", "VAL", "CONF"], priority="P1",
     # verifies STOR-1-22
+    # The MASK carries the assertion, and only the mask. `regionId` is not a
+    # field of UpdateImageRequest by design — an immutable placement anchor is
+    # not expressible in Update — so a `regionId` key in the body would be
+    # dropped at the edge before the service ever saw it: present in the
+    # fixture, absent from the contract, read by no one. Same shape as
+    # IMG-UPD-MASK-IMMUTABLE-FORMAT below, which never carried one.
     steps=[Step(name="patch-imm-region", method="PATCH", path=f"{IMG}/{{{{garbageImageId}}}}",
-                body={"updateMask": "regionId", "regionId": "{{existingRegionId}}"},
+                body={"updateMask": "regionId"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                              *_assert_msg("region_id is immutable after Image.Create")])],
 ))
@@ -457,8 +463,10 @@ CASES.append(Case(
     title="Update mask=source_snapshot_id → sync 400 INVALID_ARGUMENT 'source_snapshot_id is immutable after Image.Create'",
     classes=["STATE", "VAL", "CONF"], priority="P1",
     # verifies STOR-1-22
+    # Mask-driven, as above: `sourceSnapshotId` is not a field of
+    # UpdateImageRequest — the origin of an image cannot be restated after Create.
     steps=[Step(name="patch-imm-src", method="PATCH", path=f"{IMG}/{{{{garbageImageId}}}}",
-                body={"updateMask": "sourceSnapshotId", "sourceSnapshotId": "{{garbageSnapshotId}}"},
+                body={"updateMask": "sourceSnapshotId"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                              *_assert_msg("source_snapshot_id is immutable after Image.Create")])],
 ))

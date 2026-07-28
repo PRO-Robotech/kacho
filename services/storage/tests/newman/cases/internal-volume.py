@@ -15,8 +15,11 @@ RPC синхронные (CAS мгновенный); tenant-facing async ост�
 
 BLACK-BOX (runnable здесь через external baseUrl) — INV-7a «Internal-only»:
   Attach/Detach/ListAttachments/GetInternal НЕ маршрутизируются на external endpoint
-  → POST bare-gRPC-path на external → 404 (route absent). Это часть CS1-S4-11
-  («маршрут отсутствует на external»), провокабельная black-box.
+  → POST bare-gRPC-path на external НЕ обслуживается. Это часть CS1-S4-11 («маршрут
+  отсутствует на external»), провокабельная black-box. Что именно наблюдаемо — см.
+  _assert_403_means_uncatalogued ниже: authz-слой края стоит перед маршрутизацией,
+  поэтому «нет маршрута» и «нет прав» приходят одним кодом и обязаны различаться по
+  типу нарушения, а не приниматься оба на веру.
 
 NOT black-box (integration-only, testcontainers — НЕ здесь):
   - CS1-S4-01 Attach happy CAS-insert / derived IN_USE / used_by;
@@ -40,31 +43,52 @@ CASES = []
 # На EXTERNAL endpoint этот путь НЕ зарегистрирован → 404 (INV-7a).
 _SVC = "/kacho.cloud.storage.v1.InternalVolumeService"
 
-_INTERNAL_METHODS = [
-    ("ATTACH", "Attach", {"volumeId": "{{garbageStorageId}}", "instanceId": "ins-newman-fake",
-                          "instanceZoneId": "{{existingZoneId}}", "projectId": "{{_suiteFolderId}}",
-                          "deviceName": "sdb"}),
-    ("DETACH", "Detach", {"volumeId": "{{garbageStorageId}}", "instanceId": "ins-newman-fake"}),
-    ("LISTATTACHMENTS", "ListAttachments", {"instanceIds": ["ins-newman-fake"]}),
-    ("GETINTERNAL", "GetInternal", {"volumeId": "{{garbageStorageId}}"}),
-]
+_INTERNAL_METHODS = ["Attach", "Detach", "ListAttachments", "GetInternal"]
 
-for _cid, _method, _body in _INTERNAL_METHODS:
+
+def _assert_403_means_uncatalogued():
+    """Различитель: отказ по правам ≠ отсутствие маршрута.
+
+    Эти пробы бьют в путь, которого на публичном крае нет НАМЕРЕННО (ban #6). Но
+    authz-слой края стоит ПЕРЕД маршрутизацией, и на пару (метод, путь), которой нет
+    в каталоге прав, он fail-closed отвечает 403 — тем же кодом, каким отвечает на
+    ЖИВОЙ маршрут, куда у вызывающего нет доступа. Прежняя формулировка кейса прямо
+    заявляла, что «403 доказывает то же, что 404» — не доказывает: кейс, довольный
+    любым не-200, остался бы зелёным ровно в том регрессе, который он сторожит —
+    когда Internal*-RPC засветился на внешнем крае, а конкретный актор просто не имел
+    на него прав.
+
+    Наблюдаемое различие: отказ по КАТАЛОГУ несёт нарушение типа `authz.catalog`
+    (левый токен причины «catalog: no entry for method»); решение о правах на
+    конкретный объект несёт `authz.no_path` / тип по отношению. Требуем первое.
+    Коды 404/405/501 сами по себе означают «не обслуживается» — там различать нечего.
+    """
+    return [
+        "let _d; try { _d = pm.response.json(); } catch (e) { _d = null; }",
+        "pm.test('403 here must be an UNCATALOGUED-method denial, not a permission check on a live route', () => {",
+        "  if (pm.response.code !== 403) return;",
+        "  const types = [];",
+        "  ((_d && _d.details) || []).forEach(d => ((d && d.violations) || []).forEach(v => types.push(v && v.type)));",
+        "  pm.expect(types, JSON.stringify(_d)).to.include('authz.catalog');",
+        "});",
+    ]
+
+
+for _method in _INTERNAL_METHODS:
     CASES.append(Case(
-        id=f"IVOL-{_cid}-EXTERNAL-ABSENT",
-        title=f"POST {_SVC}/{_method} на external endpoint → route absent (Internal-only :9091, ban #6/INV-7) → 404",
+        id=f"IVOL-{_method.upper()}-EXTERNAL-ABSENT",
+        title=f"POST {_SVC}/{_method} на external endpoint → not served there (Internal-only :9091, ban #6/INV-7)",
         classes=["SEC", "NEG", "AUTHZ"], priority="P0",
         # verifies CS1-S4-11 (INV-7a: InternalVolumeService not routed on external mux)
-        steps=[Step(name=_method.lower(), method="POST", path=f"{_SVC}/{_method}", body=_body,
+        #
+        # Тела нет и быть не должно: предмет пробы — что этой пары (метод, путь) на
+        # публичном крае НЕТ. Контракта запроса не существует, разбирать нечего;
+        # заполненный attach-payload лишь создавал бы впечатление, что край его
+        # взвесил, — он не доходит ни до одного разборщика.
+        steps=[Step(name=_method.lower(), method="POST", path=f"{_SVC}/{_method}",
                     test_script=[
-                        # An Internal-only method has NO entry in the external permission
-                        # catalog, so the api-gateway authz middleware fail-closes it as
-                        # 403 PERMISSION_DENIED (uncatalogued → AUTHZ_DENIED) BEFORE any
-                        # route/backend dispatch — it never reaches storage. 403 proves
-                        # "not usable on external" exactly as 404/405/501 do (authz-first,
-                        # security.md #4). Accept it alongside route-absent codes.
                         "pm.test('InternalVolumeService not exposed on external endpoint', () => pm.expect(pm.response.code).to.be.oneOf([403, 404, 405, 501]));",
-                        "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                        "pm.test('no attach-CAS leak (never reaches storage on external)', () => pm.expect(JSON.stringify(j || {}).toLowerCase()).to.not.include('sqlstate'));",
+                        *_assert_403_means_uncatalogued(),
+                        "pm.test('no attach-CAS leak (never reaches storage on external)', () => pm.expect(JSON.stringify(_d || {}).toLowerCase()).to.not.include('sqlstate'));",
                     ])],
     ))

@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "46594ced-ccb2-407a-9dec-903c1c509931",
+    "_postman_id": "800c55a8-c0b8-4c66-8a4e-3946c69895a3",
     "name": "kacho-storage / newman / image",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -3393,7 +3393,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"regionId\", \"regionId\": \"{{existingRegionId}}\"}",
+              "raw": "{\"updateMask\": \"regionId\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3448,7 +3448,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"sourceSnapshotId\", \"sourceSnapshotId\": \"{{garbageSnapshotId}}\"}",
+              "raw": "{\"updateMask\": \"sourceSnapshotId\"}",
               "options": {
                 "raw": {
                   "language": "json"

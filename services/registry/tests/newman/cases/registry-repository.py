@@ -459,19 +459,24 @@ CASES.append(Case(
 ))
 
 # D-5 (CONF: cross-registry rename структурно невыразим): RenameRepositoryRequest несёт
-# только bare `new_name` — поля целевого реестра НЕТ. Смугленные body-поля
-# (registryId/targetRegistryId) на :rename игнорируются (registry_id берётся из URL-пути;
-# unknown-поля дропает grpc-gateway) → rename остаётся ВНУТРИ {{repoRegId}}. Локает, что
-# ресурс нельзя увести в чужой реестр через body (anti-smuggle).
+# `registry_id` (связан сегментом URL-пути), `repository` и bare `new_name` — поля
+# ЦЕЛЕВОГО реестра нет вовсе. Отсюда две разные гарантии, и кейс держит именно ту,
+# которую можно проверить телом:
+#   • «увести в чужой реестр» невыразимо СТРУКТУРНО — такого поля в контракте нет.
+#     Слать выдуманный `targetRegistryId` бессмысленно: край выбросит ключ до разбора,
+#     и проба сказала бы о сервисе ровно ничего, выглядя при этом как проверка.
+#   • `registryId` — НАСТОЯЩЕЕ поле сообщения, поэтому его подмена в теле проверяема:
+#     путь обязан выиграть у тела (grpc-gateway накладывает path-параметры поверх
+#     разобранного тела) → rename остаётся ВНУТРИ {{repoRegId}}. Это и есть anti-smuggle.
 CASES.append(Case(
     id="REPO-REN-CROSS-REGISTRY-STRUCTURAL",  # verifies RG-1-A16
-    title="RenameRepository — smuggled target-registry body fields ignored; rename stays within same registry (D-5)",
+    title="RenameRepository — smuggled registryId in body loses to the URL path; rename stays within same registry (D-5)",
     classes=["CONF"], priority="P2",
     steps=[
         *_create_repo("xreg/src-{{runId}}"),
         Step(name="rename-smuggle", method="POST", path=_reg_base() + "/xreg/src-{{runId}}:rename",
              body={"newName": "xreg/dst-{{runId}}",
-                   "registryId": "reg00000000smuggled0", "targetRegistryId": "reg00000000smuggled0"},
+                   "registryId": "reg00000000smuggled0"},
              test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
                           *save_operation_id()]),
         poll_operation_until_done(),

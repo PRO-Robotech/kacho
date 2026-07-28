@@ -324,8 +324,12 @@ CASES.append(Case(
     title="Update mask=zone_id → sync 400 INVALID_ARGUMENT 'zone_id is immutable after Volume.Create' (immutable-switch до UpdateMask)",
     classes=["STATE", "VAL", "CONF"], priority="P1",
     # verifies CS1-S1-05
+    # The MASK carries the assertion. `zoneId` is not a field of
+    # UpdateVolumeRequest by design — a placement anchor is not expressible in
+    # Update — so such a body key would be dropped at the edge before the
+    # service saw it: present in the fixture, absent from the contract.
     steps=[Step(name="patch-imm-zone", method="PATCH", path=f"{VOL}/{{{{garbageStorageId}}}}",
-                body={"updateMask": "zoneId", "zoneId": "{{existingZoneAltId}}"},
+                body={"updateMask": "zoneId"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                              *_assert_msg("zone_id is immutable after Volume.Create")])],
 ))
@@ -335,8 +339,9 @@ CASES.append(Case(
     title="Update mask=disk_type_id → sync 400 INVALID_ARGUMENT 'disk_type_id is immutable after Volume.Create'",
     classes=["STATE", "VAL", "CONF"], priority="P1",
     # verifies CS1-S1-05
+    # Mask-driven, as above: `diskTypeId` is not a field of UpdateVolumeRequest.
     steps=[Step(name="patch-imm-dt", method="PATCH", path=f"{VOL}/{{{{garbageStorageId}}}}",
-                body={"updateMask": "diskTypeId", "diskTypeId": "block-fast"},
+                body={"updateMask": "diskTypeId"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                              *_assert_msg("disk_type_id is immutable after Volume.Create")])],
 ))

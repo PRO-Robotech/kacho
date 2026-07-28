@@ -235,8 +235,12 @@ CASES.append(Case(
     title="Update mask=source_volume_id → sync 400 INVALID_ARGUMENT 'source_volume_id is immutable after Snapshot.Create'",
     classes=["STATE", "VAL", "CONF"], priority="P1",
     # verifies CS1-S3-05
+    # The MASK carries the assertion. `sourceVolumeId` is not a field of
+    # UpdateSnapshotRequest by design (the origin of a snapshot is fixed at
+    # Create), so such a body key would be dropped at the edge before the
+    # service saw it — present in the fixture, absent from the contract.
     steps=[Step(name="patch-imm-src", method="PATCH", path=f"{SNP}/{{{{garbageSnapshotId}}}}",
-                body={"updateMask": "sourceVolumeId", "sourceVolumeId": "{{garbageStorageId}}"},
+                body={"updateMask": "sourceVolumeId"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                              *_assert_msg("source_volume_id is immutable after Snapshot.Create")])],
 ))
