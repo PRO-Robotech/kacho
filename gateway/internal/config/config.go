@@ -515,7 +515,7 @@ func (c Config) ResolvedHydraJWKSURL() string {
 // Empty means the revocation check is not configured. The composition root
 // refuses to start a production-class gateway in that state.
 func (c Config) ResolvedHydraIntrospectionURL() string {
-	return c.HydraIntrospectionURL
+	return strings.TrimSpace(c.HydraIntrospectionURL)
 }
 
 // ResolvedHydraAdminURL returns the admin API base, or the empty string when
@@ -523,7 +523,7 @@ func (c Config) ResolvedHydraIntrospectionURL() string {
 // above: the admin API is not the issuer, and a guessed base sends the logout
 // handler's provider-side session kill to whatever answers on the issuer host.
 func (c Config) ResolvedHydraAdminURL() string {
-	return c.HydraAdminURL
+	return strings.TrimSpace(c.HydraAdminURL)
 }
 
 // ExpectedAudience returns the audience value injected in tokens for this
