@@ -19,7 +19,8 @@ import (
 //   - Get/Update/Delete/ListOps  → object-self `storage_<res>:<res_id>`, tier viewer/editor;
 //   - DiskType Get/List          → viewer на cluster singleton (глобальный read-only каталог);
 //   - InternalVolume Attach/Detach/GetInternal → object-self `storage_volume:<volume_id>`;
-//   - InternalVolume ListAttachments → viewer на cluster (cluster-wide internal listing);
+//   - InternalVolume ListAttachments → ScopeFiltered: единичного объекта нет (инстансы
+//     называет вызывающий), видимость решается per-object в use-case;
 //   - InternalImage GetInternal  → object-self `storage_image:<image_id>`, tier viewer;
 //   - InternalDiskType CRUD      → system_admin на cluster singleton (admin каталог).
 //
@@ -50,8 +51,11 @@ const (
 )
 
 // staticClusterCatalog — extractor, всегда возвращающий (cluster, cluster_kacho_root).
-// Используется для глобального read-only каталога (DiskType), admin-CRUD
-// (InternalDiskType) и cluster-wide internal listing (ListAttachments).
+// Используется ТОЛЬКО там, где предмет вопроса действительно кластерный: глобальный
+// read-only каталог (DiskType) и admin-CRUD над ним (InternalDiskType). Данные
+// конкретных тенантов на этот объект вешать нельзя — `cluster:<root>#viewer@user:*`
+// пишет bootstrap, поэтому cluster-`viewer` пропускает любого аутентифицированного
+// субъекта (см. запись ListAttachments ниже).
 func staticClusterCatalog() authz.ObjectExtractor {
 	return func(any) (string, string, error) {
 		return objectTypeCluster, clusterSingletonObject, nil
@@ -131,7 +135,30 @@ func PermissionMap() authz.RPCMap {
 			func(req any) (string, error) { return req.(*storagev1.DetachVolumeRequest).GetVolumeId(), nil }),
 		"/kacho.cloud.storage.v1.InternalVolumeService/GetInternal": scoped(relationViewer, objectTypeVolume, "storage.volumes.getInternal",
 			func(req any) (string, error) { return req.(*storagev1.GetInternalVolumeRequest).GetVolumeId(), nil }),
-		"/kacho.cloud.storage.v1.InternalVolumeService/ListAttachments": viewerCluster("storage.volumes.listAttachments"),
+		// ListAttachments авторизуется НА УРОВНЕ ДАННЫХ, а не единичным per-RPC
+		// Check'ом. Инстансы называет ВЫЗЫВАЮЩИЙ, а ответ касается томов, у каждого
+		// из которых свой владелец — одного объекта, про который можно спросить
+		// заранее, здесь нет.
+		//
+		// Раньше спрашивали `viewer` на синглтоне `cluster:cluster_kacho_root`. Это
+		// relation ГЛОБАЛЬНОГО СПРАВОЧНИКА (регионы, зоны, типы дисков), и bootstrap
+		// кластера намеренно пишет `cluster:<root>#viewer@user:*`, чтобы справочник
+		// читал любой аутентифицированный субъект. То есть проверка пропускала всех и
+		// отдавала привязки любых названных инстансов — из чужих проектов и чужих
+		// аккаунтов. Привязки томов справочными данными не являются.
+		//
+		// ScopeFiltered=true: интерсептор пропускает Check (DecisionInternal), а
+		// volume.UseCase сужает прочитанную страницу per-object (`viewer` на
+		// `storage_volume:<id>`, батчами ≤100) — тем же предикатом, которым энфорсится
+		// Volume.Get. Фильтр обязателен на развёрнутом стенде: production boot-guard
+		// (config.Validate) отказывается стартовать при ListFilterEnabled=false.
+		// Вызывающий без извлечённой identity отсекается в use-case БЕЗУСЛОВНО — в
+		// отличие от публичных List, за которыми остаётся per-RPC Check, за этим RPC
+		// его нет вовсе.
+		"/kacho.cloud.storage.v1.InternalVolumeService/ListAttachments": {
+			ScopeFiltered: true,
+			Permission:    "storage.volumes.listAttachments",
+		},
 
 		// ---- InternalImageService (:9091 infra-проекция Image) ----
 		"/kacho.cloud.storage.v1.InternalImageService/GetInternal": scoped(relationViewer, objectTypeImage, "storage.images.getInternal",

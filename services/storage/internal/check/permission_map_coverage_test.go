@@ -59,9 +59,27 @@ func TestPermissionMap_CoversEveryServedStorageRPC(t *testing.T) {
 		require.Truef(t, ok,
 			"%s is served but missing from PermissionMap: corelib authz fail-closes it with "+
 				"\"permission denied (rpc not mapped)\" for every caller", fullMethod)
+		require.NotEmptyf(t, entry.Permission, "%s: permission string must mirror the gateway catalog", fullMethod)
+
+		// ScopeFiltered — авторизация ПЕРЕЕХАЛА на данные (per-object сужение
+		// прочитанной страницы), а не исчезла: единичного объекта, про который можно
+		// спросить заранее, у такого RPC нет. Поэтому relation/extractor у него не
+		// просто «не заполнены» — их наличие означало бы возврат к единичному Check'у.
+		// Требуем обратного явно, чтобы отсутствие полей нельзя было списать на
+		// недосмотр, и запрещаем совмещение с Public (это разные исходы: exempt vs
+		// «решает handler»).
+		if entry.ScopeFiltered {
+			require.Falsef(t, entry.Public, "%s: ScopeFiltered entry must not also be Public", fullMethod)
+			require.Emptyf(t, entry.Relation,
+				"%s: ScopeFiltered entry must not carry a Relation — the per-RPC Check is skipped, "+
+					"so a relation here would document a question nobody asks", fullMethod)
+			require.Nilf(t, entry.Extract,
+				"%s: ScopeFiltered entry must not carry an ObjectExtractor", fullMethod)
+			continue
+		}
+
 		require.NotEmptyf(t, entry.Relation, "%s: required_relation must be set", fullMethod)
 		require.NotNilf(t, entry.Extract, "%s: must carry an ObjectExtractor", fullMethod)
-		require.NotEmptyf(t, entry.Permission, "%s: permission string must mirror the gateway catalog", fullMethod)
 	}
 }
 

@@ -432,9 +432,46 @@ func (u *UseCase) Detach(ctx context.Context, volumeID, instanceID string) (*dom
 	return v, nil
 }
 
-// ListAttachments — батч-чтение attachments по instance_id (internal :9091) — S2.
+// ListAttachments — батч-чтение привязок том↔инстанс по instance_id (internal :9091,
+// зеркало compute для Instance.Get/List; не N+1) — S2.
+//
+// Авторизуется ЗДЕСЬ, на уровне данных: инстансы называет ВЫЗЫВАЮЩИЙ, а ответ
+// касается томов, у каждого из которых свой владелец, — единичного объекта, про
+// который можно спросить заранее, у этого RPC нет. Прежний per-RPC вопрос («viewer
+// на синглтоне cluster») относился к глобальному справочнику и пропускал КАЖДОГО
+// аутентифицированного субъекта, отдавая привязки любых названных инстансов из чужих
+// проектов и аккаунтов (см. check.PermissionMap, запись ScopeFiltered).
+//
+// Три случая субъекта различаются намеренно:
+//   - реальный `user:`/`service_account:` → спрашиваем модель про id прочитанной
+//     страницы (`viewer` на `storage_volume:<id>` — тот же предикат, что энфорсит Get);
+//   - "" (identity не извлечена, в т.ч. system-принципал) → это «не знаю, кто ты», а
+//     НЕ «доверенный»: fail-closed, пустой результат, строки даже не читаются;
+//   - ошибка фильтра → fail-closed отказ: недоступный ответ модели не есть ответ «да».
+//
+// Пустой субъект отсекается БЕЗУСЛОВНО — в отличие от публичных List, где тот же
+// guard живёт внутри FilterVisiblePage и потому не срабатывает при неподключённом
+// фильтре. Разница не косметическая: за публичными List остаётся per-RPC Check,
+// который сам отвергает вызывающего без принципала, а этот RPC помечен ScopeFiltered,
+// то есть Check за него не задаётся вовсе. Привяжи мы fail-closed к наличию фильтра —
+// посадка без фильтра отдавала бы привязки всего кластера кому угодно, что ровно та
+// дыра, ради которой сюда пришли.
 func (u *UseCase) ListAttachments(ctx context.Context, instanceIDs []string) ([]*domain.VolumeAttachment, error) {
-	return u.reader.ListAttachments(ctx, instanceIDs)
+	if authzfilter.SubjectFromPrincipal(ctx) == "" {
+		return nil, nil
+	}
+	att, err := u.reader.ListAttachments(ctx, instanceIDs)
+	if err != nil {
+		return nil, u.errStatus(err)
+	}
+	visible, ferr := authzfilter.FilterVisiblePage(ctx, u.listFilter,
+		authzfilter.ResourceTypeVolume, authzfilter.ActionVolumeList, att,
+		func(a *domain.VolumeAttachment) string { return a.VolumeID })
+	if ferr != nil {
+		// Fail-closed: ошибка iam НИКОГДА не отдаёт нефильтрованную страницу.
+		return nil, u.errStatus(ferr)
+	}
+	return visible, nil
 }
 
 // GetInternal — full (infra) проекция Volume (internal :9091) — S2/data-plane.

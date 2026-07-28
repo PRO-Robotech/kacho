@@ -8,10 +8,18 @@ package handler
 // ребро compute→storage + инфра-проекция; InternalDiskTypeService (admin CRUD,
 // sync). Всё регистрируется ТОЛЬКО на internal-листенере в composition root.
 //
-// per-RPC authz Check (system_admin для мутаций, system_viewer для read) энфорсится
-// интерсептором обоих листенеров (собран composition root'ом serve.go, security.md).
-// Attach/Detach/ListAttachments + admin CRUD реализованы; GetInternal (infra-
-// проекция) — анкер data-plane (§0.3, out of scope).
+// per-RPC authz Check энфорсится интерсептором обоих листенеров (собран composition
+// root'ом serve.go, security.md): Attach/Detach — editor на самом томе, GetInternal —
+// viewer на нём же, admin CRUD DiskType — system_admin на cluster-синглтоне.
+//
+// ListAttachments — исключение: он авторизуется НА УРОВНЕ ДАННЫХ, в use-case. Единого
+// per-RPC вопроса для него не существует — инстансы называет вызывающий, а ответ
+// касается томов, у каждого из которых свой владелец (см. volume.UseCase.ListAttachments
+// и запись ScopeFiltered в check.PermissionMap). Хендлер по-прежнему остаётся тонким:
+// решение принимает use-case, здесь только parse → вызов → формат.
+//
+// Attach/Detach/ListAttachments + admin CRUD реализованы; GetInternal (infra-проекция)
+// — анкер data-plane (§0.3, out of scope).
 
 import (
 	"context"
@@ -70,7 +78,9 @@ func (h *InternalVolumeHandler) Detach(ctx context.Context, req *storagev1.Detac
 	return &storagev1.DetachVolumeResponse{Volume: protoconv.Volume(v)}, nil
 }
 
-// ListAttachments — батч-чтение attachments по instance_id (compute-mirror, не N+1).
+// ListAttachments — батч-чтение привязок по instance_id (compute-mirror, не N+1).
+// Набор сужается до привязок, чей том вызывающему видим (per-object, в use-case);
+// вызывающий без извлечённой identity получает пустой ответ.
 func (h *InternalVolumeHandler) ListAttachments(ctx context.Context, req *storagev1.ListAttachmentsRequest) (*storagev1.ListAttachmentsResponse, error) {
 	atts, err := h.uc.ListAttachments(ctx, req.GetInstanceIds())
 	if err != nil {
