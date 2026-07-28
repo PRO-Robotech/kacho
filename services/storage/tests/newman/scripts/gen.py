@@ -52,6 +52,13 @@ class Step:
     #   "anonymous"       — Authorization header снимается перед запросом
     #   "<envVarName>"    — Authorization: Bearer {{envVarName}} (значение читается из env при выполнении)
     auth: Optional[str] = None
+    # internal=True — запрос идёт на cluster-internal REST listener ({{internalBaseUrl}},
+    # :8081), где живут Internal*Service admin-мутации (ban #6: на публичном
+    # {{baseUrl}} их нет by design). Форма перенята у geo-suite, которая этим
+    # листенером сеет свой каталог. Нужна storage-кейсам, чьё предусловие — ВТОРОЙ
+    # регион: базовый стенд несёт ровно один, а региональную когерентность нечем
+    # проверить, пока сравнивать не с чем.
+    internal: bool = False
 
 
 @dataclass
@@ -622,14 +629,15 @@ def _auth_pre_script(auth: str) -> List[str]:
 
 
 def step_to_postman(step: Step) -> Dict:
+    host = "{{internalBaseUrl}}" if step.internal else "{{baseUrl}}"
     item: Dict = {
         "name": step.name,
         "request": {
             "method": step.method,
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "url": {
-                "raw": "{{baseUrl}}" + step.path,
-                "host": ["{{baseUrl}}"],
+                "raw": host + step.path,
+                "host": [host],
                 "path": [p for p in step.path.strip("/").split("/") if p],
             },
         },

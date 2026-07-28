@@ -140,6 +140,8 @@ NET-NEW ресурс `Image` (`cases/image.py`) + Volume↔Image boot-materializ
 | IMG-VOL-CR-SOURCE-IMAGE-OK | STOR-1-18 | happy (boot-Volume materialize) |
 | IMG-VOL-CR-SOURCE-XOR | STOR-1-19 | negative (sync mutual-exclusion) |
 | IMG-VOL-CR-SOURCE-IMAGE-NOTFOUND | STOR-1-19 | negative (op-error FK) |
+| IMG-VOL-CR-SOURCE-IMAGE-FOREIGN-REGION-NAMED | STOR-1-18 | negative (свой образ чужого региона → отказ НАЗВАН «must be in the same region», не hide-existence; сеет второй регион через internal geo) |
+| IMG-VOL-CR-SOURCE-IMAGE-FOREIGN-PROJECT-HIDDEN | STOR-1-19 | negative (образ чужого проекта → текст настоящего промаха; разведение полос не создало оракула, security.md §6) |
 | IMG-DEL-SETNULL-VOLUME-INTACT | STOR-1-28 | edge (FK SET NULL, том цел) |
 | IMG-LOP-CRUD-OK | STOR-1-20 | happy |
 | IMG-LOP-NEG-MALFORMED-ID | STOR-1-21 | negative (sync) |
