@@ -286,32 +286,12 @@ define_resource_cases("instance", "instances", create_body_extra={
 
 
 # ---------------------------------------------------------------------------
-# Catalog resources (DiskType) — read-only публично; admin-mutate
-# Region/Zone serving removed (Stage S7) — Geography is owned by kacho-geo.
-# ---------------------------------------------------------------------------
-
-CATALOG_READ_RESOURCES = [
-    ("disktype", "/compute/v1/diskTypes", "/compute/v1/diskTypes/network-ssd"),
-]
-
-for name, list_path, get_path in CATALOG_READ_RESOURCES:
-    for subj in SUBJECTS:
-        emit(f"{name.upper()}-LS", f"List {name} (catalog)", "catalog-read",
-             "GET", list_path, None, subj)
-        emit(f"{name.upper()}-GT", f"Get {name} (catalog)", "catalog-read",
-             "GET", get_path, None, subj)
-
-# Catalog-mutate (admin-only — via Internal*Service на cluster-internal listener).
-# Все 6 субъектов DENY: они либо не admin (anon/NOB/PA1/INV), либо account-level (AAA/AAB).
+# Catalog resources — none left in compute's deny-matrix.
 #
-# У DiskType человекочитаемого `name` НЕТ и никогда не было: тип диска адресуется
-# стабильным слагом `id` (`network-ssd`), а текст живёт в `description`
-# (CreateDiskTypeRequest{id, description, zone_ids}; core #15 — адресация по id).
-# Кейс слал `name`, которого в контракте нет, — край его отбрасывал.
-for name, list_path, _ in CATALOG_READ_RESOURCES:
-    for subj in SUBJECTS:
-        emit(f"{name.upper()}-CR", f"Create {name} (catalog admin)", "catalog-mutate",
-             "POST", list_path, {"id": f"authz-{name}-{subj[0].lower()}", "description": "authz"}, subj)
+# DiskType went with the block-storage duplicate (kacho-storage is the owner and
+# carries the catalog deny-matrix for it); Region/Zone serving was removed at Stage
+# S7 (Geography is owned by kacho-geo). MachineType has its own suite.
+# ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------

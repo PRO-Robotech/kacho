@@ -93,9 +93,6 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.compute.v1.InstanceService/ListAccessBindings":       {},
 	"/kacho.cloud.compute.v1.InstanceService/SetAccessBindings":        {},
 	"/kacho.cloud.compute.v1.InstanceService/UpdateAccessBindings":     {},
-	// compute.v1 — DiskTypeService (read-only справочник)
-	"/kacho.cloud.compute.v1.DiskTypeService/Get":  {},
-	"/kacho.cloud.compute.v1.DiskTypeService/List": {},
 	// compute.v1 — MachineTypeService (read-only sizing catalog; cluster-viewer,
 	// parity с geo Region/Zone). Admin CRUD — InternalMachineTypeService на :9091
 	// (НЕ в allowlist; HasInternalSuffix блокирует автоматически, ban #6).

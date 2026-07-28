@@ -20,8 +20,6 @@ type (
 
 	// InstanceRepo — port-интерфейс репозитория ВМ.
 	InstanceRepo = ports.InstanceRepo
-	// DiskTypeRepo — port-интерфейс репозитория типов дисков.
-	DiskTypeRepo = ports.DiskTypeRepo
 	// MachineTypeRepo — port-интерфейс каталога machine-type (COMP-1 F7).
 	MachineTypeRepo = ports.MachineTypeRepo
 	// MachineTypeFilter — фильтр списка machine-type (name=/family=/minGpus=).

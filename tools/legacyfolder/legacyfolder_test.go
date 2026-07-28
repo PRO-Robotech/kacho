@@ -27,7 +27,7 @@ func TestFires(t *testing.T) {
 		{"embedded camel", "pm.environment.set('_suiteFolderId', x);"},
 		{"index suffix", "CREATE INDEX disks_folder_idx ON disks (folder_id);"},
 		{"prose with space", "// ListMaintenancesRequest allows listing by cloud ID, folder ID."},
-		{"query key", "curl 'http://localhost:18080/compute/v1/disks?folderId=x'"},
+		{"query key", "curl 'http://localhost:18080/compute/v1/instances?folderId=x'"},
 		{"dotted", "scope.folder.id"},
 		{"plural", "the folder ids of the account"},
 	}

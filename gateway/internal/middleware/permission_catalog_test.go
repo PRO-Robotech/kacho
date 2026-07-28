@@ -142,11 +142,11 @@ func TestPermissionCatalog_RegistryV1Present_EntryFloor(t *testing.T) {
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
 
-	// Floor lowered 330 → 301 when compute's duplicate Disk/Image/Snapshot were
-	// retired (29 entries: 10 + 10 + 9). A floor is a guard against a SILENT
-	// shrink; a deliberate retire moves it, and only by the number of entries the
-	// retire actually removed.
-	assert.GreaterOrEqual(t, c.Size(), 301,
+	// Floor lowered 330 → 296 when compute's duplicate block storage was retired
+	// (34 entries: Disk 10 + Image 10 + Snapshot 9 + DiskType 2 + InternalDiskType 3).
+	// A floor is a guard against a SILENT shrink; a deliberate retire moves it, and
+	// only by the number of entries the retire actually removed.
+	assert.GreaterOrEqual(t, c.Size(), 296,
 		"embedded catalog shrank below the known floor — stale `make sync-permission-catalog`?")
 
 	// registry.v1 methods MUST be present (the regressed surface).

@@ -298,7 +298,7 @@ Seed зеркалит kacho-vpc geography.
 - Agent-check: `internal/migrations/0001_initial.sql` seed `zones`; `internal/service/zone.go`.
 
 ### REQ-CAT-03 — DiskType/Zone — read-only (нет Create/Update/Delete на публичном API)            [P2]
-POST на `/compute/v1/diskTypes` / `/compute/v1/zones` → 404/405/501. Admin-CRUD — только через `Internal*` сервисы (порт 9091).
+POST на `/compute/v1/machineTypes` → 404/405/501. Admin-CRUD — только через `Internal*` сервисы (порт 9091).
 - Validated-by: `DT-CR-NEG-NOT-ALLOWED`, `ZONE-CR-NEG-NOT-ALLOWED`
 - Agent-check: `disk_type_service.proto` / `zone_service.proto` (только Get/List); workspace `CLAUDE.md` запрет #6.
 

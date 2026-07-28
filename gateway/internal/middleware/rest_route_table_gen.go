@@ -28,11 +28,6 @@ type restRoute struct {
 // generatedRestRoutes — full REST<->gRPC route table. Order is
 // path-then-method for deterministic, longest-prefix-friendly matching.
 var generatedRestRoutes = []restRoute{
-	{Method: "GET", Template: "/compute/v1/diskTypes", FQN: "kacho.cloud.compute.v1.DiskTypeService/List"},
-	{Method: "POST", Template: "/compute/v1/diskTypes", FQN: "kacho.cloud.compute.v1.InternalDiskTypeService/Create"},
-	{Method: "DELETE", Template: "/compute/v1/diskTypes/{disk_type_id}", FQN: "kacho.cloud.compute.v1.InternalDiskTypeService/Delete"},
-	{Method: "GET", Template: "/compute/v1/diskTypes/{disk_type_id}", FQN: "kacho.cloud.compute.v1.DiskTypeService/Get"},
-	{Method: "PATCH", Template: "/compute/v1/diskTypes/{disk_type_id}", FQN: "kacho.cloud.compute.v1.InternalDiskTypeService/Update"},
 	{Method: "GET", Template: "/compute/v1/instances", FQN: "kacho.cloud.compute.v1.InstanceService/List"},
 	{Method: "POST", Template: "/compute/v1/instances", FQN: "kacho.cloud.compute.v1.InstanceService/Create"},
 	{Method: "DELETE", Template: "/compute/v1/instances/{instance_id}", FQN: "kacho.cloud.compute.v1.InstanceService/Delete"},

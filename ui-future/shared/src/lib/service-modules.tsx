@@ -21,9 +21,6 @@ import {
   ApiOutlined,
   HistoryOutlined,
   DesktopOutlined,
-  HddOutlined,
-  FileImageOutlined,
-  CameraOutlined,
   SettingOutlined,
   UserOutlined,
   CloudServerOutlined,
@@ -171,8 +168,6 @@ export const SERVICE_MODULES: ServiceModule[] = [
     landing: (f) => (f ? `/projects/${f}/compute/instances` : null),
     stats: [
       { key: "instances", label: "Машин", listPath: "/compute/v1/instances", payloadKey: "instances" },
-      { key: "disks", label: "Дисков", listPath: "/compute/v1/disks", payloadKey: "disks" },
-      { key: "images", label: "Образов", listPath: "/compute/v1/images", payloadKey: "images" },
     ],
     items: [
       {

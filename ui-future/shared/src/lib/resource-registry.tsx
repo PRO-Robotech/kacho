@@ -2220,15 +2220,16 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     }),
   },
 
-  // ====== compute (Disk / Image / Snapshot / Instance) ======
-  // proto: GET /compute/v1/{disks|images|snapshots|instances}. Name-regex lowercase-only
+  // ====== compute (Instance) ======
+  // proto: GET /compute/v1/instances. Name-regex lowercase-only
   // (kacho-compute/CLAUDE.md §5: `^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$`).
 
-  // disk-types — read-only справочник, используется как refResource в dropdown'ах.
+  // disk-types — read-only справочник kacho-storage (владелец блочного хранения),
+  // используется как refResource в dropdown'ах.
   "disk-types": {
     id: "disk-types",
     route: "disk-types",
-    apiPath: "/compute/v1/diskTypes",
+    apiPath: "/storage/v1/diskTypes",
     payloadKey: "disk_types",
     singular: "Тип диска",
     plural: "Типы дисков",

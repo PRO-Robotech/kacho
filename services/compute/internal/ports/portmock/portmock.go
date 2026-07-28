@@ -65,7 +65,7 @@ func (r *InstanceRepo) Get(_ context.Context, id string) (*domain.Instance, erro
 	return &cp, nil
 }
 
-// List возвращает ВМ по проекту (без authz-измерения — см. DiskRepo.List).
+// List возвращает ВМ по проекту (без authz-измерения — см. ports.InstanceFilter).
 func (r *InstanceRepo) List(_ context.Context, f ports.InstanceFilter, _ ports.Pagination) ([]*domain.Instance, string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -179,82 +179,6 @@ func (r *InstanceRepo) MergeMetadata(_ context.Context, id string, del []string,
 // Delete удаляет строку ВМ (финальный шаг delete-саги; привязки уже сняты в
 // use-case через storage/vpc Detach). Нет инстанса → NotFound.
 func (r *InstanceRepo) Delete(_ context.Context, id string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if _, ok := r.data[id]; !ok {
-		return ports.ErrNotFound
-	}
-	delete(r.data, id)
-	return nil
-}
-
-// ---- DiskTypeRepo ----
-
-// DiskTypeRepo — in-memory DiskTypeRepo.
-type DiskTypeRepo struct {
-	mu   sync.Mutex
-	data map[string]*domain.DiskType
-}
-
-// NewDiskTypeRepo создаёт DiskTypeRepo с seed-типами (network-ssd по умолчанию).
-func NewDiskTypeRepo(ids ...string) *DiskTypeRepo {
-	r := &DiskTypeRepo{data: make(map[string]*domain.DiskType)}
-	if len(ids) == 0 {
-		ids = []string{"network-ssd", "network-hdd"}
-	}
-	for _, id := range ids {
-		r.data[id] = &domain.DiskType{ID: id}
-	}
-	return r
-}
-
-// Get возвращает тип диска по id.
-func (r *DiskTypeRepo) Get(_ context.Context, id string) (*domain.DiskType, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	t, ok := r.data[id]
-	if !ok {
-		return nil, ports.ErrNotFound
-	}
-	return t, nil
-}
-
-// List возвращает все типы дисков.
-func (r *DiskTypeRepo) List(_ context.Context, _ ports.Pagination) ([]*domain.DiskType, string, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	var out []*domain.DiskType
-	for _, t := range r.data {
-		out = append(out, t)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out, "", nil
-}
-
-// Insert вставляет тип диска.
-func (r *DiskTypeRepo) Insert(_ context.Context, t *domain.DiskType) (*domain.DiskType, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if _, ok := r.data[t.ID]; ok {
-		return nil, ports.ErrAlreadyExists
-	}
-	r.data[t.ID] = t
-	return t, nil
-}
-
-// Update обновляет тип диска.
-func (r *DiskTypeRepo) Update(_ context.Context, t *domain.DiskType) (*domain.DiskType, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if _, ok := r.data[t.ID]; !ok {
-		return nil, ports.ErrNotFound
-	}
-	r.data[t.ID] = t
-	return t, nil
-}
-
-// Delete удаляет тип диска.
-func (r *DiskTypeRepo) Delete(_ context.Context, id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.data[id]; !ok {
@@ -960,7 +884,6 @@ func AwaitAllOpsDone(t TestingT, r *OpsRepo) {
 // Compile-time проверки соответствия port-интерфейсам.
 var (
 	_ ports.InstanceRepo  = (*InstanceRepo)(nil)
-	_ ports.DiskTypeRepo  = (*DiskTypeRepo)(nil)
 	_ ports.ZoneRegistry  = (*ZoneRegistry)(nil)
 	_ ports.ProjectClient = (*ProjectClient)(nil)
 	_ operations.Repo     = (*OpsRepo)(nil)

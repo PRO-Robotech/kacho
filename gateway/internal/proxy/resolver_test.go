@@ -114,7 +114,7 @@ func TestResolver_ComputePublicVsInternal(t *testing.T) {
 		t.Errorf("InstanceService.Get должен резолвиться на compute (ok=%v)", ok)
 	}
 	for _, m := range []string{
-		"/kacho.cloud.compute.v1.InternalDiskTypeService/Create",
+		"/kacho.cloud.compute.v1.InternalMachineTypeService/Create",
 		"/kacho.cloud.compute.v1.InternalWatchService/Watch",
 	} {
 		if _, _, ok := resolve(m); ok {

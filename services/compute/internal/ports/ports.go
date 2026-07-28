@@ -129,15 +129,6 @@ type MachineTypeRepo interface {
 	Delete(ctx context.Context, id string) error
 }
 
-// DiskTypeRepo — port-интерфейс репозитория типов дисков (read + admin CRUD).
-type DiskTypeRepo interface {
-	Get(ctx context.Context, id string) (*domain.DiskType, error)
-	List(ctx context.Context, p Pagination) ([]*domain.DiskType, string, error)
-	Insert(ctx context.Context, t *domain.DiskType) (*domain.DiskType, error)
-	Update(ctx context.Context, t *domain.DiskType) (*domain.DiskType, error)
-	Delete(ctx context.Context, id string) error
-}
-
 // ProjectClient — port для проверки существования Project в kacho-iam
 // (ProjectService.Get). Аргумент projectID — id владельца-проекта; в схеме
 // kacho-compute он лежит в колонке `project_id`.

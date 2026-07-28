@@ -40,8 +40,9 @@ func catalogMuxAddrs() map[string]string {
 	}
 }
 
-// diskTypeAdminRoutes — admin-CRUD справочника DiskType (storage и compute).
-// Обе группы висят на ТОМ ЖЕ пути, что публичное чтение каталога, и отличаются
+// diskTypeAdminRoutes — admin-CRUD справочника DiskType (kacho-storage — владелец;
+// дубль compute снят вместе с блочным хранением).
+// Маршруты висят на ТОМ ЖЕ пути, что публичное чтение каталога, и отличаются
 // ТОЛЬКО HTTP-методом: GET — публичный DiskTypeService, POST/PATCH/DELETE —
 // InternalDiskTypeService (:9091, system_admin). Классификация по одной лишь
 // строке пути их различить не может — решение обязано учитывать метод.
@@ -49,9 +50,6 @@ var diskTypeAdminRoutes = []struct{ method, path string }{
 	{"POST", "/storage/v1/diskTypes"},
 	{"PATCH", "/storage/v1/diskTypes/network-ssd"},
 	{"DELETE", "/storage/v1/diskTypes/network-ssd"},
-	{"POST", "/compute/v1/diskTypes"},
-	{"PATCH", "/compute/v1/diskTypes/network-ssd"},
-	{"DELETE", "/compute/v1/diskTypes/network-ssd"},
 }
 
 // TestExternalListener_RejectsDiskTypeAdminRoutes — admin-мутации каталога
@@ -115,8 +113,6 @@ func TestExternalListener_DiskTypePublicReadsStillServed(t *testing.T) {
 	publicReads := []struct{ method, path string }{
 		{"GET", "/storage/v1/diskTypes"},
 		{"GET", "/storage/v1/diskTypes/network-ssd"},
-		{"GET", "/compute/v1/diskTypes"},
-		{"GET", "/compute/v1/diskTypes/network-ssd"},
 	}
 	for _, tc := range publicReads {
 

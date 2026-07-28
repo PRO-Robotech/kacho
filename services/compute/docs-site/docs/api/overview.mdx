@@ -16,7 +16,7 @@ import dedent from 'ts-dedent'
 и suffix-actions, формат JSON, аутентификацию и авторизацию, асинхронную модель `Operation`,
 формат ошибок, дисциплину `update_mask`, пагинацию, фильтрацию, формат идентификаторов и
 точность временных меток. Конкретные поля и операции каждого ресурса — на отдельных страницах
-раздела (см. [Instance](/api/instance), [Disk](/api/disk) и др.).
+раздела (см. [Instance](/api/instance)).
 
 :::info Единый контракт — gRPC, REST — проекция
 Источник истины — Protocol Buffers в `kacho-proto`. REST-поверхность строится через
@@ -32,8 +32,10 @@ async) одинакова для gRPC и REST; примеры ниже — в RE
 
 ## Ресурсы и их назначение
 
-Kachō Compute управляет **четырьмя мутируемыми ресурсами** (Instance / Disk / Image /
-Snapshot) и одним **read-only справочником** (`DiskType`). Все ресурсы — плоские (flat):
+Kachō Compute управляет **одним мутируемым ресурсом** (`Instance`) и одним
+**read-only справочником** (`MachineType`). Блочное хранение (Volume / Image /
+Snapshot / DiskType) принадлежит **kacho-storage** и живёт под `/storage/v1`.
+Все ресурсы — плоские (flat):
 domain-поля на верхнем уровне сообщения, без K8s-envelope. Мутируемые ресурсы project-level
 (обязательный `projectId`).
 
@@ -41,15 +43,10 @@ domain-поля на верхнем уровне сообщения, без K8s-
   <thead><tr><th>Ресурс</th><th>Префикс</th><th>Бизнес-назначение</th><th>Поверхность</th></tr></thead>
   <tbody>
     <tr><td><strong>Instance</strong></td><td><code>epd</code></td><td>Виртуальная машина: платформа, вычислительные ресурсы, диски, сетевые интерфейсы, жизненный цикл</td><td>public</td></tr>
-    <tr><td><strong>Disk</strong></td><td><code>epd</code></td><td>Блочный диск в зоне; источник — образ или снимок</td><td>public</td></tr>
-    <tr><td><strong>Image</strong></td><td><code>fd8</code></td><td>Образ для создания загрузочных дисков; источник — образ / диск / снимок / URI</td><td>public</td></tr>
-    <tr><td><strong>Snapshot</strong></td><td><code>fd8</code></td><td>Снимок диска — источник восстановления или создания образа</td><td>public</td></tr>
-    <tr><td><strong>DiskType</strong></td><td>—</td><td>Справочник типов дисков (read-only на публичной поверхности; admin-CRUD на internal)</td><td>public read / <strong>internal</strong> admin</td></tr>
   </tbody>
 </table>
 
-Постраничный справочник: [Instance](/api/instance), [Disk](/api/disk), [Image](/api/image),
-[Snapshot](/api/snapshot), [DiskType](/api/disk-type).
+Постраничный справочник: [Instance](/api/instance).
 
 ## Два порта: public (9090) и internal (9091)
 
@@ -58,8 +55,8 @@ domain-поля на верхнем уровне сообщения, без K8s-
 <table>
   <thead><tr><th>Порт</th><th>Listener</th><th>Кто ходит</th><th>Что доступно</th></tr></thead>
   <tbody>
-    <tr><td><code>:9090</code></td><td>public</td><td>Tenant-клиенты через <code>api-gateway</code> (TLS + JWT)</td><td>Публичные сервисы Instance / Disk / Image / Snapshot + read-only <code>DiskType</code></td></tr>
-    <tr><td><code>:9091</code></td><td>internal</td><td>Peer-сервисы и admin-UI (cluster-internal, mTLS)</td><td>Admin-CRUD справочника <code>DiskType</code>, outbox-stream <code>InternalWatchService</code></td></tr>
+    <tr><td><code>:9090</code></td><td>public</td><td>Tenant-клиенты через <code>api-gateway</code> (TLS + JWT)</td><td>Публичный <code>InstanceService</code> + read-only <code>MachineTypeService</code></td></tr>
+    <tr><td><code>:9091</code></td><td>internal</td><td>Peer-сервисы и admin-UI (cluster-internal, mTLS)</td><td>Admin-CRUD справочника <code>MachineType</code>, outbox-stream <code>InternalWatchService</code></td></tr>
   </tbody>
 </table>
 
@@ -70,7 +67,7 @@ domain-поля на верхнем уровне сообщения, без K8s-
 ## REST-пути и suffix-actions
 
 Ресурсы доступны по шаблону `/compute/v1/<resource>` (top-level camelCase:
-`/compute/v1/instances`, `/compute/v1/diskTypes`). Стандартные CRUD-операции мапятся на
+`/compute/v1/instances`, `/compute/v1/machineTypes`). Стандартные CRUD-операции мапятся на
 HTTP-методы; действия, не укладывающиеся в CRUD (`Start`, `Stop`, `AttachDisk`,
 `GetLatestByFamily`, …), оформлены как **suffix-action** через `:verb` либо сегмент пути.
 
@@ -198,7 +195,7 @@ Watch-механизма в API нет — поллинг и есть штатн
 Ошибки возвращаются в формате **`google.rpc.Status`** — `{code, message, details[]}` —
 единообразно для gRPC и REST. `code` — числовой gRPC-код (REST мапит его на HTTP-статус),
 `message` — текст в стабильной формулировке Kachō (`"<Resource> %s not found"`, `"Instance
-must be stopped"`, `"The disk is being used"`; тексты — часть контракта, меняются только
+must be stopped"`; тексты — часть контракта, меняются только
 осознанно через тикет), `details[]` — массив структурированных деталей (обычно пустой).
 
 <CodeBlock language="json">
@@ -234,9 +231,8 @@ worker'е) мутация возвращает `Operation` с HTTP `200`, а о�
   </tbody>
 </table>
 
-Hard-immutable-поля зависят от ресурса: `projectId`, `Disk.typeId` / `Disk.zoneId` /
-`Disk.blockSize` / `Disk.source`, `Instance.zoneId`, `Image.family` / `Image.minDiskSize`,
-`Snapshot.sourceDiskId`. Полный перечень — на странице ресурса.
+Hard-immutable-поля зависят от ресурса: `projectId`, `Instance.zoneId`,
+`Instance.instanceKind`. Полный перечень — на странице ресурса.
 
 <Restrictions items={[{ label: 'updateMask', rules: RESTRICTIONS.updateMask }]} />
 
@@ -249,10 +245,10 @@ Hard-immutable-поля зависят от ресурса: `projectId`, `Disk.t
 <CodeBlock language="bash">
   {dedent`
     # первая страница
-    curl 'http://localhost:18080/compute/v1/disks?projectId={projectId}&pageSize=50' \\
+    curl 'http://localhost:18080/compute/v1/instances?projectId={projectId}&pageSize=50' \\
       -H 'Authorization: Bearer <JWT>'
     # следующая страница — подставить nextPageToken из ответа
-    curl 'http://localhost:18080/compute/v1/disks?projectId={projectId}&pageSize=50&pageToken=<nextPageToken>' \\
+    curl 'http://localhost:18080/compute/v1/instances?projectId={projectId}&pageSize=50&pageToken=<nextPageToken>' \\
       -H 'Authorization: Bearer <JWT>'
   `}
 </CodeBlock>
@@ -282,10 +278,8 @@ backend.
 <table>
   <thead><tr><th>Префикс</th><th>Ресурс</th><th>Пример</th></tr></thead>
   <tbody>
-    <tr><td><code>epd</code></td><td>Instance / Disk</td><td><code>epd0am5d8q1w4e7r2t6y</code></td></tr>
-    <tr><td><code>fd8</code></td><td>Image / Snapshot</td><td><code>fd83v5x7z9b1d4f6h8j0</code></td></tr>
+    <tr><td><code>epd</code></td><td>Instance (legacy-форма)</td><td><code>epd0am5d8q1w4e7r2t6y</code></td></tr>
     <tr><td><code>epd</code></td><td>Operation (Compute)</td><td><code>epdk3xe746h019hnz182</code></td></tr>
-    <tr><td>—</td><td>DiskType (литерал)</td><td><code>network-ssd</code></td></tr>
     <tr><td><code>prj</code></td><td>Project (домен kacho-iam; ссылка)</td><td><code>prj9j6y00msn65vcfdq3</code></td></tr>
   </tbody>
 </table>
@@ -335,59 +329,6 @@ Kachō. БД хранит микросекунды, но клиент видит
   </tbody>
 </table>
 
-### DiskService
-
-<table>
-  <thead><tr><th>RPC</th><th>REST</th><th>Тип</th></tr></thead>
-  <tbody>
-    <tr><td><code>Get</code></td><td><code>GET /compute/v1/disks/&#123;id&#125;</code></td><td>sync</td></tr>
-    <tr><td><code>List</code></td><td><code>GET /compute/v1/disks</code></td><td>sync</td></tr>
-    <tr><td><strong>Create</strong></td><td><code>POST /compute/v1/disks</code></td><td>async</td></tr>
-    <tr><td><strong>Update</strong></td><td><code>PATCH /compute/v1/disks/&#123;id&#125;</code></td><td>async</td></tr>
-    <tr><td><strong>Delete</strong></td><td><code>DELETE /compute/v1/disks/&#123;id&#125;</code></td><td>async</td></tr>
-    <tr><td><code>ListOperations</code></td><td><code>GET /compute/v1/disks/&#123;id&#125;/operations</code></td><td>sync</td></tr>
-  </tbody>
-</table>
-
-### ImageService
-
-<table>
-  <thead><tr><th>RPC</th><th>REST</th><th>Тип</th></tr></thead>
-  <tbody>
-    <tr><td><code>Get</code></td><td><code>GET /compute/v1/images/&#123;id&#125;</code></td><td>sync</td></tr>
-    <tr><td><code>GetLatestByFamily</code></td><td><code>GET /compute/v1/images:latestByFamily</code></td><td>sync</td></tr>
-    <tr><td><code>List</code></td><td><code>GET /compute/v1/images</code></td><td>sync</td></tr>
-    <tr><td><strong>Create</strong></td><td><code>POST /compute/v1/images</code></td><td>async</td></tr>
-    <tr><td><strong>Update</strong></td><td><code>PATCH /compute/v1/images/&#123;id&#125;</code></td><td>async</td></tr>
-    <tr><td><strong>Delete</strong></td><td><code>DELETE /compute/v1/images/&#123;id&#125;</code></td><td>async</td></tr>
-    <tr><td><code>ListOperations</code></td><td><code>GET /compute/v1/images/&#123;id&#125;/operations</code></td><td>sync</td></tr>
-  </tbody>
-</table>
-
-### SnapshotService
-
-<table>
-  <thead><tr><th>RPC</th><th>REST</th><th>Тип</th></tr></thead>
-  <tbody>
-    <tr><td><code>Get</code></td><td><code>GET /compute/v1/snapshots/&#123;id&#125;</code></td><td>sync</td></tr>
-    <tr><td><code>List</code></td><td><code>GET /compute/v1/snapshots</code></td><td>sync</td></tr>
-    <tr><td><strong>Create</strong></td><td><code>POST /compute/v1/snapshots</code></td><td>async</td></tr>
-    <tr><td><strong>Update</strong></td><td><code>PATCH /compute/v1/snapshots/&#123;id&#125;</code></td><td>async</td></tr>
-    <tr><td><strong>Delete</strong></td><td><code>DELETE /compute/v1/snapshots/&#123;id&#125;</code></td><td>async</td></tr>
-    <tr><td><code>ListOperations</code></td><td><code>GET /compute/v1/snapshots/&#123;id&#125;/operations</code></td><td>sync</td></tr>
-  </tbody>
-</table>
-
-### DiskTypeService (read-only)
-
-<table>
-  <thead><tr><th>RPC</th><th>REST</th><th>Тип</th></tr></thead>
-  <tbody>
-    <tr><td><code>Get</code></td><td><code>GET /compute/v1/diskTypes/&#123;id&#125;</code></td><td>sync</td></tr>
-    <tr><td><code>List</code></td><td><code>GET /compute/v1/diskTypes</code></td><td>sync</td></tr>
-  </tbody>
-</table>
-
 ### OperationService
 
 Кросс-доменный сервис для опроса асинхронных операций. Путь — **без** `/compute`-префикса
@@ -404,6 +345,6 @@ Kachō. БД хранит микросекунды, но клиент видит
 
 :::tip Дальше
 Конкретные поля, тела запросов, примеры и ресурс-специфичные коды ошибок — на страницах
-ресурсов: [Instance](/api/instance), [Disk](/api/disk), [Image](/api/image),
-[Snapshot](/api/snapshot), [DiskType](/api/disk-type).
+ресурсов: [Instance](/api/instance). Блочное хранение (Volume / Image / Snapshot /
+DiskType) документировано на стороне владельца — kacho-storage.
 :::

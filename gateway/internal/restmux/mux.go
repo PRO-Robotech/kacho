@@ -29,7 +29,7 @@
 //   - Любой REST-биндинг любого Internal*-сервиса (собирается из
 //     proto-дескрипторов) → internal mux. Именно поэтому решение keyed на пару,
 //     а не на путь: admin-CRUD каталога DiskType висит на ТОМ ЖЕ пути, что и
-//     публичное чтение каталога (`/storage/v1/diskTypes`, `/compute/v1/diskTypes`),
+//     публичное чтение каталога (`/storage/v1/diskTypes`),
 //     и отличается только методом — `GET` публичный, `POST`/`PATCH`/`DELETE`
 //     admin-only.
 //   - Любой путь, содержащий сегмент `/internal` (например
@@ -488,16 +488,13 @@ func NewMux(
 			}
 		}
 
-		// --- compute: Instance + DiskType ---
-		// Block storage (Volume/Snapshot/Image) is served by kacho-storage under
-		// /storage/v1 — compute's duplicate Disk/Image/Snapshot services are retired.
+		// --- compute: Instance ---
+		// Block storage (Volume/Snapshot/Image/DiskType) is served by kacho-storage
+		// under /storage/v1 — compute's duplicates are retired.
 		// Geography (Region/Zone) обслуживается отдельным leaf-сервисом kacho-geo
 		// (/geo/v1/regions, /geo/v1/zones; см. ниже), а не compute.v1.
 		if err := computepb.RegisterInstanceServiceHandlerFromEndpoint(ctx, mux, computeAddr, optsFor("compute")); err != nil {
 			return nil, fmt.Errorf("register compute InstanceService: %w", err)
-		}
-		if err := computepb.RegisterDiskTypeServiceHandlerFromEndpoint(ctx, mux, computeAddr, optsFor("compute")); err != nil {
-			return nil, fmt.Errorf("register compute DiskTypeService: %w", err)
 		}
 		// MachineTypeService — public read-only sizing catalog (GET /compute/v1/machineTypes[/{id}]);
 		// cluster-viewer, parity с geo Region/Zone. Admin CRUD — InternalMachineTypeService
@@ -506,16 +503,12 @@ func NewMux(
 			return nil, fmt.Errorf("register compute MachineTypeService: %w", err)
 		}
 
-		// --- compute admin (InternalDiskType) — kacho-only, internal-port (9091) ---
-		// CRUD справочника DiskType (POST/PATCH/DELETE на /compute/v1/diskTypes).
+		// --- compute admin — kacho-only, internal-port (9091) ---
 		// Доступен только через cluster-internal REST listener для UI/admin-tooling.
 		// InternalWatchService — gRPC server-streaming (outbox), через
 		// grpc-gateway REST не проксируется; consumer'ы ходят в compute.kacho.svc:9091
 		// напрямую gRPC. Admin Region/Zone обслуживает geo.v1.
 		if computeInternalAddr != "" {
-			if err := computepb.RegisterInternalDiskTypeServiceHandlerFromEndpoint(ctx, mux, computeInternalAddr, optsFor("computeInternal")); err != nil {
-				return nil, fmt.Errorf("register compute InternalDiskTypeService: %w", err)
-			}
 			// InternalMachineTypeService — admin CRUD над каталогом MachineType
 			// (POST/PATCH/DELETE на /compute/v1/internal/machineTypes; async Operation,
 			// system_admin). Путь несет сегмент `/internal/` → isInternalRoute 404-ит его

@@ -88,7 +88,7 @@ prefix `epd`).
   `InternalRegionService.{Create,Update,Delete}` /
   `InternalZoneService.{Create,Update,Delete}` — admin CRUD справочников
   (kacho-only). Проброшено через api-gateway internal mux на
-  `/compute/v1/diskTypes`, `/compute/v1/regions`, `/compute/v1/zones` — только на
+  `/compute/v1/internal/machineTypes` — только на
   cluster-internal listener, НЕ на external TLS endpoint (`api.kacho.local:443`,
   advertised для внешних клиентов — см. workspace `CLAUDE.md` §запрет 6).
 

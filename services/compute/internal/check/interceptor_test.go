@@ -117,22 +117,22 @@ func TestInterceptor_Unary_Unavailable_FailClosed(t *testing.T) {
 	require.Equal(t, codes.PermissionDenied, st.Code())
 }
 
-func TestInterceptor_Unary_DiskTypeList_ClusterCatalog(t *testing.T) {
+func TestInterceptor_Unary_MachineTypeList_ClusterCatalog(t *testing.T) {
 	// Catalog object — "cluster:cluster_kacho_root": FGA model имеет `type cluster`
 	// с user:* viewer cascade.
 	intr, _ := newTestInterceptor(t, func(_ context.Context, subject, relation, object string) (bool, error) {
 		require.Equal(t, "user:usr_alice", subject)
 		require.Equal(t, "viewer", relation)
-		require.Equal(t, "cluster:cluster_kacho_root", object, "DiskType/Zone/Region — viewer on cluster:cluster_kacho_root")
+		require.Equal(t, "cluster:cluster_kacho_root", object, "MachineType/Zone/Region — viewer on cluster:cluster_kacho_root")
 		return true, nil
 	})
 	uIntr := intr.Unary()
 	called := false
 	handler := func(ctx context.Context, req any) (any, error) { called = true; return "ok", nil }
-	info := &grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.compute.v1.DiskTypeService/List"}
+	info := &grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.compute.v1.MachineTypeService/List"}
 	ctx := principalCtx("user", "usr_alice")
 
-	_, err := uIntr(ctx, &computev1.ListDiskTypesRequest{}, info, handler)
+	_, err := uIntr(ctx, &computev1.ListMachineTypesRequest{}, info, handler)
 	require.NoError(t, err)
 	require.True(t, called)
 }
@@ -182,8 +182,8 @@ func TestInterceptor_Unary_UnmappedInternalRPC_FailClosed(t *testing.T) {
 	// больше не делает name-based исключений (молчаливый пропуск по имени
 	// "Internal*" был fail-open вектором на internal-периметре). Exempt-RPC
 	// обязан явно стоять в PermissionMap (Public либо relation-gated).
-	// InternalDiskTypeService/List — намеренно не зарегистрированный (нет
-	// такого метода в этом сервисе) fully-qualified путь, используем его как
+	// InternalMachineTypeService/SomeFutureUnmappedMethod — намеренно не
+	// зарегистрированный (нет такого метода в сервисе) путь, используем его как
 	// синтетический "ещё не замаплен" пример: запрос отклоняется с
 	// PermissionDenied (rpc not mapped), ни handler, ни Check не вызываются.
 	intr, calls := newTestInterceptor(t, func(_ context.Context, _, _, _ string) (bool, error) {
@@ -196,7 +196,7 @@ func TestInterceptor_Unary_UnmappedInternalRPC_FailClosed(t *testing.T) {
 		called = true
 		return "ok", nil
 	}
-	info := &grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.compute.v1.InternalDiskTypeService/SomeFutureUnmappedMethod"}
+	info := &grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.compute.v1.InternalMachineTypeService/SomeFutureUnmappedMethod"}
 	ctx := principalCtx("user", "usr_alice")
 
 	_, err := uIntr(ctx, struct{}{}, info, handler)
@@ -286,8 +286,13 @@ func TestInterceptor_Unary_Breakglass_AllowsAll(t *testing.T) {
 
 func TestPermissionMap_CoverageSnapshot(t *testing.T) {
 	m := check.PermissionMap()
-	// 7 services × ~5-10 methods each + Operation × 2 + Catalog × 6 ≈ 40+
-	if len(m) < 35 {
+	// Floor lowered 35 → 25 when compute's duplicate block storage was retired:
+	// Disk (10) + Image (10) + Snapshot (9) + DiskType (2) + InternalDiskType (3)
+	// left the map, taking 34 of its entries. What remains is Instance + MachineType
+	// + InternalMachineType + Operation + InternalWatch. The floor guards against a
+	// silent drift in registrations, so a deliberate retire moves it — by exactly
+	// what the retire removed, and no further.
+	if len(m) < 25 {
 		t.Errorf("PermissionMap слишком мала (%d entries): подозрение на drift регистраций", len(m))
 	}
 }

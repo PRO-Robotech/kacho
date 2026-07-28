@@ -29,10 +29,6 @@ const sidebars: SidebarsConfig = {
       items: [
         'api/overview',
         'api/instance',
-        'api/disk',
-        'api/image',
-        'api/snapshot',
-        'api/disk-type',
         'api/operations',
       ],
     },

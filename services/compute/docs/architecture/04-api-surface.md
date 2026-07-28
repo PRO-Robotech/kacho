@@ -8,59 +8,19 @@ Operation metadata/response (из `(kacho.cloud.api.operation)` options).
 
 | Категория | Сервисов | RPC (примерно) | Listener | REST exposed |
 |---|---:|---:|---|---|
-| Public verbatim-YC мутируемые | 4 (`InstanceService`, `DiskService`, `ImageService`, `SnapshotService`) | ~60 | `:9090` public gRPC | ✅ через api-gateway (public mux), на обоих listener'ах |
-| Public read-only справочники | 3 (`DiskTypeService`, `RegionService`, `ZoneService`) | 6 | `:9090` public gRPC | ✅ через api-gateway. Geography (Region/Zone) — owner kacho-compute (эпик `KAC-15`) |
+| Public мутируемые | 1 (`InstanceService`) | ~25 | `:9090` public gRPC | ✅ через api-gateway (public mux), на обоих listener'ах |
+| Public read-only справочники | 1 (`MachineTypeService`) | 2 | `:9090` public gRPC | ✅ через api-gateway. Geography (Region/Zone) — owner kacho-geo; блочное хранение (Volume/Image/Snapshot/DiskType) — owner kacho-storage, под `/storage/v1` |
 | Operations | 1 (`OperationService`) | 2 (`Get`, `Cancel`) | `:9090` public gRPC | ✅ `/operations/{id}` (через api-gateway opsproxy) |
-| Internal admin (kacho-only) | 3 (`InternalDiskTypeService`, `InternalRegionService`, `InternalZoneService`) | 9 | `:9091` internal gRPC | ✅ выборочно (`/compute/v1/diskTypes`, `/compute/v1/regions`, `/compute/v1/zones`) — только cluster-internal listener |
+| Internal admin (kacho-only) | 1 (`InternalMachineTypeService`) | 3 | `:9091` internal gRPC | ✅ выборочно (`/compute/v1/internal/machineTypes`) — только cluster-internal listener |
 | Outbox stream | 1 (`InternalWatchService`) | 1 (`Watch`) | `:9091` internal gRPC | ❌ только server-to-server |
 
 > ⚠️ REST-пути неоднородны (кальки YC API surface, proto-decided): top-level
-> camelCase (`/compute/v1/diskTypes`, `/compute/v1/instances`), custom-методы
+> camelCase (`/compute/v1/machineTypes`, `/compute/v1/instances`), custom-методы
 > с двоеточием (`:relocate`, `:serialPortOutput`, `:latestByFamily`,
 > `:listAccessBindings`), child-list `.../operations`, action-методы через
 > сегмент пути (`/updateMetadata`, `/addOneToOneNat`, `:attachDisk`),
 > `OperationService.Get` — `/operations/{id}` (БЕЗ `/compute/v1/`-префикса).
 > Нормализовать НЕЛЬЗЯ — сломает verbatim-YC. См. [`07-known-divergences.md`](07-known-divergences.md).
-
-## DiskService (`disk_service.proto`, `:9090`)
-
-| RPC | REST | sync/async | metadata / response | статус |
-|---|---|---|---|---|
-| `Get` | `GET /compute/v1/disks/{disk_id}` | sync | → `Disk` | ✅ |
-| `List` | `GET /compute/v1/disks?projectId=&pageSize=&pageToken=&filter=` | sync | → `ListDisksResponse` | ✅ |
-| `Create` | `POST /compute/v1/disks` body `*` | async | `CreateDiskMetadata{disk_id}` / `Disk` | ✅ (`kms_key_id`→`blocked:kacho-kms`, `snapshot_schedule_ids`→`blocked:kacho-snapshot-schedule`) |
-| `Update` | `PATCH /compute/v1/disks/{disk_id}` body `*` | async | `UpdateDiskMetadata` / `Disk` | ✅ |
-| `Delete` | `DELETE /compute/v1/disks/{disk_id}` | async | `DeleteDiskMetadata` / `google.protobuf.Empty` | ✅ |
-| `ListOperations` | `GET /compute/v1/disks/{disk_id}/operations` | sync | → `ListDiskOperationsResponse` | ✅ |
-| `Relocate` | `POST /compute/v1/disks/{disk_id}:relocate` body `*` | async | `RelocateDiskMetadata` / `Disk` | ⚠️ частично (cross-zone simplified) |
-| `ListAccessBindings` | `GET /compute/v1/disks/{resource_id}:listAccessBindings` | sync | → `access.ListAccessBindingsResponse` | ⏭️ no-op скелет |
-| `SetAccessBindings` | `POST /compute/v1/disks/{resource_id}:setAccessBindings` body `*` | async | `access.SetAccessBindingsMetadata` / `access.AccessBindingsOperationResult` | ⏭️ no-op скелет |
-| `UpdateAccessBindings` | `POST /compute/v1/disks/{resource_id}:updateAccessBindings` body `*` | async | `access.UpdateAccessBindingsMetadata` / `access.AccessBindingsOperationResult` | ⏭️ no-op скелет |
-
-## ImageService (`image_service.proto`, `:9090`)
-
-| RPC | REST | sync/async | metadata / response | статус |
-|---|---|---|---|---|
-| `Get` | `GET /compute/v1/images/{image_id}` | sync | → `Image` | ✅ |
-| `GetLatestByFamily` | `GET /compute/v1/images:latestByFamily?projectId=&family=` | sync | → `Image` | ✅ |
-| `List` | `GET /compute/v1/images?projectId=&...` | sync | → `ListImagesResponse` | ✅ |
-| `Create` | `POST /compute/v1/images` body `*` | async | `CreateImageMetadata{image_id}` / `Image` | ✅ (`source` oneof: image_id/disk_id/snapshot_id/uri; `os_product_ids`→`blocked:kacho-marketplace`) |
-| `Update` | `PATCH /compute/v1/images/{image_id}` body `*` | async | `UpdateImageMetadata` / `Image` | ✅ |
-| `Delete` | `DELETE /compute/v1/images/{image_id}` | async | `DeleteImageMetadata` / `google.protobuf.Empty` | ✅ |
-| `ListOperations` | `GET /compute/v1/images/{image_id}/operations` | sync | → `ListImageOperationsResponse` | ✅ |
-| `ListAccessBindings` / `SetAccessBindings` / `UpdateAccessBindings` | `.../images/{resource_id}:listAccessBindings` / `:setAccessBindings` / `:updateAccessBindings` | sync / async / async | как у Disk | ⏭️ no-op скелет |
-
-## SnapshotService (`snapshot_service.proto`, `:9090`)
-
-| RPC | REST | sync/async | metadata / response | статус |
-|---|---|---|---|---|
-| `Get` | `GET /compute/v1/snapshots/{snapshot_id}` | sync | → `Snapshot` | ✅ |
-| `List` | `GET /compute/v1/snapshots?projectId=&...` | sync | → `ListSnapshotsResponse` | ✅ |
-| `Create` | `POST /compute/v1/snapshots` body `*` | async | `CreateSnapshotMetadata{snapshot_id, disk_id}` / `Snapshot` | ✅ (требует `disk_id`, disk READY) |
-| `Update` | `PATCH /compute/v1/snapshots/{snapshot_id}` body `*` | async | `UpdateSnapshotMetadata` / `Snapshot` | ✅ |
-| `Delete` | `DELETE /compute/v1/snapshots/{snapshot_id}` | async | `DeleteSnapshotMetadata` / `google.protobuf.Empty` | ✅ |
-| `ListOperations` | `GET /compute/v1/snapshots/{snapshot_id}/operations` | sync | → `ListSnapshotOperationsResponse` | ✅ |
-| `ListAccessBindings` / `SetAccessBindings` / `UpdateAccessBindings` | `.../snapshots/{resource_id}:listAccessBindings` / `:setAccessBindings` / `:updateAccessBindings` | sync / async / async | как у Disk | ⏭️ no-op скелет |
 
 ## InstanceService (`instance_service.proto`, `:9090`)
 
@@ -92,13 +52,6 @@ Operation metadata/response (из `(kacho.cloud.api.operation)` options).
 — metadata-сообщения без RPC; зарезервированы для будущих guest-инициированных
 переходов, в Kachō не эмитятся.)
 
-## DiskTypeService (`disk_type_service.proto`, `:9090`)
-
-| RPC | REST | sync/async | response | статус |
-|---|---|---|---|---|
-| `Get` | `GET /compute/v1/diskTypes/{disk_type_id}` | sync | → `DiskType` | ✅ |
-| `List` | `GET /compute/v1/diskTypes?pageSize=&pageToken=` | sync | → `ListDiskTypesResponse` | ✅ |
-
 ## RegionService (`region_service.proto`, `:9090`) — Geography, owner kacho-compute (эпик KAC-15)
 
 | RPC | REST | sync/async | response | статус |
@@ -125,14 +78,6 @@ Operation metadata/response (из `(kacho.cloud.api.operation)` options).
 | `Cancel` | `POST /operations/{operation_id}:cancel` | sync | → `operation.Operation` | best-effort cancel; в control-plane операции быстрые → обычно уже `done` |
 
 ## Internal сервисы (`:9091`, НЕ на external TLS endpoint)
-
-### InternalDiskTypeService (`internal_catalog_service.proto`) — kacho-only
-
-| RPC | REST (api-gateway internal mux) | response | примечание |
-|---|---|---|---|
-| `Create` | `POST /compute/v1/diskTypes` body `{id, description, zone_ids}` | → `DiskType` | admin задаёт `id` явно (PK, immutable) |
-| `Update` | `PATCH /compute/v1/diskTypes/{disk_type_id}` body `{description, zone_ids}` | → `DiskType` | |
-| `Delete` | `DELETE /compute/v1/diskTypes/{disk_type_id}` | → `DeleteDiskTypeResponse{}` | |
 
 ### InternalRegionService (`internal_catalog_service.proto`) — kacho-only (эпик KAC-15)
 

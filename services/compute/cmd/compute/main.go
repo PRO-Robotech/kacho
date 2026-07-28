@@ -77,7 +77,6 @@ func main() {
 
 // services — собранный набор бизнес-сервисов (composition-point).
 type services struct {
-	diskType    *service.DiskTypeService
 	machineType *service.MachineTypeService
 	instance    *service.InstanceService
 }
@@ -838,12 +837,9 @@ func dialPeerCreds(addr string, creds credentials.TransportCredentials, idle boo
 // storage). Threaded now so the peer-conn/config plumbing lands additively.
 func buildServices(pool *pgxpool.Pool, projectClient service.ProjectClient, geoZones service.ZoneRegistry, subnets service.SubnetRegistry, nicClient service.NicClient, storageClient service.StorageClient, opsRepo operations.Repo) *services {
 	instanceRepo := repo.NewInstanceRepo(pool)
-	diskTypeRepo := repo.NewDiskTypeRepo(pool)
 	machineTypeRepo := repo.NewMachineTypeRepo(pool)
 
-	diskTypeSvc := service.NewDiskTypeService(diskTypeRepo)
 	return &services{
-		diskType:    diskTypeSvc,
 		machineType: service.NewMachineTypeService(machineTypeRepo, opsRepo),
 		instance:    service.NewInstanceService(instanceRepo, machineTypeRepo, geoZones, subnets, projectClient, nicClient, storageClient, opsRepo),
 	}
@@ -857,7 +853,6 @@ func buildServices(pool *pgxpool.Pool, projectClient service.ProjectClient, geoZ
 // read, FGA bypass not needed (handler skips). Region/Zone serving снят —
 // Geography принадлежит kacho-geo.
 func registerPublicServices(srv *grpc.Server, svcs *services, opsRepo operations.Repo, listFilter authzfilter.Filter) {
-	computev1.RegisterDiskTypeServiceServer(srv, handler.NewDiskTypeHandler(svcs.diskType))
 	computev1.RegisterMachineTypeServiceServer(srv, handler.NewMachineTypeHandler(svcs.machineType))
 	computev1.RegisterInstanceServiceServer(srv, handler.NewInstanceHandler(svcs.instance, listFilter))
 	operationpb.RegisterOperationServiceServer(srv, handler.NewOperationHandler(opsRepo))
@@ -1038,6 +1033,5 @@ func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*clients.SyncRe
 // не маршрутизируется наружу; NetworkPolicy + requireAdmin-interceptor).
 func registerInternalServices(srv *grpc.Server, svcs *services, pool *pgxpool.Pool, dsn string, logger *slog.Logger, watchMaxStreams int) {
 	computev1.RegisterInternalWatchServiceServer(srv, handler.NewInternalWatchHandler(pool, dsn, logger.With("component", "internal-watch"), watchMaxStreams))
-	computev1.RegisterInternalDiskTypeServiceServer(srv, handler.NewInternalDiskTypeHandler(svcs.diskType))
 	computev1.RegisterInternalMachineTypeServiceServer(srv, handler.NewInternalMachineTypeHandler(svcs.machineType))
 }

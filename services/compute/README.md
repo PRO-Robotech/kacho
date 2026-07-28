@@ -15,10 +15,10 @@ cd ../kacho-deploy && make dev-up
 kubectl -n kacho port-forward svc/api-gateway 18080:8080 &
 
 # 3. Smoke
-curl 'http://localhost:18080/compute/v1/diskTypes'
+curl 'http://localhost:18080/compute/v1/machineTypes'
 curl 'http://localhost:18080/compute/v1/regions'
 curl 'http://localhost:18080/compute/v1/zones'
-curl 'http://localhost:18080/compute/v1/disks?projectId=<project>&pageSize=5'
+curl 'http://localhost:18080/compute/v1/instances?projectId=<project>&pageSize=5'
 ```
 
 Перезапуск только compute после изменений в коде:
@@ -41,8 +41,8 @@ Clean Architecture (`domain → service → handler/repo/clients`); `cmd/compute
 
 | Порт   | Сервисы                                                                  | Кто использует                  |
 |--------|--------------------------------------------------------------------------|----------------------------------|
-| `:9090`| `InstanceService`, `DiskService`, `ImageService`, `SnapshotService`, `DiskTypeService`, `RegionService`, `ZoneService`, `OperationService` | api-gateway (external + UI) |
-| `:9091`| `InternalWatchService`, `InternalDiskTypeService`, `InternalRegionService`, `InternalZoneService` | admin-tooling / UI (через api-gateway internal mux) — НЕ на external TLS endpoint |
+| `:9090`| `InstanceService`, `MachineTypeService`, `OperationService` | api-gateway (external + UI) |
+| `:9091`| `InternalWatchService`, `InternalMachineTypeService` | admin-tooling / UI (через api-gateway internal mux) — НЕ на external TLS endpoint |
 
 ## Тесты
 

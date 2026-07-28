@@ -255,17 +255,6 @@ func TestInstanceHandler_List_CacheReuse(t *testing.T) {
 	require.Equal(t, 1, cli.calls, "5 List calls but only 1 iam.BatchCheck (positive verdict cached)")
 }
 
-// CLL-06: catalog handler (DiskType) NOT filtered — public read, unaffected.
-func TestCatalogHandlers_NoFilter(t *testing.T) {
-	dtSvc := service.NewDiskTypeService(portmock.NewDiskTypeRepo("network-ssd", "network-hdd"))
-	dh := NewDiskTypeHandler(dtSvc)
-
-	// Even with no principal — catalog visible.
-	resp, err := dh.List(context.Background(), &computev1.ListDiskTypesRequest{})
-	require.NoError(t, err)
-	require.Len(t, resp.DiskTypes, 2)
-}
-
 // Pagination format is validated BEFORE any authz decision, so a garbage
 // page_token / out-of-range page_size is 400 InvalidArgument regardless of grant
 // state. Locked at the HANDLER level with a zero-grant caller (the state that used

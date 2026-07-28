@@ -233,14 +233,16 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 			t.Fatalf("unexpected required_acr_min %q on %s", e.RequiredACRMin, fqn)
 		}
 	}
-	// Retiring compute's duplicate Disk/Image/Snapshot removed 29 entries: 28→22
-	// sensitive (the six *AccessBindings RPCs of the three resources, which are
-	// privilege-granting and so carried acr=2) and 238→215 routine (the remaining
-	// 23). The exempt count is untouched — none of the retired RPCs was exempt.
+	// Retiring compute's duplicate block storage removed 34 entries in two steps.
+	// Disk/Image/Snapshot took 29: 28→22 sensitive (the six *AccessBindings RPCs of
+	// the three resources, privilege-granting and so acr=2) and 238→215 routine (the
+	// other 23). DiskType then took 5 more, all routine (2 public reads + 3 internal
+	// admin mutations): 215→210. The exempt count is untouched throughout — none of
+	// the retired RPCs was exempt.
 	assert.Equal(t, 22, n2, "sensitive count")
-	assert.Equal(t, 215, n1, "routine count")
+	assert.Equal(t, 210, n1, "routine count")
 	assert.Equal(t, 64, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 301, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 296, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

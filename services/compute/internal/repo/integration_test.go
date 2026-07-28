@@ -132,26 +132,3 @@ func TestIntegration_InstanceRepo_Lifecycle(t *testing.T) {
 	_, _, _, err = instRepo.GateForAttach(ctx, inID)
 	require.ErrorIs(t, err, service.ErrNotFound)
 }
-
-func TestIntegration_CatalogRepo(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test")
-	}
-	ctx := context.Background()
-	dsn := setupTestDB(t)
-	pool, err := coredb.NewPool(ctx, dsn)
-	require.NoError(t, err)
-	defer pool.Close()
-
-	// Region/Zone serving (ZoneRepo/RegionRepo) removed — Geography is
-	// owned by kacho-geo; the local zones/regions tables are dropped by migration
-	// 0011_drop_geography (see TestIntegration_DropGeographyMigration). DiskType
-	// stays compute-owned.
-	dtr := repo.NewDiskTypeRepo(pool)
-	list, _, err := dtr.List(ctx, service.Pagination{})
-	require.NoError(t, err)
-	require.GreaterOrEqual(t, len(list), 4) // seeded
-	ssd, err := dtr.Get(ctx, "network-ssd")
-	require.NoError(t, err)
-	require.NotEmpty(t, ssd.ZoneIDs)
-}

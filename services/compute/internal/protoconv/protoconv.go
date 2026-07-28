@@ -48,15 +48,6 @@ func MachineType(mt *domain.MachineType) *computev1.MachineType {
 	}
 }
 
-// DiskType конвертирует domain.DiskType → computev1.DiskType.
-func DiskType(t *domain.DiskType) *computev1.DiskType {
-	return &computev1.DiskType{
-		Id:          t.ID,
-		Description: t.Description,
-		ZoneIds:     t.ZoneIDs,
-	}
-}
-
 // Instance конвертирует domain.Instance → computev1.Instance (COMP-1 redesign).
 // Vendor-cruft (platform_id/resources/scheduling_policy/gpu_settings/application/...)
 // НЕ маппится (retired, ban 2). serviceAccountId эхается как class-C Referrer;

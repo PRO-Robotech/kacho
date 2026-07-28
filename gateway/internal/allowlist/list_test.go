@@ -204,7 +204,6 @@ func TestGateway_D8b_ComputeActive(t *testing.T) {
 		"/kacho.cloud.compute.v1.InstanceService/Get",
 		"/kacho.cloud.compute.v1.InstanceService/Start",
 		"/kacho.cloud.compute.v1.InstanceService/AttachDisk",
-		"/kacho.cloud.compute.v1.DiskTypeService/List",
 	}
 	for _, m := range publicMethods {
 
@@ -216,9 +215,6 @@ func TestGateway_D8b_ComputeActive(t *testing.T) {
 	}
 
 	internalMethods := []string{
-		"/kacho.cloud.compute.v1.InternalDiskTypeService/Create",
-		"/kacho.cloud.compute.v1.InternalDiskTypeService/Delete",
-		"/kacho.cloud.compute.v1.InternalDiskTypeService/Update",
 		"/kacho.cloud.compute.v1.InternalWatchService/Watch",
 	}
 	for _, m := range internalMethods {

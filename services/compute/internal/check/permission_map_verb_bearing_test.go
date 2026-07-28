@@ -109,14 +109,15 @@ func TestPermissionMap_VerbBearing_ProjectList_StaysViewer(t *testing.T) {
 	}
 }
 
-// TestPermissionMap_VerbBearing_DiskTypeCatalogUnchanged — DiskType read-only
+// TestPermissionMap_VerbBearing_MachineTypeCatalogUnchanged — MachineType read-only
 // catalog гейтится `viewer` на cluster singleton (cluster — не verb-bearing, F-8);
-// не флипается.
-func TestPermissionMap_VerbBearing_DiskTypeCatalogUnchanged(t *testing.T) {
+// не флипается. DiskType ушёл вместе с дублем блочного хранения (владелец —
+// kacho-storage), MachineType остался единственным compute-каталогом.
+func TestPermissionMap_VerbBearing_MachineTypeCatalogUnchanged(t *testing.T) {
 	m := check.PermissionMap()
 	for _, rpc := range []string{
-		"/kacho.cloud.compute.v1.DiskTypeService/Get",
-		"/kacho.cloud.compute.v1.DiskTypeService/List",
+		"/kacho.cloud.compute.v1.MachineTypeService/Get",
+		"/kacho.cloud.compute.v1.MachineTypeService/List",
 	} {
 		e, ok := m[rpc]
 		require.Truef(t, ok, "%s must be mapped", rpc)
@@ -129,9 +130,9 @@ func TestPermissionMap_VerbBearing_DiskTypeCatalogUnchanged(t *testing.T) {
 func TestPermissionMap_VerbBearing_InternalUnchanged(t *testing.T) {
 	m := check.PermissionMap()
 	for _, rpc := range []string{
-		"/kacho.cloud.compute.v1.InternalDiskTypeService/Create",
-		"/kacho.cloud.compute.v1.InternalDiskTypeService/Update",
-		"/kacho.cloud.compute.v1.InternalDiskTypeService/Delete",
+		"/kacho.cloud.compute.v1.InternalMachineTypeService/Create",
+		"/kacho.cloud.compute.v1.InternalMachineTypeService/Update",
+		"/kacho.cloud.compute.v1.InternalMachineTypeService/Delete",
 	} {
 		e, ok := m[rpc]
 		require.Truef(t, ok, "%s must be mapped", rpc)

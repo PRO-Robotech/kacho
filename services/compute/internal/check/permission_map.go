@@ -14,7 +14,7 @@ const (
 
 	objectTypeInstance = "compute_instance"
 
-	// DiskType — глобальный read-only справочник. Доступ —
+	// MachineType — глобальный read-only справочник. Доступ —
 	// "viewer on project:<project_id>" недоступен (request не несёт project_id).
 	// Решение: справочник видим всем authenticated principal'ам на
 	// cluster singleton (паттерн `viewer on cluster:cluster_kacho_root`).
@@ -30,7 +30,7 @@ const (
 	// relationViewer / relationEditor — tier-relations. Сохраняются для
 	// create-child (на parent project, F-7), top-level project-List (visibility
 	// per-object идёт per-page через iam BatchCheck `viewer ∪ v_list`, не через
-	// per-RPC Check) и DiskType read-only catalog (cluster — не verb-bearing). Для
+	// per-RPC Check) и MachineType read-only catalog (cluster — не verb-bearing). Для
 	// object-self CRUD энфорс — verb-bearing relations ниже.
 	relationViewer = "viewer"
 	relationEditor = "editor"
@@ -52,15 +52,15 @@ const (
 	relationVDelete = "v_delete"
 
 	// relationSystemAdmin — cluster-scoped admin relation for kacho-only catalog
-	// mutations (InternalDiskTypeService Create/Update/Delete).
+	// mutations (InternalMachineTypeService Create/Update/Delete).
 	// Mirrors proto annotation `required_relation=system_admin`, object_type=cluster
-	// in kacho-proto/.../internal_catalog_service.proto. Checked on the cluster
-	// singleton (`system_admin on cluster:cluster_kacho_root`).
+	// in internal_machine_type_service.proto. Checked on the cluster singleton
+	// (`system_admin on cluster:cluster_kacho_root`).
 	relationSystemAdmin = "system_admin"
 )
 
 // staticClusterCatalog — extractor, всегда возвращающий (cluster, cluster_kacho_root).
-// Используется для DiskType read-only RPC.
+// Используется для MachineType read-only RPC.
 func staticClusterCatalog() authz.ObjectExtractor {
 	return func(req any) (string, string, error) {
 		return objectTypeCluster, clusterSingletonObject, nil
@@ -97,7 +97,7 @@ func unscopedProject() authz.ObjectExtractor {
 //   - ListOperations/Snapshot… (on res) — на самом ресурсе, `v_list`
 //   - Update + lifecycle/attach verb'ы — на самом ресурсе, `v_update`
 //   - Delete                          — на самом ресурсе, `v_delete`
-//   - DiskType Get/List               — `viewer` на cluster singleton (не verb-bearing)
+//   - MachineType Get/List            — `viewer` на cluster singleton (не verb-bearing)
 //   - OperationService.Get            — Public (op-id opaque, поллится creator'ом)
 //
 // scope-guard: для object-self RPC мы НЕ резолвим project_id из БД
@@ -259,48 +259,21 @@ func PermissionMap() authz.RPCMap {
 		},
 
 		// =========================
-		// DiskType — read-only catalog (viewer on cluster singleton). Region/Zone
-		// serving removed — Geography is owned by kacho-geo.
-		// =========================
-		"/kacho.cloud.compute.v1.DiskTypeService/Get": {
-			Relation: relationViewer,
-			Extract:  staticClusterCatalog(),
-		},
-		"/kacho.cloud.compute.v1.DiskTypeService/List": {
-			Relation: relationViewer,
-			Extract:  staticClusterCatalog(),
-		},
-
-		// =========================
-		// InternalDiskTypeService — kacho-only catalog admin CRUD
-		// (Create/Update/Delete) on the cluster-internal listener (:9091). The
+		// Internal admin CRUD on the cluster-internal listener (:9091). The
 		// internal listener runs the same per-RPC FGA Check as public and the
 		// pinned corelib authz.Interceptor has NO name-based "methodIsInternal"
 		// fallback — every RPC absent from this map fails closed with
 		// PermissionDenied ("rpc not mapped"), unary AND stream alike. So every
-		// internal RPC MUST have an explicit entry: relation-gated (like the
-		// three below, `system_admin on cluster:cluster_kacho_root` — mirrors
-		// proto `required_relation=system_admin`, object_type=cluster) or
+		// internal RPC MUST have an explicit entry: relation-gated
+		// (`system_admin on cluster:cluster_kacho_root` — mirrors proto
+		// `required_relation=system_admin`, object_type=cluster) or
 		// Public=true for an explicit exempt (like InternalWatchService/Watch
 		// further down, and OperationService.Get/Cancel above).
-		"/kacho.cloud.compute.v1.InternalDiskTypeService/Create": {
-			Relation: relationSystemAdmin,
-			Extract:  staticClusterCatalog(),
-		},
-		"/kacho.cloud.compute.v1.InternalDiskTypeService/Update": {
-			Relation: relationSystemAdmin,
-			Extract:  staticClusterCatalog(),
-		},
-		"/kacho.cloud.compute.v1.InternalDiskTypeService/Delete": {
-			Relation: relationSystemAdmin,
-			Extract:  staticClusterCatalog(),
-		},
 
-		// MachineType — read-only sizing catalog (viewer on cluster singleton),
-		// PUBLIC mirror of DiskTypeService/Get+List. Was ALSO unmapped → the
-		// public Get/List used across machine-type + instance/list-filter suites
-		// (and Instance.Create's machineTypeId resolve) failed closed "rpc not
-		// mapped". Same viewer @ cluster:cluster_kacho_root as DiskType reads.
+		// MachineType — read-only sizing catalog (viewer on cluster singleton).
+		// Was unmapped → the public Get/List used across machine-type +
+		// instance/list-filter suites (and Instance.Create's machineTypeId
+		// resolve) failed closed "rpc not mapped".
 		"/kacho.cloud.compute.v1.MachineTypeService/Get": {
 			Relation: relationViewer,
 			Extract:  staticClusterCatalog(),
@@ -311,8 +284,7 @@ func PermissionMap() authz.RPCMap {
 		},
 
 		// InternalMachineTypeService — kacho-only sizing-catalog admin CRUD
-		// (Create/Update/Delete) on :9091, exact same pattern as
-		// InternalDiskTypeService above (proto required_relation=system_admin,
+		// (Create/Update/Delete) on :9091 (proto required_relation=system_admin,
 		// object_type=cluster in internal_machine_type_service.proto). Omitted at
 		// COMP-1: since the pinned corelib authz.Interceptor has NO methodIsInternal
 		// fallback, an unmapped internal RPC fails closed PermissionDenied ("rpc not

@@ -19,16 +19,13 @@ import (
 // internal_catalog_service.proto). Эти RPC живут на internal listener'е :9091 —
 // он гоняет тот же authzIntr, что и public, поэтому каждая catalog-мутация должна
 // резолвиться в Check, а не пропускаться methodIsInternal-фолбэком.
-// Internal{Zone,Region}Service serving removed — Geography is owned by kacho-geo.
-// InternalDiskTypeService + InternalMachineTypeService remain compute-owned
-// (COMP-1 redesign added MachineType sizing-catalog admin CRUD; every internal RPC
-// MUST be mapped or it fails closed "rpc not mapped" — MachineType was omitted,
-// 403'ing the admin-seed and cascading into instance/list-filter which reference
-// machineTypeId).
+// Internal{Zone,Region}Service serving removed — Geography is owned by kacho-geo;
+// InternalDiskTypeService removed — block storage is owned by kacho-storage.
+// InternalMachineTypeService is the one compute-owned catalog admin left (every
+// internal RPC MUST be mapped or it fails closed "rpc not mapped" — MachineType was
+// omitted once, 403'ing the admin-seed and cascading into instance/list-filter which
+// reference machineTypeId).
 var catalogAdminMutations = []string{
-	"/kacho.cloud.compute.v1.InternalDiskTypeService/Create",
-	"/kacho.cloud.compute.v1.InternalDiskTypeService/Update",
-	"/kacho.cloud.compute.v1.InternalDiskTypeService/Delete",
 	"/kacho.cloud.compute.v1.InternalMachineTypeService/Create",
 	"/kacho.cloud.compute.v1.InternalMachineTypeService/Update",
 	"/kacho.cloud.compute.v1.InternalMachineTypeService/Delete",
@@ -52,15 +49,12 @@ func TestPermissionMap_CatalogAdmin_SystemAdminOnCluster(t *testing.T) {
 	}
 }
 
-// catalogPublicReads — the PUBLIC read-only catalog RPCs (DiskType + MachineType
-// Get/List). These run authz Check on the public listener too; an unmapped one
-// fails closed "rpc not mapped". MachineTypeService/Get+List were omitted (only the
-// Internal admin mutations were added) → the public catalog reads used across the
-// machine-type + instance/list-filter suites (and Instance.Create machineTypeId
-// resolve) 403'd.
+// catalogPublicReads — the PUBLIC read-only catalog RPCs (MachineType Get/List).
+// These run authz Check on the public listener too; an unmapped one fails closed
+// "rpc not mapped". MachineTypeService/Get+List were omitted once → the public
+// catalog reads used across the machine-type + instance/list-filter suites (and
+// Instance.Create machineTypeId resolve) 403'd.
 var catalogPublicReads = []string{
-	"/kacho.cloud.compute.v1.DiskTypeService/Get",
-	"/kacho.cloud.compute.v1.DiskTypeService/List",
 	"/kacho.cloud.compute.v1.MachineTypeService/Get",
 	"/kacho.cloud.compute.v1.MachineTypeService/List",
 }
@@ -94,7 +88,7 @@ func TestPermissionMap_CatalogAdmin_EnforcedByInterceptor(t *testing.T) {
 	uIntr := intr.Unary()
 	called := false
 	handler := func(ctx context.Context, req any) (any, error) { called = true; return "ok", nil }
-	info := &grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.compute.v1.InternalDiskTypeService/Create"}
+	info := &grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.compute.v1.InternalMachineTypeService/Create"}
 	ctx := principalCtx("user", "usr_admin")
 
 	resp, err := uIntr(ctx, struct{}{}, info, handler)

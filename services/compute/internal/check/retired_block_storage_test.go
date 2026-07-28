@@ -56,6 +56,7 @@ var retiredBlockStorage = []retiredResource{
 	{table: "disks", services: []string{"DiskService"}},
 	{table: "images", services: []string{"ImageService"}},
 	{table: "snapshots", services: []string{"SnapshotService"}},
+	{table: "disk_types", services: []string{"DiskTypeService", "InternalDiskTypeService"}},
 }
 
 // retiredAuthzObjects — the authorization object types the retired resources used to

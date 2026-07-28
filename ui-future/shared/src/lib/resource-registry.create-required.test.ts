@@ -39,9 +39,6 @@ const REQUIRED_BY_API_PATH: Record<string, string[]> = {
   // compute.v1 — CreateDiskRequest{project_id,zone_id,size};
   // CreateImageRequest{project_id} (region_id is the STORAGE image, not this one);
   // CreateSnapshotRequest{project_id,disk_id}; CreateInstanceRequest{project_id,zone_id}.
-  "/compute/v1/disks": ["project_id", "zone_id", "size"],
-  "/compute/v1/images": ["project_id"],
-  "/compute/v1/snapshots": ["project_id", "disk_id"],
   "/compute/v1/instances": ["project_id", "zone_id"],
   // geo.v1 InternalCatalogService — Create{Region,Zone}Request mark no field required.
   "/geo/v1/regions": [],
