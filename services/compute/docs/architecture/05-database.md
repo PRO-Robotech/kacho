@@ -119,7 +119,8 @@ Seed `ru-central1` + `ru-central1-{a,b,d}` (`status = UP`) — в `0003_geograph
 
 ### `disk_types`
 
-Read-only справочник типов дисков (admin CRUD через `InternalDiskTypeService`).
+Read-only справочник типов дисков жил здесь до раскола блочного хранения; таблица
+`disk_types` снята миграцией 0022 — владелец справочника kacho-storage.
 PK — литерал.
 
 ```

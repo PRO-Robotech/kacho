@@ -33,29 +33,33 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 )
 
-// TestIntegration_DiskHandler_PaginatedFilteredList — page-then-check traversal
-// over real Postgres. Seeds 150 disks in a project, grants access to a SCATTERED
+// TestIntegration_InstanceHandler_PaginatedFilteredList — page-then-check traversal
+// over real Postgres. Seeds 150 instances in a project, grants access to a SCATTERED
 // 60 of them, then pages with page_size=25.
+//
+// The guard was written over compute's own Disk resource, which is retired
+// (kacho-storage owns block storage). The contract under test is the shared
+// page-then-check List, not the resource, so it moved to Instance.
 //
 // RED-safety: this fails if the filter were applied to anything other than the
 // page actually read (e.g. re-introducing an enumeration that truncates, which
 // would drop accessible ids out of the union), if an ungranted row leaked onto a
 // page, or if the cursor stalled / duplicated once pages became partial.
-func TestIntegration_DiskHandler_PaginatedFilteredList(t *testing.T) {
+func TestIntegration_InstanceHandler_PaginatedFilteredList(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
 	stub := &batchCheckStub{allowBySubject: map[string][]string{}}
-	h, r, pool := newDiskHandlerOnRealRepo(t, stub)
+	h, r, pool := newInstanceHandlerOnRealRepo(t, stub)
 	defer pool.Close()
 
 	const total = 150
 	const granted = 60
 	names := make([]string, 0, total)
 	for i := 0; i < total; i++ {
-		names = append(names, fmt.Sprintf("d%03d", i))
+		names = append(names, fmt.Sprintf("i%03d", i))
 	}
-	allIDs := seedDisks(t, r, "proj-a", names...)
+	allIDs := seedInstances(t, r, "proj-a", names...)
 	require.Len(t, allIDs, total)
 
 	// Scatter the accessible subset across the whole ordered range, so the
@@ -77,14 +81,14 @@ func TestIntegration_DiskHandler_PaginatedFilteredList(t *testing.T) {
 	var pages int
 	token := ""
 	for {
-		resp, err := h.List(ctx, &computev1.ListDisksRequest{
+		resp, err := h.List(ctx, &computev1.ListInstancesRequest{
 			ProjectId: "proj-a", PageSize: pageSize, PageToken: token,
 		})
 		require.NoError(t, err)
 		pages++
-		require.LessOrEqual(t, len(resp.Disks), pageSize, "page must not exceed page_size")
-		for _, d := range resp.Disks {
-			require.True(t, accessibleSet[d.Id], "inaccessible disk leaked onto a page: %s", d.Id)
+		require.LessOrEqual(t, len(resp.Instances), pageSize, "page must not exceed page_size")
+		for _, d := range resp.Instances {
+			require.True(t, accessibleSet[d.Id], "inaccessible instance leaked onto a page: %s", d.Id)
 			require.False(t, seen[d.Id], "duplicate across pages: %s", d.Id)
 			seen[d.Id] = true
 		}

@@ -119,7 +119,7 @@ func TestFGAFilter_FiltersPageAndPreservesOrder(t *testing.T) {
 	cli := newFakeAuthorizeClient().allow("viewer", "c", "a")
 	f := NewFGAFilter(cli, DefaultConfig())
 
-	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeDisk, ActionDiskRead,
+	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead,
 		[]string{"c", "a", "b"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"c", "a"}, got,
@@ -127,8 +127,8 @@ func TestFGAFilter_FiltersPageAndPreservesOrder(t *testing.T) {
 
 	require.NotEmpty(t, cli.gotReqs)
 	assert.Equal(t, "user:usr_x", cli.gotReqs[0].GetSubject())
-	assert.Equal(t, ResourceTypeDisk, cli.gotReqs[0].GetResource().GetType())
-	assert.Equal(t, ActionDiskRead, cli.gotReqs[0].GetAction())
+	assert.Equal(t, ResourceTypeInstance, cli.gotReqs[0].GetResource().GetType())
+	assert.Equal(t, ActionInstanceRead, cli.gotReqs[0].GetAction())
 	assert.Equal(t, "viewer", cli.gotReqs[0].GetRequiredRelation())
 }
 
@@ -174,7 +174,7 @@ func TestFGAFilter_BatchesRespectHardCap(t *testing.T) {
 	}
 	f := NewFGAFilter(cli, DefaultConfig())
 
-	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeDisk, ActionDiskRead, ids)
+	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead, ids)
 	require.NoError(t, err)
 	assert.Len(t, got, 250)
 	for _, n := range cli.batchSize {
@@ -189,7 +189,7 @@ func TestFGAFilter_CostProportionalToPage(t *testing.T) {
 	cli := newFakeAuthorizeClient().allow("viewer", "a", "b", "c")
 	f := NewFGAFilter(cli, DefaultConfig())
 
-	_, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeDisk, ActionDiskRead,
+	_, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead,
 		[]string{"a", "b", "c"})
 	require.NoError(t, err)
 	assert.Equal(t, 3, cli.checked)
@@ -200,7 +200,7 @@ func TestFGAFilter_DeduplicatesInput(t *testing.T) {
 	cli := newFakeAuthorizeClient().allow("viewer", "a")
 	f := NewFGAFilter(cli, DefaultConfig())
 
-	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeDisk, ActionDiskRead,
+	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead,
 		[]string{"a", "a", "b"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"a"}, got, "a duplicated id appears once in the visible subset")
@@ -213,7 +213,7 @@ func TestFGAFilter_EmptyPageNoCall(t *testing.T) {
 	cli := newFakeAuthorizeClient()
 	f := NewFGAFilter(cli, DefaultConfig())
 
-	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeDisk, ActionDiskRead, nil)
+	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead, nil)
 	require.NoError(t, err)
 	assert.Empty(t, got)
 	assert.Equal(t, 0, cli.calls, "empty page → no authz round-trip")
@@ -224,7 +224,7 @@ func TestFGAFilter_NothingVisible(t *testing.T) {
 	cli := newFakeAuthorizeClient()
 	f := NewFGAFilter(cli, DefaultConfig())
 
-	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeDisk, ActionDiskRead,
+	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead,
 		[]string{"a", "b"})
 	require.NoError(t, err)
 	assert.Empty(t, got, "no grant → nothing visible (no-leak)")
@@ -235,7 +235,7 @@ func TestFGAFilter_FailClosed(t *testing.T) {
 	cli.err = status.Error(codes.Unavailable, "iam down")
 	f := NewFGAFilter(cli, DefaultConfig()) // FailOpen=false
 
-	_, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeDisk, ActionDiskRead,
+	_, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead,
 		[]string{"a"})
 	require.Error(t, err)
 	assert.Equal(t, codes.Unavailable, status.Code(err), "fail-closed maps an iam error → Unavailable")
@@ -248,7 +248,7 @@ func TestFGAFilter_PreservesCodes(t *testing.T) {
 	cli.err = status.Error(codes.PermissionDenied, "no")
 	f := NewFGAFilter(cli, DefaultConfig())
 
-	_, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeDisk, ActionDiskRead, []string{"a"})
+	_, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead, []string{"a"})
 	require.Error(t, err)
 	assert.Equal(t, codes.Unavailable, status.Code(err))
 }
@@ -259,7 +259,7 @@ func TestFGAFilter_GenericErrWrapsUnavailable(t *testing.T) {
 	cli.err = errors.New("boom")
 	f := NewFGAFilter(cli, DefaultConfig())
 
-	_, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeDisk, ActionDiskRead, []string{"a"})
+	_, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead, []string{"a"})
 	require.Error(t, err)
 	assert.Equal(t, codes.Unavailable, status.Code(err))
 }
@@ -271,7 +271,7 @@ func TestFGAFilter_FailOpenReturnsPage(t *testing.T) {
 	cfg.FailOpen = true
 	f := NewFGAFilter(cli, cfg)
 
-	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeDisk, ActionDiskRead,
+	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead,
 		[]string{"a", "b"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"a", "b"}, got, "fail-open → unfiltered page (degraded mode)")
@@ -295,7 +295,7 @@ func TestFGAFilter_FailOpenEmitsAuditWarn(t *testing.T) {
 	var buf bytes.Buffer
 	f.logger = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
-	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeDisk, ActionDiskRead,
+	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead,
 		[]string{"a"})
 	require.NoError(t, err)
 	require.Equal(t, []string{"a"}, got)
@@ -312,7 +312,7 @@ func TestFGAFilter_FailOpenEmitsAuditWarn(t *testing.T) {
 func TestFGAFilter_ResponseLengthMismatchFailsClosed(t *testing.T) {
 	f := NewFGAFilter(shortResponseClient{}, DefaultConfig())
 
-	_, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeDisk, ActionDiskRead,
+	_, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead,
 		[]string{"a", "b"})
 	require.Error(t, err)
 	assert.Equal(t, codes.Unavailable, status.Code(err))
@@ -330,7 +330,7 @@ func TestFGAFilter_AnonymousFailClosed(t *testing.T) {
 	cli := newFakeAuthorizeClient()
 	f := NewFGAFilter(cli, DefaultConfig())
 
-	_, err := f.FilterVisibleIDs(context.Background(), "", ResourceTypeDisk, ActionDiskRead, []string{"a"})
+	_, err := f.FilterVisibleIDs(context.Background(), "", ResourceTypeInstance, ActionInstanceRead, []string{"a"})
 	require.Error(t, err)
 	assert.Equal(t, codes.Unauthenticated, status.Code(err))
 	assert.Equal(t, 0, cli.calls, "anonymous → no FGA call")
@@ -348,7 +348,7 @@ func TestFGAFilter_TimeoutEnforced(t *testing.T) {
 	cfg.Timeout = 10 * time.Millisecond
 	f := NewFGAFilter(cli, cfg)
 
-	_, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeDisk, ActionDiskRead, []string{"a"})
+	_, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead, []string{"a"})
 	require.Error(t, err)
 	assert.Equal(t, codes.Unavailable, status.Code(err))
 }
@@ -363,12 +363,12 @@ func TestFGAFilter_CachesPositiveOnly(t *testing.T) {
 	f := NewFGAFilter(cli, DefaultConfig())
 	ctx := context.Background()
 
-	_, err := f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeDisk, ActionDiskRead, []string{"a", "b"})
+	_, err := f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeInstance, ActionInstanceRead, []string{"a", "b"})
 	require.NoError(t, err)
 	firstChecked := cli.checked
 	require.Positive(t, firstChecked)
 
-	_, err = f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeDisk, ActionDiskRead, []string{"a", "b"})
+	_, err = f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeInstance, ActionInstanceRead, []string{"a", "b"})
 	require.NoError(t, err)
 
 	var reAskedA, reAskedB bool
@@ -391,20 +391,25 @@ func TestFGAFilter_CacheKeyedBySubjectAndType(t *testing.T) {
 	f := NewFGAFilter(cli, DefaultConfig())
 	ctx := context.Background()
 
-	got, err := f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeDisk, ActionDiskRead, []string{"a"})
+	got, err := f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeInstance, ActionInstanceRead, []string{"a"})
 	require.NoError(t, err)
 	require.Equal(t, []string{"a"}, got)
 
 	// Другой subject на тот же id — своё решение (fake разрешает "a" любому, но
 	// запрос ОБЯЗАН уйти: кеш чужого вердикта переиспользовать нельзя).
 	before := cli.checked
-	_, err = f.FilterVisibleIDs(ctx, "user:usr_y", ResourceTypeDisk, ActionDiskRead, []string{"a"})
+	_, err = f.FilterVisibleIDs(ctx, "user:usr_y", ResourceTypeInstance, ActionInstanceRead, []string{"a"})
 	require.NoError(t, err)
 	assert.Greater(t, cli.checked, before, "another subject must not reuse the first subject's verdict")
 
-	// Тот же subject, другой resourceType — тоже отдельный вердикт.
+	// Тот же subject, другой resourceType — тоже отдельный вердикт. Фильтр
+	// обращается с resourceType как с непрозрачной строкой (кладёт её в ключ кеша
+	// и в запрос, ничего о ней не утверждая), поэтому ключ проверяется ЛЮБЫМ
+	// другим типом. compute своих других типов больше не имеет — Disk/Image/
+	// Snapshot сняты вместе с дублем блочного хранения, — так что здесь взят
+	// реальный тип домена-владельца.
 	before = cli.checked
-	_, err = f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeImage, ActionImageRead, []string{"a"})
+	_, err = f.FilterVisibleIDs(ctx, "user:usr_x", "storage_volume", ActionInstanceRead, []string{"a"})
 	require.NoError(t, err)
 	assert.Greater(t, cli.checked, before, "another resource type must not reuse the verdict")
 }
@@ -420,13 +425,13 @@ func TestFGAFilter_CacheTTLExpiry(t *testing.T) {
 	f.now = clk.now
 	ctx := context.Background()
 
-	_, err := f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeDisk, ActionDiskRead, []string{"a"})
+	_, err := f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeInstance, ActionInstanceRead, []string{"a"})
 	require.NoError(t, err)
 	require.Equal(t, 1, cli.calls)
 
 	// Внутри TTL — cache hit, round-trip'а нет.
 	clk.advance(10 * time.Millisecond)
-	_, err = f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeDisk, ActionDiskRead, []string{"a"})
+	_, err = f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeInstance, ActionInstanceRead, []string{"a"})
 	require.NoError(t, err)
 	require.Equal(t, 1, cli.calls, "within TTL the positive verdict is served from cache")
 
@@ -435,7 +440,7 @@ func TestFGAFilter_CacheTTLExpiry(t *testing.T) {
 	// поэтому вызовов становится 3, а не 2.
 	clk.advance(40 * time.Millisecond)
 	cli.visible["viewer"]["a"] = false
-	got, err := f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeDisk, ActionDiskRead, []string{"a"})
+	got, err := f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeInstance, ActionInstanceRead, []string{"a"})
 	require.NoError(t, err)
 	assert.Equal(t, 3, cli.calls, "past TTL the verdict must be re-asked (viewer, then v_list)")
 	assert.Empty(t, got, "a revoked grant must stop being visible once the TTL elapses")
@@ -454,23 +459,23 @@ func TestFGAFilter_LRUEvictsLeastRecentlyUsed(t *testing.T) {
 	for i := 0; i < 9; i++ {
 		id := fmt.Sprintf("cold_%d", i)
 		cli.allow("viewer", id)
-		_, err := f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeDisk, ActionDiskRead, []string{id})
+		_, err := f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeInstance, ActionInstanceRead, []string{id})
 		require.NoError(t, err)
 	}
-	_, err := f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeDisk, ActionDiskRead, []string{"hot"})
+	_, err := f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeInstance, ActionInstanceRead, []string{"hot"})
 	require.NoError(t, err)
 	require.Equal(t, 10, f.Size())
 
 	for i := 100; i < 200; i++ {
 		before := cli.checked
-		_, err := f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeDisk, ActionDiskRead, []string{"hot"})
+		_, err := f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeInstance, ActionInstanceRead, []string{"hot"})
 		require.NoError(t, err)
 		require.Equal(t, before, cli.checked,
 			"recently-used hot entry must stay cached across overflow (LRU, not random eviction)")
 
 		id := fmt.Sprintf("cold_%d", i)
 		cli.allow("viewer", id)
-		_, err = f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeDisk, ActionDiskRead, []string{id})
+		_, err = f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeInstance, ActionInstanceRead, []string{id})
 		require.NoError(t, err)
 	}
 	assert.Equal(t, 10, f.Size(), "cache stays bounded at CacheMaxEntries")
@@ -491,7 +496,7 @@ func TestFGAFilter_CacheSizeDoesNotTruncateVisibility(t *testing.T) {
 	cfg.CacheMaxEntries = 3 // operator tuned cache down for memory
 	f := NewFGAFilter(cli, cfg)
 
-	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeDisk, ActionDiskRead, ids)
+	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead, ids)
 	require.NoError(t, err)
 	assert.Len(t, got, 120, "every granted id on the page must stay visible regardless of cache sizing")
 	assert.LessOrEqual(t, f.Size(), cfg.CacheMaxEntries, "cache still respects its bound")
@@ -500,7 +505,7 @@ func TestFGAFilter_CacheSizeDoesNotTruncateVisibility(t *testing.T) {
 // Passthrough: nil-client (graceful start без iam) и Enabled=false.
 func TestFGAFilter_DisabledOrNilClientPassthrough(t *testing.T) {
 	f := NewFGAFilter(nil, DefaultConfig())
-	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeDisk, ActionDiskRead,
+	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead,
 		[]string{"a", "b"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"a", "b"}, got)
@@ -509,7 +514,7 @@ func TestFGAFilter_DisabledOrNilClientPassthrough(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.Enabled = false
 	f2 := NewFGAFilter(cli, cfg)
-	got2, err := f2.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeDisk, ActionDiskRead,
+	got2, err := f2.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead,
 		[]string{"a"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"a"}, got2)
@@ -526,7 +531,7 @@ func TestFGAFilter_ConcurrentPagesRaceFree(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeDisk, ActionDiskRead,
+			_, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead,
 				[]string{"a", "b", "c"})
 			assert.NoError(t, err)
 		}()

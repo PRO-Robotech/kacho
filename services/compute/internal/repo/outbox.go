@@ -90,7 +90,4 @@ func emitFGARegisterIntent(ctx context.Context, tx pgx.Tx, event, kind, resource
 	return nil
 }
 
-func diskPayload(d *domain.Disk) map[string]any          { return domainToMap(d) }
-func imagePayload(i *domain.Image) map[string]any        { return domainToMap(i) }
-func snapshotPayload(s *domain.Snapshot) map[string]any  { return domainToMap(s) }
 func instancePayload(in *domain.Instance) map[string]any { return domainToMap(in) }

@@ -21,9 +21,6 @@ import {
   ApiOutlined,
   HistoryOutlined,
   DesktopOutlined,
-  HddOutlined,
-  FileImageOutlined,
-  CameraOutlined,
   SettingOutlined,
   UserOutlined,
   CloudServerOutlined,
@@ -171,8 +168,6 @@ export const SERVICE_MODULES: ServiceModule[] = [
     landing: (f) => (f ? `/projects/${f}/compute/instances` : null),
     stats: [
       { key: "instances", label: "Машин", listPath: "/compute/v1/instances", payloadKey: "instances" },
-      { key: "disks", label: "Дисков", listPath: "/compute/v1/disks", payloadKey: "disks" },
-      { key: "images", label: "Образов", listPath: "/compute/v1/images", payloadKey: "images" },
     ],
     items: [
       {
@@ -181,30 +176,6 @@ export const SERVICE_MODULES: ServiceModule[] = [
         label: "Виртуальные машины",
         to: (f) => seg(f, "compute/instances"),
         matches: (p) => projectRe("compute/instances").test(p),
-        requiresProject: true,
-      },
-      {
-        key: "compute-disks",
-        icon: <HddOutlined />,
-        label: "Диски",
-        to: (f) => seg(f, "compute/disks"),
-        matches: (p) => projectRe("compute/disks").test(p),
-        requiresProject: true,
-      },
-      {
-        key: "compute-images",
-        icon: <FileImageOutlined />,
-        label: "Образы",
-        to: (f) => seg(f, "compute/images"),
-        matches: (p) => projectRe("compute/images").test(p),
-        requiresProject: true,
-      },
-      {
-        key: "compute-snapshots",
-        icon: <CameraOutlined />,
-        label: "Снимки дисков",
-        to: (f) => seg(f, "compute/snapshots"),
-        matches: (p) => projectRe("compute/snapshots").test(p),
         requiresProject: true,
       },
     ],
@@ -337,11 +308,7 @@ export const SERVICE_MODULES: ServiceModule[] = [
 ];
 
 /** Активный модуль по URL — `/projects/:projectId/<segment>/...` → ServiceModule | null.
- *  Также матчит `/iam/...` → IAM module (которому проектный контекст не нужен).
- *
- *  `modules` — набор, который ОБСЛУЖИВАЕТ вызывающее приложение. По умолчанию все;
- *  приложение, не маршрутизирующее какой-то модуль, обязано его не передавать —
- *  иначе сайдбар раскроет раздел, открыть который приложению нечем. */
+ *  Также матчит `/iam/...` → IAM module (которому проектный контекст не нужен). */
 export function moduleFromPathname(pathname: string, modules: ServiceModule[] = SERVICE_MODULES): ServiceModule | null {
   if (pathname.startsWith("/iam")) {
     return modules.find((mod) => mod.segment === "iam") ?? null;

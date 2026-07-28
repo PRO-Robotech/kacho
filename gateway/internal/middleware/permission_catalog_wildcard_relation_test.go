@@ -60,8 +60,6 @@ func referenceCatalogueRPCs() map[string]string {
 		"kacho.cloud.compute.v1.MachineTypeService/List": "global machine-type catalogue",
 		// Disk inventory, compute's copy. The block-storage split has not retired it
 		// yet; while it is served it is the same catalogue with the same standing.
-		"kacho.cloud.compute.v1.DiskTypeService/Get":  "global disk-type catalogue (compute duplicate, pre-retirement)",
-		"kacho.cloud.compute.v1.DiskTypeService/List": "global disk-type catalogue (compute duplicate, pre-retirement)",
 		// Disk inventory on the owning service. Required before Volume.Create.
 		"kacho.cloud.storage.v1.DiskTypeService/Get":  "global disk-type catalogue",
 		"kacho.cloud.storage.v1.DiskTypeService/List": "global disk-type catalogue",

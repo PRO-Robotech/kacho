@@ -15,25 +15,11 @@ type (
 	// Pagination — постраничная навигация.
 	Pagination = ports.Pagination
 
-	// DiskFilter — фильтр для списка дисков.
-	DiskFilter = ports.DiskFilter
-	// ImageFilter — фильтр для списка образов.
-	ImageFilter = ports.ImageFilter
-	// SnapshotFilter — фильтр для списка снапшотов.
-	SnapshotFilter = ports.SnapshotFilter
 	// InstanceFilter — фильтр для списка ВМ.
 	InstanceFilter = ports.InstanceFilter
 
-	// DiskRepo — port-интерфейс репозитория дисков.
-	DiskRepo = ports.DiskRepo
-	// ImageRepo — port-интерфейс репозитория образов.
-	ImageRepo = ports.ImageRepo
-	// SnapshotRepo — port-интерфейс репозитория снапшотов.
-	SnapshotRepo = ports.SnapshotRepo
 	// InstanceRepo — port-интерфейс репозитория ВМ.
 	InstanceRepo = ports.InstanceRepo
-	// DiskTypeRepo — port-интерфейс репозитория типов дисков.
-	DiskTypeRepo = ports.DiskTypeRepo
 	// MachineTypeRepo — port-интерфейс каталога machine-type (COMP-1 F7).
 	MachineTypeRepo = ports.MachineTypeRepo
 	// MachineTypeFilter — фильтр списка machine-type (name=/family=/minGpus=).

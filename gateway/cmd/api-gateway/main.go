@@ -173,22 +173,6 @@ func main() {
 		"dev_secret_set", cfg.AuthNDevSecret != "",
 		"jwks_verifier_set", jverr == nil)
 
-	// --- Revocation path: refuse to boot production without its addresses ---
-	//
-	// A verified signature says who minted the token and when it expires; it says
-	// nothing about whether the token is still good. Only the identity provider
-	// knows that, and only over its ADMIN API — which is a different Service and
-	// port from the public issuer, so neither address can be worked out from what
-	// the gateway already has. Left unset, both controls are simply off: no
-	// request is ever checked for revocation, and signing out does not end the
-	// provider-side session. Refuse rather than run without them.
-	if rvErr := validateProductionRevocationConfig(cfg.AppEnv, RevocationConfig{
-		IntrospectionURL: cfg.ResolvedHydraIntrospectionURL(),
-		AdminURL:         cfg.ResolvedHydraAdminURL(),
-	}); rvErr != nil {
-		log.Fatalf("revocation config startup-validation: %v", rvErr)
-	}
-
 	// --- DPoP / JWT verifier / mTLS-bound / step-up gate ---
 	//
 	// All wiring is feature-gated by KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP.
@@ -238,7 +222,6 @@ func main() {
 				HydraIntrospectionURL: cfg.ResolvedHydraIntrospectionURL(),
 				MaxEntries:            cfg.IntrospectionCacheSize,
 				TTL:                   time.Duration(cfg.IntrospectionCacheTTLSeconds) * time.Second,
-				Timeout:               time.Duration(cfg.IntrospectionTimeoutMs) * time.Millisecond,
 			})
 			if ierr != nil {
 				log.Fatalf("introspection cache: %v", ierr)

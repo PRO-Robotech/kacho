@@ -249,8 +249,9 @@ spec:
               # ─── Step H2 (KAC-228): cluster viewer for ALL authenticated users ──
               # FGA model: cluster.viewer = [user, user:*, service_account] ...
               # Без этого tuple любой cluster-scoped reference-RPC
-              # (compute.Region/Zone/DiskType .list/.get, required_relation=viewer
-              # on cluster:cluster_kacho_root) возвращал 403 для любого юзера —
+              # (geo.Region/Zone, storage.DiskType, compute.MachineType .list/.get,
+              #  required_relation=viewer
+              #  on cluster:cluster_kacho_root) возвращал 403 для любого юзера —
               # UI dashboard / NLB region-picker падали. user:* делает справочные
               # данные читаемыми любым authenticated subject'ом (tenant-facing).
               echo "[bootstrap] writing tuple cluster:${CLUSTER_SINGLETON_ID}#viewer@user:*"

@@ -169,17 +169,6 @@ api-gateway:
   hydra:
     jwksUrl: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/.well-known/jwks.json"
     issuer: "http://localhost:28080/.ory/hydra/public/"
-    # ─── Revocation path (ADMIN API — a different Service from the two above) ──
-    # Where the gateway asks whether an access token has been revoked, and where
-    # the logout handler ends the provider-side session. Neither is derivable:
-    # the admin API is its own Service and port, and the dev issuer above is not
-    # even a cluster address. This is also the base of the dev-prod stack, which
-    # runs production posture — where the gateway refuses to start without both.
-    #
-    # Same in-cluster Service the identity service already uses for its own
-    # admin calls (kacho-iam.hydraAdminUrl below). Never routed outside.
-    introspectionUrl: "http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445/admin/oauth2/introspect"
-    adminUrl: "http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445"
 
 compute:
   image: kacho-compute:dev
@@ -893,10 +882,8 @@ hydra:
         system: ["please-change-this-32-bytes-A1Bx"]
       # ─── OAuth 2.1 / DPoP / mTLS-bound / JWT strategy (acceptance §5.2) ──
       strategies:
-        # Self-contained JWT access tokens: api-gateway проверяет ПОДПИСЬ локально,
-        # по JWKS, без обращения к провайдеру (acceptance §2.3 token shape).
-        # Отзыв — отдельный вопрос и отдельный поход: см. блок revocation в
-        # api-gateway.hydra выше. Подпись локальна, отзыв — нет.
+        # Self-contained JWT access tokens (allows api-gateway локальную validation
+        # без trip-к-Hydra introspect — acceptance §2.3 token shape).
         access_token: jwt
         jwt:
           scope_claim: list

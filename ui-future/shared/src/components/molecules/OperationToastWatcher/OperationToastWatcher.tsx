@@ -1,7 +1,7 @@
 // OperationToastWatcher — невидимый watcher: при заданном opId поллит
 // /operations/{id} и через toast() отображает прогресс / финальный результат.
 //
-// Используется DeleteButton, SubnetCidrManager: действие
+// Используется DeleteButton, SubnetCidrManager, SubnetRelocateDialog: действие
 // завершается сразу после получения Operation, а пользователь видит
 // progress-toast в углу.
 

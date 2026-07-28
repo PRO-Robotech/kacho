@@ -38,15 +38,6 @@ func TestSyncRegistrar_Register_Instance(t *testing.T) {
 	assert.NotNil(t, got.GetSourceVersion(), "source_version stamped (last-source-state-wins)")
 }
 
-func TestSyncRegistrar_Register_Disk(t *testing.T) {
-	fake := &fakeIAMRegister{errCode: codes.OK}
-	reg := clients.NewSyncRegistrarWithClient(fake)
-
-	require.NoError(t, reg.Register(context.Background(), "Disk", "epdd-1", "prj-1", nil))
-	require.Equal(t, 1, fake.registeredCount())
-	assert.Equal(t, "compute_disk:epdd-1", fake.registered[0].GetObject())
-}
-
 func TestSyncRegistrar_Register_UnknownKindOrEmpty_NoOp(t *testing.T) {
 	cases := []struct{ kind, id, proj string }{
 		{"Gadget", "epd-x", "prj"}, // unknown kind

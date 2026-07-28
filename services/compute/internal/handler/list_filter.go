@@ -83,19 +83,3 @@ func filterVisible[T any](
 	}
 	return out, nil
 }
-
-// isVisible answers the DIRECT per-object question for a single resolved id —
-// the read-by-id-equivalent path (Image.GetLatestByFamily, whose target id is
-// unknown until the family is resolved, so the per-RPC interceptor cannot gate it
-// per-object). Same union semantics as the List path, no enumeration.
-//
-// filter == nil → visible (FGA disabled config-gate / dev). subject == "" →
-// NOT visible (fail-closed). err → caller propagates.
-func isVisible(ctx context.Context, f authzfilter.Filter, resourceType, action, id string) (bool, error) {
-	visible, err := filterVisible(ctx, f, resourceType, action, []string{id},
-		func(s string) string { return s })
-	if err != nil {
-		return false, err
-	}
-	return len(visible) == 1, nil
-}

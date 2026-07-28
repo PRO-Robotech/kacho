@@ -24,37 +24,18 @@ type Pagination struct {
 	PageSize  int64
 }
 
-// DiskFilter — фильтр для списка дисков.
+// InstanceFilter — фильтр для списка ВМ.
 //
 // Здесь НЕТ authz-измерения (прежнего `AllowedIDs`): видимость решается
 // per-object ПОСЛЕ чтения страницы (`handler.filterVisible` →
 // iam.AuthorizeService.BatchCheck), а не сужением SQL до заранее перечисленного
 // allow-list'а. Перечисление упиралось в жёсткий предел OpenFGA ListObjects
 // (1000, без continuation-token'а) и делало собственные ресурсы тенанта
-// невидимыми — см. package-doc `internal/authzfilter`. Тот же комментарий
-// относится к Image/Snapshot/Instance-фильтрам ниже.
-type DiskFilter struct {
+// невидимыми — см. package-doc `internal/authzfilter`.
+type InstanceFilter struct {
 	ProjectID string
 	// Filter — raw filter expression (синтаксис Kachō: `name="<value>"`).
 	Filter string
-}
-
-// ImageFilter — фильтр для списка образов.
-type ImageFilter struct {
-	ProjectID string
-	Filter    string
-}
-
-// SnapshotFilter — фильтр для списка снапшотов.
-type SnapshotFilter struct {
-	ProjectID string
-	Filter    string
-}
-
-// InstanceFilter — фильтр для списка ВМ.
-type InstanceFilter struct {
-	ProjectID string
-	Filter    string
 }
 
 // OwnerRegistrar — синхронная post-commit регистрация owner-tuple в kacho-iam
@@ -67,42 +48,6 @@ type InstanceFilter struct {
 // iam-ребра) → полагаемся на drainer.
 type OwnerRegistrar interface {
 	Register(ctx context.Context, kind, resourceID, projectID string, labels map[string]string) error
-}
-
-// DiskRepo — port-интерфейс репозитория дисков.
-type DiskRepo interface {
-	Get(ctx context.Context, id string) (*domain.Disk, error)
-	List(ctx context.Context, f DiskFilter, p Pagination) ([]*domain.Disk, string, error)
-	Insert(ctx context.Context, d *domain.Disk) (*domain.Disk, error)
-	// Update — emitLabelsRegister эмитит mirror.upsert при labels-в-маске (parity с Instance).
-	Update(ctx context.Context, d *domain.Disk, emitLabelsRegister bool, changed []string) (*domain.Disk, error)
-	Delete(ctx context.Context, id string) error
-	// SetZoneIfDetached атомарно меняет zone_id, но только если диск НЕ attached
-	// (Relocate). Гонка с AttachDisk закрывается на DB-уровне (row-lock на disks),
-	// а не software-check-then-act: detached → новый zone_id; attached →
-	// ErrFailedPrecondition; нет диска → ErrNotFound.
-	SetZoneIfDetached(ctx context.Context, id, zoneID string) (*domain.Disk, error)
-}
-
-// ImageRepo — port-интерфейс репозитория образов.
-type ImageRepo interface {
-	Get(ctx context.Context, id string) (*domain.Image, error)
-	GetLatestByFamily(ctx context.Context, projectID, family string) (*domain.Image, error)
-	List(ctx context.Context, f ImageFilter, p Pagination) ([]*domain.Image, string, error)
-	Insert(ctx context.Context, i *domain.Image) (*domain.Image, error)
-	// Update — emitLabelsRegister эмитит mirror.upsert при labels-в-маске (parity с Instance).
-	Update(ctx context.Context, i *domain.Image, emitLabelsRegister bool, changed []string) (*domain.Image, error)
-	Delete(ctx context.Context, id string) error
-}
-
-// SnapshotRepo — port-интерфейс репозитория снапшотов.
-type SnapshotRepo interface {
-	Get(ctx context.Context, id string) (*domain.Snapshot, error)
-	List(ctx context.Context, f SnapshotFilter, p Pagination) ([]*domain.Snapshot, string, error)
-	Insert(ctx context.Context, s *domain.Snapshot) (*domain.Snapshot, error)
-	// Update — emitLabelsRegister эмитит mirror.upsert при labels-в-маске (parity с Instance).
-	Update(ctx context.Context, s *domain.Snapshot, emitLabelsRegister bool, changed []string) (*domain.Snapshot, error)
-	Delete(ctx context.Context, id string) error
 }
 
 // InstanceRepo — port-интерфейс репозитория ВМ.
@@ -181,15 +126,6 @@ type MachineTypeRepo interface {
 	List(ctx context.Context, f MachineTypeFilter, p Pagination) ([]*domain.MachineType, string, error)
 	Insert(ctx context.Context, mt *domain.MachineType) (*domain.MachineType, error)
 	Update(ctx context.Context, mt *domain.MachineType) (*domain.MachineType, error)
-	Delete(ctx context.Context, id string) error
-}
-
-// DiskTypeRepo — port-интерфейс репозитория типов дисков (read + admin CRUD).
-type DiskTypeRepo interface {
-	Get(ctx context.Context, id string) (*domain.DiskType, error)
-	List(ctx context.Context, p Pagination) ([]*domain.DiskType, string, error)
-	Insert(ctx context.Context, t *domain.DiskType) (*domain.DiskType, error)
-	Update(ctx context.Context, t *domain.DiskType) (*domain.DiskType, error)
 	Delete(ctx context.Context, id string) error
 }
 

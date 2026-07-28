@@ -93,7 +93,7 @@ func TestTenantUnaryInterceptor_InternalListenerKeepsAdmin(t *testing.T) {
 	var seen TenantCtx
 	_, err := TenantUnaryInterceptor(true /*requireAdmin → internal*/, false)(
 		forgedAdminCtx(), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.compute.v1.InternalDiskTypeService/Create"},
+		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.compute.v1.InternalMachineTypeService/Create"},
 		func(c context.Context, _ any) (any, error) {
 			seen = TenantFromCtx(c)
 			return nil, nil

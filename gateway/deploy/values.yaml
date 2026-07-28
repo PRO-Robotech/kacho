@@ -149,38 +149,11 @@ authn: {}
 # `kacho-umbrella-hydra-public:4444/.well-known/jwks.json`.
 #   jwksUrl:    explicit cluster-internal Hydra JWKS endpoint (reachable from
 #               the gateway pod). Drives KACHO_HYDRA_JWKS_URL.
-#   issuer:     expected `iss` claim. Drives KACHO_HYDRA_ISSUER.
-#
-# The revocation path needs two MORE addresses, and neither is derivable from
-# the issuer: both are served by the provider's ADMIN API, on its own Service
-# and port, reachable only inside the cluster.
-#
-#   introspectionUrl: where the gateway asks whether an access token has been
-#               revoked — the admin path `/admin/oauth2/introspect`. Asked per
-#               request through a short-TTL cache. Drives
-#               KACHO_HYDRA_INTROSPECTION_URL.
-#   adminUrl:   admin API base the logout handler uses to end the provider-side
-#               session (`DELETE /admin/oauth2/auth/sessions/login`). Drives
-#               KACHO_HYDRA_ADMIN_URL.
-#
-# Both were DERIVED from the public issuer when unset, and no profile set
-# either, so every stand ran with them aimed at a server that serves neither.
-# They are no longer derived: unset means the control is off, and a
-# production-class gateway refuses to start in that state. The provider's admin
-# API carries no authentication of its own — it is protected by not being
-# routable — so no credentials accompany these addresses; do not publish the
-# admin Service outside the cluster.
-#
-#   hydra:
-#     jwksUrl:          http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/.well-known/jwks.json
-#     issuer:           https://hydra.api.kacho.cloud
-#     introspectionUrl: http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445/admin/oauth2/introspect
-#     adminUrl:         http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445
+#   issuer:     expected `iss` claim + base for endpoint derivation. Drives
+#               KACHO_HYDRA_ISSUER. Optional; jwksUrl alone is enough for JWKS.
 hydra:
   jwksUrl: ""
   issuer: ""
-  introspectionUrl: ""
-  adminUrl: ""
 
 # AuthZ — per-RPC authorization middleware.
 #   enabled: when true, every authenticated request is gated by a

@@ -43,6 +43,7 @@ gRPC-контракта.
 <CodeBlock language="bash">
   {dedent`
     export CMP=http://localhost:18080
+    export STG=http://localhost:18080   # kacho-storage owns Volume/Image/Snapshot/DiskType
     export TOKEN='<JWT>'
     export PROJECT='{projectId}'
     export ZONE='region-1-a'
@@ -104,12 +105,12 @@ sequenceDiagram
 
 ## Шаг 1. Выбрать DiskType
 
-`DiskType` — read-only справочник доступных типов дисков. Диску при создании назначается
-`typeId`; посмотрим доступные варианты:
+`DiskType` — read-only справочник типов дисков, принадлежащий **kacho-storage**. Тому при
+создании назначается `diskTypeId`; посмотрим доступные варианты:
 
 <CodeBlock language="bash">
   {dedent`
-    curl -s "$CMP/compute/v1/diskTypes" "\${auth[@]}"
+    curl -s "$STG/storage/v1/diskTypes" "\${auth[@]}"
   `}
 </CodeBlock>
 
@@ -131,21 +132,21 @@ sequenceDiagram
   `}
 </CodeBlock>
 
-## Шаг 2. Создать Disk
+## Шаг 2. Создать Volume
 
-`Disk` — блочный диск в конкретной зоне. Создадим отдельный диск данных заданного размера
-(размер — в **байтах**; здесь 8 GiB). Источник (`imageId` / `snapshotId`) не обязателен —
-пустой диск создаётся без источника.
+`Volume` — блочный том в конкретной зоне, ресурс **kacho-storage**. Создадим отдельный том
+данных заданного размера (размер — в **байтах**; здесь 8 GiB). Источник (`imageId` /
+`snapshotId`) не обязателен — пустой том создаётся без источника.
 
 <CodeBlock language="bash">
   {dedent`
-    curl -s -X POST "$CMP/compute/v1/disks" "\${auth[@]}" \\
+    curl -s -X POST "$STG/storage/v1/volumes" "\${auth[@]}" \\
       -d '{
         "projectId": "'"$PROJECT"'",
-        "name": "data-disk",
-        "typeId": "'"$DTYPE"'",
+        "name": "data-volume",
+        "diskTypeId": "'"$DTYPE"'",
         "zoneId": "'"$ZONE"'",
-        "size": 8589934592
+        "sizeBytes": 8589934592
       }'
   `}
 </CodeBlock>
@@ -271,18 +272,19 @@ NIC автоматически. Сетевые интерфейсы (из дом
 таблица переходов — [Жизненный цикл Instance](/architecture/instance-lifecycle).
 :::
 
-## Шаг 6. Сделать снимок диска
+## Шаг 6. Сделать снимок тома
 
-`Snapshot` — снимок диска, источник для восстановления или создания образа. Диск должен быть
-`READY` (присоединённый диск остаётся READY, снимок можно делать не отсоединяя):
+`Snapshot` — снимок тома (ресурс **kacho-storage**), источник для восстановления или создания
+образа. Том должен быть `READY` (присоединённый том остаётся READY, снимок можно делать не
+отсоединяя):
 
 <CodeBlock language="bash">
   {dedent`
-    curl -s -X POST "$CMP/compute/v1/snapshots" "\${auth[@]}" \\
+    curl -s -X POST "$STG/storage/v1/snapshots" "\${auth[@]}" \\
       -d '{
         "projectId": "'"$PROJECT"'",
-        "diskId": "'"$DISK"'",
-        "name": "data-disk-snap"
+        "volumeId": "'"$DISK"'",
+        "name": "data-volume-snap"
       }'
   `}
 </CodeBlock>
@@ -295,9 +297,9 @@ NIC автоматически. Сетевые интерфейсы (из дом
 </CodeBlock>
 
 :::note Снимок и восстановление
-Из снимка можно создать новый диск — передайте `snapshotId` в `source` при `Disk.Create`.
-Снимок хранит `sourceDiskId`, но жёсткого FK через границу нет: исходный диск можно удалить,
-снимок останется.
+Из снимка можно создать новый том — передайте `snapshotId` в источник при `Volume.Create`.
+Снимок хранит ссылку на исходный том, но жёсткого FK через границу сервиса нет: исходный том
+можно удалить, снимок останется.
 :::
 
 ## Проверка результата
@@ -307,8 +309,8 @@ NIC автоматически. Сетевые интерфейсы (из дом
 <CodeBlock language="bash">
   {dedent`
     curl -s "$CMP/compute/v1/instances/$INST" "\${auth[@]}"            # инстанс + status, secondaryDisks
-    curl -s "$CMP/compute/v1/disks/$DISK" "\${auth[@]}"                # диск + instanceIds
-    curl -s "$CMP/compute/v1/snapshots/$SNAP" "\${auth[@]}"            # снимок + sourceDiskId
+    curl -s "$STG/storage/v1/volumes/$DISK" "\${auth[@]}"              # том + usedBy
+    curl -s "$STG/storage/v1/snapshots/$SNAP" "\${auth[@]}"            # снимок + источник
     curl -s "$CMP/compute/v1/instances?projectId=$PROJECT" "\${auth[@]}"  # все инстансы проекта
   `}
 </CodeBlock>
@@ -329,8 +331,8 @@ NIC автоматически. Сетевые интерфейсы (из дом
     poll <operationId>
 
     # 3) удалить снимок и диск данных (в любом порядке — жёсткого FK между ними нет)
-    curl -s -X DELETE "$CMP/compute/v1/snapshots/$SNAP" "\${auth[@]}"
-    curl -s -X DELETE "$CMP/compute/v1/disks/$DISK" "\${auth[@]}"
+    curl -s -X DELETE "$STG/storage/v1/snapshots/$SNAP" "\${auth[@]}"
+    curl -s -X DELETE "$STG/storage/v1/volumes/$DISK" "\${auth[@]}"
   `}
 </CodeBlock>
 
@@ -346,7 +348,7 @@ NIC автоматически. Сетевые интерфейсы (из дом
 | Тема | Куда |
 |---|---|
 | Конвенции API, формат ошибок, пагинация, `:verb`-действия | [Обзор API](/api/overview) |
-| Поля и методы каждого ресурса | [Instance](/api/instance) · [Disk](/api/disk) · [Image](/api/image) · [Snapshot](/api/snapshot) · [DiskType](/api/disk-type) |
+| Поля и методы каждого ресурса | [Instance](/api/instance); блочное хранение — в документации kacho-storage |
 | State-машина инстанса (переходы, preconditions) | [Жизненный цикл Instance](/architecture/instance-lifecycle) |
 | Механика асинхронных операций (LRO) | [Операции](/api/operations) · [Операции (архитектура)](/architecture/operations) |
 | Как устроен сервис внутри | [Архитектура](/architecture/overview) · [Модель данных](/architecture/data-model) |

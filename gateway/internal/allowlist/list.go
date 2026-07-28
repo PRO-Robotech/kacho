@@ -69,38 +69,6 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.vpc.v1.GatewayService/Update":         {},
 	"/kacho.cloud.vpc.v1.GatewayService/Delete":         {},
 	"/kacho.cloud.vpc.v1.GatewayService/ListOperations": {},
-	// compute.v1 — DiskService
-	"/kacho.cloud.compute.v1.DiskService/Get":                  {},
-	"/kacho.cloud.compute.v1.DiskService/List":                 {},
-	"/kacho.cloud.compute.v1.DiskService/Create":               {},
-	"/kacho.cloud.compute.v1.DiskService/Update":               {},
-	"/kacho.cloud.compute.v1.DiskService/Delete":               {},
-	"/kacho.cloud.compute.v1.DiskService/ListOperations":       {},
-	"/kacho.cloud.compute.v1.DiskService/Relocate":             {},
-	"/kacho.cloud.compute.v1.DiskService/ListAccessBindings":   {},
-	"/kacho.cloud.compute.v1.DiskService/SetAccessBindings":    {},
-	"/kacho.cloud.compute.v1.DiskService/UpdateAccessBindings": {},
-	// compute.v1 — ImageService
-	"/kacho.cloud.compute.v1.ImageService/Get":                  {},
-	"/kacho.cloud.compute.v1.ImageService/GetLatestByFamily":    {},
-	"/kacho.cloud.compute.v1.ImageService/List":                 {},
-	"/kacho.cloud.compute.v1.ImageService/Create":               {},
-	"/kacho.cloud.compute.v1.ImageService/Update":               {},
-	"/kacho.cloud.compute.v1.ImageService/Delete":               {},
-	"/kacho.cloud.compute.v1.ImageService/ListOperations":       {},
-	"/kacho.cloud.compute.v1.ImageService/ListAccessBindings":   {},
-	"/kacho.cloud.compute.v1.ImageService/SetAccessBindings":    {},
-	"/kacho.cloud.compute.v1.ImageService/UpdateAccessBindings": {},
-	// compute.v1 — SnapshotService
-	"/kacho.cloud.compute.v1.SnapshotService/Get":                  {},
-	"/kacho.cloud.compute.v1.SnapshotService/List":                 {},
-	"/kacho.cloud.compute.v1.SnapshotService/Create":               {},
-	"/kacho.cloud.compute.v1.SnapshotService/Update":               {},
-	"/kacho.cloud.compute.v1.SnapshotService/Delete":               {},
-	"/kacho.cloud.compute.v1.SnapshotService/ListOperations":       {},
-	"/kacho.cloud.compute.v1.SnapshotService/ListAccessBindings":   {},
-	"/kacho.cloud.compute.v1.SnapshotService/SetAccessBindings":    {},
-	"/kacho.cloud.compute.v1.SnapshotService/UpdateAccessBindings": {},
 	// compute.v1 — InstanceService
 	"/kacho.cloud.compute.v1.InstanceService/Get":                      {},
 	"/kacho.cloud.compute.v1.InstanceService/List":                     {},
@@ -125,9 +93,6 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.compute.v1.InstanceService/ListAccessBindings":       {},
 	"/kacho.cloud.compute.v1.InstanceService/SetAccessBindings":        {},
 	"/kacho.cloud.compute.v1.InstanceService/UpdateAccessBindings":     {},
-	// compute.v1 — DiskTypeService (read-only справочник)
-	"/kacho.cloud.compute.v1.DiskTypeService/Get":  {},
-	"/kacho.cloud.compute.v1.DiskTypeService/List": {},
 	// compute.v1 — MachineTypeService (read-only sizing catalog; cluster-viewer,
 	// parity с geo Region/Zone). Admin CRUD — InternalMachineTypeService на :9091
 	// (НЕ в allowlist; HasInternalSuffix блокирует автоматически, ban #6).

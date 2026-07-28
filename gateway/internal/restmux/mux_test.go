@@ -103,8 +103,8 @@ func TestIsInternalPath(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "disk get (public)",
-			path: "/compute/v1/disks/disk-1",
+			name: "volume get (public)",
+			path: "/storage/v1/volumes/vol-1",
 			want: false,
 		},
 		{

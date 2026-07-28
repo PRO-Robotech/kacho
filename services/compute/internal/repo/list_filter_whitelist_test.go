@@ -110,39 +110,3 @@ func TestInstanceRepoList_RejectsNonWhitelistedFilterField(t *testing.T) {
 		})
 	}
 }
-
-func TestDiskRepoList_RejectsNonWhitelistedFilterField(t *testing.T) {
-	r := NewDiskRepo(nil)
-	for _, tc := range listFilterRejectCases {
-		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := r.List(context.Background(),
-				ports.DiskFilter{ProjectID: "prj-acme", Filter: tc.filter},
-				ports.Pagination{PageSize: 10})
-			assertUnknownFilterField(t, err, tc.wantMsg)
-		})
-	}
-}
-
-func TestImageRepoList_RejectsNonWhitelistedFilterField(t *testing.T) {
-	r := NewImageRepo(nil)
-	for _, tc := range listFilterRejectCases {
-		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := r.List(context.Background(),
-				ports.ImageFilter{ProjectID: "prj-acme", Filter: tc.filter},
-				ports.Pagination{PageSize: 10})
-			assertUnknownFilterField(t, err, tc.wantMsg)
-		})
-	}
-}
-
-func TestSnapshotRepoList_RejectsNonWhitelistedFilterField(t *testing.T) {
-	r := NewSnapshotRepo(nil)
-	for _, tc := range listFilterRejectCases {
-		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := r.List(context.Background(),
-				ports.SnapshotFilter{ProjectID: "prj-acme", Filter: tc.filter},
-				ports.Pagination{PageSize: 10})
-			assertUnknownFilterField(t, err, tc.wantMsg)
-		})
-	}
-}

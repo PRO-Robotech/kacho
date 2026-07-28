@@ -62,7 +62,7 @@ func TestFGAFilter_MaxPageWithinBudget_UnderLoadedPeerLatency(t *testing.T) {
 
 	t0 := time.Now()
 	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_alice",
-		ResourceTypeDisk, ActionDiskRead, ids)
+		ResourceTypeInstance, ActionInstanceRead, ids)
 	elapsed := time.Since(t0)
 
 	// (1) САМА регрессия: страница максимума не имеет права стать 503, пока пир
@@ -130,7 +130,7 @@ func TestFGAFilter_FirstErrorWinsAndCancelsSiblings(t *testing.T) {
 	f := NewFGAFilter(cli, DefaultConfig())
 
 	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_alice",
-		ResourceTypeDisk, ActionDiskRead, ids)
+		ResourceTypeInstance, ActionInstanceRead, ids)
 	require.Error(t, err, "fail-closed: an iam error must never yield a page")
 	assert.Nil(t, got)
 	assert.Equal(t, codes.Unavailable, status.Code(err))
@@ -155,7 +155,7 @@ func TestFGAFilter_SingleBatchStaysSerial(t *testing.T) {
 	f := NewFGAFilter(cli, DefaultConfig())
 
 	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_alice",
-		ResourceTypeDisk, ActionDiskRead, ids)
+		ResourceTypeInstance, ActionInstanceRead, ids)
 	require.NoError(t, err)
 	assert.Equal(t, ids, got)
 
@@ -181,7 +181,7 @@ func TestFGAFilter_OperationBudgetCapsHangingPeer(t *testing.T) {
 
 	t0 := time.Now()
 	_, err := f.FilterVisibleIDs(context.Background(), "user:usr_alice",
-		ResourceTypeDisk, ActionDiskRead, ids)
+		ResourceTypeInstance, ActionInstanceRead, ids)
 	elapsed := time.Since(t0)
 
 	require.Error(t, err)

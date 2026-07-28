@@ -31,8 +31,6 @@ describe("DashboardPage", () => {
       if (path.startsWith("/vpc/v1/subnets")) return jsonResponse({ subnets: [] });
       if (path.startsWith("/vpc/v1/securityGroups")) return jsonResponse({ security_groups: [] });
       if (path.startsWith("/compute/v1/instances")) return jsonResponse({ instances: [{ id: "vm-1" }] });
-      if (path.startsWith("/compute/v1/disks")) return jsonResponse({ disks: [] });
-      if (path.startsWith("/compute/v1/images")) return jsonResponse({ images: [] });
       if (path.startsWith("/nlb/v1/networkLoadBalancers")) return jsonResponse({ network_load_balancers: [] });
       if (path.startsWith("/nlb/v1/listeners")) return jsonResponse({ listeners: [] });
       if (path.startsWith("/nlb/v1/targetGroups")) return jsonResponse({ target_groups: [] });

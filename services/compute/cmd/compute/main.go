@@ -77,10 +77,6 @@ func main() {
 
 // services — собранный набор бизнес-сервисов (composition-point).
 type services struct {
-	disk        *service.DiskService
-	image       *service.ImageService
-	snapshot    *service.SnapshotService
-	diskType    *service.DiskTypeService
 	machineType *service.MachineTypeService
 	instance    *service.InstanceService
 }
@@ -159,9 +155,6 @@ func runServe(cfg config.Config) error {
 	// shutdown, crash mid-op — разрешаются в терминал); периодический Run — backstop
 	// под супервизором.
 	lroReaders := operationresolver.Readers{
-		Disk:     repo.NewDiskRepo(pool),
-		Image:    repo.NewImageRepo(pool),
-		Snapshot: repo.NewSnapshotRepo(pool),
 		Instance: repo.NewInstanceRepo(pool),
 	}
 	lroReconciler := startLRORecovery(ctx, pool, lroReaders, lroRec, logger)
@@ -313,7 +306,7 @@ func runServe(cfg config.Config) error {
 	}
 
 	// sync-registrar owner-tuple (window-оптимизация): немедленная post-commit
-	// регистрация owner-tuple Instance/Disk через InternalIAMService.RegisterResource,
+	// регистрация owner-tuple Instance через InternalIAMService.RegisterResource,
 	// сужающая eventual-consistency-окно до poll'а register-drainer'а. register-drainer
 	// остаётся at-least-once backstop'ом. Активен только когда authzConn сконфигурирован
 	// (production/authz-on) и drainer включён; иначе — только drainer.
@@ -324,10 +317,7 @@ func runServe(cfg config.Config) error {
 		}
 		defer closeReg()
 		svcs.instance.WithOwnerRegistrar(reg)
-		svcs.disk.WithOwnerRegistrar(reg)
-		svcs.image.WithOwnerRegistrar(reg)
-		svcs.snapshot.WithOwnerRegistrar(reg)
-		logger.Info("owner-tuple sync-registrar enabled (Instance/Disk/Image/Snapshot Create)")
+		logger.Info("owner-tuple sync-registrar enabled (Instance Create)")
 	}
 
 	// FGA-filtered List handlers. Build the filter from
@@ -846,19 +836,10 @@ func dialPeerCreds(addr string, creds credentials.TransportCredentials, idle boo
 // follow-up cutover slice (attach-state moves from the local attached_disks table to
 // storage). Threaded now so the peer-conn/config plumbing lands additively.
 func buildServices(pool *pgxpool.Pool, projectClient service.ProjectClient, geoZones service.ZoneRegistry, subnets service.SubnetRegistry, nicClient service.NicClient, storageClient service.StorageClient, opsRepo operations.Repo) *services {
-	diskRepo := repo.NewDiskRepo(pool)
-	imageRepo := repo.NewImageRepo(pool)
-	snapshotRepo := repo.NewSnapshotRepo(pool)
 	instanceRepo := repo.NewInstanceRepo(pool)
-	diskTypeRepo := repo.NewDiskTypeRepo(pool)
 	machineTypeRepo := repo.NewMachineTypeRepo(pool)
 
-	diskTypeSvc := service.NewDiskTypeService(diskTypeRepo)
 	return &services{
-		disk:        service.NewDiskService(diskRepo, imageRepo, snapshotRepo, diskTypeRepo, geoZones, projectClient, opsRepo),
-		image:       service.NewImageService(imageRepo, diskRepo, snapshotRepo, projectClient, opsRepo),
-		snapshot:    service.NewSnapshotService(snapshotRepo, diskRepo, projectClient, opsRepo),
-		diskType:    diskTypeSvc,
 		machineType: service.NewMachineTypeService(machineTypeRepo, opsRepo),
 		instance:    service.NewInstanceService(instanceRepo, machineTypeRepo, geoZones, subnets, projectClient, nicClient, storageClient, opsRepo),
 	}
@@ -872,10 +853,6 @@ func buildServices(pool *pgxpool.Pool, projectClient service.ProjectClient, geoZ
 // read, FGA bypass not needed (handler skips). Region/Zone serving снят —
 // Geography принадлежит kacho-geo.
 func registerPublicServices(srv *grpc.Server, svcs *services, opsRepo operations.Repo, listFilter authzfilter.Filter) {
-	computev1.RegisterDiskServiceServer(srv, handler.NewDiskHandler(svcs.disk, listFilter))
-	computev1.RegisterImageServiceServer(srv, handler.NewImageHandler(svcs.image, listFilter))
-	computev1.RegisterSnapshotServiceServer(srv, handler.NewSnapshotHandler(svcs.snapshot, listFilter))
-	computev1.RegisterDiskTypeServiceServer(srv, handler.NewDiskTypeHandler(svcs.diskType))
 	computev1.RegisterMachineTypeServiceServer(srv, handler.NewMachineTypeHandler(svcs.machineType))
 	computev1.RegisterInstanceServiceServer(srv, handler.NewInstanceHandler(svcs.instance, listFilter))
 	operationpb.RegisterOperationServiceServer(srv, handler.NewOperationHandler(opsRepo))
@@ -1056,6 +1033,5 @@ func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*clients.SyncRe
 // не маршрутизируется наружу; NetworkPolicy + requireAdmin-interceptor).
 func registerInternalServices(srv *grpc.Server, svcs *services, pool *pgxpool.Pool, dsn string, logger *slog.Logger, watchMaxStreams int) {
 	computev1.RegisterInternalWatchServiceServer(srv, handler.NewInternalWatchHandler(pool, dsn, logger.With("component", "internal-watch"), watchMaxStreams))
-	computev1.RegisterInternalDiskTypeServiceServer(srv, handler.NewInternalDiskTypeHandler(svcs.diskType))
 	computev1.RegisterInternalMachineTypeServiceServer(srv, handler.NewInternalMachineTypeHandler(svcs.machineType))
 }

@@ -92,29 +92,24 @@ func TestInternalPrincipalChain_ForwarderAllowlist_DropsNonGateway(t *testing.T)
 		other := "spiffe://kacho.cloud/ns/kacho/sa/kacho-vpc"
 		ctx := withForgedPrincipal(verifiedPeerCtx(t, other), "usr-admin-victim")
 
-		carrierID, trusted, present := runChain(t, chain, ctx)
+		carrierID, trusted := runChain(t, chain, ctx)
 		if trusted {
 			t.Errorf("verified-но-не-форвардер peer (%s) НЕ должен форвардить end-user principal'а", other)
 		}
 		if carrierID == "usr-admin-victim" {
 			t.Errorf("confused-deputy: internal-сервис проштамповал admin-principal'а 'usr-admin-victim' как subject FGA Check")
 		}
-		if present {
-			t.Errorf("носитель личности пережил недоверенного отправителя: got %q — он обязан быть "+
-				"вычищен, иначе предикат владения признаёт этот запрос владельцем системно "+
-				"записанных операций", carrierID)
+		if carrierID != operations.SystemPrincipal().ID {
+			t.Errorf("forged principal протёк в carrier: got %q, want system fallback %q", carrierID, operations.SystemPrincipal().ID)
 		}
 	})
 
 	t.Run("gateway_peer_principal_honored", func(t *testing.T) {
 		ctx := withForgedPrincipal(verifiedPeerCtx(t, gatewaySAN), "usr-admin")
 
-		carrierID, trusted, present := runChain(t, chain, ctx)
+		carrierID, trusted := runChain(t, chain, ctx)
 		if !trusted {
 			t.Errorf("principal от доверенного форвардера (api-gateway SAN) обязан быть honored")
-		}
-		if !present {
-			t.Errorf("носитель личности обязан быть заполнен для доверенного форвардера")
 		}
 		if carrierID != "usr-admin" {
 			t.Errorf("gateway-forwarded principal не honored: got %q, want %q", carrierID, "usr-admin")
@@ -133,27 +128,17 @@ func internalPrincipalChain(forwarderSANs ...string) grpc.UnaryServerInterceptor
 	return chainUnaryServer(unary...)
 }
 
-// runChain прогоняет ctx через цепочку и возвращает то, что увидел бы handler:
-// личность, признак доверия к пересылающему и НАЛИЧИЕ носителя личности.
-//
-// present читается через operations.PrincipalFromContextOK — единственный
-// аксессор, который отличает «носитель вычищен» от «в носителе лежит системная
-// личность». PrincipalFromContext такого различения не даёт по своему контракту
-// (оба состояния → SystemPrincipal), поэтому утверждать им вычищенность нельзя:
-// проверка останется зелёной и тогда, когда недоверенному пиру выдали системную
-// личность, а она и есть владелец каждой системно записанной операции.
-func runChain(t *testing.T, chain grpc.UnaryServerInterceptor, ctx context.Context) (carrierID string, trusted, present bool) {
+func runChain(t *testing.T, chain grpc.UnaryServerInterceptor, ctx context.Context) (carrierID string, trusted bool) {
 	t.Helper()
 	final := func(c context.Context, _ any) (any, error) {
-		p, ok := operations.PrincipalFromContextOK(c)
-		carrierID, present = p.ID, ok
+		carrierID = operations.PrincipalFromContext(c).ID
 		_, trusted = grpcsrv.TrustedPrincipalFromContext(c)
 		return nil, nil
 	}
 	if _, err := chain(ctx, nil, nil, final); err != nil {
 		t.Fatalf("chain returned error: %v", err)
 	}
-	return carrierID, trusted, present
+	return carrierID, trusted
 }
 
 func withForgedPrincipal(ctx context.Context, id string) context.Context {

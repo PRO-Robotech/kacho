@@ -100,40 +100,54 @@ react-hooks/exhaustive-deps suppressions" (the count is now lower after the
 vpc/iam shared-source extraction collapsed the duplicated copies to a single
 source in `shared/src`).
 
-## IAM management pages forked per remote (`vpc` vs `iam`) — RESOLVED
+## IAM management pages forked per remote (`vpc` vs `iam`)
 
-**Status:** resolved / fork removed. Управление доступом реализует **только**
-ремоут `iam`; `/iam/*` маршрутизирует только `host` и только в этот ремоут.
+**Status:** accepted / by-design (presentational fork), with an authorization
+single-source invariant enforced by test.
 
-Раздвоение было записано здесь как by-design: экраны выдач/доступа/групп/ролей/
-пользователей существовали двумя независимыми реализациями (`vpc/src/pages/iam/…`
-и `iam/src/pages/iam/…`), а риск считался снятым тем, что security-значимые
-примитивы (`@shared/lib/permissions`, `@shared/…/IamCommon`, `@shared/api/iam`)
-единственны и потребляются обеими копиями одинаково.
+The IAM screens — Access Bindings, Access, Groups, Roles, Users — exist as
+independent component implementations in both remotes:
+`vpc/src/pages/iam/<Page>.tsx` and `iam/src/pages/iam/<Page>/<Page>.tsx`.
 
-**Почему запись снята.** Инвариант проверял ПРОИСХОЖДЕНИЕ импортов, а разошлось
-ПОВЕДЕНИЕ, и разошлось до неработоспособности: форма создания роли в копии `vpc`
-слала `permissions` — поле выводимое, только на выход, которое сервис отвергает
-первым же стейтментом создания, — и не слала `rules[]`, без которых роль не
-создаётся вовсе. Две независимые причины отказа; создать роль оттуда было
-нельзя. Правильная форма (редактор правил + каталог разрешений) всё это время
-жила в ремоуте `iam`.
+**Why they are not one shared component:** the two remotes use deliberately
+different create/edit UX wired to different route tables:
 
-При этом копия была недостижима из продукта: хост федерирует `/iam/*` в ремоут
-`iam`, а ремоут `vpc` отдаёт наружу только `./VpcPage`, так что экраны
-открывались лишь в standalone-сборке `/vpc-remote/index.html`. То есть вторая
-поверхность существовала, расходилась и ломалась, никого не обслуживая, —
-довод «convenience surface» её не оправдывал.
+- The **iam** remote registers dedicated `/iam/<resource>/create` and
+  `/iam/<resource>/:id/edit` routes (see `iam/src/pages/IamPage/IamPage.tsx`) and
+  its pages `navigate()` to them; it also integrates the IAM account-selector
+  context (`selectedAccount`) that only exists in the iam shell.
+- The **vpc** remote has **no** such create/edit routes; its IAM pages create and
+  edit in-place via antd `Modal`s (`GroupCreateModal`, `AccessBindingCreateModal`,
+  …). It hosts IAM screens only as a convenience surface.
 
-Довод «свести в один компонент нельзя, потому что модели маршрутизации разные»
-верен, но решает не ту задачу: раз поверхности две быть не должно, сводить
-нечего — лишняя удалена целиком (страницы, `IamLayout`, `IamScopedListShell`,
-раздел `/iam/*` в роутере `vpc`, лаунчер IAM в его сайдбаре).
+Collapsing both into a single `shared/` component would force one remote to adopt
+the other's routing model (e.g. vpc would `navigate()` to a create route it never
+registers → catch-all redirect), a runtime behavior change that cannot be
+validated without an end-to-end federation harness. The fork is therefore
+intentional and scoped to **presentation/routing only**.
 
-**Инвариант теперь** — `shared/src/test/iam-pages-authz-single-source.test.ts`:
-IAM реализует только `iam`; никакое другое приложение не держит своей копии;
-`/iam/*` маршрутизирует только `host` и только в ремоут. Прежняя гарантия про
-единственность security-примитивов сохранена — она нужна оставшейся поверхности.
+**Why the security risk is neutralized:** every security-relevant primitive is
+already single-sourced in `@shared` and consumed identically by both copies:
+
+- permission gating — `@shared/lib/permissions` (`usePermissions`),
+- IAM mutations + typed API — `@shared/components/organisms/iam/IamCommon`
+  (`useIamMutation`) and `@shared/api/iam`,
+- error mapping — `@shared/lib/permissions`
+  (`isAlreadyExistsError`, `mapApiErrorToMessage`),
+- session — `@shared/contexts/AuthContext`.
+
+A fix to any of those lands once and applies to both remotes. The audit failure
+scenario ("security fix applied to one copy, missed in the other") is prevented
+by `shared/src/test/iam-pages-authz-single-source.test.ts`, which fails CI if any
+IAM page in either remote stops sourcing the gating/mutation/API from `@shared`
+or re-declares a local `usePermissions` / `useIamMutation`. The remaining
+per-app difference is limited to the modal-vs-route create shell and the
+iam-only `selectedAccount` gate, neither of which is an authorization decision
+(the backend enforces authz; the UI gate is defense-in-depth/UX).
+
+**Revisit trigger:** if a future task unifies the two remotes' IAM routing model
+(both route-based or both modal-based), extract the shared page bodies into
+`shared/src/pages/iam/` behind a thin per-app create-shell and drop the fork.
 
 ## `resource-registry.tsx` size (single central REGISTRY)
 

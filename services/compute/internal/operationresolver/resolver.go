@@ -41,29 +41,18 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/protoconv"
 )
 
-// DiskReader / ImageReader / SnapshotReader / InstanceReader — узкие read-порты
-// четырёх мутируемых ресурсов compute. Удовлетворяются *repo.DiskRepo и т.д.
-type DiskReader interface {
-	Get(ctx context.Context, id string) (*domain.Disk, error)
-}
-
-type ImageReader interface {
-	Get(ctx context.Context, id string) (*domain.Image, error)
-}
-
-type SnapshotReader interface {
-	Get(ctx context.Context, id string) (*domain.Snapshot, error)
-}
-
+// InstanceReader — узкий read-порт мутируемого ресурса compute.
+// Удовлетворяется *repo.InstanceRepo.
+//
+// Disk/Image/Snapshot-читатели сняты вместе с дублирующими ресурсами: блочное
+// хранение принадлежит kacho-storage, и осиротевшие операции над ним разрешает
+// resolver storage, а не этот.
 type InstanceReader interface {
 	Get(ctx context.Context, id string) (*domain.Instance, error)
 }
 
 // Readers — набор read-портов, инжектируемый composition root'ом.
 type Readers struct {
-	Disk     DiskReader
-	Image    ImageReader
-	Snapshot SnapshotReader
 	Instance InstanceReader
 }
 
@@ -119,31 +108,6 @@ func (rs *Resolver) Resolve(ctx context.Context, op operations.Operation) (opera
 	}
 
 	switch m := msg.(type) {
-	// ---- Disk ----
-	case *computev1.CreateDiskMetadata:
-		return resolveExistence(ctx, kindCreate, m.GetDiskId(), rs.r.Disk, marshalDisk)
-	case *computev1.UpdateDiskMetadata:
-		return resolveExistence(ctx, kindUpdate, m.GetDiskId(), rs.r.Disk, marshalDisk)
-	case *computev1.RelocateDiskMetadata:
-		return resolveExistence(ctx, kindUpdate, m.GetDiskId(), rs.r.Disk, marshalDisk)
-	case *computev1.DeleteDiskMetadata:
-		return resolveExistence(ctx, kindDelete, m.GetDiskId(), rs.r.Disk, marshalDisk)
-
-	// ---- Image ----
-	case *computev1.CreateImageMetadata:
-		return resolveExistence(ctx, kindCreate, m.GetImageId(), rs.r.Image, marshalImage)
-	case *computev1.UpdateImageMetadata:
-		return resolveExistence(ctx, kindUpdate, m.GetImageId(), rs.r.Image, marshalImage)
-	case *computev1.DeleteImageMetadata:
-		return resolveExistence(ctx, kindDelete, m.GetImageId(), rs.r.Image, marshalImage)
-
-	// ---- Snapshot ----
-	case *computev1.CreateSnapshotMetadata:
-		return resolveExistence(ctx, kindCreate, m.GetSnapshotId(), rs.r.Snapshot, marshalSnapshot)
-	case *computev1.UpdateSnapshotMetadata:
-		return resolveExistence(ctx, kindUpdate, m.GetSnapshotId(), rs.r.Snapshot, marshalSnapshot)
-	case *computev1.DeleteSnapshotMetadata:
-		return resolveExistence(ctx, kindDelete, m.GetSnapshotId(), rs.r.Snapshot, marshalSnapshot)
 
 	// ---- Instance: Create / Update / Delete ----
 	case *computev1.CreateInstanceMetadata:
@@ -224,9 +188,6 @@ func resolveExistence[T any](
 	return done(resp), nil
 }
 
-func marshalDisk(d *domain.Disk) (*anypb.Any, error)         { return anypb.New(protoconv.Disk(d)) }
-func marshalImage(i *domain.Image) (*anypb.Any, error)       { return anypb.New(protoconv.Image(i)) }
-func marshalSnapshot(s *domain.Snapshot) (*anypb.Any, error) { return anypb.New(protoconv.Snapshot(s)) }
 func marshalInstance(in *domain.Instance) (*anypb.Any, error) {
 	return anypb.New(protoconv.Instance(in))
 }

@@ -39,9 +39,6 @@ const REQUIRED_BY_API_PATH: Record<string, string[]> = {
   // compute.v1 — CreateDiskRequest{project_id,zone_id,size};
   // CreateImageRequest{project_id} (region_id is the STORAGE image, not this one);
   // CreateSnapshotRequest{project_id,disk_id}; CreateInstanceRequest{project_id,zone_id}.
-  "/compute/v1/disks": ["project_id", "zone_id", "size"],
-  "/compute/v1/images": ["project_id"],
-  "/compute/v1/snapshots": ["project_id", "disk_id"],
   "/compute/v1/instances": ["project_id", "zone_id"],
   // geo.v1 InternalCatalogService — Create{Region,Zone}Request mark no field required.
   "/geo/v1/regions": [],
@@ -86,7 +83,13 @@ const createCapable = Object.entries(REGISTRY)
 describe("every create-capable spec can express what Create requires", () => {
   it("offers Create for at least the resources this registry is meant to create", () => {
     // Guards the sweep against silently measuring nothing.
-    expect(createCapable.length).toBeGreaterThanOrEqual(20);
+    //
+    // Was 20 until the duplicate block-storage resources were retired: the disk,
+    // image and snapshot specs addressing `/compute/v1/*` are gone, and the disk
+    // type catalogue now addresses its owner. Lowered deliberately, with the
+    // reason recorded — a floor nudged down to whatever the code currently
+    // produces stops guarding anything, which is the point of stating why.
+    expect(createCapable.length).toBeGreaterThanOrEqual(19);
   });
 
   it.each(createCapable)("%s (%s)", (specId, apiPath) => {

@@ -129,7 +129,7 @@ precondition, записать verbatim text+code) → выровнять, за�
 `RegionService` в Compute. Мы добавили `InternalDiskTypeService.{Create,Update,
 Delete}` / `InternalRegionService.{Create,Update,Delete}` / `InternalZoneService.
 {Create,Update,Delete}` на cluster-internal порту `:9091`, проброшено через
-api-gateway internal mux на `/compute/v1/diskTypes`, `/compute/v1/regions`,
+api-gateway internal mux на `/compute/v1/internal/machineTypes`,
 `/compute/v1/zones` — для admin-tooling / UI seed'ить справочники.
 
 Это **сознательное kacho-only расширение** (verbatim-YC parity — отложена, см.

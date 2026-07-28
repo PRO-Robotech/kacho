@@ -30,9 +30,6 @@ const TOKEN_TO_REGISTRY_ID: Record<string, string> = {
 
   // ── compute ──
   "compute.instance": "compute-instances",
-  "compute.disk": "compute-disks",
-  "compute.image": "compute-images",
-  "compute.snapshot": "compute-snapshots",
 
   // ── loadbalancer (токены каталога — pluralized как в objectTypes) ──
   "loadbalancer.networkLoadBalancers": "load-balancers",

@@ -233,7 +233,6 @@ var awaitingPass = map[string]string{
 	"services/iam/tests/newman/collections/iam-service-account.postman_collection.json":               "iam newman pass",
 	"services/iam/tests/newman/collections/iam-user.postman_collection.json":                          "iam newman pass",
 	"services/iam/tests/newman/collections/iam-whoami.postman_collection.json":                        "iam newman pass",
-	"services/iam/tests/newman/collections/label-revoke-compute.postman_collection.json":              "iam newman pass",
 	"services/iam/tests/newman/collections/label-revoke-iam.postman_collection.json":                  "iam newman pass",
 	"services/iam/tests/newman/collections/label-revoke-nlb.postman_collection.json":                  "iam newman pass",
 	"services/iam/tests/newman/collections/label-revoke-storage.postman_collection.json":              "iam newman pass",

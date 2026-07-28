@@ -216,17 +216,13 @@ NIC, `nic_id=''`) — для unit/newman/load-тестов без подняты
 
 ⚠️ **Внутренние служебные сущности не публиковать наружу** (workspace `CLAUDE.md`
 §запрет 6; CLAUDE.md compute §16):
-- `InternalWatchService` / `InternalDiskTypeService` / `InternalRegionService` /
-  `InternalZoneService` — на cluster-internal порту
-  `:9091`; `InternalDiskType/Region/ZoneService` проброшены через
-  api-gateway internal mux на `/compute/v1/diskTypes`, `/compute/v1/regions`,
-  `/compute/v1/zones` — только cluster-internal listener.
+- `InternalWatchService` / `InternalMachineTypeService` — на cluster-internal порту
+  `:9091`; `InternalMachineTypeService` проброшен через api-gateway internal mux на
+  `/compute/v1/internal/machineTypes` — только cluster-internal listener.
 - На external TLS endpoint (`api.kacho.local:443`, advertised для внешних клиентов)
   эти paths **не должны** быть доступны. Список admin paths (для будущего
   TLS-middleware фильтра):
-  - `/compute/v1/diskTypes` (POST/PATCH/DELETE — kacho-only; GET публичный через `DiskTypeService`)
-  - `/compute/v1/regions` (POST/PATCH/DELETE — kacho-only; GET публичный через `RegionService`)
-  - `/compute/v1/zones` (POST/PATCH/DELETE — kacho-only; GET публичный через `ZoneService`)
+  - `/compute/v1/internal/machineTypes` (POST/PATCH/DELETE — kacho-only; GET публичный через `MachineTypeService` на `/compute/v1/machineTypes`)
 - **Правило для новых admin-RPC**: добавлять **только** в `Internal*` сервис на
   `:9091`, регистрировать через `computeInternalAddr` блок в
   `kacho-api-gateway/internal/restmux/mux.go`. **НЕ** расширять публичные

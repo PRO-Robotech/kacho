@@ -188,3 +188,15 @@ func (r *MachineTypeRepo) Delete(ctx context.Context, id string) error {
 	}
 	return nil
 }
+
+// orEmptySlice normalises a nil slice to an empty one.
+//
+// The distinction matters on the wire: a nil slice marshals to `null` while an
+// empty one marshals to `[]`, and a client that iterates the field should not have
+// to special-case the difference between "no zones" and "no answer".
+func orEmptySlice(s []string) []string {
+	if s == nil {
+		return []string{}
+	}
+	return s
+}

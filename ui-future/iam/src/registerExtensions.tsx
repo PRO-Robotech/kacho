@@ -187,7 +187,7 @@ function targetView(t: AccessBindingTarget | undefined): ReactNode {
 // ─────────────────────── IAM: привилегии субъекта ───────────────────────
 // «Привилегии» — вложенный таб detail-страницы IAM-ресурса. Показывает
 // AccessBinding'и, где данный ресурс — субъект (User/ServiceAccount/Group,
-// listBySubject) либо область выдачи (Account, listByScope). Только чтение;
+// listBySubject) либо ресурс-скоуп (Account, listByResource). Только чтение;
 // выдача/отзыв — на странице «Привязки доступа».
 
 type PrivilegesMode =
@@ -225,7 +225,7 @@ function scopeColor(s: string): string {
 // SubjectPrivilegesTab — «Привилегии»-вкладка. По оси субъекта (User/SA/Group)
 // показывает SubjectPrivilege'и (listSubjectPrivileges: self ИЛИ account-admin →
 // админ видит привилегии SA/юзера), по оси ресурса-скоупа (Account) —
-// AccessBinding'и (listByScope). Только чтение; выдача/отзыв — на «Привязках».
+// AccessBinding'и (listByResource). Только чтение; выдача/отзыв — на «Привязках».
 function SubjectPrivilegesTab({ mode }: { mode: PrivilegesMode }) {
   return mode.kind === "subject" ? (
     <SubjectPrivilegesSubjectTable mode={mode} />
@@ -348,7 +348,7 @@ function SubjectPrivilegesSubjectTable({
 }
 
 // SubjectPrivilegesResourceTable — привязки, выданные НА ресурс-скоуп (Account),
-// через listByScope. Субъекты разные → резолвим email (user) + role_id → name.
+// через listByResource. Субъекты разные → резолвим email (user) + role_id → name.
 // Ресурс-скоуп фиксирован → колонки: Субъект | Роль | Область | Создано.
 function SubjectPrivilegesResourceTable({
   mode,
@@ -690,7 +690,7 @@ registerDetailExtension("roles", {
 });
 
 // Account — не субъект AccessBinding'а, а ресурс-скоуп: таб показывает привязки,
-// выданные НА этот account (listByScope account).
+// выданные НА этот account (listByResource account).
 registerDetailExtension("accounts", {
   overviewExtra: ({ data }) => {
     const rows: DescItem[] = [

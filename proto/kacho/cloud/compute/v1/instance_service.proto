@@ -11,7 +11,6 @@ import "google/protobuf/field_mask.proto";
 import "kacho/cloud/access/access.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/compute/v1/application.proto";
-import "kacho/cloud/compute/v1/disk.proto";
 import "kacho/cloud/compute/v1/instance.proto";
 import "kacho/cloud/compute/v1/maintenance.proto";
 import "kacho/cloud/operation/operation.proto";
@@ -1102,50 +1101,21 @@ message AttachedDiskSpec {
   // Specifies whether the disk will be auto-deleted when the instance is deleted.
   bool auto_delete = 3;
 
-  oneof disk {
-    option (exactly_one) = true;
+  // ID of the storage Volume (prefix "vol") that should be attached.
+  string volume_id = 5 [
+    (required) = true,
+    (length) = "<=50"
+  ];
 
-    // Disk specification.
-    DiskSpec disk_spec = 4;
-
-    // ID of the storage Volume (prefix "vol") that should be attached.
-    string volume_id = 5 [(length) = "<=50"];
-  }
-
-  message DiskSpec {
-    // Name of the disk.
-    string name = 1 [(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"];
-
-    // Description of the disk.
-    string description = 2 [(length) = "<=256"];
-
-    // ID of the disk type.
-    // To get a list of available disk types, use the [kacho.cloud.compute.v1.DiskTypeService.List] request.
-    string type_id = 3 [(length) = "<=50"];
-
-    // Size of the disk, specified in bytes.
-    int64 size = 4 [
-      (required) = true,
-      (value) = "4194304-4398046511104"
-    ];
-
-    oneof source {
-      // ID of the image to create the disk from.
-      string image_id = 5 [(length) = "<=50"];
-
-      // ID of the snapshot to restore the disk from.
-      string snapshot_id = 6 [(length) = "<=50"];
-    }
-
-    // Placement policy configuration.
-    DiskPlacementPolicy disk_placement_policy = 7;
-
-    // Block size of the disk, specified in bytes. The default is 4096.
-    int64 block_size = 8;
-
-    // ID of KMS key for disk encryption
-    string kms_key_id = 9 [(length) = "<=50"];
-  }
+  // Field 4 carried `DiskSpec` — an inline "create a disk while attaching it" form
+  // over compute's own Disk resource. That resource is retired: kacho-storage owns
+  // block storage, so a volume is created through storage.v1.VolumeService and then
+  // attached here by id. The arm is withdrawn rather than left standing, because it
+  // had already stopped meaning anything — the handler read only `volume_id` and
+  // dropped `disk_spec` silently, so a caller who sent it was told the attach had
+  // succeeded while nothing of what it asked for was applied.
+  reserved 4;
+  reserved "disk_spec";
 }
 
 message AttachedLocalDiskSpec {
@@ -1305,4 +1275,25 @@ message PreemptInstanceMetadata {
 message CrashInstanceMetadata {
   // ID of the instance that was crashed.
   string instance_id = 1;
+}
+
+// Placement policy of a volume backing an instance, in the target zone.
+//
+// These two messages moved here from the retired `disk.proto` when compute's
+// duplicate Disk resource was taken off the contract. They describe placement of an
+// instance's storage within a zone, and `RelocateInstanceRequest` is their only
+// caller, so the instance surface is where they belong. Their fully-qualified names
+// are unchanged (`kacho.cloud.compute.v1.DiskPlacementPolicy` and
+// `...DiskPlacementPolicyChange`), so nothing on the wire moves with them.
+message DiskPlacementPolicy {
+  // Placement group ID.
+  string placement_group_id = 1;
+  int64 placement_group_partition = 2;
+}
+
+message DiskPlacementPolicyChange {
+  // ID of the volume the placement policy applies to.
+  string disk_id = 1;
+  // Placement policy configuration for the given volume.
+  DiskPlacementPolicy disk_placement_policy = 2;
 }

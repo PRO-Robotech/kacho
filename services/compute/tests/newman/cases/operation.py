@@ -10,20 +10,52 @@ api-gateway OpsProxy маршрутизирует /operations/{id} по перв
 
 CASES = []
 
-DISKS = "/compute/v1/disks"
-_DISK_SIZE = 10737418240
+# Operation is exercised through Instance.Create/Delete. It used to ride on
+# compute's own Disk resource; that duplicate is retired (kacho-storage owns block
+# storage), and the Operation contract belongs to neither — so the probe moved to
+# the resource compute still owns.
+INSTANCES = "/compute/v1/instances"
+MT_INT = "/compute/v1/internal/machineTypes"      # admin seed (:8081, ban #6)
+_BOOT_STORAGE = {"type": "storage.image", "id": "img-9k2m4x7q1n8p:22.04-lts"}
+
+
+def _seed_mt(suffix):
+    """Seed a MachineType (Internal*, :8081) → sets mtId. Instance.Create needs one."""
+    body = {"name": f"mtop{suffix}{{{{runId}}}}", "family": "STANDARD",
+            "effectiveResources": {"vCpu": 2, "memoryMib": 8192, "gpus": 0},
+            "availableZones": ["{{existingZoneId}}", "{{existingZoneAltId}}"], "status": "AVAILABLE"}
+    return [Step(name=f"seed-mt-{suffix}", method="POST", path=MT_INT, body=body, internal=True,
+                 test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                              *save_from_response("j.metadata && j.metadata.machineTypeId", "mtId")]),
+            poll_operation_until_done(), assert_op_success()]
+
+
+def _cleanup_mt():
+    return [Step(name="cleanup-mt", method="DELETE", path=MT_INT + "/{{mtId}}", internal=True,
+                 test_script=[*save_from_response("j.id", "opId")]),
+            poll_operation_until_done()]
+
+
+def _inst_body(suffix, project="{{_suiteProjectId}}", mt="{{mtId}}"):
+    return {"projectId": project, "name": f"insop{suffix}{{{{runId}}}}",
+            "zoneId": "{{existingZoneId}}", "instanceKind": "VM", "machineTypeId": mt,
+            "bootSource": dict(_BOOT_STORAGE),
+            "vmSpec": {"userData": "#cloud-config\n{}",
+                       "metadataOptions": {"metadataEndpoint": "ENABLED", "metadataTokenRequired": True}},
+            "networkInterfaceSpecs": [{"subnetId": "{{existingSubnetId}}",
+                                       "securityGroupIds": ["{{existingSgId}}"]}]}
 
 
 CASES.append(Case(
     id="OP-GET-CRUD-OK",
-    title="Get свежесозданной operation (после Disk.Create) → done=true, has response, metadata.diskId",
+    title="Get свежесозданной operation (после Instance.Create) → done=true, has response, metadata.instanceId",
     classes=["CRUD"], priority="P1",
     steps=[
-        Step(name="create-trigger", method="POST", path=DISKS,
-             body={"projectId": "{{_suiteProjectId}}", "name": "disk-opget-{{runId}}",
-                   "zoneId": "{{existingZoneId}}", "size": _DISK_SIZE},
+        *_seed_mt("get"),
+        Step(name="create-trigger", method="POST", path=INSTANCES,
+             body=_inst_body("get"),
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.diskId", "diskId")]),
+                          *save_from_response("j.metadata && j.metadata.instanceId", "instanceId")]),
         poll_operation_until_done(),
         Step(name="get-op", method="GET", path="/operations/{{opId}}",
              test_script=[*assert_status(200),
@@ -31,23 +63,24 @@ CASES.append(Case(
                           "pm.test('id matches & epd prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('opId')); pm.expect(j.id).to.match(/^epd/); });",
                           "pm.test('done=true', () => pm.expect(j.done).to.eql(true));",
                           "pm.test('has response (no error)', () => { pm.expect(j.response).to.be.an('object'); pm.expect(j.error).to.be.oneOf([undefined, null]); });",
-                          "pm.test('metadata has diskId (epd...)', () => pm.expect(j.metadata && j.metadata.diskId).to.match(/^epd/));",
+                          "pm.test('metadata has instanceId (ins-...)', () => pm.expect(j.metadata && j.metadata.instanceId).to.match(/^ins-/));",
                           "pm.test('createdAt present', () => pm.expect(j.createdAt).to.be.a('string'));"]),
-        Step(name="cleanup", method="DELETE", path=f"{DISKS}/{{{{diskId}}}}",
+        Step(name="cleanup", method="DELETE", path=INSTANCES + "/{{instanceId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
+        *_cleanup_mt(),
     ],
 ))
 
 CASES.append(Case(
     id="OP-GET-CRUD-FAILED-OP",
-    title="Get завершённой failed-operation (Disk.Create в garbage project) → done=true, has error code 5",
+    title="Get завершённой failed-operation (Instance.Create в garbage project) → done=true, has error code 5",
     classes=["CRUD", "NEG"], priority="P1",
     steps=[
         # # requires peer-validation enabled
-        Step(name="create-bad", method="POST", path=DISKS,
-             body={"projectId": "{{garbageRmId}}", "name": "disk-opfail-{{runId}}",
-                   "zoneId": "{{existingZoneId}}", "size": _DISK_SIZE},
+        *_seed_mt("fail"),
+        Step(name="create-bad", method="POST", path=INSTANCES,
+             body=_inst_body("fail", project="{{garbageRmId}}"),
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="get-op", method="GET", path="/operations/{{opId}}",
@@ -93,23 +126,24 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="OP-CANCEL-NEG-ALREADY-DONE",
-    title="Cancel завершённой operation (Disk.Create уже done) → FailedPrecondition (или 200 idempotent)",
+    title="Cancel завершённой operation (Instance.Create уже done) → FailedPrecondition (или 200 idempotent)",
     classes=["NEG", "STATE"], priority="P1",
     steps=[
-        Step(name="create-trigger", method="POST", path=DISKS,
-             body={"projectId": "{{_suiteProjectId}}", "name": "disk-opcancel-{{runId}}",
-                   "zoneId": "{{existingZoneId}}", "size": _DISK_SIZE},
+        *_seed_mt("cancel"),
+        Step(name="create-trigger", method="POST", path=INSTANCES,
+             body=_inst_body("cancel"),
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                          *save_from_response("j.metadata && j.metadata.diskId", "diskId")]),
+                          *save_from_response("j.metadata && j.metadata.instanceId", "instanceId")]),
         poll_operation_until_done(),
         Step(name="cancel-done", method="POST", path="/operations/{{opId}}:cancel", body={},
              # probe-needed: YC поведение Cancel на done-op. Обычно FailedPrecondition; иногда idempotent 200 с уже-done op.
              test_script=["pm.test('FailedPrecondition (400+code9) or idempotent 200', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
                           "if (pm.response.code === 400) { pm.test('code 9 FAILED_PRECONDITION', () => pm.expect(pm.response.json().code).to.eql(9)); }",
                           "if (pm.response.code === 200) { pm.test('op still done', () => pm.expect(pm.response.json().done).to.eql(true)); }"]),
-        Step(name="cleanup", method="DELETE", path=f"{DISKS}/{{{{diskId}}}}",
+        Step(name="cleanup", method="DELETE", path=INSTANCES + "/{{instanceId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
+        *_cleanup_mt(),
     ],
 ))
 

@@ -18,19 +18,12 @@
 // `Authorization: Bearer|DPoP ...` header runs through:
 //
 //  1. JWT verifier (Hydra JWKS, alg whitelist, iss/aud/exp).
-//  2. Revocation check — the provider is asked whether this token is still
-//     live, through a short-TTL cache. A signature cannot answer that: a
-//     sign-out or a revoked key leaves a valid signature behind. Runs only
-//     when an introspection endpoint is configured (it is never derived).
-//  3. If token.cnf.jkt set → DPoP header validation (htm/htu/iat/jti/jkt).
-//  4. If token.cnf.x5t#S256 set → mTLS-bound (client cert vs cnf).
-//  5. Step-up gate: required ACR / mfa_max_age from permission catalog.
+//  2. If token.cnf.jkt set → DPoP header validation (htm/htu/iat/jti/jkt).
+//  3. If token.cnf.x5t#S256 set → mTLS-bound (client cert vs cnf).
+//  4. Step-up gate: required ACR / mfa_max_age from permission catalog.
 //
-// A rejected credential → 401 with an RFC 6750 `WWW-Authenticate` challenge.
-// The one exception is a revocation check that cannot answer because it is
-// addressed wrongly: that is this deployment's fault, not the caller's, so it
-// answers 503 and offers no challenge — re-authenticating cannot fix it.
-// Either way nothing is forwarded. The principal headers (X-Kacho-Principal-*) are
+// On any failure → 401 with RFC 6750 `WWW-Authenticate` challenge header;
+// no forwarding to backend. The principal headers (X-Kacho-Principal-*) are
 // then injected exactly as the legacy AuthInterceptor does, so backends see
 // a unified shape regardless of whether the token came from dev-HMAC or
 // from Hydra.
@@ -40,6 +33,7 @@
 package middleware
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
@@ -61,10 +55,6 @@ type DPoPMiddleware struct {
 	introspection    *IntrospectionCache
 	permissionLookup PermissionLookup
 	routes           RestRouteResolver
-
-	// introspectionFailures rate-limits the report of a revocation check that is
-	// not answering, so an outage is visible without flooding the log.
-	introspectionFailures *introspectionFailureReporter
 
 	logger    *slog.Logger
 	apiDomain string
@@ -134,11 +124,6 @@ type DPoPMiddlewareConfig struct {
 	Logger     *slog.Logger
 	APIDomain  string
 
-	// IntrospectionFailureLogInterval — how often a continuing revocation-check
-	// failure is re-stated. Unset → defaultIntrospectionFailureLogInterval. The
-	// first failure always reports, whatever the interval.
-	IntrospectionFailureLogInterval time.Duration
-
 	// RequireForAllRequests — production-strict; reject anonymous traffic.
 	RequireForAllRequests bool
 }
@@ -175,7 +160,6 @@ func NewDPoPMiddleware(cfg DPoPMiddlewareConfig) (*DPoPMiddleware, error) {
 		introspection:         cfg.Introspection,
 		permissionLookup:      cfg.PermissionLookup,
 		routes:                cfg.RestRouter,
-		introspectionFailures: newIntrospectionFailureReporter(cfg.IntrospectionFailureLogInterval, nil),
 		logger:                cfg.Logger,
 		apiDomain:             cfg.APIDomain,
 		requireForAllRequests: cfg.RequireForAllRequests,
@@ -220,50 +204,22 @@ func (m *DPoPMiddleware) Wrap(next http.Handler) http.Handler {
 			return
 		}
 
-		// 3. Revocation check. A valid signature does not mean the token is still
-		//    good; only the provider knows that. The cache bounds the cost.
+		// 3. Optional revocation check (cache + Hydra introspection).
 		if m.introspection != nil && verified.JTI != "" {
-			// The per-call budget lives in the cache, applied to every attempt.
-			_, ierr := m.introspection.Introspect(r.Context(), verified.JTI, verified.Raw)
+			ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			_, ierr := m.introspection.Introspect(ctx, verified.JTI, verified.Raw)
+			cancel()
 			if ierr != nil {
-				switch {
-				case errors.Is(ierr, ErrTokenInactive):
+				if errors.Is(ierr, ErrTokenInactive) {
 					m.challenge(w, r, http.StatusUnauthorized,
 						`Bearer error="invalid_token", error_description="token revoked"`, nil)
 					return
-
-				case errors.Is(ierr, ErrIntrospectionMisconfigured):
-					// What answered is not an introspection endpoint. That does not
-					// heal, so continuing means every request from here on is served
-					// with the revocation check silently absent. Refuse instead: the
-					// gateway cannot establish that this token is still valid.
-					//
-					// 503, not 401 — the fault is this deployment's configuration.
-					// Reporting it as an authentication failure would send the caller
-					// to re-authenticate, which cannot help, and would hide a broken
-					// stand behind what looks like ordinary credential churn.
-					if report, total, represents := m.introspectionFailures.observe(); report {
-						m.logger.Error("revocation check misconfigured; refusing requests",
-							"err", ierr, "path", path,
-							"introspection_failures_total", total,
-							"occurrences_since_last_report", represents,
-							"hint", "KACHO_HYDRA_INTROSPECTION_URL must address the identity "+
-								"provider's admin API path /admin/oauth2/introspect")
-					}
-					m.serviceUnavailable(w, "revocation check unavailable")
-					return
-
-				default:
-					// The provider did not answer this time. That passes on its own, so
-					// the request continues — and the process says so, because a control
-					// that stops enforcing in silence is one nobody knows they lost.
-					if report, total, represents := m.introspectionFailures.observe(); report {
-						m.logger.Error("revocation check unavailable; requests continue unchecked",
-							"err", ierr, "path", path,
-							"introspection_failures_total", total,
-							"occurrences_since_last_report", represents)
-					}
 				}
+				// Soft-fail on transient Hydra outage: log + continue (cache returned a
+				// fresh-enough negative entry covers the next request). This matches
+				// the "graceful when introspection unreachable" requirement.
+				m.logger.Warn("dpop-mw: introspection failed; continuing without it",
+					"err", ierr, "path", path)
 			}
 		}
 
@@ -429,21 +385,6 @@ func (m *DPoPMiddleware) challenge(w http.ResponseWriter, _ *http.Request, statu
 		body[k] = v
 	}
 	_ = json.NewEncoder(w).Encode(body)
-}
-
-// serviceUnavailable writes a 503 with the same JSON body shape as challenge(),
-// but no WWW-Authenticate header: this is not an authentication challenge, and
-// offering one would invite the caller to re-authenticate against a fault no
-// credential of theirs can clear. The reason stays deliberately thin — the
-// caller has no business learning which of this deployment's addresses is wrong;
-// that detail goes to the log the operator reads.
-func (m *DPoPMiddleware) serviceUnavailable(w http.ResponseWriter, reason string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusServiceUnavailable)
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"code":    http.StatusServiceUnavailable,
-		"message": reason,
-	})
 }
 
 // injectVerifiedTokenHeaders adds X-Kacho-Principal-* headers from a verified
