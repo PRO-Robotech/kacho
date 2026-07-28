@@ -15,7 +15,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
@@ -32,7 +32,7 @@ const (
 func fpText(t *testing.T, err error) string {
 	t.Helper()
 	require.Error(t, err, "cross-project source must be rejected")
-	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "want FailedPrecondition, got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "want FailedPrecondition, got %v", err)
 	const prefix = "failed precondition: "
 	require.True(t, strings.HasPrefix(err.Error(), prefix), "got %v", err)
 	return err.Error()[len(prefix):]
@@ -78,7 +78,7 @@ func TestSourceCrossProjectHiddenAsNotFound(t *testing.T) {
 		requireHideExistence(t, foreignErr, victimSnapID, missErr, missID)
 
 		_, gerr := ir.Get(ctx, imgID)
-		require.True(t, stderrors.Is(gerr, ports.ErrNotFound), "no image row materialised, got %v", gerr)
+		require.True(t, stderrors.Is(gerr, storageerr.ErrNotFound), "no image row materialised, got %v", gerr)
 	})
 
 	t.Run("image from foreign volume", func(t *testing.T) {
@@ -91,7 +91,7 @@ func TestSourceCrossProjectHiddenAsNotFound(t *testing.T) {
 		requireHideExistence(t, foreignErr, victimVol.ID, missErr, missID)
 
 		_, gerr := ir.Get(ctx, imgID)
-		require.True(t, stderrors.Is(gerr, ports.ErrNotFound), "no image row materialised, got %v", gerr)
+		require.True(t, stderrors.Is(gerr, storageerr.ErrNotFound), "no image row materialised, got %v", gerr)
 	})
 
 	t.Run("volume from foreign image", func(t *testing.T) {
@@ -104,7 +104,7 @@ func TestSourceCrossProjectHiddenAsNotFound(t *testing.T) {
 		requireHideExistence(t, foreignErr, victimImg.ID, missErr, missID)
 
 		_, gerr := vr.Get(ctx, volID)
-		require.True(t, stderrors.Is(gerr, ports.ErrNotFound), "no volume row materialised, got %v", gerr)
+		require.True(t, stderrors.Is(gerr, storageerr.ErrNotFound), "no volume row materialised, got %v", gerr)
 	})
 
 	t.Run("volume from foreign snapshot", func(t *testing.T) {
@@ -117,7 +117,7 @@ func TestSourceCrossProjectHiddenAsNotFound(t *testing.T) {
 		requireHideExistence(t, foreignErr, victimSnapID, missErr, missID)
 
 		_, gerr := vr.Get(ctx, volID)
-		require.True(t, stderrors.Is(gerr, ports.ErrNotFound), "no volume row materialised, got %v", gerr)
+		require.True(t, stderrors.Is(gerr, storageerr.ErrNotFound), "no volume row materialised, got %v", gerr)
 	})
 
 	t.Run("snapshot from foreign volume", func(t *testing.T) {
@@ -134,7 +134,7 @@ func TestSourceCrossProjectHiddenAsNotFound(t *testing.T) {
 		requireHideExistence(t, foreignErr, victimVol.ID, missErr, missID)
 
 		_, gerr := sr.Get(ctx, snapID)
-		require.True(t, stderrors.Is(gerr, ports.ErrNotFound), "no snapshot row materialised, got %v", gerr)
+		require.True(t, stderrors.Is(gerr, storageerr.ErrNotFound), "no snapshot row materialised, got %v", gerr)
 	})
 
 	// Состояние ЧУЖОГО тома не должно просвечивать: не-READY чужой том обязан

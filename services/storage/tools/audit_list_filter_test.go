@@ -58,7 +58,7 @@ func writeFile(t *testing.T, path, content string) {
 // files), copies the real audit-list-filter.sh into it, runs it, and returns the
 // combined output plus the process error (nil ⇒ exit 0, non-nil ⇒ gate failed).
 // The script does `cd "$(dirname "$0")/.."` and inspects internal/repo/pg +
-// internal/service, so a copy in <tmp>/tools sees only our fixtures.
+// internal/apps/kacho/api, so a copy in <tmp>/tools sees only our fixtures.
 func runGate(t *testing.T, files map[string]string) (string, error) {
 	t.Helper()
 	root := t.TempDir()
@@ -200,8 +200,8 @@ func TestAuditListFilter(t *testing.T) {
 		{
 			name: "compliant: repo narrows, use-case requires projectId AND filters per-object",
 			files: map[string]string{
-				"internal/repo/pg/volume_repo.go":   repoNarrows,
-				"internal/service/volume/volume.go": ucCompliant,
+				"internal/repo/pg/volume_repo.go":          repoNarrows,
+				"internal/apps/kacho/api/volume/volume.go": ucCompliant,
 			},
 			wantErr: false,
 		},
@@ -210,8 +210,8 @@ func TestAuditListFilter(t *testing.T) {
 			// predicate) but the List body itself no longer narrows — must FAIL.
 			name: "leak: List body drops project narrowing though Insert keeps predicate",
 			files: map[string]string{
-				"internal/repo/pg/volume_repo.go":   repoListDropsNarrowing,
-				"internal/service/volume/volume.go": ucCompliant,
+				"internal/repo/pg/volume_repo.go":          repoListDropsNarrowing,
+				"internal/apps/kacho/api/volume/volume.go": ucCompliant,
 			},
 			wantErr: true,
 		},
@@ -221,8 +221,8 @@ func TestAuditListFilter(t *testing.T) {
 			// showed every project member every volume/snapshot/image.
 			name: "leak: use-case List never asks who may see the page's objects",
 			files: map[string]string{
-				"internal/repo/pg/volume_repo.go":   repoNarrows,
-				"internal/service/volume/volume.go": ucNoPerObjectFilter,
+				"internal/repo/pg/volume_repo.go":          repoNarrows,
+				"internal/apps/kacho/api/volume/volume.go": ucNoPerObjectFilter,
 			},
 			wantErr: true,
 		},
@@ -231,8 +231,8 @@ func TestAuditListFilter(t *testing.T) {
 			// batched check (ListObjects truncation makes own resources invisible).
 			name: "reject: enumerate-all-allowed-ids instead of a per-page batch check",
 			files: map[string]string{
-				"internal/repo/pg/volume_repo.go":   repoNarrows,
-				"internal/service/volume/volume.go": ucEnumerateAllowedIDs,
+				"internal/repo/pg/volume_repo.go":          repoNarrows,
+				"internal/apps/kacho/api/volume/volume.go": ucEnumerateAllowedIDs,
 			},
 			wantErr: true,
 		},
@@ -241,8 +241,8 @@ func TestAuditListFilter(t *testing.T) {
 			// required-projectId guard — the gate must also catch that.
 			name: "leak: use-case List does not require projectId",
 			files: map[string]string{
-				"internal/repo/pg/volume_repo.go":   repoNarrows,
-				"internal/service/volume/volume.go": ucNoGuard,
+				"internal/repo/pg/volume_repo.go":          repoNarrows,
+				"internal/apps/kacho/api/volume/volume.go": ucNoGuard,
 			},
 			wantErr: true,
 		},
@@ -250,8 +250,8 @@ func TestAuditListFilter(t *testing.T) {
 			// A comment is not an implementation: the gate judges code, not prose.
 			name: "leak: per-object filter only mentioned in a comment",
 			files: map[string]string{
-				"internal/repo/pg/volume_repo.go":   repoNarrows,
-				"internal/service/volume/volume.go": ucFilterOnlyInComment,
+				"internal/repo/pg/volume_repo.go":          repoNarrows,
+				"internal/apps/kacho/api/volume/volume.go": ucFilterOnlyInComment,
 			},
 			wantErr: true,
 		},
@@ -260,8 +260,8 @@ func TestAuditListFilter(t *testing.T) {
 			// a List that does the right thing.
 			name: "compliant: comment explains the banned enumeration shape",
 			files: map[string]string{
-				"internal/repo/pg/volume_repo.go":   repoNarrows,
-				"internal/service/volume/volume.go": ucCompliantMentionsListObjects,
+				"internal/repo/pg/volume_repo.go":          repoNarrows,
+				"internal/apps/kacho/api/volume/volume.go": ucCompliantMentionsListObjects,
 			},
 			wantErr: false,
 		},

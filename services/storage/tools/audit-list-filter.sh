@@ -23,7 +23,7 @@
 #      ИМЕННО телом List, а не файлом целиком — `project_id = $`-предикат в
 #      Insert/Get не должен давать ложную уверенность (иначе List, обронивший
 #      сужение, но сохранивший предикат в другом методе, прошёл бы гейт);
-#   2. use-case `func (u *UseCase) List(` в `internal/service/<r>/<r>.go` НЕ требует
+#   2. use-case `func (u *UseCase) List(` в `internal/apps/kacho/api/<r>/<r>.go` НЕ требует
 #      непустой `projectId` (in-service backstop: пустой projectId → строки ВСЕХ
 #      проектов, т.к. repo сужает лишь при ProjectID!=""). Отсутствие файла use-case
 #      трактуется fail-closed (нельзя доказать backstop → падаем);
@@ -107,7 +107,7 @@ for repofile in "$ROOT"/*_repo.go; do
 
   # (2) use-case List обязан требовать непустой projectId (in-service backstop).
   #     Пустой projectId → repo вернёт строки ВСЕХ проектов (сужает лишь при !="").
-  svc="internal/service/${RES//_/}/${RES//_/}.go"
+  svc="internal/apps/kacho/api/${RES//_/}/${RES//_/}.go"
   if [[ ! -f "$svc" ]]; then
     echo "audit-list-filter: $RES — use-case file $svc absent (cannot prove projectId backstop; fail-closed)"
     FAIL=1

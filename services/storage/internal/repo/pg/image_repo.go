@@ -13,10 +13,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/image"
 )
 
 // ImageRepo — реализация image.Reader/Writer поверх pgxpool (handwritten pgx, БЕЗ
@@ -199,7 +199,7 @@ const imageInsertCoherentSQL = `
 func (r *ImageRepo) Insert(ctx context.Context, i *domain.Image, regionZones []string) (*domain.Image, error) {
 	labels, err := json.Marshal(nonNilLabels(i.Labels))
 	if err != nil {
-		return nil, ports.ErrInternal
+		return nil, storageerr.ErrInternal
 	}
 	var srcSnap, srcVol *string
 	if i.SourceSnapshot != "" {
@@ -251,11 +251,11 @@ func (r *ImageRepo) Insert(ctx context.Context, i *domain.Image, regionZones []s
 func imageSourceUnavailable(snapshotID, volumeID string) error {
 	switch {
 	case snapshotID != "":
-		return fmt.Errorf("%w: Snapshot %s not found", ports.ErrFailedPrecondition, snapshotID)
+		return fmt.Errorf("%w: Snapshot %s not found", storageerr.ErrFailedPrecondition, snapshotID)
 	case volumeID != "":
-		return fmt.Errorf("%w: Volume %s not found", ports.ErrFailedPrecondition, volumeID)
+		return fmt.Errorf("%w: Volume %s not found", storageerr.ErrFailedPrecondition, volumeID)
 	default:
-		return ports.ErrInternal
+		return storageerr.ErrInternal
 	}
 }
 
@@ -266,7 +266,7 @@ func (r *ImageRepo) Update(ctx context.Context, id string, u image.ImageUpdate) 
 	if u.LabelsSet {
 		b, err := json.Marshal(nonNilLabels(u.Labels))
 		if err != nil {
-			return nil, ports.ErrInternal
+			return nil, storageerr.ErrInternal
 		}
 		labelsArg = b
 	}
@@ -291,7 +291,7 @@ func (r *ImageRepo) Update(ctx context.Context, id string, u image.ImageUpdate) 
 				})
 		}
 		if errors.Is(serr, pgx.ErrNoRows) {
-			return fmt.Errorf("%w: Image %s not found", ports.ErrNotFound, id)
+			return fmt.Errorf("%w: Image %s not found", storageerr.ErrNotFound, id)
 		}
 		return serr
 	})
@@ -311,7 +311,7 @@ func (r *ImageRepo) Delete(ctx context.Context, id string) error {
 		err := tx.QueryRow(ctx, `DELETE FROM images WHERE id = $1 RETURNING project_id`, id).Scan(&projectID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				return fmt.Errorf("%w: Image %s not found", ports.ErrNotFound, id)
+				return fmt.Errorf("%w: Image %s not found", storageerr.ErrNotFound, id)
 			}
 			return err
 		}

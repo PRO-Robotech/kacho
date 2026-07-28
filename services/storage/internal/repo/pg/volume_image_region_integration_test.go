@@ -31,7 +31,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
@@ -68,7 +68,7 @@ func TestVolumeSourceImageOwnProjectForeignRegionNamed(t *testing.T) {
 
 	// A refusal is a refusal: nothing half-materialised.
 	_, gerr := vr.Get(ctx, volID)
-	require.True(t, stderrors.Is(gerr, ports.ErrNotFound), "no volume row materialised, got %v", gerr)
+	require.True(t, stderrors.Is(gerr, storageerr.ErrNotFound), "no volume row materialised, got %v", gerr)
 
 	// And the image the caller was just told about is still readable by them —
 	// which is precisely why hiding it would have been a lie.
@@ -112,7 +112,7 @@ func TestVolumeSourceImageForeignProjectStaysHidden(t *testing.T) {
 			requireHideExistence(t, err, tc.imageID, missErr, missID)
 
 			_, gerr := vr.Get(ctx, volID)
-			require.True(t, stderrors.Is(gerr, ports.ErrNotFound), "no volume row materialised, got %v", gerr)
+			require.True(t, stderrors.Is(gerr, storageerr.ErrNotFound), "no volume row materialised, got %v", gerr)
 		})
 	}
 }

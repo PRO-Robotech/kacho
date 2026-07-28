@@ -15,10 +15,10 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/snapshot"
 )
 
 // mkSnapshot создаёт Snapshot из тома через репо (state=READY, size из тома) и
@@ -67,7 +67,7 @@ func TestSnapshotCreateSourceMissing(t *testing.T) {
 		ID: ids.NewID(domain.PrefixSnapshot), ProjectID: "prj-1", Name: "snap-x",
 		SourceVolumeID: "vol00000000000000000",
 	})
-	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, "Volume vol00000000000000000 not found", err.Error()[len("failed precondition: "):])
 }
 
@@ -86,7 +86,7 @@ func TestSnapshotCreateSourceNotReady(t *testing.T) {
 	_, err = sr.Insert(ctx, &domain.Snapshot{
 		ID: ids.NewID(domain.PrefixSnapshot), ProjectID: "prj-1", Name: "snap-y", SourceVolumeID: vol.ID,
 	})
-	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, fmt.Sprintf("Volume %s is not ready", vol.ID), err.Error()[len("failed precondition: "):])
 }
 
@@ -94,7 +94,7 @@ func TestSnapshotCreateSourceNotReady(t *testing.T) {
 func TestSnapshotGetNotFound(t *testing.T) {
 	sr := pg.NewSnapshotRepo(newTestPool(t))
 	_, err := sr.Get(context.Background(), "snp00000000000000000")
-	require.True(t, stderrors.Is(err, ports.ErrNotFound), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrNotFound), "got %v", err)
 	require.Equal(t, "Snapshot snp00000000000000000 not found", err.Error()[len("not found: "):])
 }
 
@@ -121,7 +121,7 @@ func TestSnapshotNameUniqueRace(t *testing.T) {
 			switch {
 			case err == nil:
 				ok.Add(1)
-			case stderrors.Is(err, ports.ErrAlreadyExists):
+			case stderrors.Is(err, storageerr.ErrAlreadyExists):
 				dup.Add(1)
 			default:
 				t.Errorf("unexpected err: %v", err)
@@ -150,7 +150,7 @@ func TestSnapshotUpdateMutable(t *testing.T) {
 	require.Equal(t, "patched-desc", up.Description)
 
 	_, err = sr.Update(ctx, "snp00000000000000000", snapshot.SnapshotUpdate{Name: &name})
-	require.True(t, stderrors.Is(err, ports.ErrNotFound), "update missing → NotFound, got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrNotFound), "update missing → NotFound, got %v", err)
 }
 
 // TestSnapshotDeleteFKSetNull — S1-09 обе стороны SET NULL:

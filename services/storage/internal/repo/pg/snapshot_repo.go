@@ -13,10 +13,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/snapshot"
 )
 
 // SnapshotRepo — реализация snapshot.Repo поверх pgxpool. Within-service инварианты
@@ -146,7 +146,7 @@ const snapshotInsertCAS = `
 func (r *SnapshotRepo) Insert(ctx context.Context, s *domain.Snapshot) (*domain.Snapshot, error) {
 	labels, err := json.Marshal(nonNilLabels(s.Labels))
 	if err != nil {
-		return nil, ports.ErrInternal
+		return nil, storageerr.ErrInternal
 	}
 	created := *s
 	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
@@ -185,15 +185,15 @@ func disambiguateSnapshotSource(ctx context.Context, tx pgx.Tx, projectID, srcVo
 		srcVolumeID, projectID).Scan(&state)
 	if verr != nil {
 		if errors.Is(verr, pgx.ErrNoRows) {
-			return fmt.Errorf("%w: Volume %s not found", ports.ErrFailedPrecondition, srcVolumeID)
+			return fmt.Errorf("%w: Volume %s not found", storageerr.ErrFailedPrecondition, srcVolumeID)
 		}
 		return verr
 	}
 	if state != "READY" {
-		return fmt.Errorf("%w: Volume %s is not ready", ports.ErrFailedPrecondition, srcVolumeID)
+		return fmt.Errorf("%w: Volume %s is not ready", storageerr.ErrFailedPrecondition, srcVolumeID)
 	}
 	// READY, том есть, но 0 rows — состояние сменилось между INSERT и disambiguation. Opaque.
-	return ports.ErrInternal
+	return storageerr.ErrInternal
 }
 
 // Update реализует snapshot.Repo: mutable name/description/labels (COALESCE, nil →
@@ -204,7 +204,7 @@ func (r *SnapshotRepo) Update(ctx context.Context, id string, u snapshot.Snapsho
 	if u.LabelsSet {
 		b, err := json.Marshal(nonNilLabels(u.Labels))
 		if err != nil {
-			return nil, ports.ErrInternal
+			return nil, storageerr.ErrInternal
 		}
 		labelsArg = b
 	}
@@ -229,7 +229,7 @@ func (r *SnapshotRepo) Update(ctx context.Context, id string, u snapshot.Snapsho
 				})
 		}
 		if errors.Is(serr, pgx.ErrNoRows) {
-			return fmt.Errorf("%w: Snapshot %s not found", ports.ErrNotFound, id)
+			return fmt.Errorf("%w: Snapshot %s not found", storageerr.ErrNotFound, id)
 		}
 		return serr
 	})
@@ -250,7 +250,7 @@ func (r *SnapshotRepo) Delete(ctx context.Context, id string) error {
 		err := tx.QueryRow(ctx, `DELETE FROM snapshots WHERE id = $1 RETURNING project_id`, id).Scan(&projectID)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				return fmt.Errorf("%w: Snapshot %s not found", ports.ErrNotFound, id)
+				return fmt.Errorf("%w: Snapshot %s not found", storageerr.ErrNotFound, id)
 			}
 			return err
 		}

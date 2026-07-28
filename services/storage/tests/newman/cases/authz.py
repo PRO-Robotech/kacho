@@ -20,7 +20,7 @@ public-RPC проходит per-RPC InternalIAMService.Check с proto-scope_extr
 здесь было ЯВНО объявлено дырой: до этого набор проверял ТОЛЬКО кросс-ПРОЕКТНОЕ
 измерение, поэтому зелёный прогон storage НЕ был доказательством per-object фильтра
 (`viewer ∪ v_list` через iam BatchCheck, internal/authzfilter) — его лочили только
-Go-тесты use-case-слоя (internal/service/*/list_filter_test.go) и CI-гейт
+Go-тесты use-case-слоя (internal/apps/kacho/api/*/list_filter_test.go) и CI-гейт
 tools/audit-list-filter.sh.
 
 Что этот сторож доказывает, а что — нет (читать буквально, не шире):

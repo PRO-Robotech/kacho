@@ -49,9 +49,11 @@ make docker          # образ (контекст — родительский
 cmd/storage/       composition root (serve.go) + interceptors + main
 cmd/migrator/      отдельный бинарь goose-миграций
 internal/domain/   чистые сущности (stdlib), self-validating
-internal/service/  use-cases + port-интерфейсы (анкеры rpc-implementer)
-internal/ports/    sentinel-ошибки + portmock
+internal/apps/kacho/api/<res>/     use-cases + их port-интерфейсы
+internal/apps/kacho/shared/serviceerr/  sentinel → gRPC-статус
+internal/errors/   sentinel-ошибки (pgx-free, leaf)
 internal/repo/pg/  pgx-adapter (реализует порты)
+internal/repo/repomock/  in-memory моки портов для unit-тестов use-case
 internal/clients/  gRPC-клиенты geo/iam (реализуют порты)
 internal/handler/  тонкий transport (public/internal/operation)
 internal/protoconv/ domain↔proto (timestamp truncate)

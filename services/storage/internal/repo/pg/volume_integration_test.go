@@ -21,11 +21,11 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/migrations"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/volume"
 )
 
 // seededDiskType — id из seed-миграции 0004 (block-balanced существует; volumes.
@@ -134,7 +134,7 @@ func TestVolumeCreateGetDerivedStatus(t *testing.T) {
 func TestVolumeGetNotFound(t *testing.T) {
 	r := pg.NewVolumeRepo(newTestPool(t))
 	_, err := r.Get(context.Background(), "vol00000000000000000")
-	require.True(t, stderrors.Is(err, ports.ErrNotFound), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrNotFound), "got %v", err)
 	require.Equal(t, "Volume vol00000000000000000 not found", err.Error()[len("not found: "):])
 }
 
@@ -160,7 +160,7 @@ func TestVolumeNameUniqueRace(t *testing.T) {
 			switch {
 			case err == nil:
 				ok.Add(1)
-			case stderrors.Is(err, ports.ErrAlreadyExists):
+			case stderrors.Is(err, storageerr.ErrAlreadyExists):
 				dup.Add(1)
 				require.Equal(t, "volume with name dup-name already exists in project", err.Error()[len("already exists: "):])
 			default:
@@ -191,7 +191,7 @@ func TestVolumeSizeIncreaseOnly(t *testing.T) {
 	for _, shrink := range []int64{5 << 30, 20 << 30} { // меньше и равно — оба отвергаются
 		s := shrink
 		_, err := r.Update(ctx, v.ID, volume.VolumeUpdate{SizeBytes: &s})
-		require.True(t, stderrors.Is(err, ports.ErrInvalidArg), "shrink %d: %v", shrink, err)
+		require.True(t, stderrors.Is(err, storageerr.ErrInvalidArg), "shrink %d: %v", shrink, err)
 		require.Equal(t, "Volume size can only be increased", err.Error()[len("invalid argument: "):])
 	}
 
@@ -211,7 +211,7 @@ func TestVolumeSizeIncreaseOnly(t *testing.T) {
 			switch {
 			case err == nil:
 				ok.Add(1)
-			case stderrors.Is(err, ports.ErrInvalidArg):
+			case stderrors.Is(err, storageerr.ErrInvalidArg):
 				rej.Add(1)
 			default:
 				t.Errorf("unexpected err: %v", err)
@@ -234,7 +234,7 @@ func TestVolumeDeleteFKRestrict(t *testing.T) {
 	attach(t, pool, v.ID, "epd00000000000000009")
 
 	err := r.Delete(ctx, v.ID)
-	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, fmt.Sprintf("Volume %s is in use", v.ID), err.Error()[len("failed precondition: "):])
 	_, gerr := r.Get(ctx, v.ID)
 	require.NoError(t, gerr, "attached volume still present")
@@ -243,7 +243,7 @@ func TestVolumeDeleteFKRestrict(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, r.Delete(ctx, v.ID))
 	_, gerr = r.Get(ctx, v.ID)
-	require.True(t, stderrors.Is(gerr, ports.ErrNotFound))
+	require.True(t, stderrors.Is(gerr, storageerr.ErrNotFound))
 }
 
 // TestVolumeDiskTypeAndSnapshotFK — несуществующий disk_type → "DiskType <id> not
@@ -258,7 +258,7 @@ func TestVolumeDiskTypeAndSnapshotFK(t *testing.T) {
 		ID: ids.NewID(domain.PrefixVolume), ProjectID: "prj-1", Name: "v-badtype",
 		ZoneID: "region-1-a", DiskTypeID: "dtp-nonexistent", SizeBytes: 1 << 30,
 	}, "")
-	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, "DiskType dtp-nonexistent not found", err.Error()[len("failed precondition: "):])
 
 	_, err = r.Insert(ctx, &domain.Volume{
@@ -266,7 +266,7 @@ func TestVolumeDiskTypeAndSnapshotFK(t *testing.T) {
 		ZoneID: "region-1-a", DiskTypeID: seededDiskType, SizeBytes: 1 << 30,
 		SourceSnapshot: "snp00000000000000000",
 	}, "")
-	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "got %v", err)
 	require.Equal(t, "Snapshot snp00000000000000000 not found", err.Error()[len("failed precondition: "):])
 
 	snapID := ids.NewID(domain.PrefixSnapshot)
@@ -311,7 +311,7 @@ func TestVolumeListCursorFilter(t *testing.T) {
 	require.Equal(t, "vol-b", filtered[0].Name)
 
 	_, _, err = r.List(ctx, volume.Pagination{PageSize: 50, PageToken: "%%%garbage%%%"})
-	require.True(t, stderrors.Is(err, ports.ErrInvalidArg), "garbage token → InvalidArg, got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrInvalidArg), "garbage token → InvalidArg, got %v", err)
 }
 
 // TestVolumeUpdateMutableAndNameCollision — Update name→existing → AlreadyExists
@@ -326,7 +326,7 @@ func TestVolumeUpdateMutableAndNameCollision(t *testing.T) {
 
 	name := "alpha"
 	_, err := r.Update(ctx, vb.ID, volume.VolumeUpdate{Name: &name})
-	require.True(t, stderrors.Is(err, ports.ErrAlreadyExists), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrAlreadyExists), "got %v", err)
 
 	empty := ""
 	_, err = r.Update(ctx, vb.ID, volume.VolumeUpdate{Name: &empty})

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 )
 
 // cursor — opaque page_token курсорной пагинации List по (created_at, id) ASC
@@ -30,15 +30,15 @@ func encodePageToken(c cursor) string {
 func decodePageToken(token string) (cursor, error) {
 	raw, err := base64.RawURLEncoding.DecodeString(token)
 	if err != nil {
-		return cursor{}, fmt.Errorf("%w: invalid page_token", ports.ErrInvalidArg)
+		return cursor{}, fmt.Errorf("%w: invalid page_token", storageerr.ErrInvalidArg)
 	}
 	parts := strings.SplitN(string(raw), "|", 2)
 	if len(parts) != 2 {
-		return cursor{}, fmt.Errorf("%w: invalid page_token", ports.ErrInvalidArg)
+		return cursor{}, fmt.Errorf("%w: invalid page_token", storageerr.ErrInvalidArg)
 	}
 	var nanos int64
 	if _, err := fmt.Sscanf(parts[0], "%d", &nanos); err != nil {
-		return cursor{}, fmt.Errorf("%w: invalid page_token", ports.ErrInvalidArg)
+		return cursor{}, fmt.Errorf("%w: invalid page_token", storageerr.ErrInvalidArg)
 	}
 	return cursor{createdAt: time.Unix(0, nanos).UTC(), id: parts[1]}, nil
 }

@@ -21,9 +21,9 @@ import (
 	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
 
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/image"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/volume"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/image"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 )
 
 // peerCallTimeout — per-call deadline любого peer-RPC (geo/iam). Configured, не
@@ -74,7 +74,7 @@ func (c *GeoClient) RegionOfZone(ctx context.Context, zoneID string) (string, er
 	if err != nil {
 		switch status.Code(err) {
 		case codes.NotFound, codes.InvalidArgument:
-			return "", fmt.Errorf("%w: unknown zone id '%s'", ports.ErrInvalidArg, zoneID)
+			return "", fmt.Errorf("%w: unknown zone id '%s'", storageerr.ErrInvalidArg, zoneID)
 		default:
 			return "", status.Error(codes.Unavailable, "geo zone validation unavailable")
 		}
@@ -94,7 +94,7 @@ func (c *GeoClient) EnsureZoneExists(ctx context.Context, zoneID string) error {
 	if _, err := c.cli.Get(auth.PropagateOutgoing(cctx), &geov1.GetZoneRequest{ZoneId: zoneID}); err != nil {
 		switch status.Code(err) {
 		case codes.NotFound, codes.InvalidArgument:
-			return fmt.Errorf("%w: unknown zone id '%s'", ports.ErrInvalidArg, zoneID)
+			return fmt.Errorf("%w: unknown zone id '%s'", storageerr.ErrInvalidArg, zoneID)
 		default:
 			return status.Error(codes.Unavailable, "geo zone validation unavailable")
 		}
@@ -115,7 +115,7 @@ func (c *GeoClient) EnsureRegionExists(ctx context.Context, regionID string) err
 	if _, err := c.regionCli.Get(auth.PropagateOutgoing(cctx), &geov1.GetRegionRequest{RegionId: regionID}); err != nil {
 		switch status.Code(err) {
 		case codes.NotFound, codes.InvalidArgument:
-			return fmt.Errorf("%w: unknown region id '%s'", ports.ErrInvalidArg, regionID)
+			return fmt.Errorf("%w: unknown region id '%s'", storageerr.ErrInvalidArg, regionID)
 		default:
 			return status.Error(codes.Unavailable, "geo region validation unavailable")
 		}
@@ -168,7 +168,7 @@ func (c *GeoClient) ZonesOfRegion(ctx context.Context, regionID string) ([]strin
 		if err != nil {
 			switch status.Code(err) {
 			case codes.InvalidArgument:
-				return nil, fmt.Errorf("%w: unknown region id '%s'", ports.ErrInvalidArg, regionID)
+				return nil, fmt.Errorf("%w: unknown region id '%s'", storageerr.ErrInvalidArg, regionID)
 			default:
 				return nil, status.Error(codes.Unavailable, "geo zone listing unavailable")
 			}

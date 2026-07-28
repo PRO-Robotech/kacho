@@ -59,11 +59,11 @@ audit-list-filter:
 docker:
 	docker build -f Dockerfile -t $(IMAGE) $(DOCKER_CONTEXT)
 
-# generate-mocks — port-моки hand-written (function-field, internal/ports/portmock);
+# generate-mocks — port-моки hand-written (function-field, internal/repo/repomock);
 # таргет компилирует их как guard соответствия портам use-case.
 generate-mocks:
-	go build ./internal/ports/portmock/...
-	@echo "portmock is hand-written (function-field); compile guard OK"
+	go build ./internal/repo/repomock/...
+	@echo "repomock is hand-written (function-field); compile guard OK"
 
 # sqlc-gen — генерация типобезопасного pgx-кода из internal/repo/queries/*.sql в
 # internal/repo/pg/gen (sqlc, БЕЗ ORM). Конфиг sqlc.yaml + queries добавляет

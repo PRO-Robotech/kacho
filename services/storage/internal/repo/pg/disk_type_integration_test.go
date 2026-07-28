@@ -14,10 +14,10 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
+	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/disktype"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/ports"
+	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/service/disktype"
 )
 
 // TestDiskTypeGetSeeded — Get seeded-типа (миграция 0004) читает поля.
@@ -34,7 +34,7 @@ func TestDiskTypeGetSeeded(t *testing.T) {
 func TestDiskTypeGetNotFound(t *testing.T) {
 	dr := pg.NewDiskTypeRepo(newTestPool(t))
 	_, err := dr.Get(context.Background(), "dtp-nonexistent")
-	require.True(t, stderrors.Is(err, ports.ErrNotFound), "got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrNotFound), "got %v", err)
 	require.Equal(t, "DiskType dtp-nonexistent not found", err.Error()[len("not found: "):])
 }
 
@@ -57,7 +57,7 @@ func TestDiskTypeCreateUpdateAdmin(t *testing.T) {
 	require.Equal(t, "nvme", got.PerformanceTier)
 
 	_, err = dr.Insert(ctx, &domain.DiskType{ID: "block-nvme", Name: "dup"})
-	require.True(t, stderrors.Is(err, ports.ErrAlreadyExists), "duplicate slug → AlreadyExists, got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrAlreadyExists), "duplicate slug → AlreadyExists, got %v", err)
 
 	upd, err := dr.Update(ctx, "block-nvme", "renamed", "new-desc", []string{"region-2-a"}, "io-max")
 	require.NoError(t, err)
@@ -67,7 +67,7 @@ func TestDiskTypeCreateUpdateAdmin(t *testing.T) {
 	require.Equal(t, "io-max", upd.PerformanceTier)
 
 	_, err = dr.Update(ctx, "dtp-missing", "x", "", nil, "")
-	require.True(t, stderrors.Is(err, ports.ErrNotFound), "update missing → NotFound, got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrNotFound), "update missing → NotFound, got %v", err)
 }
 
 // TestDiskTypeDeleteFKRestrict — Q4: Delete типа, на который ссылается том →
@@ -88,7 +88,7 @@ func TestDiskTypeDeleteFKRestrict(t *testing.T) {
 	require.NoError(t, err)
 
 	err = dr.Delete(ctx, "block-temp")
-	require.True(t, stderrors.Is(err, ports.ErrFailedPrecondition), "in-use → FailedPrecondition, got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrFailedPrecondition), "in-use → FailedPrecondition, got %v", err)
 	require.Equal(t, "DiskType block-temp is in use", err.Error()[len("failed precondition: "):])
 	_, gerr := dr.Get(ctx, "block-temp")
 	require.NoError(t, gerr, "in-use disk type still present")
@@ -96,10 +96,10 @@ func TestDiskTypeDeleteFKRestrict(t *testing.T) {
 	require.NoError(t, vr.Delete(ctx, vol.ID))
 	require.NoError(t, dr.Delete(ctx, "block-temp"), "delete allowed once no volume references it")
 	_, gerr = dr.Get(ctx, "block-temp")
-	require.True(t, stderrors.Is(gerr, ports.ErrNotFound))
+	require.True(t, stderrors.Is(gerr, storageerr.ErrNotFound))
 
 	err = dr.Delete(ctx, "dtp-missing")
-	require.True(t, stderrors.Is(err, ports.ErrNotFound), "delete missing → NotFound, got %v", err)
+	require.True(t, stderrors.Is(err, storageerr.ErrNotFound), "delete missing → NotFound, got %v", err)
 }
 
 // TestDiskTypeDeleteFKRestrictRace — FK RESTRICT под concurrency (data-integrity п.5):
@@ -130,7 +130,7 @@ func TestDiskTypeDeleteFKRestrictRace(t *testing.T) {
 			<-start
 			derr := dr.Delete(context.Background(), "block-race")
 			switch {
-			case stderrors.Is(derr, ports.ErrFailedPrecondition):
+			case stderrors.Is(derr, storageerr.ErrFailedPrecondition):
 				blocked.Add(1)
 			default:
 				other.Add(1)
