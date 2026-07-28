@@ -320,11 +320,39 @@ func (m *DPoPMiddleware) resolveFQN(method, path string) string {
 	return ""
 }
 
-// grpcMethodForPath converts a REST path (`/iam/v1/users/abc`) to a best-effort
-// path-prefix key. It is the last-resort fallback for the authz middleware when
-// the generated RestRouteResolver does not match a route; it is NOT a valid
-// gRPC FQN and never matches a catalog entry, so callers treat its result as an
-// unknown method (deny-by-default / public-allowlist per policy).
+// grpcMethodForPath converts a REST path (`/iam/v1/users/abc`) to a key that is
+// deliberately NOT a catalog FQN. It is the last-resort fallback for the authz
+// middleware when the generated RestRouteResolver matches no route, and its
+// result is meant to be treated as an unknown method — deny-by-default.
+//
+// The doubled leading slash is what guarantees that: `path` already starts with
+// "/", so the result can never equal a catalog key (`<pkg>.<Service>/<Method>`,
+// no leading slash) nor be classified by allowlist.HasInternalSuffix, which
+// tokenises on the first slash.
+//
+// # Why this is load-bearing rather than sloppy, and what it costs
+//
+// `buf.gen.yaml` sets `generate_unbound_methods=true`, so every RPC WITHOUT a
+// `google.api.http` annotation still gets a grpc-gateway default route at
+// `POST /<proto.package>.<Service>/<Method>` — a path shaped exactly like a
+// catalog key with one slash prepended. Roughly nineteen such routes are served
+// on the cluster-internal REST mux. Because the generated route table is built
+// from http annotations only, none of them resolves through RestRouteResolver,
+// they all land here, and the doubled slash makes the catalog lookup miss →
+// every one of them answers PermissionDenied. That surface exists and does not
+// work, which is a real gap — but a fail-CLOSED one.
+//
+// Do NOT "fix" it by returning strings.TrimPrefix(path, "/"). That single change
+// would make those paths resolve to their catalog rows, and several of the rows
+// are `<exempt>` — including InternalIAMService RegisterResource /
+// UnregisterResource / WriteCreatorTuple, which WRITE AUTHORIZATION TUPLES.
+// phaseInternalOriginExempt admits an exempt Internal* RPC on the internal
+// listener WITHOUT extracting a principal, on network position alone; its own
+// doc states the rule this would break — an RPC that grants privilege must have
+// NO REST route at all, not an exempt one (as MintBootstrapToken already does).
+// So resolution must be restored only TOGETHER WITH removing the REST
+// registration of the privilege-granting Internal RPCs, in that order. Restoring
+// it first trades a dead surface for an unauthenticated tuple writer.
 func grpcMethodForPath(path string) string {
 	// Strip leading slash, split into segments.
 	p := strings.TrimPrefix(path, "/")
@@ -332,10 +360,6 @@ func grpcMethodForPath(path string) string {
 	if len(parts) < 2 {
 		return path
 	}
-	// Heuristic: first segment = domain, second = "v1", remaining → method+resource.
-	// Catalog lookup uses gRPC FQN; we approximate it as
-	// `kacho.cloud.<domain>.v1.<Resource>Service/<Op>`. Implementations may
-	// override by providing a real PermissionLookup keyed by REST path.
 	return "/" + path
 }
 

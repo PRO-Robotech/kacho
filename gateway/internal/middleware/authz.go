@@ -496,11 +496,15 @@ type decisionRequest struct {
 	HTTPReq  *http.Request
 	GRPCPeer string
 	GRPCMeta metadata.MD
-	// Stream marks the server-streaming path, where the client request message
-	// is not read before the RPC is gated (ProtoReq is therefore nil). It is set
-	// ONLY by the Stream interceptor so phaseResource can tell a genuinely
-	// unmaterialised stream apart from a unary call, and fail closed for a
+	// Stream marks the stream-interceptor lane, where the client request message
+	// is not read before the RPC is gated (ProtoReq is therefore nil). Set ONLY
+	// by the Stream interceptor, so phaseResource can tell an unmaterialised
+	// request apart from one it can read fields off, and fail closed for a
 	// concrete-resource scope instead of collapsing to the wildcard scope.
+	//
+	// It does NOT mean "the RPC is a stream": the gateway forwards domain traffic
+	// via UnknownServiceHandler, which grpc-go dispatches through the streaming
+	// path, so proxied UNARY RPCs set this too. See phaseResource.
 	Stream bool
 }
 
@@ -867,19 +871,34 @@ func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, 
 	case dr.ProtoReq != nil:
 		resourceID, _ = m.cfg.Resources.ExtractFromProto(dr.ProtoReq, entry)
 	default:
-		// Unmaterialised request. On the server-streaming path (dr.Stream) the
-		// RPC is gated ONCE before the stream runs, so the client message has not
-		// been read and no request field can be extracted. For a CONCRETE
-		// per-resource scope this means the scope id is unresolvable — defaulting
-		// to the wildcard "*" would collapse the FGA Check to `<type>:*` and
-		// authorize the caller for EVERY resource of that type. Fail closed: deny
-		// (Check does not run) rather than authorize against an over-broad
-		// wildcard scope. A future concrete-scope streaming RPC must resolve its
-		// scope from the first client message before it can be authorized; until
-		// then it is denied, which surfaces the requirement loudly instead of
-		// silently over-granting. Wildcard / subject / scope-polymorphic entries
-		// have no concrete id to resolve and legitimately keep "*" (the shape
-		// every real streaming RPC uses today).
+		// Unmaterialised request: gated before any client message was read, so no
+		// request field can be extracted. For a CONCRETE per-resource scope the
+		// scope id is therefore unresolvable — defaulting to the wildcard "*" would
+		// collapse the FGA Check to `<type>:*` and authorize the caller for EVERY
+		// resource of that type. Fail closed: deny (Check does not run) rather than
+		// authorize against an over-broad wildcard scope. Wildcard / subject /
+		// scope-polymorphic entries have no concrete id to resolve and legitimately
+		// keep "*".
+		//
+		// BE EXACT ABOUT WHO ARRIVES HERE — it is not only server-streaming RPCs.
+		// The gateway forwards domain traffic through `grpc.UnknownServiceHandler`,
+		// and grpc-go dispatches an unregistered service through its STREAMING
+		// path: an ordinary unary RPC proxied to a backend reaches the stream
+		// interceptor, marked bidirectional, before its single client message is
+		// read (pinned by TestAuthz_ProxiedUnaryRPC_ArrivesOnTheStreamLane). So on
+		// the gateway's own gRPC listener this branch is the branch that ORDINARY
+		// UNARY RPCs take, and every concrete-scope catalog row is denied there —
+		// not a guard held in reserve for a hypothetical future stream.
+		//
+		// That is a liveness gap on the gRPC edge, and it is fail-closed by
+		// construction: nothing is over-granted, the surface simply does not serve
+		// concrete-scope RPCs. Closing it means resolving the scope from the first
+		// forwarded client message (peek + replay in the proxy), which is a change
+		// to the forwarding layer, not to this decision. Until that lands, the deny
+		// stands: authorizing against `<type>:*` to make the surface work would
+		// trade the whole point of a per-resource scope for reachability. The REST
+		// surface is unaffected — grpc-gateway dials the backends directly and
+		// never re-enters this server, so it arrives with a materialised request.
 		if dr.Stream && isConcreteResourceScope(entry) {
 			resourceType := entry.ScopeExtractor.ObjectType
 			if resourceType == "" {
