@@ -422,7 +422,7 @@ func (u *CreateAddressUseCase) applyAddressSpec(ctx context.Context, a *domain.A
 			Address:  in.InternalIpv6Spec.Address,
 			SubnetID: in.InternalIpv6Spec.SubnetID,
 		}
-	default:
+	case in.ExternalIpv6Spec != nil:
 		// external IPv6: sparse counter-based allocator из глобального
 		// AddressPool с v6 CIDR (cascade resolve как у v4).
 		a.Type = domain.AddressTypeExternal
@@ -432,6 +432,23 @@ func (u *CreateAddressUseCase) applyAddressSpec(ctx context.Context, a *domain.A
 			ZoneID:       in.ExternalIpv6Spec.ZoneID,
 			Requirements: mapRequirements(in.ExternalIpv6Spec.Requirements),
 		}
+	default:
+		// Ни одна ветвь oneof не выбрана. Раньше сюда падала внешняя IPv6 —
+		// то есть `default` означал «обязательно четвёртый вариант», а не
+		// «неизвестный», и сразу разыменовывал `ExternalIpv6Spec`. Локально
+		// это ничем не было выражено: единственной защитой была проверка в
+		// Execute, за несколько сотен строк и один вызов отсюда.
+		//
+		// Запрос без выбранной ветви — не редкость: обёртка вокруг имени
+		// самого oneof отбрасывается краем целиком (в protojson oneof
+		// прозрачен, на проводе лежит ключ ВЕТВИ), и до сервиса доезжает
+		// тело без единого спека. Так и было в четырёх местах подготовки
+		// набора nlb — во всех сохранённых прогонах. Проверка в Execute
+		// выдержала; добавь кто-нибудь пятую ветвь и забудь про неё здесь —
+		// тот же вход разыменовал бы nil уже внутри воркера операции.
+		//
+		// Ветвь выбирается СВОИМ условием, `default` — отказ.
+		return status.Error(codes.InvalidArgument, "address_spec required")
 	}
 	return nil
 }
