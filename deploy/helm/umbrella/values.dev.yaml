@@ -169,6 +169,17 @@ api-gateway:
   hydra:
     jwksUrl: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/.well-known/jwks.json"
     issuer: "http://localhost:28080/.ory/hydra/public/"
+    # ─── Revocation path (ADMIN API — a different Service from the two above) ──
+    # Where the gateway asks whether an access token has been revoked, and where
+    # the logout handler ends the provider-side session. Neither is derivable:
+    # the admin API is its own Service and port, and the dev issuer above is not
+    # even a cluster address. This is also the base of the dev-prod stack, which
+    # runs production posture — where the gateway refuses to start without both.
+    #
+    # Same in-cluster Service the identity service already uses for its own
+    # admin calls (kacho-iam.hydraAdminUrl below). Never routed outside.
+    introspectionUrl: "http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445/admin/oauth2/introspect"
+    adminUrl: "http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445"
 
 compute:
   image: kacho-compute:dev

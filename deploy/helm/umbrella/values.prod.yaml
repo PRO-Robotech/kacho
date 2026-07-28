@@ -154,6 +154,23 @@ api-gateway:
   hydra:
     jwksUrl: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/.well-known/jwks.json"
     issuer: "https://hydra.api.kacho.cloud"
+    # ─── Revocation path (ADMIN API — not the public issuer above) ──────────
+    # A verified signature proves who minted the token and when it lapses. It
+    # cannot prove the token is still good: a sign-out, a revoked machine key
+    # or a back-channel logout all leave a valid signature behind. Only the
+    # provider knows, and only over its admin API — a separate Service and
+    # port, reachable only in-cluster, so neither address can be derived from
+    # anything else in this block.
+    #
+    # Both WERE derived from the issuer when unset, and no profile set either,
+    # so every stand pointed them at a server that serves neither. The gateway
+    # no longer derives them, and refuses to start production-class while
+    # either is unset — this profile is what keeps that start possible.
+    #
+    # The admin API has no authentication of its own; it is protected by not
+    # being routable. It must never be published outside the cluster.
+    introspectionUrl: "http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445/admin/oauth2/introspect"
+    adminUrl: "http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445"
   # AuthZ: per-RPC IAM Check fan-out, fail-CLOSED on transient IAM errors.
   authz:
     enabled: true
