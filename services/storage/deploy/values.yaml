@@ -89,12 +89,21 @@ config:
   # {storage_volume,volume_id}/{storage_snapshot,snapshot_id} не резолвит target→
   # project (анти-BOLA). Требует непустой authzIamGrpcAddr (иначе intents durable).
   fgaRegisterDrainerEnabled: true
-  # listFilter — per-object фильтр видимости публичного List (Volume/Snapshot/Image):
-  # прочитанная страница прогоняется через kacho-iam AuthorizeService.BatchCheck
-  # (`viewer ∪ v_list`) по тому же authzIamGrpcAddr. Без него per-RPC Check гейтит
-  # List лишь на project-tier viewer → ЛЮБОЙ член проекта видит каждый том/снимок/
-  # образ проекта, включая объекты без per-object гранта (over-show / BOLA-lite).
-  # production boot-guard (Config.Validate) отказывает старту при enabled=false.
+  # listFilter — per-object фильтр видимости: прочитанная страница прогоняется
+  # через kacho-iam AuthorizeService.BatchCheck (`viewer ∪ v_list`) по тому же
+  # authzIamGrpcAddr. Защищает ДВЕ разные по цене поверхности:
+  #
+  #   1. публичный List (Volume/Snapshot/Image) — фильтр ВТОРОЙ слой: за ним
+  #      остаётся per-RPC Check, но тот гейтит List лишь на project-tier viewer,
+  #      поэтому без фильтра ЛЮБОЙ член проекта видит каждый том/снимок/образ
+  #      проекта, включая объекты без per-object гранта (over-show / BOLA-lite);
+  #   2. InternalVolumeService/ListAttachments (:9091) — фильтр ЕДИНСТВЕННЫЙ гейт:
+  #      этот RPC помечен ScopeFiltered (единичного объекта нет — инстансы называет
+  #      вызывающий), поэтому per-RPC Check за него не задаётся вовсе. Здесь цена
+  #      отказа фильтра не внутрипроектная, а межтенантная.
+  #
+  # production boot-guard (Config.Validate) отказывает старту при enabled=false —
+  # и, пока в карте прав есть ScopeFiltered-запись, при failOpen=true (см. ниже).
   listFilter:
     enabled: true
     # timeoutMs — per-call deadline ОДНОГО BatchCheck (батч ≤100 id), НЕ бюджет всей
@@ -105,8 +114,17 @@ config:
     # вердикты не кешируются вовсе.
     cacheTtlMs: 5000
     cacheMaxEntries: 10000
-    # failOpen — break-glass: на ошибке iam отдать страницу НЕотфильтрованной
+    # failOpen — degraded mode: на ошибке iam отдать страницу НЕотфильтрованной
     # (+ audit-WARN). Default false = fail-closed (Unavailable).
+    #
+    # Это НЕ «мягкая» настройка производительности: включённый фильтр, который на
+    # первой ошибке iam отдаёт страницу целиком, защищает не больше выключенного —
+    # он просто выключается позже и по чужой аварии. Для ScopeFiltered-RPC (см.
+    # выше) за ним не остаётся ничего.
+    #
+    # Поэтому production boot-guard (Config.Validate) ОТКАЗЫВАЕТ в старте при
+    # failOpen=true, пока карта прав несёт хотя бы одну запись ScopeFiltered.
+    # Размен осознанный: стенд, намеренно выставивший fail-open, не поднимется.
     failOpen: false
 
 # Init-контейнер миграций (kacho-migrator up) до старта основного pod.

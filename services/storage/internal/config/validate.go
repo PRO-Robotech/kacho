@@ -5,8 +5,31 @@ package config
 
 import (
 	"fmt"
+	"sort"
 	"strings"
+
+	"github.com/PRO-Robotech/kacho/services/storage/internal/check"
 )
+
+// scopeFilteredRPCs — методы карты прав, с которых снят per-RPC Check: их
+// авторизация целиком переехала на данные (per-object сужение прочитанной
+// страницы). Список отсортирован — текст отказа наблюдаем оператором и не должен
+// перетасовываться от прогона к прогону (обход map'ы не детерминирован).
+//
+// Карта читается ЗДЕСЬ, а не передаётся композиционным корнем: страж, которому
+// список нужно вручить, no-op'ится на пустом аргументе, и «забыли передать» внешне
+// неотличимо от «нечего защищать». Пакет check зависимостей на config не имеет,
+// поэтому цикла нет.
+func scopeFilteredRPCs() []string {
+	var out []string
+	for fullMethod, e := range check.PermissionMap() {
+		if e.ScopeFiltered {
+			out = append(out, fullMethod)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
 
 // Validate — secure-by-default boot-guard: в production/production-strict операции
 // без mTLS, per-RPC authz Check и с plaintext-DB ЗАПРЕЩЕНЫ (refuse-to-start). Раньше
@@ -23,7 +46,8 @@ import (
 //   - mTLS листенеров — cfg.PublicServerMTLS.Enable / cfg.InternalServerMTLS.Enable;
 //   - per-RPC authz Check — подключается ⟺ непустой cfg.AuthZIAMGRPCAddr;
 //   - DB-транспорт — cfg.DBSSLMode в DSN;
-//   - per-object фильтр публичного List — cfg.ListFilterEnabled;
+//   - per-object фильтр видимости — cfg.ListFilterEnabled (есть ли он вообще) и
+//     cfg.ListFilterFailOpen (не выключается ли он сам на первой ошибке iam);
 //   - круг отправителей чужой личности — cfg.TrustedForwarders() (ровно то
 //     значение, что уезжает в grpcsrv.WithTrustedForwarders на обоих листенерах).
 //
@@ -96,6 +120,32 @@ func (c Config) Validate() error {
 				"(false → public List bypasses the per-object FGA filter, so a project-tier viewer sees "+
 				"every volume/snapshot/image; and the internal attachment listing, which has no per-RPC "+
 				"check at all, would lose its only gate)")
+	}
+
+	// ── degraded-mode ручка того же фильтра: fail-open ──────────────────────
+	// Включённый фильтр, который на ошибке iam отдаёт страницу целиком, защищает
+	// не больше выключенного — он просто выключается позже и по чужой аварии.
+	// Пока в карте прав есть хоть одна запись ScopeFiltered, за этой ручкой не
+	// остаётся НИЧЕГО: у такого RPC per-RPC Check не задаётся вовсе (интерсептор
+	// отдаёт DecisionInternal), поэтому фильтр там не второй слой, а единственный,
+	// и деградация означает выдачу привязок любых названных инстансов — из чужих
+	// проектов и чужих аккаунтов.
+	//
+	// Для публичных List (за ними project-tier Check остаётся) fail-open — это
+	// over-show внутри проекта; для ScopeFiltered — межтенантный. Гейт условный
+	// намеренно: он сам снимется, если ScopeFiltered-марки уйдут из карты, и не
+	// требует помнить о себе при этом.
+	//
+	// Осознанный размен: стенд, намеренно выставивший fail-open, перестанет
+	// подниматься. Это и есть цель — иначе защиту снимает одна ручка, молча.
+	if c.ListFilterFailOpen {
+		if scopeFiltered := scopeFilteredRPCs(); len(scopeFiltered) > 0 {
+			problems = append(problems, fmt.Sprintf(
+				"fail-closed List filter required: set KACHO_STORAGE_LIST_FILTER_FAIL_OPEN=false "+
+					"(true → on ANY iam error the page is returned UNFILTERED; %d RPC(s) carry no per-RPC "+
+					"Check at all and rely on this filter as their only gate: %s)",
+				len(scopeFiltered), strings.Join(scopeFiltered, ", ")))
+		}
 	}
 
 	// ── круг отправителей чужой личности обязан быть сужен ──────────────────

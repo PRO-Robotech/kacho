@@ -466,8 +466,20 @@ kacho-nlb:
 #   db.sslMode ∈ require|verify-* → plaintext DB refused
 #   mtls.enable                   → mTLS demanded on BOTH listeners (:9090 + :9091)
 #   config.authzIamGrpcAddr       → per-RPC IAM Check interceptor attached
-#   config.listFilter.enabled     → per-object List filter (without it a project-tier
-#                                   viewer sees every volume/snapshot/image)
+#   config.listFilter.enabled     → per-object visibility filter. It guards two
+#                                   surfaces, and they do not cost the same:
+#                                   public List keeps a project-tier per-RPC Check
+#                                   behind it (without the filter a project-tier
+#                                   viewer sees every volume/snapshot/image), but
+#                                   InternalVolumeService/ListAttachments is
+#                                   ScopeFiltered — no per-RPC Check at all — so
+#                                   there the filter is the ONLY gate
+#   config.listFilter.failOpen    → must stay false. An enabled filter that hands
+#                                   back the whole page on the first iam error
+#                                   protects no more than a disabled one; it just
+#                                   switches off later, during someone else's
+#                                   outage. Production refuses to boot on true
+#                                   while any ScopeFiltered entry exists
 #   config.trustedForwarderSANs   → who may forward an end-user identity (without it
 #                                   any certificate-verified peer may act as any tenant)
 storage:
@@ -495,13 +507,20 @@ storage:
     #                       identity of whoever initiated it) — drop it and volume
     #                       attach breaks.
     trustedForwarderSANs: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway,spiffe://kacho.cloud/ns/kacho/sa/kacho-compute"
+    # Per-object visibility filter. Both knobs are restated here (they ARE the
+    # chart defaults) so that no future edit to this profile can quietly relax
+    # either one: `enabled: false` removes the filter, and `failOpen: true`
+    # removes it on the first iam error — for the ScopeFiltered attachment
+    # listing those are the same outcome, because nothing else gates it.
+    # The service refuses to boot on either, so an edit here does not silently
+    # degrade the stand; it stops it.
+    listFilter:
+      enabled: true
+      failOpen: false
     # Owner-tuple register-drainer (SEC-D / CS-1 GAP-D). Chart default is already
     # true; restated because without it the gateway scope_extractors
     # {storage_volume,volume_id} / {storage_snapshot,snapshot_id} cannot resolve
     # target→project and own-resource access breaks (anti-BOLA).
-    listFilter:
-      enabled: true
-      failOpen: false
     fgaRegisterDrainerEnabled: true
   db:
     # bitnami pg-storage below. The chart default host (kacho-storage-postgres)
