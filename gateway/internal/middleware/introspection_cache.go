@@ -20,9 +20,13 @@
 // the result (under the same TTL) — repeated requests from a compromised
 // client shouldn't hammer Hydra.
 //
-// Invalidation: callers (session-revocations watcher) call Invalidate(jti)
-// when a Postgres LISTEN/NOTIFY arrives. This is the primary path; the TTL
-// is a backstop for the case where the NOTIFY connection drops.
+// Invalidation: the TTL is what bounds how long a revocation goes unnoticed —
+// worst case one window (default 5s) — because NOTHING in this process calls
+// Invalidate today. The method and the write-after-invalidate guard in
+// Introspect exist for a push path (a session-revocations LISTEN/NOTIFY
+// watcher) that is not wired here; this header used to describe that push as
+// the primary path, which read as a promise the deployment does not keep. Read
+// the TTL as the only bound, and size it accordingly.
 //
 // The eviction/TTL/LRU mechanics live in the shared internal/lrucache
 // primitive (same as dpop_replay_cache.go and authz_cache.go); this file
@@ -33,6 +37,8 @@ package middleware
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -226,8 +232,10 @@ func (c *IntrospectionCache) Introspect(ctx context.Context, jti, rawToken strin
 }
 
 // Invalidate removes the cached entry for jti AND bumps the invalidation
-// generation. Called by the session_revocations LISTEN/NOTIFY handler to honor
-// force-logout immediately (≤ 1s SLA). The generation bump is what closes the
+// generation. It is the hook a session_revocations LISTEN/NOTIFY handler would
+// use to honour a force-logout without waiting out the TTL; no such handler is
+// wired in this process today, so nothing calls it in production and the TTL
+// alone bounds the window (see the file header). The generation bump closes the
 // write-after-invalidate race: even when no entry is currently cached for jti
 // (revocation arrives while an introspection is still in flight), an in-flight
 // positive result for jti is dropped by the PutIfGenWithTTL guard in Introspect.
@@ -260,6 +268,9 @@ func (c *IntrospectionCache) fetchHydra(ctx context.Context, rawToken string) (I
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		if permanentTransportFailure(err) {
+			return IntrospectionResult{}, fmt.Errorf("%w: %w", ErrIntrospectionMisconfigured, err)
+		}
 		// Nothing answered: refused connection, DNS, timeout. All pass on their
 		// own, so none of them is configuration.
 		return IntrospectionResult{}, fmt.Errorf("introspect do: %w", err)
@@ -283,6 +294,49 @@ func (c *IntrospectionCache) fetchHydra(ctx context.Context, rawToken string) (I
 		return IntrospectionResult{}, fmt.Errorf("%w: decode response: %w", ErrIntrospectionMisconfigured, err)
 	}
 	return out, nil
+}
+
+// permanentTransportFailure reports whether a transport-level failure describes
+// the ADDRESS rather than the moment — i.e. one that answers every retry
+// identically until somebody changes configuration.
+//
+// This distinction is load-bearing in an unobvious direction. The "did not
+// answer" branch PASSES the request, so a permanent failure filed there switches
+// the revocation check off for as long as it lasts, which is forever. The case
+// that made it worth naming: an operator moves the address from plaintext to TLS
+// — the correct instinct — and the handshake fails because this process trusts
+// system roots and the provider's certificate comes from an internal CA. Filed as
+// a hiccup, that hardening step would silently disable the control across the
+// fleet, visible only as one log line per window. Filed here, it refuses loudly
+// and gets fixed.
+//
+// Deliberately NOT included: refused connections, DNS misses, timeouts. A
+// provider that is restarting, or a name that has not propagated yet, comes back
+// on its own; refusing traffic for the duration would take the API down with the
+// identity provider.
+func permanentTransportFailure(err error) bool {
+	var (
+		unknownAuthority x509.UnknownAuthorityError
+		hostnameErr      x509.HostnameError
+		invalidCert      x509.CertificateInvalidError
+		recordHeader     tls.RecordHeaderError
+		certVerify       *tls.CertificateVerificationError
+	)
+	switch {
+	case errors.As(err, &unknownAuthority), // certificate signed by an unknown CA
+		errors.As(err, &hostnameErr), // certificate is for another name
+		errors.As(err, &invalidCert), // expired / not yet valid / bad usage
+		errors.As(err, &certVerify),  // verification failed as a whole
+		errors.As(err, &recordHeader),
+		errors.Is(err, http.ErrSchemeMismatch): // TLS spoken at a plaintext listener
+		return true
+	}
+	// A scheme no HTTP transport can speak is configuration by construction.
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) && strings.Contains(urlErr.Err.Error(), "unsupported protocol scheme") {
+		return true
+	}
+	return false
 }
 
 // transientStatus reports whether a non-200 status describes a passing condition

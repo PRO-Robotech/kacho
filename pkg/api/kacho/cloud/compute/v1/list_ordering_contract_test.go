@@ -26,10 +26,7 @@ import (
 // vacatedOrderBy maps each List…Request that used to carry the sort knob to the
 // field number it occupied.
 var vacatedOrderBy = map[string]protoreflect.FieldNumber{
-	"ListDisksRequest":     5,
-	"ListImagesRequest":    5,
 	"ListInstancesRequest": 5,
-	"ListSnapshotsRequest": 5,
 }
 
 // computeMessages walks every message of the kacho.cloud.compute.v1 package.
