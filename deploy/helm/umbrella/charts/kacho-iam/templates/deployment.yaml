@@ -16,10 +16,21 @@ spec:
     metadata:
       labels:
         {{- include "kacho-iam.labels" . | nindent 8 }}
+        {{- if .Values.opaSidecar.enabled }}
         # KAC-127 Phase 3: pod label that the OPA-sidecar egress NetworkPolicy
         # uses to allowlist outbound traffic. Without it, OPA sidecar cannot
         # reach bundle endpoint (intentional fail-closed for unlabeled pods).
+        #
+        # Привязан к opaSidecar.enabled ОСОЗНАННО. Метка объявляет «в этом поде
+        # есть OPA-сайдкар», и её читает egress-политика умбреллы. Раньше метка
+        # рендерилась безусловно, а сайдкар выключен во ВСЕХ профилях — то есть
+        # политика выбирала под, сайдкара в котором нет. Это не косметика:
+        # NetworkPolicy действует на ПОД, а не на контейнер, поэтому выбранный под
+        # получает default-deny на исходящий трафик по всему списку правил
+        # политики — вместе с ОСНОВНЫМ контейнером kacho-iam. Метка обязана
+        # означать ровно то, что говорит.
         kacho.cloud/opa-sidecar: "true"
+        {{- end }}
       annotations:
         # ConfigMap-content hash → pod rolling-restart при изменении config.yaml.
         kacho.cloud/config-checksum: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}

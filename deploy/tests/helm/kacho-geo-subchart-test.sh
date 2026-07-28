@@ -67,9 +67,18 @@ mig_pw="$(echo "$DEP" | yq '.spec.template.spec.initContainers[0].env[] | select
 authz_addr="$(env_val KACHO_GEO_AUTHZ_IAM_GRPC_ADDR "$DEF")"
 case "$authz_addr" in *kacho-iam-internal*:9091) ;; *) fail "KACHO_GEO_AUTHZ_IAM_GRPC_ADDR=$authz_addr (want iam-internal :9091)";; esac; ok
 
-# ── 4. AUTH_MODE: default dev ────────────────────────────────────────────────
+# ── 4. AUTH_MODE: умолчание чарта — production (secure-by-default) ───────────
+# Утверждение развёрнуто вместе с чартом (8476d4b4, core rule #16): умолчанием
+# стало `production`, а `dev` — явный opt-in локальных фикстур. Проверка этого не
+# знала, потому что её никто не запускал: она требовала `dev` и, будь она в
+# рабочем пути, потребовала бы вернуть чарту небезопасное умолчание. Поэтому
+# утверждаем ОБА направления — умолчание безопасно, а dev-профиль включает
+# небезопасный режим ЯВНО.
 am="$(env_val KACHO_GEO_AUTH_MODE "$DEF")"
-[ "$am" = "dev" ] || fail "default KACHO_GEO_AUTH_MODE=$am (want dev)"; ok
+[ "$am" = "production" ] || fail "умолчание KACHO_GEO_AUTH_MODE=$am (ожидается production — secure-by-default)"; ok
+DEVMODE="$(render --set authMode=dev)"
+dam="$(env_val KACHO_GEO_AUTH_MODE "$DEVMODE")"
+[ "$dam" = "dev" ] || fail "явный opt-in KACHO_GEO_AUTH_MODE=$dam (ожидается dev)"; ok
 
 # ── 5. production override: AUTH_MODE=production + DB ssl require ──────────────
 PROD="$(render --set authMode=production --set db.sslmode=require)"
