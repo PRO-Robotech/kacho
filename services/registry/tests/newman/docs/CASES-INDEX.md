@@ -123,7 +123,7 @@ uniform existence-hiding text (security.md #6), two-projection no-infra-leak.
 
 ---
 
-## 1c. Redesign surface (REG-1) — `cases/registry-redesign.py` (PRESENT — 17 cases)
+## 1c. Redesign surface (REG-1) — `cases/registry-redesign.py` (PRESENT — 18 cases)
 
 Production-инкремент REG-1 поверх уже id-based `Registry`: **F4** regional placement
 (`regionId` peer-validate geo, `placementType` always-REGIONAL), **F5** `defaultRepositoryVisibility`
@@ -147,7 +147,7 @@ setup/cleanup, `-{{runId}}`-изоляция, `regionId={{existingRegionId}}` (g
 | `REG-RD-F5-INHERIT-PRIVATE` | CRUD | P1 | defaultRepositoryVisibility PRIVATE seeds new Repository.visibility when visibility omitted | REG-1-15 |
 | `REG-RD-F5-NEG-PUBLIC-ADMIN-GATE` | NEG, AZ | P0 | Non-admin drives defaultRepositoryVisibility→PUBLIC → 403 PERMISSION_DENIED; description-only Update → OK | REG-1-16 |
 | `REG-RD-F7-CREATE-DURABLE` | CRUD | P0 | CreateRepository (no lifecycle) → lifecycle DURABLE by default (survives-empty), tagCount 0 | REG-1-21 |
-| `REG-RD-F7-CREATE-EPHEMERAL` | CRUD | P1 | CreateRepository lifecycle=EPHEMERAL → lifecycle EPHEMERAL (opt-in overrides default) | REG-1-22 |
+| `REG-RD-F7-NEG-CREATE-EPHEMERAL` | NEG, VAL | P1 | CreateRepository lifecycle=EPHEMERAL → 400 INVALID_ARGUMENT, field named in BadRequest details (no branch reads the stored value — an accepted-and-ignored input is refused) | REG-1-22 |
 | `REG-RD-F7-NEG-LIFECYCLE-READONLY` | NEG, VAL | P1 | UpdateRepository `updateMask=lifecycle` → 400 (output-only, system-managed) | REG-1-24 |
 | `REG-RD-F6-NEG-REGISTRYID-IMMUTABLE` | NEG, CONF | P1 | UpdateRepository `updateMask=registryId` → 400 (registryId immutable, natural key) | REG-1-19 |
 | `REG-RD-F8-EMPTY-MASK-IMMUTABLE-IGNORED` | CRUD, CONF | P1 | Empty updateMask → mutable applied (description/name), immutable (id/regionId) in body silently ignored | REG-1-28 |

@@ -9,6 +9,7 @@ import (
 	"fmt"
 
 	registryv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
+	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/shared/prototime"
@@ -148,15 +149,37 @@ func resolveVisibility(requested, registryDefault domain.Visibility) domain.Visi
 	return domain.VisibilityPrivate
 }
 
-// resolveLifecycle разрешает опц. вход lifecycle на CreateRepository (REG-1 F7):
-// EPHEMERAL — как есть (register-on-first-push); UNSPECIFIED / out-of-range — DURABLE
-// by default (omit-equivalent: explicit intent-create = сохранить каркас). Понижение
-// не выразимо; DURABLE — терминал (снимается только DeleteRepository).
-func resolveLifecycle(requested domain.Lifecycle) domain.Lifecycle {
-	if requested == domain.LifecycleEphemeral {
-		return domain.LifecycleEphemeral
+// validateRepoLifecycle отвергает вход `lifecycle` на CreateRepository, за которым
+// НЕТ поведения (api-conventions.md §«Принято-и-проигнорировано»).
+//
+// EPHEMERAL заявляет «register-on-first-push / auto-removed-when-empty». Ни одна
+// ветка сервиса на сохранённое значение не смотрит: сравнение с ним встречается
+// ровно в трёх местах — `Lifecycle.String()`, `LifecycleFromString()` и здесь, то
+// есть только в записи строки и её разборе. Строка overlay с lifecycle='EPHEMERAL'
+// ведёт себя как DURABLE во ВСЁМ: переживает пустой репозиторий (`mergeRepository`
+// смотрит на НАЛИЧИЕ overlay-строки, а не на колонку), попадает в `ListRepositories`
+// наравне с durable-only, отдаётся `GetRepository`. Ни sweeper'а (их два, и оба про
+// pending-blob/push-grant), ни удаления при опустошении, ни продвижения по этому
+// значению нет. Отличался только эхо-enum в ответе — то есть вход принимался,
+// сохранялся и ничего не менял, обещая возможность, которой в продукте нет.
+//
+// Приняты только UNSPECIFIED (омит) и DURABLE — это ровно то поведение, которое
+// сервис реализует, поэтому они не обещают ничего лишнего. Out-of-range молча
+// схлопывался в DURABLE — та же тихая подмена, на шаг дальше от запрошенного, —
+// и отвергается той же полосой. Имя поля едет в google.rpc.BadRequest-details
+// (там контракт несёт идентичность поля), сообщение остаётся общим.
+//
+// EPHEMERAL как ВЫХОДНОЕ значение остаётся правдой и не затронут: его отдаёт
+// проекция БЕЗ overlay-строки (`mergeRepository`, ветка proj), где исчезаемость
+// обеспечена by construction — теги кончились, строки нет, репозиторий невидим.
+func validateRepoLifecycle(requested domain.Lifecycle) error {
+	if requested == domain.LifecycleUnspecified || requested == domain.LifecycleDurable {
+		return nil
 	}
-	return domain.LifecycleDurable
+	return coreerrors.InvalidArgument().
+		AddFieldViolation("lifecycle",
+			"lifecycle: only DURABLE is implemented; a repository overlay always survives an empty repository").
+		Err()
 }
 
 // validateRepoDescription — description-границы overlay Repository (A22): длина

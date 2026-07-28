@@ -32,19 +32,70 @@ func TestRepository_REG_1_21_CreateDefaultDurable(t *testing.T) {
 	require.Equal(t, int32(0), repo.GetTagCount(), "survives-empty")
 }
 
-// REG-1-22 (F7) — явный вход lifecycle=EPHEMERAL перекрывает дефолт → lifecycle°=EPHEMERAL.
-func TestRepository_REG_1_22_CreateExplicitEphemeral(t *testing.T) {
+// EPHEMERAL on create promises "register-on-first-push / auto-removed-when-empty".
+// No branch in the service reads the stored value — the row it produces survives an
+// empty repository, is listed, and is fetched exactly like a DURABLE one; only the
+// echoed enum differs. Accepting it therefore promised a capability that does not
+// exist, so the input is refused until the behaviour is built (api-conventions.md
+// §«Принято-и-проигнорировано»). The refused field is named in the details, where
+// the contract carries field identity — the message stays the generic one.
+func TestRepository_CreateEphemeralLifecycleRejected(t *testing.T) {
+	cfg, zot, ops := newMockCfg(), &mockZot{}, newMemOps()
+	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
+
+	_, err := uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{
+		RegistryID: regID, Repository: "scratch/tmp", Lifecycle: domain.LifecycleEphemeral,
+	})
+	require.Error(t, err, "an input nothing acts on must not be accepted")
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	requireFieldViolation(t, err, "lifecycle")
+	require.Empty(t, cfg.byName, "nothing may be written for a refused create")
+}
+
+// An out-of-range enum was silently coerced to DURABLE — the same silent acceptance,
+// one step further from what the caller asked for. It is refused by the same lane.
+func TestRepository_CreateUnknownLifecycleRejected(t *testing.T) {
+	cfg, zot, ops := newMockCfg(), &mockZot{}, newMemOps()
+	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
+
+	_, err := uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{
+		RegistryID: regID, Repository: "scratch/oob", Lifecycle: domain.Lifecycle(7),
+	})
+	require.Error(t, err)
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	requireFieldViolation(t, err, "lifecycle")
+	require.Empty(t, cfg.byName, "nothing may be written for a refused create")
+}
+
+// Explicit DURABLE keeps working: it names the behaviour the service actually has,
+// so it is honoured rather than promised. Omitting the field is the same thing.
+func TestRepository_CreateExplicitDurableAccepted(t *testing.T) {
 	cfg, zot, ops := newMockCfg(), &mockZot{}, newMemOps()
 	uc := ucWithRegistry(cfg, zot, ops, domain.VisibilityPrivate)
 
 	op, err := uc.CreateRepository(aliceCtx(), registry.CreateRepositorySpec{
-		RegistryID: regID, Repository: "scratch/tmp", Lifecycle: domain.LifecycleEphemeral,
+		RegistryID: regID, Repository: "scratch/durable", Lifecycle: domain.LifecycleDurable,
 	})
 	require.NoError(t, err)
 	done := awaitOpDone(t, ops, op.ID)
 	require.Nil(t, done.Error)
-	repo := opResponseRepository(t, done.Response)
-	require.Equal(t, registryv1.RepositoryLifecycle_EPHEMERAL, repo.GetLifecycle(), "явный вход EPHEMERAL")
+	require.Equal(t, registryv1.RepositoryLifecycle_DURABLE, opResponseRepository(t, done.Response).GetLifecycle())
+}
+
+// Refusing the input must not touch reading. A row stored before the refusal (an
+// un-migrated deployment, or a write by a pod of the previous version) still parses
+// and is still reported for what it says it is.
+func TestRepository_StoredEphemeralOverlayStillReads(t *testing.T) {
+	cfg, ops := newMockCfg(), newMemOps()
+	cfg.byName["legacy/ephemeral"] = &domain.RepositoryConfig{
+		RegistryID: regID, Name: "legacy/ephemeral",
+		Visibility: domain.VisibilityPrivate, Lifecycle: domain.LifecycleEphemeral,
+	}
+	uc := ucWithRegistry(cfg, &mockZot{}, ops, domain.VisibilityPrivate)
+
+	repo, err := uc.GetRepository(aliceCtx(), regID, "legacy/ephemeral")
+	require.NoError(t, err, "a stored row must stay readable after the input is refused")
+	require.Equal(t, domain.LifecycleEphemeral, repo.Lifecycle)
 }
 
 // REG-1-22 (F7, edge) — UNSPECIFIED явно → трактуется как омит (DURABLE by default).

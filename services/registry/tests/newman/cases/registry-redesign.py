@@ -401,15 +401,51 @@ CASES.append(Case(
     ]),
 ))
 
-# REG-1-22 (happy/variant): explicit CreateRepository lifecycle=EPHEMERAL → EPHEMERAL
-# (register-on-first-push semantics — предсказуемый эксплицитный рычаг).
+# REG-1-22 (negative): CreateRepository lifecycle=EPHEMERAL → sync 400.
+#
+# EPHEMERAL promised "register-on-first-push / auto-removed-when-empty". The value
+# was normalised, written to the column and read by nothing: an overlay row is
+# visible because the ROW EXISTS, not because of this column, so a repository marked
+# EPHEMERAL survived being empty, was listed and was fetched exactly like a DURABLE
+# one — only the echoed enum differed. Accepting an input that changes nothing
+# promises a capability the product does not have, so it is refused until the
+# behaviour exists (api-conventions.md §«Принято-и-проигнорировано»).
+#
+# Deliberately NOT wrapped in retry_until_authorized: this is a negative, and a
+# retry there would paper over a real deny (testing.md). It needs no window either —
+# the shared parent registry's v_create is already materialised by the create cases
+# that run before it. The refused field is asserted in the BadRequest DETAIL, which
+# is where the contract carries field identity; the message stays generic by design.
 CASES.append(Case(
-    id="REG-RD-F7-CREATE-EPHEMERAL",  # verifies REG-1-22
-    title="CreateRepository lifecycle=EPHEMERAL → lifecycle EPHEMERAL (opt-in overrides DURABLE default)",
+    id="REG-RD-F7-NEG-CREATE-EPHEMERAL",  # verifies REG-1-22
+    title="CreateRepository lifecycle=EPHEMERAL → 400 INVALID_ARGUMENT (accepted-and-ignored input refused; field named in details)",
+    classes=["NEG", "VAL"], priority="P1",
+    steps=[
+        Step(name="repo-create-ephemeral", method="POST",
+             path=REG + "/{{rdRegId}}/repositories",
+             body={"repository": "ephemeral/svc-{{runId}}", "description": "redesign repo",
+                   "lifecycle": "EPHEMERAL"},
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          *assert_field_violation("lifecycle")]),
+        # The refusal is a refusal: nothing was created under that name.
+        Step(name="repo-ephemeral-absent", method="GET",
+             path=REG + "/{{rdRegId}}/repositories/ephemeral/svc-{{runId}}",
+             test_script=[
+                 "pm.test('refused create left no repository behind', () => pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
+             ]),
+    ],
+))
+
+# REG-1-21 (happy/variant): explicit lifecycle=DURABLE is honoured — it names the
+# behaviour the service actually has (an overlay row survives an empty repository),
+# so it promises nothing extra. Omitting the field is the same thing.
+CASES.append(Case(
+    id="REG-RD-F7-CREATE-DURABLE-EXPLICIT",  # index: REG-RD-F7-CREATE-DURABLE
+    title="CreateRepository lifecycle=DURABLE (explicit) → lifecycle DURABLE (the implemented class is accepted)",
     classes=["CRUD"], priority="P1",
-    steps=_create_repo("rdRegId", "ephemeral/svc-{{runId}}", [
-        "pm.test('lifecycle EPHEMERAL (explicit opt-in)', () => pm.expect(r.lifecycle).to.eql('EPHEMERAL'));",
-    ], body_extra={"lifecycle": "EPHEMERAL"}),
+    steps=_create_repo("rdRegId", "durexpl/svc-{{runId}}", [
+        "pm.test('lifecycle DURABLE (explicit, honoured)', () => pm.expect(r.lifecycle).to.eql('DURABLE'));",
+    ], body_extra={"lifecycle": "DURABLE"}),
 ))
 
 # REG-1-24 (negative): lifecycle output-only — в UpdateRepository.update_mask → sync 400
