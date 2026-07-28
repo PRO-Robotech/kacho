@@ -234,13 +234,19 @@ type Config struct {
 	// HydraJWKSURL — explicit JWKS endpoint; пустой → derived from HydraIssuer.
 	HydraJWKSURL string `envconfig:"KACHO_HYDRA_JWKS_URL" default:""`
 
-	// HydraIntrospectionURL — explicit Hydra introspection endpoint (admin API);
-	// пустой → derived as `{HydraIssuer}/oauth2/introspect`.
+	// HydraIntrospectionURL — token-introspection endpoint on the identity
+	// provider's ADMIN API (`{admin}/admin/oauth2/introspect`). Never derived:
+	// the admin API is a different Service and port from the public issuer, so
+	// there is nothing to derive it from. Empty ⇒ the revocation check is not
+	// configured, and a production-class gateway refuses to start (see the boot
+	// guard in cmd/api-gateway/revocation_validation.go).
 	HydraIntrospectionURL string `envconfig:"KACHO_HYDRA_INTROSPECTION_URL" default:""`
 
-	// HydraAdminURL — explicit Hydra admin API base URL (used by logout handler
-	// to revoke sessions via `DELETE /admin/oauth2/auth/sessions/login`); пустой
-	// → derived from HydraIssuer.
+	// HydraAdminURL — base URL of the identity provider's ADMIN API, used by the
+	// logout handler to kill the provider-side session
+	// (`DELETE /admin/oauth2/auth/sessions/login`). Never derived, same reason.
+	// Empty ⇒ the session kill is disabled, and a production-class gateway
+	// refuses to start.
 	HydraAdminURL string `envconfig:"KACHO_HYDRA_ADMIN_URL" default:""`
 
 	// JWKSCacheTTL — TTL для JWKS cache (sec); RFC рекомендация 5–60 min.
@@ -485,20 +491,28 @@ func (c Config) ResolvedHydraJWKSURL() string {
 	return c.ResolvedHydraIssuer() + "/.well-known/jwks.json"
 }
 
-// ResolvedHydraIntrospectionURL returns the Hydra introspection endpoint.
+// ResolvedHydraIntrospectionURL returns the token-introspection endpoint, or the
+// empty string when none is configured.
+//
+// It is deliberately NOT derived from the issuer. Introspection is served by the
+// identity provider's ADMIN API — a different Service and port from the public
+// issuer, reachable only inside the cluster — so an issuer-derived address names
+// a server that does not serve this endpoint. Aiming a revocation check at a
+// guessed address is worse than having none: the check runs, never gets an
+// answer, and the caller cannot distinguish that from "the token is fine".
+//
+// Empty means the revocation check is not configured. The composition root
+// refuses to start a production-class gateway in that state.
 func (c Config) ResolvedHydraIntrospectionURL() string {
-	if c.HydraIntrospectionURL != "" {
-		return c.HydraIntrospectionURL
-	}
-	return c.ResolvedHydraIssuer() + "/oauth2/introspect"
+	return c.HydraIntrospectionURL
 }
 
-// ResolvedHydraAdminURL returns the Hydra admin API base.
+// ResolvedHydraAdminURL returns the admin API base, or the empty string when
+// none is configured. Same rule and same reason as the introspection endpoint
+// above: the admin API is not the issuer, and a guessed base sends the logout
+// handler's provider-side session kill to whatever answers on the issuer host.
 func (c Config) ResolvedHydraAdminURL() string {
-	if c.HydraAdminURL != "" {
-		return c.HydraAdminURL
-	}
-	return c.ResolvedHydraIssuer()
+	return c.HydraAdminURL
 }
 
 // ExpectedAudience returns the audience value injected in tokens for this
