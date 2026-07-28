@@ -56,16 +56,18 @@ describe("NLB resource-registry", () => {
   });
 
   describe("load-balancers sanitize — per-family VIP-oneof + placement стрижка", () => {
-    it("ZONAL INTERNAL: строит v4_source subnet, drops zones + vip_source", () => {
+    // Режим задаёт `placement` — единственный ввод режима, который форма несёт.
+    // `type` / `placement_type` в запросе существуют лишь затем, чтобы выставивший
+    // их клиент получил явный InvalidArgument, поэтому вход sanitize их не несёт и
+    // выход нести не может.
+    it("INTERNAL_ZONAL: строит v4_source subnet, drops zones + vip_source", () => {
       const lb = getResource("load-balancers")!;
       const out = lb.sanitize!({
-        type: "INTERNAL",
-        placement_type: "ZONAL",
+        placement: "INTERNAL_ZONAL",
         disabled_announce_zones: ["z1"],
         vip_source: { _v4_enabled: true, _v4_mode: "subnet", v4: { subnet_id: "sub-1" } },
         name: "x",
       });
-      expect(out.placement_type).toBe("ZONAL");
       // ZONAL → drain-зоны неприменимы → выкидываются.
       expect(out.disabled_announce_zones).toBeUndefined();
       // vip_source (UI) → wire-oneof v4_source; служебное поле удалено.
@@ -74,35 +76,38 @@ describe("NLB resource-registry", () => {
       expect(out.name).toBe("x");
     });
 
-    it("REGIONAL INTERNAL: keeps zones (plain string[]) as-is", () => {
+    it("INTERNAL_REGIONAL: keeps zones (plain string[]) as-is", () => {
       const lb = getResource("load-balancers")!;
       const out = lb.sanitize!({
-        type: "INTERNAL",
-        placement_type: "REGIONAL",
+        placement: "INTERNAL_REGIONAL",
         disabled_announce_zones: ["z1", "z2"],
         vip_source: { _v4_enabled: true, _v4_mode: "subnet", v4: { subnet_id: "sub-9" } },
       });
-      expect(out.placement_type).toBe("REGIONAL");
       expect(out.disabled_announce_zones).toEqual(["z1", "z2"]);
     });
 
-    it("EXTERNAL: строит v4_source public, drops placement_type + zones + vip_source", () => {
+    it("EXTERNAL_REGIONAL: строит v4_source public, keeps zones, drops vip_source", () => {
       const lb = getResource("load-balancers")!;
       const out = lb.sanitize!({
-        type: "EXTERNAL",
-        placement_type: "ZONAL",
+        placement: "EXTERNAL_REGIONAL",
         disabled_announce_zones: ["z1"],
         vip_source: { _v4_enabled: true, _v4_mode: "public", v4: {} },
       });
+      // Ни type, ни placement_type форма не несёт и sanitize не производит.
+      expect(out.type).toBeUndefined();
       expect(out.placement_type).toBeUndefined();
-      expect(out.disabled_announce_zones).toBeUndefined();
+      // EXTERNAL_REGIONAL — тоже REGIONAL, drain-зоны применимы.
+      expect(out.disabled_announce_zones).toEqual(["z1"]);
       expect(out.vip_source).toBeUndefined();
       expect(out.v4_source).toEqual({ public: {} });
     });
 
     it("оба семейства выключены → ни v4_source, ни v6_source", () => {
       const lb = getResource("load-balancers")!;
-      const out = lb.sanitize!({ type: "INTERNAL", vip_source: { _v4_enabled: false, _v6_enabled: false } });
+      const out = lb.sanitize!({
+        placement: "INTERNAL_ZONAL",
+        vip_source: { _v4_enabled: false, _v6_enabled: false },
+      });
       expect(out.v4_source).toBeUndefined();
       expect(out.v6_source).toBeUndefined();
     });

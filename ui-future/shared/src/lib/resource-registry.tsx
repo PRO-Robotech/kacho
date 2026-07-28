@@ -304,6 +304,97 @@ const FIELD_LABELS: FormField = {
   type: "labels",
 };
 
+// ── Источник VIP балансировщика (per-family oneof v4_source / v6_source) ──
+//
+// Контракт (loadbalancer.v1 + services/nlb/.../vip_source.go):
+//   • хотя бы одно семейство обязано нести источник — иначе запрос отвергается
+//     целиком («must declare a vip source for at least one ip family»);
+//   • ветвь oneof связана с режимом балансировщика: `subnet_id` допустим ТОЛЬКО
+//     для INTERNAL, `public {}` — ТОЛЬКО для EXTERNAL (validateSourceTypeMatrix);
+//   • режим задаёт ЕДИНСТВЕННО `placement` — `type`/`placement_type` в запросе
+//     существуют лишь затем, чтобы выставивший их клиент получил явный отказ.
+//
+// Поэтому «авто» означает разное по обе стороны и нормализуется от placement, а
+// не от того, что осталось в виджете после смены режима: подсеть, выбранная в
+// INTERNAL-черновике, после переключения на EXTERNAL схлопывается в public, а не
+// уезжает телом, которое сервис отвергнет.
+
+export function lbTypeFromPlacement(placement: string | undefined): "EXTERNAL" | "INTERNAL" {
+  return placement === "EXTERNAL_REGIONAL" ? "EXTERNAL" : "INTERNAL";
+}
+
+/**
+ * buildVipSourceOrNull — wire-ветвь oneof одного семейства, либо null, если
+ * семейство не задано. Пустой subnet_id/address_id — это «не задано», а не
+ * `{subnet_id: ""}`: выбранная ветвь oneof с пустой ссылкой возвращается с
+ * сервиса как «required», то есть жалобой на поле, которого оператор не называл.
+ */
+export function buildVipSourceOrNull(
+  placement: string | undefined,
+  obj: Record<string, unknown>,
+  family: "v4" | "v6",
+): Record<string, unknown> | null {
+  const mode = (obj[`_${family}_source`] as string | undefined) ?? "off";
+  if (mode === "off") return null;
+  const fam = (obj[`${family}_source`] as Record<string, unknown> | undefined) ?? {};
+  if (mode === "address") {
+    const id = (fam.address_id as string) || "";
+    return id ? { address_id: id } : null;
+  }
+  // Автоматические ветви — «public» и «subnet» — нормализуются под placement:
+  // выбранная в INTERNAL-черновике подсеть после переключения на EXTERNAL
+  // схлопывается в public, а не уезжает телом, которое сервис отвергнет.
+  if (lbTypeFromPlacement(placement) === "EXTERNAL") return { public: {} };
+  const subnetId = (fam.subnet_id as string) || "";
+  return subnetId ? { subnet_id: subnetId } : null;
+}
+
+/** Поля одного семейства: режим + ссылка активного режима. */
+function vipSourceFields(family: "v4" | "v6", label: string): FormField[] {
+  const mode = `_${family}_source`;
+  return [
+    {
+      name: mode,
+      label: `Источник VIP (${label})`,
+      type: "enum",
+      immutable: true,
+      default: family === "v4" ? "public" : "off",
+      options: [
+        { value: "public", label: "Публичный (авто) — VIP выделяет платформа (EXTERNAL-размещение)" },
+        { value: "subnet", label: "Из подсети (авто) — VIP выделяется из подсети (INTERNAL-размещение)" },
+        { value: "address", label: "Линк адреса — заранее созданный Address" },
+        { value: "off", label: "Не задавать это семейство" },
+      ],
+      description:
+        "Ветвь источника VIP этого семейства. Хотя бы одно семейство обязано нести источник. Подсеть допустима только для INTERNAL-размещения, публичный VIP — только для EXTERNAL.",
+    },
+    {
+      name: `${family}_source.subnet_id`,
+      label: `Подсеть (${label})`,
+      type: "ref",
+      refResource: "subnets",
+      refProjectScoped: true,
+      immutable: true,
+      visibleWhen: { field: mode, equals: "subnet" },
+      description: "Подсеть, из которой выделяется VIP (INTERNAL-размещение). Placement подсети обязан совпадать.",
+    },
+    {
+      name: `${family}_source.address_id`,
+      label: `Адрес (${label})`,
+      type: "ref",
+      refResource: "addresses",
+      refProjectScoped: true,
+      immutable: true,
+      visibleWhen: { field: mode, equals: "address" },
+      refFilter: (row) =>
+        family === "v4"
+          ? !!row.internal_ipv4_address || !!row.external_ipv4_address
+          : !!row.internal_ipv6_address || !!row.external_ipv6_address,
+      description: "Существующий Address, линкуемый как VIP. Сфера адреса обязана совпадать с режимом балансировщика.",
+    },
+  ];
+}
+
 // VPC-1 Subnet cell: immutable primary CIDR anchor + "+N" additional-ranges
 // hint (additional ranges managed via :add/:remove-cidr-blocks, not shown inline).
 function CidrPrimaryCell({ primary, extra }: { primary: unknown; extra: unknown }): ReactNode {
@@ -3573,6 +3664,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         required: true,
         description: "Регион размещения балансировщика. Cross-service ref → compute.Region; verified на request-path.",
       },
+      ...vipSourceFields("v4", "IPv4"),
+      ...vipSourceFields("v6", "IPv6"),
       FIELD_LABELS,
       FIELD_PROJECT_ID,
     ],
@@ -3582,8 +3675,38 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       description: "",
       region_id: "",
       placement: "EXTERNAL_REGIONAL",
+      // Источник VIP пофамильно. Хотя бы одно семейство обязательно, иначе
+      // resolveVipSources отвергает запрос целиком. IPv4 по умолчанию — «авто»
+      // (для EXTERNAL это платформенный public VIP, ничего выбирать не нужно),
+      // IPv6 выключен.
+      _v4_source: "public",
+      _v6_source: "off",
+      v4_source: { subnet_id: "", address_id: "" },
+      v6_source: { subnet_id: "", address_id: "" },
       labels: {},
     }),
+    // Хотя бы одно семейство должно нести источник — тот же инвариант, что
+    // resolveVipSources энфорсит на сервисе; ловим его до отправки.
+    validate: (obj) => {
+      const placement = obj.placement as string | undefined;
+      if (!buildVipSourceOrNull(placement, obj, "v4") && !buildVipSourceOrNull(placement, obj, "v6")) {
+        return "Укажите источник VIP хотя бы для одного семейства (IPv4 или IPv6).";
+      }
+      return null;
+    },
+    sanitize: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      const placement = out.placement as string | undefined;
+      const v4 = buildVipSourceOrNull(placement, out, "v4");
+      const v6 = buildVipSourceOrNull(placement, out, "v6");
+      delete out.v4_source;
+      delete out.v6_source;
+      delete out._v4_source;
+      delete out._v6_source;
+      if (v4) out.v4_source = v4;
+      if (v6) out.v6_source = v6;
+      return out;
+    },
   },
 
   listeners: {
@@ -3669,7 +3792,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       description: "",
       load_balancer_id: "",
       protocol: "TCP",
-      port: 0,
+      // `port` НЕ дефолтим: 0 вне диапазона [1,65535], который энфорсит
+      // LbPort.Validate, поэтому засеянный ноль превращает «оператор не ввёл
+      // порт» в тело, на которое сервис отвечает «port must be in range
+      // [1, 65535]». Поле обязательное — значение вводит оператор.
       labels: {},
     }),
   },

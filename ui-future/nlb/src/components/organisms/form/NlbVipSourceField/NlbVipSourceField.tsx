@@ -70,6 +70,21 @@ export function familyIpVersion(family: Family): "IPV4" | "IPV6" {
   return family === "v4" ? "IPV4" : "IPV6";
 }
 
+// `placement` — единственный ввод режима, который форма несёт (NLB CONTRACT / F2).
+// `type` и `placement_type` — производные output-only проекции: запрос их
+// принимает лишь затем, чтобы выставивший их клиент получил явный
+// InvalidArgument, поэтому форма их не шлёт и, следовательно, не хранит. Всё,
+// что раньше читало их из объекта формы, обязано выводить их отсюда — иначе
+// читается undefined, молча подставляется INTERNAL/ZONAL, и выбор оператора не
+// доходит ни до предлагаемых режимов VIP, ни до ветви oneof в теле запроса.
+export function lbTypeFromPlacement(placement: string | undefined): "EXTERNAL" | "INTERNAL" {
+  return placement === "EXTERNAL_REGIONAL" ? "EXTERNAL" : "INTERNAL";
+}
+
+export function lbPlacementTypeFromPlacement(placement: string | undefined): "REGIONAL" | "ZONAL" {
+  return placement === "INTERNAL_ZONAL" ? "ZONAL" : "REGIONAL";
+}
+
 // effectiveVipMode — нормализует режим под схему балансировщика: INTERNAL
 // допускает {subnet, address} (default subnet), EXTERNAL — {public, address}
 // (default public). Устаревший режим (после смены type) схлопывается в валидный.
@@ -170,8 +185,14 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 function FamilyRow({ value, onChange, family }: Props & { family: Family }) {
   const project = useProjectStore((s) => s.project);
   const base = `vip_source.${family}`;
-  const type = (getByPath(value, "type") as string) || "INTERNAL";
-  const placement = (getByPath(value, "placement_type") as string) || "ZONAL";
+  // Режим берётся из `placement` — единственного, что форма несёт. Прежнее чтение
+  // `type` / `placement_type` из объекта формы всегда давало undefined (форма их
+  // не шлёт — это write-reject проекции), поэтому пикер застревал в
+  // INTERNAL/ZONAL: «Публичный (авто)» не предлагался вовсе, а REGIONAL-подсети
+  // не попадали в список кандидатов.
+  const placementMode = getByPath(value, "placement") as string | undefined;
+  const type = lbTypeFromPlacement(placementMode);
+  const placement = lbPlacementTypeFromPlacement(placementMode);
   const rawMode = getByPath(value, `vip_source._${family}_mode`) as string | undefined;
   const mode = effectiveVipMode(type, rawMode);
 

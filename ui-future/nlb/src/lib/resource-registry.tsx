@@ -16,6 +16,8 @@ import {
   NlbVipSourceField,
   NlbDisabledZonesField,
   buildVipSourceOrNull,
+  lbTypeFromPlacement,
+  lbPlacementTypeFromPlacement,
 } from "@/components/organisms/form/NlbVipSourceField";
 
 export interface ResourceColumn {
@@ -329,7 +331,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         // Drain только для REGIONAL; mutable через Update. fullWidth:false — label
         // слева (как обычное поле), multi-select зон справа.
         fullWidth: false,
-        visibleWhen: { field: "placement_type", equals: "REGIONAL" },
+        // Гейт по `placement` — единственному, что форма несёт. `placement_type`
+        // объект формы не содержит (write-reject проекция), поэтому условие
+        // никогда не выполнялось и поле было недостижимо.
+        visibleWhen: { field: "placement", equals: ["EXTERNAL_REGIONAL", "INTERNAL_REGIONAL"] },
         description:
           "Зоны, из которых anycast-VIP не анонсируется (drain). Пусто — анонс из всех здоровых зон региона.",
         render: ({ value, onChange }) => <NlbDisabledZonesField value={value} onChange={onChange} />,
@@ -380,7 +385,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // Клиент-валидация ДО submit: источник VIP должен быть задан хотя бы для
     // одного семейства (IPv4/IPv6) — иначе backend отвергнет InvalidArgument.
     validate: (obj) => {
-      const type = (obj.type as string) || "INTERNAL";
+      const type = lbTypeFromPlacement(obj.placement as string | undefined);
       const vs = (obj.vip_source as Record<string, unknown> | undefined) ?? {};
       const v4 = buildVipSourceOrNull(type, vs._v4_mode as string | undefined, vs.v4 as Record<string, unknown> | undefined);
       const v6 = buildVipSourceOrNull(type, vs._v6_mode as string | undefined, vs.v6 as Record<string, unknown> | undefined);
@@ -392,11 +397,16 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // Собирает per-family oneof v4_source/v6_source из UI-представления
     // (NlbVipSourceField): семейство эмитится, только если у активного режима
     // есть значение (buildVipSourceOrNull ≠ null) — пустой addressId/subnetId
-    // никогда не уходит на бэкенд. placement_type шлётся только для INTERNAL,
-    // disabled_announce_zones — только для REGIONAL (иначе backend отклонит).
+    // никогда не уходит на бэкенд. Ветвь oneof нормализуется под РЕЖИМ, а не под
+    // то, что осталось в виджете: subnet_id валиден только для INTERNAL, public —
+    // только для EXTERNAL (validateSourceTypeMatrix на стороне сервиса), поэтому
+    // подсеть, выбранная в INTERNAL-черновике, после переключения на EXTERNAL
+    // схлопывается в public, а не уезжает отвергаемым телом.
+    // disabled_announce_zones — только для REGIONAL-placement (иначе backend отклонит).
     sanitize: (obj) => {
       const out: Record<string, unknown> = { ...obj };
-      const type = (out.type as string) || "INTERNAL";
+      const placement = out.placement as string | undefined;
+      const type = lbTypeFromPlacement(placement);
 
       const vs = (out.vip_source as Record<string, unknown> | undefined) ?? {};
       const v4 = buildVipSourceOrNull(type, vs._v4_mode as string | undefined, vs.v4 as Record<string, unknown> | undefined);
@@ -405,10 +415,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       if (v6) out.v6_source = v6;
       delete out.vip_source;
 
-      // placement_type — INTERNAL only.
-      if (type !== "INTERNAL") delete out.placement_type;
       // disabled_announce_zones — REGIONAL only.
-      if ((out.placement_type as string) !== "REGIONAL") delete out.disabled_announce_zones;
+      if (lbPlacementTypeFromPlacement(placement) !== "REGIONAL") delete out.disabled_announce_zones;
 
       return out;
     },

@@ -32,7 +32,7 @@ export interface ResourceFormBodyProps {
   stickyFooter?: boolean;
 }
 
-const FULL_WIDTH = new Set(["sg-rules", "array", "custom"]);
+const FULL_WIDTH = new Set(["array", "custom"]);
 
 // Экспортирована для тестов.
 // Сравнение — по СТРОКОВОМУ виду текущего значения: `equals` объявлен строкой, а

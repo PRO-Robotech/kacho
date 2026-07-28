@@ -3,7 +3,6 @@ import { Card, Input, Select, Space, Switch, Tooltip, Typography, Button as AntB
 import { DeleteOutlined, PlusOutlined, QuestionCircleOutlined } from "@ant-design/icons";
 import { Label } from "@/components/atoms/ui/Input";
 import { RefSelect } from "@/components/organisms/form/RefSelect";
-import { SgRulesEditor } from "@/components/organisms/form/SgRulesEditor";
 import { LabelsEditor } from "@/components/organisms/form/LabelsEditor";
 import { getByPath, setByPath, deleteByPath } from "@/lib/path";
 import type { FormField as FF, ArrayField } from "@/lib/form-schema";
@@ -59,22 +58,6 @@ export function FormFieldRenderer({ field, pathPrefix, value, onChange, editMode
         hideLabel={hideLabel}
       />
     );
-  if (field.type === "sg-rules") {
-    const path = pathPrefix ? `${pathPrefix}.${field.name}` : field.name;
-    // KAC-243 (scenario 18): создаваемая SG принадлежит сети из поля network_id
-    // той же формы — SG-target rule может ссылаться только на SG этой сети.
-    const editingNetworkId = getByPath(value, "network_id") as string | undefined;
-    return (
-      <SgRulesEditor
-        pathPrefix={pathPrefix}
-        value={value}
-        onChange={onChange}
-        path={path}
-        description={field.description}
-        editingNetworkId={editingNetworkId || undefined}
-      />
-    );
-  }
   if (field.type === "labels") {
     const path = pathPrefix ? `${pathPrefix}.${field.name}` : field.name;
     return (

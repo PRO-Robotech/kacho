@@ -11,7 +11,6 @@ export type FormField =
   | RefField
   | ArrayField
   | BoolField
-  | SgRulesField
   | LabelsField
   | CustomField;
 
@@ -130,13 +129,6 @@ export interface ArrayField extends BaseField {
 // объект {key: value}; UI рендерит через LabelsEditor с rows-style редактором.
 export interface LabelsField extends BaseField {
   type: "labels";
-}
-
-// Специализированный editor для VPC SecurityGroup rules — слишком много conditional
-// (oneof target, opt-in protocol/ports), generic ArrayField это не выражает.
-// Render через SgRulesEditor; sanitize вычищает `_*` дискриминаторы при submit.
-export interface SgRulesField extends BaseField {
-  type: "sg-rules";
 }
 
 // Bespoke-поле: рендерится произвольным React-компонентом. Используется когда
