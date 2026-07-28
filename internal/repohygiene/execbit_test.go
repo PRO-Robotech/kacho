@@ -46,7 +46,7 @@ func gitLsFiles(t *testing.T, root string) []string {
 // hasShebang — файл начинается с `#!` (ПЕРВАЯ строка).
 func hasShebang(t *testing.T, path string) bool {
 	t.Helper()
-	f, err := os.Open(path) //nolint:gosec // путь из обхода репо в тесте
+	f, err := os.Open(path)
 	if err != nil {
 		return false
 	}
@@ -61,7 +61,7 @@ func hasShebang(t *testing.T, path string) bool {
 // findShebangLine возвращает 1-based номер строки с shebang'ом (0 — нет вовсе).
 func findShebangLine(t *testing.T, path string) int {
 	t.Helper()
-	f, err := os.Open(path) //nolint:gosec // путь из обхода репо в тесте
+	f, err := os.Open(path)
 	if err != nil {
 		return 0
 	}
