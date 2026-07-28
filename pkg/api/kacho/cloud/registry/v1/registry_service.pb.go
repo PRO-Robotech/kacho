@@ -1065,9 +1065,23 @@ type CreateRepositoryRequest struct {
 	// Явная публичность. Не задано (UNSPECIFIED) → наследует
 	// Registry.defaultRepositoryVisibility. Явный PUBLIC требует registry admin (D-6, B08).
 	Visibility Visibility `protobuf:"varint,5,opt,name=visibility,proto3,enum=kacho.cloud.registry.v1.Visibility" json:"visibility,omitempty"`
-	// Опц. вход lifecycle (REG-1 F7). Не задано (UNSPECIFIED) → DURABLE by default
-	// (явный intent-create = сохранить каркас). EPHEMERAL → register-on-first-push
-	// семантика. Output Repository.lifecycle авторитетно управляется системой (auto-promote).
+	// Опц. вход lifecycle (REG-1 F7). Принимаются ТОЛЬКО UNSPECIFIED и DURABLE, оба
+	// означают DURABLE. **EPHEMERAL здесь отвергается** — `INVALID_ARGUMENT`, имя поля
+	// в google.rpc.BadRequest-details. Причина не в незавершённости: явный Create
+	// материализует overlay-строку, а репозиторий с overlay-строкой переживает
+	// опустошение **by construction** — просить при этом «исчезни, когда опустеешь»
+	// значит просить взаимоисключающее. Out-of-range значение отвергается той же
+	// полосой (раньше молча схлопывалось в DURABLE — тихая подмена запрошенного).
+	//
+	// Поле НЕ снято с контракта намеренно, хотя несёт единственное осмысленное
+	// значение: REST-край разбирает тело с DiscardUnknown, поэтому снятое поле не
+	// отвергается, а **молча игнорируется** — вызывающий получил бы 200 вместо
+	// именованного отказа. Поле существует, чтобы отказ было чем назвать.
+	//
+	// EPHEMERAL остаётся правдой на ВЫХОДЕ (`Repository.lifecycle`): так проецируется
+	// репозиторий БЕЗ overlay-строки, и его исчезаемость обеспечена by construction —
+	// теги кончились, строки нет, репозитория не видно. Выход управляется системой
+	// (overlay-set auto-promote'ит EPHEMERAL→DURABLE), не этим полем.
 	Lifecycle     RepositoryLifecycle `protobuf:"varint,6,opt,name=lifecycle,proto3,enum=kacho.cloud.registry.v1.RepositoryLifecycle" json:"lifecycle,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
