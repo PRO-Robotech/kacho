@@ -7,10 +7,9 @@
 // direction (a field the form sends that the message does not declare).
 //
 // Ground truth: the `(required) = true` set of each Create*Request under
-// proto/kacho/cloud/**, cited per entry below. A spec is measured through the
-// chain the create page uses — spec.template → applyFieldDefaults → spec.sanitize
-// → buildCreateBody — plus the fields the operator can fill in, because a required
-// field the operator types is expressible even when the template leaves it blank.
+// proto/kacho/cloud/**, cited per entry below. A spec is measured by the inputs
+// its form declares — see operatorSettableFields for why that, and not the
+// assembled body, is the thing to measure.
 //
 // The table is exhaustive by construction: a create-capable spec with no entry
 // fails, so adding one to the registry forces its contract to be stated here.
@@ -19,10 +18,7 @@
 // here), so the lock lives here too — a fix landing in one copy and not the
 // other is the very class this sweep exists to catch.
 
-import { REGISTRY, applyFieldDefaults } from "./resource-registry";
-import { buildCreateBody } from "@/components/organisms/ResourceFormDialog";
-
-const asObj = (v: unknown) => v as Record<string, unknown>;
+import { REGISTRY } from "./resource-registry";
 
 /** apiPath → the `(required) = true` fields of the Create request it posts to. */
 const REQUIRED_BY_API_PATH: Record<string, string[]> = {
@@ -30,17 +26,29 @@ const REQUIRED_BY_API_PATH: Record<string, string[]> = {
   "/registry/v1/registries": [],
 };
 
-/** Top-level keys a create can carry: the assembled body, plus what the form can fill. */
-function expressibleKeys(specId: string): Set<string> {
+/**
+ * The Create inputs one spec puts in front of the operator.
+ *
+ * ONLY declared form fields count. A key that merely turns up in the assembled
+ * body does not, and the difference is the whole point: `template` can hardcode a
+ * value and `sanitize` can synthesise one key from another, and in both cases the
+ * operator has no input for it — what ships is a constant the product chose, not
+ * something the form expresses. Measuring the body is how this lock was lost
+ * once: deleting the target-group port field left `template` seeding `port: 80`,
+ * so the body still carried the key, the sweep stayed green, and the form had no
+ * way to set the backend port at all.
+ *
+ * `hidden` fields DO count — they are filled from the caller's context
+ * (`template({projectId, accountId})`), which the operator chooses in the project
+ * switcher. project_id / account_id are the only hidden names any entry below
+ * relies on. `updateOnly` fields do NOT — they are absent from Create entirely.
+ *
+ * A dotted name covers its head: declaring `health_check.tcp.port` is a way to
+ * fill `health_check`.
+ */
+function operatorSettableFields(specId: string): Set<string> {
   const spec = REGISTRY[specId];
-  const seeded = applyFieldDefaults(spec.fields, asObj(spec.template({ projectId: "prj-1", accountId: "acc-1" })));
-  const body = buildCreateBody(spec.sanitize ? spec.sanitize(seeded) : seeded);
-  const keys = new Set(Object.keys(body));
-  for (const f of spec.fields ?? []) {
-    if (f.updateOnly) continue;
-    keys.add(f.name.split(".")[0]);
-  }
-  return keys;
+  return new Set((spec.fields ?? []).filter((f) => !f.updateOnly).map((f) => f.name.split(".")[0]));
 }
 
 const createCapable = Object.entries(REGISTRY)
@@ -58,7 +66,7 @@ describe("every create-capable spec can express what Create requires", () => {
     // No entry means nobody stated what this create needs — that is a gap in the
     // lock, not a pass.
     expect(required).toBeDefined();
-    const keys = expressibleKeys(specId);
-    expect(required!.filter((f) => !keys.has(f))).toEqual([]);
+    const settable = operatorSettableFields(specId);
+    expect(required!.filter((f) => !settable.has(f))).toEqual([]);
   });
 });
