@@ -22,7 +22,8 @@ production-инкремент REG-1 поверх уже id-based `Registry` — 
   F6 repo-key     — registryId immutable у Repository (REG-1-19).
   F7 lifecycle    — DURABLE default (REG-1-21); EPHEMERAL opt-in (REG-1-22); output-only
                     (в update_mask → INVALID_ARGUMENT, REG-1-24).
-  F8 hardening    — empty-mask full-PATCH: immutable из тела silently ignored (REG-1-28);
+  F8 hardening    — empty-mask full-PATCH применяет mutable, анкеры identity/placement
+                    остаются нетронутыми — они структурно невыразимы в Update (REG-1-28);
                     pageSize > max → INVALID_ARGUMENT (REG-1-31).
 
 Test-design техники (testing-product-coach): ECP (regionId существует/нет/омит;
@@ -48,6 +49,33 @@ CASES = []
 REG = "/registry/v1/registries"
 # Registry-мутации несут op-id префикс rop/reo (opsproxy-роутинг api-gateway).
 OP_ENVELOPE = "^(rop|reo)[a-z0-9]+$"
+
+
+def _assert_403_means_uncatalogued():
+    """Различитель для проб «маршрута нет»: отказ по правам ≠ отсутствие маршрута.
+
+    Проба «такого маршрута не существует» проходит через authz-слой края ПЕРВЫМ, и
+    у него на несуществующую пару (метод, путь) нет записи в каталоге прав → отказ
+    fail-closed 403. Тот же 403 отдаётся и на ЖИВОМ маршруте, на который у
+    вызывающего нет права. Кейс, довольный «любым не-200», эти два исхода не
+    различает — и остался бы зелёным ровно тогда, когда маршрут по недосмотру
+    появился на публичном крае, а конкретный актор просто не имел на него прав.
+
+    Различие наблюдаемо: отказ по КАТАЛОГУ несёт нарушение типа `authz.catalog`
+    (левый токен причины «catalog: no entry for method»), тогда как решение по
+    конкретному объекту несёт `authz.no_path` / иной тип отношения. Требуем первое.
+    Коды, отличные от 403 (404/405/501 маршрутизатора, 400 транскодера), уже сами по
+    себе означают «не обслуживается» — для них различать нечего.
+    """
+    return [
+        "let _d; try { _d = pm.response.json(); } catch (e) { _d = null; }",
+        "pm.test('403 here must be an UNCATALOGUED-method denial, not a permission check on a live route', () => {",
+        "  if (pm.response.code !== 403) return;",
+        "  const types = [];",
+        "  ((_d && _d.details) || []).forEach(d => ((d && d.violations) || []).forEach(v => types.push(v && v.type)));",
+        "  pm.expect(types, JSON.stringify(_d)).to.include('authz.catalog');",
+        "});",
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -230,12 +258,17 @@ CASES.append(Case(
     title="Update updateMask=regionId / placementType → 400 INVALID_ARGUMENT (immutable placement anchor)",
     classes=["NEG", "CONF"], priority="P1",
     steps=[
+        # The MASK carries the assertion, and only the mask: neither `regionId`
+        # nor `placementType` is a field of UpdateRegistryRequest — the placement
+        # anchor is not expressible in Update at all. A body key of that name
+        # would be dropped at the edge before the service saw it, so it would
+        # state nothing about the invariant while looking as if it did.
         Step(name="update-region", method="PATCH", path=REG + "/{{rdRegId}}",
-             body={"updateMask": "regionId", "regionId": "{{existingRegionAltId}}"},
+             body={"updateMask": "regionId"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('regionId immutable text', () => pm.expect(pm.response.json().message).to.eql('regionId is immutable after Registry.Create'));"]),
         Step(name="update-placement", method="PATCH", path=REG + "/{{rdRegId}}",
-             body={"updateMask": "placementType", "placementType": "REGIONAL"},
+             body={"updateMask": "placementType"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('placementType immutable text', () => pm.expect(pm.response.json().message).to.eql('placementType is immutable after Registry.Create'));"]),
     ],
@@ -268,24 +301,29 @@ CASES.append(Case(
 
 # REG-1-04 (negative): id immutable — операции смены нет. (b) id в update_mask → sync
 # 400 "id is immutable after Registry.Create". (a) :rename-verb на Registry НЕ
-# зарегистрирован → маршрут не резолвится (толерантно к gateway 400/404/405/501).
+# зарегистрирован → маршрут не резолвится. Набор кодов терпим (400/403/404/405/501 —
+# край отвечает с разных слоёв), но 403 обязан быть отказом ПО КАТАЛОГУ, а не решением
+# о правах на живой маршрут — см. _assert_403_means_uncatalogued.
 CASES.append(Case(
     id="REG-RD-F1-NEG-ID-IMMUTABLE",  # verifies REG-1-04
     title="Update updateMask=id → 400 (id immutable); POST :rename → route absent (no id-rename)",
     classes=["NEG", "CONF"], priority="P0",
     steps=[
+        # Mask-driven: `id` is not a field of UpdateRegistryRequest — the
+        # addressable identity is not restatable, so there is no key to smuggle.
         Step(name="update-id", method="PATCH", path=REG + "/{{rdRegId}}",
-             body={"updateMask": "id", "id": "reg00000000hacked00"},
+             body={"updateMask": "id"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('id immutable text', () => pm.expect(pm.response.json().message).to.eql('id is immutable after Registry.Create'));"]),
+        # No :rename verb exists on RegistryService (id is immutable, ban #15). The
+        # subject of this probe is the ABSENCE OF A ROUTE, so it carries no body:
+        # there is no request message to fill, and any key would be discarded before
+        # it reached anything — a body here would only suggest that the edge weighed
+        # the payload, which it never does.
         Step(name="post-rename-absent", method="POST", path=REG + "/{{rdRegId}}:rename",
-             body={"name": "renamed-{{runId}}"},
              test_script=[
-                 # No :rename verb exists on RegistryService (id is immutable, ban #15). The
-                 # path resolves to no RPC — grpc-gateway returns a routing 404 (or 405/501);
-                 # a stale/variant router may 403 (authz-gate a wrong-method match). Any of
-                 # these confirms the invariant: id-rename is NEVER a successful (200) op.
                  "pm.test('no :rename verb on Registry (never 200 success)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 405, 501]));",
+                 *_assert_403_means_uncatalogued(),
              ]),
     ],
 ))
@@ -459,9 +497,14 @@ CASES.append(Case(
         *_create_repo("rdRegId", "lifemask/svc-{{runId}}", [
             "pm.test('lifecycle DURABLE (setup)', () => pm.expect(r.lifecycle).to.eql('DURABLE'));",
         ]),
+        # The MASK carries the assertion. `lifecycle` IS a field of
+        # CreateRepositoryRequest — that is where an unimplemented class is
+        # rejected by name — but it is NOT a field of UpdateRepositoryRequest:
+        # the value is system-managed after Create, so it is not restatable and
+        # a body key of that name would be dropped at the edge.
         Step(name="update-lifecycle-mask", method="PATCH",
              path=REG + "/{{rdRegId}}/repositories/lifemask/svc-{{runId}}",
-             body={"updateMask": "lifecycle", "lifecycle": "EPHEMERAL"},
+             body={"updateMask": "lifecycle"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('lifecycle read-only text', () => pm.expect(pm.response.json().message).to.eql('lifecycle is read-only (system-managed)'));"]),
     ],
@@ -496,18 +539,26 @@ CASES.append(Case(
 # F8 — Update-дисциплина + hardening
 # ===========================================================================
 
-# REG-1-28 (lock): пустой update_mask → full-object PATCH mutable; immutable из тела
-# (id/regionId/placementType) silently игнорируются. Own throwaway → self-contained.
+# REG-1-28 (lock): пустой update_mask → full-object PATCH всех mutable-полей, а
+# анкеры идентичности/размещения остаются нетронутыми.
+#
+# Почему тело больше НЕ несёт `id`/`regionId`. Раньше кейс слал их и утверждал, что
+# сервис их «молча игнорирует». Игнорировал не сервис: этих полей НЕТ в
+# UpdateRegistryRequest, и край выбрасывал ключи ещё до разбора — то есть проба
+# описывала как контракт ровно тот дефект, ради которого заведён гейт тел. Гарантия
+# сильнее «игнорирования»: анкеры **структурно невыразимы** в Update, поэтому пустая
+# маска не может их коснуться by construction, а не по доброй воле реализации.
+# Пост-условия ниже (id/regionId не изменились) сохранены дословно — они и проверяют
+# исход; изменилось лишь то, что кейс перестал делать ложное заявление о разборе тела.
 CASES.append(Case(
     id="REG-RD-F8-EMPTY-MASK-IMMUTABLE-IGNORED",  # verifies REG-1-28
-    title="Empty updateMask → mutable applied (description/name), immutable (id/regionId) in body silently ignored",
+    title="Empty updateMask → mutable applied (description/name); identity/placement anchors untouched (not expressible in Update)",
     classes=["CRUD", "CONF"], priority="P1",
     steps=[
         *_create_registry("emptymask-{{runId}}", "emRegId"),
         Step(name="update-emptymask", method="PATCH", path=REG + "/{{emRegId}}",
              body={"description": "patched-{{runId}}", "labels": {"team": "pay"},
-                   "name": "emptymask-new-{{runId}}",
-                   "regionId": "{{garbageRegionId}}", "id": "reg00000000hacked00"},
+                   "name": "emptymask-new-{{runId}}"},
              test_script=[*assert_status(200), *assert_operation_envelope(OP_ENVELOPE),
                           *save_operation_id()]),
         poll_operation_until_done(),
@@ -518,8 +569,8 @@ CASES.append(Case(
                  "const j = pm.response.json();",
                  "pm.test('mutable description applied', () => pm.expect(j.description).to.eql('patched-'+pm.environment.get('runId')));",
                  "pm.test('mutable name applied (F2 cosmetic label)', () => pm.expect(j.name).to.eql('emptymask-new-'+pm.environment.get('runId')));",
-                 "pm.test('immutable id silently ignored (unchanged)', () => pm.expect(j.id).to.eql(pm.environment.get('emRegId')));",
-                 "pm.test('immutable regionId silently ignored (unchanged)', () => pm.expect(j.regionId).to.eql(pm.environment.get('existingRegionId')));",
+                 "pm.test('immutable id untouched by full-object PATCH', () => pm.expect(j.id).to.eql(pm.environment.get('emRegId')));",
+                 "pm.test('immutable regionId untouched by full-object PATCH', () => pm.expect(j.regionId).to.eql(pm.environment.get('existingRegionId')));",
              ]),
         *_delete_registry("emRegId"),
     ],

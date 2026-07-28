@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "bc6f5683-14c8-4d1d-b90c-39237bc7b609",
+    "_postman_id": "8b69c131-1509-45f2-a7eb-e4f262f0c2c1",
     "name": "kacho-registry / newman / registry-redesign",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -417,7 +417,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"regionId\", \"regionId\": \"{{existingRegionAltId}}\"}",
+              "raw": "{\"updateMask\": \"regionId\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -466,7 +466,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"placementType\", \"placementType\": \"REGIONAL\"}",
+              "raw": "{\"updateMask\": \"placementType\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -577,7 +577,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"id\", \"id\": \"reg00000000hacked00\"}",
+              "raw": "{\"updateMask\": \"id\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -623,15 +623,6 @@
                 "registries",
                 "{{rdRegId}}:rename"
               ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"name\": \"renamed-{{runId}}\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
             }
           },
           "event": [
@@ -640,7 +631,14 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('no :rename verb on Registry (never 200 success)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 405, 501]));"
+                  "pm.test('no :rename verb on Registry (never 200 success)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 405, 501]));",
+                  "let _d; try { _d = pm.response.json(); } catch (e) { _d = null; }",
+                  "pm.test('403 here must be an UNCATALOGUED-method denial, not a permission check on a live route', () => {",
+                  "  if (pm.response.code !== 403) return;",
+                  "  const types = [];",
+                  "  ((_d && _d.details) || []).forEach(d => ((d && d.violations) || []).forEach(v => types.push(v && v.type)));",
+                  "  pm.expect(types, JSON.stringify(_d)).to.include('authz.catalog');",
+                  "});"
                 ]
               }
             }
@@ -2358,7 +2356,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"lifecycle\", \"lifecycle\": \"EPHEMERAL\"}",
+              "raw": "{\"updateMask\": \"lifecycle\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2654,7 +2652,7 @@
       ]
     },
     {
-      "name": "REG-RD-F8-EMPTY-MASK-IMMUTABLE-IGNORED — Empty updateMask → mutable applied (description/name), immutable (id/regionId) in body silently ignored",
+      "name": "REG-RD-F8-EMPTY-MASK-IMMUTABLE-IGNORED — Empty updateMask → mutable applied (description/name); identity/placement anchors untouched (not expressible in Update)",
       "description": "class:CRUD | class:CONF | priority:P1",
       "item": [
         {
@@ -2876,7 +2874,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"description\": \"patched-{{runId}}\", \"labels\": {\"team\": \"pay\"}, \"name\": \"emptymask-new-{{runId}}\", \"regionId\": \"{{garbageRegionId}}\", \"id\": \"reg00000000hacked00\"}",
+              "raw": "{\"description\": \"patched-{{runId}}\", \"labels\": {\"team\": \"pay\"}, \"name\": \"emptymask-new-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2991,8 +2989,8 @@
                   "const j = pm.response.json();",
                   "pm.test('mutable description applied', () => pm.expect(j.description).to.eql('patched-'+pm.environment.get('runId')));",
                   "pm.test('mutable name applied (F2 cosmetic label)', () => pm.expect(j.name).to.eql('emptymask-new-'+pm.environment.get('runId')));",
-                  "pm.test('immutable id silently ignored (unchanged)', () => pm.expect(j.id).to.eql(pm.environment.get('emRegId')));",
-                  "pm.test('immutable regionId silently ignored (unchanged)', () => pm.expect(j.regionId).to.eql(pm.environment.get('existingRegionId')));"
+                  "pm.test('immutable id untouched by full-object PATCH', () => pm.expect(j.id).to.eql(pm.environment.get('emRegId')));",
+                  "pm.test('immutable regionId untouched by full-object PATCH', () => pm.expect(j.regionId).to.eql(pm.environment.get('existingRegionId')));"
                 ]
               }
             }

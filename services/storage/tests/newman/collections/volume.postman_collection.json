@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "e4e2701d-aef9-4208-ab51-f0f0dc9eaf0e",
+    "_postman_id": "eb973167-4695-4c90-aa96-066a7262a967",
     "name": "kacho-storage / newman / volume",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -2835,7 +2835,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"zoneId\", \"zoneId\": \"{{existingZoneAltId}}\"}",
+              "raw": "{\"updateMask\": \"zoneId\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2890,7 +2890,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"diskTypeId\", \"diskTypeId\": \"block-fast\"}",
+              "raw": "{\"updateMask\": \"diskTypeId\"}",
               "options": {
                 "raw": {
                   "language": "json"
