@@ -87,7 +87,8 @@ data:
 
     authz:
       iam:
-        addr: {{ .Values.authz.iam.addr | quote }}
+        # Адреса здесь нет: per-RPC Check идёт по соединению `iam-internal`,
+        # адрес которого приходит из extapi.iam.internal-addr (peers.iam.internalAddr).
         dial-deadline: {{ .Values.authz.iam.dialDeadline }}
         request-timeout: {{ .Values.authz.iam.requestTimeout }}
       cache:

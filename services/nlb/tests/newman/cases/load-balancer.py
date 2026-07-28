@@ -798,10 +798,14 @@ CASES.append(Case(
     title="Create with name=null → 400",
     classes=["VAL"], priority="P2",
     steps=[
+        # `null` transcodes to the field default (""), so this lands on the very
+        # same "name is required" rejection as NLB-CR-VAL-NAME-EMPTY — assert it
+        # outright. Accepting 200 here made the case pass whether the name was
+        # required or not, i.e. it asserted nothing.
         Step(name="cr-null-name", method="POST", path=_CREATE_BASE,
              body={**_LB_BODY, "name": None},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))
@@ -832,6 +836,24 @@ CASES.append(Case(
     ],
 ))
 
+# KNOWN RED — the assertion below states the case's contract and the product does not
+# meet it. Measured on the live stand 2026-07-28 against the shipped build:
+#
+#   sessionAffinity:"DOES_NOT_EXIST" → HTTP 200, Operation minted, LB created with the
+#     default FIVE_TUPLE;
+#   sessionAffinity:"CLIENT_IP_ONLY" → HTTP 200, CLIENT_IP_ONLY persisted.
+#
+# So an unknown enum value is neither applied nor refused — it is dropped and the
+# caller is told 200 for a setting the server never made ("принято-и-проигнорировано",
+# api-conventions.md). The cause is the transcoder, not this service: the public
+# marshaller runs protojson with DiscardUnknown (gateway/internal/restmux/mux.go), which
+# also discards unrecognised enum VALUES, so nlb receives SESSION_AFFINITY_UNSPECIFIED
+# and cannot tell "bogus" from "absent". The fix therefore lives in the gateway, outside
+# this service; the same swallow already degraded NLB-GTS-STATE-LB-DISABLED once (see the
+# adminState note there), which is what an accepting assertion costs.
+#
+# The assertion is deliberately NOT relaxed back to "200 or 400": that spelling passed
+# in both worlds and is why the behaviour went unnoticed.
 CASES.append(Case(
     id="NLB-CR-VAL-INVALID-AFFINITY",
     title="Create with unknown sessionAffinity enum → InvalidArgument",
@@ -841,7 +863,7 @@ CASES.append(Case(
              body={**_LB_BODY, "sessionAffinity": "DOES_NOT_EXIST",
                    "name": "bad-aff-{{runId}}"},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 200]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))
@@ -851,12 +873,14 @@ CASES.append(Case(
     title="Create with >64 labels → 23514 CHECK → InvalidArgument (Verifies REQ-DB-LABEL-CHECK)",
     classes=["VAL", "BVA"], priority="P1",
     steps=[
+        # Cardinality is validated SYNCHRONOUSLY (domain ValidateLabels runs before
+        # the Operation is minted), so there is no "async" lane to tolerate: the
+        # rejection is the response itself. The DB CHECK stays the backstop.
         Step(name="cr-65-labels", method="POST", path=_CREATE_BASE,
              body={**_LB_BODY, "name": "over-labels-{{runId}}",
                    "labels": {f"k{i}": f"v{i}" for i in range(65)}},
              test_script=[
-                 "pm.test('rejected (sync or async)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))
@@ -870,7 +894,7 @@ CASES.append(Case(
              body={**_LB_BODY, "name": "labels-upper-{{runId}}",
                    "labels": {"BADKEY": "v"}},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))
@@ -884,7 +908,7 @@ CASES.append(Case(
              body={**_LB_BODY, "name": "labels-bad-{{runId}}",
                    "labels": {"bad key!": "v"}},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))
@@ -1103,14 +1127,18 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="NLB-LST-FILTER-GARBAGE",
-    title="List with garbage filter syntax → 200/400 (handled)",
+    title="List with garbage filter syntax → InvalidArgument (unknown field)",
     classes=["VAL"], priority="P2",
     steps=[
+        # The filter grammar is a whitelist: the leading identifier of
+        # `invalid filter text` is not a known field, so this is a rejection, not
+        # a "either way is fine" input. Accepting 200 also accepted the dangerous
+        # reading — a filter silently ignored and the caller served an unfiltered
+        # page.
         Step(name="list-bad-filter", method="GET",
              path=f"{_CREATE_BASE}?projectId={{{{_suiteProjectId}}}}&filter=invalid%20filter%20text",
              test_script=[
-                 "pm.test('handled (200 or 400)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))
@@ -1356,29 +1384,20 @@ CASES.append(Case(
     classes=["STATE", "NEG"], priority="P0",
     steps=[
         *_setup_lb("del-prot", {"deletionProtection": True}),
-        # Product IS correct: Delete gates on deletion_protection (delete.go FailedPrecondition
-        # + DB-level `AND deletion_protection=false` guard). But the setup LB can alloc-phantom
-        # under --jobs>1 (kacho#11): its Create Operation completes done WITH "could not
-        # allocate load balancer address", so no LB persists → no owner-tuple → this DELETE
-        # authz-denies (403) permanently. The wrap absorbs a genuine owner-tuple lag on a REAL
-        # parent; the FailedPrecondition rejection is asserted only when the parent actually
-        # materialised (no lastOpError). Phantom lane tolerated; serial run (+ check-fp below)
-        # exercises the gate.
+        # Deletion protection is a SYNCHRONOUS precondition (delete.go refuses before
+        # any Operation is minted; the DB `AND deletion_protection=false` guard is the
+        # backstop), so the refusal IS this response: 400 / FAILED_PRECONDITION.
+        #
+        # The previous assertion accepted 200 — the code of an ACCEPTED deletion — and
+        # ran only when the parent had materialised, while the follow-up check fired
+        # only `if (j.error)`. A build in which protection did nothing at all deleted
+        # the load balancer and left the case green, which is the one outcome the case
+        # exists to catch. The wrap still absorbs a genuine owner-tuple lag (403 →
+        # retry); a terminal 403 now fails here instead of being waved through.
         retry_until_authorized(Step(name="del-protected", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
-                 "if (!pm.environment.get('lastOpError')) {",
-                 "  pm.test('rejected (sync or async)', () => "
-                 "    pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
-                 "}",
-                 *save_from_response("j.id", "opId"),
+                 *assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
              ]), retry_on=(403,)),
-        poll_operation_until_done(),
-        Step(name="check-fp", method="GET", path="/operations/{{opId}}",
-             test_script=[
-                 "const j = pm.response.json();",
-                 "if (j.error) pm.test('error code 9 FAILED_PRECONDITION', () => "
-                 "  pm.expect(j.error.code).to.eql(9));",
-             ]),
         # disable protection and clean up
         Step(name="unprotect", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              body={"updateMask": "deletionProtection", "deletionProtection": False},
@@ -1401,16 +1420,14 @@ CASES.append(Case(
              test_script=[*save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
         poll_operation_until_done(),
+        # Same class as NLB-DEL-STATE-PROTECTION: the "has listener(s)" precondition is
+        # SYNCHRONOUS, so the refusal is this response. The old assertion accepted 200
+        # (deletion accepted) and 403 (never even reached the precondition), and the
+        # follow-up ran only `if (j.error)` — between them, a load balancer deleted out
+        # from under its listeners kept the case green.
         Step(name="del-blocked", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 409]));",
-                 *save_from_response("j.id", "opId"),
-             ]),
-        poll_operation_until_done(),
-        Step(name="check-fp", method="GET", path="/operations/{{opId}}",
-             test_script=[
-                 "const j = pm.response.json();",
-                 "if (j.error) pm.test('error code 9', () => pm.expect(j.error.code).to.eql(9));",
+                 *assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
              ]),
         # cleanup listener then LB
         Step(name="del-lst", method="DELETE", path="/nlb/v1/listeners/{{lstId}}",
@@ -1537,13 +1554,18 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="NLB-CR-VAL-DESC-NULL",
-    title="Create with description=null → handled (default to empty)",
+    title="Create with description=null → accepted (transcodes to empty)",
     classes=["VAL"], priority="P2",
     steps=[
+        # `null` is a lawful JSON spelling of "field absent": it transcodes to the
+        # default and description has no required/format rule, so the create is
+        # ACCEPTED. Naming that outcome is the whole case — "accepted or rejected"
+        # covered every possible answer and therefore checked none. (VIP allocation
+        # happens in the worker, so the sync answer does not depend on pool state.)
         Step(name="cr-desc-null", method="POST", path=_CREATE_BASE,
              body={**_LB_BODY, "name": "desc-null-{{runId}}", "description": None},
              test_script=[
-                 "pm.test('accepted or rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(200), *assert_operation_envelope(),
                  *save_from_response("j.id", "opId"),
                  *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId"),
              ]),
@@ -1588,20 +1610,24 @@ CASES.append(Case(
         Step(name="cr-lbl-val-over", method="POST", path=_CREATE_BASE,
              body={**_LB_BODY, "name": "lbl-vo-{{runId}}", "labels": {"k": "x" * 64}},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))
 
 CASES.append(Case(
     id="NLB-CR-VAL-LABELS-EMPTY-VALUE",
-    title="Create with label value=\"\" → handled",
+    title="Create with label value=\"\" → accepted (empty value is in range 0..63)",
     classes=["VAL"], priority="P2",
     steps=[
+        # The label-value rule is a LENGTH bound of 0..63, so the empty string is
+        # inside it and the create is ACCEPTED — the lower boundary of the BVA pair
+        # whose upper end is NLB-CR-VAL-LABELS-VALUE-OVER-63. A boundary case that
+        # accepts both answers tests no boundary.
         Step(name="cr-lbl-empty", method="POST", path=_CREATE_BASE,
              body={**_LB_BODY, "name": "lbl-emp-{{runId}}", "labels": {"k": ""}},
              test_script=[
-                 "pm.test('accepted or rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(200), *assert_operation_envelope(),
                  *save_from_response("j.id", "opId"),
                  *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId"),
              ]),
@@ -1721,10 +1747,14 @@ CASES.append(Case(
     title="List with pageSize=-1 → InvalidArgument",
     classes=["BVA", "VAL", "LSG"], priority="P2",
     steps=[
+        # Same contract as pageSize=1001, mirrored below zero. Accepting 200 made
+        # the case blind to both failure modes it exists for: a rejection quietly
+        # replaced by clamping, and an invalid page size slipping through the
+        # empty-grant short-circuit of the list filter (validation runs FIRST).
         Step(name="list-neg", method="GET",
              path=f"{_CREATE_BASE}?projectId={{{{_suiteProjectId}}}}&pageSize=-1",
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))
@@ -1927,14 +1957,18 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="NLB-LST-FILTER-COMBINED",
-    title="List with combined filter (name + labels) → handled",
-    classes=["LSG"], priority="P2",
+    title="List with combined filter (name AND labels) → InvalidArgument (AND unsupported)",
+    classes=["LSG", "VAL"], priority="P2",
     steps=[
+        # Conjunction is deliberately NOT in the grammar (single `<field> = "<v>"`),
+        # so the trailing `AND labels.env="prod"` is an unexpected token and the
+        # request is refused. The point of the case is precisely that the extra
+        # predicate is not silently dropped — which is what accepting 200 allowed.
         Step(name="lst-combined", method="GET",
              path=f"{_CREATE_BASE}?projectId={{{{_suiteProjectId}}}}&"
                   "filter=name%3D%22edge%22%20AND%20labels.env%3D%22prod%22",
              test_script=[
-                 "pm.test('handled', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))

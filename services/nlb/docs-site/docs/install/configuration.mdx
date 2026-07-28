@@ -23,12 +23,13 @@ Kachō NLB конфигурируется YAML-файлом (`config.yaml`) с E
   <thead><tr><th>Значение</th><th>Поведение</th></tr></thead>
   <tbody>
     <tr><td><code>dev</code></td><td>Relaxed-валидация: TLS опционален, breakglass допустим, <code>sslmode=disable</code> в DSN разрешён</td></tr>
-    <tr><td><code>production</code></td><td>TLS обязателен, <code>authz.iam.addr</code> обязателен, breakglass запрещён, DSN обязан нести <code>sslmode=require</code>/<code>verify-ca</code>/<code>verify-full</code></td></tr>
+    <tr><td><code>production</code></td><td>TLS обязателен, <code>extapi.iam.internal-addr</code> обязателен, breakglass запрещён, DSN обязан нести <code>sslmode=require</code>/<code>verify-ca</code>/<code>verify-full</code></td></tr>
   </tbody>
 </table>
 
-ENV: `KACHO_NLB_MODE`. Единственный обязательный без дефолта параметр — DSN до БД (и
-`authz.iam.addr` в production).
+ENV: `KACHO_NLB_MODE`. Единственный обязательный без дефолта параметр — DSN до БД (а в
+production — ещё и адреса peer-рёбер, в том числе `extapi.iam.internal-addr`, по которому
+идёт per-RPC Check).
 
 ## Repository (PostgreSQL)
 
@@ -84,7 +85,7 @@ ENV: `KACHO_NLB_MODE`. Единственный обязательный без 
 <table>
   <thead><tr><th>Ключ</th><th>По умолчанию</th><th>Описание</th></tr></thead>
   <tbody>
-    <tr><td><code>authz.iam.addr</code></td><td><em>(обязателен в production)</em></td><td>Internal-адрес kacho-iam для Check</td></tr>
+    <tr><td><code>extapi.iam.internal-addr</code></td><td><em>(обязателен в production)</em></td><td>Адрес iam INTERNAL listener'а — по этому соединению идёт per-RPC Check. Отдельного адреса в секции <code>authz</code> нет</td></tr>
     <tr><td><code>authz.iam.request-timeout</code></td><td><code>500ms</code></td><td>Per-request deadline к Check</td></tr>
     <tr><td><code>authz.cache.enable</code> / <code>ttl</code> / <code>size</code></td><td><code>true</code> / <code>5s</code> / <code>10000</code></td><td>Positive-only LRU-кэш над Check</td></tr>
     <tr><td><code>authz.list-filter.enabled</code></td><td><code>true</code></td><td>Per-object фильтрация List через ListObjects (read == enforce)</td></tr>
@@ -162,8 +163,6 @@ production оба server-флага и клиентские рёбра долж�
       iam:      { internal-addr: kacho-iam.kacho.svc:9091 }
 
     authz:
-      iam:
-        addr: kacho-iam.kacho.svc:9091
       list-filter:
         enabled: true
         fail-open: false

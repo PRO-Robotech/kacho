@@ -116,9 +116,6 @@ func (c Config) Validate() error {
 	}
 
 	// Authz (FGA Check)
-	if c.Authz.IAM.Addr == "" && mode == ModeProduction {
-		errs = multierr.Append(errs, fmt.Errorf("authz.iam.addr: required in production mode"))
-	}
 	if c.Authz.Breakglass && mode == ModeProduction {
 		errs = multierr.Append(errs, fmt.Errorf("authz.breakglass: forbidden in production mode (dev-only)"))
 	}
@@ -150,7 +147,25 @@ func (c Config) Validate() error {
 				"production mode: insecure server transport — set mtls.server.enable=true (plaintext listener forbidden)"))
 		}
 		// nlb→iam authz edge (per-RPC InternalIAMService.Check, internal :9091) обязан
-		// быть mTLS: иначе Check идёт по plaintext и подделанная identity не отсекается.
+		// (а) быть АДРЕСОВАН и (б) быть mTLS.
+		//
+		// (а) Адрес этого ребра берётся ТОЛЬКО из `extapi.iam.internal-addr`
+		// (peerDialSpecs, соединение `iam-internal` — из него строятся
+		// peers.Check и list-filter). Пока ключ пуст, ребро уезжает на fallback —
+		// ПУБЛИЧНЫЙ листенер iam, где InternalIAMService не обслуживается: каждый
+		// per-RPC Check упирается в Unimplemented, то есть авторизация в production
+		// не работает, а сервис при этом стартует. Прежняя стража требовала здесь
+		// `authz.iam.addr` — ключ, который НИ ОДИН путь кода не читает (из него не
+		// строится ни одно соединение), поэтому она не могла поймать ни один
+		// неверный конфиг и лишь заставляла оператора держать в values строку без
+		// последствий. Ключ снят с контракта, стража требует настоящий.
+		if strings.TrimSpace(c.ExtAPI.IAM.InternalAddr) == "" {
+			errs = multierr.Append(errs, fmt.Errorf(
+				"production mode: nlb→iam authz edge is not addressed — set extapi.iam.internal-addr "+
+					"(InternalIAMService.Check lives on the iam INTERNAL listener; falling back to the public "+
+					"address answers Unimplemented, so per-RPC authorization never runs)"))
+		}
+		// (б) Без mTLS Check идёт по plaintext и подделанная identity не отсекается.
 		if !c.MTLS.IAMRegister.Enable {
 			errs = multierr.Append(errs, fmt.Errorf(
 				"production mode: nlb→iam authz edge must be mTLS — set mtls.iam-register.enable=true (insecure Check edge forbidden)"))

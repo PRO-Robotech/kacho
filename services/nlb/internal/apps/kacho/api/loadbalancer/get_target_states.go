@@ -70,26 +70,32 @@ func (u *GetTargetStatesUseCase) Execute(
 	if err != nil {
 		return nil, mapDomainErr(err)
 	}
-	tg, err := rd.TargetGroups().Get(ctx, tgID)
-	if err != nil {
-		return nil, mapDomainErr(err)
-	}
 
 	// Object-scoped authz (CWE-863/639, round-7 audit BOLA finding): the
 	// per-RPC interceptor's StaticExtractor gates only the LB object
 	// (network_load_balancer_id) — without the checks below, a caller
 	// authorized on their own LB could read ANY caller-supplied TG's targets
 	// (instance/NIC ids, addresses, subnet ids), including a TG belonging to
-	// another project. The FGA viewer-Check runs FIRST (before the project
-	// branch): an unauthorized caller passing a cross-project TG must get a
-	// generic PermissionDenied — running the project-mismatch branch first would
-	// leak the victim TG's owning project id and confirm its existence
-	// (existence-oracle, inconsistent with the codebase's existence-hiding
-	// stance). The same-project equality is an unconditional invariant checked
-	// even with checkClient nil (dev/unwired). Mirrors AttachTargetGroup's guard
-	// (attach_target_group.go / tg_authz.go).
+	// another project.
+	//
+	// The viewer-Check runs BEFORE the target group is READ, not merely before
+	// the project branch. Reading first makes the reply depend on whether the
+	// caller-supplied id names a real row — absent → NotFound, foreign →
+	// PermissionDenied — so anyone holding one load balancer could enumerate
+	// which target groups exist installation-wide (existence-oracle,
+	// security.md #6). Authorizing first collapses both lanes onto the same
+	// generic denial. Only once the caller is authorized on the target group is
+	// it resolved; the project-mismatch branch then runs on an id the caller may
+	// already see, so its message leaks nothing new. That equality is an
+	// unconditional invariant, checked even with checkClient nil (dev/unwired).
+	// Mirrors the listener wiring guards (listener/tg_ref.go).
 	if err := checkTargetGroupViewer(ctx, u.checkClient, tgID); err != nil {
 		return nil, err
+	}
+
+	tg, err := rd.TargetGroups().Get(ctx, tgID)
+	if err != nil {
+		return nil, mapDomainErr(err)
 	}
 	if string(lb.ProjectID) != string(tg.ProjectID) {
 		return nil, status.Errorf(codes.FailedPrecondition,

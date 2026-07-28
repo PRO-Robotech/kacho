@@ -131,7 +131,9 @@ func TestLoad_EnvOverride(t *testing.T) {
 	// ENV: KACHO_NLB_REPOSITORY__POSTGRES__URL → repository.postgres.url
 	t.Setenv("KACHO_NLB_REPOSITORY__POSTGRES__URL", "postgres://envuser:envpass@envhost/kacho_nlb")
 	t.Setenv("KACHO_NLB_LOGGER__LEVEL", "WARN")
-	t.Setenv("KACHO_NLB_AUTHZ__IAM__ADDR", "iam.kacho.svc:9091")
+	// viper env-key replacer маппит только '.'→'__'; дефис в ключе
+	// `internal-addr` остаётся в имени ENV как есть.
+	t.Setenv("KACHO_NLB_EXTAPI__IAM__INTERNAL-ADDR", "iam-internal.kacho.svc:9091")
 
 	cfg, err := Load("") // только defaults + ENV
 	if err != nil {
@@ -143,8 +145,8 @@ func TestLoad_EnvOverride(t *testing.T) {
 	if got := cfg.Logger.Level; got != "WARN" {
 		t.Errorf("Logger.Level from ENV: got %q", got)
 	}
-	if got := cfg.Authz.IAM.Addr; got != "iam.kacho.svc:9091" {
-		t.Errorf("Authz.IAM.Addr from ENV: got %q", got)
+	if got := cfg.ExtAPI.IAM.InternalAddr; got != "iam-internal.kacho.svc:9091" {
+		t.Errorf("ExtAPI.IAM.InternalAddr from ENV: got %q", got)
 	}
 }
 
