@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 """Injection matrix for resource-registry.create-required.test.ts.
 
 For every (registry copy, create-capable spec, required field) triple, removes the
