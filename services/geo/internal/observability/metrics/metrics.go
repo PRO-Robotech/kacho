@@ -8,17 +8,23 @@
 // service-слое. Метрики снимаются с отдельного cluster-internal diagnostic-порта
 // (НЕ на public/internal gRPC-поверхности — internal-cardinality не tenant-facing).
 //
-// Адаптер реализует corelib operations.Recorder — durability-слой LRO worker'а и
-// reconciler'а (terminal-write retries/failures, inflight, orphans, reconcile
-// runs/errors). geo — leaf-сервис без register-outbox, поэтому outbox.Recorder
-// здесь не нужен. Реестр — ПРИВАТНЫЙ (prometheus.NewRegistry, не global default):
-// тесты герметичны, нет duplicate-register panic при рестартах composition root в
-// одном процессе.
+// Адаптер реализует corelib operations.Recorder, но ВЫСТАВЛЯЕТ только те ряды,
+// которые kacho-geo способен сдвинуть: восстановление осиротевших операций
+// (orphans, reconcile runs/errors). Три ряда исполнителя длительных операций
+// (ретраи и провалы терминальной записи, счётчик исполняемых worker'ов) движет
+// ТОЛЬКО corelib-worker, а geo в него ничего не диспетчеризует — каталог это
+// конфиг-INSERT, операция завершается синхронно (shared/syncop), вызовов
+// operations.Run в сервисе нет. Выставленный вечный ноль читался бы дежурным как
+// «отказов нет», хотя правда — «не измеряется», поэтому соответствующие методы
+// Recorder'а остаются no-op без ряда (интерфейс требует их присутствия — его
+// принимает operations.WithReconcilerRecorder). geo — leaf-сервис без
+// register-outbox, поэтому outbox.Recorder здесь не нужен. Реестр — ПРИВАТНЫЙ
+// (prometheus.NewRegistry, не global default): тесты герметичны, нет
+// duplicate-register panic при рестартах composition root в одном процессе.
 package metrics
 
 import (
 	"net/http"
-	"sync/atomic"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -28,18 +34,15 @@ import (
 )
 
 // Metrics владеет приватным prometheus-реестром и коллекторами kacho-geo.
-// Создаётся один раз в composition root и шарится diagnostic HTTP-listener'ом,
-// LRO-worker'ом (через operations.WithRecorder) и LRO-reconciler'ом.
+// Создаётся один раз в composition root и шарится diagnostic HTTP-listener'ом и
+// LRO-reconciler'ом.
 type Metrics struct {
 	reg *prometheus.Registry
 
-	// operations (durability LRO)
-	terminalRetries  *prometheus.CounterVec
-	terminalFailures *prometheus.CounterVec
-	orphans          *prometheus.CounterVec
-	reconcileRuns    prometheus.Counter
-	reconcileErrors  prometheus.Counter
-	inflight         atomic.Int64
+	// operations (durability LRO — только восстановление осиротевших)
+	orphans         *prometheus.CounterVec
+	reconcileRuns   prometheus.Counter
+	reconcileErrors prometheus.Counter
 }
 
 // New конструирует адаптер, регистрирует Go + process runtime-коллекторы,
@@ -53,14 +56,6 @@ func New(version, commit string) *Metrics {
 
 	m := &Metrics{
 		reg: reg,
-		terminalRetries: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "kacho_geo_operations_terminal_write_retries_total",
-			Help: "Retries of LRO terminal write (MarkDone/MarkError) on transient DB failure, by op.",
-		}, []string{"op"}),
-		terminalFailures: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "kacho_geo_operations_terminal_write_failures_total",
-			Help: "LRO terminal writes that failed after exhausting retries (row stays done=false), by op.",
-		}, []string{"op"}),
 		orphans: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "kacho_geo_operations_orphans_recovered_total",
 			Help: "Orphaned LRO resolved by the reconciler, by terminal outcome (done|error).",
@@ -82,18 +77,9 @@ func New(version, commit string) *Metrics {
 	})
 	buildInfo.Set(1)
 
-	// lro_workers_active — живой gauge числа исполняемых LRO worker'ов; значение
-	// питается SetInflight (operations.Recorder), читается через GaugeFunc, чтобы
-	// быть согласованным с operations.Active() без дубль-регистрации.
-	lroActive := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "kacho_geo_lro_workers_active",
-		Help: "In-flight LRO worker goroutines (operations.Active()).",
-	}, func() float64 { return float64(m.inflight.Load()) })
-
 	reg.MustRegister(
-		m.terminalRetries, m.terminalFailures, m.orphans,
-		m.reconcileRuns, m.reconcileErrors,
-		buildInfo, lroActive,
+		m.orphans, m.reconcileRuns, m.reconcileErrors,
+		buildInfo,
 	)
 	return m
 }
@@ -106,14 +92,21 @@ func (m *Metrics) Handler() http.Handler {
 
 // ---- operations.Recorder ----
 
-// IncTerminalWriteRetries инкрементит ретраи терминальной записи по op-лейблу.
-func (m *Metrics) IncTerminalWriteRetries(op string) { m.terminalRetries.WithLabelValues(op).Inc() }
+// Три метода ниже принадлежат исполнителю длительных операций, которого kacho-geo
+// не использует (мутации каталога завершаются синхронно — shared/syncop, ни одного
+// operations.Run в сервисе). Интерфейс Recorder требует их присутствия, но ряда за
+// ними нет: вечный ноль в scrape дежурный прочитал бы как «отказов нет», хотя
+// правда — «не измеряется». Появится в geo асинхронный путь — ряды заводятся
+// вместе с ним, а не заранее.
 
-// IncTerminalWriteFailures инкрементит невосстановимые терминальные записи.
-func (m *Metrics) IncTerminalWriteFailures(op string) { m.terminalFailures.WithLabelValues(op).Inc() }
+// IncTerminalWriteRetries — no-op: терминальную запись в geo делает не worker.
+func (m *Metrics) IncTerminalWriteRetries(string) {}
 
-// SetInflight выставляет число исполняемых worker'ов (lro_workers_active gauge).
-func (m *Metrics) SetInflight(n float64) { m.inflight.Store(int64(n)) }
+// IncTerminalWriteFailures — no-op: терминальную запись в geo делает не worker.
+func (m *Metrics) IncTerminalWriteFailures(string) {}
+
+// SetInflight — no-op: в geo нет исполняемых worker'ов, которых можно считать.
+func (m *Metrics) SetInflight(float64) {}
 
 // IncOrphansRecovered инкрементит разрешённые reconciler'ом orphan'ы по outcome.
 func (m *Metrics) IncOrphansRecovered(outcome string) { m.orphans.WithLabelValues(outcome).Inc() }

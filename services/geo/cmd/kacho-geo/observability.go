@@ -3,21 +3,18 @@
 
 package main
 
-// Observability-проводка composition root: LRO-worker durability-метрики +
-// cluster-internal diagnostic HTTP-listener (/metrics). prometheus импортируется
-// только в adapter-пакете internal/observability/metrics (Clean Architecture) —
-// здесь лишь wiring. geo — leaf-сервис без register-outbox, поэтому набор метрик
-// ограничен LRO-durability (worker terminal-write + reconciler).
+// Observability-проводка composition root: cluster-internal diagnostic
+// HTTP-listener (/metrics). prometheus импортируется только в adapter-пакете
+// internal/observability/metrics (Clean Architecture) — здесь лишь wiring. geo —
+// leaf-сервис без register-outbox и без асинхронных операций, поэтому набор метрик
+// ограничен восстановлением осиротевших LRO (reconciler).
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"time"
-
-	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/geo/internal/observability/metrics"
 )
@@ -28,26 +25,6 @@ var (
 	buildVersion = "dev"
 	buildCommit  = "unknown"
 )
-
-// startLROWorker подключает Prometheus-Recorder и логгер к package-level
-// default-registry LRO-worker'а (ConfigureDefault) и поднимает его dispatcher-loop
-// (Start) ДО приёма трафика. Решает dead live-worker метрики: default-registry
-// создаётся с NopRecorder, поэтому terminal-write retries/failures и inflight
-// gauge от ЖИВОГО worker-пути (по которому идут async admin-мутации Region/Zone
-// через operations.Run) не эмитились никуда — исчезал ровно тот сигнал, ради
-// которого метрики существуют (terminal-write exhaustion оставляет durable
-// done=false строки, клиент виснет в polling). WithRecorder подключает их к
-// /metrics; явный Start делает Ready()=true до трафика.
-//
-// ConfigureDefault обязан предшествовать Start; вызывается один раз из composition
-// root (повторный вызов после старта вернул бы ErrWorkerStarted).
-func startLROWorker(rec operations.Recorder, logger *slog.Logger) error {
-	if err := operations.ConfigureDefault(operations.WithRecorder(rec), operations.WithLogger(logger)); err != nil {
-		return fmt.Errorf("configure LRO default-registry: %w", err)
-	}
-	operations.Start()
-	return nil
-}
 
 // startDiagnosticListener поднимает cluster-internal HTTP-listener для метрик.
 // Возвращает task (блокирующий Serve — вешается на фоновую goroutine) и

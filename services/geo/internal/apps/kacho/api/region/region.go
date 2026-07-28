@@ -225,29 +225,52 @@ func (u *UseCase) Update(ctx context.Context, in UpdateInput) (*operations.Opera
 	return syncop.Commit(ctx, u.ops, op, resp)
 }
 
-// buildUpdateParams транслирует UpdateInput+mask в UpdateParams. mask непустой →
-// применяются только перечисленные поля; mask пустой → full-object PATCH (все
-// переданные mutable-поля). Каждое применяемое поле валидируется как на Create.
+// buildUpdateParams транслирует UpdateInput+mask в UpdateParams по тому же одному
+// правилу, что и Zone (единая дисциплина маски для всех ресурсов сервиса):
+//
+//   - маска НАЗЫВАЕТ поле → применяется ДОСЛОВНО, включая значение-очистку, и
+//     валидируется как на Create. Назвать поле в маске — единственный способ его
+//     очистить (для региона это `countryCode`);
+//   - маска ПУСТА → применяется только то, что вызывающий действительно принёс,
+//     потому что proto3 не отличает неприсланный скаляр от нуля и «обнулить всё,
+//     чего в теле нет» стирало у региона код страны при обычном переименовании.
+//
+// Поле, названное маской, но пустое там, где ресурс пустоту хранить не может (name —
+// required + globally UNIQUE; status — CHECK IN ('UP','DOWN')), отвергается
+// СИНХРОННО тем же текстом, что на Create: молчаливое «принял и выбросил» запрещено
+// (api-conventions.md).
 func (u *UseCase) buildUpdateParams(in UpdateInput) (UpdateParams, error) {
 	var p UpdateParams
-	apply := func(field string) bool { return len(in.Mask) == 0 || maskHas(in.Mask, field) }
-	if apply("name") && in.Name != "" {
+	named := func(field string) bool { return len(in.Mask) > 0 && maskHas(in.Mask, field) }
+	apply := func(field string, carried bool) bool {
+		if len(in.Mask) == 0 {
+			return carried
+		}
+		return named(field)
+	}
+	if apply("name", in.Name != "") {
+		if in.Name == "" {
+			return p, invalidArg("region name is required")
+		}
 		if err := domain.ValidateName("region name", in.Name); err != nil {
 			return p, invalidArg(err.Error())
 		}
 		name := in.Name
 		p.Name = &name
 	}
-	if apply("countryCode") {
+	if apply("countryCode", in.CountryCode != "") {
 		if err := domain.ValidateCountryCode(in.CountryCode); err != nil {
 			return p, invalidArg(err.Error())
 		}
 		cc := in.CountryCode
 		p.CountryCode = &cc
 	}
-	if apply("status") && in.Status != domain.GeoStatusUnspecified {
+	if apply("status", in.Status != domain.GeoStatusUnspecified) {
 		if err := in.Status.Validate(); err != nil {
 			return p, invalidArg(err.Error())
+		}
+		if in.Status == domain.GeoStatusUnspecified {
+			return p, invalidArg("region status is required")
 		}
 		st := in.Status
 		p.Status = &st
