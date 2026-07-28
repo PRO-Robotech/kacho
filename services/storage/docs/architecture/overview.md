@@ -8,12 +8,21 @@
 Строго по `architecture.md`:
 
 - `internal/domain` — чистый Go (stdlib), self-validating сущности. Без pgx/grpc.
-- `internal/service/<res>` — use-cases; объявляют порты (`volume.Reader`/`Writer`,
+- `internal/apps/kacho/api/<res>` — use-cases; объявляют порты (`volume.Reader`/`Writer`,
   `GeoClient`/`IAMClient`, `snapshot.Repo`, `disktype.Repo`). Импортируют domain +
   corelib `operations`; НЕ импортируют transport.
 - `internal/repo/pg` — pgx-adapter, реализует порты. `internal/clients` — gRPC-adapter.
 - `internal/handler` — тонкий transport (parse → use-case → format), регистрирует
   gen-сервисы. `cmd/storage` — единственное место wiring.
+- `internal/errors` — pgx-free sentinel-семейство (leaf, тянется и use-case, и
+  adapter'ами); `internal/apps/kacho/shared/serviceerr` — перевод sentinel в
+  gRPC-статус; `internal/repo/repomock` — in-memory моки портов для unit-тестов
+  use-case (Postgres не нужен).
+
+Раскладка — та же, что у iam/vpc/nlb/registry/geo: слой бизнес-логики живёт под
+`internal/apps/kacho/api/<resource>`, перевод ошибок — под
+`internal/apps/kacho/shared/serviceerr`. Отдельного пакета «порты» нет by design:
+каждый порт объявляет тот use-case, который им пользуется.
 
 Скелет прошивает read-путь сквозняком (handler → use-case → adapter-заглушка) —
 adapter-стабы возвращают `codes.Unimplemented`, поэтому wiring проверяем `go test`.
