@@ -56,7 +56,7 @@ CASES.append(Case(
             body={
                 "projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                 "name": "sub-cr-{{runId}}", "zoneId": "{{existingZoneId}}",
-                "v4CidrBlocks": ["10.42.0.0/24"],
+                "ipv4CidrPrimary": "10.42.0.0/24",
             },
             test_script=[*assert_status(200), *assert_operation_envelope(),
                          *save_from_response("j.id", "opId"),
@@ -68,7 +68,7 @@ CASES.append(Case(
             method="GET",
             path="/vpc/v1/subnets/{{subId}}",
             test_script=[*assert_status(200),
-                         "pm.test('cidr matches', () => pm.expect(pm.response.json().v4CidrBlocks).to.include('10.42.0.0/24'));"],
+                         "pm.test('cidr matches', () => pm.expect(" + SUBNET_V4_CIDRS + ").to.include('10.42.0.0/24'));"],
         )),
         Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
@@ -149,8 +149,7 @@ CASES.append(Case(
             # sync 400 «exactly one of zone_id, region_id must be set». Тестируем
             # anchor-required (без zoneId subnet не размещается).
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                  "name": "sub-noz-{{runId}}",
-                  "v4CidrBlocks": ["10.0.0.0/24"]},
+                  "name": "sub-noz-{{runId}}"},
             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")],
         ),
         _cleanup_net(),
@@ -169,8 +168,7 @@ CASES.append(Case(
             method="POST",
             path="/vpc/v1/subnets",
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                  "name": "sub-zu-{{runId}}", "zoneId": "zone-z-fake",
-                  "v4CidrBlocks": ["10.0.0.0/24"]},
+                  "name": "sub-zu-{{runId}}", "zoneId": "zone-z-fake"},
             # Отказ — flat {code,message} body, не Operation.
             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                          "pm.test('unknown zone text', () => pm.expect(pm.response.json().message).to.match(/^unknown zone id '.*'$/));"],
@@ -183,7 +181,7 @@ CASES.append(Case(
     # v4_cidr_blocks не required — CIDR-less subnet легален; реальный диапазон
     # добавляется позже через :addCidrBlocks.
     id="SUB-CR-NO-CIDR-OK",
-    title="Create subnet без v4CidrBlocks → success; get показывает пустой v4CidrBlocks; addCidrBlocks добавляет один",
+    title="Create subnet без ipv4CidrPrimary → success; get показывает пустой набор IPv4-диапазонов; addCidrBlocks добавляет один",
     classes=["CRUD"],
     priority="P1",
     steps=[
@@ -204,13 +202,13 @@ CASES.append(Case(
             method="GET",
             path="/vpc/v1/subnets/{{subId}}",
             test_script=[*assert_status(200),
-                         "pm.test('v4CidrBlocks empty', () => pm.expect(pm.response.json().v4CidrBlocks || []).to.have.lengthOf(0));"],
+                         "pm.test('no ipv4 ranges', () => pm.expect(" + SUBNET_V4_CIDRS + " || []).to.have.lengthOf(0));"],
         )),
         Step(
             name="add-cidr",
             method="POST",
             path="/vpc/v1/subnets/{{subId}}:add-cidr-blocks",
-            body={"v4CidrBlocks": ["10.77.0.0/24"]},
+            body={"ipv4CidrBlocks": ["10.77.0.0/24"]},
             test_script=[*assert_status(200), *save_from_response("j.id", "opId")],
         ),
         poll_operation_until_done(),
@@ -219,7 +217,7 @@ CASES.append(Case(
             method="GET",
             path="/vpc/v1/subnets/{{subId}}",
             test_script=[*assert_status(200),
-                         "pm.test('cidr now present', () => pm.expect(pm.response.json().v4CidrBlocks).to.include('10.77.0.0/24'));"],
+                         "pm.test('cidr now present', () => pm.expect(" + SUBNET_V4_CIDRS + ").to.include('10.77.0.0/24'));"],
         ),
         Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -230,7 +228,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="SUB-CR-V6-OK",
-    title="Create subnet с v6CidrBlocks → echoed back в GET",
+    title="Create subnet с ipv6CidrPrimary → echoed back в GET",
     classes=["CRUD"],
     priority="P2",
     steps=[
@@ -241,7 +239,7 @@ CASES.append(Case(
             path="/vpc/v1/subnets",
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                   "name": "sub-v6-{{runId}}", "zoneId": "{{existingZoneId}}",
-                  "v4CidrBlocks": ["10.78.0.0/24"], "v6CidrBlocks": ["fd00:dead:beef::/64"]},
+                  "ipv4CidrPrimary": "10.78.0.0/24", "ipv6CidrPrimary": "fd00:dead:beef::/64"},
             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                          *save_from_response("j.metadata && j.metadata.subnetId", "subId")],
         ),
@@ -251,7 +249,7 @@ CASES.append(Case(
             method="GET",
             path="/vpc/v1/subnets/{{subId}}",
             test_script=[*assert_status(200),
-                         "pm.test('v6 cidr echoed', () => pm.expect(pm.response.json().v6CidrBlocks || []).to.include('fd00:dead:beef::/64'));"],
+                         "pm.test('v6 cidr echoed', () => pm.expect(" + SUBNET_V6_CIDRS + " || []).to.include('fd00:dead:beef::/64'));"],
         )),
         Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -289,7 +287,10 @@ CASES.append(Case(
             name="patch-v6",
             method="PATCH",
             path="/vpc/v1/subnets/{{subId}}",
-            body={"updateMask": "ipv6CidrPrimary", "ipv6CidrPrimary": "fd00:cafe::/64"},
+            # Mask-only: `ipv6_cidr_primary` is not a field of UpdateSubnetRequest,
+            # so naming it in update_mask is the whole probe — a value alongside it
+            # would be dropped by the edge and could not change the answer.
+            body={"updateMask": "ipv6CidrPrimary"},
             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                          "pm.test('verbatim immutable text', () => pm.expect(pm.response.json().message).to.eql('ipv6_cidr_primary is immutable after Subnet.Create'));"],
         )),
@@ -340,7 +341,7 @@ CASES.append(Case(
             path="/vpc/v1/subnets",
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                   "name": "sub-hb-{{runId}}", "zoneId": "{{existingZoneId}}",
-                  "v4CidrBlocks": ["10.0.0.5/24"]},
+                  "ipv4CidrPrimary": "10.0.0.5/24"},
             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")],
         ),
         _cleanup_net(),
@@ -358,8 +359,7 @@ CASES.append(Case(
             method="POST",
             path="/vpc/v1/subnets",
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{garbageVpcId}}",
-                  "name": "sub-nf-{{runId}}", "zoneId": "{{existingZoneId}}",
-                  "v4CidrBlocks": ["10.10.0.0/24"]},
+                  "name": "sub-nf-{{runId}}", "zoneId": "{{existingZoneId}}"},
             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
                          "pm.test('mentions network', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('network'));"],
         ),
@@ -379,7 +379,7 @@ CASES.append(Case(
             path="/vpc/v1/subnets",
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                   "name": "sub-ov1-{{runId}}", "zoneId": "{{existingZoneId}}",
-                  "v4CidrBlocks": ["10.50.0.0/16"]},
+                  "ipv4CidrPrimary": "10.50.0.0/16"},
             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                          *save_from_response("j.metadata && j.metadata.subnetId", "subId1")],
         ),
@@ -390,7 +390,7 @@ CASES.append(Case(
             path="/vpc/v1/subnets",
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                   "name": "sub-ov2-{{runId}}", "zoneId": "{{existingZoneId}}",
-                  "v4CidrBlocks": ["10.50.5.0/24"]},  # overlaps with /16
+                  "ipv4CidrPrimary": "10.50.5.0/24"},  # overlaps with /16
             test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
                          "pm.test('overlap text', () => pm.expect(pm.response.json().message).to.eql('Subnet CIDRs can not overlap'));"],
         ),
@@ -490,7 +490,9 @@ CASES.append(Case(
         # anchor never changes; additional ranges move via :add/:remove-cidr-blocks.
         # proto3 FieldMask paths are lowerCamelCase in JSON (protojson → snake).
         retry_until_authorized(Step(name="patch-cidr-via-mask", method="PATCH", path="/vpc/v1/subnets/{{subId}}",
-             body={"updateMask": "ipv4CidrPrimary", "ipv4CidrPrimary": "10.31.0.0/24"},
+             # Mask-only, same reason as SUB-UPD-V6-NOOP: the anchor is absent from
+             # UpdateSubnetRequest, so the mask carries the assertion by itself.
+             body={"updateMask": "ipv4CidrPrimary"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('verbatim immutable text', () => pm.expect(pm.response.json().message).to.eql('ipv4_cidr_primary is immutable after Subnet.Create'));"])),
         Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
@@ -525,17 +527,17 @@ CASES.append(Case(
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-acb-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.60.0.0/24"]},
+                   "ipv4CidrPrimary": "10.60.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="add-cidr", method="POST", path="/vpc/v1/subnets/{{subId}}:add-cidr-blocks",
-             body={"v4CidrBlocks": ["10.60.1.0/24"]},
+             body={"ipv4CidrBlocks": ["10.60.1.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="verify", method="GET", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200),
-                          "pm.test('has both cidrs', () => { const c = pm.response.json().v4CidrBlocks; pm.expect(c).to.include('10.60.0.0/24'); pm.expect(c).to.include('10.60.1.0/24'); });"])),
+                          "pm.test('has both cidrs', () => { const c = " + SUBNET_V4_CIDRS + "; pm.expect(c).to.include('10.60.0.0/24'); pm.expect(c).to.include('10.60.1.0/24'); });"])),
         Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -552,8 +554,7 @@ CASES.append(Case(
         *_make_net("lua"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-lua-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.80.0.0/24"]},
+                   "name": "sub-lua-{{runId}}", "zoneId": "{{existingZoneId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
@@ -576,8 +577,7 @@ CASES.append(Case(
         *_make_net("lop"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-lop-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.90.0.0/24"]},
+                   "name": "sub-lop-{{runId}}", "zoneId": "{{existingZoneId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.id", "createOpId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -605,8 +605,7 @@ CASES.append(Case(
         *_make_net("upd"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-upd-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.120.0.0/24"]},
+                   "name": "sub-upd-{{runId}}", "zoneId": "{{existingZoneId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
@@ -630,16 +629,16 @@ CASES.append(Case(
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-rcb-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.140.0.0/24"]},
+                   "ipv4CidrPrimary": "10.140.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="add-cidr", method="POST", path="/vpc/v1/subnets/{{subId}}:add-cidr-blocks",
-             body={"v4CidrBlocks": ["10.140.1.0/24"]},
+             body={"ipv4CidrBlocks": ["10.140.1.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="remove-cidr", method="POST", path="/vpc/v1/subnets/{{subId}}:remove-cidr-blocks",
-             body={"v4CidrBlocks": ["10.140.1.0/24"]},
+             body={"ipv4CidrBlocks": ["10.140.1.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         # verify (GET после remove-cidr) — read-your-writes на СВОЁМ subnet: под параллелью
@@ -648,7 +647,7 @@ CASES.append(Case(
         # (op уже done → cidr снят), затем assert. Sibling verify (add-cidr выше) уже обёрнут.
         retry_until_authorized(Step(name="verify", method="GET", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200),
-                          "pm.test('cidr removed', () => pm.expect(pm.response.json().v4CidrBlocks).to.not.include('10.140.1.0/24'));"])),
+                          "pm.test('cidr removed', () => pm.expect(" + SUBNET_V4_CIDRS + ").to.not.include('10.140.1.0/24'));"])),
         retry_until_authorized(Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
@@ -671,13 +670,13 @@ CASES.append(Case(
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-acbdj-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.150.0.0/24"]},
+                   "ipv4CidrPrimary": "10.150.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
         Step(name="add-overlapping", method="POST",
              path="/vpc/v1/subnets/{{subId}}:add-cidr-blocks",
-             body={"v4CidrBlocks": ["10.151.0.0/24", "10.151.0.5/30"]},
+             body={"ipv4CidrBlocks": ["10.151.0.0/24", "10.151.0.5/30"]},
              test_script=[
                  "pm.test('rejected (400 sync)', () => pm.expect(pm.response.code).to.eql(400));",
                  *assert_grpc_code(3, "INVALID_ARGUMENT"),
@@ -696,8 +695,7 @@ CASES.append(Case(
     steps=[
         Step(name="create-bad-net", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{garbageVpcId}}",
-                   "name": "sub-confnf-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.170.0.0/24"]},
+                   "name": "sub-confnf-{{runId}}", "zoneId": "{{existingZoneId}}"},
              test_script=[
                  *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
                  "pm.test('verbatim Network ... not found', () => pm.expect(pm.response.json().message).to.match(/^Network .* not found$/));",
@@ -714,14 +712,14 @@ CASES.append(Case(
         Step(name="create-first", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-dup-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.180.0.0/24"]},
+                   "ipv4CidrPrimary": "10.180.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId1")]),
         poll_operation_until_done(),
         Step(name="create-dup", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-dup-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.181.0.0/24"]},  # другой CIDR — дубль только по name
+                   "ipv4CidrPrimary": "10.181.0.0/24"},  # другой CIDR — дубль только по name
              test_script=[*assert_status(409), *assert_grpc_code(6, "ALREADY_EXISTS"),
                           "pm.test('mentions already exists', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('already exists'));"]),
         Step(name="cleanup-1", method="DELETE", path="/vpc/v1/subnets/{{subId1}}",
@@ -740,8 +738,7 @@ CASES.append(Case(
         *_make_net("delok"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-delok-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.200.0.0/24"]},
+                   "name": "sub-delok-{{runId}}", "zoneId": "{{existingZoneId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
@@ -763,13 +760,13 @@ CASES.append(Case(
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-acbov-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.210.0.0/24"]},
+                   "ipv4CidrPrimary": "10.210.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
         Step(name="add-overlap-self", method="POST",
              path="/vpc/v1/subnets/{{subId}}:add-cidr-blocks",
-             body={"v4CidrBlocks": ["10.210.0.0/24"]},  # overlaps with existing
+             body={"ipv4CidrBlocks": ["10.210.0.0/24"]},  # overlaps with existing
              test_script=[
                  "pm.test('rejected (400 sync or async FailedPrecondition)', () => pm.expect(pm.response.code).to.be.oneOf([400, 200]));",
              ]),
@@ -789,13 +786,13 @@ CASES.append(Case(
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-rcbnf-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.220.0.0/24"]},
+                   "ipv4CidrPrimary": "10.220.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
         Step(name="rcb-nonexistent", method="POST",
              path="/vpc/v1/subnets/{{subId}}:remove-cidr-blocks",
-             body={"v4CidrBlocks": ["192.168.99.0/24"]},  # never was in subnet
+             body={"ipv4CidrBlocks": ["192.168.99.0/24"]},  # never was in subnet
              test_script=[
                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
              ]),
@@ -856,18 +853,18 @@ CASES.append(Case(
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-rcbst-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.230.0.0/24"]},
+                   "ipv4CidrPrimary": "10.230.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="add-then-remove", method="POST",
              path="/vpc/v1/subnets/{{subId}}:add-cidr-blocks",
-             body={"v4CidrBlocks": ["10.230.1.0/24"]},
+             body={"ipv4CidrBlocks": ["10.230.1.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="remove-it", method="POST",
              path="/vpc/v1/subnets/{{subId}}:remove-cidr-blocks",
-             body={"v4CidrBlocks": ["10.230.1.0/24"]},
+             body={"ipv4CidrBlocks": ["10.230.1.0/24"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         # Bounded read-your-writes retry: RemoveCidrBlocks вернул Operation.done с response=Subnet
@@ -877,8 +874,8 @@ CASES.append(Case(
         # (genuine non-converging 404 после бюджета всё равно FAIL — не маскируется).
         retry_until_authorized(Step(name="verify-state", method="GET", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200),
-                          "pm.test('removed cidr gone', () => pm.expect(pm.response.json().v4CidrBlocks).to.not.include('10.230.1.0/24'));",
-                          "pm.test('primary cidr kept', () => pm.expect(pm.response.json().v4CidrBlocks).to.include('10.230.0.0/24'));"])),
+                          "pm.test('removed cidr gone', () => pm.expect(" + SUBNET_V4_CIDRS + ").to.not.include('10.230.1.0/24'));",
+                          "pm.test('primary cidr kept', () => pm.expect(" + SUBNET_V4_CIDRS + ").to.include('10.230.0.0/24'));"])),
         Step(name="cleanup", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -893,7 +890,6 @@ CASES.append(Case(
 def _sub_body_extra():
     return {
         "networkId": "{{netId}}", "zoneId": "{{existingZoneId}}",
-        "v4CidrBlocks": ["10.41.0.0/24"],
     }
 
 
@@ -929,7 +925,7 @@ CASES.append(pagination_roundtrip("SUB", "/vpc/v1/subnets"))
 # v7: update-per-field wrap'ed в network
 for c in update_happy_per_field("SUB", "/vpc/v1/subnets", "/vpc/v1/subnets",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-     "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.241.0.0/24"]}):
+     "zoneId": "{{existingZoneId}}"}):
     CASES.append(_wrap_with_net("SUB", "v7", c))
 
 CASES.extend(perf_baseline_block("SUB", "/vpc/v1/subnets"))
@@ -941,14 +937,14 @@ CASES.extend(authz_caller_headers_block("SUB", "/vpc/v1/subnets"))
 CASES.append(_wrap_with_net("SUB", "v8m",
     update_happy_multi_field("SUB", "/vpc/v1/subnets", "/vpc/v1/subnets",
         {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-         "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.243.0.0/24"]})))
+         "zoneId": "{{existingZoneId}}"})))
 CASES.append(_wrap_with_net("SUB", "v8f",
     list_filter_match_block("SUB", "/vpc/v1/subnets",
         {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-         "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.244.0.0/24"]})))
+         "zoneId": "{{existingZoneId}}"})))
 for c in neg_invalid_types_block("SUB", "/vpc/v1/subnets",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-     "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.245.0.0/24"]}):
+     "zoneId": "{{existingZoneId}}"}):
     CASES.append(_wrap_with_net("SUB", "v8nt", c))
 CASES.extend(http_method_not_allowed_block("SUB", "/vpc/v1/subnets"))
 CASES.extend(malformed_body_block("SUB", "/vpc/v1/subnets"))
@@ -960,48 +956,29 @@ CASES.extend(malformed_body_block("SUB", "/vpc/v1/subnets"))
 # а не ALREADY_EXISTS.
 for c in update_mask_partial_block("SUB", "/vpc/v1/subnets", "/vpc/v1/subnets",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-     "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.247.0.0/24"]}):
+     "zoneId": "{{existingZoneId}}"}):
     CASES.append(_wrap_with_net("SUB", "v9p", c))
 CASES.append(_wrap_with_net("SUB", "v9pf",
     perf_baseline_get_block("SUB", "/vpc/v1/subnets",
         {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-         "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.248.0.0/24"]})))
+         "zoneId": "{{existingZoneId}}"})))
 CASES.extend(list_total_size_check_block("SUB", "/vpc/v1/subnets"))
 
-# v10: subnet-specific dhcp_options + cidr boundary
-def _sub_dhcp(opts):
-    return {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-            "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.250.0.0/24"],
-            "dhcpOptions": opts}
-
-# VPC-1-43: dhcp_options was REMOVED from Subnet.Create BY DESIGN — the field is
-# silently IGNORED (not accepted, not validated, not persisted). A create carrying
-# dhcpOptions (even a would-be-invalid value) therefore succeeds 200 and the field
-# never appears on the resource. The old DHCP-validation ECP cases (asserting 400
-# on invalid domain/ns/ntp) tested REMOVED behaviour → dropped. Non-persistence is
-# locked at the unit level (subnet dhcp_removed_test.go); this e2e case just pins
-# that dhcp is silently ignored (accepted, NOT rejected).
-_dhcp_inner = Case(
-    id="SUB-CR-DHCP-IGNORED-VPC143",
-    title="VPC-1-43: dhcpOptions silently ignored on Create (removed field) — accepted 200, not validated/rejected",
-    classes=["VAL", "CRUD"],
-    priority="P2",
-    steps=[
-        Step(name="cr-dhcp", method="POST", path="/vpc/v1/subnets",
-             body=dict(_sub_dhcp({"domainName": "!!!", "ntpServers": ["not-an-ip"]}),
-                       name="sub-dhcp-ignored-{{runId}}"),
-             test_script=[
-                 "pm.test('accepted 200 (dhcp silently ignored, not validated/rejected)', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                 *save_from_response("j.id", "opId"),
-                 *save_from_response("j.metadata && j.metadata.subnetId", "subId"),
-             ]),
-        poll_operation_until_done(),
-        Step(name="cleanup", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
-             test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
-    ],
-)
-CASES.append(_wrap_with_net("SUB", "v10dhcpignored", _dhcp_inner))
+# SUB-CR-DHCP-IGNORED-VPC143 — retired 2026-07-28.
+#
+# The case sent `dhcpOptions` on Subnet.Create and asserted 200 with the reading
+# "the removed field is silently ignored, not validated, not rejected". What it
+# actually pinned was the edge's tolerance for keys the request message does not
+# declare — a concession made for the console, not a promise of this API; Kachō's
+# own convention is the opposite (a request field the service does not read has
+# three lawful fates, and "accept and drop" is not among them). Keeping the case
+# turned that concession into a guaranteed contract, and it did so through a
+# subnet fixture, where nothing about subnets was under test.
+#
+# The part of VPC-1-43 that IS a product statement — DHCP knobs are gone from the
+# Subnet projection — is asserted by SUB-CR-V1-DHCP-DROPPED (vpc1.py) reading a
+# real subnet and requiring the property to be absent, and by the unit-level lock
+# in subnet dhcp_removed_test.go. Neither needs a body key nobody reads.
 
 # CIDR prefix boundary: /28 принимается; /29, /30, /31 → 400
 # "Illegal argument Invalid network prefix /N".
@@ -1013,7 +990,7 @@ CASES.append(_wrap_with_net("SUB", "v10cidr28",
         steps=[
             Step(name="cr-prefix-28", method="POST", path="/vpc/v1/subnets",
                  body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                       "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.255.0.0/28"],
+                       "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.255.0.0/28",
                        "name": "sub-cidr-28-{{runId}}"},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
@@ -1032,7 +1009,7 @@ for _n in ("29", "30", "31"):
             steps=[
                 Step(name=f"cr-prefix-{_n}", method="POST", path="/vpc/v1/subnets",
                      body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                           "zoneId": "{{existingZoneId}}", "v4CidrBlocks": [f"10.255.0.0/{_n}"],
+                           "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": f"10.255.0.0/{_n}",
                            "name": f"sub-cidr-{_n}-{{{{runId}}}}"},
                      test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                                   f"pm.test('verbatim text', () => pm.expect(pm.response.json().message).to.eql('Illegal argument Invalid network prefix /{_n}'));"]),
@@ -1050,7 +1027,7 @@ CASES.append(Case(
         Step(name="cr-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-hasad-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.251.0.0/24"]},
+                   "ipv4CidrPrimary": "10.251.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
@@ -1091,7 +1068,7 @@ CASES.append(Case(
         Step(name="cr-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-hasv6ad-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.249.0.0/24"], "v6CidrBlocks": ["fd34:5678:9abc::/64"]},
+                   "ipv4CidrPrimary": "10.249.0.0/24", "ipv6CidrPrimary": "fd34:5678:9abc::/64"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
@@ -1133,7 +1110,7 @@ CASES.append(Case(
         Step(name="cr-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-chain-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.248.0.0/24"]},
+                   "ipv4CidrPrimary": "10.248.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
@@ -1191,7 +1168,7 @@ CASES.append(Case(
         Step(name="cr-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-hasnic-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.253.0.0/24"]},
+                   "ipv4CidrPrimary": "10.253.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
@@ -1227,8 +1204,7 @@ CASES.append(Case(
         *_make_net("delempty"),
         Step(name="cr-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-                   "name": "sub-delempty-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.252.0.0/24"]},
+                   "name": "sub-delempty-{{runId}}", "zoneId": "{{existingZoneId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
@@ -1248,9 +1224,13 @@ CASES.append(Case(
 # Subnet нужен parent network — wrap в _wrap_with_net
 for c in required_fields_matrix("SUB", "/vpc/v1/subnets",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-     "name": "sub-req-{{runId}}", "zoneId": "{{existingZoneId}}",
-     "v4CidrBlocks": ["10.190.0.0/24"]},
-    ["projectId", "networkId", "name", "zoneId", "v4CidrBlocks"]):
+     "name": "sub-req-{{runId}}", "zoneId": "{{existingZoneId}}"},
+    # `v4CidrBlocks` used to sit in this list, which produced SUB-CR-VAL-REQ-V4CIDRBLOCKS —
+    # "omit the required field and expect a rejection" for a field CreateSubnetRequest does
+    # not have (retired VPC-1 F7) and never required. Omitting a key the edge already drops
+    # changes nothing about the request, so the case could only ever pass. Dropped, along
+    # with the matching literal in the body above.
+    ["projectId", "networkId", "name", "zoneId"]):
     CASES.append(_wrap_with_net("SUB", "req", c))
 CASES.extend(immutable_fields_matrix("SUB", "/vpc/v1/subnets",
     ["project_id", "network_id", "zone_id", "v4_cidr_blocks", "v6_cidr_blocks"]))
@@ -1266,7 +1246,7 @@ def _subnet_cidr_setup_teardown(case):
             Step(name="setup-sub", method="POST", path="/vpc/v1/subnets",
                  body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                        "name": "sub-cidrexp-{{runId}}", "zoneId": "{{existingZoneId}}",
-                       "v4CidrBlocks": ["10.180.0.0/24"]},
+                       "ipv4CidrPrimary": "10.180.0.0/24"},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("j.metadata && j.metadata.subnetId", "addedSubId")]),
             poll_operation_until_done(),
@@ -1294,7 +1274,7 @@ for c in pairwise_subnet_pack():
     CASES.append(_wrap_with_net("SUB", "pw", c))
 for c in security_injection_block("SUB", "/vpc/v1/subnets", "/vpc/v1/subnets",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
-     "zoneId": "{{existingZoneId}}", "v4CidrBlocks": ["10.169.0.0/24"]}):
+     "zoneId": "{{existingZoneId}}"}):
     CASES.append(_wrap_with_net("SUB", "sec", c))
 
 # ---------------------------------------------------------------------------
@@ -1303,24 +1283,24 @@ for c in security_injection_block("SUB", "/vpc/v1/subnets", "/vpc/v1/subnets",
 
 CASES.append(Case(
     id="SUB-CIDR-ADD-V6-OK",
-    title="AddCidrBlocks с v6CidrBlocks → IPv6-блок виден в GET",
+    title="AddCidrBlocks с ipv6CidrBlocks → IPv6-блок виден в GET",
     classes=["CRUD"], priority="P1",
     steps=[
         *_make_net("acb6"),
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-acb6-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.220.0.0/24"]},
+                   "ipv4CidrPrimary": "10.220.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="add-cidr-v6", method="POST", path="/vpc/v1/subnets/{{subId}}:add-cidr-blocks",
-             body={"v6CidrBlocks": ["fd12:3456:789a::/64"]},
+             body={"ipv6CidrBlocks": ["fd12:3456:789a::/64"]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="verify", method="GET", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200),
-                          "pm.test('v6 cidr present', () => pm.expect(pm.response.json().v6CidrBlocks).to.include('fd12:3456:789a::/64'));"])),
+                          "pm.test('v6 cidr present', () => pm.expect(" + SUBNET_V6_CIDRS + ").to.include('fd12:3456:789a::/64'));"])),
         Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -1355,8 +1335,8 @@ CASES.append(Case(
         poll_operation_until_done(),
         retry_until_authorized(Step(name="verify", method="GET", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200),
-                          "pm.test('additional v6 cidr removed', () => pm.expect(pm.response.json().v6CidrBlocks || []).to.not.include('fd12:3456:789c::/64'));",
-                          "pm.test('v6 primary anchor kept', () => pm.expect(pm.response.json().v6CidrBlocks || []).to.include('fd12:3456:789b::/64'));"])),
+                          "pm.test('additional v6 cidr removed', () => pm.expect(" + SUBNET_V6_CIDRS + " || []).to.not.include('fd12:3456:789c::/64'));",
+                          "pm.test('v6 primary anchor kept', () => pm.expect(" + SUBNET_V6_CIDRS + " || []).to.include('fd12:3456:789b::/64'));"])),
         Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -1373,13 +1353,13 @@ CASES.append(Case(
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-acb6hb-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.222.0.0/24"]},
+                   "ipv4CidrPrimary": "10.222.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
         Step(name="add-cidr-v6-hostbits", method="POST",
              path="/vpc/v1/subnets/{{subId}}:add-cidr-blocks",
-             body={"v6CidrBlocks": ["fd12:3456:789a::1/64"]},
+             body={"ipv6CidrBlocks": ["fd12:3456:789a::1/64"]},
              test_script=[
                  "pm.test('rejected (400 sync)', () => pm.expect(pm.response.code).to.eql(400));",
                  *assert_grpc_code(3, "INVALID_ARGUMENT"),
@@ -1405,7 +1385,7 @@ CASES.append(Case(
         Step(name="sub1", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-dup1-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.230.0.0/24"]},
+                   "ipv4CidrPrimary": "10.230.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId1")]),
         poll_operation_until_done(),
@@ -1416,7 +1396,7 @@ CASES.append(Case(
         Step(name="sub2-same-cidr", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-dup2-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.230.0.0/24"]},
+                   "ipv4CidrPrimary": "10.230.0.0/24"},
              test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION")]),
         Step(name="cleanup-sub1", method="DELETE", path="/vpc/v1/subnets/{{subId1}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
@@ -1436,7 +1416,7 @@ CASES.append(Case(
         Step(name="sub1-v6", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-v6ov1-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.231.0.0/24"], "v6CidrBlocks": ["fd12:3456:7800::/64"]},
+                   "ipv4CidrPrimary": "10.231.0.0/24", "ipv6CidrPrimary": "fd12:3456:7800::/64"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId1")]),
         poll_operation_until_done(),
@@ -1444,7 +1424,7 @@ CASES.append(Case(
         Step(name="sub2-v6-overlap", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-v6ov2-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.231.1.0/24"], "v6CidrBlocks": ["fd12:3456:7800::/64"]},
+                   "ipv4CidrPrimary": "10.231.1.0/24", "ipv6CidrPrimary": "fd12:3456:7800::/64"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         Step(name="poll-fail-v6", method="GET", path="/operations/{{opId}}",
              test_script=[
@@ -1481,7 +1461,7 @@ CASES.append(Case(
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-luac-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.232.0.0/24"]},
+                   "ipv4CidrPrimary": "10.232.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
@@ -1551,7 +1531,7 @@ CASES.append(Case(
         Step(name="create-sub", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                    "name": "sub-luaf-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.233.0.0/24"]},
+                   "ipv4CidrPrimary": "10.233.0.0/24"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
@@ -1620,8 +1600,7 @@ CASES.append(Case(
         Step(name="create-fail", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}",
                    "networkId": "net00000000000000000",
-                   "name": "sub-rollback-{{runId}}", "zoneId": "{{existingZoneId}}",
-                   "v4CidrBlocks": ["10.234.0.0/24"]},
+                   "name": "sub-rollback-{{runId}}", "zoneId": "{{existingZoneId}}"},
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
         # List by project must not contain a subnet with the (unique) attempted name —
         # confirms no partial/leaked resource from the failed create.
@@ -1637,96 +1616,39 @@ CASES.append(Case(
 ))
 
 
-# ===========================================================================
-# VPC-1 F7 redesign shim — align this suite with the DEPLOYED Subnet CIDR shape.
-# ===========================================================================
-# The redesign (subnet.proto / subnet_service.proto) split the retired flat
-# "all blocks" array into an immutable primary anchor + additional ranges and
-# renamed the request fields:
-#   * Subnet.Create takes ipv4CidrPrimary / ipv6CidrPrimary (single anchor,
-#     immutable) — the legacy v4_cidr_blocks/v6_cidr_blocks Create fields are
-#     RESERVED (grpc-gateway silently drops the old JSON keys → a CIDR-less
-#     subnet, which is why the pre-redesign bodies here created subnets with no
-#     CIDR and cascaded: host-bits/overlap never fired, address alloc failed).
-#   * AddCidrBlocks/RemoveCidrBlocks take ipv4CidrBlocks / ipv6CidrBlocks
-#     (AddSubnetCidrBlocksRequest fields 2/3) — the old v4/v6CidrBlocks keys map
-#     to nothing → handler 400 "v4_cidr_blocks or v6_cidr_blocks is required".
-#   * The GET/Operation Subnet projection exposes ipv4CidrPrimary (blocks[0]) +
-#     ipv4CidrBlocks (blocks[1:]); the retired .v4CidrBlocks/.v6CidrBlocks fields
-#     are gone (reads returned undefined → the assertion crashed).
-# This post-load pass (a) converts Create bodies to the primary anchor for the
-# whitelisted CIDR-dependent cases only (generated ECP/pairwise/etc. blocks are
-# left CIDR-less on purpose — converting them could newly collide the network-
-# scoped overlap EXCLUDE), (b) renames every add/remove-cidr-blocks verb body,
-# and (c) rewrites every response read of the retired arrays to the union of
-# primary+additional so an added range matches regardless of the split.
-
-# Cases whose Subnet.Create must carry a real primary CIDR anchor (they assert on
-# the CIDR, exercise CIDR validation/overlap, or allocate addresses from it).
-_CIDR_PRIMARY_CASES = {
-    "SUB-CR-CRUD-OK", "SUB-CR-V6-OK", "SUB-CR-VAL-CIDR-HOSTBITS",
-    "SUB-CR-NEG-CIDR-OVERLAP", "SUB-ACB-CRUD-OK", "SUB-RCB-CRUD-OK",
-    "SUB-RCB-CONF-STATE", "SUB-CR-BVA-CIDR-28", "SUB-CR-BVA-CIDR-29",
-    "SUB-CR-BVA-CIDR-30", "SUB-CR-BVA-CIDR-31", "SUB-DEL-NEG-HAS-ADDRESSES",
-    "SUB-DEL-NEG-HAS-V6-ADDRESS", "NET-SUBNET-ADDR-NIC-DELETE-CHAIN",
-    "SUB-DEL-NEG-HAS-NIC", "SUB-CIDR-ADD-V6-OK", "SUB-CR-NEG-DUP-CIDR-EXACT",
-    "SUB-CR-NEG-V6-OVERLAP", "SUB-LUA-CRUD-COUNT", "SUB-LUA-STATE-FRAGMENT",
-    # CIDR expand/shrink pack (gen.py) — setup-sub create carries the anchor.
-    "SUB-ACB-CRUD-ADD-ONE", "SUB-ACB-CRUD-ADD-MULTIPLE", "SUB-ACB-NEG-OVERLAP-SELF",
-    "SUB-ACB-VAL-HOST-BITS", "SUB-RCB-CRUD-REMOVE-ONE", "SUB-RCB-NEG-NOT-PRESENT",
-    "SUB-RCB-NEG-CANNOT-REMOVE-PRIMARY", "SUB-ACB-RCB-ROUNDTRIP",
-}
-
-# Union of primary anchor + additional ranges (matches an added CIDR whether it
-# landed as the primary — first block of a previously-empty family — or as an
-# additional range). JS expression, substituted for the retired array reads.
-_V4_UNION = ("([].concat(pm.response.json().ipv4CidrPrimary ? "
-             "[pm.response.json().ipv4CidrPrimary] : [], "
-             "pm.response.json().ipv4CidrBlocks || []))")
-_V6_UNION = ("([].concat(pm.response.json().ipv6CidrPrimary ? "
-             "[pm.response.json().ipv6CidrPrimary] : [], "
-             "pm.response.json().ipv6CidrBlocks || []))")
+# VPC-1 F7 — the Subnet CIDR shape this suite writes against.
+#
+# Create takes an immutable primary anchor (`ipv4CidrPrimary` / `ipv6CidrPrimary`);
+# further ranges move through the :add-cidr-blocks / :remove-cidr-blocks verb pair
+# (`ipv4CidrBlocks` / `ipv6CidrBlocks`); the read projection exposes the anchor plus
+# the additional ranges, which is what SUBNET_V4_CIDRS / SUBNET_V6_CIDRS join.
+#
+# The retired flat arrays (`v4_cidr_blocks` / `v6_cidr_blocks`) are RESERVED in both
+# request messages, so the edge drops those JSON keys without a word: a body still
+# carrying them creates a subnet with no CIDR at all and answers 200. This suite used
+# to write the retired names and repair them in a post-load pass, which is how
+# thirty-three creates kept shipping a key nobody read — the pass converted only a
+# whitelist and left the rest untouched. The names are now written as the contract
+# has them, and the guard below refuses to generate anything that reverts to the old
+# ones instead of quietly papering over it.
+_RETIRED_SUBNET_CIDR_KEYS = ("v4CidrBlocks", "v6CidrBlocks")
 
 
-def _create_to_primary(body):
-    nb = dict(body)
-    if "v4CidrBlocks" in nb:
-        v = nb.pop("v4CidrBlocks")
-        if v:
-            nb["ipv4CidrPrimary"] = v[0]
-    if "v6CidrBlocks" in nb:
-        v = nb.pop("v6CidrBlocks")
-        if v:
-            nb["ipv6CidrPrimary"] = v[0]
-    return nb
-
-
-def _rename_verb_blocks(body):
-    nb = {}
-    for k, v in body.items():
-        if k == "v4CidrBlocks":
-            nb["ipv4CidrBlocks"] = v
-        elif k == "v6CidrBlocks":
-            nb["ipv6CidrBlocks"] = v
-        else:
-            nb[k] = v
-    return nb
-
-
-def _apply_cidr_redesign(case):
+def _assert_no_retired_cidr_keys(case):
     for st in case.steps:
-        if (case.id in _CIDR_PRIMARY_CASES and st.method == "POST"
-                and st.path == "/vpc/v1/subnets" and st.body):
-            st.body = _create_to_primary(st.body)
-        if st.body and ("add-cidr-blocks" in st.path or "remove-cidr-blocks" in st.path):
-            st.body = _rename_verb_blocks(st.body)
-        if st.test_script:
-            st.test_script = [
-                s.replace("pm.response.json().v4CidrBlocks", _V4_UNION)
-                 .replace("pm.response.json().v6CidrBlocks", _V6_UNION)
-                for s in st.test_script
-            ]
+        if not st.body or not isinstance(st.body, dict):
+            continue
+        if not st.path.startswith("/vpc/v1/subnets"):
+            continue
+        for k in _RETIRED_SUBNET_CIDR_KEYS:
+            if k in st.body:
+                raise AssertionError(
+                    f"{case.id} / {st.name}: {k!r} was retired from the Subnet request "
+                    f"messages (VPC-1 F7) — the edge drops it and the step silently "
+                    f"does nothing. Use ipv4CidrPrimary/ipv6CidrPrimary on Create, "
+                    f"ipv4CidrBlocks/ipv6CidrBlocks on :add-cidr-blocks/:remove-cidr-blocks."
+                )
 
 
 for _c in CASES:
-    _apply_cidr_redesign(_c)
+    _assert_no_retired_cidr_keys(_c)

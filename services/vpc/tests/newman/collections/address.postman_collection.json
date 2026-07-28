@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "ae9a9c99-4eed-4c51-b57e-34ab9eaed37d",
+    "_postman_id": "fccbc4aa-e365-43ea-825f-c619b58de816",
     "name": "kacho-vpc / newman / address",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -209,7 +209,7 @@
           ]
         },
         {
-          "name": "poll-op-900",
+          "name": "poll-op-895",
           "request": {
             "method": "GET",
             "header": [
@@ -313,7 +313,7 @@
           ]
         },
         {
-          "name": "poll-op-901",
+          "name": "poll-op-896",
           "request": {
             "method": "GET",
             "header": [
@@ -417,7 +417,7 @@
           ]
         },
         {
-          "name": "poll-op-902",
+          "name": "poll-op-897",
           "request": {
             "method": "GET",
             "header": [
@@ -468,7 +468,7 @@
           ]
         },
         {
-          "name": "get-rya499",
+          "name": "get-rya498",
           "request": {
             "method": "GET",
             "header": [
@@ -519,7 +519,7 @@
           ]
         },
         {
-          "name": "cleanup-addr-rya500",
+          "name": "cleanup-addr-rya499",
           "request": {
             "method": "DELETE",
             "header": [
@@ -574,7 +574,7 @@
           ]
         },
         {
-          "name": "poll-op-903",
+          "name": "poll-op-898",
           "request": {
             "method": "GET",
             "header": [
@@ -625,7 +625,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya501",
+          "name": "cleanup-sub-rya500",
           "request": {
             "method": "DELETE",
             "header": [
@@ -680,7 +680,7 @@
           ]
         },
         {
-          "name": "poll-op-904",
+          "name": "poll-op-899",
           "request": {
             "method": "GET",
             "header": [
@@ -731,7 +731,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya502",
+          "name": "cleanup-net-rya501",
           "request": {
             "method": "DELETE",
             "header": [
@@ -845,7 +845,7 @@
           ]
         },
         {
-          "name": "poll-op-905",
+          "name": "poll-op-900",
           "request": {
             "method": "GET",
             "header": [
@@ -896,7 +896,7 @@
           ]
         },
         {
-          "name": "get-rya503",
+          "name": "get-rya502",
           "request": {
             "method": "GET",
             "header": [
@@ -988,7 +988,7 @@
           ]
         },
         {
-          "name": "poll-op-906",
+          "name": "poll-op-901",
           "request": {
             "method": "GET",
             "header": [
@@ -1151,7 +1151,7 @@
           ]
         },
         {
-          "name": "poll-op-907",
+          "name": "poll-op-902",
           "request": {
             "method": "GET",
             "header": [
@@ -1255,7 +1255,7 @@
           ]
         },
         {
-          "name": "poll-op-908",
+          "name": "poll-op-903",
           "request": {
             "method": "GET",
             "header": [
@@ -1355,7 +1355,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya504",
+          "name": "cleanup-sub-rya503",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1410,7 +1410,7 @@
           ]
         },
         {
-          "name": "poll-op-909",
+          "name": "poll-op-904",
           "request": {
             "method": "GET",
             "header": [
@@ -1461,7 +1461,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya505",
+          "name": "cleanup-net-rya504",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1911,7 +1911,7 @@
           ]
         },
         {
-          "name": "poll-op-910",
+          "name": "poll-op-905",
           "request": {
             "method": "GET",
             "header": [
@@ -2015,7 +2015,7 @@
           ]
         },
         {
-          "name": "poll-op-911",
+          "name": "poll-op-906",
           "request": {
             "method": "GET",
             "header": [
@@ -2101,7 +2101,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya506",
+          "name": "cleanup-sub-rya505",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2156,7 +2156,7 @@
           ]
         },
         {
-          "name": "poll-op-912",
+          "name": "poll-op-907",
           "request": {
             "method": "GET",
             "header": [
@@ -2207,7 +2207,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya507",
+          "name": "cleanup-net-rya506",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2321,7 +2321,7 @@
           ]
         },
         {
-          "name": "poll-op-913",
+          "name": "poll-op-908",
           "request": {
             "method": "GET",
             "header": [
@@ -2449,7 +2449,7 @@
           ]
         },
         {
-          "name": "poll-op-914",
+          "name": "poll-op-909",
           "request": {
             "method": "GET",
             "header": [
@@ -2789,7 +2789,7 @@
           ]
         },
         {
-          "name": "poll-op-915",
+          "name": "poll-op-910",
           "request": {
             "method": "GET",
             "header": [
@@ -2840,7 +2840,7 @@
           ]
         },
         {
-          "name": "patch-rya508",
+          "name": "patch-rya507",
           "request": {
             "method": "PATCH",
             "header": [
@@ -2904,7 +2904,7 @@
           ]
         },
         {
-          "name": "poll-op-916",
+          "name": "poll-op-911",
           "request": {
             "method": "GET",
             "header": [
@@ -2955,7 +2955,7 @@
           ]
         },
         {
-          "name": "verify-rya509",
+          "name": "verify-rya508",
           "request": {
             "method": "GET",
             "header": [
@@ -3046,7 +3046,7 @@
           ]
         },
         {
-          "name": "poll-op-917",
+          "name": "poll-op-912",
           "request": {
             "method": "GET",
             "header": [
@@ -3126,7 +3126,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"project_id\", \"projectId\": \"x\"}",
+              "raw": "{\"updateMask\": \"project_id\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3299,7 +3299,7 @@
           ]
         },
         {
-          "name": "poll-op-918",
+          "name": "poll-op-913",
           "request": {
             "method": "GET",
             "header": [
@@ -3512,7 +3512,7 @@
           ]
         },
         {
-          "name": "poll-op-919",
+          "name": "poll-op-914",
           "request": {
             "method": "GET",
             "header": [
@@ -3563,7 +3563,7 @@
           ]
         },
         {
-          "name": "del-happy-rya510",
+          "name": "del-happy-rya509",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3618,7 +3618,7 @@
           ]
         },
         {
-          "name": "poll-op-920",
+          "name": "poll-op-915",
           "request": {
             "method": "GET",
             "header": [
@@ -3763,7 +3763,7 @@
           ]
         },
         {
-          "name": "poll-op-921",
+          "name": "poll-op-916",
           "request": {
             "method": "GET",
             "header": [
@@ -3814,7 +3814,7 @@
           ]
         },
         {
-          "name": "get-addr-rya511",
+          "name": "get-addr-rya510",
           "request": {
             "method": "GET",
             "header": [
@@ -3869,7 +3869,7 @@
           ]
         },
         {
-          "name": "gbv-rya512",
+          "name": "gbv-rya511",
           "request": {
             "method": "GET",
             "header": [
@@ -3962,7 +3962,7 @@
           ]
         },
         {
-          "name": "poll-op-922",
+          "name": "poll-op-917",
           "request": {
             "method": "GET",
             "header": [
@@ -5148,7 +5148,7 @@
           ]
         },
         {
-          "name": "poll-op-923",
+          "name": "poll-op-918",
           "request": {
             "method": "GET",
             "header": [
@@ -5199,7 +5199,7 @@
           ]
         },
         {
-          "name": "patch-rya513",
+          "name": "patch-rya512",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5263,7 +5263,7 @@
           ]
         },
         {
-          "name": "poll-op-924",
+          "name": "poll-op-919",
           "request": {
             "method": "GET",
             "header": [
@@ -5314,7 +5314,7 @@
           ]
         },
         {
-          "name": "verify-rya514",
+          "name": "verify-rya513",
           "request": {
             "method": "GET",
             "header": [
@@ -5365,7 +5365,7 @@
           ]
         },
         {
-          "name": "cleanup-rya515",
+          "name": "cleanup-rya514",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5419,7 +5419,7 @@
           ]
         },
         {
-          "name": "poll-op-925",
+          "name": "poll-op-920",
           "request": {
             "method": "GET",
             "header": [
@@ -5529,7 +5529,7 @@
           ]
         },
         {
-          "name": "poll-op-926",
+          "name": "poll-op-921",
           "request": {
             "method": "GET",
             "header": [
@@ -5580,7 +5580,7 @@
           ]
         },
         {
-          "name": "patch-rya516",
+          "name": "patch-rya515",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5644,7 +5644,7 @@
           ]
         },
         {
-          "name": "poll-op-927",
+          "name": "poll-op-922",
           "request": {
             "method": "GET",
             "header": [
@@ -5695,7 +5695,7 @@
           ]
         },
         {
-          "name": "verify-rya517",
+          "name": "verify-rya516",
           "request": {
             "method": "GET",
             "header": [
@@ -5746,7 +5746,7 @@
           ]
         },
         {
-          "name": "cleanup-rya518",
+          "name": "cleanup-rya517",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5800,7 +5800,7 @@
           ]
         },
         {
-          "name": "poll-op-928",
+          "name": "poll-op-923",
           "request": {
             "method": "GET",
             "header": [
@@ -5910,7 +5910,7 @@
           ]
         },
         {
-          "name": "poll-op-929",
+          "name": "poll-op-924",
           "request": {
             "method": "GET",
             "header": [
@@ -5961,7 +5961,7 @@
           ]
         },
         {
-          "name": "patch-rya519",
+          "name": "patch-rya518",
           "request": {
             "method": "PATCH",
             "header": [
@@ -6025,7 +6025,7 @@
           ]
         },
         {
-          "name": "poll-op-930",
+          "name": "poll-op-925",
           "request": {
             "method": "GET",
             "header": [
@@ -6076,7 +6076,7 @@
           ]
         },
         {
-          "name": "verify-rya520",
+          "name": "verify-rya519",
           "request": {
             "method": "GET",
             "header": [
@@ -6128,7 +6128,7 @@
           ]
         },
         {
-          "name": "cleanup-rya521",
+          "name": "cleanup-rya520",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6182,7 +6182,7 @@
           ]
         },
         {
-          "name": "poll-op-931",
+          "name": "poll-op-926",
           "request": {
             "method": "GET",
             "header": [
@@ -6522,7 +6522,7 @@
           ]
         },
         {
-          "name": "poll-op-932",
+          "name": "poll-op-927",
           "request": {
             "method": "GET",
             "header": [
@@ -6573,7 +6573,7 @@
           ]
         },
         {
-          "name": "patch-multi-rya522",
+          "name": "patch-multi-rya521",
           "request": {
             "method": "PATCH",
             "header": [
@@ -6637,7 +6637,7 @@
           ]
         },
         {
-          "name": "poll-op-933",
+          "name": "poll-op-928",
           "request": {
             "method": "GET",
             "header": [
@@ -6688,7 +6688,7 @@
           ]
         },
         {
-          "name": "verify-all-rya523",
+          "name": "verify-all-rya522",
           "request": {
             "method": "GET",
             "header": [
@@ -6743,7 +6743,7 @@
           ]
         },
         {
-          "name": "cleanup-rya524",
+          "name": "cleanup-rya523",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6797,7 +6797,7 @@
           ]
         },
         {
-          "name": "poll-op-934",
+          "name": "poll-op-929",
           "request": {
             "method": "GET",
             "header": [
@@ -6907,7 +6907,7 @@
           ]
         },
         {
-          "name": "poll-op-935",
+          "name": "poll-op-930",
           "request": {
             "method": "GET",
             "header": [
@@ -7033,7 +7033,7 @@
           ]
         },
         {
-          "name": "poll-op-936",
+          "name": "poll-op-931",
           "request": {
             "method": "GET",
             "header": [
@@ -7143,7 +7143,7 @@
           ]
         },
         {
-          "name": "poll-op-937",
+          "name": "poll-op-932",
           "request": {
             "method": "GET",
             "header": [
@@ -7194,7 +7194,7 @@
           ]
         },
         {
-          "name": "list-filtered-lst525",
+          "name": "list-filtered-lst524",
           "request": {
             "method": "GET",
             "header": [
@@ -7247,7 +7247,7 @@
           ]
         },
         {
-          "name": "cleanup-rya526",
+          "name": "cleanup-rya525",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7301,7 +7301,7 @@
           ]
         },
         {
-          "name": "poll-op-938",
+          "name": "poll-op-933",
           "request": {
             "method": "GET",
             "header": [
@@ -7764,7 +7764,7 @@
           ]
         },
         {
-          "name": "poll-op-939",
+          "name": "poll-op-934",
           "request": {
             "method": "GET",
             "header": [
@@ -7902,7 +7902,7 @@
           ]
         },
         {
-          "name": "poll-op-940",
+          "name": "poll-op-935",
           "request": {
             "method": "GET",
             "header": [
@@ -8012,7 +8012,7 @@
           ]
         },
         {
-          "name": "poll-op-941",
+          "name": "poll-op-936",
           "request": {
             "method": "GET",
             "header": [
@@ -8063,7 +8063,7 @@
           ]
         },
         {
-          "name": "patch-name-only-rya527",
+          "name": "patch-name-only-rya526",
           "request": {
             "method": "PATCH",
             "header": [
@@ -8127,7 +8127,7 @@
           ]
         },
         {
-          "name": "poll-op-942",
+          "name": "poll-op-937",
           "request": {
             "method": "GET",
             "header": [
@@ -8178,7 +8178,7 @@
           ]
         },
         {
-          "name": "verify-rya528",
+          "name": "verify-rya527",
           "request": {
             "method": "GET",
             "header": [
@@ -8232,7 +8232,7 @@
           ]
         },
         {
-          "name": "cleanup-rya529",
+          "name": "cleanup-rya528",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8286,7 +8286,7 @@
           ]
         },
         {
-          "name": "poll-op-943",
+          "name": "poll-op-938",
           "request": {
             "method": "GET",
             "header": [
@@ -8396,7 +8396,7 @@
           ]
         },
         {
-          "name": "poll-op-944",
+          "name": "poll-op-939",
           "request": {
             "method": "GET",
             "header": [
@@ -8447,7 +8447,7 @@
           ]
         },
         {
-          "name": "get-timed-rya530",
+          "name": "get-timed-rya529",
           "request": {
             "method": "GET",
             "header": [
@@ -8537,7 +8537,7 @@
           ]
         },
         {
-          "name": "poll-op-945",
+          "name": "poll-op-940",
           "request": {
             "method": "GET",
             "header": [
@@ -8742,11 +8742,11 @@
       ]
     },
     {
-      "name": "ADR-CR-VAL-RESERVED-USED-OK — Create address с reserved/used флагами (если разрешено) → 200 или 400",
-      "description": "class:VAL | priority:P2",
+      "name": "ADR-CR-STATE-RESERVED-NOT-SETTABLE-AT-CREATE — Create address не принимает reserved — свежий адрес reserved=false (флаг только через Update)",
+      "description": "class:VAL | class:STATE | priority:P2",
       "item": [
         {
-          "name": "cr-flags",
+          "name": "cr-plain",
           "request": {
             "method": "POST",
             "header": [
@@ -8768,7 +8768,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"adr-flg-{{runId}}\", \"reserved\": true, \"used\": false, \"externalIpv4AddressSpec\": {\"zoneId\": \"{{existingZoneId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"adr-flg-{{runId}}\", \"externalIpv4AddressSpec\": {\"zoneId\": \"{{existingZoneId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8782,7 +8782,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('200 or 400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -8799,7 +8799,7 @@
           ]
         },
         {
-          "name": "poll-op-946",
+          "name": "poll-op-941",
           "request": {
             "method": "GET",
             "header": [
@@ -8844,6 +8844,57 @@
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
                   "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-not-reserved-rya530",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/addresses/{{addrId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "addresses",
+                "{{addrId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('fresh address is not reserved', () => pm.expect(pm.response.json().reserved || false).to.eql(false));"
                 ]
               }
             }
@@ -9010,7 +9061,7 @@
           ]
         },
         {
-          "name": "poll-op-947",
+          "name": "poll-op-942",
           "request": {
             "method": "GET",
             "header": [
@@ -9209,7 +9260,7 @@
           ]
         },
         {
-          "name": "poll-op-948",
+          "name": "poll-op-943",
           "request": {
             "method": "GET",
             "header": [
@@ -9632,7 +9683,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"project_id\", \"projectId\": \"x\"}",
+              "raw": "{\"updateMask\": \"project_id\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9688,7 +9739,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"external_ipv4_address_spec\", \"externalIpv4AddressSpec\": \"x\"}",
+              "raw": "{\"updateMask\": \"external_ipv4_address_spec\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9744,7 +9795,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"internal_ipv4_address_spec\", \"internalIpv4AddressSpec\": \"x\"}",
+              "raw": "{\"updateMask\": \"internal_ipv4_address_spec\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -10270,7 +10321,7 @@
           ]
         },
         {
-          "name": "poll-op-949",
+          "name": "poll-op-944",
           "request": {
             "method": "GET",
             "header": [
@@ -10474,7 +10525,7 @@
           ]
         },
         {
-          "name": "poll-op-950",
+          "name": "poll-op-945",
           "request": {
             "method": "GET",
             "header": [
@@ -10601,7 +10652,7 @@
           ]
         },
         {
-          "name": "poll-op-951",
+          "name": "poll-op-946",
           "request": {
             "method": "GET",
             "header": [
@@ -10852,7 +10903,7 @@
           ]
         },
         {
-          "name": "poll-op-952",
+          "name": "poll-op-947",
           "request": {
             "method": "GET",
             "header": [
@@ -11011,7 +11062,7 @@
           ]
         },
         {
-          "name": "poll-op-953",
+          "name": "poll-op-948",
           "request": {
             "method": "GET",
             "header": [
@@ -11174,7 +11225,7 @@
           ]
         },
         {
-          "name": "poll-op-954",
+          "name": "poll-op-949",
           "request": {
             "method": "GET",
             "header": [
@@ -11386,7 +11437,7 @@
           ]
         },
         {
-          "name": "poll-op-955",
+          "name": "poll-op-950",
           "request": {
             "method": "GET",
             "header": [
@@ -11547,7 +11598,7 @@
           ]
         },
         {
-          "name": "poll-op-956",
+          "name": "poll-op-951",
           "request": {
             "method": "GET",
             "header": [
@@ -11651,7 +11702,7 @@
           ]
         },
         {
-          "name": "poll-op-957",
+          "name": "poll-op-952",
           "request": {
             "method": "GET",
             "header": [
@@ -11808,7 +11859,7 @@
           ]
         },
         {
-          "name": "poll-op-958",
+          "name": "poll-op-953",
           "request": {
             "method": "GET",
             "header": [
@@ -11971,7 +12022,7 @@
           ]
         },
         {
-          "name": "poll-op-959",
+          "name": "poll-op-954",
           "request": {
             "method": "GET",
             "header": [
@@ -12183,7 +12234,7 @@
           ]
         },
         {
-          "name": "poll-op-960",
+          "name": "poll-op-955",
           "request": {
             "method": "GET",
             "header": [
@@ -12448,7 +12499,7 @@
           ]
         },
         {
-          "name": "poll-op-961",
+          "name": "poll-op-956",
           "request": {
             "method": "GET",
             "header": [
@@ -12647,7 +12698,7 @@
           ]
         },
         {
-          "name": "poll-op-962",
+          "name": "poll-op-957",
           "request": {
             "method": "GET",
             "header": [
@@ -12792,7 +12843,7 @@
           ]
         },
         {
-          "name": "poll-op-963",
+          "name": "poll-op-958",
           "request": {
             "method": "GET",
             "header": [
@@ -12896,7 +12947,7 @@
           ]
         },
         {
-          "name": "poll-op-964",
+          "name": "poll-op-959",
           "request": {
             "method": "GET",
             "header": [
@@ -13045,7 +13096,7 @@
           ]
         },
         {
-          "name": "poll-op-965",
+          "name": "poll-op-960",
           "request": {
             "method": "GET",
             "header": [
@@ -13155,7 +13206,7 @@
           ]
         },
         {
-          "name": "poll-op-966",
+          "name": "poll-op-961",
           "request": {
             "method": "GET",
             "header": [
@@ -13261,7 +13312,7 @@
           ]
         },
         {
-          "name": "poll-op-967",
+          "name": "poll-op-962",
           "request": {
             "method": "GET",
             "header": [

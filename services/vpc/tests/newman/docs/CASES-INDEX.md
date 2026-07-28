@@ -136,9 +136,9 @@
 | `ADR-CR-EXT-FALLTHROUGH-V6` | CONF,NEG | P0 | 1 (add) | Split-shape: Address.Create v6 в zone с v4-only default pool → cascade family-skip → `FailedPrecondition` (код 9). После cascade использует `len(V4CIDRBlocks)>0`/`len(V6CIDRBlocks)>0` вместо runtime-парсинга CIDR. Verifies REQ-RESOLVE-01. |
 | `*-CR-CRUD-INT` | CRUD | P1 | 1 (add) | Create internal Address → IP в subnet |
 | `*-CR-CRUD-OK` | CRUD | P1 | 5 (gat,net,rou,sec,sub) | Create subnet → Operation → Subnet visible in GET |
-| `SUB-CR-NO-CIDR-OK` | CRUD | P1 | 1 (sub) | Create Subnet без `v4_cidr_blocks` (только v6 или вообще без IPv4) → 200, CIDR-less Subnet. Verifies REQ-CIDR-08. |
+| `SUB-CR-NO-CIDR-OK` | CRUD | P1 | 1 (sub) | Create Subnet без `ipv4_cidr_primary` (только v6 или вообще без IPv4) → 200, CIDR-less Subnet. Verifies REQ-CIDR-08. |
 | `SUB-CR-NEG-ADDR-INTO-CIDRLESS` | NEG,CONF | P1 | 1 (sub) | Create internal Address в Subnet без IPv4-CIDR → `FailedPrecondition`/`InvalidArgument` (некуда аллоцировать v4-IP). Verifies REQ-CIDR-08. |
-| `SUB-CR-V6-OK` | CRUD | P1 | 1 (sub) | Create Subnet с `v6_cidr_blocks` (IPv6-only или dual-stack) → 200, v6_cidr_blocks виден в GET. Verifies REQ-CIDR-09. |
+| `SUB-CR-V6-OK` | CRUD | P1 | 1 (sub) | Create Subnet с `ipv6_cidr_primary` (IPv6-only или dual-stack) → 200, якорь виден в GET. Verifies REQ-CIDR-09. |
 | `SG-CR-WITH-NETWORK-OK` | CRUD | P1 | 1 (sec) | Create SecurityGroup с валидным `network_id` → 200, network_id виден; SG привязан к сети. Verifies REQ-RES-07. |
 | `SG-NET-01-NEG-CREATE-NO-NETWORK` | VAL,NEG | P0 | 1 (sec) | Create SecurityGroup без `network_id` → sync 400 INVALID_ARGUMENT `network_id required` (Operation НЕ создается; network_id mandatory). Verifies REQ-RES-07. |
 | `SG-NET-02-CREATE-OK` | CRUD | P0 | 1 (sec) | Happy: Create SecurityGroup с валидным `network_id` → Operation done без error → GET echoes `networkId`. Verifies REQ-RES-07. |
@@ -164,15 +164,15 @@
 | `*-CR-NEG-NETWORK-NF` | NEG | P0 | 1 (rou) | Create в несуществующую network → async NotFound |
 | `*-CR-NEG-NETWORK-NOT-FOUND` | NEG | P0 | 1 (sub) | Create в несуществующей network → async NOT_FOUND |
 | `*-CR-NEG-SUBNET-NOT-FOUND` | NEG | P0 | 1 (add) | Create internal с garbage subnetId → async NotFound |
-| `*-CR-PAIRWISE-00` | CRUD,VAL | P2 | 1 (sub) | Pairwise [0]: zone=zone-a prefix=/24 dhcp=True |
-| `*-CR-PAIRWISE-01` | CRUD,VAL | P2 | 1 (sub) | Pairwise [1]: zone=zone-a prefix=/28 dhcp=False |
-| `*-CR-PAIRWISE-02` | CRUD,VAL | P2 | 1 (sub) | Pairwise [2]: zone=zone-a prefix=/16 dhcp=True |
-| `*-CR-PAIRWISE-03` | CRUD,VAL | P2 | 1 (sub) | Pairwise [3]: zone=zone-b prefix=/24 dhcp=False |
-| `*-CR-PAIRWISE-04` | CRUD,VAL | P2 | 1 (sub) | Pairwise [4]: zone=zone-b prefix=/28 dhcp=True |
-| `*-CR-PAIRWISE-05` | CRUD,VAL | P2 | 1 (sub) | Pairwise [5]: zone=zone-b prefix=/16 dhcp=False |
-| `*-CR-PAIRWISE-06` | CRUD,VAL | P2 | 1 (sub) | Pairwise [6]: zone=zone-c prefix=/24 dhcp=True |
-| `*-CR-PAIRWISE-07` | CRUD,VAL | P2 | 1 (sub) | Pairwise [7]: zone=zone-c prefix=/28 dhcp=False |
-| `*-CR-PAIRWISE-08` | CRUD,VAL | P2 | 1 (sub) | Pairwise [8]: zone=zone-c prefix=/16 dhcp=True |
+| `*-CR-PAIRWISE-00` | CRUD,VAL | P2 | 1 (sub) | Pairwise [0]: zone=zone-a prefix=/24 |
+| `*-CR-PAIRWISE-01` | CRUD,VAL | P2 | 1 (sub) | Pairwise [1]: zone=zone-a prefix=/28 |
+| `*-CR-PAIRWISE-02` | CRUD,VAL | P2 | 1 (sub) | Pairwise [2]: zone=zone-a prefix=/16 |
+| `*-CR-PAIRWISE-03` | CRUD,VAL | P2 | 1 (sub) | Pairwise [3]: zone=zone-b prefix=/24 |
+| `*-CR-PAIRWISE-04` | CRUD,VAL | P2 | 1 (sub) | Pairwise [4]: zone=zone-b prefix=/28 |
+| `*-CR-PAIRWISE-05` | CRUD,VAL | P2 | 1 (sub) | Pairwise [5]: zone=zone-b prefix=/16 |
+| `*-CR-PAIRWISE-06` | CRUD,VAL | P2 | 1 (sub) | Pairwise [6]: zone=zone-c prefix=/24 |
+| `*-CR-PAIRWISE-07` | CRUD,VAL | P2 | 1 (sub) | Pairwise [7]: zone=zone-c prefix=/28 |
+| `*-CR-PAIRWISE-08` | CRUD,VAL | P2 | 1 (sub) | Pairwise [8]: zone=zone-c prefix=/16 |
 | `*-CR-SEC-CMD` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: cmd in name → handled, no 500 |
 | `*-CR-SEC-LONGPAYLOAD` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: longpayload in name → handled, no 500 |
 | `*-CR-SEC-NULLBYTE` | NEG,VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Security probe: nullbyte in name → handled, no 500 |
@@ -190,10 +190,8 @@
 | `*-CR-VAL-DHCP-NS-OK` | CRUD,VAL | P2 | 1 (sub) | DHCP options: SUB-CR-VAL-DHCP-NS-OK |
 | `*-CR-VAL-DHCP-NTP-INVALID-IP` | NEG,VAL | P1 | 1 (sub) | DHCP options: SUB-CR-VAL-DHCP-NTP-INVALID-IP |
 | `*-CR-VAL-DHCP-NTP-OK` | CRUD,VAL | P2 | 1 (sub) | DHCP options: SUB-CR-VAL-DHCP-NTP-OK |
-| `*-CR-DHCP-IGNORED-VPC143` | VAL,CRUD | P2 | 1 (sub) | VPC-1-43: dhcpOptions silently ignored on Create (removed field) → accepted 200 |
 | `*-CR-VAL-EMPTY-BODY` | NEG,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Create с пустым body → 400 |
 | `*-CR-VAL-EXT-WITH-SUBNET-FK` | NEG,VAL | P1 | 1 (add) | Create external + internal со заданным subnet_id → 400 oneof |
-| `*-CR-VAL-EXTRA-FIELDS` | VAL | P3 | 1 (net) | Create Network с unknown полем в body → silent ignore (200) или 400 |
 | `*-CR-VAL-PROJECT-REQUIRED` | VAL | P0 | 2 (gat,net) | Create без project → InvalidArgument |
 | `*-CR-VAL-LABELS-INVALID-KEY-CHAR` | VAL | P1 | 6 (add,gat,net,rou,sec,sub) | Create с invalid char в label key → 400 |
 | `*-CR-VAL-LABELS-STRING-TYPE` | NEG,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Create с labels=строка (вместо object) → 400 InvalidArgument |
@@ -209,9 +207,8 @@
 | `*-CR-VAL-REQ-PROJECTID` | VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Create без required поля 'projectId' → 400 InvalidArgument |
 | `*-CR-VAL-REQ-NAME` | VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Create без required поля 'name' → 400 InvalidArgument |
 | `*-CR-VAL-REQ-NETWORKID` | VAL | P0 | 3 (rou,sec,sub) | Create без required поля 'networkId' → 400 InvalidArgument |
-| `*-CR-VAL-REQ-V4CIDRBLOCKS` | VAL | P0 | 1 (sub) | Create без required поля 'v4CidrBlocks' → 400 InvalidArgument |
 | `*-CR-VAL-REQ-ZONEID` | VAL | P0 | 1 (sub) | Create без required поля 'zoneId' → 400 InvalidArgument |
-| `*-CR-VAL-RESERVED-USED-OK` | VAL | P2 | 1 (add) | Create address с reserved/used флагами (если разрешено) → 200 или 400 |
+| `*-CR-STATE-RESERVED-NOT-SETTABLE-AT-CREATE` | VAL,STATE | P2 | 1 (add) | Create address не принимает reserved — свежий адрес читается reserved=false (флаг только через Update) |
 | `*-CR-VAL-ROUTE-EMPTY-HOP` | NEG,VAL | P1 | 1 (rou) | static_routes validation: RT-CR-VAL-ROUTE-EMPTY-HOP |
 | `*-CR-VAL-ROUTE-EMPTY-PREFIX` | NEG,VAL | P1 | 1 (rou) | static_routes validation: RT-CR-VAL-ROUTE-EMPTY-PREFIX |
 | `*-CR-VAL-ROUTE-INVALID-HOP` | NEG,VAL | P1 | 1 (rou) | static_routes validation: RT-CR-VAL-ROUTE-INVALID-HOP |

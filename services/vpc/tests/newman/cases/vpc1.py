@@ -273,7 +273,7 @@ CASES.append(Case(
             # proto3 FieldMask paths are lowerCamelCase in JSON (protojson converts to
             # snake internally); a snake_case path with '_' fails FieldMask parse before
             # reaching the handler immutable-switch.
-            body={"updateMask": "ipv4CidrBlocks", "ipv4CidrBlocks": ["10.99.0.0/16"]},
+            body={"updateMask": "ipv4CidrBlocks"},
             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                          "pm.test('immutable-text after Network.Create', () => "
                          "pm.expect(pm.response.json().message).to.match(/is immutable after Network\\.Create$/));"]),
@@ -293,7 +293,7 @@ CASES.append(Case(
         poll_operation_until_done(),
         retry_until_authorized(Step(name="patch-project-immutable", method="PATCH", path="/vpc/v1/networks/{{netId}}",
             # FieldMask path lowerCamelCase (protojson → snake); snake_case fails parse.
-            body={"updateMask": "projectId", "projectId": "{{_suiteProjectCrossId}}"},
+            body={"updateMask": "projectId"},
             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                          "pm.test('verbatim immutable text', () => "
                          "pm.expect(pm.response.json().message).to.eql('project_id is immutable after Network.Create'));"]),
@@ -587,7 +587,7 @@ CASES.append(Case(
         poll_operation_until_done(),
         retry_until_authorized(Step(name="patch-zone-immutable", method="PATCH", path="/vpc/v1/subnets/{{subId}}",
             # FieldMask path lowerCamelCase (protojson → snake); snake_case fails parse.
-            body={"updateMask": "zoneId", "zoneId": "{{existingZoneAltId}}"},
+            body={"updateMask": "zoneId"},
             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                          "pm.test('verbatim immutable text', () => "
                          "pm.expect(pm.response.json().message).to.eql('zone_id is immutable after Subnet.Create'));"]),
@@ -611,7 +611,7 @@ CASES.append(Case(
         poll_operation_until_done(),
         retry_until_authorized(Step(name="patch-network-immutable", method="PATCH", path="/vpc/v1/subnets/{{subId}}",
             # FieldMask path lowerCamelCase (protojson → snake); snake_case fails parse.
-            body={"updateMask": "networkId", "networkId": "{{netId}}"},
+            body={"updateMask": "networkId"},
             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                          "pm.test('verbatim immutable text', () => "
                          "pm.expect(pm.response.json().message).to.eql('network_id is immutable after Subnet.Create'));"]),
@@ -828,29 +828,29 @@ CASES.append(Case(
 # verifies VPC-1-43
 CASES.append(Case(
     id="SUB-CR-V1-DHCP-DROPPED",
-    title="Subnet DhcpOptions снят by design — dhcpOptions отсутствует в read; попытка задать в теле игнорируется/reject (F9)",
+    title="Subnet DhcpOptions снят by design — dhcpOptions отсутствует в проекции чтения (F9)",
     classes=["CONF", "NEG"], priority="P2",
     steps=[
         _net_create_step("dhcp", v4=[_SUPERNET_V4]),
         poll_operation_until_done(),
-        # dhcpOptions в теле — reserved-поле: gateway silent-ignore (200) ЛИБО unknown-field (400).
-        Step(name="cr-with-dhcp", method="POST", path="/vpc/v1/subnets",
+        # The body used to carry `dhcpOptions` and accept either 200 or 400 for it.
+        # `dhcp_options` is RESERVED in CreateSubnetRequest, so the edge discards the
+        # key: the request that reached the service was this one, and an assertion
+        # that admits both outcomes decided nothing either way. What the redesign
+        # actually promises is below — the field is gone from the resource — and that
+        # is asserted on a subnet built the way the contract says.
+        Step(name="cr-subnet", method="POST", path="/vpc/v1/subnets",
              body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}", "name": "v1dhcp-{{runId}}",
-                   "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.{{vpc1oct}}.0.0/24",
-                   "dhcpOptions": {"domainName": "test.local"}},
-             test_script=["pm.test('dhcpOptions accepted-ignored or rejected', () => "
-                          "pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                   "zoneId": "{{existingZoneId}}", "ipv4CidrPrimary": "10.{{vpc1oct}}.0.0/24"},
+             test_script=[*assert_status(200),
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
-        # Если подсеть создана — read НЕ несёт dhcpOptions (field-absence, by design).
+        # read НЕ несёт dhcpOptions (field-absence, by design).
         retry_until_authorized(Step(name="get-no-dhcp", method="GET", path="/vpc/v1/subnets/{{subId}}",
-            test_script=["pm.test('get 200 or 404 (if dhcp rejected create)', () => "
-                         "pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
-                         "if (pm.response.code === 200) {",
-                         "  pm.test('no dhcpOptions on public Subnet', () => "
-                         "pm.expect(pm.response.json()).to.not.have.property('dhcpOptions'));",
-                         "}"]),
+            test_script=[*assert_status(200),
+                         "pm.test('no dhcpOptions on public Subnet', () => "
+                         "pm.expect(pm.response.json()).to.not.have.property('dhcpOptions'));"]),
             retry_on=(403,)),
         _cleanup_subnet(),
         poll_operation_until_done(),

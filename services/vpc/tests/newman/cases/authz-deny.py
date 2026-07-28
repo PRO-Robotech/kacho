@@ -267,9 +267,12 @@ define_resource_cases("route-table", "routeTables", create_body_extra={
 define_resource_cases("security-group", "securityGroups", create_body_extra={
     "networkId": "{{seedNetworkA1Id}}"
 })
-# Gateway
+# Gateway. `sharedEgressGatewaySpec` is the Create-side oneof branch
+# (CreateGatewayRequest field 5); `sharedEgressGateway` is what the READ projection
+# calls it, and sending that name meant the edge dropped it and the permitted
+# subject created a gateway with no configuration at all.
 define_resource_cases("gateway", "gateways", create_body_extra={
-    "sharedEgressGateway": {}
+    "sharedEgressGatewaySpec": {}
 })
 # NetworkInterface
 define_resource_cases("nic", "networkInterfaces", create_body_extra={

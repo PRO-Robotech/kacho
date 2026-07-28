@@ -120,7 +120,7 @@ Malformed JSON → `400`. Неверный тип поля (`description`=чис
 Тело ответа на JSON-transcoding-ошибку: контракт Kachō отдает plain-text, наш api-gateway — JSON
 `{code,message}` (поведение runtime-библиотеки grpc-gateway; известное расхождение,
 `07-known-divergences.md`, раздел 4) → кейсы `*-CR-VAL-DESC-INT-TYPE`/`-LABELS-STRING-TYPE`/`ADR-CR-VAL-BOTH-SPEC` defensive (`400` + непустое тело).
-- Validated-by: `*-CR-VAL-MALFORMED-JSON`, `*-CR-VAL-DESC-INT-TYPE`, `*-CR-VAL-LABELS-STRING-TYPE`, `*-CR-VAL-NAME-NULL`, `*-CR-VAL-EMPTY-BODY`, `*-CR-VAL-EXTRA-FIELDS`, `ADR-CR-VAL-BOTH-SPEC`
+- Validated-by: `*-CR-VAL-MALFORMED-JSON`, `*-CR-VAL-DESC-INT-TYPE`, `*-CR-VAL-LABELS-STRING-TYPE`, `*-CR-VAL-NAME-NULL`, `*-CR-VAL-EMPTY-BODY`, `ADR-CR-VAL-BOTH-SPEC`
 - Проверка: grpc-gateway transcoding (api-gateway) + handler-слой; protobuf JSON-unmarshal поведение.
 
 ### REQ-VAL-03 — description ≤ 256, labels ≤ 64 пар, label-key regex [P1]
@@ -241,7 +241,7 @@ Subnet с IPv4 CIDR-префиксом длиннее `/28` (`/29`, `/30`, `/31`
 ### REQ-IPAM-02 — external Address → IP из резолвленного pool; internal → IP в subnet [P1]
 `Create` external Address (с `zone_id`) → IP выделяется из pool по cascade-резолву (см. `docs/architecture/03-ipam.md`).
 `Create` internal Address → IP в пределах `v4_cidr_blocks` указанного Subnet; explicit IP вне CIDR → `InvalidArgument`.
-- Validated-by: `*-CR-CRUD-EXT`, `*-CR-CRUD-INT`, `*-CR-VAL-RESERVED-USED-OK`
+- Validated-by: `*-CR-CRUD-EXT`, `*-CR-CRUD-INT`, `*-CR-STATE-RESERVED-NOT-SETTABLE-AT-CREATE`
 - Проверка: `internal/service/address.go` doCreate (inline allocate, cascade); `internal/service/address_pool_service.go`.
 
 ### REQ-IPAM-03 — аллокатор race-free [P0]
