@@ -154,6 +154,23 @@ api-gateway:
   hydra:
     jwksUrl: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/.well-known/jwks.json"
     issuer: "https://hydra.api.kacho.cloud"
+    # ─── Revocation path (ADMIN API — not the public issuer above) ──────────
+    # A verified signature proves who minted the token and when it lapses. It
+    # cannot prove the token is still good: a sign-out, a revoked machine key
+    # or a back-channel logout all leave a valid signature behind. Only the
+    # provider knows, and only over its admin API — a separate Service and
+    # port, reachable only in-cluster, so neither address can be derived from
+    # anything else in this block.
+    #
+    # Both WERE derived from the issuer when unset, and no profile set either,
+    # so every stand pointed them at a server that serves neither. The gateway
+    # no longer derives them, and refuses to start production-class while
+    # either is unset — this profile is what keeps that start possible.
+    #
+    # The admin API has no authentication of its own; it is protected by not
+    # being routable. It must never be published outside the cluster.
+    introspectionUrl: "http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445/admin/oauth2/introspect"
+    adminUrl: "http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445"
   # AuthZ: per-RPC IAM Check fan-out, fail-CLOSED on transient IAM errors.
   authz:
     enabled: true
@@ -765,9 +782,15 @@ hydra:
       #
       # This block was ABSENT here, and its absence is not a neutral default:
       # the provider's built-in access-token strategy is `opaque` — a handle
-      # carrying no signature and no claims, verifiable only by calling back to
-      # introspect it, which the gateway does not do. So the canonical
-      # production profile minted tokens the gateway could not verify at all.
+      # carrying no signature and no claims, which the gateway's verifier has
+      # nothing to check. So the canonical production profile minted tokens the
+      # gateway could not verify at all.
+      #
+      # (This note used to add "…verifiable only by introspecting it, which the
+      # gateway does not do". The gateway DOES introspect — see the revocation
+      # block under api-gateway.hydra above — but for revocation, after the
+      # signature has already been verified. Introspection is not, and is not
+      # meant to be, a substitute for a token the verifier can read.)
       # It was declared only in values.dev.yaml, and the profiles are NOT
       # layered (this file renders standalone, never on top of the dev one), so
       # nothing in the dev profile ever reached production. Same class as the
