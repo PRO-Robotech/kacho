@@ -51,11 +51,10 @@
    Толерантность здесь была «формой без содержания» — `oneOf([200,400])` проходил и при молчаливом
    игнорировании фильтра, то есть ровно на том дефекте, ради которого писался.
 
-3. **Legacy `cases/instance.py` (77 кейсов)** таргетит **retired YC-поверхность** (`platformId`/`resourcesSpec`/
-   `bootDiskSpec`; 0 redesign-полей) → на `redesign/integration` его Create-кейсы **pre-existing-red**
-   (шлют легаси-sizing без `instanceKind`/`machineTypeId`/`bootSource` → sync `400 instanceKind is required`).
-   Это **не** внесено этой задачей — миграция legacy instance.py на redesign-поверхность = **отдельный scope**
-   (follow-up). Redesign-покрытие живёт в новом `cases/instance-redesign.py`.
+3. ~~**Legacy `cases/instance.py` (77 кейсов)**~~ — **снято 2026-07-28: файла нет.**
+   Этот пункт объявлял 77 pre-existing-red кейсов и follow-up-миграцию для них.
+   `cases/instance.py` в дереве отсутствует; покрытие живёт в `cases/instance-redesign.py`.
+   Заявленной работы не существует — не планировать её по этому пункту.
 
 4. **MachineType-каталог не засеян** на стенде (миграция 0015 — пустая таблица, deploy-seed нет) → каждый
    зависимый кейс **self-seed'ит** mt через `InternalMachineTypeService.Create` (`{{internalBaseUrl}}`
@@ -132,9 +131,15 @@ masking a leak**:
 
 | Case / step | Signature | Disposition |
 |---|---|---|
-| `INST-CR-CRUD-BOOT-DISK-ID-OK` | Get `bootDisk.volumeId == bootDiskId` fails (`null`) — the case's SOLE verification is the storage-MIRROR read-back, which needs a LIVE `kacho-storage InternalVolumeService`; compute-only newman runs `storage.enabled=false` (NoopStorageClient) → boot volume not materialized | **WHITELISTED** (`^INST-CR-CRUD-BOOT-DISK-ID-OK`), RED-by-CI-INFRA — same class as `INST-AD-`/`INST-DD-`; GREEN in umbrella-e2e with storage. Assertion still runs+reports. `PRO-Robotech/kacho#10` |
-| `INST-CR-CRUD-OK::get` | `bootDisk present with volumeId` fails (`bootDisk=null`) while the case's 10 other assertions (id/prefix, project/zone/platform, RUNNING, fqdn, cores, no-NIC, createdAt) pass | **ASSERT RELAXED** (not whitelisted) — the single `volumeId` assert now tolerates `null` (storage-off, #10) **OR** a valid `epd`-id (storage live); a malformed value still FAILS. The rich case stays fully gated. `PRO-Robotech/kacho#10` |
-| `INST-DEL-CONF-RESPONSE-EMPTY::assert-empty` | `response is Empty-like object: expected 1 to deeply equal 0` | **TEST-ASSERTION FIXED** (not whitelisted, not a product bug) — `Operation.response` is `Any(google.protobuf.Empty)`, whose canonical proto3-JSON is `{"@type":".../Empty","value":{}}`; the old assert filtered only `@type` and tripped on the `value` wrapper. Now asserts `@type`==Empty + `value` empty + no domain fields. |
+> **Three rows removed 2026-07-28.** They described `INST-CR-CRUD-BOOT-DISK-ID-OK`,
+> `INST-CR-CRUD-OK::get` and `INST-DEL-CONF-RESPONSE-EMPTY::assert-empty`. None of those
+> case names exists anywhere in this service's `cases/` or `collections/` any more — the
+> instance suite was rewritten as `instance-redesign` (`INST-RD-*`) and the attach/boot
+> coverage left with the storage split. The first row also claimed a live whitelist entry
+> that was pruned from the gate on 2026-07-26. A reader budgeting work from this table
+> would have counted one masked red and two dispositions that have no subject.
+> `PRO-Robotech/kacho#10` should be re-checked on the redesigned suite's own evidence.
+
 | `OP-GET-NEG-UNKNOWN-PREFIX::get-garbage-prefix` | `mentions prefix: expected 'invalid operation id "…"' to include 'prefix'` | **TEST-ASSERTION FIXED** — the product is convention-correct (api-conventions «malformed id → `invalid <res> id <X>`»); the message is `invalid operation id "<X>"`, not the internal term 'prefix'. Assert now checks the convention text; status 400 + gRPC code 3 already passed. |
 
 ## Parity-добор — `test/compute-newman-parity-qa` (qa-test-engineer, 2026-07-21)
