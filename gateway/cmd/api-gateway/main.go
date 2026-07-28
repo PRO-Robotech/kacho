@@ -238,6 +238,7 @@ func main() {
 				HydraIntrospectionURL: cfg.ResolvedHydraIntrospectionURL(),
 				MaxEntries:            cfg.IntrospectionCacheSize,
 				TTL:                   time.Duration(cfg.IntrospectionCacheTTLSeconds) * time.Second,
+				Timeout:               time.Duration(cfg.IntrospectionTimeoutMs) * time.Millisecond,
 			})
 			if ierr != nil {
 				log.Fatalf("introspection cache: %v", ierr)

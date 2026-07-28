@@ -275,6 +275,17 @@ type Config struct {
 	// IntrospectionCacheSize — LRU capacity для introspection cache (entries).
 	IntrospectionCacheSize int `envconfig:"KACHO_INTROSPECTION_CACHE_SIZE" default:"10000"`
 
+	// IntrospectionTimeoutMs — hard budget for ONE round-trip to the provider's
+	// introspection endpoint (ms). This is a blocking step on the request path,
+	// so the number is what an unwell provider may cost a request-handling
+	// goroutine. A healthy round-trip is a single intra-cluster POST over one
+	// indexed lookup — tens of milliseconds — and the cache above means a given
+	// token pays it at most once per TTL. 1s is roughly ten times the healthy
+	// case: room for a cold connection or a stalled lookup, while a brown-out
+	// cannot pin the gateway's capacity waiting on answers no caller is still
+	// there to receive.
+	IntrospectionTimeoutMs int `envconfig:"KACHO_INTROSPECTION_TIMEOUT_MS" default:"1000"`
+
 	// HookSharedSecret — shared secret для Hydra→kacho-iam back-channel logout
 	// (RFC 8254). Также используется как HMAC для CAEP push payload integrity.
 	HookSharedSecret string `envconfig:"KACHO_IAM_HOOK_TOKEN" default:""`
