@@ -369,8 +369,11 @@ CASES.append(Case(
     id="IMG-UPD-MASK-IMMUTABLE-FAMILY",
     title="Update image mask=family → 400 InvalidArgument (immutable) или 404",
     classes=["STATE", "VAL", "CONF"], priority="P1",
+    # Утверждение ведёт МАСКА: `family` вне known-set UpdateImageRequest (сообщение несёт
+    # только name/description/minDiskSize/labels), и отвергается именно маска. Одноимённый
+    # ключ в теле полем запроса не является, до сервиса не доходит и на исход не влияет.
     steps=[Step(name="patch-imm-fam", method="PATCH", path=f"{IMAGES}/{{{{garbageImageId}}}}",
-                body={"updateMask": "family", "family": "newfam"},
+                body={"updateMask": "family"},
                 test_script=["pm.test('rejected (400 immutable or 404)', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
                              "if (pm.response.code === 400) { const j = pm.response.json(); pm.test('code 3', () => pm.expect(j.code).to.eql(3)); }"])],
 ))
@@ -395,9 +398,14 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="IMG-UPD-MASK-EMPTY-FULL-PATCH",
-    title="Update image без update_mask → full PATCH; immutable family из body silently игнорируется",
-    # ECP: mask=empty (full-PATCH класс) · state-transition: mutable(description) применяется,
-    # immutable(family) молча игнорируется (update_mask discipline api-conventions).
+    title="Update image без update_mask → full PATCH: применяются ВСЕ мутабельные поля тела "
+          "(description+labels), family образа это не касается",
+    # ECP: mask=empty (full-PATCH класс) · state-transition: мутабельные поля применяются.
+    # Прежняя формулировка — «immutable family из body молча игнорируется» — была
+    # недоказуема ЭТИМ запросом: `family` полем UpdateImageRequest не является, поэтому
+    # ключ умирал на краю и mask-дисциплину сервиса не проверял. Чтобы «full PATCH» был
+    # утверждением, тело меняет ДВА мутабельных поля; проверка «family не изменилась»
+    # оставлена — она локает, что full-PATCH не задевает атрибуты вне контракта запроса.
     classes=["STATE", "VAL"], priority="P2",
     steps=[
         *_pre_disk("empmask"),
@@ -408,14 +416,15 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.imageId", "imageId")]),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="patch-no-mask", method="PATCH", path=f"{IMAGES}/{{{{imageId}}}}",
-             body={"description": "full-patch-desc", "family": "changed-fam-{{runId}}"},
+             body={"description": "full-patch-desc", "labels": {"tier": "gold"}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(), assert_op_success(),
         Step(name="verify", method="GET", path=f"{IMAGES}/{{{{imageId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('description applied', () => pm.expect(j.description).to.eql('full-patch-desc'));",
-                          "pm.test('family NOT changed (immutable, silently ignored)', () => pm.expect(j.family).to.match(/^empm-fam-/));"]),
+                          "pm.test('labels applied (второе мутабельное поле той же пустой маски)', () => pm.expect(j.labels && j.labels.tier).to.eql('gold'));",
+                          "pm.test('family NOT changed', () => pm.expect(j.family).to.match(/^empm-fam-/));"]),
         Step(name="cleanup", method="DELETE", path=f"{IMAGES}/{{{{imageId}}}}", test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         *_cleanup_base_disk(),

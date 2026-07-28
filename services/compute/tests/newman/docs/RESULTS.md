@@ -8,7 +8,7 @@
 | Collection | Cases | Покрытие COMP-1-NN |
 |---|---|---|
 | `machine-type` | 12 | F7 sync sizing-каталог: Get/List (18/19), malformed-first + NOT_FOUND (20), admin-CRUD на Internal* :8081 (21), pageSize/token BVA |
-| `instance-redesign` | 44 | легаси-поля Create отвергаются, не игнорируются (`INST-RD-CR-VAL-UNSUPPORTED-*`, 6 полей + «все шесть разом»; см. `docs/architecture/07-known-divergences.md` §7.1) · F1 kind-oneof XOR (01-04) · F2 machineTypeId single-channel (05-08) · F3 bootSource grammar (09-11) · F4 SA Referrer (12-13) · F5 unreachable-guard (14) · F6 launch-skeleton (16-17) · F8 malformed-first (22) · F9/F11 field-absence (24/28) · F10 Update mutability + STOPPED-gate (04/25/26/27) · F12 dup-name (30) · F13 zone peer-validate (33) · F14 List authz+pagination+filter (34-36) · F15 Delete hard-delete + name-recycle (37-38) |
+| `instance-redesign` | 43 | легаси-поля Create отвергаются, не игнорируются (`INST-RD-CR-VAL-UNSUPPORTED-*`, 6 полей + «все шесть разом»; см. `docs/architecture/07-known-divergences.md` §7.1) · F1 kind-oneof XOR (01-04) · F2 machineTypeId single-channel (05-08) · F3 bootSource grammar (09-11) · F4 SA Referrer (12-13) · F5 unreachable-guard (14) · F6 launch-skeleton (16-17) · F8 malformed-first (22) · F9/F11 field-absence (24/28) · F10 Update mutability + STOPPED-gate (04/25/26/27) · F12 dup-name (30) · F13 zone peer-validate (33) · F14 List authz+pagination+filter (34-36) · F15 Delete hard-delete + name-recycle (37-38) |
 
 Прогон — **CI** (`deploy/scripts/newman-e2e.sh`, локальный env-blocked: harness убивает port-forward).
 Ожидание: все кейсы **зелёные** (поведение сверено с реализацией `services/compute/internal/service/
@@ -21,10 +21,21 @@
    (`platformId`/`resourcesSpec`/ретайренные brand-flavoured поля `MetadataOptions`/`hostGroupId`)
    **молча отбрасываются**, а НЕ `400 unknown field`.
    Поэтому acceptance-формулировка F2/F9 «легаси-поле → 400 unknown field» **не наблюдаема** через gateway.
-   Retire залочен наблюдаемыми инвариантами: **single-channel** (`INST-RD-CR-VAL-RAW-SIZING-RETIRED`:
-   legacy-only sizing → `400 machineTypeId is required`) + **field-absence на выводе** (`INST-RD-GET-CONF-FIELD-ABSENCE`).
+   Retire залочен наблюдаемыми инвариантами: **single-channel** (`INST-RD-CR-VAL-MT-REQUIRED`:
+   sizing без `machineTypeId` → `400 machineTypeId is required`) + **field-absence на выводе**
+   (`INST-RD-GET-CONF-FIELD-ABSENCE`) + **явный отказ по имени поля** для полей, которые в контракте
+   остались, но сервисом не читаются (`INST-RD-CR-VAL-UNSUPPORTED-*`, 400 + `fieldViolation`).
    Исключение: output-only поля `bootSource.name°/resolvedDigest°` — **known** proto-поля, реджектятся
    **сервисом** (не gateway) → `INST-RD-CR-VAL-BOOTSOURCE-OUTPUT-FIELDS` строго локает 400.
+
+   **Обновление (эта ветка).** Прежний окольный лок `INST-RD-CR-VAL-RAW-SIZING-RETIRED` **снят**:
+   его предметом была сама снисходительность края, и показать её он мог, только сам отправив ключ вне
+   контракта. Этот класс теперь меряется статически и по всем suite'ам сразу —
+   `gateway/internal/restmux/newman_body_contract_test.go` сверяет ключи тела каждого newman-запроса с
+   полями обслуживающего его message. Плюс `platformId`/`resourcesSpec`/`bootDiskSpec` зарезервированы
+   в `CreateInstanceRequest` по номеру **и имени**, то есть вернуться в контракт не могут по построению.
+   Чего в покрытии по-прежнему нет: «край НАЗЫВАЕТ старому клиенту снятое поле» — этот кейс станет
+   написуемым, когда край начнёт отвергать неизвестные ключи (сегодня ожидание пришлось бы выдумать).
 
 2. **F14 filter-whitelist — РАЗРЕШЕНО (2026-07-27), фаза остаётся `name=`.** Acceptance F14/COMP-1-36
    заявлял whitelist `name=`/`placementGroupId=`/`instanceKind=`; реализация (`instance_repo.go`:

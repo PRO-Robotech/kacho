@@ -245,20 +245,39 @@ CASES.append(Case(
                              "pm.test('text: machineTypeId is required', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('machinetypeid is required'));"])],
 ))
 
-CASES.append(Case(
-    id="INST-RD-CR-VAL-RAW-SIZING-RETIRED",
-    title="COMP-1-07: Create с легаси raw-sizing (platformId/resourcesSpec/coreFraction) БЕЗ machineTypeId → "
-          "sync 400 'machineTypeId is required' — raw channel retired (ban #2); gateway DiscardUnknown "
-          "молча отбрасывает легаси-поля, единственный канал sizing = machineTypeId. "
-          "[verifies COMP-1-07 · error-guessing retired-field]",
-    classes=["VAL", "NEG"], priority="P1",
-    steps=[Step(name="cr-raw-sizing", method="POST", path=INSTANCES,
-                body={**{k: v for k, v in _vm_body("raw", mt="").items() if k != "machineTypeId"},
-                      "platformId": "standard-v3",
-                      "resourcesSpec": {"cores": 2, "memory": 2147483648, "coreFraction": 100}},
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('text: machineTypeId is required (raw sizing has no effect)', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('machinetypeid is required'));"])],
-))
+# INST-RD-CR-VAL-RAW-SIZING-RETIRED — СНЯТ (предмет исчерпан).
+#
+# Кейс слал снятые редизайном `platformId`/`resourcesSpec` и ожидал
+# `400 machineTypeId is required`. Его собственным предметом была СНИСХОДИТЕЛЬНОСТЬ
+# КРАЯ: он существовал потому, что acceptance-формулировка «легаси-поле → 400 unknown
+# field» через край не наблюдаема (тело разбирается с DiscardUnknown, ключ вне контракта
+# молча выбрасывается), и «ретайр» приходилось локать окольно — через требование другого
+# поля. То есть единственное, что кейс добавлял сверх соседей, он мог показать, только
+# сам совершив нарушение, которое теперь меряется статически.
+#
+# Что покрывает предмет после снятия:
+#   * `machineTypeId` — единственный канал sizing и он обязателен:
+#     INST-RD-CR-VAL-MT-REQUIRED (то же 400 + тот же текст; `machineTypeId: ""` и
+#     полностью отсутствующий ключ на wire неразличимы — protojson даёт скаляру
+#     нулевое значение, так что отдельного класса ввода тут нет);
+#   * `platformId`/`resourcesSpec`/`bootDiskSpec` не вернутся в контракт:
+#     CreateInstanceRequest резервирует их по номеру И ИМЕНИ (`reserved`) — protobuf
+#     не даст переиспользовать имя, это сильнее любого чёрного ящика;
+#   * поле, на которое сервис не смотрит, отвергается явно и с именем поля:
+#     семейство INST-RD-CR-VAL-UNSUPPORTED-* (6 полей + «все шесть разом»,
+#     400 + fieldViolation) — нормативный исход по api-conventions
+#     §«Принято-и-проигнорировано — ЗАПРЕЩЕНО»;
+#   * ни одна фикстура не шлёт краю ключ вне контракта: гейт
+#     gateway/internal/restmux/newman_body_contract_test.go, по всем suite'ам сразу.
+#
+# Чего покрытие ещё НЕ содержит и почему это не восстанавливается здесь: «старый клиент
+# прислал снятое имя → край НАЗЫВАЕТ ему поле», то есть тот самый нормативный исход, но
+# на границе. Сегодня край такой запрос принимает молча, поэтому написать этот кейс
+# нечем: ожидание пришлось бы выдумать. Он должен появиться, когда край начнёт отвергать
+# неизвестные ключи, — и тогда ему понадобится способ жить рядом с гейтом (осознанная
+# проба обязана слать «плохое» тело). Симметричная возможность у гейта уже есть для
+# маршрутов: пробы `*-METHOD-PUT-NOT-ALLOWED` он относит в отдельную корзину
+# `unattributed` и вердикта по ним не выносит. Предложение — в отчёте ветки.
 
 CASES.append(Case(
     id="INST-RD-CR-VAL-CPU-GUARANTEE-OVER",
@@ -647,16 +666,23 @@ CASES.append(Case(
         # как "FieldMask.paths contains invalid path" ДО backend'а. camelCase → gateway
         # конвертирует в snake-путь, и compute Update-хендлер уже кейсует на нём
         # (instanceUpdateKnown/immutable-switch — instance.go:388/490).
+        # Утверждение в каждом шаге ведёт МАСКА. Одноимённые ключи в теле
+        # (`instanceKind`/`zoneId`/`bootSource`) полями UpdateInstanceRequest не являются —
+        # редизайн оставил в сообщении только мутабельные, — поэтому до сервиса они не
+        # доходили и на исход не влияли. Держать их значило документировать контракт,
+        # которого нет: сегодня безвредно, а при смене порядка проверок превратилось бы
+        # в тихий успех. `machineTypeId` в последнем шаге — наоборот, НАСТОЯЩЕЕ поле
+        # запроса, и оно там нужно: предмет шага — STOPPED-gate на реальном изменении.
         Step(name="upd-kind-immutable", method="PATCH", path=INSTANCES + "/{{instanceId}}",
-             body={"updateMask": "instanceKind", "instanceKind": "CONTAINER"},
+             body={"updateMask": "instanceKind"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('text: instanceKind is immutable', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('instancekind is immutable after instance.create'));"]),
         Step(name="upd-zone-immutable", method="PATCH", path=INSTANCES + "/{{instanceId}}",
-             body={"updateMask": "zoneId", "zoneId": "ru-central1-c"},
+             body={"updateMask": "zoneId"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('text: zoneId is immutable', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('zoneid is immutable after instance.create'));"]),
         Step(name="upd-bootsource-reinstall", method="PATCH", path=INSTANCES + "/{{instanceId}}",
-             body={"updateMask": "bootSource", "bootSource": {"type": "storage.image", "id": "img-x:v2"}},
+             body={"updateMask": "bootSource"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                           "pm.test('text: bootSource cannot be changed via Update; use Reinstall', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('bootsource cannot be changed via update; use reinstall'));"]),
         Step(name="upd-unknown-mask", method="PATCH", path=INSTANCES + "/{{instanceId}}",

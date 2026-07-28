@@ -425,7 +425,15 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="DISK-UPD-MASK-EMPTY-FULL-PATCH",
-    title="Update disk без update_mask → full PATCH; immutable из body silently игнорируются",
+    title="Update disk без update_mask → full PATCH: применяются ВСЕ мутабельные поля тела "
+          "(description+labels), типа/зоны диска это не касается",
+    # Прежняя формулировка — «immutable из body silently игнорируются» — была недоказуема
+    # ЭТИМ запросом: `typeId`/`zoneId` полями UpdateDiskRequest не являются (сообщение
+    # несёт только мутабельные name/description/labels/size/diskPlacementPolicy), поэтому
+    # до сервиса они не доходили и его mask-дисциплину не проверяли. Предмет кейса —
+    # пустая маска как full-object PATCH; чтобы это было утверждением, а не совпадением,
+    # тело меняет ДВА мутабельных поля. Проверки «тип/зона не изменились» оставлены: они
+    # локают, что full-PATCH не задевает атрибуты вне контракта запроса.
     classes=["STATE", "VAL"], priority="P2",
     steps=[
         Step(name="cr", method="POST", path=DISKS, body=_disk_body("emp", typeId="{{existingDiskTypeId}}"),
@@ -433,15 +441,16 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.diskId", "diskId")]),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="patch-no-mask", method="PATCH", path=f"{DISKS}/{{{{diskId}}}}",
-             body={"description": "full-patch-desc", "typeId": "network-hdd", "zoneId": "ru-central1-b"},
+             body={"description": "full-patch-desc", "labels": {"tier": "gold"}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(), assert_op_success(),
         Step(name="verify", method="GET", path=f"{DISKS}/{{{{diskId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('description applied', () => pm.expect(j.description).to.eql('full-patch-desc'));",
-                          "pm.test('typeId NOT changed (immutable, silently ignored)', () => pm.expect(j.typeId).to.eql(pm.environment.get('existingDiskTypeId')));",
-                          "pm.test('zoneId NOT changed (immutable)', () => pm.expect(j.zoneId).to.eql(pm.environment.get('existingZoneId')));"]),
+                          "pm.test('labels applied (второе мутабельное поле той же пустой маски)', () => pm.expect(j.labels && j.labels.tier).to.eql('gold'));",
+                          "pm.test('typeId NOT changed', () => pm.expect(j.typeId).to.eql(pm.environment.get('existingDiskTypeId')));",
+                          "pm.test('zoneId NOT changed', () => pm.expect(j.zoneId).to.eql(pm.environment.get('existingZoneId')));"]),
         Step(name="cleanup", method="DELETE", path=f"{DISKS}/{{{{diskId}}}}", test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
     ],
@@ -451,8 +460,12 @@ CASES.append(Case(
     id="DISK-UPD-MASK-IMMUTABLE-TYPE",
     title="Update disk mask=type_id → 400 InvalidArgument 'type_id is immutable after Disk.Create'",
     classes=["STATE", "VAL", "CONF"], priority="P1",
+    # Утверждение ведёт МАСКА: `type_id` вне known-set UpdateDiskRequest, и отвергается
+    # именно она. Одноимённый ключ в теле полем запроса не является (UpdateDiskRequest
+    # несёт только мутабельные name/description/labels/size/diskPlacementPolicy), до
+    # сервиса не доходит и на исход не влияет — поэтому его здесь нет.
     steps=[Step(name="patch-imm-type", method="PATCH", path=f"{DISKS}/{{{{garbageComputeId}}}}",
-                body={"updateMask": "type_id", "typeId": "network-hdd"},
+                body={"updateMask": "type_id"},
                 # mask immutable отвергается до Get → 400; либо 404 если sync Get срабатывает первым
                 test_script=["pm.test('rejected (400 immutable or 404)', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));",
                              "if (pm.response.code === 400) { const j = pm.response.json(); pm.test('code 3', () => pm.expect(j.code).to.eql(3)); pm.test('message mentions immutable or type', () => pm.expect((j.message||'').toLowerCase()).to.match(/immutable|type/)); }"])],
@@ -462,8 +475,10 @@ CASES.append(Case(
     id="DISK-UPD-MASK-IMMUTABLE-ZONE",
     title="Update disk mask=zone_id → 400 InvalidArgument (immutable)",
     classes=["STATE", "VAL"], priority="P1",
+    # Утверждение ведёт МАСКА (см. DISK-UPD-MASK-IMMUTABLE-TYPE): `zoneId` полем
+    # UpdateDiskRequest не является, в теле был декоративен.
     steps=[Step(name="patch-imm-zone", method="PATCH", path=f"{DISKS}/{{{{garbageComputeId}}}}",
-                body={"updateMask": "zone_id", "zoneId": "ru-central1-b"},
+                body={"updateMask": "zone_id"},
                 test_script=["pm.test('rejected (400 or 404)', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));"])],
 ))
 

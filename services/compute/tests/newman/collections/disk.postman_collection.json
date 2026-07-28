@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "b8da8592-b5ef-443a-82b4-d962fef402c3",
+    "_postman_id": "2b7a958c-411c-4c40-8be2-fea8212da45a",
     "name": "kacho-compute / newman / disk",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -4419,7 +4419,7 @@
       ]
     },
     {
-      "name": "DISK-UPD-MASK-EMPTY-FULL-PATCH — Update disk без update_mask → full PATCH; immutable из body silently игнорируются",
+      "name": "DISK-UPD-MASK-EMPTY-FULL-PATCH — Update disk без update_mask → full PATCH: применяются ВСЕ мутабельные поля тела (description+labels), типа/зоны диска это не касается",
       "description": "class:STATE | class:VAL | priority:P2",
       "item": [
         {
@@ -4545,7 +4545,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"description\": \"full-patch-desc\", \"typeId\": \"network-hdd\", \"zoneId\": \"ru-central1-b\"}",
+              "raw": "{\"description\": \"full-patch-desc\", \"labels\": {\"tier\": \"gold\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4698,8 +4698,9 @@
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('description applied', () => pm.expect(j.description).to.eql('full-patch-desc'));",
-                  "pm.test('typeId NOT changed (immutable, silently ignored)', () => pm.expect(j.typeId).to.eql(pm.environment.get('existingDiskTypeId')));",
-                  "pm.test('zoneId NOT changed (immutable)', () => pm.expect(j.zoneId).to.eql(pm.environment.get('existingZoneId')));"
+                  "pm.test('labels applied (второе мутабельное поле той же пустой маски)', () => pm.expect(j.labels && j.labels.tier).to.eql('gold'));",
+                  "pm.test('typeId NOT changed', () => pm.expect(j.typeId).to.eql(pm.environment.get('existingDiskTypeId')));",
+                  "pm.test('zoneId NOT changed', () => pm.expect(j.zoneId).to.eql(pm.environment.get('existingZoneId')));"
                 ]
               }
             }
@@ -4820,7 +4821,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"type_id\", \"typeId\": \"network-hdd\"}",
+              "raw": "{\"updateMask\": \"type_id\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4871,7 +4872,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"zone_id\", \"zoneId\": \"ru-central1-b\"}",
+              "raw": "{\"updateMask\": \"zone_id\"}",
               "options": {
                 "raw": {
                   "language": "json"

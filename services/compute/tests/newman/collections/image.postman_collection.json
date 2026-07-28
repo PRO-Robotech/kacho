@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "6b64dcf7-7848-43ee-a438-ebdb7e0e4fa4",
+    "_postman_id": "ba8bd31e-9336-408c-a6e4-077683d1701e",
     "name": "kacho-compute / newman / image",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -3964,7 +3964,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"family\", \"family\": \"newfam\"}",
+              "raw": "{\"updateMask\": \"family\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4092,7 +4092,7 @@
       ]
     },
     {
-      "name": "IMG-UPD-MASK-EMPTY-FULL-PATCH — Update image без update_mask → full PATCH; immutable family из body silently игнорируется",
+      "name": "IMG-UPD-MASK-EMPTY-FULL-PATCH — Update image без update_mask → full PATCH: применяются ВСЕ мутабельные поля тела (description+labels), family образа это не касается",
       "description": "class:STATE | class:VAL | priority:P2",
       "item": [
         {
@@ -4317,7 +4317,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"description\": \"full-patch-desc\", \"family\": \"changed-fam-{{runId}}\"}",
+              "raw": "{\"description\": \"full-patch-desc\", \"labels\": {\"tier\": \"gold\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4470,7 +4470,8 @@
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('description applied', () => pm.expect(j.description).to.eql('full-patch-desc'));",
-                  "pm.test('family NOT changed (immutable, silently ignored)', () => pm.expect(j.family).to.match(/^empm-fam-/));"
+                  "pm.test('labels applied (второе мутабельное поле той же пустой маски)', () => pm.expect(j.labels && j.labels.tier).to.eql('gold'));",
+                  "pm.test('family NOT changed', () => pm.expect(j.family).to.match(/^empm-fam-/));"
                 ]
               }
             }
