@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
+	"github.com/PRO-Robotech/kacho/pkg/authz/catalogparity"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/check"
 )
 
@@ -130,16 +131,19 @@ func TestPermissionMap_ObjectAndProjectScope(t *testing.T) {
 }
 
 // TestPermissionMap_CatalogRPCsStayClusterScoped — DiskType (global read-only
-// catalog) + InternalDiskType (admin CRUD) + InternalVolume.ListAttachments
-// legitimately resolve on the cluster singleton; lock it so the #62 object-scoping
-// does not accidentally spread onto a catalog/cluster-wide RPC.
+// catalog) + InternalDiskType (admin CRUD) legitimately resolve on the cluster
+// singleton; lock it so the #62 object-scoping does not accidentally spread onto a
+// catalog/cluster-wide RPC.
+//
+// InternalVolume.ListAttachments stood in this list and does NOT belong to it — see
+// TestPermissionMap_NoTenantDataOnTheClusterSingleton below for why, and
+// permission_map_list_attachments_test.go for what replaced it.
 func TestPermissionMap_CatalogRPCsStayClusterScoped(t *testing.T) {
 	m := check.PermissionMap()
 	for _, fullMethod := range []string{
 		"/kacho.cloud.storage.v1.DiskTypeService/Get",
 		"/kacho.cloud.storage.v1.DiskTypeService/List",
 		"/kacho.cloud.storage.v1.InternalDiskTypeService/Create",
-		"/kacho.cloud.storage.v1.InternalVolumeService/ListAttachments",
 	} {
 		entry, ok := m[fullMethod]
 		require.Truef(t, ok, "%s must be present", fullMethod)
@@ -149,4 +153,51 @@ func TestPermissionMap_CatalogRPCsStayClusterScoped(t *testing.T) {
 		require.Equalf(t, "cluster", objType, "%s: must stay cluster-scoped", fullMethod)
 		require.Equalf(t, "cluster_kacho_root", objID, "%s: cluster singleton", fullMethod)
 	}
+}
+
+// TestPermissionMap_NoTenantDataOnTheClusterSingleton — обратная сторона предыдущего
+// lock'а, и он важнее: на синглтон `cluster` можно вешать ТОЛЬКО глобальный каталог.
+//
+// `cluster.viewer` включает userset `user:*`, и bootstrap кластера намеренно пишет
+// `cluster:<root>#viewer@user:*`, чтобы справочник (регионы, зоны, типы дисков) читал
+// любой аутентифицированный субъект. Поэтому cluster-`viewer` на RPC, отдающем данные
+// КОНКРЕТНЫХ тенантов, — не проверка, а её видимость: пропускает всех. Ровно так
+// ListAttachments отдавал привязки том↔инстанс любых названных инстансов, из чужих
+// проектов и аккаунтов.
+//
+// Тест перечисляет cluster-scoped записи из самой карты, поэтому НОВЫЙ RPC, повешенный
+// на синглтон, обязан быть здесь оправдан явно — тихо он не появится.
+func TestPermissionMap_NoTenantDataOnTheClusterSingleton(t *testing.T) {
+	// Записи, для которых cluster-синглтон — правильный предмет вопроса: глобальный
+	// admin-curated каталог, одинаковый для всех тенантов.
+	clusterCatalog := map[string]bool{
+		"/kacho.cloud.storage.v1.DiskTypeService/Get":            true,
+		"/kacho.cloud.storage.v1.DiskTypeService/List":           true,
+		"/kacho.cloud.storage.v1.InternalDiskTypeService/Create": true,
+		"/kacho.cloud.storage.v1.InternalDiskTypeService/Update": true,
+		"/kacho.cloud.storage.v1.InternalDiskTypeService/Delete": true,
+	}
+	seen := 0
+	for fullMethod, entry := range check.PermissionMap() {
+		// Тип объекта восстанавливается вызовом extractor'а на НУЛЕВОМ запросе метода
+		// (catalogparity: тот же приём, которым сверяется gateway-каталог) — сам
+		// extractor хранится замыканием и прочитан быть не может.
+		objType, ok := catalogparity.ScopeObjectType(fullMethod, entry)
+		if !ok || objType != "cluster" {
+			continue // object-scoped запись: её extractor читает поле запроса
+		}
+		seen++
+		require.Truef(t, clusterCatalog[fullMethod],
+			"%s anchors its check on the cluster singleton, but only the global disk-type "+
+				"catalogue may do that: `cluster:<root>#viewer@user:*` is written by the cluster "+
+				"bootstrap, so a cluster-scoped viewer check admits every authenticated subject. "+
+				"An RPC returning tenant rows must be object-scoped or ScopeFiltered instead",
+			fullMethod)
+	}
+	// Анти-вакуум: восстановление типа идёт через proto-реестр и на неудаче молча
+	// отдаёт «нет ответа». Если бы оно перестало работать, обход не проверил бы НИЧЕГО
+	// и остался зелёным. Кластерные записи в карте есть — значит их обязано быть видно.
+	require.Equalf(t, len(clusterCatalog), seen,
+		"обход увидел %d cluster-scoped записей вместо %d — проверка ничего не утверждает",
+		seen, len(clusterCatalog))
 }

@@ -55,6 +55,16 @@
 // Публичный каталог DiskType через фильтр не проходит вовсе — это ambient
 // cluster-scoped read (`viewer` на cluster-синглтоне, per-object грантов нет).
 //
+// # Не только публичные List
+//
+// Тот же фильтр сужает внутренний `InternalVolumeService/ListAttachments` (:9091,
+// зеркало привязок том↔инстанс для compute). Разница в том, что там он —
+// ЕДИНСТВЕННЫЙ гейт: у этого RPC нет единичного объекта, про который можно спросить
+// заранее (инстансы называет вызывающий), поэтому per-RPC Check за него не задаётся
+// (ScopeFiltered). Отсюда два следствия, которых нет у публичных List: вызывающий без
+// извлечённой identity отсекается там БЕЗУСЛОВНО, до чтения строк, а fail-open
+// (осознанная operator-ручка) снимает с этого RPC защиту целиком, а не второй слой.
+//
 // Configurable env vars (все KACHO_STORAGE_LIST_FILTER_*):
 //   - grpc address      — переиспользует KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR.
 //   - ENABLED           — master switch (production boot-guard требует true).

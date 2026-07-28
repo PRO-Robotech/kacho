@@ -73,20 +73,29 @@ func (c Config) Validate() error {
 			"per-RPC authz Check required on both listeners: set KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR")
 	}
 
-	// ── per-object list-filter обязателен на публичном List ─────────────────
-	// Per-RPC Check гейтит List лишь на project-tier `viewer`: он отвечает «этот
-	// caller вправе листать ЭТОТ проект», но НЕ сужает страницу до объектов, на
-	// которые есть грант. Сужение делает ТОЛЬКО list-filter (per-object
-	// per-object `viewer` батчем по прочитанной странице — то же отношение, что
-	// энфорсит Get). Выключенный фильтр = любой
-	// член проекта видит КАЖДЫЙ том/снимок/образ проекта (over-show / BOLA-lite,
-	// CWE-862 / OWASP A01) — ровно та дыра, ради которой фильтр и появился.
+	// ── per-object list-filter обязателен ───────────────────────────────────
+	// Per-RPC Check гейтит публичный List лишь на project-tier `viewer`: он
+	// отвечает «этот caller вправе листать ЭТОТ проект», но НЕ сужает страницу до
+	// объектов, на которые есть грант. Сужение делает ТОЛЬКО list-filter
+	// (per-object `viewer` батчем по прочитанной странице — то же отношение, что
+	// энфорсит Get). Выключенный фильтр = любой член проекта видит КАЖДЫЙ
+	// том/снимок/образ проекта (over-show / BOLA-lite, CWE-862 / OWASP A01) —
+	// ровно та дыра, ради которой фильтр и появился.
+	//
+	// Для InternalVolumeService/ListAttachments (:9091) фильтр — не второй слой, а
+	// ЕДИНСТВЕННЫЙ: этот RPC помечен ScopeFiltered (единичного объекта, про который
+	// можно спросить заранее, у него нет — инстансы называет вызывающий), поэтому
+	// per-RPC Check за него не задаётся вовсе. Замок на связь марки и этого гейта —
+	// check.TestScopeFilteredRPCs_AreBackedByTheProductionBootGuard.
+	//
 	// Адрес authorize-эндпоинта отдельно не проверяем: он и есть AuthZIAMGRPCAddr,
 	// уже потребованный выше.
 	if !c.ListFilterEnabled {
 		problems = append(problems,
 			"per-object List filter required: set KACHO_STORAGE_LIST_FILTER_ENABLED=true "+
-				"(false → public List bypasses the per-object FGA filter; a project-tier viewer sees every volume/snapshot/image)")
+				"(false → public List bypasses the per-object FGA filter, so a project-tier viewer sees "+
+				"every volume/snapshot/image; and the internal attachment listing, which has no per-RPC "+
+				"check at all, would lose its only gate)")
 	}
 
 	// ── круг отправителей чужой личности обязан быть сужен ──────────────────
