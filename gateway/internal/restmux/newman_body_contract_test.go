@@ -85,25 +85,25 @@ var absentRouteBodyWaiver = map[string]string{
 	// набора выражается адресными `Create`/`Delete`. Тело тут — ровно то, что
 	// послал бы клиент, считающий иначе, и без него проба перестала бы
 	// воспроизводить то заблуждение, которое проверяет.
-	"ADR-METHOD-PUT-NOT-ALLOWED PUT /vpc/v1/addresses":            "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
-	"GW-METHOD-PUT-NOT-ALLOWED PUT /vpc/v1/gateways":              "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
-	"NET-METHOD-PUT-NOT-ALLOWED PUT /vpc/v1/networks":             "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
-	"RT-METHOD-PUT-NOT-ALLOWED PUT /vpc/v1/routeTables":           "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
-	"SG-METHOD-PUT-NOT-ALLOWED PUT /vpc/v1/securityGroups":        "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
-	"SUB-METHOD-PUT-NOT-ALLOWED PUT /vpc/v1/subnets":              "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
-	"LST-METHOD-PUT-NOT-ALLOWED PUT /nlb/v1/listeners":            "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
-	"NLB-METHOD-PUT-NOT-ALLOWED PUT /nlb/v1/networkLoadBalancers": "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
-	"TGR-METHOD-PUT-NOT-ALLOWED PUT /nlb/v1/targetGroups":         "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
-	"TGT-METHOD-PUT-NOT-ALLOWED PUT /nlb/v1/targetGroups":         "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"IAM-INT-NEG-EXT-UNBOUND-NEVER-SUCCEEDS POST /kacho.cloud.iam.v1.InternalAuthorizeService/WriteTuples":        "proba ban #6: путь — полное имя gRPC-метода, у которого REST-привязки НЕТ по построению, и в этом её предмет. Тело — настоящий запрос: без него край отверг бы пустышку и проба перестала бы свидетельствовать, что недостижим именно метод, а не форма",
+	"IAM-INT-NEG-EXT-UNBOUND-NEVER-SUCCEEDS POST /kacho.cloud.iam.v1.InternalIAMService/ForceLogout":              "proba ban #6: путь — полное имя gRPC-метода, у которого REST-привязки НЕТ по построению, и в этом её предмет. Тело — настоящий запрос: без него край отверг бы пустышку и проба перестала бы свидетельствовать, что недостижим именно метод, а не форма",
+	"IAM-INT-NEG-EXT-UNBOUND-NEVER-SUCCEEDS POST /kacho.cloud.iam.v1.InternalSessionRevocationsService/IsRevoked": "proba ban #6: путь — полное имя gRPC-метода, у которого REST-привязки НЕТ по построению, и в этом её предмет. Тело — настоящий запрос: без него край отверг бы пустышку и проба перестала бы свидетельствовать, что недостижим именно метод, а не форма",
+	"IAM-INT-NEG-EXT-UNBOUND-NEVER-SUCCEEDS POST /kacho.cloud.iam.v1.InternalSessionRevocationsService/Revoke":    "proba ban #6: путь — полное имя gRPC-метода, у которого REST-привязки НЕТ по построению, и в этом её предмет. Тело — настоящий запрос: без него край отверг бы пустышку и проба перестала бы свидетельствовать, что недостижим именно метод, а не форма",
+	"ADR-METHOD-PUT-NOT-ALLOWED PUT /vpc/v1/addresses":                                                            "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"GW-METHOD-PUT-NOT-ALLOWED PUT /vpc/v1/gateways":                                                              "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"NET-METHOD-PUT-NOT-ALLOWED PUT /vpc/v1/networks":                                                             "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"RT-METHOD-PUT-NOT-ALLOWED PUT /vpc/v1/routeTables":                                                           "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"SG-METHOD-PUT-NOT-ALLOWED PUT /vpc/v1/securityGroups":                                                        "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"SUB-METHOD-PUT-NOT-ALLOWED PUT /vpc/v1/subnets":                                                              "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"LST-METHOD-PUT-NOT-ALLOWED PUT /nlb/v1/listeners":                                                            "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"NLB-METHOD-PUT-NOT-ALLOWED PUT /nlb/v1/networkLoadBalancers":                                                 "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"TGR-METHOD-PUT-NOT-ALLOWED PUT /nlb/v1/targetGroups":                                                         "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"TGT-METHOD-PUT-NOT-ALLOWED PUT /nlb/v1/targetGroups":                                                         "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
 
 	// Internal-RPC, постучавшийся в публичный край (ban #6). Предмет пробы —
 	// что метода на внешнем эндпоинте НЕТ. Тело — настоящий запрос этого RPC:
 	// проба обязана быть неотличима от полноценного вызова, иначе она проверяла
 	// бы отказ на пустышке, а не на том, чем воспользовался бы атакующий.
-	"IAM-INT-NEG-EXT-IAUTH-WRITETUPLES POST /kacho.cloud.iam.v1.InternalAuthorizeService/WriteTuples":   "internal-RPC на публичном краю: тело — настоящий запрос, иначе проба отвергала бы пустышку",
-	"IAM-INT-NEG-EXT-SR-REVOKE POST /kacho.cloud.iam.v1.InternalSessionRevocationsService/Revoke":       "internal-RPC на публичном краю: тело — настоящий запрос, иначе проба отвергала бы пустышку",
-	"IAM-INT-NEG-EXT-SR-ISREVOKED POST /kacho.cloud.iam.v1.InternalSessionRevocationsService/IsRevoked": "internal-RPC на публичном краю: тело — настоящий запрос, иначе проба отвергала бы пустышку",
-	"IAM-INT-NEG-EXT-IAM-FORCELOGOUT POST /kacho.cloud.iam.v1.InternalIAMService/ForceLogout":           "internal-RPC на публичном краю: тело — настоящий запрос, иначе проба отвергала бы пустышку",
 }
 
 func TestNewmanCollectionsSendNoUnknownRequestFields(t *testing.T) {
