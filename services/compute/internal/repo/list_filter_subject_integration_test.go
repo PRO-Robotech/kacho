@@ -35,12 +35,12 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/handler"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports/portmock"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
-	"github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
 
 // batchCheckStub — minimal authzfilter.AuthorizeClient answering each per-object
@@ -81,7 +81,7 @@ func newInstanceHandlerOnRealRepo(t *testing.T, cli authzfilter.AuthorizeClient)
 	require.NoError(t, err)
 
 	instanceRepo := repo.NewInstanceRepo(pool)
-	svc := service.NewInstanceService(
+	svc := instance.NewInstanceService(
 		instanceRepo,
 		portmock.NewMachineTypeRepo(),
 		portmock.NewZoneRegistry("ru-central1-a"),

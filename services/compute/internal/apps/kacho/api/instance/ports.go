@@ -1,15 +1,15 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-package service
+package instance
 
 import "github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 
 // Port-интерфейсы и связанные value-объекты вынесены в leaf-пакет
 // `internal/ports` — это позволяет переиспользовать общий test-helper
 // `internal/ports/portmock` без import-cycle. Здесь — type-alias'ы для
-// удобства: service-код и adapter'ы (`internal/repo`, `internal/clients`)
-// ссылаются на `service.*` имена. Зеркалит kacho-vpc/internal/service/ports.go.
+// удобства: use-case и adapter'ы (`internal/repo`, `internal/clients`)
+// ссылаются на `instance.*` имена.
 
 type (
 	// Pagination — постраничная навигация.
@@ -21,8 +21,11 @@ type (
 	// InstanceRepo — port-интерфейс репозитория ВМ.
 	InstanceRepo = ports.InstanceRepo
 	// MachineTypeRepo — port-интерфейс каталога machine-type (COMP-1 F7).
+	// Instance.Create резолвит через него machine-type; сам каталог ведёт
+	// use-case `api/machinetype`.
 	MachineTypeRepo = ports.MachineTypeRepo
-	// MachineTypeFilter — фильтр списка machine-type (name=/family=/minGpus=).
+	// MachineTypeFilter — фильтр списка machine-type; Instance.Create ищет
+	// machine-type по имени через тот же порт.
 	MachineTypeFilter = ports.MachineTypeFilter
 
 	// ProjectClient — port для проверки существования Project.

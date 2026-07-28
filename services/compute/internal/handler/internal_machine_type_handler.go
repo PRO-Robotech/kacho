@@ -15,24 +15,24 @@ import (
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/machinetype"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
-	svc "github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
 
 // InternalMachineTypeHandler реализует computev1.InternalMachineTypeServiceServer.
 type InternalMachineTypeHandler struct {
 	computev1.UnimplementedInternalMachineTypeServiceServer
-	svc *svc.MachineTypeService
+	svc *machinetype.MachineTypeService
 }
 
 // NewInternalMachineTypeHandler создаёт InternalMachineTypeHandler.
-func NewInternalMachineTypeHandler(s *svc.MachineTypeService) *InternalMachineTypeHandler {
+func NewInternalMachineTypeHandler(s *machinetype.MachineTypeService) *InternalMachineTypeHandler {
 	return &InternalMachineTypeHandler{svc: s}
 }
 
 // Create инициирует создание MachineType (admin-only, async Operation).
 func (h *InternalMachineTypeHandler) Create(ctx context.Context, req *computev1.CreateMachineTypeRequest) (*operationpb.Operation, error) {
-	op, err := h.svc.Create(ctx, svc.CreateMachineTypeReq{
+	op, err := h.svc.Create(ctx, machinetype.CreateMachineTypeReq{
 		Name:               req.Name,
 		Description:        req.Description,
 		Family:             domain.MachineTypeFamily(req.Family),
@@ -53,7 +53,7 @@ func (h *InternalMachineTypeHandler) Update(ctx context.Context, req *computev1.
 	if req.UpdateMask != nil {
 		mask = req.UpdateMask.Paths
 	}
-	op, err := h.svc.Update(ctx, svc.UpdateMachineTypeReq{
+	op, err := h.svc.Update(ctx, machinetype.UpdateMachineTypeReq{
 		ID:                 req.MachineTypeId,
 		Description:        req.Description,
 		Family:             domain.MachineTypeFamily(req.Family),

@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho/services/compute/internal/service"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/serviceerr"
 )
 
 // internalMapErr — admin/Internal-handler error mapper. Гарантирует что raw
@@ -20,7 +20,7 @@ import (
 // Он несущий, а не косметический: pkg/validate кладёт имя поля ТОЛЬКО в
 // google.rpc.BadRequest-details, сообщение остаётся общим «invalid argument».
 // Пересборка статуса в sentinel-ветке (`status.Error(code, sentinel.Error())`)
-// детали теряет, поэтому ошибка, обёрнутая через `%w` на service.Err*, обязана
+// детали теряет, поэтому ошибка, обёрнутая через `%w` на serviceerr.Err*, обязана
 // пройти pass-through ПЕРВОЙ. Строгая текстовая политика касается sentinel-ветвей,
 // а не уже-курированного статуса, который и раньше проходил насквозь — просто ниже.
 func internalMapErr(tag string, err error) error {
@@ -31,14 +31,14 @@ func internalMapErr(tag string, err error) error {
 		return err
 	}
 	switch {
-	case errors.Is(err, service.ErrNotFound):
-		return status.Error(codes.NotFound, service.ErrNotFound.Error())
-	case errors.Is(err, service.ErrAlreadyExists):
-		return status.Error(codes.AlreadyExists, service.ErrAlreadyExists.Error())
-	case errors.Is(err, service.ErrFailedPrecondition):
-		return status.Error(codes.FailedPrecondition, service.ErrFailedPrecondition.Error())
-	case errors.Is(err, service.ErrInvalidArg):
-		return status.Error(codes.InvalidArgument, service.ErrInvalidArg.Error())
+	case errors.Is(err, serviceerr.ErrNotFound):
+		return status.Error(codes.NotFound, serviceerr.ErrNotFound.Error())
+	case errors.Is(err, serviceerr.ErrAlreadyExists):
+		return status.Error(codes.AlreadyExists, serviceerr.ErrAlreadyExists.Error())
+	case errors.Is(err, serviceerr.ErrFailedPrecondition):
+		return status.Error(codes.FailedPrecondition, serviceerr.ErrFailedPrecondition.Error())
+	case errors.Is(err, serviceerr.ErrInvalidArg):
+		return status.Error(codes.InvalidArgument, serviceerr.ErrInvalidArg.Error())
 	}
 	if tag == "" {
 		tag = "internal error"

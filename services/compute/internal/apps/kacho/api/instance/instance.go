@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-package service
+package instance
 
 import (
 	"context"
@@ -23,6 +23,8 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/lro"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/protoconv"
@@ -176,7 +178,7 @@ func (s *InstanceService) Get(ctx context.Context, id string) (*domain.Instance,
 	}
 	in, err := s.repo.Get(ctx, id)
 	if err != nil {
-		return nil, mapRepoErr(err)
+		return nil, serviceerr.MapRepoErr(err)
 	}
 	s.applyNicMirror(ctx, in)
 	s.applyVolumeMirror(ctx, in)
@@ -212,21 +214,21 @@ func ValidateCreateInstanceReq(req CreateInstanceReq) error {
 	}
 	// F1 — instanceKind — сильный первый required-дискриминатор; kind-oneof XOR.
 	if !req.InstanceKind.Valid() {
-		return invalidArg("instance_kind", "instanceKind is required")
+		return serviceerr.InvalidArg("instance_kind", "instanceKind is required")
 	}
 	switch req.InstanceKind {
 	case domain.InstanceKindVM:
 		if req.ContainerSpec != nil {
-			return invalidArg("container_spec", "containerSpec is not allowed when instanceKind is VM")
+			return serviceerr.InvalidArg("container_spec", "containerSpec is not allowed when instanceKind is VM")
 		}
 	case domain.InstanceKindContainer:
 		if req.VMSpec != nil {
-			return invalidArg("vm_spec", "vmSpec is not allowed when instanceKind is CONTAINER")
+			return serviceerr.InvalidArg("vm_spec", "vmSpec is not allowed when instanceKind is CONTAINER")
 		}
 	}
 	// F2 — machineTypeId — единственный канал sizing (обязателен; резолв — doCreate).
 	if req.MachineTypeID == "" {
-		return invalidArg("machine_type_id", "machineTypeId is required")
+		return serviceerr.InvalidArg("machine_type_id", "machineTypeId is required")
 	}
 	// F3 — bootSource grammar + type-whitelist + output-field-reject.
 	if err := validateBootSource(req.BootSource); err != nil {
@@ -242,7 +244,7 @@ func ValidateCreateInstanceReq(req CreateInstanceReq) error {
 		return err
 	}
 	if !domain.ValidCPUGuaranteePercent(req.CPUGuaranteePercent) {
-		return invalidArg("cpu_guarantee_percent", "cpuGuaranteePercent must be between 0 and 100")
+		return serviceerr.InvalidArg("cpu_guarantee_percent", "cpuGuaranteePercent must be between 0 and 100")
 	}
 	// F4 — serviceAccountId own-side format-check (existence peer-validate → COMP-2).
 	if req.ServiceAccountID != "" {
@@ -265,13 +267,13 @@ func ValidateCreateInstanceReq(req CreateInstanceReq) error {
 	}
 	for i := range req.NetworkInterfaceSpecs {
 		if req.NetworkInterfaceSpecs[i].SubnetID == "" {
-			return invalidArg("network_interface_specs.subnet_id", "networkInterfaceSpecs[].subnetId is required")
+			return serviceerr.InvalidArg("network_interface_specs.subnet_id", "networkInterfaceSpecs[].subnetId is required")
 		}
 	}
 	// F6 — secondaryVolumeSpecs structural: sizeGiB>0 (human-scale GiB, не байты).
 	for i := range req.SecondaryVolumeSpecs {
 		if req.SecondaryVolumeSpecs[i].SizeGiB <= 0 {
-			return invalidArg("secondary_volume_specs.size_gib", "secondaryVolumeSpecs[].sizeGiB must be > 0")
+			return serviceerr.InvalidArg("secondary_volume_specs.size_gib", "secondaryVolumeSpecs[].sizeGiB must be > 0")
 		}
 	}
 	// F5 — unreachable-guard: VM без ssh И без external → FAILED_PRECONDITION (снимается
@@ -294,7 +296,7 @@ func (s *InstanceService) Create(ctx context.Context, req CreateInstanceReq) (*o
 	// Operation.done = durability ресурса (row закоммичен в doCreate). Owner-tuple
 	// материализуется eventually-consistent — sync-registrar (window-оптимизация) +
 	// register-drainer/reconciler backstop, НЕ гейтит op.done.
-	return runOp(ctx, s.opsRepo, fmt.Sprintf("Create instance %s", req.Name),
+	return lro.RunOp(ctx, s.opsRepo, fmt.Sprintf("Create instance %s", req.Name),
 		&computev1.CreateInstanceMetadata{InstanceId: instanceID},
 		func(ctx context.Context) (*anypb.Any, error) {
 			return s.doCreate(ctx, instanceID, req)
@@ -306,7 +308,7 @@ func (s *InstanceService) doCreate(ctx context.Context, instanceID string, req C
 		return nil, err
 	}
 	if err := s.zones.GetZone(ctx, req.ZoneID); err != nil {
-		return nil, mapZoneRefErr(err, req.ZoneID)
+		return nil, serviceerr.MapZoneRefErr(err, req.ZoneID)
 	}
 	// Машина создаётся в своей зоне — её интерфейсы обязаны быть в той же зоне.
 	// Проверяется ЗДЕСЬ, на пути создания (до Insert), а не откладывается до
@@ -350,11 +352,11 @@ func (s *InstanceService) doCreate(ctx context.Context, instanceID string, req C
 	// Self-validating domain invariant на persistence-границе (last-line guard;
 	// формат уже проверен sync ValidateCreateInstanceReq).
 	if err := in.Validate(); err != nil {
-		return nil, invalidArg("cpu_guarantee_percent", "cpuGuaranteePercent must be between 0 and 100")
+		return nil, serviceerr.InvalidArg("cpu_guarantee_percent", "cpuGuaranteePercent must be between 0 and 100")
 	}
 	created, err := s.repo.Insert(ctx, in)
 	if err != nil {
-		return nil, mapRepoErr(err)
+		return nil, serviceerr.MapRepoErr(err)
 	}
 	// Sync-register owner-tuple post-commit (best-effort window-оптимизация); durable
 	// outbox-intent (writer-tx repo.Insert) + drainer — at-least-once backstop.
@@ -370,16 +372,16 @@ func (s *InstanceService) resolveMachineType(ctx context.Context, ref string) (*
 	if strings.HasPrefix(ref, ids.PrefixMachineTypeHyphen+"-") {
 		got, err := s.machineTypes.Get(ctx, ref)
 		if err != nil {
-			if errors.Is(err, ErrNotFound) {
+			if errors.Is(err, ports.ErrNotFound) {
 				return nil, status.Errorf(codes.FailedPrecondition, "machine type %s not found", ref)
 			}
-			return nil, mapRepoErr(err)
+			return nil, serviceerr.MapRepoErr(err)
 		}
 		mt = got
 	} else {
 		list, _, err := s.machineTypes.List(ctx, MachineTypeFilter{Name: ref}, Pagination{PageSize: 2})
 		if err != nil {
-			return nil, mapRepoErr(err)
+			return nil, serviceerr.MapRepoErr(err)
 		}
 		if len(list) == 0 {
 			return nil, status.Errorf(codes.FailedPrecondition, "machine type %s not found", ref)
@@ -426,18 +428,18 @@ func (s *InstanceService) Update(ctx context.Context, req UpdateInstanceReq) (*o
 	if maskIntersects(req.UpdateMask, instanceStoppedGatedMask) {
 		in, err := s.repo.Get(ctx, req.InstanceID)
 		if err != nil {
-			return nil, mapRepoErr(err)
+			return nil, serviceerr.MapRepoErr(err)
 		}
 		if in.Status != domain.InstanceStatusStopped {
 			return nil, status.Error(codes.FailedPrecondition, "instance must be STOPPED to change sizing or placement")
 		}
 	}
-	return runOp(ctx, s.opsRepo, fmt.Sprintf("Update instance %s", req.InstanceID),
+	return lro.RunOp(ctx, s.opsRepo, fmt.Sprintf("Update instance %s", req.InstanceID),
 		&computev1.UpdateInstanceMetadata{InstanceId: req.InstanceID},
 		func(ctx context.Context) (*anypb.Any, error) {
 			in, err := s.repo.Get(ctx, req.InstanceID)
 			if err != nil {
-				return nil, mapRepoErr(err)
+				return nil, serviceerr.MapRepoErr(err)
 			}
 			updates := req.UpdateMask
 			if len(updates) == 0 {
@@ -488,7 +490,7 @@ func (s *InstanceService) Update(ctx context.Context, req UpdateInstanceReq) (*o
 			}
 			updated, err := s.repo.Update(ctx, in, labelsInMask, changed)
 			if err != nil {
-				return nil, mapRepoErr(err)
+				return nil, serviceerr.MapRepoErr(err)
 			}
 			return anypb.New(protoconv.Instance(updated))
 		})
@@ -501,11 +503,11 @@ func validateInstanceUpdate(req UpdateInstanceReq) error {
 	for _, f := range req.UpdateMask {
 		switch f {
 		case "instance_kind":
-			return invalidArg(f, "instanceKind is immutable after Instance.Create")
+			return serviceerr.InvalidArg(f, "instanceKind is immutable after Instance.Create")
 		case "zone_id":
-			return invalidArg(f, "zoneId is immutable after Instance.Create")
+			return serviceerr.InvalidArg(f, "zoneId is immutable after Instance.Create")
 		case "boot_source":
-			return invalidArg(f, "bootSource cannot be changed via Update; use Reinstall")
+			return serviceerr.InvalidArg(f, "bootSource cannot be changed via Update; use Reinstall")
 		}
 	}
 	if err := corevalidate.UpdateMask("update_mask", req.UpdateMask, instanceUpdateKnown); err != nil {
@@ -527,7 +529,7 @@ func validateInstanceUpdate(req UpdateInstanceReq) error {
 			}
 		case "cpu_guarantee_percent":
 			if !domain.ValidCPUGuaranteePercent(req.CPUGuaranteePercent) {
-				return invalidArg("cpu_guarantee_percent", "cpuGuaranteePercent must be between 0 and 100")
+				return serviceerr.InvalidArg("cpu_guarantee_percent", "cpuGuaranteePercent must be between 0 and 100")
 			}
 		case "placement_group_id":
 			if req.PlacementGroupID != "" {
@@ -561,12 +563,12 @@ func (s *InstanceService) UpdateMetadata(ctx context.Context, instanceID string,
 	if instanceID == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance_id required")
 	}
-	return runOp(ctx, s.opsRepo, fmt.Sprintf("Update instance %s metadata", instanceID),
+	return lro.RunOp(ctx, s.opsRepo, fmt.Sprintf("Update instance %s metadata", instanceID),
 		&computev1.UpdateInstanceMetadataMetadata{InstanceId: instanceID},
 		func(ctx context.Context) (*anypb.Any, error) {
 			updated, err := s.repo.MergeMetadata(ctx, instanceID, del, upsert)
 			if err != nil {
-				return nil, mapRepoErr(err)
+				return nil, serviceerr.MapRepoErr(err)
 			}
 			return anypb.New(protoconv.Instance(updated))
 		})
@@ -594,7 +596,7 @@ func (s *InstanceService) lifecycle(ctx context.Context, id, action string, from
 	if id == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance_id required")
 	}
-	return runOp(ctx, s.opsRepo, fmt.Sprintf("%s instance %s", action, id), meta,
+	return lro.RunOp(ctx, s.opsRepo, fmt.Sprintf("%s instance %s", action, id), meta,
 		func(ctx context.Context) (*anypb.Any, error) {
 			updated, err := s.repo.SetStatusCAS(ctx, id, from, to)
 			if err != nil {
@@ -605,12 +607,12 @@ func (s *InstanceService) lifecycle(ctx context.Context, id, action string, from
 }
 
 // mapLifecycleErr маппит ошибку SetStatusCAS: CAS-промах → FailedPrecondition
-// с precondMsg; остальное — стандартный mapRepoErr.
+// с precondMsg; остальное — стандартный serviceerr.MapRepoErr.
 func mapLifecycleErr(err error, precondMsg string) error {
-	if errors.Is(err, ErrFailedPrecondition) {
+	if errors.Is(err, ports.ErrFailedPrecondition) {
 		return status.Error(codes.FailedPrecondition, precondMsg)
 	}
-	return mapRepoErr(err)
+	return serviceerr.MapRepoErr(err)
 }
 
 // AttachDisk подключает storage-Volume к ВМ (async сага → kacho-storage).
@@ -629,17 +631,17 @@ func (s *InstanceService) AttachDisk(ctx context.Context, instanceID string, req
 		return nil, err
 	}
 	if req.VolumeID == "" {
-		return nil, invalidArg("volume_id", "volume_id is required")
+		return nil, serviceerr.InvalidArg("volume_id", "volume_id is required")
 	}
 	if err := corevalidate.ResourceID(volResource, ids.PrefixVolume, req.VolumeID); err != nil {
 		return nil, err
 	}
-	return runOp(ctx, s.opsRepo, fmt.Sprintf("Attach disk to instance %s", instanceID),
+	return lro.RunOp(ctx, s.opsRepo, fmt.Sprintf("Attach disk to instance %s", instanceID),
 		&computev1.AttachInstanceDiskMetadata{InstanceId: instanceID, VolumeId: req.VolumeID},
 		func(ctx context.Context) (*anypb.Any, error) {
 			zoneID, projectID, name, err := s.repo.GateForAttach(ctx, instanceID)
 			if err != nil {
-				return nil, mapRepoErr(err)
+				return nil, serviceerr.MapRepoErr(err)
 			}
 			if s.storageClient == nil {
 				return nil, status.Error(codes.Unavailable, "volume service unavailable")
@@ -670,7 +672,7 @@ func (s *InstanceService) DetachDisk(ctx context.Context, instanceID, volumeID, 
 	}
 	// oneof exactly_one: ровно одно из volume_id / device_name.
 	if (volumeID == "") == (deviceName == "") {
-		return nil, invalidArg("disk", "exactly one of volume_id or device_name is required")
+		return nil, serviceerr.InvalidArg("disk", "exactly one of volume_id or device_name is required")
 	}
 	if err := corevalidate.ResourceID(insResource, ids.PrefixInstance, instanceID); err != nil {
 		return nil, err
@@ -678,7 +680,7 @@ func (s *InstanceService) DetachDisk(ctx context.Context, instanceID, volumeID, 
 	if err := corevalidate.ResourceID(volResource, ids.PrefixVolume, volumeID); err != nil {
 		return nil, err
 	}
-	return runOp(ctx, s.opsRepo, fmt.Sprintf("Detach disk from instance %s", instanceID),
+	return lro.RunOp(ctx, s.opsRepo, fmt.Sprintf("Detach disk from instance %s", instanceID),
 		&computev1.DetachInstanceDiskMetadata{InstanceId: instanceID, VolumeId: volumeID},
 		func(ctx context.Context) (*anypb.Any, error) {
 			if s.storageClient == nil {
@@ -715,12 +717,12 @@ func (s *InstanceService) SimulateMaintenanceEvent(ctx context.Context, id strin
 	if id == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance_id required")
 	}
-	return runOp(ctx, s.opsRepo, fmt.Sprintf("Simulate maintenance event for instance %s", id),
+	return lro.RunOp(ctx, s.opsRepo, fmt.Sprintf("Simulate maintenance event for instance %s", id),
 		&computev1.SimulateInstanceMaintenanceEventMetadata{InstanceId: id},
 		func(ctx context.Context) (*anypb.Any, error) {
 			in, err := s.repo.Get(ctx, id)
 			if err != nil {
-				return nil, mapRepoErr(err)
+				return nil, serviceerr.MapRepoErr(err)
 			}
 			return anypb.New(protoconv.Instance(in))
 		})
@@ -751,15 +753,15 @@ func (s *InstanceService) Delete(ctx context.Context, id string) (*operations.Op
 	if id == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance_id required")
 	}
-	return runOp(ctx, s.opsRepo, fmt.Sprintf("Delete instance %s", id),
+	return lro.RunOp(ctx, s.opsRepo, fmt.Sprintf("Delete instance %s", id),
 		&computev1.DeleteInstanceMetadata{InstanceId: id},
 		func(ctx context.Context) (*anypb.Any, error) {
 			// (1) gate → DELETING. Уже удалён (crash-replay) → идемпотентный success.
 			if _, err := s.repo.MarkDeleting(ctx, id); err != nil {
-				if errors.Is(err, ErrNotFound) {
+				if errors.Is(err, ports.ErrNotFound) {
 					return anypb.New(&emptypb.Empty{})
 				}
-				return nil, mapRepoErr(err)
+				return nil, serviceerr.MapRepoErr(err)
 			}
 			// (2) release NICs (fail-closed).
 			if s.nicClient != nil {
@@ -787,10 +789,10 @@ func (s *InstanceService) Delete(ctx context.Context, id string) (*operations.Op
 			}
 			// (4) delete instance row LAST.
 			if err := s.repo.Delete(ctx, id); err != nil {
-				if errors.Is(err, ErrNotFound) {
+				if errors.Is(err, ports.ErrNotFound) {
 					return anypb.New(&emptypb.Empty{})
 				}
-				return nil, mapRepoErr(err)
+				return nil, serviceerr.MapRepoErr(err)
 			}
 			return anypb.New(&emptypb.Empty{})
 		})
@@ -800,7 +802,7 @@ func (s *InstanceService) Delete(ctx context.Context, id string) (*operations.Op
 func (s *InstanceService) GetSerialPortOutput(ctx context.Context, id string) (string, error) {
 	in, err := s.repo.Get(ctx, id)
 	if err != nil {
-		return "", mapRepoErr(err)
+		return "", serviceerr.MapRepoErr(err)
 	}
 	return fmt.Sprintf("[control-plane] serial port output for instance %s (status=%s) is not available (control-plane only).\n", in.ID, instanceStatusName(in.Status)), nil
 }
@@ -808,7 +810,7 @@ func (s *InstanceService) GetSerialPortOutput(ctx context.Context, id string) (s
 // ListOperations возвращает операции для конкретной ВМ.
 func (s *InstanceService) ListOperations(ctx context.Context, id string, p Pagination) ([]operations.Operation, string, error) {
 	if _, err := s.repo.Get(ctx, id); err != nil {
-		return nil, "", mapRepoErr(err)
+		return nil, "", serviceerr.MapRepoErr(err)
 	}
 	return s.opsRepo.List(ctx, operations.ListFilter{ResourceID: id, PageSize: p.PageSize, PageToken: p.PageToken})
 }
@@ -832,7 +834,7 @@ const mirrorReadTimeout = 3 * time.Second
 func (s *InstanceService) reloadWithMirror(ctx context.Context, id string) (*anypb.Any, error) {
 	in, err := s.repo.Get(ctx, id)
 	if err != nil {
-		return nil, mapRepoErr(err)
+		return nil, serviceerr.MapRepoErr(err)
 	}
 	s.applyNicMirror(ctx, in)
 	s.applyVolumeMirror(ctx, in)
@@ -921,21 +923,21 @@ type protoreflectMessage = proto.Message
 // output-only (на вход не принимаются, COMP-1-11).
 func validateBootSource(bs domain.BootSource) error {
 	if bs.Type == "" && bs.ID == "" {
-		return invalidArg("boot_source", "bootSource is required")
+		return serviceerr.InvalidArg("boot_source", "bootSource is required")
 	}
 	if bs.Type != bootSourceStorageImage && bs.Type != bootSourceRegistryImage {
-		return invalidArg("boot_source.type",
+		return serviceerr.InvalidArg("boot_source.type",
 			"bootSource.type must be one of storage.image, registry.image")
 	}
 	if bs.Name != "" || bs.ResolvedDigest != "" || bs.MaterializedVolume != nil || bs.ImageKind != domain.ImageKindUnspecified {
-		return invalidArg("boot_source",
+		return serviceerr.InvalidArg("boot_source",
 			"bootSource name/resolvedDigest/materializedVolume are output-only and must not be set on input")
 	}
 	if bs.ID == "" {
-		return invalidArg("boot_source.id", "bootSource.id is required")
+		return serviceerr.InvalidArg("boot_source.id", "bootSource.id is required")
 	}
 	if !hasTagOrDigest(bs.ID) {
-		return invalidArg("boot_source.id",
+		return serviceerr.InvalidArg("boot_source.id",
 			"bootSource.id needs a tag or digest, e.g. 'img-<base32>:<tag>' or 'img-<base32>@sha256:<hex>'; use ImageCatalog item.bootSource")
 	}
 	return nil

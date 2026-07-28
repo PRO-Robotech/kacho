@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-package service
+package serviceerr
 
 import (
 	"errors"
@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// mapRepoErr — единая трансляция repo-sentinel в gRPC status (копия VPC).
+// MapRepoErr — единая трансляция repo-sentinel в gRPC status (копия VPC).
 //
 // Sentinel-prefix (`failed precondition: `, `not found`, ...) удаляется при
 // преобразовании в gRPC-сообщение, чтобы клиент видел чистый текст без
@@ -28,7 +28,7 @@ import (
 // пройти pass-through ПЕРВОЙ. status с codes.Unknown под pass-through НЕ попадает
 // (guard `!= Unknown`) — он падает в sentinel-switch и дальше в фиксированный
 // INTERNAL, без leak'а.
-func mapRepoErr(err error) error {
+func MapRepoErr(err error) error {
 	if err == nil {
 		return nil
 	}
@@ -61,7 +61,7 @@ func mapRepoErr(err error) error {
 //
 // Теперь: настоящий not-found (repo вернул ErrNotFound) → codes.NotFound с
 // детерминированным текстом "<Resource> <id> not found"; всё остальное
-// (ErrInternal / raw pgx / транспорт) → делегируется mapRepoErr → codes.Internal
+// (ErrInternal / raw pgx / транспорт) → делегируется MapRepoErr → codes.Internal
 // (без leak'а текста) вместо ложного NotFound. Зеркалит дисциплину primary-Get.
 func mapRefErr(err error, resource, id string) error {
 	if err == nil {
@@ -70,16 +70,16 @@ func mapRefErr(err error, resource, id string) error {
 	if errors.Is(err, ErrNotFound) {
 		return status.Errorf(codes.NotFound, "%s %s not found", resource, id)
 	}
-	return mapRepoErr(err)
+	return MapRepoErr(err)
 }
 
-// mapZoneRefErr транслирует ошибку existence-check zone_id (через ZoneRegistry —
+// MapZoneRefErr транслирует ошибку existence-check zone_id (через ZoneRegistry —
 // kacho-geo geo.v1.ZoneService.Get; Geography принадлежит kacho-geo) в
 // gRPC-status, сохраняя контракт compute: неизвестная зона → InvalidArgument
 // "Zone <id> not found". Транспортная ошибка к kacho-geo (Unavailable)
 // пробрасывается как Unavailable с opaque-текстом (без leak'а raw peer-ошибки,
-// зеркалит project-check + mapRepoErr-дисциплину).
-func mapZoneRefErr(err error, zoneID string) error {
+// зеркалит project-check + MapRepoErr-дисциплину).
+func MapZoneRefErr(err error, zoneID string) error {
 	if err == nil {
 		return nil
 	}
@@ -90,7 +90,7 @@ func mapZoneRefErr(err error, zoneID string) error {
 		return status.Errorf(codes.InvalidArgument, "Zone %s not found", zoneID)
 	}
 	// Opaque message: не эхоим raw peer transport-текст наружу (endpoint / dial
-	// error → info-leak, CWE-209). Зеркалит mapRepoErr-дисциплину (фиксированный
+	// error → info-leak, CWE-209). Зеркалит MapRepoErr-дисциплину (фиксированный
 	// текст, без leak'а). Детали остаются в server-side логах peer-клиента.
 	return status.Error(codes.Unavailable, "zone check: upstream geo service unavailable")
 }

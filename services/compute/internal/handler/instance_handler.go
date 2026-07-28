@@ -14,10 +14,10 @@ import (
 	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/protoconv"
-	svc "github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
 
 // InstanceHandler реализует computev1.InstanceServiceServer (тонкий transport-слой).
@@ -32,13 +32,13 @@ import (
 // kacho-vpc InternalNetworkInterfaceService).
 type InstanceHandler struct {
 	computev1.UnimplementedInstanceServiceServer
-	svc        *svc.InstanceService
+	svc        *instance.InstanceService
 	listFilter authzfilter.Filter
 }
 
 // NewInstanceHandler создаёт InstanceHandler. listFilter может быть nil — тогда
 // FGA-фильтрация на List отключена (dev/breakglass).
-func NewInstanceHandler(s *svc.InstanceService, listFilter authzfilter.Filter) *InstanceHandler {
+func NewInstanceHandler(s *instance.InstanceService, listFilter authzfilter.Filter) *InstanceHandler {
 	return &InstanceHandler{svc: s, listFilter: listFilter}
 }
 
@@ -66,11 +66,11 @@ func (h *InstanceHandler) Get(ctx context.Context, req *computev1.GetInstanceReq
 // Ничего не видно → пустая страница (NOT 403 — конвенция Kachō для list-empty).
 func (h *InstanceHandler) List(ctx context.Context, req *computev1.ListInstancesRequest) (*computev1.ListInstancesResponse, error) {
 	// Validate pagination BEFORE anything authz-related (see disk_handler).
-	if err := svc.ValidateListPagination(svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize}); err != nil {
+	if err := instance.ValidateListPagination(instance.Pagination{PageToken: req.PageToken, PageSize: req.PageSize}); err != nil {
 		return nil, err
 	}
-	ins, nextToken, err := h.svc.List(ctx, svc.InstanceFilter{ProjectID: req.ProjectId, Filter: req.Filter},
-		svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize})
+	ins, nextToken, err := h.svc.List(ctx, instance.InstanceFilter{ProjectID: req.ProjectId, Filter: req.Filter},
+		instance.Pagination{PageToken: req.PageToken, PageSize: req.PageSize})
 	if err != nil {
 		return nil, err
 	}
@@ -159,12 +159,12 @@ func RejectUnsupportedCreateFields(req *computev1.CreateInstanceRequest) error {
 }
 
 // CreateReqFromProto — чистая proto→use-case конвертация CreateInstanceRequest в
-// svc.CreateInstanceReq (без auth/transport). Тот же маппинг, что выполняет RPC
+// instance.CreateInstanceReq (без auth/transport). Тот же маппинг, что выполняет RPC
 // Create; выделен, чтобы fuzz (internal/fuzz) прогонял ровно этот путь на
 // hostile-входах. Launch-*Specs передаются как форма (структурная валидация в
 // use-case; materialize — COMP-2).
-func CreateReqFromProto(req *computev1.CreateInstanceRequest) svc.CreateInstanceReq {
-	cr := svc.CreateInstanceReq{
+func CreateReqFromProto(req *computev1.CreateInstanceRequest) instance.CreateInstanceReq {
+	cr := instance.CreateInstanceReq{
 		ProjectID:              req.ProjectId,
 		Name:                   req.Name,
 		Description:            req.Description,
@@ -206,7 +206,7 @@ func (h *InstanceHandler) Update(ctx context.Context, req *computev1.UpdateInsta
 	if req.UpdateMask != nil {
 		mask = req.UpdateMask.Paths
 	}
-	ur := svc.UpdateInstanceReq{
+	ur := instance.UpdateInstanceReq{
 		InstanceID:          req.InstanceId,
 		Name:                req.Name,
 		Description:         req.Description,
@@ -400,7 +400,7 @@ func (h *InstanceHandler) ListOperations(ctx context.Context, req *computev1.Lis
 	if _, err := h.svc.Get(ctx, req.InstanceId); err != nil {
 		return nil, err
 	}
-	ops, nextToken, err := h.svc.ListOperations(ctx, req.InstanceId, svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize})
+	ops, nextToken, err := h.svc.ListOperations(ctx, req.InstanceId, instance.Pagination{PageToken: req.PageToken, PageSize: req.PageSize})
 	if err != nil {
 		return nil, err
 	}
@@ -472,18 +472,18 @@ func containerSpecFromProto(c *computev1.ContainerSpec) *domain.ContainerSpec {
 	return out
 }
 
-// nicSpecsFromProto — proto NetworkInterfaceSpec[] → svc.NetworkInterfaceSpec[] (F6
+// nicSpecsFromProto — proto NetworkInterfaceSpec[] → instance.NetworkInterfaceSpec[] (F6
 // launch skeleton; структурная валидация в use-case).
-func nicSpecsFromProto(specs []*computev1.NetworkInterfaceSpec) []svc.NetworkInterfaceSpec {
+func nicSpecsFromProto(specs []*computev1.NetworkInterfaceSpec) []instance.NetworkInterfaceSpec {
 	if len(specs) == 0 {
 		return nil
 	}
-	out := make([]svc.NetworkInterfaceSpec, 0, len(specs))
+	out := make([]instance.NetworkInterfaceSpec, 0, len(specs))
 	for _, s := range specs {
 		if s == nil {
 			continue
 		}
-		out = append(out, svc.NetworkInterfaceSpec{
+		out = append(out, instance.NetworkInterfaceSpec{
 			SubnetID:         s.SubnetId,
 			SecurityGroupIDs: s.SecurityGroupIds,
 		})
@@ -491,17 +491,17 @@ func nicSpecsFromProto(specs []*computev1.NetworkInterfaceSpec) []svc.NetworkInt
 	return out
 }
 
-// secVolSpecsFromProto — proto SecondaryVolumeSpec[] → svc.SecondaryVolumeSpec[].
-func secVolSpecsFromProto(specs []*computev1.SecondaryVolumeSpec) []svc.SecondaryVolumeSpec {
+// secVolSpecsFromProto — proto SecondaryVolumeSpec[] → instance.SecondaryVolumeSpec[].
+func secVolSpecsFromProto(specs []*computev1.SecondaryVolumeSpec) []instance.SecondaryVolumeSpec {
 	if len(specs) == 0 {
 		return nil
 	}
-	out := make([]svc.SecondaryVolumeSpec, 0, len(specs))
+	out := make([]instance.SecondaryVolumeSpec, 0, len(specs))
 	for _, s := range specs {
 		if s == nil {
 			continue
 		}
-		out = append(out, svc.SecondaryVolumeSpec{
+		out = append(out, instance.SecondaryVolumeSpec{
 			SizeGiB:      s.SizeGib,
 			VolumeTypeID: s.VolumeTypeId,
 			MountPath:    s.MountPath,
@@ -511,15 +511,15 @@ func secVolSpecsFromProto(specs []*computev1.SecondaryVolumeSpec) []svc.Secondar
 	return out
 }
 
-// attachDiskReqFromSpec — proto AttachedDiskSpec → svc.AttachDiskReq. Только
+// attachDiskReqFromSpec — proto AttachedDiskSpec → instance.AttachDiskReq. Только
 // volume_id-arm (storage-split: inline disk_spec на AttachDisk не поддерживается —
 // подключаются только уже созданные storage-Volume; sec.2.2). is_boot берётся из
 // AttachedDiskSpec (mirror: boot vs secondary на Instance).
-func attachDiskReqFromSpec(s *computev1.AttachedDiskSpec) svc.AttachDiskReq {
+func attachDiskReqFromSpec(s *computev1.AttachedDiskSpec) instance.AttachDiskReq {
 	if s == nil {
-		return svc.AttachDiskReq{}
+		return instance.AttachDiskReq{}
 	}
-	return svc.AttachDiskReq{
+	return instance.AttachDiskReq{
 		VolumeID:   s.GetVolumeId(),
 		DeviceName: s.GetDeviceName(),
 		AutoDelete: s.GetAutoDelete(),

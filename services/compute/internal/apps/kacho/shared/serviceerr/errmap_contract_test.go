@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-package service
+package serviceerr
 
 import (
 	"errors"
@@ -16,7 +16,7 @@ import (
 )
 
 // TestMapRepoErrFailureBandsCharacterization records the code AND the exact wire
-// text mapRepoErr produces on every failure band, for a bare sentinel and for a
+// text MapRepoErr produces on every failure band, for a bare sentinel and for a
 // sentinel carrying the caller's contract text.
 //
 // The message tone is part of the Kachō contract ("<Resource> %s not found" and
@@ -54,10 +54,10 @@ func TestMapRepoErrFailureBandsCharacterization(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := mapRepoErr(tc.in)
+			got := MapRepoErr(tc.in)
 			st, ok := status.FromError(got)
 			if !ok {
-				t.Fatalf("mapRepoErr returned a non-status error: %v", got)
+				t.Fatalf("MapRepoErr returned a non-status error: %v", got)
 			}
 			if st.Code() != tc.wantCode {
 				t.Errorf("code = %v, want %v", st.Code(), tc.wantCode)
@@ -69,8 +69,8 @@ func TestMapRepoErrFailureBandsCharacterization(t *testing.T) {
 	}
 
 	t.Run("nil", func(t *testing.T) {
-		if got := mapRepoErr(nil); got != nil {
-			t.Errorf("mapRepoErr(nil) = %v, want nil", got)
+		if got := MapRepoErr(nil); got != nil {
+			t.Errorf("MapRepoErr(nil) = %v, want nil", got)
 		}
 	})
 }
@@ -90,11 +90,11 @@ func TestMapRepoErrPreservesDetailsThroughSentinelWrap(t *testing.T) {
 		Err()
 	wrapped := fmt.Errorf("%w: %w", ErrInvalidArg, rich)
 
-	got := mapRepoErr(wrapped)
+	got := MapRepoErr(wrapped)
 
 	st, ok := status.FromError(got)
 	if !ok {
-		t.Fatalf("mapRepoErr returned a non-status error: %v", got)
+		t.Fatalf("MapRepoErr returned a non-status error: %v", got)
 	}
 	if st.Code() != codes.InvalidArgument {
 		t.Fatalf("code = %v, want InvalidArgument", st.Code())

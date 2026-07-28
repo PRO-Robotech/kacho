@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	coreerrors "github.com/PRO-Robotech/kacho/pkg/errors"
-	"github.com/PRO-Robotech/kacho/services/compute/internal/service"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/serviceerr"
 )
 
 // TestInternalMapErrFailureBandsCharacterization records the code AND the exact
@@ -32,20 +32,20 @@ func TestInternalMapErrFailureBandsCharacterization(t *testing.T) {
 		wantCode codes.Code
 		wantMsg  string
 	}{
-		{"not_found/bare", service.ErrNotFound, codes.NotFound, "not found"},
-		{"not_found/wrapped", fmt.Errorf("%w: Disk dsk-1 not found", service.ErrNotFound), codes.NotFound, "not found"},
+		{"not_found/bare", serviceerr.ErrNotFound, codes.NotFound, "not found"},
+		{"not_found/wrapped", fmt.Errorf("%w: Disk dsk-1 not found", serviceerr.ErrNotFound), codes.NotFound, "not found"},
 
-		{"already_exists/bare", service.ErrAlreadyExists, codes.AlreadyExists, "already exists"},
-		{"already_exists/wrapped", fmt.Errorf("%w: Disk dsk-1 already exists", service.ErrAlreadyExists), codes.AlreadyExists, "already exists"},
+		{"already_exists/bare", serviceerr.ErrAlreadyExists, codes.AlreadyExists, "already exists"},
+		{"already_exists/wrapped", fmt.Errorf("%w: Disk dsk-1 already exists", serviceerr.ErrAlreadyExists), codes.AlreadyExists, "already exists"},
 
-		{"failed_precondition/bare", service.ErrFailedPrecondition, codes.FailedPrecondition, "failed precondition"},
-		{"failed_precondition/wrapped", fmt.Errorf("%w: disk is attached", service.ErrFailedPrecondition), codes.FailedPrecondition, "failed precondition"},
+		{"failed_precondition/bare", serviceerr.ErrFailedPrecondition, codes.FailedPrecondition, "failed precondition"},
+		{"failed_precondition/wrapped", fmt.Errorf("%w: disk is attached", serviceerr.ErrFailedPrecondition), codes.FailedPrecondition, "failed precondition"},
 
-		{"invalid_argument/bare", service.ErrInvalidArg, codes.InvalidArgument, "invalid argument"},
-		{"invalid_argument/wrapped", fmt.Errorf("%w: invalid disk id 'zzz'", service.ErrInvalidArg), codes.InvalidArgument, "invalid argument"},
+		{"invalid_argument/bare", serviceerr.ErrInvalidArg, codes.InvalidArgument, "invalid argument"},
+		{"invalid_argument/wrapped", fmt.Errorf("%w: invalid disk id 'zzz'", serviceerr.ErrInvalidArg), codes.InvalidArgument, "invalid argument"},
 
-		{"internal/sentinel", service.ErrInternal, codes.Internal, tag},
-		{"internal/wrapped", fmt.Errorf("%w: pgx: dial tcp 10.0.0.7:5432", service.ErrInternal), codes.Internal, tag},
+		{"internal/sentinel", serviceerr.ErrInternal, codes.Internal, tag},
+		{"internal/wrapped", fmt.Errorf("%w: pgx: dial tcp 10.0.0.7:5432", serviceerr.ErrInternal), codes.Internal, tag},
 
 		{"unavailable/status", status.Error(codes.Unavailable, "geo unavailable"), codes.Unavailable, "geo unavailable"},
 		{"passthrough/permission_denied", status.Error(codes.PermissionDenied, "denied"), codes.PermissionDenied, "denied"},
@@ -97,7 +97,7 @@ func TestInternalMapErrPreservesDetailsThroughSentinelWrap(t *testing.T) {
 	rich := coreerrors.InvalidArgument().
 		AddFieldViolation("sizeBytes", "sizeBytes must be positive").
 		Err()
-	wrapped := fmt.Errorf("%w: %w", service.ErrInvalidArg, rich)
+	wrapped := fmt.Errorf("%w: %w", serviceerr.ErrInvalidArg, rich)
 
 	got := internalMapErr("internal disk error", wrapped)
 

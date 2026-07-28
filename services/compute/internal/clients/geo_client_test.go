@@ -16,8 +16,8 @@ import (
 
 	geov1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
-	"github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
 
 // fakeGeoZoneClient — in-memory geov1.ZoneServiceClient для unit-теста geo-client'а.
@@ -48,7 +48,7 @@ func TestGeoClient_GetZone_Found(t *testing.T) {
 }
 
 // TestGeoClient_GetZone_NotFound — geo отвечает NOT_FOUND → GeoClient возвращает
-// service.ErrNotFound (его ловит mapZoneRefErr → InvalidArgument "Zone ... not found",
+// serviceerr.ErrNotFound (его ловит mapZoneRefErr → InvalidArgument "Zone ... not found",
 // fail-closed на мутации Instance).
 func TestGeoClient_GetZone_NotFound(t *testing.T) {
 	fake := &fakeGeoZoneClient{getFn: func(_ context.Context, _ *geov1.GetZoneRequest) (*geov1.Zone, error) {
@@ -58,7 +58,7 @@ func TestGeoClient_GetZone_NotFound(t *testing.T) {
 
 	err := c.GetZone(context.Background(), "no-such-zone")
 	require.Error(t, err)
-	require.True(t, errors.Is(err, ports.ErrNotFound), "geo NOT_FOUND must map to service.ErrNotFound, got %v", err)
+	require.True(t, errors.Is(err, ports.ErrNotFound), "geo NOT_FOUND must map to serviceerr.ErrNotFound, got %v", err)
 }
 
 // TestGeoClient_GetZone_Unavailable — geo недоступен (transport-ошибка) →
@@ -119,6 +119,6 @@ func TestGeoClient_GetZone_BlockingPeer_TimesOut(t *testing.T) {
 		"GetZone must return around its own configured per-call timeout, not hang on the caller's undeadlined ctx")
 }
 
-// staticAssertGeoClientPort — GeoClient должен реализовывать service.ZoneRegistry
+// staticAssertGeoClientPort — GeoClient должен реализовывать instance.ZoneRegistry
 // (тот же порт, что и in-process ZoneRepoSource), чтобы заменить его в wiring.
-var _ service.ZoneRegistry = (*GeoClient)(nil)
+var _ instance.ZoneRegistry = (*GeoClient)(nil)

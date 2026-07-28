@@ -36,6 +36,8 @@ import (
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/machinetype"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/check"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/clients"
@@ -47,7 +49,6 @@ import (
 	computemetrics "github.com/PRO-Robotech/kacho/services/compute/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/operationresolver"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
-	"github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
 
 func main() {
@@ -77,8 +78,8 @@ func main() {
 
 // services — собранный набор бизнес-сервисов (composition-point).
 type services struct {
-	machineType *service.MachineTypeService
-	instance    *service.InstanceService
+	machineType *machinetype.MachineTypeService
+	instance    *instance.InstanceService
 }
 
 func runServe(cfg config.Config) error {
@@ -665,7 +666,7 @@ func insecureEdgesInProductionStrict(cfg config.Config) error {
 // zone_id-валидация Instance идёт через geo.v1.ZoneService.Get (clients.GeoClient);
 // Geography (Region/Zone) принадлежит kacho-geo — compute их больше не обслуживает,
 // а лишь валидирует свой zone_id как consumer.
-func dialPeers(cfg config.Config, logger *slog.Logger) (service.ProjectClient, service.ZoneRegistry, service.SubnetRegistry, service.NicClient, service.StorageClient, []*grpc.ClientConn, error) {
+func dialPeers(cfg config.Config, logger *slog.Logger) (instance.ProjectClient, instance.ZoneRegistry, instance.SubnetRegistry, instance.NicClient, instance.StorageClient, []*grpc.ClientConn, error) {
 	if cfg.SkipPeerValidation {
 		logger.Warn("KACHO_COMPUTE_SKIP_PEER_VALIDATION=true — cross-service existence-check disabled (dev/test only)")
 		return clients.NoopProjectClient{}, clients.NoopGeoClient{}, clients.NoopSubnetClient{}, clients.NoopNicClient{}, clients.NoopStorageClient{}, nil, nil
@@ -712,7 +713,7 @@ func dialPeers(cfg config.Config, logger *slog.Logger) (service.ProjectClient, s
 	// attach fail-closed Unavailable, зеркало опускается). Per-edge client-cert
 	// mTLS через cfg.VPCNicMTLS (enable=false → insecure dev; enable=true без
 	// валидного cert-trio → startup error, fail-closed) — паритет с geo/iam рёбрами.
-	var nicClient service.NicClient = clients.NoopNicClient{}
+	var nicClient instance.NicClient = clients.NoopNicClient{}
 	if cfg.VPCInternalGRPCAddr != "" {
 		vpcCreds, cerr := grpcclient.TLSClientTransportCreds(cfg.VPCNicMTLS)
 		if cerr != nil {
@@ -742,7 +743,7 @@ func dialPeers(cfg config.Config, logger *slog.Logger) (service.ProjectClient, s
 	// (auth.PropagateOutgoing) — недоступная тенанту подсеть неотличима от
 	// несуществующей. Пустой addr → ребро не сконфигурировано: nil-клиент, и
 	// Create с NIC-спеками fail-closed Unavailable (coherence неверифицируема).
-	var subnetClient service.SubnetRegistry
+	var subnetClient instance.SubnetRegistry
 	if cfg.VPCGRPCAddr != "" {
 		subnetCreds, cerr := grpcclient.TLSClientTransportCreds(cfg.VPCMTLS)
 		if cerr != nil {
@@ -770,7 +771,7 @@ func dialPeers(cfg config.Config, logger *slog.Logger) (service.ProjectClient, s
 	// fail-closed Unavailable, зеркало опускается). Per-edge client-cert mTLS через
 	// cfg.StorageMTLS (enable=false → insecure dev; enable=true без валидного cert-trio
 	// → startup error, fail-closed) — паритет с vpc/geo/iam рёбрами.
-	var storageClient service.StorageClient = clients.NoopStorageClient{}
+	var storageClient instance.StorageClient = clients.NoopStorageClient{}
 	if cfg.StorageInternalGRPCAddr != "" {
 		storageCreds, cerr := grpcclient.TLSClientTransportCreds(cfg.StorageMTLS)
 		if cerr != nil {
@@ -826,7 +827,7 @@ func dialPeerCreds(addr string, creds credentials.TransportCredentials, idle boo
 // buildServices создаёт все repo'ы поверх pool и собирает из них бизнес-сервисы.
 //
 // existence-check zone_id (Instance/Disk Create, Disk Relocate) идёт в kacho-geo
-// через geoZones (service.ZoneRegistry, реализован clients.GeoClient). compute
+// через geoZones (instance.ZoneRegistry, реализован clients.GeoClient). compute
 // больше НЕ обслуживает Region/Zone — Geography (Region/Zone) принадлежит
 // kacho-geo; локальные таблицы `zones`/`regions` сняты миграцией
 // 0011_drop_geography. Режим KACHO_COMPUTE_SKIP_PEER_VALIDATION учтён на уровне
@@ -835,13 +836,13 @@ func dialPeerCreds(addr string, creds credentials.TransportCredentials, idle boo
 // saga). Wired here at the composition root; the Instance use-case consumes it in a
 // follow-up cutover slice (attach-state moves from the local attached_disks table to
 // storage). Threaded now so the peer-conn/config plumbing lands additively.
-func buildServices(pool *pgxpool.Pool, projectClient service.ProjectClient, geoZones service.ZoneRegistry, subnets service.SubnetRegistry, nicClient service.NicClient, storageClient service.StorageClient, opsRepo operations.Repo) *services {
+func buildServices(pool *pgxpool.Pool, projectClient instance.ProjectClient, geoZones instance.ZoneRegistry, subnets instance.SubnetRegistry, nicClient instance.NicClient, storageClient instance.StorageClient, opsRepo operations.Repo) *services {
 	instanceRepo := repo.NewInstanceRepo(pool)
 	machineTypeRepo := repo.NewMachineTypeRepo(pool)
 
 	return &services{
-		machineType: service.NewMachineTypeService(machineTypeRepo, opsRepo),
-		instance:    service.NewInstanceService(instanceRepo, machineTypeRepo, geoZones, subnets, projectClient, nicClient, storageClient, opsRepo),
+		machineType: machinetype.NewMachineTypeService(machineTypeRepo, opsRepo),
+		instance:    instance.NewInstanceService(instanceRepo, machineTypeRepo, geoZones, subnets, projectClient, nicClient, storageClient, opsRepo),
 	}
 }
 

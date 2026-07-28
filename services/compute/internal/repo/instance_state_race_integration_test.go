@@ -17,9 +17,9 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
-	"github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
 
 // TestIntegration_InstanceSetStatusCAS_ConcurrentStopOnStopped: ВМ в STOPPED;
@@ -71,7 +71,7 @@ func TestIntegration_InstanceSetStatusCAS_ConcurrentStopOnStopped(t *testing.T) 
 				successCnt.Add(1)
 				return
 			}
-			if errors.Is(err, service.ErrFailedPrecondition) {
+			if errors.Is(err, serviceerr.ErrFailedPrecondition) {
 				preCondCnt.Add(1)
 				return
 			}
@@ -145,7 +145,7 @@ func TestIntegration_InstanceSetStatusCAS_ConcurrentRestartOnRunning(t *testing.
 				successCnt.Add(1)
 				return
 			}
-			if errors.Is(err, service.ErrFailedPrecondition) {
+			if errors.Is(err, serviceerr.ErrFailedPrecondition) {
 				preCondCnt.Add(1)
 				return
 			}
@@ -229,12 +229,12 @@ func TestIntegration_InstanceSetStatusCAS_StopRestartRace(t *testing.T) {
 	got, err := instRepo.Get(ctx, inID)
 	require.NoError(t, err)
 	if stopWon {
-		assert.ErrorIs(t, restartErr, service.ErrFailedPrecondition)
+		assert.ErrorIs(t, restartErr, serviceerr.ErrFailedPrecondition)
 		require.NotNil(t, stopFinal)
 		assert.Equal(t, domain.InstanceStatusStopped, stopFinal.Status)
 		assert.Equal(t, domain.InstanceStatusStopped, got.Status, "final DB state must match winner (Stop)")
 	} else {
-		assert.ErrorIs(t, stopErr, service.ErrFailedPrecondition)
+		assert.ErrorIs(t, stopErr, serviceerr.ErrFailedPrecondition)
 		require.NotNil(t, restartFinal)
 		assert.Equal(t, domain.InstanceStatusRestarting, restartFinal.Status)
 		assert.Equal(t, domain.InstanceStatusRestarting, got.Status, "final DB state must match winner (Restart)")
@@ -259,5 +259,5 @@ func TestIntegration_InstanceSetStatusCAS_NotFound(t *testing.T) {
 	instRepo := repo.NewInstanceRepo(pool)
 	_, err = instRepo.SetStatusCAS(ctx, "epdNONEXISTENT0000000",
 		domain.InstanceStatusRunning, domain.InstanceStatusStopped)
-	require.ErrorIs(t, err, service.ErrNotFound)
+	require.ErrorIs(t, err, serviceerr.ErrNotFound)
 }

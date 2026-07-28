@@ -13,9 +13,9 @@ import (
 
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports/portmock"
-	"github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
 
 // newInstanceHandlerForValidation собирает InstanceHandler на fake-портах (без DB/peer)
@@ -30,7 +30,7 @@ func newInstanceHandlerForValidation(t *testing.T) (*InstanceHandler, *portmock.
 		Status:             domain.MachineTypeStatusAvailable,
 		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
 	})
-	svc := service.NewInstanceService(
+	svc := instance.NewInstanceService(
 		portmock.NewInstanceRepo(),
 		mtRepo,
 		portmock.NewZoneRegistry("ru-central1-a"),

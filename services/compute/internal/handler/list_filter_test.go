@@ -33,10 +33,10 @@ import (
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports/portmock"
-	"github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
 
 // newInstanceHandlerWithFilter — InstanceHandler over portmock repos + the real
@@ -44,7 +44,7 @@ import (
 func newInstanceHandlerWithFilter(t *testing.T, filter authzfilter.Filter) (*InstanceHandler, *portmock.InstanceRepo) {
 	t.Helper()
 	insRepo := portmock.NewInstanceRepo()
-	svc := service.NewInstanceService(
+	svc := instance.NewInstanceService(
 		insRepo, portmock.NewMachineTypeRepo(), portmock.NewZoneRegistry(),
 		portmock.NewSubnetRegistry(), &portmock.ProjectClient{OK: true},
 		portmock.NewNicClient(), portmock.NewStorageClient(), portmock.NewOpsRepo(),
@@ -265,7 +265,7 @@ func TestListHandlers_PaginationValidatedBeforeAuthz(t *testing.T) {
 	ctx := ctxWithSubject("user:usr_nobody")
 
 	t.Run("instance garbage token", func(t *testing.T) {
-		insSvc := service.NewInstanceService(
+		insSvc := instance.NewInstanceService(
 			portmock.NewInstanceRepo(), portmock.NewMachineTypeRepo(), portmock.NewZoneRegistry(),
 			portmock.NewSubnetRegistry(), &portmock.ProjectClient{OK: true},
 			portmock.NewNicClient(), portmock.NewStorageClient(), portmock.NewOpsRepo(),
@@ -301,7 +301,7 @@ func TestListHandlers_SendViewerResolvingAction(t *testing.T) {
 		ops := portmock.NewOpsRepo()
 		insRepo := portmock.NewInstanceRepo()
 		insRepo.Seed(&domain.Instance{ID: "epd-ins-1", ProjectID: "proj", Name: "vm", ZoneID: "ru-central1-a"})
-		svc := service.NewInstanceService(
+		svc := instance.NewInstanceService(
 			insRepo, portmock.NewMachineTypeRepo(), portmock.NewZoneRegistry(), portmock.NewSubnetRegistry(),
 			&portmock.ProjectClient{OK: true}, portmock.NewNicClient(), portmock.NewStorageClient(), ops,
 		)

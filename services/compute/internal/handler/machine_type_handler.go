@@ -11,9 +11,9 @@ import (
 
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 
+	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/machinetype"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/protoconv"
-	svc "github.com/PRO-Robotech/kacho/services/compute/internal/service"
 )
 
 // MachineTypeHandler реализует computev1.MachineTypeServiceServer (COMP-1 F7) —
@@ -22,11 +22,11 @@ import (
 // и per-RPC Check authz-интерсептора, паритет с geo-каталогом).
 type MachineTypeHandler struct {
 	computev1.UnimplementedMachineTypeServiceServer
-	svc *svc.MachineTypeService
+	svc *machinetype.MachineTypeService
 }
 
 // NewMachineTypeHandler создаёт MachineTypeHandler.
-func NewMachineTypeHandler(s *svc.MachineTypeService) *MachineTypeHandler {
+func NewMachineTypeHandler(s *machinetype.MachineTypeService) *MachineTypeHandler {
 	return &MachineTypeHandler{svc: s}
 }
 
@@ -42,7 +42,7 @@ func (h *MachineTypeHandler) Get(ctx context.Context, req *computev1.GetMachineT
 // List возвращает каталог machine-type с whitelist-фильтрами name=/family=/minGpus=.
 // Валидация формата (page_size/page_token) — в repo (до любого short-circuit).
 func (h *MachineTypeHandler) List(ctx context.Context, req *computev1.ListMachineTypesRequest) (*computev1.ListMachineTypesResponse, error) {
-	filter := svc.MachineTypeFilter{Name: req.Name, MinGPUs: req.MinGpus}
+	filter := machinetype.MachineTypeFilter{Name: req.Name, MinGPUs: req.MinGpus}
 	if req.Family != "" {
 		fam, ok := domain.ParseMachineTypeFamily(req.Family)
 		if !ok {
@@ -50,7 +50,7 @@ func (h *MachineTypeHandler) List(ctx context.Context, req *computev1.ListMachin
 		}
 		filter.Family = fam
 	}
-	mts, next, err := h.svc.List(ctx, filter, svc.Pagination{PageToken: req.PageToken, PageSize: req.PageSize})
+	mts, next, err := h.svc.List(ctx, filter, machinetype.Pagination{PageToken: req.PageToken, PageSize: req.PageSize})
 	if err != nil {
 		return nil, err
 	}
