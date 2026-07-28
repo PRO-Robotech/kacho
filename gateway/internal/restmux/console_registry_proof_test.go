@@ -20,8 +20,10 @@ package restmux
 //     иначе «ноль нарушений» было бы неотличимо от «ноль прочитанных файлов».
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -271,5 +273,272 @@ func TestConsoleMutationCallSeesARawFetch(t *testing.T) {
 				t.Fatalf("detector saw %v, want %v for:\n%s", got, c.want, c.src)
 			}
 		})
+	}
+}
+
+// composedRegistry — синтетический реестр, чьи поля собраны помощником с
+// подстановкой аргумента. Форма дословно повторяет ту, что реестр использует
+// для двух симметричных семейств VIP-источника.
+func composedRegistry(helperBody, spec string) string {
+	return "import type { FormField } from \"./form-schema\";\n\n" +
+		helperBody + "\n\n" +
+		"export const REGISTRY: Record<string, ResourceSpec> = {\n" + spec + "\n};\n"
+}
+
+const composedHelper = "function familyFields(family: \"v4\" | \"v6\", label: string): FormField[] {\n" +
+	"  const mode = `_${family}_source`;\n" +
+	"  return [\n" +
+	"    { name: mode, label: `Источник (${label})`, type: \"enum\", immutable: true, options: [] },\n" +
+	"    { name: `${family}_source.subnet_id`, label: `Подсеть (${label})`, type: \"ref\", refResource: \"subnets\", immutable: true },\n" +
+	"    { name: `${family}_source.address_id`, label: `Адрес (${label})`, type: \"ref\", refResource: \"addresses\", immutable: true },\n" +
+	"  ];\n" +
+	"}"
+
+const composedSpec = `
+  "load-balancers": {
+    id: "load-balancers",
+    route: "load-balancers",
+    apiPath: "/nlb/v1/networkLoadBalancers",
+    payloadKey: "networkLoadBalancers",
+    scope: "project",
+    ops: { create: true, update: true, delete: true },
+    columns: [],
+    fields: [
+      { name: "name", label: "Имя", type: "string", required: true },
+      ...familyFields("v4", "IPv4"),
+      ...familyFields("v6", "IPv6"),
+      { name: "project_id", label: "Project", type: "string", hidden: true },
+    ],
+    template: ({ projectId }) => ({ project_id: projectId ?? "", name: "" }),
+  },`
+
+// TestConsoleScannerExpandsComposedFieldSets — набор полей, вынесенный в
+// помощник, раскрывается с подстановкой аргументов вызова.
+//
+// Утверждаются ИМЕНА, а не только количество: раскрытие, давшее нужное число
+// полей с неразрешёнными именами, прошло бы проверку на количество и не
+// проверило бы ни одного настоящего ключа.
+func TestConsoleScannerExpandsComposedFieldSets(t *testing.T) {
+	parsed, err := parseConsoleRegistry("probe.tsx", composedRegistry(composedHelper, composedSpec), nil)
+	if err != nil {
+		t.Fatalf("parse composed registry: %v", err)
+	}
+	if len(parsed.Specs) != 1 {
+		t.Fatalf("expected 1 resource, got %d", len(parsed.Specs))
+	}
+	var got []string
+	for _, f := range parsed.Specs[0].Fields {
+		got = append(got, f.Name)
+	}
+	want := []string{
+		"name",
+		"_v4_source", "v4_source.subnet_id", "v4_source.address_id",
+		"_v6_source", "v6_source.subnet_id", "v6_source.address_id",
+		"project_id",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("expected %d fields, got %d: %v", len(want), len(got), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("field %d: expected %q, got %q (all: %v)", i, want[i], got[i], got)
+		}
+	}
+}
+
+// TestConsoleScannerChecksInsideAComposedFieldSet — красно-зелёная пара НА
+// ПОМОЩНИКЕ: поле, добавленное внутрь набора, проверяется в каждом развороте.
+//
+// Без этого «раскрытие работает» означало бы лишь «разбор не упал»: набор мог бы
+// раскрываться и не участвовать в сверке, а гейт оставался бы зелёным ровно там,
+// куда его только что расширили.
+func TestConsoleScannerChecksInsideAComposedFieldSet(t *testing.T) {
+	clean := composedRegistry(composedHelper, composedSpec)
+	parsed, err := parseConsoleRegistry("probe.tsx", clean, nil)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got := consoleSpecFindings(parsed.Specs[0]); len(got) != 0 {
+		t.Fatalf("GREEN baseline broken: composed set produced %d finding(s): %v", len(got), got)
+	}
+
+	injected := strings.Replace(composedHelper,
+		"    { name: `${family}_source.address_id`,",
+		"    { name: `${family}_source.bogus_ref`, label: \"x\", type: \"string\", immutable: true },\n"+
+			"    { name: `${family}_source.address_id`,", 1)
+	parsed, err = parseConsoleRegistry("probe.tsx", composedRegistry(injected, composedSpec), nil)
+	if err != nil {
+		t.Fatalf("parse injected: %v", err)
+	}
+	got := consoleSpecFindings(parsed.Specs[0])
+	// Помощник разворачивается дважды — значит и находок две, по одной на
+	// семейство, с РАЗНЫМИ подставленными именами. Инъекция минимальна:
+	// добавленное поле несёт те же флаги, что соседи по набору, иначе она
+	// меняла бы сразу две вещи и находки пришлось бы объяснять.
+	if len(got) != 2 {
+		t.Fatalf("a field added inside the helper must be reported once per expansion, got %d: %v", len(got), got)
+	}
+	seen := map[string]bool{}
+	for _, f := range got {
+		seen[f.Key] = true
+	}
+	for _, want := range []string{"v4_source.bogus_ref", "v6_source.bogus_ref"} {
+		if !seen[want] {
+			t.Fatalf("expected a finding naming %q, got %v", want, got)
+		}
+	}
+}
+
+// TestConsoleScannerRefusesCompositionItCannotRead — граница модели композиции.
+//
+// Раскрывается ровно одна форма: вызов помощника ЭТОГО файла, чьё тело —
+// связывания и возврат массива, с литеральными аргументами. За её пределами
+// разбор обязан ЛОМАТЬСЯ: набор полей, состав которого не виден в исходнике,
+// нельзя ни проверить, ни честно объявить проверенным.
+func TestConsoleScannerRefusesCompositionItCannotRead(t *testing.T) {
+	for name, tc := range map[string]struct{ helper, spec string }{
+		"helper is not declared in this file": {
+			helper: "const unrelated = 1;",
+			spec:   composedSpec,
+		},
+		"argument is computed, not a literal": {
+			helper: composedHelper,
+			spec:   strings.Replace(composedSpec, `...familyFields("v4", "IPv4"),`, `...familyFields(pickFamily(), "IPv4"),`, 1),
+		},
+		"helper body branches instead of returning a literal": {
+			helper: "function familyFields(family: string, label: string): FormField[] {\n" +
+				"  if (family === \"v4\") return [];\n" +
+				"  return [{ name: \"x\", label: \"x\", type: \"string\" }];\n" +
+				"}",
+			spec: composedSpec,
+		},
+		"helper returns something that is not an array": {
+			helper: "function familyFields(family: string, label: string): FormField[] {\n" +
+				"  return buildThem(family);\n" +
+				"}",
+			spec: composedSpec,
+		},
+		"field name is a computed expression, not a substituted name": {
+			helper: strings.Replace(composedHelper,
+				"{ name: `${family}_source.subnet_id`,",
+				"{ name: `${family.toUpperCase()}_source.subnet_id`,", 1),
+			spec: composedSpec,
+		},
+		"call passes a different number of arguments": {
+			helper: composedHelper,
+			spec:   strings.Replace(composedSpec, `...familyFields("v4", "IPv4"),`, `...familyFields("v4"),`, 1),
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parseConsoleRegistry("probe.tsx", composedRegistry(tc.helper, tc.spec), nil); err == nil {
+				t.Fatal("the scanner accepted a composition it cannot read: it would then check nothing and say nothing")
+			}
+		})
+	}
+}
+
+// TestConsoleComposedSetsAreActuallyExpandedInTheTree — раскрытие работает НА
+// РЕАЛЬНОМ дереве, а не только на синтетике.
+//
+// Утверждается количество РАСКРЫТОГО, а не число прочитанных файлов: раскрытие,
+// давшее ноль полей, выглядит ровно так же зелено, как раскрытие, давшее шесть.
+// И если реестр однажды перестанет собирать поля помощником, тест не «позеленеет
+// сам собой» — он скажет, что предмет исчез, и решение снять проверку будет
+// принято явно, а не по недосмотру.
+func TestConsoleComposedSetsAreActuallyExpandedInTheTree(t *testing.T) {
+	root := repoRoot(t)
+	consoleRoot := filepath.Join(root, "ui-future")
+	files, err := consoleRegistryFiles(consoleRoot)
+	if err != nil {
+		t.Fatalf("walk ui-future: %v", err)
+	}
+	extern, err := consoleExportedStringConsts(consoleRoot)
+	if err != nil {
+		t.Fatalf("collect exported string consts: %v", err)
+	}
+
+	expanded := 0
+	var where []string
+	for _, file := range files {
+		blob, err := os.ReadFile(file) //nolint:gosec // путь получен обходом дерева репозитория
+		if err != nil {
+			t.Fatalf("%s: %v", file, err)
+		}
+		rel := mustRel(root, file)
+		parsed, err := parseConsoleRegistry(rel, string(blob), extern)
+		if err != nil {
+			t.Fatalf("%s: %v", rel, err)
+		}
+		for _, spec := range parsed.Specs {
+			for _, f := range spec.Fields {
+				// Имя, оставшееся шаблоном, означало бы, что подстановка не
+				// произошла и в сверку уехала форма записи вместо ключа.
+				if strings.ContainsAny(f.Name, "`$") {
+					t.Errorf("%s [%s]: field name %q was never resolved — the expansion produced the source form, not a key",
+						rel, spec.ID, f.Name)
+				}
+			}
+			if spec.ExpandedFields > 0 {
+				expanded += spec.ExpandedFields
+				where = append(where, fmt.Sprintf("%s [%s]: %d", rel, spec.ID, spec.ExpandedFields))
+			}
+		}
+	}
+	if expanded == 0 {
+		t.Fatal("not one resource in the tree composes its field set any more: this proof has lost its subject — remove it deliberately rather than let it pass on nothing")
+	}
+	sort.Strings(where)
+	t.Logf("%d field(s) reached the check through expansion of a helper: %v", expanded, where)
+}
+
+// TestSanitizeReshapeIsNotRemoval — снятие ключа с последующим присваиванием
+// ТОГО ЖЕ ключа не выводит его поддерево из-под проверки.
+//
+// Разница не косметическая. Ключ, снятый и положенный обратно, уходит на провод
+// — просто в другой форме; ключ, снятый и не возвращённый, не уходит. Считать
+// первое удалением значит молча потерять охват вместе со всем поддеревом, и
+// потерять именно там, где форма описывает вложенную структуру. Ровно так
+// шесть полей источника VIP выпали из сверки, пока гейт рапортовал, что
+// прочитал их.
+func TestSanitizeReshapeIsNotRemoval(t *testing.T) {
+	const reshape = `sanitize: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      const built = buildIt(out);
+      delete out.v4_source;
+      delete out.form_only_leftover;
+      if (built) out.v4_source = built;
+      return out;
+    }`
+	eff := analyzeSanitize(reshape)
+
+	if eff.Removed["v4_source"] {
+		t.Error("a key that is deleted and then re-assigned is reshaped, not removed: dropping it takes its whole subtree out of the check")
+	}
+	if !eff.Added["v4_source"] {
+		t.Error("the re-assignment must be seen, otherwise the key would not be checked at all")
+	}
+	if !eff.Removed["form_only_leftover"] {
+		t.Error("a key that is deleted and never re-assigned really is removed: keeping it would report a body the console does not send")
+	}
+
+	// И то же на уровне собранного тела: поддерево обязано дойти до сверки.
+	spec := consoleSpec{
+		ID: "probe", MutationBasePath: "/nlb/v1/networkLoadBalancers", CanCreate: true,
+		Fields: []consoleField{
+			{Name: "v4_source.subnet_id"},
+			{Name: "form_only_leftover"},
+		},
+		SanitizeSource: reshape,
+	}
+	body := consoleCreateBody(spec, analyzeSanitize(reshape))
+	sub, ok := body["v4_source"].(map[string]any)
+	if !ok {
+		t.Fatalf("the reshaped key must survive as the shape the registry declares, got %#v", body["v4_source"])
+	}
+	if _, ok := sub["subnet_id"]; !ok {
+		t.Errorf("the subtree under a reshaped key must reach the check, got %#v", sub)
+	}
+	if _, ok := body["form_only_leftover"]; ok {
+		t.Error("a genuinely removed key must not reach the check")
 	}
 }
