@@ -337,14 +337,18 @@ export const SERVICE_MODULES: ServiceModule[] = [
 ];
 
 /** Активный модуль по URL — `/projects/:projectId/<segment>/...` → ServiceModule | null.
- *  Также матчит `/iam/...` → IAM module (которому проектный контекст не нужен). */
-export function moduleFromPathname(pathname: string): ServiceModule | null {
+ *  Также матчит `/iam/...` → IAM module (которому проектный контекст не нужен).
+ *
+ *  `modules` — набор, который ОБСЛУЖИВАЕТ вызывающее приложение. По умолчанию все;
+ *  приложение, не маршрутизирующее какой-то модуль, обязано его не передавать —
+ *  иначе сайдбар раскроет раздел, открыть который приложению нечем. */
+export function moduleFromPathname(pathname: string, modules: ServiceModule[] = SERVICE_MODULES): ServiceModule | null {
   if (pathname.startsWith("/iam")) {
-    return SERVICE_MODULES.find((mod) => mod.segment === "iam") ?? null;
+    return modules.find((mod) => mod.segment === "iam") ?? null;
   }
   const m = pathname.match(/^\/projects\/[^/]+\/([^/]+)/);
   if (!m) return null;
-  return SERVICE_MODULES.find((mod) => mod.segment === m[1]) ?? null;
+  return modules.find((mod) => mod.segment === m[1]) ?? null;
 }
 
 /** Верхний общий блок сайдбара (всегда виден). */

@@ -260,7 +260,7 @@ describe("IamPage", () => {
       expect.anything(),
     );
     expect(global.fetch).not.toHaveBeenCalledWith(
-      expect.stringContaining("/iam/v1/accessBindings:listByResource"),
+      expect.stringContaining("/iam/v1/accessBindings:listByScope"),
       expect.anything(),
     );
   });

@@ -3,7 +3,7 @@
 // Использование:
 //   <Route element={<RequireAuth/>}>
 //     <Route element={<RequireMFAFresh/>}>
-//       <Route path="/iam/access-bindings" .../>
+//       <Route path="/system/cluster/admins" .../>
 //     </Route>
 //   </Route>
 //

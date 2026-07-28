@@ -1,11 +1,17 @@
 // Per-resource API helpers NLB-домена. Обёртки над generic api.* (client.ts),
 // который выполняет case-конверсию (snake→camel на отправку, camel→snake на
 // приём) и заворачивает мутации в Operation-envelope. URL'ы — verbatim из proto
-// google.api.http annotations (kacho.cloud.nlb.v1).
+// google.api.http annotations (kacho.cloud.loadbalancer.v1).
 //
 // Generic ResourceListPage/Shell/Create ходят напрямую через api.* по spec.apiPath;
-// эти helpers — для доменных действий (Start/Stop, attach/detach TargetGroup),
-// которых нет в generic-конвейере.
+// здесь — доменные производные, которых в generic-конвейере нет.
+//
+// Действий-глаголов у балансировщика НЕТ. `:start`/`:stop` сняты с контракта
+// (административное включение/выключение выражается полем `admin_state`), а
+// `:attachTargetGroup`/`:detachTargetGroup` — вместе с M:N-снимком
+// `attached_target_groups`: целевая группа привязывается на ЛИСТЕНЕРЕ
+// (`Listener.target_group_id`). Ни один из четырёх маршрутов край не
+// обслуживает; звать их — гарантированный 404.
 
 import { api } from "./client";
 import type { Operation, NetworkLoadBalancerList, ListenerList, TargetGroupList } from "./types";
@@ -14,26 +20,28 @@ const NLB_LB = "/nlb/v1/networkLoadBalancers";
 const NLB_LISTENERS = "/nlb/v1/listeners";
 const NLB_TG = "/nlb/v1/targetGroups";
 
-// buildAttachPayload — тело :attachTargetGroup. Request-message несёт ВЛОЖЕННЫЙ
-// `attached_target_group` (AttachedTargetGroup), а не плоский target_group_id.
-export function buildAttachPayload(
-  targetGroupId: string | undefined,
-): { attached_target_group: { target_group_id: string } } | null {
-  return targetGroupId ? { attached_target_group: { target_group_id: targetGroupId } } : null;
+// TargetGroupWiring — целевая группа и листенеры, которые в неё направляют
+// трафик. Порядок — как в списке листенеров (первое упоминание группы).
+export interface TargetGroupWiring {
+  targetGroupId: string;
+  listeners: { id: string; name: string }[];
 }
 
-// buildDetachPayload — тело :detachTargetGroup. Здесь request ПЛОСКИЙ:
-// target_group_id верхним уровнем (парная операция с асимметричной формой —
-// строить payload по proto-форме, не «по симметрии» с attach).
-export function buildDetachPayload(targetGroupId: string | undefined): { target_group_id: string } | null {
-  return targetGroupId ? { target_group_id: targetGroupId } : null;
-}
-
-// attachedTargetGroupIds — снимок id приаттаченных TG из Get(LB)
-// (output-only pivot attached_target_groups).
-export function attachedTargetGroupIds(data: Record<string, unknown> | undefined): string[] {
-  const arr = (data?.attached_target_groups as { target_group_id?: string }[] | undefined) ?? [];
-  return arr.map((a) => a.target_group_id).filter((x): x is string => !!x);
+// targetGroupWiring — какие целевые группы обслуживает балансировщик. Единственный
+// источник — ЕГО ЛИСТЕНЕРЫ: привязка живёт на `Listener.target_group_id`
+// (`default_target_group_id` — легаси-зеркало того же ref'а, оба сосуществуют).
+// Листенер без группы (`substatus=MISCONFIGURED`) строки не даёт.
+export function targetGroupWiring(listeners: Record<string, unknown>[] | undefined): TargetGroupWiring[] {
+  const byID = new Map<string, TargetGroupWiring>();
+  for (const row of listeners ?? []) {
+    const tgID = (row.target_group_id as string) || (row.default_target_group_id as string) || "";
+    if (!tgID) continue;
+    const id = (row.id as string) ?? "";
+    const wiring = byID.get(tgID) ?? { targetGroupId: tgID, listeners: [] };
+    wiring.listeners.push({ id, name: (row.name as string) || id });
+    byID.set(tgID, wiring);
+  }
+  return [...byID.values()];
 }
 
 export const loadBalancersApi = {
@@ -42,13 +50,6 @@ export const loadBalancersApi = {
   create: (body: unknown): Promise<{ operation: Operation }> => api.create(NLB_LB, body),
   update: (id: string, body: unknown): Promise<{ operation: Operation }> => api.update(`${NLB_LB}/${id}`, body),
   delete: (id: string): Promise<{ operation: Operation }> => api.delete(`${NLB_LB}/${id}`),
-  start: (id: string): Promise<{ operation: Operation }> => api.action(`${NLB_LB}/${id}:start`),
-  stop: (id: string): Promise<{ operation: Operation }> => api.action(`${NLB_LB}/${id}:stop`),
-  // Парные действия — РАЗНЫЕ формы тела (attach вложенный, detach плоский).
-  attachTargetGroup: (id: string, targetGroupId: string): Promise<{ operation: Operation }> =>
-    api.action(`${NLB_LB}/${id}:attachTargetGroup`, buildAttachPayload(targetGroupId) ?? {}),
-  detachTargetGroup: (id: string, targetGroupId: string): Promise<{ operation: Operation }> =>
-    api.action(`${NLB_LB}/${id}:detachTargetGroup`, buildDetachPayload(targetGroupId) ?? {}),
 };
 
 export const listenersApi = {
