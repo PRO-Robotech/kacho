@@ -409,3 +409,23 @@ func TestResourceExtractor_FromHTTP_UnknownMethod_IsTreatedAsBodyBearing(t *test
 	assert.True(t, id.IsWildcard(),
 		"an unrecognised method must not take its scope from the query string")
 }
+
+// The body reader declines a body whose Content-Type does not announce JSON,
+// while grpc-gateway falls back to its default JSON marshaler and decodes it
+// anyway. The two therefore disagree about what the handler will see — so the
+// safe behaviour is to resolve NO scope rather than fall back to the query
+// string, which would be the same confusion this guards against wearing a
+// different Content-Type.
+func TestResourceExtractor_FromHTTP_NonJSONContentType_DoesNotFallBackToQuery(t *testing.T) {
+	e := middleware.NewResourceExtractor(nil)
+	entry := middleware.CatalogEntry{
+		ScopeExtractor: middleware.ScopeExtractor{FromRequestField: "project_id"},
+	}
+	r := httptest.NewRequest(http.MethodPost, "/vpc/v1/networks?projectId=prj_query",
+		strings.NewReader(`{"projectId":"prj_body"}`))
+	r.Header.Set("Content-Type", "text/plain")
+	id, conflict := e.ExtractFromHTTP(r, "kacho.cloud.vpc.v1.NetworkService/Create", entry)
+	require.NotNil(t, conflict)
+	assert.True(t, id.IsWildcard(),
+		"an unreadable body must yield no scope, never the query string")
+}
