@@ -471,18 +471,28 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
-    id="ADR-CR-VAL-RESERVED-USED-OK",
-    title="Create address с reserved/used флагами (если разрешено) → 200 или 400",
-    classes=["VAL"], priority="P2",
+    id="ADR-CR-STATE-RESERVED-NOT-SETTABLE-AT-CREATE",
+    title="Create address не принимает reserved — свежий адрес reserved=false (флаг только через Update)",
+    classes=["VAL", "STATE"], priority="P2",
     steps=[
-        Step(name="cr-flags", method="POST", path="/vpc/v1/addresses",
+        # `reserved` is a field of UpdateAddressRequest, NOT of CreateAddressRequest:
+        # an address is reserved by a later PATCH, never at birth. The product statement
+        # is therefore about the RESULT — a freshly created address is not reserved —
+        # and it is checked by reading the address back. The previous version of this
+        # case tried to say it by sending `reserved: true` (plus `used`, which is
+        # output-only on the resource and settable nowhere) and then accepting either
+        # 200 or 400, so it neither set the flag nor established that it was refused.
+        Step(name="cr-plain", method="POST", path="/vpc/v1/addresses",
              body={"projectId": "{{_suiteProjectId}}", "name": "adr-flg-{{runId}}",
-                   "reserved": True, "used": False,
                    "externalIpv4AddressSpec": {"zoneId": "{{existingZoneId}}"}},
-             test_script=["pm.test('200 or 400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+             test_script=[*assert_status(200),
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.addressId", "addrId")]),
         poll_operation_until_done(),
+        retry_until_authorized(Step(name="get-not-reserved", method="GET", path="/vpc/v1/addresses/{{addrId}}",
+             test_script=[*assert_status(200),
+                          "pm.test('fresh address is not reserved', () => "
+                          "pm.expect(pm.response.json().reserved || false).to.eql(false));"])),
         retry_until_authorized(Step(name="cleanup", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
              test_script=["pm.test('cleanup', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
                           *save_from_response("j.id", "opId")]), retry_on=(403,)),

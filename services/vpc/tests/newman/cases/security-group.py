@@ -846,7 +846,10 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.securityGroupId", "sgId")]),
         poll_operation_until_done(),
         Step(name="patch-mask-network", method="PATCH", path="/vpc/v1/securityGroups/{{sgId}}",
-             body={"updateMask": "network_id", "networkId": "{{netId}}"},
+             # Mask-only: `network_id` is not a field of UpdateSecurityGroupRequest,
+             # so the mask is the probe; a body value would be dropped by the edge.
+             # verify-unchanged below still confirms the group kept its network.
+             body={"updateMask": "network_id"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
         retry_until_authorized(Step(name="verify-unchanged", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[*assert_status(200),

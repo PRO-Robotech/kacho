@@ -233,6 +233,20 @@ def assert_operation_envelope() -> List[str]:
     ]
 
 
+# Subnet CIDR shape (VPC-1 F7). The flat "all blocks" array was split into an
+# immutable primary anchor set at Create (`ipv4_cidr_primary` / `ipv6_cidr_primary`)
+# plus additional ranges moved by the :add-cidr-blocks / :remove-cidr-blocks verb
+# pair (`ipv4_cidr_blocks` / `ipv6_cidr_blocks`). A block therefore lands in one of
+# two places depending on whether its family was empty at the time, so a fixture
+# asking "is this range on the subnet?" has to look at the union of both.
+SUBNET_V4_CIDRS = ("([].concat(pm.response.json().ipv4CidrPrimary ? "
+                   "[pm.response.json().ipv4CidrPrimary] : [], "
+                   "pm.response.json().ipv4CidrBlocks || []))")
+SUBNET_V6_CIDRS = ("([].concat(pm.response.json().ipv6CidrPrimary ? "
+                   "[pm.response.json().ipv6CidrPrimary] : [], "
+                   "pm.response.json().ipv6CidrBlocks || []))")
+
+
 def crud_list_bva_block(prefix, list_path):
     """3 BVA-кейса для List RPC: pageSize=0, pageSize=10000, bad token."""
     return [
@@ -332,7 +346,12 @@ def state_immutable_project(prefix, update_base_path):
         classes=["STATE", "VAL"], priority="P1",
         steps=[Step(name="upd-project-via-mask", method="PATCH",
                     path=f"{update_base_path}/{{{{garbageVpcId}}}}",
-                    body={"updateMask": "project_id", "projectId": "x"},
+                    # The probe is carried by the MASK. `project_id` is not a field of
+                    # any Update*Request, so naming it in update_mask IS the assertion;
+                    # a `projectId` key in the body is decorative — the edge drops what
+                    # the message does not declare, so it cannot influence the outcome,
+                    # and shipping it only suggests the field is settable.
+                    body={"updateMask": "project_id"},
                     # PATCH immutable-mask по garbageVpcId: scope_extractor 403 (authz-first)
                     # ДО immutable-check 400 / sync Get 404.
                     test_script=[*assert_absent_id_rejected()])],
@@ -1072,13 +1091,15 @@ def immutable_fields_matrix(prefix, update_base_path, immutable_field_names):
     """Для каждого immutable поля: PATCH mask=<field> → 400 InvalidArgument
     с verbatim text "<field> is immutable" (или другая 4xx).
     """
-    def _snake_to_camel(s):
-        parts = s.split("_")
-        return parts[0] + "".join(p.title() for p in parts[1:])
     cases = []
     for fld in immutable_field_names:
-        camel = _snake_to_camel(fld)
-        body = {"updateMask": fld, camel: "x"}
+        # The probe is carried by the MASK alone: an immutable (or retired) field named
+        # in update_mask must be rejected. A matching key in the body would be
+        # decorative — none of these fields exists in the Update*Request message, so the
+        # edge drops the key before the handler ever sees it and the outcome cannot
+        # depend on it. Sending it anyway is how a fixture ends up claiming to set a
+        # field the contract does not have.
+        body = {"updateMask": fld}
         cases.append(Case(
             id=f"{prefix}-UPD-STATE-IMMUTABLE-{fld.upper().replace('_','-')}",
             title=f"Update mask='{fld}' (immutable) → 400 InvalidArgument verbatim",
@@ -1135,12 +1156,12 @@ def subnet_cidr_expand_shrink_pack():
         steps=[
             Step(name="add-1", method="POST",
                  path="/vpc/v1/subnets/{{addedSubId}}:add-cidr-blocks",
-                 body={"v4CidrBlocks": ["10.180.10.0/24"]},
+                 body={"ipv4CidrBlocks": ["10.180.10.0/24"]},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
             poll_operation_until_done(),
             Step(name="verify-1", method="GET", path="/vpc/v1/subnets/{{addedSubId}}",
                  test_script=[*assert_status(200),
-                              "pm.test('cidr added', () => pm.expect(pm.response.json().v4CidrBlocks).to.include('10.180.10.0/24'));"]),
+                              "pm.test('cidr added', () => pm.expect(" + SUBNET_V4_CIDRS + ").to.include('10.180.10.0/24'));"]),
         ],
     ))
 
@@ -1152,12 +1173,12 @@ def subnet_cidr_expand_shrink_pack():
         steps=[
             Step(name="add-3", method="POST",
                  path="/vpc/v1/subnets/{{addedSubId}}:add-cidr-blocks",
-                 body={"v4CidrBlocks": ["10.180.20.0/24", "10.180.21.0/24", "10.180.22.0/24"]},
+                 body={"ipv4CidrBlocks": ["10.180.20.0/24", "10.180.21.0/24", "10.180.22.0/24"]},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
             poll_operation_until_done(),
             Step(name="verify-3", method="GET", path="/vpc/v1/subnets/{{addedSubId}}",
                  test_script=[*assert_status(200),
-                              "const c = pm.response.json().v4CidrBlocks;",
+                              "const c = " + SUBNET_V4_CIDRS + ";",
                               "pm.test('all 3 present', () => {",
                               "  pm.expect(c).to.include('10.180.20.0/24');",
                               "  pm.expect(c).to.include('10.180.21.0/24');",
@@ -1174,7 +1195,7 @@ def subnet_cidr_expand_shrink_pack():
         steps=[
             Step(name="add-overlap", method="POST",
                  path="/vpc/v1/subnets/{{addedSubId}}:add-cidr-blocks",
-                 body={"v4CidrBlocks": ["10.180.10.0/25"]},  # подсеть 10.180.10.0/24 уже добавлен
+                 body={"ipv4CidrBlocks": ["10.180.10.0/25"]},  # подсеть 10.180.10.0/24 уже добавлен
                  test_script=[
                      "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
                      *save_from_response("j.id", "opId"),
@@ -1198,7 +1219,7 @@ def subnet_cidr_expand_shrink_pack():
         steps=[
             Step(name="add-hostbits", method="POST",
                  path="/vpc/v1/subnets/{{addedSubId}}:add-cidr-blocks",
-                 body={"v4CidrBlocks": ["10.180.30.5/24"]},
+                 body={"ipv4CidrBlocks": ["10.180.30.5/24"]},
                  test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
         ],
     ))
@@ -1211,17 +1232,17 @@ def subnet_cidr_expand_shrink_pack():
         steps=[
             Step(name="add-3-pre", method="POST",
                  path="/vpc/v1/subnets/{{addedSubId}}:add-cidr-blocks",
-                 body={"v4CidrBlocks": ["10.180.40.0/24", "10.180.41.0/24", "10.180.42.0/24"]},
+                 body={"ipv4CidrBlocks": ["10.180.40.0/24", "10.180.41.0/24", "10.180.42.0/24"]},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
             poll_operation_until_done(),
             Step(name="rm-1", method="POST",
                  path="/vpc/v1/subnets/{{addedSubId}}:remove-cidr-blocks",
-                 body={"v4CidrBlocks": ["10.180.42.0/24"]},
+                 body={"ipv4CidrBlocks": ["10.180.42.0/24"]},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
             poll_operation_until_done(),
             Step(name="verify-1-removed", method="GET", path="/vpc/v1/subnets/{{addedSubId}}",
                  test_script=[*assert_status(200),
-                              "const c = pm.response.json().v4CidrBlocks;",
+                              "const c = " + SUBNET_V4_CIDRS + ";",
                               "pm.test('removed cidr is gone', () => pm.expect(c).to.not.include('10.180.42.0/24'));",
                               "pm.test('other cidrs remain', () => {",
                               "  pm.expect(c).to.include('10.180.40.0/24');",
@@ -1238,7 +1259,7 @@ def subnet_cidr_expand_shrink_pack():
         steps=[
             Step(name="rm-missing", method="POST",
                  path="/vpc/v1/subnets/{{addedSubId}}:remove-cidr-blocks",
-                 body={"v4CidrBlocks": ["192.168.99.0/24"]},
+                 body={"ipv4CidrBlocks": ["192.168.99.0/24"]},
                  test_script=[
                      "pm.test('200 (op) or 400 sync', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
                      *save_from_response("j.id", "opId"),
@@ -1261,7 +1282,7 @@ def subnet_cidr_expand_shrink_pack():
         steps=[
             Step(name="rm-primary", method="POST",
                  path="/vpc/v1/subnets/{{addedSubId}}:remove-cidr-blocks",
-                 body={"v4CidrBlocks": ["10.180.0.0/24"]},  # primary subnet CIDR из preflight
+                 body={"ipv4CidrBlocks": ["10.180.0.0/24"]},  # primary subnet CIDR из preflight
                  test_script=[
                      "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
                      *save_from_response("j.id", "opId"),
@@ -1285,21 +1306,21 @@ def subnet_cidr_expand_shrink_pack():
         steps=[
             Step(name="state-before", method="GET", path="/vpc/v1/subnets/{{addedSubId}}",
                  test_script=[*assert_status(200),
-                              "pm.environment.set('cidrsBefore', JSON.stringify(pm.response.json().v4CidrBlocks));"]),
+                              "pm.environment.set('cidrsBefore', JSON.stringify(" + SUBNET_V4_CIDRS + "));"]),
             Step(name="add-temp", method="POST",
                  path="/vpc/v1/subnets/{{addedSubId}}:add-cidr-blocks",
-                 body={"v4CidrBlocks": ["10.180.99.0/24"]},
+                 body={"ipv4CidrBlocks": ["10.180.99.0/24"]},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
             poll_operation_until_done(),
             Step(name="remove-temp", method="POST",
                  path="/vpc/v1/subnets/{{addedSubId}}:remove-cidr-blocks",
-                 body={"v4CidrBlocks": ["10.180.99.0/24"]},
+                 body={"ipv4CidrBlocks": ["10.180.99.0/24"]},
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
             poll_operation_until_done(),
             Step(name="state-after", method="GET", path="/vpc/v1/subnets/{{addedSubId}}",
                  test_script=[*assert_status(200),
                               "const before = JSON.parse(pm.environment.get('cidrsBefore'));",
-                              "const after = pm.response.json().v4CidrBlocks;",
+                              "const after = " + SUBNET_V4_CIDRS + ";",
                               "pm.test('cidrs roundtrip — равны', () => pm.expect(after.sort()).to.deep.eql(before.sort()));"]),
         ],
     ))
@@ -1308,27 +1329,33 @@ def subnet_cidr_expand_shrink_pack():
 
 
 def pairwise_subnet_pack():
-    """Pairwise для Subnet: zone × prefix × dhcp.
-    9 combinations покрывают все пары."""
+    """Pairwise для Subnet: zone × prefix — 9 комбинаций покрывают все пары.
+
+    Третья ось (dhcp) снята: `dhcp_options` изъят из Subnet.Create редизайном
+    VPC-1 F9/VPC-1-43 и в сообщении запроса зарезервирован. Ось, которую нельзя
+    выразить в теле, ничего не варьирует — она давала два одинаковых запроса под
+    разными именами и создавала впечатление покрытия, которого не было. Отсутствие
+    DHCP-ручек фиксирует SUB-CR-V1-DHCP-DROPPED (поля нет в проекции чтения).
+    """
     # Используем только существующие zone id (zone-{a,b,d}); на несуществующей
     # зоне Subnet.Create отвергается с "Illegal argument zone_id".
     combos = [
-        ("{{zoneA}}", "/24", True),  ("{{zoneA}}", "/28", False), ("{{zoneA}}", "/16", True),
-        ("{{zoneB}}", "/24", False), ("{{zoneB}}", "/28", True),  ("{{zoneB}}", "/16", False),
-        ("{{zoneD}}", "/24", True),  ("{{zoneD}}", "/28", False), ("{{zoneD}}", "/16", True),
+        ("{{zoneA}}", "/24"), ("{{zoneA}}", "/28"), ("{{zoneA}}", "/16"),
+        ("{{zoneB}}", "/24"), ("{{zoneB}}", "/28"), ("{{zoneB}}", "/16"),
+        ("{{zoneD}}", "/24"), ("{{zoneD}}", "/28"), ("{{zoneD}}", "/16"),
     ]
     cases = []
-    for i, (zone, prefix, with_dhcp) in enumerate(combos):
+    for i, (zone, prefix) in enumerate(combos):
         ipbase = f"10.{170+i}.0.0"
+        # ipv4_cidr_primary — тот самый якорь, который варьирует ось prefix. Пока
+        # тело несло снятое v4_cidr_blocks, край его отбрасывал: все девять
+        # комбинаций уезжали БЕЗ префикса, и ось существовала только в заголовке.
         body = {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                 "name": f"sub-pw-{i}-{{{{runId}}}}", "zoneId": zone,
-                "v4CidrBlocks": [f"{ipbase}{prefix}"]}
-        if with_dhcp:
-            body["dhcpOptions"] = {"domainName": "test.local",
-                                   "domainNameServers": ["8.8.8.8"]}
+                "ipv4CidrPrimary": f"{ipbase}{prefix}"}
         cases.append(Case(
             id=f"SUB-CR-PAIRWISE-{i:02d}",
-            title=f"Pairwise [{i}]: zone={zone} prefix={prefix} dhcp={with_dhcp}",
+            title=f"Pairwise [{i}]: zone={zone} prefix={prefix}",
             classes=["VAL", "CRUD"], priority="P2",
             steps=[
                 Step(name="cr-pw", method="POST", path="/vpc/v1/subnets", body=body,
@@ -1925,6 +1952,8 @@ def load_cases_module(path: Path):
     mod.assert_absent_id_rejected = assert_absent_id_rejected
     mod.save_from_response = save_from_response
     mod.assert_operation_envelope = assert_operation_envelope
+    mod.SUBNET_V4_CIDRS = SUBNET_V4_CIDRS
+    mod.SUBNET_V6_CIDRS = SUBNET_V6_CIDRS
     mod.poll_operation_until_done = poll_operation_until_done
     mod.retry_until_authorized = retry_until_authorized
     mod.retry_until_present = retry_until_present

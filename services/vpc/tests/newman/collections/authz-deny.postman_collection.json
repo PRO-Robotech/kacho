@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "a1a37086-4108-4d88-952d-3e696724ddfd",
+    "_postman_id": "37d24304-f118-40b6-8ca1-f941e74cea8e",
     "name": "kacho-vpc / newman / authz-deny",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -13804,7 +13804,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-anon-own-{{runId}}\", \"sharedEgressGateway\": {}}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-anon-own-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -13865,7 +13865,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-anon-cross-{{runId}}\", \"sharedEgressGateway\": {}}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-anon-cross-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -14198,7 +14198,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-nob-own-{{runId}}\", \"sharedEgressGateway\": {}}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-nob-own-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -14268,7 +14268,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-nob-cross-{{runId}}\", \"sharedEgressGateway\": {}}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-nob-cross-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -14688,7 +14688,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-pa1-own-{{runId}}\", \"sharedEgressGateway\": {}}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-pa1-own-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -14756,7 +14756,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-pa1-cross-{{runId}}\", \"sharedEgressGateway\": {}}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-pa1-cross-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15156,7 +15156,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-aaa-own-{{runId}}\", \"sharedEgressGateway\": {}}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-aaa-own-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15224,7 +15224,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-aaa-cross-{{runId}}\", \"sharedEgressGateway\": {}}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-aaa-cross-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15624,7 +15624,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-aab-own-{{runId}}\", \"sharedEgressGateway\": {}}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-aab-own-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15694,7 +15694,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-aab-cross-{{runId}}\", \"sharedEgressGateway\": {}}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-aab-cross-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -16092,7 +16092,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-inv-own-{{runId}}\", \"sharedEgressGateway\": {}}",
+              "raw": "{\"projectId\": \"{{projectA1Id}}\", \"name\": \"authz-gateway-inv-own-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -16160,7 +16160,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-inv-cross-{{runId}}\", \"sharedEgressGateway\": {}}",
+              "raw": "{\"projectId\": \"{{projectB1Id}}\", \"name\": \"authz-gateway-inv-cross-{{runId}}\", \"sharedEgressGatewaySpec\": {}}",
               "options": {
                 "raw": {
                   "language": "json"
