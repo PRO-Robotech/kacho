@@ -482,3 +482,155 @@ func setJSONPath(obj map[string]any, path string, value any) {
 		cur = next
 	}
 }
+
+// consoleMutationCall — вызов, которым консоль отправляет краю тело.
+var consoleMutationCall = regexp.MustCompile(`\bapi\.(?:create|update|post)\(`)
+
+// specDrivenFormComponent — общие формы, чьё тело собирает РЕЕСТР
+// (`spec.fields` / `spec.template` / `spec.sanitize`). Ровно их и проверяет гейт
+// выше, поэтому вызов отсюда — покрытый вызов.
+var specDrivenFormComponent = map[string]bool{
+	"ResourceCreatePage.tsx":       true,
+	"ResourceEditPage.tsx":         true,
+	"InlineResourceCreateForm.tsx": true,
+	"InlineResourceEditForm.tsx":   true,
+	"ResourceFormDialog.tsx":       true,
+}
+
+// bespokeConsoleMutationSites — поимённый список мест, которые собирают тело
+// САМИ, минуя реестр.
+//
+// Зачем список, а не молчание. Охват выше покрывает ровно тот путь, где состав
+// тела ОБЪЯВЛЕН (реестр ресурсов) и потому вычислим статически. Форма, которая
+// держит собственное состояние и собирает тело из локальных переменных, к набору
+// ключей статически не сводится — и честнее сказать это, чем построить хрупкий
+// разбор, который однажды перестанет что-либо находить и не скажет об этом.
+//
+// Но «не покрыто» обязано быть ВИДНО. Список печатается каждый прогон; новое
+// место, собирающее тело в обход реестра, роняет гейт — не потому что оно
+// ошибочно, а потому что решение «эта поверхность остаётся вне охвата» должно
+// приниматься явно, а не появляться само. Разрешение, которому нечего разрешать,
+// тоже роняет гейт: неиспользуемое право наследует следующая ошибка.
+var bespokeConsoleMutationSites = map[string]string{
+	"iam/src/components/organisms/iam/AccessBindingCreateForm/AccessBindingCreateForm.tsx":                  "выдача доступа: тело собирается из состояния формы, состав объявлен не реестром",
+	"iam/src/pages/iam/AccessPage/AccessPage.tsx":                                                           "выдача и отзыв доступа со страницы, тело из локального состояния",
+	"vpc/src/pages/iam/AccessBindingsPage.tsx":                                                              "выдача и отзыв доступа со страницы, тело из локального состояния",
+	"vpc/src/pages/iam/AccessPage.tsx":                                                                      "выдача и отзыв доступа со страницы, тело из локального состояния",
+	"shared/src/components/organisms/iam/IamCommon/IamCommon.tsx":                                           "общие действия IAM, тело из локального состояния",
+	"shared/src/components/organisms/InlineAddressPoolCreateForm/InlineAddressPoolCreateForm.tsx":           "адресный пул: собственная форма, тело из локального состояния",
+	"shared/src/components/organisms/InlineAddressPoolEditForm/InlineAddressPoolEditForm.tsx":               "адресный пул: собственная форма, тело из локального состояния",
+	"shared/src/components/organisms/InlineNetworkInterfaceCreateForm/InlineNetworkInterfaceCreateForm.tsx": "сетевой интерфейс: собственная форма, тело из локального состояния",
+	"shared/src/components/organisms/InlineNetworkInterfaceEditForm/InlineNetworkInterfaceEditForm.tsx":     "сетевой интерфейс: собственная форма, тело из локального состояния",
+	"shared/src/components/organisms/InlineSecurityGroupEditForm/InlineSecurityGroupEditForm.tsx":           "группа безопасности: собственная форма, тело из локального состояния",
+	"shared/src/components/organisms/InlineSubnetCreateForm/InlineSubnetCreateForm.tsx":                     "подсеть: собственная форма, тело из локального состояния",
+	"shared/src/components/organisms/InlineSubnetEditForm/InlineSubnetEditForm.tsx":                         "подсеть: собственная форма, тело из локального состояния",
+	"shared/src/components/organisms/RoutesPanel/RoutesPanel.tsx":                                           "маршруты таблицы маршрутизации: отдельный RPC, тело из локального состояния",
+	"shared/src/components/organisms/SgRulesPanel/SgRulesPanel.tsx":                                         "правила группы безопасности: отдельный RPC, тело из локального состояния",
+	"shared/src/api/cluster.ts":     "тонкая обёртка над кластерным RPC, тело — аргумент вызывающего",
+	"shared/src/api/iam.ts":         "тонкая обёртка над RPC IAM, тело — аргумент вызывающего",
+	"shared/src/api/tokens.ts":      "тонкая обёртка над RPC токенов, тело — аргумент вызывающего",
+	"compute/src/api/resources.ts":  "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
+	"nlb/src/api/resources.ts":      "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
+	"registry/src/api/resources.ts": "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
+	"storage/src/api/resources.ts":  "тонкая обёртка над RPC ресурса, тело — аргумент вызывающего",
+}
+
+// TestConsoleMutationSurfaceIsAccountedFor — каждая точка, из которой консоль
+// отправляет краю тело, либо покрыта охватом выше, либо названа как непокрытая.
+//
+// Без этого граница охвата была бы невидима: гейт зеленел бы, а половина
+// поверхности молча оставалась бы за его пределами — тот самый класс, ради
+// которого он и написан, только этажом выше.
+func TestConsoleMutationSurfaceIsAccountedFor(t *testing.T) {
+	root := repoRoot(t)
+	consoleRoot := filepath.Join(root, "ui-future")
+
+	var covered, bespoke, unaccounted []string
+	err := filepath.WalkDir(consoleRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == "node_modules" || d.Name() == "dist" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		name := d.Name()
+		if ext := filepath.Ext(name); ext != ".ts" && ext != ".tsx" {
+			return nil
+		}
+		if strings.Contains(name, ".test.") {
+			return nil
+		}
+		blob, err := os.ReadFile(path) //nolint:gosec // путь получен обходом дерева репозитория
+		if err != nil {
+			return err
+		}
+		if !consoleMutationCall.Match(blob) {
+			return nil
+		}
+		rel, err := filepath.Rel(consoleRoot, path)
+		if err != nil {
+			return err
+		}
+		switch {
+		case specDrivenFormComponent[name]:
+			covered = append(covered, rel)
+		case bespokeConsoleMutationSites[rel] != "":
+			bespoke = append(bespoke, rel)
+		default:
+			unaccounted = append(unaccounted, rel)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk ui-future: %v", err)
+	}
+	sort.Strings(covered)
+	sort.Strings(bespoke)
+	sort.Strings(unaccounted)
+
+	if len(covered) == 0 {
+		t.Fatal("not one spec-driven form was found: the walk read nothing, which is a failure, not a pass")
+	}
+	t.Logf("console sends a body from %d place(s): %d through the registry (checked), %d hand-built (named below)",
+		len(covered)+len(bespoke), len(covered), len(bespoke))
+
+	var w strings.Builder
+	fmt.Fprintf(&w, "%d place(s) build the request body themselves, outside the registry, and are therefore NOT covered by the body-contract gate:\n", len(bespoke))
+	for _, rel := range bespoke {
+		fmt.Fprintf(&w, "  %s\n      %s\n", rel, bespokeConsoleMutationSites[rel])
+	}
+	t.Log(w.String())
+
+	var stale []string
+	seen := map[string]bool{}
+	for _, rel := range bespoke {
+		seen[rel] = true
+	}
+	for rel := range bespokeConsoleMutationSites {
+		if !seen[rel] {
+			stale = append(stale, rel)
+		}
+	}
+	sort.Strings(stale)
+
+	if len(unaccounted) == 0 && len(stale) == 0 {
+		return
+	}
+	var b strings.Builder
+	if len(unaccounted) > 0 {
+		fmt.Fprintf(&b, "%d place(s) send the edge a body from outside the registry and outside the named list — decide which it is: route it through the registry, or name it as deliberately uncovered:\n", len(unaccounted))
+		for _, rel := range unaccounted {
+			fmt.Fprintf(&b, "  %s\n", rel)
+		}
+	}
+	if len(stale) > 0 {
+		fmt.Fprintf(&b, "%d entr(y/ies) in bespokeConsoleMutationSites match nothing — delete them, an unused exemption is one the next blind spot inherits:\n", len(stale))
+		for _, rel := range stale {
+			fmt.Fprintf(&b, "  %s\n", rel)
+		}
+	}
+	t.Fatal(b.String())
+}
