@@ -33,5 +33,4 @@ export { ServiceSidebar } from "./ServiceSidebar";
 export { SgRulesPanel } from "@shared/components/organisms/SgRulesPanel";
 export { CidrSection } from "@shared/components/organisms/SubnetCidrManager";
 export { SubnetCidrPanel } from "@shared/components/organisms/SubnetCidrPanel";
-export { SubnetRelocateDialog } from "./SubnetRelocateDialog";
 export { VpcDetailShell, VpcListShell } from "./VpcShell";
