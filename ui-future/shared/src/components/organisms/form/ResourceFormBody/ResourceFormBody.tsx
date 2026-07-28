@@ -34,13 +34,19 @@ export interface ResourceFormBodyProps {
 
 const FULL_WIDTH = new Set(["sg-rules", "array", "custom"]);
 
-function matchesVisibleWhen(
+// Экспортирована для тестов.
+// Сравнение — по СТРОКОВОМУ виду текущего значения: `equals` объявлен строкой, а
+// читаемое поле может быть любым значением формы. Bool-тумблер читается как
+// `false`, что строке "false" не равно — гейт на нём молча прятал поле навсегда.
+export function matchesVisibleWhen(
   obj: Record<string, unknown>,
   vw: { field: string; equals: string | string[] } | undefined,
 ): boolean {
   if (!vw) return true;
-  const cur = getByPath(obj, vw.field) as string | undefined;
-  return Array.isArray(vw.equals) ? vw.equals.includes(cur ?? "") : cur === vw.equals;
+  const raw = getByPath(obj, vw.field);
+  if (raw === undefined || raw === null) return false;
+  const cur = String(raw);
+  return Array.isArray(vw.equals) ? vw.equals.includes(cur) : cur === vw.equals;
 }
 
 function displayValue(obj: Record<string, unknown>, field: FormField): React.ReactNode {
