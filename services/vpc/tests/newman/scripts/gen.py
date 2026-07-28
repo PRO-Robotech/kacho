@@ -1919,7 +1919,12 @@ def build_collection(service: str, cases: List[Case]) -> Dict:
     pre = PRE_GLOBAL + _ADMIN_DEFAULT_PRE if service in _ADMIN_DEFAULT_SERVICES else PRE_GLOBAL
     return {
         "info": {
-            "_postman_id": str(uuid.uuid4()),
+            # Deterministic _postman_id (UUIDv5 over the collection name) so a
+            # regeneration with no source change produces no diff. A random id
+            # here made every regeneration dirty every collection, which meant
+            # "generated matches source" could never be checked and a real drift
+            # had nowhere to show. Postman only needs this to be stable+unique.
+            "_postman_id": str(uuid.uuid5(uuid.NAMESPACE_URL, f"kacho-vpc/newman/{service}")),
             "name": f"kacho-vpc / newman / {service}",
             "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
         },
