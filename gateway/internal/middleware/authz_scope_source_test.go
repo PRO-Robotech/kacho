@@ -226,3 +226,78 @@ func TestAuthz_HTTP_CreateScope_AgreeingSourcesAreAccepted(t *testing.T) {
 	require.NotNil(t, in)
 	assert.Equal(t, scopeHandlerActsOn, in.ResourceID)
 }
+
+// TestAuthz_HTTP_ListScope_TwoSpellingsOfOneField — the same contradiction told
+// in one source instead of two.
+//
+// The catalog names the snake_case proto field; REST carries camelCase; both
+// resolve to the SAME proto field. grpc-gateway walks the query as a Go map, so
+// when a request supplies both spellings with different values, which one the
+// handler ends up filtering by is decided by map iteration order — it differs
+// between identical requests. An edge that picks a spelling in a fixed order
+// therefore authorizes one project while the handler serves, at random, the
+// other. Retrying is free, so "at random" is not a mitigation.
+func TestAuthz_HTTP_ListScope_TwoSpellingsOfOneField(t *testing.T) {
+	checker := &fakeChecker{allowed: true}
+	mw := scopeSourceMW(t, checker)
+	h := mw.HTTP(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	r := scopeSourceReq(http.MethodGet,
+		"/vpc/v1/networks?project_id="+scopeCallerCanEdit+"&projectId="+scopeHandlerActsOn, "")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if in := checker.lastInput.Load(); in != nil {
+		assert.NotEqual(t, scopeCallerCanEdit, in.ResourceID,
+			"one spelling must not be checked while the other may be the one served")
+	}
+	assert.Equal(t, http.StatusBadRequest, w.Code,
+		"two spellings of one scope field, disagreeing, must be refused — the handler picks between them nondeterministically")
+}
+
+// TestAuthz_HTTP_ListScope_TwoSpellingsAgreeing — the same value written twice is
+// not a contradiction, and the handler cannot serve anything else.
+func TestAuthz_HTTP_ListScope_TwoSpellingsAgreeing(t *testing.T) {
+	checker := &fakeChecker{allowed: true}
+	mw := scopeSourceMW(t, checker)
+	var handlerRan bool
+	h := mw.HTTP(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handlerRan = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	r := scopeSourceReq(http.MethodGet,
+		"/vpc/v1/networks?project_id="+scopeHandlerActsOn+"&projectId="+scopeHandlerActsOn, "")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	require.True(t, handlerRan)
+	in := checker.lastInput.Load()
+	require.NotNil(t, in)
+	assert.Equal(t, scopeHandlerActsOn, in.ResourceID)
+}
+
+// TestAuthz_HTTP_CreateScope_ContentTypeDoesNotHideTheBody — the mux registers
+// its JSON marshaler under the wildcard media type, so the handler decodes the
+// body as JSON whatever the request called it. The edge must read the same body,
+// or a caller could choose a media type to make the scope invisible to the check
+// and visible to the handler.
+func TestAuthz_HTTP_CreateScope_ContentTypeDoesNotHideTheBody(t *testing.T) {
+	checker := &fakeChecker{allowed: true}
+	mw := scopeSourceMW(t, checker)
+	h := mw.HTTP(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	r := scopeSourceReq(http.MethodPost, "/vpc/v1/networks",
+		`{"projectId":"`+scopeHandlerActsOn+`","name":"n1"}`)
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	in := checker.lastInput.Load()
+	require.NotNil(t, in, "the check must run against the scope the handler will decode")
+	assert.Equal(t, scopeHandlerActsOn, in.ResourceID)
+}

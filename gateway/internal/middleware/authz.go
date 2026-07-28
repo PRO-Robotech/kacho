@@ -362,7 +362,8 @@ func (m *AuthzMiddleware) Unary() grpc.UnaryServerInterceptor {
 			// No credentials → Unauthenticated(16), not PermissionDenied(7).
 			return nil, decision.gRPCStatus().Err()
 		case outcomeInvalidArgument:
-			// Malformed resource id → InvalidArgument(3), Check not run.
+			// Request rejected on its own shape (malformed resource id, ambiguous
+			// scope) → InvalidArgument(3), Check not run.
 			return nil, decision.gRPCStatus().Err()
 		case outcomeNotFound:
 			// Hide existence: read-deny on a verb-bearing IAM read → NotFound(5).
@@ -408,7 +409,8 @@ func (m *AuthzMiddleware) Stream() grpc.StreamServerInterceptor {
 			// No credentials → Unauthenticated(16), not PermissionDenied(7).
 			return decision.gRPCStatus().Err()
 		case outcomeInvalidArgument:
-			// Malformed resource id → InvalidArgument(3), Check not run.
+			// Request rejected on its own shape (malformed resource id, ambiguous
+			// scope) → InvalidArgument(3), Check not run.
 			return decision.gRPCStatus().Err()
 		case outcomeNotFound:
 			// Hide existence: read-deny on a verb-bearing IAM read → NotFound(5).
@@ -467,7 +469,8 @@ func (m *AuthzMiddleware) HTTP(next http.Handler) http.Handler {
 			// not 403 Forbidden + code 7.
 			writeHTTPUnauth(w, decision.descriptor, decision.reasons)
 		case outcomeInvalidArgument:
-			// Malformed resource id → 400 + code 3, Check not run.
+			// Request rejected on its own shape (malformed resource id, ambiguous
+			// scope) → 400 + code 3, Check not run.
 			writeHTTPInvalidArg(w, decision.invalidArgMessage)
 		case outcomeNotFound:
 			// Hide existence: read-deny on a verb-bearing IAM read → 404, no reasons.

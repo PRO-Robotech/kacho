@@ -413,13 +413,15 @@ func invalidResourceIDMessage(id string) string {
 }
 
 // scopeSourceConflictMessage — the flat-message contract for a request whose
-// query string names the authorization scope as something other than what the
-// request body names it. It names the field so the caller can fix the request,
-// and says which source decides: on a route that carries a body the handler is
-// built from the body alone, so a query parameter there can only mislead.
+// authorization scope cannot be read as a single value: the field is written in
+// more than one place, or under more than one spelling, and the writings
+// disagree. It names the field so the caller can find it, and states the rule
+// rather than a winner — there is no winner, which is why the request is
+// refused. Deliberately free of either value: the caller supplied both, and the
+// message is also rendered to callers who supplied only one.
 func scopeSourceConflictMessage(field string) string {
-	return field + " in the query string does not match the request body; " +
-		"this route reads " + field + " from the body only"
+	return "ambiguous " + field + ": give it exactly once, " +
+		"in the request body for a request that has one, otherwise in the query string"
 }
 
 // buildGRPCInvalidArgStatus constructs a *status.Status{Code: InvalidArgument}

@@ -410,22 +410,52 @@ func TestResourceExtractor_FromHTTP_UnknownMethod_IsTreatedAsBodyBearing(t *test
 		"an unrecognised method must not take its scope from the query string")
 }
 
-// The body reader declines a body whose Content-Type does not announce JSON,
-// while grpc-gateway falls back to its default JSON marshaler and decodes it
-// anyway. The two therefore disagree about what the handler will see — so the
-// safe behaviour is to resolve NO scope rather than fall back to the query
-// string, which would be the same confusion this guards against wearing a
-// different Content-Type.
-func TestResourceExtractor_FromHTTP_NonJSONContentType_DoesNotFallBackToQuery(t *testing.T) {
+// The REST mux registers its JSON marshaler under the wildcard media type, so
+// the handler decodes the body as JSON whatever the request labelled it. The
+// edge must read the same body: gating on Content-Type would let a caller choose
+// a media type that hides the scope from the check and shows it to the handler.
+func TestResourceExtractor_FromHTTP_ContentTypeDoesNotDecideWhatIsRead(t *testing.T) {
 	e := middleware.NewResourceExtractor(nil)
 	entry := middleware.CatalogEntry{
 		ScopeExtractor: middleware.ScopeExtractor{FromRequestField: "project_id"},
 	}
-	r := httptest.NewRequest(http.MethodPost, "/vpc/v1/networks?projectId=prj_query",
-		strings.NewReader(`{"projectId":"prj_body"}`))
-	r.Header.Set("Content-Type", "text/plain")
+	for _, ct := range []string{
+		"application/json",
+		"Application/JSON",                  // legal casing (RFC 9110), lower-cased by the mux
+		"application/x-www-form-urlencoded", // still decoded as JSON by the wildcard marshaler
+		"",                                  // absent
+	} {
+		r := httptest.NewRequest(http.MethodPost, "/vpc/v1/networks",
+			strings.NewReader(`{"projectId":"prj_body"}`))
+		if ct != "" {
+			r.Header.Set("Content-Type", ct)
+		}
+		id, conflict := e.ExtractFromHTTP(r, "kacho.cloud.vpc.v1.NetworkService/Create", entry)
+		require.Nilf(t, conflict, "Content-Type %q", ct)
+		assert.Equalf(t, "prj_body", id.String(),
+			"Content-Type %q must not change which scope the check runs against", ct)
+	}
+}
+
+// A body larger than the inspection cap yields no scope at the edge — but it
+// must still reach the handler INTACT. Buffering a prefix and dropping the rest
+// silently corrupts every oversized request.
+func TestResourceExtractor_FromHTTP_OversizedBody_IsNotTruncated(t *testing.T) {
+	e := middleware.NewResourceExtractor(nil)
+	entry := middleware.CatalogEntry{
+		ScopeExtractor: middleware.ScopeExtractor{FromRequestField: "project_id"},
+	}
+	padding := strings.Repeat("x", 1<<20)
+	body := `{"projectId":"prj_body","note":"` + padding + `"}`
+	r := httptest.NewRequest(http.MethodPost, "/vpc/v1/networks", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+
 	id, conflict := e.ExtractFromHTTP(r, "kacho.cloud.vpc.v1.NetworkService/Create", entry)
-	require.NotNil(t, conflict)
-	assert.True(t, id.IsWildcard(),
-		"an unreadable body must yield no scope, never the query string")
+	require.Nil(t, conflict)
+	assert.True(t, id.IsWildcard(), "a body too large to inspect must yield no scope")
+
+	rest, err := io.ReadAll(r.Body)
+	require.NoError(t, err)
+	assert.Equal(t, len(body), len(rest), "the handler must still receive the whole body")
+	assert.Equal(t, body, string(rest))
 }
