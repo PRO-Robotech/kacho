@@ -111,12 +111,14 @@ func TestPrincipalChain_DropsForgedPrincipal_HonorsVerified(t *testing.T) {
 	t.Run("unverified_tls_peer_forged_principal_dropped", func(t *testing.T) {
 		ctx := withForgedPrincipal(unverifiedTLSPeerCtx(), "usr-mallory")
 
-		carrierID, trusted := runChain(t, chain, ctx)
+		carrierID, trusted, present := runChain(t, chain, ctx)
 		if trusted {
 			t.Errorf("principal недоверенного TLS-peer'а НЕ должен быть trusted")
 		}
-		if carrierID != operations.SystemPrincipal().ID {
-			t.Errorf("forged principal протёк в carrier: got %q, want system fallback %q", carrierID, operations.SystemPrincipal().ID)
+		if present {
+			t.Errorf("носитель личности пережил недоверенного отправителя: got %q — он обязан быть "+
+				"вычищен, иначе предикат владения признаёт этот запрос владельцем системно "+
+				"записанных операций", carrierID)
 		}
 		if carrierID == "usr-mallory" {
 			t.Errorf("spoof: forged principal id 'usr-mallory' дошёл до subject'а FGA Check")
@@ -126,9 +128,12 @@ func TestPrincipalChain_DropsForgedPrincipal_HonorsVerified(t *testing.T) {
 	t.Run("verified_mtls_peer_principal_honored", func(t *testing.T) {
 		ctx := withForgedPrincipal(verifiedPeerCtx(t, gatewaySAN), "usr-alice")
 
-		carrierID, trusted := runChain(t, chain, ctx)
+		carrierID, trusted, present := runChain(t, chain, ctx)
 		if !trusted {
 			t.Errorf("principal verified mTLS-peer'а обязан быть trusted (без регресса)")
+		}
+		if !present {
+			t.Errorf("носитель личности обязан быть заполнен для доверенного отправителя")
 		}
 		if carrierID != "usr-alice" {
 			t.Errorf("verified principal не honored: got %q, want %q", carrierID, "usr-alice")
@@ -147,21 +152,29 @@ func TestPrincipalChain_ForwarderAllowlist_DropsNonGateway(t *testing.T) {
 		other := "spiffe://kacho.cloud/ns/kacho/sa/kacho-vpc"
 		ctx := withForgedPrincipal(verifiedPeerCtx(t, other), "usr-victim")
 
-		carrierID, trusted := runChain(t, chain, ctx)
+		carrierID, trusted, present := runChain(t, chain, ctx)
 		if trusted {
 			t.Errorf("verified-но-не-форвардер peer (%s) НЕ должен форвардить end-user principal'а", other)
 		}
 		if carrierID == "usr-victim" {
 			t.Errorf("confused-deputy: internal-сервис проштамповал чужого principal'а 'usr-victim'")
 		}
+		if present {
+			t.Errorf("носитель личности пережил недоверенного отправителя: got %q — он обязан быть "+
+				"вычищен, иначе предикат владения признаёт этот запрос владельцем системно "+
+				"записанных операций", carrierID)
+		}
 	})
 
 	t.Run("gateway_peer_principal_honored", func(t *testing.T) {
 		ctx := withForgedPrincipal(verifiedPeerCtx(t, gatewaySAN), "usr-alice")
 
-		carrierID, trusted := runChain(t, chain, ctx)
+		carrierID, trusted, present := runChain(t, chain, ctx)
 		if !trusted {
 			t.Errorf("principal от доверенного форвардера (api-gateway SAN) обязан быть honored")
+		}
+		if !present {
+			t.Errorf("носитель личности обязан быть заполнен для доверенного форвардера")
 		}
 		if carrierID != "usr-alice" {
 			t.Errorf("gateway-forwarded principal не honored: got %q, want %q", carrierID, "usr-alice")
@@ -181,17 +194,27 @@ func principalChainUnderTest(forwarderSANs ...string) grpc.UnaryServerIntercepto
 	)
 }
 
-func runChain(t *testing.T, chain grpc.UnaryServerInterceptor, ctx context.Context) (carrierID string, trusted bool) {
+// runChain прогоняет ctx через цепочку и возвращает то, что увидел бы handler:
+// личность, признак доверия к пересылающему и НАЛИЧИЕ носителя личности.
+//
+// present читается через operations.PrincipalFromContextOK — единственный
+// аксессор, который отличает «носитель вычищен» от «в носителе лежит системная
+// личность». PrincipalFromContext такого различения не даёт по своему контракту
+// (оба состояния → SystemPrincipal), поэтому утверждать им вычищенность нельзя:
+// проверка останется зелёной и тогда, когда недоверенному пиру выдали системную
+// личность, а она и есть владелец каждой системно записанной операции.
+func runChain(t *testing.T, chain grpc.UnaryServerInterceptor, ctx context.Context) (carrierID string, trusted, present bool) {
 	t.Helper()
 	final := func(c context.Context, _ any) (any, error) {
-		carrierID = operations.PrincipalFromContext(c).ID
+		p, ok := operations.PrincipalFromContextOK(c)
+		carrierID, present = p.ID, ok
 		_, trusted = grpcsrv.TrustedPrincipalFromContext(c)
 		return nil, nil
 	}
 	if _, err := chain(ctx, nil, nil, final); err != nil {
 		t.Fatalf("chain returned error: %v", err)
 	}
-	return carrierID, trusted
+	return carrierID, trusted, present
 }
 
 func withForgedPrincipal(ctx context.Context, id string) context.Context {
