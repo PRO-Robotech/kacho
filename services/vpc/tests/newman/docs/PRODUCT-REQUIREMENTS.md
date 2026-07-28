@@ -576,7 +576,7 @@ sync-precheck `AddressesBySubnet` тоже покрывает обе семьи.
 RPC, оперирующие конкретным ресурсом, ДОЛЖНЫ проверять, что `resource.project_id` принадлежит caller'у;
 чужой ресурс → `PERMISSION_DENIED` (в `dev`-mode AuthN permissive — anonymous=admin; в `production`/`production-strict` fail-closed).
 - Validated-by: `*-AUTHZ-NF-SYNC` (Get/Update/Delete/Move/UpdateRule/UpdateRules), `*-AUTHZ-EMPTY-PROJECT-HEADER`; **gap** — полноценная cross-tenant matrix с двумя header-set'ами (см. `REQUIREMENTS.md` REQ-006)
-- Проверка: `internal/apps/kacho/check/permission_map.go` — per-RPC FGA-Check (`v_get`/`v_update`/`v_delete` per-object) на обоих листенерах; `internal/handler/tenant_interceptor.go`; `internal/config/config.go` `AuthMode`.
+- Проверка: `internal/apps/kacho/check/permission_map.go` — per-RPC FGA-Check (`v_get`/`v_update`/`v_delete` per-object) на обоих листенерах; `internal/handler/authn_interceptor.go`; `internal/config/config.go` `AuthMode`.
 
 ### REQ-AUTHZ-02 — List: project isolation [P0]
 Ресурс в project A не виден в `List` по project B.

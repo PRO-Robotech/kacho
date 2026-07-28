@@ -88,8 +88,18 @@ message Address {
   // Specifies if address protected from deletion.
   bool deletion_protection = 19;
 
-  // Optional DNS record specifications
-  repeated DnsRecord dns_records = 20;
+  // Field 20 held `dns_records`, the output half of a DNS promise this service never
+  // kept. Nothing ever wrote it: no handler, use-case or repository referenced the
+  // field or its message, so it came back empty on every Get and List while the
+  // docs-site told callers it was "reserved, handling deferred". The input half
+  // (`dns_record_specs` on Create/Update) is withdrawn in address_service.proto for
+  // the same reason, and leaving the output behind would keep advertising records
+  // nothing can produce. DNS needs a zone somebody owns, record sets with their own
+  // lifecycle, TTL and propagation, and its own authorization — a domain of its own.
+  // Withdrawn deliberately; number and name stay shut so the slot cannot return
+  // meaning something else.
+  reserved 20;
+  reserved "dns_records";
 
   // Resources currently using
   // this address. Output-only — populated by the service on Get/List; ignored
@@ -158,16 +168,6 @@ message AddressRequirements {
   string outgoing_smtp_capability = 2;
 }
 
-message DnsRecord {
-  // DNS record name (absolute or relative to the DNS zone in use).
-  string fqdn = 1;
-
-  // ID of the public DNS zone.
-  string dns_zone_id = 2;
-
-  // TTL of record.
-  int64 ttl = 3;
-
-  // If the PTR record is required, this parameter must be set to "true".
-  bool ptr = 4;
-}
+// DnsRecord used to live here, referenced only by the withdrawn `dns_records` field
+// above. With that gone nothing referenced it, and keeping it would advertise a shape
+// the service has no way to honour.

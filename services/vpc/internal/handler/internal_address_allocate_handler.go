@@ -18,8 +18,8 @@
 // конкреты: handler НЕ тянет пакет `internal/apps/kacho/api/address` напрямую, а
 // определяет узкие port-абстракции `AddressAllocator` (ее удовлетворяет
 // `*address.AllocateUseCase`) и `AddressReferenceManager`, которые связываются в
-// composition root. (Caller-identity живет в `internal/tenant`; use-case address
-// `internal/handler` не импортирует.)
+// composition root. (Caller-identity живёт в ctx как принципал `pkg/operations`;
+// use-case address `internal/handler` не импортирует.)
 //
 // AuthZ: per-RPC FGA-Check (object-scoped на `vpc_address:<address_id>`,
 // v_update для мутаций / v_get для чтения referrer'а) выполняет authz-interceptor

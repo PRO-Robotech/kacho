@@ -278,8 +278,21 @@ message CreateAddressRequest {
   // Specifies if address protected from deletion.
   bool deletion_protection = 10;
 
-  // Optional DNS record specifications
-  repeated DnsRecordSpec dns_record_specs = 11;
+  // Field 11 held `dns_record_specs`, a repeated DnsRecordSpec. It was accepted and
+  // then read by nothing: no handler, use-case or repository ever looked at it, so a
+  // caller could send a fully formed record spec, get a success back, and no DNS
+  // record existed anywhere. There is no table, no worker and no reconciler behind
+  // it, and there never was.
+  //
+  // It could not have been honoured where it stood either. A DNS record is not an
+  // attribute of an address: it needs a zone somebody owns, a record set with its own
+  // lifecycle, TTL and propagation semantics, and its own authorization — that is a
+  // domain, with its own acceptance. Its `dns_zone_id` even referred to a zone
+  // resource this platform does not have. Withdrawn deliberately; the slot stays shut
+  // so it cannot return meaning something else. DNS, when it is built, is its own
+  // domain with its own messages.
+  reserved 11;
+  reserved "dns_record_specs";
 }
 
 message ExternalIpv4AddressSpec {
@@ -334,22 +347,9 @@ message ExternalIpv6AddressSpec {
   AddressRequirements requirements = 3;
 }
 
-message DnsRecordSpec {
-  // Required. DNS record name (absolute or relative to the DNS zone in use).
-  string fqdn = 1 [(required) = true];
-
-  // Required. ID of the public DNS zone. The maximum string length in characters is 20.
-  string dns_zone_id = 2 [
-    (required) = true,
-    (length) = "20"
-  ];
-
-  // TTL of record. Acceptable values are 0 to 86400, inclusive.
-  int64 ttl = 3 [(value) = "0-86400"];
-
-  // Optional. If the PTR record is required, this parameter must be set to "true".
-  bool ptr = 4;
-}
+// DnsRecordSpec used to live here, referenced only by the two withdrawn
+// `dns_record_specs` fields above. With those gone nothing referenced it, and keeping
+// it would advertise a shape the service has no way to honour.
 
 message CreateAddressMetadata {
   // ID of the address that is being created.
@@ -396,8 +396,11 @@ message UpdateAddressRequest {
   // Specifies if address protected from deletion.
   bool deletion_protection = 7;
 
-  // Optional DNS record specifications
-  repeated DnsRecordSpec dns_record_specs = 8;
+  // Field 8 held `dns_record_specs`. Same story as on Create: accepted, never read,
+  // and not honourable as an attribute of an address. Withdrawn deliberately; number
+  // and name stay reserved. See CreateAddressRequest above.
+  reserved 8;
+  reserved "dns_record_specs";
 }
 
 message UpdateAddressMetadata {

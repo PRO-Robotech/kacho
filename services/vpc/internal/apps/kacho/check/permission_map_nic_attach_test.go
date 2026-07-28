@@ -17,11 +17,13 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/check"
 )
 
-// INV-2a — AuthN+AuthZ на :9091 ВЕЗДЕ: каждый RPC internal
-// InternalNetworkInterfaceService проходит per-RPC FGA-Check (не только mTLS-транспорт).
-// Attach/Detach — editor на vpc_network_interface:<nic_id> (object-scoped, анти-BOLA);
-// ListByInstance — viewer cluster-scoped (batched read). Proto-аннотации
-// (internal_network_interface_service.proto) отражены в PermissionMap 1:1.
+// INV-2a — AuthN+AuthZ на :9091 ВЕЗДЕ: ни один RPC internal
+// InternalNetworkInterfaceService не проходит на одном mTLS-транспорте.
+// Attach/Detach — per-RPC FGA-Check, editor на vpc_network_interface:<nic_id>
+// (object-scoped, анти-BOLA). ListByInstance авторизуется на уровне ДАННЫХ: единичного
+// объекта, про который можно спросить заранее, у него нет (инстансы называет
+// вызывающий, ответ — про чужие по владению интерфейсы), поэтому видимость решается
+// per-object в nicinternal, а boot-guard делает фильтр обязательным в production.
 
 // TestPermissionMap_InternalNIC_Attach_EditorScoped — Attach гейтится editor на
 // самом NIC (vpc_network_interface:<nic_id> из request-поля nic_id).
@@ -51,18 +53,65 @@ func TestPermissionMap_InternalNIC_Detach_EditorScoped(t *testing.T) {
 	require.Equal(t, "nic_y", objID)
 }
 
-// TestPermissionMap_InternalNIC_ListByInstance_ViewerCluster — ListByInstance
-// (batched read) гейтится viewer cluster-scoped.
-func TestPermissionMap_InternalNIC_ListByInstance_ViewerCluster(t *testing.T) {
+// TestPermissionMap_InternalNIC_ListByInstance_ScopeFiltered — ListByInstance
+// авторизуется на уровне данных, а не единичным per-RPC Check'ом.
+//
+// Инстансы называет вызывающий, а ответ касается интерфейсов, у каждого из которых
+// свой владелец: одного объекта, про который можно спросить заранее, здесь нет.
+// Прежний вопрос — `viewer` на singleton `cluster:cluster_kacho_root` — относился к
+// ГЛОБАЛЬНОМУ СПРАВОЧНИКУ (регионы, зоны, типы дисков), и bootstrap кластера
+// намеренно пишет `cluster:<root>#viewer@user:*`, чтобы справочник читал любой
+// аутентифицированный субъект. Значит проверка пропускала всех и отдавала привязки
+// любых названных инстансов, включая чужие проекты и аккаунты.
+//
+// Locked здесь: relation cluster-уровня НЕ восстановлен (иначе гейт снова стал бы
+// формальностью), и метод НЕ помечен Public (это не exempt — авторизация не исчезла,
+// она переехала на данные).
+func TestPermissionMap_InternalNIC_ListByInstance_ScopeFiltered(t *testing.T) {
 	m := check.PermissionMap()
 	e, ok := m.Lookup("/kacho.cloud.vpc.v1.InternalNetworkInterfaceService/ListByInstance")
 	require.True(t, ok, "InternalNetworkInterfaceService/ListByInstance должен быть в PermissionMap")
-	require.Equal(t, "viewer", e.Relation)
+	require.True(t, e.ScopeFiltered, "видимость решается per-object в nicinternal, не единичным Check'ом")
+	require.False(t, e.Public, "не exempt: авторизация переехала на данные, а не исчезла")
+	require.Empty(t, e.Relation,
+		"cluster-scoped relation здесь пропускал каждого аутентифицированного субъекта "+
+			"(`cluster:<root>#viewer@user:*` пишет bootstrap) — не восстанавливать")
+	require.Nil(t, e.Extract, "объекта, про который можно спросить заранее, у этого RPC нет")
+}
 
-	objType, objID, err := e.Extract(&vpcv1.ListNetworkInterfacesByInstanceRequest{InstanceIds: []string{"epdinst03"}})
+// TestScopeFilteredRPCs_CoversListByInstance — метод обязан попасть в список, который
+// composition root отдаёт в config.ValidateListFilter: в production сервис не
+// стартует без включённого и резолвимого list-filter'а. Без этого защита держалась бы
+// на одной конфигурационной ручке, которую можно выключить и не заметить.
+func TestScopeFilteredRPCs_CoversListByInstance(t *testing.T) {
+	require.Contains(t, check.ScopeFilteredRPCs(),
+		"/kacho.cloud.vpc.v1.InternalNetworkInterfaceService/ListByInstance",
+		"ScopeFiltered RPC обязан быть покрыт production boot-guard'ом ValidateListFilter")
+}
+
+// TestInterceptor_InternalNIC_ListByInstance_NoSingleObjectCheck — behaviour-level:
+// interceptor НЕ задаёт единичный вопрос модели за этот RPC и пропускает его к
+// handler'у, который сузит ответ per-object. Assert `calls==0` ловит регрессию, при
+// которой сюда вернули бы cluster-scoped Check (он снова пропускал бы всех).
+func TestInterceptor_InternalNIC_ListByInstance_NoSingleObjectCheck(t *testing.T) {
+	intr, calls := newTestInterceptor(t, func(_ context.Context, _, _, _ string) (bool, error) {
+		return false, nil // deny — если Check вообще вызовут, вызов не дойдёт до handler'а
+	})
+	uIntr := intr.Unary()
+
+	handlerCalled := false
+	handler := func(_ context.Context, _ any) (any, error) {
+		handlerCalled = true
+		return &vpcv1.ListNetworkInterfacesByInstanceResponse{}, nil
+	}
+	info := &grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.vpc.v1.InternalNetworkInterfaceService/ListByInstance"}
+	ctx := principalCtx("user", "usr_alice")
+	req := &vpcv1.ListNetworkInterfacesByInstanceRequest{InstanceIds: []string{"epdinst03"}}
+
+	_, err := uIntr(ctx, req, info, handler)
 	require.NoError(t, err)
-	require.Equal(t, "cluster", objType)
-	require.Equal(t, clusterRootID, objID)
+	require.True(t, handlerCalled, "handler обязан отработать — он и есть точка авторизации")
+	require.Equal(t, 0, *calls, "единичный Check за этот RPC не задаётся: спрашивать нечего")
 }
 
 // TestPermissionMap_InternalNIC_NoExemptGuard — блокирующий drift-guard: КАЖДЫЙ метод

@@ -5,8 +5,6 @@ package check
 
 import (
 	"fmt"
-	"strings"
-	"sync"
 
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
@@ -548,12 +546,9 @@ func PermissionMap() authz.RPCMap {
 		"/kacho.cloud.vpc.v1.InternalAddressPoolService/GetUtilization":       clusterScoped(relationSystemAdmin),
 
 		// InternalNetworkInterfaceService — NIC↔Instance attach-CAS (:9091, §3a).
-		// object-scoped на самом NIC (vpc_network_interface:<nic_id>): Attach/Detach —
-		// editor (мутация привязки used_by), ListByInstance — viewer cluster-scoped
-		// (batched read для compute-side зеркала). Proto-аннотации
-		// (internal_network_interface_service.proto) 1:1 отражены здесь (permission-map
-		// hand-written, но required_relation/scope должны совпадать с proto). INV-2a:
-		// per-RPC Check энфорсится на internal listener'е (не только mTLS).
+		// Attach/Detach — object-scoped на самом NIC (vpc_network_interface:<nic_id>),
+		// editor (мутация привязки used_by). INV-2a: per-RPC Check энфорсится на
+		// internal listener'е (не только mTLS).
 		"/kacho.cloud.vpc.v1.InternalNetworkInterfaceService/Attach": {
 			Relation: relationEditor,
 			Extract: authz.StaticExtractor(objectTypeNetworkInterface, func(req any) (string, error) {
@@ -566,7 +561,28 @@ func PermissionMap() authz.RPCMap {
 				return req.(*vpcv1.DetachNetworkInterfaceRequest).GetNicId(), nil
 			}),
 		},
-		"/kacho.cloud.vpc.v1.InternalNetworkInterfaceService/ListByInstance": clusterScoped(relationViewer),
+		// ListByInstance авторизуется НА УРОВНЕ ДАННЫХ, не единичным per-RPC Check'ом.
+		// Инстансы называет вызывающий, а ответ касается интерфейсов, у каждого из
+		// которых свой владелец — одного объекта, про который можно спросить заранее,
+		// здесь нет.
+		//
+		// Раньше спрашивали `viewer` на singleton `cluster:cluster_kacho_root`. Это
+		// relation ГЛОБАЛЬНОГО СПРАВОЧНИКА (регионы, зоны, типы дисков), и bootstrap
+		// кластера намеренно пишет `cluster:<root>#viewer@user:*`, чтобы справочник мог
+		// читать любой аутентифицированный субъект. То есть проверка пропускала всех и
+		// отдавала привязки любых названных инстансов — из чужих проектов и аккаунтов.
+		// Привязки интерфейсов справочными данными не являются.
+		//
+		// ScopeFiltered=true: interceptor пропускает Check (DecisionInternal), а
+		// nicinternal.Service сужает страницу per-object (`viewer ∪ v_list` на
+		// `vpc_network_interface:<id>`, батчами). Это ещё и делает фильтр обязательным:
+		// метод попадает в ScopeFilteredRPCs(), а config.ValidateListFilter в production
+		// отказывается стартовать без включённого и резолвимого list-filter'а — иначе
+		// защита держалась бы на одной конфигурационной ручке.
+		"/kacho.cloud.vpc.v1.InternalNetworkInterfaceService/ListByInstance": {
+			ScopeFiltered: true,
+			Permission:    "vpc.network_interfaces.listByInstance",
+		},
 
 		// InternalAddressService — IPAM-примитивы на конкретном Address
 		// (object-scoped, не cluster-scoped): мутации (atomic IP-allocate +
@@ -632,7 +648,7 @@ func PermissionMap() authz.RPCMap {
 		// object type `vpc_operation` и per-operation tuple'ы не эмитятся, поэтому
 		// `Check viewer on vpc_operation:<id>` не имеет пути и отверг бы даже
 		// owner-poll. Здесь `Public` означает «ReBAC-exempt», а НЕ «unauthenticated»:
-		// anti-anon (TenantUnaryInterceptor в production-mode) сохраняется, а
+		// anti-anon (handler.AuthNUnaryInterceptor в production-mode) сохраняется, а
 		// ownership энфорсится В HANDLER'е (OperationHandler.Get/Cancel через
 		// ownership-scoped GetOwned/CancelOwned: owner — creator-principal из
 		// доверенного ctx; чужой id → NotFound, no-leak). Анти-регресс: пометка
@@ -641,59 +657,4 @@ func PermissionMap() authz.RPCMap {
 		"/kacho.cloud.operation.OperationService/Get":    {Public: true},
 		"/kacho.cloud.operation.OperationService/Cancel": {Public: true},
 	}
-}
-
-// internalPrefix — fullMethod-префикс cluster-internal (:9091) сервисов
-// kacho-vpc. Дублирует правило handler.assertAdminAccess (там строка та же
-// самая по историческим причинам package-boundary — см. comment в
-// tenant_interceptor.go).
-const internalPrefix = "/kacho.cloud.vpc.v1.Internal"
-
-var (
-	objectScopedInternalMethodsOnce sync.Once
-	objectScopedInternalMethodsSet  map[string]struct{}
-)
-
-// IsObjectScopedInternalMethod — true, если fullMethod — Internal RPC (:9091)
-// object-scoped в PermissionMap (per-object v_get/v_update/v_list/…, напр.
-// InternalAddressService.AllocateInternalIP → vpc_address:<id> v_update), а
-// НЕ cluster-scoped admin/system_*-RPC (InternalAddressPoolService.*,
-// InternalNetworkService.SetDefaultSecurityGroupId — system_admin/
-// system_viewer@cluster).
-//
-// Используется handler.assertAdminAccess (internal :9091 admin-gate): без
-// этого различия blanket admin-gate отвергает ЛЮБОЙ non-admin principal на
-// Internal*-методе ДО того, как per-RPC authz-Check вообще успевает
-// посмотреть на конкретный объект — что ломает nlb->vpc IPAM edge (nlb
-// форвардит только x-kacho-principal-*, не x-kacho-admin). Object-scoped
-// internal-методы обязаны пройти tenant-gate и попасть под authz-Check,
-// который энфорсит per-object relation; cluster-scoped admin-RPC остаются
-// admin-gated здесь же (authz-Check для них — на singleton
-// cluster:cluster_kacho_root, admin-gate — defense-in-depth поверх него).
-//
-// Не-Internal fullMethod и unmapped Internal fullMethod → false (fail-closed:
-// остаются под admin-gate, как раньше).
-func IsObjectScopedInternalMethod(fullMethod string) bool {
-	if !strings.HasPrefix(fullMethod, internalPrefix) {
-		return false
-	}
-	objectScopedInternalMethodsOnce.Do(func() {
-		m := PermissionMap()
-		objectScopedInternalMethodsSet = make(map[string]struct{}, len(m))
-		for method, entry := range m {
-			if !strings.HasPrefix(method, internalPrefix) {
-				continue
-			}
-			switch entry.Relation {
-			case relationSystemAdmin, relationSystemViewer:
-				// cluster-scoped — остается admin-gated.
-			default:
-				if entry.Relation != "" {
-					objectScopedInternalMethodsSet[method] = struct{}{}
-				}
-			}
-		}
-	})
-	_, ok := objectScopedInternalMethodsSet[fullMethod]
-	return ok
 }

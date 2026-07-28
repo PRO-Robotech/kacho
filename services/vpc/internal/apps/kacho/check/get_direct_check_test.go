@@ -56,11 +56,12 @@ func TestGetRPCsCarryPerObjectCheck(t *testing.T) {
 	}
 }
 
-// Ни один vpc-RPC не полагается на «перечисли всё разрешённое» вместо Check'а.
-// ScopeFiltered легитимен только там, где хендлер сам авторизует данные; в vpc
-// таких нет, и появление нового обязано быть осознанным (этот тест — стоп-кран).
-func TestNoScopeFilteredRPCsInVPC(t *testing.T) {
-	if got := check.ScopeFilteredRPCs(); len(got) != 0 {
-		t.Fatalf("vpc must have no ScopeFiltered RPCs (every RPC carries a per-RPC Check), got %v", got)
-	}
-}
+// Стоп-кран на ScopeFiltered жив, но живёт в одном месте — списке
+// `scopeFilteredByDesign` (scope_filtered_rpcs_test.go), который сверяется точным
+// равенством: новый метод роняет тест, исчезнувший роняет тоже. Держать здесь второй
+// перечень значило бы завести два источника истины, которые разъедутся.
+//
+// Само правило не ослаблено: ScopeFiltered снимает per-RPC Check, поэтому допустим
+// только там, где единичного объекта для вопроса нет И ответ реально сужается
+// per-object в хендлере. «Перечисли всё разрешённое» (ListObjects) не является таким
+// сужением ни при каких условиях — см. package-doc internal/authzfilter.
