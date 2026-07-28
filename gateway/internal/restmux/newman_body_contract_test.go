@@ -40,6 +40,9 @@ type newmanFinding struct {
 	File string
 	Line int
 	Case string
+	// CaseID — идентификатор кейса (`DISK-METHOD-PUT-NOT-ALLOWED`): им ведётся
+	// поимённый список проб, которым тело в никуда оставлено намеренно.
+	CaseID string
 }
 
 func (f newmanFinding) String() string {
@@ -48,12 +51,62 @@ func (f newmanFinding) String() string {
 
 // newmanRequest — один запрос коллекции, извлечённый для разбора.
 type newmanRequest struct {
-	name   string
+	name string
+	// caseID — идентификатор кейса, которому принадлежит запрос: имя папки
+	// верхнего уровня до « — ».
+	caseID string
 	method string
 	path   string
 	// bodyRaw — тело как оно лежит в коллекции (с `{{...}}`), пусто если тела нет.
 	bodyRaw string
 	line    int
+}
+
+// absentRouteBodyWaiver — поимённое разрешение нести тело в маршрут, которого
+// край не обслуживает.
+//
+// Правило, которое оно ослабляет: «маршрута нет ⇒ тела быть не может». Запрос в
+// пару (метод, путь), не обслуживаемую краем, контракта запроса не имеет —
+// сверять его тело не с чем. Раньше из этого следовало, что такой запрос выпадал
+// из вердикта ЦЕЛИКОМ, и вместе с ним — право нести какое угодно тело. Фикстура,
+// нацеленная в несуществующий маршрут по ошибке, не была видна ни одному гейту:
+// «сравнивать не с чем» тихо превращалось в «не проверяем».
+//
+// Пробы ниже целятся в отсутствующий маршрут НАМЕРЕННО — отсутствие маршрута и
+// есть их предмет. Ключ — идентификатор кейса И пара (метод, путь): та же проба,
+// переехавшая на другой маршрут, снова попадает в вердикт.
+//
+// Список печатается КАЖДЫЙ прогон и проверяется на устаревание: разрешение,
+// которое некому применить, роняет гейт. Иначе он тихо копил бы право, под
+// которым потом въехала бы чужая ошибка.
+var absentRouteBodyWaiver = map[string]string{
+	// `PUT` на списочный эндпоинт ресурса. Предмет пробы — что коллекция
+	// ресурсов не заменяется целиком: у Kachō `PUT` не биндится нигде, замена
+	// набора выражается адресными `Create`/`Delete`. Тело тут — ровно то, что
+	// послал бы клиент, считающий иначе, и без него проба перестала бы
+	// воспроизводить то заблуждение, которое проверяет.
+	"ADR-METHOD-PUT-NOT-ALLOWED PUT /vpc/v1/addresses":            "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"GW-METHOD-PUT-NOT-ALLOWED PUT /vpc/v1/gateways":              "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"NET-METHOD-PUT-NOT-ALLOWED PUT /vpc/v1/networks":             "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"RT-METHOD-PUT-NOT-ALLOWED PUT /vpc/v1/routeTables":           "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"SG-METHOD-PUT-NOT-ALLOWED PUT /vpc/v1/securityGroups":        "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"SUB-METHOD-PUT-NOT-ALLOWED PUT /vpc/v1/subnets":              "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"DISK-METHOD-PUT-NOT-ALLOWED PUT /compute/v1/disks":           "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"IMG-METHOD-PUT-NOT-ALLOWED PUT /compute/v1/images":           "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"SNAP-METHOD-PUT-NOT-ALLOWED PUT /compute/v1/snapshots":       "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"LST-METHOD-PUT-NOT-ALLOWED PUT /nlb/v1/listeners":            "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"NLB-METHOD-PUT-NOT-ALLOWED PUT /nlb/v1/networkLoadBalancers": "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"TGR-METHOD-PUT-NOT-ALLOWED PUT /nlb/v1/targetGroups":         "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"TGT-METHOD-PUT-NOT-ALLOWED PUT /nlb/v1/targetGroups":         "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+
+	// Internal-RPC, постучавшийся в публичный край (ban #6). Предмет пробы —
+	// что метода на внешнем эндпоинте НЕТ. Тело — настоящий запрос этого RPC:
+	// проба обязана быть неотличима от полноценного вызова, иначе она проверяла
+	// бы отказ на пустышке, а не на том, чем воспользовался бы атакующий.
+	"IAM-INT-NEG-EXT-IAUTH-WRITETUPLES POST /kacho.cloud.iam.v1.InternalAuthorizeService/WriteTuples":   "internal-RPC на публичном краю: тело — настоящий запрос, иначе проба отвергала бы пустышку",
+	"IAM-INT-NEG-EXT-SR-REVOKE POST /kacho.cloud.iam.v1.InternalSessionRevocationsService/Revoke":       "internal-RPC на публичном краю: тело — настоящий запрос, иначе проба отвергала бы пустышку",
+	"IAM-INT-NEG-EXT-SR-ISREVOKED POST /kacho.cloud.iam.v1.InternalSessionRevocationsService/IsRevoked": "internal-RPC на публичном краю: тело — настоящий запрос, иначе проба отвергала бы пустышку",
+	"IAM-INT-NEG-EXT-IAM-FORCELOGOUT POST /kacho.cloud.iam.v1.InternalIAMService/ForceLogout":           "internal-RPC на публичном краю: тело — настоящий запрос, иначе проба отвергала бы пустышку",
 }
 
 func TestNewmanCollectionsSendNoUnknownRequestFields(t *testing.T) {
@@ -91,7 +144,7 @@ func TestNewmanCollectionsSendNoUnknownRequestFields(t *testing.T) {
 						Kind: "body-unparsed", Method: r.method, Path: r.path,
 						Key: err.Error(),
 					},
-					File: rel, Line: r.line, Case: r.name,
+					File: rel, Line: r.line, Case: r.name, CaseID: r.caseID,
 				})
 				continue
 			}
@@ -100,7 +153,7 @@ func TestNewmanCollectionsSendNoUnknownRequestFields(t *testing.T) {
 				continue
 			}
 			for _, f := range analyzeRequestBody(r.method, r.path, obj) {
-				findings = append(findings, newmanFinding{bodyFinding: f, File: rel, Line: r.line, Case: r.name})
+				findings = append(findings, newmanFinding{bodyFinding: f, File: rel, Line: r.line, Case: r.name, CaseID: r.caseID})
 			}
 		}
 	}
@@ -115,16 +168,20 @@ func TestNewmanCollectionsSendNoUnknownRequestFields(t *testing.T) {
 	// Разделение вердикта по предмету.
 	//
 	// mis-addressed — тело адресовано RPC, который его не читает. Это ТОТ САМЫЙ
-	// класс: край отвечает `200`, поле не применено. Вердикт гейта — по нему,
-	// и он обязан сходиться к нулю.
+	// класс: край отвечает `200`, поле не применено.
 	//
 	// unattributed — (метод, путь) не обслуживается краем ВООБЩЕ: grpc-gateway
 	// отвечает 404/405, до разбора тела дело не доходит, контракта запроса не
-	// существует. Такие запросы — намеренные пробы «этого маршрута быть не
-	// должно» (`*-METHOD-PUT-NOT-ALLOWED`, `*-NOT-PUBLIC`, `*-EXTERNAL-ABSENT`),
-	// и требовать от них чистого тела бессмысленно. Они печатаются всегда:
-	// среди них попадаются и фикстуры, нацеленные в несуществующий маршрут по
-	// ошибке. Гарантию, что сюда не проваливается РЕАЛЬНЫЙ маршрут, даёт
+	// существует. Сверять КЛЮЧИ такого тела не с чем — и это по-прежнему так.
+	// Но из «нечего сверять» не следует «можно слать что угодно»: маршрута нет,
+	// значит и тела быть не должно. Проверяемо статически, ложных срабатываний
+	// по построению не даёт, и именно эта щель делала невидимой фикстуру,
+	// нацеленную в несуществующий маршрут по ошибке.
+	//
+	// Намеренные пробы «этого метода на публичном краю нет» перечислены
+	// поимённо в absentRouteBodyWaiver и печатаются каждый прогон.
+	//
+	// Гарантию, что в unattributed не проваливается РЕАЛЬНЫЙ маршрут, даёт
 	// отдельная проверка TestHTTPBindingsMatchGeneratedRouteTable.
 	var misAddressed, unattributed []newmanFinding
 	for _, f := range findings {
@@ -135,27 +192,76 @@ func TestNewmanCollectionsSendNoUnknownRequestFields(t *testing.T) {
 		misAddressed = append(misAddressed, f)
 	}
 
-	t.Logf("scanned %d collections, %d requests, %d with a JSON body; %d mis-addressed, %d unattributed",
-		len(files), requests, bodies, len(misAddressed), len(unattributed))
+	waived, unwaived, usedWaivers := splitAbsentRouteBodies(unattributed)
 
-	if len(unattributed) > 0 {
-		var b strings.Builder
-		fmt.Fprintf(&b, "%d request(s) target a (method, path) the edge does not serve — no request contract to check:\n", len(unattributed))
-		for _, f := range unattributed {
-			fmt.Fprintf(&b, "  %s\n", f)
-		}
-		t.Log(b.String())
+	t.Logf("scanned %d collections, %d requests, %d with a JSON body; %d mis-addressed, %d body-on-absent-route (%d waived by name, %d not)",
+		len(files), requests, bodies, len(misAddressed), len(unattributed), len(waived), len(unwaived))
+
+	// Разрешения печатаются ВСЕГДА и целиком: молчаливое исключение — это то же
+	// «не проверяем», только записанное в коде гейта.
+	var w strings.Builder
+	fmt.Fprintf(&w, "%d probe(s) carry a body into a route the edge does not serve, waived by name:\n", len(waived))
+	for _, f := range waived {
+		fmt.Fprintf(&w, "  %s\n      reason: %s\n", f, absentRouteBodyWaiver[absentRouteWaiverKey(f.CaseID, f.Method, f.Path)])
 	}
+	t.Log(w.String())
 
-	if len(misAddressed) == 0 {
+	// Устаревшее разрешение — тихо накопленное право. Следующая ошибочная
+	// фикстура въехала бы под его именем, и гейт не сказал бы ни слова.
+	var stale []string
+	for key := range absentRouteBodyWaiver {
+		if !usedWaivers[key] {
+			stale = append(stale, key)
+		}
+	}
+	sort.Strings(stale)
+
+	if len(misAddressed) == 0 && len(unwaived) == 0 && len(stale) == 0 {
 		return
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "%d request(s) send the edge a body key it does not read:\n", len(misAddressed))
-	for _, f := range misAddressed {
-		fmt.Fprintf(&b, "  %s\n", f)
+	if len(misAddressed) > 0 {
+		fmt.Fprintf(&b, "%d request(s) send the edge a body key it does not read:\n", len(misAddressed))
+		for _, f := range misAddressed {
+			fmt.Fprintf(&b, "  %s\n", f)
+		}
+	}
+	if len(unwaived) > 0 {
+		fmt.Fprintf(&b, "%d request(s) carry a body into a (method, path) the edge does not serve — either the route is wrong, or the body is dead weight; name the probe in absentRouteBodyWaiver if it is deliberate:\n", len(unwaived))
+		for _, f := range unwaived {
+			fmt.Fprintf(&b, "  %s\n      waiver key: %q\n", f, absentRouteWaiverKey(f.CaseID, f.Method, f.Path))
+		}
+	}
+	if len(stale) > 0 {
+		fmt.Fprintf(&b, "%d waiver(s) in absentRouteBodyWaiver match nothing — delete them, an unused permission is one the next mistake inherits:\n", len(stale))
+		for _, key := range stale {
+			fmt.Fprintf(&b, "  %q\n", key)
+		}
 	}
 	t.Fatal(b.String())
+}
+
+// absentRouteWaiverKey — ключ поимённого разрешения: идентификатор кейса плюс
+// пара (метод, путь). Переезд пробы на другой маршрут ключ меняет, и проба
+// возвращается в вердикт.
+func absentRouteWaiverKey(caseID, method, path string) string {
+	return caseID + " " + method + " " + path
+}
+
+// splitAbsentRouteBodies делит тела в никуда на разрешённые поимённо и нет,
+// попутно отмечая, какие разрешения были применены.
+func splitAbsentRouteBodies(all []newmanFinding) (waived, unwaived []newmanFinding, used map[string]bool) {
+	used = make(map[string]bool, len(absentRouteBodyWaiver))
+	for _, f := range all {
+		key := absentRouteWaiverKey(f.CaseID, f.Method, f.Path)
+		if _, ok := absentRouteBodyWaiver[key]; ok {
+			used[key] = true
+			waived = append(waived, f)
+			continue
+		}
+		unwaived = append(unwaived, f)
+	}
+	return waived, unwaived, used
 }
 
 // decodeTemplatedJSONObject разбирает тело Postman-запроса, подставив вместо
@@ -232,6 +338,7 @@ func parseNewmanCollection(path string) ([]newmanRequest, error) {
 			}
 			req := newmanRequest{
 				name:   name,
+				caseID: caseIDOf(folder),
 				method: strings.ToUpper(node.Request.Method),
 				path:   restPath(urlRaw),
 			}
@@ -247,6 +354,16 @@ func parseNewmanCollection(path string) ([]newmanRequest, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// caseIDOf выделяет идентификатор кейса из имени его папки: `newman`-папка
+// называется «`<ID>` — `<описание>`», и адресуется кейс именно идентификатором
+// (он же в CASES-INDEX). Описание — проза, оно меняется; идентификатор — нет.
+func caseIDOf(folder string) string {
+	if i := strings.Index(folder, " — "); i >= 0 {
+		return strings.TrimSpace(folder[:i])
+	}
+	return strings.TrimSpace(folder)
 }
 
 // requestURL достаёт строку URL: Postman хранит её либо объектом с полем `raw`,
