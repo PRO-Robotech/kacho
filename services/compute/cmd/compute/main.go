@@ -572,14 +572,24 @@ func requireTrustedForwarders(cfg config.Config) error {
 }
 
 // requireListFilter — в любом production-режиме per-object FGA-фильтр публичного
-// List обязан быть активен: master-switch включён (ListFilterEnabled=true) И задан
+// List обязан быть активен: master-switch включён (ListFilterEnabled=true), задан
 // authz-endpoint (AuthZIAMGRPCAddr непуст — иначе authzConn=nil → buildListFilter
-// вернёт nil → handler'ы делают bypass фильтра). Per-RPC FGA Check гейтит List
-// лишь на project-tier `viewer`; сужение страницы до per-object `viewer ∪ v_list`
-// делает ТОЛЬКО этот фильтр. С выключенным фильтром любой principal с project-tier
-// viewer видит ВСЕ Disk/Image/Snapshot/Instance проекта, включая объекты без
-// per-object гранта (over-show / BOLA-lite, CWE-862 / OWASP A01). Fail-closed зеркалит requireDBSSLMode /
+// вернёт nil → handler'ы делают bypass фильтра) И фильтр отказывает fail-closed
+// (ListFilterFailOpen=false). Per-RPC FGA Check гейтит List лишь на project-tier
+// `viewer`; сужение страницы до per-object `viewer ∪ v_list` делает ТОЛЬКО этот
+// фильтр. С выключенным фильтром любой principal с project-tier viewer видит ВСЕ
+// Disk/Image/Snapshot/Instance проекта, включая объекты без per-object гранта
+// (over-show / BOLA-lite, CWE-862 / OWASP A01). Fail-closed зеркалит requireDBSSLMode /
 // requireTrustedForwarders (project-rule security.md → make audit-list-filter).
+//
+// Ручка отказа — часть предмета стражи, а не соседняя настройка. Стража, знающая
+// только про наличие фильтра, охраняет его присутствие и не охраняет его
+// поведение: с ListFilterFailOpen=true фильтр построен и включён, но на ЛЮБОЙ
+// ошибке обращения к iam отдаёт страницу НЕотфильтрованной (authzfilter.handleErr).
+// Тогда недоступности соседа достаточно, чтобы получить ровно тот over-show, от
+// которого фильтр и защищает, — причём молча, одним WARN'ом в лог. Аварийный
+// degraded-режим остаётся доступен в dev; в production он не живёт, симметрично
+// AuthZBreakglass.
 func requireListFilter(cfg config.Config) error {
 	if !cfg.ListFilterEnabled {
 		return fmt.Errorf("production mode requires KACHO_COMPUTE_LIST_FILTER_ENABLED=true " +
@@ -588,6 +598,11 @@ func requireListFilter(cfg config.Config) error {
 	if cfg.AuthZIAMGRPCAddr == "" {
 		return fmt.Errorf("production mode requires KACHO_COMPUTE_AUTHZ_IAM_GRPC_ADDR (list-filter authorize endpoint) to be set " +
 			"(empty → authzConn nil → public List bypasses the per-object FGA filter)")
+	}
+	if cfg.ListFilterFailOpen {
+		return fmt.Errorf("production mode requires KACHO_COMPUTE_LIST_FILTER_FAIL_OPEN=false " +
+			"(true → any authz error returns the page UNFILTERED, so an unreachable peer alone bypasses the " +
+			"per-object allow-list this gate exists to enforce); the degraded mode is a non-production escape only")
 	}
 	return nil
 }

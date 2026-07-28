@@ -5,9 +5,11 @@ package machinetype
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -187,4 +189,125 @@ func TestMachineType_COMP_1_21_DeleteThenGet(t *testing.T) {
 
 	_, err = svc.Get(ctx, mt.Id)
 	require.Equal(t, codes.NotFound, status.Code(err))
+}
+
+// Пустая маска — это full-object PATCH (api-conventions: «mask пустой → применяются
+// все mutable-поля»), поэтому валидироваться обязаны ТЕ ЖЕ поля, которые PATCH
+// применяет. Раньше валидация обходила замаскированные поля циклом по самой маске,
+// а применение при пустой маске подставляло полный список — значит при пустой маске
+// поля применялись НЕВАЛИДИРОВАННЫМИ: отрицательный vCPU уезжал в каталог, и машина
+// такого типа становилась незапускаемой, а отказ приходил не вызывающему, а
+// следующему, кто попытается этим типом воспользоваться.
+func TestMachineType_EmptyMaskValidatesEveryAppliedField(t *testing.T) {
+	ctx := context.Background()
+	seed := func() *domain.MachineType {
+		return &domain.MachineType{
+			ID: "mt-x", Name: "std-v3-2",
+			Family: domain.MachineTypeFamilyStandard, Status: domain.MachineTypeStatusAvailable,
+			EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
+		}
+	}
+
+	for _, tc := range []struct {
+		name  string
+		req   UpdateMachineTypeReq
+		field string
+	}{
+		{
+			name: "effective_resources",
+			req: UpdateMachineTypeReq{
+				ID: "mt-x", Family: domain.MachineTypeFamilyStandard, Status: domain.MachineTypeStatusAvailable,
+				EffectiveResources: domain.EffectiveResources{VCPU: -4, MemoryMiB: 8192},
+			},
+			field: "v_cpu",
+		},
+		{
+			name: "family",
+			req: UpdateMachineTypeReq{
+				ID: "mt-x", Family: domain.MachineTypeFamily(77), Status: domain.MachineTypeStatusAvailable,
+				EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
+			},
+			field: "family",
+		},
+		{
+			name: "labels",
+			req: UpdateMachineTypeReq{
+				ID: "mt-x", Family: domain.MachineTypeFamilyStandard, Status: domain.MachineTypeStatusAvailable,
+				EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
+				Labels:             map[string]string{"ПЛОХОЙ КЛЮЧ": "v"},
+			},
+			field: "labels",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, repo, _ := newMachineTypeSvc(t)
+			repo.Seed(seed())
+
+			require.Empty(t, tc.req.UpdateMask, "фикстура обязана быть именно full-object PATCH")
+			_, err := svc.Update(ctx, tc.req)
+			require.Equal(t, codes.InvalidArgument, status.Code(err),
+				"full-object PATCH применяет это поле, значит обязан его и проверить")
+			require.True(t, rejectedField(t, err, tc.field),
+				"отказ обязан называть поле, из-за которого он произошёл; got: %v", err)
+
+			// Наблюдаемое следствие: каталог не изменился. Без этого утверждения
+			// тест удовлетворялся бы отказом, наступившим уже ПОСЛЕ записи.
+			after, gerr := svc.Get(ctx, "mt-x")
+			require.NoError(t, gerr)
+			require.Equal(t, seed().EffectiveResources, after.EffectiveResources)
+			require.Equal(t, seed().Family, after.Family)
+			require.Empty(t, after.Labels)
+		})
+	}
+}
+
+// Обратная сторона: валидный full-object PATCH обязан примениться целиком —
+// иначе предыдущий тест удовлетворялся бы валидацией, отвергающей пустую маску как
+// таковую (это сломало бы контракт full-object PATCH).
+func TestMachineType_EmptyMaskAppliesValidFullObject(t *testing.T) {
+	svc, repo, ops := newMachineTypeSvc(t)
+	repo.Seed(&domain.MachineType{
+		ID: "mt-x", Name: "std-v3-2",
+		Family: domain.MachineTypeFamilyStandard, Status: domain.MachineTypeStatusAvailable,
+		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
+	})
+
+	op, err := svc.Update(context.Background(), UpdateMachineTypeReq{
+		ID: "mt-x", Description: "bigger", Family: domain.MachineTypeFamilyCompute,
+		Status:             domain.MachineTypeStatusDeprecated,
+		EffectiveResources: domain.EffectiveResources{VCPU: 8, MemoryMiB: 16384},
+		Labels:             map[string]string{"tier": "gold"},
+	})
+	require.NoError(t, err)
+	mt := machineTypeFromOp(t, portmock.AwaitOpDone(t, ops, op.ID))
+	require.Equal(t, "bigger", mt.Description)
+	require.Equal(t, computev1.MachineType_COMPUTE, mt.Family)
+	require.Equal(t, computev1.MachineType_DEPRECATED, mt.Status)
+	require.Equal(t, int32(8), mt.EffectiveResources.VCpu)
+	require.Equal(t, "gold", mt.Labels["tier"])
+}
+
+// rejectedField — имя поля, названное отказом так, как его увидит клиент: либо в
+// google.rpc.BadRequest.field_violations (structured-форма corevalidate), либо в
+// тексте сообщения (форма serviceerr.InvalidArg). Утверждать «отказ назвал поле»
+// по одной лишь подстроке в сообщении нельзя — половина валидаторов Kachō кладёт
+// имя в details, и сообщение у них дословно «invalid argument».
+func rejectedField(t *testing.T, err error, field string) bool {
+	t.Helper()
+	st := status.Convert(err)
+	if strings.Contains(st.Message(), field) {
+		return true
+	}
+	for _, d := range st.Details() {
+		br, ok := d.(*errdetails.BadRequest)
+		if !ok {
+			continue
+		}
+		for _, v := range br.GetFieldViolations() {
+			if strings.Contains(v.GetField(), field) || strings.Contains(v.GetDescription(), field) {
+				return true
+			}
+		}
+	}
+	return false
 }
