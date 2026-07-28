@@ -666,8 +666,9 @@ export function AccessBindingCreateModal({
         subjects: [{ type: SUBJECT_TYPE_ENUM[v.subject_type as SubjectType], id: v.subject_id }],
         roleId: v.role_id,
         scopeTier,
-        // KAC item #5: для cluster — auto-fill cluster_kacho_root, если user не
-        // ввёл (Input может быть disabled = preset на cluster).
+        // KAC item #5: для cluster anchor подставляется singleton, если user не
+        // ввёл (Input бывает disabled = preset на cluster) — подстановка живёт в
+        // buildCreateAccessBindingBody, вместе с самим телом.
         scopeId: v.resource_id,
       });
       await api.create(IAM.accessBindings, body);

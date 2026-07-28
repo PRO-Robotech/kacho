@@ -34,6 +34,7 @@ import {
   roleIsSystem,
   roleDefinitionTier,
   targetKind,
+  targetResources,
   type AccessBinding,
   type AccessBindingTarget,
   type DefinitionTier,
@@ -169,7 +170,7 @@ function targetView(t: AccessBindingTarget | undefined): ReactNode {
   const kind = targetKind(t);
   if (kind === "allInScope") return <Tag>весь scope (allInScope)</Tag>;
   if (kind === "resources") {
-    const res = t?.resources ?? [];
+    const res = targetResources(t);
     return (
       <span style={{ display: "inline-flex", flexDirection: "column", gap: 4, alignItems: "flex-start" }}>
         {res.map((r, i) => (

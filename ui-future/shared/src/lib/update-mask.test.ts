@@ -149,8 +149,17 @@ describe("buildUpdateBody", () => {
     // otherwise editing a resource silently drops a label that creating it keeps.
     const labels = { _weird: "v", team: "core" };
     expect(buildUpdateBody({ labels }, ["labels"])).toEqual({ labels, update_mask: "labels" });
-    expect(buildUpdateBody({ labels }, ["labels.env"])).not.toBeNull();
     expect(buildCreateBody({ labels })).toEqual({ labels });
+  });
+
+  it("does not invent a value for a masked path the form does not carry", () => {
+    // A mask entry whose value is absent serialises the field away (JSON drops
+    // undefined), so the server sees the masked field unset and clears it. That is
+    // the FieldMask contract — but it means a mask must only ever name paths the
+    // form actually produced. computeUpdateMask does, by construction: it emits a
+    // path only after reading both sides of it.
+    expect(buildUpdateBody({}, ["description"])).toEqual({ description: undefined, update_mask: "description" });
+    expect(JSON.parse(JSON.stringify(buildUpdateBody({}, ["description"])))).toEqual({ update_mask: "description" });
   });
 
   it("returns null for an empty mask — there is no request to send", () => {

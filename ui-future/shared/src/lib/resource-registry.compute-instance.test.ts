@@ -10,6 +10,7 @@
 // plus the STOPPED-gated machine_type_id/cpu_guarantee_percent.
 
 import { REGISTRY } from "./resource-registry";
+import { setByPath } from "./path";
 import { computeUpdateMask } from "./update-mask";
 
 const asObj = (v: unknown) => v as Record<string, unknown>;
@@ -97,26 +98,70 @@ describe("compute-instances registry contract (COMP-1)", () => {
     expect(body).not.toHaveProperty("ssh_public_keys");
   });
 
+  it("can express the network channel the server demands, either way", () => {
+    // Create requires networkInterfaceSpecs OR useDefaultNetwork. sanitize drops
+    // NIC items with neither subnet nor nic_id (they are not a
+    // NetworkInterfaceSpec), so a form that cannot also set useDefaultNetwork
+    // leaves the caller with a refusal and no way to satisfy it.
+    const names = (spec.fields ?? []).map((f) => f.name);
+    expect(names).toContain("use_default_network");
+    expect(names).toContain("network_interface_specs");
+
+    const base = asObj(spec.template({ projectId: "prj-1" }));
+    const untouched = spec.sanitize!({ ...base, machine_type_id: "mt-1", use_default_network: true });
+    expect(untouched).not.toHaveProperty("network_interface_specs");
+    expect(untouched.use_default_network).toBe(true);
+
+    const configured = spec.sanitize!({
+      ...base,
+      machine_type_id: "mt-1",
+      network_interface_specs: [
+        { _ext_mode: "auto", _use_existing_nic: false, subnet_id: "sub-1", security_group_ids: [{ value: "sg-1" }] },
+      ],
+    });
+    expect(configured.network_interface_specs).toEqual([
+      { subnet_id: "sub-1", security_group_ids: ["sg-1"], primary_v4_address_spec: { one_to_one_nat_spec: { ip_version: "IPV4" } } },
+    ]);
+    // Explicit specs and the project default are alternatives, never both.
+    expect(configured).not.toHaveProperty("use_default_network");
+    expect(keysDeep(configured).filter((k) => k.split(".").pop()!.startsWith("_"))).toEqual([]);
+  });
+
   it("masks only fields UpdateInstanceRequest still carries", () => {
+    // Drive EVERY declared field to a changed value, so the mask is the full set
+    // the form can ever emit — not a hand-picked subset that could not fail.
     const fields = spec.fields ?? [];
-    const before = { name: "a", description: "a", machine_type_id: "mt-1", cpu_guarantee_percent: 0 };
-    const after = { name: "b", description: "b", machine_type_id: "mt-2", cpu_guarantee_percent: 50 };
+    let before: Record<string, unknown> = {};
+    let after: Record<string, unknown> = {};
+    for (const f of fields) {
+      before = setByPath(before, f.name, "before");
+      after = setByPath(after, f.name, "after");
+    }
     const mask = computeUpdateMask(before, after, fields);
-    const mutable = [
+
+    // UpdateInstanceRequest's whole field set, minus instance_id/update_mask.
+    const mutable = new Set([
       "name",
       "description",
       "labels",
+      "metadata",
       "service_account_id",
+      "network_settings",
+      "maintenance_policy",
+      "maintenance_grace_period",
+      "serial_port_settings",
       "machine_type_id",
       "cpu_guarantee_percent",
       "placement_group_id",
       "ssh_public_keys",
       "vm_spec",
-      "metadata",
-    ];
-    for (const path of mask) {
-      expect(mutable).toContain(path.split(".")[0]);
+    ]);
+    expect(mask.filter((path) => !mutable.has(path.split(".")[0]))).toEqual([]);
+    // And the immutable / create-only channels stay out of it entirely.
+    for (const excluded of ["zone_id", "instance_kind", "boot_source", "container_spec", "use_default_network"]) {
+      expect(mask.filter((p) => p.split(".")[0] === excluded)).toEqual([]);
     }
     expect(mask).toContain("machine_type_id");
+    expect(mask).toContain("cpu_guarantee_percent");
   });
 });

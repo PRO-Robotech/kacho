@@ -24,7 +24,15 @@ import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { IamRefLink } from "@shared/components/molecules/IamRefLink";
 import { LabelsCell } from "@shared/components/atoms/LabelsCell";
 import { NicSpecFields } from "@shared/components/organisms/form/NicSpecFields";
-import { roleIsSystem, targetKind, type AccessBindingTarget, type DefinitionTier, type Role } from "@shared/api/iam";
+import { stripFormOnlyKeys } from "@shared/lib/update-mask";
+import {
+  roleIsSystem,
+  targetKind,
+  targetResources,
+  type AccessBindingTarget,
+  type DefinitionTier,
+  type Role,
+} from "@shared/api/iam";
 
 export interface ResourceColumn {
   header: string;
@@ -418,7 +426,7 @@ function targetCell(row: Record<string, unknown>): ReactNode {
   const t = row.target as AccessBindingTarget | undefined;
   const kind = targetKind(t);
   if (kind === "resources") {
-    const n = t?.resources?.length ?? 0;
+    const n = targetResources(t).length;
     return (
       <Tag color="geekblue" title="Per-object least-priv">
         {n} объект{n === 1 ? "" : "а/ов"}
@@ -2822,11 +2830,25 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         description: "Рабочая директория внутри контейнера.",
       },
       // --- network ---
+      // Create требует ЛИБО network_interface_specs, ЛИБО use_default_network —
+      // ровно одно. Тумблер даёт вторую ветку: без него форма, в которой
+      // интерфейс не сконфигурирован, получала отказ сервера и не имела способа
+      // его удовлетворить.
+      {
+        name: "use_default_network",
+        label: "Сеть по умолчанию",
+        type: "bool",
+        createOnly: true,
+        default: true,
+        description:
+          "Использовать подсеть и группу безопасности проекта по умолчанию. Снимите, чтобы настроить интерфейсы вручную.",
+      },
       {
         name: "network_interface_specs",
         label: "Сетевые интерфейсы",
         type: "array",
         itemLabel: "интерфейс",
+        visibleWhen: { field: "use_default_network", equals: "false" },
         description:
           "Минимум один сетевой интерфейс. Выберите сеть → подсеть → внутренний адрес (Cascader) и режим " +
           "публичного IP (Segmented); либо переключитесь на «существующий NetworkInterface» (тогда подсеть/SG/" +
@@ -2903,17 +2925,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       ssh_public_keys: "",
       assign_external_address: false,
       acknowledge_unreachable: false,
-      network_interface_specs: [
-        {
-          _addr_cascader: undefined,
-          subnet_id: "",
-          primary_v4_address_spec: { address: "" },
-          _ext_mode: "none",
-          _use_existing_nic: false,
-          nic_id: "",
-          security_group_ids: [],
-        },
-      ],
+      use_default_network: true,
+      network_interface_specs: [],
       labels: {},
     }),
     sanitize: (obj) => sanitizeInstanceCreate(obj),
@@ -2924,6 +2937,39 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       if (sa && typeof sa.id === "string") out.service_account_id = sa.id;
       return out;
     },
+  },
+
+  // ====== storage: Volume (read-only ref target) ======
+  // proto: kacho.cloud.storage.v1.VolumeService (/storage/v1/volumes). Storage owns
+  // block storage; the instance attach/detach verbs are specified in terms of a
+  // Volume id ("vol"), so this is the picker they read. CRUD lives in the storage
+  // remote — here it is a ref target only.
+  volumes: {
+    id: "volumes",
+    route: "volumes",
+    apiPath: "/storage/v1/volumes",
+    payloadKey: "volumes",
+    singular: "Том",
+    plural: "Тома",
+    genitive: "Тома",
+    serviceTitle: "Storage",
+    scope: "project",
+    ops: { create: false, update: false, delete: false },
+    columns: [
+      {
+        header: "Имя",
+        path: "name",
+        render: (row) => <CopyableName name={(row.name as string) ?? ""} fallback={row.id as string} />,
+      },
+      {
+        header: "Идентификатор",
+        path: "id",
+        render: (row) => <CopyableId id={(row.id as string) ?? ""} />,
+      },
+      { header: "Статус", path: "status", format: "status" },
+      { header: "Зона", path: "zone_id", format: "text" },
+    ],
+    template: () => ({}),
   },
 
   // ====== compute: MachineType (read-only sizing catalog) ======
@@ -3760,12 +3806,11 @@ export function sanitizeSgRule(r: Record<string, unknown>): Record<string, unkno
     (r._target_kind as string | undefined) ??
     (r.cidr_blocks ? "cidr" : r.security_group_id ? "sg" : r.predefined_target ? "predefined" : "cidr");
 
-  const out: Record<string, unknown> = {};
-  // copy non-discriminator persistent fields
-  for (const [k, v] of Object.entries(r)) {
-    if (k.startsWith("_")) continue;
-    out[k] = v;
-  }
+  // Copy the persistent fields, dropping the form-only discriminators at EVERY
+  // depth: the caller spreads a fetched SecurityGroupRule into this, and
+  // SecurityGroupRuleSpec is not that message — a nested widget key would ride
+  // along and be discarded at the edge without a word.
+  const out: Record<string, unknown> = stripFormOnlyKeys({ ...r });
   // protocol oneof-like
   if (protoMode === "any") {
     delete out.protocol_name;
@@ -3920,11 +3965,17 @@ export function sanitizeInstanceCreate(obj: Record<string, unknown>): Record<str
     // Айтем, в котором не выбрано ни подсети, ни NIC, не является
     // NetworkInterfaceSpec — отправлять его нечем.
     .filter((spec) => spec["subnet_id"] || spec["nic_id"]);
-  if (specs.length > 0) o["network_interface_specs"] = specs;
-  else delete o["network_interface_specs"];
+  // Ровно один канал: явные спеки ИЛИ подсеть проекта по умолчанию.
+  if (specs.length > 0) {
+    o["network_interface_specs"] = specs;
+    delete o["use_default_network"];
+  } else {
+    delete o["network_interface_specs"];
+    o["use_default_network"] = true;
+  }
 
   // strip optional empties
-  for (const k of ["hostname", "service_account_id", "machine_type_id"]) {
+  for (const k of ["hostname", "service_account_id"]) {
     if (o[k] === "" || o[k] === undefined) delete o[k];
   }
   return o;

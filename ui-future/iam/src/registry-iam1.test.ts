@@ -15,6 +15,7 @@ import {
   roleIsSystem,
   roleDefinitionTier,
   targetKind,
+  targetResources,
   SYSTEM_ROLE_CANON_ORDER,
   type CreateAccessBindingInput,
   type Role,
@@ -111,7 +112,15 @@ describe("IAM-1 F7/F8/F10 — access-bindings spec", () => {
   it("targetKind дискриминирует allInScope (snake+camel) vs resources[] vs пусто", () => {
     expect(targetKind({ all_in_scope: {} })).toBe("allInScope");
     expect(targetKind({ allInScope: {} })).toBe("allInScope");
-    expect(targetKind({ resources: [{ type: "compute.instance", id: "ins-1" }] })).toBe("resources");
+    // AccessTarget.resources is itself AccessTargetResources{repeated ResourceRef
+    // resources}, so a read carries target.resources.resources[] — the same
+    // nesting buildCreateAccessBindingBody writes. Reading it flat made every
+    // per-object binding render as «no target».
+    expect(targetKind({ resources: { resources: [{ type: "compute.instance", id: "ins-1" }] } })).toBe("resources");
+    expect(targetResources({ resources: { resources: [{ type: "compute.instance", id: "ins-1" }] } })).toEqual([
+      { type: "compute.instance", id: "ins-1" },
+    ]);
+    expect(targetKind({ resources: { resources: [] } })).toBeUndefined();
     expect(targetKind(undefined)).toBeUndefined();
     expect(targetKind({})).toBeUndefined();
   });

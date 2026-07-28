@@ -1,8 +1,15 @@
 // Form → wire helpers for resource Create (POST) and Edit (PATCH).
 //
-// Consumed by the inline edit forms (InlineResourceEditForm, InlineSubnetEditForm,
-// InlineSecurityGroupEditForm, InlineNetworkInterfaceEditForm, InlineAddressPoolEditForm)
-// and by ResourceCreatePage / ResourceEditPage.
+// Consumed by the SPEC-DRIVEN forms: ResourceCreatePage / ResourceEditPage /
+// InlineResourceCreateForm / InlineResourceEditForm (and the vendored copies of the
+// same in the compute/nlb/registry/storage remotes).
+//
+// NOT consumed by the four bespoke edit forms — InlineSubnetEditForm,
+// InlineSecurityGroupEditForm, InlineNetworkInterfaceEditForm,
+// InlineAddressPoolEditForm. Each keeps its own local state, diffs it by hand and
+// sends its whole (small, contract-declared) field set alongside the mask. That is
+// over-sending, not unknown-field sending: every key they emit is a real field of
+// the Update message, and a masked PATCH ignores the rest.
 //
 // Why the request body is BUILT rather than spread: the edge parses request bodies
 // with protojson `DiscardUnknown`, so a key that is not a field of the request

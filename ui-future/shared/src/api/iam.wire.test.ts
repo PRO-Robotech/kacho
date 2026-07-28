@@ -1,11 +1,13 @@
 // Wire-level contract lock for the iam client calls that hand-write a request
 // body. Ground truth: proto/kacho/cloud/iam/v1/access_binding_service.proto.
 //
-// These assert what actually leaves the browser, not what the TypeScript literal
-// looks like — api/client.ts camel-cases request keys on the way out, so the two
-// differ, and the edge parses the body with DiscardUnknown (an unknown key is
-// dropped in silence and the caller still gets 200).
+// The builder tests below read the snake_case body it returns; the two marked
+// "on the wire" push that body through api/client.ts and read what fetch actually
+// receives. Both matter: api/client.ts camel-cases request keys on the way out, so
+// the literal and the wire differ, and the edge parses with DiscardUnknown — an
+// unknown key is dropped in silence and the caller still gets 200.
 
+import { api } from "./client";
 import { buildCreateAccessBindingBody, iamApi } from "./iam";
 
 type Captured = { url: string; method: string; body: Record<string, unknown> };
@@ -29,6 +31,11 @@ function captureFetch(): { calls: Captured[] } {
 }
 
 describe("buildCreateAccessBindingBody", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
   // Ground truth: CreateAccessBindingRequest in
   // proto/kacho/cloud/iam/v1/access_binding_service.proto.
   //   required : subjects[] (or the legacy subject_type/subject_id pair),
@@ -97,6 +104,43 @@ describe("buildCreateAccessBindingBody", () => {
     for (const gone of ["scope_ref", "target_ref", "resource_type", "resource_id"]) {
       expect(body).not.toHaveProperty(gone);
     }
+  });
+
+  it("puts the target arm on the wire under the JSON name protojson reads", async () => {
+    // The literal above is snake_case; api/client.ts transforms request KEYS on the
+    // way out. `all_in_scope` must arrive as `allInScope` — the JSON name of
+    // AccessTarget.all_in_scope — or the oneof has no arm set and the edge, parsing
+    // with DiscardUnknown, says nothing about it.
+    const { calls } = captureFetch();
+    await api.create(
+      "/iam/v1/accessBindings",
+      buildCreateAccessBindingBody({
+        subjects: [{ type: "SUBJECT_TYPE_USER", id: "usr-1" }],
+        roleId: "rol-1",
+        scopeTier: "ACCOUNT",
+        scopeId: "acc-1",
+      }),
+    );
+    expect(calls[0].body).toEqual({
+      subjects: [{ type: "SUBJECT_TYPE_USER", id: "usr-1" }],
+      roleId: "rol-1",
+      scopeType: "iam.account",
+      scopeId: "acc-1",
+      target: { allInScope: {} },
+    });
+
+    calls.length = 0;
+    await api.create(
+      "/iam/v1/accessBindings",
+      buildCreateAccessBindingBody({
+        subjects: [{ type: "SUBJECT_TYPE_GROUP", id: "grp-1" }],
+        roleId: "rol-1",
+        scopeTier: "PROJECT",
+        scopeId: "prj-1",
+        targetResources: [{ type: "compute.instance", id: "ins-1" }],
+      }),
+    );
+    expect(calls[0].body.target).toEqual({ resources: { resources: [{ type: "compute.instance", id: "ins-1" }] } });
   });
 
   it("refuses to build a grant with no subject rather than sending an empty one", () => {

@@ -22,6 +22,7 @@ export { deleteByPath, getByPath as getValueByPath, setByPath } from "./path";
 export {
   applyFieldDefaults,
   fmtBytesGiB,
+  fmtMiBGiB,
   getByPath as getResourceValueByPath,
   getResource,
   gibToBytes,

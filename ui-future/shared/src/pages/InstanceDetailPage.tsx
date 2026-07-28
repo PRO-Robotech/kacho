@@ -1,6 +1,11 @@
 // InstanceDetailPage — generic ResourceDetailPage для compute Instance плюс
-// secondary-actions "Подключить диск" / "Отключить диск" (verbs :attachDisk /
+// secondary-actions "Подключить том" / "Отключить том" (verbs :attachDisk /
 // :detachDisk) и встроенные Start/Stop/Restart (ops в registry).
+//
+// Оба verb'а адресуются id ТОМА storage (`vol…`): AttachedDiskSpec.disk и
+// DetachInstanceDiskRequest.disk — oneof'ы с армом `volume_id`, поля `disk_id`
+// у них нет. Поэтому и picker показывает тома storage, а не ретайренный дубль
+// compute-дисков.
 //
 // Старт/Стоп/Перезапуск рендерятся самим ResourceDetailPage (spec.ops.start/stop/restart
 // → POST <apiPath>/{id}:start|:stop|:restart). Здесь добавляем attach/detach над
@@ -32,81 +37,87 @@ export function InstanceDetailPage() {
 
   const [attachOpen, setAttachOpen] = useState(false);
   const [detachOpen, setDetachOpen] = useState(false);
-  const [attachDiskId, setAttachDiskId] = useState<string | undefined>();
+  const [attachVolumeId, setAttachVolumeId] = useState<string | undefined>();
   const [autoDelete, setAutoDelete] = useState(false);
-  const [detachDiskId, setDetachDiskId] = useState<string | undefined>();
+  const [detachVolumeId, setDetachVolumeId] = useState<string | undefined>();
   const [opId, setOpId] = useState<string | null>(null);
   const [opTitle, setOpTitle] = useState("Операция");
 
   const onOpDone = useCallback(() => {
     setOpId(null);
     invalidate("compute-instances", project?.id);
-    invalidate("compute-disks", project?.id);
+    invalidate("volumes", project?.id);
   }, [invalidate, project?.id]);
 
   const attachMut = useMutation({
     mutationFn: () =>
       api.action(`${SPEC.apiPath}/${instanceId}:attachDisk`, {
-        attached_disk_spec: { disk_id: attachDiskId, auto_delete: autoDelete },
+        // AttachedDiskSpec.disk — oneof {disk_spec | volume_id}, exactly_one. There
+        // is no `disk_id`: the edge would drop that name, leaving NO arm set.
+        attached_disk_spec: { volume_id: attachVolumeId, auto_delete: autoDelete },
       }),
     onSuccess: (resp) => {
       setAttachOpen(false);
       const id = extractOperationId(resp);
       if (id) {
-        setOpTitle("Подключение диска");
+        setOpTitle("Подключение тома");
         setOpId(id);
       } else {
         invalidate("compute-instances", project?.id);
-        invalidate("compute-disks", project?.id);
+        invalidate("volumes", project?.id);
       }
     },
     onError: (e) =>
-      toast.error(`Подключить диск: ${e instanceof ApiError ? `${e.code}: ${e.message}` : (e as Error).message}`),
+      toast.error(`Подключить том: ${e instanceof ApiError ? `${e.code}: ${e.message}` : (e as Error).message}`),
   });
 
   const detachMut = useMutation({
-    mutationFn: () => api.action(`${SPEC.apiPath}/${instanceId}:detachDisk`, { disk_id: detachDiskId }),
+    // DetachInstanceDiskRequest.disk — oneof {volume_id | device_name}, exactly_one.
+    mutationFn: () => api.action(`${SPEC.apiPath}/${instanceId}:detachDisk`, { volume_id: detachVolumeId }),
     onSuccess: (resp) => {
       setDetachOpen(false);
       const id = extractOperationId(resp);
       if (id) {
-        setOpTitle("Отключение диска");
+        setOpTitle("Отключение тома");
         setOpId(id);
       } else {
         invalidate("compute-instances", project?.id);
-        invalidate("compute-disks", project?.id);
+        invalidate("volumes", project?.id);
       }
     },
     onError: (e) =>
-      toast.error(`Отключить диск: ${e instanceof ApiError ? `${e.code}: ${e.message}` : (e as Error).message}`),
+      toast.error(`Отключить том: ${e instanceof ApiError ? `${e.code}: ${e.message}` : (e as Error).message}`),
   });
 
   const secondaryActions = useMemo(
     () => (data: Record<string, unknown>) => {
-      const bootDiskId = (getByPath<Record<string, unknown>>(data, "boot_disk")?.disk_id as string | undefined) ?? "";
+      // AttachedDisk carries `volume_id` — there is no `disk_id` on it, so reading
+      // that name yielded an empty id for every attachment and the detach hint
+      // below listed nothing.
+      const bootDiskId = (getByPath<Record<string, unknown>>(data, "boot_disk")?.volume_id as string | undefined) ?? "";
       const secondary = getByPath<Array<Record<string, unknown>>>(data, "secondary_disks") ?? [];
-      const secondaryIds = secondary.map((d) => d.disk_id as string).filter(Boolean);
+      const secondaryIds = secondary.map((d) => d.volume_id as string).filter(Boolean);
       return (
         <Space size={8} wrap>
           <Button
             icon={<PlusOutlined />}
             onClick={() => {
-              setAttachDiskId(undefined);
+              setAttachVolumeId(undefined);
               setAutoDelete(false);
               setAttachOpen(true);
             }}
           >
-            Подключить диск
+            Подключить том
           </Button>
           <Button
             icon={<MinusOutlined />}
             disabled={secondaryIds.length === 0}
             onClick={() => {
-              setDetachDiskId(secondaryIds[0]);
+              setDetachVolumeId(secondaryIds[0]);
               setDetachOpen(true);
             }}
           >
-            Отключить диск
+            Отключить том
           </Button>
           {bootDiskId && (
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -124,50 +135,50 @@ export function InstanceDetailPage() {
       <ResourceDetailPage spec={SPEC} secondaryActions={secondaryActions} />
 
       <Modal
-        title="Подключить диск к ВМ"
+        title="Подключить том к ВМ"
         open={attachOpen}
         onCancel={() => setAttachOpen(false)}
         onOk={() => attachMut.mutate()}
-        okButtonProps={{ disabled: !attachDiskId, loading: attachMut.isPending }}
+        okButtonProps={{ disabled: !attachVolumeId, loading: attachMut.isPending }}
         okText="Подключить"
         cancelText="Отмена"
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <div>
-            <Typography.Text>Диск</Typography.Text>
+            <Typography.Text>Том</Typography.Text>
             <RefSelect
-              refResource="compute-disks"
+              refResource="volumes"
               refProjectScoped
-              value={attachDiskId}
-              onChange={(v) => setAttachDiskId(v || undefined)}
+              value={attachVolumeId}
+              onChange={(v) => setAttachVolumeId(v || undefined)}
             />
           </div>
           <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
             <input type="checkbox" checked={autoDelete} onChange={(e) => setAutoDelete(e.target.checked)} />
-            Удалять диск вместе с ВМ (auto_delete)
+            Удалять том вместе с ВМ (auto_delete)
           </label>
         </div>
       </Modal>
 
       <Modal
-        title="Отключить диск от ВМ"
+        title="Отключить том от ВМ"
         open={detachOpen}
         onCancel={() => setDetachOpen(false)}
         onOk={() => detachMut.mutate()}
-        okButtonProps={{ disabled: !detachDiskId, loading: detachMut.isPending, danger: true }}
+        okButtonProps={{ disabled: !detachVolumeId, loading: detachMut.isPending, danger: true }}
         okText="Отключить"
         cancelText="Отмена"
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            Загрузочный диск отключить нельзя. Введите ID одного из дополнительных дисков.
+            Загрузочный том отключить нельзя. Введите ID одного из дополнительных томов.
           </Typography.Text>
           <div>
-            <Typography.Text>ID диска</Typography.Text>
+            <Typography.Text>ID тома</Typography.Text>
             <input
-              value={detachDiskId ?? ""}
-              onChange={(e) => setDetachDiskId(e.target.value || undefined)}
-              placeholder="epd..."
+              value={detachVolumeId ?? ""}
+              onChange={(e) => setDetachVolumeId(e.target.value || undefined)}
+              placeholder="vol…"
               style={{
                 width: "100%",
                 padding: "6px 8px",

@@ -378,11 +378,25 @@ export interface ResourceRef {
 // target oneof: allInScope{} (широчайший явный opt-in — все объекты под anchor'ом,
 // включая будущие) XOR resources[] (per-object least-priv). REQUIRED — самый
 // широкий грант достижим ТОЛЬКО явным allInScope (нет sentinel-по-умолчанию).
+//
+// Форма per-object арма — ВЛОЖЕННАЯ: `AccessTarget.resources` это само сообщение
+// `AccessTargetResources{repeated ResourceRef resources}`, поэтому на проводе
+// `target.resources.resources[]`. Ровно это пишет buildCreateAccessBindingBody;
+// читать плоско — значит не увидеть ни одного per-object гранта.
 export type TargetKind = "allInScope" | "resources";
+export interface AccessTargetResources {
+  resources?: ResourceRef[];
+}
 export interface AccessBindingTarget {
   all_in_scope?: Record<string, never>;
   allInScope?: Record<string, never>;
-  resources?: ResourceRef[];
+  resources?: AccessTargetResources;
+}
+
+/** Объекты per-object арма (пусто, если арм не выбран). */
+export function targetResources(t: AccessBindingTarget | undefined): ResourceRef[] {
+  const rows = t?.resources?.resources;
+  return Array.isArray(rows) ? rows : [];
 }
 
 /** Дискриминатор target'а из его формы (allInScope vs resources[]). */
@@ -390,7 +404,7 @@ export function targetKind(
   t: AccessBindingTarget | undefined,
 ): TargetKind | undefined {
   if (!t) return undefined;
-  if (t.resources && t.resources.length > 0) return "resources";
+  if (targetResources(t).length > 0) return "resources";
   if (t.all_in_scope !== undefined || t.allInScope !== undefined)
     return "allInScope";
   return undefined;
@@ -462,9 +476,10 @@ export type AccessBindingStatus = "PENDING" | "ACTIVE" | "REVOKED";
 
 // ====== Canonical subjects (thin-binding) ======
 // Subject — один грантополучатель биндинга. `type` — enum SubjectType, и на
-// проводе это ИМЯ значения (SUBJECT_TYPE_USER/…): protojson с DiscardUnknown тихо
-// схлопывает неизвестную enum-строку (нижне-регистровую "user") в
-// SUBJECT_TYPE_UNSPECIFIED, после чего сервер валит запрос как «пустой субъект».
+// проводе это ИМЯ значения (SUBJECT_TYPE_USER/…): нижне-регистровую "user"
+// protojson не распознаёт и схлопывает в SUBJECT_TYPE_UNSPECIFIED. Сервер это
+// переживает — он выводит тип из префикса id (usr/sva/grp) — но полагаться на
+// восстановление того, что мы сами стёрли, нечего: посылаем имя значения.
 // Нижний регистр — только внутренний UI-тип (SubjectType). `id` — usr…/sva…/grp….
 // Биндинг несёт subjects[] (1..32); per-subject независимый tuple-set / revoke.
 export interface Subject {
@@ -520,8 +535,6 @@ export interface CreateAccessBindingInput {
   scopeId: string;
   /** Пусто → allInScope{} (широчайший грант — только явным opt-in). */
   targetResources?: ResourceRef[];
-  deletionProtection?: boolean;
-  labels?: Record<string, string>;
 }
 
 /**
@@ -549,8 +562,6 @@ export function buildCreateAccessBindingBody(input: CreateAccessBindingInput): R
       ? { resources: { resources: input.targetResources.map((r) => ({ type: r.type, id: r.id })) } }
       : { all_in_scope: {} },
   };
-  if (input.deletionProtection) body.deletion_protection = true;
-  if (input.labels && Object.keys(input.labels).length > 0) body.labels = input.labels;
   return body;
 }
 
