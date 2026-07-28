@@ -3812,11 +3812,23 @@ export const REGISTRY: Record<string, ResourceSpec> = {
   },
 };
 
+/**
+ * hasProtocolNumber — protocol_number is an int64, and protojson renders a 64-bit
+ * integer as a JSON STRING. A rule read back from the server therefore carries
+ * "47", not 47: a `typeof === "number"` test is false for every server-sent rule,
+ * which resolved the protocol arm to "any" and silently widened the rule.
+ */
+export function hasProtocolNumber(v: unknown): boolean {
+  if (typeof v === "number") return Number.isFinite(v);
+  if (typeof v === "string") return v.trim() !== "" && Number.isFinite(Number(v));
+  return false;
+}
+
 // Экспортирована для тестов.
 export function sanitizeSgRule(r: Record<string, unknown>): Record<string, unknown> {
   const protoMode =
     (r._protocol_mode as string | undefined) ??
-    (r.protocol_name ? "name" : typeof r.protocol_number === "number" ? "number" : "any");
+    (r.protocol_name ? "name" : hasProtocolNumber(r.protocol_number) ? "number" : "any");
   const portsAny = typeof r._ports_any === "boolean" ? r._ports_any : !r.ports;
   const targetKind =
     (r._target_kind as string | undefined) ??
