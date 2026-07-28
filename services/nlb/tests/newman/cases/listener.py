@@ -657,7 +657,16 @@ CASES.append(Case(
 # STATE — immutable fields on Update
 # ---------------------------------------------------------------------------
 
-def _immutable_listener_case(case_id: str, mask: str, payload: dict) -> Case:
+def _immutable_listener_case(case_id: str, mask: str) -> Case:
+    """Probe: naming an immutable field in `update_mask` is rejected.
+
+    The assertion is carried ENTIRELY by the mask — `corevalidate.UpdateMask` reads
+    `update_mask`, not the body. These cases used to also carry a same-named body key
+    (`{"updateMask": "protocol", "protocol": "UDP"}`), but none of `loadBalancerId` /
+    `protocol` / `port` is a field of UpdateListenerRequest, so the key was discarded by
+    the edge and never reached the check it appeared to feed. Dropping it changes what is
+    sent, not what is asserted.
+    """
     return Case(
         id=case_id,
         title=f"Update Listener with mask={mask!r} → InvalidArgument (immutable)",
@@ -665,19 +674,15 @@ def _immutable_listener_case(case_id: str, mask: str, payload: dict) -> Case:
         steps=[
             Step(name="upd-imm", method="PATCH",
                  path=f"{_LST_BASE}/{{{{garbageLstId}}}}",
-                 body={"updateMask": mask, **payload},
+                 body={"updateMask": mask},
                  test_script=[*assert_absent_id_rejected()]),
         ],
     )
 
 
-CASES.append(_immutable_listener_case("LST-UPD-STATE-IMMUTABLE-LB-ID",
-                                      "loadBalancerId",
-                                      {"loadBalancerId": "nlbany00000000000000"}))
-CASES.append(_immutable_listener_case("LST-UPD-STATE-IMMUTABLE-PROTOCOL",
-                                      "protocol", {"protocol": "UDP"}))
-CASES.append(_immutable_listener_case("LST-UPD-STATE-IMMUTABLE-PORT",
-                                      "port", {"port": 9999}))
+CASES.append(_immutable_listener_case("LST-UPD-STATE-IMMUTABLE-LB-ID", "loadBalancerId"))
+CASES.append(_immutable_listener_case("LST-UPD-STATE-IMMUTABLE-PROTOCOL", "protocol"))
+CASES.append(_immutable_listener_case("LST-UPD-STATE-IMMUTABLE-PORT", "port"))
 # ipVersion / addressId are NOT listed here: they were removed from the Listener contract
 # (listener.proto reserved 12-15) together with the columns behind them, so "immutable
 # <field>" is no longer a statement about this resource — the mask entry is simply an

@@ -518,15 +518,23 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
-    id="XRES-E2E-EXTERNAL-WITH-NETWORK-INVALID",
-    title="EXTERNAL LB carrying a removed networkId field + valid public source → "
-          "created (grpc-gateway ignores the removed field) (Verifies 8.1-32)",
+    id="XRES-E2E-EXTERNAL-NO-NETWORK-FIELD",
+    title="EXTERNAL LB with a public VIP source binds no network — the removed networkId "
+          "is absent from the projection (Verifies 8.1-32)",
     classes=["CRUD", "CONF"], priority="P1",
+    # The body used to carry `networkId` (removed from CreateNetworkLoadBalancerRequest in
+    # the VIP redesign) to demonstrate that the edge discards it and still returns 200. That
+    # asserted an edge JSON policy, not an nlb contract, and it is the exact shape
+    # TestNewmanCollectionsSendNoUnknownRequestFields exists to eliminate — a key the server
+    # does not read, answered `200`, indistinguishable from one that was applied. The
+    # request-side statement is now proven statically for every collection in the tree; what
+    # remains here, and is asserted unchanged, is the observable: an EXTERNAL public-VIP LB
+    # carries no network binding in its projection.
     steps=[
-        Step(name="create-external-with-removed-network", method="POST", path=_LB_BASE,
+        Step(name="create-external-public-vip", method="POST", path=_LB_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "placement": "EXTERNAL_REGIONAL", "name": "ext-net-{{runId}}",
-                   "networkId": "{{garbageNetworkId}}", "v4Source": {"public": {}}},
+                   "v4Source": {"public": {}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
@@ -534,13 +542,13 @@ CASES.append(Case(
              # EXTERNAL auto public VIP can alloc-phantom under --jobs>1 throughput
              # pressure (kacho#11): the Create Operation completes done WITH "could not
              # allocate load balancer address", so the LB never persists and this GET
-             # 404s. The removed-networkId conformance is asserted only when the LB
-             # actually materialised (200, no lastOpError) — a phantom lane is tolerated,
+             # 404s. The no-network conformance is asserted only when the LB actually
+             # materialised (200, no lastOpError) — a phantom lane is tolerated,
              # matching the XRES-E2E-EXTERNAL-IPV6-VIP guard. Serial run exercises it.
              test_script=[
                  "if (pm.response.code === 200 && !pm.environment.get('lastOpError')) {",
                  "  pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                 "  pm.test('output does not echo the removed networkId', () => "
+                 "  pm.test('projection carries no networkId (removed from the model)', () => "
                  "    pm.expect(pm.response.json()).to.not.have.property('networkId'));",
                  "}",
              ])),

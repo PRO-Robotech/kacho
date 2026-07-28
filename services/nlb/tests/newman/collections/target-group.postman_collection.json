@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "ecbb3e5e-d893-4d95-972b-944cd3f317af",
+    "_postman_id": "6b5a3c7c-fd81-46ee-8885-dedfb0e92b19",
     "name": "kacho-nlb / newman / target-group",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -3504,7 +3504,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"projectId\", \"projectId\": \"{{_suiteProjectCrossId}}\"}",
+              "raw": "{\"updateMask\": \"projectId\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3560,7 +3560,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"regionId\", \"regionId\": \"{{_suiteRegionAltId}}\"}",
+              "raw": "{\"updateMask\": \"regionId\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3926,7 +3926,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"tgr-del-lst-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080, \"ipVersion\": \"IPV4\", \"targetGroupId\": \"{{tgId}}\"}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"tgr-del-lst-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080, \"targetGroupId\": \"{{tgId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5595,7 +5595,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"tgr-mv-lst-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080, \"ipVersion\": \"IPV4\", \"targetGroupId\": \"{{tgId}}\"}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"tgr-mv-lst-{{runId}}\", \"protocol\": \"TCP\", \"port\": 80, \"targetPort\": 8080, \"targetGroupId\": \"{{tgId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
