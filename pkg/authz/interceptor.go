@@ -112,20 +112,36 @@ func NewInterceptor(opts InterceptorOptions) *Interceptor {
 	}
 }
 
-// decisionError мапит Decision в gRPC-ошибку, которую interceptor возвращает
+// verdict — итог authorize(): решение + объект, к которому оно относится.
+// Объект нужен уже ПОСЛЕ решения — из него собирается текст existence-hiding
+// NOT_FOUND, который обязан совпасть с настоящим промахом владельца (см.
+// hide_existence.go). Раньше решение возвращалось без объекта, и текст сказать
+// было нечем — отсюда голое "not found", отличимое от контрактного тона.
+type verdict struct {
+	decision   Decision
+	objectType string
+	objectID   string
+	err        error
+}
+
+// decisionError мапит verdict в gRPC-ошибку, которую interceptor возвращает
 // вместо вызова handler'а. Passthrough-решения (Allowed/Internal/NoPath — надо
 // вызвать handler) дают nil. ЕДИНЫЙ источник маппинга для Unary() и Stream():
 // новый Decision обрабатывается ровно в одном месте, иначе unary/stream-switch'и
 // расходятся вручную и streaming-RPC молча ломается на не-учтённом решении.
-func decisionError(dec Decision, err error) error {
+func decisionError(v verdict) error {
+	dec, err := v.decision, v.err
 	switch dec {
 	case DecisionAllowed, DecisionInternal, DecisionNoPath:
 		// Passthrough: caller вызывает handler (Internal — internal RPC без Check).
 		return nil
 	case DecisionHideExistence:
 		// Existence-hiding: объект есть, но caller не вправе видеть → NOT_FOUND
-		// (handler НЕ вызывается, чтобы не слить ресурс).
-		return status.Error(codes.NotFound, "not found")
+		// (handler НЕ вызывается, чтобы не слить ресурс). Текст — ПОБАЙТНО тот же,
+		// что отдал бы владелец на реальном промахе: иначе «есть-но-не-твой»
+		// отличимо от «нет такого» по одному лишь сообщению, и сокрытие
+		// превращается в оракул существования.
+		return status.Error(codes.NotFound, hideExistenceMessage(v.objectType, v.objectID))
 	case DecisionDenied:
 		return status.Error(codes.PermissionDenied, "permission denied")
 	case DecisionUnavailable:
@@ -148,8 +164,8 @@ func decisionError(dec Decision, err error) error {
 // Unary возвращает grpc.UnaryServerInterceptor.
 func (i *Interceptor) Unary() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
-		dec, err := i.authorize(ctx, info.FullMethod, req)
-		if derr := decisionError(dec, err); derr != nil {
+		v := i.authorize(ctx, info.FullMethod, req)
+		if derr := decisionError(v); derr != nil {
 			return nil, derr
 		}
 		return handler(ctx, req)
@@ -175,16 +191,18 @@ func (i *Interceptor) Stream() grpc.StreamServerInterceptor {
 		// Это работает для типичных Watch / Subscribe streams, где либо метод public
 		// (e.g. InternalResourceLifecycleService.Subscribe — Public=true), либо
 		// extractor явно проектирует request'-less проверку.
-		dec, err := i.authorize(ss.Context(), info.FullMethod, nil)
-		if derr := decisionError(dec, err); derr != nil {
+		v := i.authorize(ss.Context(), info.FullMethod, nil)
+		if derr := decisionError(v); derr != nil {
 			return derr
 		}
 		return handler(srv, ss)
 	}
 }
 
-// authorize — основная логика (вне зависимости от unary/stream).
-func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any) (Decision, error) {
+// authorize — основная логика (вне зависимости от unary/stream). Возвращает
+// verdict: решение ПЛЮС объект, к которому оно относится (нужен для текста
+// existence-hiding — см. hide_existence.go).
+func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any) verdict {
 	logger := i.opts.Logger.With(
 		slog.String("rpc", fullMethod),
 		slog.String("service", i.opts.ServiceName),
@@ -198,11 +216,11 @@ func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any)
 		if isAnonymousSubject(ctx, i.opts.SubjectExtractor) {
 			atomic.AddUint64(&i.deniedTotal, 1)
 			logger.Warn("authz_breakglass_anonymous_denied")
-			return DecisionDenied, nil
+			return verdict{decision: DecisionDenied, err: nil}
 		}
 		atomic.AddUint64(&i.breakglassTotal, 1)
 		logger.Warn("authz_breakglass_used")
-		return DecisionAllowed, nil
+		return verdict{decision: DecisionAllowed, err: nil}
 	}
 
 	// 2. Lookup RPC. Любой не-замапленный RPC fail-closed — без name-based
@@ -214,17 +232,17 @@ func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any)
 	if !ok {
 		atomic.AddUint64(&i.unmappedTotal, 1)
 		logger.Warn("authz_unmapped_rpc")
-		return DecisionUnmapped, ErrUnmapped
+		return verdict{decision: DecisionUnmapped, err: ErrUnmapped}
 	}
 	if entry.Public {
-		return DecisionInternal, nil
+		return verdict{decision: DecisionInternal, err: nil}
 	}
 	if entry.ScopeFiltered {
 		// scope-filtered List RPC — the handler authorises at the data level
 		// (ListObjects-filtered result, 200 + filtered/EMPTY). Skip the per-RPC
 		// Check; a single-object Check would reject the whole call `no path` 403
 		// before the scope-filter could run.
-		return DecisionInternal, nil
+		return verdict{decision: DecisionInternal, err: nil}
 	}
 
 	// 3. Subject extract.
@@ -233,7 +251,7 @@ func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any)
 		// Нет Principal'а в ctx → fail-closed.
 		logger.Warn("authz_no_principal")
 		atomic.AddUint64(&i.deniedTotal, 1)
-		return DecisionDenied, nil
+		return verdict{decision: DecisionDenied, err: nil}
 	}
 	if i.opts.AllowSystemPrincipal && principalID == "bootstrap" {
 		// Gate the blanket allow to the GENUINE system identity
@@ -250,7 +268,7 @@ func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any)
 		// the trust-aware grpcsrv.UnaryTrustedPrincipalExtract (see
 		// docs/architecture/known-divergences.md).
 		if p, ok := operations.PrincipalFromContextOK(ctx); ok && p.Type == "system" && p.ID == "bootstrap" {
-			return DecisionAllowed, nil
+			return verdict{decision: DecisionAllowed, err: nil}
 		}
 		logger.Warn("authz_system_principal_type_mismatch",
 			slog.String("principal_id", principalID))
@@ -261,13 +279,13 @@ func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any)
 	if err != nil {
 		logger.Warn("authz_object_extract_failed", slog.String("err", err.Error()))
 		atomic.AddUint64(&i.deniedTotal, 1)
-		return DecisionDenied, fmt.Errorf("object extract: %w", err)
+		return verdict{decision: DecisionDenied, err: fmt.Errorf("object extract: %w", err)}
 	}
 	object, err := FormatObject(objectType, objectID)
 	if err != nil {
 		logger.Warn("authz_object_format_failed", slog.String("err", err.Error()))
 		atomic.AddUint64(&i.deniedTotal, 1)
-		return DecisionDenied, err
+		return verdict{decision: DecisionDenied, err: err}
 	}
 
 	// 5. Cache lookup. Кешируются только positive-результаты (negative никогда
@@ -275,7 +293,7 @@ func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any)
 	if _, hit := i.opts.Cache.Get(subjectFGA, entry.Relation, objectType, objectID); hit {
 		atomic.AddUint64(&i.cacheHitsTotal, 1)
 		atomic.AddUint64(&i.allowedTotal, 1)
-		return DecisionAllowed, nil
+		return verdict{decision: DecisionAllowed, err: nil}
 	}
 
 	// 6. Rate-limit denied-storm: применяется ДО Check call, иначе
@@ -284,7 +302,7 @@ func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any)
 		atomic.AddUint64(&i.rateLimitedTotal, 1)
 		logger.Warn("authz_rate_limited",
 			slog.String("principal_id", principalID))
-		return DecisionRateLimited, nil
+		return verdict{decision: DecisionRateLimited, err: nil}
 	}
 
 	// 7. Check call.
@@ -301,7 +319,7 @@ func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any)
 				slog.String("subject", subjectFGA),
 				slog.String("relation", entry.Relation),
 				slog.String("object", object))
-			return DecisionNoPath, nil
+			return verdict{decision: DecisionNoPath, err: nil}
 		}
 		if errors.Is(err, ErrHideExistence) {
 			// Объект существует, но caller не вправе видеть → existence-hiding:
@@ -312,7 +330,9 @@ func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any)
 				slog.String("subject", subjectFGA),
 				slog.String("relation", entry.Relation),
 				slog.String("object", object))
-			return DecisionHideExistence, nil
+			// objectType/objectID ride along: the NOT_FOUND text is built from
+			// them so it matches the owner's own miss byte for byte.
+			return verdict{decision: DecisionHideExistence, objectType: objectType, objectID: objectID}
 		}
 		atomic.AddUint64(&i.unavailableTotal, 1)
 		logger.Error("authz_check_unavailable",
@@ -320,7 +340,7 @@ func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any)
 			slog.String("relation", entry.Relation),
 			slog.String("object", object),
 			slog.String("err", err.Error()))
-		return DecisionUnavailable, errors.Join(ErrUnavailable, err)
+		return verdict{decision: DecisionUnavailable, err: errors.Join(ErrUnavailable, err)}
 	}
 	if !allowed {
 		atomic.AddUint64(&i.deniedTotal, 1)
@@ -328,13 +348,13 @@ func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any)
 			slog.String("subject", subjectFGA),
 			slog.String("relation", entry.Relation),
 			slog.String("object", object))
-		return DecisionDenied, nil
+		return verdict{decision: DecisionDenied, err: nil}
 	}
 
 	// 8. Cache positive.
 	i.opts.Cache.SetAllowed(subjectFGA, entry.Relation, objectType, objectID)
 	atomic.AddUint64(&i.allowedTotal, 1)
-	return DecisionAllowed, nil
+	return verdict{decision: DecisionAllowed, err: nil}
 }
 
 // Metrics — счетчики для Prometheus / тестов. Lock-free.

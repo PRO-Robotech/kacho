@@ -86,16 +86,7 @@ const (
 // for the bootstrap-admin SA (IBT-11). Any unknown key a client sends is ignored
 // by grpc-gateway and cannot influence the principal.
 type MintBootstrapTokenRequest struct {
-	state protoimpl.MessageState `protogen:"open.v1"`
-	// Requested token lifetime in seconds. Optional: `0` → server default. The
-	// value is CLAMPED to a server hard-max (the bootstrap token is deliberately
-	// short-lived, IBT-09) — a larger request never widens the lifetime, so only
-	// the lower bound is a contract constraint; the upper bound is server-clamped
-	// (a large request like 86400 is accepted, then clamped — IBT-09).
-	//
-	// `(value)` (numeric bound), NOT `(length)` (string char-length) — the latter
-	// is a no-op on an int64 and would leave a negative ttl unenforced.
-	TtlSeconds    int64 `protobuf:"varint,1,opt,name=ttl_seconds,json=ttlSeconds,proto3" json:"ttl_seconds,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -130,13 +121,6 @@ func (*MintBootstrapTokenRequest) Descriptor() ([]byte, []int) {
 	return file_kacho_cloud_iam_v1_internal_bootstrap_token_service_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *MintBootstrapTokenRequest) GetTtlSeconds() int64 {
-	if x != nil {
-		return x.TtlSeconds
-	}
-	return 0
-}
-
 // MintBootstrapTokenResponse — the minted bootstrap Bearer.
 type MintBootstrapTokenResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -145,7 +129,9 @@ type MintBootstrapTokenResponse struct {
 	AccessToken string `protobuf:"bytes,1,opt,name=access_token,json=accessToken,proto3" json:"access_token,omitempty"`
 	// OAuth2 token type — always `"Bearer"`.
 	TokenType string `protobuf:"bytes,2,opt,name=token_type,json=tokenType,proto3" json:"token_type,omitempty"`
-	// Seconds until expiry (`expires_at - issued_at`), ≤ the server hard-max.
+	// Seconds until expiry (`expires_at - issued_at`) — the lifetime the issuer
+	// gave the token. Never understated: the bearer is accepted for exactly this
+	// long, so the holder can rely on it to revoke or rotate in time.
 	ExpiresIn int64 `protobuf:"varint,3,opt,name=expires_in,json=expiresIn,proto3" json:"expires_in,omitempty"`
 	// Absolute expiry (truncated to seconds).
 	ExpiresAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
@@ -234,10 +220,8 @@ var File_kacho_cloud_iam_v1_internal_bootstrap_token_service_proto protoreflect.
 
 const file_kacho_cloud_iam_v1_internal_bootstrap_token_service_proto_rawDesc = "" +
 	"\n" +
-	"9kacho/cloud/iam/v1/internal_bootstrap_token_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"E\n" +
-	"\x19MintBootstrapTokenRequest\x12(\n" +
-	"\vttl_seconds\x18\x01 \x01(\x03B\a\xfa\xc71\x03>=0R\n" +
-	"ttlSeconds\"\x94\x02\n" +
+	"9kacho/cloud/iam/v1/internal_bootstrap_token_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\".\n" +
+	"\x19MintBootstrapTokenRequestJ\x04\b\x01\x10\x02R\vttl_seconds\"\x94\x02\n" +
 	"\x1aMintBootstrapTokenResponse\x12!\n" +
 	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12\x1d\n" +
 	"\n" +

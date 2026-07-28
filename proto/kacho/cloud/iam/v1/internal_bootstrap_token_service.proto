@@ -99,15 +99,17 @@ service InternalBootstrapTokenService {
 // for the bootstrap-admin SA (IBT-11). Any unknown key a client sends is ignored
 // by grpc-gateway and cannot influence the principal.
 message MintBootstrapTokenRequest {
-  // Requested token lifetime in seconds. Optional: `0` → server default. The
-  // value is CLAMPED to a server hard-max (the bootstrap token is deliberately
-  // short-lived, IBT-09) — a larger request never widens the lifetime, so only
-  // the lower bound is a contract constraint; the upper bound is server-clamped
-  // (a large request like 86400 is accepted, then clamped — IBT-09).
-  //
-  // `(value)` (numeric bound), NOT `(length)` (string char-length) — the latter
-  // is a no-op on an int64 and would leave a negative ttl unenforced.
-  int64 ttl_seconds = 1 [(value) = ">=0"];
+  // TOMBSTONE. Tag 1 held `ttl_seconds`, a requested token lifetime. It could
+  // not be honoured: the token is signed by the issuer and its lifetime comes
+  // from the issuer's client configuration, so a per-request value only ever
+  // changed the number in the RESPONSE — a privileged bearer reported as
+  // expiring sooner than it actually did. Removed rather than left standing: an
+  // understated expiry on a cluster-admin credential is worse than no parameter,
+  // because nobody revokes or rotates a token they believe is already dead. The
+  // response now reports the lifetime the token really has (see `expires_in`).
+  // Tag 1 and the name `ttl_seconds` are RESERVED.
+  reserved 1;
+  reserved "ttl_seconds";
 }
 
 // MintBootstrapTokenResponse — the minted bootstrap Bearer.
@@ -119,7 +121,9 @@ message MintBootstrapTokenResponse {
   // OAuth2 token type — always `"Bearer"`.
   string token_type = 2;
 
-  // Seconds until expiry (`expires_at - issued_at`), ≤ the server hard-max.
+  // Seconds until expiry (`expires_at - issued_at`) — the lifetime the issuer
+  // gave the token. Never understated: the bearer is accepted for exactly this
+  // long, so the holder can rely on it to revoke or rotate in time.
   int64 expires_in = 3;
 
   // Absolute expiry (truncated to seconds).

@@ -10,7 +10,6 @@ import "google/protobuf/field_mask.proto";
 import "google/protobuf/timestamp.proto";
 import "kacho/cloud/api/operation.proto";
 import "kacho/cloud/iam/v1/access_binding.proto";
-import "kacho/cloud/iam/v1/builtin_condition.proto";
 import "kacho/cloud/operation/operation.proto";
 import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
@@ -367,18 +366,26 @@ message CreateAccessBindingRequest {
   // Scope-anchor ID — the anchor object id (`cluster_kacho_root` | `acc…` | `prj…`).
   string scope_id = 5 [(required) = true, (length) = "<=64"];
 
-  // Optional reference to an `AccessBindingCondition` row (`cond_xxx`) for
-  // an ABAC overlay. Logical-oneof with
-  // `builtin_condition` (field 7) — setting both is InvalidArgument.
-  string condition_id = 6 [(length) = "<=20"];
+  // TOMBSTONE. Tags 6/7 held an ABAC condition overlay on the binding
+  // (`condition_id` / `builtin_condition`). Nothing evaluated it: no decision
+  // path read the field, the row a `condition_id` had to reference could not be
+  // created through any API, and the builtin variant had no storage at all — so
+  // the request offered a gate that did not exist and the caller was told the
+  // grant succeeded either way. Removed rather than left standing; conditions
+  // remain a first-class resource with their own service (ConditionsService),
+  // which is where such a capability belongs. Tags 6/7 and the names
+  // `condition_id` / `builtin_condition` are RESERVED so a future design starts
+  // from a clean number instead of inheriting a meaning nobody implemented.
+  reserved 6, 7;
+  reserved "condition_id", "builtin_condition";
 
-  // Optional reference to a `BuiltinCondition` catalog entry. Logical-oneof
-  // with `condition_id` (field 6).
-  BuiltinCondition builtin_condition = 7;
-
-  // Optional hard-expiry timestamp. Unset = no TTL. When set, must be in
-  // the future by at least 5 minutes (otherwise InvalidArgument) — OPA
-  // gates the binding evaluation by `now() < expires_at`.
+  // Optional lifetime. Unset = the grant does not expire. When set it must be at
+  // least 5 minutes in the future (otherwise INVALID_ARGUMENT, synchronously and
+  // by name): access materialises asynchronously within a bounded window, so a
+  // shorter lifetime could be revoked before it is ever usable. Enforcement is
+  // the reconcile sweep — an elapsed binding is eager-revoked (status REVOKED and
+  // its tuples removed), so the lifetime the caller asks for is the lifetime the
+  // grant has.
   google.protobuf.Timestamp expires_at = 8;
 
   // TOMBSTONE. Tag 9 (`AccessTarget target`) / tag 11 (`AccessTargetRef target_ref`)
