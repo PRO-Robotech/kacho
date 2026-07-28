@@ -34,7 +34,14 @@ cd "$(dirname "$0")/.."
 # instanceKind/machineTypeId/bootSource/vm|container spec). Legacy-суита была целиком
 # построена на tombstoned platformId/resourcesSpec/bootDiskSpec create-поверхности
 # (RESERVED в CreateInstanceRequest, ban #2) и не могла пройти.
-COLLECTIONS=(disk image snapshot instance-redesign machine-type disk-type operation list-filter authz-deny sec-d)
+# NB: `disk` / `image` / `snapshot` / `disk-type` RETIRED вместе с дублем блочного
+# хранения (625f6f05, a52f0b87) — владелец один, kacho-storage; их cases/ и
+# collections/ удалены, суиты живут в services/storage/tests/newman. Этот список —
+# ОЖИДАЕМЫЙ набор, и `run_one` на отсутствующий файл пишет rc="missing" → строка
+# MISSING → bad=1. Ретайрнутые стемы, оставленные здесь, делали вердикт compute
+# КРАСНЫМ безусловно, независимо от утверждений (drift-петля ниже только ДОБАВЛЯЕТ
+# стемы, никогда не вычищает).
+COLLECTIONS=(instance-redesign machine-type operation list-filter authz-deny sec-d)
 
 SERVICE=""
 BAIL=""
