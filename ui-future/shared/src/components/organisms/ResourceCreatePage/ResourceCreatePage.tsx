@@ -10,6 +10,7 @@ import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/Page
 import { ApiError, api } from "@shared/api/client";
 import { applyFieldDefaults, mutationBasePath, type ResourceSpec } from "@shared/lib/resource-registry";
 import { setByPath } from "@shared/lib/path";
+import { presetFieldsForSpec } from "@shared/lib/preset-fields";
 import { buildCreateBody } from "@shared/lib/update-mask";
 import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
 import { operationOutcome, operationWarnings, resolveMutationResponse } from "@shared/lib/operation-outcome";
@@ -67,7 +68,16 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
       if (spec.id === "addresses") optFilter["_address_kind"] = ["external", "external_v6"];
     }
     if (networkId) out["network_id"] = networkId;
-    return { presetFields: out, softPresetFields: soft, fieldOptionsFilter: optFilter };
+    // A preset may only name a field this form has. The keys come from the URL, so
+    // their set is chosen by whoever built the link — `network_id` above is set for
+    // every spec, and most Create messages have no such field. An unmatched preset
+    // would ride out as an undeclared request key and be dropped at the edge in
+    // silence.
+    return {
+      presetFields: presetFieldsForSpec(spec.fields, out),
+      softPresetFields: presetFieldsForSpec(spec.fields, soft),
+      fieldOptionsFilter: optFilter,
+    };
   }, [params.subnetId, params.networkId, searchParams, spec.id]);
 
   const initialObj = useMemo(() => {
