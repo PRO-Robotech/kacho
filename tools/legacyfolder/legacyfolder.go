@@ -450,7 +450,7 @@ func sortFindings(findings []Finding) {
 
 // readText returns the file's content, or "" when it is not text we can read.
 func readText(path string) string {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) // #nosec G304 -- path comes from this tool's own WalkDir of the repo root or from its compile-time exemption lists, not from any input
 	if err != nil || !utf8.Valid(b) || strings.IndexByte(string(b), 0) >= 0 {
 		return ""
 	}
