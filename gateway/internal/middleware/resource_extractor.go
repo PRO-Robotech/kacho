@@ -15,13 +15,13 @@
 //     the message looking up the named field. This is the canonical path for
 //     gRPC server-interceptors where the request is already typed.
 //
-//  2. **HTTP path/query parsing** — when called from the HTTP path (REST
+//  2. **HTTP path/query/body parsing** — when called from the HTTP path (REST
 //     gateway), the request body has not yet been decoded into a typed proto
-//     message. For grpc-gateway-style endpoints the resource id is in the
-//     URL path (`/iam/v1/projects/{project_id}`) — we accept a precompiled
-//     `PathTemplate` registry keyed by the FQN as a forward-extension point.
-//     For now we fall back to a query-string lookup ("?resource_id=X") and
-//     finally to wildcard.
+//     message, so the scope is read out of the raw request. The source is
+//     decided by the ROUTE CONTRACT, not by convenience: it is whichever source
+//     grpc-gateway will itself bind the field from when it builds the handler's
+//     message (see httpScopeField). The subject of the authorization check is
+//     therefore the subject of the action.
 //
 //  3. **wildcard fallback** — for List/Search RPCs (no specific resource_id)
 //     OR when extraction fails, we return the FGA wildcard "*". The FGA
@@ -96,52 +96,162 @@ func (e *ResourceExtractor) ExtractFromProto(req any, entry CatalogEntry) (Resou
 	return extractByProtoReflect(msg, field), true
 }
 
-// ExtractFromHTTP extracts the resource id from an HTTP request when the
-// proto body hasn't been decoded yet. Strategy:
+// ScopeConflict reports a request whose authorization scope cannot be read as a
+// single value: it is written in more than one place, or under more than one
+// spelling of one field, and the writings disagree. The caller MUST refuse such
+// a request instead of picking a winner — whichever it picked, the subject of
+// the check and the subject of the action could be different objects.
+//
+// It is also raised when the scope appears ONLY where the handler will not read
+// it: that too is a request that says one thing to the edge and another to the
+// handler, and the caller learns which place to put it instead of receiving an
+// unexplained refusal for a scope it thought it had named.
+type ScopeConflict struct {
+	// Field — the catalog scope field, snake_case as declared in the catalog
+	// (`project_id`). Named in the refusal so the caller can fix the request.
+	Field string
+}
+
+// ExtractFromHTTP extracts the resource id from an HTTP request when the proto
+// body hasn't been decoded yet.
 //
 //  1. Recognised path template (e.g. `/iam/v1/projects/{project_id}` →
 //     parse {project_id}). The template registry is supplied via
-//     `httpFallbackPaths` keyed by FQN.
-//  2. Query string `?resource_id=…` (admin-UI helper).
-//  3. Wildcard.
-func (e *ResourceExtractor) ExtractFromHTTP(r *http.Request, fqn string, entry CatalogEntry) (ResourceID, bool) {
+//     `httpFallbackPaths` keyed by FQN. Path placeholders bind first and cannot
+//     be overridden — in grpc-gateway or here.
+//  2. Otherwise the single source the route contract binds the field from
+//     (httpScopeField): the request body for a body-bearing method, the query
+//     string for one without a body.
+//  3. Wildcard when the request names no scope at all.
+//
+// A non-nil *ScopeConflict means the request's scope cannot be read as a single
+// value (see ScopeConflict); the returned id is the best handler-visible reading,
+// but the caller must refuse rather than proceed on it.
+func (e *ResourceExtractor) ExtractFromHTTP(r *http.Request, fqn string, entry CatalogEntry) (ResourceID, *ScopeConflict) {
 	if r == nil {
-		return ResourceID("*"), true
+		return ResourceID("*"), nil
 	}
 	field := strings.TrimSpace(entry.ScopeExtractor.FromRequestField)
 	if field == "" || field == "*" {
-		return ResourceID("*"), true
+		return ResourceID("*"), nil
 	}
 	// 1. Template-aware extraction. We accept simple `{name}` placeholders.
 	if tmpl, ok := e.httpFallbackPaths[fqn]; ok && tmpl != "" {
 		if id, ok := extractByPathTemplate(r.URL.Path, tmpl, field); ok && id != "" {
-			return ResourceID(id), true
+			return ResourceID(id), nil
 		}
 	}
-	// 2. Query string fallback — also accepted on POST bodies because
-	// admin-UI might append `?scope=...` for explicit gating. grpc-gateway
-	// REST query params are camelCase (`?accountId=`), while the catalog
-	// `from_request_field` is the snake_case proto field (`account_id`) — so
-	// we try both spellings (List RPCs scoped by an `account_id` query param
-	// would otherwise produce a spurious `account:*` wildcard → no-path DENY).
-	for _, key := range []string{field, snakeToCamel(field)} {
-		if q := r.URL.Query().Get(key); q != "" {
-			return ResourceID(q), true
-		}
+	id, conflict := httpScopeField(r, field)
+	if conflict {
+		return wildcardIfEmpty(id), &ScopeConflict{Field: field}
 	}
-	if q := r.URL.Query().Get("scope_id"); q != "" {
-		return ResourceID(q), true
+	return wildcardIfEmpty(id), nil
+}
+
+// httpScopeField reads one catalog-named scope field out of a raw HTTP request
+// using the SAME source grpc-gateway will bind it from when it decodes the
+// request into the handler's message. That equality is the whole point: the edge
+// must authorize the object the handler is about to act on, not a different one
+// the caller nominated on the side.
+//
+// The binding rule, which mirrors `google.api.http`:
+//
+//   - A method that carries a body binds the WHOLE body (`body: "*"` — the form
+//     every Kachō route with a body uses). For that binding grpc-gateway does not
+//     read query parameters AT ALL, so a query parameter names nothing the
+//     handler will see. The body is the source.
+//   - A bodyless method binds its non-path fields from the query string. The
+//     query is the source — this is how `List` narrows by parent
+//     (`?projectId=…`), and it must keep working.
+//
+// Which methods fall on which side is decided by methodCarriesBody.
+//
+// # What conflict=true means
+//
+// The scope field can be written in more than one place, and the two sides do not
+// resolve the duplicates the same way, so "read it the way the handler does" is
+// not enough on its own — the handler's own answer has to be a single one. Both
+// duplications are therefore reported for refusal rather than resolved here:
+//
+//   - TWO SPELLINGS OF ONE FIELD. The catalog names the snake_case proto field
+//     (`account_id`); REST carries camelCase (`accountId`); both resolve to the
+//     same field. grpc-gateway walks the query as a Go MAP, so with both present
+//     the surviving value is decided by map iteration order and differs between
+//     identical requests. There is no "the handler's value" to agree with.
+//   - THE SOURCE THE HANDLER WILL NOT READ naming the field differently. That
+//     combination has no innocent reading — the ignored source can only mislead.
+//
+// Equal values are never a conflict: a caller that harmlessly echoes the scope is
+// not contradicting itself, and the handler has nothing else to pick.
+func httpScopeField(r *http.Request, field string) (value string, conflict bool) {
+	query, queryAmbiguous := httpQueryField(r, field)
+	if !methodCarriesBody(r.Method) {
+		return query, queryAmbiguous
 	}
-	// 3. JSON body extraction — Create/Update RPCs carry
-	// the scope id (`account_id` / `project_id` / `resource_id`) in the
-	// request body, not the URL. The middleware runs before grpc-gateway
-	// decodes the body, so we read + RESTORE it here so the downstream
-	// handler still sees an intact body. REST JSON is camelCase, so we look
-	// the snake_case catalog field up under its camelCase spelling too.
-	if id := extractFromJSONBody(r, field); id != "" {
-		return ResourceID(id), true
+	// From here the body is the source the handler is built from.
+	body, bodyAmbiguous := jsonBodyField(r, field)
+	if bodyAmbiguous {
+		return body, true
 	}
-	return ResourceID("*"), true
+	if query != "" && query != body {
+		return body, true
+	}
+	return body, false
+}
+
+// httpQueryField reads a field from the query string under both its snake_case
+// (catalog) and camelCase (REST) spellings. ambiguous=true when both spellings
+// are present and disagree — see httpScopeField for why that cannot be resolved
+// by preferring one.
+//
+// A single key repeated (`?a=1&a=2`) needs no handling here: grpc-gateway rejects
+// more than one value for a singular field outright, so the handler never acts on
+// such a request.
+func httpQueryField(r *http.Request, field string) (value string, ambiguous bool) {
+	q := r.URL.Query()
+	return pickOneSpelling(q.Get(field), q.Get(snakeToCamel(field)))
+}
+
+// pickOneSpelling collapses the two spellings of one field into a single value,
+// reporting ambiguous=true when both are given and differ.
+func pickOneSpelling(snake, camel string) (value string, ambiguous bool) {
+	switch {
+	case snake != "" && camel != "" && snake != camel:
+		return snake, true
+	case snake != "":
+		return snake, false
+	default:
+		return camel, false
+	}
+}
+
+// methodCarriesBody reports whether an HTTP method binds its request message
+// from a body. It enumerates the BODYLESS methods and treats everything else as
+// body-bearing, which is the fail-safe direction: mistaking a body-bearing
+// method for a bodyless one would hand the scope back to the query string on a
+// route whose handler reads the body, which is the whole class this guards
+// against. Mistaking the other way only costs an unresolved scope, i.e. a denial.
+//
+// The method is upper-cased first because RestRouter.Resolve upper-cases before
+// picking the route — and therefore the catalog row. Both halves of one decision
+// must normalise identically, or a request could be routed as a create while
+// being scoped as a read.
+func methodCarriesBody(method string) bool {
+	switch strings.ToUpper(method) {
+	case http.MethodGet, http.MethodHead, http.MethodDelete, http.MethodOptions, http.MethodTrace:
+		return false
+	default:
+		return true
+	}
+}
+
+// wildcardIfEmpty renders "no scope named" as the FGA wildcard, which
+// AuthorizeService.Check refuses as an unscoped resource.
+func wildcardIfEmpty(id string) ResourceID {
+	if id == "" {
+		return ResourceID("*")
+	}
+	return ResourceID(id)
 }
 
 // definitionTierField is the redesign-2026 F4 scope-anchor message field
@@ -364,26 +474,12 @@ func subMessageString(sub protoreflect.Message, name string) string {
 }
 
 // extractDefinitionTierFromJSONBody reads `definitionTier.{tierType,tierId}` from
-// the JSON body and restores the body. Returns ("","") when absent / not JSON.
+// the JSON body and restores the body. Returns ("","") when absent / unparseable.
 // Both snake_case and camelCase spellings are accepted for the object key and its
 // members (the middleware runs before grpc-gateway decodes the camelCase body).
 func extractDefinitionTierFromJSONBody(r *http.Request) (tierType, tierID string) {
-	if r.Body == nil || r.ContentLength == 0 {
-		return "", ""
-	}
-	ct := r.Header.Get("Content-Type")
-	if ct != "" && !strings.Contains(ct, "json") {
-		return "", ""
-	}
-	buf, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-	_ = r.Body.Close()
-	r.Body = io.NopCloser(bytes.NewReader(buf))
-	r.ContentLength = int64(len(buf))
-	if err != nil || len(buf) == 0 {
-		return "", ""
-	}
-	var doc map[string]json.RawMessage
-	if json.Unmarshal(buf, &doc) != nil {
+	doc, ok := inspectJSONBody(r)
+	if !ok {
 		return "", ""
 	}
 	var raw json.RawMessage
@@ -439,61 +535,105 @@ func (e *ResourceExtractor) ScopeTypeFromProto(req any, field string) string {
 	return id.String()
 }
 
-// ScopeTypeFromHTTP reads the named field from an HTTP request's query string
-// or JSON body (REST camelCase spelling tried too) and returns its raw value,
-// or "" when absent. Like ScopeTypeFromProto it does NOT wildcard-default.
-func (e *ResourceExtractor) ScopeTypeFromHTTP(r *http.Request, field string) string {
+// ScopeTypeFromHTTP reads the named field from an HTTP request and returns its
+// raw value, or "" when absent. Like ScopeTypeFromProto it does NOT
+// wildcard-default.
+//
+// It reads from the SAME source as ExtractFromHTTP (httpScopeField), so the two
+// halves of one scope — the object type and the object id — can never be taken
+// from different places, and reports the same contradiction the same way.
+func (e *ResourceExtractor) ScopeTypeFromHTTP(r *http.Request, field string) (string, *ScopeConflict) {
 	field = strings.TrimSpace(field)
 	if r == nil || field == "" {
-		return ""
+		return "", nil
 	}
-	for _, key := range []string{field, snakeToCamel(field)} {
-		if q := r.URL.Query().Get(key); q != "" {
-			return q
-		}
+	v, conflict := httpScopeField(r, field)
+	if conflict {
+		return v, &ScopeConflict{Field: field}
 	}
-	if v := extractFromJSONBody(r, field); v != "" {
-		return v
-	}
-	return ""
+	return v, nil
 }
 
-// extractFromJSONBody reads a top-level string field out of the request's
-// JSON body and restores the body for downstream consumers. Returns "" when
-// the body is absent / not JSON / the field is missing.
+// extractFromJSONBody reads a top-level string field out of the request's JSON
+// body. Returns "" when the body is absent / unparseable / the field is missing.
+//
+// It is the value-only form of jsonBodyField, for the callers whose field cannot
+// be written twice in one body (the `definition_tier` anchor and the legacy
+// `project_id` alternative both name exactly one spelling in the proto).
 func extractFromJSONBody(r *http.Request, snakeField string) string {
-	if r.Body == nil || r.ContentLength == 0 {
-		return ""
+	v, _ := jsonBodyField(r, snakeField)
+	return v
+}
+
+// jsonBodyField reads a top-level string field out of the request's JSON body
+// under both its snake_case and camelCase spellings, and restores the body for
+// downstream consumers. ambiguous=true when both spellings are present and
+// disagree (see httpScopeField).
+//
+// The media type is NOT consulted. The REST mux registers its JSON marshaler
+// under runtime.MIMEWildcard, so the handler decodes the body as JSON whatever
+// the request labelled it; gating on `Content-Type` here would let a caller pick
+// a media type that hides the scope from the check while leaving it visible to
+// the handler. A body that is not JSON simply fails to parse, which costs one
+// discarded parse and yields no scope.
+func jsonBodyField(r *http.Request, snakeField string) (value string, ambiguous bool) {
+	doc, ok := inspectJSONBody(r)
+	if !ok {
+		return "", false
 	}
-	ct := r.Header.Get("Content-Type")
-	if ct != "" && !strings.Contains(ct, "json") {
-		return ""
-	}
-	// Cap at 1 MiB — request bodies for control-plane RPCs are tiny; this
-	// guards against a malicious oversized body.
-	buf, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-	_ = r.Body.Close()
-	// Always restore the body so the downstream handler can decode it.
-	r.Body = io.NopCloser(bytes.NewReader(buf))
-	r.ContentLength = int64(len(buf))
-	if err != nil || len(buf) == 0 {
-		return ""
-	}
-	var doc map[string]json.RawMessage
-	if uerr := json.Unmarshal(buf, &doc); uerr != nil {
-		return ""
-	}
-	for _, key := range []string{snakeField, snakeToCamel(snakeField)} {
-		raw, ok := doc[key]
-		if !ok {
-			continue
+	pick := func(key string) string {
+		raw, present := doc[key]
+		if !present {
+			return ""
 		}
 		var s string
-		if json.Unmarshal(raw, &s) == nil && s != "" {
+		if json.Unmarshal(raw, &s) == nil {
 			return s
 		}
+		return ""
 	}
-	return ""
+	return pickOneSpelling(pick(snakeField), pick(snakeToCamel(snakeField)))
+}
+
+// inspectJSONBody decodes the request body's top-level JSON object for
+// inspection and leaves the request readable by the downstream handler.
+//
+// The media type is NOT consulted. The REST mux registers its JSON marshaler
+// under runtime.MIMEWildcard, so the handler decodes the body as JSON whatever
+// the request labelled it; gating on `Content-Type` here would let a caller pick
+// a media type that hides a scope from the check while leaving it visible to the
+// handler. A body that is not JSON simply fails to parse and yields nothing.
+//
+// Only a bounded prefix is buffered — control-plane bodies are tiny and an
+// oversized one must not be held whole. The remainder is NOT consumed: the
+// prefix is spliced back ahead of the untouched reader, so the handler receives
+// the request byte-for-byte. A body longer than the cap is cut mid-document,
+// so it does not parse and yields nothing — fail closed at the edge, intact
+// downstream. (Buffering the prefix and dropping the rest, as this once did,
+// silently corrupts every request over the cap.)
+func inspectJSONBody(r *http.Request) (map[string]json.RawMessage, bool) {
+	if r.Body == nil || r.ContentLength == 0 {
+		return nil, false
+	}
+	const inspectCap = 1 << 20
+	head, err := io.ReadAll(io.LimitReader(r.Body, inspectCap))
+	rest := r.Body
+	r.Body = bodyReadCloser{Reader: io.MultiReader(bytes.NewReader(head), rest), Closer: rest}
+	if err != nil || len(head) == 0 {
+		return nil, false
+	}
+	var doc map[string]json.RawMessage
+	if json.Unmarshal(head, &doc) != nil {
+		return nil, false
+	}
+	return doc, true
+}
+
+// bodyReadCloser pairs a spliced reader with the original body's Closer, so
+// restoring an inspected body does not drop the request's cleanup.
+type bodyReadCloser struct {
+	io.Reader
+	io.Closer
 }
 
 // snakeToCamel converts `account_id` -> `accountId` (REST JSON spelling).

@@ -362,7 +362,8 @@ func (m *AuthzMiddleware) Unary() grpc.UnaryServerInterceptor {
 			// No credentials → Unauthenticated(16), not PermissionDenied(7).
 			return nil, decision.gRPCStatus().Err()
 		case outcomeInvalidArgument:
-			// Malformed resource id → InvalidArgument(3), Check not run.
+			// Request rejected on its own shape (malformed resource id, ambiguous
+			// scope) → InvalidArgument(3), Check not run.
 			return nil, decision.gRPCStatus().Err()
 		case outcomeNotFound:
 			// Hide existence: read-deny on a verb-bearing IAM read → NotFound(5).
@@ -408,7 +409,8 @@ func (m *AuthzMiddleware) Stream() grpc.StreamServerInterceptor {
 			// No credentials → Unauthenticated(16), not PermissionDenied(7).
 			return decision.gRPCStatus().Err()
 		case outcomeInvalidArgument:
-			// Malformed resource id → InvalidArgument(3), Check not run.
+			// Request rejected on its own shape (malformed resource id, ambiguous
+			// scope) → InvalidArgument(3), Check not run.
 			return decision.gRPCStatus().Err()
 		case outcomeNotFound:
 			// Hide existence: read-deny on a verb-bearing IAM read → NotFound(5).
@@ -467,8 +469,9 @@ func (m *AuthzMiddleware) HTTP(next http.Handler) http.Handler {
 			// not 403 Forbidden + code 7.
 			writeHTTPUnauth(w, decision.descriptor, decision.reasons)
 		case outcomeInvalidArgument:
-			// Malformed resource id → 400 + code 3, Check not run.
-			writeHTTPInvalidArg(w, decision.invalidArgID)
+			// Request rejected on its own shape (malformed resource id, ambiguous
+			// scope) → 400 + code 3, Check not run.
+			writeHTTPInvalidArg(w, decision.invalidArgMessage)
 		case outcomeNotFound:
 			// Hide existence: read-deny on a verb-bearing IAM read → 404, no reasons.
 			writeHTTPNotFound(w, decision.descriptor)
@@ -496,11 +499,15 @@ type decisionRequest struct {
 	HTTPReq  *http.Request
 	GRPCPeer string
 	GRPCMeta metadata.MD
-	// Stream marks the server-streaming path, where the client request message
-	// is not read before the RPC is gated (ProtoReq is therefore nil). It is set
-	// ONLY by the Stream interceptor so phaseResource can tell a genuinely
-	// unmaterialised stream apart from a unary call, and fail closed for a
+	// Stream marks the stream-interceptor lane, where the client request message
+	// is not read before the RPC is gated (ProtoReq is therefore nil). Set ONLY
+	// by the Stream interceptor, so phaseResource can tell an unmaterialised
+	// request apart from one it can read fields off, and fail closed for a
 	// concrete-resource scope instead of collapsing to the wildcard scope.
+	//
+	// It does NOT mean "the RPC is a stream": the gateway forwards domain traffic
+	// via UnknownServiceHandler, which grpc-go dispatches through the streaming
+	// path, so proxied UNARY RPCs set this too. See phaseResource.
 	Stream bool
 }
 
@@ -546,9 +553,10 @@ type decision struct {
 	descriptor permissionDeniedDescriptor
 	checkErr   error
 	entry      CatalogEntry
-	// invalidArgID — the malformed resource id, set only for
-	// outcomeInvalidArgument. Surfaced unchanged in the 400 message.
-	invalidArgID string
+	// invalidArgMessage — the flat message rendered for outcomeInvalidArgument,
+	// on both the gRPC and the REST arm. Set by whichever phase produced the
+	// outcome (malformed resource id, contradictory scope sources).
+	invalidArgMessage string
 }
 
 func (d decision) gRPCStatus() *status.Status {
@@ -556,7 +564,7 @@ func (d decision) gRPCStatus() *status.Status {
 	case outcomeUnauthenticated:
 		return buildGRPCUnauthStatus(d.descriptor, d.reasons)
 	case outcomeInvalidArgument:
-		return buildGRPCInvalidArgStatus(d.invalidArgID)
+		return buildGRPCInvalidArgStatus(d.invalidArgMessage)
 	case outcomeNotFound:
 		return buildGRPCNotFoundStatus(d.descriptor)
 	default:
@@ -857,25 +865,43 @@ func (m *AuthzMiddleware) phaseScopeFiltered(dr decisionRequest, entry CatalogEn
 // scope + descriptor for the Check phase.
 func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, subj ResolvedSubject) (ResourceID, string, permissionDeniedDescriptor, decision, bool) {
 	var resourceID ResourceID
+	// scopeConflict — set when the raw HTTP request named its scope in two
+	// sources that disagree. Refused below, once the descriptor exists.
+	var scopeConflict *ScopeConflict
 	switch {
 	case dr.HTTPReq != nil:
-		resourceID, _ = m.cfg.Resources.ExtractFromHTTP(dr.HTTPReq, dr.FQN, entry)
+		resourceID, scopeConflict = m.cfg.Resources.ExtractFromHTTP(dr.HTTPReq, dr.FQN, entry)
 	case dr.ProtoReq != nil:
 		resourceID, _ = m.cfg.Resources.ExtractFromProto(dr.ProtoReq, entry)
 	default:
-		// Unmaterialised request. On the server-streaming path (dr.Stream) the
-		// RPC is gated ONCE before the stream runs, so the client message has not
-		// been read and no request field can be extracted. For a CONCRETE
-		// per-resource scope this means the scope id is unresolvable — defaulting
-		// to the wildcard "*" would collapse the FGA Check to `<type>:*` and
-		// authorize the caller for EVERY resource of that type. Fail closed: deny
-		// (Check does not run) rather than authorize against an over-broad
-		// wildcard scope. A future concrete-scope streaming RPC must resolve its
-		// scope from the first client message before it can be authorized; until
-		// then it is denied, which surfaces the requirement loudly instead of
-		// silently over-granting. Wildcard / subject / scope-polymorphic entries
-		// have no concrete id to resolve and legitimately keep "*" (the shape
-		// every real streaming RPC uses today).
+		// Unmaterialised request: gated before any client message was read, so no
+		// request field can be extracted. For a CONCRETE per-resource scope the
+		// scope id is therefore unresolvable — defaulting to the wildcard "*" would
+		// collapse the FGA Check to `<type>:*` and authorize the caller for EVERY
+		// resource of that type. Fail closed: deny (Check does not run) rather than
+		// authorize against an over-broad wildcard scope. Wildcard / subject /
+		// scope-polymorphic entries have no concrete id to resolve and legitimately
+		// keep "*".
+		//
+		// BE EXACT ABOUT WHO ARRIVES HERE — it is not only server-streaming RPCs.
+		// The gateway forwards domain traffic through `grpc.UnknownServiceHandler`,
+		// and grpc-go dispatches an unregistered service through its STREAMING
+		// path: an ordinary unary RPC proxied to a backend reaches the stream
+		// interceptor, marked bidirectional, before its single client message is
+		// read (pinned by TestAuthz_ProxiedUnaryRPC_ArrivesOnTheStreamLane). So on
+		// the gateway's own gRPC listener this branch is the branch that ORDINARY
+		// UNARY RPCs take, and every concrete-scope catalog row is denied there —
+		// not a guard held in reserve for a hypothetical future stream.
+		//
+		// That is a liveness gap on the gRPC edge, and it is fail-closed by
+		// construction: nothing is over-granted, the surface simply does not serve
+		// concrete-scope RPCs. Closing it means resolving the scope from the first
+		// forwarded client message (peek + replay in the proxy), which is a change
+		// to the forwarding layer, not to this decision. Until that lands, the deny
+		// stands: authorizing against `<type>:*` to make the surface work would
+		// trade the whole point of a per-resource scope for reachability. The REST
+		// surface is unaffected — grpc-gateway dials the backends directly and
+		// never re-enters this server, so it arrives with a materialised request.
 		if dr.Stream && isConcreteResourceScope(entry) {
 			resourceType := entry.ScopeExtractor.ObjectType
 			if resourceType == "" {
@@ -914,7 +940,11 @@ func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, 
 	if otField := strings.TrimSpace(entry.ScopeExtractor.ObjectTypeFromRequestField); otField != "" {
 		var dynType string
 		if dr.HTTPReq != nil {
-			dynType = m.cfg.Resources.ScopeTypeFromHTTP(dr.HTTPReq, otField)
+			var typeConflict *ScopeConflict
+			dynType, typeConflict = m.cfg.Resources.ScopeTypeFromHTTP(dr.HTTPReq, otField)
+			if scopeConflict == nil {
+				scopeConflict = typeConflict
+			}
 		} else if dr.ProtoReq != nil {
 			dynType = m.cfg.Resources.ScopeTypeFromProto(dr.ProtoReq, otField)
 		}
@@ -998,6 +1028,32 @@ func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, 
 		ResourceID:   resourceID.String(),
 	}
 
+	// 5a. Scope-source contradiction short-circuit.
+	//
+	// The request named its authorization scope twice, in two sources that
+	// disagree, and only one of them is the source grpc-gateway will bind the
+	// handler's message from. Resolving that by precedence would decide, silently
+	// and on the caller's behalf, which of the two objects the platform treats as
+	// the subject of the request — and any answer makes the checked object and the
+	// acted-on object potentially different. There is no correct winner, so the
+	// request is refused: InvalidArgument, naming the field, before the Check runs.
+	if scopeConflict != nil {
+		m.metrics.RecordDeny()
+		m.cfg.Logger.Info("authz scope named in two disagreeing sources — refusing",
+			"fqn", dr.FQN,
+			"subject", subj.FGA,
+			"action", entry.Permission,
+			"field", scopeConflict.Field,
+		)
+		return resourceID, resourceType, descriptor, decision{
+			outcome:           outcomeInvalidArgument,
+			reasons:           []string{"request names its scope in two sources that disagree"},
+			descriptor:        descriptor,
+			entry:             entry,
+			invalidArgMessage: scopeSourceConflictMessage(scopeConflict.Field),
+		}, true
+	}
+
 	// 5b. Malformed-id short-circuit.
 	//
 	// For an entry whose scope is a CONCRETE per-resource id (the
@@ -1022,11 +1078,11 @@ func (m *AuthzMiddleware) phaseResource(dr decisionRequest, entry CatalogEntry, 
 				"resource", descriptor.ResourceType+":"+descriptor.ResourceID,
 			)
 			return resourceID, resourceType, descriptor, decision{
-				outcome:      outcomeInvalidArgument,
-				reasons:      []string{"resource id is malformed"},
-				descriptor:   descriptor,
-				entry:        entry,
-				invalidArgID: resourceID.String(),
+				outcome:           outcomeInvalidArgument,
+				reasons:           []string{"resource id is malformed"},
+				descriptor:        descriptor,
+				entry:             entry,
+				invalidArgMessage: invalidResourceIDMessage(resourceID.String()),
 			}, true
 		}
 	}

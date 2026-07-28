@@ -412,22 +412,34 @@ func invalidResourceIDMessage(id string) string {
 	return "invalid resource id '" + id + "'"
 }
 
-// buildGRPCInvalidArgStatus constructs a *status.Status{Code: InvalidArgument}
-// for a malformed resource id. No PreconditionFailure / ErrorInfo details — the
-// flat message IS the contract (mirrors corevalidate.ResourceID).
-func buildGRPCInvalidArgStatus(id string) *status.Status {
-	return status.New(codes.InvalidArgument, invalidResourceIDMessage(id))
+// scopeSourceConflictMessage — the flat-message contract for a request whose
+// authorization scope cannot be read as a single value: the field is written in
+// more than one place, or under more than one spelling, and the writings
+// disagree. It names the field so the caller can find it, and states the rule
+// rather than a winner — there is no winner, which is why the request is
+// refused. Deliberately free of either value: the caller supplied both, and the
+// message is also rendered to callers who supplied only one.
+func scopeSourceConflictMessage(field string) string {
+	return "ambiguous " + field + ": give it exactly once, " +
+		"in the request body for a request that has one, otherwise in the query string"
 }
 
-// writeHTTPInvalidArg renders a 400 response for a malformed resource id. Body
-// shape matches the gRPC-gateway default `{code, message}` with code 3
+// buildGRPCInvalidArgStatus constructs a *status.Status{Code: InvalidArgument}
+// with the supplied flat message. No PreconditionFailure / ErrorInfo details —
+// the flat message IS the contract (mirrors corevalidate.ResourceID).
+func buildGRPCInvalidArgStatus(message string) *status.Status {
+	return status.New(codes.InvalidArgument, message)
+}
+
+// writeHTTPInvalidArg renders a 400 response carrying the supplied flat message.
+// Body shape matches the gRPC-gateway default `{code, message}` with code 3
 // (INVALID_ARGUMENT).
-func writeHTTPInvalidArg(w http.ResponseWriter, id string) {
+func writeHTTPInvalidArg(w http.ResponseWriter, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusBadRequest)
 	body := map[string]any{
 		"code":    3, // gRPC code InvalidArgument
-		"message": invalidResourceIDMessage(id),
+		"message": message,
 	}
 	_ = json.NewEncoder(w).Encode(body)
 }

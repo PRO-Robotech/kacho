@@ -106,35 +106,140 @@ func TestResourceExtractor_FromHTTP_PathTemplate(t *testing.T) {
 		},
 	}
 	r := httptest.NewRequest(http.MethodGet, "/iam/v1/projects/prj_alpha", nil)
-	id, ok := e.ExtractFromHTTP(r, "kacho.cloud.iam.v1.ProjectService/Get", entry)
-	require.True(t, ok)
+	id, conflict := e.ExtractFromHTTP(r, "kacho.cloud.iam.v1.ProjectService/Get", entry)
+	require.Nil(t, conflict)
 	assert.Equal(t, "prj_alpha", id.String())
 }
 
-func TestResourceExtractor_FromHTTP_QueryStringFallback(t *testing.T) {
+// --- Which source the scope comes from is decided by the route contract ---
+//
+// grpc-gateway binds the handler's request message from the body when the method
+// carries one (`body: "*"`, the form every Kachō route with a body uses) and from
+// the query string when it does not. The extractor reads from the same place, so
+// the object the edge asks the model about is the object the handler acts on.
+
+func TestResourceExtractor_FromHTTP_NoBody_QueryIsTheSource(t *testing.T) {
 	e := middleware.NewResourceExtractor(nil)
 	entry := middleware.CatalogEntry{
-		ScopeExtractor: middleware.ScopeExtractor{
-			FromRequestField: "folder_id",
-		},
+		ScopeExtractor: middleware.ScopeExtractor{FromRequestField: "project_id"},
 	}
-	r := httptest.NewRequest(http.MethodPost, "/vpc/v1/networks?folder_id=fld_x", nil)
-	id, ok := e.ExtractFromHTTP(r, "kacho.cloud.vpc.v1.NetworkService/Create", entry)
-	require.True(t, ok)
-	assert.Equal(t, "fld_x", id.String())
+	// A list narrows by parent through the query string; that is the source
+	// grpc-gateway binds it from, so it is the source we check.
+	r := httptest.NewRequest(http.MethodGet, "/vpc/v1/networks?projectId=prj_x", nil)
+	id, conflict := e.ExtractFromHTTP(r, "kacho.cloud.vpc.v1.NetworkService/List", entry)
+	require.Nil(t, conflict)
+	assert.Equal(t, "prj_x", id.String())
 }
 
-func TestResourceExtractor_FromHTTP_ScopeIDFallback(t *testing.T) {
+func TestResourceExtractor_FromHTTP_BodyBearing_BodyIsTheSource(t *testing.T) {
 	e := middleware.NewResourceExtractor(nil)
 	entry := middleware.CatalogEntry{
-		ScopeExtractor: middleware.ScopeExtractor{
-			FromRequestField: "some_field",
-		},
+		ScopeExtractor: middleware.ScopeExtractor{FromRequestField: "project_id"},
 	}
-	r := httptest.NewRequest(http.MethodPost, "/iam/v1/authorize:batchCheck?scope_id=prj_x", nil)
-	id, ok := e.ExtractFromHTTP(r, "X/Y", entry)
-	require.True(t, ok)
-	assert.Equal(t, "prj_x", id.String())
+	body := `{"projectId":"prj_body","name":"n"}`
+	r := httptest.NewRequest(http.MethodPost, "/vpc/v1/networks", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	id, conflict := e.ExtractFromHTTP(r, "kacho.cloud.vpc.v1.NetworkService/Create", entry)
+	require.Nil(t, conflict)
+	assert.Equal(t, "prj_body", id.String())
+	rest, _ := io.ReadAll(r.Body)
+	assert.Equal(t, body, string(rest), "body must be restored for the handler")
+}
+
+// A query parameter on a body-bearing route names nothing the handler will read
+// — grpc-gateway does not parse the query for a `body: "*"` binding — so it
+// cannot become the scope. A caller that named it only there is contradicting
+// the route, and gets told so instead of a puzzling unscoped-resource denial.
+func TestResourceExtractor_FromHTTP_BodyBearing_QueryOnly_IsNotTheScope(t *testing.T) {
+	e := middleware.NewResourceExtractor(nil)
+	entry := middleware.CatalogEntry{
+		ScopeExtractor: middleware.ScopeExtractor{FromRequestField: "project_id"},
+	}
+	r := httptest.NewRequest(http.MethodPost, "/vpc/v1/networks?projectId=prj_query",
+		strings.NewReader(`{"name":"n"}`))
+	r.Header.Set("Content-Type", "application/json")
+	id, conflict := e.ExtractFromHTTP(r, "kacho.cloud.vpc.v1.NetworkService/Create", entry)
+	require.NotNil(t, conflict, "naming the scope only where the handler cannot read it is a contradiction")
+	assert.Equal(t, "project_id", conflict.Field)
+	assert.True(t, id.IsWildcard(),
+		"a query parameter the handler never sees must not become the checked scope")
+}
+
+// Two sources, two different values: no winner is correct, so the request is
+// reported as contradictory for the caller to refuse.
+func TestResourceExtractor_FromHTTP_BodyBearing_DisagreeingSources_Conflict(t *testing.T) {
+	e := middleware.NewResourceExtractor(nil)
+	entry := middleware.CatalogEntry{
+		ScopeExtractor: middleware.ScopeExtractor{FromRequestField: "project_id"},
+	}
+	r := httptest.NewRequest(http.MethodPost, "/vpc/v1/networks?projectId=prj_query",
+		strings.NewReader(`{"projectId":"prj_body"}`))
+	r.Header.Set("Content-Type", "application/json")
+	id, conflict := e.ExtractFromHTTP(r, "kacho.cloud.vpc.v1.NetworkService/Create", entry)
+	require.NotNil(t, conflict, "disagreeing scope sources must be reported, not silently ordered")
+	assert.Equal(t, "project_id", conflict.Field)
+	assert.Equal(t, "prj_body", id.String(),
+		"the reported id stays the handler-visible one")
+}
+
+// Echoing the same value in both places is redundant, not contradictory.
+func TestResourceExtractor_FromHTTP_BodyBearing_AgreeingSources_NoConflict(t *testing.T) {
+	e := middleware.NewResourceExtractor(nil)
+	entry := middleware.CatalogEntry{
+		ScopeExtractor: middleware.ScopeExtractor{FromRequestField: "project_id"},
+	}
+	r := httptest.NewRequest(http.MethodPost, "/vpc/v1/networks?projectId=prj_same",
+		strings.NewReader(`{"projectId":"prj_same"}`))
+	r.Header.Set("Content-Type", "application/json")
+	id, conflict := e.ExtractFromHTTP(r, "kacho.cloud.vpc.v1.NetworkService/Create", entry)
+	require.Nil(t, conflict)
+	assert.Equal(t, "prj_same", id.String())
+}
+
+// The generic `scope_id` query key is declared by no route contract: no handler
+// binds a field from it, so it names nothing and re-points nothing. Its own
+// catalog field (`BatchAuthorizeCheckRequest.scope_id`) is read from the body
+// like any other, which the second half of this test pins.
+func TestResourceExtractor_FromHTTP_GenericScopeIDQueryKey_IsNotASource(t *testing.T) {
+	e := middleware.NewResourceExtractor(nil)
+	entry := middleware.CatalogEntry{
+		ScopeExtractor: middleware.ScopeExtractor{FromRequestField: "some_field"},
+	}
+	r := httptest.NewRequest(http.MethodPost, "/iam/v1/authorize:batchCheck?scope_id=prj_x",
+		strings.NewReader(`{}`))
+	r.Header.Set("Content-Type", "application/json")
+	id, conflict := e.ExtractFromHTTP(r, "X/Y", entry)
+	require.Nil(t, conflict)
+	assert.True(t, id.IsWildcard(), "scope_id is not a scope source for a field named otherwise")
+
+	scoped := middleware.CatalogEntry{
+		ScopeExtractor: middleware.ScopeExtractor{FromRequestField: "scope_id"},
+	}
+	r2 := httptest.NewRequest(http.MethodPost, "/iam/v1/authorize:batchCheck",
+		strings.NewReader(`{"scopeId":"prj_batch"}`))
+	r2.Header.Set("Content-Type", "application/json")
+	id2, conflict2 := e.ExtractFromHTTP(r2, "kacho.cloud.iam.v1.AuthorizeService/BatchCheck", scoped)
+	require.Nil(t, conflict2)
+	assert.Equal(t, "prj_batch", id2.String())
+}
+
+// The two halves of one scope — object type and object id — are read from the
+// same source, so they can never describe different objects.
+func TestResourceExtractor_ScopeTypeFromHTTP_FollowsTheSameSource(t *testing.T) {
+	e := middleware.NewResourceExtractor(nil)
+
+	r := httptest.NewRequest(http.MethodGet, "/iam/v1/accessBindings:listByScope?resourceType=account", nil)
+	typ, conflict := e.ScopeTypeFromHTTP(r, "resource_type")
+	require.Nil(t, conflict)
+	assert.Equal(t, "account", typ, "a request without a body binds its type from the query")
+
+	rb := httptest.NewRequest(http.MethodPost, "/iam/v1/x?resourceType=account",
+		strings.NewReader(`{"resourceType":"project"}`))
+	rb.Header.Set("Content-Type", "application/json")
+	typ2, conflict2 := e.ScopeTypeFromHTTP(rb, "resource_type")
+	require.NotNil(t, conflict2, "a disagreeing scope type is the same contradiction as a disagreeing id")
+	assert.Equal(t, "resource_type", conflict2.Field)
+	assert.Equal(t, "project", typ2)
 }
 
 func TestResourceExtractor_FromHTTP_NoMatch_Wildcard(t *testing.T) {
@@ -145,8 +250,8 @@ func TestResourceExtractor_FromHTTP_NoMatch_Wildcard(t *testing.T) {
 		},
 	}
 	r := httptest.NewRequest(http.MethodGet, "/iam/v1/something", nil)
-	id, ok := e.ExtractFromHTTP(r, "X/Y", entry)
-	require.True(t, ok)
+	id, conflict := e.ExtractFromHTTP(r, "X/Y", entry)
+	require.Nil(t, conflict)
 	assert.True(t, id.IsWildcard())
 }
 
@@ -155,8 +260,8 @@ func TestResourceExtractor_FromHTTP_NilRequest(t *testing.T) {
 	entry := middleware.CatalogEntry{
 		ScopeExtractor: middleware.ScopeExtractor{FromRequestField: "subject"},
 	}
-	id, ok := e.ExtractFromHTTP(nil, "X/Y", entry)
-	require.True(t, ok)
+	id, conflict := e.ExtractFromHTTP(nil, "X/Y", entry)
+	require.Nil(t, conflict)
 	assert.True(t, id.IsWildcard())
 }
 
@@ -271,4 +376,86 @@ func TestResourceExtractor_DefinitionTierScope_UnrelatedFQN_NotResolved(t *testi
 	r.Header.Set("Content-Type", "application/json")
 	_, _, ok = e.ResolveDefinitionTierScopeHTTP(otherFQN, r)
 	assert.False(t, ok, "HTTP arm: anchor must not resolve on an FQN that does not declare it")
+}
+
+// The method decides which source is authoritative, so it must be read the same
+// way the router read it when it picked the route — and therefore the catalog
+// row. RestRouter.Resolve upper-cases; an unusually-cased method must not route
+// as a create while being scoped as a read.
+func TestResourceExtractor_FromHTTP_MethodCasing_DoesNotChangeTheSource(t *testing.T) {
+	e := middleware.NewResourceExtractor(nil)
+	entry := middleware.CatalogEntry{
+		ScopeExtractor: middleware.ScopeExtractor{FromRequestField: "project_id"},
+	}
+	r := httptest.NewRequest("post", "/vpc/v1/networks?projectId=prj_query",
+		strings.NewReader(`{"projectId":"prj_body"}`))
+	r.Header.Set("Content-Type", "application/json")
+	id, conflict := e.ExtractFromHTTP(r, "kacho.cloud.vpc.v1.NetworkService/Create", entry)
+	require.NotNil(t, conflict, "an unusually-cased body-bearing method is still body-bearing")
+	assert.Equal(t, "prj_body", id.String())
+}
+
+// An unrecognised method is treated as body-bearing: guessing "bodyless" would
+// hand the scope back to the query string on a route whose handler reads the
+// body. Guessing this way costs at most an unresolved scope, i.e. a denial.
+func TestResourceExtractor_FromHTTP_UnknownMethod_IsTreatedAsBodyBearing(t *testing.T) {
+	e := middleware.NewResourceExtractor(nil)
+	entry := middleware.CatalogEntry{
+		ScopeExtractor: middleware.ScopeExtractor{FromRequestField: "project_id"},
+	}
+	r := httptest.NewRequest("PROPFIND", "/vpc/v1/networks?projectId=prj_query", nil)
+	id, conflict := e.ExtractFromHTTP(r, "kacho.cloud.vpc.v1.NetworkService/Create", entry)
+	require.NotNil(t, conflict)
+	assert.True(t, id.IsWildcard(),
+		"an unrecognised method must not take its scope from the query string")
+}
+
+// The REST mux registers its JSON marshaler under the wildcard media type, so
+// the handler decodes the body as JSON whatever the request labelled it. The
+// edge must read the same body: gating on Content-Type would let a caller choose
+// a media type that hides the scope from the check and shows it to the handler.
+func TestResourceExtractor_FromHTTP_ContentTypeDoesNotDecideWhatIsRead(t *testing.T) {
+	e := middleware.NewResourceExtractor(nil)
+	entry := middleware.CatalogEntry{
+		ScopeExtractor: middleware.ScopeExtractor{FromRequestField: "project_id"},
+	}
+	for _, ct := range []string{
+		"application/json",
+		"Application/JSON",                  // legal casing (RFC 9110), lower-cased by the mux
+		"application/x-www-form-urlencoded", // still decoded as JSON by the wildcard marshaler
+		"",                                  // absent
+	} {
+		r := httptest.NewRequest(http.MethodPost, "/vpc/v1/networks",
+			strings.NewReader(`{"projectId":"prj_body"}`))
+		if ct != "" {
+			r.Header.Set("Content-Type", ct)
+		}
+		id, conflict := e.ExtractFromHTTP(r, "kacho.cloud.vpc.v1.NetworkService/Create", entry)
+		require.Nilf(t, conflict, "Content-Type %q", ct)
+		assert.Equalf(t, "prj_body", id.String(),
+			"Content-Type %q must not change which scope the check runs against", ct)
+	}
+}
+
+// A body larger than the inspection cap yields no scope at the edge — but it
+// must still reach the handler INTACT. Buffering a prefix and dropping the rest
+// silently corrupts every oversized request.
+func TestResourceExtractor_FromHTTP_OversizedBody_IsNotTruncated(t *testing.T) {
+	e := middleware.NewResourceExtractor(nil)
+	entry := middleware.CatalogEntry{
+		ScopeExtractor: middleware.ScopeExtractor{FromRequestField: "project_id"},
+	}
+	padding := strings.Repeat("x", 1<<20)
+	body := `{"projectId":"prj_body","note":"` + padding + `"}`
+	r := httptest.NewRequest(http.MethodPost, "/vpc/v1/networks", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+
+	id, conflict := e.ExtractFromHTTP(r, "kacho.cloud.vpc.v1.NetworkService/Create", entry)
+	require.Nil(t, conflict)
+	assert.True(t, id.IsWildcard(), "a body too large to inspect must yield no scope")
+
+	rest, err := io.ReadAll(r.Body)
+	require.NoError(t, err)
+	assert.Equal(t, len(body), len(rest), "the handler must still receive the whole body")
+	assert.Equal(t, body, string(rest))
 }
