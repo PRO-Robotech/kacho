@@ -209,7 +209,7 @@ func (r *VolumeRepo) List(ctx context.Context, p volume.Pagination) ([]*domain.V
 // проект), и его минимум в ответе появляться не должен. Поэтому стейтмент
 // ВСЕГДА возвращает ровно одну строку-дискриминатор: успешную вставку ЛИБО
 // (NULL, NULL, min_disk_bytes разрешённого образа, доступность типа в зоне,
-// регион образа СВОЕГО проекта).
+// регион образа СВОЕГО проекта, зона происхождения снапшота СВОЕГО проекта).
 // min_disk IS NULL в отказе ⟺ образ не разрешился полностью; min_disk NOT NULL ⟺
 // образ свой, виден и когерентен — отказ по размеру называется вслух. dt_offered
 // трёхзначен намеренно: NULL ⟺ строки типа нет вовсе (тот же ответ, что раньше
@@ -217,7 +217,19 @@ func (r *VolumeRepo) List(ctx context.Context, p volume.Pagination) ([]*domain.V
 // пройдена. Модифицирующий CTE выполняется ровно один раз, поэтому обе ветки
 // UNION видят один и тот же его результат.
 //
-// ПРОЕКТ И РЕГИОН — РАЗНЫЕ ПОЛОСЫ, и одним предикатом их сливать нельзя. Раньше
+// ПЯТАЯ полоса — placement-coherence СНАПШОТА-источника. Снапшот и том — оба
+// зональные, значит правило для них — ТА ЖЕ зона (зональный↔зональный). Своей
+// колонки зоны у снапшота нет: его единственное свидетельство размещения — том, с
+// которого он снят (`snapshots.source_volume_id`), и захват образа читает его
+// ровно так же. До этой полосы полоса снапшота сверяла ОДИН проект, поэтому
+// снапшот тома зоны B спокойно восстанавливался в зону A — тихий перенос блочных
+// данных через границу размещения и обход зональной проверки в один лишний шаг
+// (сначала снять снапшот, потом восстановить куда угодно). Происхождение может
+// быть уже занулено (FK на volumes — ON DELETE SET NULL): тогда размещения у
+// снапшота нет вовсе, сравнивать не с чем, и придумывать его нельзя — строка
+// проходит.
+//
+// ПРОЕКТ И РАЗМЕЩЕНИЕ — РАЗНЫЕ ПОЛОСЫ, и одним предикатом их сливать нельзя. Раньше
 // `src` требовала проект И регион вместе, поэтому СВОЙ, вызывающему прекрасно
 // видимый образ (Image.Get отдаёт его успехом) в чужом регионе отвечал
 // hide-existence-текстом «Image <id> not found» — утверждением об отсутствии
@@ -225,12 +237,16 @@ func (r *VolumeRepo) List(ctx context.Context, p volume.Pagination) ([]*domain.V
 // ЧУЖОЕ; здесь скрывать нечего, а диагноз ложен. Поэтому добавлена `src_project`
 // — тот же образ, разрешённый ТОЛЬКО по проекту, — и её `region_id` едет пятой
 // колонкой-дискриминатором: непусто ⟺ образ СВОЙ (и, раз мы в отказе, регион не
-// совпал) ⟹ отказ называется вслух («…must be in the same region»). Порядок
-// разбора несущий: полоса проекта решает ПЕРВОЙ, поэтому чужой образ никогда не
-// доходит до региональной ветки и остаётся byte-identical настоящему промаху —
-// оракула существования не появляется (security.md §6). Пустой $12 (регион зоны
-// не разрешён) сравнивать не с чем: `src` не матчится, а вызывающий получает
-// прежний fail-closed, а не выдуманный mismatch.
+// совпал) ⟹ отказ называется вслух («…must be in the same region»). Снапшот
+// разделён на те же две полосы теми же соображениями: `snap_project` резолвит его
+// ТОЛЬКО по проекту, `snap_zone` добирает зону происхождения, и она едет шестой
+// колонкой-дискриминатором — непусто ⟺ снапшот СВОЙ и размещение у него есть (а
+// раз мы в отказе, зона не совпала) ⟹ «…must be in the same zone» вслух. Порядок
+// разбора несущий: полоса проекта решает ПЕРВОЙ, поэтому чужой образ/снапшот
+// никогда не доходит до полосы размещения и остаётся byte-identical настоящему
+// промаху — оракула существования не появляется (security.md §6). Пустой $12
+// (регион зоны не разрешён) сравнивать не с чем: `src` не матчится, а вызывающий
+// получает прежний fail-closed, а не выдуманный mismatch.
 const volumeInsertCoherentSQL = `
 	WITH src_project AS (
 		SELECT i.region_id, i.min_disk_bytes
@@ -240,6 +256,14 @@ const volumeInsertCoherentSQL = `
 		SELECT sp.min_disk_bytes
 		  FROM src_project sp
 		 WHERE $12::text <> '' AND sp.region_id = $12::text
+	), snap_project AS (
+		SELECT s.source_volume_id
+		  FROM snapshots s
+		 WHERE s.id = $10::text AND s.project_id = $2::text
+	), snap_zone AS (
+		SELECT lv.zone_id
+		  FROM snap_project sp
+		  JOIN volumes lv ON lv.id = sp.source_volume_id
 	), dt AS (
 		SELECT (jsonb_array_length(d.zone_ids) = 0
 		        OR d.zone_ids @> to_jsonb($6::text)) AS offered
@@ -251,15 +275,18 @@ const volumeInsertCoherentSQL = `
 			 size_bytes, block_size, source_snapshot_id, source_image_id, state)
 		SELECT $1::text,$2::text,$3::text,$4::text,$5::jsonb,$6::text,$7::text,
 		       $8::bigint,$9::bigint,$10::text,$11::text,'READY'
-		 WHERE ($10::text IS NULL OR EXISTS (SELECT 1 FROM snapshots s WHERE s.id=$10 AND s.project_id=$2))
+		 WHERE ($10::text IS NULL OR EXISTS (
+		            SELECT 1 FROM snap_project sp
+		             WHERE sp.source_volume_id IS NULL
+		                OR EXISTS (SELECT 1 FROM snap_zone z WHERE z.zone_id = $6::text)))
 		   AND ($11::text IS NULL OR EXISTS (SELECT 1 FROM src WHERE src.min_disk_bytes <= $8::bigint))
 		   AND EXISTS (SELECT 1 FROM dt WHERE dt.offered)
 		RETURNING created_at, updated_at
 	)
-	SELECT created_at, updated_at, NULL::bigint, NULL::boolean, NULL::text FROM ins
+	SELECT created_at, updated_at, NULL::bigint, NULL::boolean, NULL::text, NULL::text FROM ins
 	UNION ALL
 	SELECT NULL, NULL, (SELECT min_disk_bytes FROM src), (SELECT offered FROM dt),
-	       (SELECT region_id FROM src_project)
+	       (SELECT region_id FROM src_project), (SELECT zone_id FROM snap_zone)
 	 WHERE NOT EXISTS (SELECT 1 FROM ins)`
 
 // Insert реализует volume.Writer: state=READY сразу (§1.4), fga_register-intent
@@ -306,15 +333,16 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 	created.BlockSize = blockSize
 	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		// Строка-дискриминатор: вставка ЛИБО (NULL, NULL, минимум разрешённого
-		// образа, доступность типа диска в зоне тома, регион образа СВОЕГО проекта).
+		// образа, доступность типа диска в зоне тома, регион образа СВОЕГО проекта,
+		// зона происхождения снапшота СВОЕГО проекта).
 		var createdAt, updatedAt *time.Time
 		var srcMinDisk *int64
 		var dtOffered *bool
-		var ownImageRegion *string
+		var ownImageRegion, ownSnapshotZone *string
 		serr := tx.QueryRow(ctx, volumeInsertCoherentSQL,
 			v.ID, v.ProjectID, v.Name, v.Description, labels, v.ZoneID, v.DiskTypeID,
 			v.SizeBytes, blockSize, srcSnap, srcImg, zoneRegionID).
-			Scan(&createdAt, &updatedAt, &srcMinDisk, &dtOffered, &ownImageRegion)
+			Scan(&createdAt, &updatedAt, &srcMinDisk, &dtOffered, &ownImageRegion, &ownSnapshotZone)
 		if serr != nil {
 			if errors.Is(serr, pgx.ErrNoRows) {
 				// Стейтмент обязан вернуть строку всегда; пусто = неучтённый исход.
@@ -347,6 +375,15 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 			// это не mismatch, а fail-closed — уходит в общую ветку ниже.
 			if ownImageRegion != nil && zoneRegionID != "" {
 				return fmt.Errorf("%w: Volume and Image must be in the same region",
+					storageerr.ErrFailedPrecondition)
+			}
+			// Снапшот СВОЙ (полоса проекта пройдена) и размещение у него есть — значит
+			// зона происхождения не совпала с зоной тома. Как и образ, он уже виден
+			// вызывающему через Snapshot.Get, поэтому отказ называется вслух, а не
+			// маскируется под промах. Снапшот без происхождения сюда не попадает:
+			// сравнивать было не с чем, полоса его пропустила.
+			if ownSnapshotZone != nil {
+				return fmt.Errorf("%w: Volume and Snapshot must be in the same zone",
 					storageerr.ErrFailedPrecondition)
 			}
 			return volumeSourceUnavailable(v.SourceSnapshot, v.SourceImage)

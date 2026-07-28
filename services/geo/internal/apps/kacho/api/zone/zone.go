@@ -233,38 +233,72 @@ func (u *UseCase) Update(ctx context.Context, in UpdateInput) (*operations.Opera
 	return syncop.Commit(ctx, u.ops, op, resp)
 }
 
-// buildUpdateParams транслирует UpdateInput+mask в UpdateParams. mask непустой →
-// применяются только перечисленные поля; mask пустой → full-object PATCH.
+// buildUpdateParams транслирует UpdateInput+mask в UpdateParams по ОДНОМУ правилу,
+// одинаковому для всех полей:
+//
+//   - маска НАЗЫВАЕТ поле → поле применяется ДОСЛОВНО, включая значение-очистку, и
+//     валидируется теми же правилами, что на Create (api-conventions.md). Назвать
+//     поле в маске — единственный способ его очистить;
+//   - маска ПУСТА → применяется только то, что вызывающий действительно принёс.
+//
+// Вторая половина — не послабление, а единственное прочтение, при котором обе ветви
+// не противоречат друг другу. proto3 не отличает неприсланный скаляр от нуля, поэтому
+// «пустая маска = обнулить всё, чего в теле нет» стирала у зоны якорь подложки,
+// подсказку ёмкости и число доменов отказа при обычном переименовании — а имя от
+// ровно того же затирания было защищено. Защита имени была права, безусловное
+// применение остальных — нет: домен прямо документирует, что пустое значение на
+// Update означает «не менять поле» (domain.ValidateName). Теперь по этому правилу
+// живут ВСЕ поля, а очистка любого из них делается явно — через маску.
+//
+// Поле, названное маской, но пришедшее пустым там, где ресурс пустоту хранить не
+// может (name — required + globally UNIQUE; status — CHECK IN ('UP','DOWN')),
+// отвергается СИНХРОННО тем же текстом, что на Create. Молча принять и выбросить
+// такое поле нельзя (api-conventions.md §«принято-и-проигнорировано»): вызывающий
+// получил бы успех и уверенность, что очистил поле, которого сервис не трогал.
 func (u *UseCase) buildUpdateParams(in UpdateInput) (UpdateParams, error) {
 	var p UpdateParams
-	apply := func(field string) bool { return len(in.Mask) == 0 || maskHas(in.Mask, field) }
-	if apply("name") && in.Name != "" {
+	named := func(field string) bool { return len(in.Mask) > 0 && maskHas(in.Mask, field) }
+	// apply: маска называет поле ⟹ применяем дословно; маска пуста ⟹ применяем,
+	// только если вызывающий поле принёс (carried).
+	apply := func(field string, carried bool) bool {
+		if len(in.Mask) == 0 {
+			return carried
+		}
+		return named(field)
+	}
+	if apply("name", in.Name != "") {
+		if in.Name == "" {
+			return p, invalidArg("zone name is required")
+		}
 		if err := domain.ValidateName("zone name", in.Name); err != nil {
 			return p, invalidArg(err.Error())
 		}
 		name := in.Name
 		p.Name = &name
 	}
-	if apply("status") && in.Status != domain.GeoStatusUnspecified {
+	if apply("status", in.Status != domain.GeoStatusUnspecified) {
 		if err := in.Status.Validate(); err != nil {
 			return p, invalidArg(err.Error())
+		}
+		if in.Status == domain.GeoStatusUnspecified {
+			return p, invalidArg("zone status is required")
 		}
 		st := in.Status
 		p.Status = &st
 	}
-	if apply("infra.hostClasses") {
+	if apply("infra.hostClasses", len(in.Infra.HostClasses) > 0) {
 		hc := in.Infra.HostClasses
 		p.HostClasses = &hc
 	}
-	if apply("infra.failureDomainCount") {
+	if apply("infra.failureDomainCount", in.Infra.FailureDomainCount != 0) {
 		fdc := in.Infra.FailureDomainCount
 		p.FailureDomainCount = &fdc
 	}
-	if apply("infra.underlayAnchor") {
+	if apply("infra.underlayAnchor", in.Infra.UnderlayAnchor != "") {
 		ua := in.Infra.UnderlayAnchor
 		p.UnderlayAnchor = &ua
 	}
-	if apply("infra.capacityHint") {
+	if apply("infra.capacityHint", in.Infra.CapacityHint != "") {
 		ch := in.Infra.CapacityHint
 		p.CapacityHint = &ch
 	}

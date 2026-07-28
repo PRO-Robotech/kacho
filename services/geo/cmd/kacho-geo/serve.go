@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"google.golang.org/grpc"
 
@@ -64,26 +63,17 @@ func runServe(cfg config.Config) error {
 	}
 	defer pool.Close()
 
-	// ── observability: Prometheus-адаптер LRO-durability метрик (worker
-	// terminal-write retries/failures + inflight, reconciler runs/errors/orphans).
-	// Реальный Recorder заменяет NopRecorder default-registry — иначе исчезал
-	// сигнал «async Region/Zone мутация не финализуется» (terminal-write
-	// exhaustion оставляет durable done=false, клиент виснет в polling).
+	// ── observability: Prometheus-адаптер метрик восстановления осиротевших LRO
+	// (reconciler runs/errors/orphans). Исполнителя длительных операций здесь нет
+	// и не заводится: мутации каталога — конфиг-INSERT, операция завершается
+	// СИНХРОННО (shared/syncop), поэтому диспетчеризовать в worker нечего, а его
+	// ряды вечно стояли бы на нуле и читались как «отказов нет».
 	metricsAdapter := metrics.New(buildVersion, buildCommit)
 
 	// ── LRO-стек: общая operations-таблица (corelib) каталога kacho-geo.
-	// Admin-мутации Region/Zone async — UseCase пишет LRO-строку и запускает
-	// фоновый worker; клиент поллит OperationService.Get(id).
+	// Admin-мутации Region/Zone пишут строку операции и сразу её финализируют
+	// (Operation{done:true}); клиент разворачивает .response, поллить не нужно.
 	opsRepo := operations.NewRepo(pool, "kacho_geo")
-
-	// Подключаем Recorder+Logger к package-level default-registry LRO-worker'а и
-	// поднимаем его dispatcher-loop ДО приёма трафика (ConfigureDefault→Start).
-	// dispatch/drain через operations.Run/operations.Wait уже целятся в
-	// default-registry — здесь добавляется только недостающая recorder/lifecycle
-	// проводка.
-	if err = startLROWorker(metricsAdapter, logger); err != nil {
-		return err
-	}
 
 	// ── use-cases (repo → use-case → handler) ──────────────────────────────
 	// CQRS-порты Reader/Writer связываются раздельно (сейчас обе стороны — один
@@ -97,11 +87,11 @@ func runServe(cfg config.Config) error {
 	zoneUC := zone.New(zoneRepo, zoneRepo, opsRepo, serviceerr.ToStatus)
 
 	// ── durable LRO recovery: доменный resolver + corelib-reconciler поверх
-	// schema kacho_geo. RecoverAll прогоняется ЗДЕСЬ (до приёма трафика) —
-	// осиротевшие после краха процесса done=false строки разрешаются в терминал
+	// schema kacho_geo. Сирота возможна и без асинхронного пути: синхронное
+	// завершение пишется ДВУМЯ стейтментами (Create → MarkDone/MarkError), и
+	// падение процесса между ними оставляет durable done=false строку. RecoverAll
+	// прогоняется ЗДЕСЬ (до приёма трафика) — такие строки разрешаются в терминал
 	// по committed-реальности ресурса; периодический Run(ctx) ниже — backstop.
-	// Это тот backstop, который обещает комментарий про shutdown-drain (worker
-	// добирает только свои in-flight; crash mid-op закрывает reconciler).
 	lroReconciler := startLRORecovery(ctx, pool, regionRepo, zoneRepo, metricsAdapter, logger)
 
 	// ── authz: per-RPC OpenFGA Check на ОБОИХ листенерах (AuthN+AuthZ везде —
@@ -262,15 +252,10 @@ func runServe(cfg config.Config) error {
 		diagShutdown(context.Background())
 		internalSrv.GracefulStop()
 		grpcSrv.GracefulStop()
-		// Дренируем in-flight LRO-worker'ы: SIGTERM не должен оставить async-мутацию
-		// done=false навсегда (клиент завис бы в polling). Свежий ctx — request-ctx
-		// уже отменён возвратом Operation клиенту.
-		drainCtx, cancelDrain := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancelDrain()
-		if werr := operations.Wait(drainCtx); werr != nil {
-			logger.Warn("LRO workers did not finish before shutdown timeout",
-				"err", werr, "active", operations.Active())
-		}
+		// Дренировать нечего: операция каталога финализуется в том же вызове, что
+		// её создал (shared/syncop), фоновых исполнителей у сервиса нет. Строку,
+		// оставшуюся done=false из-за падения МЕЖДУ двумя стейтментами синхронного
+		// завершения, подбирает reconciler на следующем старте (RecoverAll).
 	}()
 
 	// Периодический backstop-sweep reconciler'а: sweep осиротевших LRO каждые

@@ -33,25 +33,18 @@ func freeAddr(t *testing.T) string {
 
 func discardLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
 
-// TestStartLROWorker_ConfiguresDefaultAndStarts локает НАБЛЮДАЕМОЕ поведение
-// фикса: composition root подключает Recorder+Logger к package-level
-// default-registry (ConfigureDefault) и явно поднимает dispatcher-loop (Start),
-// поэтому LRO-worker наблюдаем (Ready()=true до трафика) вместо ленивого старта на
-// первом Run с NopRecorder. default-registry — package-global, поэтому этот тест
-// стартует его один раз для всего пакета (последующий ConfigureDefault вернул бы
-// ErrWorkerStarted — что и проверяем).
-func TestStartLROWorker_ConfiguresDefaultAndStarts(t *testing.T) {
-	rec := metrics.New("test", "abc")
-	if err := startLROWorker(rec, discardLogger()); err != nil {
-		t.Fatalf("startLROWorker: %v", err)
+// TestLROWorkerStaysUndispatched — kacho-geo не поднимает исполнителя длительных
+// операций и ничего в него не отправляет: мутации каталога завершаются синхронно
+// (shared/syncop), поэтому package-level default-registry corelib остаётся
+// незапущенным на всю жизнь процесса. Это и есть основание, по которому у сервиса
+// нет рядов терминальной записи и счётчика исполняемых worker'ов — ряд, который
+// невозможно сдвинуть, читается дежурным как «отказов нет».
+func TestLROWorkerStaysUndispatched(t *testing.T) {
+	if operations.Ready() {
+		t.Fatal("kacho-geo must not start the corelib LRO dispatcher: it dispatches nothing to it")
 	}
-	if !operations.Ready() {
-		t.Fatal("operations.Ready() must be true after Start (dispatcher up before traffic)")
-	}
-	// Повторный ConfigureDefault после Start отвергается — доказывает, что
-	// startLROWorker реально сконфигурировал default-registry ДО старта.
-	if err := startLROWorker(rec, discardLogger()); err == nil {
-		t.Fatal("second startLROWorker must fail (ErrWorkerStarted): default-registry already started")
+	if n := operations.Active(); n != 0 {
+		t.Fatalf("operations.Active() = %d, want 0 — geo runs no async operations", n)
 	}
 }
 
@@ -72,7 +65,7 @@ func TestStartDiagnosticListener_Disabled(t *testing.T) {
 // который отдаёт /metrics (LRO-durability серии видны Prometheus scrape'у).
 func TestStartDiagnosticListener_ServesMetrics(t *testing.T) {
 	m := metrics.New("v", "c")
-	m.IncTerminalWriteFailures("MarkError")
+	m.IncOrphansRecovered("done")
 	addr := freeAddr(t)
 	task, shutdown, err := startDiagnosticListener(addr, m, discardLogger())
 	if err != nil {

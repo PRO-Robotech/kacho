@@ -188,6 +188,17 @@ func (r *ZoneRepo) Update(ctx context.Context, id string, p zone.UpdateParams) (
 		s := geoStatusName(*p.Status)
 		statusName = &s
 	}
+	// host_classes — NOT NULL TEXT[] под COALESCE: нулевой указатель означает «поле
+	// не менять», а НЕнулевой — «применить». Но nil-slice за ненулевым указателем
+	// pgx кодирует тем же NULL, что и «не менять», поэтому COALESCE склеивал очистку
+	// с прежним значением: вызывающий получал успешную мутацию, которой не было.
+	// Нормализуем nil→[] на границе adapter'а (как уже делает Insert) — тогда
+	// «указатель ненулевой ⟹ применяем» держится без исключений.
+	hostClasses := p.HostClasses
+	if hostClasses != nil && *hostClasses == nil {
+		empty := []string{}
+		hostClasses = &empty
+	}
 	var updated domain.Zone
 	var outStatus, regionStatusName string
 	err := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
@@ -203,7 +214,7 @@ func (r *ZoneRepo) Update(ctx context.Context, id string, p zone.UpdateParams) (
 			RETURNING id, region_id, name, status,
 			          numeric_infra_id, host_classes, failure_domain_count, underlay_anchor, capacity_hint,
 			          created_at`,
-			id, p.Name, statusName, p.HostClasses, p.FailureDomainCount, p.UnderlayAnchor, p.CapacityHint).
+			id, p.Name, statusName, hostClasses, p.FailureDomainCount, p.UnderlayAnchor, p.CapacityHint).
 			Scan(&updated.ID, &updated.RegionID, &updated.Name, &outStatus,
 				&updated.Infra.NumericInfraID, &updated.Infra.HostClasses, &updated.Infra.FailureDomainCount, &updated.Infra.UnderlayAnchor, &updated.Infra.CapacityHint,
 				&updated.CreatedAt)

@@ -57,6 +57,21 @@ software TOCTOU — data-integrity.md ban #10):
   неотличимо от «ресурса нет». По той же причине disambiguation снапшота резолвит том
   project-scoped — иначе чужой не-READY том выдавал бы себя текстом `is not ready`
   (state-oracle). Regression: `internal/repo/pg/source_project_coherence_integration_test.go`.
+- **Source placement-coherence — ОТДЕЛЬНАЯ полоса того же INSERT.** Проект отвечает на
+  «чей источник», размещение — на «откуда данные»; сливать их одним предикатом нельзя.
+  Обе стороны засева проверяются симметрично и обе — внутри стейтмента вставки:
+  Volume(ZONAL) ← Image(REGIONAL) требует, чтобы зона тома принадлежала региону образа
+  (`Volume and Image must be in the same region`); Volume(ZONAL) ← Snapshot требует ТУ ЖЕ
+  зону (`Volume and Snapshot must be in the same zone`), а Image(REGIONAL) ← Volume/Snapshot
+  требует, чтобы зона источника входила в регион образа. Своей колонки размещения у
+  снапшота нет — его единственное свидетельство это том, с которого он снят
+  (`snapshots.source_volume_id`); происхождение занулено (`ON DELETE SET NULL`) ⇒
+  сравнивать не с чем ⇒ полоса пропускает, а не выдумывает зону. Источник СВОЕГО проекта
+  вызывающему уже виден (`Image.Get`/`Snapshot.Get` отдают его успехом), поэтому отказ
+  по размещению **называется вслух**; источник ЧУЖОГО проекта решает полоса проекта
+  ПЕРВОЙ и остаётся byte-identical настоящему промаху (hide-existence не ослаблено).
+  Regression: `internal/repo/pg/volume_image_region_integration_test.go`,
+  `volume_source_snapshot_zone_integration_test.go`, `image_source_region_integration_test.go`.
 - **Auto device-name — retry-until-free (INV-2).** Пустой `deviceName` → repo выбирает
   первое свободное `sdb..sdz` и вставляет; конкурент, занявший имя между выбором и
   вставкой, даёт `23505` на `UNIQUE(instance_id,device_name)` → repo пересчитывает
