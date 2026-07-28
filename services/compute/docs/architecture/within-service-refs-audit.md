@@ -22,7 +22,7 @@
 > Парный аудит для kacho-vpc — `kacho-vpc/docs/architecture/within-service-refs-audit.md`
 > (KAC-84).
 >
-> **Cross-service ссылки** (`folder_id` legacy-имя = id владельца-проекта → kacho-iam;
+> **Cross-service ссылки** (`project_id` = id владельца-проекта → kacho-iam;
 > `instance_network_interfaces.subnet_id` / `security_group_ids` /
 > `primary_v4_nat.address_id` → kacho-vpc; `Disk.kms_key.kms_key_id` → kacho-kms
 > когда появится) — **out of scope**: для них DB-уровневые FK невозможны
@@ -66,7 +66,7 @@ compute-домене): software-guard в `InstanceService.AttachDisk` / `resolve
 | G9  | Enum-like колонки (`disks.status`, `images.status`, `snapshots.status`, `instances.status`, `zones.status`, `instance_network_interfaces.mode` / `attached_disks.mode`) — нет CHECK | Low | Missing CHECK constraint |
 | G10 | `instance_network_interfaces.subnet_id` / `security_group_ids` — cross-service (kacho-vpc), FK невозможен; documented | N/A (cross-service) | N/A |
 | G11 | `instances.boot_disk` invariant («ровно один boot disk на instance») — DB-уровень есть (partial UNIQUE `attached_disks_boot_uniq`), software check тоже есть | OK | Closed |
-| ~~G14~~ | ~~`instances.folder_id` Move через `SetFolderID`~~ — снято: RPC `Instance.Move` / `Disk.Move` удалены в KAC-266 (контракт-removal), Move-семантики больше нет | — | Closed (removed) |
+| ~~G14~~ | ~~`instances.project_id` Move через отдельный сеттер~~ — снято: RPC `Instance.Move` / `Disk.Move` удалены в KAC-266 (контракт-removal), Move-семантики больше нет | — | Closed (removed) |
 
 > G12/G13 (таблицы kube-ovn-эпохи `hypervisors` / `hypervisor_node_index_free`)
 > сняты: таблицы удалены в KAC-36/79/80.
@@ -115,8 +115,8 @@ compute-домене): software-guard в `InstanceService.AttachDisk` / `resolve
 | Resource.field / invariant | Что гарантируется | DB constraint | Software check | Решение |
 |---|---|---|---|---|
 | `id` PK | уникальный | `disks_pkey` ✅ | n/a | OK |
-| `folder_id` (legacy-имя = id владельца-проекта) | существует в kacho-iam | N/A (cross-service) | `ProjectClient.Exists` в `DiskService.checkFolder` | OK (cross-service) |
-| `(folder_id, name)` | уникальный non-empty | `disks_folder_name_uniq` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
+| `project_id` (id владельца-проекта) | существует в kacho-iam | N/A (cross-service) | `ProjectClient.Exists` в `service.checkProject` | OK (cross-service) |
+| `(project_id, name)` | уникальный non-empty | `disks_project_name_uniq` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
 | `zone_id` | существует, RESTRICT удаления зоны | ❌ **нет FK** | sync `zones.GetZone` в `DiskService.doCreate` | **G4** |
 | `type_id` | существует в `disk_types(id)` | ❌ **нет FK** | sync `diskTypeRepo.Get` в `DiskService.doCreate` | **G5** |
 | `source_image_id` (nullable, '' = none) | если задан — existed at create time | ❌ нет FK (by-design — verbatim YC, source can be deleted) | sync `imageRepo.Get` в `doCreate` | **G6** (by-design, documented) |
@@ -131,9 +131,9 @@ compute-домене): software-guard в `InstanceService.AttachDisk` / `resolve
 | Resource.field / invariant | Что гарантируется | DB constraint | Software check | Решение |
 |---|---|---|---|---|
 | `id` PK | уникальный | `images_pkey` ✅ | n/a | OK |
-| `folder_id` (legacy-имя = id владельца-проекта) | существует в kacho-iam | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
-| `(folder_id, name)` | уникальный non-empty | `images_folder_name_uniq` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
-| `(folder_id, family, created_at desc)` ordering для GetLatestByFamily | индекс есть | `images_family_idx` ✅ | n/a | OK |
+| `project_id` (id владельца-проекта) | существует в kacho-iam | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
+| `(project_id, name)` | уникальный non-empty | `images_project_name_uniq` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
+| `(project_id, family, created_at desc)` ordering для GetLatestByFamily | индекс есть | `images_family_idx` ✅ | n/a | OK |
 | `family` | regex `^([a-z][-a-z0-9]{1,61}[a-z0-9])?$` | ❌ нет CHECK | sync `validateImageFamily` в `ImageService.Create` | acceptable (immutable после Create; нет raw-INSERT admin-path) |
 | `source_image_id` (nullable) | если задан — existed at create time | ❌ нет FK (by-design — YC: source can be deleted) | sync `imageRepo.Get` в `doCreate` | **G7** (by-design) |
 | `source_snapshot_id` (nullable) | если задан — existed at create time | ❌ нет FK (by-design) | sync `snapshotRepo.Get` | **G7** (by-design) |
@@ -146,8 +146,8 @@ compute-домене): software-guard в `InstanceService.AttachDisk` / `resolve
 | Resource.field / invariant | Что гарантируется | DB constraint | Software check | Решение |
 |---|---|---|---|---|
 | `id` PK | уникальный | `snapshots_pkey` ✅ | n/a | OK |
-| `folder_id` (legacy-имя = id владельца-проекта) | существует в kacho-iam | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
-| `(folder_id, name)` | уникальный non-empty | `snapshots_folder_name_uniq` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
+| `project_id` (id владельца-проекта) | существует в kacho-iam | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
+| `(project_id, name)` | уникальный non-empty | `snapshots_project_name_uniq` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
 | `source_disk_id` | existed at create time, Disk был READY | ❌ нет FK (by-design — YC: source disk can be deleted) | sync `diskRepo.Get` + status check в `SnapshotService.doCreate` | **G8** (by-design) |
 | `source_disk_idx` для observability | `snapshots_source_disk_idx` partial WHERE `source_disk_id <> ''` ✅ | n/a | OK |
 | `status` (TEXT) | значение из enum | ❌ нет CHECK | sync | **G9** (minor) |
@@ -157,11 +157,11 @@ compute-домене): software-guard в `InstanceService.AttachDisk` / `resolve
 | Resource.field / invariant | Что гарантируется | DB constraint | Software check | Решение |
 |---|---|---|---|---|
 | `id` PK | уникальный | `instances_pkey` ✅ | n/a | OK |
-| `folder_id` (legacy-имя = id владельца-проекта) | существует в kacho-iam | N/A (cross-service) | `ProjectClient.Exists` в `InstanceService.checkFolder` | OK (cross-service) |
-| `(folder_id, name)` | уникальный non-empty | `instances_folder_name_uniq` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
+| `project_id` (id владельца-проекта) | существует в kacho-iam | N/A (cross-service) | `ProjectClient.Exists` в `service.checkProject` | OK (cross-service) |
+| `(project_id, name)` | уникальный non-empty | `instances_project_name_uniq` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
 | `zone_id` | существует, immutable после Create | ❌ **нет FK** | sync `zones.GetZone` в `doCreate` | **G3** |
 | `status` (TEXT: PROVISIONING/RUNNING/STOPPING/STOPPED/STARTING/RESTARTING/UPDATING/ERROR/CRASHED/DELETING) | значение из state-машины (см. CLAUDE.md §8) | ❌ нет CHECK на enum; ❌ переходы делаются `Get → if status != from → SetStatus` без CAS | sync precondition-check в `InstanceService.lifecycle/AttachDisk/DetachDisk/AddOneToOneNat/RemoveOneToOneNat/Update touchesCompute` | **G2** + **G9** (TOCTOU на state + missing CHECK) |
-| ~~`Move(dest_folder_id)`~~ | снято — RPC `Instance.Move` удалён в KAC-266 (контракт-removal) | n/a | n/a | Closed (removed) |
+| ~~`Move(dest_project_id)`~~ | снято — RPC `Instance.Move` удалён в KAC-266 (контракт-removal) | n/a | n/a | Closed (removed) |
 | `(instance)` cascade на NIC / attached_disks | `instance_network_interfaces.instance_id` FK CASCADE ✅; `attached_disks.instance_id` FK CASCADE ✅ | n/a | OK |
 | `metadata` ≤ 256 KiB | sync-validation | ❌ нет CHECK на `octet_length(metadata::text)` | sync в request-path | acceptable (sync на API-уровне; raw INSERT — admin edge case) |
 
@@ -667,11 +667,11 @@ kube-ovn-эпохи. Таблицы и связанный software-слой уд
 
 ---
 
-### ~~G14 — Move с conflict по `(folder_id, name)` — subtle semantics~~ (снято, KAC-266)
+### ~~G14 — Move с conflict по `(project_id, name)` — subtle semantics~~ (снято, KAC-266)
 
-Снято: RPC `Instance.Move` / `Disk.Move` (и `SetFolderID`-worker под ними)
+Снято: RPC `Instance.Move` / `Disk.Move` (и worker-сеттер владельца под ними)
 удалены в KAC-266 (контракт-removal). Move-семантики на conflict по
-`(folder_id, name)` больше нет — finding закрыт.
+`(project_id, name)` больше нет — finding закрыт.
 
 ---
 
@@ -681,7 +681,7 @@ kube-ovn-эпохи. Таблицы и связанный software-слой уд
 |---|---|---|
 | **Closed (DB-уровневое покрытие — OK)** | | |
 | Все PK уникальности | 10 ресурсных таблиц | ✅ |
-| `(folder_id, name)` partial UNIQUE по 4 ресурсам | disks/images/snapshots/instances | ✅ |
+| `(project_id, name)` partial UNIQUE по 4 ресурсам | disks/images/snapshots/instances | ✅ |
 | `attached_disks (instance_id, disk_id)` PK | один disk не дважды у одной ВМ | ✅ |
 | `(instance_id) WHERE is_boot` partial UNIQUE | один boot disk на instance | ✅ |
 | `(instance_id, device_name)` partial UNIQUE | device_name unique per instance | ✅ |
@@ -689,7 +689,7 @@ kube-ovn-эпохи. Таблицы и связанный software-слой уд
 | `attached_disks.instance_id → instances(id) ON DELETE CASCADE` | NIC/disk-row cleanup at Instance.Delete | ✅ |
 | `instance_network_interfaces.instance_id → instances(id) ON DELETE CASCADE` | NIC cleanup | ✅ |
 | `zones.region_id → regions(id) ON DELETE RESTRICT` | Region.Delete blocked when zones exist | ✅ (0003) |
-| ~~`Move/SetFolderID` consistency через UNIQUE 23505~~ | снято — `Move` RPC удалены в KAC-266 | ✅ (G14 closed/removed) |
+| ~~`Move` consistency через UNIQUE 23505~~ | снято — `Move` RPC удалены в KAC-266 | ✅ (G14 closed/removed) |
 | `compute_outbox.sequence_no` PK + trigger notify | event sequence | ✅ |
 | **Open (gap'ы)** | | |
 | Disk-attach race (`attached_disks.disk_id` partial UNIQUE отсутствует) | TOCTOU + missing UNIQUE | **G1** (High) |

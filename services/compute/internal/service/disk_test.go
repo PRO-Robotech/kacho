@@ -18,14 +18,14 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/ports/portmock"
 )
 
-func newDiskSvc(t *testing.T, folderOK bool) (*DiskService, *portmock.DiskRepo, *portmock.ImageRepo, *portmock.SnapshotRepo, *portmock.OpsRepo) {
+func newDiskSvc(t *testing.T, projectOK bool) (*DiskService, *portmock.DiskRepo, *portmock.ImageRepo, *portmock.SnapshotRepo, *portmock.OpsRepo) {
 	t.Helper()
 	diskRepo := portmock.NewDiskRepo()
 	imgRepo := portmock.NewImageRepo()
 	snapRepo := portmock.NewSnapshotRepo()
 	ops := portmock.NewOpsRepo()
 	svc := NewDiskService(diskRepo, imgRepo, snapRepo, portmock.NewDiskTypeRepo(), portmock.NewZoneRegistry(),
-		&portmock.ProjectClient{OK: folderOK}, ops)
+		&portmock.ProjectClient{OK: projectOK}, ops)
 	return svc, diskRepo, imgRepo, snapRepo, ops
 }
 
@@ -62,7 +62,7 @@ func TestDisk_Create_SyncValidation(t *testing.T) {
 		req  CreateDiskReq
 		code codes.Code
 	}{
-		{"no folder", CreateDiskReq{ZoneID: "ru-central1-a", Size: diskSizeMin}, codes.InvalidArgument},
+		{"no project", CreateDiskReq{ZoneID: "ru-central1-a", Size: diskSizeMin}, codes.InvalidArgument},
 		{"no zone", CreateDiskReq{ProjectID: "f", Size: diskSizeMin}, codes.InvalidArgument},
 		{"size too small", CreateDiskReq{ProjectID: "f", ZoneID: "ru-central1-a", Size: 100}, codes.InvalidArgument},
 		{"size too big", CreateDiskReq{ProjectID: "f", ZoneID: "ru-central1-a", Size: diskSizeMaxCreate + 1}, codes.InvalidArgument},
@@ -77,7 +77,7 @@ func TestDisk_Create_SyncValidation(t *testing.T) {
 	}
 }
 
-func TestDisk_Create_FolderNotFound(t *testing.T) {
+func TestDisk_Create_ProjectNotFound(t *testing.T) {
 	svc, _, _, _, ops := newDiskSvc(t, false)
 	op, err := svc.Create(context.Background(), CreateDiskReq{ProjectID: "missing", ZoneID: "ru-central1-a", Size: diskSizeMin})
 	require.NoError(t, err)
@@ -102,7 +102,7 @@ func TestDisk_Get_NotFound(t *testing.T) {
 	require.Equal(t, codes.NotFound, status.Code(err))
 }
 
-func TestDisk_List_RequiresFolder(t *testing.T) {
+func TestDisk_List_RequiresProject(t *testing.T) {
 	svc, _, _, _, _ := newDiskSvc(t, true)
 	_, _, err := svc.List(context.Background(), DiskFilter{}, Pagination{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))

@@ -32,7 +32,7 @@
 ## A. Модель ресурсов и lifecycle (`RES`)
 
 ### REQ-RES-01 — публичные ресурсы Disk / Image / Snapshot / Instance + read-only DiskType / Zone     [P1]
-Продукт ДОЛЖЕН предоставлять ресурсы Disk, Image, Snapshot, Instance (folder-scoped, `project_id`
+Продукт ДОЛЖЕН предоставлять ресурсы Disk, Image, Snapshot, Instance (project-scoped, `project_id`
 обязателен в Create; поддерживают Get/List/Create/Update/Delete + ListOperations; Disk — ещё Relocate)
 и read-only справочники DiskType, Zone (только Get/List). (Move у Disk/Instance — removed KAC-266.)
 - Validated-by: `*-LIFECYCLE-CONF`, `*-CR-CRUD-OK`, `*-GET-*`, `*-LST-CRUD-OK`, `DT-*`, `ZONE-*`
@@ -70,7 +70,7 @@ ID ресурсов: Instance/Disk — `epd`; Image/Snapshot — `fd8`. api-gate
 - Agent-check: `internal/protoconv/protoconv.go` — `timestamppb.New(t.Truncate(time.Second))` (единственное место конверсии).
 - Divergence: нет (паритет YC).
 
-### REQ-RES-07 — ~~Move в другой folder~~ — REMOVED (KAC-266)   [obsolete]
+### REQ-RES-07 — ~~Move в другой проект~~ — REMOVED (KAC-266)   [obsolete]
 `Move` RPC у Disk и Instance удалён из контракта (proto + impl) в KAC-266. Перенос ресурса
 между проектами больше не поддерживается. Кейсы `DISK-MV-*` / `INST-MV-*` удалены.
 
@@ -92,7 +92,7 @@ lowercase/digits/`-`/`_`, длина ≤63. UPPERCASE / digit-start / hyphen-sta
 `size` (Disk), `disk_id` (Snapshot), `platform_id`/`resources_spec`/`boot_disk_spec`/`zone_id` (Instance).
 (KAC-266: `network_interface_spec` больше не требуется — Instance создаётся без NIC, no auto-NIC.)
 Отсутствие → `InvalidArgument`.
-- Validated-by: `*-CR-VAL-*-REQUIRED`, `INST-CR-VAL-MISSING-*`, `SNAP-CR-VAL-NO-DISK`, `IMG-CR-VAL-FOLDER-REQUIRED`, `*-CR-VAL-EMPTY-BODY`
+- Validated-by: `*-CR-VAL-*-REQUIRED`, `INST-CR-VAL-MISSING-*`, `SNAP-CR-VAL-NO-DISK`, `IMG-CR-VAL-PROJECT-REQUIRED`, `*-CR-VAL-EMPTY-BODY`
 - Agent-check: начало каждого `Create` в `internal/service/*.go` (sync-checks до `operations.New`).
 
 ### REQ-VAL-02 — `description` ≤256, `labels` ≤64 пар (key regex `[a-z][-_./\@0-9a-z]*`)         [P2]
@@ -147,10 +147,10 @@ Verbatim YC behaviour.
 
 ## D. List / Pagination / Filter (`LIST`)
 
-### REQ-LIST-01 — folder-scoped List требует `project_id` → `InvalidArgument` без него              [P0]
+### REQ-LIST-01 — project-scoped List требует `project_id` → `InvalidArgument` без него              [P0]
 Disk/Image/Snapshot/Instance. DiskType/Zone List — без project_id.
-- Validated-by: `*-LST-VAL-FOLDER-REQUIRED`
-- Agent-check: sync-check в `List` хендлерах folder-scoped ресурсов.
+- Validated-by: `*-LST-VAL-PROJECT-REQUIRED`
+- Agent-check: sync-check в `List` хендлерах project-scoped ресурсов.
 
 ### REQ-LIST-02 — `page_size`: 0 → default (≤1000); >1000 → `InvalidArgument`; garbage `page_token` → `InvalidArgument`   [P1]
 Pagination cursor `(created_at, id)` ASC,ASC; `page_token` opaque base64.
@@ -200,7 +200,7 @@ Disk / Image / Snapshot / Instance / Disk type / Zone / Operation.
 
 ### REQ-REF-01 — `project_id` в Create валидируется gRPC-вызовом к kacho-iam → `NotFound` если нет   [P0]
 worker каждого Create: `projectClient.Exists(project_id)`; error → `Unavailable "project check: upstream project service unavailable"`; false → `NotFound "Project <X> not found"`.
-- Validated-by: `*-CR-NEG-FOLDER-NOTFOUND`, `OP-GET-CRUD-FAILED-OP`
+- Validated-by: `*-CR-NEG-PROJECT-NOTFOUND`, `OP-GET-CRUD-FAILED-OP`
 - Agent-check: `internal/clients/iam_client.go`; вызов в `do*` worker'ах. ⚠️ `KACHO_COMPUTE_SKIP_PEER_VALIDATION=true` → no-op (test-config).
 
 ### REQ-REF-02 — ~~Instance NIC cross-service validation~~ — REMOVED (KAC-266)   [obsolete]
@@ -272,7 +272,7 @@ Control-plane: uri-download мгновенный → status сразу `READY`. 
 - Agent-check: sync-валидация oneof в `ImageService.Create`; `internal/service/image.go` — uri→READY.
 
 ### REQ-IMG-02 — GetLatestByFamily: возвращает самый новый Image из family; family без images → `NotFound`; без project_id → `InvalidArgument`   [P1]
-- Validated-by: `IMG-GLF-{CRUD-OK,NEG-NOTFOUND,VAL-FOLDER-REQUIRED}`
+- Validated-by: `IMG-GLF-{CRUD-OK,NEG-NOTFOUND,VAL-PROJECT-REQUIRED}`
 - Agent-check: `internal/service/image.go` GetLatestByFamily (ORDER BY created_at DESC LIMIT 1 в family).
 
 ---

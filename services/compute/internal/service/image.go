@@ -106,12 +106,12 @@ func (s *ImageService) Get(ctx context.Context, id string) (*domain.Image, error
 	return i, nil
 }
 
-// GetLatestByFamily возвращает самый новый Image в family внутри folder.
-func (s *ImageService) GetLatestByFamily(ctx context.Context, folderID, family string) (*domain.Image, error) {
-	if folderID == "" {
+// GetLatestByFamily возвращает самый новый Image в family внутри проекта.
+func (s *ImageService) GetLatestByFamily(ctx context.Context, projectID, family string) (*domain.Image, error) {
+	if projectID == "" {
 		return nil, status.Error(codes.InvalidArgument, "project_id required")
 	}
-	i, err := s.repo.GetLatestByFamily(ctx, folderID, family)
+	i, err := s.repo.GetLatestByFamily(ctx, projectID, family)
 	if err != nil {
 		return nil, mapRepoErr(err)
 	}

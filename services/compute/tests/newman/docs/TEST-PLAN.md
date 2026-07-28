@@ -12,8 +12,8 @@
 | RPC | Классы покрыто | Кейсы | Статус |
 |---|---|---|---|
 | Get | NEG (NotFound), CONF (NF-text) | DISK-GET-NEG-NOTFOUND, DISK-GET-CONF-NF-TEXT | ■ |
-| List | CRUD, VAL (folder req), PAGE (0/1/1000/1001+token), FILTER (name/garbage/unknown + match) | DISK-LST-* (8) | ▣ |
-| Create | CRUD (empty, type-explicit, from-image), VAL (folder/zone/size req, name regex/len, labels, desc), NEG (folder-NF, zone-unknown, type-unknown, dup-name, source-NF), BVA (size min/below/max/above), CONF (id-prefix epd, created_at sec), SEC | DISK-CR-* (~35) | ▣ |
+| List | CRUD, VAL (project req), PAGE (0/1/1000/1001+token), FILTER (name/garbage/unknown + match) | DISK-LST-* (8) | ▣ |
+| Create | CRUD (empty, type-explicit, from-image), VAL (project/zone/size req, name regex/len, labels, desc), NEG (project-NF, zone-unknown, type-unknown, dup-name, source-NF), BVA (size min/below/max/above), CONF (id-prefix epd, created_at sec), SEC | DISK-CR-* (~35) | ▣ |
 | Update | CRUD (name/desc/labels, size-increase), STATE (immutable type/zone, full-PATCH silent ignore, size-decrease reject, unknown-mask), NEG (sync-NF) | DISK-UPD-* (8) | ▣ |
 | Delete | CRUD, NEG (sync-NF), CONF (response=Empty + metadata) | DISK-DEL-* (3) | ▣ |
 | Move | — removed (KAC-266) | — | □ |
@@ -27,9 +27,9 @@
 | RPC | Классы | Кейсы | Статус |
 |---|---|---|---|
 | Get | NEG, CONF | IMG-GET-* (2) | ■ |
-| GetLatestByFamily | CRUD-OK (newer wins), NEG (family-NF), VAL (folder req) | IMG-GLF-* (3) | ▣ |
-| List | CRUD, VAL (folder req), PAGE, FILTER | IMG-LST-* + блоки | ▣ |
-| Create | CRUD (from disk/uri/image/snapshot), VAL (folder req, no-source, multiple-source, family regex, name/labels/desc), NEG (source-NF disk/image, folder-NF, dup-name), CONF (id-prefix fd8, created_at sec), SEC | IMG-CR-* (~25) | ▣ |
+| GetLatestByFamily | CRUD-OK (newer wins), NEG (family-NF), VAL (project req) | IMG-GLF-* (3) | ▣ |
+| List | CRUD, VAL (project req), PAGE, FILTER | IMG-LST-* + блоки | ▣ |
+| Create | CRUD (from disk/uri/image/snapshot), VAL (project req, no-source, multiple-source, family regex, name/labels/desc), NEG (source-NF disk/image, project-NF, dup-name), CONF (id-prefix fd8, created_at sec), SEC | IMG-CR-* (~25) | ▣ |
 | Update | CRUD (name/desc/labels), STATE (empty-mask full-PATCH, immutable family, unknown-mask), NEG (sync-NF) | IMG-UPD-* (5) | ▣ |
 | Delete | CRUD, CONF (response=Empty), NEG (sync-NF) | IMG-DEL-* (3) | ▣ |
 | ListOperations | CRUD-OK, NEG (parent-NF) | IMG-LOP-* (2) | ▣ |
@@ -41,8 +41,8 @@
 | RPC | Классы | Кейсы | Статус |
 |---|---|---|---|
 | Get | NEG, CONF | SNAP-GET-* (2) | ■ |
-| List | CRUD, VAL (folder req), PAGE, FILTER | SNAP-LST-* + блоки | ▣ |
-| Create | CRUD (from disk), VAL (folder/disk req, name/labels/desc), NEG (disk-NF, folder-NF, dup-name), CONF (id-prefix fd8, created_at sec, disk_size==disk.size, source_disk_id), SEC | SNAP-CR-* (~20) | ▣ |
+| List | CRUD, VAL (project req), PAGE, FILTER | SNAP-LST-* + блоки | ▣ |
+| Create | CRUD (from disk), VAL (project/disk req, name/labels/desc), NEG (disk-NF, project-NF, dup-name), CONF (id-prefix fd8, created_at sec, disk_size==disk.size, source_disk_id), SEC | SNAP-CR-* (~20) | ▣ |
 | Update | CRUD (name/desc/labels), STATE (empty-mask full-PATCH, immutable source_disk_id, unknown-mask), NEG (sync-NF) | SNAP-UPD-* (5) | ▣ |
 | Delete | CRUD, CONF (response=Empty), NEG (sync-NF), STATE (Disk удаляем после Snapshot) | SNAP-DEL-* (4) | ▣ |
 | ListOperations | CRUD-OK, NEG (parent-NF) | SNAP-LOP-* (2) | ▣ |
@@ -54,8 +54,8 @@
 | RPC | Классы | Кейсы | Статус |
 |---|---|---|---|
 | Get | NEG, CONF (NF-text), BASIC-view metadata omission (через List) | INST-GET-* (2), INST-LST-VIEW-BASIC-NO-METADATA | ▣ |
-| List | CRUD, VAL (folder req), PAGE, FILTER, view=BASIC conformance | INST-LST-* + блоки | ▣ |
-| Create | CRUD (boot disk_spec / disk_id / from-image; no auto-NIC — KAC-266), VAL (missing zone/platform/resources/bootdisk/folder, name regex, core_fraction, cores, bootdisk-exactly-one), NEG (folder-NF, dup-name), CONF (id-prefix epd, created_at sec, fqdn, no NIC), SEC, BVA | INST-CR-* | ▣ |
+| List | CRUD, VAL (project req), PAGE, FILTER, view=BASIC conformance | INST-LST-* + блоки | ▣ |
+| Create | CRUD (boot disk_spec / disk_id / from-image; no auto-NIC — KAC-266), VAL (missing zone/platform/resources/bootdisk/project, name regex, core_fraction, cores, bootdisk-exactly-one), NEG (project-NF, dup-name), CONF (id-prefix epd, created_at sec, fqdn, no NIC), SEC, BVA | INST-CR-* | ▣ |
 | Update | CRUD (name/desc/labels), STATE (resources_spec requires STOPPED, immutable zone, unknown-mask), NEG (sync-NF) | INST-UPD-* (5) | ▣ |
 | Start | STATE (←STOPPED only; from-RUNNING→FailedPrec, from-STOPPED→OK), NEG (sync-NF) | INST-STATE-START-* (2), INST-START-AUTHZ-NF-SYNC | ▣ |
 | Stop | STATE (←RUNNING only; OK, from-STOPPED→FailedPrec), NEG (sync-NF) | INST-STATE-STOP-* (2), INST-STOP-AUTHZ-NF-SYNC | ▣ |
@@ -73,7 +73,7 @@
 | SimulateMaintenanceEvent | CRUD-OK (no-op) | INST-SME-CRUD-OK | ◐ |
 
 **KAC-266: Move + all NIC-coupled RPCs (Attach/Detach/UpdateNetworkInterface, AddOneToOneNat/RemoveOneToOneNat) removed from the active test surface — NIC binding is no longer part of the Instance lifecycle (no auto-NIC).**
-Кросс-сервис: INST-* CRUD требуют поднятого kacho-iam (project existence); NEG-FOLDER-NOTFOUND требует `KACHO_COMPUTE_SKIP_PEER_VALIDATION!=true`.
+Кросс-сервис: INST-* CRUD требуют поднятого kacho-iam (project existence); NEG-PROJECT-NOTFOUND требует `KACHO_COMPUTE_SKIP_PEER_VALIDATION!=true`.
 
 ## DiskTypeService (2 RPC — read-only)
 

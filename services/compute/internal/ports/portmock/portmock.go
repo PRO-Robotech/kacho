@@ -61,7 +61,7 @@ func (r *DiskRepo) Get(_ context.Context, id string) (*domain.Disk, error) {
 	return d, nil
 }
 
-// List возвращает диски по folder. Per-object видимость решается ПОСЛЕ страницы
+// List возвращает диски по проекту. Per-object видимость решается ПОСЛЕ страницы
 // (handler.filterVisible → iam BatchCheck), repo authz-измерения не несёт.
 func (r *DiskRepo) List(_ context.Context, f ports.DiskFilter, _ ports.Pagination) ([]*domain.Disk, string, error) {
 	r.mu.Lock()
@@ -162,12 +162,12 @@ func (r *ImageRepo) Get(_ context.Context, id string) (*domain.Image, error) {
 }
 
 // GetLatestByFamily возвращает образ с max created_at в family.
-func (r *ImageRepo) GetLatestByFamily(_ context.Context, folderID, family string) (*domain.Image, error) {
+func (r *ImageRepo) GetLatestByFamily(_ context.Context, projectID, family string) (*domain.Image, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var best *domain.Image
 	for _, i := range r.data {
-		if i.ProjectID != folderID || i.Family != family {
+		if i.ProjectID != projectID || i.Family != family {
 			continue
 		}
 		if best == nil || i.CreatedAt.After(best.CreatedAt) {
@@ -180,7 +180,7 @@ func (r *ImageRepo) GetLatestByFamily(_ context.Context, folderID, family string
 	return best, nil
 }
 
-// List возвращает образы по folder (без authz-измерения — см. DiskRepo.List).
+// List возвращает образы по проекту (без authz-измерения — см. DiskRepo.List).
 func (r *ImageRepo) List(_ context.Context, f ports.ImageFilter, _ ports.Pagination) ([]*domain.Image, string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -264,7 +264,7 @@ func (r *SnapshotRepo) Get(_ context.Context, id string) (*domain.Snapshot, erro
 	return s, nil
 }
 
-// List возвращает снапшоты по folder (без authz-измерения — см. DiskRepo.List).
+// List возвращает снапшоты по проекту (без authz-измерения — см. DiskRepo.List).
 func (r *SnapshotRepo) List(_ context.Context, f ports.SnapshotFilter, _ ports.Pagination) ([]*domain.Snapshot, string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -355,7 +355,7 @@ func (r *InstanceRepo) Get(_ context.Context, id string) (*domain.Instance, erro
 	return &cp, nil
 }
 
-// List возвращает ВМ по folder (без authz-измерения — см. DiskRepo.List).
+// List возвращает ВМ по проекту (без authz-измерения — см. DiskRepo.List).
 func (r *InstanceRepo) List(_ context.Context, f ports.InstanceFilter, _ ports.Pagination) ([]*domain.Instance, string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

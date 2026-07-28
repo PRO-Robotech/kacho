@@ -7,7 +7,7 @@
 
 import { sleep } from 'k6';
 import { Trend, Counter, Rate } from 'k6/metrics';
-import { FOLDER_ID, post, del, uid, expect200 } from './lib/client.js';
+import { PROJECT_ID, post, del, uid, expect200 } from './lib/client.js';
 import { pollOperation } from './lib/poll-op.js';
 
 export const options = {
@@ -30,7 +30,7 @@ const opErrors = new Counter('op_errors');
 export default function () {
   const name = uid('net');
   const createStart = Date.now();
-  const createRes = post('/vpc/v1/networks', { folderId: FOLDER_ID, name });
+  const createRes = post('/vpc/v1/networks', { projectId: PROJECT_ID, name });
   if (!expect200(createRes, 'create')) return;
 
   const opId = createRes.json('id');

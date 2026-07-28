@@ -35,7 +35,7 @@ Sub-phase 0.4 продукта Kachō. gRPC-сервис управления в
 timestamp precision, regex'ы, behavioural semantics, state-машина Instance.
 
 Owns:
-- 4 мутируемых folder-level ресурса: Disk, Image, Snapshot, Instance (NIC бэкуется
+- 4 мутируемых project-level ресурса: Disk, Image, Snapshot, Instance (NIC бэкуется
   kacho-vpc `NetworkInterface` через `nic_id` — эпик `KAC-9`).
 - read-only справочники: DiskType; **Region, Zone** (Geography — owner kacho-compute,
   эпик `KAC-15`: перенесено из kacho-vpc, нет proxy / `skipPeer`-fallback).
@@ -71,7 +71,7 @@ disk data не существует; serial-port output синтетически
 
 Внешние зависимости:
 - `kacho-iam.ProjectService.Get` (`projectClient.Exists`) — existence-check
-  владельца-проекта в Create; колонка-владелец в схеме — legacy-имя `folder_id`.
+  владельца-проекта в Create; колонка-владелец в схеме — `project_id`.
 - `kacho-vpc.{SubnetService.Get, SecurityGroupService.Get, AddressService.Get,
   NetworkInterfaceService.*}` — IPAM эфемерных Address + delete kacho-vpc
   `NetworkInterface` при `Instance.Delete`. ⚠️ авто-создание/привязка NIC при

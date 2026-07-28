@@ -207,5 +207,5 @@ CASES.append(Case(
 ))
 
 # pageSize BVA (0/1/1000/1001) + garbage token — MachineType.List валидирует pagination
-# (validate.PageSize + decodePageToken → InvalidArgument); ambient каталог → folder_param=False.
-CASES.extend(list_page_block("MT", MT, folder_param=False))
+# (validate.PageSize + decodePageToken → InvalidArgument); ambient каталог → project_param=False.
+CASES.extend(list_page_block("MT", MT, project_param=False))

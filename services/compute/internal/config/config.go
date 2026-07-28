@@ -77,7 +77,7 @@ type Config struct {
 	// опускается).
 	StorageInternalGRPCAddr string `envconfig:"KACHO_COMPUTE_STORAGE_INTERNAL_GRPC_ADDR" default:"kacho-storage.kacho.svc.cluster.local:9091"`
 
-	// SkipPeerValidation — отключить cross-service existence-check (folder в
+	// SkipPeerValidation — отключить cross-service existence-check (project в
 	// kacho-iam, zone_id в kacho-geo) → no-op. Для unit/newman/load-тестов без
 	// поднятых peer-сервисов.
 	SkipPeerValidation bool `envconfig:"KACHO_COMPUTE_SKIP_PEER_VALIDATION" default:"false"`

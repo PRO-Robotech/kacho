@@ -48,7 +48,7 @@ func (h *DiskHandler) Get(ctx context.Context, req *computev1.GetDiskRequest) (*
 	return protoconv.Disk(d), nil
 }
 
-// List возвращает список дисков в folder.
+// List возвращает список дисков в проекте.
 //
 // Страница читается из БД ПЕРВОЙ (курсор, project-scoped), затем per-object
 // фильтруется через iam.AuthorizeService.BatchCheck (viewer ∪ v_list) — см.

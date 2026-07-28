@@ -46,7 +46,7 @@ Compute-specific правила, error mapping, top-10 gotchas. Workspace-уро
 ## Validation layering
 
 **Sync (до создания Operation):**
-- Required: `folder_id` (Create всех 4); `zone_id` (Disk/Instance Create);
+- Required: `project_id` (Create всех 4); `zone_id` (Disk/Instance Create);
   `name` где proto помечает; `Snapshot.Create` требует `disk_id`; `Image.Create`
   — ровно один из `source` (`image_id`/`snapshot_id`/`disk_id`/`uri`,
   `(exactly_one)`); `Instance.Create` требует `zone_id`, `platform_id`,
@@ -90,9 +90,8 @@ Compute-specific правила, error mapping, top-10 gotchas. Workspace-уро
 - project (владелец) existence (`projectClient.Exists` через
   `kacho-iam.ProjectService.Get` → `NotFound "Project <X> not found"`;
   error → `Unavailable "project check: upstream project service unavailable"`;
-  retry on `Unavailable` через `kacho-corelib/retry`). NB: колонка-владелец в
-  схеме всё ещё зовётся `folder_id` — это legacy-имя КОЛОНКИ, на wire и в текстах
-  ошибок его нет (`projectId` / `Project`).
+  retry on `Unavailable` через `kacho-corelib/retry`). Колонка-владелец в схеме —
+  `project_id`, на wire и в текстах ошибок — `projectId` / `Project`.
 - zone / type_id / source image|snapshot|disk existence → `NotFound` /
   `InvalidArgument`.
 - Instance.Create: ⚠️ **без авто-NIC** — auto-NIC материализация `materializeNICs`
@@ -103,7 +102,7 @@ Compute-specific правила, error mapping, top-10 gotchas. Workspace-уро
   привязка NIC) — будущая переделка.
   `Instance.Delete` → для каждого NIC с непустым `nic_id` (если есть от прежних
   данных) delete kacho-vpc NIC (best-effort).
-- Repo Insert/Update — UNIQUE violation `(folder_id, name)` partial
+- Repo Insert/Update — UNIQUE violation `(project_id, name)` partial
   `WHERE name <> ''` для всех 4 ресурсов → `ALREADY_EXISTS`; FK violation
   (`attached_disks.disk_id` RESTRICT) → `FailedPrecondition`; boot/device UNIQUE
   → `InvalidArgument`/`ALREADY_EXISTS`.
@@ -195,7 +194,7 @@ disk <id> is being used"` (FK RESTRICT); иначе DELETE.
 Все межсервисные ссылки — **НЕ FK** (database-per-service; workspace `CLAUDE.md`
 §запрет 4). Валидируются gRPC-вызовом к peer-сервису в worker'е Create/Update:
 - `projectClient` → `kacho-iam.ProjectService.Get` (existence-check владельца-проекта
-  в worker'е каждого Create; колонка-владелец в схеме — legacy-имя `folder_id`).
+  в worker'е каждого Create; колонка-владелец в схеме — `project_id`).
 - `vpcClient` → `kacho.cloud.vpc.v1.{SubnetService.Get, SecurityGroupService.Get,
   AddressService.Get, NetworkInterfaceService.*}` + `InternalAddressService` на
   kacho-vpc — IPAM-аллокация эфемерных Address + delete kacho-vpc `NetworkInterface`
@@ -268,7 +267,7 @@ Zero-overhead, миграция не нужна. Используется в `Up
    независимо от ресурса; resource id может быть `fd8` (Image/Snapshot) или `epd`
    (Instance/Disk).
 8. **Timestamp truncate to seconds** в proto-ответе.
-9. **Cross-service refs не FK** — subnet/SG/address (VPC), folder (RM), source
+9. **Cross-service refs не FK** — subnet/SG/address (VPC), project (kacho-iam), source
    image/snapshot/disk — validated gRPC-call'ом / existence-check в worker'е, не
    FK cascade. `KACHO_COMPUTE_SKIP_PEER_VALIDATION=true` отключает для тестов.
 10. **`secondary_disk_specs` / `boot_disk_spec` / `attached_disk_spec`: exactly

@@ -6,7 +6,7 @@
 // Cleanup: внешний cleanup-скрипт после прогона (psql DELETE WHERE name LIKE 'netp-%').
 
 import { Counter } from 'k6/metrics';
-import { FOLDER_ID, post, uid, expect200 } from './lib/client.js';
+import { PROJECT_ID, post, uid, expect200 } from './lib/client.js';
 
 export const options = {
   scenarios: {
@@ -37,7 +37,7 @@ export const options = {
 const created = new Counter('networks_created');
 
 export default function () {
-  const res = post('/vpc/v1/networks', { folderId: FOLDER_ID, name: uid('netp') });
+  const res = post('/vpc/v1/networks', { projectId: PROJECT_ID, name: uid('netp') });
   if (expect200(res, 'create-pure')) {
     created.add(1);
   }

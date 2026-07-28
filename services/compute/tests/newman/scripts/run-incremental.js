@@ -61,13 +61,13 @@ fs.mkdirSync(path.join(OUT, 'failed'), { recursive: true });
 const env = JSON.parse(fs.readFileSync(ENV_FILE, 'utf8'));
 const ev = (k) => { const v = env.values.find(x => x.key === k); return v ? v.value : undefined; };
 const BASE = (ev('baseUrl') || '').replace(/\/$/, '');
-const TEST_FOLDERS = env.values.filter(x => /^existingFolder/.test(x.key)).map(x => x.value).filter(Boolean);
+const TEST_PROJECTS = env.values.filter(x => /^existingProject/.test(x.key)).map(x => x.value).filter(Boolean);
 if (!BASE) { console.error('нет baseUrl в env'); process.exit(2); }
-if (!TEST_FOLDERS.length) { console.error('нет existingFolder* в env'); process.exit(2); }
+if (!TEST_PROJECTS.length) { console.error('нет existingProject* в env'); process.exit(2); }
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-// --- cleanup тест-папок (FK-safe порядок; async-Delete'ы fire-and-forget, несколько проходов) ---
+// --- cleanup тест-проектов (FK-safe порядок; async-Delete'ы fire-and-forget, несколько проходов) ---
 // instances первыми (Disk нельзя удалить пока attached); затем snapshots/images (не блокируют);
 // затем disks. Disk.Delete тоже async (Operation) — несколько проходов с паузой дают воркерам
 // додавить detach+delete.
@@ -88,9 +88,9 @@ async function cleanupPass(passes = 3) {
   let removedTotal = 0;
   for (let p = 0; p < passes; p++) {
     let removed = 0;
-    for (const fid of TEST_FOLDERS) {
+    for (const pid of TEST_PROJECTS) {
       for (const [restPath, listKey] of KINDS) {
-        const j = await jget(`${BASE}/compute/v1/${restPath}?projectId=${encodeURIComponent(fid)}&pageSize=1000`);
+        const j = await jget(`${BASE}/compute/v1/${restPath}?projectId=${encodeURIComponent(pid)}&pageSize=1000`);
         const arr = (j && Array.isArray(j[listKey])) ? j[listKey] : [];
         for (const r of arr) {
           if (!r || !r.id) continue;
@@ -109,8 +109,8 @@ async function cleanupPass(passes = 3) {
 }
 async function remainingCount() {
   let n = 0;
-  for (const fid of TEST_FOLDERS) for (const [restPath, listKey] of KINDS) {
-    const j = await jget(`${BASE}/compute/v1/${restPath}?projectId=${encodeURIComponent(fid)}&pageSize=1000`);
+  for (const pid of TEST_PROJECTS) for (const [restPath, listKey] of KINDS) {
+    const j = await jget(`${BASE}/compute/v1/${restPath}?projectId=${encodeURIComponent(pid)}&pageSize=1000`);
     const arr = (j && Array.isArray(j[listKey])) ? j[listKey] : [];
     n += arr.length;
   }
@@ -173,7 +173,7 @@ function runFolder(tc) {
 // --- main ---
 (async () => {
   if (CLEANUP_ONLY) {
-    console.log(`[cleanup-only] зачистка ${TEST_FOLDERS.length} тест-папок на ${BASE} ...`);
+    console.log(`[cleanup-only] зачистка ${TEST_PROJECTS.length} тест-проектов на ${BASE} ...`);
     const n = await cleanupPass(5);
     const left = await remainingCount();
     console.log(`[cleanup-only] удалено ~${n}, осталось ${left}`);

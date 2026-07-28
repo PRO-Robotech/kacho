@@ -18,7 +18,7 @@ kubectl -n kacho port-forward svc/api-gateway 18080:8080 &
 curl 'http://localhost:18080/compute/v1/diskTypes'
 curl 'http://localhost:18080/compute/v1/regions'
 curl 'http://localhost:18080/compute/v1/zones'
-curl 'http://localhost:18080/compute/v1/disks?folderId=<folder>&pageSize=5'
+curl 'http://localhost:18080/compute/v1/disks?projectId=<project>&pageSize=5'
 ```
 
 Перезапуск только compute после изменений в коде:

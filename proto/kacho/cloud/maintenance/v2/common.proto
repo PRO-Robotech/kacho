@@ -15,7 +15,7 @@ message Maintenance {
     // ID of the resource
     string id = 1;
 
-    // The type of the resource, e.g. resource-manager.cloud, resource-manager.folder, compute.instance, etc.
+    // The type of the resource, e.g. iam.account, iam.project, compute.instance, etc.
     string type = 2;
   }
 
@@ -49,11 +49,11 @@ message Maintenance {
 
   // Full path to the resource affected by maintenance,
   // represented as a hierarchy from specific resource to top-level container.
-  // Example for a Compute instance with ID "I" in folder "F" and cloud "C":
+  // Example for a Compute instance with ID "I" in project "P" and account "A":
   // resource_path = [
   // { "compute.instance", "I" },
-  // { "resource-manager.folder", "F" },
-  // { "resource-manager.cloud", "C" }
+  // { "iam.project", "P" },
+  // { "iam.account", "A" }
   // ]
   repeated Resource resource_path = 2;
 
@@ -91,15 +91,19 @@ message Maintenance {
   bool user_controllable = 13;
 }
 
-// ListMaintenancesRequest allows listing maintenances by cloud ID, folder ID, resource type or resource ID.
+// ListMaintenancesRequest allows listing maintenances by container or by
+// resource.
 message ListMaintenancesRequest {
+  // The retired container. A tenant container in Kachō is a Project; the arm
+  // that named it a folder is withdrawn, and both its number and its name are
+  // reserved so neither can be reused for something else.
+  reserved 2;
+  reserved "folder_id";
+
   // Container specifies the resources for which to list maintenances. (Required)
   oneof container {
     // Cloud ID for the resources.
     string cloud_id = 1 [(length) = "<=50"];
-
-    // Folder ID for the resources.
-    string folder_id = 2 [(length) = "<=50"];
 
     // Resource ID of the target resource.
     string resource_id = 3 [(length) = "<=50"];

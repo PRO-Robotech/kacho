@@ -31,7 +31,7 @@ const (
 	OsTypeWindows
 )
 
-// Image — образ (folder-level ресурс). family используется в GetLatestByFamily.
+// Image — образ (project-level ресурс). family используется в GetLatestByFamily.
 // source (откуда создан) — для observability; не FK.
 type Image struct {
 	ID                 string

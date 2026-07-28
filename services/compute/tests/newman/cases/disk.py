@@ -7,7 +7,7 @@ Covered RPCs: Get, List, Create, Update, Delete, Relocate, ListOperations.
 (access-bindings — no-op skeleton, skip.)
 
 Контракт изоляции: каждый case в своём runId, работает внутри pre-allocated
-existingProjectId/existingProjectCrossId (из env), Org/Cloud/Folder НЕ создаёт; имена
+existingProjectId/existingProjectCrossId (из env), проектов НЕ создаёт; имена
 суффиксуются {{runId}}. Кейсы спроектированы так, чтобы зеленеть и против реального
 YC Compute API (verbatim parity). Где точный YC error-text неизвестен — `# probe-needed:`.
 
@@ -26,7 +26,7 @@ DISKS = "/compute/v1/disks"
 
 
 def _disk_body(name_suffix, **over):
-    b = {"projectId": "{{_suiteFolderId}}", "name": f"disk-{name_suffix}-{{{{runId}}}}",
+    b = {"projectId": "{{_suiteProjectId}}", "name": f"disk-{name_suffix}-{{{{runId}}}}",
          "zoneId": "{{existingZoneId}}", "size": _DEF_SIZE}
     b.update(over)
     return b
@@ -51,7 +51,7 @@ CASES.append(Case(
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('id matches & has epd prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('diskId')); pm.expect(j.id).to.match(/^epd/); });",
-                          "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteFolderId')));",
+                          "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
                           "pm.test('zoneId matches', () => pm.expect(j.zoneId).to.eql(pm.environment.get('existingZoneId')));",
                           "pm.test('size matches', () => pm.expect(String(j.size)).to.eql('" + str(_DEF_SIZE) + "'));",
                           "pm.test('status READY', () => pm.expect(j.status).to.eql('READY'));",
@@ -83,10 +83,10 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
-    id="DISK-CR-VAL-FOLDER-REQUIRED",
+    id="DISK-CR-VAL-PROJECT-REQUIRED",
     title="Create без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
     classes=["VAL"], priority="P0",
-    steps=[Step(name="cr-no-folder", method="POST", path=DISKS,
+    steps=[Step(name="cr-no-project", method="POST", path=DISKS,
                 body={"name": "disk-nf-{{runId}}", "zoneId": "{{existingZoneId}}", "size": _DEF_SIZE},
                 test_script=[*assert_unscoped_rejected()])],
 ))
@@ -96,7 +96,7 @@ CASES.append(Case(
     title="Create без zoneId → 400 InvalidArgument",
     classes=["VAL"], priority="P0",
     steps=[Step(name="cr-no-zone", method="POST", path=DISKS,
-                body={"projectId": "{{_suiteFolderId}}", "name": "disk-nz-{{runId}}", "size": _DEF_SIZE},
+                body={"projectId": "{{_suiteProjectId}}", "name": "disk-nz-{{runId}}", "size": _DEF_SIZE},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))
 
@@ -105,17 +105,17 @@ CASES.append(Case(
     title="Create без size → 400 InvalidArgument (size required)",
     classes=["VAL"], priority="P0",
     steps=[Step(name="cr-no-size", method="POST", path=DISKS,
-                body={"projectId": "{{_suiteFolderId}}", "name": "disk-ns-{{runId}}", "zoneId": "{{existingZoneId}}"},
+                body={"projectId": "{{_suiteProjectId}}", "name": "disk-ns-{{runId}}", "zoneId": "{{existingZoneId}}"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))
 
 CASES.append(Case(
-    id="DISK-CR-NEG-FOLDER-NOTFOUND",
+    id="DISK-CR-NEG-PROJECT-NOTFOUND",
     title="Create в garbage projectId → async NOT_FOUND 'Project <id> not found' (peer iam)",
     classes=["NEG"], priority="P0",
     steps=[
         # # requires peer-validation enabled (KACHO_COMPUTE_SKIP_PEER_VALIDATION!=true)
-        Step(name="cr-bad-folder", method="POST", path=DISKS,
+        Step(name="cr-bad-project", method="POST", path=DISKS,
              body=_disk_body("bf", projectId="{{garbageRmId}}"),
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -128,7 +128,7 @@ CASES.append(Case(
     title="Create с unknown zoneId → async op-error InvalidArgument (zone existence в doCreate-worker)",
     classes=["NEG", "VAL"], priority="P1",
     # zone-existence проверяется в doCreate (async worker, mapZoneRefErr) — как и
-    # folder в DISK-CR-NEG-FOLDER: мутация всегда 200+Operation, отказ — в op.error.
+    # проект в DISK-CR-NEG-PROJECT: мутация всегда 200+Operation, отказ — в op.error.
     # Безусловный assert_op_error_oneof даёт RED, если zone-валидация регрессирует
     # (op успешно создаёт диск в несуществующей зоне — orphan). code 3 (наш
     # InvalidArgument) или 5 (если бы стал NotFound-паритет YC).
@@ -155,7 +155,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="DISK-CR-NEG-DUP-NAME",
-    title="Create disk с дубликатом name в folder → async ALREADY_EXISTS",
+    title="Create disk с дубликатом name в проекте → async ALREADY_EXISTS",
     classes=["NEG", "CONC"], priority="P1",
     steps=[
         Step(name="cr-1", method="POST", path=DISKS, body=_disk_body("dup"),
@@ -228,7 +228,7 @@ CASES.append(Case(
     classes=["NEG"], priority="P1",
     steps=[
         Step(name="cr-bad-img", method="POST", path=DISKS,
-             body={"projectId": "{{_suiteFolderId}}", "name": "disk-bi-{{runId}}",
+             body={"projectId": "{{_suiteProjectId}}", "name": "disk-bi-{{runId}}",
                    "zoneId": "{{existingZoneId}}", "size": _DEF_SIZE, "imageId": "{{garbageImageId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -242,7 +242,7 @@ CASES.append(Case(
     classes=["NEG"], priority="P1",
     steps=[
         Step(name="cr-bad-snap", method="POST", path=DISKS,
-             body={"projectId": "{{_suiteFolderId}}", "name": "disk-bs-{{runId}}",
+             body={"projectId": "{{_suiteProjectId}}", "name": "disk-bs-{{runId}}",
                    "zoneId": "{{existingZoneId}}", "size": _DEF_SIZE, "snapshotId": "{{garbageImageId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -262,13 +262,13 @@ CASES.append(Case(
         poll_operation_until_done(),
         # 2. image from disk
         Step(name="cr-image", method="POST", path="/compute/v1/images",
-             body={"projectId": "{{_suiteFolderId}}", "name": "img-fid-{{runId}}", "diskId": "{{baseDiskId}}"},
+             body={"projectId": "{{_suiteProjectId}}", "name": "img-fid-{{runId}}", "diskId": "{{baseDiskId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.imageId", "imageId")]),
         poll_operation_until_done(),
         # 3. disk from image
         Step(name="cr-disk-from-img", method="POST", path=DISKS,
-             body={"projectId": "{{_suiteFolderId}}", "name": "disk-fid-{{runId}}",
+             body={"projectId": "{{_suiteProjectId}}", "name": "disk-fid-{{runId}}",
                    "zoneId": "{{existingZoneId}}", "size": _DEF_SIZE, "imageId": "{{imageId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.diskId", "diskId")]),
@@ -312,15 +312,15 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="DISK-LST-CRUD-OK",
-    title="List disks в folder → disks array",
+    title="List disks в проекте → disks array",
     classes=["CRUD"], priority="P1",
-    steps=[Step(name="list", method="GET", path=f"{DISKS}?projectId={{{{_suiteFolderId}}}}",
+    steps=[Step(name="list", method="GET", path=f"{DISKS}?projectId={{{{_suiteProjectId}}}}",
                 test_script=[*assert_status(200),
                              "pm.test('disks is array', () => pm.expect(pm.response.json().disks || []).to.be.an('array'));"])],
 ))
 
 CASES.append(Case(
-    id="DISK-LST-VAL-FOLDER-REQUIRED",
+    id="DISK-LST-VAL-PROJECT-REQUIRED",
     title="List без projectId → rejected (400 InvalidArgument OR 403 authz-first, unscoped)",
     classes=["VAL", "AUTHZ"], priority="P0",
     steps=[Step(name="list-nf", method="GET", path=DISKS,
@@ -337,7 +337,7 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.diskId", "diskId")]),
         poll_operation_until_done(),
         retry_until_present(Step(name="list-filtered", method="GET",
-             path=f"{DISKS}?projectId={{{{_suiteFolderId}}}}&pageSize=1000&filter=name%3D%22disk-flt-{{{{runId}}}}%22",
+             path=f"{DISKS}?projectId={{{{_suiteProjectId}}}}&pageSize=1000&filter=name%3D%22disk-flt-{{{{runId}}}}%22",
              test_script=[*assert_status(200),
                           "const ids = (Object.values(pm.response.json()).find(v => Array.isArray(v)) || []).map(x => x.id);",
                           "pm.test('filtered list contains', () => pm.expect(ids).to.include(pm.environment.get('diskId')));"]), "diskId"),
@@ -643,7 +643,7 @@ CASES.append(Case(
         poll_operation_until_done(),
         retry_until_authorized(Step(name="get-1", method="GET", path=f"{DISKS}/{{{{diskId}}}}",
              test_script=[*assert_status(200), "pm.test('id', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('diskId')));"])),
-        retry_until_present(Step(name="lst-includes", method="GET", path=f"{DISKS}?projectId={{{{_suiteFolderId}}}}&pageSize=1000",
+        retry_until_present(Step(name="lst-includes", method="GET", path=f"{DISKS}?projectId={{{{_suiteProjectId}}}}&pageSize=1000",
              test_script=[*assert_status(200),
                           "const ids = (pm.response.json().disks || []).map(x => x.id);",
                           "pm.test('list contains', () => pm.expect(ids).to.include(pm.environment.get('diskId')));"]), "diskId"),
@@ -656,7 +656,7 @@ CASES.append(Case(
         Step(name="del", method="DELETE", path=f"{DISKS}/{{{{diskId}}}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        Step(name="lst-excludes", method="GET", path=f"{DISKS}?projectId={{{{_suiteFolderId}}}}&pageSize=1000",
+        Step(name="lst-excludes", method="GET", path=f"{DISKS}?projectId={{{{_suiteProjectId}}}}&pageSize=1000",
              test_script=[*assert_status(200),
                           "const ids = (pm.response.json().disks || []).map(x => x.id);",
                           "pm.test('list does not contain', () => pm.expect(ids).to.not.include(pm.environment.get('diskId')));"]),

@@ -37,7 +37,7 @@ project`), одинаково требуют, чтобы структурная 
 удалённый ресурс — over-grant, который на публичном пути не виден вовсе.
 
 Контракт изоляции: каждый case в своём runId, работает внутри pre-allocated
-existingProjectId (_suiteFolderId из env); имена суффиксуются {{runId}}; свои
+existingProjectId (_suiteProjectId из env); имена суффиксуются {{runId}}; свои
 ресурсы кейс удаляет за собой. id-префиксы: Volume `vol`, Snapshot `snp`, Image `img`.
 
 # requires: umbrella-стенд (kacho-storage + kacho-iam + kacho-geo за gateway) и
@@ -151,7 +151,7 @@ def _lifecycle_case(case_id, title, base_path, obj_type, id_var, id_prefix,
                                   f"pm.expect(j.id).to.eql(pm.environment.get('{id_var}')); "
                                   f"pm.expect(j.id).to.match(/^{id_prefix}/); }});",
                                   "pm.test('projectId matches the suite project', "
-                                  "() => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteFolderId')));",
+                                  "() => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
                                   *assert_created_at_seconds()])),
             _check_step(f"tuple-present-{id_prefix}", obj_type, id_var, expect_allowed=True),
             Step(name="delete", method="DELETE", path=f"{base_path}/{{{{{id_var}}}}}", auth=_OWNER,
@@ -182,7 +182,7 @@ def _source_volume(suffix, out_var="secdSrcVolumeId"):
     """READY-том как источник снимка/образа."""
     return [
         Step(name=f"pre-vol-{suffix}", method="POST", path=VOL, auth=_OWNER,
-             body={"projectId": "{{_suiteFolderId}}", "name": f"secd-src-{suffix}-{{{{runId}}}}",
+             body={"projectId": "{{_suiteProjectId}}", "name": f"secd-src-{suffix}-{{{{runId}}}}",
                    "zoneId": "{{existingZoneId}}", "diskTypeId": "{{existingDiskTypeId}}",
                    "sizeBytes": _SRC_SIZE},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
@@ -202,7 +202,7 @@ CASES.append(_lifecycle_case(
           "tuple на storage_volume материализован → Delete → Get 404 и tuple снят",
     # index: SECD-VOL-CR-GET-AFTER-TUPLE-OK
     base_path=VOL, obj_type="storage_volume", id_var="volumeId", id_prefix="vol",
-    create_body={"projectId": "{{_suiteFolderId}}", "name": "secd-vol-{{runId}}",
+    create_body={"projectId": "{{_suiteProjectId}}", "name": "secd-vol-{{runId}}",
                  "zoneId": "{{existingZoneId}}", "diskTypeId": "{{existingDiskTypeId}}",
                  "sizeBytes": _SRC_SIZE, "labels": {"suite": "sec-d"}},
 ))
@@ -218,7 +218,7 @@ CASES.append(_lifecycle_case(
           "tuple на storage_snapshot материализован → Delete → Get 404 и tuple снят",
     # index: SECD-SNP-CR-GET-AFTER-TUPLE-OK
     base_path=SNP, obj_type="storage_snapshot", id_var="snapshotId", id_prefix="snp",
-    create_body={"projectId": "{{_suiteFolderId}}", "sourceVolumeId": "{{secdSrcVolumeId}}",
+    create_body={"projectId": "{{_suiteProjectId}}", "sourceVolumeId": "{{secdSrcVolumeId}}",
                  "name": "secd-snap-{{runId}}", "labels": {"suite": "sec-d"}},
     pre_steps=_source_volume("snap"),
     post_cleanup=_delete_source("cleanup-src-vol", VOL, "secdSrcVolumeId"),
@@ -236,7 +236,7 @@ CASES.append(_lifecycle_case(
           "tuple на storage_image материализован → Delete → Get 404 и tuple снят",
     # index: SECD-IMG-CR-GET-AFTER-TUPLE-OK
     base_path=IMG, obj_type="storage_image", id_var="imageId", id_prefix="img",
-    create_body={"projectId": "{{_suiteFolderId}}", "regionId": "{{existingRegionId}}",
+    create_body={"projectId": "{{_suiteProjectId}}", "regionId": "{{existingRegionId}}",
                  "sourceVolumeId": "{{secdImgSrcVolumeId}}", "name": "secd-img-{{runId}}",
                  "labels": {"suite": "sec-d"}},
     pre_steps=_source_volume("img", out_var="secdImgSrcVolumeId"),

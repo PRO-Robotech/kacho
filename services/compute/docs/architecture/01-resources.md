@@ -38,17 +38,17 @@ Instance (1) ───┤                          │
    └─ status: state-машина (см. 03-instance-lifecycle.md)
 
 Disk       — zone-level, type_id → DiskType, может иметь source = image|snapshot
-Image      — folder-level, family (GetLatestByFamily), source = image|snapshot|disk|uri
-Snapshot   — folder-level, source_disk_id (обязателен в Create)
+Image      — project-level, family (GetLatestByFamily), source = image|snapshot|disk|uri
+Snapshot   — project-level, source_disk_id (обязателен в Create)
 DiskType   — глобальный read-only справочник (id = "network-ssd" и т.п.)
 Region/Zone — публичный read-only справочник Geography (owner = kacho-compute, эпик KAC-15)
 ```
 
-Все мутируемые ресурсы (Instance/Disk/Image/Snapshot) — **folder-level**
-(`folder_id` обязателен в Create). Все таблицы **flat** (без K8s envelope
+Все мутируемые ресурсы (Instance/Disk/Image/Snapshot) — **project-level**
+(`project_id` обязателен в Create). Все таблицы **flat** (без K8s envelope
 `resource_version`/`generation`/`deletion_timestamp`/`finalizers`/`spec`/`status`
 как JSONB). `cloud_id`/`organization_id` в схеме отсутствуют — фильтрация только
-по `folder_id` (как в VPC). Колонки `id` — `TEXT` (не UUID).
+по `project_id` (как в VPC). Колонки `id` — `TEXT` (не UUID).
 
 ## Resource ID format
 
@@ -92,7 +92,7 @@ async `NotFound`, а malformed/wrong-prefix id → sync `InvalidArgument "invali
 | Поле | Тип | Замечания |
 |---|---|---|
 | `id` | string | prefix `epd` |
-| `folder_id` | string | partial UNIQUE `(folder_id, name) WHERE name <> ''` |
+| `project_id` | string | partial UNIQUE `(project_id, name) WHERE name <> ''` |
 | `created_at` | Timestamp | truncate до секунд в proto-ответе |
 | `name` | string | 1-63 chars, proto `(pattern) = "\|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"` — lowercase only, empty allowed → `corevalidate.NameCompute` |
 | `description` | string | ≤256 |
@@ -114,7 +114,7 @@ async `NotFound`, а malformed/wrong-prefix id → sync `InvalidArgument "invali
 | RPC | sync/async | статус | примечание |
 |---|---|---|---|
 | `Get` | sync | ✅ | `GET /compute/v1/disks/{disk_id}` |
-| `List` | sync | ✅ | `GET /compute/v1/disks?folderId=` ; filter `name=` ; cursor pagination |
+| `List` | sync | ✅ | `GET /compute/v1/disks?projectId=` ; filter `name=` ; cursor pagination |
 | `Create` | async | ✅ | op metadata `CreateDiskMetadata{disk_id}`, response `Disk`. Поля `snapshot_schedule_ids` → `blocked:kacho-snapshot-schedule` (отвергается / игнорируется); `kms_key_id` → `blocked:kacho-kms` |
 | `Update` | async | ✅ | metadata `UpdateDiskMetadata`, response `Disk`. mutable: `name`/`description`/`labels`/`size` (только увеличение)/`disk_placement_policy`; immutable: `type_id`/`zone_id`/`block_size`/`source` |
 | `Delete` | async | ✅ | metadata `DeleteDiskMetadata`, response `google.protobuf.Empty`. Attached disk → `FailedPrecondition "The disk <id> is being used"` (FK `attached_disks.disk_id` RESTRICT) |
@@ -140,7 +140,7 @@ async `NotFound`, а malformed/wrong-prefix id → sync `InvalidArgument "invali
 
 ## Image
 
-Образ. Folder-level, `family` для `GetLatestByFamily`, `source` =
+Образ. Project-level, `family` для `GetLatestByFamily`, `source` =
 image | snapshot | disk | uri. Таблица `images`.
 
 ### proto-поля (`image.proto`, message `Image`)
@@ -148,10 +148,10 @@ image | snapshot | disk | uri. Таблица `images`.
 | Поле | Тип | Замечания |
 |---|---|---|
 | `id` | string | prefix `fd8` |
-| `folder_id` | string | partial UNIQUE `(folder_id, name) WHERE name <> ''` |
+| `project_id` | string | partial UNIQUE `(project_id, name) WHERE name <> ''` |
 | `created_at` | Timestamp | truncate до секунд |
 | `name`, `description`, `labels` | | как у Disk |
-| `family` | string | proto `(pattern) = "\|[a-z][-a-z0-9]{1,61}[a-z0-9]"`; индекс `images_family_idx (folder_id, family, created_at DESC)` для GetLatestByFamily |
+| `family` | string | proto `(pattern) = "\|[a-z][-a-z0-9]{1,61}[a-z0-9]"`; индекс `images_family_idx (project_id, family, created_at DESC)` для GetLatestByFamily |
 | `storage_size` | int64 | размер образа (delta) |
 | `min_disk_size` | int64 | мин. размер диска из этого образа; Create/Update `[4194304 .. 4398046511104]` |
 | `product_ids` | repeated string | license IDs (`os_product_ids` в Create → `blocked:kacho-marketplace`) |
@@ -169,8 +169,8 @@ image | snapshot | disk | uri. Таблица `images`.
 | RPC | sync/async | статус | примечание |
 |---|---|---|---|
 | `Get` | sync | ✅ | `GET /compute/v1/images/{image_id}` |
-| `GetLatestByFamily` | sync | ✅ | `GET /compute/v1/images:latestByFamily?folderId=&family=` — самый свежий по `created_at DESC` |
-| `List` | sync | ✅ | `GET /compute/v1/images?folderId=` |
+| `GetLatestByFamily` | sync | ✅ | `GET /compute/v1/images:latestByFamily?projectId=&family=` — самый свежий по `created_at DESC` |
+| `List` | sync | ✅ | `GET /compute/v1/images?projectId=` |
 | `Create` | async | ✅ | metadata `CreateImageMetadata{image_id}`, response `Image`. `oneof source` (`exactly_one`): `image_id` / `disk_id` / `snapshot_id` / `uri` (download мгновенный, статус сразу READY); `os_product_ids` → `blocked:kacho-marketplace` |
 | `Update` | async | ✅ | metadata `UpdateImageMetadata`, response `Image`. mutable: `name`/`description`/`labels`/`min_disk_size`; immutable: `family`/`os`/`product_ids`/`pooled`/`hardware_generation` |
 | `Delete` | async | ✅ | metadata `DeleteImageMetadata`, response `Empty`. Удаление образа не удаляет дисков, созданных из него (не FK) |
@@ -185,14 +185,14 @@ image | snapshot | disk | uri. Таблица `images`.
   мгновенный, статус сразу `READY`.
 - `min_disk_size` immutable-семантика как в YC: при изменении в большую сторону
   допустимо; constraint-текст probe — `07-known-divergences.md` §4.
-- `GetLatestByFamily` — `WHERE folder_id=$1 AND family=$2 ORDER BY created_at
+- `GetLatestByFamily` — `WHERE project_id=$1 AND family=$2 ORDER BY created_at
   DESC LIMIT 1`; нет ни одного → `NotFound`.
 
 ---
 
 ## Snapshot
 
-Снимок диска. Folder-level, `source_disk_id` обязателен в Create. Таблица
+Снимок диска. Project-level, `source_disk_id` обязателен в Create. Таблица
 `snapshots`.
 
 ### proto-поля (`snapshot.proto`, message `Snapshot`)
@@ -200,7 +200,7 @@ image | snapshot | disk | uri. Таблица `images`.
 | Поле | Тип | Замечания |
 |---|---|---|
 | `id` | string | prefix `fd8` |
-| `folder_id` | string | partial UNIQUE `(folder_id, name) WHERE name <> ''` |
+| `project_id` | string | partial UNIQUE `(project_id, name) WHERE name <> ''` |
 | `created_at` | Timestamp | truncate до секунд |
 | `name`, `description`, `labels` | | как у Disk |
 | `storage_size` | int64 | delta от предыдущего снимка того же диска |
@@ -216,7 +216,7 @@ image | snapshot | disk | uri. Таблица `images`.
 | RPC | sync/async | статус | примечание |
 |---|---|---|---|
 | `Get` | sync | ✅ | `GET /compute/v1/snapshots/{snapshot_id}` |
-| `List` | sync | ✅ | `GET /compute/v1/snapshots?folderId=` |
+| `List` | sync | ✅ | `GET /compute/v1/snapshots?projectId=` |
 | `Create` | async | ✅ | required `disk_id`; metadata `CreateSnapshotMetadata{snapshot_id, disk_id}`, response `Snapshot`. Disk должен существовать и быть `READY` |
 | `Update` | async | ✅ | metadata `UpdateSnapshotMetadata`, response `Snapshot`. mutable: `name`/`description`/`labels`; immutable: `source_disk_id`/`disk_size`/`storage_size` |
 | `Delete` | async | ✅ | metadata `DeleteSnapshotMetadata`, response `Empty` |
@@ -235,7 +235,7 @@ image | snapshot | disk | uri. Таблица `images`.
 
 ## Instance
 
-Виртуальная машина. Folder-level (`folder_id`), zone-level (`zone_id`), привязан
+Виртуальная машина. Project-level (`project_id`), zone-level (`zone_id`), привязан
 к платформе (`platform_id`), имеет boot-disk + secondary-disks (через
 `attached_disks`), N сетевых интерфейсов (через `instance_network_interfaces`),
 state-машину статуса. Таблица `instances` + дочерние `instance_network_interfaces`
@@ -246,7 +246,7 @@ state-машину статуса. Таблица `instances` + дочерние
 | Поле | Тип | Замечания |
 |---|---|---|
 | `id` | string | prefix `epd` |
-| `folder_id` | string | partial UNIQUE `(folder_id, name) WHERE name <> ''` |
+| `project_id` | string | partial UNIQUE `(project_id, name) WHERE name <> ''` |
 | `created_at` | Timestamp | truncate до секунд |
 | `name`, `description`, `labels` | | как у Disk |
 | `zone_id` | string | required; existence через `ZoneRegistry` (локальная таблица `zones`, эпик `KAC-15`); immutable (меняется через Relocate) |
@@ -282,7 +282,7 @@ state-машину статуса. Таблица `instances` + дочерние
 | RPC | sync/async | статус | примечание |
 |---|---|---|---|
 | `Get` | sync | ✅ | `GET /compute/v1/instances/{instance_id}?view=` (BASIC/FULL — FULL включает metadata) |
-| `List` | sync | ✅ | `GET /compute/v1/instances?folderId=`. metadata всегда омитится (verbatim YC). filter: `id/name/created_at/status/zone_id/platform_id/host_id` (whitelist; текущая фаза — `name=`) |
+| `List` | sync | ✅ | `GET /compute/v1/instances?projectId=`. metadata всегда омитится (verbatim YC). filter: `id/name/created_at/status/zone_id/platform_id/host_id` (whitelist; текущая фаза — `name=`) |
 | `Create` | async | ✅ | required `zone_id`/`platform_id`/`resources_spec`/`boot_disk_spec`. metadata `CreateInstanceMetadata{instance_id}`, response `Instance`. boot/secondary disk: `exactly_one` of {`disk_id`, `disk_spec`}. ⚠️ **без авто-NIC** — auto-NIC материализация `materializeNICs` удалена в `KAC-266`: инстанс создаётся **без сетевых интерфейсов** (`instance_network_interfaces` пуст), NIC не создаётся/привязывается на Create; правильная сетевая модель (явная привязка NIC) — будущая переделка. end status `RUNNING`. `filesystem_specs[]` / `local_disk_specs[]` — вместе с ещё четырьмя легаси-полями (`network_settings`, `maintenance_policy`, `maintenance_grace_period`, `serial_port_settings`) **отвергаются** синхронным `INVALID_ARGUMENT` первым стейтментом `Create`, см. `07-known-divergences.md` §7.1 |
 | `Update` | async | ✅ | metadata `UpdateInstanceMetadata`, response `Instance`. mutable: `name`/`description`/`labels`/`service_account_id`/`network_settings`/`placement_policy`/`scheduling_policy`/`maintenance_policy`/`maintenance_grace_period`/`serial_port_settings`. `resources_spec`/`platform_id` — только при `STOPPED` (`FailedPrecondition "Instance must be stopped"`). `metadata` — через `UpdateMetadata`. immutable: `zone_id`/`boot_disk` |
 | `Delete` | async | ✅ | metadata `DeleteInstanceMetadata`, response `Empty`. worker: обрабатывает attached disks по `auto_delete` (true → DELETE disk; false → строка `attached_disks` чистится CASCADE при DELETE instance), для каждого NIC с непустым `nic_id` — delete kacho-vpc `NetworkInterface` (release его Address-ресурсов; best-effort vpcClient), DELETE instance (CASCADE чистит NIC-строки + attached_disks), освобождает one_to_one_nat addresses (best-effort vpcClient) |
@@ -338,7 +338,7 @@ state-машину статуса. Таблица `instances` + дочерние
 - `network_interfaces[].security_group_ids[]` → VPC `SecurityGroup` (НЕ FK; denorm-зеркало).
 - `network_interfaces[].primary_v4_address.one_to_one_nat.address` → VPC
   `Address` (НЕ FK; при Remove/Delete освобождается best-effort).
-- `instances.folder_id` → RM `Folder` (НЕ FK, валидируется gRPC).
+- `instances.project_id` → kacho-iam `Project` (НЕ FK, валидируется gRPC).
 - `boot_disk_spec.disk_spec.source` (`image_id`/`snapshot_id`) → локальные
   Image/Snapshot (existence-check в той же БД).
 
@@ -362,7 +362,7 @@ state-машину статуса. Таблица `instances` + дочерние
 | RPC | сервис | listener | статус | примечание |
 |---|---|---|---|---|
 | `Get` | `DiskTypeService` | `:9090` public | ✅ | `GET /compute/v1/diskTypes/{disk_type_id}` |
-| `List` | `DiskTypeService` | `:9090` public | ✅ | `GET /compute/v1/diskTypes` (без folderId — глобальный) |
+| `List` | `DiskTypeService` | `:9090` public | ✅ | `GET /compute/v1/diskTypes` (без projectId — глобальный) |
 | `Create` | `InternalDiskTypeService` | `:9091` internal | ✅ kacho-only | `POST /compute/v1/diskTypes` body `{id, description, zone_ids}`. НЕТ в verbatim YC |
 | `Update` | `InternalDiskTypeService` | `:9091` internal | ✅ kacho-only | `PATCH /compute/v1/diskTypes/{disk_type_id}` body `{description, zone_ids}` |
 | `Delete` | `InternalDiskTypeService` | `:9091` internal | ✅ kacho-only | `DELETE /compute/v1/diskTypes/{disk_type_id}` → `DeleteDiskTypeResponse{}` |

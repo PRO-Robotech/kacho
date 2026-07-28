@@ -46,8 +46,8 @@ erDiagram
 
   DISKS {
     text id PK
-    text folder_id "legacy-имя; cross-service → kacho-iam.projects.id (no FK)"
-    text name "partial UNIQUE (folder_id, name) WHERE name<>''"
+    text project_id "cross-service → kacho-iam.projects.id (no FK)"
+    text name "partial UNIQUE (project_id, name) WHERE name<>''"
     text description
     jsonb labels
     text type_id "soft-ref → disk_types.id (no FK; existence-check in worker)"
@@ -66,11 +66,11 @@ erDiagram
 
   IMAGES {
     text id PK
-    text folder_id
-    text name "partial UNIQUE (folder_id, name) WHERE name<>''"
+    text project_id
+    text name "partial UNIQUE (project_id, name) WHERE name<>''"
     text description
     jsonb labels
-    text family "index (folder_id, family, created_at DESC) WHERE family<>''"
+    text family "index (project_id, family, created_at DESC) WHERE family<>''"
     bigint storage_size
     bigint min_disk_size
     jsonb product_ids
@@ -89,8 +89,8 @@ erDiagram
 
   SNAPSHOTS {
     text id PK
-    text folder_id
-    text name "partial UNIQUE (folder_id, name) WHERE name<>''"
+    text project_id
+    text name "partial UNIQUE (project_id, name) WHERE name<>''"
     text description
     jsonb labels
     bigint storage_size
@@ -105,8 +105,8 @@ erDiagram
 
   INSTANCES {
     text id PK
-    text folder_id
-    text name "partial UNIQUE (folder_id, name) WHERE name<>''"
+    text project_id
+    text name "partial UNIQUE (project_id, name) WHERE name<>''"
     text description
     jsonb labels
     text zone_id "soft-ref → zones.id"
@@ -230,19 +230,19 @@ Read-only справочник типов дисков. PK `id` (literal — `ne
 
 ---
 
-### Public ресурсы (folder-scoped, под Operation LRO)
+### Public ресурсы (project-scoped, под Operation LRO)
 
 #### `disks`
-Disk. PK `id` (`epd…`). UNIQUE partial `(folder_id, name) WHERE name<>''`. Index `disks_folder_idx`, `disks_created_at_idx`. Cross-service: `folder_id`, `zone_id`, `type_id`, `source_image_id`, `source_snapshot_id` — **no FK**. `source_image_id` / `source_snapshot_id` указывают на ресурсы той же БД (`images`, `snapshots`), но FK не ставится — verbatim YC семантика: после Disk.Create source-resource можно удалить, Disk остаётся живым (просто хранит «откуда был создан»).
+Disk. PK `id` (`epd…`). UNIQUE partial `(project_id, name) WHERE name<>''`. Index `disks_project_idx`, `disks_created_at_idx`. Cross-service: `project_id`, `zone_id`, `type_id`, `source_image_id`, `source_snapshot_id` — **no FK**. `source_image_id` / `source_snapshot_id` указывают на ресурсы той же БД (`images`, `snapshots`), но FK не ставится — verbatim YC семантика: после Disk.Create source-resource можно удалить, Disk остаётся живым (просто хранит «откуда был создан»).
 
 #### `images`
-Image. PK `id` (`fd8…`). UNIQUE partial `(folder_id, name) WHERE name<>''`. Index `images_family_idx (folder_id, family, created_at DESC) WHERE family <> ''` — для `GetLatestByFamily`. Sources (`source_image_id`, `source_snapshot_id`, `source_disk_id`, `source_uri`) — no FK.
+Image. PK `id` (`fd8…`). UNIQUE partial `(project_id, name) WHERE name<>''`. Index `images_family_idx (project_id, family, created_at DESC) WHERE family <> ''` — для `GetLatestByFamily`. Sources (`source_image_id`, `source_snapshot_id`, `source_disk_id`, `source_uri`) — no FK.
 
 #### `snapshots`
-Snapshot. PK `id` (`fd8…`). UNIQUE partial `(folder_id, name) WHERE name<>''`. Index `snapshots_source_disk_idx (source_disk_id) WHERE source_disk_id <> ''`. `source_disk_id` — no FK (YC: source disk можно удалить, snapshot остаётся).
+Snapshot. PK `id` (`fd8…`). UNIQUE partial `(project_id, name) WHERE name<>''`. Index `snapshots_source_disk_idx (source_disk_id) WHERE source_disk_id <> ''`. `source_disk_id` — no FK (YC: source disk можно удалить, snapshot остаётся).
 
 #### `instances`
-Instance. PK `id` (`epd…`). UNIQUE partial `(folder_id, name) WHERE name<>''`. Index `instances_folder_idx`, `instances_created_at_idx`, `instances_zone_idx`. Cross-service: `folder_id`, `zone_id`, `service_account_id`, `gpu_cluster_id`, `host_group_id`, `host_id`, `reserved_instance_pool_id` — все no FK.
+Instance. PK `id` (`epd…`). UNIQUE partial `(project_id, name) WHERE name<>''`. Index `instances_project_idx`, `instances_created_at_idx`, `instances_zone_idx`. Cross-service: `project_id`, `zone_id`, `service_account_id`, `gpu_cluster_id`, `host_group_id`, `host_id`, `reserved_instance_pool_id` — все no FK.
 
 #### `instance_network_interfaces`
 Same-table children Instance (NIC spec на инстансе). PK `(instance_id, idx)`. FK `instance_id → instances(id) ON DELETE CASCADE` — same-table CASCADE — единственный case, где cascade применимо (NIC-rows инстанса очищаются при его удалении). Index `instance_nic_subnet_idx (subnet_id) WHERE subnet_id <> ''`.
@@ -281,7 +281,7 @@ Per-subscriber cursor для LISTEN/NOTIFY restart-сценария. PK `subscri
 
 | Колонка                                          | Owner-сервис             | Owner-метод                                     | ON DELETE-симуляция         |
 |--------------------------------------------------|--------------------------|-------------------------------------------------|------------------------------|
-| `disks.folder_id` / `instances.folder_id` / etc. (legacy-имя = id владельца-проекта) | `kacho-iam` | `ProjectService.Get` (`projectClient.Exists`) | n/a (validate-on-write)      |
+| `disks.project_id` / `instances.project_id` / etc. (id владельца-проекта) | `kacho-iam` | `ProjectService.Get` (`projectClient.Exists`) | n/a (validate-on-write)      |
 | `disks.zone_id` / `instances.zone_id`            | **kacho-compute self**   | local `zones`-table — **same-DB ref, no FK** by choice (admin справочник; service-level existence-check `ZoneRegistry`) | n/a |
 | `disks.type_id`                                  | **kacho-compute self**   | local `disk_types`-table — same-DB ref, no FK   | n/a                          |
 | `disks.source_image_id`                          | **kacho-compute self**   | local `images`-table — **same-DB but no FK** (YC семантика: source можно удалить) | n/a (graceful dangling) |

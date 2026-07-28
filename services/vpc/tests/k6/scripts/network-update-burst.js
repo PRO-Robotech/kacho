@@ -3,11 +3,11 @@
 
 // k6 scenario: Network Update burst (p99 под нагрузкой).
 // setup() создает пул из N networks → default() делает PATCH random network.
-// ВАЖНО: Update в kacho-vpc делает sync Get + AssertFolderOwnership ПЕРЕД
-// созданием Operation — поэтому latency включает sync repo.Get.
+// ВАЖНО: Update в kacho-vpc делает sync Get + проверку принадлежности проекту
+// ПЕРЕД созданием Operation — поэтому latency включает sync repo.Get.
 
 import { Trend, Counter } from 'k6/metrics';
-import { FOLDER_ID, post, patch, get, del, uid, expect200 } from './lib/client.js';
+import { PROJECT_ID, post, patch, get, del, uid, expect200 } from './lib/client.js';
 import { pollOperation } from './lib/poll-op.js';
 
 const POOL_SIZE = 500;
@@ -38,7 +38,7 @@ export const options = {
 export function setup() {
   const ids = [];
   for (let i = 0; i < POOL_SIZE; i++) {
-    const res = post('/vpc/v1/networks', { folderId: FOLDER_ID, name: uid('upool') });
+    const res = post('/vpc/v1/networks', { projectId: PROJECT_ID, name: uid('upool') });
     if (res.status === 200) {
       const op = pollOperation(res.json('id'));
       if (op.ok) {

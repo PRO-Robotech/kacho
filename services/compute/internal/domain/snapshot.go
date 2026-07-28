@@ -21,7 +21,7 @@ const (
 	SnapshotStatusDeleting
 )
 
-// Snapshot — снапшот (folder-level ресурс). source_disk_id обязателен в Create
+// Snapshot — снапшот (project-level ресурс). source_disk_id обязателен в Create
 // (не FK — семантика Kachō допускает удаление source-диска). disk_size/storage_size
 // фиксируются на момент создания (= disk.size) и immutable.
 type Snapshot struct {

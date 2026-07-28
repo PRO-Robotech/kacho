@@ -5,7 +5,7 @@
 // SLO: p99 < 100ms, ≥ 200 RPS sustained.
 
 import { Trend, Rate } from 'k6/metrics';
-import { FOLDER_ID, get, expect200 } from './lib/client.js';
+import { PROJECT_ID, get, expect200 } from './lib/client.js';
 
 export const options = {
   stages: [
@@ -22,11 +22,11 @@ export const options = {
 
 export default function () {
   const ops = [
-    () => get(`/vpc/v1/networks?folderId=${FOLDER_ID}&pageSize=20`),
-    () => get(`/vpc/v1/subnets?folderId=${FOLDER_ID}&pageSize=20`),
-    () => get(`/vpc/v1/addresses?folderId=${FOLDER_ID}&pageSize=20`),
-    () => get(`/vpc/v1/securityGroups?folderId=${FOLDER_ID}&pageSize=20`),
-    () => get(`/vpc/v1/routeTables?folderId=${FOLDER_ID}&pageSize=20`),
+    () => get(`/vpc/v1/networks?projectId=${PROJECT_ID}&pageSize=20`),
+    () => get(`/vpc/v1/subnets?projectId=${PROJECT_ID}&pageSize=20`),
+    () => get(`/vpc/v1/addresses?projectId=${PROJECT_ID}&pageSize=20`),
+    () => get(`/vpc/v1/securityGroups?projectId=${PROJECT_ID}&pageSize=20`),
+    () => get(`/vpc/v1/routeTables?projectId=${PROJECT_ID}&pageSize=20`),
   ];
   const op = ops[Math.floor(Math.random() * ops.length)];
   expect200(op(), 'list');

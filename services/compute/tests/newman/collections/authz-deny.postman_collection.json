@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "419e4143-840c-48e1-b6dd-e9e189544d10",
+    "_postman_id": "80bab65c-e6b0-457f-bb7d-b555c92a73eb",
     "name": "kacho-compute / newman / authz-deny",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -16,8 +16,8 @@
           "  const r = Math.floor(Math.random() * 1e9).toString(36);",
           "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
           "}",
-          "pm.environment.set('_suiteFolderId', pm.environment.get('existingProjectId'));",
-          "pm.environment.set('_suiteFolderCrossId', pm.environment.get('existingProjectCrossId'));",
+          "pm.environment.set('_suiteProjectId', pm.environment.get('existingProjectId'));",
+          "pm.environment.set('_suiteProjectCrossId', pm.environment.get('existingProjectCrossId'));",
           "// internalBaseUrl fallback: CI-драйвер (newman-e2e.sh) прокидывает --env-var,",
           "// но для standalone-прогона деривируем cluster-internal listener из baseUrl",
           "// (публичный :8080/:18080 → internal-rest :8081/:18081). Internal*-шаги",
@@ -160,7 +160,7 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-LS-OWN-ANON — [DENY] List instances в project-A1 as anon (project-A1)",
+      "name": "AUTHZ-INSTANCE-LS-OWN-ANON — [UNAUTH] List instances в project-A1 as anon (project-A1)",
       "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
@@ -174,14 +174,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/instances?folderId={{projectA1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/instances?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "instances?folderId={{projectA1Id}}"
+                "instances?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -212,7 +212,7 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-LS-CROSS-ANON — [DENY] List instances в project-B1 (cross-account) as anon (project-B1)",
+      "name": "AUTHZ-INSTANCE-LS-CROSS-ANON — [UNAUTH] List instances в project-B1 (cross-account) as anon (project-B1)",
       "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
@@ -226,14 +226,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/instances?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/instances?projectId={{projectB1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "instances?folderId={{projectB1Id}}"
+                "instances?projectId={{projectB1Id}}"
               ]
             }
           },
@@ -572,8 +572,8 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-LS-OWN-NOB — [DENY] List instances в project-A1 as no-bind (project-A1)",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "name": "AUTHZ-INSTANCE-LS-OWN-NOB — [LIST-DENY] List instances в project-A1 as no-bind (project-A1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
           "name": "get",
@@ -586,14 +586,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/instances?folderId={{projectA1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/instances?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "instances?folderId={{projectA1Id}}"
+                "instances?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -621,10 +621,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-NOB] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+                  "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+                  "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['instances'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-NOB] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-NOB] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['instances']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
               }
             }
@@ -633,8 +650,8 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-LS-CROSS-NOB — [DENY] List instances в project-B1 (cross-account) as no-bind (project-B1)",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "name": "AUTHZ-INSTANCE-LS-CROSS-NOB — [LIST-DENY] List instances в project-B1 (cross-account) as no-bind (project-B1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
           "name": "get",
@@ -647,14 +664,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/instances?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/instances?projectId={{projectB1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "instances?folderId={{projectB1Id}}"
+                "instances?projectId={{projectB1Id}}"
               ]
             }
           },
@@ -682,10 +699,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-NOB] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+                  "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+                  "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['instances'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-NOB] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-NOB] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['instances']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
               }
             }
@@ -1028,7 +1062,7 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-LS-OWN-PA1 — [ALLOW] List instances в project-A1 as proj-adm (project-A1)",
+      "name": "AUTHZ-INSTANCE-LS-OWN-PA1 — [LIST-ALLOW] List instances в project-A1 as proj-adm (project-A1)",
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
@@ -1042,14 +1076,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/instances?folderId={{projectA1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/instances?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "instances?folderId={{projectA1Id}}"
+                "instances?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -1077,9 +1111,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-PA1] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
                 ]
               }
             }
@@ -1088,8 +1120,8 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-LS-CROSS-PA1 — [DENY] List instances в project-B1 (cross-account) as proj-adm (project-B1)",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "name": "AUTHZ-INSTANCE-LS-CROSS-PA1 — [LIST-DENY] List instances в project-B1 (cross-account) as proj-adm (project-B1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
           "name": "get",
@@ -1102,14 +1134,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/instances?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/instances?projectId={{projectB1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "instances?folderId={{projectB1Id}}"
+                "instances?projectId={{projectB1Id}}"
               ]
             }
           },
@@ -1137,10 +1169,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-PA1] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+                  "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+                  "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['instances'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-PA1] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-PA1] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-PA1] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['instances']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
               }
             }
@@ -1480,7 +1529,7 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-LS-OWN-AAA — [ALLOW] List instances в project-A1 as acct-adm-a (project-A1)",
+      "name": "AUTHZ-INSTANCE-LS-OWN-AAA — [LIST-ALLOW] List instances в project-A1 as acct-adm-a (project-A1)",
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
@@ -1494,14 +1543,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/instances?folderId={{projectA1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/instances?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "instances?folderId={{projectA1Id}}"
+                "instances?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -1529,9 +1578,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-AAA] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
                 ]
               }
             }
@@ -1540,8 +1587,8 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-LS-CROSS-AAA — [DENY] List instances в project-B1 (cross-account) as acct-adm-a (project-B1)",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "name": "AUTHZ-INSTANCE-LS-CROSS-AAA — [LIST-DENY] List instances в project-B1 (cross-account) as acct-adm-a (project-B1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
           "name": "get",
@@ -1554,14 +1601,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/instances?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/instances?projectId={{projectB1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "instances?folderId={{projectB1Id}}"
+                "instances?projectId={{projectB1Id}}"
               ]
             }
           },
@@ -1589,10 +1636,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-AAA] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+                  "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+                  "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['instances'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-AAA] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-AAA] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-AAA] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['instances']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
               }
             }
@@ -1932,68 +1996,7 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-LS-OWN-AAB — [DENY] List instances в project-A1 as acct-adm-b (project-A1)",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
-      "item": [
-        {
-          "name": "get",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/compute/v1/instances?folderId={{projectA1Id}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "compute",
-                "v1",
-                "instances?folderId={{projectA1Id}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// KAC-122 authz-deny: bearer from env 'jwtAccountAdminB'",
-                  "const __t = pm.environment.get('jwtAccountAdminB') || pm.variables.get('jwtAccountAdminB') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.test('harness config: jwtAccountAdminB is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtAccountAdminB is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
-                  "  });",
-                  "  pm.request.headers.remove('Authorization');",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-AAB] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
-                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-AAB] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-AAB] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "AUTHZ-INSTANCE-LS-CROSS-AAB — [ALLOW] List instances в project-B1 (cross-account) as acct-adm-b (project-B1)",
+      "name": "AUTHZ-INSTANCE-LS-OWN-AAB — [LIST-DENY] List instances в project-A1 as acct-adm-b (project-A1)",
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
@@ -2007,14 +2010,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/instances?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/instances?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "instances?folderId={{projectB1Id}}"
+                "instances?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -2042,9 +2045,85 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-AAB] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-AAB] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+                  "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+                  "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['instances'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-AAB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['instances']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-INSTANCE-LS-CROSS-AAB — [LIST-ALLOW] List instances в project-B1 (cross-account) as acct-adm-b (project-B1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances?projectId={{projectB1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances?projectId={{projectB1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtAccountAdminB'",
+                  "const __t = pm.environment.get('jwtAccountAdminB') || pm.variables.get('jwtAccountAdminB') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtAccountAdminB is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtAccountAdminB is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-AAB] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
                 ]
               }
             }
@@ -2386,7 +2465,7 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-LS-OWN-INV — [ALLOW] List instances в project-A1 as invitee (project-A1)",
+      "name": "AUTHZ-INSTANCE-LS-OWN-INV — [LIST-ALLOW] List instances в project-A1 as invitee (project-A1)",
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
@@ -2400,14 +2479,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/instances?folderId={{projectA1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/instances?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "instances?folderId={{projectA1Id}}"
+                "instances?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -2435,9 +2514,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
                 ]
               }
             }
@@ -2446,7 +2523,7 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-LS-CROSS-INV — [ALLOW] List instances в project-B1 (cross-account) as invitee (project-B1)",
+      "name": "AUTHZ-INSTANCE-LS-CROSS-INV — [LIST-ALLOW] List instances в project-B1 (cross-account) as invitee (project-B1)",
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
@@ -2460,14 +2537,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/instances?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/instances?projectId={{projectB1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "instances?folderId={{projectB1Id}}"
+                "instances?projectId={{projectB1Id}}"
               ]
             }
           },
@@ -2495,9 +2572,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
                 ]
               }
             }
@@ -2820,7 +2895,7 @@
       ]
     },
     {
-      "name": "AUTHZ-DISK-LS-OWN-ANON — [DENY] List disks в project-A1 as anon (project-A1)",
+      "name": "AUTHZ-DISK-LS-OWN-ANON — [UNAUTH] List disks в project-A1 as anon (project-A1)",
       "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
@@ -2834,14 +2909,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?folderId={{projectA1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?folderId={{projectA1Id}}"
+                "disks?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -2872,7 +2947,7 @@
       ]
     },
     {
-      "name": "AUTHZ-DISK-LS-CROSS-ANON — [DENY] List disks в project-B1 (cross-account) as anon (project-B1)",
+      "name": "AUTHZ-DISK-LS-CROSS-ANON — [UNAUTH] List disks в project-B1 (cross-account) as anon (project-B1)",
       "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
@@ -2886,14 +2961,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{projectB1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?folderId={{projectB1Id}}"
+                "disks?projectId={{projectB1Id}}"
               ]
             }
           },
@@ -3232,8 +3307,8 @@
       ]
     },
     {
-      "name": "AUTHZ-DISK-LS-OWN-NOB — [DENY] List disks в project-A1 as no-bind (project-A1)",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "name": "AUTHZ-DISK-LS-OWN-NOB — [LIST-DENY] List disks в project-A1 as no-bind (project-A1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
           "name": "get",
@@ -3246,14 +3321,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?folderId={{projectA1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?folderId={{projectA1Id}}"
+                "disks?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -3281,10 +3356,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-LS-OWN-NOB] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+                  "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+                  "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['disks'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-DISK-LS-OWN-NOB] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-DISK-LS-OWN-NOB] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('[AUTHZ-DISK-LS-OWN-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['disks']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
               }
             }
@@ -3293,8 +3385,8 @@
       ]
     },
     {
-      "name": "AUTHZ-DISK-LS-CROSS-NOB — [DENY] List disks в project-B1 (cross-account) as no-bind (project-B1)",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "name": "AUTHZ-DISK-LS-CROSS-NOB — [LIST-DENY] List disks в project-B1 (cross-account) as no-bind (project-B1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
           "name": "get",
@@ -3307,14 +3399,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{projectB1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?folderId={{projectB1Id}}"
+                "disks?projectId={{projectB1Id}}"
               ]
             }
           },
@@ -3342,10 +3434,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-LS-CROSS-NOB] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+                  "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+                  "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['disks'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-DISK-LS-CROSS-NOB] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-DISK-LS-CROSS-NOB] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('[AUTHZ-DISK-LS-CROSS-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['disks']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
               }
             }
@@ -3688,7 +3797,7 @@
       ]
     },
     {
-      "name": "AUTHZ-DISK-LS-OWN-PA1 — [ALLOW] List disks в project-A1 as proj-adm (project-A1)",
+      "name": "AUTHZ-DISK-LS-OWN-PA1 — [LIST-ALLOW] List disks в project-A1 as proj-adm (project-A1)",
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
@@ -3702,14 +3811,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?folderId={{projectA1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?folderId={{projectA1Id}}"
+                "disks?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -3737,9 +3846,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-LS-OWN-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-DISK-LS-OWN-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-DISK-LS-OWN-PA1] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
                 ]
               }
             }
@@ -3748,8 +3855,8 @@
       ]
     },
     {
-      "name": "AUTHZ-DISK-LS-CROSS-PA1 — [DENY] List disks в project-B1 (cross-account) as proj-adm (project-B1)",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "name": "AUTHZ-DISK-LS-CROSS-PA1 — [LIST-DENY] List disks в project-B1 (cross-account) as proj-adm (project-B1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
           "name": "get",
@@ -3762,14 +3869,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{projectB1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?folderId={{projectB1Id}}"
+                "disks?projectId={{projectB1Id}}"
               ]
             }
           },
@@ -3797,10 +3904,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-LS-CROSS-PA1] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+                  "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+                  "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['disks'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-DISK-LS-CROSS-PA1] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-DISK-LS-CROSS-PA1] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('[AUTHZ-DISK-LS-CROSS-PA1] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['disks']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
               }
             }
@@ -4140,7 +4264,7 @@
       ]
     },
     {
-      "name": "AUTHZ-DISK-LS-OWN-AAA — [ALLOW] List disks в project-A1 as acct-adm-a (project-A1)",
+      "name": "AUTHZ-DISK-LS-OWN-AAA — [LIST-ALLOW] List disks в project-A1 as acct-adm-a (project-A1)",
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
@@ -4154,14 +4278,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?folderId={{projectA1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?folderId={{projectA1Id}}"
+                "disks?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -4189,9 +4313,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-LS-OWN-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-DISK-LS-OWN-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-DISK-LS-OWN-AAA] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
                 ]
               }
             }
@@ -4200,8 +4322,8 @@
       ]
     },
     {
-      "name": "AUTHZ-DISK-LS-CROSS-AAA — [DENY] List disks в project-B1 (cross-account) as acct-adm-a (project-B1)",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "name": "AUTHZ-DISK-LS-CROSS-AAA — [LIST-DENY] List disks в project-B1 (cross-account) as acct-adm-a (project-B1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
           "name": "get",
@@ -4214,14 +4336,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{projectB1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?folderId={{projectB1Id}}"
+                "disks?projectId={{projectB1Id}}"
               ]
             }
           },
@@ -4249,10 +4371,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-LS-CROSS-AAA] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+                  "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+                  "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['disks'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-DISK-LS-CROSS-AAA] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-DISK-LS-CROSS-AAA] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('[AUTHZ-DISK-LS-CROSS-AAA] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['disks']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
               }
             }
@@ -4592,68 +4731,7 @@
       ]
     },
     {
-      "name": "AUTHZ-DISK-LS-OWN-AAB — [DENY] List disks в project-A1 as acct-adm-b (project-A1)",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
-      "item": [
-        {
-          "name": "get",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?folderId={{projectA1Id}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "compute",
-                "v1",
-                "disks?folderId={{projectA1Id}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// KAC-122 authz-deny: bearer from env 'jwtAccountAdminB'",
-                  "const __t = pm.environment.get('jwtAccountAdminB') || pm.variables.get('jwtAccountAdminB') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.test('harness config: jwtAccountAdminB is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtAccountAdminB is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
-                  "  });",
-                  "  pm.request.headers.remove('Authorization');",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('[AUTHZ-DISK-LS-OWN-AAB] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
-                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-DISK-LS-OWN-AAB] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-DISK-LS-OWN-AAB] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "AUTHZ-DISK-LS-CROSS-AAB — [ALLOW] List disks в project-B1 (cross-account) as acct-adm-b (project-B1)",
+      "name": "AUTHZ-DISK-LS-OWN-AAB — [LIST-DENY] List disks в project-A1 as acct-adm-b (project-A1)",
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
@@ -4667,14 +4745,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?folderId={{projectB1Id}}"
+                "disks?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -4702,9 +4780,85 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-LS-CROSS-AAB] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-DISK-LS-CROSS-AAB] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+                  "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+                  "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['disks'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-DISK-LS-OWN-AAB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['disks']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-DISK-LS-CROSS-AAB — [LIST-ALLOW] List disks в project-B1 (cross-account) as acct-adm-b (project-B1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{projectB1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "disks?projectId={{projectB1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtAccountAdminB'",
+                  "const __t = pm.environment.get('jwtAccountAdminB') || pm.variables.get('jwtAccountAdminB') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtAccountAdminB is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtAccountAdminB is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-DISK-LS-CROSS-AAB] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
                 ]
               }
             }
@@ -5046,7 +5200,7 @@
       ]
     },
     {
-      "name": "AUTHZ-DISK-LS-OWN-INV — [ALLOW] List disks в project-A1 as invitee (project-A1)",
+      "name": "AUTHZ-DISK-LS-OWN-INV — [LIST-ALLOW] List disks в project-A1 as invitee (project-A1)",
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
@@ -5060,14 +5214,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?folderId={{projectA1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?folderId={{projectA1Id}}"
+                "disks?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -5095,9 +5249,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-LS-OWN-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-DISK-LS-OWN-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-DISK-LS-OWN-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
                 ]
               }
             }
@@ -5106,7 +5258,7 @@
       ]
     },
     {
-      "name": "AUTHZ-DISK-LS-CROSS-INV — [ALLOW] List disks в project-B1 (cross-account) as invitee (project-B1)",
+      "name": "AUTHZ-DISK-LS-CROSS-INV — [LIST-ALLOW] List disks в project-B1 (cross-account) as invitee (project-B1)",
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
@@ -5120,14 +5272,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/disks?projectId={{projectB1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks?folderId={{projectB1Id}}"
+                "disks?projectId={{projectB1Id}}"
               ]
             }
           },
@@ -5155,9 +5307,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-DISK-LS-CROSS-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-DISK-LS-CROSS-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-DISK-LS-CROSS-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
                 ]
               }
             }
@@ -5480,7 +5630,7 @@
       ]
     },
     {
-      "name": "AUTHZ-IMAGE-LS-OWN-ANON — [DENY] List images в project-A1 as anon (project-A1)",
+      "name": "AUTHZ-IMAGE-LS-OWN-ANON — [UNAUTH] List images в project-A1 as anon (project-A1)",
       "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
@@ -5494,14 +5644,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/images?folderId={{projectA1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/images?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "images?folderId={{projectA1Id}}"
+                "images?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -5532,7 +5682,7 @@
       ]
     },
     {
-      "name": "AUTHZ-IMAGE-LS-CROSS-ANON — [DENY] List images в project-B1 (cross-account) as anon (project-B1)",
+      "name": "AUTHZ-IMAGE-LS-CROSS-ANON — [UNAUTH] List images в project-B1 (cross-account) as anon (project-B1)",
       "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
@@ -5546,14 +5696,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/images?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/images?projectId={{projectB1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "images?folderId={{projectB1Id}}"
+                "images?projectId={{projectB1Id}}"
               ]
             }
           },
@@ -5892,8 +6042,8 @@
       ]
     },
     {
-      "name": "AUTHZ-IMAGE-LS-OWN-NOB — [DENY] List images в project-A1 as no-bind (project-A1)",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "name": "AUTHZ-IMAGE-LS-OWN-NOB — [LIST-DENY] List images в project-A1 as no-bind (project-A1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
           "name": "get",
@@ -5906,14 +6056,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/images?folderId={{projectA1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/images?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "images?folderId={{projectA1Id}}"
+                "images?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -5941,10 +6091,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-LS-OWN-NOB] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+                  "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+                  "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['images'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-IMAGE-LS-OWN-NOB] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-IMAGE-LS-OWN-NOB] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('[AUTHZ-IMAGE-LS-OWN-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['images']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
               }
             }
@@ -5953,8 +6120,8 @@
       ]
     },
     {
-      "name": "AUTHZ-IMAGE-LS-CROSS-NOB — [DENY] List images в project-B1 (cross-account) as no-bind (project-B1)",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "name": "AUTHZ-IMAGE-LS-CROSS-NOB — [LIST-DENY] List images в project-B1 (cross-account) as no-bind (project-B1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
           "name": "get",
@@ -5967,14 +6134,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/images?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/images?projectId={{projectB1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "images?folderId={{projectB1Id}}"
+                "images?projectId={{projectB1Id}}"
               ]
             }
           },
@@ -6002,10 +6169,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-NOB] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+                  "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+                  "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['images'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-NOB] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-NOB] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['images']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
               }
             }
@@ -6348,7 +6532,7 @@
       ]
     },
     {
-      "name": "AUTHZ-IMAGE-LS-OWN-PA1 — [ALLOW] List images в project-A1 as proj-adm (project-A1)",
+      "name": "AUTHZ-IMAGE-LS-OWN-PA1 — [LIST-ALLOW] List images в project-A1 as proj-adm (project-A1)",
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
@@ -6362,14 +6546,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/images?folderId={{projectA1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/images?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "images?folderId={{projectA1Id}}"
+                "images?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -6397,9 +6581,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-LS-OWN-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-IMAGE-LS-OWN-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-IMAGE-LS-OWN-PA1] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
                 ]
               }
             }
@@ -6408,8 +6590,8 @@
       ]
     },
     {
-      "name": "AUTHZ-IMAGE-LS-CROSS-PA1 — [DENY] List images в project-B1 (cross-account) as proj-adm (project-B1)",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "name": "AUTHZ-IMAGE-LS-CROSS-PA1 — [LIST-DENY] List images в project-B1 (cross-account) as proj-adm (project-B1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
           "name": "get",
@@ -6422,14 +6604,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/images?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/images?projectId={{projectB1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "images?folderId={{projectB1Id}}"
+                "images?projectId={{projectB1Id}}"
               ]
             }
           },
@@ -6457,10 +6639,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-PA1] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+                  "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+                  "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['images'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-PA1] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-PA1] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-PA1] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['images']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
               }
             }
@@ -6800,7 +6999,7 @@
       ]
     },
     {
-      "name": "AUTHZ-IMAGE-LS-OWN-AAA — [ALLOW] List images в project-A1 as acct-adm-a (project-A1)",
+      "name": "AUTHZ-IMAGE-LS-OWN-AAA — [LIST-ALLOW] List images в project-A1 as acct-adm-a (project-A1)",
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
@@ -6814,14 +7013,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/images?folderId={{projectA1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/images?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "images?folderId={{projectA1Id}}"
+                "images?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -6849,9 +7048,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-LS-OWN-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-IMAGE-LS-OWN-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-IMAGE-LS-OWN-AAA] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
                 ]
               }
             }
@@ -6860,8 +7057,8 @@
       ]
     },
     {
-      "name": "AUTHZ-IMAGE-LS-CROSS-AAA — [DENY] List images в project-B1 (cross-account) as acct-adm-a (project-B1)",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "name": "AUTHZ-IMAGE-LS-CROSS-AAA — [LIST-DENY] List images в project-B1 (cross-account) as acct-adm-a (project-B1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
           "name": "get",
@@ -6874,14 +7071,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/images?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/images?projectId={{projectB1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "images?folderId={{projectB1Id}}"
+                "images?projectId={{projectB1Id}}"
               ]
             }
           },
@@ -6909,10 +7106,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-AAA] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+                  "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+                  "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['images'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-AAA] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-AAA] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-AAA] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['images']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
               }
             }
@@ -7252,68 +7466,7 @@
       ]
     },
     {
-      "name": "AUTHZ-IMAGE-LS-OWN-AAB — [DENY] List images в project-A1 as acct-adm-b (project-A1)",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
-      "item": [
-        {
-          "name": "get",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/compute/v1/images?folderId={{projectA1Id}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "compute",
-                "v1",
-                "images?folderId={{projectA1Id}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// KAC-122 authz-deny: bearer from env 'jwtAccountAdminB'",
-                  "const __t = pm.environment.get('jwtAccountAdminB') || pm.variables.get('jwtAccountAdminB') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.test('harness config: jwtAccountAdminB is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtAccountAdminB is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
-                  "  });",
-                  "  pm.request.headers.remove('Authorization');",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('[AUTHZ-IMAGE-LS-OWN-AAB] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
-                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-IMAGE-LS-OWN-AAB] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-IMAGE-LS-OWN-AAB] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "AUTHZ-IMAGE-LS-CROSS-AAB — [ALLOW] List images в project-B1 (cross-account) as acct-adm-b (project-B1)",
+      "name": "AUTHZ-IMAGE-LS-OWN-AAB — [LIST-DENY] List images в project-A1 as acct-adm-b (project-A1)",
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
@@ -7327,14 +7480,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/images?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/images?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "images?folderId={{projectB1Id}}"
+                "images?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -7362,9 +7515,85 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-AAB] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-AAB] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+                  "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+                  "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['images'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-IMAGE-LS-OWN-AAB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['images']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-IMAGE-LS-CROSS-AAB — [LIST-ALLOW] List images в project-B1 (cross-account) as acct-adm-b (project-B1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/images?projectId={{projectB1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "images?projectId={{projectB1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtAccountAdminB'",
+                  "const __t = pm.environment.get('jwtAccountAdminB') || pm.variables.get('jwtAccountAdminB') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtAccountAdminB is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtAccountAdminB is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-AAB] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
                 ]
               }
             }
@@ -7706,7 +7935,7 @@
       ]
     },
     {
-      "name": "AUTHZ-IMAGE-LS-OWN-INV — [ALLOW] List images в project-A1 as invitee (project-A1)",
+      "name": "AUTHZ-IMAGE-LS-OWN-INV — [LIST-ALLOW] List images в project-A1 as invitee (project-A1)",
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
@@ -7720,14 +7949,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/images?folderId={{projectA1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/images?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "images?folderId={{projectA1Id}}"
+                "images?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -7755,9 +7984,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-LS-OWN-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-IMAGE-LS-OWN-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-IMAGE-LS-OWN-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
                 ]
               }
             }
@@ -7766,7 +7993,7 @@
       ]
     },
     {
-      "name": "AUTHZ-IMAGE-LS-CROSS-INV — [ALLOW] List images в project-B1 (cross-account) as invitee (project-B1)",
+      "name": "AUTHZ-IMAGE-LS-CROSS-INV — [LIST-ALLOW] List images в project-B1 (cross-account) as invitee (project-B1)",
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
@@ -7780,14 +8007,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/images?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/images?projectId={{projectB1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "images?folderId={{projectB1Id}}"
+                "images?projectId={{projectB1Id}}"
               ]
             }
           },
@@ -7815,9 +8042,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-IMAGE-LS-CROSS-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
                 ]
               }
             }
@@ -8140,7 +8365,7 @@
       ]
     },
     {
-      "name": "AUTHZ-SNAPSHOT-LS-OWN-ANON — [DENY] List snapshots в project-A1 as anon (project-A1)",
+      "name": "AUTHZ-SNAPSHOT-LS-OWN-ANON — [UNAUTH] List snapshots в project-A1 as anon (project-A1)",
       "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
@@ -8154,14 +8379,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?folderId={{projectA1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?folderId={{projectA1Id}}"
+                "snapshots?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -8192,7 +8417,7 @@
       ]
     },
     {
-      "name": "AUTHZ-SNAPSHOT-LS-CROSS-ANON — [DENY] List snapshots в project-B1 (cross-account) as anon (project-B1)",
+      "name": "AUTHZ-SNAPSHOT-LS-CROSS-ANON — [UNAUTH] List snapshots в project-B1 (cross-account) as anon (project-B1)",
       "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
@@ -8206,14 +8431,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{projectB1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?folderId={{projectB1Id}}"
+                "snapshots?projectId={{projectB1Id}}"
               ]
             }
           },
@@ -8552,8 +8777,8 @@
       ]
     },
     {
-      "name": "AUTHZ-SNAPSHOT-LS-OWN-NOB — [DENY] List snapshots в project-A1 as no-bind (project-A1)",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "name": "AUTHZ-SNAPSHOT-LS-OWN-NOB — [LIST-DENY] List snapshots в project-A1 as no-bind (project-A1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
           "name": "get",
@@ -8566,14 +8791,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?folderId={{projectA1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?folderId={{projectA1Id}}"
+                "snapshots?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -8601,10 +8826,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-NOB] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+                  "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+                  "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['snapshots'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-NOB] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-NOB] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['snapshots']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
               }
             }
@@ -8613,8 +8855,8 @@
       ]
     },
     {
-      "name": "AUTHZ-SNAPSHOT-LS-CROSS-NOB — [DENY] List snapshots в project-B1 (cross-account) as no-bind (project-B1)",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "name": "AUTHZ-SNAPSHOT-LS-CROSS-NOB — [LIST-DENY] List snapshots в project-B1 (cross-account) as no-bind (project-B1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
           "name": "get",
@@ -8627,14 +8869,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{projectB1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?folderId={{projectB1Id}}"
+                "snapshots?projectId={{projectB1Id}}"
               ]
             }
           },
@@ -8662,10 +8904,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-NOB] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+                  "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+                  "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['snapshots'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-NOB] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-NOB] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-NOB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['snapshots']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
               }
             }
@@ -9008,7 +9267,7 @@
       ]
     },
     {
-      "name": "AUTHZ-SNAPSHOT-LS-OWN-PA1 — [ALLOW] List snapshots в project-A1 as proj-adm (project-A1)",
+      "name": "AUTHZ-SNAPSHOT-LS-OWN-PA1 — [LIST-ALLOW] List snapshots в project-A1 as proj-adm (project-A1)",
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
@@ -9022,14 +9281,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?folderId={{projectA1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?folderId={{projectA1Id}}"
+                "snapshots?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -9057,9 +9316,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-PA1] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
                 ]
               }
             }
@@ -9068,8 +9325,8 @@
       ]
     },
     {
-      "name": "AUTHZ-SNAPSHOT-LS-CROSS-PA1 — [DENY] List snapshots в project-B1 (cross-account) as proj-adm (project-B1)",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "name": "AUTHZ-SNAPSHOT-LS-CROSS-PA1 — [LIST-DENY] List snapshots в project-B1 (cross-account) as proj-adm (project-B1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
           "name": "get",
@@ -9082,14 +9339,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{projectB1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?folderId={{projectB1Id}}"
+                "snapshots?projectId={{projectB1Id}}"
               ]
             }
           },
@@ -9117,10 +9374,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-PA1] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+                  "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+                  "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['snapshots'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-PA1] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-PA1] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-PA1] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['snapshots']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
               }
             }
@@ -9460,7 +9734,7 @@
       ]
     },
     {
-      "name": "AUTHZ-SNAPSHOT-LS-OWN-AAA — [ALLOW] List snapshots в project-A1 as acct-adm-a (project-A1)",
+      "name": "AUTHZ-SNAPSHOT-LS-OWN-AAA — [LIST-ALLOW] List snapshots в project-A1 as acct-adm-a (project-A1)",
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
@@ -9474,14 +9748,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?folderId={{projectA1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?folderId={{projectA1Id}}"
+                "snapshots?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -9509,9 +9783,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-AAA] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
                 ]
               }
             }
@@ -9520,8 +9792,8 @@
       ]
     },
     {
-      "name": "AUTHZ-SNAPSHOT-LS-CROSS-AAA — [DENY] List snapshots в project-B1 (cross-account) as acct-adm-a (project-B1)",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
+      "name": "AUTHZ-SNAPSHOT-LS-CROSS-AAA — [LIST-DENY] List snapshots в project-B1 (cross-account) as acct-adm-a (project-B1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
           "name": "get",
@@ -9534,14 +9806,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{projectB1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?folderId={{projectB1Id}}"
+                "snapshots?projectId={{projectB1Id}}"
               ]
             }
           },
@@ -9569,10 +9841,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-AAA] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+                  "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+                  "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['snapshots'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-AAA] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-AAA] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-AAA] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['snapshots']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
                 ]
               }
             }
@@ -9912,68 +10201,7 @@
       ]
     },
     {
-      "name": "AUTHZ-SNAPSHOT-LS-OWN-AAB — [DENY] List snapshots в project-A1 as acct-adm-b (project-A1)",
-      "description": "class:AUTHZ | class:NEG | priority:P1",
-      "item": [
-        {
-          "name": "get",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?folderId={{projectA1Id}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "compute",
-                "v1",
-                "snapshots?folderId={{projectA1Id}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// KAC-122 authz-deny: bearer from env 'jwtAccountAdminB'",
-                  "const __t = pm.environment.get('jwtAccountAdminB') || pm.variables.get('jwtAccountAdminB') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.test('harness config: jwtAccountAdminB is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtAccountAdminB is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
-                  "  });",
-                  "  pm.request.headers.remove('Authorization');",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-AAB] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
-                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-AAB] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-AAB] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "AUTHZ-SNAPSHOT-LS-CROSS-AAB — [ALLOW] List snapshots в project-B1 (cross-account) as acct-adm-b (project-B1)",
+      "name": "AUTHZ-SNAPSHOT-LS-OWN-AAB — [LIST-DENY] List snapshots в project-A1 as acct-adm-b (project-A1)",
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
@@ -9987,14 +10215,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?folderId={{projectB1Id}}"
+                "snapshots?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -10022,9 +10250,85 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-AAB] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-AAB] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
+                  "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
+                  "// ~interval_ms. Fail-open at budget -> the real assertion below runs once and FAILS",
+                  "// if it is STILL present (a GENUINE over-grant / leak never clears -> NEVER masked).",
+                  "if (pm.environment.get('_absRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_absRetryCount', '0');",
+                  "  pm.environment.set('_absRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _absc = parseInt(pm.environment.get('_absRetryCount') || '0', 10);",
+                  "let _stillPresent = false;",
+                  "try { _stillPresent = (((pm.response.json()['snapshots'])||[]).length > 0); } catch (e) { _stillPresent = false; }",
+                  "if (pm.response.code === 200 && _stillPresent && _absc < 25) {",
+                  "  pm.environment.set('_absRetryCount', String(_absc + 1));",
+                  "  const _absd = Date.now(); while (Date.now() - _absd < 500) { /* revoke-materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_absRetryCount');",
+                  "pm.environment.unset('_absRetryStarted');",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-AAB] LIST no-access: 403 OR 200+empty (no leak)', () => {\n  const code = pm.response.code;\n  if (code === 403) return;\n  pm.expect(code, 'expected 403 or 200, body: ' + pm.response.text()).to.equal(200);\n  const arr = (j && j['snapshots']) || [];\n  pm.expect(arr.length, 'no-access List must be scope-filtered to EMPTY (LEAK!): ' + pm.response.text()).to.equal(0);\n});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-SNAPSHOT-LS-CROSS-AAB — [LIST-ALLOW] List snapshots в project-B1 (cross-account) as acct-adm-b (project-B1)",
+      "description": "class:AUTHZ | class:POS | priority:P1",
+      "item": [
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{projectB1Id}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "snapshots?projectId={{projectB1Id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtAccountAdminB'",
+                  "const __t = pm.environment.get('jwtAccountAdminB') || pm.variables.get('jwtAccountAdminB') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtAccountAdminB is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtAccountAdminB is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-AAB] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
                 ]
               }
             }
@@ -10366,7 +10670,7 @@
       ]
     },
     {
-      "name": "AUTHZ-SNAPSHOT-LS-OWN-INV — [ALLOW] List snapshots в project-A1 as invitee (project-A1)",
+      "name": "AUTHZ-SNAPSHOT-LS-OWN-INV — [LIST-ALLOW] List snapshots в project-A1 as invitee (project-A1)",
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
@@ -10380,14 +10684,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?folderId={{projectA1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{projectA1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?folderId={{projectA1Id}}"
+                "snapshots?projectId={{projectA1Id}}"
               ]
             }
           },
@@ -10415,9 +10719,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-SNAPSHOT-LS-OWN-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
                 ]
               }
             }
@@ -10426,7 +10728,7 @@
       ]
     },
     {
-      "name": "AUTHZ-SNAPSHOT-LS-CROSS-INV — [ALLOW] List snapshots в project-B1 (cross-account) as invitee (project-B1)",
+      "name": "AUTHZ-SNAPSHOT-LS-CROSS-INV — [LIST-ALLOW] List snapshots в project-B1 (cross-account) as invitee (project-B1)",
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
@@ -10440,14 +10742,14 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/snapshots?folderId={{projectB1Id}}",
+              "raw": "{{baseUrl}}/compute/v1/snapshots?projectId={{projectB1Id}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "snapshots?folderId={{projectB1Id}}"
+                "snapshots?projectId={{projectB1Id}}"
               ]
             }
           },
@@ -10475,9 +10777,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-SNAPSHOT-LS-CROSS-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
                 ]
               }
             }

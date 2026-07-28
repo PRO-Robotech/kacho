@@ -148,11 +148,11 @@ type Maintenance struct {
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// Full path to the resource affected by maintenance,
 	// represented as a hierarchy from specific resource to top-level container.
-	// Example for a Compute instance with ID "I" in folder "F" and cloud "C":
+	// Example for a Compute instance with ID "I" in project "P" and account "A":
 	// resource_path = [
 	// { "compute.instance", "I" },
-	// { "resource-manager.folder", "F" },
-	// { "resource-manager.cloud", "C" }
+	// { "iam.project", "P" },
+	// { "iam.account", "A" }
 	// ]
 	ResourcePath []*Maintenance_Resource `protobuf:"bytes,2,rep,name=resource_path,json=resourcePath,proto3" json:"resource_path,omitempty"`
 	// Describes action to be performed.
@@ -302,7 +302,8 @@ func (x *Maintenance) GetUserControllable() bool {
 	return false
 }
 
-// ListMaintenancesRequest allows listing maintenances by cloud ID, folder ID, resource type or resource ID.
+// ListMaintenancesRequest allows listing maintenances by container or by
+// resource.
 type ListMaintenancesRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Container specifies the resources for which to list maintenances. (Required)
@@ -310,7 +311,6 @@ type ListMaintenancesRequest struct {
 	// Types that are valid to be assigned to Container:
 	//
 	//	*ListMaintenancesRequest_CloudId
-	//	*ListMaintenancesRequest_FolderId
 	//	*ListMaintenancesRequest_ResourceId
 	Container isListMaintenancesRequest_Container `protobuf_oneof:"container"`
 	// The maximum number of maintenances to return per response.
@@ -374,15 +374,6 @@ func (x *ListMaintenancesRequest) GetCloudId() string {
 	return ""
 }
 
-func (x *ListMaintenancesRequest) GetFolderId() string {
-	if x != nil {
-		if x, ok := x.Container.(*ListMaintenancesRequest_FolderId); ok {
-			return x.FolderId
-		}
-	}
-	return ""
-}
-
 func (x *ListMaintenancesRequest) GetResourceId() string {
 	if x != nil {
 		if x, ok := x.Container.(*ListMaintenancesRequest_ResourceId); ok {
@@ -429,19 +420,12 @@ type ListMaintenancesRequest_CloudId struct {
 	CloudId string `protobuf:"bytes,1,opt,name=cloud_id,json=cloudId,proto3,oneof"`
 }
 
-type ListMaintenancesRequest_FolderId struct {
-	// Folder ID for the resources.
-	FolderId string `protobuf:"bytes,2,opt,name=folder_id,json=folderId,proto3,oneof"`
-}
-
 type ListMaintenancesRequest_ResourceId struct {
 	// Resource ID of the target resource.
 	ResourceId string `protobuf:"bytes,3,opt,name=resource_id,json=resourceId,proto3,oneof"`
 }
 
 func (*ListMaintenancesRequest_CloudId) isListMaintenancesRequest_Container() {}
-
-func (*ListMaintenancesRequest_FolderId) isListMaintenancesRequest_Container() {}
 
 func (*ListMaintenancesRequest_ResourceId) isListMaintenancesRequest_Container() {}
 
@@ -615,7 +599,7 @@ type Maintenance_Resource struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the resource
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// The type of the resource, e.g. resource-manager.cloud, resource-manager.folder, compute.instance, etc.
+	// The type of the resource, e.g. iam.account, iam.project, compute.instance, etc.
 	Type          string `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -752,10 +736,9 @@ const file_kacho_cloud_maintenance_v2_common_proto_rawDesc = "" +
 	"\tSCHEDULED\x10\x01\x12\v\n" +
 	"\aRUNNING\x10\x02\x12\r\n" +
 	"\tSUCCEEDED\x10\x03\x12\r\n" +
-	"\tCANCELLED\x10\x04\"\xbf\x02\n" +
+	"\tCANCELLED\x10\x04\"\xa7\x02\n" +
 	"\x17ListMaintenancesRequest\x12%\n" +
-	"\bcloud_id\x18\x01 \x01(\tB\b\x8a\xc81\x04<=50H\x00R\acloudId\x12'\n" +
-	"\tfolder_id\x18\x02 \x01(\tB\b\x8a\xc81\x04<=50H\x00R\bfolderId\x12+\n" +
+	"\bcloud_id\x18\x01 \x01(\tB\b\x8a\xc81\x04<=50H\x00R\acloudId\x12+\n" +
 	"\vresource_id\x18\x03 \x01(\tB\b\x8a\xc81\x04<=50H\x00R\n" +
 	"resourceId\x12'\n" +
 	"\tpage_size\x18\x04 \x01(\x03B\n" +
@@ -764,7 +747,7 @@ const file_kacho_cloud_maintenance_v2_common_proto_rawDesc = "" +
 	"page_token\x18\x05 \x01(\tB\t\x8a\xc81\x05<=500R\tpageToken\x12$\n" +
 	"\border_by\x18\x06 \x01(\tB\t\x8a\xc81\x05<=100R\aorderBy\x12!\n" +
 	"\x06filter\x18\a \x01(\tB\t\x8a\xc81\x05<=300R\x06filterB\v\n" +
-	"\tcontainer\"\x8f\x01\n" +
+	"\tcontainerJ\x04\b\x02\x10\x03R\tfolder_id\"\x8f\x01\n" +
 	"\x18ListMaintenancesResponse\x12K\n" +
 	"\fmaintenances\x18\x01 \x03(\v2'.kacho.cloud.maintenance.v2.MaintenanceR\fmaintenances\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\"L\n" +
@@ -834,7 +817,6 @@ func file_kacho_cloud_maintenance_v2_common_proto_init() {
 	}
 	file_kacho_cloud_maintenance_v2_common_proto_msgTypes[1].OneofWrappers = []any{
 		(*ListMaintenancesRequest_CloudId)(nil),
-		(*ListMaintenancesRequest_FolderId)(nil),
 		(*ListMaintenancesRequest_ResourceId)(nil),
 	}
 	type x struct{}

@@ -27,7 +27,7 @@ Operation metadata/response (из `(kacho.cloud.api.operation)` options).
 | RPC | REST | sync/async | metadata / response | статус |
 |---|---|---|---|---|
 | `Get` | `GET /compute/v1/disks/{disk_id}` | sync | → `Disk` | ✅ |
-| `List` | `GET /compute/v1/disks?folderId=&pageSize=&pageToken=&filter=` | sync | → `ListDisksResponse` | ✅ |
+| `List` | `GET /compute/v1/disks?projectId=&pageSize=&pageToken=&filter=` | sync | → `ListDisksResponse` | ✅ |
 | `Create` | `POST /compute/v1/disks` body `*` | async | `CreateDiskMetadata{disk_id}` / `Disk` | ✅ (`kms_key_id`→`blocked:kacho-kms`, `snapshot_schedule_ids`→`blocked:kacho-snapshot-schedule`) |
 | `Update` | `PATCH /compute/v1/disks/{disk_id}` body `*` | async | `UpdateDiskMetadata` / `Disk` | ✅ |
 | `Delete` | `DELETE /compute/v1/disks/{disk_id}` | async | `DeleteDiskMetadata` / `google.protobuf.Empty` | ✅ |
@@ -42,8 +42,8 @@ Operation metadata/response (из `(kacho.cloud.api.operation)` options).
 | RPC | REST | sync/async | metadata / response | статус |
 |---|---|---|---|---|
 | `Get` | `GET /compute/v1/images/{image_id}` | sync | → `Image` | ✅ |
-| `GetLatestByFamily` | `GET /compute/v1/images:latestByFamily?folderId=&family=` | sync | → `Image` | ✅ |
-| `List` | `GET /compute/v1/images?folderId=&...` | sync | → `ListImagesResponse` | ✅ |
+| `GetLatestByFamily` | `GET /compute/v1/images:latestByFamily?projectId=&family=` | sync | → `Image` | ✅ |
+| `List` | `GET /compute/v1/images?projectId=&...` | sync | → `ListImagesResponse` | ✅ |
 | `Create` | `POST /compute/v1/images` body `*` | async | `CreateImageMetadata{image_id}` / `Image` | ✅ (`source` oneof: image_id/disk_id/snapshot_id/uri; `os_product_ids`→`blocked:kacho-marketplace`) |
 | `Update` | `PATCH /compute/v1/images/{image_id}` body `*` | async | `UpdateImageMetadata` / `Image` | ✅ |
 | `Delete` | `DELETE /compute/v1/images/{image_id}` | async | `DeleteImageMetadata` / `google.protobuf.Empty` | ✅ |
@@ -55,7 +55,7 @@ Operation metadata/response (из `(kacho.cloud.api.operation)` options).
 | RPC | REST | sync/async | metadata / response | статус |
 |---|---|---|---|---|
 | `Get` | `GET /compute/v1/snapshots/{snapshot_id}` | sync | → `Snapshot` | ✅ |
-| `List` | `GET /compute/v1/snapshots?folderId=&...` | sync | → `ListSnapshotsResponse` | ✅ |
+| `List` | `GET /compute/v1/snapshots?projectId=&...` | sync | → `ListSnapshotsResponse` | ✅ |
 | `Create` | `POST /compute/v1/snapshots` body `*` | async | `CreateSnapshotMetadata{snapshot_id, disk_id}` / `Snapshot` | ✅ (требует `disk_id`, disk READY) |
 | `Update` | `PATCH /compute/v1/snapshots/{snapshot_id}` body `*` | async | `UpdateSnapshotMetadata` / `Snapshot` | ✅ |
 | `Delete` | `DELETE /compute/v1/snapshots/{snapshot_id}` | async | `DeleteSnapshotMetadata` / `google.protobuf.Empty` | ✅ |
@@ -67,7 +67,7 @@ Operation metadata/response (из `(kacho.cloud.api.operation)` options).
 | RPC | REST | sync/async | metadata / response | статус |
 |---|---|---|---|---|
 | `Get` | `GET /compute/v1/instances/{instance_id}?view=` | sync | → `Instance` (FULL включает metadata) | ✅ |
-| `List` | `GET /compute/v1/instances?folderId=&...` | sync | → `ListInstancesResponse` (metadata всегда омитится) | ✅ |
+| `List` | `GET /compute/v1/instances?projectId=&...` | sync | → `ListInstancesResponse` (metadata всегда омитится) | ✅ |
 | `Create` | `POST /compute/v1/instances` body `*` | async | `CreateInstanceMetadata{instance_id}` / `Instance` | ✅ (`filesystem_specs[]`→`blocked:kacho-filesystem`. ⚠️ **без авто-NIC** — auto-NIC материализация `materializeNICs` удалена в `KAC-266`; инстанс создаётся без сетевых интерфейсов, NIC не создаётся/привязывается на Create; правильная сетевая модель — будущая переделка) |
 | `Update` | `PATCH /compute/v1/instances/{instance_id}` body `*` | async | `UpdateInstanceMetadata` / `Instance` | ✅ (`resources_spec`/`platform_id` требуют STOPPED) |
 | `Delete` | `DELETE /compute/v1/instances/{instance_id}` | async | `DeleteInstanceMetadata` / `google.protobuf.Empty` | ✅ (для каждого NIC с непустым `nic_id` — delete kacho-vpc `NetworkInterface`) |

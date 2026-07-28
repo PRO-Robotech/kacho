@@ -7,8 +7,8 @@ import http from 'k6/http';
 import { check } from 'k6';
 
 export const BASE_URL = __ENV.BASE_URL || 'http://localhost:18080';
-export const FOLDER_ID = __ENV.FOLDER_ID || 'b1gc03zgwksmpe92fd5t';
-export const FOLDER_CROSS_ID = __ENV.FOLDER_CROSS_ID || 'b1gv69v0n72te62797mp';
+export const PROJECT_ID = __ENV.PROJECT_ID || 'b1gc03zgwksmpe92fd5t';
+export const PROJECT_CROSS_ID = __ENV.PROJECT_CROSS_ID || 'b1gv69v0n72te62797mp';
 export const ZONE_ID = __ENV.ZONE_ID || 'zone-a';
 export const ZONE_ALT_ID = __ENV.ZONE_ALT_ID || 'zone-b';
 
@@ -16,7 +16,7 @@ const ACTOR = __ENV.ACTOR || 'load-test@kacho';
 const HEADERS = {
   'Content-Type': 'application/json',
   'x-kacho-actor': ACTOR,
-  'x-kacho-folder-id': FOLDER_ID,
+  'x-kacho-project-id': PROJECT_ID,
 };
 
 export function uid(prefix = 'lt') {

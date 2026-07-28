@@ -80,7 +80,7 @@ func TestProjectClient_Exists_NotFound(t *testing.T) {
 // project id, e.g. wrong prefix) → (false, nil), NOT an error. A non-resolvable peer
 // ref (absent OR malformed) is exists=false → checkProject NotFound "Project <id> not found";
 // it must NOT map to Unavailable (which falsely says "retry later" for a bad input).
-// Regression for DISK-CR-NEG-FOLDER-NOTFOUND (garbageRmId=b1g... → was code 14). Parity
+// Regression for DISK-CR-NEG-PROJECT-NOTFOUND (garbageRmId=b1g... → was code 14). Parity
 // with vpc ProjectClient.Exists.
 func TestProjectClient_Exists_MalformedInvalidArgument(t *testing.T) {
 	fake := &fakeProjectServiceClient{getFn: func(_ context.Context, _ *iamv1.GetProjectRequest) (*iamv1.Project, error) {

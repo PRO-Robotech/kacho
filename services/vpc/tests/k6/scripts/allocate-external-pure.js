@@ -13,11 +13,12 @@
 //   psql -c "DELETE FROM addresses WHERE name LIKE 'adrx-%';
 //            DELETE FROM operations WHERE description LIKE 'Create address adrx-%';"
 //
-// Замечание: каждый allocate в worker'е делает FolderClient.GetCloudID (gRPC,
-// не кешируется) → ceiling ≈ ~3000/sec на 1 pod (ниже, чем у Network.Create).
+// Замечание: каждый allocate в worker'е резолвит владельца-проект через
+// kacho-iam (gRPC, не кешируется) → ceiling ≈ ~3000/sec на 1 pod (ниже, чем у
+// Network.Create).
 
 import { Counter } from 'k6/metrics';
-import { FOLDER_ID, post, uid, expect200 } from './lib/client.js';
+import { PROJECT_ID, post, uid, expect200 } from './lib/client.js';
 
 const ZONE = __ENV.ALLOC_ZONE_ID || 'zone-d';
 
@@ -48,7 +49,7 @@ const allocated = new Counter('external_ips_allocated');
 
 export default function () {
   const res = post('/vpc/v1/addresses', {
-    folderId: FOLDER_ID,
+    projectId: PROJECT_ID,
     name: uid('adrx'),
     externalIpv4AddressSpec: { zoneId: ZONE },
   });

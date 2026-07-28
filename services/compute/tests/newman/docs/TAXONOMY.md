@@ -28,7 +28,7 @@
 | `CONC` | Concurrency invariants (parallel Create same name → ALREADY_EXISTS) | Stress + invariant |
 | `CONF` | Verbatim YC parity: id-prefix (`epd`/`fd8`), created_at до секунд, error text, Operation.response shape, BASIC-view metadata omission | §4.3 Conformance / approval |
 | `STATE` | State transition / immutable fields / Instance state-машина (Start/Stop/Restart preconditions, AttachDisk/DetachDisk/NAT) | §3.4 State transition testing |
-| `AUTHZ` | Cross-tenant / folder isolation; sync-NF на mutate несуществующего | Permission matrix |
+| `AUTHZ` | Cross-tenant / project isolation; sync-NF на mutate несуществующего | Permission matrix |
 | `PAGE` | Pagination boundary + token roundtrip | §3.2 BVA + §3.10 property |
 | `FILTER` | Filter syntax + supported fields | §3.1 ECP по filter expression |
 | `SEC` | Security probes: SQL/cmd/XSS/path-traversal в name/filter → не 500, без pgx/stack leak | §4.10 Security |
@@ -38,13 +38,13 @@
 | Метод RPC | Обязательные классы | Доп. |
 |---|---|---|
 | `Get<Resource>` | NEG (NotFound), CONF (NF-text) | — |
-| `List<Resource>s` | CRUD, VAL (folder req для folder-scoped), PAGE (4 BVA + token), FILTER | — |
+| `List<Resource>s` | CRUD, VAL (project req для project-scoped), PAGE (4 BVA + token), FILTER | — |
 | `Create<Resource>` | CRUD, VAL (all required + format), NEG (parent NotFound, dup name), CONC | BVA (size, name len, labels), IDM, SEC |
 | `Update<Resource>` | CRUD (mutable fields), VAL (mask unknown), STATE (immutable fields reject; full-PATCH silent ignore), NEG (sync-NF) | — |
 | `Delete<Resource>` | CRUD, NEG (sync-NF), CONF (response=Empty) | STATE (Disk.Delete-while-attached) |
 | `Move<Resource>` | CRUD-OK, NEG (dest-NF, sync-NF), VAL (no-dest) | — |
 | `Disk.Relocate` | CRUD-OK, NEG (dest-zone-unknown / in-use) | STATE |
-| `Image.GetLatestByFamily` | CRUD-OK (newest wins), NEG (family-NF), VAL (folder req) | — |
+| `Image.GetLatestByFamily` | CRUD-OK (newest wins), NEG (family-NF), VAL (project req) | — |
 | `Instance.Start/Stop/Restart` | STATE (precondition: Start←STOPPED, Stop/Restart←RUNNING), CRUD-OK happy, NEG (sync-NF) | — |
 | `Instance.Update {resources_spec/platform_id}` | STATE (требует STOPPED → FailedPrecondition; после Stop → OK) | — |
 | `Instance.AttachDisk` | CRUD-OK, NEG (wrong-zone, already-attached, not-READY) | — |
@@ -84,14 +84,14 @@
 ## Cross-service зависимости
 
 - **Instance** NIC.subnet_id / security_group_ids → `kacho-vpc` (нужен поднятый kacho-vpc + seeded subnet/SG в e2e-стенде; кейсы помечены `# requires kacho-vpc subnet {{existingSubnetId}}`).
-- **все Create/Move** project_id → `kacho-iam` (`ProjectService.Get`; NEG-FOLDER-NOTFOUND-кейсы; project_id хранится в legacy-именованной колонке `folder_id`).
-- При `KACHO_COMPUTE_SKIP_PEER_VALIDATION=true` (test-config без поднятого VPC/iam) cross-service existence-checks становятся no-op → кейсы `*-NEG-SUBNET-NOTFOUND` / `*-NEG-FOLDER-NOTFOUND` / `OP-GET-CRUD-FAILED-OP` не сработают — помечены `# requires peer-validation enabled`.
+- **все Create/Move** project_id → `kacho-iam` (`ProjectService.Get`; NEG-PROJECT-NOTFOUND-кейсы; хранится в колонке `project_id`).
+- При `KACHO_COMPUTE_SKIP_PEER_VALIDATION=true` (test-config без поднятого VPC/iam) cross-service existence-checks становятся no-op → кейсы `*-NEG-SUBNET-NOTFOUND` / `*-NEG-PROJECT-NOTFOUND` / `OP-GET-CRUD-FAILED-OP` не сработают — помечены `# requires peer-validation enabled`.
 
 ## Test data lifecycle
 
 | Уровень | Подход |
 |---|---|
 | Per-run | `runId` = `r` + base36(Date.now()) + base36(random), 11 chars (начинается с буквы → проходит compute name regex) |
-| Per-suite | `_suiteFolderId` / `_suiteFolderCrossId` из env (pre-allocated в стенде) |
-| Per-case | Folder cleanup полагается на `Delete<Resource>` в кейсе; `run-incremental.js` делает periodic + final cleanup тест-папок (FK-safe порядок: instances → snapshots → images → disks) |
+| Per-suite | `_suiteProjectId` / `_suiteProjectCrossId` из env (pre-allocated в стенде) |
+| Per-case | Cleanup проектов полагается на `Delete<Resource>` в кейсе; `run-incremental.js` делает periodic + final cleanup тест-папок (FK-safe порядок: instances → snapshots → images → disks) |
 | Read-only фикстуры | `existingZoneId`/`existingZoneAltId`/`existingDiskTypeId`/`existingPlatformId`/`existingNetworkId`/`existingSubnetId`/`existingSgId` — НЕ трогаются |

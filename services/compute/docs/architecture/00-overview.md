@@ -20,7 +20,7 @@ texts, status codes, timestamp precision, regex'ы, behavioural semantics.
                   ┌───────────────────────────────────────────────┐
                   │                kacho-compute                  │
                   │                                               │
-     public  ──►  │   verbatim-YC API (folder-scoped)             │
+     public  ──►  │   verbatim-YC API (project-scoped)             │
                   │   ├─ Instance (ВМ; state-машина статуса)       │
                   │   ├─ Disk (тома; type → DiskType)              │
                   │   ├─ Image (образы; family / GetLatestByFamily)│
@@ -59,7 +59,7 @@ RemoveOneToOneNat / UpdateNetworkInterface / AttachNetworkInterface /
 DetachNetworkInterface / UpdateMetadata / GetSerialPortOutput +
 access-bindings. **Cross-service refs** валидируются через peer-сервисы (VPC:
 `subnet_id` / `security_group_id` / NAT `address`; kacho-iam:
-`folder_id` — legacy-имя колонки-владельца, проверяется как Project через
+`project_id` — колонка-владелец, проверяется как Project через
 `ProjectService.Get`). ⚠️ **`Instance.Create` создаётся без авто-NIC** — auto-NIC
 материализация (`materializeNICs`) удалена в `KAC-266`: инстанс создаётся без
 сетевых интерфейсов, NIC больше не создаётся/привязывается на Create; правильная
@@ -228,10 +228,10 @@ Instance, те же precondition-ошибки. Осознанные текущи
 
 ## Что НЕ owns kacho-compute
 
-- Account/Project — это `kacho-iam` (Org/Cloud/Folder из `kacho-resource-manager`
+- Account/Project — это `kacho-iam` (Org/Cloud/Folder из retired resource-manager
   упразднены в KAC-124). Compute только проверяет существование владельца-проекта
-  через `projectClient` (`ProjectService.Get`); колонка-владелец в схеме хранит
-  его id под legacy-именем `folder_id`.
+  через `projectClient` (`ProjectService.Get`); колонка-владелец в схеме —
+  `project_id`.
 - Network/Subnet/SecurityGroup/Address/**NetworkInterface** — это `kacho-vpc`.
   Compute создаёт/attach'ит kacho-vpc `NetworkInterface` для Instance-NIC'ов и
   валидирует ссылки через `vpcClient` (не FK); `nic_id` бэкующего NIC хранится в

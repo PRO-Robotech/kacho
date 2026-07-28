@@ -13,14 +13,14 @@ data:
     import { Trend, Counter, Rate } from 'k6/metrics';
 
     const BASE_URL = __ENV.BASE_URL || 'http://api-gateway.kacho.svc.cluster.local:8080';
-    const FOLDER_ID = __ENV.FOLDER_ID;
+    const PROJECT_ID = __ENV.PROJECT_ID;
     const TARGET_RPS = parseInt(__ENV.TARGET_RPS || '10000', 10);
     const TEST_DURATION = __ENV.TEST_DURATION || '5m';
 
     const HEADERS = {
       'Content-Type': 'application/json',
       'x-kacho-actor': 'lt-allocate@kacho',
-      'x-kacho-folder-id': FOLDER_ID,
+      'x-kacho-project-id': PROJECT_ID,
     };
 
     export const options = {
@@ -66,7 +66,7 @@ data:
       const r = http.post(
         `${BASE_URL}/vpc/v1/addresses`,
         JSON.stringify({
-          folderId: FOLDER_ID,
+          projectId: PROJECT_ID,
           name: uid('addr'),
           externalIpv4AddressSpec: {},
         }),
@@ -108,7 +108,7 @@ spec:
           env:
             - name: BASE_URL
               value: "http://api-gateway.kacho.svc.cluster.local:8080"
-            - name: FOLDER_ID
+            - name: PROJECT_ID
               value: "b1gf63pakyt2tb1qjd6v"
             - name: TARGET_RPS
               value: "10000"

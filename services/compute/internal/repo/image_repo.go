@@ -42,17 +42,17 @@ func (r *ImageRepo) Get(ctx context.Context, id string) (*domain.Image, error) {
 	return i, nil
 }
 
-// GetLatestByFamily возвращает образ с max created_at в family внутри folder.
-func (r *ImageRepo) GetLatestByFamily(ctx context.Context, folderID, family string) (*domain.Image, error) {
+// GetLatestByFamily возвращает образ с max created_at в family внутри проекта.
+func (r *ImageRepo) GetLatestByFamily(ctx context.Context, projectID, family string) (*domain.Image, error) {
 	q := fmt.Sprintf(`SELECT %s FROM images WHERE project_id = $1 AND family = $2 ORDER BY created_at DESC, id DESC LIMIT 1`, imageCols)
-	i, err := scanImage(r.pool.QueryRow(ctx, q, folderID, family))
+	i, err := scanImage(r.pool.QueryRow(ctx, q, projectID, family))
 	if err != nil {
 		return nil, wrapPgErr(err, "Image", family)
 	}
 	return i, nil
 }
 
-// List возвращает образы по folder с cursor-pagination.
+// List возвращает образы по проекту с cursor-pagination.
 func (r *ImageRepo) List(ctx context.Context, f ports.ImageFilter, p ports.Pagination) ([]*domain.Image, string, error) {
 	pageSize, err := validate.PageSize("page_size", p.PageSize)
 	if err != nil {

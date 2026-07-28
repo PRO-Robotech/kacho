@@ -13,7 +13,7 @@ YC Compute API, чтобы заменить плейсхолдеры `# probe-ne
 |---|---|---|---|---|
 | PROBE-01 | Текст `NotFound` для Disk/Image/Snapshot/Instance/DiskType/Zone Get garbage id | `*-GET-CONF-NF-TEXT`, `DT/ZONE-GET-CONF-NF-TEXT` | substr `"not found"` | точная формулировка `^<Resource> <id> not found$` (как у kacho-vpc) → regex-assert |
 | PROBE-02 | Текст `NotFound` для Operation Get garbage epd-id | `OP-GET-CONF-NF-TEXT` | substr `"not found"` | `^Operation <id> not found$` или verbatim YC |
-| PROBE-03 | Текст `ALREADY_EXISTS` для duplicate `(folder, name)` | `*-CR-NEG-DUP-NAME` | только code 6 | verbatim YC text → assert |
+| PROBE-03 | Текст `ALREADY_EXISTS` для duplicate `(project, name)` | `*-CR-NEG-DUP-NAME` | только code 6 | verbatim YC text → assert |
 | PROBE-04 | Текст `InvalidArgument` для unknown disk type_id (и: NotFound vs InvalidArgument?) | `DISK-CR-NEG-TYPE-UNKNOWN` | code 5, substr `"disk type"` | точный code + text |
 | PROBE-05 | unknown zone_id в Disk.Create / Disk.Relocate: `InvalidArgument` (наш паритет VPC) vs `NotFound "Zone ... not found"` (YC?) | `DISK-CR-NEG-ZONE-UNKNOWN`, `DISK-REL-NEG-DEST-ZONE-UNKNOWN` | allow code 3\|5 | зафиксировать YC-поведение → single code |
 | PROBE-06 | Текст `InvalidArgument` для Disk.Update size-decrease | `DISK-UPD-SIZE-DECREASE-REJECT` | code 3 | `"Disk size can only be increased"` или verbatim YC |
@@ -37,7 +37,7 @@ YC Compute API, чтобы заменить плейсхолдеры `# probe-ne
 | # | Запрос | Зачем |
 |---|---|---|
 | TEST-01 | e2e-seed в `kacho-deploy` должен создавать (или env должен документировать) реальные `existingNetworkId`/`existingSubnetId`/`existingSgId` в той же зоне что `existingZoneId` (ru-central1-a) | без них Instance CRUD-кейсы краснеют (нет subnet → NIC-валидация fail) |
-| TEST-02 | Документировать в e2e-config: `KACHO_COMPUTE_SKIP_PEER_VALIDATION` (true в test-стенде без VPC/RM?) | от этого зависит, сработают ли `*-NEG-SUBNET-NOTFOUND` / `*-NEG-FOLDER-NOTFOUND` / `OP-GET-CRUD-FAILED-OP` |
+| TEST-02 | Документировать в e2e-config: `KACHO_COMPUTE_SKIP_PEER_VALIDATION` (true в test-стенде без VPC/RM?) | от этого зависит, сработают ли `*-NEG-SUBNET-NOTFOUND` / `*-NEG-PROJECT-NOTFOUND` / `OP-GET-CRUD-FAILED-OP` |
 | TEST-03 | `existingPlatformId=standard-v3` должен быть в seeded таблице платформ (`internal/service/platforms.go`); если другой набор — поправить env | Instance.Create требует валидный platform_id + соответствующий cores-set |
 | TEST-04 | `existingDiskTypeId=network-ssd` присутствует в seed (✓ — `0001_initial.sql`); проверить что доступен в `existingZoneId` | Disk/Instance boot-disk создаются с этим типом |
 | TEST-05 | Желательно: api-gateway должен резолвить `compute` backend (сейчас на :18080 — 503 "name resolver error: produced zero addresses" — compute не задеплоен) | без задеплоенного compute сьюту нельзя прогнать |

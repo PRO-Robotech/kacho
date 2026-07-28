@@ -39,7 +39,7 @@ type (
 	// MachineTypeFilter — фильтр списка machine-type (name=/family=/minGpus=).
 	MachineTypeFilter = ports.MachineTypeFilter
 
-	// ProjectClient — port для проверки существования Folder.
+	// ProjectClient — port для проверки существования Project.
 	ProjectClient = ports.ProjectClient
 	// ZoneRegistry — port existence-check zone_id (Disk/Instance Create, Disk Relocate)
 	// + авторитетный zone→region резолв (placement-coherence с anycast-подсетью).

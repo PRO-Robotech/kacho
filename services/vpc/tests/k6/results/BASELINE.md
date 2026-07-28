@@ -185,7 +185,7 @@ Fix: `config.MigrateDSN()` (= baseDSN без pgxpool-параметров) дл�
 
 ```bash
 # k6 (через api-gateway)
-k6 run --env BASE_URL=http://localhost:18080 --env FOLDER_ID=<id> --env ZONE_ID=zone-a tests/k6/scripts/<scenario>.js
+k6 run --env BASE_URL=http://localhost:18080 --env PROJECT_ID=<id> --env ZONE_ID=zone-a tests/k6/scripts/<scenario>.js
 ./run-all.sh
 
 # ghz (прямой gRPC, для max write throughput)
@@ -258,8 +258,8 @@ kubectl -n kacho port-forward svc/vpc 19090:9090 &
 for RPS in 500 1000 2000 3000; do
   ghz --insecure --call kacho.cloud.vpc.v1.NetworkService.Create --rps $RPS --duration 20s \
     --concurrency 100 --connections 10 \
-    --metadata '{"x-kacho-actor":"sweep","x-kacho-folder-id":"<id>"}' \
-    -d '{"folder_id":"<id>","name":"sweep-{{.RequestNumber}}-{{.TimestampUnixNano}}"}' \
+    --metadata '{"x-kacho-actor":"sweep","x-kacho-project-id":"<id>"}' \
+    -d '{"project_id":"<id>","name":"sweep-{{.RequestNumber}}-{{.TimestampUnixNano}}"}' \
     localhost:19090
 done
 ```

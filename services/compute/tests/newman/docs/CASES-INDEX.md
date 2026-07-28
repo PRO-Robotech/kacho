@@ -17,7 +17,7 @@ Zone/Region serving removed in Stage S7 (Geography owned by kacho-geo).
 
 | Блок | Что делает | Применён к |
 |---|---|---|
-| `list_page_block(prefix, path[, folder_param])` | BVA для List: pageSize 0 / 1 / 1000 / 1001 / garbage token | DISK, IMG, SNAP, INST (+ инлайн варианты для DT/ZONE) |
+| `list_page_block(prefix, path[, project_param])` | BVA для List: pageSize 0 / 1 / 1000 / 1001 / garbage token | DISK, IMG, SNAP, INST (+ инлайн варианты для DT/ZONE) |
 | `name_validation_block(prefix, path, extra[, wrap])` | compute name regex `\|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?` — empty→200, len63→200, len64→400, UPPERCASE→400, digit-start→400, hyphen-start→400, special→400 | DISK, IMG, SNAP (wrap=pre-disk) |
 | `description_validation_block` | desc len 256→200, 257→400 | DISK, IMG, SNAP |
 | `labels_validation_block` | uppercase-key→400, bad-char-key→400, 64 labels→200, 65→400 | DISK, IMG, SNAP |
@@ -33,11 +33,11 @@ Zone/Region serving removed in Stage S7 (Geography owned by kacho-geo).
 ## Disk (74 кейса) — `cases/disk.py`
 
 - **CR**: CRUD-OK (id-prefix epd + created_at sec), CRUD-TYPE-EXPLICIT, CRUD-FROM-IMAGE-OK,
-  VAL-FOLDER/ZONE/SIZE-REQUIRED, NEG-FOLDER/ZONE/TYPE-NOTFOUND, NEG-DUP-NAME,
+  VAL-PROJECT/ZONE/SIZE-REQUIRED, NEG-PROJECT/ZONE/TYPE-NOTFOUND, NEG-DUP-NAME,
   NEG-SOURCE-IMAGE/SNAPSHOT-NOTFOUND, BVA-SIZE-MIN-OK / BELOW-MIN / CREATE-MAX-OK / ABOVE-CREATE-MAX,
   CONF-ID-PREFIX-EPD; + name/desc/labels/security блоки (~25).
 - **GET**: NEG-NOTFOUND, CONF-NF-TEXT.
-- **LST**: CRUD-OK, VAL-FOLDER-REQUIRED, FILTER-MATCH; + list-page/filter блоки.
+- **LST**: CRUD-OK, VAL-PROJECT-REQUIRED, FILTER-MATCH; + list-page/filter блоки.
 - **UPD**: CRUD-NAME-DESC-LABELS-OK, SIZE-INCREASE-OK, SIZE-DECREASE-REJECT, MASK-EMPTY-FULL-PATCH,
   MASK-IMMUTABLE-TYPE / -ZONE, MASK-UNKNOWN-FIELD, AUTHZ-NF-SYNC.
 - **DEL**: CRUD-OK, CONF-RESPONSE-EMPTY, NEG-NOTFOUND.
@@ -48,19 +48,19 @@ Zone/Region serving removed in Stage S7 (Geography owned by kacho-geo).
 ## Image (63 кейса) — `cases/image.py`
 
 - **CR**: CRUD-OK (from disk; id-prefix fd8 + created_at sec), CRUD-FROM-URI-OK, CRUD-FROM-IMAGE-OK,
-  CRUD-FROM-SNAPSHOT-OK, VAL-FOLDER-REQUIRED, VAL-NO-SOURCE, VAL-MULTIPLE-SOURCE, VAL-FAMILY-INVALID,
-  NEG-SOURCE-DISK/IMAGE-NOTFOUND, NEG-FOLDER-NOTFOUND, NEG-DUP-NAME, CONF-ID-PREFIX-FD8; + name/desc/labels/security.
-- **GLF**: CRUD-OK (2 images same family → newer wins), NEG-NOTFOUND, VAL-FOLDER-REQUIRED.
-- **GET**: NEG-NOTFOUND, CONF-NF-TEXT. **LST**: CRUD-OK, VAL-FOLDER-REQUIRED; + блоки.
+  CRUD-FROM-SNAPSHOT-OK, VAL-PROJECT-REQUIRED, VAL-NO-SOURCE, VAL-MULTIPLE-SOURCE, VAL-FAMILY-INVALID,
+  NEG-SOURCE-DISK/IMAGE-NOTFOUND, NEG-PROJECT-NOTFOUND, NEG-DUP-NAME, CONF-ID-PREFIX-FD8; + name/desc/labels/security.
+- **GLF**: CRUD-OK (2 images same family → newer wins), NEG-NOTFOUND, VAL-PROJECT-REQUIRED.
+- **GET**: NEG-NOTFOUND, CONF-NF-TEXT. **LST**: CRUD-OK, VAL-PROJECT-REQUIRED; + блоки.
 - **UPD**: CRUD-NAME-DESC-LABELS-OK, MASK-EMPTY-FULL-PATCH, MASK-IMMUTABLE-FAMILY, MASK-UNKNOWN-FIELD, AUTHZ-NF-SYNC.
 - **DEL**: CRUD-OK, CONF-RESPONSE-EMPTY, NEG-NOTFOUND. **LOP**: CRUD-OK, NEG-PARENT-NF. **LIFECYCLE-CONF**.
 
 ## Snapshot (55 кейсов) — `cases/snapshot.py`
 
 - **CR**: CRUD-OK (from disk; id-prefix fd8 + created_at sec + disk_size==disk.size + source_disk_id),
-  VAL-FOLDER-REQUIRED, VAL-NO-DISK, NEG-DISK-NOTFOUND, NEG-FOLDER-NOTFOUND, NEG-DUP-NAME,
+  VAL-PROJECT-REQUIRED, VAL-NO-DISK, NEG-DISK-NOTFOUND, NEG-PROJECT-NOTFOUND, NEG-DUP-NAME,
   CONF-ID-PREFIX-FD8; + name/desc/labels (wrap=pre-disk) / security.
-- **GET**: NEG-NOTFOUND, CONF-NF-TEXT. **LST**: CRUD-OK, VAL-FOLDER-REQUIRED; + блоки.
+- **GET**: NEG-NOTFOUND, CONF-NF-TEXT. **LST**: CRUD-OK, VAL-PROJECT-REQUIRED; + блоки.
 - **UPD**: CRUD-NAME-DESC-LABELS-OK, MASK-EMPTY-FULL-PATCH, MASK-IMMUTABLE-SOURCE-DISK, MASK-UNKNOWN-FIELD, AUTHZ-NF-SYNC.
 - **DEL**: CRUD-OK, CONF-RESPONSE-EMPTY, NEG-NOTFOUND, STATE-DISK-DELETABLE-AFTER (Disk удаляем, Snapshot остаётся).
 - **LOP**: CRUD-OK, NEG-PARENT-NF. **LIFECYCLE-CONF**.
@@ -68,11 +68,11 @@ Zone/Region serving removed in Stage S7 (Geography owned by kacho-geo).
 ## Instance (77 кейсов) — `cases/instance.py` *(многие требуют поднятого kacho-vpc)*
 
 - **CR**: CRUD-OK (RUNNING + fqdn + boot_disk + NO NIC (no auto-NIC) + id-prefix epd + created_at sec),
-  CRUD-FROM-IMAGE-BOOT-OK, CRUD-BOOT-DISK-ID-OK, VAL-MISSING-{ZONE,PLATFORM,RESOURCES,BOOTDISK,FOLDER},
-  NEG-FOLDER-NOTFOUND, NEG-DUP-NAME, VAL-NAME-UPPERCASE/-DIGIT-START,
+  CRUD-FROM-IMAGE-BOOT-OK, CRUD-BOOT-DISK-ID-OK, VAL-MISSING-{ZONE,PLATFORM,RESOURCES,BOOTDISK,PROJECT},
+  NEG-PROJECT-NOTFOUND, NEG-DUP-NAME, VAL-NAME-UPPERCASE/-DIGIT-START,
   VAL-CORE-FRACTION-INVALID, VAL-CORES-ODD-INVALID, VAL-BOOTDISK-EXACTLY-ONE, VAL-EMPTY-BODY,
   VAL-MALFORMED-JSON, CONF-ID-PREFIX-EPD; + security.
-- **GET**: NEG-NOTFOUND, CONF-NF-TEXT. **LST**: CRUD-OK, VAL-FOLDER-REQUIRED, VIEW-BASIC-NO-METADATA; + блоки.
+- **GET**: NEG-NOTFOUND, CONF-NF-TEXT. **LST**: CRUD-OK, VAL-PROJECT-REQUIRED, VIEW-BASIC-NO-METADATA; + блоки.
 - **UPD**: CRUD-NAME-DESC-LABELS-OK, RESOURCES-REQUIRES-STOPPED (RUNNING→FailedPrec; after Stop→OK),
   MASK-IMMUTABLE-ZONE, MASK-UNKNOWN-FIELD, AUTHZ-NF-SYNC.
 - **STATE**: START-FROM-RUNNING (→FailedPrec), STOP-OK, START-FROM-STOPPED-OK, STOP-FROM-STOPPED (→FailedPrec),

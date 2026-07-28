@@ -7,7 +7,7 @@
 
 **Сюда НЕ пишем** то, что просто корректно реализует verbatim-YC контракт — это
 спека (см. `00-overview.md`, `01-resources.md`, `04-api-surface.md`). Например:
-Compute-ресурсы folder-scoped без `cloud_id`/`organization_id`; `metadata`
+Compute-ресурсы project-scoped без `cloud_id`/`organization_id`; `metadata`
 омитится из `Instance` в `List`; Disk size max в Update меньше, чем в Create —
 всё это **и есть** YC, расхождения тут нет.
 
@@ -318,7 +318,7 @@ NIC-ам по-прежнему выдаются синтетические IP (`
 **Расхождение с verbatim YC, которое сохраняется:** в реальном YC внутренние
 NIC-адреса инстанса **не** материализуются как видимые в `AddressService.List`
 ресурсы — IPAM прозрачен. У нас каждый авто-аллоцированный NIC-IP — это
-полноценная строка в `addresses` (видна в `GET /vpc/v1/addresses?folderId=...`,
+полноценная строка в `addresses` (видна в `GET /vpc/v1/addresses?projectId=...`,
 с `name` вида `<instanceId>-nic0` / `<instanceId>-nat0`, но с правильными
 `reserved=false, used=true, used_by=[…]`). Это сознательный trade-off ради
 переиспользования существующего VPC IPAM без новых cross-service RPC / миграций
@@ -502,7 +502,7 @@ sentinel→code в отдельный слой (если когда-либо) �
   Фикс: безусловный `pm.expect(Boolean(j.error)).to.eql(true)` + проверка кода
   (`instance.py`/`disk.py`); `DISK-CR-NEG-ZONE-UNKNOWN` переведён с «tolerate 200 без
   assert» на детерминированный `poll → assert_op_error_oneof([3,5])` (zone-check в
-  `doCreate`-worker — async, как folder). Хелпер `assert_op_error_oneof` добавлен в
+  `doCreate`-worker — async, как project). Хелпер `assert_op_error_oneof` добавлен в
   `gen.py`; коллекции перегенерированы.
 
 **Осознанно НЕ меняется** (by-design / вне scope internal security-правки):
@@ -519,9 +519,10 @@ sentinel→code в отдельный слой (если когда-либо) �
   scheduler'а, который начнёт писать реальный `host_id`: населять только
   Internal-проекцию, не public.
 
-- **`HasFolderAccess`: пустой scope = full access (pre-AuthN scaffolding).**
-  `TenantCtx.HasFolderAccess` возвращает true при `len(ProjectIDs)==0` — это
-  задокументированный back-compat pre-AuthN режим (зеркалит kacho-vpc). Fail-closed
+- **Пустой project-scope не гейтит доступ (pre-AuthN scaffolding).**
+  `TenantCtx.ProjectIDs` в решении о доступе не участвует вовсе — он кормит только
+  `IsAnonymous` (AuthN-гейт production-режима) и admin-гейт; метода-предиката на нём
+  нет. Это задокументированный back-compat pre-AuthN режим (зеркалит kacho-vpc). Fail-closed
   недостижим для non-admin в production: `TenantUnaryInterceptor` при
   `productionMode` отбивает `IsAnonymous` первым, authz-заголовки trust-gated
   (только от verified api-gateway cert), а authoritative гейт — per-RPC FGA Check.
@@ -565,21 +566,21 @@ sentinel→code в отдельный слой (если когда-либо) �
 - **LEAN:** удалён неиспользуемый `authzfilter.BypassFilter` (bypass выражается
   nil-фильтром в `resolveListFilter` / `Config.Enabled=false`) и dead-аксессор
   `Decision.IsEmpty()` (handler'ы ветвятся по `len(IDs())`). Исправлен stale-коммент
-  в `ports.go` (колонка `project_id`, а не legacy `folder_id` — переименована 0009).
+  в `ports.go` (колонка называется `project_id` — переименована миграцией 0009).
 
 **Осознанно НЕ меняется** (платформенная консистентность; первый пункт с тех пор
 закрыт — оставлен как след, чтобы не «фиксили» по второму разу в обратную сторону):
 
-- ~~**сервис-слой оперирует `folder`-словарём и текстом `"Folder with id %s not
+- ~~**сервис-слой оперирует доредизайновым словарём и текстом `"Folder with id %s not
   found"`**~~ — **ЗАКРЫТО** (audit 2026-07). Обоснование «паритет с контрактом
   стороннего облака» само по себе нарушало core-правило #2 (проектируем в терминах
   Kachō, без оглядки на чужие облака), поэтому пункт снят, а не продлён. Ресурс
   называется **`Project`** (`proto/kacho/cloud/iam/v1/project.proto`), клиент шлёт
-  `projectId` — `Folder` не именует ничего на публичной поверхности, искать его в
+  `projectId` — прежнее имя не называет ничего на публичной поверхности, искать его в
   доке бесполезно. `service/project_check.go` отдаёт конвенционные
   `NotFound "Project %s not found"` и `Unavailable "project check: upstream project
   service unavailable"` (api-conventions.md, тон `"<Resource> %s not found"`).
-  Regression-lock — `service/project_check_test.go` (текст + отсутствие `folder`
+  Regression-lock — `service/project_check_test.go` (текст + отсутствие прежнего слова
   в сообщении). **Код НЕ менялся**: `NOT_FOUND` остаётся `NOT_FOUND`; перевод этой
   peer-validate-линии на `FAILED_PRECONDITION` (api-conventions.md by-lane
   code-split) — отдельное ломающее решение под свой тикет.
@@ -590,9 +591,9 @@ sentinel→code в отдельный слой (если когда-либо) �
   geo-seed и с уже выданными клиентам FQDN. Закрывается координированной сменой
   зональной топологии (geo-seed → compute `fqdn()` → newman), не compute-only
   правкой. Того же класса legacy-нейминг, НЕ являющийся error-контрактом:
-  DB-колонки/индексы `folder_id`, newman-env `_suiteFolderId`, `TenantCtx.HasFolderAccess` —
-  внутренние идентификаторы (миграция схемы + перегенерация фикстур), на публичной
-  REST-поверхности их нет (`projectId`).
+  Легаси-нейминг того же класса снят целиком: колонки/индексы переименованы
+  миграцией 0009, newman-фикстуры перегенерированы, и `tools/legacyfolder` роняет
+  сборку, если имя вернётся.
 - **`InternalWatchHandler` (transport-слой) держит `*pgxpool.Pool` + raw DSN и сам
   делает pgx-`Connect`/`LISTEN`/raw SELECT по `compute_outbox`** — обход repo-порта
   (dependency-rule). Структурно идентичен `kacho-vpc/internal/handler/internal_watch_handler.go`

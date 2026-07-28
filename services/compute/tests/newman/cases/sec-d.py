@@ -13,7 +13,7 @@ InternalIAMService.RegisterResource/UnregisterResource. Публичный ко�
 eventual через IAM), а Delete → Get 404.
 
 Контракт изоляции: каждый case в своём runId, работает внутри pre-allocated
-existingProjectId (_suiteFolderId из env); имена суффиксуются {{runId}}.
+existingProjectId (_suiteProjectId из env); имена суффиксуются {{runId}}.
 id-prefix Disk = `epd`.
 
 mTLS-mismatch (SEC-D-21) и cross-service-owner-down (SEC-D-23) — отдельные
@@ -39,7 +39,7 @@ CASES.append(Case(
     classes=["CONF", "IDM"], priority="P1",
     steps=[
         Step(name="create", method="POST", path=DISKS,
-             body={"projectId": "{{_suiteFolderId}}", "name": f"secd-disk-{{{{runId}}}}",
+             body={"projectId": "{{_suiteProjectId}}", "name": f"secd-disk-{{{{runId}}}}",
                    "zoneId": "{{existingZoneId}}", "size": _DEF_SIZE,
                    "labels": {"suite": "sec-d"}},
              test_script=[*assert_status(200), *assert_operation_envelope(),
@@ -54,7 +54,7 @@ CASES.append(Case(
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('id matches & epd prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('diskId')); pm.expect(j.id).to.match(/^epd/); });",
-                          "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteFolderId')));",
+                          "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
                           "pm.test('status READY', () => pm.expect(j.status).to.eql('READY'));",
                           *assert_created_at_seconds()])),
         Step(name="delete", method="DELETE", path=f"{DISKS}/{{{{diskId}}}}",

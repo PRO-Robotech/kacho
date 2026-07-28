@@ -7,7 +7,7 @@ Covered public RPCs: Get, List, Create, Update, Delete, ListOperations
 (REST /storage/v1/volumes; async мутации → Operation, poll /operations/{sop…}).
 
 Контракт изоляции: каждый case в своём runId, работает внутри pre-allocated
-existingProjectId (_suiteFolderId из env), Org/Cloud/Project НЕ создаёт; имена
+existingProjectId (_suiteProjectId из env), Org/Cloud/Project НЕ создаёт; имена
 суффиксуются {{runId}}. id-prefix Volume = `vol`, op-root storage = `sop`.
 
 Error-тексты §0.2 acceptance (нормативны — часть контракта) assert'ятся
@@ -28,7 +28,7 @@ _SHRINK_SIZE = 5368709120  # 5 GiB
 
 
 def _vol_body(suffix, **over):
-    b = {"projectId": "{{_suiteFolderId}}", "name": f"vol-{suffix}-{{{{runId}}}}",
+    b = {"projectId": "{{_suiteProjectId}}", "name": f"vol-{suffix}-{{{{runId}}}}",
          "zoneId": "{{existingZoneId}}", "diskTypeId": "{{existingDiskTypeId}}",
          "sizeBytes": _DEF_SIZE}
     b.update(over)
@@ -66,7 +66,7 @@ CASES.append(Case(
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('id matches & vol prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('volumeId')); pm.expect(j.id).to.match(/^vol/); });",
-                          "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteFolderId')));",
+                          "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
                           "pm.test('zoneId matches', () => pm.expect(j.zoneId).to.eql(pm.environment.get('existingZoneId')));",
                           "pm.test('diskTypeId matches', () => pm.expect(j.diskTypeId).to.eql(pm.environment.get('existingDiskTypeId')));",
                           "pm.test('sizeBytes matches', () => pm.expect(String(j.sizeBytes)).to.eql('" + str(_DEF_SIZE) + "'));",
@@ -90,7 +90,7 @@ CASES.append(Case(
 # MASKING that a real project-scoped tenant is denied (verified live: same volume,
 # jwtBootstrap GET=200 but jwtProjectEditorA GET=403 "no authorization path"). That
 # false-green shipped storage object-self reads broken (#71). This case exercises
-# the tenant anti-BOLA path as jwtProjectEditorA (editor on _suiteFolderId) so the
+# the tenant anti-BOLA path as jwtProjectEditorA (editor on _suiteProjectId) so the
 # suite actually covers it: RED until the #71 FGA model+wiring deploys (owner v_*
 # materialize from the project-editor binding), GREEN after. retry_until_authorized
 # absorbs ONLY the read-your-writes owner-tuple materialization window (never a real
@@ -104,7 +104,7 @@ CASES.append(Case(
     # verifies #71 (storage_* FGA types + reconciler wiring; object-self tenant authz)
     steps=[
         # Create as the default cluster-admin (reliable seed); the volume lands in
-        # _suiteFolderId, on which jwtProjectEditorA holds an editor binding.
+        # _suiteProjectId, on which jwtProjectEditorA holds an editor binding.
         Step(name="cr", method="POST", path=VOL, body=_vol_body("objself"),
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.volumeId", "volumeId")]),
@@ -170,7 +170,7 @@ CASES.append(Case(
     title="List volumes в project → volumes array (project-scoped)",
     classes=["CRUD"], priority="P1",
     # verifies CS1-S1-03
-    steps=[Step(name="list", method="GET", path=f"{VOL}?projectId={{{{_suiteFolderId}}}}",
+    steps=[Step(name="list", method="GET", path=f"{VOL}?projectId={{{{_suiteProjectId}}}}",
                 test_script=[*assert_status(200),
                              "pm.test('volumes is array', () => pm.expect(pm.response.json().volumes || []).to.be.an('array'));"])],
 ))
@@ -189,7 +189,7 @@ CASES.append(Case(
     title="List pageSize=5000 (> max 1000) → 400 INVALID_ARGUMENT",
     classes=["BVA", "VAL", "PAGE"], priority="P1",
     # verifies CS1-S1-03
-    steps=[Step(name="ps-over", method="GET", path=f"{VOL}?projectId={{{{_suiteFolderId}}}}&pageSize=5000",
+    steps=[Step(name="ps-over", method="GET", path=f"{VOL}?projectId={{{{_suiteProjectId}}}}&pageSize=5000",
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))
 
@@ -199,7 +199,7 @@ CASES.append(Case(
     classes=["PAGE", "VAL", "NEG"], priority="P1",
     # verifies CS1-S1-03
     steps=[Step(name="bad-token", method="GET",
-                path=f"{VOL}?projectId={{{{_suiteFolderId}}}}&pageSize=10&pageToken=not-a-real-token",
+                path=f"{VOL}?projectId={{{{_suiteProjectId}}}}&pageSize=10&pageToken=not-a-real-token",
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
 ))
 
@@ -214,7 +214,7 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.volumeId", "volumeId")]),
         poll_operation_until_done(),
         Step(name="list-filtered", method="GET",
-             path=f"{VOL}?projectId={{{{_suiteFolderId}}}}&pageSize=1000&filter=name%3D%22vol-flt-{{{{runId}}}}%22",
+             path=f"{VOL}?projectId={{{{_suiteProjectId}}}}&pageSize=1000&filter=name%3D%22vol-flt-{{{{runId}}}}%22",
              test_script=[*assert_status(200),
                           "const ids = (Object.values(pm.response.json()).find(v => Array.isArray(v)) || []).map(x => x.id);",
                           "pm.test('filtered list contains created', () => pm.expect(ids).to.include(pm.environment.get('volumeId')));"]),
@@ -608,7 +608,7 @@ CASES.append(Case(
         poll_operation_until_done(),
         retry_until_authorized(Step(name="get-1", method="GET", path=f"{VOL}/{{{{volumeId}}}}",
              test_script=[*assert_status(200), "pm.test('id', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('volumeId')));"])),
-        Step(name="lst-includes", method="GET", path=f"{VOL}?projectId={{{{_suiteFolderId}}}}&pageSize=1000",
+        Step(name="lst-includes", method="GET", path=f"{VOL}?projectId={{{{_suiteProjectId}}}}&pageSize=1000",
              test_script=[*assert_status(200),
                           "const ids = (pm.response.json().volumes || []).map(x => x.id);",
                           "pm.test('list contains', () => pm.expect(ids).to.include(pm.environment.get('volumeId')));"]),
@@ -621,7 +621,7 @@ CASES.append(Case(
         Step(name="del", method="DELETE", path=f"{VOL}/{{{{volumeId}}}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        Step(name="lst-excludes", method="GET", path=f"{VOL}?projectId={{{{_suiteFolderId}}}}&pageSize=1000",
+        Step(name="lst-excludes", method="GET", path=f"{VOL}?projectId={{{{_suiteProjectId}}}}&pageSize=1000",
              test_script=[*assert_status(200),
                           "const ids = (pm.response.json().volumes || []).map(x => x.id);",
                           "pm.test('list does not contain', () => pm.expect(ids).to.not.include(pm.environment.get('volumeId')));"]),
@@ -754,7 +754,7 @@ CASES.append(Case(
     classes=["SEC", "VAL", "NEG"], priority="P0",
     # verifies CS1-S1-03 (INV-8 leak-guard на filter-пути)
     steps=[Step(name="lst-filter-sqli", method="GET",
-                path=f"{VOL}?projectId={{{{_suiteFolderId}}}}&filter=name%3D%22a%27%20OR%201%3D1--%22",
+                path=f"{VOL}?projectId={{{{_suiteProjectId}}}}&filter=name%3D%22a%27%20OR%201%3D1--%22",
                 test_script=[
                     "pm.test('not 500', () => pm.expect(pm.response.code).to.not.eql(500));",
                     "pm.test('handled 200|400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",

@@ -22,7 +22,7 @@ _DEF_SIZE = 10737418240  # 10 GiB
 
 
 def _vol_body(suffix):
-    return {"projectId": "{{_suiteFolderId}}", "name": f"vol-op-{suffix}-{{{{runId}}}}",
+    return {"projectId": "{{_suiteProjectId}}", "name": f"vol-op-{suffix}-{{{{runId}}}}",
             "zoneId": "{{existingZoneId}}", "diskTypeId": "{{existingDiskTypeId}}",
             "sizeBytes": _DEF_SIZE}
 
@@ -63,7 +63,7 @@ CASES.append(Case(
     #   peer/FK-предусловии → ровно та форма, которую этот кейс обязан прочитать.
     steps=[
         Step(name="create-bad-disktype", method="POST", path=VOL,
-             body={"projectId": "{{_suiteFolderId}}", "name": "vol-opfail-{{runId}}",
+             body={"projectId": "{{_suiteProjectId}}", "name": "vol-opfail-{{runId}}",
                    "zoneId": "{{existingZoneId}}", "diskTypeId": "block-nope-{{runId}}",
                    "sizeBytes": _DEF_SIZE},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
