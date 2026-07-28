@@ -18,7 +18,8 @@ func TestSampleYAMLLoads(t *testing.T) {
 	if cfg.Repository.Postgres.URL == "" {
 		t.Error("sample must set repository.postgres.url")
 	}
-	if cfg.Authz.IAM.Addr == "" {
-		t.Error("sample must set authz.iam.addr (used in dev too as guidance)")
+	// Адрес ребра, по которому идёт per-RPC Check (conn `iam-internal`).
+	if cfg.ExtAPI.IAM.InternalAddr == "" {
+		t.Error("sample must set extapi.iam.internal-addr (the per-RPC Check edge)")
 	}
 }

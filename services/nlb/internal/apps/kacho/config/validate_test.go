@@ -133,20 +133,66 @@ func TestValidate_GracefulShutdownZero(t *testing.T) {
 	}
 }
 
-func TestValidate_ProductionRequiresAuthzIAM(t *testing.T) {
+// productionSecureConfig — production-mode Config, прошедшая transport/iam-edge
+// gate'ы (secure server + mTLS на обоих iam-рёбрах + list-filter fail-closed) и
+// РЕАЛЬНО заполненная по всем адресам, из которых composition root строит
+// соединения — включая внутренний адрес iam, на котором живёт
+// InternalIAMService.Check. Намеренно НЕ трогает ключи, которые код не читает:
+// конфигурация, полная по факту использования, обязана проходить валидацию.
+// Базис для изоляции отдельных production-проверок.
+func productionSecureConfig() Config {
 	cfg := minimalValidConfig()
 	cfg.ModeRaw = "production"
-	// authz.iam.addr пустой → must fail в production
+	cfg.MTLS.Server.Enable = true
+	cfg.MTLS.IAMRegister.Enable = true
+	cfg.Authz.ListFilter.Enabled = true
+	cfg.Authz.ListFilter.FailOpen = false
+	cfg.Authz.TrustedForwarderSANs = []string{"spiffe://kacho.cloud/ns/kacho/sa/api-gateway"}
+	cfg.ExtAPI.VPC.Addr = "vpc.kacho.svc:9090"
+	cfg.ExtAPI.VPC.InternalAddr = "vpc.kacho.svc:9091"
+	cfg.ExtAPI.Compute.Addr = "compute.kacho.svc:9090"
+	cfg.ExtAPI.Geo.Addr = "kacho-geo.kacho.svc:9090"
+	cfg.ExtAPI.IAM.Addr = "kacho-iam.kacho.svc:9090"
+	cfg.ExtAPI.IAM.InternalAddr = "kacho-iam-internal.kacho.svc:9091"
+	cfg.MTLS.VPC.Enable = true
+	cfg.MTLS.Compute.Enable = true
+	cfg.MTLS.Geo.Enable = true
+	cfg.MTLS.IAMProject.Enable = true
+	return cfg
+}
+
+// TestValidate_Production_RequiresAuthzCheckEdgeAddr — стража обязана требовать
+// адрес ТОГО ребра, по которому реально идёт per-RPC Check.
+//
+// Check-клиент строится из соединения `iam-internal`, а его адрес берётся из
+// `extapi.iam.internal-addr` (peerDialSpecs в composition root). Пока этот ключ
+// пуст, ребро либо не поднимается, либо молча уезжает на ПУБЛИЧНЫЙ листенер iam,
+// где InternalIAMService не обслуживается — то есть per-RPC авторизация в
+// production не работает, а сервис при этом стартует. Отказ в старте обязан
+// называть настоящий ключ, иначе оператор чинит не то.
+func TestValidate_Production_RequiresAuthzCheckEdgeAddr(t *testing.T) {
+	cfg := productionSecureConfig()
+	cfg.ExtAPI.IAM.InternalAddr = ""
 	err := cfg.Validate()
-	if err == nil || !strings.Contains(err.Error(), "authz.iam.addr") {
-		t.Fatalf("expected authz.iam.addr error in production, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "extapi.iam.internal-addr") {
+		t.Fatalf("expected extapi.iam.internal-addr error in production, got %v", err)
+	}
+}
+
+// TestValidate_Production_FullyWiredConfigPasses — конфигурация, полная по факту
+// использования, обязана стартовать. Регрессионный замок против стражи, которая
+// требует ключ, ни одним путём кода не читаемый: такая стража охраняет пустоту,
+// а оператор платит за неё обязательной строкой в values.
+func TestValidate_Production_FullyWiredConfigPasses(t *testing.T) {
+	cfg := productionSecureConfig()
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("fully wired production config must validate, got %v", err)
 	}
 }
 
 func TestValidate_ProductionForbidsBreakglass(t *testing.T) {
 	cfg := minimalValidConfig()
 	cfg.ModeRaw = "production"
-	cfg.Authz.IAM.Addr = "iam.kacho.svc:9091"
 	cfg.Authz.Breakglass = true
 	err := cfg.Validate()
 	if err == nil || !strings.Contains(err.Error(), "breakglass") {
@@ -160,7 +206,6 @@ func TestValidate_ProductionForbidsBreakglass(t *testing.T) {
 func TestValidate_Production_RequiresSecureServerTransport(t *testing.T) {
 	cfg := minimalValidConfig()
 	cfg.ModeRaw = "production"
-	cfg.Authz.IAM.Addr = "iam.kacho.svc:9091"
 	cfg.MTLS.IAMRegister.Enable = true // iam-edge ok — изолируем server-transport check
 	// server mTLS off + authn none → insecure listener.
 	err := cfg.Validate()
@@ -174,7 +219,6 @@ func TestValidate_Production_RequiresSecureServerTransport(t *testing.T) {
 func TestValidate_Production_RequiresMTLSOnIAMEdge(t *testing.T) {
 	cfg := minimalValidConfig()
 	cfg.ModeRaw = "production"
-	cfg.Authz.IAM.Addr = "iam.kacho.svc:9091"
 	cfg.MTLS.Server.Enable = true // server transport ok — изолируем iam-edge check
 	// iam-register mTLS off → insecure Check edge.
 	err := cfg.Validate()
@@ -203,7 +247,6 @@ func TestValidate_Production_SecureTransport_OK(t *testing.T) {
 func TestValidate_Production_RejectsDeadAuthnTLS(t *testing.T) {
 	cfg := minimalValidConfig()
 	cfg.ModeRaw = "production"
-	cfg.Authz.IAM.Addr = "iam.kacho.svc:9091"
 	cfg.MTLS.IAMRegister.Enable = true
 	cfg.Authz.ListFilter.Enabled = true
 	// authn.type=tls (мёртвое значение) вместо mtls.server → должно быть отвергнуто.
@@ -230,30 +273,6 @@ func TestValidate_Production_RejectsDeadAuthnTLS_EvenWithServerMTLS(t *testing.T
 	if err == nil || !strings.Contains(err.Error(), "authn.type=tls") {
 		t.Fatalf("expected dead authn.type=tls rejection in production even with server mTLS, got %v", err)
 	}
-}
-
-// productionSecureConfig — production-mode Config, прошедшая transport/iam-edge
-// gate'ы (secure server + mTLS iam-edge + list-filter fail-closed). Базис для
-// изоляции list-filter-специфичных проверок.
-func productionSecureConfig() Config {
-	cfg := minimalValidConfig()
-	cfg.ModeRaw = "production"
-	cfg.Authz.IAM.Addr = "iam.kacho.svc:9091"
-	cfg.MTLS.Server.Enable = true
-	cfg.MTLS.IAMRegister.Enable = true
-	cfg.Authz.ListFilter.Enabled = true
-	cfg.Authz.ListFilter.FailOpen = false
-	cfg.Authz.TrustedForwarderSANs = []string{"spiffe://kacho.cloud/ns/kacho/sa/api-gateway"}
-	cfg.ExtAPI.VPC.Addr = "vpc.kacho.svc:9090"
-	cfg.ExtAPI.VPC.InternalAddr = "vpc.kacho.svc:9091"
-	cfg.ExtAPI.Compute.Addr = "compute.kacho.svc:9090"
-	cfg.ExtAPI.Geo.Addr = "kacho-geo.kacho.svc:9090"
-	cfg.ExtAPI.IAM.Addr = "kacho-iam.kacho.svc:9090"
-	cfg.MTLS.VPC.Enable = true
-	cfg.MTLS.Compute.Enable = true
-	cfg.MTLS.Geo.Enable = true
-	cfg.MTLS.IAMProject.Enable = true
-	return cfg
 }
 
 // TestValidate_Production_RequiresListFilterEnabled — production с

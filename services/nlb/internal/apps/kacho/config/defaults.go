@@ -11,7 +11,8 @@ package config
 import "github.com/spf13/viper"
 
 // RegisterDefaults биндит дефолты для всех опциональных полей. Required-поля
-// (`repository.postgres.url`, `authz.iam.addr` в production-mode) НЕ
+// (`repository.postgres.url`; в production-mode — ещё и адреса peer-рёбер,
+// включая `extapi.iam.internal-addr`, по которому идёт per-RPC Check) НЕ
 // дефолтятся — их отсутствие ловит `Config.Validate`.
 func RegisterDefaults(v *viper.Viper) {
 	// Mode: production — fail-closed default (security.md «Любой деплой —
@@ -53,19 +54,28 @@ func RegisterDefaults(v *viper.Viper) {
 
 	// ExtAPI (peer gRPC clients)
 	v.SetDefault("extapi.def-dial-duration", "10s")
-	v.SetDefault("extapi.vpc.dial-duration", "0s") // 0 → берёт def-dial-duration
-	v.SetDefault("extapi.compute.dial-duration", "0s")
-	v.SetDefault("extapi.iam.dial-duration", "0s")
-	v.SetDefault("extapi.geo.dial-duration", "0s")
+	// КАЖДЫЙ leaf-ключ регистрируется (пусть и нулевым значением) — иначе
+	// viper.AutomaticEnv о нём не знает и не биндит соответствующую
+	// KACHO_NLB_EXTAPI__<PEER>__<NAME> (env-bind получают только ключи, которые
+	// viper видел через SetDefault/BindEnv). Без регистрации адреса пиров
+	// приходили ИСКЛЮЧИТЕЛЬНО из YAML, а задокументированный ENV-override молча
+	// не срабатывал — та же причина, по которой ниже поимённо перечислены все
+	// leaf-ключи mtls.
+	for _, peer := range []string{"vpc", "compute", "iam", "geo"} {
+		v.SetDefault("extapi."+peer+".addr", "")
+		v.SetDefault("extapi."+peer+".internal-addr", "")
+		v.SetDefault("extapi."+peer+".dial-duration", "0s") // 0 → берёт def-dial-duration
+		v.SetDefault("extapi."+peer+".tls", false)
+	}
 	// extapi.geo.addr — kacho-geo endpoint (kacho-geo). Помимо
 	// стандартного KACHO_NLB_EXTAPI__GEO__ADDR биндим ЯВНУЮ ENV
 	// `KACHO_NLB_GEO_GRPC_ADDR` (короткое каноническое имя geo-эндпоинта,
 	// согласованное с deploy). BindEnv с явным именем обходит prefix/replacer.
-	v.SetDefault("extapi.geo.addr", "")
 	_ = v.BindEnv("extapi.geo.addr", "KACHO_NLB_GEO_GRPC_ADDR")
 
 	// Authz (FGA Check + cache + listen-invalidator)
-	v.SetDefault("authz.iam.addr", "") // empty → AutomaticEnv binds KACHO_NLB_AUTHZ__IAM__ADDR
+	// Адреса здесь НЕТ: соединение, по которому идёт Check, строится из
+	// `extapi.iam.internal-addr` (conn `iam-internal`).
 	v.SetDefault("authz.iam.dial-deadline", "3s")
 	v.SetDefault("authz.iam.request-timeout", "500ms")
 	v.SetDefault("authz.cache.enable", true)

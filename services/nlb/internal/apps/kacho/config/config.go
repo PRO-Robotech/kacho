@@ -13,7 +13,6 @@
 //
 //	KACHO_NLB_API_SERVER__ENDPOINT              → api-server.endpoint
 //	KACHO_NLB_REPOSITORY__POSTGRES__URL         → repository.postgres.url
-//	KACHO_NLB_AUTHZ__IAM__ADDR                  → authz.iam.addr
 //	KACHO_NLB_FGA__REGISTER_DRAINER__ENABLE     → fga.register-drainer.enable
 //	KACHO_NLB_LOGGER__LEVEL                     → logger.level
 //
@@ -208,8 +207,12 @@ type AuthzListFilterConfig struct {
 	FailOpen bool `mapstructure:"fail-open"`
 }
 
+// AuthzIAMConfig — параметры ВЫЗОВА per-RPC Check. Адрес здесь НЕ живёт:
+// соединение, по которому идёт Check, строится из `extapi.iam.internal-addr`
+// (peerDialSpecs, conn `iam-internal`). Прежний ключ `authz.iam.addr` был снят с
+// контракта: ни один путь кода его не читал — из него не строилось ни одно
+// соединение, — а production-стража его требовала, то есть охраняла пустоту.
 type AuthzIAMConfig struct {
-	Addr           string        `mapstructure:"addr"`            // iam.kacho.svc.cluster.local:9091
 	DialDeadline   time.Duration `mapstructure:"dial-deadline"`   // default 3s
 	RequestTimeout time.Duration `mapstructure:"request-timeout"` // default 500ms
 }

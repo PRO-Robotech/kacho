@@ -7486,7 +7486,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -7637,7 +7641,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 200]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -7686,7 +7694,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected (sync or async)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -7735,7 +7747,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -7784,7 +7800,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -9315,7 +9335,7 @@
       ]
     },
     {
-      "name": "NLB-LST-FILTER-GARBAGE — List with garbage filter syntax → 200/400 (handled)",
+      "name": "NLB-LST-FILTER-GARBAGE — List with garbage filter syntax → InvalidArgument (unknown field)",
       "description": "class:VAL | priority:P2",
       "item": [
         {
@@ -9346,7 +9366,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('handled (200 or 400)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -13104,98 +13128,11 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "if (!pm.environment.get('lastOpError')) {",
-                  "  pm.test('rejected (sync or async)', () =>     pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
-                  "}",
-                  "try {",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 9 (FAILED_PRECONDITION)', () => {",
                   "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-88",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "check-fp",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "const j = pm.response.json();",
-                  "if (j.error) pm.test('error code 9 FAILED_PRECONDITION', () =>   pm.expect(j.error.code).to.eql(9));"
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
+                  "});"
                 ]
               }
             }
@@ -13250,7 +13187,7 @@
           ]
         },
         {
-          "name": "poll-op-89",
+          "name": "poll-op-88",
           "request": {
             "method": "GET",
             "header": [
@@ -13339,7 +13276,7 @@
           ]
         },
         {
-          "name": "poll-op-90",
+          "name": "poll-op-89",
           "request": {
             "method": "GET",
             "header": [
@@ -13459,7 +13396,7 @@
           ]
         },
         {
-          "name": "poll-op-91",
+          "name": "poll-op-90",
           "request": {
             "method": "GET",
             "header": [
@@ -13580,7 +13517,7 @@
           ]
         },
         {
-          "name": "poll-op-92",
+          "name": "poll-op-91",
           "request": {
             "method": "GET",
             "header": [
@@ -13731,7 +13668,7 @@
           ]
         },
         {
-          "name": "poll-op-93",
+          "name": "poll-op-92",
           "request": {
             "method": "GET",
             "header": [
@@ -13809,96 +13746,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 409]));",
-                  "try {",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 9 (FAILED_PRECONDITION)', () => {",
                   "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-94",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "check-fp",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "const j = pm.response.json();",
-                  "if (j.error) pm.test('error code 9', () => pm.expect(j.error.code).to.eql(9));"
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
+                  "});"
                 ]
               }
             }
@@ -13944,7 +13796,7 @@
           ]
         },
         {
-          "name": "poll-op-95",
+          "name": "poll-op-93",
           "request": {
             "method": "GET",
             "header": [
@@ -14033,7 +13885,7 @@
           ]
         },
         {
-          "name": "poll-op-96",
+          "name": "poll-op-94",
           "request": {
             "method": "GET",
             "header": [
@@ -14142,7 +13994,7 @@
           ]
         },
         {
-          "name": "poll-op-97",
+          "name": "poll-op-95",
           "request": {
             "method": "GET",
             "header": [
@@ -14337,7 +14189,7 @@
           ]
         },
         {
-          "name": "poll-op-98",
+          "name": "poll-op-96",
           "request": {
             "method": "GET",
             "header": [
@@ -14483,7 +14335,7 @@
           ]
         },
         {
-          "name": "poll-op-99",
+          "name": "poll-op-97",
           "request": {
             "method": "GET",
             "header": [
@@ -14875,7 +14727,7 @@
       ]
     },
     {
-      "name": "NLB-CR-VAL-DESC-NULL — Create with description=null → handled (default to empty)",
+      "name": "NLB-CR-VAL-DESC-NULL — Create with description=null → accepted (transcodes to empty)",
       "description": "class:VAL | priority:P2",
       "item": [
         {
@@ -14915,7 +14767,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('accepted or rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^(nlb|tgr|lst)[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -14932,7 +14789,7 @@
           ]
         },
         {
-          "name": "poll-op-100",
+          "name": "poll-op-98",
           "request": {
             "method": "GET",
             "header": [
@@ -15021,7 +14878,7 @@
           ]
         },
         {
-          "name": "poll-op-101",
+          "name": "poll-op-99",
           "request": {
             "method": "GET",
             "header": [
@@ -15211,7 +15068,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -15220,7 +15081,7 @@
       ]
     },
     {
-      "name": "NLB-CR-VAL-LABELS-EMPTY-VALUE — Create with label value=\"\" → handled",
+      "name": "NLB-CR-VAL-LABELS-EMPTY-VALUE — Create with label value=\"\" → accepted (empty value is in range 0..63)",
       "description": "class:VAL | priority:P2",
       "item": [
         {
@@ -15260,7 +15121,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('accepted or rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^(nlb|tgr|lst)[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -15277,7 +15143,7 @@
           ]
         },
         {
-          "name": "poll-op-102",
+          "name": "poll-op-100",
           "request": {
             "method": "GET",
             "header": [
@@ -15366,7 +15232,7 @@
           ]
         },
         {
-          "name": "poll-op-103",
+          "name": "poll-op-101",
           "request": {
             "method": "GET",
             "header": [
@@ -15484,7 +15350,7 @@
           ]
         },
         {
-          "name": "poll-op-104",
+          "name": "poll-op-102",
           "request": {
             "method": "GET",
             "header": [
@@ -15573,7 +15439,7 @@
           ]
         },
         {
-          "name": "poll-op-105",
+          "name": "poll-op-103",
           "request": {
             "method": "GET",
             "header": [
@@ -15952,7 +15818,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -16029,7 +15899,7 @@
           ]
         },
         {
-          "name": "poll-op-106",
+          "name": "poll-op-104",
           "request": {
             "method": "GET",
             "header": [
@@ -16150,7 +16020,7 @@
           ]
         },
         {
-          "name": "poll-op-107",
+          "name": "poll-op-105",
           "request": {
             "method": "GET",
             "header": [
@@ -16313,7 +16183,7 @@
           ]
         },
         {
-          "name": "poll-op-108",
+          "name": "poll-op-106",
           "request": {
             "method": "GET",
             "header": [
@@ -16402,7 +16272,7 @@
           ]
         },
         {
-          "name": "poll-op-109",
+          "name": "poll-op-107",
           "request": {
             "method": "GET",
             "header": [
@@ -16605,6 +16475,204 @@
           ]
         },
         {
+          "name": "poll-op-108",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "networkLoadBalancers",
+                "{{nlbId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-109",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "NLB-CR-CRUD-NO-OPTIONAL-FIELDS — Create with only required fields (no description/labels) → OK",
+      "description": "class:CRUD | priority:P2",
+      "item": [
+        {
+          "name": "cr-min",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "networkLoadBalancers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"min-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.networkLoadBalancerId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('nlbId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "poll-op-110",
           "request": {
             "method": "GET",
@@ -16746,204 +16814,6 @@
       ]
     },
     {
-      "name": "NLB-CR-CRUD-NO-OPTIONAL-FIELDS — Create with only required fields (no description/labels) → OK",
-      "description": "class:CRUD | priority:P2",
-      "item": [
-        {
-          "name": "cr-min",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "networkLoadBalancers"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"min-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.metadata && j.metadata.networkLoadBalancerId);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('nlbId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-112",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "networkLoadBalancers",
-                "{{nlbId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-113",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
       "name": "NLB-CR-CRUD-WITH-DESCRIPTION — Create with non-empty description → OK and persisted",
       "description": "class:CRUD | priority:P2",
       "item": [
@@ -17001,7 +16871,7 @@
           ]
         },
         {
-          "name": "poll-op-114",
+          "name": "poll-op-112",
           "request": {
             "method": "GET",
             "header": [
@@ -17141,7 +17011,7 @@
           ]
         },
         {
-          "name": "poll-op-115",
+          "name": "poll-op-113",
           "request": {
             "method": "GET",
             "header": [
@@ -17250,7 +17120,7 @@
           ]
         },
         {
-          "name": "poll-op-116",
+          "name": "poll-op-114",
           "request": {
             "method": "GET",
             "header": [
@@ -17390,7 +17260,7 @@
           ]
         },
         {
-          "name": "poll-op-117",
+          "name": "poll-op-115",
           "request": {
             "method": "GET",
             "header": [
@@ -17499,7 +17369,7 @@
           ]
         },
         {
-          "name": "poll-op-118",
+          "name": "poll-op-116",
           "request": {
             "method": "GET",
             "header": [
@@ -17642,7 +17512,7 @@
           ]
         },
         {
-          "name": "poll-op-119",
+          "name": "poll-op-117",
           "request": {
             "method": "GET",
             "header": [
@@ -17738,8 +17608,8 @@
       ]
     },
     {
-      "name": "NLB-LST-FILTER-COMBINED — List with combined filter (name + labels) → handled",
-      "description": "class:LSG | priority:P2",
+      "name": "NLB-LST-FILTER-COMBINED — List with combined filter (name AND labels) → InvalidArgument (AND unsupported)",
+      "description": "class:LSG | class:VAL | priority:P2",
       "item": [
         {
           "name": "lst-combined",
@@ -17769,7 +17639,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('handled', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -17835,7 +17709,7 @@
           ]
         },
         {
-          "name": "poll-op-120",
+          "name": "poll-op-118",
           "request": {
             "method": "GET",
             "header": [
@@ -17986,7 +17860,7 @@
           ]
         },
         {
-          "name": "poll-op-121",
+          "name": "poll-op-119",
           "request": {
             "method": "GET",
             "header": [
@@ -18075,7 +17949,7 @@
           ]
         },
         {
-          "name": "poll-op-122",
+          "name": "poll-op-120",
           "request": {
             "method": "GET",
             "header": [
@@ -18195,7 +18069,7 @@
           ]
         },
         {
-          "name": "poll-op-123",
+          "name": "poll-op-121",
           "request": {
             "method": "GET",
             "header": [
@@ -18316,7 +18190,7 @@
           ]
         },
         {
-          "name": "poll-op-124",
+          "name": "poll-op-122",
           "request": {
             "method": "GET",
             "header": [
@@ -18479,7 +18353,7 @@
           ]
         },
         {
-          "name": "poll-op-125",
+          "name": "poll-op-123",
           "request": {
             "method": "GET",
             "header": [
@@ -18604,7 +18478,7 @@
           ]
         },
         {
-          "name": "poll-op-126",
+          "name": "poll-op-124",
           "request": {
             "method": "GET",
             "header": [
@@ -18777,7 +18651,7 @@
           ]
         },
         {
-          "name": "poll-op-127",
+          "name": "poll-op-125",
           "request": {
             "method": "GET",
             "header": [
@@ -18898,7 +18772,7 @@
           ]
         },
         {
-          "name": "poll-op-128",
+          "name": "poll-op-126",
           "request": {
             "method": "GET",
             "header": [
@@ -19050,7 +18924,7 @@
           ]
         },
         {
-          "name": "poll-op-129",
+          "name": "poll-op-127",
           "request": {
             "method": "GET",
             "header": [
@@ -19240,7 +19114,7 @@
           ]
         },
         {
-          "name": "poll-op-130",
+          "name": "poll-op-128",
           "request": {
             "method": "GET",
             "header": [
@@ -19329,7 +19203,7 @@
           ]
         },
         {
-          "name": "poll-op-131",
+          "name": "poll-op-129",
           "request": {
             "method": "GET",
             "header": [
@@ -19449,7 +19323,7 @@
           ]
         },
         {
-          "name": "poll-op-132",
+          "name": "poll-op-130",
           "request": {
             "method": "GET",
             "header": [
@@ -19570,7 +19444,7 @@
           ]
         },
         {
-          "name": "poll-op-133",
+          "name": "poll-op-131",
           "request": {
             "method": "GET",
             "header": [
@@ -19718,7 +19592,7 @@
           ]
         },
         {
-          "name": "poll-op-134",
+          "name": "poll-op-132",
           "request": {
             "method": "GET",
             "header": [
@@ -19807,7 +19681,7 @@
           ]
         },
         {
-          "name": "poll-op-135",
+          "name": "poll-op-133",
           "request": {
             "method": "GET",
             "header": [
@@ -19927,7 +19801,7 @@
           ]
         },
         {
-          "name": "poll-op-136",
+          "name": "poll-op-134",
           "request": {
             "method": "GET",
             "header": [
@@ -20048,7 +19922,7 @@
           ]
         },
         {
-          "name": "poll-op-137",
+          "name": "poll-op-135",
           "request": {
             "method": "GET",
             "header": [
@@ -20196,7 +20070,7 @@
           ]
         },
         {
-          "name": "poll-op-138",
+          "name": "poll-op-136",
           "request": {
             "method": "GET",
             "header": [
@@ -20285,7 +20159,7 @@
           ]
         },
         {
-          "name": "poll-op-139",
+          "name": "poll-op-137",
           "request": {
             "method": "GET",
             "header": [
@@ -20621,7 +20495,7 @@
           ]
         },
         {
-          "name": "poll-op-140",
+          "name": "poll-op-138",
           "request": {
             "method": "GET",
             "header": [
@@ -20743,7 +20617,7 @@
           ]
         },
         {
-          "name": "poll-op-141",
+          "name": "poll-op-139",
           "request": {
             "method": "GET",
             "header": [
@@ -20832,7 +20706,7 @@
           ]
         },
         {
-          "name": "poll-op-142",
+          "name": "poll-op-140",
           "request": {
             "method": "GET",
             "header": [
@@ -20921,7 +20795,7 @@
           ]
         },
         {
-          "name": "poll-op-143",
+          "name": "poll-op-141",
           "request": {
             "method": "GET",
             "header": [
@@ -21036,7 +20910,7 @@
           ]
         },
         {
-          "name": "poll-op-144",
+          "name": "poll-op-142",
           "request": {
             "method": "GET",
             "header": [
@@ -21125,7 +20999,7 @@
           ]
         },
         {
-          "name": "poll-op-145",
+          "name": "poll-op-143",
           "request": {
             "method": "GET",
             "header": [
@@ -21245,7 +21119,7 @@
           ]
         },
         {
-          "name": "poll-op-146",
+          "name": "poll-op-144",
           "request": {
             "method": "GET",
             "header": [
@@ -21401,7 +21275,7 @@
           ]
         },
         {
-          "name": "poll-op-147",
+          "name": "poll-op-145",
           "request": {
             "method": "GET",
             "header": [
@@ -21510,7 +21384,7 @@
           ]
         },
         {
-          "name": "poll-op-148",
+          "name": "poll-op-146",
           "request": {
             "method": "GET",
             "header": [
@@ -21666,7 +21540,7 @@
           ]
         },
         {
-          "name": "poll-op-149",
+          "name": "poll-op-147",
           "request": {
             "method": "GET",
             "header": [
@@ -22056,7 +21930,7 @@
           ]
         },
         {
-          "name": "poll-op-150",
+          "name": "poll-op-148",
           "request": {
             "method": "GET",
             "header": [
@@ -22176,7 +22050,7 @@
           ]
         },
         {
-          "name": "poll-op-151",
+          "name": "poll-op-149",
           "request": {
             "method": "GET",
             "header": [
@@ -22325,7 +22199,7 @@
           ]
         },
         {
-          "name": "poll-op-152",
+          "name": "poll-op-150",
           "request": {
             "method": "GET",
             "header": [
@@ -22414,7 +22288,7 @@
           ]
         },
         {
-          "name": "poll-op-153",
+          "name": "poll-op-151",
           "request": {
             "method": "GET",
             "header": [
@@ -22534,7 +22408,7 @@
           ]
         },
         {
-          "name": "poll-op-154",
+          "name": "poll-op-152",
           "request": {
             "method": "GET",
             "header": [
@@ -22654,7 +22528,7 @@
           ]
         },
         {
-          "name": "poll-op-155",
+          "name": "poll-op-153",
           "request": {
             "method": "GET",
             "header": [
@@ -22798,7 +22672,7 @@
           ]
         },
         {
-          "name": "poll-op-156",
+          "name": "poll-op-154",
           "request": {
             "method": "GET",
             "header": [
@@ -22887,7 +22761,7 @@
           ]
         },
         {
-          "name": "poll-op-157",
+          "name": "poll-op-155",
           "request": {
             "method": "GET",
             "header": [
@@ -23007,7 +22881,7 @@
           ]
         },
         {
-          "name": "poll-op-158",
+          "name": "poll-op-156",
           "request": {
             "method": "GET",
             "header": [
@@ -23110,7 +22984,7 @@
           ]
         },
         {
-          "name": "poll-op-159",
+          "name": "poll-op-157",
           "request": {
             "method": "GET",
             "header": [
@@ -23230,7 +23104,7 @@
           ]
         },
         {
-          "name": "poll-op-160",
+          "name": "poll-op-158",
           "request": {
             "method": "GET",
             "header": [
@@ -23371,7 +23245,7 @@
           ]
         },
         {
-          "name": "poll-op-161",
+          "name": "poll-op-159",
           "request": {
             "method": "GET",
             "header": [
@@ -23460,7 +23334,7 @@
           ]
         },
         {
-          "name": "poll-op-162",
+          "name": "poll-op-160",
           "request": {
             "method": "GET",
             "header": [
@@ -23549,7 +23423,7 @@
           ]
         },
         {
-          "name": "poll-op-163",
+          "name": "poll-op-161",
           "request": {
             "method": "GET",
             "header": [
@@ -23658,7 +23532,7 @@
           ]
         },
         {
-          "name": "poll-op-164",
+          "name": "poll-op-162",
           "request": {
             "method": "GET",
             "header": [
@@ -23778,7 +23652,7 @@
           ]
         },
         {
-          "name": "poll-op-165",
+          "name": "poll-op-163",
           "request": {
             "method": "GET",
             "header": [
@@ -23921,7 +23795,7 @@
           ]
         },
         {
-          "name": "poll-op-166",
+          "name": "poll-op-164",
           "request": {
             "method": "GET",
             "header": [
@@ -24010,7 +23884,7 @@
           ]
         },
         {
-          "name": "poll-op-167",
+          "name": "poll-op-165",
           "request": {
             "method": "GET",
             "header": [
@@ -24130,7 +24004,7 @@
           ]
         },
         {
-          "name": "poll-op-168",
+          "name": "poll-op-166",
           "request": {
             "method": "GET",
             "header": [
@@ -24251,7 +24125,7 @@
           ]
         },
         {
-          "name": "poll-op-169",
+          "name": "poll-op-167",
           "request": {
             "method": "GET",
             "header": [
@@ -24394,7 +24268,7 @@
           ]
         },
         {
-          "name": "poll-op-170",
+          "name": "poll-op-168",
           "request": {
             "method": "GET",
             "header": [
@@ -24483,7 +24357,7 @@
           ]
         },
         {
-          "name": "poll-op-171",
+          "name": "poll-op-169",
           "request": {
             "method": "GET",
             "header": [
@@ -24603,7 +24477,7 @@
           ]
         },
         {
-          "name": "poll-op-172",
+          "name": "poll-op-170",
           "request": {
             "method": "GET",
             "header": [
@@ -24724,7 +24598,7 @@
           ]
         },
         {
-          "name": "poll-op-173",
+          "name": "poll-op-171",
           "request": {
             "method": "GET",
             "header": [
@@ -24910,7 +24784,7 @@
           ]
         },
         {
-          "name": "poll-op-174",
+          "name": "poll-op-172",
           "request": {
             "method": "GET",
             "header": [
@@ -25030,7 +24904,7 @@
           ]
         },
         {
-          "name": "poll-op-175",
+          "name": "poll-op-173",
           "request": {
             "method": "GET",
             "header": [
@@ -25151,7 +25025,7 @@
           ]
         },
         {
-          "name": "poll-op-176",
+          "name": "poll-op-174",
           "request": {
             "method": "GET",
             "header": [
@@ -25385,7 +25259,7 @@
           ]
         },
         {
-          "name": "poll-op-177",
+          "name": "poll-op-175",
           "request": {
             "method": "GET",
             "header": [
@@ -25505,7 +25379,7 @@
           ]
         },
         {
-          "name": "poll-op-178",
+          "name": "poll-op-176",
           "request": {
             "method": "GET",
             "header": [
@@ -25625,7 +25499,7 @@
           ]
         },
         {
-          "name": "poll-op-179",
+          "name": "poll-op-177",
           "request": {
             "method": "GET",
             "header": [
@@ -25737,7 +25611,7 @@
           ]
         },
         {
-          "name": "poll-op-180",
+          "name": "poll-op-178",
           "request": {
             "method": "GET",
             "header": [
@@ -25871,7 +25745,7 @@
           ]
         },
         {
-          "name": "poll-op-181",
+          "name": "poll-op-179",
           "request": {
             "method": "GET",
             "header": [
@@ -25960,7 +25834,7 @@
           ]
         },
         {
-          "name": "poll-op-182",
+          "name": "poll-op-180",
           "request": {
             "method": "GET",
             "header": [
@@ -26049,7 +25923,7 @@
           ]
         },
         {
-          "name": "poll-op-183",
+          "name": "poll-op-181",
           "request": {
             "method": "GET",
             "header": [
@@ -26169,7 +26043,7 @@
           ]
         },
         {
-          "name": "poll-op-184",
+          "name": "poll-op-182",
           "request": {
             "method": "GET",
             "header": [
@@ -26290,7 +26164,7 @@
           ]
         },
         {
-          "name": "poll-op-185",
+          "name": "poll-op-183",
           "request": {
             "method": "GET",
             "header": [
@@ -26496,7 +26370,7 @@
           ]
         },
         {
-          "name": "poll-op-186",
+          "name": "poll-op-184",
           "request": {
             "method": "GET",
             "header": [
@@ -26605,7 +26479,7 @@
           ]
         },
         {
-          "name": "poll-op-187",
+          "name": "poll-op-185",
           "request": {
             "method": "GET",
             "header": [
@@ -26721,7 +26595,7 @@
           ]
         },
         {
-          "name": "poll-op-188",
+          "name": "poll-op-186",
           "request": {
             "method": "GET",
             "header": [
@@ -26824,7 +26698,7 @@
           ]
         },
         {
-          "name": "poll-op-189",
+          "name": "poll-op-187",
           "request": {
             "method": "GET",
             "header": [
@@ -26987,7 +26861,7 @@
           ]
         },
         {
-          "name": "poll-op-190",
+          "name": "poll-op-188",
           "request": {
             "method": "GET",
             "header": [

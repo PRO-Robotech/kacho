@@ -90,12 +90,38 @@ found "pass genuinely". The third name in its recommendation
   visibility) is a **phantom LB**: the wraps fail-closed after 30s but cannot green a parent that
   never persisted. This is the alloc-throughput residual, not a test-retry gap.
 
+## Known failing — product bugs
+
+### `NLB-CR-VAL-INVALID-AFFINITY` — an unknown enum value is accepted and dropped
+
+Measured on the live stand 2026-07-28 against the shipped build:
+
+| request | result |
+|---|---|
+| `sessionAffinity: "DOES_NOT_EXIST"` | **HTTP 200**, Operation minted, LB created with the default `FIVE_TUPLE` |
+| `sessionAffinity: "CLIENT_IP_ONLY"` | HTTP 200, `CLIENT_IP_ONLY` persisted |
+
+An unknown value is therefore neither applied nor refused: the caller is told `200` for a
+setting the server never made, which `api-conventions.md` names outright — «принято-и-
+проигнорировано — ЗАПРЕЩЕНО». The cause is the transcoder, not this service. The public
+marshaller runs protojson with `DiscardUnknown`, which discards unrecognised enum VALUES
+along with unknown fields, so nlb receives `SESSION_AFFINITY_UNSPECIFIED` and cannot
+distinguish "bogus" from "absent". The fix belongs to the gateway
+(`gateway/internal/restmux/mux.go`, where the trade-off is written down), not to nlb.
+
+The case asserts its declared contract (`400` / `INVALID_ARGUMENT`) and stays RED until the
+product meets it. It is NOT relaxed back to `oneOf([200, 400])`: that spelling passed in both
+worlds and is precisely why the behaviour went unnoticed. The same swallow has already cost
+this suite once — see the `adminState` note in `NLB-GTS-STATE-LB-DISABLED`, where a value the
+transcoder dropped surfaced as a confusing `HEALTHY`-vs-`INACTIVE` failure.
+
 ## First fe3455 run — triage & corrections (2026-07-01)
 
 The LoadBalancer suite (`collections/load-balancer.postman_collection.json`, 142 cases /
 544 assertions) was executed against the live fe3455 stack for the first time: **97% pass,
 10 failing assertions**. Every failure was triaged against the kacho-nlb source — **none is
-a product bug**, so there is still no "Known failing — product bugs" section. Breakdown:
+a product bug** (the section above was opened later, on 2026-07-28, by a different finding).
+Breakdown:
 
 - **4 timing** — pass once the Operation worker is given time (`run.sh --delay <ms>` /
   `run-incremental.sh`); the async op had not reached `done:true` on the first poll.

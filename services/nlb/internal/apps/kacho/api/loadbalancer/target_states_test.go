@@ -5,6 +5,7 @@ package loadbalancer
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -116,6 +117,53 @@ func TestGetTargetStates_DeniesUnauthorizedSameProjectTargetGroup(t *testing.T) 
 	require.Equal(t, "user:usr_attacker", chk.gotSubject)
 	require.Equal(t, domain.FGARelationViewer, chk.gotRelation)
 	require.Equal(t, "nlb_target_group:"+tgID, chk.gotObject)
+}
+
+// TestGetTargetStates_UnauthorizedCaller_NoExistenceOracle — the caller-supplied
+// target_group_id must be AUTHORIZED BEFORE it is RESOLVED.
+//
+// Resolving first makes the answer depend on whether the id names a real row:
+// a well-formed id that exists in a foreign project comes back
+// PermissionDenied, while a well-formed id that exists nowhere comes back
+// NotFound. That difference is a probe: an attacker enumerating ids learns
+// which target groups exist across every project of the installation, without
+// holding any grant on any of them. The two lanes must be indistinguishable —
+// same code AND same message (security.md #6 byte-identical hide-existence).
+//
+// Locks the observable, not the ordering alone: chk.calls proves the Check ran
+// even for the absent id (i.e. no repo lookup preceded it).
+func TestGetTargetStates_UnauthorizedCaller_NoExistenceOracle(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepo()
+	lbID := seedLB(t, repo, "prj-a", "edge")
+	foreignTG := seedTG(t, repo, "prj-b", "ru-central1", "victim") // exists, another project
+	absentTG := ids.NewID(ids.PrefixTargetGroup)                   // well-formed, exists nowhere
+
+	call := func(tgID string) (*fakeCheckClient, error) {
+		chk := &fakeCheckClient{allowed: false}
+		uc := NewGetTargetStatesUseCase(repo, chk)
+		_, err := uc.Execute(ctxWithUser("usr_attacker"), &lbv1.GetTargetStatesRequest{
+			NetworkLoadBalancerId: lbID, TargetGroupId: tgID,
+		})
+		return chk, err
+	}
+
+	chkForeign, errForeign := call(foreignTG)
+	chkAbsent, errAbsent := call(absentTG)
+
+	require.Equal(t, codes.PermissionDenied, status.Code(errForeign))
+	require.Equal(t, codes.PermissionDenied, status.Code(errAbsent),
+		"an absent target group must answer like an unauthorized one, not NotFound")
+	require.Equal(t, 1, chkForeign.calls)
+	require.Equal(t, 1, chkAbsent.calls,
+		"authz must run before the target group is resolved (absent id never reaches the repo)")
+
+	// Byte-identity modulo the id the caller itself supplied: nothing else may differ.
+	normalize := func(err error, tgID string) string {
+		return strings.ReplaceAll(status.Convert(err).Message(), tgID, "<id>")
+	}
+	require.Equal(t, normalize(errForeign, foreignTG), normalize(errAbsent, absentTG),
+		"deny message must not distinguish an existing target group from an absent one")
 }
 
 // TestGetTargetStates_AllowsAuthorizedTargetGroup — a same-project caller

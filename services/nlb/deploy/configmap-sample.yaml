@@ -6,18 +6,19 @@
 # Все ключи опциональны: defaults — в `internal/apps/kacho/config/defaults.go`
 # (evgeniy §J.3). Required (без default'а):
 #   - repository.postgres.url           — DSN до kacho_nlb БД.
-#   - authz.iam.addr                    — required только в mode=production.
+#   - extapi.iam.internal-addr          — адрес iam INTERNAL listener'а; по нему
+#                                         идёт per-RPC Check. Required в mode=production.
 #
 # ENV-override любого поля через viper-делимитер `__`:
 #   KACHO_NLB_REPOSITORY__POSTGRES__URL=postgres://...
 #   KACHO_NLB_LOGGER__LEVEL=INFO
-#   KACHO_NLB_AUTHZ__IAM__ADDR=iam.kacho.svc.cluster.local:9091
+#   KACHO_NLB_EXTAPI__IAM__INTERNAL_ADDR=iam-internal.kacho.svc.cluster.local:9091
 #
 # Полный документ-описание полей и mode-specific требований — `internal/apps/kacho/config/config.go`.
 
 # ─── Mode ───────────────────────────────────────────────────────────────────
 # dev — relaxed validation (TLS optional, breakglass allowed).
-# production — TLS required, authz.iam.addr required, breakglass forbidden.
+# production — TLS required, extapi.iam.internal-addr required, breakglass forbidden.
 mode: dev
 
 # ─── Logger ─────────────────────────────────────────────────────────────────
@@ -86,7 +87,7 @@ extapi:
 # ─── Authz (FGA per-RPC Check + cache + listen-invalidator) ─────────────────
 authz:
   iam:
-    addr: iam.kacho.svc.cluster.local:9091                      # required в production
+    # Адреса здесь нет: Check идёт по соединению из extapi.iam.internal-addr.
     dial-deadline: 3s
     request-timeout: 500ms
   cache:

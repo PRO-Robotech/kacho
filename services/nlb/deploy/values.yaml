@@ -157,11 +157,12 @@ peers:
     tls: false
     dialDuration: 10s
 
-# Authz gRPC endpoint — usually kacho-iam internal listener. Required when
+# Authz — параметры ВЫЗОВА per-RPC Check. Адрес ребра здесь не задаётся:
+# Check идёт по соединению `iam-internal`, чей адрес берётся из
+# peers.iam.internalAddr (extapi.iam.internal-addr). Он же обязателен при
 # config.mode = production.
 authz:
   iam:
-    addr: kacho-iam.kacho.svc.cluster.local:9091
     dialDeadline: 3s
     requestTimeout: 500ms
 
