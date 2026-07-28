@@ -120,7 +120,18 @@ type AuthInterceptor struct {
 	// (kacho_principal_type=service_account) must be sender-constrained (RFC
 	// 7800 `cnf`: DPoP jkt or mTLS x5t#S256). See machineBindingViolationFor.
 	requireMachineBinding bool
-	logger                *slog.Logger
+	// revocation — asks the identity provider whether a verified token is still
+	// live (nil → unmounted). See auth_revocation.go for why the check lives on
+	// this always-running layer rather than behind a feature toggle.
+	revocation TokenRevocationChecker
+	// revocationFailures rate-limits the report of a revocation check that is not
+	// answering, so an outage is visible without flooding the log.
+	revocationFailures *introspectionFailureReporter
+	// revocationSkips rate-limits the separate report of a token the check could
+	// not be asked about at all (no identifier). Separate window and counter — see
+	// WithRevocationCheck.
+	revocationSkips *introspectionFailureReporter
+	logger          *slog.Logger
 
 	// Headers, которые auth-interceptor пропускает в backend metadata
 	// (после успешного auth). Backend через corelib `grpcsrv.PrincipalExtractInterceptor`
@@ -327,6 +338,24 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 			a.logger.Warn("auth: machine token is not sender-constrained; rejected",
 				"method", fullMethod)
 			return nil, status.Error(codes.Unauthenticated, authFailedMsg)
+		}
+		// A verified signature says who minted the token and when it expires. It
+		// does not say the token is still good — a sign-out or a revoked key
+		// leaves a valid signature behind. Only the provider knows, and it is
+		// asked here, on the layer that always runs, using the token this branch
+		// has ALREADY verified (no second parse of the same bearer).
+		switch a.revocationCheck(ctx, vt, "grpc", fullMethod) {
+		case revocationRevoked:
+			// The credential is dead, which is an authN failure like any other and
+			// carries the same constant message (no varying text to read state off).
+			a.logger.Warn("auth: token reported not live by the provider; rejected",
+				"method", fullMethod)
+			return nil, status.Error(codes.Unauthenticated, authFailedMsg)
+		case revocationUnanswerable:
+			// The fault is this deployment's configuration, not the caller's
+			// credential: Unavailable, so a client retries instead of pointlessly
+			// re-authenticating.
+			return nil, status.Error(codes.Unavailable, revocationUnavailableReason)
 		}
 		pType, pID, display, perr := principalFromVerifiedToken(vt)
 		if perr == nil {
@@ -818,6 +847,28 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 			"path", r.URL.Path)
 		writeHTTPUnauthorized(w, "sender-constrained token required")
 		return true
+	}
+	// Is the token still live? The signature cannot answer that; the provider can.
+	// Asked on the token this branch has already verified — never by parsing the
+	// bearer a second time.
+	//
+	// The pre-auth allow-list is exempt, and sign-out is why: a user whose session
+	// was revoked elsewhere must still be able to complete a sign-out and clear
+	// their cookies. Refusing that would leave the browser holding a session it
+	// cannot surrender. The health probes and the interactive login flow are in
+	// the same list for the same reason — none of them acts on the credential's
+	// authority.
+	if !isPublicHTTPPath(r.URL.Path) {
+		switch a.revocationCheck(r.Context(), vt, "rest", r.URL.Path) {
+		case revocationRevoked:
+			a.logger.Warn("auth.HTTP: token reported not live by the provider; rejected",
+				"path", r.URL.Path)
+			writeHTTPUnauthorized(w, revocationDenyDescription)
+			return true
+		case revocationUnanswerable:
+			writeHTTPServiceUnavailable(w, revocationUnavailableReason)
+			return true
+		}
 	}
 	if pType, pID, display, perr := principalFromVerifiedToken(vt); perr == nil {
 		setPrincipalHeaders(r, pType, pID, display)

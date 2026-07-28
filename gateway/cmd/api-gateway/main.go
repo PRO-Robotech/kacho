@@ -189,6 +189,39 @@ func main() {
 		log.Fatalf("revocation config startup-validation: %v", rvErr)
 	}
 
+	// --- Revocation check: mounted on the authN layer that always runs ---
+	//
+	// It used to be wired inside the sender-constrained-token middleware below,
+	// which is gated by KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP — a toggle no profile
+	// sets. So the check was configured, guarded and deployed, and never once
+	// asked. Turning that toggle on is not the way to fix it: it would also start
+	// DEMANDING proof-of-possession, which issuance does not yet mint (see
+	// AuthNRequireMachineTokenBinding), so it would refuse every machine
+	// credential. Whether a token was revoked is a question about ANY token, so
+	// it belongs on the layer every request passes through.
+	if introspectionURL := cfg.ResolvedHydraIntrospectionURL(); introspectionURL != "" {
+		revocationCache, rcErr := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
+			HydraIntrospectionURL: introspectionURL,
+			MaxEntries:            cfg.IntrospectionCacheSize,
+			TTL:                   time.Duration(cfg.IntrospectionCacheTTLSeconds) * time.Second,
+			Timeout:               time.Duration(cfg.IntrospectionTimeoutMs) * time.Millisecond,
+		})
+		if rcErr != nil {
+			log.Fatalf("revocation check: %v", rcErr)
+		}
+		authInterceptor = authInterceptor.WithRevocationCheck(revocationCache, 0)
+		logger.Info("revocation check active on the authN path",
+			"cache_ttl_s", cfg.IntrospectionCacheTTLSeconds,
+			"cache_entries", cfg.IntrospectionCacheSize,
+			"per_call_timeout_ms", cfg.IntrospectionTimeoutMs)
+	} else {
+		// Production-class environments never reach this branch — the guard above
+		// refuses to start. A dev stand may legitimately have no admin API to ask.
+		logger.Warn("revocation check NOT mounted: no introspection endpoint configured; "+
+			"a revoked token stays usable until it expires on its own",
+			"knob", "KACHO_HYDRA_INTROSPECTION_URL")
+	}
+
 	// --- DPoP / JWT verifier / mTLS-bound / step-up gate ---
 	//
 	// All wiring is feature-gated by KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP.
@@ -232,26 +265,14 @@ func main() {
 			log.Fatalf("step-up permission catalog: %v", scErr)
 		}
 
-		var introspection *middleware.IntrospectionCache
-		if cfg.ResolvedHydraIntrospectionURL() != "" {
-			ic, ierr := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
-				HydraIntrospectionURL: cfg.ResolvedHydraIntrospectionURL(),
-				MaxEntries:            cfg.IntrospectionCacheSize,
-				TTL:                   time.Duration(cfg.IntrospectionCacheTTLSeconds) * time.Second,
-				Timeout:               time.Duration(cfg.IntrospectionTimeoutMs) * time.Millisecond,
-			})
-			if ierr != nil {
-				log.Fatalf("introspection cache: %v", ierr)
-			}
-			introspection = ic
-		}
-
+		// No revocation wiring here on purpose: the check is mounted above, on the
+		// layer that always runs. Asking again in this middleware would introspect
+		// the same token twice per request whenever this toggle is on.
 		dpopMiddleware, verifierErr = middleware.NewDPoPMiddleware(middleware.DPoPMiddlewareConfig{
 			Verifier:              verifier,
 			DPoP:                  dpopValidator,
 			MTLS:                  middleware.NewMTLSBoundValidator(),
 			StepUp:                stepUp,
-			Introspection:         introspection,
 			PermissionLookup:      middleware.NewCatalogPermissionLookup(stepUpCatalog),
 			RestRouter:            middleware.NewRestRouter(),
 			Logger:                logger,
@@ -278,7 +299,6 @@ func main() {
 			"jwks_url", cfg.ResolvedHydraJWKSURL(),
 			"issuer", cfg.ResolvedHydraIssuer(),
 			"audience", cfg.ExpectedAudience(),
-			"introspection_enabled", introspection != nil,
 			"stepup_catalog_entries", stepUpCatalog.Size(),
 		)
 	} else {

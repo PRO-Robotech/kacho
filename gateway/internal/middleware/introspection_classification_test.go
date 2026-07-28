@@ -18,6 +18,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -149,4 +150,61 @@ func TestIntrospection_HonoursConfiguredTimeout(t *testing.T) {
 		"the configured budget must bound the wait; a stalled provider cannot hold the request")
 	// Deadline overruns are the one failure a caller must never read as an answer.
 	assert.True(t, errors.Is(ierr, context.DeadlineExceeded) || elapsed < time.Second)
+}
+
+// The transport cannot establish trust with what answered. This is the shape of
+// an operator HARDENING the address — moving it from plaintext to TLS — against a
+// provider whose certificate this process has no reason to trust.
+//
+// It must be classified as configuration, and here is why that is not a matter of
+// taste: on the "provider did not answer" branch the request PASSES. If a failed
+// handshake landed there, the act of hardening the address would switch the
+// revocation check off across the fleet, and the only trace would be one log line
+// per window while every request sailed through unchecked. A permanent condition
+// that no retry resolves belongs on the branch that refuses.
+func TestIntrospection_TLSTrustFailure_IsMisconfiguration(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"active":true}`))
+	}))
+	defer srv.Close()
+
+	// A default client: the server's certificate is signed by the test's own
+	// throwaway CA, which the system roots do not carry.
+	err := introspectAgainst(t, srv.URL)
+	require.Error(t, err)
+	assert.ErrorIs(t, err, middleware.ErrIntrospectionMisconfigured,
+		"an untrusted certificate answers every retry identically — treating it as a "+
+			"passing hiccup means hardening the address silently disables the check")
+}
+
+// The mirror image: TLS spoken at a plaintext listener. Same class, same answer.
+func TestIntrospection_TLSAgainstPlaintextEndpoint_IsMisconfiguration(t *testing.T) {
+	srv := newStatusServer(http.StatusOK, "application/json", `{"active":true}`)
+	defer srv.Close()
+
+	err := introspectAgainst(t, "https"+strings.TrimPrefix(srv.URL, "http"))
+	require.Error(t, err)
+	assert.ErrorIs(t, err, middleware.ErrIntrospectionMisconfigured)
+}
+
+// A scheme no HTTP transport can speak is configuration too — it never resolves.
+func TestIntrospection_UnsupportedScheme_IsMisconfiguration(t *testing.T) {
+	err := introspectAgainst(t, "ftp://provider.invalid/admin/oauth2/introspect")
+	require.Error(t, err)
+	assert.ErrorIs(t, err, middleware.ErrIntrospectionMisconfigured)
+}
+
+// And the boundary the classification must NOT cross: nothing listening is a
+// passing condition — a provider restarting comes back on its own.
+func TestIntrospection_ConnectionRefused_StaysTransient(t *testing.T) {
+	srv := newStatusServer(http.StatusOK, "application/json", `{"active":true}`)
+	url := srv.URL
+	srv.Close() // the port is now closed
+
+	err := introspectAgainst(t, url)
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, middleware.ErrIntrospectionMisconfigured,
+		"a provider that is down comes back; refusing traffic for the duration would "+
+			"take the API down with it")
 }

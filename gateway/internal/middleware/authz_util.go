@@ -181,8 +181,17 @@ func (m *AuthzMiddleware) resolveRestFQN(r *http.Request) string {
 
 // isPublicHTTPPath returns true for fixed public endpoints (healthz, readyz,
 // oauth flows). It is the single source of truth for the pre-auth HTTP
-// allow-list: both this middleware and DPoPMiddleware.Wrap consult it, so the
-// two layers cannot drift (a path admitted by one but challenged by the other).
+// allow-list: this middleware, DPoPMiddleware.Wrap and the revocation check on
+// AuthInterceptor all consult it, so the layers cannot drift (a path admitted by
+// one but challenged by another).
+//
+// Note what membership now means for the third consumer: a listed path is also
+// exempt from the "is this token revoked?" question (auth_revocation.go). That is
+// required for sign-out — a user whose session was revoked elsewhere must still be
+// able to complete it — but it makes the last branch a PREFIX worth watching: any
+// route added under /iam/v1/auth/ inherits the exemption. Today the routes there
+// are the interactive login flow, none of which acts on a bearer's authority; a
+// route that did would need to be placed elsewhere or listed exactly.
 func isPublicHTTPPath(path string) bool {
 	switch path {
 	case "/healthz", "/readyz", "/oauth/logout":
