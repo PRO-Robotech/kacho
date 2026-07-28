@@ -17,7 +17,7 @@
 // pivot-таблицы) — из него берём id приаттаченных TG.
 
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button, Input, Space, Spin } from "antd";
 import { DeleteOutlined, LoadingOutlined, PlusOutlined } from "@ant-design/icons";

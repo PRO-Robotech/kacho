@@ -10,7 +10,7 @@
 // panel/page-формы (ResourceCreatePage/EditPage), а не ?modal-флоу.
 
 import { useMemo } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router";
 import { Space, Tabs, Typography } from "antd";
 import { usePermissions } from "@shared/lib/permissions";
 

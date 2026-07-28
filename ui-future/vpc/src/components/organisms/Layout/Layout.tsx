@@ -1,4 +1,4 @@
-import { Outlet } from "react-router-dom";
+import { Outlet } from "react-router";
 import { Layout as AntLayout, Tooltip, Button, theme } from "antd";
 import { Moon, Sun } from "lucide-react";
 import { useThemeMode } from "@shared/lib/theme-context";

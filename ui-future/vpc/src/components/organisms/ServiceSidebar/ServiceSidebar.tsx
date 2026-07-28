@@ -12,7 +12,7 @@
 // сворачивания — внизу сайдбара.
 
 import { useMemo, type ReactNode } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router";
 import { Avatar, Dropdown, Spin, Tooltip, theme } from "antd";
 import { LoginOutlined, LogoutOutlined, UserOutlined } from "@ant-design/icons";
 import { KachoLogo } from "@/components/atoms/brand/KachoLogo";

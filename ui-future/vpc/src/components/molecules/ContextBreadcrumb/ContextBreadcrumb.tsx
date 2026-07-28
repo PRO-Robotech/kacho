@@ -11,7 +11,7 @@
 // никакого нового API не вводится.
 
 import { forwardRef, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { Dropdown, theme, type MenuProps } from "antd";
 import { ChevronRight } from "lucide-react";
 import { iamApi } from "@shared/api/iam";

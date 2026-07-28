@@ -3,7 +3,7 @@
 // (дедуплицируется TanStack по (specId, projectId)), находит row.name по id.
 // При клике stopPropagation чтобы не триггерить row-click таблицы-родителя.
 
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Tag } from "antd";
 import { api } from "@/api/client";

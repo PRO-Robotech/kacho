@@ -9,7 +9,7 @@
 // `?error=...` (например, от Hydra или OIDC-провайдера) — render error message.
 
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import { Alert, Button, Result, Spin } from "antd";
 
 export function AuthCallback() {

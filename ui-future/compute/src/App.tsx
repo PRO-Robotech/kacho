@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter } from "react-router";
 import { InstancesPage } from "@/pages";
 
 // Standalone-обёртка compute-remote (полная интеграция). В федеративном режиме

@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter } from "react-router";
 import { RegistryPage } from "@/pages";
 
 // Standalone-обёртка registry-remote (полная интеграция). В федеративном режиме

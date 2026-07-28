@@ -2,7 +2,7 @@
 // /system/tokens/{service-account-keys,user-tokens}. Горизонтальные табы
 // переключения между SA-ключами и персональными токенами пользователей.
 
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router";
 import { Space, Tabs, Typography } from "antd";
 
 const TABS = [

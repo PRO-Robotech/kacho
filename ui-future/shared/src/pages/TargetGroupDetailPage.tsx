@@ -8,7 +8,7 @@
 // GET-ответе — рендерим из него.
 
 import { useCallback, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams } from "react-router";
 import { useMutation } from "@tanstack/react-query";
 import { Button, Card, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, Typography } from "antd";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";

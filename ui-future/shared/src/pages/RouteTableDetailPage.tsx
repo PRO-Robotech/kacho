@@ -2,7 +2,7 @@
 // собирающая nested-breadcrumb когда RT открыт под network detail
 // (URL `/projects/<projectId>/networks/<n>/route-tables/<id>`).
 
-import { useParams } from "react-router-dom";
+import { useParams } from "react-router";
 import { ResourceDetailPage } from "@shared/components/organisms/ResourceDetailPage";
 import { REGISTRY } from "@shared/lib/resource-registry";
 import { useNestedBreadcrumb } from "@shared/lib/use-nested-breadcrumb";

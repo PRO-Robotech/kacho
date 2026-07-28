@@ -1,7 +1,7 @@
 import React, { type ReactNode } from "react";
 import { render, screen } from "@testing-library/react";
 import { jest } from "@jest/globals";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router";
 import { contextApi, type AccountRef, type ProjectRef } from "@shared/lib/context-store";
 import type { ResourceSpec } from "@shared/lib/resource-registry";
 import type { IamPage as IamPageExport } from "./IamPage";

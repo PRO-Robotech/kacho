@@ -10,7 +10,7 @@
 //     вернёт 403 + state=show_form → UI redirect на login?refresh=true&aal=aal2.
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router";
 import { Button, Card, Form, Input, Typography, Alert, Space, Spin, Divider, List, Modal, Image } from "antd";
 import { KeyOutlined, SafetyOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { kratos, type SelfServiceFlow, csrfToken, findNode, flowMessages } from "@shared/lib/kratos";

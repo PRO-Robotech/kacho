@@ -5,7 +5,7 @@
 // «IPv4-адрес» на NIC-детали (AddressRefTag). Оба id пустые → прочерк.
 
 import type { FC } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import { getByPath } from "@/lib/resource-registry";

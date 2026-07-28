@@ -7,7 +7,7 @@
 //   • ничего не выбрано → "—" + CTA «Перейти в IAM»
 
 import { useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { useQueries } from "@tanstack/react-query";
 import { Card, Empty, Statistic, Typography, Space, Button, Row, Col, Alert, Tooltip } from "antd";
 import { ArrowRightOutlined, FolderOpenOutlined, AppstoreOutlined, LockOutlined } from "@ant-design/icons";

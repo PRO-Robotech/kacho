@@ -8,7 +8,7 @@
 // magic-link либо через OIDC-callback.
 
 import { useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router";
 import { Button, Cascader, Form, Input, Popconfirm, Select, Space, Table, Tag, Typography, Alert, Tooltip } from "antd";
 import { DeleteOutlined, UserAddOutlined, LinkOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";

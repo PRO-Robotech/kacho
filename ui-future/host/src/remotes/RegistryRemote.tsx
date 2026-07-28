@@ -1,7 +1,7 @@
 import { lazy, Suspense } from "react";
 import type { FC } from "react";
 import { Spin } from "antd";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import type { HostContext } from "../utils";
 
 const RegistryPage = lazy(async () => {

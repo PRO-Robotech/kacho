@@ -5,7 +5,7 @@
 // модалку). Блокирующие удаление помечены ⚠. Источник — lib/dependency-graph.
 
 import { useMemo } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Alert, Empty, Spin, Typography, Tag, Tree, theme } from "antd";
 import { WarningFilled } from "@ant-design/icons";
 import type { DataNode } from "antd/es/tree";

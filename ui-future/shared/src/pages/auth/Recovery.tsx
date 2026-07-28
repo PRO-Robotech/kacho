@@ -9,7 +9,7 @@
 //      После success → redirect /dashboard.
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router";
 import { Button, Form, Input, Typography, Alert, Spin, Result } from "antd";
 import { MailOutlined, KeyOutlined } from "@ant-design/icons";
 import { kratos, type SelfServiceFlow, csrfToken, flowMessages } from "@shared/lib/kratos";

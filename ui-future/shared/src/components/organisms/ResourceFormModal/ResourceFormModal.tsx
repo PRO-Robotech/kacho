@@ -13,7 +13,7 @@
 // (List / Detail). Сама модалка — fragment-noop пока в URL нет ?modal=.
 
 import { useCallback, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Modal } from "antd";
 import { InlineResourceForm } from "@shared/components/organisms/InlineResourceForm";

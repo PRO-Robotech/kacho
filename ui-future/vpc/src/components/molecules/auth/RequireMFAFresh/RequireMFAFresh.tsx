@@ -11,7 +11,7 @@
 // Иначе → trigger setStepUpHandler / redirect на login?refresh=true&aal=aal2.
 
 import { useEffect } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation } from "react-router";
 import { Result, Button, Spin } from "antd";
 import { KeyOutlined } from "@ant-design/icons";
 import { useAuth, isMfaFresh } from "@shared/contexts/AuthContext";

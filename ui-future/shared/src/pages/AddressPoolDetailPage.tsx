@@ -4,7 +4,7 @@
 // «Адреса» (KAC-273) показывает выделенные из пула адреса колонками
 // имя / идентификатор / IP-адрес / дата создания.
 
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ResourceDetailPage } from "@shared/components/organisms/ResourceDetailPage";

@@ -2,7 +2,7 @@
 // Поллит ресурс по id, заполняет initial state, отправляет PATCH с update_mask.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Alert, Button, Space, Spin, Typography } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";

@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConfigProvider, App as AntdApp } from "antd";
 import ruRU from "antd/locale/ru_RU";

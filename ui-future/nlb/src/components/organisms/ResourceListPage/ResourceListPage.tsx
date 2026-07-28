@@ -3,7 +3,7 @@
 // Polling 3 сек (через useResourceList).
 
 import { useMemo, useState } from "react";
-import { Link, useParams, useLocation, useNavigate } from "react-router-dom";
+import { Link, useParams, useLocation, useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Input, Select, Typography, Tag } from "antd";
 import { ErrorResult } from "@/components/molecules/ErrorResult";

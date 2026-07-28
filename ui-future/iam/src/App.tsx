@@ -1,4 +1,4 @@
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter } from "react-router";
 import { IamPage } from "@/pages/IamPage";
 
 export default function App() {

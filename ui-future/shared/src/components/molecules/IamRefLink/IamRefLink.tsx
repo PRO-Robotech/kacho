@@ -9,7 +9,7 @@
 // App-agnostic: живёт в shared, чтобы REGISTRY-колонки IAM-ресурсов (shared)
 // резолвились в любом app'е (только @shared-зависимости).
 
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@shared/api/client";
 import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";

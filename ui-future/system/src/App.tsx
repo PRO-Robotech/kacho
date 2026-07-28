@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import SystemPage from "@/pages/SystemPage";
 
 // Standalone dev entry. Mirrors how the host mounts the remote — SystemPage owns

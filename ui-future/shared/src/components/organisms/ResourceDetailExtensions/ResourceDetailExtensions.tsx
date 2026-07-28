@@ -11,7 +11,7 @@
 // docs/superpowers/specs/2026-05-30-kacho-ui-rollout-migration-map.json
 
 import { type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Tag, Typography } from "antd";
 

@@ -4,7 +4,7 @@
 //
 // На E0: без auth-interceptor; UI шлёт запросы анонимно.
 
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router";
 import { Space, Tabs, Typography, Alert, Select } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import { iamApi, type Account } from "@shared/api/iam";
