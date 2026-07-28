@@ -14,16 +14,15 @@ import (
 
 // TestProjectHierarchyTuple_Shape — the project-hierarchy owner-tuple is
 // `project:<projectID> #project @compute_<kind>:<resourceID>` for every compute
-// resource kind.
+// resource kind. Instance is the only kind left: the Disk/Image/Snapshot rows
+// went with the retired block-storage duplicate, whose owner-tuples kacho-storage
+// now emits under its own types.
 func TestProjectHierarchyTuple_Shape(t *testing.T) {
 	cases := []struct {
 		kind   string
 		object string
 	}{
 		{"Instance", "compute_instance:epd-1"},
-		{"Disk", "compute_disk:epd-2"},
-		{"Image", "compute_image:fd8-3"},
-		{"Snapshot", "compute_snapshot:fd8-4"},
 	}
 	for _, c := range cases {
 		t.Run(c.kind, func(t *testing.T) {

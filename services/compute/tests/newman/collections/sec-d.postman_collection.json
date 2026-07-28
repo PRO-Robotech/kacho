@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "1c6896f4-0b32-4feb-9b02-960ea43b5ba4",
+    "_postman_id": "4650bb27-e9b5-4637-8b04-44ec5df23d9f",
     "name": "kacho-compute / newman / sec-d",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -38,11 +38,11 @@
   ],
   "item": [
     {
-      "name": "SECD-CR-GET-AFTER-TUPLE-OK — SEC-D-15: Create disk → Operation done → Get показывает ресурс (per-resource Check резолвится, owner-tuple применён через IAM) → Delete → Get 404",
+      "name": "SECD-CR-GET-AFTER-TUPLE-OK — SEC-D-15: Create instance → Operation done → Get показывает ресурс (per-resource Check резолвится, owner-tuple применён через IAM) → Delete → Get 404",
       "description": "class:CONF | class:IDM | priority:P1",
       "item": [
         {
-          "name": "create",
+          "name": "seed-mt-ok",
           "request": {
             "method": "POST",
             "header": [
@@ -52,19 +52,20 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks",
+              "raw": "{{internalBaseUrl}}/compute/v1/internal/machineTypes",
               "host": [
-                "{{baseUrl}}"
+                "{{internalBaseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks"
+                "internal",
+                "machineTypes"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"secd-disk-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"size\": 10737418240, \"labels\": {\"suite\": \"sec-d\"}}",
+              "raw": "{\"name\": \"mtsdok{{runId}}\", \"family\": \"STANDARD\", \"effectiveResources\": {\"vCpu\": 2, \"memoryMib\": 8192, \"gpus\": 0}, \"availableZones\": [\"{{existingZoneId}}\", \"{{existingZoneAltId}}\"], \"status\": \"AVAILABLE\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -79,11 +80,6 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('Operation envelope returned', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect(j.id, 'operation.id').to.match(/^epd[a-z0-9]+$/);",
-                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
-                  "});",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -91,8 +87,8 @@
                   "} catch (e) {}",
                   "try {",
                   "  const j = pm.response.json();",
-                  "  const v = (j.metadata && j.metadata.diskId);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('diskId', String(v));",
+                  "  const v = (j.metadata && j.metadata.machineTypeId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('mtId', String(v));",
                   "} catch (e) {}"
                 ]
               }
@@ -100,7 +96,7 @@
           ]
         },
         {
-          "name": "poll-op-200",
+          "name": "poll-op-99",
           "request": {
             "method": "GET",
             "header": [
@@ -181,7 +177,65 @@
           ]
         },
         {
-          "name": "get-rya52",
+          "name": "create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"secdins{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"labels\": {\"suite\": \"sec-d\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^epd[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.instanceId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('instanceId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-100",
           "request": {
             "method": "GET",
             "header": [
@@ -191,15 +245,96 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks/{{diskId}}",
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "assert-op-success",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation succeeded (response, no error)', () => pm.expect(Boolean(j.response) && !j.error, JSON.stringify(j)).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-rya23",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks",
-                "{{diskId}}"
+                "instances",
+                "{{instanceId}}"
               ]
             }
           },
@@ -226,9 +361,8 @@
                   "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
-                  "pm.test('id matches & epd prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('diskId')); pm.expect(j.id).to.match(/^epd/); });",
+                  "pm.test('id matches & ins- prefix', () => { pm.expect(j.id).to.eql(pm.environment.get('instanceId')); pm.expect(j.id).to.match(/^ins-/); });",
                   "pm.test('projectId matches', () => pm.expect(j.projectId).to.eql(pm.environment.get('_suiteProjectId')));",
-                  "pm.test('status READY', () => pm.expect(j.status).to.eql('READY'));",
                   "pm.test('createdAt truncated to seconds', () => {",
                   "  const ts = (pm.response.json().createdAt);",
                   "  pm.expect(ts, 'createdAt present').to.be.a('string');",
@@ -252,15 +386,15 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks/{{diskId}}",
+              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks",
-                "{{diskId}}"
+                "instances",
+                "{{instanceId}}"
               ]
             }
           },
@@ -287,7 +421,7 @@
           ]
         },
         {
-          "name": "poll-op-201",
+          "name": "poll-op-101",
           "request": {
             "method": "GET",
             "header": [
@@ -378,15 +512,15 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks/{{diskId}}",
+              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks",
-                "{{diskId}}"
+                "instances",
+                "{{instanceId}}"
               ]
             }
           },
@@ -405,11 +539,97 @@
               }
             }
           ]
+        },
+        {
+          "name": "cleanup-mt",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/compute/v1/internal/machineTypes/{{mtId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "internal",
+                "machineTypes",
+                "{{mtId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-102",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
     {
-      "name": "SECD-DEL-NEG-NOT-FOUND — SEC-D: Delete несуществующего disk → sync 404 NOT_FOUND (ownership pre-check фиксирует отсутствие ДО Operation; orphan unregister-intent не пишется)",
+      "name": "SECD-DEL-NEG-NOT-FOUND — SEC-D: Delete несуществующего instance → sync 404 NOT_FOUND (ownership pre-check фиксирует отсутствие ДО Operation; orphan unregister-intent не пишется)",
       "description": "class:NEG | priority:P2",
       "item": [
         {
@@ -423,15 +643,15 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/disks/epd00000000000000000",
+              "raw": "{{baseUrl}}/compute/v1/instances/ins-00000000000000000",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "disks",
-                "epd00000000000000000"
+                "instances",
+                "ins-00000000000000000"
               ]
             }
           },

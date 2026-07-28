@@ -11,7 +11,6 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
@@ -70,85 +69,6 @@ func seedFixtureMachineTypes(t *testing.T, db *sql.DB) {
 			('mt-highcpu8', 'itfixture-highcpu8', 0, 8, 16384, 1, TIMESTAMPTZ '2999-01-02 00:00:00Z')
 		ON CONFLICT (id) DO NOTHING`)
 	require.NoError(t, err)
-}
-
-func TestIntegration_DiskRepo_CRUD(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test")
-	}
-	ctx := context.Background()
-	dsn := setupTestDB(t)
-	pool, err := coredb.NewPool(ctx, dsn)
-	require.NoError(t, err)
-	defer pool.Close()
-
-	r := repo.NewDiskRepo(pool)
-	d := &domain.Disk{
-		ID: ids.NewID(ids.PrefixDisk), ProjectID: "f1", CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
-		Name: "disk-a", TypeID: "network-ssd", ZoneID: "ru-central1-a", Size: 4194304, BlockSize: 4096,
-		Status: domain.DiskStatusReady, Labels: map[string]string{"env": "test"},
-	}
-	created, err := r.Insert(ctx, d)
-	require.NoError(t, err)
-	assert.Equal(t, "disk-a", created.Name)
-	assert.Equal(t, domain.DiskStatusReady, created.Status)
-
-	got, err := r.Get(ctx, d.ID)
-	require.NoError(t, err)
-	assert.Equal(t, "test", got.Labels["env"])
-
-	// duplicate name → AlreadyExists.
-	dup := *d
-	dup.ID = ids.NewID(ids.PrefixDisk)
-	_, err = r.Insert(ctx, &dup)
-	require.ErrorIs(t, err, service.ErrAlreadyExists)
-
-	// update (name/size only, no labels → emitLabelsRegister=false).
-	got.Name = "disk-b"
-	got.Size = 8 << 20
-	updated, err := r.Update(ctx, got, false, []string{"name", "size"})
-	require.NoError(t, err)
-	assert.Equal(t, "disk-b", updated.Name)
-	assert.Equal(t, int64(8<<20), updated.Size)
-
-	// list.
-	list, _, err := r.List(ctx, service.DiskFilter{ProjectID: "f1"}, service.Pagination{})
-	require.NoError(t, err)
-	assert.Len(t, list, 1)
-
-	// delete.
-	require.NoError(t, r.Delete(ctx, d.ID))
-	_, err = r.Get(ctx, d.ID)
-	require.ErrorIs(t, err, service.ErrNotFound)
-}
-
-func TestIntegration_ImageAndSnapshotRepo(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test")
-	}
-	ctx := context.Background()
-	dsn := setupTestDB(t)
-	pool, err := coredb.NewPool(ctx, dsn)
-	require.NoError(t, err)
-	defer pool.Close()
-
-	ir := repo.NewImageRepo(pool)
-	old := &domain.Image{ID: ids.NewID(ids.PrefixImage), ProjectID: "f", CreatedAt: time.Now().Add(-time.Hour).UTC().Truncate(time.Microsecond), Name: "img-old", Family: "ubuntu", Status: domain.ImageStatusReady, OsType: domain.OsTypeLinux}
-	newer := &domain.Image{ID: ids.NewID(ids.PrefixImage), ProjectID: "f", CreatedAt: time.Now().UTC().Truncate(time.Microsecond), Name: "img-new", Family: "ubuntu", Status: domain.ImageStatusReady, OsType: domain.OsTypeLinux}
-	_, err = ir.Insert(ctx, old)
-	require.NoError(t, err)
-	_, err = ir.Insert(ctx, newer)
-	require.NoError(t, err)
-	latest, err := ir.GetLatestByFamily(ctx, "f", "ubuntu")
-	require.NoError(t, err)
-	assert.Equal(t, newer.ID, latest.ID)
-
-	sr := repo.NewSnapshotRepo(pool)
-	s := &domain.Snapshot{ID: ids.NewID(ids.PrefixSnapshot), ProjectID: "f", CreatedAt: time.Now().UTC().Truncate(time.Microsecond), Name: "snap-1", SourceDiskID: "epdd", DiskSize: 4194304, StorageSize: 4194304, Status: domain.SnapshotStatusReady}
-	created, err := sr.Insert(ctx, s)
-	require.NoError(t, err)
-	assert.Equal(t, "snap-1", created.Name)
-	require.NoError(t, sr.Delete(ctx, s.ID))
 }
 
 // TestIntegration_InstanceRepo_Lifecycle покрывает post-cutover repo-поверхность

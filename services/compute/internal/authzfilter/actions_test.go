@@ -71,9 +71,6 @@ func TestListActions_ResolveToViewer(t *testing.T) {
 		action string
 	}{
 		{"instance", ActionInstanceRead},
-		{"disk", ActionDiskRead},
-		{"image", ActionImageRead},
-		{"snapshot", ActionSnapshotRead},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -92,7 +89,7 @@ func TestListActions_ResolveToViewer(t *testing.T) {
 // which the iam ListObjects server rejects with InvalidArgument (the exact
 // D-consumer bug). The list-filter read-path action verb must be "list".
 func TestListActions_VerbIsList(t *testing.T) {
-	for _, action := range []string{ActionInstanceRead, ActionDiskRead, ActionImageRead, ActionSnapshotRead} {
+	for _, action := range []string{ActionInstanceRead} {
 		last := -1
 		for i := 0; i < len(action); i++ {
 			if action[i] == '.' {

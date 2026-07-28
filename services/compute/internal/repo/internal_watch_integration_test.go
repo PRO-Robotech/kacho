@@ -19,9 +19,13 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
 )
 
-// TestIntegration_OutboxEmit_OnDiskCreate проверяет, что Insert диска пишет
+// TestIntegration_OutboxEmit_OnInstanceCreate проверяет, что Insert ВМ пишет
 // строку в compute_outbox в той же транзакции (CREATED-event).
-func TestIntegration_OutboxEmit_OnDiskCreate(t *testing.T) {
+//
+// Раньше носителем этой проверки был Disk; ресурс снят (блочное хранение
+// принадлежит kacho-storage), а проверяемое свойство — транзакционность
+// outbox-эмита — принадлежит не ему, поэтому переехало на Instance.
+func TestIntegration_OutboxEmit_OnInstanceCreate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
@@ -31,15 +35,15 @@ func TestIntegration_OutboxEmit_OnDiskCreate(t *testing.T) {
 	require.NoError(t, err)
 	defer pool.Close()
 
-	r := repo.NewDiskRepo(pool)
-	d := &domain.Disk{ID: ids.NewID(ids.PrefixDisk), ProjectID: "f", CreatedAt: time.Now().UTC().Truncate(time.Microsecond), Name: "d-outbox", TypeID: "network-ssd", ZoneID: "ru-central1-a", Size: 4194304, BlockSize: 4096, Status: domain.DiskStatusReady}
+	r := repo.NewInstanceRepo(pool)
+	d := outboxFixtureInstance("i-outbox")
 	_, err = r.Insert(ctx, d)
 	require.NoError(t, err)
 
 	var kind, id, eventType string
 	err = pool.QueryRow(ctx, `SELECT resource_kind, resource_id, event_type FROM compute_outbox ORDER BY sequence_no DESC LIMIT 1`).Scan(&kind, &id, &eventType)
 	require.NoError(t, err)
-	assert.Equal(t, "Disk", kind)
+	assert.Equal(t, "Instance", kind)
 	assert.Equal(t, d.ID, id)
 	assert.Equal(t, "CREATED", eventType)
 
@@ -69,9 +73,9 @@ func TestIntegration_OutboxListenNotify(t *testing.T) {
 	_, err = listenConn.Exec(ctx, "LISTEN compute_outbox")
 	require.NoError(t, err)
 
-	// триггер события через Insert диска.
-	r := repo.NewDiskRepo(pool)
-	_, err = r.Insert(ctx, &domain.Disk{ID: ids.NewID(ids.PrefixDisk), ProjectID: "f", CreatedAt: time.Now().UTC().Truncate(time.Microsecond), Name: "d-notify", TypeID: "network-ssd", ZoneID: "ru-central1-a", Size: 4194304, BlockSize: 4096, Status: domain.DiskStatusReady})
+	// триггер события через Insert ВМ.
+	r := repo.NewInstanceRepo(pool)
+	_, err = r.Insert(ctx, outboxFixtureInstance("i-notify"))
 	require.NoError(t, err)
 
 	waitCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -80,4 +84,18 @@ func TestIntegration_OutboxListenNotify(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "compute_outbox", notif.Channel)
 	assert.NotEmpty(t, notif.Payload)
+}
+
+// outboxFixtureInstance — минимальная валидная ВМ для outbox-проверок.
+func outboxFixtureInstance(name string) *domain.Instance {
+	id := ids.NewID(ids.PrefixInstance)
+	return &domain.Instance{
+		ID: id, ProjectID: "f", CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
+		Name: name, ZoneID: "ru-central1-a", Status: domain.InstanceStatusProvisioning,
+		InstanceKind:       domain.InstanceKindVM,
+		MachineTypeID:      "mt-std2",
+		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
+		BootSource:         domain.BootSource{Type: "storage.image", ID: "img-x:22.04", ImageKind: domain.ImageKindStorageImage},
+		FQDN:               id + ".auto.internal",
+	}
 }

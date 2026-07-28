@@ -8,9 +8,6 @@ package authzfilter
 // internal/check/permission_map.go.
 const (
 	ResourceTypeInstance = "compute_instance"
-	ResourceTypeDisk     = "compute_disk"
-	ResourceTypeImage    = "compute_image"
-	ResourceTypeSnapshot = "compute_snapshot"
 )
 
 // Compute-domain action strings. Format: `<domain>.<resource>.<verb>`.
@@ -29,7 +26,4 @@ const (
 // (g_viewer_compute_<type>) so a rules-role list-grant stays visible per-object.
 const (
 	ActionInstanceRead = "compute.instances.list"
-	ActionDiskRead     = "compute.disks.list"
-	ActionImageRead    = "compute.images.list"
-	ActionSnapshotRead = "compute.snapshots.list"
 )

@@ -84,9 +84,6 @@ type ownershipGuardRPC struct {
 }
 
 const (
-	gDiskID = "epd0000000000000disk"
-	gImgID  = "epd000000000000image"
-	gSnapID = "epd0000000000000snap"
 	gInstID = "epd00000000000000vm1"
 	gProjID = "prj0000000000000pppp"
 )
@@ -97,52 +94,6 @@ const (
 // one of the calls; all three are listed.
 func ownershipGuardModelGatedRPCs() []ownershipGuardRPC {
 	return []ownershipGuardRPC{
-		// ---- DiskService ----
-		{"/kacho.cloud.compute.v1.DiskService/Get", "v_get", "compute_disk",
-			&computev1.GetDiskRequest{DiskId: gDiskID}, gDiskID},
-		{"/kacho.cloud.compute.v1.DiskService/List", "viewer", "project",
-			&computev1.ListDisksRequest{ProjectId: gProjID}, gProjID},
-		{"/kacho.cloud.compute.v1.DiskService/Create", "editor", "project",
-			&computev1.CreateDiskRequest{ProjectId: gProjID}, gProjID},
-		{"/kacho.cloud.compute.v1.DiskService/Update", "v_update", "compute_disk",
-			&computev1.UpdateDiskRequest{DiskId: gDiskID}, gDiskID},
-		{"/kacho.cloud.compute.v1.DiskService/Delete", "v_delete", "compute_disk",
-			&computev1.DeleteDiskRequest{DiskId: gDiskID}, gDiskID},
-		{"/kacho.cloud.compute.v1.DiskService/Relocate", "v_update", "compute_disk",
-			&computev1.RelocateDiskRequest{DiskId: gDiskID}, gDiskID},
-		{"/kacho.cloud.compute.v1.DiskService/ListOperations", "v_list", "compute_disk",
-			&computev1.ListDiskOperationsRequest{DiskId: gDiskID}, gDiskID},
-
-		// ---- ImageService ----
-		{"/kacho.cloud.compute.v1.ImageService/Get", "v_get", "compute_image",
-			&computev1.GetImageRequest{ImageId: gImgID}, gImgID},
-		{"/kacho.cloud.compute.v1.ImageService/GetLatestByFamily", "viewer", "project",
-			&computev1.GetImageLatestByFamilyRequest{ProjectId: gProjID}, gProjID},
-		{"/kacho.cloud.compute.v1.ImageService/List", "viewer", "project",
-			&computev1.ListImagesRequest{ProjectId: gProjID}, gProjID},
-		{"/kacho.cloud.compute.v1.ImageService/Create", "editor", "project",
-			&computev1.CreateImageRequest{ProjectId: gProjID}, gProjID},
-		{"/kacho.cloud.compute.v1.ImageService/Update", "v_update", "compute_image",
-			&computev1.UpdateImageRequest{ImageId: gImgID}, gImgID},
-		{"/kacho.cloud.compute.v1.ImageService/Delete", "v_delete", "compute_image",
-			&computev1.DeleteImageRequest{ImageId: gImgID}, gImgID},
-		{"/kacho.cloud.compute.v1.ImageService/ListOperations", "v_list", "compute_image",
-			&computev1.ListImageOperationsRequest{ImageId: gImgID}, gImgID},
-
-		// ---- SnapshotService ----
-		{"/kacho.cloud.compute.v1.SnapshotService/Get", "v_get", "compute_snapshot",
-			&computev1.GetSnapshotRequest{SnapshotId: gSnapID}, gSnapID},
-		{"/kacho.cloud.compute.v1.SnapshotService/List", "viewer", "project",
-			&computev1.ListSnapshotsRequest{ProjectId: gProjID}, gProjID},
-		{"/kacho.cloud.compute.v1.SnapshotService/Create", "editor", "project",
-			&computev1.CreateSnapshotRequest{ProjectId: gProjID}, gProjID},
-		{"/kacho.cloud.compute.v1.SnapshotService/Update", "v_update", "compute_snapshot",
-			&computev1.UpdateSnapshotRequest{SnapshotId: gSnapID}, gSnapID},
-		{"/kacho.cloud.compute.v1.SnapshotService/Delete", "v_delete", "compute_snapshot",
-			&computev1.DeleteSnapshotRequest{SnapshotId: gSnapID}, gSnapID},
-		{"/kacho.cloud.compute.v1.SnapshotService/ListOperations", "v_list", "compute_snapshot",
-			&computev1.ListSnapshotOperationsRequest{SnapshotId: gSnapID}, gSnapID},
-
 		// ---- InstanceService ----
 		{"/kacho.cloud.compute.v1.InstanceService/Get", "v_get", "compute_instance",
 			&computev1.GetInstanceRequest{InstanceId: gInstID}, gInstID},

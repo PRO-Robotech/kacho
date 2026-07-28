@@ -78,8 +78,8 @@ type Payload struct {
 	SourceVersion time.Time `json:"source_version,omitempty"`
 }
 
-// fgaTypeByKind maps a compute outbox resource_kind ("Instance"/"Disk"/"Image"/
-// "Snapshot") to its FGA authorization-model object type. Under the flat model
+// fgaTypeByKind maps a compute outbox resource_kind ("Instance") to its FGA
+// authorization-model object type. Under the flat model
 // (Contract-A: the `<rel> from project` cascade was removed) a per-resource Check
 // resolves through the per-object v_* tuples the iam reconciler MATERIALIZES for the
 // principal's role binding (keyed by the resource's parent project carried in the
@@ -87,9 +87,6 @@ type Payload struct {
 // deleted openfga_write_client.go used.
 var fgaTypeByKind = map[string]string{
 	"Instance": "compute_instance",
-	"Disk":     "compute_disk",
-	"Image":    "compute_image",
-	"Snapshot": "compute_snapshot",
 }
 
 // FGAType returns the compute_* FGA object type for a resource_kind, or "" if the

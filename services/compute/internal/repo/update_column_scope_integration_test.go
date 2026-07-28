@@ -17,7 +17,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/repo"
 )
 
-// TestIntegration_DiskUpdate_ColumnScoped_NoLostUpdate — воспроизводит classic
+// TestIntegration_InstanceUpdate_ColumnScoped_NoLostUpdate — воспроизводит classic
 // read-modify-write lost-update: два Update-use-case'а читают одну и ту же строку,
 // каждый применяет свою маску к своему СТАЛОМУ снимку, оба пишут. Раньше repo.Update
 // писал ВЕСЬ column-set, поэтому второй writer затирал независимое поле, изменённое
@@ -26,54 +26,6 @@ import (
 //
 // Последовательность детерминированная (эмулирует interleave use-case'ов), без
 // гонки: доказывает семантику scoping, а не тайминг.
-func TestIntegration_DiskUpdate_ColumnScoped_NoLostUpdate(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test")
-	}
-	ctx := context.Background()
-	dsn := setupTestDB(t)
-	pool, err := coredb.NewPool(ctx, dsn)
-	require.NoError(t, err)
-	defer pool.Close()
-
-	diskRepo := repo.NewDiskRepo(pool)
-
-	id := ids.NewID(ids.PrefixDisk)
-	_, err = diskRepo.Insert(ctx, &domain.Disk{
-		ID: id, ProjectID: "f-lost-upd", CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
-		Name: "old-name", Description: "old-desc",
-		ZoneID: "ru-central1-a", Size: 4194304, BlockSize: 4096, Status: domain.DiskStatusReady,
-	})
-	require.NoError(t, err)
-
-	// Client A reads, mutates ТОЛЬКО name (mask=[name]).
-	dA, err := diskRepo.Get(ctx, id)
-	require.NoError(t, err)
-	dA.Name = "new-name"
-
-	// Client B reads (stale snapshot), mutates ТОЛЬКО description (mask=[description]).
-	dB, err := diskRepo.Get(ctx, id)
-	require.NoError(t, err)
-	dB.Description = "new-desc"
-
-	// A commits its name change (только колонка name).
-	_, err = diskRepo.Update(ctx, dA, false, []string{"name"})
-	require.NoError(t, err)
-
-	// B commits its description change (только колонка description). Со старым
-	// full-column UPDATE это затёрло бы name обратно в "old-name".
-	_, err = diskRepo.Update(ctx, dB, false, []string{"description"})
-	require.NoError(t, err)
-
-	final, err := diskRepo.Get(ctx, id)
-	require.NoError(t, err)
-	require.Equal(t, "new-name", final.Name, "A's name edit must survive B's description-only update (no lost update)")
-	require.Equal(t, "new-desc", final.Description, "B's description edit must be applied")
-}
-
-// TestIntegration_InstanceUpdate_ColumnScoped_NoLostUpdate — то же для Instance:
-// mask=[name] и mask=[description] на устаревших снимках не должны затирать друг
-// друга.
 func TestIntegration_InstanceUpdate_ColumnScoped_NoLostUpdate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")

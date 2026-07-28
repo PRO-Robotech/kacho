@@ -183,30 +183,6 @@ export const SERVICE_MODULES: ServiceModule[] = [
         matches: (p) => projectRe("compute/instances").test(p),
         requiresProject: true,
       },
-      {
-        key: "compute-disks",
-        icon: <HddOutlined />,
-        label: "Диски",
-        to: (f) => seg(f, "compute/disks"),
-        matches: (p) => projectRe("compute/disks").test(p),
-        requiresProject: true,
-      },
-      {
-        key: "compute-images",
-        icon: <FileImageOutlined />,
-        label: "Образы",
-        to: (f) => seg(f, "compute/images"),
-        matches: (p) => projectRe("compute/images").test(p),
-        requiresProject: true,
-      },
-      {
-        key: "compute-snapshots",
-        icon: <CameraOutlined />,
-        label: "Снимки дисков",
-        to: (f) => seg(f, "compute/snapshots"),
-        matches: (p) => projectRe("compute/snapshots").test(p),
-        requiresProject: true,
-      },
     ],
   },
   // KAC-141 / KAC-171: NLB module — L4 Network Load Balancer.
@@ -337,18 +313,14 @@ export const SERVICE_MODULES: ServiceModule[] = [
 ];
 
 /** Активный модуль по URL — `/projects/:projectId/<segment>/...` → ServiceModule | null.
- *  Также матчит `/iam/...` → IAM module (которому проектный контекст не нужен).
- *
- *  `modules` — набор, который ОБСЛУЖИВАЕТ вызывающее приложение. По умолчанию все;
- *  приложение, не маршрутизирующее какой-то модуль, обязано его не передавать —
- *  иначе сайдбар раскроет раздел, открыть который приложению нечем. */
-export function moduleFromPathname(pathname: string, modules: ServiceModule[] = SERVICE_MODULES): ServiceModule | null {
+ *  Также матчит `/iam/...` → IAM module (которому проектный контекст не нужен). */
+export function moduleFromPathname(pathname: string): ServiceModule | null {
   if (pathname.startsWith("/iam")) {
-    return modules.find((mod) => mod.segment === "iam") ?? null;
+    return SERVICE_MODULES.find((mod) => mod.segment === "iam") ?? null;
   }
   const m = pathname.match(/^\/projects\/[^/]+\/([^/]+)/);
   if (!m) return null;
-  return modules.find((mod) => mod.segment === m[1]) ?? null;
+  return SERVICE_MODULES.find((mod) => mod.segment === m[1]) ?? null;
 }
 
 /** Верхний общий блок сайдбара (всегда виден). */

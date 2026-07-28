@@ -281,11 +281,8 @@ define_resource_cases("instance", "instances", create_body_extra={
     "vmSpec": {"userData": "#cloud-config\n{}"},
     "useDefaultNetwork": True,
 })
-define_resource_cases("disk", "disks", create_body_extra={
-    "zoneId": "ru-central1-a", "typeId": "network-ssd", "size": "8589934592"
-})
-define_resource_cases("image", "images", create_body_extra={"family": "authz-test"})
-define_resource_cases("snapshot", "snapshots", create_body_extra={"diskId": "epdnonexistent000099"})
+# Disk / Image / Snapshot arms retired with compute's duplicate block storage —
+# kacho-storage owns Volume/Image/Snapshot and carries the deny-matrix for its own.
 
 
 # ---------------------------------------------------------------------------

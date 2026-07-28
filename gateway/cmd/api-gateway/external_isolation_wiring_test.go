@@ -113,10 +113,7 @@ func TestExternalIsolationWiring_EndToEnd(t *testing.T) {
 
 	tlsClient := &http.Client{
 		Transport: &http.Transport{
-			// The listener under test presents a self-signed cert minted in this
-			// test; there is no CA to verify it against. What this case asserts is
-			// which routes the external listener exposes, not certificate trust.
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // test self-signed
 		},
 		Timeout: 2 * time.Second,
 	}

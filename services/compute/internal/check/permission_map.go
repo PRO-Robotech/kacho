@@ -10,10 +10,8 @@ import (
 
 // FGA object types для kacho-compute (соответствуют FGA-модели kacho-iam).
 const (
-	objectTypeProject  = "project"
-	objectTypeDisk     = "compute_disk"
-	objectTypeImage    = "compute_image"
-	objectTypeSnapshot = "compute_snapshot"
+	objectTypeProject = "project"
+
 	objectTypeInstance = "compute_instance"
 
 	// DiskType — глобальный read-only справочник. Доступ —
@@ -108,187 +106,13 @@ func unscopedProject() authz.ObjectExtractor {
 // соответствующего verb'а; cluster-admin резолвится через iam short-circuit.
 func PermissionMap() authz.RPCMap {
 	return authz.RPCMap{
-		// =========================
-		// DiskService
-		// =========================
-		"/kacho.cloud.compute.v1.DiskService/Get": {
-			Relation: relationVGet,
-			Extract: authz.StaticExtractor(objectTypeDisk, func(req any) (string, error) {
-				return req.(*computev1.GetDiskRequest).GetDiskId(), nil
-			}),
-		},
-		"/kacho.cloud.compute.v1.DiskService/List": {
-			Relation: relationViewer,
-			Extract: authz.StaticExtractor(objectTypeProject, func(req any) (string, error) {
-				return req.(*computev1.ListDisksRequest).GetProjectId(), nil
-			}),
-		},
-		"/kacho.cloud.compute.v1.DiskService/Create": {
-			Relation: relationEditor,
-			Extract: authz.StaticExtractor(objectTypeProject, func(req any) (string, error) {
-				return req.(*computev1.CreateDiskRequest).GetProjectId(), nil
-			}),
-		},
-		"/kacho.cloud.compute.v1.DiskService/Update": {
-			Relation: relationVUpdate,
-			Extract: authz.StaticExtractor(objectTypeDisk, func(req any) (string, error) {
-				return req.(*computev1.UpdateDiskRequest).GetDiskId(), nil
-			}),
-		},
-		"/kacho.cloud.compute.v1.DiskService/Delete": {
-			Relation: relationVDelete,
-			Extract: authz.StaticExtractor(objectTypeDisk, func(req any) (string, error) {
-				return req.(*computev1.DeleteDiskRequest).GetDiskId(), nil
-			}),
-		},
-		"/kacho.cloud.compute.v1.DiskService/Relocate": {
-			Relation: relationVUpdate,
-			Extract: authz.StaticExtractor(objectTypeDisk, func(req any) (string, error) {
-				return req.(*computev1.RelocateDiskRequest).GetDiskId(), nil
-			}),
-		},
-		"/kacho.cloud.compute.v1.DiskService/ListOperations": {
-			Relation: relationVList,
-			Extract: authz.StaticExtractor(objectTypeDisk, func(req any) (string, error) {
-				return req.(*computev1.ListDiskOperationsRequest).GetDiskId(), nil
-			}),
-		},
 		// access-bindings — AAA-скелет (handler не переопределён → Unimplemented).
 		// Записи зеркалят permission_catalog.json 1:1 (relation + unscoped project-scope),
 		// см. unscopedProject(). Без них интерсептор отдавал «rpc not mapped».
-		"/kacho.cloud.compute.v1.DiskService/ListAccessBindings": {
-			Relation:   relationViewer,
-			Extract:    unscopedProject(),
-			Permission: "compute.access_bindingses.listAccessBindings",
-		},
-		"/kacho.cloud.compute.v1.DiskService/SetAccessBindings": {
-			Relation:   relationEditor,
-			Extract:    unscopedProject(),
-			Permission: "compute.access_bindingses.setAccessBindings",
-		},
-		"/kacho.cloud.compute.v1.DiskService/UpdateAccessBindings": {
-			Relation:   relationEditor,
-			Extract:    unscopedProject(),
-			Permission: "compute.access_bindingses.updateAccessBindings",
-		},
 
-		// =========================
-		// ImageService
-		// =========================
-		"/kacho.cloud.compute.v1.ImageService/Get": {
-			Relation: relationVGet,
-			Extract: authz.StaticExtractor(objectTypeImage, func(req any) (string, error) {
-				return req.(*computev1.GetImageRequest).GetImageId(), nil
-			}),
-		},
-		"/kacho.cloud.compute.v1.ImageService/GetLatestByFamily": {
-			Relation: relationViewer,
-			Extract: authz.StaticExtractor(objectTypeProject, func(req any) (string, error) {
-				return req.(*computev1.GetImageLatestByFamilyRequest).GetProjectId(), nil
-			}),
-		},
-		"/kacho.cloud.compute.v1.ImageService/List": {
-			Relation: relationViewer,
-			Extract: authz.StaticExtractor(objectTypeProject, func(req any) (string, error) {
-				return req.(*computev1.ListImagesRequest).GetProjectId(), nil
-			}),
-		},
-		"/kacho.cloud.compute.v1.ImageService/Create": {
-			Relation: relationEditor,
-			Extract: authz.StaticExtractor(objectTypeProject, func(req any) (string, error) {
-				return req.(*computev1.CreateImageRequest).GetProjectId(), nil
-			}),
-		},
-		"/kacho.cloud.compute.v1.ImageService/Update": {
-			Relation: relationVUpdate,
-			Extract: authz.StaticExtractor(objectTypeImage, func(req any) (string, error) {
-				return req.(*computev1.UpdateImageRequest).GetImageId(), nil
-			}),
-		},
-		"/kacho.cloud.compute.v1.ImageService/Delete": {
-			Relation: relationVDelete,
-			Extract: authz.StaticExtractor(objectTypeImage, func(req any) (string, error) {
-				return req.(*computev1.DeleteImageRequest).GetImageId(), nil
-			}),
-		},
-		"/kacho.cloud.compute.v1.ImageService/ListOperations": {
-			Relation: relationVList,
-			Extract: authz.StaticExtractor(objectTypeImage, func(req any) (string, error) {
-				return req.(*computev1.ListImageOperationsRequest).GetImageId(), nil
-			}),
-		},
 		// access-bindings — AAA-скелет, зеркало каталога (см. DiskService выше).
-		"/kacho.cloud.compute.v1.ImageService/ListAccessBindings": {
-			Relation:   relationViewer,
-			Extract:    unscopedProject(),
-			Permission: "compute.access_bindingses.listAccessBindings",
-		},
-		"/kacho.cloud.compute.v1.ImageService/SetAccessBindings": {
-			Relation:   relationEditor,
-			Extract:    unscopedProject(),
-			Permission: "compute.access_bindingses.setAccessBindings",
-		},
-		"/kacho.cloud.compute.v1.ImageService/UpdateAccessBindings": {
-			Relation:   relationEditor,
-			Extract:    unscopedProject(),
-			Permission: "compute.access_bindingses.updateAccessBindings",
-		},
 
-		// =========================
-		// SnapshotService
-		// =========================
-		"/kacho.cloud.compute.v1.SnapshotService/Get": {
-			Relation: relationVGet,
-			Extract: authz.StaticExtractor(objectTypeSnapshot, func(req any) (string, error) {
-				return req.(*computev1.GetSnapshotRequest).GetSnapshotId(), nil
-			}),
-		},
-		"/kacho.cloud.compute.v1.SnapshotService/List": {
-			Relation: relationViewer,
-			Extract: authz.StaticExtractor(objectTypeProject, func(req any) (string, error) {
-				return req.(*computev1.ListSnapshotsRequest).GetProjectId(), nil
-			}),
-		},
-		"/kacho.cloud.compute.v1.SnapshotService/Create": {
-			Relation: relationEditor,
-			Extract: authz.StaticExtractor(objectTypeProject, func(req any) (string, error) {
-				return req.(*computev1.CreateSnapshotRequest).GetProjectId(), nil
-			}),
-		},
-		"/kacho.cloud.compute.v1.SnapshotService/Update": {
-			Relation: relationVUpdate,
-			Extract: authz.StaticExtractor(objectTypeSnapshot, func(req any) (string, error) {
-				return req.(*computev1.UpdateSnapshotRequest).GetSnapshotId(), nil
-			}),
-		},
-		"/kacho.cloud.compute.v1.SnapshotService/Delete": {
-			Relation: relationVDelete,
-			Extract: authz.StaticExtractor(objectTypeSnapshot, func(req any) (string, error) {
-				return req.(*computev1.DeleteSnapshotRequest).GetSnapshotId(), nil
-			}),
-		},
-		"/kacho.cloud.compute.v1.SnapshotService/ListOperations": {
-			Relation: relationVList,
-			Extract: authz.StaticExtractor(objectTypeSnapshot, func(req any) (string, error) {
-				return req.(*computev1.ListSnapshotOperationsRequest).GetSnapshotId(), nil
-			}),
-		},
 		// access-bindings — AAA-скелет, зеркало каталога (см. DiskService выше).
-		"/kacho.cloud.compute.v1.SnapshotService/ListAccessBindings": {
-			Relation:   relationViewer,
-			Extract:    unscopedProject(),
-			Permission: "compute.access_bindingses.listAccessBindings",
-		},
-		"/kacho.cloud.compute.v1.SnapshotService/SetAccessBindings": {
-			Relation:   relationEditor,
-			Extract:    unscopedProject(),
-			Permission: "compute.access_bindingses.setAccessBindings",
-		},
-		"/kacho.cloud.compute.v1.SnapshotService/UpdateAccessBindings": {
-			Relation:   relationEditor,
-			Extract:    unscopedProject(),
-			Permission: "compute.access_bindingses.updateAccessBindings",
-		},
 
 		// =========================
 		// InstanceService — lifecycle-heavy ресурс

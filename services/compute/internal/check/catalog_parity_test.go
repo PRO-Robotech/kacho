@@ -21,11 +21,7 @@ import (
 // side effect of a consistency fix. Resolving these belongs to a deliberate decision
 // about the read model, not to this gate; the gate exists so the set cannot grow.
 var knownCatalogDivergences = []string{
-	`/kacho.cloud.compute.v1.DiskService/List: catalog requires relation "v_list", service map requires "viewer"`,
-	`/kacho.cloud.compute.v1.ImageService/GetLatestByFamily: catalog requires relation "v_get", service map requires "viewer"`,
-	`/kacho.cloud.compute.v1.ImageService/List: catalog requires relation "v_list", service map requires "viewer"`,
 	`/kacho.cloud.compute.v1.InstanceService/List: catalog requires relation "v_list", service map requires "viewer"`,
-	`/kacho.cloud.compute.v1.SnapshotService/List: catalog requires relation "v_list", service map requires "viewer"`,
 }
 
 // TestPermissionMapMirrorsCatalog locks this service's in-process authz map to the

@@ -229,7 +229,7 @@ func TestConsoleScannerReadsEveryRegistryInTheTree(t *testing.T) {
 	}
 	for _, file := range files {
 		rel := mustRel(root, file)
-		blob, err := os.ReadFile(file)
+		blob, err := os.ReadFile(file) //nolint:gosec // путь получен обходом дерева репозитория
 		if err != nil {
 			t.Fatalf("%s: %v", rel, err)
 		}
@@ -460,7 +460,7 @@ func TestConsoleComposedSetsAreActuallyExpandedInTheTree(t *testing.T) {
 	expanded := 0
 	var where []string
 	for _, file := range files {
-		blob, err := os.ReadFile(file)
+		blob, err := os.ReadFile(file) //nolint:gosec // путь получен обходом дерева репозитория
 		if err != nil {
 			t.Fatalf("%s: %v", file, err)
 		}

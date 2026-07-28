@@ -41,18 +41,14 @@ function moduleLauncher(m: ServiceModule, projectId: string | null, accountId: s
  * @param projectId выбранный проект (для requiresProject-гейтинга / `to`).
  * @param accountId выбранный аккаунт.
  * @param bottomItems отфильтрованный COMMON_BOTTOM (system виден только авторизованным).
- * @param modules модули, которые вызывающее приложение действительно маршрутизирует.
- *   Симметрично `bottomItems`: меню не вправе предлагать переход, который приложению
- *   нечем открыть. По умолчанию — все SERVICE_MODULES.
  */
 export function buildSidebarGroups(
   pathname: string,
   projectId: string | null,
   accountId: string | null,
   bottomItems: NavLeaf[] = COMMON_BOTTOM,
-  modules: ServiceModule[] = SERVICE_MODULES,
 ): SidebarGroup[] {
-  const activeModule = moduleFromPathname(pathname, modules);
+  const activeModule = moduleFromPathname(pathname);
   const groups: SidebarGroup[] = [];
 
   // 1. Обзор — общий верхний блок (дашборд / поиск).
@@ -70,7 +66,7 @@ export function buildSidebarGroups(
     groups.push({
       key: "services",
       title: "Сервисы",
-      leaves: modules.map((m) => moduleLauncher(m, projectId, accountId)),
+      leaves: SERVICE_MODULES.map((m) => moduleLauncher(m, projectId, accountId)),
     });
   }
 

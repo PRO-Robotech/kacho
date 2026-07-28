@@ -234,19 +234,13 @@ type Config struct {
 	// HydraJWKSURL — explicit JWKS endpoint; пустой → derived from HydraIssuer.
 	HydraJWKSURL string `envconfig:"KACHO_HYDRA_JWKS_URL" default:""`
 
-	// HydraIntrospectionURL — token-introspection endpoint on the identity
-	// provider's ADMIN API (`{admin}/admin/oauth2/introspect`). Never derived:
-	// the admin API is a different Service and port from the public issuer, so
-	// there is nothing to derive it from. Empty ⇒ the revocation check is not
-	// configured, and a production-class gateway refuses to start (see the boot
-	// guard in cmd/api-gateway/revocation_validation.go).
+	// HydraIntrospectionURL — explicit Hydra introspection endpoint (admin API);
+	// пустой → derived as `{HydraIssuer}/oauth2/introspect`.
 	HydraIntrospectionURL string `envconfig:"KACHO_HYDRA_INTROSPECTION_URL" default:""`
 
-	// HydraAdminURL — base URL of the identity provider's ADMIN API, used by the
-	// logout handler to kill the provider-side session
-	// (`DELETE /admin/oauth2/auth/sessions/login`). Never derived, same reason.
-	// Empty ⇒ the session kill is disabled, and a production-class gateway
-	// refuses to start.
+	// HydraAdminURL — explicit Hydra admin API base URL (used by logout handler
+	// to revoke sessions via `DELETE /admin/oauth2/auth/sessions/login`); пустой
+	// → derived from HydraIssuer.
 	HydraAdminURL string `envconfig:"KACHO_HYDRA_ADMIN_URL" default:""`
 
 	// JWKSCacheTTL — TTL для JWKS cache (sec); RFC рекомендация 5–60 min.
@@ -274,17 +268,6 @@ type Config struct {
 
 	// IntrospectionCacheSize — LRU capacity для introspection cache (entries).
 	IntrospectionCacheSize int `envconfig:"KACHO_INTROSPECTION_CACHE_SIZE" default:"10000"`
-
-	// IntrospectionTimeoutMs — hard budget for ONE round-trip to the provider's
-	// introspection endpoint (ms). This is a blocking step on the request path,
-	// so the number is what an unwell provider may cost a request-handling
-	// goroutine. A healthy round-trip is a single intra-cluster POST over one
-	// indexed lookup — tens of milliseconds — and the cache above means a given
-	// token pays it at most once per TTL. 1s is roughly ten times the healthy
-	// case: room for a cold connection or a stalled lookup, while a brown-out
-	// cannot pin the gateway's capacity waiting on answers no caller is still
-	// there to receive.
-	IntrospectionTimeoutMs int `envconfig:"KACHO_INTROSPECTION_TIMEOUT_MS" default:"1000"`
 
 	// HookSharedSecret — shared secret для Hydra→kacho-iam back-channel logout
 	// (RFC 8254). Также используется как HMAC для CAEP push payload integrity.
@@ -502,28 +485,20 @@ func (c Config) ResolvedHydraJWKSURL() string {
 	return c.ResolvedHydraIssuer() + "/.well-known/jwks.json"
 }
 
-// ResolvedHydraIntrospectionURL returns the token-introspection endpoint, or the
-// empty string when none is configured.
-//
-// It is deliberately NOT derived from the issuer. Introspection is served by the
-// identity provider's ADMIN API — a different Service and port from the public
-// issuer, reachable only inside the cluster — so an issuer-derived address names
-// a server that does not serve this endpoint. Aiming a revocation check at a
-// guessed address is worse than having none: the check runs, never gets an
-// answer, and the caller cannot distinguish that from "the token is fine".
-//
-// Empty means the revocation check is not configured. The composition root
-// refuses to start a production-class gateway in that state.
+// ResolvedHydraIntrospectionURL returns the Hydra introspection endpoint.
 func (c Config) ResolvedHydraIntrospectionURL() string {
-	return strings.TrimSpace(c.HydraIntrospectionURL)
+	if c.HydraIntrospectionURL != "" {
+		return c.HydraIntrospectionURL
+	}
+	return c.ResolvedHydraIssuer() + "/oauth2/introspect"
 }
 
-// ResolvedHydraAdminURL returns the admin API base, or the empty string when
-// none is configured. Same rule and same reason as the introspection endpoint
-// above: the admin API is not the issuer, and a guessed base sends the logout
-// handler's provider-side session kill to whatever answers on the issuer host.
+// ResolvedHydraAdminURL returns the Hydra admin API base.
 func (c Config) ResolvedHydraAdminURL() string {
-	return strings.TrimSpace(c.HydraAdminURL)
+	if c.HydraAdminURL != "" {
+		return c.HydraAdminURL
+	}
+	return c.ResolvedHydraIssuer()
 }
 
 // ExpectedAudience returns the audience value injected in tokens for this

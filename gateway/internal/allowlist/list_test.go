@@ -201,10 +201,6 @@ func TestGateway_D8_LoadbalancerActive(t *testing.T) {
 // а Internal*-методы compute — НЕ в allowlist (и блокируются HasInternalSuffix).
 func TestGateway_D8b_ComputeActive(t *testing.T) {
 	publicMethods := []string{
-		"/kacho.cloud.compute.v1.DiskService/Get",
-		"/kacho.cloud.compute.v1.DiskService/Create",
-		"/kacho.cloud.compute.v1.ImageService/List",
-		"/kacho.cloud.compute.v1.SnapshotService/Create",
 		"/kacho.cloud.compute.v1.InstanceService/Get",
 		"/kacho.cloud.compute.v1.InstanceService/Start",
 		"/kacho.cloud.compute.v1.InstanceService/AttachDisk",

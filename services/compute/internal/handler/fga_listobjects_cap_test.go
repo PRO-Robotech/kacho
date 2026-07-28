@@ -106,74 +106,64 @@ func (c *cappedAuthorizeClient) BatchCheck(_ context.Context, in *iamv1.BatchAut
 	return out, nil
 }
 
-// capImageScenario builds a store whose compute_image population exceeds the FGA
-// cap and returns the handler plus the id of the tenant's OWN image — which sorts
-// AFTER the cap boundary and is therefore the one truncation erases.
+// capInstanceScenario builds a store whose compute_instance population exceeds the
+// FGA cap and returns the handler plus the id of the tenant's OWN instance — which
+// sorts AFTER the cap boundary and is therefore the one truncation erases.
 //
-// realID is the ONLY image that exists as a row; the 1000 filler ids are
+// realID is the ONLY instance that exists as a row; the 1000 filler ids are
 // grant-store objects of the same type belonging to the rest of the (long-lived)
 // cluster. That is the real-world shape: a handful of rows in the project, >1000
 // objects of the type in the store.
-func capImageScenario(t *testing.T) (*ImageHandler, *cappedAuthorizeClient, string) {
+//
+// The regression was originally written over compute's own Image resource. Image
+// is retired (kacho-storage owns block storage), but the defect belongs to the
+// shared list-filter rather than to any one resource, so the scenario moved to
+// Instance instead of leaving with it.
+func capInstanceScenario(t *testing.T) (*InstanceHandler, *cappedAuthorizeClient, string) {
 	t.Helper()
 
-	// "epd-img-zzzowned" sorts after every "epd-img-fill…" filler → cut by the cap.
-	const realID = "epd-img-zzzowned"
+	// "ins-zzzowned" sorts after every "ins-fill…" filler → cut by the cap.
+	const realID = "ins-zzzowned"
 
 	granted := make([]string, 0, fgaListObjectsCap+1)
 	for i := 0; i < fgaListObjectsCap; i++ {
-		granted = append(granted, fmt.Sprintf("epd-img-fill%06d", i))
+		granted = append(granted, fmt.Sprintf("ins-fill%06d", i))
 	}
 	granted = append(granted, realID)
 
 	cli := newCappedAuthorizeClient(granted...)
-	h, imgRepo := newImageHandlerWithFilter(t, newFilter(t, cli))
-	imgRepo.Seed(&domain.Image{
-		ID: realID, ProjectID: "proj", Name: "own", Family: "ubuntu",
-		Status: domain.ImageStatusReady,
+	h, insRepo := newInstanceHandlerWithFilter(t, newFilter(t, cli))
+	insRepo.Seed(&domain.Instance{
+		ID: realID, ProjectID: "proj", Name: "own",
+		Status: domain.InstanceStatusRunning,
 	})
 	return h, cli, realID
 }
 
-// GetLatestByFamily of the tenant's OWN image must return it. Before the fix the
-// enumeration truncates the id away and the RPC answers NotFound for a row that
-// exists and is granted — the reported defect, at the observable (gRPC) level.
-func TestImageGetLatestByFamily_OwnResourceBeyondFGAListObjectsCap(t *testing.T) {
-	h, _, realID := capImageScenario(t)
-
-	got, err := h.GetLatestByFamily(ctxWithSubject("user:usr_alice"),
-		&computev1.GetImageLatestByFamilyRequest{ProjectId: "proj", Family: "ubuntu"})
-
-	require.NoError(t, err, "own, granted, existing image must be readable; "+
-		"NotFound here means visibility is gated on the truncated ListObjects enumeration")
-	require.NotNil(t, got)
-	assert.Equal(t, realID, got.GetId())
-}
-
-// List must contain the tenant's OWN image. Before the fix the row is filtered
+// List must contain the tenant's OWN instance. Before the fix the row is filtered
 // out because its id is not in the truncated enumeration.
-func TestImageList_OwnResourceBeyondFGAListObjectsCap(t *testing.T) {
-	h, _, realID := capImageScenario(t)
+func TestInstanceList_OwnResourceBeyondFGAListObjectsCap(t *testing.T) {
+	h, _, realID := capInstanceScenario(t)
 
 	resp, err := h.List(ctxWithSubject("user:usr_alice"),
-		&computev1.ListImagesRequest{ProjectId: "proj"})
+		&computev1.ListInstancesRequest{ProjectId: "proj"})
 
 	require.NoError(t, err)
-	ids := make([]string, 0, len(resp.GetImages()))
-	for _, im := range resp.GetImages() {
+	ids := make([]string, 0, len(resp.GetInstances()))
+	for _, im := range resp.GetInstances() {
 		ids = append(ids, im.GetId())
 	}
-	assert.Contains(t, ids, realID, "own, granted, existing image must appear in List; "+
+	assert.Contains(t, ids, realID, "own, granted, existing instance must appear in List; "+
 		"absence here means the page is filtered by the truncated ListObjects enumeration")
 }
 
 // Cost regression: List must resolve visibility from the PAGE, never by
 // enumerating every object the subject may see. Enumeration is both the source of
 // the cap defect and O(universe) per call.
-func TestImageList_DoesNotEnumerateUniverse(t *testing.T) {
-	h, cli, _ := capImageScenario(t)
+func TestInstanceList_DoesNotEnumerateUniverse(t *testing.T) {
+	h, cli, _ := capInstanceScenario(t)
 
-	_, err := h.List(ctxWithSubject("user:usr_alice"), &computev1.ListImagesRequest{ProjectId: "proj"})
+	_, err := h.List(ctxWithSubject("user:usr_alice"), &computev1.ListInstancesRequest{ProjectId: "proj"})
 	require.NoError(t, err)
 
 	assert.Zero(t, cli.listObjectsCalls.Load(),
@@ -182,82 +172,35 @@ func TestImageList_DoesNotEnumerateUniverse(t *testing.T) {
 		"visibility must be checked for the rows on the page only (1 row seeded)")
 }
 
-// GetLatestByFamily resolves ONE image — it must ask the direct per-object
-// question about that id, never enumerate the type.
-func TestImageGetLatestByFamily_DoesNotEnumerateUniverse(t *testing.T) {
-	h, cli, _ := capImageScenario(t)
-
-	_, err := h.GetLatestByFamily(ctxWithSubject("user:usr_alice"),
-		&computev1.GetImageLatestByFamilyRequest{ProjectId: "proj", Family: "ubuntu"})
-	require.NoError(t, err)
-
-	assert.Zero(t, cli.listObjectsCalls.Load(),
-		"GetLatestByFamily must not call AuthorizeService.ListObjects (capped enumeration)")
-	assert.LessOrEqual(t, cli.batchCheckedIDs.Load(), int64(1),
-		"exactly the resolved image id is checked")
-}
-
 // No weakening: an existing row the subject was never granted stays absent from
-// List, and GetLatestByFamily on it keeps hiding existence. This is the guard that
-// stops the fix from "solving" truncation by simply showing everything.
-func TestImageList_UngrantedResourceStaysInvisible(t *testing.T) {
-	cli := newCappedAuthorizeClient("epd-img-granted")
-	h, imgRepo := newImageHandlerWithFilter(t, newFilter(t, cli))
-	imgRepo.Seed(&domain.Image{
-		ID: "epd-img-granted", ProjectID: "proj", Name: "granted", Family: "ubuntu",
-		Status: domain.ImageStatusReady,
+// List. This is the guard that stops the fix from "solving" truncation by simply
+// showing everything.
+func TestInstanceList_UngrantedResourceStaysInvisible(t *testing.T) {
+	cli := newCappedAuthorizeClient("ins-granted")
+	h, insRepo := newInstanceHandlerWithFilter(t, newFilter(t, cli))
+	insRepo.Seed(&domain.Instance{
+		ID: "ins-granted", ProjectID: "proj", Name: "granted",
+		Status: domain.InstanceStatusRunning,
 	})
-	imgRepo.Seed(&domain.Image{
-		ID: "epd-img-secret", ProjectID: "proj", Name: "secret", Family: "debian",
-		Status: domain.ImageStatusReady,
+	insRepo.Seed(&domain.Instance{
+		ID: "ins-secret", ProjectID: "proj", Name: "secret",
+		Status: domain.InstanceStatusRunning,
 	})
 
-	resp, err := h.List(ctxWithSubject("user:usr_alice"), &computev1.ListImagesRequest{ProjectId: "proj"})
+	resp, err := h.List(ctxWithSubject("user:usr_alice"), &computev1.ListInstancesRequest{ProjectId: "proj"})
 	require.NoError(t, err)
-	ids := make([]string, 0, len(resp.GetImages()))
-	for _, im := range resp.GetImages() {
+	ids := make([]string, 0, len(resp.GetInstances()))
+	for _, im := range resp.GetInstances() {
 		ids = append(ids, im.GetId())
 	}
-	assert.Contains(t, ids, "epd-img-granted")
-	assert.NotContains(t, ids, "epd-img-secret", "ungranted image must never appear in List")
-
-	// Read-by-id-equivalent on the ungranted image must hide existence, not leak it.
-	_, err = h.GetLatestByFamily(ctxWithSubject("user:usr_alice"),
-		&computev1.GetImageLatestByFamilyRequest{ProjectId: "proj", Family: "debian"})
-	require.Error(t, err)
-	assert.Equal(t, codes.NotFound, status.Code(err))
-	assert.Equal(t, "Image debian not found", status.Convert(err).Message(),
-		"denial must be indistinguishable from a genuinely empty family (no existence oracle)")
+	assert.Contains(t, ids, "ins-granted")
+	assert.NotContains(t, ids, "ins-secret", "ungranted instance must never appear in List")
 }
 
-// Every public List path (Disk / Image / Snapshot / Instance) shares the same
-// contract: page first, then ask per-object. None may enumerate the type.
+// The public List path shares one contract: page first, then ask per-object. It
+// may never enumerate the type. Disk/Image/Snapshot arms went with the retired
+// block-storage duplicates; kacho-storage carries the same guard for its own.
 func TestAllPublicLists_DoNotEnumerateUniverse(t *testing.T) {
-	t.Run("disk", func(t *testing.T) {
-		cli := newCappedAuthorizeClient()
-		h, ops := setupDiskHandler(t, newFilter(t, cli))
-		createDisks(t, h, ops, "proj", "d1")
-		_, err := h.List(ctxWithSubject("user:usr_alice"), &computev1.ListDisksRequest{ProjectId: "proj"})
-		require.NoError(t, err)
-		assert.Zero(t, cli.listObjectsCalls.Load())
-	})
-	t.Run("image", func(t *testing.T) {
-		cli := newCappedAuthorizeClient()
-		h, imgRepo := newImageHandlerWithFilter(t, newFilter(t, cli))
-		imgRepo.Seed(&domain.Image{ID: "epd-img-1", ProjectID: "proj", Name: "i", Family: "f", Status: domain.ImageStatusReady})
-		_, err := h.List(ctxWithSubject("user:usr_alice"), &computev1.ListImagesRequest{ProjectId: "proj"})
-		require.NoError(t, err)
-		assert.Zero(t, cli.listObjectsCalls.Load())
-	})
-	t.Run("snapshot", func(t *testing.T) {
-		cli := newCappedAuthorizeClient()
-		snapSvc := service.NewSnapshotService(portmock.NewSnapshotRepo(), portmock.NewDiskRepo(),
-			&portmock.ProjectClient{OK: true}, portmock.NewOpsRepo())
-		h := NewSnapshotHandler(snapSvc, newFilter(t, cli))
-		_, err := h.List(ctxWithSubject("user:usr_alice"), &computev1.ListSnapshotsRequest{ProjectId: "proj"})
-		require.NoError(t, err)
-		assert.Zero(t, cli.listObjectsCalls.Load())
-	})
 	t.Run("instance", func(t *testing.T) {
 		cli := newCappedAuthorizeClient()
 		insSvc := service.NewInstanceService(

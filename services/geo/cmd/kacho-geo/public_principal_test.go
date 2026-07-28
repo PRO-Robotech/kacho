@@ -20,6 +20,8 @@ import (
 	"testing"
 
 	"google.golang.org/grpc"
+
+	"github.com/PRO-Robotech/kacho/pkg/operations"
 )
 
 // Source-level wiring guard для public/internal листенеров теперь — общий
@@ -41,29 +43,24 @@ func TestPublicPrincipalChain_ForwarderAllowlist_DropsNonGateway(t *testing.T) {
 		other := "spiffe://kacho.cloud/ns/kacho/sa/kacho-compute"
 		ctx := withForgedPrincipal(verifiedPeerCtx(t, other), "usr-viewer-victim")
 
-		carrierID, trusted, present := runChain(t, chain, ctx)
+		carrierID, trusted := runChain(t, chain, ctx)
 		if trusted {
 			t.Errorf("verified-но-не-форвардер peer (%s) НЕ должен форвардить end-user principal'а", other)
 		}
 		if carrierID == "usr-viewer-victim" {
 			t.Errorf("principal-spoofing: peer проштамповал 'usr-viewer-victim' как subject FGA Check на публичном endpoint")
 		}
-		if present {
-			t.Errorf("носитель личности пережил недоверенного отправителя: got %q — он обязан быть "+
-				"вычищен, иначе предикат владения признаёт этот запрос владельцем системно "+
-				"записанных операций", carrierID)
+		if carrierID != operations.SystemPrincipal().ID {
+			t.Errorf("forged principal протёк в carrier: got %q, want system fallback %q", carrierID, operations.SystemPrincipal().ID)
 		}
 	})
 
 	t.Run("gateway_peer_principal_honored", func(t *testing.T) {
 		ctx := withForgedPrincipal(verifiedPeerCtx(t, gatewaySAN), "usr-viewer")
 
-		carrierID, trusted, present := runChain(t, chain, ctx)
+		carrierID, trusted := runChain(t, chain, ctx)
 		if !trusted {
 			t.Errorf("principal от доверенного форвардера (api-gateway SAN) обязан быть honored")
-		}
-		if !present {
-			t.Errorf("носитель личности обязан быть заполнен для доверенного форвардера")
 		}
 		if carrierID != "usr-viewer" {
 			t.Errorf("gateway-forwarded principal не honored: got %q, want %q", carrierID, "usr-viewer")

@@ -65,14 +65,8 @@ func sensitiveACR2Set() map[string]struct{} {
 		// GpuCluster/HostGroup/PlacementGroup dropped with their born-dead
 		// services (never served on any listener, absent from the enforced
 		// authorization model) — their grant RPCs no longer exist to step up.
-		"kacho.cloud.compute.v1.DiskService/SetAccessBindings",
-		"kacho.cloud.compute.v1.DiskService/UpdateAccessBindings",
-		"kacho.cloud.compute.v1.ImageService/SetAccessBindings",
-		"kacho.cloud.compute.v1.ImageService/UpdateAccessBindings",
 		"kacho.cloud.compute.v1.InstanceService/SetAccessBindings",
 		"kacho.cloud.compute.v1.InstanceService/UpdateAccessBindings",
-		"kacho.cloud.compute.v1.SnapshotService/SetAccessBindings",
-		"kacho.cloud.compute.v1.SnapshotService/UpdateAccessBindings",
 		// D — group membership grant + group destroy (3; Delete = revoke-by-all, R3/B-2)
 		"kacho.cloud.iam.v1.GroupService/AddMember",
 		"kacho.cloud.iam.v1.GroupService/RemoveMember",
@@ -104,7 +98,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	require.NoError(t, err)
 
 	sensitive := sensitiveACR2Set()
-	require.Len(t, sensitive, 28, "the acceptance-doc sensitive set must contain exactly 28 FQNs")
+	require.Len(t, sensitive, 22, "the acceptance-doc sensitive set must contain exactly 22 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -125,7 +119,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 28, "exactly 28 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 22, "exactly 22 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -239,10 +233,14 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 			t.Fatalf("unexpected required_acr_min %q on %s", e.RequiredACRMin, fqn)
 		}
 	}
-	assert.Equal(t, 28, n2, "sensitive count")
-	assert.Equal(t, 238, n1, "routine count")
+	// Retiring compute's duplicate Disk/Image/Snapshot removed 29 entries: 28→22
+	// sensitive (the six *AccessBindings RPCs of the three resources, which are
+	// privilege-granting and so carried acr=2) and 238→215 routine (the remaining
+	// 23). The exempt count is untouched — none of the retired RPCs was exempt.
+	assert.Equal(t, 22, n2, "sensitive count")
+	assert.Equal(t, 215, n1, "routine count")
 	assert.Equal(t, 64, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 330, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 301, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

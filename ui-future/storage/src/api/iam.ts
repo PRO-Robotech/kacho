@@ -9,7 +9,7 @@
 //   - /iam/v1/serviceAccounts       (ServiceAccountService; require account_id)
 //   - /iam/v1/groups                (GroupService; require account_id; +addMember/removeMember/listMembers)
 //   - /iam/v1/roles                 (RoleService; system + custom)
-//   - /iam/v1/accessBindings        (AccessBindingService; Create/Delete/Get + listByScope/listBySubject)
+//   - /iam/v1/accessBindings        (AccessBindingService; Create/Delete/Get + listByResource/listBySubject)
 //
 // E0 (текущая фаза): без auth-interceptor; UI шлёт запросы без Bearer
 // (api-gateway допускает анонимный доступ). Operations.principal_* — пусто/stub.
@@ -194,12 +194,9 @@ export const iamApi = {
     api.list<GroupMemberList>(`${IAM.groups}/${groupId}:listMembers`, q),
   // Roles
   listRoles: (q?: Record<string, string>) => api.list<RoleList>(IAM.roles, q),
-  // AccessBindings: list-by-scope + list-by-subject (custom verbs).
-  // Глагол называется `:listByScope` — прежнее имя `:listByResource` снято с
-  // контракта вместе с wire-именем; пара resource_type/resource_id остаётся
-  // принимаемой (край всё ещё выводит область запроса именно из неё).
+  // AccessBindings: list-by-resource + list-by-subject (custom verbs)
   listAccessBindingsByResource: (resource_type: string, resource_id: string, q?: Record<string, string>) =>
-    api.list<AccessBindingList>(`${IAM.accessBindings}:listByScope`, {
+    api.list<AccessBindingList>(`${IAM.accessBindings}:listByResource`, {
       resource_type,
       resource_id,
       ...(q ?? {}),

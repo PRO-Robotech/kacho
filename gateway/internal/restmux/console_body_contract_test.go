@@ -195,7 +195,7 @@ func TestConsoleFormsSendNoUnknownRequestFields(t *testing.T) {
 	sanitized, synthesized := 0, 0
 
 	for _, file := range files {
-		blob, err := os.ReadFile(file)
+		blob, err := os.ReadFile(file) //nolint:gosec // путь получен обходом дерева репозитория
 		if err != nil {
 			t.Fatalf("%s: %v", file, err)
 		}
@@ -324,7 +324,7 @@ func consoleExportedStringConsts(root string) (map[string]string, error) {
 		if ext := filepath.Ext(path); ext != ".ts" && ext != ".tsx" {
 			return nil
 		}
-		blob, err := os.ReadFile(path)
+		blob, err := os.ReadFile(path) //nolint:gosec // путь получен обходом дерева репозитория
 		if err != nil {
 			return err
 		}
@@ -552,6 +552,8 @@ var specDrivenFormComponent = map[string]bool{
 var bespokeConsoleMutationSites = map[string]string{
 	"iam/src/components/organisms/iam/AccessBindingCreateForm/AccessBindingCreateForm.tsx":                  "выдача доступа: тело собирается из состояния формы, состав объявлен не реестром",
 	"iam/src/pages/iam/AccessPage/AccessPage.tsx":                                                           "выдача и отзыв доступа со страницы, тело из локального состояния",
+	"vpc/src/pages/iam/AccessBindingsPage.tsx":                                                              "выдача и отзыв доступа со страницы, тело из локального состояния",
+	"vpc/src/pages/iam/AccessPage.tsx":                                                                      "выдача и отзыв доступа со страницы, тело из локального состояния",
 	"shared/src/components/organisms/iam/IamCommon/IamCommon.tsx":                                           "общие действия IAM, тело из локального состояния",
 	"shared/src/components/organisms/InlineAddressPoolCreateForm/InlineAddressPoolCreateForm.tsx":           "адресный пул: собственная форма, тело из локального состояния",
 	"shared/src/components/organisms/InlineAddressPoolEditForm/InlineAddressPoolEditForm.tsx":               "адресный пул: собственная форма, тело из локального состояния",
@@ -616,7 +618,7 @@ func TestConsoleMutationSurfaceIsAccountedFor(t *testing.T) {
 		if strings.Contains(name, ".test.") {
 			return nil
 		}
-		blob, err := os.ReadFile(path)
+		blob, err := os.ReadFile(path) //nolint:gosec // путь получен обходом дерева репозитория
 		if err != nil {
 			return err
 		}

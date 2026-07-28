@@ -488,18 +488,11 @@ func NewMux(
 			}
 		}
 
-		// --- compute: Disk + Image + Snapshot + Instance + DiskType ---
+		// --- compute: Instance + DiskType ---
+		// Block storage (Volume/Snapshot/Image) is served by kacho-storage under
+		// /storage/v1 — compute's duplicate Disk/Image/Snapshot services are retired.
 		// Geography (Region/Zone) обслуживается отдельным leaf-сервисом kacho-geo
 		// (/geo/v1/regions, /geo/v1/zones; см. ниже), а не compute.v1.
-		if err := computepb.RegisterDiskServiceHandlerFromEndpoint(ctx, mux, computeAddr, optsFor("compute")); err != nil {
-			return nil, fmt.Errorf("register compute DiskService: %w", err)
-		}
-		if err := computepb.RegisterImageServiceHandlerFromEndpoint(ctx, mux, computeAddr, optsFor("compute")); err != nil {
-			return nil, fmt.Errorf("register compute ImageService: %w", err)
-		}
-		if err := computepb.RegisterSnapshotServiceHandlerFromEndpoint(ctx, mux, computeAddr, optsFor("compute")); err != nil {
-			return nil, fmt.Errorf("register compute SnapshotService: %w", err)
-		}
 		if err := computepb.RegisterInstanceServiceHandlerFromEndpoint(ctx, mux, computeAddr, optsFor("compute")); err != nil {
 			return nil, fmt.Errorf("register compute InstanceService: %w", err)
 		}

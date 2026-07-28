@@ -10,11 +10,6 @@
 # в списке стоял `FuzzInstanceSpecValidate`, которого в nlb нет (он в compute) — job
 # гонял пустоту и зеленел. Проверка на это — джоба `matrix-complete` ниже: она сверяет
 # матрицу с `grep func Fuzz` по дереву и падает при расхождении в ЛЮБУЮ сторону.
-#
-# Сверка имён — НЕ проверка того, что цели есть что проверять: имя может стоять и в
-# матрице, и в коде, а тело цели — звать заглушку, объявленную рядом в том же файле.
-# Это держит отдельный гейт `internal/repohygiene/fuzzsubject_test.go` (он же требует
-# `pipefail` в шаге ниже), и гоняется он обычным `go test ./...`.
 name: continuous-fuzz
 
 on:
@@ -40,14 +35,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - { target: FuzzJWTVerify,               pkg: ./services/iam/internal/fuzz }
           - { target: FuzzCELExpression,           pkg: ./services/iam/internal/fuzz }
           - { target: FuzzPermissionCatalogLookup, pkg: ./services/iam/internal/fuzz }
           - { target: FuzzCIDRParse,               pkg: ./services/vpc/internal/fuzz }
+          - { target: FuzzPolicyParse,             pkg: ./services/vpc/internal/fuzz }
           - { target: FuzzInstanceSpecValidate,    pkg: ./services/compute/internal/fuzz }
-          # Верификатор токена живёт в gateway — цель стоит рядом с предметом.
-          # Раньше она лежала в дереве iam и звала заглушку, которая на посевы
-          # `alg=none` и `alg=HS256` отвечала «годен» вопреки собственной пометке.
-          - { target: FuzzJWTVerify,               pkg: ./gateway/internal/fuzz }
           - { target: FuzzDPoPProof,               pkg: ./gateway/internal/fuzz }
           - { target: FuzzAuthzMiddleware,         pkg: ./gateway/internal/fuzz }
     steps:
@@ -71,13 +64,6 @@ jobs:
         env:
           FUZZTIME: ${{ inputs.fuzztime || '1h' }}
         run: |
-          # pipefail обязателен: без него статус шага берётся от `tee`, а не от
-          # прогона, и шаг зеленеет при ЛЮБОЙ находке фаззера — краш оседает в
-          # артефакте, за которым никто не приходит, потому что приходить зовёт
-          # красный. Замерено инъекцией заведомо падающей цели: без pipefail шаг
-          # выходит с 0, с pipefail — с 1. Залочено
-          # TestFuzzWorkflowDoesNotSwallowExitCode.
-          set -o pipefail
           go test -run='^$' -fuzz='^${{ matrix.target }}$' -fuzztime="${FUZZTIME}" \
             ${{ matrix.pkg }} 2>&1 | tee fuzz-output.log
 

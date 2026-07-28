@@ -18,9 +18,6 @@ import { formatDateTime } from "@shared/lib/datetime";
 // корректный detail-роут (включая network_interface → kacho-vpc).
 const REFERRER_SPEC: Record<string, string> = {
   compute_instance: "compute-instances",
-  compute_disk: "compute-disks",
-  compute_image: "compute-images",
-  compute_snapshot: "compute-snapshots",
   nlb_target_group: "target-groups",
   network_interface: "network-interfaces",
   network_load_balancer: "load-balancers",
@@ -37,7 +34,7 @@ export interface FormatCellOpts {
 
 // referrerHref — маппинг kacho.cloud.reference.Reference.referrer → SPA-route.
 // Структурирован как switch по `referrer.type`, чтобы при появлении новых
-// referrer-типов (compute_disk, nlb_target_group, ...) дописывать один case.
+// referrer-типов (nlb_target_group, ...) дописывать один case.
 // Возвращает `null` если projectId не известен или тип не поддерживается —
 // caller тогда рендерит plain-текст (forward-compat fallback).
 export function referrerHref(
@@ -65,12 +62,6 @@ export function referrerMeta(type: string | undefined): { label: string; color?:
   switch (type) {
     case "compute_instance":
       return { label: "VM", color: "#1677ff" };
-    case "compute_disk":
-      return { label: "Disk", color: "#13c2c2" };
-    case "compute_image":
-      return { label: "Image", color: "#2f54eb" };
-    case "compute_snapshot":
-      return { label: "Snapshot", color: "#722ed1" };
     case "nlb_target_group":
       return { label: "NLB TG", color: "#faad14" };
     default:

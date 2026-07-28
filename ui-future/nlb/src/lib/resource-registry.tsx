@@ -242,12 +242,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     ],
     serviceTitle: "Network Load Balancer",
     scope: "project",
-    // Действий-глаголов у балансировщика нет: `:start`/`:stop` сняты с контракта,
-    // административное включение/выключение выражается полем admin_state.
+    // Start/Stop намеренно НЕ в ops — lifecycle-действия балансировщика в UI не
+    // экспонируются (управление статусом идёт через create/delete + data-plane).
     ops: { create: true, update: true, delete: true },
     // Листенеры — связанный дочерний ресурс (within-service FK load_balancer_id):
     // отдельный registry-driven таб + auto-CTA «Создать листенер». Целевые группы
-    // одним filterField не выражаются (связь идёт ЧЕРЕЗ листенер) — их вкладку
+    // не выражаются filterField (pivot attached_target_groups) — их вкладку
     // подаёт bespoke LoadBalancerDetailPage.
     related: [{ childId: "listeners", filterField: "load_balancer_id", label: "Листенеры" }],
     columns: [
@@ -522,7 +522,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         refProjectScoped: true,
         required: false,
         description:
-          "Целевая группа, принимающая трафик. Привязка живёт ЗДЕСЬ: у балансировщика собственной привязки к группе нет.",
+          "Целевая группа, принимающая трафик по умолчанию. TG должна быть приаттаджена к балансировщику (обычно задаётся в режиме редактирования, после attach).",
       },
       FIELD_LABELS,
     ],

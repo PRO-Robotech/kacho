@@ -1,4 +1,5 @@
 export * from "./form";
+export * from "./iam";
 export * from "@shared/components/organisms/system";
 export { AddressPoolCidrManager } from "@shared/components/organisms/AddressPoolCidrManager";
 export { AdminLayout } from "./AdminLayout";
@@ -32,4 +33,5 @@ export { ServiceSidebar } from "./ServiceSidebar";
 export { SgRulesPanel } from "@shared/components/organisms/SgRulesPanel";
 export { CidrSection } from "@shared/components/organisms/SubnetCidrManager";
 export { SubnetCidrPanel } from "@shared/components/organisms/SubnetCidrPanel";
+export { SubnetRelocateDialog } from "./SubnetRelocateDialog";
 export { VpcDetailShell, VpcListShell } from "./VpcShell";

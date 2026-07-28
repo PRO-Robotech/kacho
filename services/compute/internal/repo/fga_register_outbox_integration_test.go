@@ -152,38 +152,3 @@ func TestInstance_SEC_D_03_UnregisterIntentOnDelete(t *testing.T) {
 	_, gerr := instRepo.Get(ctx, inID)
 	require.Error(t, gerr)
 }
-
-// TestDisk_SEC_D_RegisterAndUnregisterIntent — Disk Create/Delete write intents
-// in the writer-tx (parity with Instance; covers compute_disk FGA type).
-func TestDisk_SEC_D_RegisterAndUnregisterIntent(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping integration test")
-	}
-	ctx := context.Background()
-	dsn := setupTestDB(t)
-	pool, err := coredb.NewPool(ctx, dsn)
-	require.NoError(t, err)
-	defer pool.Close()
-
-	diskRepo := repo.NewDiskRepo(pool)
-	dID := ids.NewID(ids.PrefixDisk)
-	projectID := "proj-ccccccccccccccccc"
-	_, err = diskRepo.Insert(ctx, &domain.Disk{ID: dID, ProjectID: projectID, CreatedAt: time.Now().UTC().Truncate(time.Microsecond), Name: "disk-sec-d", TypeID: "network-ssd", ZoneID: "ru-central1-a", Size: 4194304, BlockSize: 4096, Status: domain.DiskStatusReady})
-	require.NoError(t, err)
-
-	regRows := queryFGARegisterRows(ctx, t, pool, dID)
-	require.Len(t, regRows, 1)
-	assert.Equal(t, fgaintent.EventRegister, regRows[0].eventType)
-	assert.Equal(t, "compute_disk:"+dID, payloadTuples(t, regRows[0].payload)[0].Object)
-
-	require.NoError(t, diskRepo.Delete(ctx, dID))
-	allRows := queryFGARegisterRows(ctx, t, pool, dID)
-	var sawUnreg bool
-	for _, r := range allRows {
-		if r.eventType == fgaintent.EventUnregister {
-			sawUnreg = true
-			assert.Equal(t, "compute_disk:"+dID, payloadTuples(t, r.payload)[0].Object)
-		}
-	}
-	assert.True(t, sawUnreg, "Disk.Delete writes fga.unregister intent")
-}

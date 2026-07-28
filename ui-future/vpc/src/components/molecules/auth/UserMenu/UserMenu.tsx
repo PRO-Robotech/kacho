@@ -29,10 +29,7 @@ export function UserMenu() {
       key: "profile",
       icon: <UserOutlined />,
       label: "Профиль",
-      // Профиль — настройки личности провайдера (маршрут этого приложения).
-      // Прежде вело на `/iam/users`: управление доступом обслуживает ремоут iam,
-      // в standalone-сборке vpc этого экрана нет.
-      onClick: () => navigate("/auth/settings"),
+      onClick: () => navigate("/iam/users"),
     },
     { type: "divider" as const },
     {

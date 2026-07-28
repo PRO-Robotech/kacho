@@ -193,26 +193,6 @@ spec:
             - name: KACHO_HYDRA_ISSUER
               value: {{ .Values.hydra.issuer | quote }}
             {{- end }}
-            # Revocation path. A verified signature says who minted the token and
-            # when it lapses; it cannot say whether the token has since been
-            # turned off. Only the provider knows that, over its ADMIN API —
-            # a different Service and port from the public issuer, so neither
-            # address is derivable and both must be stated here.
-            #
-            # introspectionUrl is asked per request (through a short-TTL cache)
-            # before a request is let through; adminUrl is how the logout handler
-            # ends the provider-side session. Unset, each control is simply off,
-            # and a production-class gateway now refuses to start rather than run
-            # that way. Guarded by gateway/deploy/revocation_endpoint_test.go,
-            # which reads the profiles rather than a render, so it cannot skip.
-            {{- if .Values.hydra.introspectionUrl }}
-            - name: KACHO_HYDRA_INTROSPECTION_URL
-              value: {{ .Values.hydra.introspectionUrl | quote }}
-            {{- end }}
-            {{- if .Values.hydra.adminUrl }}
-            - name: KACHO_HYDRA_ADMIN_URL
-              value: {{ .Values.hydra.adminUrl | quote }}
-            {{- end }}
             {{- end }}
             {{- if .Values.authz }}
             - name: KACHO_API_GATEWAY_AUTHZ_ENABLED

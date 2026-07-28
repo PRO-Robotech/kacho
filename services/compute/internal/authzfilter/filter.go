@@ -77,7 +77,7 @@ type Filter interface {
 	// порядок входа (страница уже отсортирована курсором — переупорядочивание
 	// сломало бы пагинацию).
 	//
-	//   resourceType — FGA object type ("compute_instance", "compute_disk", …).
+	//   resourceType — FGA object type ("compute_instance", …).
 	//   action       — semantic permission ("compute.disks.list"); передаётся в
 	//                  kacho-iam для аудита/трассировки, решение принимает
 	//                  явный required_relation (см. visibilityRelations).

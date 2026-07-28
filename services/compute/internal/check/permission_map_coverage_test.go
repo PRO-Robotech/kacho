@@ -34,9 +34,6 @@ const computeProtoPackage = protoreflect.FullName("kacho.cloud.compute.v1")
 // ОСТАЮТСЯ выставленными (grpc-go их диспатчит) и потому проходят через тот же
 // authz-интерсептор → они обязаны быть в PermissionMap.
 var servedPublicServiceDescs = []grpc.ServiceDesc{
-	computev1.DiskService_ServiceDesc,
-	computev1.ImageService_ServiceDesc,
-	computev1.SnapshotService_ServiceDesc,
 	computev1.DiskTypeService_ServiceDesc,
 	computev1.MachineTypeService_ServiceDesc,
 	computev1.InstanceService_ServiceDesc,

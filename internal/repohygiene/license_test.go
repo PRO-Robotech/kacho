@@ -79,7 +79,7 @@ func isGenerated(t *testing.T, path string) bool {
 	if filepath.Ext(path) != ".go" {
 		return false
 	}
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // путь получен обходом дерева репо в тесте
 	if err != nil {
 		return false
 	}

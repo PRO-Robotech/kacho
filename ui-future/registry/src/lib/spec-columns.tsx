@@ -23,9 +23,6 @@ export { referrerHref, referrerMeta } from "@/lib/referrer";
 // корректный detail-роут (включая network_interface → kacho-vpc).
 const REFERRER_SPEC: Record<string, string> = {
   compute_instance: "compute-instances",
-  compute_disk: "compute-disks",
-  compute_image: "compute-images",
-  compute_snapshot: "compute-snapshots",
   nlb_target_group: "target-groups",
   network_interface: "network-interfaces",
   network_load_balancer: "load-balancers",

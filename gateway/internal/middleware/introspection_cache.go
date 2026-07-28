@@ -1,20 +1,15 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// introspection_cache.go — provider-backed token introspection with negative-TTL
+// introspection_cache.go — Hydra-backed token introspection with negative-TTL
 // LRU cache.
 //
 // Purpose: even when the access token's signature + claims pass local
 // verification, the token may have been revoked server-side (admin logout,
-// CAEP push, back-channel logout). The identity provider's introspection
-// endpoint is the authoritative answer, but asking on every request costs a
-// round-trip, so a tiny LRU with TTL = min(5s, exp-now) means a fresh access
-// token round-trips at most every 5s.
-//
-// The endpoint lives on the provider's ADMIN API (`/admin/oauth2/introspect`),
-// not on the public OAuth2 API — a distinct Service and port. Its address is
-// configuration and is never derived; see config.ResolvedHydraIntrospectionURL
-// and the boot guard in cmd/api-gateway/revocation_validation.go.
+// CAEP push, back-channel logout). Hydra's `/oauth2/introspect` is the
+// authoritative answer, but calling it on every request is too expensive
+// (≈ 50–100ms p95). We add a tiny LRU with TTL = min(5s, exp-now) so a fresh
+// access token only round-trips Hydra at most every 5s.
 //
 // Negative caching: when introspection returns `active=false`, we still cache
 // the result (under the same TTL) — repeated requests from a compromised
@@ -45,33 +40,9 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/lrucache"
 )
 
-// ErrTokenInactive — the provider reported `active=false`; bubble up to caller
-// and terminate request with 401.
+// ErrTokenInactive — Hydra reported `active=false`; bubble up to caller and
+// terminate request with 401.
 var ErrTokenInactive = errors.New("token is not active (revoked or expired upstream)")
-
-// ErrIntrospectionMisconfigured — the address answered, but what answered is not
-// an introspection endpoint: the path is absent, the verb is refused, we are not
-// authorised to ask, or the body is not an introspection response.
-//
-// This is deliberately a SEPARATE fact from "the provider did not answer". An
-// unwell provider recovers on its own; a wrong address does not, so every
-// request pays the round-trip and receives the same non-answer forever. Merged
-// into one branch and waved through, that is a revocation check which reports as
-// present and enforces nothing — the caller of Introspect must be able to tell
-// the two apart, so the distinction lives in the error rather than in whatever
-// the caller manages to infer from an error string.
-var ErrIntrospectionMisconfigured = errors.New("introspection endpoint is misconfigured")
-
-// defaultIntrospectionTimeout bounds one introspection round-trip.
-//
-// This is a blocking step on the request path, so the budget is what an unwell
-// provider can cost a request-handling goroutine. Introspection is a single
-// intra-cluster POST backed by one indexed lookup — tens of milliseconds when
-// healthy — and the cache means a given token pays it at most once per TTL.
-// A second is roughly ten times the healthy case: ample for a cold connection or
-// a stalled lookup, and short enough that a provider brown-out cannot pin the
-// gateway's capacity waiting on answers no caller is still there to receive.
-const defaultIntrospectionTimeout = time.Second
 
 // IntrospectionResult — minimal RFC 7662 section 2.2 response shape. Hydra returns
 // many more fields; we keep only what downstream needs.
@@ -91,13 +62,10 @@ type IntrospectionCache struct {
 	url        string
 	httpClient *http.Client
 	ttl        time.Duration
-	timeout    time.Duration
 	now        func() time.Time
 
-	// HTTP basic auth for the admin introspection endpoint, for a provider
-	// deployment that fronts its admin API with one. Ory Hydra's own admin API
-	// carries no authentication — it is protected by not being routable — so this
-	// stays empty in this platform's profiles.
+	// HTTP basic auth for the Hydra admin /introspect endpoint (Hydra requires
+	// it for any client-credentials introspection in production). Optional.
 	basicUser string
 	basicPass string
 
@@ -110,11 +78,9 @@ type IntrospectionCacheConfig struct {
 	HTTPClient            *http.Client
 	MaxEntries            int
 	TTL                   time.Duration
-	// Timeout bounds one round-trip to the provider. Zero → defaultIntrospectionTimeout.
-	Timeout       time.Duration
-	Now           func() time.Time
-	BasicAuthUser string
-	BasicAuthPass string
+	Now                   func() time.Time
+	BasicAuthUser         string
+	BasicAuthPass         string
 }
 
 // NewIntrospectionCache constructs a cache. Returns error on empty URL.
@@ -132,21 +98,14 @@ func NewIntrospectionCache(cfg IntrospectionCacheConfig) (*IntrospectionCache, e
 	if now == nil {
 		now = time.Now
 	}
-	if cfg.Timeout <= 0 {
-		cfg.Timeout = defaultIntrospectionTimeout
-	}
 	hc := cfg.HTTPClient
 	if hc == nil {
-		// One budget, applied at both layers: the transport deadline and the
-		// per-call context below. Two different numbers here would mean the
-		// effective wait is whichever the reader did not look at.
-		hc = &http.Client{Timeout: cfg.Timeout}
+		hc = &http.Client{Timeout: 5 * time.Second}
 	}
 	return &IntrospectionCache{
 		url:        cfg.HydraIntrospectionURL,
 		httpClient: hc,
 		ttl:        cfg.TTL,
-		timeout:    cfg.Timeout,
 		now:        now,
 		basicUser:  cfg.BasicAuthUser,
 		basicPass:  cfg.BasicAuthPass,
@@ -155,14 +114,7 @@ func NewIntrospectionCache(cfg IntrospectionCacheConfig) (*IntrospectionCache, e
 }
 
 // Introspect returns the cached or freshly-fetched introspection result.
-//
-// Three outcomes the caller must distinguish:
-//   - nil — the provider says the token is live.
-//   - ErrTokenInactive — the provider says it is not. Reject the request.
-//   - ErrIntrospectionMisconfigured — what answered is not an introspection
-//     endpoint. This never resolves by itself, so it must not be waved through.
-//
-// Any other error means the provider did not answer this time, which passes.
+// Returns ErrTokenInactive when Hydra (or the cached entry) reports active=false.
 //
 // Key is the access-token JTI — small, opaque, never logged. We never pass
 // the raw token through the cache map (defence-in-depth against memory dump
@@ -240,18 +192,11 @@ func (c *IntrospectionCache) Invalidate(jti string) {
 func (c *IntrospectionCache) Len() int { return c.cache.Len() }
 
 func (c *IntrospectionCache) fetchHydra(ctx context.Context, rawToken string) (IntrospectionResult, error) {
-	// The budget belongs to this call, not to the inbound request: a caller that
-	// arrives with a generous deadline must not be able to hold a gateway
-	// goroutine on a stalled provider for longer than the configured wait.
-	ctx, cancel := context.WithTimeout(ctx, c.timeout)
-	defer cancel()
-
 	form := url.Values{}
 	form.Set("token", rawToken)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url, strings.NewReader(form.Encode()))
 	if err != nil {
-		// A URL this transport cannot even build a request for is configuration.
-		return IntrospectionResult{}, fmt.Errorf("%w: build request: %w", ErrIntrospectionMisconfigured, err)
+		return IntrospectionResult{}, fmt.Errorf("introspect build req: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
@@ -260,44 +205,16 @@ func (c *IntrospectionCache) fetchHydra(ctx context.Context, rawToken string) (I
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		// Nothing answered: refused connection, DNS, timeout. All pass on their
-		// own, so none of them is configuration.
 		return IntrospectionResult{}, fmt.Errorf("introspect do: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		if transientStatus(resp.StatusCode) {
-			return IntrospectionResult{}, fmt.Errorf("introspect status=%d body=%q", resp.StatusCode, string(body))
-		}
-		// Anything else — no such path, verb refused, not authorised to ask,
-		// request shape rejected — describes the address, not the moment. It
-		// answers every retry identically.
-		return IntrospectionResult{}, fmt.Errorf("%w: status=%d body=%q",
-			ErrIntrospectionMisconfigured, resp.StatusCode, string(body))
+		return IntrospectionResult{}, fmt.Errorf("introspect status=%d body=%q", resp.StatusCode, string(body))
 	}
 	var out IntrospectionResult
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&out); err != nil {
-		// A 200 that is not an introspection response — an ingress default page,
-		// an SPA, some other service on the port. The address is wrong.
-		return IntrospectionResult{}, fmt.Errorf("%w: decode response: %w", ErrIntrospectionMisconfigured, err)
+		return IntrospectionResult{}, fmt.Errorf("introspect decode: %w", err)
 	}
 	return out, nil
-}
-
-// transientStatus reports whether a non-200 status describes a passing condition
-// of a provider that IS the introspection endpoint, rather than an address that
-// is not one. Only these recover without anyone changing configuration:
-// server-side faults, the provider asking us to slow down, and a request the
-// provider timed out on its own side.
-func transientStatus(code int) bool {
-	switch code {
-	case http.StatusRequestTimeout, http.StatusTooManyRequests:
-		return true
-	case http.StatusNotImplemented:
-		// "This server does not implement that" is a statement about the address,
-		// not about the moment — it is the one 5xx that never recovers on its own.
-		return false
-	}
-	return code >= 500
 }

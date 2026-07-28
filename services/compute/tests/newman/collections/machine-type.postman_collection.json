@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "df9fed10-8e41-411f-b8d2-8b5bf711fd76",
+    "_postman_id": "bc97741a-4497-4d6d-b5e5-60004efb9c1a",
     "name": "kacho-compute / newman / machine-type",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -102,7 +102,7 @@
           ]
         },
         {
-          "name": "poll-op-183",
+          "name": "poll-op-77",
           "request": {
             "method": "GET",
             "header": [
@@ -183,7 +183,7 @@
           ]
         },
         {
-          "name": "get-after-seed-rya48",
+          "name": "get-after-seed-rya19",
           "request": {
             "method": "GET",
             "header": [
@@ -276,7 +276,7 @@
           ]
         },
         {
-          "name": "poll-op-184",
+          "name": "poll-op-78",
           "request": {
             "method": "GET",
             "header": [
@@ -482,7 +482,7 @@
           ]
         },
         {
-          "name": "poll-op-185",
+          "name": "poll-op-79",
           "request": {
             "method": "GET",
             "header": [
@@ -563,7 +563,7 @@
           ]
         },
         {
-          "name": "get-rya49",
+          "name": "get-rya20",
           "request": {
             "method": "GET",
             "header": [
@@ -669,7 +669,7 @@
           ]
         },
         {
-          "name": "poll-op-186",
+          "name": "poll-op-80",
           "request": {
             "method": "GET",
             "header": [
@@ -872,7 +872,7 @@
           ]
         },
         {
-          "name": "poll-op-187",
+          "name": "poll-op-81",
           "request": {
             "method": "GET",
             "header": [
@@ -953,7 +953,7 @@
           ]
         },
         {
-          "name": "list-lst50",
+          "name": "list-lst21",
           "request": {
             "method": "GET",
             "header": [
@@ -1047,7 +1047,7 @@
           ]
         },
         {
-          "name": "poll-op-188",
+          "name": "poll-op-82",
           "request": {
             "method": "GET",
             "header": [
@@ -1158,7 +1158,7 @@
           ]
         },
         {
-          "name": "poll-op-189",
+          "name": "poll-op-83",
           "request": {
             "method": "GET",
             "header": [
@@ -1298,7 +1298,7 @@
           ]
         },
         {
-          "name": "poll-op-190",
+          "name": "poll-op-84",
           "request": {
             "method": "GET",
             "header": [
@@ -1439,7 +1439,7 @@
           ]
         },
         {
-          "name": "poll-op-191",
+          "name": "poll-op-85",
           "request": {
             "method": "GET",
             "header": [
@@ -1520,7 +1520,7 @@
           ]
         },
         {
-          "name": "list-gpu-lst51",
+          "name": "list-gpu-lst22",
           "request": {
             "method": "GET",
             "header": [
@@ -1688,7 +1688,7 @@
           ]
         },
         {
-          "name": "poll-op-192",
+          "name": "poll-op-86",
           "request": {
             "method": "GET",
             "header": [
@@ -1774,7 +1774,7 @@
           ]
         },
         {
-          "name": "poll-op-193",
+          "name": "poll-op-87",
           "request": {
             "method": "GET",
             "header": [
@@ -1860,7 +1860,7 @@
           ]
         },
         {
-          "name": "poll-op-194",
+          "name": "poll-op-88",
           "request": {
             "method": "GET",
             "header": [

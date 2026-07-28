@@ -19,7 +19,7 @@ export function normalizeReferrerType(type: string | undefined): string {
 // registry, значит REFERRER_SPEC→RefNameLink (name-резолв из локального registry)
 // там не сработал бы — dotted-тип намеренно минует REFERRER_SPEC и линкуется здесь.
 // Структурирован как switch по нормализованному типу — новый referrer-тип
-// (compute_disk, nlb_target_group, ...) дописывается одним case'ом. Возвращает
+// (nlb_target_group, ...) дописывается одним case'ом. Возвращает
 // `null` если projectId не известен или тип не поддержан — caller рендерит
 // plain-текст (forward-compat fallback).
 export function referrerHref(
@@ -50,12 +50,6 @@ export function referrerMeta(type: string | undefined): { label: string; color?:
   switch (normalizeReferrerType(type)) {
     case "compute_instance":
       return { label: "VM", color: "#1677ff" };
-    case "compute_disk":
-      return { label: "Disk", color: "#13c2c2" };
-    case "compute_image":
-      return { label: "Image", color: "#2f54eb" };
-    case "compute_snapshot":
-      return { label: "Snapshot", color: "#722ed1" };
     case "nlb_target_group":
       return { label: "NLB TG", color: "#faad14" };
     default:

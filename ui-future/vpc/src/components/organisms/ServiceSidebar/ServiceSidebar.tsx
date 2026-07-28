@@ -18,19 +18,11 @@ import { LoginOutlined, LogoutOutlined, UserOutlined } from "@ant-design/icons";
 import { KachoLogo } from "@/components/atoms/brand/KachoLogo";
 import { useContext } from "@shared/lib/context-store";
 import { useAuth } from "@shared/contexts/AuthContext";
-import { COMMON_BOTTOM, SERVICE_MODULES, type NavLeaf, type ServiceModule } from "@shared/lib/service-modules";
+import { COMMON_BOTTOM, type NavLeaf } from "@shared/lib/service-modules";
 import { activeLeafKey, buildSidebarGroups } from "@shared/lib/sidebar-groups";
 
 const RAIL_WIDTH = 56;
 const EXPANDED_WIDTH = 232;
-
-// VPC_APP_MODULES — модули, которые маршрутизирует ЭТО приложение.
-//
-// Управление доступом сюда не входит: `/iam/*` обслуживает ремоут iam (хост
-// федерирует его туда), а standalone-сборка vpc этих экранов не имеет. Предлагать
-// переход, который приложению нечем открыть, — тот же дефект, что и обращение к
-// несуществующему маршруту: кнопка есть, за ней ничего.
-export const VPC_APP_MODULES: ServiceModule[] = SERVICE_MODULES.filter((m) => m.key !== "iam");
 
 export function ServiceSidebar() {
   // KAC-246: статичный узкий icon-rail; подписи — тултипом при наведении на
@@ -56,7 +48,7 @@ export function ServiceSidebar() {
   }, [authLoading, user]);
 
   const groups = useMemo(
-    () => buildSidebarGroups(location.pathname, projectId, accountId, bottomItems, VPC_APP_MODULES),
+    () => buildSidebarGroups(location.pathname, projectId, accountId, bottomItems),
     [location.pathname, projectId, accountId, bottomItems],
   );
   const activeKey = useMemo(() => activeLeafKey(groups, location.pathname), [groups, location.pathname]);
@@ -384,9 +376,7 @@ function SidebarUserButton({
       key: "profile",
       icon: <UserOutlined />,
       label: "Профиль",
-      // Профиль — настройки личности провайдера (маршрут этого приложения).
-      // Прежде вело на `/iam/users`, которого в standalone-сборке vpc нет.
-      onClick: () => navigate("/auth/settings"),
+      onClick: () => navigate("/iam/users"),
     },
     {
       key: "logout",

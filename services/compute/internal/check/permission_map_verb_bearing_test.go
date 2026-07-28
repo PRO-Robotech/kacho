@@ -18,18 +18,11 @@ import (
 // project-List остаётся `viewer` (visibility — через iam ListObjects union).
 
 var verbGetRPCs = []string{
-	"/kacho.cloud.compute.v1.DiskService/Get",
-	"/kacho.cloud.compute.v1.ImageService/Get",
-	"/kacho.cloud.compute.v1.SnapshotService/Get",
 	"/kacho.cloud.compute.v1.InstanceService/Get",
 	"/kacho.cloud.compute.v1.InstanceService/GetSerialPortOutput",
 }
 
 var verbUpdateRPCs = []string{
-	"/kacho.cloud.compute.v1.DiskService/Update",
-	"/kacho.cloud.compute.v1.DiskService/Relocate",
-	"/kacho.cloud.compute.v1.ImageService/Update",
-	"/kacho.cloud.compute.v1.SnapshotService/Update",
 	"/kacho.cloud.compute.v1.InstanceService/Update",
 	"/kacho.cloud.compute.v1.InstanceService/UpdateMetadata",
 	"/kacho.cloud.compute.v1.InstanceService/Start",
@@ -47,30 +40,18 @@ var verbUpdateRPCs = []string{
 }
 
 var verbDeleteRPCs = []string{
-	"/kacho.cloud.compute.v1.DiskService/Delete",
-	"/kacho.cloud.compute.v1.ImageService/Delete",
-	"/kacho.cloud.compute.v1.SnapshotService/Delete",
 	"/kacho.cloud.compute.v1.InstanceService/Delete",
 }
 
 var verbListOnResourceRPCs = []string{
-	"/kacho.cloud.compute.v1.DiskService/ListOperations",
-	"/kacho.cloud.compute.v1.ImageService/ListOperations",
-	"/kacho.cloud.compute.v1.SnapshotService/ListOperations",
 	"/kacho.cloud.compute.v1.InstanceService/ListOperations",
 }
 
 var createChildRPCs = []string{
-	"/kacho.cloud.compute.v1.DiskService/Create",
-	"/kacho.cloud.compute.v1.ImageService/Create",
-	"/kacho.cloud.compute.v1.SnapshotService/Create",
 	"/kacho.cloud.compute.v1.InstanceService/Create",
 }
 
 var projectListRPCs = []string{
-	"/kacho.cloud.compute.v1.DiskService/List",
-	"/kacho.cloud.compute.v1.ImageService/List",
-	"/kacho.cloud.compute.v1.SnapshotService/List",
 	"/kacho.cloud.compute.v1.InstanceService/List",
 }
 
