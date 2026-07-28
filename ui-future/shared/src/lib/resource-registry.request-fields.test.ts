@@ -86,6 +86,33 @@ describe("spec fields name real request fields", () => {
     expect(m).not.toContain("type");
   });
 
+  // NLB CONTRACT: `placement` is the SOLE authoritative mode input on Create
+  // (EXTERNAL_REGIONAL | INTERNAL_REGIONAL | INTERNAL_ZONAL). `type` and
+  // `placement_type` are derived output-only projections, retained on the request
+  // ONLY so that a client setting them gets an explicit InvalidArgument — so a
+  // create form that sends them cannot create a load balancer at all, and one that
+  // omits `placement` has no way to say what it wants.
+  it("load-balancers sends the mode input, and none of the write-reject projections", () => {
+    const keys = createKeys("load-balancers");
+    expect(keys).toContain("placement");
+    expect(keys).not.toContain("type");
+    expect(keys).not.toContain("placement_type");
+    const placement = (REGISTRY["load-balancers"].fields ?? []).find((f) => f.name === "placement");
+    expect(placement?.required).toBe(true);
+    // Create-only: UpdateNetworkLoadBalancerRequest carries no placement.
+    expect(maskable("load-balancers")).not.toContain("placement");
+  });
+
+  // CreateTargetGroupRequest.port is required (1..65535): every target receives
+  // forwarded traffic on it. Unreachable from the form meant no target group could
+  // be created from the console at all.
+  it("target-groups can express the backend port Create requires", () => {
+    const keys = createKeys("target-groups");
+    expect(keys).toContain("port");
+    const port = (REGISTRY["target-groups"].fields ?? []).find((f) => f.name === "port");
+    expect(port?.required).toBe(true);
+  });
+
   // loadbalancer.v1.HealthCheck: `reserved 1; reserved "name";` and the options
   // oneof arms are tcp(6)/http(7)/https(8)/grpc(9) — `tcp_options` was replaced.
   it("target-groups health check uses the live option arm and no retired name", () => {

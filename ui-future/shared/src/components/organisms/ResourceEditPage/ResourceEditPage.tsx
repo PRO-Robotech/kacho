@@ -61,7 +61,11 @@ export function ResourceEditPage({ spec, paramKey = "uid" }: Props) {
     // трогали.
     const baseObj: Record<string, unknown> = spec.hydrate ? { ...spec.hydrate({ ...data }) } : { ...data };
     const merged = applyFieldDefaults(fields, baseObj);
-    originalRef.current = baseObj;
+    // Снимок для диффа хранится в ТОЙ ЖЕ форме, что даёт sanitize: маска считается
+    // против санитайзнутого объекта, и спека, чей sanitize меняет представление
+    // (число → Duration "300s"), иначе выглядела бы изменённой на каждом сохранении —
+    // поле, которого оператор не трогал, уезжало бы в update_mask.
+    originalRef.current = spec.sanitize ? spec.sanitize(baseObj) : baseObj;
     setObj(merged);
     setHydrated(true);
   }, [data, fields, hydrated, spec]);

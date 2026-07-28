@@ -3542,6 +3542,25 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
     ],
     fields: [
+      {
+        // NLB CONTRACT: placement — ЕДИНСТВЕННЫЙ авторитетный ввод режима на Create.
+        // `type` / `placement_type` — производные output-only проекции; в запросе они
+        // оставлены ТОЛЬКО чтобы клиент, который их выставил, получил явный
+        // InvalidArgument. Форма их не шлёт.
+        name: "placement",
+        label: "Размещение",
+        type: "enum",
+        required: true,
+        immutable: true,
+        default: "EXTERNAL_REGIONAL",
+        options: [
+          { value: "EXTERNAL_REGIONAL", label: "EXTERNAL_REGIONAL — публичный, региональный" },
+          { value: "INTERNAL_REGIONAL", label: "INTERNAL_REGIONAL — внутренний, региональный" },
+          { value: "INTERNAL_ZONAL", label: "INTERNAL_ZONAL — внутренний, в одной зоне" },
+        ],
+        description:
+          "Режим балансировщика (immutable после Create). Пара «external + zonal» невыразима by construction — её в наборе нет.",
+      },
       FIELD_NAME_COMPUTE, // DNS-1123 — lowercase + цифры + дефисы (как у NLB regex)
       FIELD_DESCRIPTION,
       {
@@ -3554,20 +3573,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         required: true,
         description: "Регион размещения балансировщика. Cross-service ref → compute.Region; verified на request-path.",
       },
-      {
-        name: "type",
-        // Create-only: UpdateNetworkLoadBalancerRequest его не несёт.
-        immutable: true,
-        label: "Тип",
-        type: "enum",
-        required: true,
-        default: "EXTERNAL",
-        options: [
-          { value: "EXTERNAL", label: "EXTERNAL (публичный VIP)" },
-          { value: "INTERNAL", label: "INTERNAL (cluster-internal VIP)" },
-        ],
-        description: "Тип VIP-адреса: EXTERNAL — публичный, INTERNAL — внутренний (immutable после Create).",
-      },
       FIELD_LABELS,
       FIELD_PROJECT_ID,
     ],
@@ -3576,7 +3581,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       name: "",
       description: "",
       region_id: "",
-      type: "EXTERNAL",
+      placement: "EXTERNAL_REGIONAL",
       labels: {},
     }),
   },
@@ -3700,6 +3705,19 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
     ],
     fields: [
+      {
+        // CreateTargetGroupRequest.port — required: единый backend-порт группы, на
+        // который таргеты получают перенаправленный трафик; эхо в
+        // Listener.resolvedBackendPort.
+        name: "port",
+        label: "Порт бэкенда",
+        type: "int",
+        required: true,
+        min: 1,
+        max: 65535,
+        default: 80,
+        description: "Порт, на котором таргеты принимают перенаправленный трафик (1..65535).",
+      },
       FIELD_NAME_COMPUTE,
       FIELD_DESCRIPTION,
       {
@@ -3773,6 +3791,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       name: "",
       description: "",
       region_id: "",
+      port: 80,
       deregistration_delay: "300s",
       health_check: {
         tcp: { port: 80 },
@@ -4105,15 +4124,16 @@ export function applyFieldDefaults(
   if (!fields) return obj;
   let cur = obj;
   for (const f of fields) {
-    if (f.type === "string" && f.default !== undefined) {
-      cur = setByPath(cur, f.name, getByPath(cur, f.name) ?? f.default);
-    } else if (f.type === "int" && f.default !== undefined) {
-      cur = setByPath(cur, f.name, getByPath(cur, f.name) ?? f.default);
-    } else if (f.type === "enum" && f.default !== undefined) {
-      cur = setByPath(cur, f.name, getByPath(cur, f.name) ?? f.default);
-    } else if (f.type === "bool" && f.default !== undefined) {
-      cur = setByPath(cur, f.name, getByPath(cur, f.name) ?? f.default);
-    }
+    // An update-only field is never seeded. On Create its message has no such
+    // field at all, so a default would ride out as an unknown key and be dropped
+    // in silence; on Update the value comes from the fetched resource, and seeding
+    // one would push a field the operator never touched into update_mask.
+    // ONE guard, ahead of the type split — a guard inside a per-type branch fixes
+    // the field that prompted it and leaves the next one of another type open.
+    if (f.updateOnly) continue;
+    if (f.type !== "string" && f.type !== "int" && f.type !== "enum" && f.type !== "bool") continue;
+    if (f.default === undefined) continue;
+    cur = setByPath(cur, f.name, getByPath(cur, f.name) ?? f.default);
   }
   return cur;
 }

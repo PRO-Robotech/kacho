@@ -72,10 +72,12 @@ export function ResourceFormDialog({
       setText(JSON.stringify(snap.template, null, 2));
       setOpId(null);
       setView(snap.fields ? "form" : "json");
-      originalRef.current =
+      // Снимок для диффа — в той же форме, что даёт sanitize (см. ResourceEditPage).
+      const snapObj =
         mode === "edit" && typeof snap.template === "object" && snap.template !== null
           ? (snap.template as Record<string, unknown>)
           : null;
+      originalRef.current = snapObj && sanitize ? sanitize(snapObj) : snapObj;
     }
   }, [open, mode]);
 

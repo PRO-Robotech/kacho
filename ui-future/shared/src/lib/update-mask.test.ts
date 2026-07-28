@@ -63,6 +63,34 @@ describe("computeUpdateMask", () => {
   });
 });
 
+describe("computeUpdateMask against a spec whose sanitize changes representation", () => {
+  // The generic edit path diffs the SANITIZED form object against the stored
+  // original. If a spec's sanitize rewrites a value (number → Duration string) and
+  // its hydrate rewrites it back for the widget, the two sides stop being
+  // comparable and the field is dirty on every save — "nothing changed" never
+  // short-circuits, and a field the operator never touched enters update_mask.
+  // The original must therefore be stored in the same shape sanitize produces.
+  const durationSpec = {
+    sanitize: (o: Record<string, unknown>) => ({ ...o, delay: `${o.delay}s` }),
+    hydrate: (o: Record<string, unknown>) => ({ ...o, delay: Number(String(o.delay).replace(/s$/, "")) }),
+  };
+  const fields = [str("delay"), str("name")];
+
+  it("sees no change when the operator changed nothing", () => {
+    const fromServer = { delay: "300s", name: "tg-1" };
+    const original = durationSpec.sanitize(durationSpec.hydrate({ ...fromServer }));
+    const edited = durationSpec.sanitize(durationSpec.hydrate({ ...fromServer }));
+    expect(computeUpdateMask(original, edited, fields)).toEqual([]);
+  });
+
+  it("still sees the change when the operator made one", () => {
+    const fromServer = { delay: "300s", name: "tg-1" };
+    const original = durationSpec.sanitize(durationSpec.hydrate({ ...fromServer }));
+    const edited = durationSpec.sanitize({ ...durationSpec.hydrate({ ...fromServer }), delay: 45 });
+    expect(computeUpdateMask(original, edited, fields)).toEqual(["delay"]);
+  });
+});
+
 describe("stripFormOnlyKeys", () => {
   it("drops leading-underscore keys, which are widget state and not request fields", () => {
     expect(stripFormOnlyKeys({ _placement: "ZONAL", zone_id: "z1" })).toEqual({ zone_id: "z1" });

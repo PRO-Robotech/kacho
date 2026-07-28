@@ -392,15 +392,16 @@ export function applyFieldDefaults(
   if (!fields) return obj;
   let cur = obj;
   for (const f of fields) {
-    if (f.type === "string" && f.default !== undefined) {
-      cur = setByPath(cur, f.name, getByPath(cur, f.name) ?? f.default);
-    } else if (f.type === "int" && f.default !== undefined) {
-      cur = setByPath(cur, f.name, getByPath(cur, f.name) ?? f.default);
-    } else if (f.type === "enum" && f.default !== undefined) {
-      cur = setByPath(cur, f.name, getByPath(cur, f.name) ?? f.default);
-    } else if (f.type === "bool" && f.default !== undefined) {
-      cur = setByPath(cur, f.name, getByPath(cur, f.name) ?? f.default);
-    }
+    // An update-only field is never seeded. On Create its message has no such
+    // field at all, so a default would ride out as an unknown key and be dropped
+    // in silence; on Update the value comes from the fetched resource, and seeding
+    // one would push a field the operator never touched into update_mask.
+    // ONE guard, ahead of the type split — a guard inside a per-type branch fixes
+    // the field that prompted it and leaves the next one of another type open.
+    if (f.updateOnly) continue;
+    if (f.type !== "string" && f.type !== "int" && f.type !== "enum" && f.type !== "bool") continue;
+    if (f.default === undefined) continue;
+    cur = setByPath(cur, f.name, getByPath(cur, f.name) ?? f.default);
   }
   return cur;
 }

@@ -6,16 +6,41 @@
 // with protojson DiscardUnknown — dropped the key, and the registry came back
 // PRIVATE behind a success toast.
 
-import { REGISTRY } from "./resource-registry";
-import { computeUpdateMask } from "@/components/organisms/ResourceFormDialog";
+import { REGISTRY, applyFieldDefaults } from "./resource-registry";
+import { buildCreateBody, computeUpdateMask } from "@/components/organisms/ResourceFormDialog";
 
 const asObj = (v: unknown) => v as Record<string, unknown>;
+
+/**
+ * The body a Create actually sends. NOT `spec.template(ctx)` — the form seeds
+ * defaults over the template first, so asserting the template alone is green over
+ * a live defect: `applyFieldDefaults` was putting the update-only visibility back.
+ */
+function createBody(specId: string): Record<string, unknown> {
+  const spec = REGISTRY[specId];
+  const seeded = applyFieldDefaults(spec.fields, asObj(spec.template({ projectId: "prj-1" })));
+  return buildCreateBody(spec.sanitize ? spec.sanitize(seeded) : seeded);
+}
 
 describe("registries spec vs the request messages", () => {
   const spec = REGISTRY["registries"];
 
-  it("does not seed a Create body with an Update-only field", () => {
+  it("does not send an Update-only field in a Create body", () => {
+    // CreateRegistryRequest is {project_id, name, description, labels, region_id}.
+    // It does not read this field at all, so the edge drops it in silence.
+    expect(createBody("registries")).not.toHaveProperty("default_repository_visibility");
     expect(asObj(spec.template({ projectId: "prj-1" }))).not.toHaveProperty("default_repository_visibility");
+  });
+
+  it("no spec seeds a Create body with any update-only field, of any type", () => {
+    // applyFieldDefaults has one branch per field type; a guard in only one of them
+    // fixes today's enum and leaves the next update-only string/int/bool open.
+    for (const [id, spec] of Object.entries(REGISTRY)) {
+      const updateOnly = (spec.fields ?? []).filter((f) => f.updateOnly).map((f) => f.name.split(".")[0]);
+      if (updateOnly.length === 0) continue;
+      const body = createBody(id);
+      for (const name of updateOnly) expect(body).not.toHaveProperty(name);
+    }
   });
 
   it("marks it update-only, so the Create form does not offer it", () => {

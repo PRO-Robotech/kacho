@@ -73,6 +73,11 @@ describe("generic submit paths build the request body", () => {
       // The shape this replaced: the hydrated GET projection spread into the PATCH.
       expect(src).not.toMatch(/\.\.\.\s*\(?\s*parsed[\s\S]{0,80}update_mask/);
       expect(src).not.toMatch(/update_mask:\s*mask\.map/);
+      // The mask is computed against the SANITIZED form object, so the stored
+      // original must be in that same shape — otherwise a spec whose sanitize
+      // rewrites a value (number → Duration "300s") looks changed on every save
+      // and pushes an untouched field into update_mask.
+      expect(src).toMatch(/originalRef\.current = .*sanitize/s);
     });
   }
 
