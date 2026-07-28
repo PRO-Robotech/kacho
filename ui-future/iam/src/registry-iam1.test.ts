@@ -42,10 +42,15 @@ describe("IAM-1 F1/F2 — accounts spec", () => {
     expect(tpl).not.toHaveProperty("owner_user_id");
   });
 
-  it("остаётся output-only колонка «Владелец» + deletionProtection field", () => {
+  it("остаётся output-only колонка «Владелец»; deletionProtection у Account нет вовсе", () => {
     expect(colByHeader("accounts", "Владелец")?.path).toBe("owner_user_id");
-    const dp = fieldByName(REGISTRY.accounts.fields, "deletion_protection");
-    expect(dp?.type).toBe("bool");
+    // deletion_protection есть у AccessBinding, но НЕ у Account: ни в
+    // CreateAccountRequest {name, description, labels, owner_user_id}, ни в
+    // UpdateAccountRequest, ни в самом Account. Форма его предлагала, шаблон сеял,
+    // а край выбрасывал ключ молча — галочка «защитить от удаления» не делала
+    // ничего и отвечала успехом.
+    expect(fieldByName(REGISTRY.accounts.fields, "deletion_protection")).toBeUndefined();
+    expect(REGISTRY.accounts.template({})).not.toHaveProperty("deletion_protection");
   });
 });
 

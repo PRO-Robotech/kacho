@@ -35,6 +35,11 @@ interface BaseField {
   // в Edit не рендерится (ресурс такого поля не имеет). KAC-239. Семантически
   // = editHidden; отдельное имя для читаемости registry.
   createOnly?: boolean;
+  // Update-only — поле есть ТОЛЬКО в Update-сообщении (напр.
+  // registries.default_repository_visibility: CreateRegistryRequest его не несёт,
+  // UpdateRegistryRequest несёт). В Create-форме не рендерится и в тело не
+  // попадает; в update_mask — попадает, там оно и живёт. Зеркало createOnly.
+  updateOnly?: boolean;
   // Условная видимость поля по значению другого поля формы (top-level path).
   // Используется для proto oneof: discriminator-enum (`_address_kind`) скрывает
   // неактивную ветку (external_* vs internal_*). Поле всё ещё может присутствовать

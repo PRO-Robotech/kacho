@@ -514,18 +514,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           />
         ),
       },
-      {
-        header: "Защита",
-        path: "deletion_protection",
-        render: (row) =>
-          row.deletion_protection || row.deletionProtection ? (
-            <Tag color="gold" title="Защита от удаления включена">
-              Да
-            </Tag>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          ),
-      },
       { header: "Статус", path: "status", format: "status" },
       COL_CREATED,
       COL_ID,
@@ -535,13 +523,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // Project + owner-AccessBinding (F2) — сервер-сторона, не форма.
     fields: [
       FIELD_NAME,
-      {
-        name: "deletion_protection",
-        label: "Защита от удаления",
-        type: "bool",
-        default: false,
-        description: "Запретить удаление аккаунта, пока защита не снята (Update).",
-      },
       FIELD_LABELS,
       FIELD_DESCRIPTION,
     ],
@@ -568,7 +549,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     template: () => ({
       name: "",
       description: "",
-      deletion_protection: false,
       labels: {},
     }),
   },
@@ -2041,6 +2021,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       FIELD_NAME_VPC,
       {
         name: "network_id",
+        // Create-only: UpdateSecurityGroupRequest не несёт network_id.
+        immutable: true,
         label: "Network",
         type: "ref",
         refResource: "networks",
@@ -2057,11 +2039,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       FIELD_LABELS,
       FIELD_DESCRIPTION,
       {
-        name: "rules",
+        // `rule_specs` — имя И в Create, И в Update (тег 6). Поля `rules` у этих
+        // сообщений нет вовсе: правила, набранные в форме создания, край
+        // выбрасывал молча, и группа создавалась пустой (default-deny) с 200.
+        name: "rule_specs",
         label: "Rules",
         type: "sg-rules",
         description: "Direction + protocol/ports + target (cidr | другая SG | predefined). Без правил — default-deny.",
-        // В Update RPC backend ждёт `rule_specs`, не `rules` (Kachō контракт).
         // В edit-форме скрываем — правила меняются через спец-RPC UpdateRules /
         // UpdateRule на отдельной вкладке.
         editHidden: true,
@@ -2073,7 +2057,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       name: "",
       network_id: "",
       description: "",
-      rules: [],
+      rule_specs: [],
     }),
     // Чистит UI-дискриминаторы (_protocol_mode/_ports_any/_target_kind) и
     // неактивные ветки oneof перед PATCH/POST. См. SgRulesEditor.
@@ -2082,9 +2066,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     sanitize: (obj) => {
       const out: Record<string, unknown> = { ...obj };
       if (!out["network_id"]) delete out["network_id"];
-      const raw = out["rules"];
+      const raw = out["rule_specs"];
       if (Array.isArray(raw)) {
-        out["rules"] = raw.map((r) => sanitizeSgRule(r as Record<string, unknown>));
+        out["rule_specs"] = raw.map((r) => sanitizeSgRule(r as Record<string, unknown>));
       }
       return out;
     },
@@ -3562,6 +3546,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       FIELD_DESCRIPTION,
       {
         name: "region_id",
+        // Create-only: UpdateNetworkLoadBalancerRequest его не несёт.
+        immutable: true,
         label: "Регион",
         type: "ref",
         refResource: "compute-regions",
@@ -3570,6 +3556,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "type",
+        // Create-only: UpdateNetworkLoadBalancerRequest его не несёт.
+        immutable: true,
         label: "Тип",
         type: "enum",
         required: true,
@@ -3631,6 +3619,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       FIELD_DESCRIPTION,
       {
         name: "load_balancer_id",
+        // Create-only: UpdateListenerRequest его не несёт.
+        immutable: true,
         label: "Балансировщик",
         type: "string",
         required: true,
@@ -3638,6 +3628,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "protocol",
+        // Create-only: UpdateListenerRequest его не несёт.
+        immutable: true,
         label: "Протокол",
         type: "enum",
         required: true,
@@ -3649,6 +3641,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "port",
+        // Create-only: UpdateListenerRequest его не несёт.
+        immutable: true,
         label: "Порт",
         type: "int",
         required: true,
@@ -3656,16 +3650,16 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "target_port",
+        // Create-only: UpdateListenerRequest его не несёт.
+        immutable: true,
         label: "Порт на target",
         type: "int",
         required: false,
         description: "Порт на target-е (1..65535). Если не задан — равен `port`.",
       },
       FIELD_LABELS,
-      FIELD_PROJECT_ID,
     ],
-    template: ({ projectId }) => ({
-      project_id: projectId ?? "",
+    template: () => ({
       name: "",
       description: "",
       load_balancer_id: "",
@@ -3718,24 +3712,21 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         description: "Регион размещения target-group (immutable после Create). Cross-service ref → compute.Region.",
       },
       {
-        name: "deregistration_delay_seconds",
+        // NLB-1c (B8): на проводе google.protobuf.Duration ("300s"); прежнее
+        // int-секундное имя deregistration_delay_seconds — reserved и на Create,
+        // и на Update. Форма редактирует число, sanitize/hydrate переводят.
+        name: "deregistration_delay",
         label: "Drain timeout (с)",
         type: "int",
         required: false,
         default: 300,
+        min: 0,
+        max: 3600,
         description:
           "Сколько ждать прекращения трафика перед удалением target'а из активного набора (0..3600). По умолчанию 300.",
       },
       {
-        name: "health_check.name",
-        label: "HC: имя",
-        type: "string",
-        required: true,
-        description:
-          "Имя health-check'а (3-63 символа, lowercase + цифры + дефисы). Уникально в пределах target-group.",
-      },
-      {
-        name: "health_check.tcp_options.port",
+        name: "health_check.tcp.port",
         label: "HC: TCP-порт",
         type: "int",
         required: true,
@@ -3782,10 +3773,9 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       name: "",
       description: "",
       region_id: "",
-      deregistration_delay_seconds: 300,
+      deregistration_delay: "300s",
       health_check: {
-        name: "default-hc",
-        tcp_options: { port: 80 },
+        tcp: { port: 80 },
         interval: "2s",
         timeout: "1s",
         unhealthy_threshold: 2,
@@ -3793,6 +3783,32 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       labels: {},
     }),
+    // Форма правит секунды числом; контракт принимает Duration.
+    sanitize: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      const raw = out["deregistration_delay"];
+      // Пусто → не шлём вовсе, чтобы сервер применил СВОЙ дефолт. 0 — легальное
+      // значение и обязано доехать явным "0s", а не быть спутанным с пустотой.
+      const n =
+        typeof raw === "number"
+          ? raw
+          : typeof raw === "string" && raw.trim() !== ""
+            ? Number(raw.endsWith("s") ? raw.slice(0, -1) : raw)
+            : NaN;
+      if (Number.isFinite(n)) out["deregistration_delay"] = `${n}s`;
+      else delete out["deregistration_delay"];
+      return out;
+    },
+    // Duration → число, которое рендерит int-поле формы.
+    hydrate: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      const raw = out["deregistration_delay"];
+      if (typeof raw === "string" && raw.endsWith("s")) {
+        const n = Number(raw.slice(0, -1));
+        if (Number.isFinite(n)) out["deregistration_delay"] = n;
+      }
+      return out;
+    },
   },
 };
 

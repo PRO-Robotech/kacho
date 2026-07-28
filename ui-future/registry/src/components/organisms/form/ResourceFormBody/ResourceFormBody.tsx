@@ -76,6 +76,7 @@ export function ResourceFormBody({
   const visible = fields.filter((f) => {
     if (f.hidden) return false;
     if (editMode && (f.editHidden || f.createOnly)) return false;
+    if (!editMode && f.updateOnly) return false;
     return matchesVisibleWhen(obj, f.visibleWhen);
   });
 

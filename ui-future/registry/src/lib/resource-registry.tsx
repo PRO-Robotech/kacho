@@ -196,6 +196,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         name: "default_repository_visibility",
         label: "Видимость репозиториев по умолчанию",
         type: "enum",
+        // CreateRegistryRequest этого поля не несёт (только Update, тег 6) —
+        // выбранное при создании PUBLIC край выбрасывал, и реестр получался
+        // PRIVATE с успешным тостом.
+        updateOnly: true,
         default: "PRIVATE",
         options: [
           { value: "PRIVATE", label: "PRIVATE — приватные (доступ по правам)" },
@@ -212,7 +216,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       name: "",
       description: "",
       region_id: "",
-      default_repository_visibility: "PRIVATE",
       labels: {},
     }),
     emptyState: {

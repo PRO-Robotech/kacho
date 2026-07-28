@@ -80,14 +80,19 @@ describe("registry resource-registry", () => {
     expect(reg.template({ projectId: "prj-1" })).toMatchObject({ region_id: "" });
   });
 
-  it("registries default_repository_visibility — enum PRIVATE/PUBLIC, дефолт PRIVATE (REG-1 F5)", () => {
+  it("registries default_repository_visibility — enum PRIVATE/PUBLIC, update-only (REG-1 F5)", () => {
     const reg = getResource("registries")!;
     const vis = reg.fields!.find((f) => f.name === "default_repository_visibility")!;
     expect(vis.type).toBe("enum");
     expect((vis as { options: { value: string }[] }).options.map((o) => o.value)).toEqual(["PRIVATE", "PUBLIC"]);
     expect((vis as { default?: string }).default).toBe("PRIVATE");
-    // fail-safe дефолт — приватная видимость в skeleton Create-формы.
-    expect(reg.template({ projectId: "prj-1" })).toMatchObject({ default_repository_visibility: "PRIVATE" });
+    // Поле есть ТОЛЬКО в UpdateRegistryRequest (тег 6). CreateRegistryRequest —
+    // {project_id, name, description, labels, region_id}. Прежде форма создания
+    // его предлагала и сеяла в тело: край выбрасывал ключ молча, реестр выходил
+    // PRIVATE, а пользователю показывался успех. Fail-safe приватность —
+    // серверный дефолт, а не то, что клиент шлёт при создании.
+    expect(vis.updateOnly).toBe(true);
+    expect(reg.template({ projectId: "prj-1" })).not.toHaveProperty("default_repository_visibility");
   });
 
   it("regions — read-only geo ref-цель (apiPath /geo/v1/regions), не навигируется как реестр", () => {
