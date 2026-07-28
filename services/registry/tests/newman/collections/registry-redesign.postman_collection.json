@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "1436b7bf-31f5-47a9-acaa-9ba3757c04f0",
+    "_postman_id": "bc6f5683-14c8-4d1d-b90c-39237bc7b609",
     "name": "kacho-registry / newman / registry-redesign",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -1802,7 +1802,107 @@
       ]
     },
     {
-      "name": "REG-RD-F7-CREATE-EPHEMERAL — CreateRepository lifecycle=EPHEMERAL → lifecycle EPHEMERAL (opt-in overrides DURABLE default)",
+      "name": "REG-RD-F7-NEG-CREATE-EPHEMERAL — CreateRepository lifecycle=EPHEMERAL → 400 INVALID_ARGUMENT (accepted-and-ignored input refused; field named in details)",
+      "description": "class:NEG | class:VAL | priority:P1",
+      "item": [
+        {
+          "name": "repo-create-ephemeral",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{rdRegId}}/repositories",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{rdRegId}}",
+                "repositories"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"repository\": \"ephemeral/svc-{{runId}}\", \"description\": \"redesign repo\", \"lifecycle\": \"EPHEMERAL\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('field violation on \"lifecycle\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'lifecycle');",
+                  "  pm.expect(fv, 'fieldViolation for lifecycle').to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "repo-ephemeral-absent",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/registry/v1/registries/{{rdRegId}}/repositories/ephemeral/svc-{{runId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "registry",
+                "v1",
+                "registries",
+                "{{rdRegId}}",
+                "repositories",
+                "ephemeral",
+                "svc-{{runId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('refused create left no repository behind', () => pm.expect(pm.response.code).to.be.oneOf([403, 404]));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "REG-RD-F7-CREATE-DURABLE-EXPLICIT — CreateRepository lifecycle=DURABLE (explicit) → lifecycle DURABLE (the implemented class is accepted)",
       "description": "class:CRUD | priority:P1",
       "item": [
         {
@@ -1830,7 +1930,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"repository\": \"ephemeral/svc-{{runId}}\", \"description\": \"redesign repo\", \"lifecycle\": \"EPHEMERAL\"}",
+              "raw": "{\"repository\": \"durexpl/svc-{{runId}}\", \"description\": \"redesign repo\", \"lifecycle\": \"DURABLE\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1956,7 +2056,7 @@
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('createRepo op ok (no error)', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));",
                   "const r = (pm.response.json().response) || {};",
-                  "pm.test('lifecycle EPHEMERAL (explicit opt-in)', () => pm.expect(r.lifecycle).to.eql('EPHEMERAL'));"
+                  "pm.test('lifecycle DURABLE (explicit, honoured)', () => pm.expect(r.lifecycle).to.eql('DURABLE'));"
                 ]
               }
             }
@@ -1973,7 +2073,7 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/registry/v1/registries/{{rdRegId}}/repositories/ephemeral/svc-{{runId}}",
+              "raw": "{{baseUrl}}/registry/v1/registries/{{rdRegId}}/repositories/durexpl/svc-{{runId}}",
               "host": [
                 "{{baseUrl}}"
               ],
@@ -1983,7 +2083,7 @@
                 "registries",
                 "{{rdRegId}}",
                 "repositories",
-                "ephemeral",
+                "durexpl",
                 "svc-{{runId}}"
               ]
             }

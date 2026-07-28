@@ -726,6 +726,140 @@ CASES.append(Case(
 ))
 
 # ===========================================================================
+# Placement coherence, boot-Volume ← Image: MY OWN image in ANOTHER region
+#
+# Image is REGIONAL, Volume is ZONAL, so the volume's zone must belong to the
+# image's region. That refusal used to answer "Image <id> not found" — the wording
+# reserved for a resource the caller may not know exists — about an image the very
+# same caller can Get. Hiding exists to protect resources of OTHER projects; here
+# there is nothing to hide, and the caller was handed a false diagnosis instead of
+# the reason. The refusal is now named ("must be in the same region"), and the case
+# proves both halves: the refusal AND that the image stays readable by that caller.
+#
+# The precondition is a SECOND region: the baseline stand carries exactly one, and
+# with one region there is nothing to be incoherent with. It is seeded through the
+# cluster-internal geo admin listener (Internal*Service is not on the public mux,
+# ban #6), run-scoped and torn down.
+# ===========================================================================
+
+_ALT_REGION = "qa-stor-{{runId}}"
+_ALT_ZONE = "qa-stor-{{runId}}-a"
+
+CASES.append(Case(
+    id="IMG-VOL-CR-SOURCE-IMAGE-FOREIGN-REGION-NAMED",
+    title="Create boot-Volume из СВОЕГО образа ЧУЖОГО региона → Operation error FAILED_PRECONDITION 'Volume and Image must be in the same region' (не hide-existence: образ вызывающему виден)",
+    classes=["NEG", "CONF"], priority="P0",
+    # verifies STOR-1-18 (regional coherence), data-integrity.md §Placement-coherence
+    steps=[
+        # A second region + one zone in it (zone id must start with "<regionId>-").
+        # The geo Operation is deliberately NOT polled here: a geo op-id does not
+        # route through the public /operations proxy (kacho#55), so the wait is on
+        # the RESOURCE materialising — which is what this case actually needs.
+        Step(name="alt-region-create", method="POST", path="/geo/v1/internal/regions", internal=True,
+             body={"id": _ALT_REGION, "name": "QA Storage Alt Region {{runId}}", "status": "UP"},
+             test_script=[*assert_status(200)]),
+        retry_until_authorized(Step(name="alt-region-confirm", method="GET",
+             path=f"/geo/v1/regions/{_ALT_REGION}",
+             test_script=[*assert_status(200)])),
+        Step(name="alt-zone-create", method="POST", path="/geo/v1/internal/zones", internal=True,
+             body={"id": _ALT_ZONE, "regionId": _ALT_REGION,
+                   "name": "QA Storage Alt Zone {{runId}}", "status": "UP"},
+             test_script=[*assert_status(200)]),
+        retry_until_authorized(Step(name="alt-zone-confirm", method="GET",
+             path=f"/geo/v1/zones/{_ALT_ZONE}",
+             test_script=[*assert_status(200),
+                          "pm.test('alt zone belongs to the alt region', () => pm.expect(pm.response.json().regionId).to.eql('qa-stor-' + pm.environment.get('runId')));"])),
+        # Fixture precondition spoken out loud: the suite's own zone must NOT live in
+        # the freshly seeded region, otherwise the case would prove nothing.
+        Step(name="env-zone-region", method="GET", path="/geo/v1/zones/{{existingZoneId}}",
+             test_script=[*assert_status(200),
+                          "pm.test('suite zone is in a DIFFERENT region than the seeded one', () => pm.expect(pm.response.json().regionId).to.not.eql('qa-stor-' + pm.environment.get('runId')));"]),
+        # Source volume in the alt zone → image in the alt region (Image.Create itself
+        # requires the source volume's zone to belong to the image's region).
+        Step(name="alt-src-vol", method="POST", path=VOL,
+             body={"projectId": "{{_suiteFolderId}}", "name": "vol-altregion-{{runId}}",
+                   "zoneId": _ALT_ZONE, "diskTypeId": "{{existingDiskTypeId}}",
+                   "sizeBytes": _SRC_SIZE},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.volumeId", "altSourceVolumeId")]),
+        poll_operation_until_done(), assert_op_success(),
+        Step(name="alt-image", method="POST", path=IMG,
+             body={"projectId": "{{_suiteFolderId}}", "regionId": _ALT_REGION,
+                   "name": "img-altregion-{{runId}}", "sourceVolumeId": "{{altSourceVolumeId}}"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.imageId", "altImageId")]),
+        poll_operation_until_done(), assert_op_success(),
+        # The refusal: boot volume in the suite's zone (other region) from that image.
+        Step(name="cr-boot-cross-region", method="POST", path=VOL,
+             body={"projectId": "{{_suiteFolderId}}", "name": "vol-bootxreg-{{runId}}",
+                   "zoneId": "{{existingZoneId}}", "diskTypeId": "{{existingDiskTypeId}}",
+                   "sizeBytes": _BOOT_SIZE, "sourceImageId": "{{altImageId}}"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        assert_op_error(9, "FAILED_PRECONDITION", msg_substr="Volume and Image must be in the same region"),
+        # …and the point of naming it: the image is the caller's own and readable.
+        # Answering "not found" about THIS resource was the defect.
+        retry_until_authorized(Step(name="alt-image-still-readable", method="GET",
+             path=f"{IMG}/{{{{altImageId}}}}",
+             test_script=[*assert_status(200),
+                          "pm.test('the refused image is readable by the very same caller', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('altImageId')));",
+                          "pm.test('and it really is in the other region', () => pm.expect(pm.response.json().regionId).to.eql('qa-stor-' + pm.environment.get('runId')));"])),
+        *_cleanup(f"{IMG}/{{{{altImageId}}}}"),
+        *_cleanup(f"{VOL}/{{{{altSourceVolumeId}}}}"),
+        # Teardown of the seeded geography, innermost first (a region with zones is
+        # not deletable). Best-effort, and likewise not op-polled (kacho#55).
+        Step(name="alt-zone-cleanup", method="DELETE", path=f"/geo/v1/internal/zones/{_ALT_ZONE}",
+             internal=True),
+        Step(name="alt-region-cleanup", method="DELETE", path=f"/geo/v1/internal/regions/{_ALT_REGION}",
+             internal=True),
+    ],
+))
+
+# The other lane must stay shut: an image of ANOTHER project keeps the wording of a
+# genuine miss (see IMG-VOL-CR-SOURCE-IMAGE-NOTFOUND above — same text, only the id
+# differs). Naming it would confirm that a foreign image exists.
+CASES.append(Case(
+    id="IMG-VOL-CR-SOURCE-IMAGE-FOREIGN-PROJECT-HIDDEN",
+    title="Create boot-Volume из образа ЧУЖОГО проекта → Operation error FAILED_PRECONDITION 'Image <id> not found' (hide-existence сохранён: разведение полос не создало оракула)",
+    classes=["NEG", "SEC"], priority="P0",
+    # verifies security.md §6 (hide-existence byte-identity), STOR-1-19
+    steps=[
+        Step(name="cross-src-vol", method="POST", path=VOL,
+             body={"projectId": "{{_suiteFolderCrossId}}", "name": "vol-crosssrc-{{runId}}",
+                   "zoneId": "{{existingZoneId}}", "diskTypeId": "{{existingDiskTypeId}}",
+                   "sizeBytes": _SRC_SIZE},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.volumeId", "crossSourceVolumeId")]),
+        poll_operation_until_done(), assert_op_success(),
+        # Same region as the home project's zone — so ONLY the project differs and the
+        # answer cannot be attributed to placement.
+        Step(name="cross-image", method="POST", path=IMG,
+             body={"projectId": "{{_suiteFolderCrossId}}", "regionId": "{{existingRegionId}}",
+                   "name": "img-cross-{{runId}}", "sourceVolumeId": "{{crossSourceVolumeId}}"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.imageId", "crossImageId")]),
+        poll_operation_until_done(), assert_op_success(),
+        Step(name="cr-boot-cross-project", method="POST", path=VOL,
+             body={"projectId": "{{_suiteFolderId}}", "name": "vol-bootxprj-{{runId}}",
+                   "zoneId": "{{existingZoneId}}", "diskTypeId": "{{existingDiskTypeId}}",
+                   "sizeBytes": _BOOT_SIZE, "sourceImageId": "{{crossImageId}}"},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        Step(name="assert-op-error-hidden", method="GET", path="/operations/{{opId}}",
+             test_script=[
+                 "const j = pm.response.json();",
+                 "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                 "pm.test('error code 9 (FAILED_PRECONDITION)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(9));",
+                 "const m = (j.error && j.error.message) || '';",
+                 "pm.test('foreign image answers with the genuine-miss wording', () => pm.expect(m).to.eql('Image ' + pm.environment.get('crossImageId') + ' not found'));",
+                 "pm.test('a foreign image is never named by placement', () => pm.expect(m).to.not.include('same region'));",
+             ]),
+        *_cleanup(f"{IMG}/{{{{crossImageId}}}}"),
+        *_cleanup(f"{VOL}/{{{{crossSourceVolumeId}}}}"),
+    ],
+))
+
+# ===========================================================================
 # F9 / STOR-1-28 — Image.Delete → source_image_id SET NULL (том цел, provenance-clear)
 # ===========================================================================
 

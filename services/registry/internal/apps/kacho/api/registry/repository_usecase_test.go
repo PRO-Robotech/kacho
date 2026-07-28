@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -45,6 +46,28 @@ func statusText(err error) string {
 		parts = append(parts, d.String())
 	}
 	return strings.Join(parts, " | ")
+}
+
+// requireFieldViolation asserts that the rejection names the offending field where
+// the contract carries field identity — the google.rpc.BadRequest detail — and not
+// in the prose. Asserting on the message instead would lock the wrong surface: the
+// top-level message stays the generic "invalid argument" by design.
+func requireFieldViolation(t *testing.T, err error, field string) {
+	t.Helper()
+	var got []string
+	for _, d := range status.Convert(err).Details() {
+		br, ok := d.(*errdetails.BadRequest)
+		if !ok {
+			continue
+		}
+		for _, v := range br.GetFieldViolations() {
+			got = append(got, v.GetField())
+			if v.GetField() == field {
+				return
+			}
+		}
+	}
+	t.Fatalf("expected a BadRequest field violation on %q, got %v (err: %v)", field, got, err)
 }
 
 // opResponseRepository декодирует Operation.response в registryv1.Repository.

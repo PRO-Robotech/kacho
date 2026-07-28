@@ -1,6 +1,6 @@
 {
   "info": {
-    "_postman_id": "37484718-a714-4fb9-8318-c3b460f89434",
+    "_postman_id": "40531576-3255-4a09-8bdc-dbd8e4fb4a50",
     "name": "kacho-storage / newman / operation",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
@@ -85,7 +85,7 @@
           ]
         },
         {
-          "name": "poll-op-79",
+          "name": "poll-op-89",
           "request": {
             "method": "GET",
             "header": [
@@ -210,7 +210,7 @@
           ]
         },
         {
-          "name": "poll-op-80",
+          "name": "poll-op-90",
           "request": {
             "method": "GET",
             "header": [
@@ -310,7 +310,7 @@
           ]
         },
         {
-          "name": "poll-op-81",
+          "name": "poll-op-91",
           "request": {
             "method": "GET",
             "header": [
@@ -586,7 +586,7 @@
           ]
         },
         {
-          "name": "poll-op-82",
+          "name": "poll-op-92",
           "request": {
             "method": "GET",
             "header": [
@@ -756,7 +756,7 @@
           ]
         },
         {
-          "name": "poll-op-83",
+          "name": "poll-op-93",
           "request": {
             "method": "GET",
             "header": [

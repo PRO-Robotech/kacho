@@ -27,8 +27,10 @@ type CreateRepositorySpec struct {
 	Description string
 	Labels      map[string]string
 	Visibility  domain.Visibility
-	// Lifecycle — опц. вход (REG-1 F7). UNSPECIFIED → DURABLE by default (explicit
-	// intent-create = сохранить каркас); EPHEMERAL → register-on-first-push семантика.
+	// Lifecycle — опц. вход (REG-1 F7). Принимаются только омит (UNSPECIFIED) и
+	// DURABLE; EPHEMERAL и out-of-range отвергаются синхронно (validateRepoLifecycle
+	// — поведения за ними нет, а принять значение, которое ничего не меняет, значит
+	// пообещать возможность, которой в продукте нет).
 	Lifecycle domain.Lifecycle
 }
 
@@ -58,6 +60,12 @@ func (u *UseCase) CreateRepository(ctx context.Context, spec CreateRepositorySpe
 	if err := corevalidate.Labels("labels", spec.Labels); err != nil {
 		return nil, err
 	}
+	// lifecycle: принимаются только омит и DURABLE — единственная реализованная
+	// исчезаемость overlay-строки. EPHEMERAL сохранялся и ни на что не влиял
+	// (см. validateRepoLifecycle), поэтому отвергается синхронно, до любой записи.
+	if err := validateRepoLifecycle(spec.Lifecycle); err != nil {
+		return nil, err
+	}
 
 	// Read registry для default_visibility (inheritance, B12) — same-DB read. Absent/
 	// invisible реестр отсекается handler namespace call-gate (X04) ДО вызова; здесь
@@ -74,8 +82,10 @@ func (u *UseCase) CreateRepository(ctx context.Context, spec CreateRepositorySpe
 		Description: spec.Description,
 		Labels:      spec.Labels,
 		Visibility:  visibility,
-		// REG-1 F7: UNSPECIFIED → DURABLE by default (omit-equivalent); EPHEMERAL перекрывает.
-		Lifecycle: resolveLifecycle(spec.Lifecycle),
+		// REG-1 F7: overlay-строка durable by construction — она переживает пустой
+		// репозиторий, потому что `mergeRepository` смотрит на её НАЛИЧИЕ. Вход,
+		// заявлявший обратное, отвергнут выше, поэтому здесь ровно одно значение.
+		Lifecycle: domain.LifecycleDurable,
 	}
 
 	principal := operations.PrincipalFromContext(ctx)

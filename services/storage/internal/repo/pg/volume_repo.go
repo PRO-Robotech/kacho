@@ -205,22 +205,41 @@ func (r *VolumeRepo) List(ctx context.Context, p volume.Pagination) ([]*domain.V
 // существование строки и про зоны ничего не знает.
 //
 // Полосы дают РАЗНЫЕ исходы, и их обязательно различать: «образ не разрешился» —
-// это ответ про образ, который вызывающему может быть вообще не виден (чужой
-// проект/регион), и его минимум в ответе появляться не должен. Поэтому стейтмент
+// это ответ про образ, который вызывающему может быть вообще не виден (ЧУЖОЙ
+// проект), и его минимум в ответе появляться не должен. Поэтому стейтмент
 // ВСЕГДА возвращает ровно одну строку-дискриминатор: успешную вставку ЛИБО
-// (NULL, NULL, min_disk_bytes разрешённого образа, доступность типа в зоне).
-// min_disk IS NULL в отказе ⟺ образ не разрешился ⟹ hide-existence; min_disk NOT
-// NULL ⟺ образ свой и виден, отказ по размеру называется вслух. dt_offered
+// (NULL, NULL, min_disk_bytes разрешённого образа, доступность типа в зоне,
+// регион образа СВОЕГО проекта).
+// min_disk IS NULL в отказе ⟺ образ не разрешился полностью; min_disk NOT NULL ⟺
+// образ свой, виден и когерентен — отказ по размеру называется вслух. dt_offered
 // трёхзначен намеренно: NULL ⟺ строки типа нет вовсе (тот же ответ, что раньше
 // давал FK), FALSE ⟺ тип есть, но в этой зоне не предлагается, TRUE ⟺ полоса
 // пройдена. Модифицирующий CTE выполняется ровно один раз, поэтому обе ветки
 // UNION видят один и тот же его результат.
+//
+// ПРОЕКТ И РЕГИОН — РАЗНЫЕ ПОЛОСЫ, и одним предикатом их сливать нельзя. Раньше
+// `src` требовала проект И регион вместе, поэтому СВОЙ, вызывающему прекрасно
+// видимый образ (Image.Get отдаёт его успехом) в чужом регионе отвечал
+// hide-existence-текстом «Image <id> not found» — утверждением об отсутствии
+// ресурса, на который вызывающий смотрит. Скрытие существует, чтобы не раскрывать
+// ЧУЖОЕ; здесь скрывать нечего, а диагноз ложен. Поэтому добавлена `src_project`
+// — тот же образ, разрешённый ТОЛЬКО по проекту, — и её `region_id` едет пятой
+// колонкой-дискриминатором: непусто ⟺ образ СВОЙ (и, раз мы в отказе, регион не
+// совпал) ⟹ отказ называется вслух («…must be in the same region»). Порядок
+// разбора несущий: полоса проекта решает ПЕРВОЙ, поэтому чужой образ никогда не
+// доходит до региональной ветки и остаётся byte-identical настоящему промаху —
+// оракула существования не появляется (security.md §6). Пустой $12 (регион зоны
+// не разрешён) сравнивать не с чем: `src` не матчится, а вызывающий получает
+// прежний fail-closed, а не выдуманный mismatch.
 const volumeInsertCoherentSQL = `
-	WITH src AS (
-		SELECT i.min_disk_bytes
+	WITH src_project AS (
+		SELECT i.region_id, i.min_disk_bytes
 		  FROM images i
 		 WHERE i.id = $11::text AND i.project_id = $2::text
-		   AND $12::text <> '' AND i.region_id = $12::text
+	), src AS (
+		SELECT sp.min_disk_bytes
+		  FROM src_project sp
+		 WHERE $12::text <> '' AND sp.region_id = $12::text
 	), dt AS (
 		SELECT (jsonb_array_length(d.zone_ids) = 0
 		        OR d.zone_ids @> to_jsonb($6::text)) AS offered
@@ -237,9 +256,10 @@ const volumeInsertCoherentSQL = `
 		   AND EXISTS (SELECT 1 FROM dt WHERE dt.offered)
 		RETURNING created_at, updated_at
 	)
-	SELECT created_at, updated_at, NULL::bigint, NULL::boolean FROM ins
+	SELECT created_at, updated_at, NULL::bigint, NULL::boolean, NULL::text FROM ins
 	UNION ALL
-	SELECT NULL, NULL, (SELECT min_disk_bytes FROM src), (SELECT offered FROM dt)
+	SELECT NULL, NULL, (SELECT min_disk_bytes FROM src), (SELECT offered FROM dt),
+	       (SELECT region_id FROM src_project)
 	 WHERE NOT EXISTS (SELECT 1 FROM ins)`
 
 // Insert реализует volume.Writer: state=READY сразу (§1.4), fga_register-intent
@@ -249,7 +269,13 @@ const volumeInsertCoherentSQL = `
 // (byte-identical настоящему miss'у, security.md §6). disk_type_id RESTRICT /
 // source FK / partial UNIQUE(name) → контрактные sentinel'ы через mapVolumeErr.
 // zoneRegionID — регион ЗОНЫ тома, разрешённый владельцем Geography (use-case);
-// участвует в image-полосе CAS (Volume ZONAL ∈ регион REGIONAL-образа). Разрешённый
+// участвует в image-полосе CAS (Volume ZONAL ∈ регион REGIONAL-образа). Образ
+// СВОЕГО проекта вызывающему уже виден (Image.Get отдаёт его успехом), поэтому
+// несовпадение региона называется вслух: FailedPrecondition "Volume and Image must
+// be in the same region" — скрывать нечего, а hide-existence-текст был бы ложью про
+// ресурс, на который вызывающий смотрит. Образ ЧУЖОГО проекта решает полоса проекта
+// (первой) и остаётся byte-identical настоящему промаху. zoneRegionID=="" (регион не
+// разрешён) — не mismatch, а прежний fail-closed. Разрешённый
 // образ дополнительно требует ёмкости: size_bytes ≥ min_disk_bytes образа, иначе
 // InvalidArgument "Volume size %d is less than image min_disk_bytes %d" — отказ, у
 // которого образ УЖЕ виден вызывающему, поэтому он не путается с hide-existence.
@@ -280,14 +306,15 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 	created.BlockSize = blockSize
 	txErr := pgx.BeginFunc(ctx, r.pool, func(tx pgx.Tx) error {
 		// Строка-дискриминатор: вставка ЛИБО (NULL, NULL, минимум разрешённого
-		// образа, доступность типа диска в зоне тома).
+		// образа, доступность типа диска в зоне тома, регион образа СВОЕГО проекта).
 		var createdAt, updatedAt *time.Time
 		var srcMinDisk *int64
 		var dtOffered *bool
+		var ownImageRegion *string
 		serr := tx.QueryRow(ctx, volumeInsertCoherentSQL,
 			v.ID, v.ProjectID, v.Name, v.Description, labels, v.ZoneID, v.DiskTypeID,
 			v.SizeBytes, blockSize, srcSnap, srcImg, zoneRegionID).
-			Scan(&createdAt, &updatedAt, &srcMinDisk, &dtOffered)
+			Scan(&createdAt, &updatedAt, &srcMinDisk, &dtOffered, &ownImageRegion)
 		if serr != nil {
 			if errors.Is(serr, pgx.ErrNoRows) {
 				// Стейтмент обязан вернуть строку всегда; пусто = неучтённый исход.
@@ -313,6 +340,14 @@ func (r *VolumeRepo) Insert(ctx context.Context, v *domain.Volume, zoneRegionID 
 			if srcMinDisk != nil {
 				return fmt.Errorf("%w: Volume size %d is less than image min_disk_bytes %d",
 					ports.ErrInvalidArg, v.SizeBytes, *srcMinDisk)
+			}
+			// Образ СВОЙ (полоса проекта пройдена), но регион не совпал. Вызывающему он
+			// уже виден через Image.Get — скрывать нечего, поэтому отказ называется, а
+			// не маскируется под промах. Незаданный регион зоны сравнивать не с чем:
+			// это не mismatch, а fail-closed — уходит в общую ветку ниже.
+			if ownImageRegion != nil && zoneRegionID != "" {
+				return fmt.Errorf("%w: Volume and Image must be in the same region",
+					ports.ErrFailedPrecondition)
 			}
 			return volumeSourceUnavailable(v.SourceSnapshot, v.SourceImage)
 		}
