@@ -21,11 +21,15 @@
 #   6. aggregate TWICE and print BOTH:
 #        RAW   — every failed assertion / request exactly as newman reported it
 #        GATED — the SAME gate CI runs (services/iam/tests/newman/scripts/
-#                assert-suites-green.sh: known-RED whitelist + DNS-isolation filter)
+#                assert-suites-green.sh: known-RED whitelist)
 #      exit code = GATED, so a local run and CI agree on the verdict. The RAW block is
 #      NOT optional output: it is what keeps the whitelist honest — you can always see
 #      how much was failing BEFORE the filter, and a whitelist that starts absorbing new
 #      failures shows up as a growing raw-vs-gated gap instead of as silence.
+#      The gate no longer subtracts anything from the REQUEST count: a request that got
+#      no answer is reported as UNANSWERED and fires the gate. It used to be filtered
+#      away as "DNS noise", which is how eight ban-#6 negatives went unexecuted while
+#      both verdicts read green.
 #
 # Usage (after `make dev-up`):
 #   ./scripts/newman-parallel.sh                 # all four
@@ -52,6 +56,14 @@ NS="${SETUP_NS:-kacho}"
 DEV_SECRET="${DEV_SECRET:-kacho-dev-jwt-secret-2026}"
 GW_PORT="${GW_PORT:-18080}"
 GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-18081}"
+# The api-gateway's EXTERNAL TLS listener (:8443, advertised as api.kacho.local:443).
+# The ban-#6 negatives in the iam suite assert that Internal* RPCs are not reachable
+# there. They used to address the advertised HOSTNAME, which does not resolve on a
+# developer box (and adding it needs root), so for an unknown length of time those
+# eight checks never ran while the gate subtracted their transport errors and printed
+# "0 failed requests". Ban #6 is a property of the LISTENER, not of the DNS name used
+# to find it — so it is forwarded here like the other two.
+GW_TLS_PORT="${GW_TLS_PORT:-18443}"
 IAM_INTERNAL_PORT="${IAM_INTERNAL_PORT:-19091}"
 HYDRA_PORT="${HYDRA_PUBLIC_PORT:-14444}"   # OAuth2 token endpoint (production-posture seed)
 DELAY="${DELAY:-3}"          # per-request delay (ms) inside each collection
@@ -77,9 +89,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "[parallel] port-forward api-gateway :$GW_PORT/:$GW_INTERNAL_PORT + iam-internal :$IAM_INTERNAL_PORT + hydra :$HYDRA_PORT"
+echo "[parallel] port-forward api-gateway :$GW_PORT/:$GW_INTERNAL_PORT/:$GW_TLS_PORT + iam-internal :$IAM_INTERNAL_PORT + hydra :$HYDRA_PORT"
 kubectl -n "$NS" port-forward svc/api-gateway "$GW_PORT:8080" >/tmp/e2e-pp-gw.log 2>&1 &            PF_PIDS+=($!)
 kubectl -n "$NS" port-forward svc/api-gateway "$GW_INTERNAL_PORT:8081" >/tmp/e2e-pp-gwint.log 2>&1 & PF_PIDS+=($!)
+kubectl -n "$NS" port-forward svc/api-gateway "$GW_TLS_PORT:8443" >/tmp/e2e-pp-gwtls.log 2>&1 &     PF_PIDS+=($!)
 kubectl -n "$NS" port-forward svc/kacho-iam-internal "$IAM_INTERNAL_PORT:9091" >/tmp/e2e-pp-iam.log 2>&1 & PF_PIDS+=($!)
 # Hydra public — the POST target of the OAuth2 client_credentials exchange that turns an
 # iam-issued SA key into the RS256 Bearer a production-posture stand accepts. ClusterIP
@@ -186,6 +199,7 @@ launch_wave() {  # $@ = services to run concurrently within this wave
     ( cd "$d" && ./scripts/run.sh --service "" --delay "$DELAY" --jobs "$sjobs" \
         --env-var "baseUrl=http://localhost:$GW_PORT" \
         --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
+        --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
         >"$d/out/suite.log" 2>&1 ) &
     SUITE_PID[$svc]=$!
   done
@@ -226,16 +240,21 @@ echo
 # ─── Verdict: RAW (what newman reported) + GATED (what CI grades) ────────────
 # Local runners used to grade on RAW only, while CI graded through
 # services/iam/tests/newman/scripts/assert-suites-green.sh — so the two disagreed by
-# construction. Concrete example: `iam-internal-only-check` reports 0 failed ASSERTIONS
-# but a non-zero exit because 8 requests cannot resolve api.kacho.local (the case treats
-# an unreachable advertised-external host as PASS — that IS the internal-only invariant);
-# CI subtracts those EAI_AGAIN/ENOTFOUND requests, a local run counted them and called
-# iam RED. Same script, same numbers, one verdict — and the RAW block below stays printed
-# so the whitelist can never turn into a way of not seeing.
+# construction. Both now grade with the same script.
+#
+# The example that used to stand here is worth keeping as a warning rather than as
+# documentation, because it was the defect: `iam-internal-only-check` reported 0 failed
+# ASSERTIONS and a non-zero exit, because 8 requests could not resolve api.kacho.local.
+# The disagreement was reconciled the wrong way round — CI subtracted those transport
+# errors, on the stated reasoning that an unreachable advertised host IS the internal-only
+# invariant. It is not. Those eight checks were the ban-#6 negatives, and they did not run.
+# "Could not reach it" and "it refused me" are different findings; only the second is
+# evidence. The endpoint is now forwarded (GW_TLS_PORT) so the probes execute, and the
+# gate reports an unanswered request as UNANSWERED instead of subtracting it.
 GATE="${GATE:-true}"
 GATE_SCRIPT="$REPO_ROOT/services/iam/tests/newman/scripts/assert-suites-green.sh"
 
-echo "===== RAW (pre-whitelist, pre-DNS-filter) ====="
+echo "===== RAW (pre-whitelist) ====="
 printf "%-12s %10s %10s %10s\n" "SUITE" "ASSERT-F" "REQ-F" "REPORTS"
 raw_total_a=0; raw_total_r=0
 for svc in $SERVICES; do
@@ -271,7 +290,7 @@ done
 echo
 if [ "$GATE_RC" -eq 0 ]; then
   echo "[parallel] GATED verdict: GREEN (CI would pass)"
-  [ "$RC" -eq 0 ] || echo "[parallel] NOTE: raw failures above are covered by the known-RED whitelist / DNS filter — read them, do not extend the list to keep this green."
+  [ "$RC" -eq 0 ] || echo "[parallel] NOTE: raw failures above are covered by the known-RED whitelist — read them, do not extend the list to keep this green."
 else
   echo "[parallel] GATED verdict: RED (CI would fail) — see the per-collection lines above"
 fi

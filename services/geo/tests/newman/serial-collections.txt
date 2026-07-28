@@ -4,5 +4,35 @@
 # creates/deletes catalog rows concurrently, the picked row can vanish mid-flight
 # (Get → 404 → undefined-field asserts). Defer these to run strictly after the
 # parallel pool, one at a time — same pattern as vpc EXTERNAL AddressPool (#59).
+#
+# Membership rule: a stem belongs here iff it issues a POST/PATCH/DELETE against
+# /geo/v1/internal/{regions,zones} that is EXPECTED TO SUCCEED. A mutating verb that
+# asserts 401/403 changes nothing in the catalog and does NOT belong (see authz-deny
+# below). Default auth in gen.py is jwtBootstrap, which carries system_admin@cluster —
+# so a mutating step WITHOUT an explicit non-admin `auth=` override does land.
+
+# Admin CRUD suites — the original two. Region/Zone create+update+delete throughout.
 internal-region
 internal-zone
+
+# ban #6 contrast pairs: each case posts the SAME mutation to the public endpoint
+# (rejected) and to the internal one (accepted), so the internal leg really does
+# insert catalog rows, then deletes them in cleanup.
+#   cases/admin-not-on-public.py:75-79   create region qa-anp-reg-* + DELETE
+#   cases/admin-not-on-public.py:89-113  create region qa-anp-zr-*, create zone
+#                                        qa-anp-zr-*-a, DELETE both
+admin-not-on-public
+
+# Operation-envelope suite: it needs a real admin mutation to have an Operation to
+# assert on, so it creates and deletes a region on the live catalog.
+#   cases/operation.py:61-62  create region qa-reg-op-*
+#   cases/operation.py:77     DELETE the same region
+operation
+
+# NOT listed, deliberately — do not "complete" this file by adding them:
+#   authz-deny — carries 7 mutating steps (cases/authz-deny.py:86, 100, 245, 266,
+#     282, 297, 312) but EVERY one overrides auth to jwtNoBindings / jwtPureNoBindings
+#     / anonymous and asserts 401/403. Nothing is written; if one ever did write, the
+#     case fails by design. It is a catalog READER (it also picks via List), i.e. a
+#     victim of this hazard, not a source of it.
+#   region, zone — pure readers.

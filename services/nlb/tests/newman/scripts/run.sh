@@ -53,7 +53,8 @@ SERVICE=""
 BAIL=""
 DELAY="15"
 JOBS="1"   # serial collections: shared external AddressPool contention (see header)
-ENV="environments/local.postman_environment.json"
+ENV_DEFAULT="environments/local.postman_environment.json"
+ENV="$ENV_DEFAULT"
 EXTRA=()
 
 while [[ $# -gt 0 ]]; do
@@ -67,6 +68,17 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# The env file is gitignored (the fixture seed writes live tokens into it) and NOTHING
+# in the tree creates it: patch-env.py/setup.sh only PATCH a file that already exists
+# and silently skip a missing one. On a fresh clone the suite died right here, before
+# newman was ever invoked. So materialization belongs to the run path, not to a manual
+# step: copy the committed template and let the seed fill in credentials/ids. Only the
+# DEFAULT env is materialized — a --env path given by the caller is taken literally.
+# An existing file is NEVER overwritten: it may hold the live session of the current run.
+if [[ ! -f "$ENV" && "$ENV" == "$ENV_DEFAULT" && -f "${ENV%.json}.template.json" ]]; then
+  cp "${ENV%.json}.template.json" "$ENV"
+  echo "materialized $ENV from ${ENV%.json}.template.json (fixture seed will fill in credentials)" >&2
+fi
 [[ -f "$ENV" ]] || { echo "missing env: $ENV"; exit 1; }
 
 # run_one — run one collection. Writes out/<svc>.json|.cli|.rc.

@@ -30,6 +30,12 @@ NS="${SETUP_NS:-kacho}"
 DEV_SECRET="${DEV_SECRET:-kacho-dev-jwt-secret-2026}"
 GW_PORT="${GW_PORT:-18080}"
 GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-18081}"   # api-gateway internal-rest :8081 (Internal*-RPC)
+# api-gateway EXTERNAL TLS listener :8443 (advertised as api.kacho.local:443). The ban-#6
+# negatives address it here rather than by its advertised hostname: that name does not
+# resolve on a developer box, adding it needs root, kind publishes only node:80, and the
+# Ingress in front of it speaks GRPCS so every REST path through it answers 502. Ban #6 is
+# about which routes the LISTENER serves, not about the name used to find it.
+GW_TLS_PORT="${GW_TLS_PORT:-18443}"
 IAM_INTERNAL_PORT="${IAM_INTERNAL_PORT:-19091}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -59,7 +65,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "[e2e] port-forward api-gateway :$GW_PORT (public) / :$GW_INTERNAL_PORT (internal-rest) + kacho-iam-internal :$IAM_INTERNAL_PORT"
+echo "[e2e] port-forward api-gateway :$GW_PORT (public) / :$GW_INTERNAL_PORT (internal-rest) / :$GW_TLS_PORT (external TLS) + kacho-iam-internal :$IAM_INTERNAL_PORT"
 kubectl -n "$NS" port-forward svc/api-gateway "$GW_PORT:8080" >/tmp/e2e-pf-gw.log 2>&1 &
 PF_PIDS+=($!)
 # internal-rest (:8081) — ОТДЕЛЬНЫЙ листенер для Internal*-RPC. На публичном :8080 их
@@ -67,6 +73,10 @@ PF_PIDS+=($!)
 # коллекции internal-* обязаны ходить сюда через {{internalBaseUrl}}, иначе получают
 # закономерный 404. iam-набор так и делает; vpc-набор — ещё нет (см. README/issue).
 kubectl -n "$NS" port-forward svc/api-gateway "$GW_INTERNAL_PORT:8081" >/tmp/e2e-pf-gw-internal.log 2>&1 &
+PF_PIDS+=($!)
+# external TLS (:8443) — то, что рекламируется наружу. Сюда ходят ban-#6 негативы
+# ({{externalBaseUrl}}): Internal*-пути обязаны быть недостижимы на нём.
+kubectl -n "$NS" port-forward svc/api-gateway "$GW_TLS_PORT:8443" >/tmp/e2e-pf-gw-tls.log 2>&1 &
 PF_PIDS+=($!)
 kubectl -n "$NS" port-forward svc/kacho-iam-internal "$IAM_INTERNAL_PORT:9091" >/tmp/e2e-pf-iam.log 2>&1 &
 PF_PIDS+=($!)
@@ -158,6 +168,7 @@ if [ -n "$COLLECTION" ]; then
     -e environments/local.postman_environment.json \
     --env-var "baseUrl=http://localhost:$GW_PORT" \
     --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
+    --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
     --delay-request 15 --reporters cli
 else
   # run.sh НЕ читает BASE_URL/INTERNAL_BASE_URL из окружения — значения он берёт только
@@ -168,7 +179,8 @@ else
   set +e
   ./scripts/run.sh --service "" --delay 15 \
     --env-var "baseUrl=http://localhost:$GW_PORT" \
-    --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT"
+    --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
+    --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT"
   RAW_RC=$?
   set -e
 
@@ -190,7 +202,7 @@ else
     GATE_RC=$?
     set -e
     [ "$GATE_RC" -eq 0 ] && [ "$RAW_RC" -ne 0 ] && \
-      echo "[e2e] NOTE: raw failures are covered by the known-RED whitelist / DNS filter — read them, do not extend the list to keep this green."
+      echo "[e2e] NOTE: raw failures are covered by the known-RED whitelist — read them, do not extend the list to keep this green."
     exit "$GATE_RC"
   fi
   echo "[e2e] CI gate skipped (GATE=$GATE) — grading on RAW"
