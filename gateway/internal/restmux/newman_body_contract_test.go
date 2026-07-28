@@ -91,6 +91,9 @@ var absentRouteBodyWaiver = map[string]string{
 	"RT-METHOD-PUT-NOT-ALLOWED PUT /vpc/v1/routeTables":           "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
 	"SG-METHOD-PUT-NOT-ALLOWED PUT /vpc/v1/securityGroups":        "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
 	"SUB-METHOD-PUT-NOT-ALLOWED PUT /vpc/v1/subnets":              "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"DISK-METHOD-PUT-NOT-ALLOWED PUT /compute/v1/disks":           "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"IMG-METHOD-PUT-NOT-ALLOWED PUT /compute/v1/images":           "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
+	"SNAP-METHOD-PUT-NOT-ALLOWED PUT /compute/v1/snapshots":       "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
 	"LST-METHOD-PUT-NOT-ALLOWED PUT /nlb/v1/listeners":            "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
 	"NLB-METHOD-PUT-NOT-ALLOWED PUT /nlb/v1/networkLoadBalancers": "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
 	"TGR-METHOD-PUT-NOT-ALLOWED PUT /nlb/v1/targetGroups":         "PUT-на-список: тело воспроизводит заблуждение «замени коллекцию», которое проба и отвергает",
@@ -280,7 +283,7 @@ func decodeTemplatedJSONObject(raw string) (map[string]any, error) {
 // parseNewmanCollection извлекает все запросы коллекции вместе с номером строки
 // их тела (для адресуемости находки).
 func parseNewmanCollection(path string) ([]newmanRequest, error) {
-	content, err := os.ReadFile(path) //nolint:gosec // путь собирается гейтом из фиксированного glob по дереву репозитория
+	content, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

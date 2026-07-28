@@ -7,11 +7,16 @@
 // The gateway validates a bearer by SIGNATURE, against the JWKS the identity
 // facade publishes. That only works on a self-contained JWT. The identity
 // provider's built-in default for the access-token strategy is OPAQUE — a handle
-// with no signature and no claims, verifiable only by calling back to the
-// provider to introspect it, which the gateway does not do. So an access-token
-// strategy that is merely LEFT OUT of a profile does not degrade gracefully:
-// every bearer minted under it fails verification, and the profile authenticates
-// nobody.
+// with no signature and no claims, which the verifier has nothing to check. So
+// an access-token strategy that is merely LEFT OUT of a profile does not degrade
+// gracefully: every bearer minted under it fails verification, and the profile
+// authenticates nobody.
+//
+// (This header used to say the handle is "verifiable only by introspecting it,
+// which the gateway does not do". The gateway DOES introspect — per request,
+// for REVOCATION, after the signature has been verified; see
+// revocation_endpoint_test.go next door. That is a different question from
+// whether the token can be read at all, and it does not rescue an opaque one.)
 //
 // values.dev.yaml declared the strategy; values.prod.yaml did not. The profiles
 // are NOT layered — values.prod.yaml renders standalone and never on top of the
@@ -40,7 +45,7 @@ import (
 func umbrellaValues(t *testing.T, profile string) map[string]any {
 	t.Helper()
 	path := filepath.Join("..", "..", "deploy", "helm", "umbrella", profile)
-	raw, err := os.ReadFile(path) //nolint:gosec // fixed in-repo path
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
 	}

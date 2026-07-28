@@ -95,7 +95,7 @@ func TestNewmanVariablesAreDefined(t *testing.T) {
 
 		used := map[string]bool{}
 		for _, c := range cols {
-			b, err := os.ReadFile(c) //nolint:gosec // путь из glob по репо
+			b, err := os.ReadFile(c)
 			if err != nil {
 				t.Fatalf("read %s: %v", c, err)
 			}
@@ -145,7 +145,7 @@ func TestKnownGapsAreTracked(t *testing.T) {
 
 func envKeys(t *testing.T, path string) []string {
 	t.Helper()
-	b, err := os.ReadFile(path) //nolint:gosec // путь из glob по репо
+	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
 	}
