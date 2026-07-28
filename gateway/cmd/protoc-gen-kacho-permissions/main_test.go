@@ -4,6 +4,8 @@
 package main
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	authzv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
@@ -187,6 +189,87 @@ func TestExtractEntry_ExemptUnannotated_NoAcrDefault(t *testing.T) {
 	}
 	if entry2.RequiredAcrMin != "2" {
 		t.Errorf("explicit acr=2 on an exempt RPC must be preserved (net-strengthening), got %q", entry2.RequiredAcrMin)
+	}
+}
+
+// TestExtractEntry_ScopeFiltered pins the third lane a catalog row can declare:
+// the owning service authorizes the call over the data it answers with, so there is
+// no single (relation, object) pair for the edge to check. The row keeps a real
+// permission string — it is NOT `<exempt>` — and carries neither a relation nor a
+// scope extractor, because naming a relation nobody checks is the defect this lane
+// exists to remove.
+func TestExtractEntry_ScopeFiltered(t *testing.T) {
+	opts := buildOpts(t, "vpc.network_interfaces.listByInstance", "", "1", "", "")
+	proto.SetExtension(opts, authzv1.E_ScopeFiltered, true)
+
+	entry, warn := extractEntry("kacho.cloud.vpc.v1.InternalNetworkInterfaceService/ListByInstance", opts)
+	if warn != "" {
+		t.Fatalf("a scope-filtered RPC must not warn about the missing relation/scope: %s", warn)
+	}
+	if !entry.ScopeFiltered {
+		t.Errorf("ScopeFiltered must be true when (kacho.iam.authz.v1.scope_filtered) = true")
+	}
+	if entry.Permission != "vpc.network_interfaces.listByInstance" {
+		t.Errorf("the permission string must survive the lane, got %q", entry.Permission)
+	}
+	if entry.RequiredRelation != "" || entry.ScopeExtractor.ObjectType != "" {
+		t.Errorf("a scope-filtered row must declare no relation and no scope, got relation=%q scope=%q",
+			entry.RequiredRelation, entry.ScopeExtractor.ObjectType)
+	}
+	// The step-up floor is a property of the credential, not of the object, so it
+	// still applies and must be carried through verbatim.
+	if entry.RequiredAcrMin != "1" {
+		t.Errorf("required_acr_min must be preserved on a scope-filtered row, got %q", entry.RequiredAcrMin)
+	}
+}
+
+// TestExtractEntry_ScopeFilteredDefaultsAreOff — the flag is opt-in: an ordinary
+// annotated RPC must not acquire the lane by accident, and the JSON key must stay
+// absent for it (`omitempty`) so adding the lane produces a minimal catalog diff.
+func TestExtractEntry_ScopeFilteredDefaultsAreOff(t *testing.T) {
+	opts := buildOpts(t, "vpc.networks.create", "editor", "2", "project", "project_id")
+	entry, warn := extractEntry("kacho.cloud.vpc.v1.NetworkService/Create", opts)
+	if warn != "" {
+		t.Fatalf("unexpected warning: %s", warn)
+	}
+	if entry.ScopeFiltered {
+		t.Errorf("ScopeFiltered must default to false when the option is unset")
+	}
+	blob, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(blob), "scope_filtered") {
+		t.Errorf("the scope_filtered key must be omitted when false; got %s", blob)
+	}
+}
+
+// TestExtractEntry_ScopeFilteredWithRelationWarns — the two ways of saying "who
+// decides" are mutually exclusive. A row that claims the lane AND names a relation
+// is exactly the ambiguity the lane was introduced to end: the edge would check
+// the relation while the declaration says it does not. Same for a scope extractor,
+// and same for combining the lane with `<exempt>` (which additionally admits an
+// Internal* call carrying no principal at all).
+func TestExtractEntry_ScopeFilteredWithRelationWarns(t *testing.T) {
+	cases := []struct {
+		name                                  string
+		permission, relation, scopeObj, field string
+	}{
+		{"relation", "vpc.x.list", "viewer", "", ""},
+		{"scope_extractor", "vpc.x.list", "", "cluster", "*"},
+		{"both", "vpc.x.list", "viewer", "cluster", "*"},
+		{"exempt", ExemptSentinel, "", "", ""},
+		{"no_permission", "", "", "", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			opts := buildOpts(t, c.permission, c.relation, "1", c.scopeObj, c.field)
+			proto.SetExtension(opts, authzv1.E_ScopeFiltered, true)
+			_, warn := extractEntry("x.Y/Z", opts)
+			if warn == "" {
+				t.Fatalf("expected a warning for scope_filtered + %s", c.name)
+			}
+		})
 	}
 }
 

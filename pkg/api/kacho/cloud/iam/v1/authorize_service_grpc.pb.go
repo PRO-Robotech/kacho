@@ -46,10 +46,27 @@ const (
 //
 // **Subject binding** — every RPC takes a subject identifier in the form
 // `user:<usr_xxx>` / `service_account:<sva_xxx>` / `group:<grp_xxx>#member`.
-// The api-gateway interceptor enforces that the **caller** can only query
-// authorization decisions about themselves (or about subjects in folders
-// where the caller holds `iam.subjects.checkAuthorization`). Cross-tenant
-// snooping is denied at the gateway, not at this service.
+// **Who may ask about whom is decided HERE, in this service, not at the
+// api-gateway.** The edge authenticates the caller and stops: the subject and the
+// queried resource arrive as request fields (the resource as a nested
+// `ResourceRef` whose type is itself a field), and neither can be turned into a
+// single object the edge could check before the call runs — which is why these
+// RPCs declare `scope_filtered`.
+//
+// The gate this service applies admits a caller who is the subject being asked
+// about, or is a cluster administrator, or holds `admin` on the very resource
+// named in the request. Everything else — including a caller with no principal
+// that is not a verified cluster-internal peer — is denied, and the denial is the
+// default on every degraded path.
+//
+// An earlier revision of this comment claimed the gateway admitted only callers
+// holding `iam.subjects.checkAuthorization` on the subject or resource. No such
+// permission is issued by the permission catalog and no such relation exists in
+// the authorization model, so nothing ever enforced it; what the catalog asked for
+// was `viewer` on the cluster singleton, a relation the cluster bootstrap grants
+// to `user:*` so every tenant can read the global reference catalogue. The
+// sentence described a control that did not exist, over a surface that answers
+// "who can reach what" for the whole platform.
 //
 // **Latency budget** — `Check` ≤ 30ms p95;
 // `BatchCheck` linear in batch size, ≤ 5ms per tuple amortised after the
@@ -197,10 +214,27 @@ func (c *authorizeServiceClient) WhoAmI(ctx context.Context, in *WhoAmIRequest, 
 //
 // **Subject binding** — every RPC takes a subject identifier in the form
 // `user:<usr_xxx>` / `service_account:<sva_xxx>` / `group:<grp_xxx>#member`.
-// The api-gateway interceptor enforces that the **caller** can only query
-// authorization decisions about themselves (or about subjects in folders
-// where the caller holds `iam.subjects.checkAuthorization`). Cross-tenant
-// snooping is denied at the gateway, not at this service.
+// **Who may ask about whom is decided HERE, in this service, not at the
+// api-gateway.** The edge authenticates the caller and stops: the subject and the
+// queried resource arrive as request fields (the resource as a nested
+// `ResourceRef` whose type is itself a field), and neither can be turned into a
+// single object the edge could check before the call runs — which is why these
+// RPCs declare `scope_filtered`.
+//
+// The gate this service applies admits a caller who is the subject being asked
+// about, or is a cluster administrator, or holds `admin` on the very resource
+// named in the request. Everything else — including a caller with no principal
+// that is not a verified cluster-internal peer — is denied, and the denial is the
+// default on every degraded path.
+//
+// An earlier revision of this comment claimed the gateway admitted only callers
+// holding `iam.subjects.checkAuthorization` on the subject or resource. No such
+// permission is issued by the permission catalog and no such relation exists in
+// the authorization model, so nothing ever enforced it; what the catalog asked for
+// was `viewer` on the cluster singleton, a relation the cluster bootstrap grants
+// to `user:*` so every tenant can read the global reference catalogue. The
+// sentence described a control that did not exist, over a surface that answers
+// "who can reach what" for the whole platform.
 //
 // **Latency budget** — `Check` ≤ 30ms p95;
 // `BatchCheck` linear in batch size, ≤ 5ms per tuple amortised after the

@@ -82,6 +82,43 @@ extend google.protobuf.MethodOptions {
   bool hide_existence = 50005;
 }
 
+// scope_filtered — the RPC's authorization is decided BY THE OWNING SERVICE, over
+// the data it answers with, and is therefore not expressible as one
+// (relation, object) pair the edge could check before the call runs.
+//
+// Set it when there is no single object to ask about in advance: the caller names
+// the inputs (a list of instance ids, a page of bindings, an arbitrary
+// subject/resource pair) and the answer concerns many objects, each with its own
+// owner. The owning service reads its page / resolves the named object and then
+// asks the model per element — the same predicate its own `Get` is gated on.
+//
+// Contract at the api-gateway:
+//   - authentication is REQUIRED (an anonymous caller gets Unauthenticated — a
+//     service-side per-object filter is meaningless without a principal);
+//   - NO per-RPC FGA Check runs, because there is nothing single to check;
+//   - `required_acr_min` still applies (step-up is a property of the credential,
+//     not of the object).
+//
+// It is NOT `<exempt>`. `<exempt>` additionally admits an `Internal*` RPC that
+// arrived on the cluster-internal listener WITHOUT extracting a principal at all
+// — network position, which is not a credential. A scope-filtered RPC never gets
+// that admission, and it keeps a real `permission` string, so the catalog still
+// names the action it stands for.
+//
+// `required_relation` and `scope_extractor` MUST be omitted alongside it: naming a
+// relation the edge does not check is the defect this option exists to remove. In
+// particular `viewer` on the `cluster` singleton narrows NOTHING — the cluster
+// bootstrap deliberately grants that relation to `user:*` so the global reference
+// catalog (regions, zones, disk types) is readable by every tenant, so such an
+// entry means "authenticated", not "authorized".
+//
+// The owning service MUST mark the same method in its own per-RPC map
+// (`authz.RPCEntry.ScopeFiltered`); `pkg/authz/catalogparity` fails the build when
+// the two disagree on this axis.
+extend google.protobuf.MethodOptions {
+  bool scope_filtered = 50006;
+}
+
 // ScopeExtractor describes how the kacho-iam authz middleware extracts an
 // OpenFGA scope object from an incoming RPC request.
 message ScopeExtractor {

@@ -105,10 +105,10 @@ func TestPermissionCatalog_EmbeddedAsset_Loads(t *testing.T) {
 	}
 
 	// Spot-check a known-populated entry from the catalog.
-	entry, ok := c.Lookup("kacho.cloud.iam.v1.AuthorizeService/Check")
+	entry, ok := c.Lookup("kacho.cloud.vpc.v1.NetworkService/Create")
 	require.True(t, ok)
-	assert.Equal(t, "iam.authorize.check", entry.Permission)
-	assert.Equal(t, "viewer", entry.RequiredRelation)
+	assert.Equal(t, "vpc.networks.create", entry.Permission)
+	assert.Equal(t, "editor", entry.RequiredRelation)
 }
 
 // TestPermissionCatalog_RegistryV1Present_EntryFloor — hermetic regression
@@ -250,12 +250,10 @@ func TestPermissionCatalog_LookupKnownEntries_FromEmbed(t *testing.T) {
 		scopeF  string
 		scopeOT string
 	}{
-		// AuthorizeService/Check is cluster-scoped (`cluster:*`) in the merged
-		// proto — the caller-privileged authorize surface is gated on the cluster
-		// singleton, NOT the request `subject` (which is the query target, not the
-		// scope of the reader). Regressing this to project/subject re-derives the
+		// AuthorizeService/Check carries NO edge scope — see the dedicated case
+		// below. What must never come back is a scope derived from the request
+		// `subject` (the query target, not the reader), which would re-derive the
 		// FGA check from tenant-controlled input.
-		{"kacho.cloud.iam.v1.AuthorizeService/Check", "iam.authorize.check", "*", "cluster"},
 		{"kacho.cloud.iam.v1.AuthorizeService/BatchCheck", "iam.authorize.batchCheck", "scope_id", "project"},
 		{"kacho.cloud.iam.v1.ConditionsService/Create", "iam.conditions.create", "project_id", "project"},
 		// Condition-item RPCs scope on the condition object itself (`iam_condition:<id>`).
@@ -270,6 +268,35 @@ func TestPermissionCatalog_LookupKnownEntries_FromEmbed(t *testing.T) {
 			assert.Equal(t, want.perm, entry.Permission)
 			assert.Equal(t, want.scopeF, entry.ScopeExtractor.FromRequestField)
 			assert.Equal(t, want.scopeOT, entry.ScopeExtractor.ObjectType)
+		})
+	}
+
+	// The four AuthorizeService reads that answer "may X do Y to Z", "what can X
+	// reach", "who can reach Z" declare the scope-filtered lane: the subject arrives
+	// as an ARN and the resource as a nested ref carrying its own type, so the edge
+	// can build no object at all. kacho-iam decides — self-query, cluster
+	// administrator, or `admin` on the resource actually named.
+	//
+	// They used to declare `viewer` on the cluster singleton, which the bootstrap
+	// grants to `user:*` for the global reference catalogue: a check that admitted
+	// every authenticated subject on the surface that describes who can reach what
+	// across the platform.
+	for _, fqn := range []string{
+		"kacho.cloud.iam.v1.AuthorizeService/Check",
+		"kacho.cloud.iam.v1.AuthorizeService/ListObjects",
+		"kacho.cloud.iam.v1.AuthorizeService/ListSubjects",
+		"kacho.cloud.iam.v1.AuthorizeService/ExpandRelations",
+	} {
+		t.Run(fqn+"/scope-filtered", func(t *testing.T) {
+			entry, ok := c.Lookup(fqn)
+			require.True(t, ok, "fqn missing from embedded catalog: %s", fqn)
+			assert.True(t, entry.ScopeFiltered)
+			assert.False(t, entry.IsExempt(), "an authenticated principal is still required")
+			assert.Empty(t, entry.RequiredRelation,
+				"no relation is checked at the edge — naming one that is not checked is the defect")
+			assert.Empty(t, entry.ScopeExtractor.ObjectType)
+			assert.Empty(t, entry.ScopeExtractor.FromRequestField,
+				"no scope may be derived from tenant-controlled request input")
 		})
 	}
 }

@@ -47,9 +47,11 @@ const (
 //
 // All RPCs are synchronous (the CAS is instantaneous); the tenant-facing mutation
 // stays async through the compute-side `AttachNetworkInterface` Operation, so ban #9
-// is not violated. AuthN (mTLS) + AuthZ (per-RPC Check) apply on this listener as
-// well; Attach/Detach carry writer permissions with an object-scoped extractor on
-// `nic_id`; ListByInstance is a viewer-tier batched read.
+// is not violated. AuthN (mTLS) applies on this listener as well. Attach/Detach are
+// authorized per-RPC with an object-scoped extractor on `nic_id`; ListByInstance is
+// authorized by kacho-vpc over the page it answers with (`scope_filtered`) — the
+// caller names the instances, and the interfaces that come back each have their own
+// owner, so there is no single object the edge could ask about first.
 type InternalNetworkInterfaceServiceClient interface {
 	// Attach — atomic CAS on `network_interfaces.used_by_id` (self-describing).
 	// Idempotent on replay (already-ours → OK). kacho-vpc validates its own NIC +
@@ -63,6 +65,18 @@ type InternalNetworkInterfaceServiceClient interface {
 	// ListByInstance — batched read of NIC attachments for the given instances, used
 	// by compute to build the read-only mirror on Instance.Get / Instance.List (not
 	// N+1).
+	//
+	// Authorized AT THE LEVEL OF THE DATA, by kacho-vpc: the caller names the
+	// instances and the answer is a set of interfaces with different owners, so no
+	// single object can be checked in advance. nicinternal narrows the page
+	// per-interface (`viewer ∪ v_list` on `vpc_network_interface:<id>`, in batches),
+	// and the production boot-guard refuses to start with that filter disabled.
+	//
+	// It used to declare `viewer` on the `cluster` singleton. That is the relation of
+	// the GLOBAL REFERENCE CATALOGUE (regions, zones, disk types), which the cluster
+	// bootstrap grants to `user:*` so any authenticated tenant can read it — so the
+	// check admitted everyone and returned the interfaces of any named instance,
+	// across projects and accounts. Interface attachments are not reference data.
 	ListByInstance(ctx context.Context, in *ListNetworkInterfacesByInstanceRequest, opts ...grpc.CallOption) (*ListNetworkInterfacesByInstanceResponse, error)
 }
 
@@ -124,9 +138,11 @@ func (c *internalNetworkInterfaceServiceClient) ListByInstance(ctx context.Conte
 //
 // All RPCs are synchronous (the CAS is instantaneous); the tenant-facing mutation
 // stays async through the compute-side `AttachNetworkInterface` Operation, so ban #9
-// is not violated. AuthN (mTLS) + AuthZ (per-RPC Check) apply on this listener as
-// well; Attach/Detach carry writer permissions with an object-scoped extractor on
-// `nic_id`; ListByInstance is a viewer-tier batched read.
+// is not violated. AuthN (mTLS) applies on this listener as well. Attach/Detach are
+// authorized per-RPC with an object-scoped extractor on `nic_id`; ListByInstance is
+// authorized by kacho-vpc over the page it answers with (`scope_filtered`) — the
+// caller names the instances, and the interfaces that come back each have their own
+// owner, so there is no single object the edge could ask about first.
 type InternalNetworkInterfaceServiceServer interface {
 	// Attach — atomic CAS on `network_interfaces.used_by_id` (self-describing).
 	// Idempotent on replay (already-ours → OK). kacho-vpc validates its own NIC +
@@ -140,6 +156,18 @@ type InternalNetworkInterfaceServiceServer interface {
 	// ListByInstance — batched read of NIC attachments for the given instances, used
 	// by compute to build the read-only mirror on Instance.Get / Instance.List (not
 	// N+1).
+	//
+	// Authorized AT THE LEVEL OF THE DATA, by kacho-vpc: the caller names the
+	// instances and the answer is a set of interfaces with different owners, so no
+	// single object can be checked in advance. nicinternal narrows the page
+	// per-interface (`viewer ∪ v_list` on `vpc_network_interface:<id>`, in batches),
+	// and the production boot-guard refuses to start with that filter disabled.
+	//
+	// It used to declare `viewer` on the `cluster` singleton. That is the relation of
+	// the GLOBAL REFERENCE CATALOGUE (regions, zones, disk types), which the cluster
+	// bootstrap grants to `user:*` so any authenticated tenant can read it — so the
+	// check admitted everyone and returned the interfaces of any named instance,
+	// across projects and accounts. Interface attachments are not reference data.
 	ListByInstance(context.Context, *ListNetworkInterfacesByInstanceRequest) (*ListNetworkInterfacesByInstanceResponse, error)
 	mustEmbedUnimplementedInternalNetworkInterfaceServiceServer()
 }

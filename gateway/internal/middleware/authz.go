@@ -621,6 +621,10 @@ func (m *AuthzMiddleware) decide(ctx context.Context, dr decisionRequest) decisi
 	if handled {
 		return dec
 	}
+	// 4b. Scope-filtered short-circuit — AFTER subject extraction, on purpose.
+	if dec, handled := m.phaseScopeFiltered(dr, entry); handled {
+		return dec
+	}
 	// 5. Resource-scope resolution (+ 5b malformed-id short-circuit).
 	resourceID, resourceType, descriptor, dec, handled := m.phaseResource(dr, entry, subj)
 	if handled {
@@ -803,6 +807,48 @@ func (m *AuthzMiddleware) phaseSubject(ctx context.Context, dr decisionRequest, 
 		}, true
 	}
 	return verified, subj, decision{}, false
+}
+
+// phaseScopeFiltered admits an RPC whose catalog row declares that the OWNING
+// SERVICE authorizes the call over the data it answers with — the caller names the
+// inputs (a list of instance ids, a page of bindings, an arbitrary
+// subject/resource pair) and the answer concerns many objects with different
+// owners, so there is no single object for the edge to ask about in advance. The
+// service reads its page and asks the model per element, with the same predicate
+// its own Get is gated on.
+//
+// It runs AFTER subject extraction, and that ordering is the whole point: a
+// per-object filter downstream is meaningless without a principal, so an
+// unauthenticated caller has already been refused by phaseSubject. The step-up
+// floor (`required_acr_min`) is likewise unaffected — it is evaluated on the
+// credential, elsewhere.
+//
+// Why this is NOT the `<exempt>` path. `<exempt>` carries a second meaning that
+// must not leak in here: phaseInternalOriginExempt admits an `Internal*` exempt
+// RPC arriving on the cluster-internal listener WITHOUT extracting a principal at
+// all, on the strength of network position — which is not a credential, and which
+// anything holding a port-forward can produce. Keeping the lanes separate is what
+// lets an Internal* batched read (vpc ListByInstance, storage ListAttachments)
+// declare "the edge does not narrow this" without also declaring "and it need not
+// know who is calling".
+//
+// The alternative this replaces was worse than nothing: those rows named `viewer`
+// on the `cluster` singleton, a relation the cluster bootstrap deliberately grants
+// to `user:*` so every tenant can read the global reference catalog (regions,
+// zones, disk types). The Check ran, cost a round-trip, and admitted every
+// authenticated subject — a control with the shape of authorization and none of
+// the substance, plus a liveness coupling to a tuple that has nothing to do with
+// the RPC.
+func (m *AuthzMiddleware) phaseScopeFiltered(dr decisionRequest, entry CatalogEntry) (decision, bool) {
+	if !entry.ScopeFiltered {
+		return decision{}, false
+	}
+	m.metrics.RecordAllow()
+	return decision{
+		outcome:    outcomeAllow,
+		descriptor: permissionDeniedDescriptor{FQN: dr.FQN, Action: entry.Permission},
+		entry:      entry,
+	}, true
 }
 
 // phaseResource resolves the FGA resource scope (type + id) and applies the

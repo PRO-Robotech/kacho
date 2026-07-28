@@ -58,6 +58,11 @@ type CatalogEntry struct {
 	// opted-in RPCs carry the key). The gateway authz middleware surfaces a deny
 	// on such an RPC as NotFound (no deny reasons) instead of PermissionDenied.
 	HideExistence bool `json:"hide_existence,omitempty"`
+	// ScopeFiltered — mirror of the (kacho.iam.authz.v1.scope_filtered) option.
+	// Declares the lane in which the OWNING SERVICE authorizes the call over the
+	// data it answers with, so the edge authenticates and runs no per-RPC Check.
+	// Omitted from JSON when false so the catalog diff stays minimal.
+	ScopeFiltered bool `json:"scope_filtered,omitempty"`
 }
 
 // ScopeExtractor mirrors authzv1.ScopeExtractor on the JSON side.
@@ -270,9 +275,11 @@ func collectEntries(req *pluginpb.CodeGeneratorRequest) ([]CatalogEntry, []strin
 //
 // Validation rules:
 //   - permission              — required, non-empty (or literal `<exempt>`)
-//   - required_relation       — required, non-empty (waived for exempt)
-//   - scope_extractor         — required, non-empty object_type + from_request_field (waived for exempt)
+//   - required_relation       — required, non-empty (waived for exempt / scope-filtered)
+//   - scope_extractor         — required, non-empty object_type + from_request_field (waived for exempt / scope-filtered)
 //   - required_acr_min        — optional (default `"2"` injected here)
+//   - scope_filtered          — optional; when set the row must carry a real
+//     permission and NEITHER a relation NOR a scope extractor
 //
 // A row is ALWAYS emitted (with empty strings for missing fields), so the
 // catalog is exhaustive; the warning string drives the strict-mode failure
@@ -283,6 +290,7 @@ func extractEntry(rpcFQN string, opts *descriptorpb.MethodOptions) (CatalogEntry
 	requiredAcrMin := getStringExt(opts, authzv1.E_RequiredAcrMin)
 	scope := getScopeExt(opts, authzv1.E_ScopeExtractor)
 	hideExistence := getBoolExt(opts, authzv1.E_HideExistence)
+	scopeFiltered := getBoolExt(opts, authzv1.E_ScopeFiltered)
 
 	entry := CatalogEntry{
 		FQN:              rpcFQN,
@@ -291,6 +299,39 @@ func extractEntry(rpcFQN string, opts *descriptorpb.MethodOptions) (CatalogEntry
 		ScopeExtractor:   scope,
 		RequiredAcrMin:   requiredAcrMin,
 		HideExistence:    hideExistence,
+		ScopeFiltered:    scopeFiltered,
+	}
+
+	if scopeFiltered {
+		// Scope-filtered lane: the owning service authorizes the call over the data
+		// it answers with, so the edge has nothing single to check. The row must say
+		// exactly that and nothing else — a relation or a scope alongside the lane
+		// declares a check the edge does not run, which is the ambiguity the lane
+		// was introduced to end. `<exempt>` is a DIFFERENT lane (it also admits an
+		// Internal* call carrying no principal), so the two cannot be combined; and
+		// the permission string must be real, because the lane keeps naming the
+		// action even though no relation gates it.
+		var problems []string
+		if permission == "" {
+			problems = append(problems, "(kacho.iam.authz.v1.permission) is required")
+		}
+		if permission == ExemptSentinel {
+			problems = append(problems, "(kacho.iam.authz.v1.permission) must not be \""+ExemptSentinel+"\"")
+		}
+		if requiredRelation != "" {
+			problems = append(problems, "(kacho.iam.authz.v1.required_relation) must be omitted")
+		}
+		if scope.ObjectType != "" || scope.FromRequestField != "" || scope.ObjectTypeFromRequestField != "" {
+			problems = append(problems, "(kacho.iam.authz.v1.scope_extractor) must be omitted")
+		}
+		if len(problems) > 0 {
+			return entry, fmt.Sprintf(
+				"%s: (kacho.iam.authz.v1.scope_filtered) conflicts with %s",
+				rpcFQN,
+				strings.Join(problems, ", "),
+			)
+		}
+		return entry, ""
 	}
 
 	if permission == ExemptSentinel {

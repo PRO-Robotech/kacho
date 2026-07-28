@@ -43,9 +43,12 @@ const (
 //
 // All RPCs are synchronous (the CAS is instantaneous); the tenant-facing mutation
 // stays async through the compute-side `AttachDisk` Operation, so ban #9 is not
-// violated. AuthN (mTLS) + AuthZ (per-RPC Check) apply on this listener as well;
-// these RPCs carry real writer/viewer permissions with object-scoped extractors on
-// `volume_id` (NOT `<exempt>`).
+// violated. AuthN (mTLS) applies on this listener as well. Attach / Detach /
+// GetInternal are authorized per-RPC with object-scoped extractors on `volume_id`;
+// ListAttachments is authorized by storage over the page it answers with
+// (`scope_filtered`) — the caller names the instances, and the volumes that come
+// back each have their own owner. None of them is `<exempt>`: every one of them
+// requires an authenticated principal.
 type InternalVolumeServiceClient interface {
 	// Attach — atomic insert-if-possible (CAS) of a volume_attachments row. Idempotent
 	// on replay (already-ours → OK). Self-describing payload; storage validates its own
@@ -56,6 +59,19 @@ type InternalVolumeServiceClient interface {
 	Detach(ctx context.Context, in *DetachVolumeRequest, opts ...grpc.CallOption) (*DetachVolumeResponse, error)
 	// ListAttachments — batched read of attachments for the given instances, used by
 	// compute to build the read-only mirror on Instance.Get / Instance.List (not N+1).
+	//
+	// Authorized AT THE LEVEL OF THE DATA, by storage: the caller names the instances
+	// and the answer concerns volumes with different owners, so no single object can
+	// be checked in advance. The Volume use-case narrows the page it read per volume
+	// (`viewer` on `storage_volume:<id>`, in batches of at most 100), with the same
+	// predicate Volume.Get is gated on, and the production boot-guard refuses to start
+	// with that filter disabled.
+	//
+	// It used to declare `viewer` on the `cluster` singleton. That is the relation of
+	// the GLOBAL REFERENCE CATALOGUE (regions, zones, disk types), which the cluster
+	// bootstrap grants to `user:*` so any authenticated tenant can read it — so the
+	// check admitted everyone and returned the attachments of any named instance,
+	// across projects and accounts. Volume attachments are not reference data.
 	ListAttachments(ctx context.Context, in *ListAttachmentsRequest, opts ...grpc.CallOption) (*ListAttachmentsResponse, error)
 	// GetInternal — full (infra) projection of a Volume, internal-only.
 	//
@@ -130,9 +146,12 @@ func (c *internalVolumeServiceClient) GetInternal(ctx context.Context, in *GetIn
 //
 // All RPCs are synchronous (the CAS is instantaneous); the tenant-facing mutation
 // stays async through the compute-side `AttachDisk` Operation, so ban #9 is not
-// violated. AuthN (mTLS) + AuthZ (per-RPC Check) apply on this listener as well;
-// these RPCs carry real writer/viewer permissions with object-scoped extractors on
-// `volume_id` (NOT `<exempt>`).
+// violated. AuthN (mTLS) applies on this listener as well. Attach / Detach /
+// GetInternal are authorized per-RPC with object-scoped extractors on `volume_id`;
+// ListAttachments is authorized by storage over the page it answers with
+// (`scope_filtered`) — the caller names the instances, and the volumes that come
+// back each have their own owner. None of them is `<exempt>`: every one of them
+// requires an authenticated principal.
 type InternalVolumeServiceServer interface {
 	// Attach — atomic insert-if-possible (CAS) of a volume_attachments row. Idempotent
 	// on replay (already-ours → OK). Self-describing payload; storage validates its own
@@ -143,6 +162,19 @@ type InternalVolumeServiceServer interface {
 	Detach(context.Context, *DetachVolumeRequest) (*DetachVolumeResponse, error)
 	// ListAttachments — batched read of attachments for the given instances, used by
 	// compute to build the read-only mirror on Instance.Get / Instance.List (not N+1).
+	//
+	// Authorized AT THE LEVEL OF THE DATA, by storage: the caller names the instances
+	// and the answer concerns volumes with different owners, so no single object can
+	// be checked in advance. The Volume use-case narrows the page it read per volume
+	// (`viewer` on `storage_volume:<id>`, in batches of at most 100), with the same
+	// predicate Volume.Get is gated on, and the production boot-guard refuses to start
+	// with that filter disabled.
+	//
+	// It used to declare `viewer` on the `cluster` singleton. That is the relation of
+	// the GLOBAL REFERENCE CATALOGUE (regions, zones, disk types), which the cluster
+	// bootstrap grants to `user:*` so any authenticated tenant can read it — so the
+	// check admitted everyone and returned the attachments of any named instance,
+	// across projects and accounts. Volume attachments are not reference data.
 	ListAttachments(context.Context, *ListAttachmentsRequest) (*ListAttachmentsResponse, error)
 	// GetInternal — full (infra) projection of a Volume, internal-only.
 	//

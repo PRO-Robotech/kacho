@@ -43,8 +43,9 @@ func TestPermissionCatalog_RedesignReg(t *testing.T) {
 		// vpc NetworkService :verb supernet growth/shrink (object-scoped v_update).
 		{"kacho.cloud.vpc.v1.NetworkService/AddCidrBlocks", "vpc.network_cidr_blockses.addCidrBlocks", "v_update", "vpc_network", "network_id"},
 		{"kacho.cloud.vpc.v1.NetworkService/RemoveCidrBlocks", "vpc.network_cidr_blockses.removeCidrBlocks", "v_update", "vpc_network", "network_id"},
-		// iam AccessBindingService unified List (cluster-viewer gate) + soft-revoke.
-		{"kacho.cloud.iam.v1.AccessBindingService/List", "iam.access_bindings.list", "viewer", "cluster", "*"},
+		// iam AccessBindingService soft-revoke (object-scoped). The unified List is
+		// NOT here: it declares the scope-filtered lane and therefore carries no
+		// relation and no scope of its own — see the dedicated case below.
 		{"kacho.cloud.iam.v1.AccessBindingService/Revoke", "iam.access_bindings.revoke", "v_delete", "iam_access_binding", "access_binding_id"},
 	}
 	for _, w := range want {
@@ -56,8 +57,30 @@ func TestPermissionCatalog_RedesignReg(t *testing.T) {
 			assert.Equal(t, w.objType, entry.ScopeExtractor.ObjectType, "scope object_type on %s", w.fqn)
 			assert.Equal(t, w.fromField, entry.ScopeExtractor.FromRequestField, "scope from_request_field on %s", w.fqn)
 			assert.False(t, entry.IsExempt(), "%s must NOT be <exempt>", w.fqn)
+			assert.False(t, entry.ScopeFiltered,
+				"%s declares an edge check, so it must not also claim the scope-filtered lane", w.fqn)
 		})
 	}
+
+	// The unified AccessBindings List declares the scope-filtered lane: kacho-iam
+	// reads the page and narrows it per row (`viewer ∪ v_list` on each
+	// `iam_access_binding`), so there is no single object the edge could check.
+	//
+	// It previously declared `viewer` on the `cluster` singleton and called that a
+	// gate. It was not one: the cluster bootstrap grants `viewer` to `user:*` so
+	// every tenant can read the global reference catalogue, so the check passed for
+	// every authenticated subject. The row now says what actually happens, and the
+	// assertions below pin the difference rather than the wording.
+	t.Run("kacho.cloud.iam.v1.AccessBindingService/List", func(t *testing.T) {
+		entry, ok := c.Lookup("kacho.cloud.iam.v1.AccessBindingService/List")
+		require.True(t, ok)
+		assert.Equal(t, "iam.access_bindings.list", entry.Permission)
+		assert.True(t, entry.ScopeFiltered)
+		assert.False(t, entry.IsExempt(), "scope-filtered still requires an authenticated principal")
+		assert.Empty(t, entry.RequiredRelation, "no relation is checked at the edge")
+		assert.Empty(t, entry.ScopeExtractor.ObjectType, "no scope is resolved at the edge")
+		assert.Equal(t, "1", entry.RequiredACRMin, "the step-up floor is unchanged")
+	})
 }
 
 // TestRestRouter_RedesignReg — the REST route table must resolve every new

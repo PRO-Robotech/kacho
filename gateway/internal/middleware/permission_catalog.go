@@ -103,6 +103,24 @@ type CatalogEntry struct {
 	// to a heuristic so the gateway hides existence for IAM verb-bearing reads
 	// even before the emitter sets the flag explicitly.
 	HideExistence bool `json:"hide_existence"`
+
+	// ScopeFiltered — when true, this RPC's authorization is decided by the OWNING
+	// SERVICE over the data it answers with, and cannot be reduced to one
+	// (relation, object) pair the edge could check before the call runs. The
+	// gateway therefore REQUIRES AN AUTHENTICATED PRINCIPAL and runs no Check;
+	// `RequiredACRMin` still applies.
+	//
+	// Distinct from `<exempt>` on purpose. `<exempt>` additionally admits an
+	// `Internal*` RPC arriving on the cluster-internal listener with NO principal
+	// extracted at all (network position, which is not a credential). A
+	// scope-filtered RPC never gets that admission, and it keeps a real
+	// `Permission` string so the catalog still names the action.
+	//
+	// A scope-filtered row carries neither `RequiredRelation` nor `ScopeExtractor`:
+	// naming a relation the edge does not check is the defect the lane removes.
+	// `pkg/authz/catalogparity` fails the build when the owning service's own
+	// per-RPC map disagrees with the catalog on this axis.
+	ScopeFiltered bool `json:"scope_filtered"`
 }
 
 // ScopeExtractor — mirrored from `kacho.cloud.iam.v1.PermissionScopeExtractor`.

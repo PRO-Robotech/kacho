@@ -87,11 +87,11 @@ type AccessBindingServiceClient interface {
 	// DEPRECATED — use `List` with `filter=subject="<id>"`. Retained for
 	// back-compat.
 	//
-	// Lists access bindings assigned to the specified subject. Cluster-scoped
-	// gate: any authenticated user can call (handler then filters returned
-	// bindings — typical pattern is self-list, so subject=principal yields the
-	// user's own bindings; cross-subject reads still require admin role on
-	// each binding's target resource via per-row filter in the handler).
+	// Lists access bindings assigned to the specified subject. Authorized by
+	// kacho-iam against the subject NAMED IN THE REQUEST, which the edge cannot turn
+	// into an object of any type it knows: a user or service_account subject must BE
+	// the caller, and a group subject must be one the caller belongs to. There is no
+	// administrative override — this is the narrowest read on the service.
 	ListBySubject(ctx context.Context, in *ListAccessBindingsBySubjectRequest, opts ...grpc.CallOption) (*ListAccessBindingsResponse, error)
 	// Lists the privileges (enriched access bindings) attached to the specified
 	// subject (User or ServiceAccount). Sync read (NOT an Operation). Unlike
@@ -107,11 +107,11 @@ type AccessBindingServiceClient interface {
 	//   - is DIRECT-only in v1 (`derivation=DIRECT`); GROUP-derived (effective)
 	//     roles are reserved forward-compat.
 	//
-	// Cluster-scoped catalog gate (anti-anon + ACR floor, parity with
-	// `ListBySubject`); the precise self/account-admin policy is enforced
-	// authoritatively in the kacho-iam handler. `subject_type ∈
-	// {"user","service_account"}` for v1; malformed subject_id /
-	// prefix↔type mismatch → INVALID_ARGUMENT.
+	// Authorized by kacho-iam: self, or `admin`/owner of the HOME ACCOUNT of the
+	// subject named in the request. That account is not a request field — it is
+	// resolved from the subject — so the edge has no object to check and declares
+	// `scope_filtered`. `subject_type ∈ {"user","service_account"}` for v1;
+	// malformed subject_id / prefix↔type mismatch → INVALID_ARGUMENT.
 	ListSubjectPrivileges(ctx context.Context, in *ListSubjectPrivilegesRequest, opts ...grpc.CallOption) (*ListSubjectPrivilegesResponse, error)
 	// Lists the roles that are assignable on the specified resource.
 	// Sync read (NOT an Operation). Returns ONLY the roles that
@@ -147,23 +147,25 @@ type AccessBindingServiceClient interface {
 	// DEPRECATED — use `List` with `filter=role="<roleId>"`
 	// (+ `include_revoked` for the audit-retention read). Retained for back-compat.
 	//
-	// Cluster-scoped catalog gate (anti-anon + ACR floor, parity with
-	// `ListBySubject`); the precise grant-authority/admin policy is enforced
-	// authoritatively in the kacho-iam handler (only a grant-authority holder /
-	// admin on each binding's scope sees the row). Ordered by (created_at, id)
-	// ASC; keyset paginated.
+	// Authorized at the level of the data: kacho-iam reads the page and keeps only
+	// the rows whose OWN scope the caller has grant authority over (or whose subject
+	// is the caller). Each row can sit on a different scope, so there is no single
+	// object for the edge to check. Ordered by (created_at, id) ASC; keyset
+	// paginated.
 	ListByRole(ctx context.Context, in *ListAccessBindingsByRoleRequest, opts ...grpc.CallOption) (*ListAccessBindingsResponse, error)
 	// Expands a userset on an object+relation into the concrete principals that
 	// hold it. Sync read (NOT an
 	// Operation). Answers "who can actually do X on this object" by resolving FGA
 	// group-membership usersets (group → members) to concrete USER/SERVICE_ACCOUNT
 	// principals — closing the effective-principal audit gap (a binding on a GROUP
-	// subject otherwise only shows "group G", not its current members). Read-only,
-	// viewer-floor gate.
+	// subject otherwise only shows "group G", not its current members).
 	//
-	// Cluster-scoped catalog gate (anti-anon + ACR floor); the precise read policy
-	// (viewer on the queried object) is enforced authoritatively in the kacho-iam
-	// handler.
+	// Authorized by kacho-iam against the object NAMED IN THE REQUEST: the caller
+	// must hold grant authority over `<object_type>:<object_id>` (or own the account
+	// that contains it, or be a cluster administrator). The object's type is itself a
+	// request field, so the edge cannot build the object — hence `scope_filtered`. A
+	// caller without authority gets the same answer for an object that does not
+	// exist and for one that belongs to someone else.
 	ExpandAccess(ctx context.Context, in *ExpandAccessRequest, opts ...grpc.CallOption) (*ExpandAccessResponse, error)
 	// Lists access bindings in an account (all subjects). Requires `admin`
 	// relation on the account (account-admin sees all who has access to the
@@ -399,11 +401,11 @@ type AccessBindingServiceServer interface {
 	// DEPRECATED — use `List` with `filter=subject="<id>"`. Retained for
 	// back-compat.
 	//
-	// Lists access bindings assigned to the specified subject. Cluster-scoped
-	// gate: any authenticated user can call (handler then filters returned
-	// bindings — typical pattern is self-list, so subject=principal yields the
-	// user's own bindings; cross-subject reads still require admin role on
-	// each binding's target resource via per-row filter in the handler).
+	// Lists access bindings assigned to the specified subject. Authorized by
+	// kacho-iam against the subject NAMED IN THE REQUEST, which the edge cannot turn
+	// into an object of any type it knows: a user or service_account subject must BE
+	// the caller, and a group subject must be one the caller belongs to. There is no
+	// administrative override — this is the narrowest read on the service.
 	ListBySubject(context.Context, *ListAccessBindingsBySubjectRequest) (*ListAccessBindingsResponse, error)
 	// Lists the privileges (enriched access bindings) attached to the specified
 	// subject (User or ServiceAccount). Sync read (NOT an Operation). Unlike
@@ -419,11 +421,11 @@ type AccessBindingServiceServer interface {
 	//   - is DIRECT-only in v1 (`derivation=DIRECT`); GROUP-derived (effective)
 	//     roles are reserved forward-compat.
 	//
-	// Cluster-scoped catalog gate (anti-anon + ACR floor, parity with
-	// `ListBySubject`); the precise self/account-admin policy is enforced
-	// authoritatively in the kacho-iam handler. `subject_type ∈
-	// {"user","service_account"}` for v1; malformed subject_id /
-	// prefix↔type mismatch → INVALID_ARGUMENT.
+	// Authorized by kacho-iam: self, or `admin`/owner of the HOME ACCOUNT of the
+	// subject named in the request. That account is not a request field — it is
+	// resolved from the subject — so the edge has no object to check and declares
+	// `scope_filtered`. `subject_type ∈ {"user","service_account"}` for v1;
+	// malformed subject_id / prefix↔type mismatch → INVALID_ARGUMENT.
 	ListSubjectPrivileges(context.Context, *ListSubjectPrivilegesRequest) (*ListSubjectPrivilegesResponse, error)
 	// Lists the roles that are assignable on the specified resource.
 	// Sync read (NOT an Operation). Returns ONLY the roles that
@@ -459,23 +461,25 @@ type AccessBindingServiceServer interface {
 	// DEPRECATED — use `List` with `filter=role="<roleId>"`
 	// (+ `include_revoked` for the audit-retention read). Retained for back-compat.
 	//
-	// Cluster-scoped catalog gate (anti-anon + ACR floor, parity with
-	// `ListBySubject`); the precise grant-authority/admin policy is enforced
-	// authoritatively in the kacho-iam handler (only a grant-authority holder /
-	// admin on each binding's scope sees the row). Ordered by (created_at, id)
-	// ASC; keyset paginated.
+	// Authorized at the level of the data: kacho-iam reads the page and keeps only
+	// the rows whose OWN scope the caller has grant authority over (or whose subject
+	// is the caller). Each row can sit on a different scope, so there is no single
+	// object for the edge to check. Ordered by (created_at, id) ASC; keyset
+	// paginated.
 	ListByRole(context.Context, *ListAccessBindingsByRoleRequest) (*ListAccessBindingsResponse, error)
 	// Expands a userset on an object+relation into the concrete principals that
 	// hold it. Sync read (NOT an
 	// Operation). Answers "who can actually do X on this object" by resolving FGA
 	// group-membership usersets (group → members) to concrete USER/SERVICE_ACCOUNT
 	// principals — closing the effective-principal audit gap (a binding on a GROUP
-	// subject otherwise only shows "group G", not its current members). Read-only,
-	// viewer-floor gate.
+	// subject otherwise only shows "group G", not its current members).
 	//
-	// Cluster-scoped catalog gate (anti-anon + ACR floor); the precise read policy
-	// (viewer on the queried object) is enforced authoritatively in the kacho-iam
-	// handler.
+	// Authorized by kacho-iam against the object NAMED IN THE REQUEST: the caller
+	// must hold grant authority over `<object_type>:<object_id>` (or own the account
+	// that contains it, or be a cluster administrator). The object's type is itself a
+	// request field, so the edge cannot build the object — hence `scope_filtered`. A
+	// caller without authority gets the same answer for an object that does not
+	// exist and for one that belongs to someone else.
 	ExpandAccess(context.Context, *ExpandAccessRequest) (*ExpandAccessResponse, error)
 	// Lists access bindings in an account (all subjects). Requires `admin`
 	// relation on the account (account-admin sees all who has access to the

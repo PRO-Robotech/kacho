@@ -38,13 +38,31 @@
 // instance. The id comes back empty (nobody filled the field); the object type
 // comes back exactly as the service declared it.
 //
+// # The lane axis comes first
+//
+// Before "which relation on which object" there is "who decides at all". A method
+// the owning service declares scope-filtered — there is no single object to ask
+// about, so it narrows the answer itself, per element — cannot at the same time be
+// a method the catalog says the edge gates on a relation. Comparing the relations
+// in that case is meaningless: by the service's own account the edge is not asking
+// the question. Left uncompared, that disagreement is worse than a drift, because
+// the relation such rows named was `viewer` on the `cluster` singleton, which the
+// cluster bootstrap grants to `user:*` so every tenant can read the global
+// reference catalog — a check that admits every authenticated subject while
+// reading, in the catalog, exactly like one that narrows.
+//
+// The rule is asymmetric on purpose: a catalog row that declares NO edge check
+// (`<exempt>`) alongside a checking service map is not a contradiction — the
+// catalog's statement about the edge stays true and the service adds a layer above
+// it. A declaration may be exceeded; it may not be contradicted.
+//
 // # Scope of the comparison
 //
-// Only methods present in BOTH artefacts are compared. Methods the catalog marks
-// `<exempt>` carry no relation to mirror. Entries the service marks Public or
-// ScopeFiltered take their authorization elsewhere (a data-level filter, or an
-// explicit exemption) and are reported separately rather than compared, because
-// for them "no per-RPC relation" is the declared design, not a drift.
+// Only methods present in BOTH artefacts are compared. Methods whose lanes agree
+// that no per-RPC relation is checked at the edge (catalog `<exempt>` /
+// `scope_filtered`, service Public / ScopeFiltered) are reported separately rather
+// than compared, because for them "no per-RPC relation" is the declared design,
+// not a drift.
 package catalogparity
 
 import (
@@ -78,6 +96,11 @@ type Entry struct {
 		FromRequestField           string `json:"from_request_field"`
 		ObjectTypeFromRequestField string `json:"object_type_from_request_field"`
 	} `json:"scope_extractor"`
+	// ScopeFiltered — the catalog's own declaration that the OWNING SERVICE
+	// authorizes this call over the data it answers with, so the edge
+	// authenticates and runs no per-RPC Check. It is the catalog-side counterpart
+	// of authz.RPCEntry.ScopeFiltered, and Compare requires the two to agree.
+	ScopeFiltered bool `json:"scope_filtered"`
 }
 
 // LoadCatalog reads the generated catalog, keyed by gRPC full method
@@ -124,24 +147,104 @@ func moduleRoot(dir string) (string, error) {
 	}
 }
 
+// Lane names WHO decides, before any question of which relation on which object.
+// It is the coarsest axis and the one that has to agree first: when the two
+// artefacts disagree about who authorizes a call, comparing the relation they
+// each name is meaningless.
+const (
+	// LaneEdgeChecks — the edge runs a per-RPC Check (a relation on a scope).
+	LaneEdgeChecks = "edge-checks"
+	// LaneScopeFiltered — the owning service authorizes over the data it answers
+	// with; the edge authenticates and checks nothing.
+	LaneScopeFiltered = "scope-filtered"
+	// LaneExempt — the catalog declares no per-RPC authz at the edge at all.
+	LaneExempt = "exempt"
+	// LanePublic — the service map exempts the method from its own per-RPC Check.
+	LanePublic = "public"
+)
+
 // Divergence is one method whose in-service requirement contradicts the catalog.
 type Divergence struct {
 	Method string
-	// Kind is "relation" or "scope".
+	// Kind is "lane", "relation" or "scope".
 	Kind             string
 	CatalogRelation  string
 	ServiceRelation  string
 	CatalogScopeType string
 	ServiceScopeType string
+	CatalogLane      string
+	ServiceLane      string
 }
 
 func (d Divergence) String() string {
-	if d.Kind == "relation" {
+	switch d.Kind {
+	case "lane":
+		return fmt.Sprintf("%s: catalog declares lane %q, service map declares %q",
+			d.Method, d.CatalogLane, d.ServiceLane)
+	case "relation":
 		return fmt.Sprintf("%s: catalog requires relation %q, service map requires %q",
 			d.Method, d.CatalogRelation, d.ServiceRelation)
+	default:
+		return fmt.Sprintf("%s: catalog anchors scope on object type %q, service map anchors on %q",
+			d.Method, d.CatalogScopeType, d.ServiceScopeType)
 	}
-	return fmt.Sprintf("%s: catalog anchors scope on object type %q, service map anchors on %q",
-		d.Method, d.CatalogScopeType, d.ServiceScopeType)
+}
+
+// catalogLane classifies the catalog row. A row with `scope_filtered` names the
+// service as the decider; `<exempt>` (or, historically, a row carrying no
+// relation at all) says only that the edge does not decide; anything else
+// declares an edge check.
+func catalogLane(e Entry) string {
+	switch {
+	case e.ScopeFiltered:
+		return LaneScopeFiltered
+	case e.Permission == ExemptPermission || e.RequiredRelation == "":
+		return LaneExempt
+	default:
+		return LaneEdgeChecks
+	}
+}
+
+// serviceLane classifies the in-service map entry by the same question.
+func serviceLane(e authz.RPCEntry) string {
+	switch {
+	case e.ScopeFiltered:
+		return LaneScopeFiltered
+	case e.Public:
+		return LanePublic
+	default:
+		return LaneEdgeChecks
+	}
+}
+
+// lanesContradict reports whether the two declarations cannot both be true.
+//
+// The rule is deliberately ASYMMETRIC, because the two artefacts do not make
+// symmetric promises. The catalog is what an operator reads to learn what the
+// EDGE does; the service map is what the SERVICE does.
+//
+//   - service scope-filtered vs catalog edge-checks — CONTRADICTION. The catalog
+//     tells the operator the edge narrows the call by checking a relation on an
+//     object; the owning service's position is that no single object can answer
+//     for this call at all. Whatever the edge asks is then not the question, and
+//     in practice such rows named a relation satisfied by a wildcard tuple — a
+//     check with the shape of authorization and none of the substance.
+//   - catalog scope-filtered vs anything but service scope-filtered —
+//     CONTRADICTION. `scope_filtered` is a POSITIVE promise that the service
+//     narrows per element, and the edge stops checking on the strength of it. If
+//     the service performs one ordinary check (or none, being public), the promise
+//     is unbacked and the two layers between them narrow nothing per element.
+//   - catalog exempt vs a checking service map — NOT a contradiction. The catalog
+//     says "the edge does not authorize this", which remains true; the service
+//     adds a layer above it. A declaration may be exceeded, never contradicted.
+func lanesContradict(cat, svc string) bool {
+	if svc == LaneScopeFiltered && cat == LaneEdgeChecks {
+		return true
+	}
+	if cat == LaneScopeFiltered && svc != LaneScopeFiltered {
+		return true
+	}
+	return false
 }
 
 // Report is the full outcome of comparing one service map against the catalog.
@@ -178,12 +281,23 @@ func Compare(serviceMap authz.RPCMap, catalog map[string]Entry) Report {
 			rep.NotInCatalog = append(rep.NotInCatalog, method)
 			continue
 		}
-		if cat.Permission == ExemptPermission || cat.RequiredRelation == "" {
-			rep.SkippedExempt = append(rep.SkippedExempt, method)
+		// Lane FIRST: who decides. A disagreement here makes the relation and
+		// scope axes moot, so it is reported on its own and the method is not
+		// compared further.
+		catLane, svcLane := catalogLane(cat), serviceLane(entry)
+		if lanesContradict(catLane, svcLane) {
+			rep.Divergences = append(rep.Divergences, Divergence{
+				Method: method, Kind: "lane",
+				CatalogLane: catLane, ServiceLane: svcLane,
+			})
 			continue
 		}
-		if entry.Public || entry.ScopeFiltered {
+		if svcLane == LaneScopeFiltered || svcLane == LanePublic {
 			rep.SkippedNonChecking = append(rep.SkippedNonChecking, method)
+			continue
+		}
+		if catLane == LaneExempt {
+			rep.SkippedExempt = append(rep.SkippedExempt, method)
 			continue
 		}
 		rep.Compared++
