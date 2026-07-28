@@ -26,6 +26,7 @@ import { CloseOutlined, DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { Label } from "@shared/components/atoms/ui/Input";
 import { RefSelect } from "@shared/components/organisms/form/RefSelect";
 import { getByPath, setByPath, deleteByPath } from "@shared/lib/path";
+import { hasProtocolNumber } from "@shared/lib/resource-registry";
 
 type ProtocolMode = "any" | "name" | "number";
 type TargetKind = "cidr" | "sg" | "predefined";
@@ -35,7 +36,8 @@ export interface RuleExt {
   description?: string;
   _protocol_mode?: ProtocolMode;
   protocol_name?: string;
-  protocol_number?: number;
+  // int64 on the wire → a JSON string when it comes from the server.
+  protocol_number?: number | string;
   _ports_any?: boolean;
   ports?: { from_port?: number; to_port?: number };
   _target_kind?: TargetKind;
@@ -62,7 +64,7 @@ interface Props {
 function inferProtocolMode(r: RuleExt): ProtocolMode {
   if (r._protocol_mode) return r._protocol_mode;
   if (r.protocol_name) return "name";
-  if (typeof r.protocol_number === "number") return "number";
+  if (hasProtocolNumber(r.protocol_number)) return "number";
   return "any";
 }
 

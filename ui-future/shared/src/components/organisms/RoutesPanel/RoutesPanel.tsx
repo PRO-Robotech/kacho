@@ -39,9 +39,40 @@ interface RoutesPanelProps {
   routes: StaticRoute[];
 }
 
-interface DraftRoute {
+export interface DraftRoute {
   destination_prefix: string;
   next_hop_address: string;
+  /**
+   * The gateway arm of the route, preserved verbatim. StaticRoute.next_hop is a
+   * oneof — `next_hop_address` XOR `gateway_id` — and saving REPLACES the whole
+   * list, so a gateway route must survive a save it was not part of. The editor
+   * does not author gateways; typing an address over one deliberately switches
+   * the arm.
+   */
+  gateway_id?: string;
+}
+
+// Экспортированы для тестов.
+export function draftsFromRoutes(routes: StaticRoute[]): DraftRoute[] {
+  return routes.map((r) => ({
+    destination_prefix: r.destination_prefix ?? "",
+    next_hop_address: r.next_hop_address ?? "",
+    ...(r.gateway_id ? { gateway_id: r.gateway_id } : {}),
+  }));
+}
+
+export function routesFromDrafts(drafts: DraftRoute[]): StaticRoute[] {
+  return drafts
+    .map((r) => {
+      const destination_prefix = r.destination_prefix.trim();
+      const address = r.next_hop_address.trim();
+      // An address the operator typed wins over the gateway the route came with —
+      // that is them switching the arm on purpose. Exactly one arm is emitted.
+      if (address) return { destination_prefix, next_hop_address: address };
+      if (r.gateway_id) return { destination_prefix, gateway_id: r.gateway_id };
+      return { destination_prefix };
+    })
+    .filter((r) => r.destination_prefix !== "" && (r.next_hop_address || r.gateway_id));
 }
 
 const MONO_FONT = "ui-monospace, monospace";
@@ -69,12 +100,7 @@ export function RoutesPanel({ routeTableId, projectId, routes }: RoutesPanelProp
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const next = (drafts ?? [])
-        .map((r) => ({
-          destination_prefix: r.destination_prefix.trim(),
-          next_hop_address: r.next_hop_address.trim(),
-        }))
-        .filter((r) => r.destination_prefix !== "" && r.next_hop_address !== "");
+      const next = routesFromDrafts(drafts ?? []);
 
       const res = await api.update(`${rtSpec.apiPath}/${routeTableId}`, {
         static_routes: next,
@@ -102,12 +128,7 @@ export function RoutesPanel({ routeTableId, projectId, routes }: RoutesPanelProp
       setDrafts([{ destination_prefix: "", next_hop_address: "" }]);
       return;
     }
-    setDrafts(
-      routes.map((r) => ({
-        destination_prefix: r.destination_prefix ?? "",
-        next_hop_address: r.next_hop_address ?? r.gateway_id ?? "",
-      })),
-    );
+    setDrafts(draftsFromRoutes(routes));
   }
 
   function cancel() {
@@ -233,7 +254,11 @@ export function RoutesPanel({ routeTableId, projectId, routes }: RoutesPanelProp
                       <td className="px-3 font-mono text-xs" style={{ verticalAlign: "middle" }}>
                         <Input
                           variant="borderless"
-                          placeholder="10.0.0.1"
+                          // Строка со шлюзовым next-hop показывает его в плейсхолдере:
+                          // поле адреса у неё пустое (это другая ветвь oneof), и без
+                          // подписи выглядело бы как маршрут вовсе без next-hop.
+                          // Введённый адрес осознанно заменяет ветвь.
+                          placeholder={row.gateway_id ? `шлюз ${row.gateway_id} — введите адрес, чтобы заменить` : "10.0.0.1"}
                           value={row.next_hop_address}
                           onChange={(e) => setRow(i, { next_hop_address: e.target.value })}
                           style={cellInputStyle}

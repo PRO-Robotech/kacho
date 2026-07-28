@@ -10,7 +10,24 @@ import { fileURLToPath } from "node:url";
 
 import { REGISTRY } from "@shared/lib/resource-registry";
 import type { FormField } from "@shared/lib/form-schema";
-import { roleIsSystem, roleDefinitionTier, targetKind, SYSTEM_ROLE_CANON_ORDER, type Role } from "@shared/api/iam";
+import {
+  buildCreateAccessBindingBody,
+  roleIsSystem,
+  roleDefinitionTier,
+  targetKind,
+  targetResources,
+  SYSTEM_ROLE_CANON_ORDER,
+  type CreateAccessBindingInput,
+  type Role,
+} from "@shared/api/iam";
+
+/** Минимальный валидный грант — база для проверки арма target'а. */
+const grantInput: CreateAccessBindingInput = {
+  subjects: [{ type: "SUBJECT_TYPE_USER", id: "usr-1" }],
+  roleId: "rol-1",
+  scopeTier: "ACCOUNT",
+  scopeId: "acc-1",
+};
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fieldByName = (fields: FormField[] | undefined, name: string) => (fields ?? []).find((f) => f.name === name);
@@ -25,10 +42,15 @@ describe("IAM-1 F1/F2 — accounts spec", () => {
     expect(tpl).not.toHaveProperty("owner_user_id");
   });
 
-  it("остаётся output-only колонка «Владелец» + deletionProtection field", () => {
+  it("остаётся output-only колонка «Владелец»; deletionProtection у Account нет вовсе", () => {
     expect(colByHeader("accounts", "Владелец")?.path).toBe("owner_user_id");
-    const dp = fieldByName(REGISTRY.accounts.fields, "deletion_protection");
-    expect(dp?.type).toBe("bool");
+    // deletion_protection есть у AccessBinding, но НЕ у Account: ни в
+    // CreateAccountRequest {name, description, labels, owner_user_id}, ни в
+    // UpdateAccountRequest, ни в самом Account. Форма его предлагала, шаблон сеял,
+    // а край выбрасывал ключ молча — галочка «защитить от удаления» не делала
+    // ничего и отвечала успехом.
+    expect(fieldByName(REGISTRY.accounts.fields, "deletion_protection")).toBeUndefined();
+    expect(REGISTRY.accounts.template({})).not.toHaveProperty("deletion_protection");
   });
 });
 
@@ -95,7 +117,15 @@ describe("IAM-1 F7/F8/F10 — access-bindings spec", () => {
   it("targetKind дискриминирует allInScope (snake+camel) vs resources[] vs пусто", () => {
     expect(targetKind({ all_in_scope: {} })).toBe("allInScope");
     expect(targetKind({ allInScope: {} })).toBe("allInScope");
-    expect(targetKind({ resources: [{ type: "compute.instance", id: "ins-1" }] })).toBe("resources");
+    // AccessTarget.resources is itself AccessTargetResources{repeated ResourceRef
+    // resources}, so a read carries target.resources.resources[] — the same
+    // nesting buildCreateAccessBindingBody writes. Reading it flat made every
+    // per-object binding render as «no target».
+    expect(targetKind({ resources: { resources: [{ type: "compute.instance", id: "ins-1" }] } })).toBe("resources");
+    expect(targetResources({ resources: { resources: [{ type: "compute.instance", id: "ins-1" }] } })).toEqual([
+      { type: "compute.instance", id: "ins-1" },
+    ]);
+    expect(targetKind({ resources: { resources: [] } })).toBeUndefined();
     expect(targetKind(undefined)).toBeUndefined();
     expect(targetKind({})).toBeUndefined();
   });
@@ -120,15 +150,23 @@ describe("IAM-1 — bespoke forms conformance", () => {
   });
 
   it("AccessBinding create несёт target-дискриминатор allInScope|resources[] (F8)", () => {
+    // Форма даёт дискриминатор и набор объектов; САМО тело собирает
+    // buildCreateAccessBindingBody — его форма зафиксирована на уровне провода в
+    // shared/src/api/iam.wire.test.ts (там же, что и оба арма target'а).
     expect(bindingCreate).toContain("_target_kind");
-    expect(bindingCreate).toContain("all_in_scope");
-    expect(bindingCreate).toContain("resources: rows");
-    // target включён в отправляемое тело.
-    expect(bindingCreate).toMatch(/target,/);
+    expect(bindingCreate).toContain("targetResources");
+    expect(bindingCreate).toContain("buildCreateAccessBindingBody");
+    expect(buildCreateAccessBindingBody({ ...grantInput, targetResources: undefined }).target).toEqual({
+      all_in_scope: {},
+    });
+    expect(
+      buildCreateAccessBindingBody({ ...grantInput, targetResources: [{ type: "compute.instance", id: "ins-1" }] })
+        .target,
+    ).toEqual({ resources: { resources: [{ type: "compute.instance", id: "ins-1" }] } });
   });
 
   it("AccessBinding create требует непустой resources при target=resources (least-priv)", () => {
-    expect(bindingCreate).toContain("rows.length === 0");
+    expect(bindingCreate).toContain("targetResources.length === 0");
   });
 
   it("detail-extension: Role definitionTier + честные verb-наборы (F4/F6)", () => {

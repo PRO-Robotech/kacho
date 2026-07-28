@@ -13,7 +13,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Alert } from "antd";
 import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { ResourceFormBody } from "@/components/organisms/form/ResourceFormBody";
-import { computeUpdateMask, snakeToCamelPath } from "@/components/organisms/ResourceFormDialog";
+import { buildUpdateBody, computeUpdateMask } from "@/components/organisms/ResourceFormDialog";
 import { ApiError, api } from "@/api/client";
 import { applyFieldDefaults, type ResourceSpec } from "@/lib/resource-registry";
 import { useInvalidateResourceList, useOperation } from "@/lib/use-operation";
@@ -48,7 +48,11 @@ export function InlineResourceEditForm({ spec, data, projectId, onCancel, onSucc
     const wireData: Record<string, unknown> = { ...data };
     const baseObj = spec.hydrate ? spec.hydrate(wireData) : wireData;
     const merged = applyFieldDefaults(fields, baseObj);
-    originalRef.current = baseObj;
+    // Снимок для диффа хранится в ТОЙ ЖЕ форме, что даёт sanitize: маска считается
+    // против санитайзнутого объекта, и спека, чей sanitize меняет представление
+    // (число → Duration "300s"), иначе выглядела бы изменённой на каждом сохранении —
+    // поле, которого оператор не трогал, уезжало бы в update_mask.
+    originalRef.current = spec.sanitize ? spec.sanitize(baseObj) : baseObj;
     setObj(merged);
     setHydrated(true);
   }, [data, fields, hydrated, spec]);
@@ -93,14 +97,15 @@ export function InlineResourceEditForm({ spec, data, projectId, onCancel, onSucc
     let parsed: Record<string, unknown> = obj;
     if (spec.sanitize) parsed = spec.sanitize(parsed);
     const mask = computeUpdateMask(originalRef.current, parsed, fields);
-    if (mask.length === 0) {
+    // The body carries the masked fields and nothing else — the form was hydrated
+    // from a GET projection whose id/created_at/status/output-only mirrors are not
+    // fields of any Update* message.
+    const payload = buildUpdateBody(parsed, mask);
+    if (!payload) {
       onCancel();
       return;
     }
-    mutation.mutate({
-      ...parsed,
-      update_mask: mask.map(snakeToCamelPath).join(","),
-    });
+    mutation.mutate(payload);
   };
 
   if (!fields) {

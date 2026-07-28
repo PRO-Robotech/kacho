@@ -49,8 +49,13 @@ import { FormSection } from "@/components/organisms/form/FormSection";
 import { FormFooter } from "@shared/components/organisms/form/FormFooter";
 import { useContext } from "@shared/lib/context-store";
 import {
+  buildCreateAccessBindingBody,
   iamApi,
   IAM,
+  CLUSTER_SCOPE_ID,
+  SUBJECT_TYPE_ENUM,
+  type AccessBindingScopeTier,
+  type ResourceRef,
   type User,
   type ServiceAccount,
   type Group,
@@ -91,14 +96,11 @@ const SUBJECT_TYPES: SubjectType[] = ["user", "service_account", "group"];
  * subject_type ""`. Поэтому на проводе subjects[].type — enum-ИМЯ; нижний регистр —
  * только внутренний UI-тип.
  */
-const SUBJECT_TYPE_ENUM: Record<SubjectType, string> = {
-  user: "SUBJECT_TYPE_USER",
-  service_account: "SUBJECT_TYPE_SERVICE_ACCOUNT",
-  group: "SUBJECT_TYPE_GROUP",
-};
+// SUBJECT_TYPE_ENUM живёт рядом с телом запроса (@shared/api/iam) — один словарь
+// на все формы гранта.
 
-/** Cluster singleton id для scope=GLOBAL (на проводе tier CLUSTER). */
-const CLUSTER_RESOURCE_ID = "cluster_kacho_root";
+/** Cluster singleton id для scope=GLOBAL (на проводе тир CLUSTER). */
+const CLUSTER_RESOURCE_ID = CLUSTER_SCOPE_ID;
 
 const SCOPE_TIERS: ScopeTier[] = ["GLOBAL", "ACCOUNT", "PROJECT"];
 const SCOPE_TIER_LABEL: Record<ScopeTier, string> = {
@@ -112,8 +114,8 @@ const SCOPE_TIER_HINT: Record<ScopeTier, string> = {
   PROJECT: "Граница материализации — выбранный Project.",
 };
 
-/** Wire scope-tier (ScopeRef.tier) из UI scope-измерения. GLOBAL → CLUSTER. */
-const WIRE_TIER_BY_SCOPE: Record<ScopeTier, string> = {
+/** Anchor-тир запроса из UI scope-измерения. GLOBAL → CLUSTER. */
+const WIRE_TIER_BY_SCOPE: Record<ScopeTier, AccessBindingScopeTier> = {
   GLOBAL: "CLUSTER",
   ACCOUNT: "ACCOUNT",
   PROJECT: "PROJECT",
@@ -505,11 +507,10 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
       const offending = roleIds.filter((id) => !isClusterAdminRole(roleById.get(id)));
       if (offending.length > 0) return;
     }
-    // canonical scope_ref {tier, id}. GLOBAL → tier CLUSTER + singleton.
-    const scopeRef = {
-      tier: WIRE_TIER_BY_SCOPE[uiScope],
-      id: anchorId,
-    };
+    // Anchor гранта — dotted scope_type + scope_id. GLOBAL → тир CLUSTER + singleton.
+    // `scope_ref` — снятое имя (тег 10 tombstoned вместе с именем): край его
+    // выбрасывает, а обязательные scope_type/scope_id остаются пустыми.
+    const scopeTier = WIRE_TIER_BY_SCOPE[uiScope];
 
     // thin binding несёт subjects[] (1..32). standalone → multi-subject из формы;
     // reconcile → один залоченный субъект.
@@ -518,7 +519,7 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
       : ((v.subject_ids as string[] | undefined) ?? []).filter(Boolean);
     const subjects: Subject[] = subjectIds.map((id) => ({
       // proto enum wire-form: enum-имя, не нижне-регистровая строка.
-      type: SUBJECT_TYPE_ENUM[subjectType] as Subject["type"],
+      type: SUBJECT_TYPE_ENUM[subjectType],
       id,
     }));
 
@@ -526,12 +527,12 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
     // пустой resources-набор — инвалиден (нет sentinel-по-умолчанию; для «всё под
     // anchor'ом» есть явный allInScope{}).
     const targetKindVal = (v._target_kind as string | undefined) ?? "allInScope";
-    let target: Record<string, unknown>;
+    let targetResources: ResourceRef[] | undefined;
     if (targetKindVal === "resources") {
-      const rows = ((v.target_resources as Array<{ type?: string; id?: string }> | undefined) ?? [])
-        .filter((r) => r && r.type && r.id)
+      targetResources = ((v.target_resources as Array<{ type?: string; id?: string }> | undefined) ?? [])
+        .filter((r): r is { type: string; id: string } => !!(r && r.type && r.id))
         .map((r) => ({ type: r.type, id: r.id }));
-      if (rows.length === 0) {
+      if (targetResources.length === 0) {
         setInlineError({
           type: "error",
           message:
@@ -539,16 +540,7 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
         });
         return;
       }
-      target = { resources: rows };
-    } else {
-      target = { all_in_scope: {} };
     }
-
-    const baseBody = {
-      subjects,
-      scope_ref: scopeRef,
-      target,
-    };
 
     const added = roleIds.filter((id) => !currentRoleIds.includes(id));
     const removed = reconcile ? currentRoleIds.filter((id) => !roleIds.includes(id)) : [];
@@ -558,14 +550,28 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
       return;
     }
 
+    // Тела собираются ДО перехода в submitting: buildCreateAccessBindingBody
+    // бросает на гранте, который нечем адресовать (нет субъекта / роли / anchor'а),
+    // и такой отказ должен стать видимым сообщением, а не зависшей кнопкой.
+    let addBodies: { roleId: string; body: Record<string, unknown> }[];
+    try {
+      addBodies = added.map((roleId) => ({
+        roleId,
+        body: buildCreateAccessBindingBody({ subjects, roleId, scopeTier, scopeId: anchorId, targetResources }),
+      }));
+    } catch (e) {
+      setInlineError({ type: "error", message: mapApiErrorToMessage(e) });
+      return;
+    }
+
     setSubmitting(true);
 
     type Op = { kind: "add" | "remove"; roleId: string; promise: Promise<unknown> };
     const ops: Op[] = [
-      ...added.map((roleId) => ({
+      ...addBodies.map(({ roleId, body }) => ({
         kind: "add" as const,
         roleId,
-        promise: api.create(IAM.accessBindings, { ...baseBody, role_id: roleId }),
+        promise: api.create(IAM.accessBindings, body),
       })),
       ...removed.map((roleId) => ({
         kind: "remove" as const,

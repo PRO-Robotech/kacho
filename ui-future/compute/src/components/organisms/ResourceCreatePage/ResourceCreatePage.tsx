@@ -11,6 +11,8 @@ import { useBreadcrumb, useHeaderRight } from "@/components/molecules/PageHeader
 import { ApiError, api } from "@/api/client";
 import { applyFieldDefaults, type ResourceSpec } from "@/lib/resource-registry";
 import { setByPath } from "@/lib/path";
+import { presetFieldsForSpec } from "@/lib/preset-fields";
+import { buildCreateBody } from "@/components/organisms/ResourceFormDialog";
 import { useInvalidateResourceList, useOperation } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
 
@@ -64,7 +66,16 @@ export function ResourceCreatePage({ spec, parentField, parentParam }: Props) {
       if (spec.id === "addresses") optFilter["_address_kind"] = ["external", "external_v6"];
     }
     if (networkId) out["network_id"] = networkId;
-    return { presetFields: out, softPresetFields: soft, fieldOptionsFilter: optFilter };
+    // A preset may only name a field this form has. The keys come from the URL, so
+    // their set is chosen by whoever built the link — `network_id` above is set for
+    // every spec, and most Create messages have no such field. An unmatched preset
+    // would ride out as an undeclared request key and be dropped at the edge in
+    // silence.
+    return {
+      presetFields: presetFieldsForSpec(spec.fields, out),
+      softPresetFields: presetFieldsForSpec(spec.fields, soft),
+      fieldOptionsFilter: optFilter,
+    };
   }, [params.subnetId, params.networkId, searchParams, spec.id]);
 
   const initialObj = useMemo(() => {
@@ -179,7 +190,11 @@ export function ResourceCreatePage({ spec, parentField, parentParam }: Props) {
       }
     }
     if (spec.sanitize) parsed = spec.sanitize(parsed);
-    mutation.mutate(parsed);
+    // sanitize shapes the domain payload; this drops what only ever existed for the
+    // widget (`_`-prefixed discriminators, incl. inside array items) so it cannot
+    // reach the wire as `Placement` / `AddressKind` / `BootSource` and be discarded
+    // there in silence.
+    mutation.mutate(buildCreateBody(parsed));
   };
 
   const fields = spec.fields;

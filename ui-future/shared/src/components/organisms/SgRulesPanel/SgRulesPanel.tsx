@@ -16,6 +16,7 @@ import { ApiError, api } from "@shared/api/client";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
 import { HeaderSlotPortal } from "@shared/components/organisms/DetailShell";
 import { RuleBody, emptyRule, type RuleExt } from "@shared/components/organisms/form/SgRulesEditor";
+import { hasProtocolNumber } from "@shared/lib/resource-registry";
 import { REGISTRY, sanitizeSgRule } from "@shared/lib/resource-registry";
 import { operationStore } from "@shared/lib/use-operation-store";
 import { toast } from "@shared/lib/toast";
@@ -25,7 +26,8 @@ export interface SgRule {
   direction?: string;
   description?: string;
   protocol_name?: string;
-  protocol_number?: number;
+  // int64 on the wire → a JSON string when it comes from the server.
+  protocol_number?: number | string;
   ports?: { from_port?: number | string; to_port?: number | string };
   cidr_blocks?: { v4_cidr_blocks?: string[]; v6_cidr_blocks?: string[] };
   security_group_id?: string;
@@ -48,7 +50,7 @@ function dirOf(r: SgRule): "INGRESS" | "EGRESS" {
 }
 function protoLabel(r: SgRule): string {
   if (r.protocol_name) return r.protocol_name;
-  if (typeof r.protocol_number === "number") return `proto ${r.protocol_number}`;
+  if (hasProtocolNumber(r.protocol_number)) return `proto ${r.protocol_number}`;
   return "Any";
 }
 function portsLabel(r: SgRule): string {

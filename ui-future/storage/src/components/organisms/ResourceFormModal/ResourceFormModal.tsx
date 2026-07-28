@@ -21,6 +21,7 @@ import { FORM_WIDTH } from "@/components/organisms/form/FormShell";
 import { REGISTRY } from "@/lib/resource-registry";
 import { useContext } from "@/lib/context-store";
 import { api } from "@/api/client";
+import { presetFieldsForSpec } from "@/lib/preset-fields";
 
 interface Props {
   projectId: string;
@@ -66,8 +67,11 @@ export function ResourceFormModal({ projectId }: Props) {
       // network_id / subnet_id и т.п. — preset (как из формы).
       fields[k.replace(/([A-Z])/g, "_$1").toLowerCase()] = v;
     }
-    return fields;
-  }, [action, searchParams]);
+    // Только те, что реально есть в форме: набор ключей задаёт тот, кто собрал
+    // ссылку, а не ресурс. Посторонний query-параметр иначе уехал бы в тело как
+    // поле, которого в сообщении нет, и край выбросил бы его молча.
+    return presetFieldsForSpec(spec?.fields, fields);
+  }, [action, searchParams, spec]);
 
   // Единая ширина для ВСЕХ модалок ресурсов — visual unity (= FORM_WIDTH,
   // тот же стандарт, что и у page-форм).

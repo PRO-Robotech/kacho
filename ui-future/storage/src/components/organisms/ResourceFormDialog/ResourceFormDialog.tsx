@@ -13,7 +13,7 @@ import { extractOperationId } from "@/components/molecules/OperationDialog";
 import { OperationToastWatcher } from "@/components/molecules/OperationToastWatcher";
 import { ApiError, api } from "@/api/client";
 import { applyFieldDefaults } from "@/lib/resource-registry";
-import { getByPath } from "@/lib/path";
+import { getByPath, setByPath } from "@/lib/path";
 import { useInvalidateResourceList } from "@/lib/use-operation";
 import { toast } from "@/lib/toast";
 import type { FormField } from "@/lib/form-schema";
@@ -72,10 +72,12 @@ export function ResourceFormDialog({
       setText(JSON.stringify(snap.template, null, 2));
       setOpId(null);
       setView(snap.fields ? "form" : "json");
-      originalRef.current =
+      // Снимок для диффа — в той же форме, что даёт sanitize (см. ResourceEditPage).
+      const snapObj =
         mode === "edit" && typeof snap.template === "object" && snap.template !== null
           ? (snap.template as Record<string, unknown>)
           : null;
+      originalRef.current = snapObj && sanitize ? sanitize(snapObj) : snapObj;
     }
   }, [open, mode]);
 
@@ -116,14 +118,17 @@ export function ResourceFormDialog({
 
     if (mode === "edit" && originalRef.current && fields && typeof parsed === "object" && parsed !== null) {
       const mask = computeUpdateMask(originalRef.current, parsed as Record<string, unknown>, fields);
-      if (mask.length === 0) {
+      // The body carries the masked fields and nothing else — an edit form is
+      // hydrated from a GET projection whose id/created_at/status/output-only
+      // mirrors are not fields of any Update* message.
+      const payload = buildUpdateBody(parsed as Record<string, unknown>, mask);
+      if (!payload) {
         setOpen(false);
         return;
       }
-      parsed = {
-        ...(parsed as Record<string, unknown>),
-        update_mask: mask.map(snakeToCamelPath).join(","),
-      };
+      parsed = payload;
+    } else if (typeof parsed === "object" && parsed !== null) {
+      parsed = buildCreateBody(parsed as Record<string, unknown>);
     }
 
     mutation.mutate(parsed);
@@ -267,4 +272,75 @@ export function computeUpdateMask(
 
 export function snakeToCamelPath(p: string): string {
   return p.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+}
+
+/** Keys whose CHILDREN are tenant data, not field names (parity with lib/case.ts). */
+const OPAQUE_FIELDS = new Set(["labels", "annotations", "match_labels", "matchLabels"]);
+
+/**
+ * Drop form-only keys (leading `_`) at every depth.
+ *
+ * These exist to drive a widget — which branch of a proto oneof the form is
+ * showing, the cascader path, a mode toggle — and are never fields of a request
+ * message; api/client.ts would camel-case `_address_kind` into `AddressKind` on the
+ * way out, which the edge then discards in silence. Keys of `labels` /
+ * `annotations` are tenant data and are left exactly as the tenant wrote them.
+ */
+export function stripFormOnlyKeys<T>(value: T): T {
+  return strip(value, false) as T;
+}
+
+function strip(value: unknown, opaque: boolean): unknown {
+  if (Array.isArray(value)) return value.map((it) => strip(it, opaque));
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (!opaque && k.startsWith("_")) continue;
+      out[k] = strip(v, opaque || OPAQUE_FIELDS.has(k));
+    }
+    return out;
+  }
+  return value;
+}
+
+/**
+ * Body of an Update (PATCH): exactly the fields named by `mask`, plus the mask.
+ *
+ * An Update* request message carries `<resource>_id` (bound from the URL path),
+ * `update_mask`, and the mutable fields — nothing else; and a masked PATCH applies
+ * only what the mask names. Sending the rest of a hydrated GET projection adds
+ * neither meaning nor safety: it is discarded at the edge in silence.
+ *
+ * The mask is rendered in the camelCase form protojson accepts — its FieldMask
+ * decoder rejects any path containing `_` outright, so a snake_case path is a 400,
+ * not a lenient spelling.
+ *
+ * Returns null for an empty mask: nothing changed, so there is no request to send.
+ */
+export function buildUpdateBody(current: Record<string, unknown>, mask: string[]): Record<string, unknown> | null {
+  if (mask.length === 0) return null;
+  let picked: Record<string, unknown> = {};
+  for (const path of mask) {
+    picked = setByPath(picked, path, getByPath(current, path));
+  }
+  // Strip over the ASSEMBLED body, not over each value as it is picked: the
+  // labels/annotations carve-out is keyed by the field's own name, and a value
+  // handed over detached from its key has lost it — a masked `labels` would then
+  // have a tenant key dropped that the same map keeps when the resource is
+  // created.
+  const body = stripFormOnlyKeys(picked);
+  body.update_mask = mask.map(snakeToCamelPath).join(",");
+  return body;
+}
+
+/**
+ * Body of a Create (POST): the sanitized form object with form-only keys removed.
+ *
+ * `sanitize` shapes the domain payload (oneof branch selection, unit conversion);
+ * this is the transport-level guarantee that nothing which existed only for the
+ * widget reaches the wire — including keys nested inside array items, which a
+ * per-resource sanitize does not necessarily walk.
+ */
+export function buildCreateBody(parsed: Record<string, unknown>): Record<string, unknown> {
+  return stripFormOnlyKeys(parsed);
 }

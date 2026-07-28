@@ -85,15 +85,18 @@ export interface DenyReason {
   resource?: string;
 }
 
-async function fetchAuth<T>(method: string, path: string, body?: unknown): Promise<T> {
+// Reads only. The auth surface has no request body, and the branch that used to
+// build one applied the RESPONSE transformer (camel→snake) to a request — the
+// direction is the opposite one (api/client.ts: request snake→camel), so it named
+// fields no message has. It had no caller, so nothing exercised the claim; it is
+// gone rather than corrected in place. A future body-carrying call goes through
+// api/client.ts, which converts in the right direction.
+async function fetchAuth<T>(method: string, path: string): Promise<T> {
   const init: RequestInit = {
     method,
     credentials: "include",
     headers: { "Content-Type": "application/json" },
   };
-  if (body !== undefined) {
-    init.body = JSON.stringify(camelToSnake(body));
-  }
   const res = await fetch(path, init);
   if (!res.ok) {
     // 401 — нормальный «не залогинен» сигнал, не Error.

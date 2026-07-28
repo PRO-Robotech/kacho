@@ -26,7 +26,15 @@ import { toast } from "@shared/lib/toast";
 import { PlusOutlined, MailOutlined } from "@ant-design/icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ColumnsType } from "antd/es/table";
-import { iamApi, IAM, type User, type Role } from "@shared/api/iam";
+import {
+  buildCreateAccessBindingBody,
+  iamApi,
+  IAM,
+  SUBJECT_TYPE_ENUM,
+  type User,
+  type Role,
+} from "@shared/api/iam";
+import { ApiError, api } from "@shared/api/client";
 import { CopyableMonoId } from "@shared/components/organisms/iam/IamCommon";
 import { useContext } from "@shared/lib/context-store";
 
@@ -278,24 +286,27 @@ function InviteModal({ open, onClose, accountId, projectId, scope }: InviteModal
         return;
       }
 
-      const targetResourceType = scope === "cloud" ? "account" : "project";
-      const targetResourceId = scope === "cloud" ? accountId : projectId;
+      // Anchor-тир гранта: вкладка «Облако» → аккаунт, «Каталог» → проект.
+      const targetScopeTier = scope === "cloud" ? "ACCOUNT" : "PROJECT";
+      const targetScopeId = scope === "cloud" ? accountId : projectId;
 
       if (matchedUser) {
         // Existing user — bulk Create AccessBinding (по одной на каждую выбранную роль).
+        // Тело собирается buildCreateAccessBindingBody (форма CreateAccessBindingRequest)
+        // и уходит через api.create: он делает request-side snake→camel и БРОСАЕТ
+        // ApiError на не-2xx. Прямой fetch не делал ни того ни другого — ключи улетали
+        // в snake_case, край их выбрасывал (DiscardUnknown), а отказ был неотличим от
+        // успеха, потому что res.ok никто не читал.
         for (const roleId of roleIds) {
-          await fetch(IAM.accessBindings, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({
-              subject_type: "user",
-              subject_id: matchedUser.id,
-              role_id: roleId,
-              resource_type: targetResourceType,
-              resource_id: targetResourceId,
+          await api.create(
+            IAM.accessBindings,
+            buildCreateAccessBindingBody({
+              subjects: [{ type: SUBJECT_TYPE_ENUM.user, id: matchedUser.id }],
+              roleId,
+              scopeTier: targetScopeTier,
+              scopeId: targetScopeId,
             }),
-          });
+          );
         }
         toast.success(`Доступ выдан пользователю ${matchedUser.email || matchedUser.id}`);
         qc.invalidateQueries({ queryKey: ["iam", "access-bindings"] });
@@ -310,7 +321,7 @@ function InviteModal({ open, onClose, accountId, projectId, scope }: InviteModal
         const resp = await iamApi.inviteUser({
           account_id: accountId,
           email: subjectInput.trim(),
-          project_id: targetResourceType === "project" ? targetResourceId : undefined,
+          project_id: targetScopeTier === "PROJECT" ? targetScopeId : undefined,
           role_id: roleIds[0], // одну роль кладём в invite payload; остальные — отдельные AB
         });
         const link = resp?.metadata?.magic_link_url;
@@ -323,11 +334,11 @@ function InviteModal({ open, onClose, accountId, projectId, scope }: InviteModal
       }
 
       toast.error("Выберите пользователя или укажите email для приглашения");
-    } catch {
-      // The ApiError envelope (which may carry backend detail / a magic-link
-      // payload) must not be dumped to the browser console — surface only the
-      // user-facing toast.
-      toast.error("Ошибка выдачи доступа");
+    } catch (err) {
+      // Отказ обязан быть виден. Сообщение сервера показывается пользователю (как
+      // во всех остальных формах); в консоль браузера конверт ApiError не пишется.
+      const detail = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error)?.message;
+      toast.error(detail ? `Ошибка выдачи доступа: ${detail}` : "Ошибка выдачи доступа");
     }
   }
 

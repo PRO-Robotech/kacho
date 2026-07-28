@@ -15,6 +15,7 @@
 // (api-gateway допускает анонимный доступ). Operations.principal_* — пусто/stub.
 
 import { api } from "./client";
+import { snakeToCamelPath } from "@shared/lib/update-mask";
 
 // ====== IAM-1 redesign: dotted tier / scope discriminators ======
 // Снятие путаницы «scope»/«tier»: Role.definitionTier несёт dotted tierType +
@@ -214,8 +215,10 @@ export interface GroupMemberList {
 // Публичная поверхность роли — набор правил `rules[]` (источник истины для UI).
 // Каждое Rule — однородный грант глаголов `verbs` над декартовым произведением
 // `module × resources`, опц. суженный `resource_names[]` (pin-by-id) XOR
-// `match_labels{}` (AND-equality). На проводе после конверсии ключи camelCase
-// (`resourceNames`/`matchLabels`); `module` — scalar (ровно один модуль на правило).
+// `match_labels{}` (AND-equality). На проводе имена ПОЛЕЙ camelCase
+// (`resourceNames`/`matchLabels`), а КЛЮЧИ самой карты — нет: это метки тенанта,
+// и `match_labels` входит в opaque-исключение конвертера наравне с `labels`.
+// `module` — scalar (ровно один модуль на правило).
 export interface Rule {
   module: string;
   resources: string[];
@@ -377,11 +380,25 @@ export interface ResourceRef {
 // target oneof: allInScope{} (широчайший явный opt-in — все объекты под anchor'ом,
 // включая будущие) XOR resources[] (per-object least-priv). REQUIRED — самый
 // широкий грант достижим ТОЛЬКО явным allInScope (нет sentinel-по-умолчанию).
+//
+// Форма per-object арма — ВЛОЖЕННАЯ: `AccessTarget.resources` это само сообщение
+// `AccessTargetResources{repeated ResourceRef resources}`, поэтому на проводе
+// `target.resources.resources[]`. Ровно это пишет buildCreateAccessBindingBody;
+// читать плоско — значит не увидеть ни одного per-object гранта.
 export type TargetKind = "allInScope" | "resources";
+export interface AccessTargetResources {
+  resources?: ResourceRef[];
+}
 export interface AccessBindingTarget {
   all_in_scope?: Record<string, never>;
   allInScope?: Record<string, never>;
-  resources?: ResourceRef[];
+  resources?: AccessTargetResources;
+}
+
+/** Объекты per-object арма (пусто, если арм не выбран). */
+export function targetResources(t: AccessBindingTarget | undefined): ResourceRef[] {
+  const rows = t?.resources?.resources;
+  return Array.isArray(rows) ? rows : [];
 }
 
 /** Дискриминатор target'а из его формы (allInScope vs resources[]). */
@@ -389,7 +406,7 @@ export function targetKind(
   t: AccessBindingTarget | undefined,
 ): TargetKind | undefined {
   if (!t) return undefined;
-  if (t.resources && t.resources.length > 0) return "resources";
+  if (targetResources(t).length > 0) return "resources";
   if (t.all_in_scope !== undefined || t.allInScope !== undefined)
     return "allInScope";
   return undefined;
@@ -459,28 +476,95 @@ export interface AssignableRolesList {
 // AccessBinding.Status (proto enum): PENDING / ACTIVE / REVOKED. Output-only.
 export type AccessBindingStatus = "PENDING" | "ACTIVE" | "REVOKED";
 
-// ====== Canonical scope + subjects (thin-binding) ======
-// ScopeRef — единый anchor-tier binding'а {tier, id}. GLOBAL на UI ≡ tier CLUSTER
-// (anchor cluster_kacho_root). Форма шлёт canonical scope_ref.
-export interface ScopeRef {
-  tier: Scope; // CLUSTER | ACCOUNT | PROJECT (reuse AccessBinding.Scope enum)
-  id: string; // anchor id (cluster_kacho_root | acc… | prj…)
-}
-
-// Subject — один грантополучатель thin-биндинга. `type` — proto enum SubjectType
-// (на проводе enum-имя SUBJECT_TYPE_USER/…); `id` — usr…/sva…/grp…. Биндинг несёт
-// subjects[] (1..32); per-subject независимый tuple-set / revoke.
+// ====== Canonical subjects (thin-binding) ======
+// Subject — один грантополучатель биндинга. `type` — enum SubjectType, и на
+// проводе это ИМЯ значения (SUBJECT_TYPE_USER/…): нижне-регистровую "user"
+// protojson не распознаёт и схлопывает в SUBJECT_TYPE_UNSPECIFIED. Сервер это
+// переживает — он выводит тип из префикса id (usr/sva/grp) — но полагаться на
+// восстановление того, что мы сами стёрли, нечего: посылаем имя значения.
+// Нижний регистр — только внутренний UI-тип (SubjectType). `id` — usr…/sva…/grp….
+// Биндинг несёт subjects[] (1..32); per-subject независимый tuple-set / revoke.
 export interface Subject {
-  type: SubjectType;
+  type: WireSubjectType;
   id: string;
 }
 
 // UpdateAccessBindingBody — единственное mutable-поле AccessBinding —
-// `deletion_protection`. Шлётся с update_mask=["deletion_protection"] для снятия
+// `deletion_protection`. Шлётся с update_mask=["deletionProtection"] для снятия
 // защиты перед удалением protected (owner-auto) binding'а.
 export interface UpdateAccessBindingBody {
   deletion_protection: boolean;
   update_mask: string;
+}
+
+// ====== CreateAccessBindingRequest body ======
+// Ground truth: proto/kacho/cloud/iam/v1/access_binding_service.proto.
+//   required : subjects[] (или legacy single subject_type/subject_id), role_id,
+//              scope_type (dotted), scope_id, target
+//   tombstone: теги 9/10/11 с именами target_ref / scope_ref
+//   renamed  : resource_type/resource_id → scope_type/scope_id (redesign-2026 F7)
+// Тело собирается здесь одним местом, потому что имя поля, которого в сообщении
+// нет, край выбрасывает молча (DiscardUnknown) — и грант «проходит», не создав
+// ничего.
+
+/** Anchor id кластерного singleton'а — единственная строка cluster-тира. */
+export const CLUSTER_SCOPE_ID = "cluster_kacho_root";
+
+/** Dotted `scope_type`, который принимает CreateAccessBindingRequest. */
+export const SCOPE_TYPE_BY_TIER: Record<AccessBindingScopeTier, IamScopeType> = {
+  CLUSTER: "iam.cluster",
+  ACCOUNT: "iam.account",
+  PROJECT: "iam.project",
+};
+
+export type AccessBindingScopeTier = "CLUSTER" | "ACCOUNT" | "PROJECT";
+
+/** Proto enum wire-form SubjectType (имя значения, не строчная строка). */
+export const SUBJECT_TYPE_ENUM: Record<SubjectType, WireSubjectType> = {
+  user: "SUBJECT_TYPE_USER",
+  service_account: "SUBJECT_TYPE_SERVICE_ACCOUNT",
+  group: "SUBJECT_TYPE_GROUP",
+};
+
+export type WireSubjectType = "SUBJECT_TYPE_USER" | "SUBJECT_TYPE_SERVICE_ACCOUNT" | "SUBJECT_TYPE_GROUP";
+
+export interface CreateAccessBindingInput {
+  /** 1..32 грантополучателей; каждый даёт независимый tuple-set / revoke. */
+  subjects: { type: WireSubjectType; id: string }[];
+  roleId: string;
+  scopeTier: AccessBindingScopeTier;
+  /** Anchor id; для CLUSTER подставляется singleton, если не задан. */
+  scopeId: string;
+  /** Пусто → allInScope{} (широчайший грант — только явным opt-in). */
+  targetResources?: ResourceRef[];
+}
+
+/**
+ * Тело POST /iam/v1/accessBindings ровно в форме CreateAccessBindingRequest.
+ *
+ * Бросает, если грант нечем адресовать (нет субъекта / роли / anchor'а): пустое
+ * обязательное поле уехало бы на сервер и вернулось 400 «Illegal argument …», а на
+ * пути без проверки `res.ok` — вообще молча.
+ */
+export function buildCreateAccessBindingBody(input: CreateAccessBindingInput): Record<string, unknown> {
+  const subjects = input.subjects.filter((s) => s && s.id);
+  if (subjects.length === 0) throw new Error("AccessBinding: не выбран ни один субъект");
+  if (!input.roleId) throw new Error("AccessBinding: не выбрана роль");
+  const scopeId = input.scopeTier === "CLUSTER" ? input.scopeId || CLUSTER_SCOPE_ID : input.scopeId;
+  if (!scopeId) throw new Error("AccessBinding: не выбрана область действия (anchor)");
+
+  const body: Record<string, unknown> = {
+    subjects,
+    role_id: input.roleId,
+    scope_type: SCOPE_TYPE_BY_TIER[input.scopeTier],
+    scope_id: scopeId,
+    // AccessTarget — oneof; per-object арм сам является сообщением
+    // AccessTargetResources{repeated ResourceRef resources}, отсюда вложенность.
+    target: input.targetResources?.length
+      ? { resources: { resources: input.targetResources.map((r) => ({ type: r.type, id: r.id })) } }
+      : { all_in_scope: {} },
+  };
+  return body;
 }
 
 // ====== SubjectPrivilege ======
@@ -629,7 +713,10 @@ export const iamApi = {
   ) =>
     api.update(`${IAM.accessBindings}/${encodeURIComponent(id)}`, {
       deletion_protection: deletionProtection,
-      update_mask: "deletion_protection",
+      // A FieldMask path travels as a STRING VALUE, so the request-side key
+      // transform never touches it — it has to be written the way protojson reads
+      // it, and protojson rejects any path containing "_" outright.
+      update_mask: snakeToCamelPath("deletion_protection"),
     } satisfies UpdateAccessBindingBody),
   /**
    * POST /iam/v1/accessBindings/{id}:revoke — IAM-1 F10 soft-revoke (async

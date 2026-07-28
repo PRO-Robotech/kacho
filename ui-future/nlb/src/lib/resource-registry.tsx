@@ -280,6 +280,25 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
     ],
     fields: [
+      {
+        // NLB CONTRACT: placement — ЕДИНСТВЕННЫЙ авторитетный ввод режима на Create.
+        // `type` / `placement_type` — производные output-only проекции; в запросе они
+        // оставлены ТОЛЬКО чтобы клиент, который их выставил, получил явный
+        // InvalidArgument. Форма их не шлёт.
+        name: "placement",
+        label: "Размещение",
+        type: "enum",
+        required: true,
+        immutable: true,
+        default: "EXTERNAL_REGIONAL",
+        options: [
+          { value: "EXTERNAL_REGIONAL", label: "EXTERNAL_REGIONAL — публичный, региональный" },
+          { value: "INTERNAL_REGIONAL", label: "INTERNAL_REGIONAL — внутренний, региональный" },
+          { value: "INTERNAL_ZONAL", label: "INTERNAL_ZONAL — внутренний, в одной зоне" },
+        ],
+        description:
+          "Режим балансировщика (immutable после Create). Пара «external + zonal» невыразима by construction — её в наборе нет.",
+      },
       FIELD_NAME_COMPUTE,
       FIELD_DESCRIPTION,
       {
@@ -290,36 +309,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         required: true,
         immutable: true,
         description: "Регион размещения балансировщика (immutable после Create). Cross-service ref → geo.Region.",
-      },
-      {
-        name: "type",
-        label: "Схема",
-        type: "enum",
-        required: true,
-        immutable: true,
-        default: "INTERNAL",
-        options: [
-          { value: "INTERNAL", label: "INTERNAL — приватный VIP" },
-          { value: "EXTERNAL", label: "EXTERNAL — публичный VIP" },
-        ],
-        description:
-          "Схема балансировщика (immutable после Create). INTERNAL — приватный VIP (из подсети или линк internal Address). EXTERNAL — публичный VIP (платформенный public или линк public Address).",
-      },
-      {
-        name: "placement_type",
-        label: "Размещение",
-        type: "enum",
-        required: true,
-        immutable: true,
-        default: "ZONAL",
-        // Размещение задаётся только для INTERNAL; для EXTERNAL неприменимо.
-        visibleWhen: { field: "type", equals: "INTERNAL" },
-        options: [
-          { value: "ZONAL", label: "ZONAL — unicast, одна зона" },
-          { value: "REGIONAL", label: "REGIONAL — anycast, регион" },
-        ],
-        description:
-          "Размещение INTERNAL-VIP (immutable после Create). ZONAL — unicast-VIP в одной зоне. REGIONAL — anycast-VIP региона (active-active из здоровых зон).",
       },
       {
         // Источник VIP-адреса (per-family oneof v4_source/v6_source) — интерактивный
@@ -372,8 +361,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       name: "",
       description: "",
       region_id: "",
-      type: "INTERNAL",
-      placement_type: "ZONAL",
+      placement: "EXTERNAL_REGIONAL",
       session_affinity: "FIVE_TUPLE",
       deletion_protection: false,
       disabled_announce_zones: [],
@@ -501,6 +489,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       {
         name: "target_port",
+        // Create-only: UpdateListenerRequest его не несёт.
+        immutable: true,
         label: "Порт на target",
         type: "int",
         required: false,
@@ -527,10 +517,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           "Целевая группа, принимающая трафик по умолчанию. TG должна быть приаттаджена к балансировщику (обычно задаётся в режиме редактирования, после attach).",
       },
       FIELD_LABELS,
-      FIELD_PROJECT_ID,
     ],
-    template: ({ projectId }) => ({
-      project_id: projectId ?? "",
+    template: () => ({
       name: "",
       description: "",
       load_balancer_id: "",
@@ -591,6 +579,19 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
     ],
     fields: [
+      {
+        // CreateTargetGroupRequest.port — required: единый backend-порт группы, на
+        // который таргеты получают перенаправленный трафик; эхо в
+        // Listener.resolvedBackendPort.
+        name: "port",
+        label: "Порт бэкенда",
+        type: "int",
+        required: true,
+        min: 1,
+        max: 65535,
+        default: 80,
+        description: "Порт, на котором таргеты принимают перенаправленный трафик (1..65535).",
+      },
       FIELD_NAME_COMPUTE,
       FIELD_DESCRIPTION,
       {
@@ -603,7 +604,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         description: "Регион размещения target-group (immutable после Create). Cross-service ref → geo.Region.",
       },
       {
-        name: "deregistration_delay_seconds",
+        // NLB-1c (B8): на проводе google.protobuf.Duration ("300s"); прежнее
+        // int-секундное имя deregistration_delay_seconds — reserved и на Create,
+        // и на Update. Форма редактирует число, sanitize/hydrate переводят.
+        name: "deregistration_delay",
         label: "Drain timeout (с)",
         type: "int",
         required: false,
@@ -614,15 +618,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
           "Сколько ждать прекращения трафика перед удалением target'а из активного набора (0..3600). По умолчанию 300.",
       },
       {
-        name: "health_check.name",
-        label: "HC: имя",
-        type: "string",
-        required: true,
-        description:
-          "Имя health-check'а (3-63 символа, lowercase + цифры + дефисы). Уникально в пределах target-group.",
-      },
-      {
-        name: "health_check.tcp_options.port",
+        name: "health_check.tcp.port",
         label: "HC: TCP-порт",
         type: "int",
         required: true,
@@ -675,10 +671,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       name: "",
       description: "",
       region_id: "",
-      deregistration_delay_seconds: 300,
+      port: 80,
+      deregistration_delay: "300s",
       health_check: {
-        name: "default-hc",
-        tcp_options: { port: 80 },
+        tcp: { port: 80 },
         interval: "2s",
         timeout: "1s",
         unhealthy_threshold: 2,
@@ -686,6 +682,32 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       },
       labels: {},
     }),
+    // Форма правит секунды числом; контракт принимает Duration.
+    sanitize: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      const raw = out["deregistration_delay"];
+      // Пусто → не шлём вовсе, чтобы сервер применил СВОЙ дефолт. 0 — легальное
+      // значение и обязано доехать явным "0s", а не быть спутанным с пустотой.
+      const n =
+        typeof raw === "number"
+          ? raw
+          : typeof raw === "string" && raw.trim() !== ""
+            ? Number(raw.endsWith("s") ? raw.slice(0, -1) : raw)
+            : NaN;
+      if (Number.isFinite(n)) out["deregistration_delay"] = `${n}s`;
+      else delete out["deregistration_delay"];
+      return out;
+    },
+    // Duration → число, которое рендерит int-поле формы.
+    hydrate: (obj) => {
+      const out: Record<string, unknown> = { ...obj };
+      const raw = out["deregistration_delay"];
+      if (typeof raw === "string" && raw.endsWith("s")) {
+        const n = Number(raw.slice(0, -1));
+        if (Number.isFinite(n)) out["deregistration_delay"] = n;
+      }
+      return out;
+    },
   },
 };
 
@@ -730,15 +752,16 @@ export function applyFieldDefaults(
   if (!fields) return obj;
   let cur = obj;
   for (const f of fields) {
-    if (f.type === "string" && f.default !== undefined) {
-      cur = setByPath(cur, f.name, getByPath(cur, f.name) ?? f.default);
-    } else if (f.type === "int" && f.default !== undefined) {
-      cur = setByPath(cur, f.name, getByPath(cur, f.name) ?? f.default);
-    } else if (f.type === "enum" && f.default !== undefined) {
-      cur = setByPath(cur, f.name, getByPath(cur, f.name) ?? f.default);
-    } else if (f.type === "bool" && f.default !== undefined) {
-      cur = setByPath(cur, f.name, getByPath(cur, f.name) ?? f.default);
-    }
+    // An update-only field is never seeded. On Create its message has no such
+    // field at all, so a default would ride out as an unknown key and be dropped
+    // in silence; on Update the value comes from the fetched resource, and seeding
+    // one would push a field the operator never touched into update_mask.
+    // ONE guard, ahead of the type split — a guard inside a per-type branch fixes
+    // the field that prompted it and leaves the next one of another type open.
+    if (f.updateOnly) continue;
+    if (f.type !== "string" && f.type !== "int" && f.type !== "enum" && f.type !== "bool") continue;
+    if (f.default === undefined) continue;
+    cur = setByPath(cur, f.name, getByPath(cur, f.name) ?? f.default);
   }
   return cur;
 }
