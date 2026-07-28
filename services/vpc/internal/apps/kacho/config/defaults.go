@@ -106,6 +106,12 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("authz.check-timeout", 2*time.Second)
 	v.SetDefault("authz.deny-rate-limit-per-sec", 100.0)
 	v.SetDefault("authz.cache-ttl", 5*time.Second)
+	// trusted-forwarder-sans — круг отправителей, которым разрешено передавать
+	// личность конечного пользователя. Пусто по умолчанию, и это НЕ «никому»:
+	// contract corelib сужает круг лишь на непустом списке. Поэтому боевая посадка
+	// на пустом списке не стартует (Validate), а значение задаёт чарт.
+	// ENV KACHO_VPC_AUTHZ__TRUSTED_FORWARDER_SANS (через запятую).
+	v.SetDefault("authz.trusted-forwarder-sans", []string{})
 
 	// per-object list-filter (per-page BatchCheck-filtered List).
 	// Default enabled=true: List<Resource> возвращает только доступные объекты

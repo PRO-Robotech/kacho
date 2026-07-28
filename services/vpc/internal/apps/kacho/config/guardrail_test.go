@@ -34,6 +34,9 @@ func prodCfg(mode Mode, iamEndpoint string, breakglass bool) Config {
 	// чтобы S4-тесты изолировали проверяемое ребро; geo-специфичные тесты явно
 	// снимают его через c.ExtAPI.Geo.TLS.Enable=false.
 	c.ExtAPI.Geo.TLS.Enable = true
+	// Круг отправителей чужой личности сужен — тоже чтобы изолировать проверяемый
+	// гард (S1c держит собственный набор случаев в trusted_forwarders_test.go).
+	c.AuthZ.TrustedForwarderSANs = []string{"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"}
 	return c
 }
 

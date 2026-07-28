@@ -62,7 +62,7 @@ func (u *ListNetworkInterfacesUseCase) Execute(ctx context.Context, subjectID st
 	if lerr != nil {
 		return nil, "", serviceerr.MapRepoErr(lerr)
 	}
-	if u.filter == nil || subjectID == authzfilter.SystemSubject || len(out) == 0 {
+	if u.filter == nil || len(out) == 0 {
 		return out, next, nil
 	}
 	visible, ferr := filterVisibleNetworkInterfaces(ctx, u.filter, subjectID, out)

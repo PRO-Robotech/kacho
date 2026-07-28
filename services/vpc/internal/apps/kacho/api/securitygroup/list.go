@@ -65,7 +65,7 @@ func (u *ListSecurityGroupsUseCase) Execute(ctx context.Context, subjectID strin
 	if lerr != nil {
 		return nil, "", lerr
 	}
-	if u.filter == nil || subjectID == authzfilter.SystemSubject || len(sgs) == 0 {
+	if u.filter == nil || len(sgs) == 0 {
 		return sgs, next, nil
 	}
 	visible, ferr := filterVisibleSecurityGroups(ctx, u.filter, subjectID, sgs)

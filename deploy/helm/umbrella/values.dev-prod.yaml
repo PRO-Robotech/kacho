@@ -90,6 +90,14 @@ vpc:
       sslMode: require
   authz:
     breakglass: false
+    # Круг отправителей чужой личности — см. values.prod.yaml (там же обоснование
+    # состава). Пустой список НЕ запрещает, а не сужает; боевая посадка на нём не
+    # стартует, поэтому профиль обязан его нести.
+    trustedForwarderSANs:
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-compute
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb
+      - spiffe://kacho.cloud/ns/kacho-vpc-operator/sa/kacho-vpc-operator
 
 # ─── kacho-compute (no public mode knob; posture = mTLS + authzIam + sslmode) ─
 # The compute chart DEFAULTS auth.mode=production (dev flips it to dev). Restore

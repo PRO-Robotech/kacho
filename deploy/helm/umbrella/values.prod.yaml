@@ -228,6 +228,21 @@ vpc:
   # FGA-filtered List ON + fail-closed, write-side FGA ON, breakglass OFF.
   authz:
     breakglass: false
+    # Кто вправе ПЕРЕДАВАТЬ личность конечного пользователя (x-kacho-principal-*)
+    # на оба листенера vpc. Пустой список НЕ означает «никому»: contract corelib
+    # сужает круг только на непустом, поэтому пустой означает «любой пир с
+    # сертификатом внутреннего CA может действовать от имени любого тенанта». vpc
+    # отказывается стартовать в боевом режиме на пустом списке; здесь он назван
+    # явно, чтобы правка чарта его не уронила молча.
+    #
+    # Список — по ФАКТИЧЕСКИМ отправителям, найденным по графу вызовов, а не по
+    # догадке «наверное только шлюз»: сузив до шлюза, мы сломали бы привязку
+    # интерфейса и резолв подсети у compute и резолв подсети/адреса/группы у nlb.
+    trustedForwarderSANs:
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway      # тенантский REST → :9090
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-compute          # NIC attach/detach, резолв подсети
+      - spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb              # резолв subnet/address/SG/NIC
+      - spiffe://kacho.cloud/ns/kacho-vpc-operator/sa/kacho-vpc-operator  # SEC-G sync-poll read
     listFilter:
       enabled: true
       failOpen: false

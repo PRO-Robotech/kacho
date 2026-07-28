@@ -60,6 +60,15 @@ authz:
   checkTimeout: 2s
   cacheTtl: 5s
   denyRateLimitPerSec: 100
+  # Кто вправе ПЕРЕДАВАТЬ личность конечного пользователя (x-kacho-principal-*).
+  # Пусто по умолчанию — и это НЕ «никому»: contract corelib сужает круг только на
+  # непустом списке, поэтому пусто означает «любой пир с сертификатом внутреннего
+  # CA может действовать от имени любого тенанта». Боевая посадка на пустом списке
+  # НЕ СТАРТУЕТ (config.Validate), поэтому значение обязан задать профиль стенда.
+  # Перечислять надо ВСЕХ фактических отправителей — их у vpc четыре
+  # (api-gateway, compute, nlb, vpc-operator); сужение до одного шлюза сломало бы
+  # привязку интерфейса и резолв подсети. Канонический список — values.prod.
+  trustedForwarderSANs: []
   # FGA-filtered List handlers. Production: enabled=true и authorizeEndpoint
   # указан явно. Dev: enabled=false → use-case'ы возвращают unfiltered list.
   listFilter:

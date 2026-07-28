@@ -63,7 +63,7 @@ func (u *ListGatewaysUseCase) Execute(ctx context.Context, subjectID string, f G
 	if lerr != nil {
 		return nil, "", serviceerr.MapRepoErr(lerr)
 	}
-	if u.filter == nil || subjectID == authzfilter.SystemSubject || len(gws) == 0 {
+	if u.filter == nil || len(gws) == 0 {
 		return gws, nextToken, nil
 	}
 	visible, ferr := filterVisibleGateways(ctx, u.filter, subjectID, gws)

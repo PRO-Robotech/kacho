@@ -25,6 +25,8 @@ func TestLoad_Defaults(t *testing.T) {
 	// authz.iam-endpoint (либо authn.mode=dev). Задаем endpoint, чтобы изолировать
 	// проверку дефолтов от guardrail-отказа.
 	cfg.AuthZ.IAMEndpoint = "kacho-iam.kacho.svc.cluster.local:9091"
+	// S1c prod-гардрейл: круг отправителей чужой личности обязан быть сужен.
+	cfg.AuthZ.TrustedForwarderSANs = []string{"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"}
 	// S1b prod-гардрейл: production требует защищённый sslmode. Дефолт "disable"
 	// (проверяется ниже) валиден только для dev — переопределяем, чтобы изолировать
 	// проверку загрузки дефолтов от sslmode-гардрейла.
@@ -72,6 +74,8 @@ func TestLoad_GeoEndpointDialHost(t *testing.T) {
 	require.NoError(t, err)
 	cfg.AuthZ.IAMEndpoint = "kacho-iam.kacho.svc.cluster.local:9091" // S1 prod-гардрейл
 	cfg.Repository.Postgres.SSLMode = "require"                      // S1b prod-гардрейл
+	// S1c prod-гардрейл: круг отправителей чужой личности обязан быть сужен.
+	cfg.AuthZ.TrustedForwarderSANs = []string{"spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"}
 	require.NoError(t, cfg.Validate())
 
 	require.Equal(t, "kacho-geo.kacho.svc.cluster.local:9090", cfg.ExtAPI.Geo.Endpoint,
@@ -98,6 +102,8 @@ authn:
   mode: production
 authz:
   iam-endpoint: iam.test:9091
+  trusted-forwarder-sans:
+    - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
 network:
   default-sg-inline: false
   project-cache:
@@ -385,6 +391,8 @@ authn:
   mode: production-strict
 authz:
   iam-endpoint: kacho-iam.kacho.svc.cluster.local:9091
+  trusted-forwarder-sans:
+    - spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway
 repository:
   postgres:
     url: postgres://u:p@h:5432/db

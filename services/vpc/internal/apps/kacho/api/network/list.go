@@ -46,7 +46,8 @@ func NewListNetworksUseCase(r Repo, filter ListFilter) *ListNetworksUseCase {
 //
 // Параметры:
 //   - subjectID: FGA-subject ("user:usr_xxx"). Пустой при включенном фильтре →
-//     fail-closed (no-leak); `authzfilter.SystemSubject` → доверенный passthrough.
+//     fail-closed (no-leak). Сквозного пропуска фильтра нет ни для какого значения
+//     субъекта — см. authzfilter/actions.go.
 func (u *ListNetworksUseCase) Execute(ctx context.Context, subjectID string, f NetworkFilter, p Pagination) ([]*kachorepo.NetworkRecord, string, error) {
 	if f.ProjectID == "" {
 		return nil, "", status.Error(codes.InvalidArgument, "project_id required")
@@ -70,7 +71,7 @@ func (u *ListNetworksUseCase) Execute(ctx context.Context, subjectID string, f N
 	if lerr != nil {
 		return nil, "", lerr
 	}
-	if u.filter == nil || subjectID == authzfilter.SystemSubject || len(nets) == 0 {
+	if u.filter == nil || len(nets) == 0 {
 		return nets, next, nil
 	}
 	visible, ferr := filterVisibleNetworks(ctx, u.filter, subjectID, nets)

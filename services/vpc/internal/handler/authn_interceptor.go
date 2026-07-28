@@ -64,6 +64,16 @@ const errAuthNRequired = "AuthN required (production mode): forward an authentic
 // api-gateway) и `SystemPrincipal()`-fallback `{system, bootstrap}` (principal-headers
 // не форвардились вовсе) — это «личность не предъявлена», а не «предъявлена
 // привилегированная».
+//
+// Признак — ТИП, а не перечень идентификаторов. Раньше отсекались два известных
+// значения id, поэтому любое третье при том же типе проходило как «личность
+// предъявлена» — а тип целиком назначает себе сам вызывающий. Тип `system` на
+// платформе и есть ярлык анонимности, поэтому им не может называться никто: ни
+// один законный путь его не шлёт (служебные вызовы несут
+// `user:system.<сервис>-<роль>`, см. pkg/auth.SystemPrincipalFor, межсервисный
+// вызов передаёт личность инициатора). Тот же предикат применяет
+// shared/pbconv.SubjectFromContext — иначе страж и извлечение субъекта отвечали
+// бы на один вопрос по-разному.
 func principalForwarded(ctx context.Context) bool {
 	p := operations.PrincipalFromContext(ctx)
 	if p.ID == "" || p.Type == "" {
@@ -72,7 +82,7 @@ func principalForwarded(ctx context.Context) bool {
 	if p.Type == "anonymous" || p.ID == "anonymous" {
 		return false
 	}
-	if p.Type == "system" && p.ID == "bootstrap" {
+	if p.Type == "system" {
 		return false
 	}
 	return true

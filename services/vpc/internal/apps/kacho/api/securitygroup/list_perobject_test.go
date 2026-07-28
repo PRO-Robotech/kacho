@@ -13,7 +13,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 )
@@ -195,20 +194,6 @@ func TestSecurityGroupListPerObject_NilFilterPassthrough(t *testing.T) {
 	sgs, _, err := uc.Execute(context.Background(), "user:usr_alice", SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, sgs, 2)
-}
-
-// явный system principal → нефильтрованный passthrough (без вызова FGA).
-func TestSecurityGroupListPerObject_SystemSubjectPassthrough(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedSecurityGroupsLabeled(t, kr, "prj_1", "enp_net1", "sg_a", "sg_b")
-
-	filter := &fakeListFilter{allowed: []string{"sg_a"}}
-	uc := NewListSecurityGroupsUseCase(kr, filter)
-
-	sgs, _, err := uc.Execute(context.Background(), authzfilter.SystemSubject, SecurityGroupFilter{ProjectID: "prj_1"}, Pagination{})
-	require.NoError(t, err)
-	assert.Len(t, sgs, 2)
-	assert.Equal(t, 0, filter.calls, "explicit system principal → passthrough, no authz call")
 }
 
 // project_id по-прежнему обязателен (контракт не меняется).

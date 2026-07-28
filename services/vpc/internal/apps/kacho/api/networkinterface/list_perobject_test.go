@@ -13,7 +13,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 )
@@ -194,20 +193,6 @@ func TestNetworkInterfaceListPerObject_NilFilterPassthrough(t *testing.T) {
 	nics, _, err := uc.Execute(context.Background(), "user:usr_alice", NetworkInterfaceFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, nics, 2)
-}
-
-// явный system principal → нефильтрованный passthrough (без вызова FGA).
-func TestNetworkInterfaceListPerObject_SystemSubjectPassthrough(t *testing.T) {
-	kr := kachomock.NewRepository()
-	seedNICsLabeled(t, kr, "prj_1", "e9b_sub1", "nic_a", "nic_b")
-
-	filter := &fakeListFilter{allowed: []string{"nic_a"}}
-	uc := NewListNetworkInterfacesUseCase(kr, filter)
-
-	nics, _, err := uc.Execute(context.Background(), authzfilter.SystemSubject, NetworkInterfaceFilter{ProjectID: "prj_1"}, Pagination{})
-	require.NoError(t, err)
-	assert.Len(t, nics, 2)
-	assert.Equal(t, 0, filter.calls, "explicit system principal → passthrough, no authz call")
 }
 
 // project_id по-прежнему обязателен (контракт не меняется).

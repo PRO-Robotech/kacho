@@ -73,7 +73,7 @@ func (u *ListAddressesUseCase) listFiltered(ctx context.Context, r Reader, subje
 	if lerr != nil {
 		return nil, "", serviceerr.MapRepoErr(lerr)
 	}
-	if u.filter == nil || subjectID == authzfilter.SystemSubject || len(addrs) == 0 {
+	if u.filter == nil || len(addrs) == 0 {
 		return addrs, next, nil
 	}
 	visible, ferr := filterVisibleAddresses(ctx, u.filter, subjectID, addrs)
