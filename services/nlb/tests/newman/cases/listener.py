@@ -523,29 +523,30 @@ CASES.append(Case(
 
 # RETIRED: LST-CR-VAL-INTERNAL-NO-SUBNET — the subject left the product, it did not break.
 #
-# Sub-phase 8.1 moved the VIP from the Listener to the LoadBalancer, and `subnet_id`
-# left `CreateListenerRequest` with it (listener_service.proto:147 `reserved 8, 9` —
-# `ip_version`, `address_spec`; `Listener` itself reserves 12-15; migration 0028 dropped
-# the five columns behind them, and `domain.Listener` carries none). What the case sent
-# was therefore an ORDINARY, VALID listener create, which the service accepts and is
-# specified to accept: `subnet_id` is not "missing", it is not a field.
+# Sub-phase 8.1 moved the VIP from the Listener to the LoadBalancer, and `subnet_id` left
+# `CreateListenerRequest` with it (`reserved 8, 9` / `reserved "ip_version",
+# "address_spec"`; migration 0028 dropped the columns behind them, and `domain.Listener`
+# carries none). What the case sent was therefore an ORDINARY, VALID listener create,
+# which the service accepts and is specified to accept: `subnet_id` is not "missing", it
+# is not a field.
 #
 # It could not be repaired by tightening the assertion. `oneOf([403, 200, 400])` hid the
 # problem — the create returned 200 and the case passed — but demanding a refusal would
 # have made it permanently RED against correct behaviour, i.e. a "known failing" entry
 # waiting to be born, and those outlive their fixes and start lying about the product
-# (testing.md §«E2E НИКОГДА не пропускаются»). A case with no subject is retired, not
-# maintained.
+# (testing.md §«E2E НИКОГДА не пропускаются»). A case with no subject is retired.
 #
-# WHERE THE RULE LIVES NOW. An INTERNAL load balancer names its VIP source on the
-# PARENT, via `v4Source`/`v6Source` (`{subnetId}` | `{addressId}` | `{public}`), and that
-# is where "you must say where the VIP comes from" is enforced and asserted:
-#   * NLB-CR-VAL-SOURCE-REQUIRED     — INTERNAL LB with no source → refused;
-#   * NLB-CR-VAL-PLACEMENT-MISMATCH  — source incoherent with the placement → refused;
-#   * NLB-CR-VAL-ADDRESS-FAMILY-SLOT — the family/slot rule (see LST-CR-VAL-IPV-UNKNOWN
-#                                      below, retired for the same reason).
-# All three live in `cases/load-balancer.py`. The positive listener-on-INTERNAL-parent
-# path stays covered by LST-CR-CRUD-INTERNAL above.
+# WHERE THE RULE LIVES NOW — AND IT HAD TO BE WRITTEN, NOT POINTED AT. "You must say
+# where the VIP comes from" is enforced on the PARENT: LoadBalancer.Create refuses a body
+# declaring no source for either family (vip_source.go, "load balancer must declare a vip
+# source for at least one ip family"; sync, before any Operation exists; unit 8.1-19).
+# The first version of this note cited `NLB-CR-VAL-SOURCE-REQUIRED` as the successor —
+# and that case DID NOT EXIST anywhere in the tree. A retirement justified by a successor
+# that does not exist is a deletion with a footnote, so the successor was written:
+# NLB-CR-VAL-SOURCE-REQUIRED now lives in cases/load-balancer.py and is red-proven.
+# Alongside it, NLB-CR-VAL-PLACEMENT-MISMATCH covers a source incoherent with the
+# placement. The positive listener-on-INTERNAL-parent path stays covered by
+# LST-CR-CRUD-INTERNAL above.
 
 CASES.append(Case(
     id="LST-CR-VAL-NAME-REGEX",
@@ -943,21 +944,53 @@ CASES.append(Case(
     ],
 ))
 
-# RETIRED: LST-CR-VAL-IPV-UNKNOWN — subject-less for the same reason as
-# LST-CR-VAL-INTERNAL-NO-SUBNET above (see that note for the full argument).
+# LST-CR-VAL-IPV-UNKNOWN — NOT retired: RE-POINTED at the control it was always about.
 #
-# `ip_version` is `reserved 8` on `CreateListenerRequest` and `reserved 12` on
-# `Listener`; the listener inherits the parent LB's per-family anycast VIP and has no
-# address of its own. The body left behind after the field was removed sends no
-# `ipVersion` at all — it is a plain valid create — so "unknown enum value" is not a
-# statement about this request any more. Note the case had already been hollow BEFORE
-# the field was dropped: an unknown enum name is discarded by the edge, so the request
-# the service saw never carried IPV9 either way.
+# `ip_version` is gone from the contract (`reserved 8`), so the field the case named no
+# longer exists and its body was a plain valid create asserted as `oneOf([403, 200, 400])`
+# — every possible answer. The first pass at this file retired it alongside
+# LST-CR-VAL-INTERNAL-NO-SUBNET, on the stated grounds that "an unknown enum name is
+# discarded by the edge anyway". That was true until 2026-07-29 and is now FALSE, which
+# is exactly why retiring it was the wrong call: the edge gained the opposite behaviour
+# days earlier (gateway/internal/restmux/strict_enum.go). protojson used to discard an
+# unknown enum VALUE NAME as silently as an unknown key, leaving the service a zero value
+# it could not tell from "unset" — so the caller was answered success for a setting the
+# server never made. Unknown KEYS are still discarded on purpose (that boundary carries
+# the update-mask clause), so re-pointing at a dead field would still test nothing.
 #
-# The family rule it was reaching for is now a LoadBalancer property and is asserted
-# there: NLB-CR-VAL-ADDRESS-FAMILY-SLOT in `cases/load-balancer.py` pins which family
-# may occupy which VIP slot, alongside NLB-CR-VAL-SOURCE-REQUIRED /
-# NLB-CR-VAL-PLACEMENT-MISMATCH.
+# But the question — "is a value outside the enum dictionary refused?" — is about the
+# request vocabulary, not about VIP sources, and `protocol` is a LIVE required enum on
+# CreateListenerRequest. So the case asks it there. Retiring the only case-id whose
+# subject is that control, while the control had no black-box probe anywhere in the tree,
+# would have removed end-to-end coverage of something landed days before.
+
+CASES.append(Case(
+    id="LST-CR-VAL-IPV-UNKNOWN",
+    title="Create with an out-of-dictionary enum value (protocol) → InvalidArgument at the edge",
+    classes=["VAL"], priority="P1",
+    steps=[
+        *_setup_lb("enum-unk"),
+        # The value is a string absent from `Listener.Protocol`
+        # (PROTOCOL_UNSPECIFIED | TCP | UDP). Numeric forms stay legal — proto3 enums are
+        # open and narrowing them would change the contract rather than fix a defect — so
+        # only the string dictionary is asserted.
+        #
+        # No read-your-writes wrapper: this is a body-parse refusal at the edge, so the
+        # request never reaches the per-object authz gate and there is no fresh-tuple
+        # window to absorb.
+        Step(name="cr-enum-unk", method="POST", path=_LST_BASE,
+             body={"loadBalancerId": "{{nlbId}}", "name": "enum-{{runId}}",
+                   "protocol": "DOES_NOT_EXIST", "port": 80, "targetPort": 8080},
+             test_script=[
+                 "pm.environment.unset('opId');",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                 "pm.test('names the field whose enum value was refused', () => "
+                 "  pm.expect((pm.response.json().message || '')).to.include("
+                 "    'invalid value for enum field protocol'));",
+             ]),
+        *_cleanup_lb(),
+    ],
+))
 
 CASES.append(Case(
     id="LST-CR-CRUD-IPV6",

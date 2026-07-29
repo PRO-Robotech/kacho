@@ -157,7 +157,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya357",
+          "name": "setup-materialize-lb-rya359",
           "request": {
             "method": "GET",
             "header": [
@@ -206,7 +206,7 @@
           ]
         },
         {
-          "name": "cr-lst-rya358",
+          "name": "cr-lst-rya360",
           "request": {
             "method": "POST",
             "header": [
@@ -328,7 +328,7 @@
           ]
         },
         {
-          "name": "get-st359",
+          "name": "get-st361",
           "request": {
             "method": "GET",
             "header": [
@@ -385,7 +385,7 @@
           ]
         },
         {
-          "name": "get-lb-vip-st360",
+          "name": "get-lb-vip-st362",
           "request": {
             "method": "GET",
             "header": [
@@ -846,7 +846,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya361",
+          "name": "setup-materialize-lb-rya363",
           "request": {
             "method": "GET",
             "header": [
@@ -895,7 +895,7 @@
           ]
         },
         {
-          "name": "cr-byo-rya362",
+          "name": "cr-byo-rya364",
           "request": {
             "method": "POST",
             "header": [
@@ -1017,7 +1017,7 @@
           ]
         },
         {
-          "name": "get-byo-rya363",
+          "name": "get-byo-rya365",
           "request": {
             "method": "GET",
             "header": [
@@ -1074,7 +1074,7 @@
           ]
         },
         {
-          "name": "get-lb-byo-vip-st364",
+          "name": "get-lb-byo-vip-st366",
           "request": {
             "method": "GET",
             "header": [
@@ -1537,7 +1537,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr365",
+          "name": "setup-lb-cr367",
           "request": {
             "method": "POST",
             "header": [
@@ -1673,7 +1673,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr365');",
+                  "  pm.execution.setNextRequest('setup-lb-cr367');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -1685,7 +1685,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya366",
+          "name": "setup-materialize-lb-rya368",
           "request": {
             "method": "GET",
             "header": [
@@ -1734,7 +1734,7 @@
           ]
         },
         {
-          "name": "cr-int-rya367",
+          "name": "cr-int-rya369",
           "request": {
             "method": "POST",
             "header": [
@@ -2262,7 +2262,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr368",
+          "name": "setup-lb-cr370",
           "request": {
             "method": "POST",
             "header": [
@@ -2398,7 +2398,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr368');",
+                  "  pm.execution.setNextRequest('setup-lb-cr370');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -2410,7 +2410,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya369",
+          "name": "setup-materialize-lb-rya371",
           "request": {
             "method": "GET",
             "header": [
@@ -2459,7 +2459,7 @@
           ]
         },
         {
-          "name": "cr-rya370",
+          "name": "cr-rya372",
           "request": {
             "method": "POST",
             "header": [
@@ -2581,7 +2581,7 @@
           ]
         },
         {
-          "name": "get-rya371",
+          "name": "get-rya373",
           "request": {
             "method": "GET",
             "header": [
@@ -3040,7 +3040,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr372",
+          "name": "setup-lb-cr374",
           "request": {
             "method": "POST",
             "header": [
@@ -3176,7 +3176,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr372');",
+                  "  pm.execution.setNextRequest('setup-lb-cr374');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -3188,7 +3188,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya373",
+          "name": "setup-materialize-lb-rya375",
           "request": {
             "method": "GET",
             "header": [
@@ -3585,7 +3585,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr374",
+          "name": "setup-lb-cr376",
           "request": {
             "method": "POST",
             "header": [
@@ -3721,7 +3721,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr374');",
+                  "  pm.execution.setNextRequest('setup-lb-cr376');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -3733,7 +3733,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya375",
+          "name": "setup-materialize-lb-rya377",
           "request": {
             "method": "GET",
             "header": [
@@ -3782,7 +3782,7 @@
           ]
         },
         {
-          "name": "cr-rya376",
+          "name": "cr-rya378",
           "request": {
             "method": "POST",
             "header": [
@@ -3904,7 +3904,7 @@
           ]
         },
         {
-          "name": "upd-rya377",
+          "name": "upd-rya379",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4426,7 +4426,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya378",
+          "name": "setup-materialize-lb-rya380",
           "request": {
             "method": "GET",
             "header": [
@@ -4475,7 +4475,7 @@
           ]
         },
         {
-          "name": "cr-rya379",
+          "name": "cr-rya381",
           "request": {
             "method": "POST",
             "header": [
@@ -4597,7 +4597,7 @@
           ]
         },
         {
-          "name": "get-lb-vip-before-st380",
+          "name": "get-lb-vip-before-st382",
           "request": {
             "method": "GET",
             "header": [
@@ -4653,7 +4653,7 @@
           ]
         },
         {
-          "name": "del-rya381",
+          "name": "del-rya383",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5111,7 +5111,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr382",
+          "name": "setup-lb-cr384",
           "request": {
             "method": "POST",
             "header": [
@@ -5247,7 +5247,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr382');",
+                  "  pm.execution.setNextRequest('setup-lb-cr384');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -5259,7 +5259,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya383",
+          "name": "setup-materialize-lb-rya385",
           "request": {
             "method": "GET",
             "header": [
@@ -5308,7 +5308,7 @@
           ]
         },
         {
-          "name": "cr-rya384",
+          "name": "cr-rya386",
           "request": {
             "method": "POST",
             "header": [
@@ -5430,7 +5430,7 @@
           ]
         },
         {
-          "name": "lops-rya385",
+          "name": "lops-rya387",
           "request": {
             "method": "GET",
             "header": [
@@ -5889,7 +5889,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr386",
+          "name": "setup-lb-cr388",
           "request": {
             "method": "POST",
             "header": [
@@ -6025,7 +6025,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr386');",
+                  "  pm.execution.setNextRequest('setup-lb-cr388');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -6037,7 +6037,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya387",
+          "name": "setup-materialize-lb-rya389",
           "request": {
             "method": "GET",
             "header": [
@@ -6086,7 +6086,7 @@
           ]
         },
         {
-          "name": "cr-p0-rya388",
+          "name": "cr-p0-rya390",
           "request": {
             "method": "POST",
             "header": [
@@ -6458,7 +6458,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr389",
+          "name": "setup-lb-cr391",
           "request": {
             "method": "POST",
             "header": [
@@ -6594,7 +6594,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr389');",
+                  "  pm.execution.setNextRequest('setup-lb-cr391');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -6606,7 +6606,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya390",
+          "name": "setup-materialize-lb-rya392",
           "request": {
             "method": "GET",
             "header": [
@@ -6655,7 +6655,7 @@
           ]
         },
         {
-          "name": "cr-po-rya391",
+          "name": "cr-po-rya393",
           "request": {
             "method": "POST",
             "header": [
@@ -7030,7 +7030,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr392",
+          "name": "setup-lb-cr394",
           "request": {
             "method": "POST",
             "header": [
@@ -7166,7 +7166,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr392');",
+                  "  pm.execution.setNextRequest('setup-lb-cr394');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -7178,7 +7178,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya393",
+          "name": "setup-materialize-lb-rya395",
           "request": {
             "method": "GET",
             "header": [
@@ -7227,7 +7227,7 @@
           ]
         },
         {
-          "name": "cr-pn-rya394",
+          "name": "cr-pn-rya396",
           "request": {
             "method": "POST",
             "header": [
@@ -7602,7 +7602,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr395",
+          "name": "setup-lb-cr397",
           "request": {
             "method": "POST",
             "header": [
@@ -7738,7 +7738,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr395');",
+                  "  pm.execution.setNextRequest('setup-lb-cr397');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -7750,7 +7750,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya396",
+          "name": "setup-materialize-lb-rya398",
           "request": {
             "method": "GET",
             "header": [
@@ -7799,7 +7799,7 @@
           ]
         },
         {
-          "name": "cr-http-rya397",
+          "name": "cr-http-rya399",
           "request": {
             "method": "POST",
             "header": [
@@ -8174,7 +8174,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr398",
+          "name": "setup-lb-cr400",
           "request": {
             "method": "POST",
             "header": [
@@ -8310,7 +8310,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr398');",
+                  "  pm.execution.setNextRequest('setup-lb-cr400');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -8322,7 +8322,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya399",
+          "name": "setup-materialize-lb-rya401",
           "request": {
             "method": "GET",
             "header": [
@@ -8371,7 +8371,7 @@
           ]
         },
         {
-          "name": "cr-bad-name-rya400",
+          "name": "cr-bad-name-rya402",
           "request": {
             "method": "POST",
             "header": [
@@ -8746,7 +8746,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr401",
+          "name": "setup-lb-cr403",
           "request": {
             "method": "POST",
             "header": [
@@ -8882,7 +8882,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr401');",
+                  "  pm.execution.setNextRequest('setup-lb-cr403');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -8894,7 +8894,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya402",
+          "name": "setup-materialize-lb-rya404",
           "request": {
             "method": "GET",
             "header": [
@@ -8943,7 +8943,7 @@
           ]
         },
         {
-          "name": "cr-p1-rya403",
+          "name": "cr-p1-rya405",
           "request": {
             "method": "POST",
             "header": [
@@ -9471,7 +9471,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr404",
+          "name": "setup-lb-cr406",
           "request": {
             "method": "POST",
             "header": [
@@ -9607,7 +9607,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr404');",
+                  "  pm.execution.setNextRequest('setup-lb-cr406');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -9619,7 +9619,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya405",
+          "name": "setup-materialize-lb-rya407",
           "request": {
             "method": "GET",
             "header": [
@@ -9668,7 +9668,7 @@
           ]
         },
         {
-          "name": "cr-pmax-rya406",
+          "name": "cr-pmax-rya408",
           "request": {
             "method": "POST",
             "header": [
@@ -10251,7 +10251,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr407",
+          "name": "setup-lb-cr409",
           "request": {
             "method": "POST",
             "header": [
@@ -10387,7 +10387,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr407');",
+                  "  pm.execution.setNextRequest('setup-lb-cr409');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -10399,7 +10399,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya408",
+          "name": "setup-materialize-lb-rya410",
           "request": {
             "method": "GET",
             "header": [
@@ -10448,7 +10448,7 @@
           ]
         },
         {
-          "name": "cr-1-rya409",
+          "name": "cr-1-rya411",
           "request": {
             "method": "POST",
             "header": [
@@ -10570,7 +10570,7 @@
           ]
         },
         {
-          "name": "cr-2-dup-rya410",
+          "name": "cr-2-dup-rya412",
           "request": {
             "method": "POST",
             "header": [
@@ -11095,7 +11095,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr411",
+          "name": "setup-lb-cr413",
           "request": {
             "method": "POST",
             "header": [
@@ -11231,7 +11231,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr411');",
+                  "  pm.execution.setNextRequest('setup-lb-cr413');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -11243,7 +11243,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya412",
+          "name": "setup-materialize-lb-rya414",
           "request": {
             "method": "GET",
             "header": [
@@ -11292,7 +11292,7 @@
           ]
         },
         {
-          "name": "cr-likely-fail-rya413",
+          "name": "cr-likely-fail-rya415",
           "request": {
             "method": "POST",
             "header": [
@@ -11837,7 +11837,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr414",
+          "name": "setup-lb-cr416",
           "request": {
             "method": "POST",
             "header": [
@@ -11973,7 +11973,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr414');",
+                  "  pm.execution.setNextRequest('setup-lb-cr416');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -11985,7 +11985,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya415",
+          "name": "setup-materialize-lb-rya417",
           "request": {
             "method": "GET",
             "header": [
@@ -12034,7 +12034,7 @@
           ]
         },
         {
-          "name": "cr-rya416",
+          "name": "cr-rya418",
           "request": {
             "method": "POST",
             "header": [
@@ -12263,7 +12263,7 @@
           ]
         },
         {
-          "name": "upd-default-tg-mismatch-rya417",
+          "name": "upd-default-tg-mismatch-rya419",
           "request": {
             "method": "PATCH",
             "header": [
@@ -13095,7 +13095,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr418",
+          "name": "setup-lb-cr420",
           "request": {
             "method": "POST",
             "header": [
@@ -13231,7 +13231,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr418');",
+                  "  pm.execution.setNextRequest('setup-lb-cr420');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -13243,7 +13243,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya419",
+          "name": "setup-materialize-lb-rya421",
           "request": {
             "method": "GET",
             "header": [
@@ -13292,7 +13292,7 @@
           ]
         },
         {
-          "name": "cr-digit-rya420",
+          "name": "cr-digit-rya422",
           "request": {
             "method": "POST",
             "header": [
@@ -13667,7 +13667,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr421",
+          "name": "setup-lb-cr423",
           "request": {
             "method": "POST",
             "header": [
@@ -13803,7 +13803,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr421');",
+                  "  pm.execution.setNextRequest('setup-lb-cr423');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -13815,7 +13815,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya422",
+          "name": "setup-materialize-lb-rya424",
           "request": {
             "method": "GET",
             "header": [
@@ -13864,7 +13864,7 @@
           ]
         },
         {
-          "name": "cr-hyp-rya423",
+          "name": "cr-hyp-rya425",
           "request": {
             "method": "POST",
             "header": [
@@ -14239,7 +14239,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr424",
+          "name": "setup-lb-cr426",
           "request": {
             "method": "POST",
             "header": [
@@ -14375,7 +14375,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr424');",
+                  "  pm.execution.setNextRequest('setup-lb-cr426');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -14387,7 +14387,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya425",
+          "name": "setup-materialize-lb-rya427",
           "request": {
             "method": "GET",
             "header": [
@@ -14436,7 +14436,7 @@
           ]
         },
         {
-          "name": "cr-tp-0-rya426",
+          "name": "cr-tp-0-rya428",
           "request": {
             "method": "POST",
             "header": [
@@ -14811,7 +14811,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr427",
+          "name": "setup-lb-cr429",
           "request": {
             "method": "POST",
             "header": [
@@ -14947,7 +14947,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr427');",
+                  "  pm.execution.setNextRequest('setup-lb-cr429');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -14959,7 +14959,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya428",
+          "name": "setup-materialize-lb-rya430",
           "request": {
             "method": "GET",
             "header": [
@@ -15008,7 +15008,7 @@
           ]
         },
         {
-          "name": "cr-tp-o-rya429",
+          "name": "cr-tp-o-rya431",
           "request": {
             "method": "POST",
             "header": [
@@ -15257,8 +15257,8 @@
       ]
     },
     {
-      "name": "LST-CR-CRUD-IPV6 — Create with ip_version=IPV6 → OK",
-      "description": "class:CRUD | priority:P1",
+      "name": "LST-CR-VAL-IPV-UNKNOWN — Create with an out-of-dictionary enum value (protocol) → InvalidArgument at the edge",
+      "description": "class:VAL | priority:P1",
       "item": [
         {
           "name": "setup-subnet",
@@ -15283,7 +15283,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-ipv6-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-enum-unk-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15383,7 +15383,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr430",
+          "name": "setup-lb-cr432",
           "request": {
             "method": "POST",
             "header": [
@@ -15405,7 +15405,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-ipv6-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-enum-unk-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -15519,7 +15519,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr430');",
+                  "  pm.execution.setNextRequest('setup-lb-cr432');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -15531,7 +15531,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya431",
+          "name": "setup-materialize-lb-rya433",
           "request": {
             "method": "GET",
             "header": [
@@ -15580,7 +15580,566 @@
           ]
         },
         {
-          "name": "cr-ipv6-rya432",
+          "name": "cr-enum-unk",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/listeners",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "listeners"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"enum-{{runId}}\", \"protocol\": \"DOES_NOT_EXIST\", \"port\": 80, \"targetPort\": 8080}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.unset('opId');",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('names the field whose enum value was refused', () =>   pm.expect((pm.response.json().message || '')).to.include(    'invalid value for enum field protocol'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-lb",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "networkLoadBalancers",
+                "{{nlbId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-114",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-lst-subnet",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/subnets/{{lstSubnetId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "subnets",
+                "{{lstSubnetId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
+                  "pm.environment.unset('opId');",
+                  "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
+                  "pm.environment.unset('lstSubnetId');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-115",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "LST-CR-CRUD-IPV6 — Create with ip_version=IPV6 → OK",
+      "description": "class:CRUD | priority:P1",
+      "item": [
+        {
+          "name": "setup-subnet",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/subnets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "subnets"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-ipv6-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var __seq = parseInt(pm.environment.get('_cidrSeq') || '0', 10) + 1;",
+                  "pm.environment.set('_cidrSeq', String(__seq));",
+                  "var __run = (pm.environment.get('runId') || 'x0');",
+                  "var __h = 0; for (var i = 0; i < __run.length; i++) { __h = ((__h << 5) - __h + __run.charCodeAt(i)) | 0; }",
+                  "__h = __h & 0x7fffffff;",
+                  "var __oct2 = 16 + (__h % 220);",
+                  "var __oct3 = ((Math.floor(__h / 256) % 256) + __seq) % 256;",
+                  "pm.environment.set('_subnetCidr', '10.' + __oct2 + '.' + __oct3 + '.0/24');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.unset('lstSubnetId');",
+                  "if (pm.response.code === 200) {",
+                  "  const j = pm.response.json();",
+                  "  if (j.id) pm.environment.set('opId', j.id);",
+                  "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
+                  "} else { pm.environment.unset('opId'); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-116",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "setup-lb-cr434",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "networkLoadBalancers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-ipv6-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the cross-service peer-visibility window",
+                  "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
+                  "// SELF only while the sync create is a transient '<peer> not found' rejection.",
+                  "if (pm.environment.get('_crRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_crRetryCount', '0');",
+                  "  pm.environment.set('_crRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
+                  "let _crNotFound = false;",
+                  "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
+                  "if (_crNotFound && _crc < 25) {",
+                  "  pm.environment.set('_crRetryCount', String(_crc + 1));",
+                  "  const _crd = Date.now(); while (Date.now() - _crd < 500) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_crRetryCount');",
+                  "pm.environment.unset('_crRetryStarted');",
+                  "pm.environment.unset('nlbId');",
+                  "if (pm.environment.get('lstSubnetId')) {",
+                  "  pm.test('parent INTERNAL LB created', () => pm.expect(pm.response.code).to.eql(200));",
+                  "  const j = pm.response.json();",
+                  "  if (j.id) pm.environment.set('opId', j.id);",
+                  "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
+                  "} else { pm.environment.unset('opId'); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-117",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found|allocation unavailable/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr434');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "setup-materialize-lb-rya435",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "networkLoadBalancers",
+                "{{nlbId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cr-ipv6-rya436",
           "request": {
             "method": "POST",
             "header": [
@@ -15648,7 +16207,7 @@
           ]
         },
         {
-          "name": "poll-op-114",
+          "name": "poll-op-118",
           "request": {
             "method": "GET",
             "header": [
@@ -15742,7 +16301,7 @@
           ]
         },
         {
-          "name": "poll-op-115",
+          "name": "poll-op-119",
           "request": {
             "method": "GET",
             "header": [
@@ -15835,7 +16394,7 @@
           ]
         },
         {
-          "name": "poll-op-116",
+          "name": "poll-op-120",
           "request": {
             "method": "GET",
             "header": [
@@ -15927,7 +16486,7 @@
           ]
         },
         {
-          "name": "poll-op-117",
+          "name": "poll-op-121",
           "request": {
             "method": "GET",
             "header": [
@@ -16051,783 +16610,7 @@
           ]
         },
         {
-          "name": "poll-op-118",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "if (j.error) {",
-                  "  pm.environment.unset('lstSubnetId');",
-                  "}",
-                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "setup-lb-cr433",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "networkLoadBalancers"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-pp2-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the cross-service peer-visibility window",
-                  "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
-                  "// SELF only while the sync create is a transient '<peer> not found' rejection.",
-                  "if (pm.environment.get('_crRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_crRetryCount', '0');",
-                  "  pm.environment.set('_crRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
-                  "let _crNotFound = false;",
-                  "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
-                  "if (_crNotFound && _crc < 25) {",
-                  "  pm.environment.set('_crRetryCount', String(_crc + 1));",
-                  "  const _crd = Date.now(); while (Date.now() - _crd < 500) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_crRetryCount');",
-                  "pm.environment.unset('_crRetryStarted');",
-                  "pm.environment.unset('nlbId');",
-                  "if (pm.environment.get('lstSubnetId')) {",
-                  "  pm.test('parent INTERNAL LB created', () => pm.expect(pm.response.code).to.eql(200));",
-                  "  const j = pm.response.json();",
-                  "  if (j.id) pm.environment.set('opId', j.id);",
-                  "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-119",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "if (j.error) {",
-                  "  pm.environment.unset('nlbId');",
-                  "}",
-                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
-                  "// peer was visible to the sync precheck but still stale to the worker's",
-                  "// own peer call, so the failure surfaced on the Operation, not on the",
-                  "// create response. Discriminated on the peer-miss text — a capacity",
-                  "// refusal reads differently and is NEVER retried.",
-                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_opRedriveCount', '0');",
-                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
-                  "}",
-                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
-                  "let _opTransient = false;",
-                  "try { _opTransient = !!j.error && /not found|allocation unavailable/i.test(j.error.message || ''); } catch (e) {}",
-                  "if (_opTransient && _orc < 8) {",
-                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
-                  "  pm.environment.unset('_crRetryStarted');",
-                  "  pm.environment.unset('_crRetryCount');",
-                  "  pm.environment.unset('opId');",
-                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr433');",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_opRedriveCount');",
-                  "pm.environment.unset('_opRedriveStarted');",
-                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "setup-materialize-lb-rya434",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "networkLoadBalancers",
-                "{{nlbId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cr-pp2-rya435",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/listeners",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "listeners"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"pp2-{{runId}}\", \"protocol\": \"TCP\", \"port\": 90, \"targetPort\": 9090, \"proxyProtocolV2\": true}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.metadata && j.metadata.listenerId);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('lstId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-120",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "get-rya436",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/listeners/{{lstId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "listeners",
-                "{{lstId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('proxy_protocol_v2 persisted', () =>   pm.expect(pm.response.json().proxyProtocolV2).to.eql(true));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup-lst",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/listeners/{{lstId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "listeners",
-                "{{lstId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-121",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup-lb",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "networkLoadBalancers",
-                "{{nlbId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
           "name": "poll-op-122",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup-lst-subnet",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/{{lstSubnetId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "subnets",
-                "{{lstSubnetId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
-                  "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
-                  "pm.environment.unset('lstSubnetId');"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-123",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "LST-UPD-CRUD-DEFAULT-TG-CLEAR — Update default_target_group_id to \"\" → cleared",
-      "description": "class:CRUD | class:STATE | priority:P2",
-      "item": [
-        {
-          "name": "setup-subnet",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "subnets"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-def-tg-clear-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "var __seq = parseInt(pm.environment.get('_cidrSeq') || '0', 10) + 1;",
-                  "pm.environment.set('_cidrSeq', String(__seq));",
-                  "var __run = (pm.environment.get('runId') || 'x0');",
-                  "var __h = 0; for (var i = 0; i < __run.length; i++) { __h = ((__h << 5) - __h + __run.charCodeAt(i)) | 0; }",
-                  "__h = __h & 0x7fffffff;",
-                  "var __oct2 = 16 + (__h % 220);",
-                  "var __oct3 = ((Math.floor(__h / 256) % 256) + __seq) % 256;",
-                  "pm.environment.set('_subnetCidr', '10.' + __oct2 + '.' + __oct3 + '.0/24');"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.environment.unset('lstSubnetId');",
-                  "if (pm.response.code === 200) {",
-                  "  const j = pm.response.json();",
-                  "  if (j.id) pm.environment.set('opId', j.id);",
-                  "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-124",
           "request": {
             "method": "GET",
             "header": [
@@ -16907,7 +16690,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-def-tg-clear-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-pp2-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -16952,7 +16735,7 @@
           ]
         },
         {
-          "name": "poll-op-125",
+          "name": "poll-op-123",
           "request": {
             "method": "GET",
             "header": [
@@ -17082,7 +16865,7 @@
           ]
         },
         {
-          "name": "cr-rya439",
+          "name": "cr-pp2-rya439",
           "request": {
             "method": "POST",
             "header": [
@@ -17104,7 +16887,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"dtgc-{{runId}}\", \"protocol\": \"TCP\", \"port\": 91, \"targetPort\": 9091}",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"pp2-{{runId}}\", \"protocol\": \"TCP\", \"port\": 90, \"targetPort\": 9090, \"proxyProtocolV2\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -17150,7 +16933,7 @@
           ]
         },
         {
-          "name": "poll-op-126",
+          "name": "poll-op-124",
           "request": {
             "method": "GET",
             "header": [
@@ -17204,126 +16987,7 @@
           ]
         },
         {
-          "name": "upd-clear-rya440",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/listeners/{{lstId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "listeners",
-                "{{lstId}}"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"updateMask\": \"defaultTargetGroupId\", \"defaultTargetGroupId\": \"\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-127",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "pm.test('operation succeeded', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "get-after-clear-rya441",
+          "name": "get-rya440",
           "request": {
             "method": "GET",
             "header": [
@@ -17367,10 +17031,7 @@
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('the target group reference is actually cleared', () => {",
-                  "  const j = pm.response.json();",
-                  "  pm.expect(j.targetGroupId || j.defaultTargetGroupId || '', pm.response.text()).to.eql('');",
-                  "});"
+                  "pm.test('proxy_protocol_v2 persisted', () =>   pm.expect(pm.response.json().proxyProtocolV2).to.eql(true));"
                 ]
               }
             }
@@ -17416,7 +17077,7 @@
           ]
         },
         {
-          "name": "poll-op-128",
+          "name": "poll-op-125",
           "request": {
             "method": "GET",
             "header": [
@@ -17509,7 +17170,7 @@
           ]
         },
         {
-          "name": "poll-op-129",
+          "name": "poll-op-126",
           "request": {
             "method": "GET",
             "header": [
@@ -17601,7 +17262,905 @@
           ]
         },
         {
+          "name": "poll-op-127",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "LST-UPD-CRUD-DEFAULT-TG-CLEAR — Update default_target_group_id to \"\" → cleared",
+      "description": "class:CRUD | class:STATE | priority:P2",
+      "item": [
+        {
+          "name": "setup-subnet",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/subnets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "subnets"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"networkId\": \"{{existingNetworkId}}\", \"name\": \"lst-sub-def-tg-clear-{{runId}}\", \"ipv4CidrPrimary\": \"{{_subnetCidr}}\", \"zoneId\": \"{{existingZoneId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var __seq = parseInt(pm.environment.get('_cidrSeq') || '0', 10) + 1;",
+                  "pm.environment.set('_cidrSeq', String(__seq));",
+                  "var __run = (pm.environment.get('runId') || 'x0');",
+                  "var __h = 0; for (var i = 0; i < __run.length; i++) { __h = ((__h << 5) - __h + __run.charCodeAt(i)) | 0; }",
+                  "__h = __h & 0x7fffffff;",
+                  "var __oct2 = 16 + (__h % 220);",
+                  "var __oct3 = ((Math.floor(__h / 256) % 256) + __seq) % 256;",
+                  "pm.environment.set('_subnetCidr', '10.' + __oct2 + '.' + __oct3 + '.0/24');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.unset('lstSubnetId');",
+                  "if (pm.response.code === 200) {",
+                  "  const j = pm.response.json();",
+                  "  if (j.id) pm.environment.set('opId', j.id);",
+                  "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
+                  "} else { pm.environment.unset('opId'); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-128",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "setup-lb-cr441",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "networkLoadBalancers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"lst-def-tg-clear-{{runId}}\", \"placement\": \"INTERNAL_ZONAL\", \"v4Source\": {\"subnetId\": \"{{lstSubnetId}}\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the cross-service peer-visibility window",
+                  "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
+                  "// SELF only while the sync create is a transient '<peer> not found' rejection.",
+                  "if (pm.environment.get('_crRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_crRetryCount', '0');",
+                  "  pm.environment.set('_crRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
+                  "let _crNotFound = false;",
+                  "try { _crNotFound = [400, 404].includes(pm.response.code) && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
+                  "if (_crNotFound && _crc < 25) {",
+                  "  pm.environment.set('_crRetryCount', String(_crc + 1));",
+                  "  const _crd = Date.now(); while (Date.now() - _crd < 500) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_crRetryCount');",
+                  "pm.environment.unset('_crRetryStarted');",
+                  "pm.environment.unset('nlbId');",
+                  "if (pm.environment.get('lstSubnetId')) {",
+                  "  pm.test('parent INTERNAL LB created', () => pm.expect(pm.response.code).to.eql(200));",
+                  "  const j = pm.response.json();",
+                  "  if (j.id) pm.environment.set('opId', j.id);",
+                  "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
+                  "} else { pm.environment.unset('opId'); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-129",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "// bounded ASYNC-lane read-your-writes re-drive of the create step: the",
+                  "// peer was visible to the sync precheck but still stale to the worker's",
+                  "// own peer call, so the failure surfaced on the Operation, not on the",
+                  "// create response. Discriminated on the peer-miss text — a capacity",
+                  "// refusal reads differently and is NEVER retried.",
+                  "if (pm.environment.get('_opRedriveStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_opRedriveCount', '0');",
+                  "  pm.environment.set('_opRedriveStarted', pm.info.requestName);",
+                  "}",
+                  "const _orc = parseInt(pm.environment.get('_opRedriveCount') || '0', 10);",
+                  "let _opTransient = false;",
+                  "try { _opTransient = !!j.error && /not found|allocation unavailable/i.test(j.error.message || ''); } catch (e) {}",
+                  "if (_opTransient && _orc < 8) {",
+                  "  pm.environment.set('_opRedriveCount', String(_orc + 1));",
+                  "  pm.environment.unset('_crRetryStarted');",
+                  "  pm.environment.unset('_crRetryCount');",
+                  "  pm.environment.unset('opId');",
+                  "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
+                  "  pm.execution.setNextRequest('setup-lb-cr441');",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_opRedriveCount');",
+                  "pm.environment.unset('_opRedriveStarted');",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "setup-materialize-lb-rya442",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "networkLoadBalancers",
+                "{{nlbId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cr-rya443",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/listeners",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "listeners"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"loadBalancerId\": \"{{nlbId}}\", \"name\": \"dtgc-{{runId}}\", \"protocol\": \"TCP\", \"port\": 91, \"targetPort\": 9091}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.listenerId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('lstId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "poll-op-130",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "upd-clear-rya444",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/listeners/{{lstId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "listeners",
+                "{{lstId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"defaultTargetGroupId\", \"defaultTargetGroupId\": \"\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-131",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "pm.test('operation succeeded', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-after-clear-rya445",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/listeners/{{lstId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "listeners",
+                "{{lstId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('the target group reference is actually cleared', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.targetGroupId || j.defaultTargetGroupId || '', pm.response.text()).to.eql('');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-lst",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/listeners/{{lstId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "listeners",
+                "{{lstId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-132",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-lb",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "networkLoadBalancers",
+                "{{nlbId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-133",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-lst-subnet",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/subnets/{{lstSubnetId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "subnets",
+                "{{lstSubnetId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
+                  "pm.environment.unset('opId');",
+                  "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
+                  "pm.environment.unset('lstSubnetId');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-134",
           "request": {
             "method": "GET",
             "header": [
@@ -17811,7 +18370,7 @@
           ]
         },
         {
-          "name": "poll-op-131",
+          "name": "poll-op-135",
           "request": {
             "method": "GET",
             "header": [
@@ -17869,7 +18428,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr442",
+          "name": "setup-lb-cr446",
           "request": {
             "method": "POST",
             "header": [
@@ -17936,7 +18495,7 @@
           ]
         },
         {
-          "name": "poll-op-132",
+          "name": "poll-op-136",
           "request": {
             "method": "GET",
             "header": [
@@ -18005,7 +18564,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr442');",
+                  "  pm.execution.setNextRequest('setup-lb-cr446');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -18017,7 +18576,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya443",
+          "name": "setup-materialize-lb-rya447",
           "request": {
             "method": "GET",
             "header": [
@@ -18174,7 +18733,7 @@
           ]
         },
         {
-          "name": "poll-op-133",
+          "name": "poll-op-137",
           "request": {
             "method": "GET",
             "header": [
@@ -18266,7 +18825,7 @@
           ]
         },
         {
-          "name": "poll-op-134",
+          "name": "poll-op-138",
           "request": {
             "method": "GET",
             "header": [
@@ -18494,7 +19053,7 @@
           ]
         },
         {
-          "name": "poll-op-135",
+          "name": "poll-op-139",
           "request": {
             "method": "GET",
             "header": [
@@ -18552,7 +19111,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr444",
+          "name": "setup-lb-cr448",
           "request": {
             "method": "POST",
             "header": [
@@ -18619,7 +19178,7 @@
           ]
         },
         {
-          "name": "poll-op-136",
+          "name": "poll-op-140",
           "request": {
             "method": "GET",
             "header": [
@@ -18688,7 +19247,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr444');",
+                  "  pm.execution.setNextRequest('setup-lb-cr448');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -18700,7 +19259,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya445",
+          "name": "setup-materialize-lb-rya449",
           "request": {
             "method": "GET",
             "header": [
@@ -18749,7 +19308,7 @@
           ]
         },
         {
-          "name": "cr-udp-rya446",
+          "name": "cr-udp-rya450",
           "request": {
             "method": "POST",
             "header": [
@@ -18817,7 +19376,7 @@
           ]
         },
         {
-          "name": "poll-op-137",
+          "name": "poll-op-141",
           "request": {
             "method": "GET",
             "header": [
@@ -18910,7 +19469,7 @@
           ]
         },
         {
-          "name": "poll-op-138",
+          "name": "poll-op-142",
           "request": {
             "method": "GET",
             "header": [
@@ -19003,7 +19562,7 @@
           ]
         },
         {
-          "name": "poll-op-139",
+          "name": "poll-op-143",
           "request": {
             "method": "GET",
             "header": [
@@ -19095,7 +19654,7 @@
           ]
         },
         {
-          "name": "poll-op-140",
+          "name": "poll-op-144",
           "request": {
             "method": "GET",
             "header": [
@@ -19662,7 +20221,7 @@
           ]
         },
         {
-          "name": "poll-op-141",
+          "name": "poll-op-145",
           "request": {
             "method": "GET",
             "header": [
@@ -19720,7 +20279,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr447",
+          "name": "setup-lb-cr451",
           "request": {
             "method": "POST",
             "header": [
@@ -19787,7 +20346,7 @@
           ]
         },
         {
-          "name": "poll-op-142",
+          "name": "poll-op-146",
           "request": {
             "method": "GET",
             "header": [
@@ -19856,7 +20415,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr447');",
+                  "  pm.execution.setNextRequest('setup-lb-cr451');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -19868,7 +20427,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya448",
+          "name": "setup-materialize-lb-rya452",
           "request": {
             "method": "GET",
             "header": [
@@ -19966,7 +20525,7 @@
           ]
         },
         {
-          "name": "poll-op-143",
+          "name": "poll-op-147",
           "request": {
             "method": "GET",
             "header": [
@@ -20146,7 +20705,7 @@
           ]
         },
         {
-          "name": "poll-op-144",
+          "name": "poll-op-148",
           "request": {
             "method": "GET",
             "header": [
@@ -20239,7 +20798,7 @@
           ]
         },
         {
-          "name": "poll-op-145",
+          "name": "poll-op-149",
           "request": {
             "method": "GET",
             "header": [
@@ -20331,7 +20890,7 @@
           ]
         },
         {
-          "name": "poll-op-146",
+          "name": "poll-op-150",
           "request": {
             "method": "GET",
             "header": [
@@ -20455,7 +21014,7 @@
           ]
         },
         {
-          "name": "poll-op-147",
+          "name": "poll-op-151",
           "request": {
             "method": "GET",
             "header": [
@@ -20513,7 +21072,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr449",
+          "name": "setup-lb-cr453",
           "request": {
             "method": "POST",
             "header": [
@@ -20580,7 +21139,7 @@
           ]
         },
         {
-          "name": "poll-op-148",
+          "name": "poll-op-152",
           "request": {
             "method": "GET",
             "header": [
@@ -20649,7 +21208,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr449');",
+                  "  pm.execution.setNextRequest('setup-lb-cr453');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -20661,7 +21220,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya450",
+          "name": "setup-materialize-lb-rya454",
           "request": {
             "method": "GET",
             "header": [
@@ -20710,7 +21269,7 @@
           ]
         },
         {
-          "name": "cr-rya451",
+          "name": "cr-rya455",
           "request": {
             "method": "POST",
             "header": [
@@ -20778,7 +21337,7 @@
           ]
         },
         {
-          "name": "poll-op-149",
+          "name": "poll-op-153",
           "request": {
             "method": "GET",
             "header": [
@@ -20881,7 +21440,7 @@
           ]
         },
         {
-          "name": "poll-op-150",
+          "name": "poll-op-154",
           "request": {
             "method": "GET",
             "header": [
@@ -20980,7 +21539,7 @@
           ]
         },
         {
-          "name": "get-after-refused-repoint-rya452",
+          "name": "get-after-refused-repoint-rya456",
           "request": {
             "method": "GET",
             "header": [
@@ -21072,7 +21631,7 @@
           ]
         },
         {
-          "name": "poll-op-151",
+          "name": "poll-op-155",
           "request": {
             "method": "GET",
             "header": [
@@ -21165,7 +21724,7 @@
           ]
         },
         {
-          "name": "poll-op-152",
+          "name": "poll-op-156",
           "request": {
             "method": "GET",
             "header": [
@@ -21258,7 +21817,7 @@
           ]
         },
         {
-          "name": "poll-op-153",
+          "name": "poll-op-157",
           "request": {
             "method": "GET",
             "header": [
@@ -21350,7 +21909,7 @@
           ]
         },
         {
-          "name": "poll-op-154",
+          "name": "poll-op-158",
           "request": {
             "method": "GET",
             "header": [

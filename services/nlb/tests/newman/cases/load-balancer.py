@@ -2353,6 +2353,37 @@ CASES.append(Case(
 ))
 
 # 8.1-11 — placement mismatch: ZONAL LB + REGIONAL subnet source.
+# 8.1-19 — a load balancer must say where its VIP comes from. This case exists because
+# LST-CR-VAL-INTERNAL-NO-SUBNET was retired: the listener lost `subnet_id` when the VIP
+# moved to the parent, and the rule "you must name a VIP source" moved with it. The
+# retirement note in cases/listener.py cited this case-id as the successor while it did
+# not exist — so a rule the product enforces, and that a P0 case used to reach for, had
+# no black-box coverage at all. It does now.
+#
+# Sync, before any Operation exists: buildFamilySpecs finds no source for either family
+# and refuses (vip_source.go, "load balancer must declare a vip source for at least one
+# ip family"; unit-locked as 8.1-19 in create_test.go). The message is contract and is
+# asserted, so an unrelated refusal cannot stand in for this one. Fixture-free — the body
+# is deliberately incomplete, nothing needs seeding.
+CASES.append(Case(
+    id="NLB-CR-VAL-SOURCE-REQUIRED",
+    title="Create with no v4Source and no v6Source → InvalidArgument "
+          "'load balancer must declare a vip source for at least one ip family' (Verifies 8.1-19)",
+    classes=["VAL", "NEG"], priority="P0",
+    steps=[
+        Step(name="cr-no-source", method="POST", path=_CREATE_BASE,
+             body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
+                   "placement": "INTERNAL_ZONAL", "name": "no-src-{{runId}}"},
+             test_script=[
+                 "pm.environment.unset('opId');",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                 "pm.test('names the missing vip source', () => "
+                 "  pm.expect(pm.response.json().message || '').to.eql("
+                 "    'load balancer must declare a vip source for at least one ip family'));",
+             ]),
+    ],
+))
+
 CASES.append(Case(
     id="NLB-CR-VAL-PLACEMENT-MISMATCH",
     title="ZONAL LB with a REGIONAL subnet source → InvalidArgument placement mismatch (Verifies 8.1-11)",
