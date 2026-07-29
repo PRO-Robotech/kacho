@@ -25,11 +25,25 @@ test-short:
 vet:
 	go vet ./...
 
-# audit-list-filter — CI-гейт listauthz.
-# Refuses to ship a public List<Resource> handler without listauthz wiring.
-# Whitelist admin-only handlers via --allow=<resource>.
+# audit-list-filter — CI gate for the public List<Resource> surface: a caller must
+# receive only the rows it may see (per-object, kacho-iam AuthorizeService.BatchCheck
+# over the page just read), not every row of its project.
+#
+# The check parses the tree, so a resource is recognised by what its declaration IS —
+# a package declaring `List` on the transport type — and never by which file holds
+# it; see tools/listfiltergate for the whole contract.
+#
+# The run always prints its census (files, packages, resources, checked,
+# whitelisted): "zero findings" must be distinguishable from "zero read", so a tree
+# the gate could not open is a finding, not an OK. The addresspool exclusion lives in
+# tools/audit-list-filter.sh next to the reason for it, and an exclusion with nothing
+# left to exclude is a finding too.
+#
+# Invoked by CI as `make -C services/vpc audit-list-filter`; the gate's own detection
+# logic is locked by services/vpc/tools/audit_list_filter_test.go, which runs it
+# against the real tree through this same wrapper.
 audit-list-filter:
-	@./tools/audit-list-filter.sh --allow=addresspool
+	@./tools/audit-list-filter.sh
 
 lint:
 	golangci-lint run ./...
