@@ -44,6 +44,21 @@ Persistent-RED кейсы — тест корректен, но GREEN требу
 |---|---|---|---|---|
 | `SG-NET-08-RULE-SAME-NETWORK-OK` | security-group | flagged → rpc-implementer (issue pending) | Правило с SG-target (`securityGroupId`) обязано отдаваться в `Get/List`-ответе SG (`rule.securityGroupId` == целевой SG) | `dto/toproto/security_group.go::securityGroup.toPb` мапит в `SecurityGroupRule.Target` **только** ветку `CidrBlocks`; ветки `SecurityGroupId` и `PredefinedTarget` (домен несёт `r.SecurityGroupID`/`r.PredefinedTarget`) не сериализуются → `Target=nil` → `rule.securityGroupId=undefined`. Signature: `expected [ undefined ] to include '<sgId>'`. Фикс (не в test-only PR, ban #13): добавить обе ветки в `toPb` + regression. |
 | `SG-NET-09-RULE-SAME-NETWORK-UPDATERULES-OK` | security-group | flagged → rpc-implementer (issue pending) | То же через `UpdateRules` (PATCH `…/rules`): добавленное SG-target-правило видно в `Get` с `securityGroupId` | Та же прод-первопричина — `toPb` роняет `SecurityGroupId`/`PredefinedTarget` target. RED до прод-фикса `toPb`. |
+| `SG-URL-VAL-PORT-NEG` | security-group | [#103](https://github.com/PRO-Robotech/kacho/issues/103) | Правило с портом ниже допустимой границы обязано отвергаться на входе | Диапазон портов не проверяется НИГДЕ: ни `validateSGRule` (она смотрит направление/описание/метки/CIDR), ни доменная модель, ни ограничение БД (правила — одно JSONB-поле). Правило сохраняется как есть, ответ 200. RED до продуктового решения (границы, «любой порт», соотношение имени и номера протокола). |
+| `SG-URL-VAL-PORT-OVER-65535` | security-group | [#103](https://github.com/PRO-Robotech/kacho/issues/103) | То же для верхней границы порта | Та же первопричина. |
+| `SG-URL-VAL-PROTOCOL-UNKNOWN` | security-group | [#103](https://github.com/PRO-Robotech/kacho/issues/103) | Правило с несуществующим именем протокола обязано отвергаться на входе | Имя протокола не проверяется; законный набор имён — продуктовое решение (регистр, протоколы без портов, связь с числовым номером). RED до фикса. |
+
+
+> **Три кейса выше стали красными 2026-07-29 — и это ожидаемо.** До этого все пять
+> кейсов набора `SG-URL-VAL-*` стояли под утверждением `oneOf([200, 400])` с меткой
+> «rejected sync or async»: оно принимало и приём правила, и отказ в нём, поэтому
+> ни один отрицательный кейс не мог упасть — независимо от того, что делает продукт.
+> Утверждения сведены к одному исходу. Два из пяти при этом зелёные:
+> `SG-URL-VAL-PORT-ANY-MINUS-1` (правило принимается) и `SG-URL-VAL-DIRECTION-UNKNOWN`
+> (неизвестное значение перечисления направления отвергается разбором тела на краю).
+> Оставшиеся три краснеют на реальном расхождении — это давление на продуктовый фикс,
+> а не регресс тестов. Подгонять утверждение под текущее поведение запрещено: тогда
+> дефект стал бы задокументированным контрактом.
 
 > **`SG-DEL-NEG-NIC-ATTACHED` ([#27](https://github.com/PRO-Robotech/kacho-vpc/issues/27)) — FIXED.**
 > `SG.Delete` SG'а, прилинкованного к NIC через `security_group_ids[]`, теперь отвергается

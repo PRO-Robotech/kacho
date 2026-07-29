@@ -568,11 +568,22 @@ CASES.append(Case(
 # v11 edge cases
 CASES.append(Case(
     id="ADR-LST-PAGE-NEGATIVE-SIZE",
-    title="List с pageSize=-1 → 400 или 200",
+    # Размер страницы вне [0..1000] ОТВЕРГАЕТСЯ, а не подменяется умолчанием
+    # (конвенция pagination). Исход ровно один, поэтому и утверждение одно:
+    # прежнее `oneOf([200, 400])` под заголовком «rejected or default» проходило
+    # и при отказе, и при его отсутствии — то есть не отделяло соблюдение
+    # контракта от нарушения. Проверка детерминирована: у прогона есть субъект,
+    # поэтому ранний выход по пустому субъекту не срабатывает и валидация
+    # страницы выполняется всегда.
+    title="List с pageSize=-1 → 400 InvalidArgument (отвергается, не clamp\'ится)",
     classes=["BVA", "VAL"], priority="P2",
     steps=[Step(name="lst-neg", method="GET",
                 path="/vpc/v1/addresses?projectId={{_suiteProjectId}}&pageSize=-1",
-                test_script=["pm.test('rejected or default', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"])],
+                test_script=[
+                    *assert_status(400),
+                    *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                    "pm.test('names the offending field', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('page_size'));",
+                ])],
 ))
 
 CASES.append(Case(

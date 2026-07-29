@@ -212,21 +212,27 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="IPL-CR-VAL-MISSING-NAME",
-    title="Create без name → текущее: 200 (name не валидируется в InternalAddressPoolService.Create)",
+    # Имя пула не обязательно: контракт имени разрешительный (пустая строка
+    # проходит domain.RcNameVPC.Validate), и Create его не требует. Исход один.
+    #
+    # Прежнее утверждение принимало и 200, и 400 — то есть не могло упасть ни при
+    # каком из двух ответов, — а ветка `else` подставляла заведомо несуществующий
+    # идентификатор, чтобы последующая уборка «тоже прошла». Кейс шёл дальше по
+    # несозданному ресурсу и зеленел на промахе.
+    title="Create без name → 200 (имя не обязательно; пустое имя разрешено контрактом)",
     classes=["VAL", "CONF"], priority="P2",
     steps=[
-        # Create НЕ требует name (kacho-admin RPC). Если поведение изменится на
-        # 400 — этот кейс это поймает.
         Step(name="cr-no-name", method="POST", path=POOLS, internal=True,
              body={"kind": "EXTERNAL_PUBLIC", "zoneId": "{{zoneC}}",
                    "v4CidrBlocks": ["203.0.113.0/24"], "v6CidrBlocks": []},
              test_script=[
-                 "pm.test('accepted (200) or rejected (400)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                 "if (pm.response.code === 200) { pm.environment.set('_noNamePoolId', pm.response.json().id); }",
-                 "else { pm.environment.set('_noNamePoolId', 'aplnonexistent999999'); }",
+                 *assert_status(200),
+                 "pm.test('pool id returned', () => pm.expect(pm.response.json().id, JSON.stringify(pm.response.json())).to.be.a('string').and.not.empty);",
+                 *save_from_response("j.id", "_noNamePoolId"),
+                 "pm.test('name comes back empty', () => pm.expect(pm.response.json().name || '').to.eql(''));",
              ]),
         Step(name="cleanup", method="DELETE", path=POOLS + "/{{_noNamePoolId}}", internal=True,
-             test_script=["pm.test('cleanup', () => pm.expect(pm.response.code).to.be.oneOf([200, 404, 400]));"]),
+             test_script=[*assert_status(200)]),
     ],
 ))
 

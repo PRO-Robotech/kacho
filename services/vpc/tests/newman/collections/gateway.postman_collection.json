@@ -165,7 +165,7 @@
           ]
         },
         {
-          "name": "poll-op-975",
+          "name": "poll-op-971",
           "request": {
             "method": "GET",
             "header": [
@@ -307,7 +307,7 @@
           ]
         },
         {
-          "name": "poll-op-976",
+          "name": "poll-op-972",
           "request": {
             "method": "GET",
             "header": [
@@ -708,7 +708,7 @@
           ]
         },
         {
-          "name": "poll-op-977",
+          "name": "poll-op-973",
           "request": {
             "method": "GET",
             "header": [
@@ -836,7 +836,7 @@
           ]
         },
         {
-          "name": "poll-op-978",
+          "name": "poll-op-974",
           "request": {
             "method": "GET",
             "header": [
@@ -1176,7 +1176,7 @@
           ]
         },
         {
-          "name": "poll-op-979",
+          "name": "poll-op-975",
           "request": {
             "method": "GET",
             "header": [
@@ -1291,7 +1291,7 @@
           ]
         },
         {
-          "name": "poll-op-980",
+          "name": "poll-op-976",
           "request": {
             "method": "GET",
             "header": [
@@ -1382,7 +1382,7 @@
           ]
         },
         {
-          "name": "poll-op-981",
+          "name": "poll-op-977",
           "request": {
             "method": "GET",
             "header": [
@@ -1692,7 +1692,7 @@
           ]
         },
         {
-          "name": "poll-op-982",
+          "name": "poll-op-978",
           "request": {
             "method": "GET",
             "header": [
@@ -1798,7 +1798,7 @@
           ]
         },
         {
-          "name": "poll-op-983",
+          "name": "poll-op-979",
           "request": {
             "method": "GET",
             "header": [
@@ -1900,7 +1900,7 @@
           ]
         },
         {
-          "name": "poll-op-984",
+          "name": "poll-op-980",
           "request": {
             "method": "GET",
             "header": [
@@ -1995,7 +1995,7 @@
       ]
     },
     {
-      "name": "GW-CR-BVA-NAME-EMPTY — Create с empty name → VPC permissive (200) или 400",
+      "name": "GW-CR-BVA-NAME-EMPTY — Create с empty name → 200 (пустое имя разрешено контрактом)",
       "description": "class:BVA | class:VAL | priority:P2",
       "item": [
         {
@@ -2035,7 +2035,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('accepted or rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
                 ]
               }
             }
@@ -2151,7 +2156,7 @@
       ]
     },
     {
-      "name": "GW-CR-VAL-NAME-UPPERCASE — Create с UPPERCASE name → VPC permissive (200) или 400",
+      "name": "GW-CR-VAL-NAME-UPPERCASE — Create с UPPERCASE name → 200 (заглавные разрешены контрактом)",
       "description": "class:VAL | priority:P2",
       "item": [
         {
@@ -2191,7 +2196,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('accepted or rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
                 ]
               }
             }
@@ -3046,7 +3056,7 @@
           ]
         },
         {
-          "name": "poll-op-985",
+          "name": "poll-op-981",
           "request": {
             "method": "GET",
             "header": [
@@ -3161,7 +3171,7 @@
           ]
         },
         {
-          "name": "poll-op-986",
+          "name": "poll-op-982",
           "request": {
             "method": "GET",
             "header": [
@@ -3317,7 +3327,7 @@
           ]
         },
         {
-          "name": "poll-op-987",
+          "name": "poll-op-983",
           "request": {
             "method": "GET",
             "header": [
@@ -3427,7 +3437,7 @@
           ]
         },
         {
-          "name": "poll-op-988",
+          "name": "poll-op-984",
           "request": {
             "method": "GET",
             "header": [
@@ -3542,7 +3552,7 @@
           ]
         },
         {
-          "name": "poll-op-989",
+          "name": "poll-op-985",
           "request": {
             "method": "GET",
             "header": [
@@ -3698,7 +3708,7 @@
           ]
         },
         {
-          "name": "poll-op-990",
+          "name": "poll-op-986",
           "request": {
             "method": "GET",
             "header": [
@@ -3808,7 +3818,7 @@
           ]
         },
         {
-          "name": "poll-op-991",
+          "name": "poll-op-987",
           "request": {
             "method": "GET",
             "header": [
@@ -3923,7 +3933,7 @@
           ]
         },
         {
-          "name": "poll-op-992",
+          "name": "poll-op-988",
           "request": {
             "method": "GET",
             "header": [
@@ -4080,7 +4090,7 @@
           ]
         },
         {
-          "name": "poll-op-993",
+          "name": "poll-op-989",
           "request": {
             "method": "GET",
             "header": [
@@ -4323,7 +4333,7 @@
       ]
     },
     {
-      "name": "GW-AUTHZ-EMPTY-PROJECT-HEADER — List с пустым x-kacho-project-id header → текущее: 200 (dev mode)",
+      "name": "GW-AUTHZ-EMPTY-PROJECT-HEADER — Заголовок x-kacho-project-id от клиента не задаёт scope → 200 по своему проекту",
       "description": "class:AUTHZ | priority:P1",
       "item": [
         {
@@ -4350,11 +4360,21 @@
           },
           "event": [
             {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.request.headers.upsert({key: 'x-kacho-project-id', value: '{{garbageRmId}}'});"
+                ]
+              }
+            },
+            {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('OK in dev or PermissionDenied in production', () => pm.expect(pm.response.code).to.be.oneOf([200, 403, 401]));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('client-asserted project header is not honoured as scope', () => pm.expect(pm.response.json()).to.be.an('object'));"
                 ]
               }
             }
@@ -4420,7 +4440,7 @@
           ]
         },
         {
-          "name": "poll-op-994",
+          "name": "poll-op-990",
           "request": {
             "method": "GET",
             "header": [
@@ -4535,7 +4555,7 @@
           ]
         },
         {
-          "name": "poll-op-995",
+          "name": "poll-op-991",
           "request": {
             "method": "GET",
             "header": [
@@ -4695,7 +4715,7 @@
           ]
         },
         {
-          "name": "poll-op-996",
+          "name": "poll-op-992",
           "request": {
             "method": "GET",
             "header": [
@@ -4805,7 +4825,7 @@
           ]
         },
         {
-          "name": "poll-op-997",
+          "name": "poll-op-993",
           "request": {
             "method": "GET",
             "header": [
@@ -4931,7 +4951,7 @@
           ]
         },
         {
-          "name": "poll-op-998",
+          "name": "poll-op-994",
           "request": {
             "method": "GET",
             "header": [
@@ -5041,7 +5061,7 @@
           ]
         },
         {
-          "name": "poll-op-999",
+          "name": "poll-op-995",
           "request": {
             "method": "GET",
             "header": [
@@ -5199,7 +5219,7 @@
           ]
         },
         {
-          "name": "poll-op-1000",
+          "name": "poll-op-996",
           "request": {
             "method": "GET",
             "header": [
@@ -5252,8 +5272,8 @@
       ]
     },
     {
-      "name": "GW-CR-VAL-NAME-NULL — Create с name=null → 400",
-      "description": "class:VAL | class:NEG | priority:P2",
+      "name": "GW-CR-VAL-NAME-NULL — Create с name=null → 200 (protojson: null = поле не задано; пустое имя разрешено)",
+      "description": "class:VAL | priority:P2",
       "item": [
         {
           "name": "cr-null",
@@ -5292,7 +5312,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
                 ]
               }
             }
@@ -5662,7 +5687,7 @@
           ]
         },
         {
-          "name": "poll-op-1001",
+          "name": "poll-op-997",
           "request": {
             "method": "GET",
             "header": [
@@ -5777,7 +5802,7 @@
           ]
         },
         {
-          "name": "poll-op-1002",
+          "name": "poll-op-998",
           "request": {
             "method": "GET",
             "header": [
@@ -5936,7 +5961,7 @@
           ]
         },
         {
-          "name": "poll-op-1003",
+          "name": "poll-op-999",
           "request": {
             "method": "GET",
             "header": [
@@ -6046,7 +6071,7 @@
           ]
         },
         {
-          "name": "poll-op-1004",
+          "name": "poll-op-1000",
           "request": {
             "method": "GET",
             "header": [
@@ -6187,7 +6212,7 @@
           ]
         },
         {
-          "name": "poll-op-1005",
+          "name": "poll-op-1001",
           "request": {
             "method": "GET",
             "header": [
@@ -6281,8 +6306,8 @@
       ]
     },
     {
-      "name": "GW-HEADERS-MISSING-CT — POST без Content-Type → 415 или 400 или 200 (lenient)",
-      "description": "class:VAL | class:NEG | priority:P3",
+      "name": "GW-HEADERS-MISSING-CT — POST без Content-Type → 200 (край не требует заголовка)",
+      "description": "class:VAL | priority:P3",
       "item": [
         {
           "name": "post-no-ct",
@@ -6330,7 +6355,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('lenient or rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 415]));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
                 ]
               }
             }
@@ -6515,7 +6545,7 @@
       ]
     },
     {
-      "name": "GW-LST-PAGE-NEGATIVE-SIZE — List с pageSize=-1 → 400 или 200",
+      "name": "GW-LST-PAGE-NEGATIVE-SIZE — List с pageSize=-1 → 400 InvalidArgument (отвергается, не clamp'ится)",
       "description": "class:BVA | class:VAL | priority:P2",
       "item": [
         {
@@ -6546,7 +6576,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected or default', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('names the offending field', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('page_size'));"
                 ]
               }
             }
@@ -7411,7 +7446,7 @@
           ]
         },
         {
-          "name": "poll-op-1006",
+          "name": "poll-op-1002",
           "request": {
             "method": "GET",
             "header": [
@@ -7615,7 +7650,7 @@
           ]
         },
         {
-          "name": "poll-op-1007",
+          "name": "poll-op-1003",
           "request": {
             "method": "GET",
             "header": [
@@ -7742,7 +7777,7 @@
           ]
         },
         {
-          "name": "poll-op-1008",
+          "name": "poll-op-1004",
           "request": {
             "method": "GET",
             "header": [
