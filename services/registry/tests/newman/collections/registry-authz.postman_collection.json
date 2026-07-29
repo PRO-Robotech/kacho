@@ -235,7 +235,7 @@
       ]
     },
     {
-      "name": "REG-AZ-GET-STRANGER-HIDDEN — Get as jwtStranger on existing regId → denied/empty (200/401/403/404), never reveals regId; no deny_reasons (gated !=401)",
+      "name": "REG-AZ-GET-STRANGER-HIDDEN — Get as jwtStranger on existing regId → denied (401/403/404, never 200), never reveals regId; no deny_reasons (gated !=401)",
       "description": "class:AZD | class:NEG | priority:P0",
       "item": [
         {
@@ -285,7 +285,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('denied or empty (200/401/403/404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 401, 403, 404]));",
+                  "pm.test('denied (401/403/404), never 200', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));",
                   "const _rid = pm.environment.get('regIdAz') || '';",
                   "if (_rid) pm.test('never reveals fixture regId', () => pm.expect(pm.response.text()).to.not.include(_rid));",
                   "if (pm.response.code !== 401) {",
@@ -422,11 +422,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('denied or empty (200/401/403/404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 401, 403, 404]));",
+                  "pm.test('denied or empty registries (200-empty/401/403/404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 401, 403, 404]));",
                   "if (pm.response.code === 200) {",
-                  "  const j = pm.response.json();",
-                  "  pm.test('registries is array', () => pm.expect(j.registries || []).to.be.an('array'));",
-                  "  pm.test('non-member sees empty list', () => pm.expect((j.registries || []).length).to.eql(0));",
+                  "  const _arr = pm.response.json().registries || [];",
+                  "  pm.test('registries is array', () => pm.expect(_arr).to.be.an('array'));",
+                  "  pm.test('non-member sees EMPTY registries (200 is admissible only as empty)', () => pm.expect(_arr.length).to.eql(0));",
                   "}",
                   "const _rid = pm.environment.get('regIdAz') || '';",
                   "if (_rid) pm.test('never reveals fixture regId', () => pm.expect(pm.response.text()).to.not.include(_rid));",
@@ -584,7 +584,7 @@
       ]
     },
     {
-      "name": "REG-AZ-CREATE-STRANGER-DENY — Create as jwtStranger in existingProjectId → denied (200/401/403/404); no deny_reasons (gated !=401)",
+      "name": "REG-AZ-CREATE-STRANGER-DENY — Create as jwtStranger in existingProjectId → denied (401/403/404, never 200); no deny_reasons (gated !=401)",
       "description": "class:AZD | class:NEG | priority:P0",
       "item": [
         {
@@ -642,7 +642,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('denied or empty (200/401/403/404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 401, 403, 404]));",
+                  "pm.test('denied (401/403/404), never 200', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));",
                   "if (pm.response.code !== 401) {",
                   "  pm.test('authenticated deny -> no resource-existence leak', () => pm.expect(JSON.stringify(pm.response.json())).to.not.include('deny_reasons'));",
                   "}"

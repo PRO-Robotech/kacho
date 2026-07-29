@@ -87,9 +87,13 @@ the registry-DB ↔ zot boundary — a *different DB / different service* bounda
   tuple removal could land content in the gap between the second `NamespaceEmpty()==true`
   check and the final DELETE.
 - **DeleteTag emptiness** (`deletetag.go` `unregisterRepoIfEmpty`): after deleting the
-  last tag it reads `zot.ListTags`; if empty it emits the repo unregister-intent. A push
-  landing a new tag between the read and the emit strips a parent-tuple the push just
-  created.
+  last tag it reads `zot.ListTags`; if empty **and the repo has no overlay row** (i.e. it
+  is ephemeral and therefore ceased to exist together with its content) it emits the repo
+  unregister-intent. A push landing a new tag between the read and the emit strips a
+  parent-tuple the push just created. The window applies to ephemeral repos only: a
+  durable repo outlives emptiness — it stays readable and listable, so its authz object
+  is never stripped here (only `DeleteRepository` removes it, in the same transaction as
+  the row).
 
 **Why accepted.**
 - **The boundary is cross-service** (registry Postgres vs zot's own store) — DB

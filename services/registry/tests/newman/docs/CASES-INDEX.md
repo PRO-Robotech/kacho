@@ -66,7 +66,7 @@ matching case-id lands in `cases/registry.py`, `validate-cases.py` passes via th
 - `*-DEL-CONF-IDEMPOTENT-CAS` — CONF/P1 — concurrent Delete → one OK + idempotent (atomic CAS, DELETING forward-only) (REG-09)
 - `*-LSTREPO-CRUD-OK` — CRUD/P1 — ListRepositories (per-repo projection from zot) → array (REG-22)
 - `*-LSTTAGS-CRUD-OK` — CRUD/P1 — ListTags of a repo → array (REG-24)
-- `*-DELTAG-CRUD-OK` — CRUD/P1 — DeleteTag → Operation → poll → tag gone; repo-unregister on last tag (REG-25)
+- `*-DELTAG-CRUD-OK` — CRUD/P1 — DeleteTag → Operation → poll → tag gone; on the last tag the repo authz-object is unregistered ONLY for an ephemeral repo (a durable one outlives emptiness and keeps its rights) (REG-25)
 - `*-METHOD-PUT-NOT-ALLOWED` / `*-METHOD-DELETE-LIST` — VAL, NEG/P3 — HTTP-method semantics on the collection
 
 ---
@@ -282,12 +282,12 @@ InternalRegistryService GC/Stats deep internals (integration-tested, mTLS-only).
 | Case id | Scenario |
 |---|---|
 | `REG-AZ-SETUP-FIXTURE` | fixture: create registry as editor → save regIdAz |
-| `REG-AZ-GET-STRANGER-HIDDEN` | Get as stranger → 404 (existence-hiding, no deny_reasons) |
+| `REG-AZ-GET-STRANGER-HIDDEN` | Get as stranger → refused 401/403/404, never 200 (existence-hiding, no deny_reasons) |
 | `REG-AZ-GET-VIEWER-OK` | Get as viewer (v_get) → 200 (positive control) |
-| `REG-AZ-LIST-STRANGER-EMPTY` | List as stranger → 200 empty (non-member) |
+| `REG-AZ-LIST-STRANGER-EMPTY` | List as stranger → refusal, or 200 with an asserted-EMPTY array (non-member) |
 | `REG-AZ-UPDATE-VIEWER-DENY` | Update as viewer (no v_update) → 403/404 |
 | `REG-AZ-DELETE-VIEWER-DENY` | Delete as viewer → 403/404 |
-| `REG-AZ-CREATE-STRANGER-DENY` | Create as stranger → 403/404 |
+| `REG-AZ-CREATE-STRANGER-DENY` | Create as stranger → refused 401/403/404, never 200 |
 | `REG-AZ-UPDATE-STRANGER-DENY` | Update as stranger → 401/403/404 (never 200; no deny_reasons leak when !=401) |
 | `REG-AZ-DELETE-STRANGER-DENY` | Delete as stranger → 401/403/404 (never 200; fixture untouched; no deny_reasons leak when !=401) |
 | `REG-AZ-GET-ANON-401` | Get anonymous → 401 |

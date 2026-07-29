@@ -431,6 +431,13 @@ func newUCWithCfg(repo *mockRepo, cfg *mockRepoConfig, zot *mockZot, iam *mockIA
 	return registry.New(repo, repo, cfg, zot, iam, &mockGeo{}, &mockRepoReg{}, ops, "registry.kacho.local")
 }
 
+// newUCWithCfgAndReg — вариант с ЯВНЫМИ наложением и регистратором сразу: нужен там,
+// где решение о снятии authz-объекта зависит от того, есть ли у repo строка наложения
+// (долговременный переживает пустоту, эфемерный с последним тегом исчезает).
+func newUCWithCfgAndReg(repo *mockRepo, cfg *mockRepoConfig, zot *mockZot, iam *mockIAM, ops *memOps, reg *mockRepoReg) *registry.UseCase {
+	return registry.New(repo, repo, cfg, zot, iam, &mockGeo{}, reg, ops, "registry.kacho.local")
+}
+
 // newUCWithGeo — вариант с явным GeoClient (REG-1 F4 region peer-validate тесты).
 func newUCWithGeo(repo *mockRepo, zot *mockZot, iam *mockIAM, geo *mockGeo, ops *memOps) *registry.UseCase {
 	return registry.New(repo, repo, newMockCfg(), zot, iam, geo, &mockRepoReg{}, ops, "registry.kacho.local")

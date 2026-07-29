@@ -47,7 +47,13 @@ const maxGraphQLBytes = 16 << 20 // 16 MiB
 // проекции namespace (CWE-770 memory/backend-амплификация; N не контролируется
 // вызывающим). ImageList (теги для tag_count/artifact-типов/last-pull) запрашивается
 // ТОЛЬКО для окна, распараллелен zotFanout. Имя repo — БЕЗ namespace-префикса. Repo с
-// НУЛЁМ тегов (все теги удалены, GC ещё не снял запись) — скрывается. Возвращает
+// НУЛЁМ тегов (все теги удалены, GC ещё не снял запись) возвращается с tag_count=0 и
+// ЗДЕСЬ НЕ СКРЫВАЕТСЯ: видим ли он тенанту — зависит от того, есть ли у него строка
+// наложения (долговременный repo пустоту переживает и остаётся ресурсом; имя без
+// строки ресурсом не является). Наложения адаптер не видит, поэтому решение принимает
+// объединение overlay ⊔ projection — единственный слой, которому видны обе стороны.
+// Скрывать здесь значило бы решать судьбу ресурса по половине данных: именно так
+// пропадали из перечисления живые долговременные repo. Возвращает
 // окно (отсортировано ASC) + next-token — ОПАКОВЫЙ offset, НЕ имя граничного репо:
 // handler фильтрует per-repo v_list ПОСЛЕ окна, поэтому name-курсор echo'ил бы имя
 // скрытого репо (existence-oracle). Offset скрытие/фильтр страницу не «удлиняют» — все
@@ -81,7 +87,7 @@ func (c *Client) ListRepositories(ctx context.Context, q registry.RepoListQuery)
 		return nil, "", err
 	}
 
-	repos := make([]*domain.Repository, len(window)) // индексируем — компактим ниже
+	repos := make([]*domain.Repository, len(window)) // индексируем — порядок окна сохраняем
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(zotFanout)
 	for i, rs := range window {
@@ -90,24 +96,16 @@ func (c *Client) ListRepositories(ctx context.Context, q registry.RepoListQuery)
 			if err := c.gqlQuery(gctx, imageListQuery(rs.Name), &data); err != nil {
 				return err // zot недоступен → fail-closed для всего окна
 			}
-			results := data.ImageList.Results
-			if len(results) == 0 {
-				return nil // ghost: пустой repo — скрываем (nil остаётся, компактится ниже)
-			}
-			repos[i] = repositoryFromSummaries(q.RegistryID, strings.TrimPrefix(rs.Name, prefix), rs, results)
+			// Пустой Results → tag_count=0; строка остаётся в окне (см. godoc: судьбу
+			// пустого repo решает объединение, знающее про строку наложения).
+			repos[i] = repositoryFromSummaries(q.RegistryID, strings.TrimPrefix(rs.Name, prefix), rs, data.ImageList.Results)
 			return nil
 		})
 	}
 	if werr := g.Wait(); werr != nil {
 		return nil, "", werr
 	}
-	out := make([]*domain.Repository, 0, len(repos))
-	for _, r := range repos {
-		if r != nil {
-			out = append(out, r)
-		}
-	}
-	return out, next, nil
+	return repos, next, nil
 }
 
 // ListRepositoryNames возвращает имена repos namespace, присутствующих в движке (без

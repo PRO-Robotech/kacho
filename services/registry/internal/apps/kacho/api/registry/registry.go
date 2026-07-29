@@ -123,14 +123,18 @@ type RegistryRepo interface {
 // ZotClient — порт к data/registry-API zot (source of truth образов). Проекции
 // Repository/Tag читаются на request-path; удаление тегов/GC — через этот же порт.
 type ZotClient interface {
-	// ListRepositories возвращает repos namespace (проекция из zot).
+	// ListRepositories возвращает окно проекции namespace (из zot). Repo без единого
+	// тега приходит с tag_count=0 и адаптером НЕ скрывается: видим ли он тенанту,
+	// зависит от наличия строки наложения, а её адаптер не знает — решает объединение
+	// overlay ⊔ projection (mergeRepository).
 	ListRepositories(ctx context.Context, q RepoListQuery) ([]*domain.Repository, string, error)
 	// ListRepositoryNames возвращает ИМЕНА repos namespace, реально присутствующих в
 	// движке (без namespace-префикса, ASC) — одним дешёвым запросом, БЕЗ per-repo
-	// fan-out. Нужен объединению overlay ⊔ projection, чтобы отличить durable-empty
-	// строку наложения (имени в движке нет ⇒ тегов нет) от строки, лежащей в другой
-	// странице проекции — разностью множеств, а не поштучным опросом проекции.
-	// zot недоступен → ErrUnavailable (fail-closed).
+	// fan-out. Нужен объединению overlay ⊔ projection, чтобы отличить строку наложения,
+	// имени которой в движке НЕТ вовсе (её проекцию спрашивать не у чего), от строки,
+	// лежащей в другой странице проекции — разностью множеств, а не поштучным опросом
+	// проекции. Имя, которое движок помнит, попадает сюда независимо от числа тегов —
+	// его строка приходит окном проекции. zot недоступен → ErrUnavailable (fail-closed).
 	ListRepositoryNames(ctx context.Context, registryID string) ([]string, error)
 	// ListTags возвращает теги repo (проекция из zot).
 	ListTags(ctx context.Context, q TagListQuery) ([]*domain.Tag, string, error)
@@ -358,10 +362,19 @@ func (u *UseCase) List(ctx context.Context, q ListQuery) ([]*domain.Registry, st
 // (existence-hiding) — В ХЕНДЛЕРЕ ПОСЛЕ union.
 //
 // Объединение — ДВЕ НЕПЕРЕСЕКАЮЩИЕСЯ полосы, проходимые последовательно одним опаковым
-// курсором: (1) durable-empty строки наложения — те, чьего имени НЕТ в движке вовсе
-// (значит тегов нет by construction, проекцию по ним запрашивать не у чего); (2) окно
-// проекции движка. Полосы не пересекаются, поэтому ни одна строка не приходит дважды и
-// ни одна не теряется, а размер страницы соблюдается в обеих.
+// курсором: (1) строки наложения, чьего имени НЕТ в движке вовсе (тегов нет by
+// construction, проекцию по ним запрашивать не у чего); (2) окно проекции движка —
+// ВСЕ имена, которые движок помнит, включая те, у которых не осталось ни одного тега.
+// Полосы не пересекаются (признак полосы — знает ли движок имя), поэтому ни одна
+// строка не приходит дважды и ни одна не теряется, а размер страницы соблюдается в обеих.
+//
+// Пустой repo существует в двух РАЗНЫХ качествах, и различить их можно только здесь:
+// со строкой наложения он живой долговременный ресурс (Get его отдаёт, удалить может
+// только DeleteRepository) — обязан быть в выдаче; без строки это просто имя, которое
+// движок ещё помнит после удаления тегов, — тенанту невидимо. Поэтому адаптер отдаёт
+// такие имена как есть (tag_count=0), а скрытие решает mergeRepository. Пока решение
+// принимал адаптер (у которого наложения нет), живой долговременный repo с нулём тегов
+// не попадал НИ в одну полосу и пропадал из перечисления, оставаясь читаемым поштучно.
 //
 // Число обращений к движку на страницу — КОНСТАНТА (перечень имён namespace + окно
 // проекции), а не функция размера реестра: durable-only строки определяются разностью
@@ -423,17 +436,16 @@ func (u *UseCase) ListRepositories(ctx context.Context, q RepoListQuery) ([]*dom
 		return nil, "", zerr
 	}
 	for _, r := range window {
-		if c := byName[r.Name]; c != nil { // durable — обогащаем overlay-полями
-			r.Description = c.Description
-			r.Labels = c.Labels
-			r.Visibility = c.Visibility
-			r.CreatedAt = c.CreatedAt
-			r.Lifecycle = c.Lifecycle
-		} else { // ephemeral — overlay-строки нет: PRIVATE + register-on-first-push
-			r.Visibility = domain.VisibilityPrivate
-			r.Lifecycle = domain.LifecycleEphemeral
+		// Тот же merge, что у поштучного чтения (GetRepository): у одного объекта одна
+		// публичная проекция, как бы его ни спросили. Он же решает судьбу repo БЕЗ
+		// тегов — а такое решение возможно только здесь, где видны обе стороны:
+		// строка наложения есть ⇒ ресурс жив и пустоту переживает (durable), строки
+		// нет ⇒ имя без содержимого ресурсом не является и тенанту невидимо (nil).
+		merged := mergeRepository(q.RegistryID, r.Name, byName[r.Name], r)
+		if merged == nil {
+			continue
 		}
-		out = append(out, r)
+		out = append(out, merged)
 	}
 	if next == "" {
 		return out, "", nil

@@ -188,7 +188,9 @@ func TestHandler_ListRepositories_BoundsCheckFanoutToPage(t *testing.T) {
 	allow := map[string]bool{registryObjectRef(validReg): true}
 	for i := range repos {
 		name := fmt.Sprintf("repo-%04d", i)
-		repos[i] = &domain.Repository{RegistryID: validReg, Name: name}
+		// TagCount>0 — строка проекции движка с содержимым: имя без тегов и без строки
+		// наложения ресурсом не является и до фильтра не доходит (см. объединение).
+		repos[i] = &domain.Repository{RegistryID: validReg, Name: name, TagCount: 1}
 		allow[repositoryObjectRef(validReg, name)] = true
 	}
 	az := &recordingAuthorizer{allow: allow}
@@ -214,7 +216,7 @@ func TestHandler_ListRepositories_PaginateWindowBeforeFilter_AllAllowedReachable
 	wantAllowed := map[string]bool{}
 	for i := range repos {
 		name := fmt.Sprintf("r%02d", i)
-		repos[i] = &domain.Repository{RegistryID: validReg, Name: name}
+		repos[i] = &domain.Repository{RegistryID: validReg, Name: name, TagCount: 1}
 		if i%3 == 0 { // только каждый третий разрешён
 			allow[repositoryObjectRef(validReg, name)] = true
 			wantAllowed[name] = true

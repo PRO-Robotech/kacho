@@ -44,14 +44,17 @@ func TestRegistry_REG25_DeleteTag_HappyPath(t *testing.T) {
 	require.Equal(t, "user", call.principal.Type)
 }
 
-// REG-25 (imp-4) — DeleteTag последнего тега repo: после удаления repo пуст
-// (ListTags == []) → worker эмитит UnregisterResource-intent на
-// registry_repository:<reg>/<repo> (не оставлять висячий authz-объект).
-func TestRegistry_REG25_DeleteTag_UnregisterOnLastTag(t *testing.T) {
+// REG-25 (imp-4) — DeleteTag последнего тега ЭФЕМЕРНОГО repo (строки наложения нет:
+// сам ресурс существовал ровно постольку, поскольку в движке лежали его теги): после
+// удаления repo пуст (ListTags == []) → ресурс прекратил существование → worker эмитит
+// UnregisterResource-intent на registry_repository:<reg>/<repo> (не оставлять висячий
+// authz-объект).
+func TestRegistry_REG25_DeleteTag_Ephemeral_UnregisterOnLastTag(t *testing.T) {
 	zot := &mockZot{listTagsResult: nil} // после удаления тегов не осталось
 	ops := newMemOps()
 	reg := &mockRepoReg{}
-	uc := newUCWithReg(&mockRepo{}, zot, &mockIAM{}, ops, reg)
+	// Наложение пустое → GetConfig отдаёт ErrNotFound: repo эфемерный.
+	uc := newUCWithCfgAndReg(&mockRepo{}, newMockCfg(), zot, &mockIAM{}, ops, reg)
 
 	op, err := uc.DeleteTag(aliceCtx(), validRegID, "app", "v1")
 	require.NoError(t, err)
@@ -68,6 +71,39 @@ func TestRegistry_REG25_DeleteTag_UnregisterOnLastTag(t *testing.T) {
 	// parent-tuple снимается: registry_repository:<reg>/app #parent @registry_registry:<reg>.
 	require.Equal(t, "registry_repository:"+validRegID+"/app", intent.Tuples[0].Object)
 	require.Equal(t, "parent", intent.Tuples[0].Relation)
+}
+
+// Удаление последнего тега ДОЛГОВРЕМЕННОГО repo: строка наложения — это и есть сам
+// ресурс, она переживает пустоту содержимого, поэтому ресурс продолжает существовать
+// (его отдаёт поштучное чтение, он остаётся в перечислении, снять его может только
+// DeleteRepository). Снимать его authz-объект НЕЛЬЗЯ: у живого ресурса не должно
+// оставаться прав ни у кого — владелец теряет доступ к своему же repo, а имя, на
+// которое кто-то потом запушит, получит регистрацию заново уже от другого субъекта.
+// Наблюдаемое: repo после операции читается, unregister-intent не эмитирован.
+func TestRegistry_DeleteTag_Durable_LastTag_KeepsAuthzObject(t *testing.T) {
+	zot := &mockZot{listTagsResult: nil} // после удаления тегов не осталось
+	ops := newMemOps()
+	reg := &mockRepoReg{}
+	cfg := newMockCfg()
+	cfg.byName["app"] = &domain.RepositoryConfig{
+		RegistryID: validRegID, Name: "app",
+		Lifecycle: domain.LifecycleDurable, Visibility: domain.VisibilityPrivate,
+	}
+	uc := newUCWithCfgAndReg(&mockRepo{}, cfg, zot, &mockIAM{}, ops, reg)
+
+	op, err := uc.DeleteTag(aliceCtx(), validRegID, "app", "v1")
+	require.NoError(t, err)
+	done := awaitOpDone(t, ops, op.ID)
+	require.Nil(t, done.Error)
+
+	repo, gerr := uc.GetRepository(aliceCtx(), validRegID, "app")
+	require.NoError(t, gerr, "долговременный repo переживает пустоту — ресурс жив")
+	require.Zero(t, repo.TagCount, "содержимого нет, но ресурс есть")
+
+	reg.mu.Lock()
+	defer reg.mu.Unlock()
+	require.Empty(t, reg.unregisterIntent,
+		"authz-объект живого ресурса снимать нельзя: снятие прав допустимо только когда ресурс перестал существовать")
 }
 
 // REG-25 (imp-4) — DeleteTag НЕ последнего тега: repo ещё содержит теги

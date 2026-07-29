@@ -15,10 +15,14 @@ viewer-tier юзер здесь не провиженятся:
 
 - **Stranger** — dev-JWT с незарегистрированным `sub` gateway трактует как
   UNAUTHENTICATED → HTTP 401 (code 16, "subject: unauthenticated request"), НЕ как
-  authenticated-но-denied 404. Кейсы принимают весь denied/empty-диапазон
-  `[200-empty, 401, 403, 404]`, но НИКОГДА success-with-data и НИКОГДА не раскрывают
-  существование фикстуры (её regId). Проверка «нет deny_reasons» гейтится на код
-  != 401 (unauthenticated-тело несёт generic-причину, не resource-existence leak).
+  authenticated-но-denied 404. Поэтому кейсы принимают НЕСКОЛЬКО ОТКАЗНЫХ кодов
+  `[401, 403, 404]` — какой рубеж откажет первым, зависит от стенда, — но **только
+  отказные**. Успех в список не входит нигде, кроме списочных ответов, где 200 —
+  законная форма «не-член видит пусто»: там 200 допустим ТОЛЬКО вместе с
+  утверждением о пустоте (его эмитит хелпер, пропустить нельзя). Существование
+  фикстуры (её regId) не раскрывается ни в одном ответе. Проверка «нет deny_reasons»
+  гейтится на код != 401 (unauthenticated-тело несёт generic-причину, не
+  resource-existence leak).
 - **Viewer-tier** (GET-VIEWER-OK / UPDATE-VIEWER-DENY / DELETE-VIEWER-DENY) — требуют
   зарегистрированного viewer-юзера, которого стенд дать не может. Кейс fixture-gated:
   при пустом `jwtProjectViewerA` кейс НЕ эмитит зелёный pm.test (console-note + return
@@ -47,11 +51,30 @@ REG = "/registry/v1/registries"
 _OP_PREFIX = "^(rop|reo)[a-z0-9]+$"
 
 
-def _assert_denied_or_empty():
-    # Stranger на single-user стенде: dev-JWT с незарегистрированным sub → gateway
-    # трактует как unauthenticated → 401. Принимаем весь denied/empty-диапазон,
-    # но НИКОГДА success-with-data (это ловят per-case regId/empty-проверки).
-    return ["pm.test('denied or empty (200/401/403/404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 401, 403, 404]));"]
+def _assert_denied():
+    # ОТКАЗ, и только отказ. Диапазон кодов широкий, потому что отказать может любой
+    # из трёх рубежей (gateway на неаутентифицированном субъекте → 401; scope-Check →
+    # 403; existence-hiding → 404) — какой сработает первым, зависит от порядка
+    # проверок и от того, заведён ли субъект на стенде. Все три означают одно: запрос
+    # не выполнен. Успех в этот список не входит: принять 200 рядом с 401/403/404
+    # значит принять ровно тот исход, ради ловли которого кейс и написан, — то есть
+    # не утверждать ничего (testing.md, директива владельца 2026-07-29).
+    return ["pm.test('denied (401/403/404), never 200', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));"]
+
+
+def _assert_denied_or_empty_list(field):
+    # Списочный ответ — единственная форма, где 200 законно стоит рядом с отказом: не-член
+    # не получает 403, он получает ПУСТУЮ страницу (call-gate exempt + row-filter). Поэтому
+    # 200 здесь допустим ТОЛЬКО вместе с утверждением о пустоте, и утверждение эмитит сам
+    # хелпер — чтобы «200» не мог оказаться принят без единой проверки содержимого.
+    return [
+        f"pm.test('denied or empty {field} (200-empty/401/403/404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 401, 403, 404]));",
+        "if (pm.response.code === 200) {",
+        f"  const _arr = pm.response.json().{field} || [];",
+        f"  pm.test('{field} is array', () => pm.expect(_arr).to.be.an('array'));",
+        f"  pm.test('non-member sees EMPTY {field} (200 is admissible only as empty)', () => pm.expect(_arr.length).to.eql(0));",
+        "}",
+    ]
 
 
 def _deny_leak_gated():
@@ -121,14 +144,15 @@ CASES.append(Case(
     ],
 ))
 
-# Get как jwtStranger на существующем regId. Stranger здесь unauthenticated → 401;
-# принимаем denied/empty-диапазон, но существование фикстуры не раскрываем.
+# Get как jwtStranger на существующем regId. Отказ, и только отказ: у чтения ОДНОГО
+# ресурса по id нет «пустого успеха» — 200 здесь означает, что чужак прочитал чужой
+# реестр. Дополнительно: тело отказа не раскрывает существование фикстуры (её regId).
 CASES.append(Case(
     id="REG-AZ-GET-STRANGER-HIDDEN",
-    title="Get as jwtStranger on existing regId → denied/empty (200/401/403/404), never reveals regId; no deny_reasons (gated !=401)",
+    title="Get as jwtStranger on existing regId → denied (401/403/404, never 200), never reveals regId; no deny_reasons (gated !=401)",
     classes=["AZD", "NEG"], priority="P0",
     steps=[Step(name="get-stranger", method="GET", path=f"{REG}/{{{{regIdAz}}}}", auth="jwtStranger",
-                test_script=[*_assert_denied_or_empty(), *_never_reveals_regid(), *_deny_leak_gated()])],
+                test_script=[*_assert_denied(), *_never_reveals_regid(), *_deny_leak_gated()])],
 ))
 
 # Positive control: Get как jwtProjectViewerA → 200 (viewer имеет v_get).
@@ -163,12 +187,7 @@ CASES.append(Case(
     classes=["AZD", "NEG"], priority="P0",
     steps=[Step(name="list-stranger", method="GET", path=f"{REG}?projectId={{{{existingProjectId}}}}", auth="jwtStranger",
                 test_script=[
-                    *_assert_denied_or_empty(),
-                    "if (pm.response.code === 200) {",
-                    "  const j = pm.response.json();",
-                    "  pm.test('registries is array', () => pm.expect(j.registries || []).to.be.an('array'));",
-                    "  pm.test('non-member sees empty list', () => pm.expect((j.registries || []).length).to.eql(0));",
-                    "}",
+                    *_assert_denied_or_empty_list("registries"),
                     *_never_reveals_regid(),
                     *_deny_leak_gated()])],
 ))
@@ -203,15 +222,16 @@ CASES.append(Case(
 
 # Create как jwtStranger в {{existingProjectId}}. Stranger здесь unauthenticated → 401;
 # на многопользовательском стенде — 403 (visible project, no v_create) / 404 (hidden).
-# Принимаем denied/empty-диапазон; без deny_reasons-leak (gated !=401).
+# ТОЛЬКО отказ: у создания нет «пустого успеха» — 200 означает, что чужак завёл реестр
+# в ЧУЖОМ проекте, то есть ровно тот исход, ради ловли которого кейс существует.
 CASES.append(Case(
     id="REG-AZ-CREATE-STRANGER-DENY",
-    title="Create as jwtStranger in existingProjectId → denied (200/401/403/404); no deny_reasons (gated !=401)",
+    title="Create as jwtStranger in existingProjectId → denied (401/403/404, never 200); no deny_reasons (gated !=401)",
     classes=["AZD", "NEG"], priority="P0",
     steps=[Step(name="create-stranger", method="POST", path=REG, auth="jwtStranger",
                 body={"name": "az-intruder-{{runId}}", "projectId": "{{existingProjectId}}",
                       "regionId": "{{existingRegionId}}"},
-                test_script=[*_assert_denied_or_empty(), *_deny_leak_gated()])],
+                test_script=[*_assert_denied(), *_deny_leak_gated()])],
 ))
 
 # Update как jwtStranger на существующем regId. Stranger здесь unauthenticated → 401;

@@ -577,10 +577,13 @@ CASES.append(Case(
 ))
 
 # ListTags by an unauthorized subject (stranger) → existence-hiding: 404 (or 401 if
-# anonymous), never 403, no deny_reasons leak.
+# anonymous), never 403, no deny_reasons leak. 200 допустим ТОЛЬКО как пустая страница:
+# смысл скрытия существования в том, что чужак не получает СОДЕРЖИМОГО — поэтому 200
+# обязан нести утверждение о пустоте, иначе кейс пропускает ровно то, что ловит
+# (принятый без единой проверки 200 = отсутствие утверждения, testing.md).
 CASES.append(Case(
     id="REG-LSTTAGS-AZ-NOTFOUND",  # index: REG-24
-    title="ListTags by non-member (stranger) → 404/empty (existence-hidden), never 403",
+    title="ListTags by non-member (stranger) → 404 or 200-EMPTY (existence-hidden), never 403, never any tag",
     classes=["NEG", "AZ"], priority="P1",
     steps=[Step(name="list-tags-stranger", method="GET",
                 path=REG + "/{{regId}}/repositories/app-{{runId}}/tags", auth="jwtStranger",
@@ -588,8 +591,14 @@ CASES.append(Case(
                 # существование чужого repo). Для 401 (unauthenticated) deny_reason "subject
                 # unauthenticated" — generic auth-failure, не leak существования → проверку пропускаем.
                 test_script=[
-                    "pm.test('unauthorized -> 401/404/empty (existence-hidden), never 403', () => pm.expect(pm.response.code).to.be.oneOf([200, 401, 404]));",
+                    "pm.test('unauthorized -> 401/404/200-empty (existence-hidden), never 403', () => pm.expect(pm.response.code).to.be.oneOf([200, 401, 404]));",
                     "pm.test('never 403 (deny -> 404 no-leak)', () => pm.expect(pm.response.code).to.not.eql(403));",
+                    "if (pm.response.code === 200) {",
+                    "  const _t = pm.response.json().tags || [];",
+                    "  pm.test('tags is array', () => pm.expect(_t).to.be.an('array'));",
+                    "  pm.test('stranger receives NO tags of a foreign repository', () => pm.expect(_t.length).to.eql(0));",
+                    "  pm.test('no tag payload leaked (digest/size)', () => pm.expect(pm.response.text()).to.not.include('digest'));",
+                    "}",
                     "if (pm.response.code !== 401) { pm.test('authenticated deny -> no resource-existence leak', () => pm.expect(JSON.stringify(pm.response.json())).to.not.include('deny_reasons')); }",
                 ])],
 ))

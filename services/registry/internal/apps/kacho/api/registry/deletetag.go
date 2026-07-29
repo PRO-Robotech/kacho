@@ -5,6 +5,7 @@ package registry
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"google.golang.org/protobuf/types/known/anypb"
@@ -14,6 +15,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
+	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
 )
 
 // DeleteTag — async удаление тега/манифеста в zot (проекция read-only, source of
@@ -66,13 +68,27 @@ func (u *UseCase) DeleteTag(ctx context.Context, registryID, repository, tag str
 	return &op, nil
 }
 
-// unregisterRepoIfEmpty — при удалении последнего тега repo эмитит unregister-intent
-// registry_repository:<reg>/<repo> (не оставляем висячий authz-объект). Читает
-// остаток тегов из zot; ошибка чтения → проброс (worker ретраит идемпотентно:
-// zot.DeleteTag no-op на уже-удалённый тег, повторный unregister-intent идемпотентен
-// в iam). repoReg==nil (breakglass) → no-op.
+// unregisterRepoIfEmpty — снимает authz-объект registry_repository:<reg>/<repo>
+// ТОЛЬКО когда ресурс действительно прекратил существование: у эфемерного repo нет
+// собственной строки — он существует ровно постольку, поскольку в движке лежат его
+// теги, поэтому с последним тегом исчезает и он (висячий authz-объект не оставляем).
+//
+// Долговременный repo (строка наложения есть) пустоту ПЕРЕЖИВАЕТ: он остаётся
+// читаемым поштучно и в перечислении, снять его может только DeleteRepository — и
+// именно он эмитит unregister в одной транзакции с удалением строки. Снимать права у
+// такого ресурса нельзя: владелец теряет доступ к живому repo, а имя, на которое
+// потом кто-то запушит, зарегистрируется заново уже на другого субъекта.
+//
+// Порядок проверок — сначала остаток тегов (дешёвый признак «содержимое кончилось»),
+// затем наличие строки наложения. Ошибка любого чтения → проброс: при НЕИЗВЕСТНОМ
+// состоянии права не трогаем (worker ретраит идемпотентно — zot.DeleteTag no-op на
+// уже-удалённый тег, повторный unregister-intent идемпотентен в iam).
+//
+// repoReg==nil (breakglass) либо cfg==nil (composition root не подал overlay-порт) →
+// no-op: без наложения различить «ресурс исчез» и «ресурс жив и пуст» невозможно, а
+// ошибиться в сторону снятия прав у живого ресурса нельзя.
 func (u *UseCase) unregisterRepoIfEmpty(ctx context.Context, registryID, repository string) error {
-	if u.repoReg == nil {
+	if u.repoReg == nil || u.cfg == nil {
 		return nil
 	}
 	tags, _, err := u.zot.ListTags(ctx, TagListQuery{RegistryID: registryID, Repository: repository})
@@ -81,6 +97,14 @@ func (u *UseCase) unregisterRepoIfEmpty(ctx context.Context, registryID, reposit
 	}
 	if len(tags) > 0 {
 		return nil // repo ещё непуст — authz-объект жив
+	}
+	switch _, cerr := u.cfg.GetConfig(ctx, registryID, repository); {
+	case cerr == nil:
+		return nil // durable: строка наложения жива ⇒ ресурс существует ⇒ права остаются
+	case errors.Is(cerr, regerrors.ErrNotFound):
+		// ephemeral: своей строки нет, содержимое кончилось ⇒ ресурса больше нет.
+	default:
+		return mapRepoErr(cerr)
 	}
 	intent := domain.UnregisterIntentForRepo(registryID, repository)
 	if uerr := u.repoReg.UnregisterRepository(ctx, intent); uerr != nil {

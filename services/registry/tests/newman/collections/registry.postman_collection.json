@@ -2277,7 +2277,7 @@
       ]
     },
     {
-      "name": "REG-LSTTAGS-AZ-NOTFOUND — ListTags by non-member (stranger) → 404/empty (existence-hidden), never 403",
+      "name": "REG-LSTTAGS-AZ-NOTFOUND — ListTags by non-member (stranger) → 404 or 200-EMPTY (existence-hidden), never 403, never any tag",
       "description": "class:NEG | class:AZ | priority:P1",
       "item": [
         {
@@ -2330,8 +2330,14 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('unauthorized -> 401/404/empty (existence-hidden), never 403', () => pm.expect(pm.response.code).to.be.oneOf([200, 401, 404]));",
+                  "pm.test('unauthorized -> 401/404/200-empty (existence-hidden), never 403', () => pm.expect(pm.response.code).to.be.oneOf([200, 401, 404]));",
                   "pm.test('never 403 (deny -> 404 no-leak)', () => pm.expect(pm.response.code).to.not.eql(403));",
+                  "if (pm.response.code === 200) {",
+                  "  const _t = pm.response.json().tags || [];",
+                  "  pm.test('tags is array', () => pm.expect(_t).to.be.an('array'));",
+                  "  pm.test('stranger receives NO tags of a foreign repository', () => pm.expect(_t.length).to.eql(0));",
+                  "  pm.test('no tag payload leaked (digest/size)', () => pm.expect(pm.response.text()).to.not.include('digest'));",
+                  "}",
                   "if (pm.response.code !== 401) { pm.test('authenticated deny -> no resource-existence leak', () => pm.expect(JSON.stringify(pm.response.json())).to.not.include('deny_reasons')); }"
                 ]
               }
