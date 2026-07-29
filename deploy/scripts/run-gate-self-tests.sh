@@ -69,6 +69,7 @@ cd "$REPO_ROOT" || exit 2
 # находкой ниже — расхождение в любую сторону роняет проверку.
 DECLARED="
 .github/scripts/check-newman-suite-gates.py
+.github/scripts/check-volume-mounts.py
 .github/scripts/newman-live.py
 deploy/scripts/assert-ban6-external-isolation.py
 deploy/scripts/assert-outbox-autovacuum.sh
@@ -257,8 +258,10 @@ WANT="$(printf '%s\n' $DECLARED | LC_ALL=C sort)"
 if [ "$FOUND" != "$WANT" ]; then
   echo "FAIL: состав самопроверок разошёлся с объявленным."
   echo
-  extra="$(comm -23 <(printf '%s\n' "$FOUND") <(printf '%s\n' "$WANT"))"
-  gone="$(comm -13 <(printf '%s\n' "$FOUND") <(printf '%s\n' "$WANT"))"
+  # LC_ALL=C и здесь: оба списка отсортированы байтово, а `comm` без того же
+  # правила сличения объявляет их «неотсортированными» и врёт про разницу.
+  extra="$(LC_ALL=C comm -23 <(printf '%s\n' "$FOUND") <(printf '%s\n' "$WANT"))"
+  gone="$(LC_ALL=C comm -13 <(printf '%s\n' "$FOUND") <(printf '%s\n' "$WANT"))"
   [ -n "$extra" ] && { echo "  самопроверка есть, а в списке её НЕТ (не исполнялась бы):"; printf '    %s\n' $extra; }
   [ -n "$gone" ]  && { echo "  в списке есть, а самопроверки НЕТ (запись без предмета):"; printf '    %s\n' $gone; }
   echo
