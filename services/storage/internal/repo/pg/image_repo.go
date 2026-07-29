@@ -194,8 +194,10 @@ const imageInsertCoherentSQL = `
 // иначе 0 rows → hide-existence "<Resource> <id> not found" (byte-identical настоящему
 // miss'у, security.md §6). source FK (23503) / source at-most-one mutual-exclusion
 // CHECK (23514) / partial UNIQUE(name) (23505) → контрактные sentinel'ы. exactly-one
-// на Create — domain.Validate() (sync). storage_outbox CREATED + fga_register_outbox
-// (owner-tuple storage_image) — та же writer-TX (один commit).
+// на Create — domain.Validate() (sync). В той же writer-TX (один commit) пишется
+// fga_register_outbox (owner-tuple storage_image). Прежняя редакция называла рядом с ним
+// доменный outbox — таблица дропнута миграцией 0011, и вставки в неё в этой транзакции
+// нет; упоминание описывало запись, которой не происходит.
 func (r *ImageRepo) Insert(ctx context.Context, i *domain.Image, regionZones []string) (*domain.Image, error) {
 	labels, err := json.Marshal(nonNilLabels(i.Labels))
 	if err != nil {

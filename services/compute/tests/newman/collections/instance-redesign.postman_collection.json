@@ -5889,7 +5889,7 @@
       ]
     },
     {
-      "name": "INST-RD-UPD-STATE-IMMUTABLE-MATRIX — COMP-1-04/26/27: Update immutable/unknown/Reinstall/STOPPED-gate матрица на живом инстансе — instance_kind→400 immutable · zone_id→400 immutable · boot_source→400 Reinstall-only · fqdn→400 unknown-mask · machine_type_id→400 FAILED_PRECONDITION STOPPED-gate (недостижимо ⇒ always-reject). [verifies COMP-1-04/26/27 · state-transition immutable/gate]",
+      "name": "INST-RD-UPD-STATE-IMMUTABLE-MATRIX — COMP-1-04/26/27: Update immutable/unknown/STOPPED-gate матрица на живом инстансе — instance_kind→400 immutable · zone_id→400 immutable · boot_source→400 immutable · fqdn→400 unknown-mask · machine_type_id→400 FAILED_PRECONDITION STOPPED-gate (недостижимо ⇒ always-reject). [verifies COMP-1-04/26/27 · state-transition immutable/gate]",
       "description": "class:STATE | class:VAL | class:NEG | priority:P0",
       "item": [
         {
@@ -6358,7 +6358,7 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('text: bootSource cannot be changed via Update; use Reinstall', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('bootsource cannot be changed via update; use reinstall'));"
+                  "pm.test('text: bootSource is immutable after Instance.Create', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('bootsource is immutable after instance.create'));"
                 ]
               }
             }

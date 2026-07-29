@@ -14,13 +14,19 @@ Operation metadata/response (из `(kacho.cloud.api.operation)` options).
 | Internal admin (kacho-only) | 1 (`InternalMachineTypeService`) | 3 | `:9091` internal gRPC | ✅ выборочно (`/compute/v1/internal/machineTypes`) — только cluster-internal listener |
 | Outbox stream | 1 (`InternalWatchService`) | 1 (`Watch`) | `:9091` internal gRPC | ❌ только server-to-server |
 
-> ⚠️ REST-пути неоднородны (кальки YC API surface, proto-decided): top-level
-> camelCase (`/compute/v1/machineTypes`, `/compute/v1/instances`), custom-методы
-> с двоеточием (`:relocate`, `:serialPortOutput`, `:latestByFamily`,
-> `:listAccessBindings`), child-list `.../operations`, action-методы через
-> сегмент пути (`/updateMetadata`, `/addOneToOneNat`, `:attachDisk`),
-> `OperationService.Get` — `/operations/{id}` (БЕЗ `/compute/v1/`-префикса).
-> Нормализовать НЕЛЬЗЯ — сломает verbatim-YC. См. [`07-known-divergences.md`](07-known-divergences.md).
+> ⚠️ REST-пути неоднородны (решено формой proto): top-level camelCase
+> (`/compute/v1/machineTypes`, `/compute/v1/instances`), custom-методы с двоеточием
+> (`:relocate`, `:serialPortOutput`, `:latestByFamily`, `:listAccessBindings`),
+> child-list `.../operations`, action-методы через сегмент пути
+> (`/updateMetadata`, `/addOneToOneNat`, `:attachDisk`), `OperationService.Get` —
+> `/operations/{id}` (БЕЗ `/compute/v1/`-префикса).
+>
+> Нормализация — **ломающее изменение уже посаженного контракта** (клиенты и
+> сгенерированные коллекции адресуют эти пути), поэтому она делается осознанно и
+> отдельным решением, а не попутно. Прежняя редакция запрещала её ссылкой на
+> совпадение с чужим API — это не основание: конвенции Kachō свои
+> (`api-conventions.md`), и единственный настоящий довод — цена ломки. См.
+> [`07-known-divergences.md`](07-known-divergences.md).
 
 ## InstanceService (`instance_service.proto`, `:9090`)
 

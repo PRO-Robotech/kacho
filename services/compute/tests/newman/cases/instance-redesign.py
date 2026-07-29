@@ -666,8 +666,8 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="INST-RD-UPD-STATE-IMMUTABLE-MATRIX",
-    title="COMP-1-04/26/27: Update immutable/unknown/Reinstall/STOPPED-gate матрица на живом инстансе — "
-          "instance_kind→400 immutable · zone_id→400 immutable · boot_source→400 Reinstall-only · "
+    title="COMP-1-04/26/27: Update immutable/unknown/STOPPED-gate матрица на живом инстансе — "
+          "instance_kind→400 immutable · zone_id→400 immutable · boot_source→400 immutable · "
           "fqdn→400 unknown-mask · machine_type_id→400 FAILED_PRECONDITION STOPPED-gate (недостижимо ⇒ "
           "always-reject). [verifies COMP-1-04/26/27 · state-transition immutable/gate]",
     classes=["STATE", "VAL", "NEG"], priority="P0",
@@ -696,7 +696,7 @@ CASES.append(Case(
         Step(name="upd-bootsource-reinstall", method="PATCH", path=INSTANCES + "/{{instanceId}}",
              body={"updateMask": "bootSource"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                          "pm.test('text: bootSource cannot be changed via Update; use Reinstall', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('bootsource cannot be changed via update; use reinstall'));"]),
+                          "pm.test('text: bootSource is immutable after Instance.Create', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('bootsource is immutable after instance.create'));"]),
         Step(name="upd-unknown-mask", method="PATCH", path=INSTANCES + "/{{instanceId}}",
              body={"updateMask": "fqdn", "description": "x"},
              test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
