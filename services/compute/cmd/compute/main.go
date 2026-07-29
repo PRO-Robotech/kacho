@@ -654,9 +654,20 @@ func insecureListenersInProduction(cfg config.Config) error {
 //     forwarded principal, всегда обязательны;
 //   - project/geo/vpc-subnet peer-рёбра (IAMProjectMTLS / GeoMTLS / VPCMTLS) —
 //     дозваниваются на request-path каждой мутации, кроме SkipPeerValidation;
+//   - vpc NIC-attach (VPCNicMTLS) и storage volume-attach (StorageMTLS) —
+//     internal :9091 сагами Create/Delete, активны при заданном адресе;
 //   - authz Check-ребро (IAMAuthzMTLS) — per-RPC FGA-gate, активно кроме breakglass;
 //   - register-drainer ребро (IAMRegisterMTLS) — реплеит FGA-registration в iam,
 //     активно при FGARegisterDrainerEnabled.
+//
+// Заявление о полноте здесь — не риторика: оно проверяется механически. Гейт
+// TestEdgeCensus_GuardCoversEveryDialedEdge переписывает по синтаксису main.go
+// каждое место, где composition root резолвит TLS-креды, и требует, чтобы
+// отключение любого такого ребра роняло эту функцию. Обратный гейт
+// (TestEdgeCensus_GuardDemandsNothingUndialed) не даёт остаться требованию на
+// провод, который сняли. Руками этот перечень поддерживать больше не нужно — и,
+// что важнее, нельзя разойтись с кодом молча: два ребра (NIC-attach и
+// volume-attach) уже выпадали из него именно так.
 func insecureEdgesInProductionStrict(cfg config.Config) error {
 	var insecure []string
 	if !cfg.PublicServerMTLS.Enable {
@@ -676,6 +687,18 @@ func insecureEdgesInProductionStrict(cfg config.Config) error {
 		// несёт forwarded principal, значит plaintext на нём компрометирует subject.
 		if cfg.VPCGRPCAddr != "" && !cfg.VPCMTLS.Enable {
 			insecure = append(insecure, "VPC_MTLS_ENABLE")
+		}
+		// vpc InternalNetworkInterfaceService — NIC-attach/release сага (:9091).
+		// Несёт forwarded principal и привязку интерфейса к машине; провод живой
+		// ровно тогда, когда задан адрес (иначе dialPeers ставит no-op-клиент).
+		if cfg.VPCInternalGRPCAddr != "" && !cfg.VPCNicMTLS.Enable {
+			insecure = append(insecure, "VPC_NIC_MTLS_ENABLE")
+		}
+		// storage InternalVolumeService — attach/detach тома (:9091). Payload
+		// самоописывающийся (несёт project/instance/zone), поэтому plaintext на
+		// нём — это ещё и подмена привязки тома, не только subject'а.
+		if cfg.StorageInternalGRPCAddr != "" && !cfg.StorageMTLS.Enable {
+			insecure = append(insecure, "STORAGE_MTLS_ENABLE")
 		}
 	}
 	if !cfg.AuthZBreakglass && !cfg.IAMAuthzMTLS.Enable {
