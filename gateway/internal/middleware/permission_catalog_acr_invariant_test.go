@@ -61,10 +61,22 @@ func sensitiveACR2Set() map[string]struct{} {
 		// identity may authenticate AT ALL. Disable is every Revoke this account
 		// has at once and then some — it also stops the next mint, on every door
 		// (client_credentials hook, federated assertion, key issuance, docker
-		// token) — and Enable hands all of that back. Leaving the pair at the
-		// AAL1 floor while SAKeyService/Revoke demands step-up would be a
-		// step-up BYPASS in the other direction: the cheap door would decide the
-		// same question for the whole principal instead of one key.
+		// token) — and Enable hands all of that back. Classifying the pair with
+		// the credential surface keeps the INTERACTIVE cost of the two answers
+		// the same: a human who must re-authenticate to revoke one key would
+		// otherwise reach the same outcome for the whole principal through the
+		// cheaper door.
+		//
+		// What this does NOT do, stated here because the opposite is easy to
+		// assume: it is not a second authorization gate, and it is INERT for
+		// machine callers — pkg/grpcsrv.EvaluateStepUp short-circuits to allow
+		// for a service-account principal before the floor is read at all. A
+		// service account holding `v_update` on the target disables it with no
+		// step-up whatsoever. That is the platform's deliberate posture (a
+		// machine has no interactive ceremony to perform), and it means the whole
+		// of WHO may do this is decided by the model, exactly as it is for
+		// Update. The floor raises assurance for humans; it grants nothing and
+		// withholds nothing from machines.
 		"kacho.cloud.iam.v1.UserTokenService/Issue",
 		"kacho.cloud.iam.v1.UserTokenService/Revoke",
 		"kacho.cloud.iam.v1.SAKeyService/Issue",
