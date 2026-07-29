@@ -114,6 +114,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }
@@ -155,6 +163,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }
@@ -210,6 +226,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }
@@ -245,8 +269,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// bounded read-your-writes retry публичного GET (async-worker commit window;",
-                  "// op-poll недоступен из-за #55). Ретраим СЕБЯ пока 404, потом реальные assertions.",
+                  "// страховочный ретрай публичного GET на окно видимости записи (мутация уже",
+                  "// закоммичена синхронно). Ретраим СЕБЯ пока 404, потом реальные assertions.",
                   "if (pm.environment.get('_rgfStarted') !== pm.info.requestName) {",
                   "  pm.environment.set('_rgfCount', '0');",
                   "  pm.environment.set('_rgfStarted', pm.info.requestName);",
@@ -352,6 +376,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }
@@ -393,6 +425,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }
@@ -434,6 +474,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }

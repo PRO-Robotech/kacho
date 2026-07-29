@@ -17,19 +17,31 @@ case-файл (collections/<name>.postman_collection.json).
 
 Гео-специфика (в отличие от vpc/compute):
   * Region/Zone — ГЛОБАЛЬНЫЙ cluster-scoped каталог, НЕ project-scoped: у кейсов
-    нет projectId, нет labels/description, нет per-object list-authz. Public read
-    гейтится `viewer`@cluster (jwtBootstrap несёт system_viewer); admin-CRUD
-    гейтится `system_admin`@cluster (jwtBootstrap несёт и его).
+    нет projectId, нет labels/description, нет per-object list-authz.
+  * Публичное чтение (RegionService/ZoneService Get/List) — `<exempt>` в
+    permission-каталоге: per-RPC FGA-Check с него СНЯТ, а аутентификация нет.
+    Ветка `<exempt>` api-gateway требует валидного принципала и без него отвечает
+    UNAUTHENTICATED, поэтому кейсу нужен любой живой токен, но НЕ нужен грант.
+    Admin-CRUD гейтится `system_admin`@cluster (jwtBootstrap несёт его).
   * Admin-мутации живут в InternalRegion/ZoneService на cluster-internal REST
     listener ({{internalBaseUrl}}, :8081) — на публичном {{baseUrl}} их нет by
     design (ban #6). Помечай такие Step'ы `internal=True`.
-  * Async-форма: Internal Create/Update/Delete возвращают Operation{done:false}.
-    ВНИМАНИЕ — geo Operation-id ('geo…') сейчас НЕ маршрутизируется api-gateway
-    OpsProxy (prefix 'geo' отсутствует в prefixToBackend → InvalidArgument):
-    PRO-Robotech/kacho#55. Поэтому GREEN-кейсы НЕ поллят Operation, а подтверждают
-    материализацию мутации через ПУБЛИЧНЫЙ read (RegionService.Get/ZoneService.Get)
-    с bounded read-your-writes retry (retry_get_until_found). Явный op-poll держит
-    ОДИН RED-lock кейс (operation.py, `# verifies #55`).
+  * Форма ответа мутации — СИНХРОННО ЗАВЕРШЁННАЯ Operation (syncop): каталог —
+    config-INSERT в одной БД, без саги и async-worker'а, поэтому Internal
+    Create/Update/Delete возвращают `Operation{done:true}` НЕМЕДЛЕННО:
+    `metadata` несёт id ресурса, `result.response` — полное public-тело.
+    Op-poll не требуется; `.response` разворачивается прямо из ответа мутации.
+  * ОТКАЗ МУТАЦИИ ПРИЕЗЖАЕТ В `result.error`, А НЕ КОДОМ HTTP. Ошибки, найденные
+    базой (23505 UNIQUE, 23503 FK), syncop финализирует как `Operation{done:true,
+    error:…}` под HTTP 200; синхронным 4xx отвечает только предзаписная валидация
+    (malformed id, coupling, required name, countryCode, immutable). Поэтому шаг
+    мутации ОБЯЗАН проверять `result.error`: `assert_operation_envelope()` — для
+    ожидаемого успеха, `assert_operation_failed(code, …)` — для ожидаемого отказа.
+    Проверка «200 + форма конверта» без этого зачитывает ПРОВАЛИВШУЮСЯ мутацию
+    как принятую.
+  * Материализацию happy-path подтверждаем публичным read
+    (RegionService.Get/ZoneService.Get); `retry_get_until_found` — ограниченный
+    страховочный ретрай на 404 поверх окна видимости записи.
 """
 from __future__ import annotations
 
@@ -130,12 +142,23 @@ def save_from_response(jsonpath: str, env_var: str) -> List[str]:
 
 
 def assert_operation_envelope() -> List[str]:
-    """Internal Create/Update/Delete → 200 + Operation envelope с geo op-id.
+    """Internal Create/Update/Delete, которая обязана УДАТЬСЯ → 200 + Operation
+    {done:true, без result.error}.
 
     geo Operation-id = ids.NewID('geo') = 'geo' + 17-char crockford-base32 (20 симв).
-    Проверяем форму синхронного ответа мутации: 200, id совпадает с /^geo[0-9a-z]/,
-    metadata — объект. Это работает НЕЗАВИСИМО от #55 (роутинг ломается только на
-    последующем op-poll, не на самой мутации)."""
+    Проверяем: 200, id совпадает с /^geo[0-9a-z]/, metadata — объект, операция
+    ЗАВЕРШЕНА (`done:true` — syncop, без async-worker'а) и завершена БЕЗ ошибки.
+
+    Про `result.error` отдельно, потому что без него проверка бессодержательна:
+    отказ мутации, найденный базой (дубль имени/id, нарушение FK), приезжает НЕ
+    кодом HTTP, а полем `error` внутри 200-конверта. Форма конверта у провалившейся
+    мутации та же самая — id на месте, metadata на месте (id ресурса аллоцируется
+    ДО записи). Шаг, проверяющий только форму, зачитывает провал как принятую
+    мутацию, и суита остаётся зелёной ровно на том, что должна ловить. Правило
+    платформы то же: дождаться `done` → убедиться, что ошибки нет → и только
+    потом брать id из metadata.
+
+    Для шага, который ОБЯЗАН провалиться, есть assert_operation_failed()."""
     return [
         *assert_status(200),
         "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
@@ -143,7 +166,53 @@ def assert_operation_envelope() -> List[str]:
         "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
         "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
         "});",
+        "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+        "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+        "});",
+        "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+        "  const j = pm.response.json();",
+        "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+        "    JSON.stringify(j.error || {})).to.eql(false);",
+        "});",
     ]
+
+
+def assert_operation_failed(code: int, code_name: str, message_substr: str = "") -> List[str]:
+    """Мутация ПРИНЯТА транспортом (200 + Operation), но обязана ПРОВАЛИТЬСЯ:
+    отказ, найденный базой, финализируется в `Operation{done:true, error:{code}}`.
+
+    Зеркало assert_operation_envelope() для негативов. Без него негативный шаг
+    приходится проверять только по побочному следствию («ресурс не появился»), а
+    это молчит, если мутация провалилась ПО ДРУГОЙ причине — или если не
+    провалилась вовсе, а следствие не наступило по третьей.
+
+    code/code_name — ожидаемый google.rpc.Code (6 ALREADY_EXISTS, 9
+    FAILED_PRECONDITION); message_substr — необязательный фрагмент контракт-тона."""
+    lines = [
+        *assert_status(200),
+        "pm.test('Operation envelope (geo-prefixed id)', () => {",
+        "  pm.expect(pm.response.json().id, 'operation.id').to.match(/^geo[0-9a-z]+$/);",
+        "});",
+        "pm.test('operation is done (syncop finalises the failure too)', () => {",
+        "  pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true);",
+        "});",
+        f"pm.test('mutation REJECTED — result.error code {code} ({code_name})', () => {{",
+        "  const j = pm.response.json();",
+        "  pm.expect(Boolean(j.error), 'мутация ПРОШЛА, хотя обязана была быть отвергнута: ' +",
+        "    JSON.stringify(j)).to.eql(true);",
+        f"  pm.expect(j.error.code, JSON.stringify(j.error)).to.eql({code});",
+        "});",
+    ]
+    if message_substr:
+        # Апостроф в фрагменте порвал бы JS-литерал в кавычках — экранируем.
+        message_substr = message_substr.replace("\\", "\\\\").replace("'", "\\'")
+        lines += [
+            f"pm.test('result.error message: {message_substr}', () => {{",
+            "  const j = pm.response.json();",
+            f"  pm.expect(String((j.error || {{}}).message), JSON.stringify(j.error)).to.include('{message_substr}');",
+            "});",
+        ]
+    return lines
 
 
 def save_op_metadata_id(env_var: str) -> List[str]:
@@ -158,23 +227,27 @@ _RETRY_SEQ = [0]
 
 
 def retry_get_until_found(step: Step, budget: int = 20, interval_ms: int = 500) -> Step:
-    """Bounded read-your-writes retry публичного GET свежесозданного СВОЕГО ресурса.
+    """Ограниченный страховочный ретрай публичного GET свежесозданного СВОЕГО ресурса.
 
-    Internal Create/Update — async (worker коммитит ресурс вне синхронного ответа).
-    Op-poll недоступен (geo Operation-id не маршрутизируется, #55), поэтому
-    материализацию мутации подтверждаем публичным RegionService.Get/ZoneService.Get:
-    он кратко отдаёт 404, пока worker не закоммитил row. Ретраим СЕБЯ на 404 до
-    появления 200, spacing ~interval_ms (busy-wait — newman стреляет setNextRequest
-    до setTimeout). budget*interval покрывает async-worker tail (~10s). Fail-open по
-    budget: реальные assertions прогоняются ОДИН раз на терминальном ответе и падают,
-    если ресурс так и не появился (никогда не маскируется, не бесконечно).
+    Мутация каталога завершается синхронно (syncop: строка закоммичена до того, как
+    вернулся `Operation{done:true}`), поэтому в норме публичный read видит ресурс
+    ПЕРВЫМ же запросом — ретрай здесь не рационал контракта, а узкая страховка на
+    окно видимости записи (чтение с отставшей реплики, переподключение пула).
+    Ретраим СЕБЯ на 404 до появления 200, spacing ~interval_ms (busy-wait — newman
+    стреляет setNextRequest до setTimeout). Fail-open по budget: реальные assertions
+    прогоняются ОДИН раз на терминальном ответе и падают, если ресурс так и не
+    появился (никогда не маскируется, не бесконечно).
+
+    Ретрай НЕ заменяет проверку самой мутации: успех/провал решает `result.error` в
+    её ответе (assert_operation_envelope / assert_operation_failed). «Ресурс появился»
+    — следствие, а не вердикт.
 
     Оборачивать ТОЛЬКО первый публичный read СВОЕГО свежесозданного ресурса — НЕ
     негативы (absent/malformed/cross-principal), там ретрай маскировал бы реальный
     отказ. Имя уникализируется (-rgf<N>), чтобы self-setNextRequest резолвился в СЕБЯ."""
     guard = [
-        "// bounded read-your-writes retry публичного GET (async-worker commit window;",
-        "// op-poll недоступен из-за #55). Ретраим СЕБЯ пока 404, потом реальные assertions.",
+        "// страховочный ретрай публичного GET на окно видимости записи (мутация уже",
+        "// закоммичена синхронно). Ретраим СЕБЯ пока 404, потом реальные assertions.",
         "if (pm.environment.get('_rgfStarted') !== pm.info.requestName) {",
         "  pm.environment.set('_rgfCount', '0');",
         "  pm.environment.set('_rgfStarted', pm.info.requestName);",
@@ -192,39 +265,6 @@ def retry_get_until_found(step: Step, budget: int = 20, interval_ms: int = 500) 
     _RETRY_SEQ[0] += 1
     return replace(step, name=f"{step.name}-rgf{_RETRY_SEQ[0]}",
                    test_script=guard + list(step.test_script))
-
-
-def poll_geo_op_red() -> Step:
-    """RED op-poll шаг для operation.py bug-lock (`# verifies #55`).
-
-    В ОТЛИЧИЕ от штатного poll (skip-on-non-200) этот шаг ЯВНО ассертит, что
-    op-poll МАРШРУТИЗИРУЕТСЯ (не 400 InvalidArgument) и доходит до done — то есть
-    держит пост-фикс контракт. Сейчас gateway OpsProxy отвергает geo op-id с
-    400 'invalid operation id' → эти assertions КРАСНЫЕ; станут зелёными после
-    добавления geo-prefix в prefixToBackend (#55). Ретраит СЕБЯ на done:false до
-    budget (config-INSERT завершается быстро, но worker всё же async)."""
-    return Step(
-        name="poll-geo-op",
-        method="GET",
-        path="/operations/{{geoOpId}}",
-        test_script=[
-            "pm.test('op-poll routes to geo backend — NOT InvalidArgument (verifies #55)', () => {",
-            "  pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.not.eql(400);",
-            "});",
-            "pm.test('op-poll status 200 (verifies #55)', () => pm.expect(pm.response.code).to.eql(200));",
-            "if (pm.response.code !== 200) { pm.environment.unset('_geoPollCount'); return; }",
-            "const j = pm.response.json();",
-            "const pc = parseInt(pm.environment.get('_geoPollCount') || '0', 10);",
-            "if (!j.done && pc < 20) {",
-            "  pm.environment.set('_geoPollCount', String(pc + 1));",
-            "  const _d = Date.now(); while (Date.now() - _d < 500) { /* inter-poll delay */ }",
-            "  pm.execution.setNextRequest(pm.info.requestName);",
-            "  return;",
-            "}",
-            "pm.environment.unset('_geoPollCount');",
-            "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-        ],
-    )
 
 
 def assert_createdat_truncated(field_expr: str = "pm.response.json().createdAt") -> List[str]:
@@ -377,8 +417,8 @@ def load_cases_module(path: Path):
     mod.save_from_response = save_from_response
     mod.save_op_metadata_id = save_op_metadata_id
     mod.assert_operation_envelope = assert_operation_envelope
+    mod.assert_operation_failed = assert_operation_failed
     mod.retry_get_until_found = retry_get_until_found
-    mod.poll_geo_op_red = poll_geo_op_red
     mod.assert_createdat_truncated = assert_createdat_truncated
     mod.assert_no_infra_fields = assert_no_infra_fields
     spec.loader.exec_module(mod)

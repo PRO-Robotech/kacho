@@ -71,6 +71,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }
@@ -106,8 +114,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// bounded read-your-writes retry публичного GET (async-worker commit window;",
-                  "// op-poll недоступен из-за #55). Ретраим СЕБЯ пока 404, потом реальные assertions.",
+                  "// страховочный ретрай публичного GET на окно видимости записи (мутация уже",
+                  "// закоммичена синхронно). Ретраим СЕБЯ пока 404, потом реальные assertions.",
                   "if (pm.environment.get('_rgfStarted') !== pm.info.requestName) {",
                   "  pm.environment.set('_rgfCount', '0');",
                   "  pm.environment.set('_rgfStarted', pm.info.requestName);",
@@ -170,6 +178,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }
@@ -205,8 +221,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// bounded read-your-writes retry публичного GET (async-worker commit window;",
-                  "// op-poll недоступен из-за #55). Ретраим СЕБЯ пока 404, потом реальные assertions.",
+                  "// страховочный ретрай публичного GET на окно видимости записи (мутация уже",
+                  "// закоммичена синхронно). Ретраим СЕБЯ пока 404, потом реальные assertions.",
                   "if (pm.environment.get('_rgfStarted') !== pm.info.requestName) {",
                   "  pm.environment.set('_rgfCount', '0');",
                   "  pm.environment.set('_rgfStarted', pm.info.requestName);",
@@ -267,6 +283,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }
@@ -308,6 +332,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }
@@ -469,10 +501,21 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
-                  "pm.test('Operation envelope (geo-prefixed id + metadata)', () => {",
+                  "pm.test('Operation envelope (geo-prefixed id)', () => {",
+                  "  pm.expect(pm.response.json().id, 'operation.id').to.match(/^geo[0-9a-z]+$/);",
+                  "});",
+                  "pm.test('operation is done (syncop finalises the failure too)', () => {",
+                  "  pm.expect(pm.response.json().done, JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation REJECTED — result.error code 9 (FAILED_PRECONDITION)', () => {",
                   "  const j = pm.response.json();",
-                  "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
-                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "  pm.expect(Boolean(j.error), 'мутация ПРОШЛА, хотя обязана была быть отвергнута: ' +",
+                  "    JSON.stringify(j)).to.eql(true);",
+                  "  pm.expect(j.error.code, JSON.stringify(j.error)).to.eql(9);",
+                  "});",
+                  "pm.test('result.error message: reference constraint', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(String((j.error || {}).message), JSON.stringify(j.error)).to.include('reference constraint');",
                   "});"
                 ]
               }
@@ -568,6 +611,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }
@@ -603,8 +654,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// bounded read-your-writes retry публичного GET (async-worker commit window;",
-                  "// op-poll недоступен из-за #55). Ретраим СЕБЯ пока 404, потом реальные assertions.",
+                  "// страховочный ретрай публичного GET на окно видимости записи (мутация уже",
+                  "// закоммичена синхронно). Ретраим СЕБЯ пока 404, потом реальные assertions.",
                   "if (pm.environment.get('_rgfStarted') !== pm.info.requestName) {",
                   "  pm.environment.set('_rgfCount', '0');",
                   "  pm.environment.set('_rgfStarted', pm.info.requestName);",
@@ -667,6 +718,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }
@@ -702,8 +761,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// bounded read-your-writes retry публичного GET (async-worker commit window;",
-                  "// op-poll недоступен из-за #55). Ретраим СЕБЯ пока 404, потом реальные assertions.",
+                  "// страховочный ретрай публичного GET на окно видимости записи (мутация уже",
+                  "// закоммичена синхронно). Ретраим СЕБЯ пока 404, потом реальные assertions.",
                   "if (pm.environment.get('_rgfStarted') !== pm.info.requestName) {",
                   "  pm.environment.set('_rgfCount', '0');",
                   "  pm.environment.set('_rgfStarted', pm.info.requestName);",
@@ -761,6 +820,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }
@@ -802,6 +869,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }
@@ -857,6 +932,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }
@@ -892,8 +975,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// bounded read-your-writes retry публичного GET (async-worker commit window;",
-                  "// op-poll недоступен из-за #55). Ретраим СЕБЯ пока 404, потом реальные assertions.",
+                  "// страховочный ретрай публичного GET на окно видимости записи (мутация уже",
+                  "// закоммичена синхронно). Ретраим СЕБЯ пока 404, потом реальные assertions.",
                   "if (pm.environment.get('_rgfStarted') !== pm.info.requestName) {",
                   "  pm.environment.set('_rgfCount', '0');",
                   "  pm.environment.set('_rgfStarted', pm.info.requestName);",
@@ -956,6 +1039,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }
@@ -991,8 +1082,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// bounded read-your-writes retry публичного GET (async-worker commit window;",
-                  "// op-poll недоступен из-за #55). Ретраим СЕБЯ пока 404, потом реальные assertions.",
+                  "// страховочный ретрай публичного GET на окно видимости записи (мутация уже",
+                  "// закоммичена синхронно). Ретраим СЕБЯ пока 404, потом реальные assertions.",
                   "if (pm.environment.get('_rgfStarted') !== pm.info.requestName) {",
                   "  pm.environment.set('_rgfCount', '0');",
                   "  pm.environment.set('_rgfStarted', pm.info.requestName);",
@@ -1048,6 +1139,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }
@@ -1089,6 +1188,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }
@@ -1144,6 +1251,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }
@@ -1179,8 +1294,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// bounded read-your-writes retry публичного GET (async-worker commit window;",
-                  "// op-poll недоступен из-за #55). Ретраим СЕБЯ пока 404, потом реальные assertions.",
+                  "// страховочный ретрай публичного GET на окно видимости записи (мутация уже",
+                  "// закоммичена синхронно). Ретраим СЕБЯ пока 404, потом реальные assertions.",
                   "if (pm.environment.get('_rgfStarted') !== pm.info.requestName) {",
                   "  pm.environment.set('_rgfCount', '0');",
                   "  pm.environment.set('_rgfStarted', pm.info.requestName);",
@@ -1243,6 +1358,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }
@@ -1278,8 +1401,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// bounded read-your-writes retry публичного GET (async-worker commit window;",
-                  "// op-poll недоступен из-за #55). Ретраим СЕБЯ пока 404, потом реальные assertions.",
+                  "// страховочный ретрай публичного GET на окно видимости записи (мутация уже",
+                  "// закоммичена синхронно). Ретраим СЕБЯ пока 404, потом реальные assertions.",
                   "if (pm.environment.get('_rgfStarted') !== pm.info.requestName) {",
                   "  pm.environment.set('_rgfCount', '0');",
                   "  pm.environment.set('_rgfStarted', pm.info.requestName);",
@@ -1344,6 +1467,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }
@@ -1430,6 +1561,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }
@@ -1471,6 +1610,14 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.id, 'operation.id ' + JSON.stringify(j)).to.match(/^geo[0-9a-z]+$/);",
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('operation is done (syncop: no async worker, no poll)', () => {",
+                  "  pm.expect(pm.response.json().done, 'operation.done ' + JSON.stringify(pm.response.json())).to.eql(true);",
+                  "});",
+                  "pm.test('mutation ACCEPTED — operation carries no result.error', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Boolean(j.error), 'мутация завершилась ОШИБКОЙ внутри 200-конверта: ' +",
+                  "    JSON.stringify(j.error || {})).to.eql(false);",
                   "});"
                 ]
               }

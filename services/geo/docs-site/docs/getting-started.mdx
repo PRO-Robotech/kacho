@@ -75,9 +75,14 @@ admin (`:9091`).
   `}
 </CodeBlock>
 
-В dev-режиме (по умолчанию `KACHO_GEO_AUTH_MODE=dev`) сервис стартует без mTLS и может работать
-без подключения к kacho-iam. Production-режим обязывает mTLS на обоих listener'ах и
-сконфигурированный адрес kacho-iam для per-RPC authz — иначе сервис откажется стартовать.
+Команда выше поднимет сервис **не при любых настройках**: mTLS на обоих listener'ах, адрес
+kacho-iam для per-RPC authz и непустой allow-list доверенных форвардеров обязательны при **любом**
+старте — независимо от `KACHO_GEO_AUTH_MODE`; без них сервис откажется стартовать. Единственный
+обход — аварийный `KACHO_GEO_AUTHZ_BREAKGLASS=true`, и в production-posture он не honored.
+
+`KACHO_GEO_AUTH_MODE` по умолчанию `production` (secure by default) и в этой posture дополнительно
+запрещает plaintext-соединение к БД, поэтому дефолтный `KACHO_GEO_DB_SSLMODE=disable` придётся либо
+заменить на TLS, либо явно выбрать `KACHO_GEO_AUTH_MODE=dev` для локальных фикстур.
 Детали — на странице [Конфигурация](/install/configuration).
 
 ## 4. Прочитать каталог регионов и зон

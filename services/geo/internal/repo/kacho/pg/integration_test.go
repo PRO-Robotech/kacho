@@ -151,6 +151,69 @@ func TestRegionInsertDuplicate(t *testing.T) {
 	require.True(t, stderrors.Is(err, geoerrors.ErrAlreadyExists), "got %v", err)
 }
 
+// TestRegionInsertDuplicateName_reportsTheName — вторая уникальность каталога:
+// глобальная UNIQUE(name) (миграция 0004). Конфликт по ИМЕНИ обязан и говорить об
+// имени: id у второй строки СВОЙ, и утверждать «Region <id> already exists»
+// значит сообщать о конфликте, которого не было.
+//
+// Тест — живой Postgres, а не подставленный pgconn.PgError: он проверяет ровно
+// то допущение, на котором держится маршрутизация, — что СУБД называет
+// нарушенное ограничение `regions_name_key`.
+func TestRegionInsertDuplicateName_reportsTheName(t *testing.T) {
+	pool := newTestPool(t)
+	ctx := context.Background()
+	rr := pg.NewRegionRepo(pool)
+
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region One"})
+	require.NoError(t, err)
+
+	_, err = rr.Insert(ctx, &domain.Region{ID: "region-2", Name: "Region One"})
+	require.True(t, stderrors.Is(err, geoerrors.ErrAlreadyExists), "got %v", err)
+	require.Contains(t, err.Error(), "Region with name Region One already exists",
+		"конфликт по имени обязан называть имя")
+	require.NotContains(t, err.Error(), "region-2",
+		"сообщение утверждает конфликт по id, которого не было: id region-2 свободен, занято имя")
+}
+
+// TestRegionUpdateToTakenName_reportsTheName — тот же ключ на Update, где
+// id-тон самоопровергается: строка с этим id существует по построению — её и
+// правят.
+func TestRegionUpdateToTakenName_reportsTheName(t *testing.T) {
+	pool := newTestPool(t)
+	ctx := context.Background()
+	rr := pg.NewRegionRepo(pool)
+
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Taken"})
+	require.NoError(t, err)
+	_, err = rr.Insert(ctx, &domain.Region{ID: "region-2", Name: "Free"})
+	require.NoError(t, err)
+
+	taken := "Taken"
+	_, err = rr.Update(ctx, "region-2", region.UpdateParams{Name: &taken})
+	require.True(t, stderrors.Is(err, geoerrors.ErrAlreadyExists), "got %v", err)
+	require.Contains(t, err.Error(), "Region with name Taken already exists")
+	require.NotContains(t, err.Error(), "region-2 already exists",
+		"регион region-2 существует — это тот самый, который правят; занято ИМЯ")
+}
+
+// TestZoneInsertDuplicateName_reportsTheName — паритет по зонам (zones_name_key).
+func TestZoneInsertDuplicateName_reportsTheName(t *testing.T) {
+	pool := newTestPool(t)
+	ctx := context.Background()
+	rr := pg.NewRegionRepo(pool)
+	zr := pg.NewZoneRepo(pool)
+
+	_, err := rr.Insert(ctx, &domain.Region{ID: "region-1", Name: "Region 1"})
+	require.NoError(t, err)
+	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-a", RegionID: "region-1", Name: "Zone One", Status: domain.ZoneStatusUp})
+	require.NoError(t, err)
+
+	_, err = zr.Insert(ctx, &domain.Zone{ID: "region-1-b", RegionID: "region-1", Name: "Zone One", Status: domain.ZoneStatusUp})
+	require.True(t, stderrors.Is(err, geoerrors.ErrAlreadyExists), "got %v", err)
+	require.Contains(t, err.Error(), "Zone with name Zone One already exists")
+	require.NotContains(t, err.Error(), "region-1-b")
+}
+
 // TestZoneFKRestrict_DeleteRegionWithZones — удаление региона, у которого есть
 // зона, упирается в FK RESTRICT zones→regions на DB-уровне (источник истины,
 // без software-precheck) и поднимается как FailedPrecondition.

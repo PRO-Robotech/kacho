@@ -16,13 +16,14 @@ tests/newman/
   cases/region.py   cases/zone.py            # declarative Case/Step DSL
   scripts/gen.py                             # cases → collections (Postman v2.1)
   scripts/validate-cases.py                  # dup case-id + CASES-INDEX (hard-fail in CI before newman)
+  scripts/selftest-assertions.js             # preflight: does a mutation step check result.error at all?
   scripts/run.sh                             # newman runner (--service, --bail, --delay, --jobs)
   collections/*.postman_collection.json      # generated (committed)
   environments/local.postman_environment.json
   docs/{TAXONOMY,CASES-INDEX,TEST-PLAN,RESULTS,PRODUCT-REQUIREMENTS}.md
 ```
 
-## What is covered (22 cases: region ×11, zone ×11)
+## What is covered (57 cases across 7 collections — see docs/CASES-INDEX.md)
 
 Public sync reads — `RegionService.Get/List`, `ZoneService.Get/List`
 (`GET /geo/v1/regions[/{id}]`, `GET /geo/v1/zones[/{id}]`):
@@ -58,18 +59,20 @@ matching newman case). No product-bug red cases and no known-failing cases (see
 ## Admin-CRUD (Internal, :9091) — out of this suite
 
 `InternalRegionService`/`InternalZoneService` (Create/Update/Delete) are Internal-only
-(security.md ban #6) and gated `system_admin`; the local stand env exposes only the public
-listener, so admin-CRUD conformance stays at the Go layer
-(`cmd/kacho-geo/serve_registration_test.go` wiring guard;
-`internal/repo/kacho/pg/*_integration_test.go`; `internal/handler/*_test.go`). This suite's
-`*-CR-AUTHZ-ADMIN-NOT-PUBLIC` cases are the black-box guard that the admin surface is not
-reachable/mutating on the public endpoint.
+(security.md ban #6) and gated `system_admin`. They ARE covered black-box — via the
+cluster-internal REST listener (`{{internalBaseUrl}}`, steps marked `internal=True`):
+`cases/internal-region.py`, `cases/internal-zone.py`. Their mutations answer with a
+synchronously completed Operation, and a rejection arrives in `result.error` under HTTP
+200 — hence `assert_operation_envelope()` / `assert_operation_failed()` and the preflight
+selftest. The `ANP-*` cases stay as the guard that this admin surface is NOT reachable on
+the public endpoint.
 
 ## Run
 
 ```
-python3 scripts/gen.py            # regenerate collections
-python3 scripts/validate-cases.py # dup-id + CASES-INDEX gate
-./scripts/run.sh                  # full run (region + zone)
+python3 scripts/gen.py             # regenerate collections
+python3 scripts/validate-cases.py  # dup-id + CASES-INDEX gate
+node scripts/selftest-assertions.js # preflight (run.sh runs it too; no network)
+./scripts/run.sh                   # full run (all collections)
 ./scripts/run.sh --service zone   # one collection
 ```

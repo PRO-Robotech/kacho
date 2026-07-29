@@ -127,7 +127,7 @@ CASES.append(Case(
              test_script=[*assert_status(200)])),
         Step(name="create-dup", method="POST", path="/geo/v1/internal/regions", internal=True,
              body={"id": "qa-reg-dup-{{runId}}", "name": "QA Region Dup Again {{runId}}"},
-             test_script=[*assert_operation_envelope()]),
+             test_script=[*assert_operation_failed(6, "ALREADY_EXISTS", "already exists")]),
         Step(name="get-still-present", method="GET", path="/geo/v1/regions/qa-reg-dup-{{runId}}",
              test_script=[
                  *assert_status(200),
@@ -166,7 +166,7 @@ CASES.append(Case(
              path="/geo/v1/zones/qa-reg-del-{{runId}}-z",
              test_script=[*assert_status(200)])),
         Step(name="delete-region-with-zone", method="DELETE", path="/geo/v1/internal/regions/qa-reg-del-{{runId}}", internal=True,
-             test_script=[*assert_operation_envelope()]),
+             test_script=[*assert_operation_failed(9, "FAILED_PRECONDITION", "reference constraint")]),
         Step(name="region-survived", method="GET", path="/geo/v1/regions/qa-reg-del-{{runId}}",
              test_script=[
                  *assert_status(200),
