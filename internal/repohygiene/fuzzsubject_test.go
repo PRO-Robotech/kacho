@@ -92,8 +92,8 @@ func TestEveryFuzzTargetDrivesProductionCode(t *testing.T) {
 // множество сверяется с расписанием: каждая цель, которую ночной прогон
 // запускает, обязана быть видна анализатору.
 //
-// Обратное направление (цель в коде, но не в матрице) держит джоба
-// `matrix-complete` в самом workflow — здесь оно намеренно не дублируется.
+// Обратное направление (цель в коде, но не в матрице) — в
+// TestScheduledMatrixCoversEveryFuzzTarget ниже, на том же разборе.
 func TestFuzzSubjectAnalyzerSeesEveryScheduledTarget(t *testing.T) {
 	root := repoRoot(t)
 	seen := map[string]bool{}
@@ -114,6 +114,136 @@ func TestFuzzSubjectAnalyzerSeesEveryScheduledTarget(t *testing.T) {
 				"молча перестал покрывать часть целей.", name)
 		}
 	}
+}
+
+// TestScheduledMatrixCoversEveryFuzzTarget — матрица ночного прогона и дерево
+// обязаны совпадать, и проверяется это ДЕТЕРМИНИРОВАННО.
+//
+// Направление «цель в коде, но не в матрице» — единственная защита от того, что
+// написанную фаз-цель не фаззит никто и никогда. Раньше оно жило джобой
+// `matrix-complete` внутри `continuous-fuzz.yml`, а у того workflow триггеры
+// только `schedule` и `workflow_dispatch`. Расписание у провайдера исполняется
+// НЕНАДЁЖНО (пропуски под нагрузкой; на ветке, отличной от основной, крон вообще
+// не заводится), поэтому единственный контроль этого направления не исполнялся
+// предсказуемо ни разу. Здесь он идёт обычным `go test ./...` — то есть на каждом
+// PR и на каждом пуше в интеграционную ветку.
+//
+// Джоба `matrix-complete` за ненадобностью снята: две реализации одного правила
+// разъезжаются, а разбор здесь строже — он требует ПОДПИСЬ `func Fuzz…(f
+// *testing.F)`, а не совпадение текста `func Fuzz` где угодно.
+func TestScheduledMatrixCoversEveryFuzzTarget(t *testing.T) {
+	root := repoRoot(t)
+
+	var inCode []string
+	for _, tg := range analyzeFuzzSubjects(t, root, moduleImportPath(t, root)) {
+		inCode = append(inCode, tg.name)
+	}
+	inMatrix := scheduledFuzzTargets(t, root)
+
+	// Предпосылка: пустое множество с любой стороны означает сломанный разбор, а
+	// не согласие. Сравнение двух пустот зелено всегда.
+	if len(inCode) == 0 {
+		t.Fatal("в дереве не найдено НИ ОДНОЙ фаз-цели — сломан обход, а не «матрица совпадает»")
+	}
+	if len(inMatrix) == 0 {
+		t.Fatal("в continuous-fuzz.yml не разобрано НИ ОДНОЙ цели матрицы — сломан разбор, " +
+			"а не «матрица совпадает»")
+	}
+
+	missingFromMatrix, missingFromCode := matrixDivergence(inCode, inMatrix)
+	for _, name := range missingFromMatrix {
+		t.Errorf("фаз-цель %s есть в дереве, но НЕ в матрице .github/workflows/continuous-fuzz.yml — "+
+			"её не фаззит никто и никогда, и об этом никто не узнает. Внеси её в матрицу либо удали "+
+			"цель вместе с посевами.", name)
+	}
+	for _, name := range missingFromCode {
+		t.Errorf("цель %s стоит в матрице .github/workflows/continuous-fuzz.yml, но такой функции в "+
+			"дереве нет — ночной прогон каждую ночь запускает пустоту и зеленеет. Убери строку из "+
+			"матрицы либо напиши цель.", name)
+	}
+	t.Logf("сверено целей: в дереве %d, в матрице %d", len(inCode), len(inMatrix))
+}
+
+// TestMatrixDivergenceIsSymmetric — гейт выше проверен инъекцией в ОБЕ стороны,
+// на фикстурах, а не правкой файлов дерева.
+//
+// Без этого «расхождений нет» на настоящем дереве не отличить от предиката,
+// который расхождения не умеет видеть, — ровно то, чем этот контроль и был, пока
+// висел на расписании.
+func TestMatrixDivergenceIsSymmetric(t *testing.T) {
+	cases := []struct {
+		name              string
+		inCode, inMatrix  []string
+		wantMissingMatrix []string
+		wantMissingCode   []string
+	}{
+		{
+			name:     "совпадают (порядок не важен)",
+			inCode:   []string{"FuzzB", "FuzzA"},
+			inMatrix: []string{"FuzzA", "FuzzB"},
+		},
+		{
+			name:              "цель в коде, в матрице нет — не фаззится никогда",
+			inCode:            []string{"FuzzA", "FuzzNew"},
+			inMatrix:          []string{"FuzzA"},
+			wantMissingMatrix: []string{"FuzzNew"},
+		},
+		{
+			name:            "цель в матрице, в коде нет — прогон гоняет пустоту",
+			inCode:          []string{"FuzzA"},
+			inMatrix:        []string{"FuzzA", "FuzzGone"},
+			wantMissingCode: []string{"FuzzGone"},
+		},
+		{
+			name:              "расхождение сразу в обе стороны",
+			inCode:            []string{"FuzzA", "FuzzNew"},
+			inMatrix:          []string{"FuzzA", "FuzzGone"},
+			wantMissingMatrix: []string{"FuzzNew"},
+			wantMissingCode:   []string{"FuzzGone"},
+		},
+		{
+			name:              "дубли в матрице не создают ложного расхождения",
+			inCode:            []string{"FuzzA"},
+			inMatrix:          []string{"FuzzA", "FuzzA"},
+			wantMissingMatrix: nil,
+			wantMissingCode:   nil,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gotMatrix, gotCode := matrixDivergence(tc.inCode, tc.inMatrix)
+			if strings.Join(gotMatrix, ",") != strings.Join(tc.wantMissingMatrix, ",") {
+				t.Errorf("нет в матрице: %v, ожидалось %v", gotMatrix, tc.wantMissingMatrix)
+			}
+			if strings.Join(gotCode, ",") != strings.Join(tc.wantMissingCode, ",") {
+				t.Errorf("нет в коде: %v, ожидалось %v", gotCode, tc.wantMissingCode)
+			}
+		})
+	}
+}
+
+// matrixDivergence — расхождение двух множеств имён в обе стороны, отсортированное.
+func matrixDivergence(inCode, inMatrix []string) (missingFromMatrix, missingFromCode []string) {
+	code, matrix := map[string]bool{}, map[string]bool{}
+	for _, n := range inCode {
+		code[n] = true
+	}
+	for _, n := range inMatrix {
+		matrix[n] = true
+	}
+	for n := range code {
+		if !matrix[n] {
+			missingFromMatrix = append(missingFromMatrix, n)
+		}
+	}
+	for n := range matrix {
+		if !code[n] {
+			missingFromCode = append(missingFromCode, n)
+		}
+	}
+	sort.Strings(missingFromMatrix)
+	sort.Strings(missingFromCode)
+	return missingFromMatrix, missingFromCode
 }
 
 // TestFuzzWorkflowDoesNotSwallowExitCode — код выхода прогона обязан доходить
