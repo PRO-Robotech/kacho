@@ -27,9 +27,11 @@ package reconciler_test
 // Run: go test ./pkg/outbox/... -race -p 1
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"sync"
 	"testing"
@@ -330,4 +332,97 @@ func Test_Redrive_RevivesWhenNothingHasOvertakenIt(t *testing.T) {
 		"partition order must hold after revival — register then unregister: applied=%v", m.log())
 	require.Falsef(t, m.isPresent(earlier),
 		"revived deregistration must reach the target: applied=%v", m.log())
+}
+
+// Test_Redrive_EmptyResourceIdIsTreatedConservatively — a row that names no
+// resource cannot be shown to have a later intent "for the same resource", so the
+// guard groups such rows together and refuses to revive one that has a delivered
+// row after it.
+//
+// This pins a documented DECISION, not an accident: the cost is that one
+// delivered empty-key row parks every earlier poisoned empty-key row for good.
+// The alternative — reviving them — risks replaying an intent past a delivered
+// one, which is the whole defect the guard exists for. If the decision is ever
+// revisited, this test is the thing that must change with it.
+func Test_Redrive_EmptyResourceIdIsTreatedConservatively(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	pool := setupRegisterOutboxPG(t)
+
+	// Two poisoned rows that name no resource, then a delivered one, also nameless.
+	parkedA := seedIntent(t, ctx, pool, "fga.register", "", redriveMaxAtt, false)
+	parkedB := seedIntent(t, ctx, pool, "fga.register", "", redriveMaxAtt, false)
+	seedIntent(t, ctx, pool, "fga.unregister", "", 0, true)
+	// A poisoned nameless row AFTER the delivered one has nothing past it.
+	tailID := seedIntent(t, ctx, pool, "fga.register", "", redriveMaxAtt, false)
+	// A named resource is unaffected by any of it.
+	namedID := seedIntent(t, ctx, pool, "fga.register", "app-named", redriveMaxAtt, false)
+
+	n, err := newRedriveReconciler(t, pool).RedrivePoisoned(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 2, n, "the trailing nameless row and the named one are revived")
+
+	for _, id := range []int64{parkedA, parkedB} {
+		require.GreaterOrEqualf(t, attemptCountOf(t, ctx, pool, id), redriveMaxAtt,
+			"row %d names no resource and has a delivered row after it: it must stay parked", id)
+	}
+	require.Less(t, attemptCountOf(t, ctx, pool, tailID), redriveMaxAtt,
+		"a nameless row with nothing delivered after it is still revivable")
+	require.Less(t, attemptCountOf(t, ctx, pool, namedID), redriveMaxAtt,
+		"a named resource must not be dragged into the nameless group")
+}
+
+// Test_Redrive_ParkedRowsAreNamedInTheReport — a row the pass declines to revive
+// stays in the pending set and keeps the table's backlog and age gauges off zero,
+// so it needs a human. A bare count does not tell that human WHICH resource lost
+// its registration, and an alarm nobody can act on stops being an alarm.
+func Test_Redrive_ParkedRowsAreNamedInTheReport(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	pool := setupRegisterOutboxPG(t)
+	const gone = "app-superseded"
+
+	seedIntent(t, ctx, pool, "fga.register", gone, redriveMaxAtt, false)
+	seedIntent(t, ctx, pool, "fga.unregister", gone, 0, true)
+
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	r, err := reconciler.NewRedriveOnly(pool, reconciler.Config{
+		Table:       redriveTable,
+		Channel:     redriveChannel,
+		MaxAttempts: redriveMaxAtt,
+	}, logger)
+	require.NoError(t, err)
+
+	revived, err := r.RedrivePoisoned(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 0, revived)
+
+	out := buf.String()
+	require.Containsf(t, out, gone,
+		"the report must name the resource whose registration is parked, not just count it: %s", out)
+	require.Contains(t, out, "superseded=1", "the report must carry the count too: %s", out)
+
+	// The healthy case must stay silent — an alarm that fires on every pass is
+	// noise, and noise is how a real one gets missed.
+	buf.Reset()
+	_, err = r.RedrivePoisoned(ctx)
+	require.NoError(t, err)
+	require.NotEmpty(t, buf.String(), "a parked row is reported on every pass while it is parked")
+
+	buf.Reset()
+	pool2 := setupRegisterOutboxPG(t)
+	seedIntent(t, ctx, pool2, "fga.register", "app-fine", redriveMaxAtt, false)
+	r2, err := reconciler.NewRedriveOnly(pool2, reconciler.Config{
+		Table: redriveTable, Channel: redriveChannel, MaxAttempts: redriveMaxAtt,
+	}, logger)
+	require.NoError(t, err)
+	revived2, err := r2.RedrivePoisoned(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, revived2)
+	require.Empty(t, buf.String(), "nothing parked → nothing reported: %s", buf.String())
 }

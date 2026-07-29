@@ -215,3 +215,50 @@ func TestRateLimiter_Concurrent(t *testing.T) {
 		t.Fatalf("rate limiter must admit a fresh subject after concurrent load")
 	}
 }
+
+// TestRateLimiter_ConcurrentOverdraftIsRepaidNotForgiven — the budget is asked
+// before the permission model answers and spent after, so the two steps cannot be
+// atomic: every check already in flight has seen a positive balance. That is
+// allowed to inflate ONE burst. It must not multiply the SUSTAINED rate, and the
+// only thing standing between the two is whether the overdraft is remembered.
+//
+// If Charge clamped the balance at zero, K concurrent charges would collapse into
+// a single token, so each refilled token would admit K more checks — the ceiling
+// would become ratePerSec × concurrency instead of ratePerSec. Carrying the debt
+// makes refill repay it first.
+//
+// The interleaving is modelled by ORDER rather than goroutines (every in-flight
+// check asks, then every one of them charges) because the difference is only
+// observable across refill, and refill needs the injectable clock.
+func TestRateLimiter_ConcurrentOverdraftIsRepaidNotForgiven(t *testing.T) {
+	const (
+		rate     = 10 // burst = 20
+		inFlight = 30 // concurrency above the burst — the overdraft is 10
+	)
+	rl := newRateLimiter(rate)
+	c := &clock{t: time.Now()}
+	rl.now = c.now
+
+	for i := 0; i < inFlight; i++ {
+		if !rl.HasBudget("usr_x") {
+			t.Fatalf("check %d of %d: all in-flight checks observe the balance before any is spent", i+1, inFlight)
+		}
+	}
+	for i := 0; i < inFlight; i++ {
+		rl.Charge("usr_x")
+	}
+
+	// One second refills exactly `rate` tokens — precisely the size of the debt.
+	// It must go to repaying it, not to admitting new checks.
+	c.advance(time.Second)
+	if rl.HasBudget("usr_x") {
+		t.Fatalf("refill admitted a check while the overdraft of %d was still outstanding: "+
+			"the debt was discarded, so concurrency multiplies the sustained rate", inFlight-2*rate)
+	}
+
+	// A second refill clears the debt and the limiter resumes at its normal rate.
+	c.advance(time.Second)
+	if !rl.HasBudget("usr_x") {
+		t.Fatalf("limiter must resume once the overdraft has been repaid")
+	}
+}

@@ -38,6 +38,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -52,6 +53,11 @@ const (
 	eventRegister   = "fga.register"
 	eventUnregister = "fga.unregister"
 )
+
+// supersededSampleLimit bounds how many resource ids RedrivePoisoned names in its
+// WARN. Attribution needs examples, not the whole set; an unbounded list would
+// turn one stuck resource into an unreadable log line.
+const supersededSampleLimit = 20
 
 // ResourceRow is one live resource as seen by the per-service enumerator. Kind +
 // ID identify the resource; ProjectID is the hierarchy parent ("" when there is
@@ -225,15 +231,40 @@ func NewRedriveOnly(pool *pgxpool.Pool, cfg Config, logger *slog.Logger) (*Recon
 // intendedRegistered on: every emitter writes one row per FGA object and stamps
 // resource_id with that object's globally-unique id, so "same partition" is
 // exactly "same target object". There is no knob for it — a knob left unset here
-// would read as "no ordering" and silently restore the defect. A row that carries
-// no resource id groups with every other such row, exactly as it already does in
-// the drainer's claim: the two must agree, and erring towards a coarser partition
-// can only delay a revival, never mis-order one.
+// would read as "no ordering" and silently restore the defect. The table MUST
+// therefore carry a resource_id column; the one outbox in the platform that does
+// not (iam's fga_outbox, partitioned on tuple_key) is not a register-outbox and
+// has no reconciler.
 //
-// A superseded row therefore stays poisoned. That is the correct outcome (its
-// intent is void), and it keeps its original last_error for diagnosis, but it is
-// also invisible unless reported — so their number is logged at WARN whenever it
-// is non-zero.
+// # Two honest limits of this rule
+//
+// A row with an EMPTY resource_id names no resource, so "a later intent for the
+// same resource" cannot be established for it. Such rows group together — the
+// drainer's claim already groups them the same way and the two must agree — and
+// the conservative reading is deliberate: reviving one risks replaying it past a
+// delivered intent, which is the defect this guard exists for. The cost is real
+// and is NOT merely a delay: one delivered empty-key row parks every earlier
+// poisoned empty-key row permanently. No live emitter writes an empty
+// resource_id, so this is reachable only for rows predating the column
+// (vpc migration 0008 added it without a backfill) — which is why the report
+// below names the rows rather than counting them.
+//
+// The check is evaluated against ONE statement snapshot, so it is "no delivered
+// successor as of this pass", not a serialised guarantee: a successor the drainer
+// commits WHILE the statement runs is invisible to it. This narrows the original
+// window from "every pass, forever" to "a delivery landing inside one statement",
+// and the pass is periodic (minutes) while the statement is milliseconds. Closing
+// it fully would mean taking lockResource per row and giving up the set-based
+// pass; that trade is not obviously worth it and is written down here rather than
+// papered over.
+//
+// A superseded row stays poisoned: its intent is void, and it keeps its original
+// last_error for diagnosis. Note what that means operationally — the row remains
+// in the pending set, so it keeps contributing to the table's backlog and
+// oldest-pending-age gauges, which will not fall back to zero on their own. That
+// is why the report below is a WARN carrying the resource ids and not a bare
+// count: the condition needs a human to retire the rows, and an alarm nobody can
+// clear stops being an alarm.
 //
 // Cost: the supersession check is a correlated anti-join over the table, which is
 // unindexed for delivered rows (the partition-head index is partial on
@@ -245,7 +276,7 @@ func (r *Reconciler) RedrivePoisoned(ctx context.Context) (int, error) {
 	table := outbox.SanitizeTable(r.cfg.Table)
 	q := fmt.Sprintf(`
 		WITH poisoned AS (
-		    SELECT t.id,
+		    SELECT t.id, t.resource_id,
 		           EXISTS (
 		               SELECT 1 FROM %[1]s s
 		                WHERE s.resource_id = t.resource_id
@@ -262,16 +293,29 @@ func (r *Reconciler) RedrivePoisoned(ctx context.Context) (int, error) {
 		    RETURNING 1
 		)
 		SELECT (SELECT count(*) FROM revived),
-		       (SELECT count(*) FROM poisoned WHERE superseded)`, table)
+		       (SELECT count(*) FROM poisoned WHERE superseded),
+		       (SELECT coalesce(array_agg(resource_id ORDER BY id), '{}')
+		          FROM (SELECT resource_id, id FROM poisoned
+		                 WHERE superseded ORDER BY id LIMIT %[2]d) sample)`,
+		table, supersededSampleLimit)
 
 	var revived, superseded int64
-	if err := r.pool.QueryRow(ctx, q, r.cfg.MaxAttempts).Scan(&revived, &superseded); err != nil {
+	var sample []string
+	if err := r.pool.QueryRow(ctx, q, r.cfg.MaxAttempts).Scan(&revived, &superseded, &sample); err != nil {
 		return 0, fmt.Errorf("reconciler.RedrivePoisoned %s: %w", r.cfg.Table, err)
 	}
 	if superseded > 0 {
+		// Named, not counted: these rows stay in the pending set and keep the
+		// table's backlog/age gauges off zero, so an operator has to retire them
+		// by hand and needs to know WHICH. Resource ids are id-based handles, not
+		// PII or infrastructure detail — the same call the drainer's wedge
+		// reporter makes.
 		r.log.Warn("poisoned intents left un-revived: a later intent for the same "+
-			"resource has already been delivered, so replaying them would undo it",
-			slog.Int64("superseded", superseded))
+			"resource has already been delivered, so replaying them would undo it; "+
+			"they remain pending and must be retired by hand",
+			slog.Int64("superseded", superseded),
+			slog.Int("sampled", len(sample)),
+			slog.String("resources", strings.Join(sample, ",")))
 	}
 	return int(revived), nil
 }

@@ -14,6 +14,7 @@ package authz_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -27,7 +28,7 @@ import (
 // caller walking distinct objects misses the positive cache on every call (the
 // cache is keyed per object). If those misses were charged, a legitimate tenant
 // would receive ResourceExhausted on requests it is entitled to — a refusal the
-// error text attributes to "too many denied checks" that were never denied.
+// error text would attribute to checks that were never refused.
 func TestInterceptor_AuthorizedTrafficDoesNotSpendTheDenyBudget(t *testing.T) {
 	checks := 0
 	stub := authz.CheckClientFunc(func(context.Context, string, string, string) (bool, error) {
@@ -157,7 +158,40 @@ func TestInterceptor_DenyBudgetErrorSaysWhatWasSpent(t *testing.T) {
 	if status.Code(last) != codes.ResourceExhausted {
 		t.Fatalf("expected the storm to end in ResourceExhausted, got %v", last)
 	}
-	if got, want := status.Convert(last).Message(), "too many denied checks; retry later"; got != want {
+	if got, want := status.Convert(last).Message(), "too many authorization checks; retry later"; got != want {
 		t.Fatalf("refusal message = %q, want %q", got, want)
+	}
+}
+
+// TestInterceptor_UnavailableModelSpendsTheBudget — a model that does not answer
+// is the case where shedding load matters most, and it is not absorbed by the
+// cache either. CheckTimeout bounds how long ONE call waits; only the budget
+// bounds how often the call is made.
+func TestInterceptor_UnavailableModelSpendsTheBudget(t *testing.T) {
+	checks := 0
+	stub := authz.CheckClientFunc(func(context.Context, string, string, string) (bool, error) {
+		checks++
+		return false, errors.New("permission model unreachable")
+	})
+	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Map:                 makeMap(),
+		Client:              stub,
+		DenyRateLimitPerSec: 5, // burst = 10
+	})
+	ctx := ctxWithPrincipal(t, "usr_alice", "user")
+
+	exhausted := 0
+	for i := 0; i < 40; i++ {
+		_, err := runUnary(intr, ctx, "/kacho.cloud.vpc.v1.NetworkService/Get",
+			&fakeReq{id: fmt.Sprintf("enp_%02d", i)})
+		if status.Code(err) == codes.ResourceExhausted {
+			exhausted++
+		}
+	}
+	if exhausted == 0 {
+		t.Fatalf("an outage must be shed after the budget is gone; 40 of 40 still reached the model")
+	}
+	if checks > 11 {
+		t.Fatalf("shedding must precede the model call: %d calls made for burst 10", checks)
 	}
 }
