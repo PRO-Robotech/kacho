@@ -558,21 +558,44 @@ def filter_syntax_block(prefix, list_path):
                         path=f"{list_path}?projectId={{{{_suiteProjectId}}}}&filter=name%3D%22foo%22",
                         test_script=[*assert_status(200)])],
         ),
+        # Фаза фильтра whitelist'ит ТОЛЬКО `name=`. Неподдерживаемое поле обязано
+        # отвергаться ЯВНО и НИКОГДА не игнорироваться молча: молчаливое игнорирование
+        # хуже отказа — вызывающий получает НЕфильтрованную страницу под фильтром,
+        # который считает применённым. Прежнее `oneOf([200, 400])` под заголовком,
+        # обещающим 400, проходило и при молчаливом игнорировании, то есть ровно на
+        # том дефекте, ради которого кейс существует.
+        #
+        # Исходы измерены на самом парсере (pkg/filter), а не угаданы:
+        #   "this is not valid syntax" → Bad expression at column 1. Unknown field: "this"
+        #   nonexistent_field="x"      → Bad expression at column 1. Unknown field: "nonexistent_field"
+        #   name="foo"                 → разбирается
+        # Первый токен мусорной строки парсер читает как имя поля, поэтому обе
+        # отрицательные ветки приходят одним и тем же классом ошибки.
         Case(
             id=f"{prefix}-LST-FILTER-GARBAGE",
-            title="List с garbage filter syntax → 400 InvalidArgument",
+            title="List с garbage filter syntax → 400 InvalidArgument с именем неизвестного поля",
             classes=["FILTER", "VAL"], priority="P1",
             steps=[Step(name="list-bad-filter", method="GET",
                         path=f"{list_path}?projectId={{{{_suiteProjectId}}}}&filter=this%20is%20not%20valid%20syntax",
-                        test_script=["pm.test('200 or 400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"])],
+                        test_script=[
+                            *assert_status(400),
+                            *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                            "pm.test('сообщение называет непринятое поле', () => pm.expect(String((pm.response.json()||{}).message||''))"
+                            ".to.eql('Bad expression at column 1. Unknown field: \"this\"'));",
+                        ])],
         ),
         Case(
             id=f"{prefix}-LST-FILTER-UNKNOWN-FIELD",
-            title="List с filter на unsupported field → 400 InvalidArgument",
+            title="List с filter на unsupported field → 400 InvalidArgument с именем поля",
             classes=["FILTER", "VAL"], priority="P2",
             steps=[Step(name="list-unknown-field", method="GET",
                         path=f"{list_path}?projectId={{{{_suiteProjectId}}}}&filter=nonexistent_field%3D%22x%22",
-                        test_script=["pm.test('200 or 400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"])],
+                        test_script=[
+                            *assert_status(400),
+                            *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                            "pm.test('сообщение называет непринятое поле', () => pm.expect(String((pm.response.json()||{}).message||''))"
+                            ".to.eql('Bad expression at column 1. Unknown field: \"nonexistent_field\"'));",
+                        ])],
         ),
     ]
 
