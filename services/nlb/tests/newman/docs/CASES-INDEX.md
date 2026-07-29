@@ -374,10 +374,13 @@ These extended patterns saturate the RPC × class matrix to ≥320 total cases f
 - `*-CR-CRUD-NO-OPTIONAL-FIELDS` — CRUD/P2 — Create with only required fields → OK
 - `*-CR-CRUD-WITH-DESCRIPTION` — CRUD/P2 — Create with non-empty description → OK
 - `*-CR-CRUD-AFFINITY-CLIENT-IP` — CRUD/P2 — Create with sessionAffinity=CLIENT_IP_ONLY → OK
-- ~~`*-CR-VAL-IPV-UNKNOWN`~~ — **RETIRED (sub-phase 8.1)** — `ip_version` is `reserved 8` on
-  `CreateListenerRequest`; the listener inherits the parent LB's per-family VIP and carries no
-  address, so "unknown enum value" is no longer a statement about this request. The family/slot
-  rule is covered by `NLB-CR-VAL-ADDRESS-FAMILY-SLOT`. Rationale in `cases/listener.py`.
+- `*-CR-VAL-IPV-UNKNOWN` — VAL/P1 — **RE-POINTED (not retired)** — out-of-dictionary enum value
+  on a live required enum (`protocol="DOES_NOT_EXIST"`) → 400 InvalidArgument at the edge,
+  "invalid value for enum field protocol". The original `ip_version` subject is gone
+  (`reserved 8`), but the control the case is about — an unknown enum value being REFUSED
+  rather than silently taken for the zero value — landed in the gateway on 2026-07-29
+  (`restmux/strict_enum.go`, commit d67d15fb) and this is its only black-box probe, so the
+  case-id keeps its subject instead of being dropped. Rationale in `cases/listener.py`.
 - `*-CR-VAL-TARGET-PORT-ZERO` — VAL,BVA/P1 — target_port=0 → InvalidArgument
 - `*-CR-VAL-TARGET-PORT-OVER` — VAL,BVA/P1 — target_port=65536 → InvalidArgument
 - `*-CR-CRUD-IPV6` — CRUD/P1 — Create with ip_version=IPV6 → OK
