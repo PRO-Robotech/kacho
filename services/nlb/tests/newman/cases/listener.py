@@ -443,20 +443,18 @@ CASES.append(Case(
                    "protocol": "TCP", "port": 0, "targetPort": 8080},
              # Product IS correct: Listener.Create sync-validates port=0 (LbPortFromProto
              # → InvalidArgument "port must be in range [1, 65535]"), but the gateway
-             # editor@lb authz gate runs first. Under --jobs>1 the parent setup LB can
-             # alloc-phantom (kacho#11): its Create Operation completes done WITH "could
-             # not allocate load balancer address", so no LB persists → no owner-tuple →
-             # this child Create authz-denies (403) permanently. The wrap absorbs a genuine
-             # owner-tuple lag on a REAL parent; the port=0 negative is asserted only when
-             # the parent actually materialised (no lastOpError) so a phantom lane is
-             # tolerated, not falsely RED. The canonical serial run never phantoms, so the
-             # 400 sync-validation is fully exercised there.
+             # editor@lb authz gate runs first, so a genuine owner-tuple lag on a REAL
+             # parent can pre-empt the 400 with a transient 403 — that is what the wrap
+             # absorbs. A phantom parent is a different thing entirely and is no longer
+             # this step's problem: `_setup_lb` polls with `fixture_ids=["nlbId"]`, so a
+             # failed VIP allocation fails THERE. The `if (!lastOpError)` that used to sit
+             # here forgave it instead, and with it the port=0 statement — the only
+             # assertion in the case — simply did not run. Its sibling LST-CR-VAL-PORT-OVER
+             # has always asserted the same 400 unwrapped.
              test_script=[
-                 "if (!pm.environment.get('lastOpError')) {",
-                 "  pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
-                 "  pm.test('grpc code 3 (INVALID_ARGUMENT)', () => { const j = pm.response.json();"
+                 "pm.test('status 400', () => pm.expect(pm.response.code, pm.response.text()).to.eql(400));",
+                 "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => { const j = pm.response.json();"
                  " pm.expect(j.code, JSON.stringify(j)).to.eql(3); });",
-                 "}",
              ])),
         *_cleanup_lb(),
     ],
