@@ -26,14 +26,20 @@
 // cached and concurrent questions about one token were not shared — so an
 // unwell provider was asked once per request, each question holding a
 // request-handling goroutine and a connection for the whole per-call budget,
-// all of it aimed at something already struggling. Two mechanisms, because the
-// two shapes fail differently and neither covers the other:
+// all of it aimed at something already struggling. Three mechanisms, because the
+// shapes fail differently and none of them covers the others:
 //
-//   - questions arriving ONE AFTER ANOTHER are answered from a briefly
-//     remembered failure (introspectionFailureWindow);
+//   - questions arriving ONE AFTER ANOTHER about one token are answered from a
+//     briefly remembered failure (introspectionFailureWindow);
 //   - questions arriving TOGETHER on a cold entry are collapsed into one
 //     round-trip by the in-flight group — nothing is remembered yet, so a cache
-//     is no help to them at all.
+//     is no help to them at all;
+//   - questions about MANY DIFFERENT tokens are bounded by the service-wide
+//     breaker (introspection_breaker.go). Both mechanisms above are keyed on the
+//     token, so during an outage every live credential is a first question that
+//     misses both, and N tokens cost N round-trips. The breaker is the only one
+//     of the three that changes WHOM we stop asking rather than how often, which
+//     is why the reasoning for it is written out at length in its own file.
 //
 // A wrong ADDRESS is remembered differently from an unreachable provider, and
 // deliberately so; see rememberMisconfigured.
@@ -170,6 +176,13 @@ type IntrospectionCache struct {
 	misMu    sync.Mutex
 	misErr   error
 	misUntil time.Time
+
+	// breaker — the service-wide bound on questions to a provider that is
+	// answering nobody. The two caches above are per token and cannot see that
+	// shape; this one can, at the price of withholding the question from tokens
+	// it never tried. That price and why it is worth paying are argued in
+	// introspection_breaker.go.
+	breaker *introspectionBreaker
 }
 
 // IntrospectionCacheConfig — construction parameters.
@@ -220,6 +233,8 @@ func NewIntrospectionCache(cfg IntrospectionCacheConfig) (*IntrospectionCache, e
 		basicPass:  cfg.BasicAuthPass,
 		cache:      lrucache.New[string, IntrospectionResult](cfg.MaxEntries, cfg.TTL, now),
 		failures:   lrucache.New[string, error](cfg.MaxEntries, introspectionFailureWindow, now),
+		breaker: newIntrospectionBreaker(
+			introspectionBreakerThreshold, introspectionBreakerCooldown, now),
 	}, nil
 }
 
@@ -267,7 +282,9 @@ func (c *IntrospectionCache) Introspect(ctx context.Context, jti, rawToken strin
 		return IntrospectionResult{}, err
 	}
 
-	// 4. Ask — once per token, however many callers are waiting on the answer.
+	// 4. Ask — once per token, however many callers are waiting on the answer,
+	// and only while the service-wide breaker is letting questions through
+	// (step 5, inside ask).
 	return c.ask(ctx, jti, rawToken)
 }
 
@@ -277,8 +294,23 @@ func (c *IntrospectionCache) ask(ctx context.Context, jti, rawToken string) (Int
 	// A caller that has already gone away starts nothing: the point of this file
 	// is to reduce the number of questions, not to keep asking on behalf of
 	// requests nobody is waiting for.
+	//
+	// Checked BEFORE the breaker permit below, so a departing caller cannot claim
+	// the half-open probe and then not use it.
 	if err := ctx.Err(); err != nil {
 		return IntrospectionResult{}, err
+	}
+
+	// 5. The provider is answering nobody. Withholding the question here — rather
+	// than per token, as everything above does — is what bounds the cost of an
+	// outage; it passes the request exactly as a real non-answer would.
+	//
+	// The permit is taken immediately before the round-trip that reports its
+	// outcome: fetchAndRecord runs under a context stripped of cancellation and
+	// always files recordAnswered or recordUnanswered, so a claimed half-open
+	// probe can never be dropped on the floor.
+	if permit, verdict := c.breaker.allow(); !permit {
+		return IntrospectionResult{}, verdict
 	}
 
 	ch := c.flight.DoChan(jti, func() (any, error) {
@@ -318,12 +350,21 @@ func (c *IntrospectionCache) fetchAndRecord(ctx context.Context, jti, rawToken s
 	res, err := c.fetchHydra(ctx, rawToken)
 	if err != nil {
 		if errors.Is(err, ErrIntrospectionMisconfigured) {
+			// Something answered — it just was not an introspection endpoint. That
+			// is a reachable address, so as far as the breaker is concerned the
+			// question was answered; the refusal is carried by the wrong-address
+			// memory, which Introspect consults before the breaker anyway.
+			c.breaker.recordAnswered()
 			c.rememberMisconfigured(err)
 			return IntrospectionResult{}, err
 		}
+		c.breaker.recordUnanswered(err)
 		c.failures.PutIfGenWithTTL(jti, err, introspectionFailureWindow, failGen)
 		return IntrospectionResult{}, err
 	}
+	// The provider answered. Whether it called the token live or dead, it is
+	// reachable, so any breaker state established by earlier silences is stale.
+	c.breaker.recordAnswered()
 
 	// Store negative + positive — TTL bounded by exp.
 	// If exp is already in the past we treat the token as inactive and skip
