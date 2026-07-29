@@ -421,9 +421,17 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 
 // authorizeViaLookup резолвит principal через SubjectLookuper по external id
 // (sub). Используется как HMAC-dev tail, так и JWKS-fallback (verified
-// токен без kacho_principal_* claims). Поведение при NotFound зависит от mode:
-// dev → anonymous (back-compat newman), production /
+// токен без kacho_principal_* claims). Поведение при неудачном резолве зависит
+// от mode: dev → anonymous (back-compat newman), production /
 // production-strict → reject Unauthenticated.
+//
+// Владелец личности отвечает РАЗНЫМИ ошибками на «такой нет» и «есть, но
+// аутентификация ей запрещена» — и оба ведут сюда, в один и тот же отказ с
+// постоянным текстом. Различие нужно не здесь, а внутри: по нему
+// LookupOrUpsertFromKratos решает, заводить ли зеркало личности (заблокированной
+// — не заводить), и по нему же в лог попадает настоящая причина. Наружу
+// различие не выходит намеренно: иначе край стал бы оракулом существования
+// личности.
 //
 // vt is the verified token when one exists (JWKS-fallback), nil otherwise. It is
 // carried so the machine-binding requirement also covers a machine principal
@@ -437,16 +445,17 @@ func (a *AuthInterceptor) authorizeViaLookup(ctx context.Context, fullMethod, su
 	if err != nil {
 		switch a.mode {
 		case AuthModeProductionStrict, AuthModeProduction:
-			// production[-strict]: subject обязан уже существовать в kacho-iam.
-			// Log the raw iam error server-side; return the constant non-oracle
-			// message so a validly-signed-but-unprovisioned token is
-			// indistinguishable from a bad-signature token (no subject
-			// enumeration, no iam error-text leak).
-			a.logger.Warn("auth: subject not in kacho-iam (rejecting)",
+			// production[-strict]: у токена обязан быть принципал, которому
+			// kacho-iam разрешает аутентифицироваться. Настоящая причина (нет
+			// такой личности либо она есть и запрещена) пишется в лог как есть;
+			// наружу уходит постоянный текст, чтобы валидно подписанный токен
+			// без принципала был неотличим от токена с плохой подписью (никакого
+			// перебора личностей и утечки текста ошибки iam).
+			a.logger.Warn("auth: principal not usable per kacho-iam (rejecting)",
 				"method", fullMethod, "external_id", subjectID, "err", err)
 			return nil, status.Error(codes.Unauthenticated, authFailedMsg)
 		default: // dev
-			a.logger.Debug("auth: subject not in kacho-iam, fallback to anonymous",
+			a.logger.Debug("auth: principal not usable per kacho-iam, fallback to anonymous",
 				"method", fullMethod, "external_id", subjectID, "err", err)
 			return a.injectAnonymous(ctx), nil
 		}
