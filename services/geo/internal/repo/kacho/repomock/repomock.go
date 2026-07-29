@@ -190,6 +190,31 @@ func (r *OpsRepo) MarkDone(_ context.Context, id string, response *anypb.Any) er
 	return nil
 }
 
+// MarkDoneWithMetadata финализирует операцию, ЗАМЕНЯЯ metadata и записывая
+// response. Нужна потому, что строка операции создаётся ДО мутации: на Create
+// метаданные заведомо неполны (warnings° вычисляются по созданной строке), и
+// уточняет их именно терминальный переход. Зеркалит markDoneWithMetadataCAS
+// pgRepo, включая CAS-on-done — иначе мок разошёлся бы с продом ровно на той
+// идемпотентности, ради которой CAS и стоит.
+func (r *OpsRepo) MarkDoneWithMetadata(_ context.Context, id string, metadata, response *anypb.Any) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	op, ok := r.ops[id]
+	if !ok {
+		return operations.ErrNotFound
+	}
+	if op.Done {
+		return operations.ErrAlreadyDone
+	}
+	op.Done = true
+	if metadata != nil {
+		op.Metadata = metadata
+	}
+	op.Response = response
+	op.ModifiedAt = time.Now().UTC()
+	return nil
+}
+
 // MarkError финализирует операцию с ошибкой (google.rpc.Status).
 func (r *OpsRepo) MarkError(_ context.Context, id string, errStatus *status.Status) error {
 	r.mu.Lock()

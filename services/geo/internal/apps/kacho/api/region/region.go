@@ -102,12 +102,12 @@ var regionUpdatable = map[string]struct{}{
 type UseCase struct {
 	reader    Reader
 	writer    Writer
-	ops       operations.Repo
+	ops       syncop.Repo
 	errStatus ErrToStatus
 }
 
 // New собирает UseCase для Region.
-func New(reader Reader, writer Writer, ops operations.Repo, errStatus ErrToStatus) *UseCase {
+func New(reader Reader, writer Writer, ops syncop.Repo, errStatus ErrToStatus) *UseCase {
 	if errStatus == nil {
 		errStatus = func(err error) error { return err }
 	}
@@ -166,21 +166,32 @@ func (u *UseCase) Create(ctx context.Context, in CreateInput) (*operations.Opera
 	}
 	r := domain.Region{ID: in.ID, Name: in.Name, CountryCode: in.CountryCode, Status: st, Infra: in.Infra}
 
+	// Строка операции — ДО INSERT'а. Warnings° вычисляются по СОЗДАННОЙ строке и на
+	// этот момент неизвестны, поэтому metadata здесь минимальна и уточняется
+	// терминальным переходом (syncop.Commit → MarkDoneWithMetadata).
+	op, err := operations.NewFromContext(ctx, lro.OperationPrefix,
+		fmt.Sprintf("Create region %s", in.ID),
+		&geov1.CreateRegionMetadata{RegionId: in.ID})
+	if err != nil {
+		return nil, err
+	}
+	if err := syncop.Begin(ctx, u.ops, op); err != nil {
+		return nil, err
+	}
+
 	created, derr := u.writer.Insert(ctx, &r)
 	if derr != nil {
-		return u.fail(ctx, in.ID, u.errStatus(derr))
+		return syncop.Fail(ctx, u.ops, op, u.errStatus(derr))
 	}
 	resp, err := marshalRegion(created)
 	if err != nil {
-		return nil, err
+		return syncop.Fail(ctx, u.ops, op, u.errStatus(err))
 	}
-	op, err := operations.NewFromContext(ctx, lro.OperationPrefix,
-		fmt.Sprintf("Create region %s", in.ID),
-		&geov1.CreateRegionMetadata{RegionId: in.ID, Warnings: closedWarnings(created)})
+	meta, err := anypb.New(&geov1.CreateRegionMetadata{RegionId: in.ID, Warnings: closedWarnings(created)})
 	if err != nil {
-		return nil, err
+		return syncop.Fail(ctx, u.ops, op, u.errStatus(err))
 	}
-	return syncop.Commit(ctx, u.ops, op, resp)
+	return syncop.Commit(ctx, u.ops, op, meta, resp)
 }
 
 // Update — admin partial-смена региона (name/status/countryCode). Immutable-поля
@@ -208,21 +219,25 @@ func (u *UseCase) Update(ctx context.Context, in UpdateInput) (*operations.Opera
 		return nil, err
 	}
 
-	updated, derr := u.writer.Update(ctx, in.ID, p)
-	if derr != nil {
-		return u.failUpdate(ctx, in.ID, u.errStatus(derr))
-	}
-	resp, err := marshalRegion(updated)
-	if err != nil {
-		return nil, err
-	}
 	op, err := operations.NewFromContext(ctx, lro.OperationPrefix,
 		fmt.Sprintf("Update region %s", in.ID),
 		&geov1.UpdateRegionMetadata{RegionId: in.ID})
 	if err != nil {
 		return nil, err
 	}
-	return syncop.Commit(ctx, u.ops, op, resp)
+	if err := syncop.Begin(ctx, u.ops, op); err != nil {
+		return nil, err
+	}
+
+	updated, derr := u.writer.Update(ctx, in.ID, p)
+	if derr != nil {
+		return syncop.Fail(ctx, u.ops, op, u.errStatus(derr))
+	}
+	resp, err := marshalRegion(updated)
+	if err != nil {
+		return syncop.Fail(ctx, u.ops, op, u.errStatus(err))
+	}
+	return syncop.Commit(ctx, u.ops, op, nil, resp)
 }
 
 // buildUpdateParams транслирует UpdateInput+mask в UpdateParams по тому же одному
@@ -284,13 +299,17 @@ func (u *UseCase) Delete(ctx context.Context, id string) (*operations.Operation,
 	if err := domain.ValidateID("region", id); err != nil {
 		return nil, invalidArg(err.Error())
 	}
-	derr := u.writer.Delete(ctx, id)
 	op, err := operations.NewFromContext(ctx, lro.OperationPrefix,
 		fmt.Sprintf("Delete region %s", id),
 		&geov1.DeleteRegionMetadata{RegionId: id})
 	if err != nil {
 		return nil, err
 	}
+	if err := syncop.Begin(ctx, u.ops, op); err != nil {
+		return nil, err
+	}
+
+	derr := u.writer.Delete(ctx, id)
 	if derr != nil {
 		// FK RESTRICT (есть зоны) — конвенционный "region <id> is not empty"
 		// (module-geo rule 13; DB-backstop, не software-precheck). Прочие ошибки —
@@ -302,29 +321,9 @@ func (u *UseCase) Delete(ctx context.Context, id string) (*operations.Operation,
 	}
 	empty, err := anypb.New(&emptypb.Empty{})
 	if err != nil {
-		return nil, err
+		return syncop.Fail(ctx, u.ops, op, u.errStatus(err))
 	}
-	return syncop.Commit(ctx, u.ops, op, empty)
-}
-
-func (u *UseCase) fail(ctx context.Context, id string, statusErr error) (*operations.Operation, error) {
-	op, err := operations.NewFromContext(ctx, lro.OperationPrefix,
-		fmt.Sprintf("Create region %s", id),
-		&geov1.CreateRegionMetadata{RegionId: id})
-	if err != nil {
-		return nil, err
-	}
-	return syncop.Fail(ctx, u.ops, op, statusErr)
-}
-
-func (u *UseCase) failUpdate(ctx context.Context, id string, statusErr error) (*operations.Operation, error) {
-	op, err := operations.NewFromContext(ctx, lro.OperationPrefix,
-		fmt.Sprintf("Update region %s", id),
-		&geov1.UpdateRegionMetadata{RegionId: id})
-	if err != nil {
-		return nil, err
-	}
-	return syncop.Fail(ctx, u.ops, op, statusErr)
+	return syncop.Commit(ctx, u.ops, op, nil, empty)
 }
 
 // closedWarnings — громкий no-op: если регион создан CLOSED (own status != UP),
