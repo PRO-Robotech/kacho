@@ -432,26 +432,6 @@ func TestFGAFilter_CacheTTLExpiry(t *testing.T) {
 	assert.Equal(t, 2, cli.calls, "post-TTL: must ask iam again")
 }
 
-// Invalidate(subject) снимает записи ТОЛЬКО этого subject'а (revoke-driven inval).
-func TestFGAFilter_InvalidateBySubject(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "nlb-a")
-	f := NewFGAFilter(cli, DefaultConfig())
-	ctx := context.Background()
-
-	_, err := f.FilterVisibleIDs(ctx, "user:usr_alice", ResourceTypeLoadBalancer, ActionLoadBalancerList, []string{"nlb-a"})
-	require.NoError(t, err)
-	_, err = f.FilterVisibleIDs(ctx, "user:usr_bob", ResourceTypeLoadBalancer, ActionLoadBalancerList, []string{"nlb-a"})
-	require.NoError(t, err)
-	require.Equal(t, 2, f.Size())
-
-	f.Invalidate("user:usr_alice")
-	require.Equal(t, 1, f.Size(), "only alice's verdict is dropped")
-
-	before := cli.checked
-	_, err = f.FilterVisibleIDs(ctx, "user:usr_bob", ResourceTypeLoadBalancer, ActionLoadBalancerList, []string{"nlb-a"})
-	require.NoError(t, err)
-	assert.Equal(t, before, cli.checked, "bob still served from cache")
-}
 
 // LRU: при переполнении вытесняется least-recently-used, а не произвольная
 // (Go-map-randomized, возможно горячая) запись — иначе burst distinct-List трэшил

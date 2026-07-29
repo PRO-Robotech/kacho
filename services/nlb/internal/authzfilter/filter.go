@@ -207,6 +207,17 @@ type AuthorizeClient interface {
 //
 // Eviction — LRU: при переполнении CacheMaxEntries вытесняется least-recently-used
 // запись, а не произвольная (Go-map-randomized, возможно горячая).
+//
+// УСТАРЕВАНИЕ ЗАПИСИ ОГРАНИЧЕНО ТОЛЬКО СРОКОМ ЖИЗНИ (CacheTTL, по умолчанию 5s), и
+// иного пути её снятия НЕТ. Здесь лежал метод снятия записей субъекта с пометкой
+// «LISTEN/NOTIFY-driven» — механизма, которого у ЭТОГО кеша не существует: его никто,
+// кроме теста, не звал, и в композиционном корне он не провязан. Пометка описывала
+// соседний кеш — у per-RPC проверки (internal/check) действительно есть общий
+// pg_notify-инвалидатор, — и создавала впечатление, что отзыв права снимается сразу и
+// тут. Метод удалён вместе со своим тестом (мёртвый код), а граница названа: отзыв
+// права перестаёт быть виден списочной фильтрации в пределах CacheTTL. Отрицательный
+// вердикт не кешируется вовсе, поэтому свежая ВЫДАЧА видна сразу — ограничение
+// касается только отзыва.
 type FGAFilter struct {
 	cli AuthorizeClient
 	cfg Config
@@ -621,15 +632,4 @@ func (f *FGAFilter) Size() int {
 	return f.lruLst.Len()
 }
 
-// Invalidate — удаляет записи subject'а из cache (LISTEN/NOTIFY-driven inval).
-func (f *FGAFilter) Invalidate(subject string) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	prefix := subject + "|"
-	for k, el := range f.cache {
-		if len(k) >= len(prefix) && k[:len(prefix)] == prefix {
-			f.lruLst.Remove(el)
-			delete(f.cache, k)
-		}
-	}
-}
+
