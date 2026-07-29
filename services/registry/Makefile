@@ -65,6 +65,14 @@ docker:
 audit-list-filter:
 	@go run ./tools/auditlistfilter/cmd/audit-list-filter
 
+# dataplane-e2e-selftest — самопроверка ЧЕСТНОСТИ вердикта сквозного прогона плоскости
+# данных. Стенда не требует: гоняет настоящий dataplane-e2e.sh против заглушки на
+# петлевом интерфейсе и утверждает КОД ВОЗВРАТА в обе стороны — исправный поток даёт 0,
+# а отказ на инициализации загрузки (снимающий с прогона пять шагов) даёт НЕ 0.
+.PHONY: dataplane-e2e-selftest
+dataplane-e2e-selftest:
+	@bash tests/newman/scripts/dataplane-e2e-selftest.sh
+
 .PHONY: migrate-up migrate-down migrate-status
 migrate-up: build-migrator
 	KACHO_REGISTRY_DB_PASSWORD=secret bin/$(MIGRATOR_BIN) up
