@@ -37,6 +37,38 @@ func TestDefaultSubjectExtractor_AcceptsValidPrincipalID(t *testing.T) {
 	}
 }
 
+// TestDefaultSubjectExtractor_RefusesTheAnonymityMarker — извлечение субъекта
+// обязано отказать на зарезервированном слове анонимности в ЛЮБОМ виде, в котором
+// оно может прийти: тип объявляет отправитель заголовков, поэтому распознавание не
+// может опираться на тип. Предикат — общий `operations.Principal.IsAnonymous`, то
+// есть тот же, которым анонимность распознают все остальные места платформы.
+func TestDefaultSubjectExtractor_RefusesTheAnonymityMarker(t *testing.T) {
+	for _, p := range []operations.Principal{
+		{Type: "system", ID: operations.AnonymousPrincipalID},
+		{Type: "user", ID: operations.AnonymousPrincipalID},
+		{Type: "service_account", ID: operations.AnonymousPrincipalID},
+		{Type: "", ID: "usr_alice"},
+		{Type: "user", ID: ""},
+	} {
+		ctx := operations.WithPrincipal(context.Background(), p)
+		if subj, pid, ok := defaultSubjectExtractor(ctx); ok {
+			t.Fatalf("principal %+v must not yield a subject; got (%q,%q,true)", p, subj, pid)
+		}
+	}
+}
+
+// TestDefaultSubjectExtractor_KeepsTheBootstrapIdentity — сужается анонимность, а
+// не системный путь: явно установленный bootstrap-принципал остаётся личностью
+// (иначе AllowSystemPrincipal перестал бы работать вовсе).
+func TestDefaultSubjectExtractor_KeepsTheBootstrapIdentity(t *testing.T) {
+	ctx := operations.WithPrincipal(context.Background(),
+		operations.Principal{Type: "system", ID: "bootstrap", DisplayName: "System"})
+	subj, pid, ok := defaultSubjectExtractor(ctx)
+	if !ok || pid != "bootstrap" || subj != "user:bootstrap" {
+		t.Fatalf("bootstrap identity: got (%q,%q,%v), want (user:bootstrap,bootstrap,true)", subj, pid, ok)
+	}
+}
+
 // stubExtract возвращает фиксированный (subjectFGA, principalID, ok) — позволяет
 // напрямую подать каждую комбинацию closed-list'а в isAnonymousSubject без
 // конструирования реального ctx/Principal'а.

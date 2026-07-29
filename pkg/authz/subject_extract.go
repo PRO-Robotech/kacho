@@ -15,16 +15,31 @@ import (
 // Возвращает:
 //   - subjectFGA — "user:usr_xxx" или "service_account:sva_xxx"
 //   - principalID — raw ID (для rate-limit-bucket'а)
-//   - ok — false если ctx не нес Principal'а (anonymous) либо ID пустой
+//   - ok — false, если ctx не назвал НИКОГО (см. ниже), либо id несёт
+//     FGA-разделители
 //
-// Anonymous-запрос (ctx без Principal'а) дает ok=false → interceptor fail-closed
-// (denied) еще до Check. Это закрывает обход: иначе fallback на SystemPrincipal()
-// делал бы anonymous неотличимым от bootstrap и при AllowSystemPrincipal=true
-// пропускал бы его. Явно установленный system-principal (WithPrincipal) дает
-// ok=true и обрабатывается опцией AllowSystemPrincipal штатно.
+// # Анонимность не становится субъектом
+//
+// Субъект — это то, о чём спрашивают модель прав. Пара, которая не называет
+// никого, субъектом стать не может: у модели есть намеренные ПОДСТАНОВОЧНЫЕ
+// выдачи (глобальный справочник платформы открыт всякому АУТЕНТИФИЦИРОВАННОМУ
+// тенанту), а подстановка выполняется любой строкой подходящей формы. Стоит
+// «неизвестно кто» получить форму субъекта — и выдача, задуманная для
+// аутентифицированных, начинает отвечать «да» тому, кто не аутентифицировался.
+//
+// Поэтому здесь стоит БЕЗУСЛОВНЫЙ отказ ДО любого вопроса модели, и признак
+// анонимности берётся из ОДНОГО общего предиката operations.Principal.IsAnonymous
+// (пустая пара ИЛИ зарезервированное слово operations.AnonymousPrincipalID в
+// любом заявленном типе). Тип не может быть признаком: его назначает себе тот,
+// кто прислал заголовки личности. Единый предикат — чтобы производитель метки и
+// её распознаватель не разъехались.
+//
+// ok=false → interceptor fail-closed (denied). Сужается именно анонимность:
+// ЯВНО установленный bootstrap-принципал (`{system, bootstrap}`) остаётся
+// личностью и штатно обрабатывается опцией AllowSystemPrincipal.
 func defaultSubjectExtractor(ctx context.Context) (string, string, bool) {
 	p, ok := operations.PrincipalFromContextOK(ctx)
-	if !ok || p.ID == "" {
+	if !ok || p.IsAnonymous() {
 		return "", "", false
 	}
 	// principal id приходит из недоверенного x-kacho-principal-id header'а. Если
@@ -49,6 +64,12 @@ func defaultSubjectExtractor(ctx context.Context) (string, string, bool) {
 //
 // Используется в breakglass-path: даже когда authz-Check недоступен,
 // anonymous request'ы должны быть denied.
+//
+// Для extractor'а по умолчанию первый arm (ok=false) срабатывает уже сам —
+// defaultSubjectExtractor отбивает анонимность общим предикатом
+// operations.Principal.IsAnonymous. Остальные arm'ы остаются живыми для
+// ПОДМЕНЁННОГО InterceptorOptions.SubjectExtractor: breakglass обходит Check, и
+// полагаться в нём на дисциплину чужой реализации нельзя.
 func isAnonymousSubject(ctx context.Context, extract func(context.Context) (string, string, bool)) bool {
 	subjectFGA, principalID, ok := extract(ctx)
 	if !ok || principalID == "" || subjectFGA == "" {

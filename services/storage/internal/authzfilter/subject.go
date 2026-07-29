@@ -20,7 +20,13 @@ import (
 // именно bypass на пустом subject'е и есть over-show-утечка).
 func SubjectFromPrincipal(ctx context.Context) string {
 	p := operations.PrincipalFromContext(ctx)
-	if p.Type == "" || p.ID == "" || p.Type == "system" {
+	// Зарезервированное слово анонимности отсекается ОТДЕЛЬНО от типа:
+	// `{user, anonymous}` — та же «неизвестно кто», но тип объявляет отправитель
+	// заголовков, поэтому проверять надо само слово. Предикат общий
+	// (operations.Principal.IsAnonymous), чтобы производитель метки и её
+	// распознаватели не разъехались; `system` остаётся отдельным, более
+	// строгим отказом.
+	if p.IsAnonymous() || p.Type == "system" {
 		return ""
 	}
 	return p.Type + ":" + p.ID

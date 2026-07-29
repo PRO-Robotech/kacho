@@ -42,6 +42,22 @@ type InterceptorOptions struct {
 
 	// DenyRateLimitPerSec — token-bucket per-Principal на denied storm.
 	// 0 / negative → disabled (default 100/s — см. KACHO_<SVC>_AUTHZ__DENY_RATE_LIMIT).
+	//
+	// Бюджет тратит РОВНО ОДИН класс исходов: те, которые кэш не поглощает, —
+	// отказ, отказ с сокрытием существования, промах «нет пути» и недоступность
+	// модели. Все они уходят в модель прав на КАЖДОМ повторе (кэшируются только
+	// положительные ответы) и потому образуют шторм, который больше нечем
+	// ограничить.
+	//
+	// Разрешение бюджет НЕ тратит — единственное исключение, и оно обосновано:
+	// положительный ответ кэшируется, то есть уже самоограничен. Пока он платил,
+	// аутентифицированный вызывающий, обходящий много разных объектов на холодном
+	// кэше, получал ResourceExhausted на запросах, которые ему разрешены.
+	//
+	// Недоступность модели ПЛАТИТ намеренно: сбрасывать нагрузку с падающего
+	// kacho-iam особенно важно, а CheckTimeout ограничивает лишь длительность
+	// одного вызова, не их темп. Из-за этого текст отказа не называет отказы (см.
+	// decisionError) — иначе он описывал бы перебой как шторм отказов вызывающего.
 	DenyRateLimitPerSec float64
 
 	// CheckTimeout — таймаут на один Check-call.
@@ -151,7 +167,11 @@ func decisionError(v verdict) error {
 		// Fail-closed для не-mapped RPC.
 		return status.Error(codes.PermissionDenied, "permission denied (rpc not mapped)")
 	case DecisionRateLimited:
-		return status.Error(codes.ResourceExhausted, "too many denied checks; retry later")
+		// Формулировка НЕ называет отказы: бюджет тратит каждый исход, который кэш
+		// не поглощает (отказ, сокрытие, промах «нет пути», недоступность модели),
+		// и назвать их все «denied» значило бы соврать оператору в трёх случаях из
+		// четырёх (см. InterceptorOptions.DenyRateLimitPerSec).
+		return status.Error(codes.ResourceExhausted, "too many authorization checks; retry later")
 	default:
 		// Unknown decision — fail-closed.
 		if err != nil {
@@ -296,9 +316,11 @@ func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any)
 		return verdict{decision: DecisionAllowed, err: nil}
 	}
 
-	// 6. Rate-limit denied-storm: применяется ДО Check call, иначе
-	// flooding обходит cache and загружает kacho-iam. Bucket per-Principal.
-	if !i.rateLimiter.Allow(principalID) {
+	// 6. Denied-storm cut-off: бюджет СПРАШИВАЕТСЯ до Check-call (отсечка после
+	// вопроса не сняла бы нагрузку с kacho-iam), но ТРАТИТСЯ ниже и только на
+	// исход, который кэш не поглощает (см. DenyRateLimitPerSec). Bucket
+	// per-Principal.
+	if !i.rateLimiter.HasBudget(principalID) {
 		atomic.AddUint64(&i.rateLimitedTotal, 1)
 		logger.Warn("authz_rate_limited",
 			slog.String("principal_id", principalID))
@@ -314,6 +336,9 @@ func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any)
 			// No FGA hierarchy tuple for this object → resource likely does not
 			// exist. Let the handler run: it will return NOT_FOUND from the DB.
 			// This prevents authz from masking NOT_FOUND as 403 PermissionDenied.
+			// Not cached, so enumeration of absent ids repeats the question every
+			// time — it spends the budget like any other un-absorbed outcome.
+			i.rateLimiter.Charge(principalID)
 			atomic.AddUint64(&i.allowedTotal, 1)
 			logger.Info("authz_no_path_passthrough",
 				slog.String("subject", subjectFGA),
@@ -324,7 +349,9 @@ func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any)
 		if errors.Is(err, ErrHideExistence) {
 			// Объект существует, но caller не вправе видеть → existence-hiding:
 			// блокируем handler и отдаём NOT_FOUND (не PermissionDenied), чтобы
-			// «есть-но-не-твой» было неотличимо от «нет такого».
+			// «есть-но-не-твой» было неотличимо от «нет такого». Это отказ, и он
+			// тоже не кэшируется → тратит бюджет.
+			i.rateLimiter.Charge(principalID)
 			atomic.AddUint64(&i.deniedTotal, 1)
 			logger.Warn("authz_hide_existence",
 				slog.String("subject", subjectFGA),
@@ -334,6 +361,10 @@ func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any)
 			// them so it matches the owner's own miss byte for byte.
 			return verdict{decision: DecisionHideExistence, objectType: objectType, objectID: objectID}
 		}
+		// Тоже не кэшируется, и происходит ровно тогда, когда модель прав уже
+		// не справляется → бюджет обязан сбрасывать с неё нагрузку. CheckTimeout
+		// ограничивает длительность ОДНОГО вызова, но не их темп.
+		i.rateLimiter.Charge(principalID)
 		atomic.AddUint64(&i.unavailableTotal, 1)
 		logger.Error("authz_check_unavailable",
 			slog.String("subject", subjectFGA),
@@ -343,6 +374,9 @@ func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any)
 		return verdict{decision: DecisionUnavailable, err: errors.Join(ErrUnavailable, err)}
 	}
 	if !allowed {
+		// Отказ не кэшируется → каждый повтор снова уходит в модель прав. Это и
+		// есть шторм, который бюджет ограничивает.
+		i.rateLimiter.Charge(principalID)
 		atomic.AddUint64(&i.deniedTotal, 1)
 		logger.Warn("authz_denied",
 			slog.String("subject", subjectFGA),

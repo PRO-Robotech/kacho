@@ -8,13 +8,22 @@ import (
 	"time"
 )
 
-// rateLimiter — token-bucket per-Principal на denied-storm protection. При
-// flooding `GET /vpc/v1/networks/*` от
-// unauthorized user negative cache отсутствует (negative-not-cached) →
-// каждый запрос идет в `kacho-iam.Check` → потенциальный DoS на kacho-iam.
+// rateLimiter — token-bucket per-Principal на storm-protection. При flooding
+// `GET /vpc/v1/networks/*` от unauthorized user'а positive cache не помогает
+// (негативы не кэшируются) → каждый запрос идёт в `kacho-iam.Check` →
+// потенциальный DoS на kacho-iam.
 //
-// Token-bucket per-Principal дает верхнюю границу rate'а Check'ов от одного
-// subject'а. По истечении баланса → `ResourceExhausted` без обращения в FGA.
+// Что именно он ограничивает: темп проверок, чей исход кэш НЕ поглощает, — их
+// список задаёт вызывающий (Interceptor.authorize), а не этот тип. Разрешение
+// кэшируется и потому самоограничено, поэтому верхняя граница на ОБЩИЙ rate
+// Check'ов одного subject'а здесь НЕ обещается: её даёт кэш, а бюджет добирает
+// ровно то, что кэш добрать не может. По истечении баланса → `ResourceExhausted`
+// без обращения в FGA.
+//
+// Гарантия точная: УСТОЙЧИВЫЙ темп не выше ratePerSec. Мгновенный всплеск может
+// превысить burst на число одновременно летящих проверок — см. HasBudget; долг
+// при этом НЕ списывается (баланс уходит в минус и отрабатывается пополнением),
+// поэтому перерасход возвращается, а не накапливается безнаказанно.
 //
 // Тhread-safe; eviction inactive subjects через periodic sweep.
 type rateLimiter struct {
@@ -47,7 +56,7 @@ type bucket struct {
 // (CWE-770). Один bucket ≈ несколько десятков байт → 100k ≈ единицы МБ.
 const defaultMaxBuckets = 100_000
 
-// newRateLimiter создает лимитер. ratePerSec ≤ 0 → disabled (Allow всегда true).
+// newRateLimiter создает лимитер. ratePerSec ≤ 0 → disabled (бюджет всегда есть).
 func newRateLimiter(ratePerSec float64) *rateLimiter {
 	return newRateLimiterWithLimit(ratePerSec, defaultMaxBuckets)
 }
@@ -70,16 +79,55 @@ func newRateLimiterWithLimit(ratePerSec float64, maxBuckets int) *rateLimiter {
 	}
 }
 
-// Allow возвращает true если subjectID может выполнить одну Check'у сейчас.
-// Если rate-limit disabled (ratePerSec ≤ 0) — всегда true.
+// HasBudget сообщает, осталось ли у subjectID право вызвать ещё одну Check'у,
+// НЕ расходуя бюджет. Тратит его Charge — и только на исход, который кэш не
+// поглотит. Если rate-limit disabled (ratePerSec ≤ 0) — всегда true.
+//
+// Почему проверка и трата разнесены: спросить бюджет нужно ДО обращения к
+// модели прав (отсечка, срабатывающая после вопроса, ничего не защищает), а
+// списать — только ПОСЛЕ ответа (аутентифицированный вызывающий не должен
+// платить за то, что ему разрешено). Два шага не атомарны, поэтому под
+// конкуренцией одновременно «в полёте» может оказаться чуть больше `burst`
+// вопросов — величина ограничена параллелизмом сервера, а не вызывающим. На
+// УСТОЙЧИВЫЙ темп это не влияет ровно потому, что Charge не обрезает долг: весь
+// перерасход списывается и отрабатывается пополнением (см. Charge).
 //
 // Реализация — стандартный token-bucket: refill по elapsed-time × rate.
-func (rl *rateLimiter) Allow(subjectID string) bool {
+func (rl *rateLimiter) HasBudget(subjectID string) bool {
 	if rl.ratePerSec <= 0 {
 		return true
 	}
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
+	return rl.refillLocked(subjectID).tokens >= 1.0
+}
+
+// Charge списывает один токен с бюджета subjectID. Вызывается ТОЛЬКО для
+// проверки, чей исход кэш не поглощает (см. Interceptor.authorize): повторяемые
+// отказы идут в модель каждый раз, и именно их темп бюджет ограничивает.
+// Разрешение кэшируется и потому самоограничено — оно не платит.
+func (rl *rateLimiter) Charge(subjectID string) {
+	if rl.ratePerSec <= 0 {
+		return
+	}
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	// Баланс НАМЕРЕННО уходит в минус. Обрезать его нулём нельзя: HasBudget и
+	// Charge разнесены во времени, поэтому K одновременных проверок одного
+	// принципала все увидят положительный баланс и все пройдут. Если долг
+	// обрезать, K списаний схлопнутся в одно, и на каждый пополненный токен
+	// проходило бы K проверок — устойчивый темп стал бы ratePerSec × параллелизм
+	// вместо ratePerSec. С отрицательным балансом перерасход отрабатывается
+	// пополнением, и превышение остаётся РАЗОВЫМ всплеском, а не множителем.
+	//
+	// Минус ограничен снизу теми же K (больше списаний, чем было одновременных
+	// проверок, произойти не может), поэтому «долговая яма» не растёт без предела.
+	rl.refillLocked(subjectID).tokens -= 1.0
+}
+
+// refillLocked возвращает bucket subject'а, пополнив его по прошедшему времени
+// (создав при первом обращении). Вызывается под rl.mu.
+func (rl *rateLimiter) refillLocked(subjectID string) *bucket {
 	now := rl.now()
 	b, exists := rl.buckets[subjectID]
 	if !exists {
@@ -90,25 +138,21 @@ func (rl *rateLimiter) Allow(subjectID string) bool {
 		}
 		b = &bucket{tokens: rl.burst, lastSeen: now}
 		rl.buckets[subjectID] = b
+		return b
 	}
-	// Refill.
 	elapsed := now.Sub(b.lastSeen).Seconds()
 	b.tokens += elapsed * rl.ratePerSec
 	if b.tokens > rl.burst {
 		b.tokens = rl.burst
 	}
 	b.lastSeen = now
-	if b.tokens < 1.0 {
-		return false
-	}
-	b.tokens -= 1.0
-	return true
+	return b
 }
 
 // evictForInsertLocked освобождает место в buckets при достижении потолка
 // maxBuckets. Вызывается под rl.mu. Стратегия (зеркалит Cache.evictLocked):
 // сначала выбрасывает полностью пополненные (idle) bucket'ы — их удаление
-// поведенчески нейтрально (повторный Allow создаёт такой же full-burst bucket);
+// поведенчески нейтрально (следующее обращение создаёт такой же full-burst bucket);
 // если и после этого полно — выбрасывает произвольные до low-water (7/8).
 // Худший эффект произвольной эвикции — сброс частично израсходованного bucket'а
 // в full burst (кратковременно ослабляет лимит для ОДНОГО subject'а под

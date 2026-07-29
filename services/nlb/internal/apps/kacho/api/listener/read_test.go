@@ -84,7 +84,7 @@ func TestListListeners_GWT_LST_017_FilterByLB(t *testing.T) {
 	})
 
 	uc := NewListUseCase(suite.repo, nil)
-	resp, err := uc.Run(context.Background(), &lbv1.ListListenersRequest{
+	resp, err := uc.Run(ctxWithUser("usr_lister"), &lbv1.ListListenersRequest{
 		ProjectId:      string(suite.listener.ProjectID),
 		LoadBalancerId: string(suite.listener.LoadBalancerID),
 	})
@@ -117,7 +117,7 @@ func TestListListeners_ByProject_KAC229(t *testing.T) {
 		UpdatedAt: time.Now().UTC(),
 	})
 	uc := NewListUseCase(suite.repo, nil)
-	resp, err := uc.Run(context.Background(), &lbv1.ListListenersRequest{
+	resp, err := uc.Run(ctxWithUser("usr_lister"), &lbv1.ListListenersRequest{
 		ProjectId: string(suite.listener.ProjectID),
 	})
 	require.NoError(t, err)
@@ -155,7 +155,7 @@ func TestListListeners_FilterName(t *testing.T) {
 		UpdatedAt: time.Now().UTC(),
 	})
 	uc := NewListUseCase(suite.repo, nil)
-	resp, err := uc.Run(context.Background(), &lbv1.ListListenersRequest{
+	resp, err := uc.Run(ctxWithUser("usr_lister"), &lbv1.ListListenersRequest{
 		ProjectId:      string(suite.listener.ProjectID),
 		LoadBalancerId: string(suite.listener.LoadBalancerID),
 		Filter:         `name="named-second"`,

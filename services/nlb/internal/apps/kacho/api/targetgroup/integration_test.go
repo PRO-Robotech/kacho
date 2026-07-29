@@ -213,7 +213,11 @@ func TestIntegration_AddRemoveTargets_Lifecycle(t *testing.T) {
 	pool, repo := setupDB(t)
 	opsRepo := newOpsRepo(t, pool)
 	h := mkHandler(t, repo, opsRepo)
-	ctx := context.Background()
+	// Список за ScopeFiltered-RPC отказывает вызывающему, которого никто не
+	// назвал; реальный вызов всегда несёт личность. Этот файл — внешний
+	// тест-пакет (targetgroup_test), поэтому принципал ставится напрямую.
+	ctx := operations.WithPrincipal(context.Background(),
+		operations.Principal{Type: "user", ID: "usr_lister"})
 
 	// 1. Create TG.
 	createOp, err := h.Create(ctx, &lbv1.CreateTargetGroupRequest{

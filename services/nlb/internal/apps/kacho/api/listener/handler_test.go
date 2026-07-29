@@ -77,7 +77,9 @@ func TestHandler_RoutesEachRPC(t *testing.T) {
 
 	t.Run("List", func(t *testing.T) {
 		t.Parallel()
-		resp, err := h.List(context.Background(), &lbv1.ListListenersRequest{
+		// List отказывает вызывающему, которого никто не назвал, — как и всякий
+		// список за ScopeFiltered-RPC. Реальный вызов всегда несёт личность.
+		resp, err := h.List(ctxWithUser("usr_lister"), &lbv1.ListListenersRequest{
 			ProjectId:      string(lb.ProjectID),
 			LoadBalancerId: string(lb.ID),
 		})

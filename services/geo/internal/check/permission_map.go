@@ -40,11 +40,11 @@ func PermissionMap() authz.RPCMap {
 		// ---- публичный read-only справочник (ambient project-scope EXEMPT, GEO-1) ----
 		// Region/Zone Get/List — admin-curated глобальный catalog: КАЖДЫЙ
 		// аутентифицированный tenant читает его без project-scope гранта (zero-binding
-		// project → 200). `Public:true` тут = «снят per-RPC ReBAC-Check». Это
-		// documented-exception, зеркалит gateway `<exempt>` на тех же 4 RPC и note в
-		// security.md («geo public-read — project-scope EXEMPT»). Anti-регресс: снятие
-		// Check — ТОЛЬКО для этих read-only catalog-RPC; admin Internal* CRUD ниже
-		// остаётся system_admin-гейтед.
+		// project → 200). `Public:true` тут = «снят per-RPC ReBAC-Check», НЕ
+		// «доступно без аутентификации». Это documented-exception, зеркалит gateway
+		// `<exempt>` на тех же 4 RPC и note в security.md («geo public-read —
+		// project-scope EXEMPT»). Anti-регресс: снятие Check — ТОЛЬКО для этих
+		// read-only catalog-RPC; admin Internal* CRUD ниже остаётся system_admin-гейтед.
 		//
 		// ЧТО ИМЕННО СНЯТО, а что нет (не описывать это как «anti-anon сохраняется» —
 		// правка «под комментарий» вернула бы дыру; тот же разбор ниже, у LRO):

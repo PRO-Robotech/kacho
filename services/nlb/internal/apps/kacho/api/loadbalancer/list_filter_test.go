@@ -168,17 +168,22 @@ func TestListLoadBalancersFilter_SystemSubjectNoLeak(t *testing.T) {
 	repo := newFakeRepo()
 	seedLB(t, repo, "prj-a", "lb-a1")
 
-	flt := &fakeListFilter{allowed: map[string][]string{}} // empty grant
+	// Фильтр НАМЕРЕННО отдал бы страницу, если бы его спросили — так проверяется,
+	// что отказ не зависит от его сговорчивости.
+	flt := &fakeListFilter{allowed: map[string][]string{"user:": {"*"}}}
 	uc := NewListLoadBalancersUseCase(repo, flt)
 
-	// background ctx → SystemPrincipal → subject "" → filter consulted, empty grant.
+	// ctx без принципала → никого не названо → отказ ДО обращения к фильтру.
+	// Раньше отсечка жила внутри фильтра, поэтому при неподключённом фильтре не
+	// исполнялась вовсе; теперь она принимается раньше и одинакова в обоих случаях.
 	resp, err := uc.Execute(context.Background(),
 		&lbv1.ListNetworkLoadBalancersRequest{ProjectId: "prj-a"})
-	require.NoError(t, err)
+	require.Error(t, err, "principal-less caller must be refused")
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
 	require.Empty(t, resp.GetNetworkLoadBalancers(),
 		"principal-less caller must not enumerate the project's load balancers")
 	assert.Empty(t, flt.gotSubj,
-		"the empty subject must reach the filter (which fails closed), not be swapped for a bypass")
+		"the refusal must not depend on the filter being consulted at all")
 }
 
 // errFromFilter — guard: фильтр возвращает не-status ошибку → всё равно Unavailable.

@@ -8,6 +8,9 @@
 //   - RedrivePoisoned — re-drives poisoned/exhausted rows (sent_at IS NULL AND
 //     attempt_count >= MaxAttempts) back to claimable so the drainer retries
 //     them (e.g. after the permanent cause was fixed, or it was misclassified).
+//     Never past a delivered successor of the same resource: replaying an intent
+//     over a later one that already landed undoes it, which on a register-outbox
+//     resurrects access that was revoked. See the method doc.
 //   - BackfillFromState — derive-from-state safety-net: a per-service
 //     ResourceEnumerator lists resource rows that lack an applied owner-tuple
 //     intent; the reconciler re-emits a project-hierarchy register-intent
@@ -35,6 +38,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -49,6 +53,11 @@ const (
 	eventRegister   = "fga.register"
 	eventUnregister = "fga.unregister"
 )
+
+// supersededSampleLimit bounds how many resource ids RedrivePoisoned names in its
+// WARN. Attribution needs examples, not the whole set; an unbounded list would
+// turn one stuck resource into an unreadable log line.
+const supersededSampleLimit = 20
 
 // ResourceRow is one live resource as seen by the per-service enumerator. Kind +
 // ID identify the resource; ProjectID is the hierarchy parent ("" when there is
@@ -198,18 +207,117 @@ func NewRedriveOnly(pool *pgxpool.Pool, cfg Config, logger *slog.Logger) (*Recon
 // RedrivePoisoned resets poisoned/exhausted rows (sent_at IS NULL AND
 // attempt_count >= MaxAttempts) back to claimable (attempt_count = 0, last_error
 // = NULL) so the drainer retries them. Returns the number re-driven.
+//
+// # Reviving respects the order of the partition
+//
+// An intent is NOT revived once a LATER intent for the SAME resource has already
+// been delivered. Reviving past a delivered successor replays an outdated intent
+// on top of the current state — and for a register-outbox that is precisely the
+// over-grant the partition ordering exists to prevent: the target (kacho-iam's
+// resource_mirror) versions only its update branch, deregistration is a hard
+// delete that keeps no tombstone, so a replayed registration finds nothing to
+// compare against, takes the insert branch and resurrects the mirror row of a
+// deleted resource. iam's reconciler is level-triggered off that mirror, so the
+// owner tuple is then re-materialised forever — revoked access returns and stays.
+//
+// The drainer's claim already refuses to take a row ahead of a DELIVERABLE
+// same-partition predecessor (drainer Config.PartitionColumn). That guard says
+// nothing about rows already delivered, because a delivered row leaves the
+// deliverable set — so the backstop has to carry the other half of the same rule
+// itself, or it re-opens through repair exactly what the claim closed.
+//
+// The partition is `resource_id`, the same key every production register-outbox
+// gives the drainer and the same one this package already keys lockResource and
+// intendedRegistered on: every emitter writes one row per FGA object and stamps
+// resource_id with that object's globally-unique id, so "same partition" is
+// exactly "same target object". There is no knob for it — a knob left unset here
+// would read as "no ordering" and silently restore the defect. The table MUST
+// therefore carry a resource_id column; the one outbox in the platform that does
+// not (iam's fga_outbox, partitioned on tuple_key) is not a register-outbox and
+// has no reconciler.
+//
+// # Two honest limits of this rule
+//
+// A row with an EMPTY resource_id names no resource, so "a later intent for the
+// same resource" cannot be established for it. Such rows group together — the
+// drainer's claim already groups them the same way and the two must agree — and
+// the conservative reading is deliberate: reviving one risks replaying it past a
+// delivered intent, which is the defect this guard exists for. The cost is real
+// and is NOT merely a delay: one delivered empty-key row parks every earlier
+// poisoned empty-key row permanently. No live emitter writes an empty
+// resource_id, so this is reachable only for rows predating the column
+// (vpc migration 0008 added it without a backfill) — which is why the report
+// below names the rows rather than counting them.
+//
+// The check is evaluated against ONE statement snapshot, so it is "no delivered
+// successor as of this pass", not a serialised guarantee: a successor the drainer
+// commits WHILE the statement runs is invisible to it. This narrows the original
+// window from "every pass, forever" to "a delivery landing inside one statement",
+// and the pass is periodic (minutes) while the statement is milliseconds. Closing
+// it fully would mean taking lockResource per row and giving up the set-based
+// pass; that trade is not obviously worth it and is written down here rather than
+// papered over.
+//
+// A superseded row stays poisoned: its intent is void, and it keeps its original
+// last_error for diagnosis. Note what that means operationally — the row remains
+// in the pending set, so it keeps contributing to the table's backlog and
+// oldest-pending-age gauges, which will not fall back to zero on their own. That
+// is why the report below is a WARN carrying the resource ids and not a bare
+// count: the condition needs a human to retire the rows, and an alarm nobody can
+// clear stops being an alarm.
+//
+// Cost: the supersession check is a correlated anti-join over the table, which is
+// unindexed for delivered rows (the partition-head index is partial on
+// sent_at IS NULL). It runs only for rows in the outer set, i.e. only while
+// something is poisoned — an alarm condition in itself — and not at all on a
+// healthy queue. A service whose outbox both grows large and poisons routinely
+// should add a plain btree on (resource_id, id) to turn it into a lookup.
 func (r *Reconciler) RedrivePoisoned(ctx context.Context) (int, error) {
-	q := fmt.Sprintf(
-		`UPDATE %s
-		    SET attempt_count = 0, last_error = NULL
-		  WHERE sent_at IS NULL AND attempt_count >= $1`,
-		outbox.SanitizeTable(r.cfg.Table),
-	)
-	tag, err := r.pool.Exec(ctx, q, r.cfg.MaxAttempts)
-	if err != nil {
+	table := outbox.SanitizeTable(r.cfg.Table)
+	q := fmt.Sprintf(`
+		WITH poisoned AS (
+		    SELECT t.id, t.resource_id,
+		           EXISTS (
+		               SELECT 1 FROM %[1]s s
+		                WHERE s.resource_id = t.resource_id
+		                  AND s.id > t.id
+		                  AND s.sent_at IS NOT NULL
+		           ) AS superseded
+		      FROM %[1]s t
+		     WHERE t.sent_at IS NULL AND t.attempt_count >= $1
+		),
+		revived AS (
+		    UPDATE %[1]s
+		       SET attempt_count = 0, last_error = NULL
+		     WHERE id IN (SELECT id FROM poisoned WHERE NOT superseded)
+		    RETURNING 1
+		)
+		SELECT (SELECT count(*) FROM revived),
+		       (SELECT count(*) FROM poisoned WHERE superseded),
+		       (SELECT coalesce(array_agg(resource_id ORDER BY id), '{}')
+		          FROM (SELECT resource_id, id FROM poisoned
+		                 WHERE superseded ORDER BY id LIMIT %[2]d) sample)`,
+		table, supersededSampleLimit)
+
+	var revived, superseded int64
+	var sample []string
+	if err := r.pool.QueryRow(ctx, q, r.cfg.MaxAttempts).Scan(&revived, &superseded, &sample); err != nil {
 		return 0, fmt.Errorf("reconciler.RedrivePoisoned %s: %w", r.cfg.Table, err)
 	}
-	return int(tag.RowsAffected()), nil
+	if superseded > 0 {
+		// Named, not counted: these rows stay in the pending set and keep the
+		// table's backlog/age gauges off zero, so an operator has to retire them
+		// by hand and needs to know WHICH. Resource ids are id-based handles, not
+		// PII or infrastructure detail — the same call the drainer's wedge
+		// reporter makes.
+		r.log.Warn("poisoned intents left un-revived: a later intent for the same "+
+			"resource has already been delivered, so replaying them would undo it; "+
+			"they remain pending and must be retired by hand",
+			slog.Int64("superseded", superseded),
+			slog.Int("sampled", len(sample)),
+			slog.String("resources", strings.Join(sample, ",")))
+	}
+	return int(revived), nil
 }
 
 // BackfillFromState synthesises a project-hierarchy register-intent for each live
