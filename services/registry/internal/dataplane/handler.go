@@ -549,8 +549,14 @@ func (h *Handler) resolveRegistryProject(ctx context.Context, registryID string)
 
 // serveMount — cross-repo blob mount exfil-guard: ДВА Check — v_get на src-repo И
 // write-verb на dst-repo — ПЛЮС blob-scope членство digest'а в src-repo (REG-37,
-// как serveBlob). v_get(src)=deny → mount 404 (нельзя вытащить чужой блоб); digest не
-// член src-repo → тоже 404 (zot не изолирует content-addressable блобы по repo).
+// как serveBlob).
+//
+// КОДЫ ОТКАЗА, и они РАЗНЫЕ по причине: отказ авторизации (src ИЛИ dst) → **403
+// DENIED**, униформно, независимо от того, существует ли цель, — этим и держится
+// existence-hiding на пути записи (см. writeDenied и servePush); digest НЕ входит в
+// src-repo → **404** (zot не изолирует content-addressable блобы по repo).
+// Прежняя редакция этой шапки называла 404 и для отказа авторизации, тогда как код
+// двумя местами ниже отдаёт 403 и соседний комментарий говорит ровно обратное шапке.
 // dst-verb зеркалит servePush: существующий dst-repo → v_update@registry_repository,
 // новый → v_create@registry_registry (право создавать repo в namespace).
 func (h *Handler) serveMount(w http.ResponseWriter, r *http.Request, p parsed, subject, from string) {
