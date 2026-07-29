@@ -5,6 +5,7 @@
         reload-svc logs-svc psql preflight e2e-test helm-lint \
         loadtest-address-allocate loadtest-address-allocate-clean \
         reload-svc-iam psql-iam logs-iam fga-bootstrap build-services openfga-model-json \
+        guard-kind-context guard-destructive gate-self-test \
         reload-svc-nlb psql-nlb logs-nlb seed-nlb e2e-newman stand-provenance
 
 CLUSTER_NAME := kacho
@@ -93,7 +94,7 @@ preflight:
 	@grep -q "api.kacho.local" /etc/hosts || echo "note: 'api.kacho.local' is not in /etc/hosts. Nothing in the test path needs it — the e2e harness reaches every listener over kubectl port-forward, including the advertised external TLS one (:8443 -> localhost:18443). The entry is only useful for driving the Ingress by hand, and even then: kind publishes node:80 -> host:28080 (443 is not published at all) and that Ingress is backend-protocol GRPCS, so REST through it answers 502."
 	@echo "preflight OK"
 
-# guard-kind-context — АВАРИЙНЫЙ СТОП, если активный контекст не kind-<CLUSTER_NAME>.
+# guard-kind-context — АВАРИЙНЫЙ СТОП, если активный контекст ведёт НЕ в наш kind-кластер.
 #
 # Зачем (реальный near-miss 2026-07-15): kind-кластер `kacho` существовал, а его контекст
 # в kubeconfig отсутствовал (KUBECONFIG был подменён на прод-кластер). `dev-up` шёл
@@ -102,7 +103,21 @@ preflight:
 # на ТЕКУЩИЙ контекст, то есть на ПРОД. Прод спасла лишь случайность: helm отверг
 # апгрейд из-за pre-created секретов (ownership check) и не создал ревизию.
 #
-# Дешёвая проверка, которая делает такую ошибку невозможной по построению.
+# ПРОВЕРЯЕТСЯ КЛАСТЕР, А НЕ ЕГО ИМЯ. Прежняя версия сверяла только ИМЯ активного
+# контекста с `kind-<CLUSTER_NAME>`. Имя контекста выбирает тот, кто написал
+# kubeconfig, — совпадением имён не доказывается ничего. Измерено 2026-07-29 на
+# рабочей машине: kubeconfig соседнего управляемого кластера содержал ДВА контекста —
+# свой и одноимённый нашему, — активным был второй, а его apiserver отличался от
+# живого kind-кластера. Гейт на таком kubeconfig выходил с кодом 0. То есть защита
+# от подменённого KUBECONFIG не срабатывала ровно в том сценарии, ради которого
+# написана: подменённый файл её проходил.
+#
+# Поэтому решает совпадение АДРЕСА APISERVER'А активного контекста с адресом,
+# который выдаёт сам kind для кластера $(CLUSTER_NAME). `kind get kubeconfig` читает
+# проброшенный порт локального docker-контейнера, к кластеру не ходит и стоит ~0.15 c —
+# это авторитет, который нельзя подделать переименованием контекста.
+#
+# Имя контекста проверяется по-прежнему — как дешёвый первый отсев с внятным советом.
 guard-kind-context:
 	@ctx="$$(kubectl config current-context 2>/dev/null)"; \
 	case "$$ctx" in \
@@ -111,7 +126,77 @@ guard-kind-context:
 	     echo "       dev-стенд создаёт/меняет ресурсы и МОГ БЫ поехать на чужой (в т.ч. прод) кластер."; \
 	     echo "       Переключись явно:  kubectl config use-context kind-$(CLUSTER_NAME)"; \
 	     exit 1 ;; \
-	esac
+	esac; \
+	want="$$(kind get kubeconfig --name $(CLUSTER_NAME) 2>/dev/null | sed -n 's/^ *server: *//p' | head -1)"; \
+	have="$$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null)"; \
+	if [ -z "$$want" ]; then \
+	  echo "ABORT: kind не знает кластера '$(CLUSTER_NAME)' — сверить адрес apiserver'а не с чем."; \
+	  echo "       «не с чем сверить» здесь означает «не проверили», а не «всё хорошо»."; \
+	  echo "       Подними стенд (make dev-up) либо восстанови kubeconfig:"; \
+	  echo "         kind export kubeconfig --name $(CLUSTER_NAME)"; \
+	  exit 1; \
+	fi; \
+	if [ "$$want" != "$$have" ]; then \
+	  echo "ABORT: контекст называется kind-$(CLUSTER_NAME), но ведёт НЕ в этот кластер."; \
+	  echo "       активный контекст ведёт на    → $$have"; \
+	  echo "       kind-$(CLUSTER_NAME) на самом деле → $$want"; \
+	  echo "       Имя контекста выбирает автор kubeconfig; совпадение имён ничего не доказывает."; \
+	  echo "       Восстанови:  kind export kubeconfig --name $(CLUSTER_NAME)"; \
+	  exit 1; \
+	fi
+
+# guard-destructive — подтверждение вводом для операции, которая что-то РУШИТ,
+# с называнием РЕАЛЬНОЙ цели.
+#
+# Зачем отдельно от guard-kind-context. Тот пинит цель к нашему kind-кластеру и
+# годится всему, что предназначено ТОЛЬКО стенду. Но часть операций по замыслу
+# исполняется и на настоящем кластере (аварийный runbook SPIRE) — им нельзя
+# запретить чужой контекст; им нужно, чтобы человек УВИДЕЛ, куда именно сейчас
+# поедет команда, и подтвердил это вводом.
+#
+# ЦЕЛЬ РАЗРЕШАЕТСЯ ЖИВЫМ kubectl, а не берётся из переменной окружения. Прежнее
+# предупреждение печатало значение KUBECONFIG, которое при дефолтном ~/.kube/config
+# ПУСТО — то есть в самом частом случае предупреждение не называло ничего, и
+# читатель видел строку без цели. Печатаем контекст, кластер, apiserver и
+# namespace — то, что kubectl реально применит.
+#
+# Вызывается ИЗ РЕЦЕПТА (нужны параметры, а зависимости их не принимают):
+#   $(MAKE) --no-print-directory guard-destructive OP=… TOKEN=… WHAT=…
+#
+# Ввести подтверждение некому (не-tty, конвейер, CI) → ОТКАЗ. Разрушительная
+# операция не имеет права исполняться оттого, что спросить было не у кого.
+guard-destructive:
+	@op="$(OP)"; token="$(TOKEN)"; what="$(WHAT)"; \
+	if [ -z "$$op" ] || [ -z "$$token" ]; then \
+	  echo "guard-destructive: OP и TOKEN обязательны (ошибка вызова, не пользователя)"; exit 2; \
+	fi; \
+	ctx="$$(kubectl config current-context 2>/dev/null)"; \
+	cluster="$$(kubectl config view --minify -o jsonpath='{.contexts[0].context.cluster}' 2>/dev/null)"; \
+	server="$$(kubectl config view --minify -o jsonpath='{.clusters[0].cluster.server}' 2>/dev/null)"; \
+	ns="$$(kubectl config view --minify -o jsonpath='{.contexts[0].context.namespace}' 2>/dev/null)"; \
+	if [ -z "$$ctx" ] || [ -z "$$server" ]; then \
+	  echo "ABORT: активную цель разрешить не удалось (kubectl не отдал контекст/адрес)."; \
+	  echo "       Неназванная цель — это отказ, а не «наверное, локально»."; \
+	  exit 1; \
+	fi; \
+	echo "==================================================================="; \
+	echo " РАЗРУШИТЕЛЬНАЯ ОПЕРАЦИЯ: $$op"; \
+	echo " что произойдёт: $$what"; \
+	echo; \
+	echo " ЦЕЛЬ (разрешена живым kubectl, не из переменной окружения):"; \
+	echo "   контекст   $$ctx"; \
+	echo "   кластер    $$cluster"; \
+	echo "   apiserver  $$server"; \
+	echo "   namespace  $${ns:-<задаётся самой командой>}"; \
+	echo "==================================================================="; \
+	if [ ! -t 0 ]; then \
+	  echo "ABORT: подтверждение ввести некому (stdin не терминал)."; \
+	  echo "       Разрушительная операция не исполняется без подтверждения человеком."; \
+	  exit 1; \
+	fi; \
+	printf "Введите '%s' для подтверждения: " "$$token"; \
+	read -r confirm; \
+	if [ "$$confirm" != "$$token" ]; then echo "Отменено."; exit 1; fi
 
 # MTLS_OFF — глушим mTLS у КАЖДОГО сабчарта на фазе 1 (bootstrap чистого кластера).
 #
@@ -242,7 +327,7 @@ dev-down:
 # выстаивал 12 минут до таймаута. Профиль dev такой ссылки не содержит, поэтому
 # `dev-up` работал и предусловие не было заметно — оно проявлялось ровно на
 # production-профиле, то есть там, где его и проверяют.
-dev-prod-up: dev-up
+dev-prod-up: guard-kind-context dev-up
 	@set -e; \
 	echo "=== prerequisite secrets (БЕЗ них production-профиль не поднимается) ==="; \
 	./scripts/dev-prod-secrets.sh; \
@@ -450,7 +535,12 @@ helm-manifest-test:
 	fi; \
 	echo; echo "helm-manifest-test: all green ($$total проверок)"
 
-reload-svc:
+# guard-kind-context: цель делает `kind load` (пинится к kind по имени) И
+# `kubectl rollout restart` (едет в АКТИВНЫЙ контекст). Второе от первого не
+# защищено: при живом kind-кластере и подменённом kubeconfig загрузка образа
+# проходит, а перезапуск прилетает соседнему кластеру — тот же near-miss, что
+# и у dev-up, только тише.
+reload-svc: guard-kind-context
 ifndef SVC
 	$(error SVC variable is required, e.g. make reload-svc SVC=compute)
 endif
@@ -481,7 +571,9 @@ ifndef SVC
 endif
 	kubectl logs -n kacho -f deploy/$(SVC)
 
-psql:
+# guard-kind-context: интерактивная psql-сессия — не чтение, а произвольная запись
+# в базу активного контекста; учётные данные здесь стендовые.
+psql: guard-kind-context
 ifndef SVC
 	$(error SVC variable is required)
 endif
@@ -500,12 +592,16 @@ e2e-test:
 # python3, newman, grpcurl in PATH.
 #   make e2e-newman SVC=vpc
 #   make e2e-newman SVC=vpc COLLECTION=internal-network
-e2e-newman:
+# guard-kind-context: харнесс сеет фикстуры (аккаунты, проекты, гранты) через
+# port-forward в активный контекст — это запись, а не прогон в вакууме.
+e2e-newman: guard-kind-context
 	@bash ./scripts/newman-e2e.sh "$(SVC)" "$(COLLECTION)"
 
 # ─── Load testing ────────────────────────────────────────────────
 
-loadtest-address-allocate:
+# guard-kind-context: цель СОЗДАЁТ в кластере Job, который льёт нагрузку на
+# аллокацию адресов. На чужом кластере это нагрузочный тест по чужому продакшену.
+loadtest-address-allocate: guard-kind-context
 	@kubectl -n kacho delete job k6-address-allocate --ignore-not-found
 	@kubectl -n kacho apply -f load-tests/k6-address-allocate.yaml
 	@echo "→ Job created, waiting for completion (max 600s)…"
@@ -513,7 +609,7 @@ loadtest-address-allocate:
 	  kubectl -n kacho wait --for=condition=failed job/k6-address-allocate --timeout=10s
 	@kubectl -n kacho logs -l job-name=k6-address-allocate --tail=-1
 
-loadtest-address-allocate-clean:
+loadtest-address-allocate-clean: guard-kind-context
 	@kubectl -n kacho delete job k6-address-allocate --ignore-not-found
 	@kubectl -n kacho delete cm k6-address-allocate --ignore-not-found
 
@@ -524,15 +620,30 @@ reload-svc-iam:
 	@$(MAKE) reload-svc SVC=iam
 
 # psql в kacho_iam-БД (база, пользователь, схема — все kacho_iam).
-psql-iam:
+psql-iam: guard-kind-context
 	kubectl exec -it -n kacho statefulset/kacho-umbrella-pg-iam -- psql -U iam -d kacho_iam
 
 # KAC-125: greenfield wipe kacho_iam schema + drop goose state.
 # Используется ДО helm upgrade с breaking migration (e.g. 0009_user_per_account_invite_kac125).
 # Воспроизводимый replacement для manual `DROP SCHEMA … CASCADE`.
 # ВНИМАНИЕ: уничтожает все данные IAM (accounts/projects/users/...). Только для dev.
-wipe-iam-db:
-	@echo "⚠️  WIPE IAM DB on $$KUBECONFIG"
+#
+# ДВА ГЕЙТА, И ОБА ОБЯЗАТЕЛЬНЫ.
+#
+# guard-kind-context — единственная разрушающая цель файла была ЕДИНСТВЕННОЙ, кто
+# от него не зависел, при том что от него зависят все ЧИТАЮЩИЕ гейты рядом
+# (assert-production-posture, assert-forwarder-narrowing, assert-outbox-autovacuum).
+# Асимметрия ровно наоборот: имена namespace, пода и базы на управляемом кластере
+# те же самые, поэтому промах контекстом здесь стоит не утечки диагностики, а
+# безвозвратного сноса аккаунтов, проектов, пользователей и привязок.
+#
+# guard-destructive — подтверждение вводом, как у spire-rotate-trust-domain (та
+# ничего не рушит безвозвратно, а подтверждение требует). И оно НАЗЫВАЕТ ЦЕЛЬ:
+# прежняя строка печатала значение KUBECONFIG, пустое при дефолтном ~/.kube/config,
+# то есть предупреждала, не сказав о чём.
+wipe-iam-db: guard-kind-context
+	@$(MAKE) --no-print-directory guard-destructive OP=wipe-iam-db TOKEN=WIPE-IAM \
+	  WHAT="DROP SCHEMA kacho_iam CASCADE + снос состояния goose — все аккаунты, проекты, пользователи, группы, роли и привязки исчезнут безвозвратно"
 	@kubectl exec -n kacho kacho-umbrella-pg-iam-0 -- \
 	    env PGPASSWORD=dev-iam-password psql -U iam -d kacho_iam \
 	    -c "DROP SCHEMA IF EXISTS kacho_iam CASCADE; CREATE SCHEMA kacho_iam;"
@@ -550,7 +661,11 @@ logs-iam:
 # Вручную запустить openfga-bootstrap-job (для дебага / повторного применения model).
 # Helm hook удаляет старый Job при post-install/upgrade, поэтому здесь используем
 # `helm template` для рендера манифеста + apply.
-fga-bootstrap:
+#
+# guard-kind-context: цель применяет манифесты, отрендеренные из values.dev.yaml,
+# в АКТИВНЫЙ контекст. Из dev-up она вызывается уже под гейтом, но вызывается и
+# напрямую (README, ui-future/heal-authz.sh) — а тогда гейта на пути нет.
+fga-bootstrap: guard-kind-context
 	@echo "Запускаем openfga-bootstrap Job (idempotent):"
 	@kubectl -n kacho delete job openfga-bootstrap --ignore-not-found
 	# Две правки против прежней версии (обе ломали bootstrap с нуля):
@@ -601,7 +716,15 @@ openfga-model-json:
 
 # Bootstrap SPIRE Server + Agent + регистрация всех Kachō SPIFFE-IDs.
 # Применяется только когда umbrella values имеет spire-server.enabled=true.
+#
+# guard-destructive, а НЕ guard-kind-context: цель по замыслу исполняется и на
+# настоящем кластере (values.prod.yaml прямо в рецепте), поэтому запрещать чужой
+# контекст нельзя — можно и нужно требовать, чтобы человек увидел названную цель
+# и подтвердил её. Создание пространства имён и применение манифестов PKI в чужой
+# кластер — не то, что делают по опечатке в KUBECONFIG.
 spire-bootstrap:
+	@$(MAKE) --no-print-directory guard-destructive OP=spire-bootstrap TOKEN=BOOTSTRAP \
+	  WHAT="создание namespace spire-system и применение манифестов SPIRE Server/Agent (корень доверия mesh)"
 	@echo "Phase 10: bootstrapping SPIRE Server + Agent..."
 	@kubectl create namespace spire-system --dry-run=client -o yaml | kubectl apply -f -
 	@helm template kacho-umbrella ./helm/umbrella -f ./helm/umbrella/values.prod.yaml \
@@ -616,11 +739,15 @@ spire-bootstrap:
 	@echo "✓ SPIRE bootstrap complete. Registration entries applied via post-install Job."
 
 # Rotate trust domain — emergency runbook operation (P10-D19).
-# Requires confirmation; invalidates entire trust domain key material.
+# Invalidates entire trust domain key material.
+#
+# Подтверждение здесь было и раньше — но оно не называло, КУДА поедет операция.
+# Теперь его выдаёт guard-destructive, который разрешает контекст/кластер/apiserver
+# живым kubectl и печатает их. guard-kind-context намеренно НЕ ставится: аварийная
+# ротация по замыслу исполняется на настоящем кластере.
 spire-rotate-trust-domain:
-	@echo "DANGER: rotating SPIRE trust domain — all SVIDs will be invalidated."
-	@read -p "Type 'ROTATE' to confirm: " confirm && \
-		[ "$$confirm" = "ROTATE" ] || (echo "Aborted." && exit 1)
+	@$(MAKE) --no-print-directory guard-destructive OP=spire-rotate-trust-domain TOKEN=ROTATE \
+	  WHAT="перезапуск SPIRE Server — весь материал корня доверия аннулируется, все выданные SVID перестают быть действительными"
 	@kubectl -n spire-system delete pod -l app.kubernetes.io/name=spire-server
 	@echo "✓ SPIRE Server pods restarting; new root CA will be issued."
 
@@ -658,7 +785,7 @@ reload-svc-nlb:
 # psql прямо в kacho_nlb-БД. Bitnami pg-nlb StatefulSet exposes
 # `kacho-umbrella-pg-nlb` Service; user / db = `kacho_nlb` (see
 # helm/umbrella/values.dev.yaml pg-nlb.auth).
-psql-nlb:
+psql-nlb: guard-kind-context
 	kubectl exec -it -n kacho statefulset/kacho-umbrella-pg-nlb -- \
 	    env PGPASSWORD=dev-nlb-password psql -U kacho_nlb -d kacho_nlb
 
