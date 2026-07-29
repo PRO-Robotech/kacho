@@ -1,0 +1,180 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+// Package dropguardtest runs a service's drop guard against a real database.
+//
+// It lives apart from dropguard so that the library which decides things stays free
+// of a dependency on the test runner. What a service needs to adopt the guard is one
+// call: the harness replays that service's own migrations into a throwaway Postgres,
+// pauses immediately before every drop, counts, and refuses on any disagreement with
+// the service's dropguard.json.
+package dropguardtest
+
+import (
+	"context"
+	"database/sql"
+	"io/fs"
+	"os"
+	"testing"
+	"time"
+
+	_ "github.com/jackc/pgx/v5/stdlib" // database/sql driver for the harness
+	"github.com/pressly/goose/v3"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+
+	"github.com/PRO-Robotech/kacho/internal/dropguard"
+)
+
+// Options configures one measured run.
+type Options struct {
+	// Service is the service name, matched against the manifest's own field.
+	Service string
+	// FS is the service's embedded migration directory.
+	FS fs.FS
+	// ManifestPath is the path to dropguard.json, usually "dropguard.json"
+	// relative to the migrations package under test.
+	ManifestPath string
+	// Seed, when set, runs each time the chain reaches a version at which
+	// something is about to be counted, and is given the version actually
+	// reached. It exists so the guard can be proved to fail on a table that is
+	// not empty: the proof injects a row here, and the run must go red naming
+	// that table. Nil in the gate itself.
+	Seed func(ctx context.Context, db *sql.DB, reachedVersion int64) error
+}
+
+// Run replays the chain, measures every drop, and fails t on any refusal.
+//
+// It also fails when the run measured fewer drops than the chain contains. A guard
+// that reports no violations because it never got as far as asking is the exact
+// shape of the problem this package was written for, so "how many did you look at"
+// is asserted next to "what did you find".
+//
+// Returns the report so a caller can assert something more specific.
+func Run(t *testing.T, opts Options) dropguard.Report {
+	t.Helper()
+	rep := Measure(t, opts)
+	for _, v := range rep.Violations {
+		t.Errorf("%s", v.Error())
+	}
+	if rep.Measured != rep.DropsInChain {
+		t.Errorf("%s: measured %d of %d drop(s); the ones not reached are unverified, not clean",
+			opts.Service, rep.Measured, rep.DropsInChain)
+	}
+	return rep
+}
+
+// Measure does the work and REPORTS, without turning a refusal into a test failure.
+//
+// It is separate from Run so that the guard can be proved to refuse: a proof injects
+// a row, calls Measure, and asserts on the violations it gets back. Were the only
+// entry point one that fails the test, the only way to check that the guard fails
+// would be to watch it fail — which is not a check.
+//
+// It still fails t for anything that means no measurement happened at all: a chain
+// that will not replay, an unreadable manifest, a container that will not start.
+// Those are not clean runs either.
+func Measure(t *testing.T, opts Options) dropguard.Report {
+	t.Helper()
+	ctx := context.Background()
+
+	// The static half never degrades: it needs no database, so it runs in every
+	// environment and fails hard. Reading the migrations and reading the manifest
+	// are the two things that are always possible.
+	inv, err := dropguard.Inventory(opts.Service, opts.FS)
+	if err != nil {
+		t.Fatalf("inventory: %v", err)
+	}
+	if len(inv.Drops) == 0 {
+		t.Fatalf("%s: no Up-section DROP TABLE found in %d migration file(s) — this gate would assert nothing",
+			opts.Service, inv.FilesScanned)
+	}
+	man, err := dropguard.LoadManifest(opts.ManifestPath)
+	if err != nil {
+		t.Fatalf("manifest: %v", err)
+	}
+	staticViolations := dropguard.Reconcile(inv, man)
+
+	// The measured half needs a database, and that is the one dimension that can
+	// be unavailable. When it is, the run does not quietly pass: every drop is
+	// printed as unanswered, counted in the census, and the test is marked skipped
+	// — so "the count did not run" can never be read as "the count came back
+	// clean". Same discipline as the tracker dimension in the storage audits.
+	if testing.Short() {
+		rep := dropguard.NothingMeasured(inv)
+		rep.Violations = staticViolations
+		rep.WriteCensus(os.Stdout)
+		for _, v := range staticViolations {
+			t.Errorf("%s", v.Error())
+		}
+		t.Skipf("%s: -short leaves %d drop(s) uncounted; the declarations were checked, the rows were not",
+			opts.Service, rep.DropsInChain)
+		return rep
+	}
+
+	db := startPostgres(t, ctx, opts.Service)
+
+	goose.SetBaseFS(opts.FS)
+	if serr := goose.SetDialect("postgres"); serr != nil {
+		t.Fatalf("goose dialect: %v", serr)
+	}
+	goose.SetLogger(goose.NopLogger())
+
+	step := func(version int64) error {
+		if version > 0 {
+			if uerr := goose.UpTo(db, ".", version); uerr != nil {
+				return uerr
+			}
+		}
+		if opts.Seed != nil {
+			return opts.Seed(ctx, db, version)
+		}
+		return nil
+	}
+
+	rep, err := dropguard.MeasureChain(ctx, db, inv, man, step)
+	rep.Violations = append(staticViolations, rep.Violations...)
+	// The census is written before anything else can end the run, and written
+	// whether or not the run was verbose: what was read is as much of the result
+	// as what was found.
+	rep.WriteCensus(os.Stdout)
+	if err != nil {
+		t.Fatalf("%s: the chain could not be replayed, so %d drop(s) were never counted: %v",
+			opts.Service, rep.DropsInChain-rep.Measured, err)
+	}
+
+	// Leave the database at head so the run also proves the chain completes.
+	if uerr := goose.Up(db, "."); uerr != nil {
+		t.Fatalf("%s: chain does not reach head: %v", opts.Service, uerr)
+	}
+	return rep
+}
+
+func startPostgres(t *testing.T, ctx context.Context, service string) *sql.DB {
+	t.Helper()
+	pgc, err := postgres.Run(ctx,
+		"postgres:16-alpine",
+		postgres.WithDatabase("kacho_"+service+"_dropguard"),
+		postgres.WithUsername(service),
+		postgres.WithPassword(service),
+		postgres.BasicWaitStrategies(),
+	)
+	if err != nil {
+		t.Fatalf("start postgres: %v", err)
+	}
+	t.Cleanup(func() {
+		tctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		_ = pgc.Terminate(tctx)
+	})
+
+	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
+	if err != nil {
+		t.Fatalf("dsn: %v", err)
+	}
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}

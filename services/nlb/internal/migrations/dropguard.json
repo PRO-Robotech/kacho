@@ -1,0 +1,11 @@
+{
+  "service": "nlb",
+  "drops": [
+    {
+      "version": 22,
+      "table": "kacho_nlb.attached_target_groups",
+      "kind": "retire",
+      "expect_rows": 0
+    }
+  ]
+}

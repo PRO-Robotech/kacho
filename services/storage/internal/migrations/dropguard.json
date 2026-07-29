@@ -1,0 +1,11 @@
+{
+  "service": "storage",
+  "drops": [
+    {
+      "version": 11,
+      "table": "kacho_storage.storage_outbox",
+      "kind": "retire",
+      "expect_rows": 0
+    }
+  ]
+}
