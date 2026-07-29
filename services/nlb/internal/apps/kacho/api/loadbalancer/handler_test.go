@@ -35,7 +35,7 @@ func TestHandler_DispatchesAll(t *testing.T) {
 		}, nil
 	}}, &fakeAddressReader{}, &fakeAddressClient{}, nil, slog.Default())
 
-	ctx := context.Background()
+	ctx := ctxWithUser("usr_lister")
 
 	// Get
 	got, err := h.Get(ctx, &lbv1.GetNetworkLoadBalancerRequest{NetworkLoadBalancerId: lbID})

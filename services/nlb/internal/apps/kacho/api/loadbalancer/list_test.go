@@ -62,7 +62,7 @@ func TestListLoadBalancers_FiltersByProject(t *testing.T) {
 	seedLB(t, repo, "prj-a", "lb-a2")
 	seedLB(t, repo, "prj-b", "lb-b1")
 	uc := NewListLoadBalancersUseCase(repo, nil)
-	resp, err := uc.Execute(context.Background(), &lbv1.ListNetworkLoadBalancersRequest{ProjectId: "prj-a"})
+	resp, err := uc.Execute(ctxWithUser("usr_lister"), &lbv1.ListNetworkLoadBalancersRequest{ProjectId: "prj-a"})
 	require.NoError(t, err)
 	require.Len(t, resp.GetNetworkLoadBalancers(), 2)
 }
@@ -73,7 +73,7 @@ func TestListLoadBalancers_FilterName(t *testing.T) {
 	seedLB(t, repo, "prj-a", "edge")
 	seedLB(t, repo, "prj-a", "api")
 	uc := NewListLoadBalancersUseCase(repo, nil)
-	resp, err := uc.Execute(context.Background(), &lbv1.ListNetworkLoadBalancersRequest{
+	resp, err := uc.Execute(ctxWithUser("usr_lister"), &lbv1.ListNetworkLoadBalancersRequest{
 		ProjectId: "prj-a", Filter: `name="edge"`,
 	})
 	require.NoError(t, err)

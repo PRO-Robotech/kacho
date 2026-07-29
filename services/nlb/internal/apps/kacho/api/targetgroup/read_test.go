@@ -66,14 +66,14 @@ func TestList_FilterByProject(t *testing.T) {
 	repo.seedTG(makeTG("prj-b", "tg-b1"))
 
 	uc := NewListTargetGroupsUseCase(repo, nil)
-	resp, err := uc.Execute(context.Background(), &lbv1.ListTargetGroupsRequest{
+	resp, err := uc.Execute(ctxWithUser("usr_lister"), &lbv1.ListTargetGroupsRequest{
 		ProjectId: "prj-a",
 	})
 	require.NoError(t, err)
 	require.Len(t, resp.GetTargetGroups(), 2)
 
 	// name="<value>" filter.
-	resp2, err := uc.Execute(context.Background(), &lbv1.ListTargetGroupsRequest{
+	resp2, err := uc.Execute(ctxWithUser("usr_lister"), &lbv1.ListTargetGroupsRequest{
 		ProjectId: "prj-a",
 		Filter:    `name="tg-a1"`,
 	})
