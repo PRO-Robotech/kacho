@@ -631,5 +631,3 @@ func (f *FGAFilter) Size() int {
 	defer f.mu.Unlock()
 	return f.lruLst.Len()
 }
-
-

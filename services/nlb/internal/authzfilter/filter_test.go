@@ -432,7 +432,6 @@ func TestFGAFilter_CacheTTLExpiry(t *testing.T) {
 	assert.Equal(t, 2, cli.calls, "post-TTL: must ask iam again")
 }
 
-
 // LRU: при переполнении вытесняется least-recently-used, а не произвольная
 // (Go-map-randomized, возможно горячая) запись — иначе burst distinct-List трэшил
 // бы кеш и гнал лишний QPS в kacho-iam. Кеш остаётся ограничен CacheMaxEntries.

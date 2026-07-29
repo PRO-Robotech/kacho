@@ -552,6 +552,69 @@ func (m *memOpsH) List(context.Context, operations.ListFilter) ([]operations.Ope
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, "", nil
 }
+
+// GetOwned / CancelOwned / ListOwned — суженная полоса «только свои строки».
+// Фейк ОБЯЗАН нести ВСЕ ТРИ: use-case зовёт operations.ListForCaller, а та проверяет
+// хранилище приведением к интерфейсу целиком и отказывает фиксированным внутренним
+// текстом, если хоть один метод отсутствует. Двойник, не выражающий контракт целиком,
+// превращает поведенческий тест в тест провязки — и падает не по своей причине.
+func (m *memOpsH) GetOwned(_ context.Context, id string, owner operations.Owner) (*operations.Operation, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	op, ok := m.ops[id]
+	if !ok || !ownedByH(op, owner) {
+		return nil, operations.ErrNotFound
+	}
+	cp := *op
+	return &cp, nil
+}
+
+func (m *memOpsH) CancelOwned(_ context.Context, id string, owner operations.Owner) (*operations.Operation, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	op, ok := m.ops[id]
+	if !ok || !ownedByH(op, owner) {
+		return nil, operations.ErrNotFound
+	}
+	if op.Done {
+		return nil, operations.ErrAlreadyDone
+	}
+	op.Done = true
+	cp := *op
+	return &cp, nil
+}
+
+// ownedByH — предикат владения. Строка БЕЗ принципала считается своей: фикстуры этого
+// пакета кладут операции через put() без личности, и требовать её означало бы проверять
+// посев, а не видимость.
+func ownedByH(op *operations.Operation, owner operations.Owner) bool {
+	if op.Principal.Type == "" && op.Principal.ID == "" {
+		return true
+	}
+	return op.Principal.Type == owner.PrincipalType && op.Principal.ID == owner.PrincipalID
+}
+
+// ListOwned — суженная выборка «только свои строки». Фейк ОБЯЗАН её иметь: use-case
+// зовёт operations.ListForCaller, а та отказывает фиксированным внутренним текстом,
+// если хранилище этого метода не предоставляет. Двойник, не выражающий новый контракт,
+// превращает поведенческий тест в тест провязки.
+//
+// Сужение здесь настоящее, а не тождественное List: строка без совпадающего владельца
+// отбрасывается — иначе тесты видимости зеленели бы на несуженной выдаче.
+func (m *memOpsH) ListOwned(_ context.Context, _ operations.ListFilter, owner operations.Owner) ([]operations.Operation, string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]operations.Operation, 0, len(m.ops))
+	for _, op := range m.ops {
+		if !ownedByH(op, owner) {
+			continue
+		}
+		out = append(out, *op)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, "", nil
+}
+
 func (m *memOpsH) MarkDone(_ context.Context, id string, response *anypb.Any) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
