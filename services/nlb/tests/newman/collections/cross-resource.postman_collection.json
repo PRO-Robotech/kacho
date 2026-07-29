@@ -37,7 +37,7 @@
       "description": "class:CRUD | class:STATE | priority:P0",
       "item": [
         {
-          "name": "create-lb-cr319",
+          "name": "create-lb-cr320",
           "request": {
             "method": "POST",
             "header": [
@@ -178,7 +178,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr319');",
+                  "  pm.execution.setNextRequest('create-lb-cr320');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -190,7 +190,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya320",
+          "name": "materialize-lb-rya321",
           "request": {
             "method": "GET",
             "header": [
@@ -239,7 +239,7 @@
           ]
         },
         {
-          "name": "get-lb-inactive-rya321",
+          "name": "get-lb-inactive-rya322",
           "request": {
             "method": "GET",
             "header": [
@@ -293,7 +293,7 @@
           ]
         },
         {
-          "name": "create-listener-rya322",
+          "name": "create-listener-rya323",
           "request": {
             "method": "POST",
             "header": [
@@ -409,14 +409,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "get-listener-vip-rya323",
+          "name": "get-listener-vip-rya324",
           "request": {
             "method": "GET",
             "header": [
@@ -461,9 +465,7 @@
                   "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
-                  "if (!pm.environment.get('lastOpError')) {",
-                  "  pm.test('listener ACTIVE', () =>     pm.expect(j.status).to.eql('ACTIVE'));",
-                  "}"
+                  "pm.test('listener ACTIVE', () => pm.expect(j.status).to.eql('ACTIVE'));"
                 ]
               }
             }
@@ -578,7 +580,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya324",
+          "name": "materialize-tg-rya325",
           "request": {
             "method": "GET",
             "header": [
@@ -627,7 +629,7 @@
           ]
         },
         {
-          "name": "add-instance-target-rya325",
+          "name": "add-instance-target-rya326",
           "request": {
             "method": "POST",
             "header": [
@@ -838,14 +840,15 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "pm.test('operation succeeded', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "verify-default-tg-set-st326",
+          "name": "verify-default-tg-set-st327",
           "request": {
             "method": "GET",
             "header": [
@@ -883,7 +886,7 @@
                   "}",
                   "const _stc = parseInt(pm.environment.get('_stRetryCount') || '0', 10);",
                   "let _converged = false;",
-                  "try { _converged = !!(pm.environment.get('lastOpError') || pm.response.json().defaultTargetGroupId === pm.environment.get('tgId')); } catch (e) { _converged = false; }",
+                  "try { _converged = !!(pm.response.json().defaultTargetGroupId === pm.environment.get('tgId')); } catch (e) { _converged = false; }",
                   "const _stTransient = [403,404].includes(pm.response.code) || (pm.response.code === 200 && !_converged);",
                   "if (_stTransient && _stc < 25) {",
                   "  pm.environment.set('_stRetryCount', String(_stc + 1));",
@@ -895,16 +898,14 @@
                   "pm.environment.unset('_stRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
-                  "if (!pm.environment.get('lastOpError')) {",
-                  "  pm.test('default_target_group_id resolves to attached TG', () =>     pm.expect(j.defaultTargetGroupId).to.eql(pm.environment.get('tgId')));",
-                  "}"
+                  "pm.test('default_target_group_id resolves to attached TG', () =>   pm.expect(j.defaultTargetGroupId).to.eql(pm.environment.get('tgId')));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "get-lb-after-attach-rya327",
+          "name": "get-lb-after-attach-rya328",
           "request": {
             "method": "GET",
             "header": [
@@ -956,7 +957,7 @@
           ]
         },
         {
-          "name": "get-target-states-rya328",
+          "name": "get-target-states-rya329",
           "request": {
             "method": "GET",
             "header": [
@@ -1480,7 +1481,7 @@
       "description": "class:CRUD | priority:P1",
       "item": [
         {
-          "name": "create-lb-v6-cr329",
+          "name": "create-lb-v6-cr330",
           "request": {
             "method": "POST",
             "header": [
@@ -1621,7 +1622,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-v6-cr329');",
+                  "  pm.execution.setNextRequest('create-lb-v6-cr330');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -1633,7 +1634,7 @@
           ]
         },
         {
-          "name": "get-lb-v6-vip-rya330",
+          "name": "get-lb-v6-vip-rya331",
           "request": {
             "method": "GET",
             "header": [
@@ -1781,7 +1782,7 @@
       "description": "class:NEG | class:STATE | priority:P1",
       "item": [
         {
-          "name": "create-lb-cr331",
+          "name": "create-lb-cr332",
           "request": {
             "method": "POST",
             "header": [
@@ -1922,7 +1923,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr331');",
+                  "  pm.execution.setNextRequest('create-lb-cr332');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -1934,7 +1935,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya332",
+          "name": "materialize-lb-rya333",
           "request": {
             "method": "GET",
             "header": [
@@ -1983,7 +1984,7 @@
           ]
         },
         {
-          "name": "create-listener-rya333",
+          "name": "create-listener-rya334",
           "request": {
             "method": "POST",
             "header": [
@@ -2145,7 +2146,7 @@
           ]
         },
         {
-          "name": "verify-listener-unchanged-rya334",
+          "name": "verify-listener-unchanged-rya335",
           "request": {
             "method": "GET",
             "header": [
@@ -2381,7 +2382,7 @@
       "description": "class:NEG | class:VAL | priority:P1",
       "item": [
         {
-          "name": "create-lb-cr335",
+          "name": "create-lb-cr336",
           "request": {
             "method": "POST",
             "header": [
@@ -2522,7 +2523,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr335');",
+                  "  pm.execution.setNextRequest('create-lb-cr336');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -2534,7 +2535,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya336",
+          "name": "materialize-lb-rya337",
           "request": {
             "method": "GET",
             "header": [
@@ -2583,7 +2584,7 @@
           ]
         },
         {
-          "name": "create-listener-family-mismatch-rya337",
+          "name": "create-listener-family-mismatch-rya338",
           "request": {
             "method": "POST",
             "header": [
@@ -2878,6 +2879,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('xresSubnetId');",
+                  "pm.test('internal subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -2932,14 +2934,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('xresSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "create-internal-lb-cr338",
+          "name": "create-internal-lb-cr339",
           "request": {
             "method": "POST",
             "header": [
@@ -2994,15 +3000,10 @@
                   "pm.environment.unset('_crRetryCount');",
                   "pm.environment.unset('_crRetryStarted');",
                   "pm.environment.unset('nlbId');",
-                  "if (pm.environment.get('xresSubnetId')) {",
-                  "  pm.test('INTERNAL subnet-source LB accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
-                  "  const j = pm.response.json();",
-                  "  if (j.id) pm.environment.set('opId', j.id);",
-                  "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else {",
-                  "  pm.environment.unset('opId');",
-                  "  pm.test('no subnet fixture → INTERNAL subnet-source create rejected', () =>     pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
-                  "}"
+                  "pm.test('INTERNAL subnet-source LB accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "if (j.id) pm.environment.set('opId', j.id);",
+                  "if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);"
                 ]
               }
             }
@@ -3052,14 +3053,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "get-internal-lb-rya339",
+          "name": "get-internal-lb-rya340",
           "request": {
             "method": "GET",
             "header": [
@@ -3102,22 +3107,19 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.environment.unset('xresIntReady');",
-                  "if (pm.environment.get('nlbId') && pm.response.code === 200 && !pm.environment.get('lastOpError')) {",
-                  "  pm.environment.set('xresIntReady', '1');",
-                  "  const j = pm.response.json();",
-                  "  pm.test('type INTERNAL', () => pm.expect(j.type).to.eql('INTERNAL'));",
-                  "  pm.test('placementType ZONAL', () => pm.expect(j.placementType).to.eql('ZONAL'));",
-                  "  pm.test('sessionAffinity CLIENT_IP_ONLY round-trips', () =>     pm.expect(j.sessionAffinity).to.eql('CLIENT_IP_ONLY'));",
-                  "  pm.test('v4AddressId resolved to a bound vpc Address', () =>     pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
-                  "}"
+                  "pm.test('Get 200 for created INTERNAL LB', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('type INTERNAL', () => pm.expect(j.type).to.eql('INTERNAL'));",
+                  "pm.test('placementType ZONAL', () => pm.expect(j.placementType).to.eql('ZONAL'));",
+                  "pm.test('sessionAffinity CLIENT_IP_ONLY round-trips', () =>   pm.expect(j.sessionAffinity).to.eql('CLIENT_IP_ONLY'));",
+                  "pm.test('v4AddressId resolved to a bound vpc Address', () =>   pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));"
                 ]
               }
             }
           ]
         },
         {
-          "name": "create-internal-listener-rya340",
+          "name": "create-internal-listener-rya341",
           "request": {
             "method": "POST",
             "header": [
@@ -3168,7 +3170,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('listener accepted or rejected (LB/subnet dependent)', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404]));",
+                  "pm.test('internal listener accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "pm.environment.unset('lstId');",
                   "try {",
                   "  const j = pm.response.json();",
@@ -3229,14 +3231,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('lstId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "get-internal-listener-status",
+          "name": "get-internal-listener-status-rya342",
           "request": {
             "method": "GET",
             "header": [
@@ -3264,10 +3270,24 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (pm.response.code === 200 && !pm.environment.get('lastOpError')) {",
-                  "  const j = pm.response.json();",
-                  "  pm.test('internal listener ACTIVE', () =>     pm.expect(j.status).to.eql('ACTIVE'));",
-                  "}"
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('internal listener ACTIVE', () => pm.expect(j.status).to.eql('ACTIVE'));"
                 ]
               }
             }
@@ -3382,7 +3402,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya341",
+          "name": "materialize-tg-rya343",
           "request": {
             "method": "GET",
             "header": [
@@ -3460,11 +3480,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (pm.environment.get('xresIntReady') === '1') {",
-                  "  pm.test('GetTargetStates 200 on ready INTERNAL LB', () =>     pm.expect(pm.response.code).to.eql(200));",
-                  "  const states = pm.response.json().targetStates || [];",
-                  "  pm.test('targetStates is an array', () => pm.expect(states).to.be.an('array'));",
-                  "}"
+                  "pm.test('GetTargetStates 200 on ready INTERNAL LB', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const states = pm.response.json().targetStates || [];",
+                  "pm.test('targetStates is an array', () => pm.expect(states).to.be.an('array'));"
                 ]
               }
             }
@@ -3986,14 +4004,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "get-no-network-rya342",
+          "name": "get-no-network-rya344",
           "request": {
             "method": "GET",
             "header": [
@@ -4036,10 +4058,8 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "if (pm.response.code === 200 && !pm.environment.get('lastOpError')) {",
-                  "  pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "  pm.test('projection carries no networkId (removed from the model)', () =>     pm.expect(pm.response.json()).to.not.have.property('networkId'));",
-                  "}"
+                  "pm.test('status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "pm.test('projection carries no networkId (removed from the model)', () =>   pm.expect(pm.response.json()).to.not.have.property('networkId'));"
                 ]
               }
             }
@@ -4195,7 +4215,7 @@
       "description": "class:CRUD | class:STATE | priority:P0",
       "item": [
         {
-          "name": "create-lb-cr343",
+          "name": "create-lb-cr345",
           "request": {
             "method": "POST",
             "header": [
@@ -4336,7 +4356,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr343');",
+                  "  pm.execution.setNextRequest('create-lb-cr345');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -4348,7 +4368,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya344",
+          "name": "materialize-lb-rya346",
           "request": {
             "method": "GET",
             "header": [
@@ -4397,7 +4417,7 @@
           ]
         },
         {
-          "name": "create-listener-rya345",
+          "name": "create-listener-rya347",
           "request": {
             "method": "POST",
             "header": [
@@ -4623,7 +4643,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya346",
+          "name": "materialize-tg-rya348",
           "request": {
             "method": "GET",
             "header": [
@@ -4672,7 +4692,7 @@
           ]
         },
         {
-          "name": "add-external-target-rya347",
+          "name": "add-external-target-rya349",
           "request": {
             "method": "POST",
             "header": [
@@ -5596,7 +5616,7 @@
       "description": "class:NEG | class:STATE | priority:P0",
       "item": [
         {
-          "name": "create-lb-cr348",
+          "name": "create-lb-cr350",
           "request": {
             "method": "POST",
             "header": [
@@ -5737,7 +5757,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr348');",
+                  "  pm.execution.setNextRequest('create-lb-cr350');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -5749,7 +5769,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya349",
+          "name": "materialize-lb-rya351",
           "request": {
             "method": "GET",
             "header": [
@@ -5798,7 +5818,7 @@
           ]
         },
         {
-          "name": "create-listener-rya350",
+          "name": "create-listener-rya352",
           "request": {
             "method": "POST",
             "header": [
@@ -6225,7 +6245,7 @@
       "description": "class:STATE | class:CRUD | priority:P0",
       "item": [
         {
-          "name": "create-lb-cr351",
+          "name": "create-lb-cr353",
           "request": {
             "method": "POST",
             "header": [
@@ -6366,7 +6386,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr351');",
+                  "  pm.execution.setNextRequest('create-lb-cr353');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -6378,7 +6398,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya352",
+          "name": "materialize-lb-rya354",
           "request": {
             "method": "GET",
             "header": [
@@ -6535,7 +6555,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya353",
+          "name": "materialize-tg-rya355",
           "request": {
             "method": "GET",
             "header": [
@@ -6584,7 +6604,7 @@
           ]
         },
         {
-          "name": "add-instance-target-rya354",
+          "name": "add-instance-target-rya356",
           "request": {
             "method": "POST",
             "header": [
@@ -7068,7 +7088,7 @@
       "description": "class:NEG | priority:P1",
       "item": [
         {
-          "name": "create-lb-cr355",
+          "name": "create-lb-cr357",
           "request": {
             "method": "POST",
             "header": [
@@ -7209,7 +7229,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr355');",
+                  "  pm.execution.setNextRequest('create-lb-cr357');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -7221,7 +7241,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya356",
+          "name": "materialize-lb-rya358",
           "request": {
             "method": "GET",
             "header": [

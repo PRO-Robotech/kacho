@@ -184,17 +184,17 @@ CASES.append(Case(
                           *assert_operation_envelope(prefix_regex="^nlb[a-z0-9]+$"),
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
-        poll_operation_until_done(),
+        # The listener is step 2 of the chain this case exists to walk — its id is consumed
+        # by every step after it, so a failed create must fail HERE rather than publish a
+        # phantom `lstId` and be forgiven downstream by `if (!lastOpError)`.
+        poll_operation_until_done(fixture_ids=["lstId"]),
         # sub-phase 8.1: VIP moved Listener→LoadBalancer; the Listener no longer carries
         # an address (allocated_address reserved). Assert the listener reaches ACTIVE; the
         # auto public VIP itself is verified on the parent LB (get-lb-inactive, v4AddressId).
         retry_until_authorized(Step(name="get-listener-vip", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
-                          "if (!pm.environment.get('lastOpError')) {",
-                          "  pm.test('listener ACTIVE', () => "
-                          "    pm.expect(j.status).to.eql('ACTIVE'));",
-                          "}"])),
+                          "pm.test('listener ACTIVE', () => pm.expect(j.status).to.eql('ACTIVE'));"])),
         # Step 3: target group.
         *_create_tg("ext-flow"),
         # Step 4: register an Instance target (peer-validated in worker; tolerated
@@ -212,21 +212,22 @@ CASES.append(Case(
         Step(name="set-default-tg", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
              body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{tgId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
+        # Wiring the TG into the listener is step 5 of the chain — the mutation under test.
+        # `must_succeed` states its outcome here; previously a failed wiring only removed
+        # the assertion about it, both from the read below AND from the convergence
+        # predicate, so the case converged instantly and greened on the miss.
+        poll_operation_until_done(must_succeed=True),
         # set-default-tg is an async Operation (polled to done above) — but the PATCH'd
         # defaultTargetGroupId is a 200-but-stale-state read: the field can lag the durable
         # Operation on the read path. Wait for the state to CONVERGE (defaultTargetGroupId ==
         # tgId) before asserting; retry_until_authorized (403/404 only) would run the assert
-        # once on a stale 200 and red. lastOpError short-circuits convergence (op errored →
-        # nothing to reflect, matching the original `if (!lastOpError)` guard).
+        # once on a stale 200 and red.
         retry_until_state(Step(name="verify-default-tg-set", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
-                          "if (!pm.environment.get('lastOpError')) {",
-                          "  pm.test('default_target_group_id resolves to attached TG', () => "
-                          "    pm.expect(j.defaultTargetGroupId).to.eql(pm.environment.get('tgId')));",
-                          "}"]),
-             "pm.environment.get('lastOpError') || pm.response.json().defaultTargetGroupId === pm.environment.get('tgId')"),
+                          "pm.test('default_target_group_id resolves to attached TG', () => "
+                          "  pm.expect(j.defaultTargetGroupId).to.eql(pm.environment.get('tgId')));"]),
+             "pm.response.json().defaultTargetGroupId === pm.environment.get('tgId')"),
         # Linkage: LB recomputed to ACTIVE once it has a listener + attached TG
         # (lb_status_recompute trigger). On a bare lane the listener VIP alloc may
         # fail → LB stays INACTIVE; assert the allowed pair. The status assert is already
@@ -406,13 +407,18 @@ CASES.append(Case(
                    "zoneId": "{{existingZoneId}}"},
              test_script=[
                  "pm.environment.unset('xresSubnetId');",
+                 # Suite-created fixture inside the seeded network — there is no lawful lane
+                 # on which it is absent, so say so rather than letting every dependent step
+                 # fall into a tolerance branch.
+                 "pm.test('internal subnet fixture accepted as Operation', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                  "if (pm.response.code === 200) {",
                  "  const j = pm.response.json();",
                  "  if (j.id) pm.environment.set('opId', j.id);",
                  "  if (j.metadata && j.metadata.subnetId) pm.environment.set('xresSubnetId', j.metadata.subnetId);",
                  "} else { pm.environment.unset('opId'); }",
              ]),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["xresSubnetId"]),
         # The just-provisioned vpc subnet can be briefly invisible to nlb's vpc peer-read
         # under parallel load → sync create rejects `subnet <id> not found` (400) BEFORE the
         # Operation is minted. Bounded create-retry re-POSTs (leak-free) until the subnet
@@ -424,69 +430,64 @@ CASES.append(Case(
                    "v4Source": {"subnetId": "{{xresSubnetId}}"}},
              test_script=[
                  "pm.environment.unset('nlbId');",
-                 "if (pm.environment.get('xresSubnetId')) {",
-                 "  pm.test('INTERNAL subnet-source LB accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
-                 "  const j = pm.response.json();",
-                 "  if (j.id) pm.environment.set('opId', j.id);",
-                 "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                 "} else {",
-                 "  pm.environment.unset('opId');",
-                 "  pm.test('no subnet fixture → INTERNAL subnet-source create rejected', () => "
-                 "    pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
-                 "}",
+                 "pm.test('INTERNAL subnet-source LB accepted as Operation', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 "const j = pm.response.json();",
+                 "if (j.id) pm.environment.set('opId', j.id);",
+                 "if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
              ])),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["nlbId"]),
         retry_until_authorized(Step(name="get-internal-lb", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[
-                 "pm.environment.unset('xresIntReady');",
-                 "if (pm.environment.get('nlbId') && pm.response.code === 200 && !pm.environment.get('lastOpError')) {",
-                 "  pm.environment.set('xresIntReady', '1');",
-                 "  const j = pm.response.json();",
-                 "  pm.test('type INTERNAL', () => pm.expect(j.type).to.eql('INTERNAL'));",
-                 "  pm.test('placementType ZONAL', () => pm.expect(j.placementType).to.eql('ZONAL'));",
-                 "  pm.test('sessionAffinity CLIENT_IP_ONLY round-trips', () => "
-                 "    pm.expect(j.sessionAffinity).to.eql('CLIENT_IP_ONLY'));",
-                 "  pm.test('v4AddressId resolved to a bound vpc Address', () => "
-                 "    pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
-                 "}",
+                 "pm.test('Get 200 for created INTERNAL LB', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 "const j = pm.response.json();",
+                 "pm.test('type INTERNAL', () => pm.expect(j.type).to.eql('INTERNAL'));",
+                 "pm.test('placementType ZONAL', () => pm.expect(j.placementType).to.eql('ZONAL'));",
+                 "pm.test('sessionAffinity CLIENT_IP_ONLY round-trips', () => "
+                 "  pm.expect(j.sessionAffinity).to.eql('CLIENT_IP_ONLY'));",
+                 "pm.test('v4AddressId resolved to a bound vpc Address', () => "
+                 "  pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
              ])),
         retry_until_authorized(Step(name="create-internal-listener", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "int-lst-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080},
              test_script=[
                  # Child-create under the fresh INTERNAL LB → editor@lb owner-tuple lag (403)
-                 # is retried; the real accept/reject is what the assertion observes.
-                 "pm.test('listener accepted or rejected (LB/subnet dependent)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404]));",
+                 # is what the wrapper retries. The parent LB is now asserted to exist
+                 # upstream (fixture_ids on its poll), so "rejected" is no longer one of the
+                 # outcomes this step is allowed to shrug at: 403/400/404 all mean the chain
+                 # this case exists to walk did not happen.
+                 "pm.test('internal listener accepted as Operation', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                  "pm.environment.unset('lstId');",
                  *save_from_response("j.id", "opId"),
                  *save_from_response("j.metadata && j.metadata.listenerId", "lstId"),
              ])),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["lstId"]),
         # sub-phase 8.1: VIP moved Listener→LoadBalancer; the Listener no longer carries an
         # address. The INTERNAL subnet-sourced VIP is asserted on the LB above
         # (get-internal-lb, v4AddressId → bound vpc Address). Here just confirm the listener
         # reaches ACTIVE once created.
-        Step(name="get-internal-listener-status", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
+        retry_until_authorized(Step(name="get-internal-listener-status", method="GET", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[
-                 "if (pm.response.code === 200 && !pm.environment.get('lastOpError')) {",
-                 "  const j = pm.response.json();",
-                 "  pm.test('internal listener ACTIVE', () => "
-                 "    pm.expect(j.status).to.eql('ACTIVE'));",
-                 "}",
-             ]),
+                 "pm.test('status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 "const j = pm.response.json();",
+                 "pm.test('internal listener ACTIVE', () => pm.expect(j.status).to.eql('ACTIVE'));",
+             ])),
         *_create_tg("int-flow"),
         # GetTargetStates is a per-TG query (same-project + viewer) — it needs neither an
         # attach nor a listener wiring (attach/detach RPCs removed).
+        # The `xresIntReady === '1'` flag this used to require was set by the very branch that
+        # is now unconditional, so the whole query only ran on a lane where nothing had gone
+        # wrong — i.e. never on the lanes worth reporting.
         Step(name="get-internal-target-states", method="GET",
              path=f"{_LB_BASE}/{{{{nlbId}}}}/targetStates?targetGroupId={{{{tgId}}}}",
              test_script=[
-                 "if (pm.environment.get('xresIntReady') === '1') {",
-                 "  pm.test('GetTargetStates 200 on ready INTERNAL LB', () => "
-                 "    pm.expect(pm.response.code).to.eql(200));",
-                 "  const states = pm.response.json().targetStates || [];",
-                 "  pm.test('targetStates is an array', () => pm.expect(states).to.be.an('array'));",
-                 "}",
+                 "pm.test('GetTargetStates 200 on ready INTERNAL LB', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 "const states = pm.response.json().targetStates || [];",
+                 "pm.test('targetStates is an array', () => pm.expect(states).to.be.an('array'));",
              ]),
         # Teardown (guarded best-effort).
         Step(name="cleanup-int-listener", method="DELETE", path=f"{_LST_BASE}/{{{{lstId}}}}",
@@ -537,20 +538,16 @@ CASES.append(Case(
                    "v4Source": {"public": {}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
-        poll_operation_until_done(),
+        # A phantom LB (Operation done WITH "could not allocate load balancer address") used
+        # to be absorbed by the `!lastOpError` guard below, which left this case with zero
+        # executed assertions on exactly the lane where something was wrong. The allocation
+        # is now stated here — the same disposition XRES-E2E-EXTERNAL-IPV6-VIP already took.
+        poll_operation_until_done(fixture_ids=["nlbId"]),
         retry_until_authorized(Step(name="get-no-network", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
-             # EXTERNAL auto public VIP can alloc-phantom under --jobs>1 throughput
-             # pressure (kacho#11): the Create Operation completes done WITH "could not
-             # allocate load balancer address", so the LB never persists and this GET
-             # 404s. The no-network conformance is asserted only when the LB actually
-             # materialised (200, no lastOpError) — a phantom lane is tolerated,
-             # matching the XRES-E2E-EXTERNAL-IPV6-VIP guard. Serial run exercises it.
              test_script=[
-                 "if (pm.response.code === 200 && !pm.environment.get('lastOpError')) {",
-                 "  pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                 "  pm.test('projection carries no networkId (removed from the model)', () => "
-                 "    pm.expect(pm.response.json()).to.not.have.property('networkId'));",
-                 "}",
+                 "pm.test('status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 "pm.test('projection carries no networkId (removed from the model)', () => "
+                 "  pm.expect(pm.response.json()).to.not.have.property('networkId'));",
              ])),
         *_cleanup_lb(),
     ],

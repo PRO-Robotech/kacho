@@ -49,6 +49,29 @@ def _list_subnets_step(name, auth, test_script):
     ))
 
 
+# The List gate must be stated, not alternated over.
+#
+# These three cases used to open with
+#   `pm.expect(pm.response.code).to.be.oneOf([200, 403])`
+# and put every invariant behind `if (pm.response.code === 200)`. On this endpoint,
+# for an authenticated subject with a well-formed projectId, 200 and 403 are the
+# WHOLE outcome space — allow and deny. An assertion that accepts both accepts
+# everything, so the case could not fail; and 403 is not some neutral "no fixture
+# here" lane, it is the exact condition these cases exist to detect. Measured
+# 2026-07-28: every poll came back 403 and all three still reported themselves
+# satisfied. The whitelist that sat on top was removed the same day precisely
+# because it was subtracting nothing.
+#
+# The two Get canaries in this file never had the alternation and never needed it:
+# they assert `.to.eql(404)` / `.to.eql(200)` outright. This brings List to the same
+# footing — the deny is now visible, whatever its cause turns out to be.
+_LIST_REACHABLE = [
+    "pm.test('List of the granted project is reachable (per-object filtering is what "
+    "is under test, so the method gate must not answer for it)', () => "
+    "pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.eql(200));",
+]
+
+
 # SUBNET-LF-D-VISIBLE: granted subnet appears in the filtered List.
 CASES.append(Case(
     id="SUBNET-LF-D-VISIBLE",
@@ -60,19 +83,10 @@ CASES.append(Case(
             "List subnets as subset-viewer",
             "jwtSubnetSubsetViewer",
             [
-                # Method-gate: SubnetService.List requires `v_list` on project:<listFilterProjectId>
-                # (setup.sh grants it via fga_write). On a lane WITHOUT PG-access at fixture time the
-                # fga_write is skipped (setup.sh:826) → the method-gate tuple never materialises →
-                # persistent 403 (retry cannot cure it). Tolerate the method-gate the same way the
-                # compute list-filter reference (list-a1-as-pure-nob) and nlb cross-resource do:
-                # accept oneOf([200,403]) and assert the per-object visibility invariant ONLY when
-                # the fixture is present (200). A genuine over-show still fails the 200-branch assert.
-                "pm.test('[SUBNET-LF-D-VISIBLE] List reachable (200) or method-gated (403, fixture absent)', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
-                "if (pm.response.code === 200) {",
-                "  const ids = (pm.response.json().subnets || []).map(s => s.id);",
-                "  pm.test('[SUBNET-LF-D-VISIBLE] granted subnet present', () => "
-                "  pm.expect(ids, JSON.stringify(ids)).to.include(pm.environment.get('subnetVisibleId')));",
-                "}",
+                *_LIST_REACHABLE,
+                "const ids = (pm.response.json().subnets || []).map(s => s.id);",
+                "pm.test('[SUBNET-LF-D-VISIBLE] granted subnet present', () => "
+                "pm.expect(ids, JSON.stringify(ids)).to.include(pm.environment.get('subnetVisibleId')));",
             ],
         ),
     ],
@@ -89,15 +103,13 @@ CASES.append(Case(
             "List subnets as subset-viewer (hidden absent)",
             "jwtSubnetSubsetViewer",
             [
-                # See SUBNET-LF-D-VISIBLE: tolerate the fga_write-dependent method-gate (oneOf[200,403]);
-                # a 403 (fixture absent) is trivially no-leak (nothing listed). No-leak invariant is
-                # asserted when the fixture is present (200).
-                "pm.test('[SUBNET-LF-D-NOLEAK] List reachable (200) or method-gated (403, fixture absent)', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
-                "if (pm.response.code === 200) {",
-                "  const ids = (pm.response.json().subnets || []).map(s => s.id);",
-                "  pm.test('[SUBNET-LF-D-NOLEAK] hidden subnet absent', () => "
-                "  pm.expect(ids, JSON.stringify(ids)).to.not.include(pm.environment.get('subnetHiddenId')));",
-                "}",
+                # A 403 is trivially "no leak" — nothing was listed — which is why accepting it
+                # made this case unfalsifiable. No-leak is only a statement about a list that
+                # was actually produced.
+                *_LIST_REACHABLE,
+                "const ids = (pm.response.json().subnets || []).map(s => s.id);",
+                "pm.test('[SUBNET-LF-D-NOLEAK] hidden subnet absent', () => "
+                "pm.expect(ids, JSON.stringify(ids)).to.not.include(pm.environment.get('subnetHiddenId')));",
             ],
         ),
     ],
@@ -157,16 +169,14 @@ CASES.append(Case(
             "List subnets as no-grant subject",
             "jwtNoSubnetGrant",
             [
-                # N holds project#v_list (method-gate) but NO per-object subnet grant → List must be
-                # EMPTY (per-object visibility does not cascade from project scope). Same fga_write
-                # fixture dependency → tolerate oneOf([200,403]); assert empty only when reachable (200).
-                # Mirrors compute list-a1-as-pure-nob (oneOf[200,403] + no-leak/empty guard).
-                "pm.test('[SUBNET-LF-D-NONE] List reachable (200) or method-gated (403, fixture absent)', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
-                "if (pm.response.code === 200) {",
-                "  const ids = (pm.response.json().subnets || []).map(s => s.id);",
-                "  pm.test('[SUBNET-LF-D-NONE] empty (no per-object grant → no rows)', () => "
-                "  pm.expect(ids.length, JSON.stringify(ids)).to.eql(0));",
-                "}",
+                # N holds the project-level method gate but NO per-object subnet grant → the List
+                # must come back EMPTY, which is a different statement from "the List was refused".
+                # Only the first one says per-object visibility does not cascade from project
+                # scope; accepting a 403 alongside it said nothing at all.
+                *_LIST_REACHABLE,
+                "const ids = (pm.response.json().subnets || []).map(s => s.id);",
+                "pm.test('[SUBNET-LF-D-NONE] empty (no per-object grant → no rows)', () => "
+                "pm.expect(ids.length, JSON.stringify(ids)).to.eql(0));",
             ],
         ),
     ],

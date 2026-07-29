@@ -106,12 +106,12 @@ var zoneUpdatable = map[string]struct{}{
 type UseCase struct {
 	reader    Reader
 	writer    Writer
-	ops       operations.Repo
+	ops       syncop.Repo
 	errStatus ErrToStatus
 }
 
 // New собирает UseCase для Zone.
-func New(reader Reader, writer Writer, ops operations.Repo, errStatus ErrToStatus) *UseCase {
+func New(reader Reader, writer Writer, ops syncop.Repo, errStatus ErrToStatus) *UseCase {
 	if errStatus == nil {
 		errStatus = func(err error) error { return err }
 	}
@@ -170,25 +170,36 @@ func (u *UseCase) Create(ctx context.Context, in CreateInput) (*operations.Opera
 	}
 	z := domain.Zone{ID: in.ID, RegionID: in.RegionID, Name: in.Name, Status: st, Infra: in.Infra}
 
+	// Строка операции — ДО INSERT'а. Warnings° вычисляются по СОЗДАННОЙ строке и на
+	// этот момент неизвестны, поэтому metadata здесь минимальна и уточняется
+	// терминальным переходом (syncop.Commit → MarkDoneWithMetadata).
+	op, err := operations.NewFromContext(ctx, lro.OperationPrefix,
+		fmt.Sprintf("Create zone %s", in.ID),
+		&geov1.CreateZoneMetadata{ZoneId: in.ID})
+	if err != nil {
+		return nil, err
+	}
+	if err := syncop.Begin(ctx, u.ops, op); err != nil {
+		return nil, err
+	}
+
 	created, derr := u.writer.Insert(ctx, &z)
 	if derr != nil {
 		// [PHASE-0-GATED] within-service create absent-parent остаётся текущим
 		// FK-FAILED_PRECONDITION (23503). By-lane split в NOT_FOUND "Region <id>
 		// not found" + reason-token приземляется ТОЛЬКО после Phase-0 governance
 		// change-set (§Definition of Done merge-gate) — НЕ вводим pre-flight resolve.
-		return u.fail(ctx, in.ID, u.errStatus(derr))
+		return syncop.Fail(ctx, u.ops, op, u.errStatus(derr))
 	}
 	resp, err := marshalZone(created)
 	if err != nil {
-		return nil, err
+		return syncop.Fail(ctx, u.ops, op, u.errStatus(err))
 	}
-	op, err := operations.NewFromContext(ctx, lro.OperationPrefix,
-		fmt.Sprintf("Create zone %s", in.ID),
-		&geov1.CreateZoneMetadata{ZoneId: in.ID, Warnings: closedWarnings(created)})
+	meta, err := anypb.New(&geov1.CreateZoneMetadata{ZoneId: in.ID, Warnings: closedWarnings(created)})
 	if err != nil {
-		return nil, err
+		return syncop.Fail(ctx, u.ops, op, u.errStatus(err))
 	}
-	return syncop.Commit(ctx, u.ops, op, resp)
+	return syncop.Commit(ctx, u.ops, op, meta, resp)
 }
 
 // Update — admin partial-смена зоны (name/status/infra-subset). Immutable-поля
@@ -216,21 +227,25 @@ func (u *UseCase) Update(ctx context.Context, in UpdateInput) (*operations.Opera
 		return nil, err
 	}
 
-	updated, derr := u.writer.Update(ctx, in.ID, p)
-	if derr != nil {
-		return u.failUpdate(ctx, in.ID, u.errStatus(derr))
-	}
-	resp, err := marshalZone(updated)
-	if err != nil {
-		return nil, err
-	}
 	op, err := operations.NewFromContext(ctx, lro.OperationPrefix,
 		fmt.Sprintf("Update zone %s", in.ID),
 		&geov1.UpdateZoneMetadata{ZoneId: in.ID})
 	if err != nil {
 		return nil, err
 	}
-	return syncop.Commit(ctx, u.ops, op, resp)
+	if err := syncop.Begin(ctx, u.ops, op); err != nil {
+		return nil, err
+	}
+
+	updated, derr := u.writer.Update(ctx, in.ID, p)
+	if derr != nil {
+		return syncop.Fail(ctx, u.ops, op, u.errStatus(derr))
+	}
+	resp, err := marshalZone(updated)
+	if err != nil {
+		return syncop.Fail(ctx, u.ops, op, u.errStatus(err))
+	}
+	return syncop.Commit(ctx, u.ops, op, nil, resp)
 }
 
 // buildUpdateParams транслирует UpdateInput+mask в UpdateParams по ОДНОМУ правилу,
@@ -310,41 +325,24 @@ func (u *UseCase) Delete(ctx context.Context, id string) (*operations.Operation,
 	if err := domain.ValidateID("zone", id); err != nil {
 		return nil, invalidArg(err.Error())
 	}
-	derr := u.writer.Delete(ctx, id)
 	op, err := operations.NewFromContext(ctx, lro.OperationPrefix,
 		fmt.Sprintf("Delete zone %s", id),
 		&geov1.DeleteZoneMetadata{ZoneId: id})
 	if err != nil {
 		return nil, err
 	}
-	if derr != nil {
+	if err := syncop.Begin(ctx, u.ops, op); err != nil {
+		return nil, err
+	}
+
+	if derr := u.writer.Delete(ctx, id); derr != nil {
 		return syncop.Fail(ctx, u.ops, op, u.errStatus(derr))
 	}
 	empty, err := anypb.New(&emptypb.Empty{})
 	if err != nil {
-		return nil, err
+		return syncop.Fail(ctx, u.ops, op, u.errStatus(err))
 	}
-	return syncop.Commit(ctx, u.ops, op, empty)
-}
-
-func (u *UseCase) fail(ctx context.Context, id string, statusErr error) (*operations.Operation, error) {
-	op, err := operations.NewFromContext(ctx, lro.OperationPrefix,
-		fmt.Sprintf("Create zone %s", id),
-		&geov1.CreateZoneMetadata{ZoneId: id})
-	if err != nil {
-		return nil, err
-	}
-	return syncop.Fail(ctx, u.ops, op, statusErr)
-}
-
-func (u *UseCase) failUpdate(ctx context.Context, id string, statusErr error) (*operations.Operation, error) {
-	op, err := operations.NewFromContext(ctx, lro.OperationPrefix,
-		fmt.Sprintf("Update zone %s", id),
-		&geov1.UpdateZoneMetadata{ZoneId: id})
-	if err != nil {
-		return nil, err
-	}
-	return syncop.Fail(ctx, u.ops, op, statusErr)
+	return syncop.Commit(ctx, u.ops, op, nil, empty)
 }
 
 // closedWarnings — громкий no-op: зона создана CLOSED (own status != UP) →

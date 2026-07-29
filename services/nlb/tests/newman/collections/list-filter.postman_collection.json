@@ -162,7 +162,7 @@
           ]
         },
         {
-          "name": "list-own-lst357",
+          "name": "list-own-lst359",
           "request": {
             "method": "GET",
             "header": [
@@ -235,7 +235,7 @@
           ]
         },
         {
-          "name": "del-own-rya358",
+          "name": "del-own-rya360",
           "request": {
             "method": "DELETE",
             "header": [
@@ -485,7 +485,7 @@
           ]
         },
         {
-          "name": "list-tg-lst359",
+          "name": "list-tg-lst361",
           "request": {
             "method": "GET",
             "header": [
@@ -558,7 +558,7 @@
           ]
         },
         {
-          "name": "del-tg-rya360",
+          "name": "del-tg-rya362",
           "request": {
             "method": "DELETE",
             "header": [
@@ -935,7 +935,7 @@
           ]
         },
         {
-          "name": "del-a-rya361",
+          "name": "del-a-rya363",
           "request": {
             "method": "DELETE",
             "header": [

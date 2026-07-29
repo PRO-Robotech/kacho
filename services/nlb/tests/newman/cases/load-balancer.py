@@ -109,13 +109,25 @@ def _provision_subnet(placement, suffix, save_var="vpcSubnetId"):
                    "name": f"nlb81-{suffix}-{{{{runId}}}}", "ipv4CidrPrimary": "{{_subnetCidr}}", **loc},
              test_script=[
                  f"pm.environment.unset('{save_var}');",
+                 # The subnet is created BY THIS SUITE inside the seeded network — there is no
+                 # lawful lane on which it fails to materialise. It used to `unset` the id on
+                 # non-200 and say nothing, which let every dependent case slide into its
+                 # fixture-absent tolerance branch: an unseeded stand, a stale request shape or
+                 # a revoked grant all read as "no fixture here" and the case went green having
+                 # verified nothing. Assert the prep instead, so a broken prep is RED where it
+                 # broke rather than silent three steps later.
+                 "pm.test('subnet fixture accepted as Operation', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                  "if (pm.response.code === 200) {",
                  "  const j = pm.response.json();",
                  "  if (j.id) pm.environment.set('opId', j.id);",
                  f"  if (j.metadata && j.metadata.subnetId) pm.environment.set('{save_var}', j.metadata.subnetId);",
                  "} else { pm.environment.unset('opId'); }",
              ]),
-        poll_operation_until_done(),
+        # fixture_ids: an Operation carries the PRE-ALLOCATED id in metadata even when it
+        # finishes done:true WITH an error, so an unguarded capture publishes the id of a
+        # subnet that does not exist. Naming it makes the poll unset it and FAIL here.
+        poll_operation_until_done(fixture_ids=[save_var]),
     ]
 
 
@@ -156,13 +168,18 @@ def _provision_internal_address(subnet_var, suffix, save_var="vpcAddrId", family
              test_script=[
                  *_SPEC_REACHED_VPC,
                  f"pm.environment.unset('{save_var}');",
+                 # The subnet this address is drawn from is a fresh /24 provisioned by the
+                 # step above (which now asserts its own success), so a refusal here is a
+                 # real defect, never "this lane has no fixture". Assert it.
+                 "pm.test('internal address fixture accepted as Operation', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                  f"if (pm.response.code === 200 && pm.environment.get('{subnet_var}')) {{",
                  "  const j = pm.response.json();",
                  "  if (j.id) pm.environment.set('opId', j.id);",
                  f"  if (j.metadata && j.metadata.addressId) pm.environment.set('{save_var}', j.metadata.addressId);",
                  "} else { pm.environment.unset('opId'); }",
              ]),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=[save_var]),
     ]
 
 
@@ -175,13 +192,18 @@ def _provision_external_address(suffix, save_var="vpcAddrId"):
              test_script=[
                  *_SPEC_REACHED_VPC,
                  f"pm.environment.unset('{save_var}');",
+                 # The seed guarantees a default EXTERNAL_PUBLIC pool in this zone (it FATALs
+                 # otherwise) and the runner is serial by default, so peak concurrent VIP hold
+                 # is one — a refusal here is a finding, not a lane property.
+                 "pm.test('external address fixture accepted as Operation', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                  "if (pm.response.code === 200) {",
                  "  const j = pm.response.json();",
                  "  if (j.id) pm.environment.set('opId', j.id);",
                  f"  if (j.metadata && j.metadata.addressId) pm.environment.set('{save_var}', j.metadata.addressId);",
                  "} else { pm.environment.unset('opId'); }",
              ]),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=[save_var]),
     ]
 
 
@@ -210,7 +232,7 @@ CASES.append(Case(
                           *assert_operation_envelope(prefix_regex="^nlb[a-z0-9]+$"),
                           *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["nlbId"]),
         retry_until_authorized(Step(name="get-after-create", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
@@ -218,10 +240,12 @@ CASES.append(Case(
                           "pm.test('status INACTIVE (VIP-only, no listeners/TG)', () => "
                           "  pm.expect(j.status).to.eql('INACTIVE'));",
                           "pm.test('type EXTERNAL', () => pm.expect(j.type).to.eql('EXTERNAL'));",
-                          "if (!pm.environment.get('lastOpError')) {",
-                          "  pm.test('v4AddressId resolved to a bound vpc Address (adr prefix)', () => "
-                          "    pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
-                          "}",
+                          # The auto public VIP is the SUBJECT of this case; it used to be
+                          # asserted only `if (!lastOpError)`, i.e. only when the allocation had
+                          # already succeeded. The poll above now fails on a failed allocation,
+                          # so the statement can stand unconditionally.
+                          "pm.test('v4AddressId resolved to a bound vpc Address (adr prefix)', () => "
+                          "  pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
                           "pm.test('placementType absent for EXTERNAL', () => "
                           "  pm.expect(j.placementType || 'PLACEMENT_TYPE_UNSPECIFIED')."
                           "    to.be.oneOf(['', 'PLACEMENT_TYPE_UNSPECIFIED']));"])),
@@ -242,29 +266,26 @@ CASES.append(Case(
                    "placement": "INTERNAL_ZONAL", "name": "internal-lb-{{runId}}",
                    "v4Source": {"subnetId": "{{vpcSubnetId}}"}},
              test_script=[
-                 "if (pm.environment.get('vpcSubnetId')) {",
-                 "  pm.test('INTERNAL ZONAL create accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
-                 "  const j = pm.response.json();",
-                 "  if (j.id) pm.environment.set('opId', j.id);",
-                 "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                 "} else {",
-                 "  pm.environment.unset('nlbId'); pm.environment.unset('opId');",
-                 "  pm.test('no zonal subnet fixture → subnet-source create is rejected, never silently accepted', () => "
-                 "    pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
-                 "}",
+                 # The zonal subnet is provisioned (and asserted) by the step above, so there
+                 # is no "no fixture here" lane left to branch on.
+                 "pm.environment.unset('nlbId');",
+                 "pm.test('INTERNAL ZONAL create accepted as Operation', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 "const j = pm.response.json();",
+                 "if (j.id) pm.environment.set('opId', j.id);",
+                 "if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
              ])),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["nlbId"]),
         retry_until_authorized(Step(name="get-int", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
-                 "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
-                 "  pm.test('Get 200 for created INTERNAL ZONAL LB', () => pm.expect(pm.response.code).to.eql(200));",
-                 "  const j = pm.response.json();",
-                 "  pm.test('type INTERNAL', () => pm.expect(j.type).to.eql('INTERNAL'));",
-                 "  pm.test('placementType ZONAL', () => pm.expect(j.placementType).to.eql('ZONAL'));",
-                 "  pm.test('v4AddressId resolved to a bound vpc Address', () => "
-                 "    pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
-                 "  pm.test('v6AddressId empty (v4-only)', () => pm.expect(j.v6AddressId || '').to.eql(''));",
-                 "}",
+                 "pm.test('Get 200 for created INTERNAL ZONAL LB', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 "const j = pm.response.json();",
+                 "pm.test('type INTERNAL', () => pm.expect(j.type).to.eql('INTERNAL'));",
+                 "pm.test('placementType ZONAL', () => pm.expect(j.placementType).to.eql('ZONAL'));",
+                 "pm.test('v4AddressId resolved to a bound vpc Address', () => "
+                 "  pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
+                 "pm.test('v6AddressId empty (v4-only)', () => pm.expect(j.v6AddressId || '').to.eql(''));",
              ])),
         Step(name="cleanup", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -304,7 +325,13 @@ def _setup_lb(name_suffix: str, body_extra: dict = None):
         retry_create_until_present(Step(name="setup-create-lb", method="POST", path=_CREATE_BASE, body=body,
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")])),
-        poll_operation_until_done(),
+        # PHANTOM-ID GUARD on the LB-prep poller (parity with listener.py::_setup_lb and
+        # cross-resource.py::_create_external_lb). Without `fixture_ids` this poll observed the
+        # setup Operation, recorded `lastOpError` and moved on — the pre-allocated
+        # `nlbId` of a LoadBalancer that never persisted stayed published, and every dependent
+        # case forgave itself with `if (!lastOpError)`. A broken prep must be RED here,
+        # attributably, not silently skipped by the assertion it was preparing for.
+        poll_operation_until_done(fixture_ids=["nlbId"]),
         # read-your-writes: materialize the owner-tuple before the first real access.
         # opgate removed -> owner/creator FGA tuple is eventually-consistent, so the first
         # self GET/UPDATE/DELETE of the fresh LB can briefly 403/404. Silent (empty
@@ -1982,21 +2009,16 @@ CASES.append(Case(
              body={**_LB_BODY, "name": "dp-{{runId}}", "deletionProtection": True},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
-        poll_operation_until_done(),
+        # A failed VIP allocation used to leave the pre-allocated `nlbId` published and be
+        # forgiven below by `!lastOpError` — the case then greened without ever reading
+        # deletionProtection back. It now fails at the prep, where it broke.
+        poll_operation_until_done(fixture_ids=["nlbId"]),
         retry_until_authorized(Step(name="get", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
-             # Product IS correct: deletion_protection is persisted on Create (create.go),
-             # returned by Get (type2pb) and gated in Delete (delete.go + DB guard). But
-             # this case's EXTERNAL auto-VIP (_LB_BODY) can alloc-phantom under --jobs>1
-             # (kacho#11): the Create Operation completes done WITH "could not allocate
-             # load balancer address", so the LB never persists and this GET 404s. Assert
-             # deletion_protection persistence only when the LB actually materialised
-             # (200, no lastOpError); the phantom lane is tolerated (serial run asserts it).
              test_script=[
-                 "if (pm.response.code === 200 && !pm.environment.get('lastOpError')) {",
-                 "  pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                 "  pm.test('deletion_protection persisted', () => "
-                 "    pm.expect(pm.response.json().deletionProtection).to.eql(true));",
-                 "}",
+                 "pm.test('status 200', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 "pm.test('deletion_protection persisted', () => "
+                 "  pm.expect(pm.response.json().deletionProtection).to.eql(true));",
              ])),
         # Disable for cleanup
         Step(name="unprotect", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
@@ -2439,17 +2461,19 @@ CASES.append(Case(
 # --- Group A/B: INTERNAL / EXTERNAL happy source-resolution (inline fixtures) ---
 
 def _internal_happy_get_asserts(placement):
+    # No `nlbId && !lastOpError` gate: the subnet fixture and the LB-create Operation are
+    # both asserted upstream (_provision_subnet + poll fixture_ids), so by the time this
+    # runs the LB either exists or the case is already red at the step that broke.
     return [
-        "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
-        "  pm.test('Get 200 for created INTERNAL LB', () => pm.expect(pm.response.code).to.eql(200));",
-        "  const j = pm.response.json();",
-        "  pm.test('type INTERNAL', () => pm.expect(j.type).to.eql('INTERNAL'));",
-        f"  pm.test('placementType {placement}', () => pm.expect(j.placementType).to.eql('{placement}'));",
-        "  pm.test('v4AddressId resolved to a bound vpc Address', () => "
-        "    pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
-        "  pm.test('output does not echo the subnet source', () => "
-        "    pm.expect(j).to.not.have.property('v4Source'));",
-        "}",
+        "pm.test('Get 200 for created INTERNAL LB', () => "
+        "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+        "const j = pm.response.json();",
+        "pm.test('type INTERNAL', () => pm.expect(j.type).to.eql('INTERNAL'));",
+        f"pm.test('placementType {placement}', () => pm.expect(j.placementType).to.eql('{placement}'));",
+        "pm.test('v4AddressId resolved to a bound vpc Address', () => "
+        "  pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
+        "pm.test('output does not echo the subnet source', () => "
+        "  pm.expect(j).to.not.have.property('v4Source'));",
     ]
 
 
@@ -2459,16 +2483,11 @@ def _internal_create_step(name, placement, extra_body=None):
     return Step(name="cr-internal", method="POST", path=_CREATE_BASE, body=body,
                 test_script=[
                     "pm.environment.unset('nlbId');",
-                    "if (pm.environment.get('vpcSubnetId')) {",
-                    "  pm.test('INTERNAL create accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
-                    "  const j = pm.response.json();",
-                    "  if (j.id) pm.environment.set('opId', j.id);",
-                    "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                    "} else {",
-                    "  pm.environment.unset('opId');",
-                    "  pm.test('no regional subnet fixture → subnet-source create rejected', () => "
-                    "    pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
-                    "}",
+                    "pm.test('INTERNAL create accepted as Operation', () => "
+                    "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                    "const j = pm.response.json();",
+                    "if (j.id) pm.environment.set('opId', j.id);",
+                    "if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
                 ])
 
 
@@ -2479,13 +2498,11 @@ CASES.append(Case(
     steps=[
         *_provision_subnet("REGIONAL", "int-reg"),
         retry_create_until_present(_internal_create_step("lb-ireg", "REGIONAL")),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["nlbId"]),
         retry_until_authorized(Step(name="get-reg", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*_internal_happy_get_asserts("REGIONAL"),
-                          "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
-                          "  pm.test('disabledAnnounceZones empty (announced from all healthy zones)', () => "
-                          "    pm.expect(pm.response.json().disabledAnnounceZones || []).to.be.an('array').that.is.empty);",
-                          "}"])),
+                          "pm.test('disabledAnnounceZones empty (announced from all healthy zones)', () => "
+                          "  pm.expect(pm.response.json().disabledAnnounceZones || []).to.be.an('array').that.is.empty);"])),
         *_cleanup_lb(),
         *_cleanup_vpc(_VPC_SUBNETS, "vpcSubnetId"),
     ],
@@ -2499,16 +2516,14 @@ CASES.append(Case(
         *_provision_subnet("REGIONAL", "int-drain"),
         retry_create_until_present(_internal_create_step("lb-idrain", "REGIONAL",
                               {"disabledAnnounceZones": ["{{existingZoneAltId}}"]})),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["nlbId"]),
         retry_until_authorized(Step(name="get-drain", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
-                 "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
-                 "  pm.test('Get 200', () => pm.expect(pm.response.code).to.eql(200));",
-                 "  const j = pm.response.json();",
-                 "  pm.test('placementType REGIONAL', () => pm.expect(j.placementType).to.eql('REGIONAL'));",
-                 "  pm.test('disabledAnnounceZones persisted as the drain intent', () => "
-                 "    pm.expect(j.disabledAnnounceZones || []).to.include(pm.environment.get('existingZoneAltId')));",
-                 "}",
+                 "pm.test('Get 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 "const j = pm.response.json();",
+                 "pm.test('placementType REGIONAL', () => pm.expect(j.placementType).to.eql('REGIONAL'));",
+                 "pm.test('disabledAnnounceZones persisted as the drain intent', () => "
+                 "  pm.expect(j.disabledAnnounceZones || []).to.include(pm.environment.get('existingZoneAltId')));",
              ])),
         *_cleanup_lb(),
         *_cleanup_vpc(_VPC_SUBNETS, "vpcSubnetId"),
@@ -2534,24 +2549,17 @@ CASES.append(Case(
                    "v4Source": {"addressId": "{{vpcAddrId}}"}},
              test_script=[
                  "pm.environment.unset('nlbId');",
-                 "if (pm.environment.get('vpcAddrId')) {",
-                 "  pm.test('INTERNAL link create accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
-                 "  const j = pm.response.json();",
-                 "  if (j.id) pm.environment.set('opId', j.id);",
-                 "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                 "} else {",
-                 "  pm.environment.unset('opId');",
-                 "  pm.test('no internal address fixture → address-link create rejected', () => "
-                 "    pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
-                 "}",
+                 "pm.test('INTERNAL link create accepted as Operation', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 "const j = pm.response.json();",
+                 "if (j.id) pm.environment.set('opId', j.id);",
+                 "if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
              ])),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["nlbId"]),
         retry_until_authorized(Step(name="get-link", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
-                 "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
-                 "  pm.test('v4AddressId equals the linked address', () => "
-                 "    pm.expect(pm.response.json().v4AddressId).to.eql(pm.environment.get('vpcAddrId')));",
-                 "}",
+                 "pm.test('v4AddressId equals the linked address', () => "
+                 "  pm.expect(pm.response.json().v4AddressId).to.eql(pm.environment.get('vpcAddrId')));",
              ])),
         *_cleanup_lb(),
         # tenant-owned linked address survives LB deletion → cleaned up here
@@ -2576,26 +2584,19 @@ CASES.append(Case(
                    "v4Source": {"addressId": "{{vpcAddrId}}"}},
              test_script=[
                  "pm.environment.unset('nlbId');",
-                 "if (pm.environment.get('vpcAddrId')) {",
-                 "  pm.test('EXTERNAL link create accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
-                 "  const j = pm.response.json();",
-                 "  if (j.id) pm.environment.set('opId', j.id);",
-                 "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                 "} else {",
-                 "  pm.environment.unset('opId');",
-                 "  pm.test('no external address fixture → address-link create rejected', () => "
-                 "    pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
-                 "}",
+                 "pm.test('EXTERNAL link create accepted as Operation', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 "const j = pm.response.json();",
+                 "if (j.id) pm.environment.set('opId', j.id);",
+                 "if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
              ])),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["nlbId"]),
         retry_until_authorized(Step(name="get-ext-link", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
-                 "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
-                 "  const j = pm.response.json();",
-                 "  pm.test('type EXTERNAL', () => pm.expect(j.type).to.eql('EXTERNAL'));",
-                 "  pm.test('v4AddressId equals the linked public address', () => "
-                 "    pm.expect(j.v4AddressId).to.eql(pm.environment.get('vpcAddrId')));",
-                 "}",
+                 "const j = pm.response.json();",
+                 "pm.test('type EXTERNAL', () => pm.expect(j.type).to.eql('EXTERNAL'));",
+                 "pm.test('v4AddressId equals the linked public address', () => "
+                 "  pm.expect(j.v4AddressId).to.eql(pm.environment.get('vpcAddrId')));",
              ])),
         *_cleanup_lb(),
         *_cleanup_vpc(_VPC_ADDRESSES, "vpcAddrId"),
@@ -2620,26 +2621,25 @@ CASES.append(Case(
                    "v6Source": {"addressId": "{{existingAddressIPv6Id}}"}},
              test_script=[
                  "pm.environment.unset('nlbId');",
-                 "const v6 = pm.environment.get('existingAddressIPv6Id') || '';",
-                 "if (pm.environment.get('vpcSubnetId') && v6 && pm.response.code === 200) {",
-                 "  const j = pm.response.json();",
-                 "  if (j.id) pm.environment.set('opId', j.id);",
-                 "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                 "  pm.test('dualstack create accepted (both families same network)', () => pm.expect(j.id).to.match(/^nlb/));",
-                 "} else {",
-                 "  pm.environment.unset('opId');",
-                 "  pm.test('dualstack create either accepted or lawfully rejected (fixture-dependent), never a 5xx', () => "
-                 "    pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 503]));",
-                 "}",
+                 # The seeded v6 address is a PRECONDITION of this case, not a lane property:
+                 # seed-nlb-fixtures.sh provisions a v6 block in the same EXTERNAL_PUBLIC pool
+                 # (the premise XRES-E2E-EXTERNAL-IPV6-VIP already asserts unconditionally).
+                 # Stating it here means an unseeded v6 lane is RED and named, instead of
+                 # falling through to a "never a 5xx" branch that verifies no dualstack at all.
+                 "pm.test('seeded IPv6 address fixture is present (dualstack precondition)', () => "
+                 "  pm.expect(pm.environment.get('existingAddressIPv6Id') || '').to.match(/^adr[a-z0-9]+$/));",
+                 "pm.test('dualstack create accepted (both families same network)', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 "const j = pm.response.json();",
+                 "if (j.id) pm.environment.set('opId', j.id);",
+                 "if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
              ])),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["nlbId"]),
         retry_until_authorized(Step(name="get-dualstack", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
-                 "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
-                 "  const j = pm.response.json();",
-                 "  pm.test('v4AddressId set (auto from subnet)', () => pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
-                 "  pm.test('v6AddressId set (linked)', () => pm.expect(j.v6AddressId).to.eql(pm.environment.get('existingAddressIPv6Id')));",
-                 "}",
+                 "const j = pm.response.json();",
+                 "pm.test('v4AddressId set (auto from subnet)', () => pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
+                 "pm.test('v6AddressId set (linked)', () => pm.expect(j.v6AddressId).to.eql(pm.environment.get('existingAddressIPv6Id')));",
              ])),
         *_cleanup_lb(),
         *_cleanup_vpc(_VPC_SUBNETS, "vpcSubnetId"),
@@ -2685,33 +2685,32 @@ CASES.append(Case(
     steps=[
         *_provision_subnet("REGIONAL", "drain-toggle"),
         retry_create_until_present(_internal_create_step("lb-dtog", "REGIONAL")),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["nlbId"]),
         retry_until_authorized(Step(name="upd-drain", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              body={"updateMask": "disabledAnnounceZones",
                    "disabledAnnounceZones": ["{{existingZoneAltId}}"]},
              test_script=[
-                 "if (pm.environment.get('nlbId')) {",
-                 "  pm.test('drain Update accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
-                 "  const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id);",
-                 "} else { pm.environment.unset('opId'); }",
+                 "pm.test('drain Update accepted as Operation', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 "const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id);",
              ])),
-        poll_operation_until_done(),
+        # The drain Update IS the subject of this case, so its Operation must be stated to
+        # have succeeded here. `get-drained` below used to carry `!lastOpError` instead,
+        # which meant a failed drain silently skipped the only assertion about the drain.
+        poll_operation_until_done(must_succeed=True),
         Step(name="get-drained", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[
-                 "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
-                 "  pm.test('drain applied', () => "
-                 "    pm.expect(pm.response.json().disabledAnnounceZones || []).to.include(pm.environment.get('existingZoneAltId')));",
-                 "}",
+                 "pm.test('drain applied', () => "
+                 "  pm.expect(pm.response.json().disabledAnnounceZones || []).to.include(pm.environment.get('existingZoneAltId')));",
              ]),
         Step(name="upd-reenable", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              body={"updateMask": "disabledAnnounceZones", "disabledAnnounceZones": []},
              test_script=[
-                 "if (pm.environment.get('nlbId')) {",
-                 "  pm.test('re-enable Update accepted', () => pm.expect(pm.response.code).to.eql(200));",
-                 "  const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id);",
-                 "} else { pm.environment.unset('opId'); }",
+                 "pm.test('re-enable Update accepted', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 "const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id);",
              ]),
-        poll_operation_until_done(),
+        poll_operation_until_done(must_succeed=True),
         *_cleanup_lb(),
         *_cleanup_vpc(_VPC_SUBNETS, "vpcSubnetId"),
     ],

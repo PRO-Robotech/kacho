@@ -404,6 +404,7 @@ def retry_create_until_present(step: Step, budget: int = 25, interval_ms: int = 
 
 def poll_operation_until_done(
     fixture_ids: Optional[List[str]] = None,
+    must_succeed: bool = False,
     retry_from: Optional[str] = None,
     retry_when: str = "not found",
     retry_budget: int = 8,
@@ -430,6 +431,14 @@ def poll_operation_until_done(
     makes this poll UNSET them on `op.error` and FAIL right here, attributably.
     Use ONLY for fixture creates that must succeed — never where an op error is the
     asserted outcome.
+
+    `must_succeed` — same statement WITHOUT the unset: assert this Operation finished
+    without an error, while leaving the env intact so the case's own cleanup still
+    addresses a real id. For the MUTATION UNDER TEST (a drain toggle, a label update)
+    there is no fixture id to withdraw, but the outcome still has to be stated: the
+    alternative that was in the tree is a downstream `if (!lastOpError)`, which converts
+    "the mutation failed" into "the assertion about it did not run" — the case then
+    greens on the miss. `fixture_ids` implies `must_succeed`.
 
     `retry_from` — bounded ASYNC-LANE read-your-writes re-drive. `retry_create_until_present`
     only sees the SYNC response of a create, so it covers a peer miss that is rejected
@@ -514,6 +523,11 @@ def poll_operation_until_done(
     if ids:
         script += [
             "pm.test('fixture operation succeeded (no phantom resource id)', () => "
+            "  pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);",
+        ]
+    elif must_succeed:
+        script += [
+            "pm.test('operation succeeded', () => "
             "  pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);",
         ]
 

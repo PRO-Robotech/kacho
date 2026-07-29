@@ -138,14 +138,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "get-after-create-rya463",
+          "name": "get-after-create-rya465",
           "request": {
             "method": "GET",
             "header": [
@@ -193,9 +197,7 @@
                   "pm.test('id matches', () => pm.expect(j.id).to.eql(pm.environment.get('nlbId')));",
                   "pm.test('status INACTIVE (VIP-only, no listeners/TG)', () =>   pm.expect(j.status).to.eql('INACTIVE'));",
                   "pm.test('type EXTERNAL', () => pm.expect(j.type).to.eql('EXTERNAL'));",
-                  "if (!pm.environment.get('lastOpError')) {",
-                  "  pm.test('v4AddressId resolved to a bound vpc Address (adr prefix)', () =>     pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
-                  "}",
+                  "pm.test('v4AddressId resolved to a bound vpc Address (adr prefix)', () =>   pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
                   "pm.test('placementType absent for EXTERNAL', () =>   pm.expect(j.placementType || 'PLACEMENT_TYPE_UNSPECIFIED').    to.be.oneOf(['', 'PLACEMENT_TYPE_UNSPECIFIED']));"
                 ]
               }
@@ -351,6 +353,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -405,14 +408,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cr-int-cr464",
+          "name": "cr-int-cr466",
           "request": {
             "method": "POST",
             "header": [
@@ -466,15 +473,11 @@
                   "}",
                   "pm.environment.unset('_crRetryCount');",
                   "pm.environment.unset('_crRetryStarted');",
-                  "if (pm.environment.get('vpcSubnetId')) {",
-                  "  pm.test('INTERNAL ZONAL create accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
-                  "  const j = pm.response.json();",
-                  "  if (j.id) pm.environment.set('opId', j.id);",
-                  "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else {",
-                  "  pm.environment.unset('nlbId'); pm.environment.unset('opId');",
-                  "  pm.test('no zonal subnet fixture → subnet-source create is rejected, never silently accepted', () =>     pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
-                  "}"
+                  "pm.environment.unset('nlbId');",
+                  "pm.test('INTERNAL ZONAL create accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "if (j.id) pm.environment.set('opId', j.id);",
+                  "if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);"
                 ]
               }
             }
@@ -524,14 +527,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "get-int-rya465",
+          "name": "get-int-rya467",
           "request": {
             "method": "GET",
             "header": [
@@ -574,14 +581,12 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
-                  "  pm.test('Get 200 for created INTERNAL ZONAL LB', () => pm.expect(pm.response.code).to.eql(200));",
-                  "  const j = pm.response.json();",
-                  "  pm.test('type INTERNAL', () => pm.expect(j.type).to.eql('INTERNAL'));",
-                  "  pm.test('placementType ZONAL', () => pm.expect(j.placementType).to.eql('ZONAL'));",
-                  "  pm.test('v4AddressId resolved to a bound vpc Address', () =>     pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
-                  "  pm.test('v6AddressId empty (v4-only)', () => pm.expect(j.v6AddressId || '').to.eql(''));",
-                  "}"
+                  "pm.test('Get 200 for created INTERNAL ZONAL LB', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('type INTERNAL', () => pm.expect(j.type).to.eql('INTERNAL'));",
+                  "pm.test('placementType ZONAL', () => pm.expect(j.placementType).to.eql('ZONAL'));",
+                  "pm.test('v4AddressId resolved to a bound vpc Address', () =>   pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
+                  "pm.test('v6AddressId empty (v4-only)', () => pm.expect(j.v6AddressId || '').to.eql(''));"
                 ]
               }
             }
@@ -825,6 +830,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -879,14 +885,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr466",
+          "name": "setup-create-lb-cr468",
           "request": {
             "method": "POST",
             "header": [
@@ -1000,14 +1010,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya467",
+          "name": "setup-materialize-lb-rya469",
           "request": {
             "method": "GET",
             "header": [
@@ -1056,7 +1070,7 @@
           ]
         },
         {
-          "name": "get-rya468",
+          "name": "get-rya470",
           "request": {
             "method": "GET",
             "header": [
@@ -1347,6 +1361,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -1401,14 +1416,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr469",
+          "name": "setup-create-lb-cr471",
           "request": {
             "method": "POST",
             "header": [
@@ -1522,14 +1541,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya470",
+          "name": "setup-materialize-lb-rya472",
           "request": {
             "method": "GET",
             "header": [
@@ -1578,7 +1601,7 @@
           ]
         },
         {
-          "name": "patch-rya471",
+          "name": "patch-rya473",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1878,6 +1901,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -1932,14 +1956,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr472",
+          "name": "setup-create-lb-cr474",
           "request": {
             "method": "POST",
             "header": [
@@ -2053,14 +2081,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya473",
+          "name": "setup-materialize-lb-rya475",
           "request": {
             "method": "GET",
             "header": [
@@ -2109,7 +2141,7 @@
           ]
         },
         {
-          "name": "patch-multi-rya474",
+          "name": "patch-multi-rya476",
           "request": {
             "method": "PATCH",
             "header": [
@@ -2408,6 +2440,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -2462,14 +2495,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr475",
+          "name": "setup-create-lb-cr477",
           "request": {
             "method": "POST",
             "header": [
@@ -2583,14 +2620,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya476",
+          "name": "setup-materialize-lb-rya478",
           "request": {
             "method": "GET",
             "header": [
@@ -2639,7 +2680,7 @@
           ]
         },
         {
-          "name": "delete-rya477",
+          "name": "delete-rya479",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2842,6 +2883,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -2896,14 +2938,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr478",
+          "name": "setup-create-lb-cr480",
           "request": {
             "method": "POST",
             "header": [
@@ -3017,14 +3063,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya479",
+          "name": "setup-materialize-lb-rya481",
           "request": {
             "method": "GET",
             "header": [
@@ -3073,7 +3123,7 @@
           ]
         },
         {
-          "name": "upd-bump-history-rya480",
+          "name": "upd-bump-history-rya482",
           "request": {
             "method": "PATCH",
             "header": [
@@ -3374,6 +3424,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -3428,14 +3479,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr481",
+          "name": "setup-create-lb-cr483",
           "request": {
             "method": "POST",
             "header": [
@@ -3549,14 +3604,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya482",
+          "name": "setup-materialize-lb-rya484",
           "request": {
             "method": "GET",
             "header": [
@@ -3605,7 +3664,7 @@
           ]
         },
         {
-          "name": "move-rya483",
+          "name": "move-rya485",
           "request": {
             "method": "POST",
             "header": [
@@ -4006,6 +4065,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -4060,14 +4120,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr484",
+          "name": "setup-create-lb-cr486",
           "request": {
             "method": "POST",
             "header": [
@@ -4181,14 +4245,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya485",
+          "name": "setup-materialize-lb-rya487",
           "request": {
             "method": "GET",
             "header": [
@@ -4340,7 +4408,7 @@
           ]
         },
         {
-          "name": "wire-listener-rya486",
+          "name": "wire-listener-rya488",
           "request": {
             "method": "POST",
             "header": [
@@ -5028,6 +5096,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -5082,14 +5151,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr487",
+          "name": "setup-create-lb-cr489",
           "request": {
             "method": "POST",
             "header": [
@@ -5203,14 +5276,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya488",
+          "name": "setup-materialize-lb-rya490",
           "request": {
             "method": "GET",
             "header": [
@@ -5454,6 +5531,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -5508,14 +5586,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr489",
+          "name": "setup-create-lb-cr491",
           "request": {
             "method": "POST",
             "header": [
@@ -5629,14 +5711,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya490",
+          "name": "setup-materialize-lb-rya492",
           "request": {
             "method": "GET",
             "header": [
@@ -5788,7 +5874,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya491",
+          "name": "setup-materialize-tg-rya493",
           "request": {
             "method": "GET",
             "header": [
@@ -5837,7 +5923,7 @@
           ]
         },
         {
-          "name": "gts-rya492",
+          "name": "gts-rya494",
           "request": {
             "method": "GET",
             "header": [
@@ -6127,6 +6213,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -6181,14 +6268,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr493",
+          "name": "setup-create-lb-cr495",
           "request": {
             "method": "POST",
             "header": [
@@ -6302,14 +6393,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya494",
+          "name": "setup-materialize-lb-rya496",
           "request": {
             "method": "GET",
             "header": [
@@ -6461,7 +6556,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya495",
+          "name": "setup-materialize-tg-rya497",
           "request": {
             "method": "GET",
             "header": [
@@ -6510,7 +6605,7 @@
           ]
         },
         {
-          "name": "gts-add-target-rya496",
+          "name": "gts-add-target-rya498",
           "request": {
             "method": "POST",
             "header": [
@@ -6624,7 +6719,7 @@
           ]
         },
         {
-          "name": "disable-rya497",
+          "name": "disable-rya499",
           "request": {
             "method": "PATCH",
             "header": [
@@ -6738,7 +6833,7 @@
           ]
         },
         {
-          "name": "verify-adminstate-disabled-st498",
+          "name": "verify-adminstate-disabled-st500",
           "request": {
             "method": "GET",
             "header": [
@@ -6794,7 +6889,7 @@
           ]
         },
         {
-          "name": "gts-st499",
+          "name": "gts-st501",
           "request": {
             "method": "GET",
             "header": [
@@ -8959,6 +9054,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -9013,14 +9109,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr500",
+          "name": "setup-create-lb-cr502",
           "request": {
             "method": "POST",
             "header": [
@@ -9134,14 +9234,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya501",
+          "name": "setup-materialize-lb-rya503",
           "request": {
             "method": "GET",
             "header": [
@@ -9190,7 +9294,7 @@
           ]
         },
         {
-          "name": "list-filtered-lst502",
+          "name": "list-filtered-lst504",
           "request": {
             "method": "GET",
             "header": [
@@ -10069,6 +10173,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -10123,14 +10228,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr503",
+          "name": "setup-create-lb-cr505",
           "request": {
             "method": "POST",
             "header": [
@@ -10244,14 +10353,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya504",
+          "name": "setup-materialize-lb-rya506",
           "request": {
             "method": "GET",
             "header": [
@@ -10300,7 +10413,7 @@
           ]
         },
         {
-          "name": "upd-1-rya505",
+          "name": "upd-1-rya507",
           "request": {
             "method": "PATCH",
             "header": [
@@ -10414,7 +10527,7 @@
           ]
         },
         {
-          "name": "upd-2-rya506",
+          "name": "upd-2-rya508",
           "request": {
             "method": "PATCH",
             "header": [
@@ -10710,6 +10823,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -10764,14 +10878,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr507",
+          "name": "setup-create-lb-cr509",
           "request": {
             "method": "POST",
             "header": [
@@ -10885,14 +11003,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya508",
+          "name": "setup-materialize-lb-rya510",
           "request": {
             "method": "GET",
             "header": [
@@ -11138,6 +11260,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -11192,14 +11315,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr509",
+          "name": "setup-create-lb-cr511",
           "request": {
             "method": "POST",
             "header": [
@@ -11313,14 +11440,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya510",
+          "name": "setup-materialize-lb-rya512",
           "request": {
             "method": "GET",
             "header": [
@@ -11565,6 +11696,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -11619,14 +11751,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr511",
+          "name": "setup-create-lb-cr513",
           "request": {
             "method": "POST",
             "header": [
@@ -11740,14 +11876,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya512",
+          "name": "setup-materialize-lb-rya514",
           "request": {
             "method": "GET",
             "header": [
@@ -11992,6 +12132,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -12046,14 +12187,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr513",
+          "name": "setup-create-lb-cr515",
           "request": {
             "method": "POST",
             "header": [
@@ -12167,14 +12312,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya514",
+          "name": "setup-materialize-lb-rya516",
           "request": {
             "method": "GET",
             "header": [
@@ -12416,6 +12565,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -12470,14 +12620,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr515",
+          "name": "setup-create-lb-cr517",
           "request": {
             "method": "POST",
             "header": [
@@ -12591,14 +12745,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya516",
+          "name": "setup-materialize-lb-rya518",
           "request": {
             "method": "GET",
             "header": [
@@ -12647,7 +12805,7 @@
           ]
         },
         {
-          "name": "upd-empty-rya517",
+          "name": "upd-empty-rya519",
           "request": {
             "method": "PATCH",
             "header": [
@@ -12854,6 +13012,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -12908,14 +13067,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr518",
+          "name": "setup-create-lb-cr520",
           "request": {
             "method": "POST",
             "header": [
@@ -13029,14 +13192,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya519",
+          "name": "setup-materialize-lb-rya521",
           "request": {
             "method": "GET",
             "header": [
@@ -13085,7 +13252,7 @@
           ]
         },
         {
-          "name": "del-protected-rya520",
+          "name": "del-protected-rya522",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13385,6 +13552,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -13439,14 +13607,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr521",
+          "name": "setup-create-lb-cr523",
           "request": {
             "method": "POST",
             "header": [
@@ -13560,14 +13732,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya522",
+          "name": "setup-materialize-lb-rya524",
           "request": {
             "method": "GET",
             "header": [
@@ -14044,7 +14220,7 @@
           ]
         },
         {
-          "name": "get-1-rya523",
+          "name": "get-1-rya525",
           "request": {
             "method": "GET",
             "header": [
@@ -14239,7 +14415,7 @@
           ]
         },
         {
-          "name": "get-2-st524",
+          "name": "get-2-st526",
           "request": {
             "method": "GET",
             "header": [
@@ -15888,6 +16064,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -15942,14 +16119,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr525",
+          "name": "setup-create-lb-cr527",
           "request": {
             "method": "POST",
             "header": [
@@ -16063,14 +16244,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya526",
+          "name": "setup-materialize-lb-rya528",
           "request": {
             "method": "GET",
             "header": [
@@ -16119,7 +16304,7 @@
           ]
         },
         {
-          "name": "upd-same-rya527",
+          "name": "upd-same-rya529",
           "request": {
             "method": "PATCH",
             "header": [
@@ -16921,7 +17106,7 @@
           ]
         },
         {
-          "name": "get-rya528",
+          "name": "get-rya530",
           "request": {
             "method": "GET",
             "header": [
@@ -17170,7 +17355,7 @@
           ]
         },
         {
-          "name": "get-rya529",
+          "name": "get-rya531",
           "request": {
             "method": "GET",
             "header": [
@@ -17419,7 +17604,7 @@
           ]
         },
         {
-          "name": "get-rya530",
+          "name": "get-rya532",
           "request": {
             "method": "GET",
             "header": [
@@ -17752,14 +17937,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "get-rya531",
+          "name": "get-rya533",
           "request": {
             "method": "GET",
             "header": [
@@ -17802,10 +17991,8 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "if (pm.response.code === 200 && !pm.environment.get('lastOpError')) {",
-                  "  pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "  pm.test('deletion_protection persisted', () =>     pm.expect(pm.response.json().deletionProtection).to.eql(true));",
-                  "}"
+                  "pm.test('status 200', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "pm.test('deletion_protection persisted', () =>   pm.expect(pm.response.json().deletionProtection).to.eql(true));"
                 ]
               }
             }
@@ -18058,6 +18245,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -18112,14 +18300,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr532",
+          "name": "setup-create-lb-cr534",
           "request": {
             "method": "POST",
             "header": [
@@ -18233,14 +18425,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya533",
+          "name": "setup-materialize-lb-rya535",
           "request": {
             "method": "GET",
             "header": [
@@ -18289,7 +18485,7 @@
           ]
         },
         {
-          "name": "disable-dp-rya534",
+          "name": "disable-dp-rya536",
           "request": {
             "method": "PATCH",
             "header": [
@@ -18640,6 +18836,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -18694,14 +18891,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr535",
+          "name": "setup-create-lb-cr537",
           "request": {
             "method": "POST",
             "header": [
@@ -18815,14 +19016,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya536",
+          "name": "setup-materialize-lb-rya538",
           "request": {
             "method": "GET",
             "header": [
@@ -18974,7 +19179,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya537",
+          "name": "setup-materialize-tg-rya539",
           "request": {
             "method": "GET",
             "header": [
@@ -19023,7 +19228,7 @@
           ]
         },
         {
-          "name": "gts-rya538",
+          "name": "gts-rya540",
           "request": {
             "method": "GET",
             "header": [
@@ -19312,6 +19517,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -19366,14 +19572,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr539",
+          "name": "setup-create-lb-cr541",
           "request": {
             "method": "POST",
             "header": [
@@ -19487,14 +19697,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya540",
+          "name": "setup-materialize-lb-rya542",
           "request": {
             "method": "GET",
             "header": [
@@ -19790,6 +20004,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -19844,14 +20059,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr541",
+          "name": "setup-create-lb-cr543",
           "request": {
             "method": "POST",
             "header": [
@@ -19965,14 +20184,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya542",
+          "name": "setup-materialize-lb-rya544",
           "request": {
             "method": "GET",
             "header": [
@@ -20484,6 +20707,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -20538,14 +20762,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cr-drain-all-cr543",
+          "name": "cr-drain-all-cr545",
           "request": {
             "method": "POST",
             "header": [
@@ -21108,6 +21336,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -21162,14 +21391,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cr-mismatch-cr544",
+          "name": "cr-mismatch-cr546",
           "request": {
             "method": "POST",
             "header": [
@@ -21373,6 +21606,7 @@
                   "  pm.expect(m, 'the edge discarded the request body — the spec never arrived').to.not.match(/address_spec required/i);",
                   "});",
                   "pm.environment.unset('vpcAddrId');",
+                  "pm.test('external address fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -21427,14 +21661,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcAddrId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cr-kind-mismatch-cr545",
+          "name": "cr-kind-mismatch-cr547",
           "request": {
             "method": "POST",
             "header": [
@@ -21919,6 +22157,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -21973,14 +22212,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cr-internal-cr546",
+          "name": "cr-internal-cr548",
           "request": {
             "method": "POST",
             "header": [
@@ -22035,15 +22278,10 @@
                   "pm.environment.unset('_crRetryCount');",
                   "pm.environment.unset('_crRetryStarted');",
                   "pm.environment.unset('nlbId');",
-                  "if (pm.environment.get('vpcSubnetId')) {",
-                  "  pm.test('INTERNAL create accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
-                  "  const j = pm.response.json();",
-                  "  if (j.id) pm.environment.set('opId', j.id);",
-                  "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else {",
-                  "  pm.environment.unset('opId');",
-                  "  pm.test('no regional subnet fixture → subnet-source create rejected', () =>     pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
-                  "}"
+                  "pm.test('INTERNAL create accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "if (j.id) pm.environment.set('opId', j.id);",
+                  "if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);"
                 ]
               }
             }
@@ -22093,14 +22331,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "get-reg-rya547",
+          "name": "get-reg-rya549",
           "request": {
             "method": "GET",
             "header": [
@@ -22143,17 +22385,13 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
-                  "  pm.test('Get 200 for created INTERNAL LB', () => pm.expect(pm.response.code).to.eql(200));",
-                  "  const j = pm.response.json();",
-                  "  pm.test('type INTERNAL', () => pm.expect(j.type).to.eql('INTERNAL'));",
-                  "  pm.test('placementType REGIONAL', () => pm.expect(j.placementType).to.eql('REGIONAL'));",
-                  "  pm.test('v4AddressId resolved to a bound vpc Address', () =>     pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
-                  "  pm.test('output does not echo the subnet source', () =>     pm.expect(j).to.not.have.property('v4Source'));",
-                  "}",
-                  "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
-                  "  pm.test('disabledAnnounceZones empty (announced from all healthy zones)', () =>     pm.expect(pm.response.json().disabledAnnounceZones || []).to.be.an('array').that.is.empty);",
-                  "}"
+                  "pm.test('Get 200 for created INTERNAL LB', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('type INTERNAL', () => pm.expect(j.type).to.eql('INTERNAL'));",
+                  "pm.test('placementType REGIONAL', () => pm.expect(j.placementType).to.eql('REGIONAL'));",
+                  "pm.test('v4AddressId resolved to a bound vpc Address', () =>   pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
+                  "pm.test('output does not echo the subnet source', () =>   pm.expect(j).to.not.have.property('v4Source'));",
+                  "pm.test('disabledAnnounceZones empty (announced from all healthy zones)', () =>   pm.expect(pm.response.json().disabledAnnounceZones || []).to.be.an('array').that.is.empty);"
                 ]
               }
             }
@@ -22397,6 +22635,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -22451,14 +22690,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cr-internal-cr548",
+          "name": "cr-internal-cr550",
           "request": {
             "method": "POST",
             "header": [
@@ -22513,15 +22756,10 @@
                   "pm.environment.unset('_crRetryCount');",
                   "pm.environment.unset('_crRetryStarted');",
                   "pm.environment.unset('nlbId');",
-                  "if (pm.environment.get('vpcSubnetId')) {",
-                  "  pm.test('INTERNAL create accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
-                  "  const j = pm.response.json();",
-                  "  if (j.id) pm.environment.set('opId', j.id);",
-                  "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else {",
-                  "  pm.environment.unset('opId');",
-                  "  pm.test('no regional subnet fixture → subnet-source create rejected', () =>     pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
-                  "}"
+                  "pm.test('INTERNAL create accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "if (j.id) pm.environment.set('opId', j.id);",
+                  "if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);"
                 ]
               }
             }
@@ -22571,14 +22809,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "get-drain-rya549",
+          "name": "get-drain-rya551",
           "request": {
             "method": "GET",
             "header": [
@@ -22621,12 +22863,10 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
-                  "  pm.test('Get 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "  const j = pm.response.json();",
-                  "  pm.test('placementType REGIONAL', () => pm.expect(j.placementType).to.eql('REGIONAL'));",
-                  "  pm.test('disabledAnnounceZones persisted as the drain intent', () =>     pm.expect(j.disabledAnnounceZones || []).to.include(pm.environment.get('existingZoneAltId')));",
-                  "}"
+                  "pm.test('Get 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('placementType REGIONAL', () => pm.expect(j.placementType).to.eql('REGIONAL'));",
+                  "pm.test('disabledAnnounceZones persisted as the drain intent', () =>   pm.expect(j.disabledAnnounceZones || []).to.include(pm.environment.get('existingZoneAltId')));"
                 ]
               }
             }
@@ -22870,6 +23110,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -22924,7 +23165,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -22973,6 +23218,7 @@
                   "  pm.expect(m, 'the edge discarded the request body — the spec never arrived').to.not.match(/address_spec required/i);",
                   "});",
                   "pm.environment.unset('vpcAddrId');",
+                  "pm.test('internal address fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200 && pm.environment.get('vpcSubnetId')) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -23027,14 +23273,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcAddrId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cr-link-cr550",
+          "name": "cr-link-cr552",
           "request": {
             "method": "POST",
             "header": [
@@ -23089,15 +23339,10 @@
                   "pm.environment.unset('_crRetryCount');",
                   "pm.environment.unset('_crRetryStarted');",
                   "pm.environment.unset('nlbId');",
-                  "if (pm.environment.get('vpcAddrId')) {",
-                  "  pm.test('INTERNAL link create accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
-                  "  const j = pm.response.json();",
-                  "  if (j.id) pm.environment.set('opId', j.id);",
-                  "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else {",
-                  "  pm.environment.unset('opId');",
-                  "  pm.test('no internal address fixture → address-link create rejected', () =>     pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
-                  "}"
+                  "pm.test('INTERNAL link create accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "if (j.id) pm.environment.set('opId', j.id);",
+                  "if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);"
                 ]
               }
             }
@@ -23147,14 +23392,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "get-link-rya551",
+          "name": "get-link-rya553",
           "request": {
             "method": "GET",
             "header": [
@@ -23197,9 +23446,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
-                  "  pm.test('v4AddressId equals the linked address', () =>     pm.expect(pm.response.json().v4AddressId).to.eql(pm.environment.get('vpcAddrId')));",
-                  "}"
+                  "pm.test('v4AddressId equals the linked address', () =>   pm.expect(pm.response.json().v4AddressId).to.eql(pm.environment.get('vpcAddrId')));"
                 ]
               }
             }
@@ -23521,6 +23768,7 @@
                   "  pm.expect(m, 'the edge discarded the request body — the spec never arrived').to.not.match(/address_spec required/i);",
                   "});",
                   "pm.environment.unset('vpcAddrId');",
+                  "pm.test('external address fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -23575,14 +23823,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcAddrId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cr-ext-link-cr552",
+          "name": "cr-ext-link-cr554",
           "request": {
             "method": "POST",
             "header": [
@@ -23637,15 +23889,10 @@
                   "pm.environment.unset('_crRetryCount');",
                   "pm.environment.unset('_crRetryStarted');",
                   "pm.environment.unset('nlbId');",
-                  "if (pm.environment.get('vpcAddrId')) {",
-                  "  pm.test('EXTERNAL link create accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
-                  "  const j = pm.response.json();",
-                  "  if (j.id) pm.environment.set('opId', j.id);",
-                  "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else {",
-                  "  pm.environment.unset('opId');",
-                  "  pm.test('no external address fixture → address-link create rejected', () =>     pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
-                  "}"
+                  "pm.test('EXTERNAL link create accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "if (j.id) pm.environment.set('opId', j.id);",
+                  "if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);"
                 ]
               }
             }
@@ -23695,14 +23942,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "get-ext-link-rya553",
+          "name": "get-ext-link-rya555",
           "request": {
             "method": "GET",
             "header": [
@@ -23745,11 +23996,9 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
-                  "  const j = pm.response.json();",
-                  "  pm.test('type EXTERNAL', () => pm.expect(j.type).to.eql('EXTERNAL'));",
-                  "  pm.test('v4AddressId equals the linked public address', () =>     pm.expect(j.v4AddressId).to.eql(pm.environment.get('vpcAddrId')));",
-                  "}"
+                  "const j = pm.response.json();",
+                  "pm.test('type EXTERNAL', () => pm.expect(j.type).to.eql('EXTERNAL'));",
+                  "pm.test('v4AddressId equals the linked public address', () =>   pm.expect(j.v4AddressId).to.eql(pm.environment.get('vpcAddrId')));"
                 ]
               }
             }
@@ -23993,6 +24242,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -24047,14 +24297,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cr-dualstack-cr554",
+          "name": "cr-dualstack-cr556",
           "request": {
             "method": "POST",
             "header": [
@@ -24109,16 +24363,11 @@
                   "pm.environment.unset('_crRetryCount');",
                   "pm.environment.unset('_crRetryStarted');",
                   "pm.environment.unset('nlbId');",
-                  "const v6 = pm.environment.get('existingAddressIPv6Id') || '';",
-                  "if (pm.environment.get('vpcSubnetId') && v6 && pm.response.code === 200) {",
-                  "  const j = pm.response.json();",
-                  "  if (j.id) pm.environment.set('opId', j.id);",
-                  "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "  pm.test('dualstack create accepted (both families same network)', () => pm.expect(j.id).to.match(/^nlb/));",
-                  "} else {",
-                  "  pm.environment.unset('opId');",
-                  "  pm.test('dualstack create either accepted or lawfully rejected (fixture-dependent), never a 5xx', () =>     pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 503]));",
-                  "}"
+                  "pm.test('seeded IPv6 address fixture is present (dualstack precondition)', () =>   pm.expect(pm.environment.get('existingAddressIPv6Id') || '').to.match(/^adr[a-z0-9]+$/));",
+                  "pm.test('dualstack create accepted (both families same network)', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "if (j.id) pm.environment.set('opId', j.id);",
+                  "if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);"
                 ]
               }
             }
@@ -24168,14 +24417,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "get-dualstack-rya555",
+          "name": "get-dualstack-rya557",
           "request": {
             "method": "GET",
             "header": [
@@ -24218,11 +24471,9 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
-                  "  const j = pm.response.json();",
-                  "  pm.test('v4AddressId set (auto from subnet)', () => pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
-                  "  pm.test('v6AddressId set (linked)', () => pm.expect(j.v6AddressId).to.eql(pm.environment.get('existingAddressIPv6Id')));",
-                  "}"
+                  "const j = pm.response.json();",
+                  "pm.test('v4AddressId set (auto from subnet)', () => pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
+                  "pm.test('v6AddressId set (linked)', () => pm.expect(j.v6AddressId).to.eql(pm.environment.get('existingAddressIPv6Id')));"
                 ]
               }
             }
@@ -24466,6 +24717,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -24520,14 +24772,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr556",
+          "name": "setup-create-lb-cr558",
           "request": {
             "method": "POST",
             "header": [
@@ -24641,14 +24897,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya557",
+          "name": "setup-materialize-lb-rya559",
           "request": {
             "method": "GET",
             "header": [
@@ -24893,6 +25153,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -24947,14 +25208,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr558",
+          "name": "setup-create-lb-cr560",
           "request": {
             "method": "POST",
             "header": [
@@ -25068,14 +25333,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya559",
+          "name": "setup-materialize-lb-rya561",
           "request": {
             "method": "GET",
             "header": [
@@ -25368,6 +25637,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -25422,14 +25692,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cr-internal-cr560",
+          "name": "cr-internal-cr562",
           "request": {
             "method": "POST",
             "header": [
@@ -25484,15 +25758,10 @@
                   "pm.environment.unset('_crRetryCount');",
                   "pm.environment.unset('_crRetryStarted');",
                   "pm.environment.unset('nlbId');",
-                  "if (pm.environment.get('vpcSubnetId')) {",
-                  "  pm.test('INTERNAL create accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
-                  "  const j = pm.response.json();",
-                  "  if (j.id) pm.environment.set('opId', j.id);",
-                  "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else {",
-                  "  pm.environment.unset('opId');",
-                  "  pm.test('no regional subnet fixture → subnet-source create rejected', () =>     pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
-                  "}"
+                  "pm.test('INTERNAL create accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "if (j.id) pm.environment.set('opId', j.id);",
+                  "if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);"
                 ]
               }
             }
@@ -25542,14 +25811,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "upd-drain-rya561",
+          "name": "upd-drain-rya563",
           "request": {
             "method": "PATCH",
             "header": [
@@ -25601,10 +25874,8 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "if (pm.environment.get('nlbId')) {",
-                  "  pm.test('drain Update accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
-                  "  const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "pm.test('drain Update accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id);"
                 ]
               }
             }
@@ -25654,7 +25925,8 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "pm.test('operation succeeded', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -25689,9 +25961,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (pm.environment.get('nlbId') && !pm.environment.get('lastOpError')) {",
-                  "  pm.test('drain applied', () =>     pm.expect(pm.response.json().disabledAnnounceZones || []).to.include(pm.environment.get('existingZoneAltId')));",
-                  "}"
+                  "pm.test('drain applied', () =>   pm.expect(pm.response.json().disabledAnnounceZones || []).to.include(pm.environment.get('existingZoneAltId')));"
                 ]
               }
             }
@@ -25735,10 +26005,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (pm.environment.get('nlbId')) {",
-                  "  pm.test('re-enable Update accepted', () => pm.expect(pm.response.code).to.eql(200));",
-                  "  const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "pm.test('re-enable Update accepted', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id);"
                 ]
               }
             }
@@ -25788,7 +26056,8 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "pm.test('operation succeeded', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -26032,6 +26301,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('vpcSubnetId');",
+                  "pm.test('subnet fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -26086,14 +26356,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcSubnetId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-create-lb-cr562",
+          "name": "setup-create-lb-cr564",
           "request": {
             "method": "POST",
             "header": [
@@ -26207,14 +26481,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-lb-rya563",
+          "name": "setup-materialize-lb-rya565",
           "request": {
             "method": "GET",
             "header": [
@@ -26263,7 +26541,7 @@
           ]
         },
         {
-          "name": "get-lean-rya564",
+          "name": "get-lean-rya566",
           "request": {
             "method": "GET",
             "header": [
@@ -26468,6 +26746,7 @@
                   "  pm.expect(m, 'the edge discarded the request body — the spec never arrived').to.not.match(/address_spec required/i);",
                   "});",
                   "pm.environment.unset('vpcAddrId');",
+                  "pm.test('external address fixture accepted as Operation', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
@@ -26522,14 +26801,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('vpcAddrId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "cr-linked-cr565",
+          "name": "cr-linked-cr567",
           "request": {
             "method": "POST",
             "header": [
@@ -26645,7 +26928,7 @@
           ]
         },
         {
-          "name": "del-linked-lb-rya566",
+          "name": "del-linked-lb-rya568",
           "request": {
             "method": "DELETE",
             "header": [
