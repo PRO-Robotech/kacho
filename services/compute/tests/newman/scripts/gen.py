@@ -21,12 +21,13 @@ OpsProxy api-gateway, prefix `epd`), env-var `garbageComputeId`. LRO-poll helper
 from __future__ import annotations
 
 import json
+import re
 import sys
 import uuid
 import importlib.util
 from pathlib import Path
 from dataclasses import dataclass, field, replace
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parents[1]
 CASES_DIR = ROOT / "cases"
@@ -192,6 +193,13 @@ _POLL_SEQ = [0]
 
 
 _RYA_SEQ = [0]
+
+
+# Separate counter: retry_until_absent is used by ONE suite, and sharing _RYA_SEQ
+# would renumber the -rya/-lst/-st suffixes of every collection generated after it,
+# burying a real change in cosmetic churn. The `-abs` prefix already keeps the two
+# families apart, and audit_jumps proves uniqueness mechanically either way.
+_ABS_SEQ = [0]
 
 
 def retry_until_present(step: Step, id_env_var: str, budget: int = 50,
@@ -363,8 +371,18 @@ def retry_until_absent(step: Step, still_present_expr: str, budget: int = 25,
     absent) still FAILS. It is impossible to mask a persistent leak; only a transient
     revoke/pre-clean-materialization window is absorbed. Use ONLY on a negative
     "must be absent" read whose absence is GUARANTEED once the subject's grant is genuinely
-    gone — NEVER to paper over a cross-account deny or a real hole. The step name is preserved
-    (self-loop uses the dynamic pm.info.requestName)."""
+    gone — NEVER to paper over a cross-account deny or a real hole.
+
+    The wrapped step is given a globally-unique name (`-abs<n>`), for the same reason
+    retry_until_authorized/_present/_state do: a self-loop is expressed as
+    setNextRequest(pm.info.requestName), and newman resolves that NAME against a
+    collection-wide index in which a repeated name keeps only ONE entry — so a bare,
+    repeated step name does not resolve to the running step at all. This suite names its
+    steps by HTTP verb (`get`/`post`/…), so before the rename the deny-matrix carried 18
+    items named `get`, and the first retry jumped the run to a different `get` near the end
+    of the collection: 29 of the 42 matrix requests were never sent, and newman's report
+    simply did not mention them — a skipped request is not a failed one, so the suite read
+    green while two thirds of the matrix had not been asked."""
     guard = [
         "// bounded retry over the revoke/pre-clean materialization window (read-your-writes",
         "// ON REVOKE): retry SELF while the must-be-absent thing is still present, spacing",
@@ -386,7 +404,9 @@ def retry_until_absent(step: Step, still_present_expr: str, budget: int = 25,
         "pm.environment.unset('_absRetryCount');",
         "pm.environment.unset('_absRetryStarted');",
     ]
-    return replace(step, test_script=guard + list(step.test_script))
+    _ABS_SEQ[0] += 1
+    return replace(step, name=f"{step.name}-abs{_ABS_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
 
 
 def poll_operation_until_done(auth: Optional[str] = None) -> Step:
@@ -878,6 +898,89 @@ def load_cases_module(path: Path):
     return mod
 
 
+_SELF_RETRY_CALL = "pm.execution.setNextRequest(pm.info.requestName)"
+_NAMED_JUMP_RE = re.compile(r"""setNextRequest\(\s*['"]([^'"]+)['"]\s*\)""")
+_BUSY_WAIT_RE = re.compile(r"while\s*\(\s*Date\.now\(\)\s*-\s*_")
+
+
+def audit_jumps(collection: Dict) -> Tuple[List[str], int, int]:
+    """Gate the built collection on newman's setNextRequest semantics.
+
+    Two properties, both learned the hard way, and neither visible in a diff:
+
+    (a) A jump target is a NAME, resolved against a collection-wide index that keeps one
+        entry per name. A self-loop written as setNextRequest(pm.info.requestName) on a
+        step whose name repeats therefore does not resolve to the running step — it lands
+        on whichever same-named item the index kept, and the run continues from THERE.
+        Landing further down the collection makes every item in between go unsent, and an
+        unsent request is absent from newman's report rather than failed: the suite reads
+        green on questions nobody asked. So every self-looping step must own its name, and
+        every literal jump target must name exactly one item.
+
+    (b) A retry with no wait is not a retry. newman executes test scripts synchronously and
+        acts on setNextRequest before any setTimeout callback, so the only way to actually
+        space attempts is a busy-wait; without one a 30-iteration loop spans milliseconds
+        and gives up while the thing it waits for is still perfectly healthy.
+
+    Returns (findings, items_scanned, loops_scanned) — the census is returned so that
+    "no findings" stays distinguishable from "nothing was read"."""
+    items: List[Tuple[str, Dict]] = []
+
+    def walk(node: Dict, trail: str):
+        for child in node.get("item", []):
+            if "item" in child:
+                walk(child, f"{trail}{child.get('name', '?')} / ")
+            else:
+                items.append((trail, child))
+
+    walk(collection, "")
+    name_counts: Dict[str, int] = {}
+    for _, it in items:
+        name_counts[it["name"]] = name_counts.get(it["name"], 0) + 1
+
+    findings: List[str] = []
+    loops = 0
+    for trail, it in items:
+        for ev in it.get("event", []):
+            if ev.get("listen") != "test":
+                continue
+            lines = ev.get("script", {}).get("exec", [])
+            for i, line in enumerate(lines):
+                # Read the executable part only: a comment ABOUT a jump is not a jump,
+                # and a comment about waiting is not a wait (testing.md — a gate that
+                # greps raw text finds the защита in the comment explaining it).
+                if line.lstrip().startswith("//"):
+                    continue
+                for target, kind in (
+                    [(it["name"], "self")] if _SELF_RETRY_CALL in line else []
+                ) + [(m, "named") for m in _NAMED_JUMP_RE.findall(line)]:
+                    loops += 1
+                    where = f"{trail}{it['name']} (test line {i + 1})"
+                    seen = name_counts.get(target, 0)
+                    if kind == "self" and seen != 1:
+                        findings.append(
+                            f"{where}: self-retry on step name {target!r}, which names "
+                            f"{seen} items in this collection — the jump will not resolve "
+                            f"to this step and the run will skip forward. Give the wrapped "
+                            f"step a unique name (see retry_until_* helpers)."
+                        )
+                    elif kind == "named" and seen != 1:
+                        findings.append(
+                            f"{where}: jump to {target!r}, which names {seen} items in "
+                            f"this collection (needs exactly 1)."
+                        )
+                    # the last 4 EXECUTABLE lines above the jump (comments do not count
+                    # as either a wait or a line of the window)
+                    window = [w for w in lines[:i] if not w.lstrip().startswith("//")][-4:]
+                    if not any(_BUSY_WAIT_RE.search(w) for w in window):
+                        findings.append(
+                            f"{where}: retry jump with no busy-wait in the 4 lines above — "
+                            f"newman fires setNextRequest before any setTimeout, so this "
+                            f"loop spins with no delay and gives up in milliseconds."
+                        )
+    return findings, len(items), loops
+
+
 def main(argv: List[str]) -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     want = set(argv[1:])
@@ -899,9 +1002,18 @@ def main(argv: List[str]) -> int:
             sys.stderr.write(f"[{res}] FAIL — duplicate case-id (должен быть уникален): {sorted(dups)}\n")
             return 1
         col = build_collection(res, cases)
+        jump_findings, n_items, n_loops = audit_jumps(col)
+        if jump_findings:
+            sys.stderr.write(
+                f"[{res}] FAIL — unsound retry jump(s); a run would silently skip requests:\n"
+            )
+            for fnd in jump_findings:
+                sys.stderr.write(f"  - {fnd}\n")
+            return 1
         out = OUT_DIR / f"{res}.postman_collection.json"
         out.write_text(json.dumps(col, indent=2, ensure_ascii=False))
-        print(f"[{res}] {len(cases)} cases → {out.relative_to(ROOT)}")
+        print(f"[{res}] {len(cases)} cases → {out.relative_to(ROOT)} "
+              f"(jump-audit: {n_loops} retry jump(s) over {n_items} steps, all sound)")
     return rc
 
 

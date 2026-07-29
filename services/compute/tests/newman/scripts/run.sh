@@ -11,8 +11,11 @@
 #   ./scripts/run.sh --delay 100           # задержка между запросами (ms)
 #
 # Exit-код: 0 ТОЛЬКО если каждая ожидаемая коллекция произвела отчёт И в нём
-# assertions.failed==0 И собственный exit-код newman==0. Вердикт выводится из
-# СОДЕРЖИМОГО отчётов (out/<stem>.json + out/<stem>.rc), а не из факта запуска.
+# assertions.failed==0, requests.failed==0 (ни одного запроса без ответа),
+# assertions.total>0 (суита не немая) И собственный exit-код newman==0. Вердикт
+# выводится из СОДЕРЖИМОГО отчётов (out/<stem>.json + out/<stem>.rc), а не из факта
+# запуска, и печатается ЧИСЛАМИ: коллекций с отчётом из скольких, запросов,
+# утверждений, упавших утверждений, запросов без ответа, немых отчётов.
 # Сводка печатается ВСЕГДА, в том числе на красном — её потеря и породила прежний
 # `| tee … || true`, который глотал код возврата newman (суита печатала GREEN при
 # упавших проверках).
@@ -101,34 +104,69 @@ run_one() {
   return 0
 }
 
-# aggregate_verdict — чистый вердикт ПО ОТЧЁТАМ. Печатает таблицу и возвращает 1,
-# если у любого stem: нет out/<stem>.json (MISSING), assertions.failed>0 или rc!=0.
+# aggregate_verdict — чистый вердикт ПО ОТЧЁТАМ, В ЧИСЛАХ.
+#
+# ТРИ ИСХОДА, ТРИ ИМЕНИ. Запрос кончается одним из трёх способов, и вердикт называет
+# каждый отдельно — свернуть любой в соседний значит замолчать суиту:
+#   ответ пришёл, утверждение прошло — проверка выполнилась и сказала «да»;
+#   ответ пришёл, утверждение упало  — проверка выполнилась и сказала «нет» (FAILED);
+#   ОТВЕТА НЕ БЫЛО                   — проверка не выполнилась вовсе (UNANSWERED).
+# Плюс вырожденный случай — отчёт вообще без утверждений: печатается как MUTE, а не
+# читается как «ничего не упало». UNANSWERED никогда не вычитается и не объясняется.
+#
+# Возвращает 1, если у любого stem: нет out/<stem>.json (MISSING), assertions.failed>0,
+# requests.failed>0 (UNANSWERED), assertions.total==0 (MUTE) или rc!=0. Эталон формы —
+# services/iam/tests/newman/scripts/assert-suites-green.sh.
 aggregate_verdict() {
   local out_dir="$1"; shift
-  local bad=0 stem json rcfile rc total failed requests
-  printf "%-22s %10s %10s %10s %8s\n" "RESOURCE" "ASSERT" "FAILED" "REQUESTS" "RC"
+  local bad=0 stem json rcfile rc total failed requests unanswered
+  local n_total=$# reported=0 t_req=0 t_ass=0 t_fail=0 t_unans=0 t_mute=0
+  printf "%-22s %10s %10s %10s %12s %8s\n" "RESOURCE" "ASSERT" "FAILED" "REQUESTS" "UNANSWERED" "RC"
   for stem in "$@"; do
     json="${out_dir}/${stem}.json"
     rcfile="${out_dir}/${stem}.rc"
     rc="n/a"
     [[ -f "$rcfile" ]] && rc="$(cat "$rcfile")"
     if [[ ! -f "$json" ]]; then
-      printf "%-22s %10s %10s %10s %8s\n" "$stem" "-" "-" "-" "MISSING"
+      printf "%-22s %10s %10s %10s %12s %8s\n" "$stem" "-" "-" "-" "-" "MISSING"
       bad=1
       continue
     fi
-    total=0; failed=0; requests=0
-    read -r total failed requests < <(
-      jq -r '"\(.run.stats.assertions.total) \(.run.stats.assertions.failed) \(.run.stats.requests.total)"' \
-        "$json" 2>/dev/null || echo "0 0 0"
+    total=0; failed=0; requests=0; unanswered=0
+    read -r total failed requests unanswered < <(
+      jq -r '"\(.run.stats.assertions.total) \(.run.stats.assertions.failed) \(.run.stats.requests.total) \(.run.stats.requests.failed)"' \
+        "$json" 2>/dev/null || echo "0 0 0 0"
     )
-    [[ "$total" =~ ^[0-9]+$ ]]    || total=0
-    [[ "$failed" =~ ^[0-9]+$ ]]   || failed=0
-    [[ "$requests" =~ ^[0-9]+$ ]] || requests=0
-    printf "%-22s %10s %10s %10s %8s\n" "$stem" "$total" "$failed" "$requests" "$rc"
+    [[ "$total" =~ ^[0-9]+$ ]]      || total=0
+    [[ "$failed" =~ ^[0-9]+$ ]]     || failed=0
+    [[ "$requests" =~ ^[0-9]+$ ]]   || requests=0
+    [[ "$unanswered" =~ ^[0-9]+$ ]] || unanswered=0
+    printf "%-22s %10s %10s %10s %12s %8s\n" "$stem" "$total" "$failed" "$requests" "$unanswered" "$rc"
+    reported=$((reported + 1))
+    t_req=$((t_req + requests)); t_ass=$((t_ass + total))
+    t_fail=$((t_fail + failed)); t_unans=$((t_unans + unanswered))
     if [[ "$failed" -gt 0 ]]; then bad=1; fi
     if [[ "$rc" != "0" ]];    then bad=1; fi
+    # UNANSWERED — запросы, на которые НЕ пришёл ответ (DNS, отказ в соединении, TLS,
+    # таймаут). Счётчика мало: назови их поимённо, иначе по числу нечего делать.
+    if [[ "$unanswered" -gt 0 ]]; then
+      echo "  ^ ${stem}: ${unanswered} запрос(ов) без ответа — проверка НЕ выполнилась:" >&2
+      jq -r '[.run.failures[]? | select((.error.name? // "") != "AssertionError")
+              | "      НЕ ВЫПОЛНЕН: \(.source.name? // "?") <- \(.error.message? // "нет ответа")"]
+             | unique | .[]' "$json" 2>/dev/null || true
+      bad=1
+    fi
+    # Отчёт без единого утверждения — не чистая суита, а суита, которой не было: до
+    # этой строки она приходила сюда неотличимой от идеальной (0 упало, 0 без ответа).
+    if [[ "$total" -eq 0 ]]; then
+      echo "  ^ ${stem}: MUTE — 0 утверждений; суита, которая ничего не спросила, не может быть зелёной" >&2
+      t_mute=$((t_mute + 1))
+      bad=1
+    fi
   done
+  # Вердикт в числах одной строкой. Первая пара читается ПЕРВОЙ: при оборванном прогоне
+  # все остальные счётчики выглядят здоровыми.
+  echo "TOTAL: ${reported}/${n_total} коллекц. с отчётом, ${t_req} запрос(ов), ${t_ass} утвержд., ${t_fail} упало, ${t_unans} без ответа, ${t_mute} немых отчёт(ов)"
   return "$bad"
 }
 
