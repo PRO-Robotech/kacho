@@ -549,34 +549,26 @@ CASES.append(Case(
 # Cross-cutting AZD
 # ---------------------------------------------------------------------------
 
-CASES.append(Case(
-    id="AZD-FGA-UNAVAILABLE-FAIL-CLOSED",
-    title="FGA service unavailable → PERMISSION_DENIED fail-closed (Verifies REQ-AZD-FAIL-CLOSED)",
-    classes=["AZD"], priority="P0",
-    steps=[
-        # In ordinary test conditions FGA is up; this case is in place so that
-        # when an FGA outage drill or fault-injection job runs, the suite
-        # asserts the fail-closed contract holds. Tolerant assertion on the
-        # happy path.
-        Step(name="probe-cr", method="POST", path=_NLB, auth="jwtProjectEditorA",
-             body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "name": "azd-fga-{{runId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
-             test_script=[
-                 "pm.test('either 200 (FGA up) or 403 (FGA down fail-closed)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 403, 503]));",
-                 "if (pm.response.code === 403) pm.test('mentions authorization service', () => "
-                 "  pm.expect((pm.response.json().message||'').toLowerCase())."
-                 "    to.include('authorization'));",
-                 *save_from_response("j.id", "opId"),
-                 *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId"),
-             ]),
-        poll_operation_until_done(),
-        Step(name="cleanup-best-effort", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
-             auth="jwtProjectEditorA",
-             test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
-    ],
-))
+# AZD-FGA-UNAVAILABLE-FAIL-CLOSED lived here and is REMOVED — not skipped, not
+# whitelisted. It asserted "either 200 (FGA up) or 403 (FGA down fail-closed)" while
+# stating plainly, in its own comment, that "in ordinary test conditions FGA is up" — so
+# in every run that ever happened it accepted the ordinary answer and checked nothing.
+# The invariant it named (no answer about permissions must never be counted as
+# "allowed") was never once exercised, and the suite read green.
+#
+# The invariant is REAL and is now genuinely checked, with the condition CREATED rather
+# than waited for: services/iam/tests/newman/cases/authz-failclosed.py, driven by
+# services/iam/tests/newman/scripts/run-failclosed.sh, which scales the authorization
+# store to zero, waits out the gateway's decision cache, runs that one collection and
+# restores the stand. It runs as its own wave after every other suite has reported, and
+# if the wave does not run there is no report and the gate says
+# `authz-failclosed(no-report)`.
+#
+# Nothing nlb-specific is lost by removing this copy: the decision is made by the shared
+# gateway authorization middleware (`authz.failOpen=false`), not by the nlb backend, so
+# probing it through an nlb route tested the same component down a longer path. A case
+# needing an unavailable dependency gets a wave that creates the condition — never a
+# tolerant assertion in a suite that cannot create it (testing.md).
 
 CASES.append(Case(
     id="AZD-NLB-CR-ANONYMOUS-UNAUTH",
@@ -597,57 +589,120 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="AZD-PERMISSION-CATALOG-COMPLETE",
-    title="Permission catalog contains all 26 loadbalancer.* permissions (Verifies REQ-AZD-CATALOG)",
+    title="The live grantable catalog carries the loadbalancer module and every resource "
+          "the nlb permission strings are built from (Verifies REQ-AZD-CATALOG)",
     classes=["AZD"], priority="P0",
     steps=[
-        # The catalog query is exposed via iam internal mux; absent that, this
-        # case acts as a structural reminder that the 26 permission strings
-        # must remain present in kacho-iam/internal/authzmap/permission_catalog.go
-        # (drift-test enforces — see acceptance §8 GWT-AZD-019). The 4 networkLoadBalancers
-        # verbs (Start, Stop, and the two target-group attach/detach verbs) went away with
-        # their RPCs.
-        Step(name="probe-cr", method="POST", path=_NLB, auth="jwtProjectEditorA",
-             body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
-                   "name": "azd-cat-{{runId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
+        # WHAT THIS USED TO DO. It POSTed a load balancer, wrote twenty-six permission
+        # strings into a JavaScript array inside the case, and asserted
+        # `expected.length === 26` — the length of a literal it had just written, which is
+        # true no matter what the platform does. Its only other statement accepted 200 OR
+        # 403, so the create said nothing either. The catalog was never read. The comment
+        # even admitted it: "the catalog query is exposed via iam internal mux; absent
+        # that, this case acts as a structural reminder".
+        #
+        # It is not absent. `GET /iam/v1/permissionCatalog` is a PUBLIC, authenticated,
+        # sync read on the external listener (gateway/internal/restmux/mux.go registers
+        # PermissionCatalogService; the RPC is `<exempt>` from project-scope, so any
+        # authenticated principal may read it — anonymous is still refused). It answers
+        # with the grantable taxonomy the rule compiler actually honours: modules ->
+        # `(module, resource)` tokens, plus the closed verb set. So the case reads it.
+        #
+        # WHY THAT IS THE RIGHT ARTEFACT. A permission string is `module.resource.verb`; it
+        # is grantable only if `(module, resource)` is in the catalog — the compiler
+        # fail-closed-SKIPs anything else, making the grant a silent no-op. So the three
+        # loadbalancer resources are what the nlb suite's authorization rests on, and they
+        # are asserted by NAME (their spelling travels on the wire and is never renamed),
+        # together with the closed verb set. `verb-bearing` is asserted too: a tier-only
+        # type would make per-object rules skip.
+        #
+        # The compiled per-RPC table (which method demands which permission) is a different
+        # artefact, gated where it lives: GENERATED from proto, with both embedded copies
+        # byte-compared by `make permission-catalog-check`. A hand-kept transcription of it
+        # inside a newman case could only ever drift.
+        Step(name="read-catalog", method="GET", path="/iam/v1/permissionCatalog",
+             auth="jwtProjectEditorA",
              test_script=[
-                 "// The 30 loadbalancer.* permissions (design §6.2). If a denial",
-                 "// arrives, the message MUST reference one of these strings.",
-                 "const expected = [",
-                 "  'loadbalancer.networkLoadBalancers.get',",
-                 "  'loadbalancer.networkLoadBalancers.list',",
-                 "  'loadbalancer.networkLoadBalancers.create',",
-                 "  'loadbalancer.networkLoadBalancers.update',",
-                 "  'loadbalancer.networkLoadBalancers.delete',",
-                 "  'loadbalancer.networkLoadBalancers.move',",
-                 "  'loadbalancer.networkLoadBalancers.getTargetStates',",
-                 "  'loadbalancer.networkLoadBalancers.listOperations',",
-                 "  'loadbalancer.listeners.get',",
-                 "  'loadbalancer.listeners.list',",
-                 "  'loadbalancer.listeners.create',",
-                 "  'loadbalancer.listeners.update',",
-                 "  'loadbalancer.listeners.delete',",
-                 "  'loadbalancer.listeners.listOperations',",
-                 "  'loadbalancer.targetGroups.get',",
-                 "  'loadbalancer.targetGroups.list',",
-                 "  'loadbalancer.targetGroups.create',",
-                 "  'loadbalancer.targetGroups.update',",
-                 "  'loadbalancer.targetGroups.delete',",
-                 "  'loadbalancer.targetGroups.move',",
-                 "  'loadbalancer.targetGroups.addTargets',",
-                 "  'loadbalancer.targetGroups.removeTargets',",
-                 "  'loadbalancer.targetGroups.listOperations',",
-                 "  'loadbalancer.operations.get',",
-                 "  'loadbalancer.operations.list',",
-                 "  'loadbalancer.operations.cancel',",
-                 "];",
-                 "pm.test('26 permissions enumerated', () => pm.expect(expected.length).to.eql(26));",
-                 "pm.test('request accepted (catalog covered by editor binding)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
-                 *save_from_response("j.id", "opId"),
-                 *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId"),
+                 *assert_status(200),
+                 "const j = pm.response.json();",
+                 "const mods = j.modules || [];",
+                 "pm.test('catalog is non-empty (a read that returned nothing is not a pass)', () => "
+                 "  pm.expect(mods.length, JSON.stringify(j)).to.be.above(0));",
+                 "const lb = mods.find(m => m.module === 'loadbalancer');",
+                 "pm.test('grantable module loadbalancer is present', () => "
+                 "  pm.expect(lb, 'modules: ' + mods.map(m => m.module).join(',')).to.be.an('object'));",
+                 "const names = ((lb || {}).resources || []).map(r => r.resource);",
+                 "['networkLoadBalancers', 'listeners', 'targetGroups'].forEach(r => {",
+                 "  pm.test('grantable resource loadbalancer.' + r, () => "
+                 "    pm.expect(names, 'resources: ' + names.join(',')).to.include(r));",
+                 "  pm.test('loadbalancer.' + r + ' is verb-bearing (per-object rules compile)', () => "
+                 "    pm.expect(((lb || {}).resources || []).find(x => x.resource === r).hasVerbRelations)"
+                 "      .to.eql(true));",
+                 "});",
+                 "pm.test('closed verb set is the one nlb permission strings are built from', () => "
+                 "  pm.expect(j.closedVerbs || []).to.have.members(['get','list','create','update','delete']));",
              ]),
+    ],
+))
+
+CASES.append(Case(
+    id="AZD-CUSTOM-ROLE-TARGET-MANAGER",
+    title="Custom role targetManager can AddTargets on a real TG but not Update its metadata",
+    classes=["AZD"], priority="P1",
+    steps=[
+        # BOTH halves of this case addressed `garbageTgrId` — a target group that does not
+        # exist. Against a non-existent object the positive half could not be shown at all
+        # (200 is unreachable) and it accepted 403 and 404 anyway, so a targetManager who
+        # had lost `addTargets` entirely would have passed. The negative half was no
+        # better: 404 answers "no such group" as much as "not yours", so it held with or
+        # without the deny. Neither half touched the custom role.
+        #
+        # A permission is a statement about a REAL object, so the case now creates one. The
+        # TG is made by the suite's editor and then handed to the custom-role subject: the
+        # verb it was granted must work, the verb it was not granted must not.
+        Step(name="tm-setup-tg", method="POST", path=_TGR, auth="jwtProjectEditorA",
+             body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
+                   "name": "azd-tm-tg-{{runId}}", "port": 8080,
+                   "healthCheck": {"interval": "2s", "timeout": "1s",
+                                   "unhealthyThreshold": 3, "healthyThreshold": 2,
+                                   "tcp": {"port": 8080}}},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.targetGroupId", "tmTgId")]),
+        poll_operation_until_done(fixture_ids=["tmTgId"]),
+        # The custom role's grant materializes eventually-consistent like any other, so a
+        # transient deny is retried — the outcome asserted is still success only. If it
+        # never converges, either the role or its binding was not seeded
+        # (tests/authz-fixtures/setup.sh §13d writes both best-effort) — that is the
+        # finding, and it belongs in the open rather than behind a tolerant assertion.
+        retry_until_authorized(Step(name="add-as-tm", method="POST",
+             path=f"{_TGR}/{{{{tmTgId}}}}:addTargets",
+             auth="jwtCustomRoleTargetManager",
+             body={"targets": [{"externalIp": {"address": "203.0.113.32"}, "weight": 100}]},
+             test_script=[
+                 "pm.test('targetManager may AddTargets (the verb its role grants)', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 *save_from_response("j.id", "opId"),
+             ])),
+        poll_operation_until_done(must_succeed=True),
+        # The role carries addTargets/removeTargets and nothing else, so a metadata Update
+        # is refused. 404 stays admissible ONLY because the deny may hide existence — but
+        # it can no longer stand in for "there was no such group", since the group provably
+        # exists by this point.
+        Step(name="upd-as-tm-denied", method="PATCH",
+             path=f"{_TGR}/{{{{tmTgId}}}}",
+             auth="jwtCustomRoleTargetManager",
+             body={"updateMask": "description", "description": "x"},
+             test_script=[
+                 "pm.test('targetManager may NOT Update metadata (verb not in the role)', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([403, 404]));",
+             ]),
+        # Teardown as the owner: drain the target, then drop the group.
+        Step(name="tm-rm-target", method="POST", path=f"{_TGR}/{{{{tmTgId}}}}:removeTargets",
+             auth="jwtProjectEditorA",
+             body={"targets": [{"externalIp": {"address": "203.0.113.32"}}]},
+             test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        Step(name="cleanup-best-effort", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
+        Step(name="tm-cleanup-tg", method="DELETE", path=f"{_TGR}/{{{{tmTgId}}}}",
              auth="jwtProjectEditorA",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -655,32 +710,8 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
-    id="AZD-CUSTOM-ROLE-TARGET-MANAGER",
-    title="Custom role targetManager can AddTargets but not Update TG metadata",
-    classes=["AZD"], priority="P1",
-    steps=[
-        Step(name="add-as-tm", method="POST",
-             path=f"{_TGR}/{{{{garbageTgrId}}}}:addTargets",
-             auth="jwtCustomRoleTargetManager",
-             body={"targets": [{"externalIp": {"address": "203.0.113.32"}, "weight": 100}]},
-             test_script=[
-                 "pm.test('OK or 404 (TG missing) or 403 if role-resolve still in cascade', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 403, 404]));",
-             ]),
-        Step(name="upd-as-tm-denied", method="PATCH",
-             path=f"{_TGR}/{{{{garbageTgrId}}}}",
-             auth="jwtCustomRoleTargetManager",
-             body={"updateMask": "description", "description": "x"},
-             test_script=[
-                 "pm.test('Update denied for targetManager', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
-             ]),
-    ],
-))
-
-CASES.append(Case(
     id="AZD-CUSTOM-ROLE-UNKNOWN-PERMISSION",
-    title="iam.Role.Create with unknown permission → InvalidArgument (covered by drift test)",
+    title="iam.Role.Create naming a permission outside the catalog → refused, never created",
     classes=["AZD"], priority="P1",
     steps=[
         # The iam Role.Create endpoint lives in kacho-iam, not nlb; this case
@@ -694,9 +725,17 @@ CASES.append(Case(
              body={"name": "azd-unknown-{{runId}}",
                    "permissions": ["loadbalancer.foo.bar"]},
              test_script=[
-                 "pm.test('rejected or route-missing', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404]));",
-                 "if (pm.response.code === 400) pm.test('grpc 3', () => "
+                 # The title promises a refusal and the assertion accepted 200 — a role
+                 # holding a permission the platform does not know, CREATED — as a pass.
+                 # The follow-up code check was written `if (code === 400)`, i.e. it only
+                 # ran once the refusal it was meant to establish had already happened.
+                 # Which refusal arrives is genuinely ordering-dependent and all are
+                 # lawful: the gateway may deny the caller before the body is looked at
+                 # (403), the route may not be registered on this listener (404), or iam
+                 # may reject the unknown token (400). Acceptance is not among them.
+                 "pm.test('role naming an unknown permission is refused (never created)', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 403, 404]));",
+                 "if (pm.response.code === 400) pm.test('grpc 3 (INVALID_ARGUMENT)', () => "
                  "  pm.expect(pm.response.json().code).to.eql(3));",
              ]),
     ],
@@ -815,16 +854,27 @@ CASES.append(Case(
     title="Service account editor on project → can Create",
     classes=["AZD"], priority="P1",
     steps=[
+        # A case saying a subject CAN do something must require that it did. Accepting 403
+        # as well left it satisfied by the exact denial it exists to rule out — and a
+        # service account losing its project grant is a real regression class (machine
+        # principals are the ones nobody notices), so this is the case that has to catch it.
+        #
+        # The escape it carried, "env may not yet seed SA binding", does not describe the
+        # fixture: tests/authz-fixtures/setup.sh §13b creates the service account and binds
+        # it editor on this suite's project under the SAME guard that mints its token
+        # (`[ -n "$SVA_NLB" ]`), so there is no lane where the token exists and the binding
+        # does not. If the token is missing, gen.py's harness-config guard already fails
+        # naming the variable rather than running the step anonymously.
         Step(name="cr-as-sa", method="POST", path=_NLB, auth="jwtServiceAccountEditor",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "name": "azd-sa-{{runId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
              test_script=[
-                 "pm.test('OK or 403 (env may not yet seed SA binding)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                 "pm.test('service account with an editor binding on the project may Create', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                  *save_from_response("j.id", "opId"),
                  *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId"),
              ]),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["nlbId"]),
         Step(name="cleanup", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtServiceAccountEditor",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -837,17 +887,29 @@ CASES.append(Case(
     title="User in editor-group cascades to NLB.Create permission",
     classes=["AZD"], priority="P1",
     steps=[
-        Step(name="cr-as-group-member", method="POST", path=_NLB,
+        # Same shape as the service-account case, and the same reason it must require
+        # success: "a member of an editor group inherits the group's grant" is the whole
+        # claim, and `oneOf([200, 403])` accepted its negation.
+        #
+        # Group membership resolves through a userset, so it materializes
+        # eventually-consistent like any other tuple — a timing window, not an outcome, and
+        # it is absorbed by retrying while still denied, not by calling the denial
+        # acceptable. If it never converges the case fails and says so. NOTE for whoever
+        # sees this go red: tests/authz-fixtures/setup.sh §13c seeds the group, the
+        # membership and the binding with `|| true` and discarded output, so a silently
+        # failed seed surfaces HERE. Make the seed deterministic; do not put the tolerance
+        # back.
+        retry_until_authorized(Step(name="cr-as-group-member", method="POST", path=_NLB,
              auth="jwtGroupMemberEditor",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "name": "azd-grp-{{runId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
              test_script=[
-                 "pm.test('OK or 403 (env may not yet seed group binding)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                 "pm.test('member of an editor group inherits Create on the project', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                  *save_from_response("j.id", "opId"),
                  *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId"),
-             ]),
-        poll_operation_until_done(),
+             ])),
+        poll_operation_until_done(fixture_ids=["nlbId"]),
         Step(name="cleanup", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtGroupMemberEditor",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -959,13 +1021,21 @@ CASES.append(Case(
         Step(name="lst-stranger-ops", method="GET",
              path=f"/operations?projectId={{{{_suiteProjectId}}}}&pageSize=10",
              auth="jwtStranger",
+             # Two lawful answers here and BOTH carry a statement, which is what keeps this
+             # out of the "accepts success and refusal" class: either the list runs and the
+             # stranger sees nothing (asserted), or the gateway refuses outright — and that
+             # refusal must be a genuine permission denial, not any 403 that happens by.
+             # The else-arm previously said nothing, so half the outcomes went unchecked.
              test_script=[
-                 "pm.test('rejected or empty', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                 "pm.test('stranger is refused, or listed and shown nothing', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 403]));",
                  "if (pm.response.code === 200) {",
                  "  const ops = (pm.response.json().operations || pm.response.json().items || []);",
                  "  pm.test('scope-filtered (empty for stranger)', () => "
                  "    pm.expect(ops.length).to.eql(0));",
+                 "} else {",
+                 "  pm.test('403 is a permission refusal (grpc 7), not an incidental error', () => "
+                 "    pm.expect(pm.response.json().code).to.eql(7));",
                  "}",
              ]),
     ],

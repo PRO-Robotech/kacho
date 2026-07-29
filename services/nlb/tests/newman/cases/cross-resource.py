@@ -348,29 +348,44 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="XRES-E2E-V4-LISTENER-V6-ADDRESS-INVALID",
-    title="UC-1 negative: IPV4 listener with a BYO IPv6 Address → InvalidArgument "
-          "(family mismatch) (Verifies 6.0-34/6.0-20)",
+    title="UC-1 negative: the v4 VIP slot of a load balancer pointed at an IPv6 Address → "
+          "generic 'Illegal argument addressId' (family/slot mismatch) (Verifies 6.0-34/6.0-20)",
     classes=["NEG", "VAL"], priority="P1",
     steps=[
-        *_create_external_lb("v4-v6"),
-        retry_until_authorized(Step(name="create-listener-family-mismatch", method="POST", path=_LST_BASE,
-             body={"loadBalancerId": "{{nlbId}}", "name": "mm-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080},
+        # WHERE THE SUBJECT WENT. This case used to POST a listener and call the result a
+        # family mismatch — but sub-phase 8.1 moved the VIP off the listener onto the load
+        # balancer and RESERVED `ip_version` in CreateListenerRequest, so the body it was
+        # sending (loadBalancerId/name/protocol/port/targetPort) named no address and no
+        # family at all. It was an ordinary, VALID listener create, asserted as
+        # `oneOf([403, 200, 400])` — every possible answer — followed by a code check
+        # written `if (j.error)`, which only ran when an error it never produced appeared.
+        # Nothing about families was being tested, and nothing could fail.
+        #
+        # The invariant itself is alive; it just lives on the LB now. `v4Source.addressId`
+        # is family-checked against the linked vpc Address under the caller's identity and
+        # a mismatch answers a deliberately GENERIC message — the anti-oracle rule: the
+        # caller must not learn from the wording whether the address exists, belongs to
+        # somebody else, or is simply the wrong family
+        # (services/nlb/internal/apps/kacho/api/loadbalancer/create.go, resolveLinkedAddress).
+        # Sync, before any Operation — so there is nothing to poll.
+        #
+        # `existingAddressIPv6Id` is a deploy precondition of this suite
+        # (deploy/scripts/seed-nlb-fixtures.sh step 4b). It is asserted rather than branched
+        # on: an unseeded v6 lane must be RED and named here, not quietly downgraded to a
+        # case that checks something else.
+        Step(name="cr-lb-v4-slot-v6-address", method="POST", path=_LB_BASE,
+             body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
+                   "placement": "EXTERNAL_REGIONAL", "name": "xres-v4v6-{{runId}}",
+                   "v4Source": {"addressId": "{{existingAddressIPv6Id}}"}},
              test_script=[
-                 # Wrapped so a fresh-LB editor-tuple lag (403) is retried away and the real
-                 # family-mismatch InvalidArgument is what the assertion observes.
-                 "pm.test('rejected (sync InvalidArgument or async error)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
-                 *save_from_response("j.id", "opId"),
-             ])),
-        poll_operation_until_done(),
-        Step(name="check-invalid-arg", method="GET", path="/operations/{{opId}}",
-             test_script=[
-                 "const j = pm.response.json();",
-                 "if (j.error) pm.test('error is INVALID_ARGUMENT (3)', () => "
-                 "  pm.expect(j.error.code).to.eql(3));",
+                 "pm.environment.unset('opId');",
+                 "pm.test('seeded IPv6 address fixture is present (precondition)', () => "
+                 "  pm.expect(pm.environment.get('existingAddressIPv6Id') || '').to.match(/^adr[a-z0-9]+$/));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                 "pm.test('generic anti-oracle wording (no family/ownership disclosure)', () => "
+                 "  pm.expect((pm.response.json().message || '').toLowerCase())"
+                 "    .to.include('illegal argument addressid'));",
              ]),
-        *_cleanup_lb(),
     ],
 ))
 
@@ -609,18 +624,17 @@ CASES.append(Case(
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         # Step 1: delete LB while it still owns a listener → rejected ("not empty").
+        # Refused SYNCHRONOUSLY (loadbalancer/delete.go precheck -> FAILED_PRECONDITION ->
+        # HTTP 400). Accepting 200 would have let the teardown journey pass with its first
+        # ordering constraint gone, and the follow-up `if (j.error)` made the code assertion
+        # conditional on the refusal it was supposed to establish.
         Step(name="delete-lb-not-empty", method="DELETE", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[
-                 "pm.test('delete rejected while LB not empty', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
-                 *save_from_response("j.id", "opId"),
-             ]),
-        poll_operation_until_done(),
-        Step(name="check-not-empty-fp", method="GET", path="/operations/{{opId}}",
-             test_script=[
-                 "const j = pm.response.json();",
-                 "if (j.error) pm.test('FAILED_PRECONDITION (load balancer is not empty)', () => "
-                 "  pm.expect(j.error.code).to.eql(9));",
+                 "pm.environment.unset('opId');",
+                 *assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
+                 "pm.test('says the load balancer still owns listeners', () => "
+                 "  pm.expect((pm.response.json().message || '')).to.match("
+                 "    /NetworkLoadBalancer .+ has listener\\(s\\); delete first/));",
              ]),
         Step(name="lb-still-exists", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(200),
@@ -650,20 +664,26 @@ CASES.append(Case(
         Step(name="lb-gone", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
         # Step 6: delete TG (no listener reference, drained) → succeeds.
+        # THE PAYOFF of the whole journey: every ordering constraint has been satisfied, so
+        # the delete must go through. Accepting a refusal (`oneOf([200, 400, 409])`) meant
+        # the teardown could fail at its last step and the case would still report that
+        # bottom-up teardown works.
         Step(name="delete-tg", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
              test_script=[
-                 "pm.test('TG delete accepted (drained, detached)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
+                 "pm.test('TG delete accepted once drained and unreferenced', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                  *save_from_response("j.id", "opId"),
              ]),
-        poll_operation_until_done(),
+        poll_operation_until_done(must_succeed=True),
+        Step(name="tg-gone", method="GET", path=f"{_TG_BASE}/{{{{tgId}}}}",
+             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
     ],
 ))
 
 CASES.append(Case(
     id="XRES-E2E-DELETE-LB-NOT-EMPTY-FP",
     title="UC-5 negative: Delete LB that still owns a listener → FAILED_PRECONDITION "
-          "'load balancer is not empty' (Verifies 6.0-36 step 1)",
+          "'NetworkLoadBalancer <id> has listener(s); delete first' (Verifies 6.0-36 step 1)",
     classes=["NEG", "STATE"], priority="P0",
     steps=[
         *_create_external_lb("del-notempty"),
@@ -673,21 +693,30 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
+        # THE ONE THING THIS CASE IS FOR. The guard is a SYNC precheck — Delete asks
+        # whether the LB still has listeners and refuses FAILED_PRECONDITION before an
+        # Operation is minted (loadbalancer/delete.go, "Sync prechecks"), which
+        # grpc-gateway renders as HTTP 400. There is nothing to poll afterwards.
+        #
+        # What stood here accepted 200 — the delete going THROUGH — as a pass, and BOTH
+        # statements about FAILED_PRECONDITION were conditional on a refusal having already
+        # happened, so removing the guard entirely left the case green. A P0 negative whose
+        # only subject is a guard cannot be satisfied by that guard being absent. The
+        # message is pinned too: the product says which resource blocks and why, and that
+        # wording is contract (the title's old paraphrase "load balancer is not empty" was
+        # never the text the service returns).
         Step(name="delete-blocked", method="DELETE", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[
-                 "pm.test('delete rejected while a listener exists', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
-                 "if (pm.response.code === 400 || pm.response.code === 409) "
-                 "  pm.test('grpc FAILED_PRECONDITION (9)', () => pm.expect(pm.response.json().code).to.eql(9));",
-                 *save_from_response("j.id", "opId"),
+                 "pm.environment.unset('opId');",
+                 *assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
+                 "pm.test('says the load balancer still owns listeners', () => "
+                 "  pm.expect((pm.response.json().message || '')).to.match("
+                 "    /NetworkLoadBalancer .+ has listener\\(s\\); delete first/));",
              ]),
-        poll_operation_until_done(),
-        Step(name="check-async-fp", method="GET", path="/operations/{{opId}}",
-             test_script=[
-                 "const j = pm.response.json();",
-                 "if (j.error) pm.test('async error is FAILED_PRECONDITION (9)', () => "
-                 "  pm.expect(j.error.code).to.eql(9));",
-             ]),
+        Step(name="lb-survived-the-refusal", method="GET", path=f"{_LB_BASE}/{{{{nlbId}}}}",
+             test_script=[*assert_status(200),
+                          "pm.test('LB still exists after the refused delete', () => "
+                          "  pm.expect(pm.response.json().id).to.eql(pm.environment.get('nlbId')));"]),
         # Cleanup in the lawful order: listener first, then LB.
         *_cleanup_lst(),
         *_cleanup_lb(),

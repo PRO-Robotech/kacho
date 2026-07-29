@@ -248,6 +248,24 @@ CASES.append(Case(
 # ---------------------------------------------------------------------------
 # Validation — health_check semantics
 # ---------------------------------------------------------------------------
+#
+# Every negative below states a REFUSAL, so none of them may accept 200. They used to
+# read `oneOf([200, 400])` under the banner "sync or async", and with nothing checked
+# after the 200 that reduced to no assertion at all: the case was satisfied by the
+# product ACCEPTING exactly the input it exists to prove illegal.
+#
+# The lane is not a guess. TargetGroup.Create validates SYNCHRONOUSLY, before the
+# Operation is minted — required fields, then `domain.TargetGroup.Validate()`, which
+# combines name/description/labels (cardinality <= 64 and per-key/value form),
+# health-check oneof + bounds, port, deregistration_delay / slow_start whole-seconds
+# and range, target cardinality and the per-target oneof + bogon check
+# (services/nlb/internal/apps/kacho/api/targetgroup/create.go, Execute -> "---- Sync
+# validation ----"; services/nlb/internal/domain/target_group.go, Validate). All of it
+# answers INVALID_ARGUMENT, i.e. HTTP 400 with grpc code 3. So these assert exactly that.
+#
+# Refusals decided by the WORKER (an unresolvable peer, a DB constraint) are a different
+# lane and get `assert_refused_sync_or_async` + `poll_operation_until_done(must_fail=True)`
+# — see TGR-CR-NEG-REGION-UNKNOWN below.
 
 CASES.append(Case(
     id="TGR-CR-VAL-HC-MULTIPLE-PROBES",
@@ -261,8 +279,7 @@ CASES.append(Case(
                                    "tcp": {"port": 8080},
                                    "http": {"port": 8080, "path": "/"}}},
              test_script=[
-                 "pm.test('rejected (sync 400 or async error)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                  *save_from_response("j.id", "opId"),
              ]),
         poll_operation_until_done(),
@@ -279,7 +296,7 @@ CASES.append(Case(
                    "healthCheck": {"interval": "2s", "timeout": "1s",
                                    "unhealthyThreshold": 3, "healthyThreshold": 2}},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))
@@ -293,7 +310,7 @@ CASES.append(Case(
              body={**_TG_BODY, "name": "hc-int-0-{{runId}}",
                    "healthCheck": {**_HEALTH_CHECK_DEFAULT, "interval": "0s"}},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))
@@ -307,7 +324,7 @@ CASES.append(Case(
              body={**_TG_BODY, "name": "hc-int-over-{{runId}}",
                    "healthCheck": {**_HEALTH_CHECK_DEFAULT, "interval": "601s"}},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))
@@ -321,7 +338,7 @@ CASES.append(Case(
              body={**_TG_BODY, "name": "hc-thr-low-{{runId}}",
                    "healthCheck": {**_HEALTH_CHECK_DEFAULT, "unhealthyThreshold": 1}},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))
@@ -335,7 +352,7 @@ CASES.append(Case(
              body={**_TG_BODY, "name": "hc-thr-hi-{{runId}}",
                    "healthCheck": {**_HEALTH_CHECK_DEFAULT, "unhealthyThreshold": 11}},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))
@@ -348,7 +365,7 @@ CASES.append(Case(
         Step(name="cr-dereg-neg", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "dereg-neg-{{runId}}", "deregistrationDelay": "-1s"},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))
@@ -361,7 +378,7 @@ CASES.append(Case(
         Step(name="cr-dereg-over", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "dereg-over-{{runId}}", "deregistrationDelay": "3601s"},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))
@@ -374,7 +391,7 @@ CASES.append(Case(
         Step(name="cr-ss-neg", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "ss-neg-{{runId}}", "slowStart": "-1s"},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))
@@ -387,7 +404,7 @@ CASES.append(Case(
         Step(name="cr-ss-over", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "ss-over-{{runId}}", "slowStart": "901s"},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))
@@ -401,8 +418,7 @@ CASES.append(Case(
              body={**_TG_BODY, "name": "tg-65lbl-{{runId}}",
                    "labels": {f"k{i}": f"v{i}" for i in range(65)}},
              test_script=[
-                 "pm.test('rejected (sync or async)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))
@@ -421,7 +437,7 @@ CASES.append(Case(
              body={**_TG_BODY, "name": "no-id-{{runId}}",
                    "targets": [{"weight": 100}]},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))
@@ -436,7 +452,7 @@ CASES.append(Case(
                    "targets": [{"instanceId": "epdany00000000000000",
                                 "externalIp": {"address": "8.8.8.8"}, "weight": 100}]},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))
@@ -459,7 +475,7 @@ for label, addr in _BOGONS:
                  body={**_TG_BODY, "name": f"bogon-{label.lower()}-{{{{runId}}}}",
                        "targets": [{"externalIp": {"address": addr}, "weight": 100}]},
                  test_script=[
-                     "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                     *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                  ]),
         ],
     ))
@@ -469,13 +485,16 @@ CASES.append(Case(
     title="Create TG with unknown region_id → NotFound",
     classes=["NEG"], priority="P0",
     steps=[
+        # Region existence is peer-checked by the WORKER (create.go doCreate -> geo
+        # RegionService.Get), not by the sync validator, so the lawful refusal can arrive
+        # on either side of the Operation boundary. Both are refusals and both are now
+        # checked; a 200 whose Operation then SUCCEEDS — the product accepting an unknown
+        # region — is what the old `oneOf([200, 400, 404])` let through unexamined.
         Step(name="cr-bad-region", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "regionId": "{{garbageRegionId}}",
                    "name": "tg-bad-region-{{runId}}"},
-             test_script=[
-                 "pm.test('rejected (sync or async)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
-             ]),
+             test_script=assert_refused_sync_or_async("unknown region_id")),
+        poll_operation_until_done(must_fail=True),
     ],
 ))
 
@@ -548,15 +567,24 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
         poll_operation_until_done(),
         # read-your-writes: the first self-access of the fresh TG can 403/404 until the
-        # owner-tuple materializes -> retry SELF; the real "blocked" assertion (200/400/409)
-        # then runs once the tuple is visible (a genuine block still surfaces, not masked).
+        # owner-tuple materializes -> retry SELF; the block assertion then runs once the
+        # tuple is visible.
+        #
+        # The block is a SYNC precheck: Delete enumerates listeners referencing this TG and
+        # refuses FAILED_PRECONDITION before minting an Operation (targetgroup/delete.go,
+        # "NLB-1-41: teardown RESTRICT friendly precheck"), which grpc-gateway renders as
+        # HTTP 400. The message is contract and is asserted, so a refusal for some OTHER
+        # reason cannot stand in for this one. What was here accepted 200 — the delete
+        # going THROUGH — as satisfying a case whose entire subject is that it must not.
         retry_until_authorized(Step(name="del-blocked", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
-                 *save_from_response("j.id", "opId"),
+                 "pm.environment.unset('opId');",
+                 *assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
+                 "pm.test('names the listeners that block the delete', () => "
+                 "  pm.expect((pm.response.json().message || '')).to.include("
+                 "    'target group is referenced by listeners'));",
              ])),
-        poll_operation_until_done(),
-        # Cleanup: delete the listener (releases the TG ref) → LB → TG
+        # Cleanup: delete the listener (releases the TG ref) -> LB -> TG
         Step(name="del-lst", method="DELETE", path="/nlb/v1/listeners/{{lstId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -579,14 +607,24 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
         poll_operation_until_done(),
         # read-your-writes: the first self-access of the fresh TG can 403/404 until the
-        # owner-tuple materializes -> retry SELF; the real "blocked" assertion (200/400/409)
-        # then runs once the tuple is visible (a genuine block still surfaces, not masked).
+        # owner-tuple materializes -> retry SELF; the block assertion then runs once the
+        # tuple is visible.
+        #
+        # THE SUBJECT OF THIS CASE. Delete counts the TG's targets in a SYNC precheck and
+        # refuses FAILED_PRECONDITION -> HTTP 400 before any Operation exists
+        # (targetgroup/delete.go). Accepting 200 here — and then asserting only that the
+        # Operation reached `done`, which a SUCCESSFUL delete satisfies too — meant a delete
+        # that went through with live targets passed the case whose whole purpose is to
+        # prove it cannot. The contract message is asserted so that some unrelated refusal
+        # cannot pose as this one.
         retry_until_authorized(Step(name="del-blocked", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
-                 *save_from_response("j.id", "opId"),
+                 "pm.environment.unset('opId');",
+                 *assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
+                 "pm.test('names the targets that block the delete', () => "
+                 "  pm.expect((pm.response.json().message || '')).to.match("
+                 "    /TargetGroup has \\d+ target\\(s\\); remove them first via RemoveTargets/));",
              ])),
-        poll_operation_until_done(),
         # Cleanup: drain + drop
         Step(name="rm-targets", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.51"}}]},
@@ -609,12 +647,14 @@ CASES.append(Case(
              body={"targets": [{"externalIp": {"address": "203.0.113.52"}, "weight": 100}]},
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
+        # Two refusal lanes, and which fires depends on where the added target becomes
+        # visible: the sync precheck counts it and refuses before the Operation exists, or
+        # the worker's DELETE hits the child-row FK (23503) and the Operation ends in error.
+        # Both are FAILED_PRECONDITION and both are now checked; the delete SUCCEEDING is
+        # not a lane, and that is what was being accepted.
         Step(name="del-race", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
-                 *save_from_response("j.id", "opId"),
-             ]),
-        poll_operation_until_done(),
+             test_script=assert_refused_sync_or_async("delete of a TG with a live target")),
+        poll_operation_until_done(must_fail=True),
         Step(name="rm-cleanup", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.52"}}]},
              test_script=[*save_from_response("j.id", "opId")]),
@@ -647,14 +687,21 @@ CASES.append(Case(
              test_script=[*save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
         poll_operation_until_done(),
+        # Move refuses SYNCHRONOUSLY while a listener still points at the TG
+        # (targetgroup/move.go: ReferencingListenerIDs non-empty -> FAILED_PRECONDITION
+        # "target group is referenced by N listener(s); repoint them before moving"), so
+        # there is no Operation to poll. The move being ACCEPTED is precisely the
+        # regression this case exists to catch, and it used to pass the case.
         Step(name="mv-blocked", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:move",
              body={"destinationProjectId": "{{_suiteProjectCrossId}}"},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
-                 *save_from_response("j.id", "opId"),
+                 "pm.environment.unset('opId');",
+                 *assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
+                 "pm.test('names the listeners that block the move', () => "
+                 "  pm.expect((pm.response.json().message || '')).to.match("
+                 "    /target group is referenced by \\d+ listener\\(s\\); repoint them before moving/));",
              ]),
-        poll_operation_until_done(),
-        # Cleanup: delete the listener (releases the TG ref) → LB → TG
+        # Cleanup: delete the listener (releases the TG ref) -> LB -> TG
         Step(name="del-lst", method="DELETE", path="/nlb/v1/listeners/{{lstId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -765,18 +812,26 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="TGR-CR-VAL-WRONG-CT",
-    title="POST without Content-Type → 415/400/200 lenient",
-    classes=["VAL", "NEG"], priority="P3",
+    title="POST without Content-Type → accepted (the edge marshaler is registered on MIMEWildcard)",
+    classes=["VAL"], priority="P3",
     steps=[
+        # This has a determinate answer, so the case states it. The public REST mux
+        # registers its JSON marshaler under `runtime.MIMEWildcard`
+        # (gateway/internal/restmux/mux.go), which is the fallback for a request declaring
+        # no Content-Type — the body parses and the create proceeds normally.
+        # `oneOf([200, 400, 415])` under the name "handled" could only fail on a 5xx: it
+        # accepted acceptance and both refusals, which is the same as asserting nothing
+        # about the edge's content negotiation. If this ever goes red, the marshaler
+        # registration changed and THAT is the finding.
         Step(name="cr-no-ct", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "noct-{{runId}}"},
              pre_script=["pm.request.headers.remove('Content-Type');"],
              test_script=[
-                 "pm.test('handled', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 415]));",
+                 *assert_status(200),
                  *save_from_response("j.id", "opId"),
                  *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId"),
              ]),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["tgId"]),
         Step(name="cleanup", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -888,7 +943,7 @@ CASES.append(Case(
              body={**_TG_BODY, "name": "tg-lbl-upper-{{runId}}",
                    "labels": {"BADKEY": "v"}},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
     ],
 ))
@@ -912,26 +967,31 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="TGR-CR-VAL-TG-NAME-COLLISION-CROSS-REGION",
-    title="Same name in different region → allowed (project_id+name UNIQUE, region orthogonal)",
-    classes=["VAL"], priority="P2",
+    title="Same name in another region of the same project → AlreadyExists "
+          "(the name is UNIQUE per project; region is not part of the key)",
+    classes=["VAL", "CONF"], priority="P2",
     steps=[
         Step(name="cr-r1", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "name": "xreg-{{runId}}"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["tgId"]),
+        # The old assertion accepted 200 AND 409 under a title declaring the second create
+        # ALLOWED, so whichever way the product behaved the case agreed with itself. There
+        # is one answer: the uniqueness key is (project_id, name) — partial UNIQUE index
+        # `target_groups_project_name_uniq` (migration 0001) with the sync `assertNameUnique`
+        # precheck in front of it (targetgroup/create.go) — and region_id is not in it. A
+        # second create of the same name in the same project is therefore a COLLISION,
+        # whatever region it names.
         Step(name="cr-r2", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "regionId": "{{_suiteRegionAltId}}", "name": "xreg-{{runId}}"},
              test_script=[
-                 "pm.test('rejected (UNIQUE on project_id+name only) or allowed', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
-                 *save_from_response("j.id", "opId"),
-                 *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId2"),
+                 "pm.environment.unset('opId');",
+                 *assert_status(409), *assert_grpc_code(6, "ALREADY_EXISTS"),
+                 "pm.test('names the colliding target group and its project', () => "
+                 "  pm.expect((pm.response.json().message || '')).to.match("
+                 "    /TargetGroup '.+' already exists in project /));",
              ]),
-        poll_operation_until_done(),
-        Step(name="cleanup-2", method="DELETE", path=f"{_TG_BASE}/{{{{tgId2}}}}",
-             test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
         *_cleanup_tg(),
     ],
 ))

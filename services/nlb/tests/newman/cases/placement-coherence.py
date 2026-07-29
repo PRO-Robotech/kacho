@@ -227,10 +227,13 @@ CASES.append(Case(
                  "  pm.test('no cross-region subnet fixture → lawful rejection, never silent 200', () => "
                  "    pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
                  "} else {",
-                 "  // single-region stand: same-region subnet lawfully accepted (async op) — capture",
-                 "  // the LB so its VIP/list contracts get cleaned up, never a leaked cross-tenant 200.",
-                 "  pm.test('single-region: same-region subnet lawfully accepted (cross-region needs a 2nd geo region)', () => "
-                 "    pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 503]));",
+                 "  // single-region stand: the 'alt' region resolved to the SAME region, so the",
+                 "  // REGIONAL subnet is region-coherent and the create is lawful — it must be",
+                 "  // ACCEPTED. Accepting 400/404/503 as well made this branch unfailable: on a",
+                 "  // single-region stand it agreed with every possible answer, so a coherence",
+                 "  // check that started refusing its OWN region would still have passed.",
+                 "  pm.test('single-region: a same-region subnet is accepted (cross-region needs a 2nd geo region)', () => "
+                 "    pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                  "  const j = pm.response.json();",
                  "  if (pm.response.code === 200) { if (j.id) pm.environment.set('opId', j.id); if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('zcLeakLbId', j.metadata.networkLoadBalancerId); }",
                  "}",
