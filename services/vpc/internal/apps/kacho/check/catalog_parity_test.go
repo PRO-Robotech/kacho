@@ -9,23 +9,26 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/authz/catalogparity"
 )
 
-// knownCatalogDivergences — vpc's map asks for the READ TIER (`viewer`) on List where
-// the catalog asks for the VERB relation (`v_list`).
+// knownCatalogDivergences — none. vpc's map mirrors the catalog exactly.
 //
-// Left in place deliberately rather than mirrored: `viewer` and `v_list` are
-// independent sets in the model, so the effective requirement today is their
-// intersection, and dropping the `viewer` conjunct would ADMIT principals who hold
-// only `v_list`. That is what the catalog says should happen, but widening access is
-// not something to do as a side effect of a consistency fix. The gate exists so the
-// set cannot grow while the decision is pending.
-var knownCatalogDivergences = []string{
-	`/kacho.cloud.vpc.v1.AddressService/List: catalog requires relation "v_list", service map requires "viewer"`,
-	`/kacho.cloud.vpc.v1.GatewayService/List: catalog requires relation "v_list", service map requires "viewer"`,
-	`/kacho.cloud.vpc.v1.NetworkInterfaceService/List: catalog requires relation "v_list", service map requires "viewer"`,
-	`/kacho.cloud.vpc.v1.RouteTableService/List: catalog requires relation "v_list", service map requires "viewer"`,
-	`/kacho.cloud.vpc.v1.SecurityGroupService/List: catalog requires relation "v_list", service map requires "viewer"`,
-	`/kacho.cloud.vpc.v1.SubnetService/List: catalog requires relation "v_list", service map requires "viewer"`,
-}
+// It did not always. Six top-level List RPCs used to sit here because the catalog
+// named the project's `v_list` verb while this map enforced the read tier `viewer`,
+// and in the model neither relation is derived from the other — so the effective
+// requirement was their INTERSECTION and a subject granted exactly what the catalog
+// declared could not list at all. The entry stood on the reading that the catalog was
+// right and the map over-strict, which made removing the `viewer` conjunct a widening
+// nobody wanted to do in passing.
+//
+// That reading was wrong, and the platform's own convention settles it: the write
+// tier `editor` — not `v_create` — already gated Create on the very same project
+// scope in BOTH artefacts, and storage's three project-scoped List RPCs plus iam's
+// ConditionsService/List already named `viewer` there with no divergence at all.
+// `v_list` on a project is object-level access to the PROJECT ITSELF (the model says
+// of that verb set: "never to its contents"), so it was answering a different
+// question than "may this subject list what is inside". The annotations were
+// corrected and the catalog regenerated; the requirement the catalog states is now
+// the one enforced.
+var knownCatalogDivergences []string
 
 // TestPermissionMapMirrorsCatalog locks this service's in-process authz map to the
 // generated permission catalog — the artefact the api-gateway enforces.

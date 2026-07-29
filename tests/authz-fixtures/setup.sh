@@ -1237,13 +1237,17 @@ USER_LF_NG=$(upsert_user_grpc "authz-lf-no-subnet-grant@example.com" "authz-lf-n
 JWT_LF_SV=$(mint_user_jwt "authz-lf-subset-viewer@example.com")
 JWT_LF_NG=$(mint_user_jwt "authz-lf-no-subnet-grant@example.com")
 if [ -n "$USER_LF_SV" ] && [ -n "$LF_PROJ" ]; then
-  # method-gate: api-gateway permission-catalog гейтит SubnetService.List
-  # verb-relation'ом `v_list` НА project (explicit-RBAC model — не tier `viewer`;
-  # deny: «lacks relation v_list on project ... action vpc.subnetses.list»).
-  # ОБА субъекта получают project#v_list → List отдаёт 200; но visibility
+  # method-gate: каталог прав гейтит SubnetService.List читательским ЯРУСОМ
+  # `viewer` НА project — той же осью, что и Create с ярусом `editor`. Тут
+  # выдаётся ровно объявленное каталогом: в этом весь смысл фикстуры.
+  # До 2026-07-29 каталог называл здесь глагол `v_list`, а сервис требовал
+  # `viewer`; в модели одно из другого не выводится, поэтому засеянные субъекты
+  # проходили один гейт и не проходили второй — при живом гранте. Аннотации
+  # исправлены; значение переехало, замысел блока прежний.
+  # ОБА субъекта получают project#viewer → List отдаёт 200; но visibility
   # per-object (ниже) не каскадит с project-уровня → no-grant видит пусто.
-  fga_write "user:$USER_LF_SV" "v_list" "project:$LF_PROJ"
-  fga_write "user:$USER_LF_NG" "v_list" "project:$LF_PROJ"
+  fga_write "user:$USER_LF_SV" "viewer" "project:$LF_PROJ"
+  fga_write "user:$USER_LF_NG" "viewer" "project:$LF_PROJ"
   # per-object visibility: List-filter = `viewer ∪ v_list` на vpc_subnet →
   # v_list делает visible-subnet виден в List; v_get даёт Get==enforce (200).
   # ТОЛЬКО на visible для S. Hidden — никому (no-leak: List-absent + Get→404).

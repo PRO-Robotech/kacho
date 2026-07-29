@@ -867,7 +867,7 @@ const file_kacho_cloud_vpc_v1_gateway_service_proto_rawDesc = "" +
 	"\x03Get\x12%.kacho.cloud.vpc.v1.GetGatewayRequest\x1a\x1b.kacho.cloud.vpc.v1.Gateway\"e\x8a\xb5\x18\x11vpc.gatewaies.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x19\n" +
 	"\vvpc_gateway\x12\n" +
 	"gateway_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1f\x12\x1d/vpc/v1/gateways/{gateway_id}\x12\xb2\x01\n" +
-	"\x04List\x12'.kacho.cloud.vpc.v1.ListGatewaysRequest\x1a(.kacho.cloud.vpc.v1.ListGatewaysResponse\"W\x8a\xb5\x18\x13vpc.gatewayses.list\x92\xb5\x18\x06v_list\x9a\xb5\x18\x15\n" +
+	"\x04List\x12'.kacho.cloud.vpc.v1.ListGatewaysRequest\x1a(.kacho.cloud.vpc.v1.ListGatewaysResponse\"W\x8a\xb5\x18\x13vpc.gatewayses.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x12\x12\x10/vpc/v1/gateways\x12\xd5\x01\n" +
 	"\x06Create\x12(.kacho.cloud.vpc.v1.CreateGatewayRequest\x1a .kacho.cloud.operation.Operation\"\x7f\x8a\xb5\x18\x14vpc.gatewaies.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +

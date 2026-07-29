@@ -1456,7 +1456,7 @@ const file_kacho_cloud_vpc_v1_address_service_proto_rawDesc = "" +
 	"GetByValue\x12,.kacho.cloud.vpc.v1.GetAddressByValueRequest\x1a\x1b.kacho.cloud.vpc.v1.Address\"n\x8a\xb5\x18 vpc.address_by_values.getByValue\x92\xb5\x18\x05v_get\x9a\xb5\x18\x17\n" +
 	"\n" +
 	"vpc_subnet\x12\tsubnet_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1b\x12\x19/vpc/v1/addresses:byValue\x12\xb6\x01\n" +
-	"\x04List\x12(.kacho.cloud.vpc.v1.ListAddressesRequest\x1a).kacho.cloud.vpc.v1.ListAddressesResponse\"Y\x8a\xb5\x18\x14vpc.addresseses.list\x92\xb5\x18\x06v_list\x9a\xb5\x18\x15\n" +
+	"\x04List\x12(.kacho.cloud.vpc.v1.ListAddressesRequest\x1a).kacho.cloud.vpc.v1.ListAddressesResponse\"Y\x8a\xb5\x18\x14vpc.addresseses.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x13\x12\x11/vpc/v1/addresses\x12\xea\x01\n" +
 	"\fListBySubnet\x120.kacho.cloud.vpc.v1.ListAddressesBySubnetRequest\x1a1.kacho.cloud.vpc.v1.ListAddressesBySubnetResponse\"u\x8a\xb5\x18%vpc.addresses_by_subnets.listBySubnet\x92\xb5\x18\x06v_list\x9a\xb5\x18\x17\n" +

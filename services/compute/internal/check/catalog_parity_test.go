@@ -9,20 +9,22 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/authz/catalogparity"
 )
 
-// knownCatalogDivergences — compute's map asks for the READ TIER (`viewer`) where the
-// catalog asks for the VERB relation (`v_list` / `v_get`).
+// knownCatalogDivergences — none. compute's map mirrors the catalog exactly.
 //
-// These are left in place deliberately rather than mirrored, because mirroring would
-// WIDEN effective access. `viewer` and `v_list` are independent sets in the model
-// (`viewer: [direct] or editor`, while `v_list` is a direct userset), so today's
-// effective requirement is their intersection. Dropping the `viewer` conjunct admits
-// a principal holding only `v_list` — exactly the principal the catalog says should
-// pass, but a widening nonetheless, and widening access is not a change to make as a
-// side effect of a consistency fix. Resolving these belongs to a deliberate decision
-// about the read model, not to this gate; the gate exists so the set cannot grow.
-var knownCatalogDivergences = []string{
-	`/kacho.cloud.compute.v1.InstanceService/List: catalog requires relation "v_list", service map requires "viewer"`,
-}
+// InstanceService/List used to sit here: the catalog named the project's `v_list`
+// verb while this map enforces the read tier `viewer`, and neither relation is
+// derived from the other in the model — so the effective requirement was their
+// INTERSECTION, and a subject granted exactly what the catalog declared could not
+// list. The entry was written on the reading that the catalog was right, which made
+// resolving it look like a widening.
+//
+// It was the annotation that was wrong. On the same project scope, Create is gated by
+// the write tier `editor` — not `v_create` — in BOTH artefacts, and storage's
+// project-scoped List RPCs already named `viewer` with no divergence; `v_list` on a
+// project is object-level access to the PROJECT ITSELF, not to what it contains. The
+// annotation was corrected and the catalog regenerated. Same change, same reasoning,
+// as the six vpc List RPCs.
+var knownCatalogDivergences []string
 
 // TestPermissionMapMirrorsCatalog locks this service's in-process authz map to the
 // generated permission catalog — the artefact the api-gateway enforces.

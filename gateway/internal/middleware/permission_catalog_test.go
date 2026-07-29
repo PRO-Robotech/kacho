@@ -470,6 +470,13 @@ func TestPermissionCatalog_ListPermissionCatalog_ExemptAndTombstones(t *testing.
 // surface/relation downgrade on cluster-internal admin methods), and exempt
 // RPCs stay exempt. The embedded catalog is kept in sync with proto-gen via
 // `make sync-permission-catalog`.
+//
+// The dividing line is the SCOPE, not the verb in the method name. A method scoped
+// on the object itself takes the object's verb; a method scoped on the parent
+// project takes a project TIER — `editor` to create into it, `viewer` to list what
+// is in it. Reading the line off the verb alone is how seven top-level List RPCs
+// came to demand the project's own `v_list`, which the model defines as access to
+// the project object and explicitly "never to its contents".
 func TestPermissionCatalog_VBC22_VerbBearingFlip(t *testing.T) {
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
@@ -483,7 +490,20 @@ func TestPermissionCatalog_VBC22_VerbBearingFlip(t *testing.T) {
 		{"kacho.cloud.iam.v1.UserService/Get", "v_get", "object-self get"},
 		{"kacho.cloud.vpc.v1.NetworkService/Get", "v_get", "object-self get"},
 		{"kacho.cloud.compute.v1.InstanceService/Get", "v_get", "object-self get"},
-		{"kacho.cloud.compute.v1.InstanceService/List", "v_list", "object-self list"},
+		// Object-self LIST means "list what hangs off THIS object", so its scope is the
+		// object (compute_instance/instance_id). This row used to name
+		// InstanceService/List — a top-level list scoped on project/project_id, i.e. not
+		// object-self at all — and so asserted the verb-bearing rule about a method
+		// outside its reach. ListOperations is the real instance of the rule.
+		{"kacho.cloud.compute.v1.InstanceService/ListOperations", "v_list", "object-self list"},
+		{"kacho.cloud.vpc.v1.SubnetService/ListOperations", "v_list", "object-self list"},
+		// Top-level project list → READ TIER on the parent project, the same axis
+		// create-child takes with `editor`. The project's own `v_list` is object-level
+		// access to the PROJECT ITSELF, never to its contents, so it is not the question
+		// this method asks; rows are narrowed per object by the owning service's filter.
+		{"kacho.cloud.compute.v1.InstanceService/List", "viewer", "top-level project list → read tier"},
+		{"kacho.cloud.vpc.v1.SubnetService/List", "viewer", "top-level project list → read tier"},
+		{"kacho.cloud.storage.v1.VolumeService/List", "viewer", "top-level project list → read tier (unchanged, the convention this follows)"},
 		// account/project get → v_get (List stays use-case viewer∪v_list)
 		{"kacho.cloud.iam.v1.AccountService/Get", "v_get", "account get → v_get (R6)"},
 		{"kacho.cloud.iam.v1.ProjectService/Get", "v_get", "project get → v_get (R6)"},

@@ -4,11 +4,20 @@
 """VPC list-filter-d fixtures on top of the production-mode SA matrix (#59).
 
 Per-object filtered-List needs FGA tuples that the public AccessBinding API cannot
-express (vpc_subnet object-scope). Subject S (subset-viewer) gets project#v_list
+express (vpc_subnet object-scope). Subject S (subset-viewer) gets project#viewer
 (method-gate) + vpc_subnet#v_list/v_get on ONE visible subnet; subject N
-(no-subnet-grant) gets project#v_list only (List returns 200 empty — project tier
-does NOT cascade visibility onto subnets in the explicit model). The hidden subnet
-is granted to nobody (no-leak). Both subjects are RS256 ServiceAccount principals.
+(no-subnet-grant) gets project#viewer only (List returns 200 empty — the read tier
+on the project does NOT cascade visibility onto subnets in the explicit model). The
+hidden subnet is granted to nobody (no-leak). Both subjects are RS256 ServiceAccount
+principals.
+
+The project-level tuple grants exactly the relation the permission catalog declares
+for a top-level project List, which is the whole point of these fixtures: a subject
+handed precisely what the catalog states must be able to list. It said `v_list` until
+2026-07-29 and the service enforced the read tier `viewer`; since neither relation is
+derived from the other, the seeded subjects satisfied one gate and not the other and
+the three list cases were red on a live grant. The annotations were corrected, so this
+now writes `viewer` — the value has moved, the intent has not.
 
 Reads /tmp/matrix.json (boot token + acctA), seeds the resources + tuples, and
 emits ONLY the list-filter extra fixtures on stdout.
@@ -66,9 +75,9 @@ tok_sv = pm.sa_token(sva_sv)
 tok_ng = pm.sa_token(sva_ng)
 
 # 3) FGA tuples (service_account subjects).
-#    method-gate: both get project#v_list → List returns 200 (not method-403).
-fga_write(f"service_account:{sva_sv}", "v_list", f"project:{lf_proj}")
-fga_write(f"service_account:{sva_ng}", "v_list", f"project:{lf_proj}")
+#    method-gate: both get project#viewer → List returns 200 (not method-403).
+fga_write(f"service_account:{sva_sv}", "viewer", f"project:{lf_proj}")
+fga_write(f"service_account:{sva_ng}", "viewer", f"project:{lf_proj}")
 #    per-object visibility: only S sees the visible subnet; hidden granted to nobody.
 fga_write(f"service_account:{sva_sv}", "v_list", f"vpc_subnet:{lf_vis}")
 fga_write(f"service_account:{sva_sv}", "v_get", f"vpc_subnet:{lf_vis}")

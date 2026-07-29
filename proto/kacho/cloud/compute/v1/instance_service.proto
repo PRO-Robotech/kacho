@@ -39,7 +39,15 @@ service InstanceService {
   rpc List(ListInstancesRequest) returns (ListInstancesResponse) {
     option (google.api.http) = {get: "/compute/v1/instances"};
     option (kacho.iam.authz.v1.permission)        = "compute.instanceses.list";
-    option (kacho.iam.authz.v1.required_relation) = "v_list";
+    // Top-level List is gated by the READ TIER on the parent project, not by the
+    // project's own `v_list` verb. In the model those are independent sets, and
+    // `project#v_list` means object-level access to the PROJECT ITSELF — the model
+    // says of the `v_*` set "never to its contents" — so it answers a different
+    // question than "may this subject list what is inside". The tier is the same
+    // axis Create already takes here (`editor`), and the same convention the
+    // storage/iam project-scoped List RPCs carry. Rows stay narrowed per object by
+    // the owning service's list filter; this option only decides who may ask.
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "project"
       from_request_field: "project_id"
