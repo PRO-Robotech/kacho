@@ -164,8 +164,15 @@ function runFolder(tc) {
       const rq = (summary && summary.run && summary.run.stats && summary.run.stats.requests) || { total: 0 };
       const runErrs = (summary && summary.run && summary.run.failures) || [];
       const failed = a.failed + (err ? 1 : 0);
-      const status = (err || a.failed > 0 || runErrs.length > 0) ? 'FAIL' : 'PASS';
-      resolve({ status, assertions: a.total, failed, requests: rq.total, ms, err: err && err.message, failures: runErrs.map(f => ({ name: f.source && f.source.name, err: f.error && f.error.message })) });
+      // MUTE — кейс отработал и не задал НИ ОДНОГО вопроса. До этой ветки он приходил
+      // сюда неотличимым от идеального (0 упало, 0 ошибок доставки) и попадал в PASS:
+      // «не выполнилось» шло в зачёт «прошло». Суита, которая ничего не спросила, не
+      // может быть зелёной — тот же класс, что немой отчёт в вердикте run.sh.
+      const mute = !err && a.total === 0;
+      const status = (err || a.failed > 0 || runErrs.length > 0 || mute) ? 'FAIL' : 'PASS';
+      resolve({ status, assertions: a.total, failed, requests: rq.total, ms, mute,
+                err: err && err.message,
+                failures: runErrs.map(f => ({ name: f.source && f.source.name, err: f.error && f.error.message })) });
     });
   });
 }

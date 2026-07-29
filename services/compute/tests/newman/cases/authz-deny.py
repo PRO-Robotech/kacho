@@ -39,48 +39,18 @@ def deny_asserts(case_id):
 
 
 def allow_asserts(case_id):
+    """ALLOW — субъект, у которого доступ ЕСТЬ, обязан его получить: не 403 и не 401.
+
+    Строгое утверждение, ровно как у vpc, эталона этой матрицы. Downstream-валидация
+    вправе ответить 400/404/409 (тело кейса умышленно не резолвится — предмет матрицы
+    решение о доступе, а не создание), но authz-отказ на ALLOW-строке — регрессия прав,
+    и она обязана валить кейс. Толерантность к 403 здесь была бы отсутствием
+    утверждения: строка зеленела бы ровно на том отказе, который обязана поймать."""
     return [
-        f"pm.test('[{case_id}] ALLOW: not 403', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+        f"pm.test('[{case_id}] ALLOW: not 403 PermissionDenied', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+        f"pm.test('[{case_id}] ALLOW: not 401 Unauthenticated', () => pm.expect(pm.response.code, 'unexpected 401: ' + pm.response.text()).to.not.equal(401));",
         "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-        f"pm.test('[{case_id}] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));",
-    ]
-
-
-def allow_or_authzfirst_asserts(case_id):
-    """ALLOW-субъект на project-scoped CR/UP/DL/GT, где api-gateway scope_extractor
-    fail-close'ит 403 ДО per-subject backend-Check — authz-first ordering (security.md
-    §object-scoped authz). Толерантно к 200|400|403|404|409 (allowed / backend-reject /
-    gateway scope|absent-id fail-close); 401 (code 16, потерянная аутентификация)
-    по-прежнему FAIL. Паритет с gen.py assert_unscoped_rejected/assert_absent_id_rejected
-    (403|400|404) и vpc authz-deny (garbage-id mutation-deny 403).
-
-    Толерантность НЕ маскирует security-инвариант: DENY/UNAUTH/READ-DENY остаются строгими
-    (утечка 200-где-нужен-deny всё так же валит suite), и применяется она ТОЛЬКО к
-    project-scoped ALLOW; catalog-read ALLOW (DiskType, публичный read → 200) сохраняет
-    строгий allow_asserts.
-
-    Живой defensible-403 flavor остался один:
-      * UP/DL garbage-id — мутация над несуществующим объектом: scope garbage-id не
-        резолвится → fail-close 403 (либо backend 404).
-
-    LS сюда БОЛЬШЕ НЕ ХОДИТ: список адресуется `?projectId=` (mode="list"), scope
-    резолвится, и List отвечает по scope-filtered контракту — см. list_allow_asserts /
-    list_deny_asserts.
-
-    NB (обязательный follow-up, требует ЖИВОГО стенда): для CR-OWN/CR-CROSS этот flavor
-    БОЛЬШЕ НЕ ДЕЙСТВУЕТ. Тело Create теперь несёт `projectId` — ровно то поле, которое
-    извлекает каталог (`{Instance,Disk,Image,Snapshot}Service/Create` → scope_extractor
-    {project, project_id}), — поэтому scope резолвится и защитимого 403 у ALLOW-субъекта
-    не остаётся. Пока здесь стоит толерантный oneOf, CR-ALLOW-строка не утверждает почти
-    ничего: она зеленеет и на 403, то есть ровно на том отказе, который обязана поймать.
-    Первый прогон на живом стенде обязан перевести CR-OWN/CR-CROSS на строгий
-    allow_asserts (`not 403`); здесь этого не сделано осознанно — это утверждение о
-    ПОВЕДЕНИИ, а правка статическая, стенда нет, и «зелёное по догадке» было бы той же
-    формой без содержания с обратным знаком."""
-    return [
-        f"pm.test('[{case_id}] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => "
-        f"pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-        "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
+        f"pm.test('[{case_id}] ALLOW: not grpc PERMISSION_DENIED (7)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(7));",
         f"pm.test('[{case_id}] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));",
     ]
 
@@ -149,30 +119,45 @@ def read_deny_asserts(case_id):
     ]
 
 
-def _is_single_resource_get(path):
-    # A single-resource Get targets one object: the path's last segment is a concrete id
-    # — a `{{var}}` placeholder or a literal resource id (3-char prefix + ≥17 chars) —
-    # with NO query string. A List (collection) carries a ?query (e.g. ?projectId=…) or
-    # ends in the bare plural (`/instances`); those are NOT single reads and a denied List
-    # stays PermissionDenied (403), not hidden as 404.
-    if "?" in path:
-        return False
-    last = path.rstrip("/").rsplit("/", 1)[-1]
-    if last.startswith("{{") and last.endswith("}}"):
-        return True
-    # Literal resource id: 3-char alpha prefix + ≥17 trailing alnum chars (matches the
-    # GARBAGE_ID format), distinguishing it from the bare plural collection name.
-    return len(last) >= 20 and last[:3].isalpha() and last[3:].isalnum()
-
-
 def emit(case_id_prefix, title, scope, method, path, body, subject, mode="gate", list_key=None):
     """mode:
-        gate — ALLOW/DENY по EXPECT[scope][code] (Create / Get / Update / Delete).
+        gate — ALLOW/DENY по EXPECT[scope][code]: субъект адресует РЕЗОЛВИМЫЙ scope
+               (Create несёт `projectId`), поэтому решение о доступе принимается по
+               матрице и каждая ветка требует СВОЕГО исхода: ANON→401, DENY→403+7,
+               ALLOW→не 403 и не 401.
         list — scope-filtered List: ANON→401; has-access→200|403; no-access→403|200+empty.
-    """
+        nf   — object-scoped Get по garbage-id: 404 + code 5 (hide-existence) для ЛЮБОГО
+               аутентифицированного субъекта, ANON→401.
+        deny — object-scoped Update/Delete по garbage-id: 403 + code 7 для ЛЮБОГО
+               аутентифицированного субъекта, ANON→401.
+
+    Почему garbage-id адресуется отдельными режимами, а не строкой матрицы. У этих шагов
+    объекта не существует, поэтому исход по построению НЕ зависит от прав вызывающего:
+    Get прячет существование (404 одинаков для «нет доступа» и «нет объекта» —
+    anti-enumeration), а мутация не резолвит scope и fail-close'ится 403. Раньше они
+    ходили через матрицу, и ALLOW-ветка вынуждена была принимать И успех, И отказ
+    (`oneOf([200,400,403,404,409])`) — то есть не утверждала ничего и не могла упасть на
+    регрессии прав. Режим определяется тем, что кейс реально спрашивает, и каждый режим
+    требует ОДНОГО исхода. Паритет с vpc, эталоном матрицы."""
     code, label, auth = subject
-    decision = EXPECT[scope][code]
     case_id = f"AUTHZ-{case_id_prefix}-{code}"
+    if mode in ("nf", "deny"):
+        if code == "ANON":
+            decision, asserts = "UNAUTH", unauth_asserts(case_id)
+        elif mode == "nf":
+            decision, asserts = "NF", read_deny_asserts(case_id)
+        else:
+            decision, asserts = "DENY", deny_asserts(case_id)
+        CASES.append(Case(
+            id=case_id,
+            title=f"[{decision}] {title} as {label} ({scope})",
+            classes=["AUTHZ", "NEG"],
+            priority="P1",
+            steps=[Step(name=method.lower(), method=method, path=path, body=body,
+                        auth=auth, test_script=asserts)],
+        ))
+        return
+    decision = EXPECT[scope][code]
     if mode == "list":
         if code == "ANON":
             decision, asserts = "UNAUTH", unauth_asserts(case_id)
@@ -205,29 +190,22 @@ def emit(case_id_prefix, title, scope, method, path, body, subject, mode="gate",
             # Get: missing credentials → UNAUTHENTICATED (16) → HTTP 401 ("credentials
             # required"), never PERMISSION_DENIED (403/7) nor the hide-existence 404.
             # unauthenticated ≠ unauthorized (authN precedes authz), so the whole
-            # anon row is 401/16 regardless of method/path.
-            asserts = unauth_asserts(case_id)
-        elif method == "GET" and _is_single_resource_get(path):
-            # Hide-existence: a denied single-resource Get on a verb-bearing compute
-            # resource → NotFound (404 / code 5), not 403. ONLY a single-resource Get
-            # (path ends in /{id}, no ?query) hides existence; a denied List stays
-            # PermissionDenied (403).
-            asserts = read_deny_asserts(case_id)
+            # anon row is 401/16 regardless of method/path. Метка кейса обязана назвать
+            # ИМЕННО этот исход: до правки шаг утверждал 401, а назывался `[DENY]` —
+            # заголовок обещал одно, утверждение требовало другого.
+            decision, asserts = "UNAUTH", unauth_asserts(case_id)
         else:
             asserts = deny_asserts(case_id)
     else:
-        # project-scoped ALLOW: gateway может authz-first fail-close'ить 403 на unscoped
-        # collection-op / absent garbage-id ДО per-subject Check → tolerant (см.
-        # allow_or_authzfirst_asserts). catalog-read ALLOW (публичный DiskType read →
-        # 200) сохраняет строгий not-403 allow_asserts.
-        if scope in ("project-A1", "project-B1"):
-            asserts = allow_or_authzfirst_asserts(case_id)
-        else:
-            asserts = allow_asserts(case_id)
+        # ALLOW на резолвимом scope: Create несёт `projectId` — ровно то поле, которое
+        # извлекает каталог (`InstanceService/Create` → scope_extractor {project,
+        # project_id}), — поэтому scope резолвится и защитимого authz-first 403 у
+        # ALLOW-субъекта не остаётся. Утверждение строгое: 403 здесь = регрессия прав.
+        asserts = allow_asserts(case_id)
     CASES.append(Case(
         id=case_id,
         title=f"[{decision}] {title} as {label} ({scope})",
-        classes=["AUTHZ", "NEG" if decision == "DENY" else "POS"],
+        classes=["AUTHZ", "POS" if decision == "ALLOW" else "NEG"],
         priority="P1",
         steps=[Step(name=method.lower(), method=method, path=path, body=body, auth=auth, test_script=asserts)],
     ))
@@ -252,13 +230,18 @@ def define_resource_cases(resource_name, plural, create_body_extra=None, support
         emit(f"{resource_name.upper()}-LS-CROSS", f"List {plural} в project-B1 (cross-account)",
              "project-B1", "GET", f"{plural_path}?projectId={{{{projectB1Id}}}}", None, subj,
              mode="list", list_key=plural)
+        # Garbage-id шаги: объекта нет, поэтому исход по построению одинаков для ВСЕХ
+        # аутентифицированных субъектов — Get прячет существование (404/5), мутация не
+        # резолвит scope и fail-close'ится (403/7). Режимы nf/deny требуют этого ОДНОГО
+        # исхода вместо прежней ALLOW-строки, принимавшей и успех, и отказ.
         emit(f"{resource_name.upper()}-GT", f"Get {resource_name} (garbage id)",
-             "project-A1", "GET", f"{plural_path}/{GARBAGE_ID}", None, subj)
+             "project-A1", "GET", f"{plural_path}/{GARBAGE_ID}", None, subj, mode="nf")
         if supports_update:
             emit(f"{resource_name.upper()}-UP", f"Update {resource_name} (garbage id)",
-                 "project-A1", "PATCH", f"{plural_path}/{GARBAGE_ID}", {"name": "x"}, subj)
+                 "project-A1", "PATCH", f"{plural_path}/{GARBAGE_ID}", {"name": "x"}, subj,
+                 mode="deny")
         emit(f"{resource_name.upper()}-DL", f"Delete {resource_name} (garbage id)",
-             "project-A1", "DELETE", f"{plural_path}/{GARBAGE_ID}", None, subj)
+             "project-A1", "DELETE", f"{plural_path}/{GARBAGE_ID}", None, subj, mode="deny")
 
 
 # Project-scoped compute ресурсы.

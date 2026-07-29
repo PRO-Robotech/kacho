@@ -38,7 +38,7 @@
   ],
   "item": [
     {
-      "name": "AUTHZ-INSTANCE-CR-OWN-ANON — [DENY] Create instance в project-A1 as anon (project-A1)",
+      "name": "AUTHZ-INSTANCE-CR-OWN-ANON — [UNAUTH] Create instance в project-A1 as anon (project-A1)",
       "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
@@ -99,7 +99,7 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-CR-CROSS-ANON — [DENY] Create instance в project-B1 (cross-account) as anon (project-B1)",
+      "name": "AUTHZ-INSTANCE-CR-CROSS-ANON — [UNAUTH] Create instance в project-B1 (cross-account) as anon (project-B1)",
       "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
@@ -264,7 +264,7 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-GT-ANON — [DENY] Get instance (garbage id) as anon (project-A1)",
+      "name": "AUTHZ-INSTANCE-GT-ANON — [UNAUTH] Get instance (garbage id) as anon (project-A1)",
       "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
@@ -317,7 +317,7 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-UP-ANON — [DENY] Update instance (garbage id) as anon (project-A1)",
+      "name": "AUTHZ-INSTANCE-UP-ANON — [UNAUTH] Update instance (garbage id) as anon (project-A1)",
       "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
@@ -379,7 +379,7 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-DL-ANON — [DENY] Delete instance (garbage id) as anon (project-A1)",
+      "name": "AUTHZ-INSTANCE-DL-ANON — [UNAUTH] Delete instance (garbage id) as anon (project-A1)",
       "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
@@ -576,7 +576,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs1",
           "request": {
             "method": "GET",
             "header": [
@@ -654,7 +654,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs2",
           "request": {
             "method": "GET",
             "header": [
@@ -728,7 +728,7 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-GT-NOB — [DENY] Get instance (garbage id) as no-bind (project-A1)",
+      "name": "AUTHZ-INSTANCE-GT-NOB — [NF] Get instance (garbage id) as no-bind (project-A1)",
       "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
@@ -981,8 +981,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-PA1] ALLOW: not 403 PermissionDenied', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-PA1] ALLOW: not 401 Unauthenticated', () => pm.expect(pm.response.code, 'unexpected 401: ' + pm.response.text()).to.not.equal(401));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
+                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-PA1] ALLOW: not grpc PERMISSION_DENIED (7)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(7));",
                   "pm.test('[AUTHZ-INSTANCE-CR-OWN-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
               }
@@ -1124,7 +1126,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs3",
           "request": {
             "method": "GET",
             "header": [
@@ -1198,8 +1200,8 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-GT-PA1 — [ALLOW] Get instance (garbage id) as proj-adm (project-A1)",
-      "description": "class:AUTHZ | class:POS | priority:P1",
+      "name": "AUTHZ-INSTANCE-GT-PA1 — [NF] Get instance (garbage id) as proj-adm (project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
           "name": "get",
@@ -1248,9 +1250,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-GT-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-GT-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-INSTANCE-GT-PA1] READ-DENY: status 404 (hide existence)', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(404));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-INSTANCE-GT-PA1] READ-DENY: grpc code 5 (NOT_FOUND, not 7)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
+                  "pm.test('[AUTHZ-INSTANCE-GT-PA1] READ-DENY: no deny_reasons leak', () => pm.expect(JSON.stringify(j || {}).toLowerCase()).to.not.include('deny_reasons'));"
                 ]
               }
             }
@@ -1259,8 +1262,8 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-UP-PA1 — [ALLOW] Update instance (garbage id) as proj-adm (project-A1)",
-      "description": "class:AUTHZ | class:POS | priority:P1",
+      "name": "AUTHZ-INSTANCE-UP-PA1 — [DENY] Update instance (garbage id) as proj-adm (project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
           "name": "patch",
@@ -1318,9 +1321,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-UP-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-UP-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-INSTANCE-UP-PA1] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-INSTANCE-UP-PA1] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-INSTANCE-UP-PA1] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
                 ]
               }
             }
@@ -1329,8 +1333,8 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-DL-PA1 — [ALLOW] Delete instance (garbage id) as proj-adm (project-A1)",
-      "description": "class:AUTHZ | class:POS | priority:P1",
+      "name": "AUTHZ-INSTANCE-DL-PA1 — [DENY] Delete instance (garbage id) as proj-adm (project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
           "name": "delete",
@@ -1379,9 +1383,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-DL-PA1] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-DL-PA1] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-INSTANCE-DL-PA1] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-INSTANCE-DL-PA1] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-INSTANCE-DL-PA1] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
                 ]
               }
             }
@@ -1448,8 +1453,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-AAA] ALLOW: not 403 PermissionDenied', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-AAA] ALLOW: not 401 Unauthenticated', () => pm.expect(pm.response.code, 'unexpected 401: ' + pm.response.text()).to.not.equal(401));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
+                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-AAA] ALLOW: not grpc PERMISSION_DENIED (7)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(7));",
                   "pm.test('[AUTHZ-INSTANCE-CR-OWN-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
               }
@@ -1591,7 +1598,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs4",
           "request": {
             "method": "GET",
             "header": [
@@ -1665,8 +1672,8 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-GT-AAA — [ALLOW] Get instance (garbage id) as acct-adm-a (project-A1)",
-      "description": "class:AUTHZ | class:POS | priority:P1",
+      "name": "AUTHZ-INSTANCE-GT-AAA — [NF] Get instance (garbage id) as acct-adm-a (project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
           "name": "get",
@@ -1715,9 +1722,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-GT-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-GT-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-INSTANCE-GT-AAA] READ-DENY: status 404 (hide existence)', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(404));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-INSTANCE-GT-AAA] READ-DENY: grpc code 5 (NOT_FOUND, not 7)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
+                  "pm.test('[AUTHZ-INSTANCE-GT-AAA] READ-DENY: no deny_reasons leak', () => pm.expect(JSON.stringify(j || {}).toLowerCase()).to.not.include('deny_reasons'));"
                 ]
               }
             }
@@ -1726,8 +1734,8 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-UP-AAA — [ALLOW] Update instance (garbage id) as acct-adm-a (project-A1)",
-      "description": "class:AUTHZ | class:POS | priority:P1",
+      "name": "AUTHZ-INSTANCE-UP-AAA — [DENY] Update instance (garbage id) as acct-adm-a (project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
           "name": "patch",
@@ -1785,9 +1793,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-UP-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-UP-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-INSTANCE-UP-AAA] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-INSTANCE-UP-AAA] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-INSTANCE-UP-AAA] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
                 ]
               }
             }
@@ -1796,8 +1805,8 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-DL-AAA — [ALLOW] Delete instance (garbage id) as acct-adm-a (project-A1)",
-      "description": "class:AUTHZ | class:POS | priority:P1",
+      "name": "AUTHZ-INSTANCE-DL-AAA — [DENY] Delete instance (garbage id) as acct-adm-a (project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
           "name": "delete",
@@ -1846,9 +1855,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-DL-AAA] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-DL-AAA] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-INSTANCE-DL-AAA] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-INSTANCE-DL-AAA] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-INSTANCE-DL-AAA] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
                 ]
               }
             }
@@ -1985,8 +1995,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-AAB] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-AAB] ALLOW: not 403 PermissionDenied', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-AAB] ALLOW: not 401 Unauthenticated', () => pm.expect(pm.response.code, 'unexpected 401: ' + pm.response.text()).to.not.equal(401));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
+                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-AAB] ALLOW: not grpc PERMISSION_DENIED (7)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(7));",
                   "pm.test('[AUTHZ-INSTANCE-CR-CROSS-AAB] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
               }
@@ -2000,7 +2012,7 @@
       "description": "class:AUTHZ | class:POS | priority:P1",
       "item": [
         {
-          "name": "get",
+          "name": "get-abs5",
           "request": {
             "method": "GET",
             "header": [
@@ -2132,7 +2144,7 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-GT-AAB — [DENY] Get instance (garbage id) as acct-adm-b (project-A1)",
+      "name": "AUTHZ-INSTANCE-GT-AAB — [NF] Get instance (garbage id) as acct-adm-b (project-A1)",
       "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
@@ -2385,8 +2397,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-INV] ALLOW: not 403 PermissionDenied', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-INV] ALLOW: not 401 Unauthenticated', () => pm.expect(pm.response.code, 'unexpected 401: ' + pm.response.text()).to.not.equal(401));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
+                  "pm.test('[AUTHZ-INSTANCE-CR-OWN-INV] ALLOW: not grpc PERMISSION_DENIED (7)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(7));",
                   "pm.test('[AUTHZ-INSTANCE-CR-OWN-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
               }
@@ -2454,8 +2468,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-INV] ALLOW: not 403 PermissionDenied', () => pm.expect(pm.response.code, 'unexpected 403: ' + pm.response.text()).to.not.equal(403));",
+                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-INV] ALLOW: not 401 Unauthenticated', () => pm.expect(pm.response.code, 'unexpected 401: ' + pm.response.text()).to.not.equal(401));",
                   "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
+                  "pm.test('[AUTHZ-INSTANCE-CR-CROSS-INV] ALLOW: not grpc PERMISSION_DENIED (7)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(7));",
                   "pm.test('[AUTHZ-INSTANCE-CR-CROSS-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
                 ]
               }
@@ -2581,8 +2597,8 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-GT-INV — [ALLOW] Get instance (garbage id) as invitee (project-A1)",
-      "description": "class:AUTHZ | class:POS | priority:P1",
+      "name": "AUTHZ-INSTANCE-GT-INV — [NF] Get instance (garbage id) as invitee (project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
           "name": "get",
@@ -2631,9 +2647,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-GT-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-GT-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-INSTANCE-GT-INV] READ-DENY: status 404 (hide existence)', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(404));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-INSTANCE-GT-INV] READ-DENY: grpc code 5 (NOT_FOUND, not 7)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
+                  "pm.test('[AUTHZ-INSTANCE-GT-INV] READ-DENY: no deny_reasons leak', () => pm.expect(JSON.stringify(j || {}).toLowerCase()).to.not.include('deny_reasons'));"
                 ]
               }
             }
@@ -2642,8 +2659,8 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-UP-INV — [ALLOW] Update instance (garbage id) as invitee (project-A1)",
-      "description": "class:AUTHZ | class:POS | priority:P1",
+      "name": "AUTHZ-INSTANCE-UP-INV — [DENY] Update instance (garbage id) as invitee (project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
           "name": "patch",
@@ -2701,9 +2718,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-UP-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-UP-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-INSTANCE-UP-INV] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-INSTANCE-UP-INV] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-INSTANCE-UP-INV] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
                 ]
               }
             }
@@ -2712,8 +2730,8 @@
       ]
     },
     {
-      "name": "AUTHZ-INSTANCE-DL-INV — [ALLOW] Delete instance (garbage id) as invitee (project-A1)",
-      "description": "class:AUTHZ | class:POS | priority:P1",
+      "name": "AUTHZ-INSTANCE-DL-INV — [DENY] Delete instance (garbage id) as invitee (project-A1)",
+      "description": "class:AUTHZ | class:NEG | priority:P1",
       "item": [
         {
           "name": "delete",
@@ -2762,9 +2780,10 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-DL-INV] ALLOW (authz-first tolerant): 200|400|403|404|409, not 401', () => pm.expect(pm.response.code, 'unexpected code, body: ' + pm.response.text()).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
-                  "pm.test('[AUTHZ-INSTANCE-DL-INV] ALLOW: not Unauthenticated (16)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16));"
+                  "pm.test('[AUTHZ-INSTANCE-DL-INV] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-INSTANCE-DL-INV] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
+                  "pm.test('[AUTHZ-INSTANCE-DL-INV] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
                 ]
               }
             }

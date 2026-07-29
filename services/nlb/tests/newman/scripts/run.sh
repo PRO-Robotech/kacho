@@ -31,7 +31,10 @@
 # shared pre-allocated existingProjectId, so parallel execution is safe.
 #
 # Exit code: 0 ONLY if every expected collection produced a report AND that report
-# has assertions.failed==0 AND newman's own exit code was 0. The verdict is derived
+# has assertions.failed==0, requests.failed==0 (no request left unanswered),
+# assertions.total>0 (the suite is not mute) AND newman's own exit code was 0. The
+# verdict is printed IN NUMBERS (collections reported out of how many, requests,
+# assertions, failed assertions, unanswered requests, mute reports) and is derived
 # from the REPORT CONTENT (out/<stem>.json + out/<stem>.rc), never from "the run
 # happened". The summary table is printed ALWAYS — including on red — because losing
 # it is exactly what motivated the old `| tee … || true` that swallowed newman's exit
@@ -110,34 +113,67 @@ run_one() {
   return 0
 }
 
-# aggregate_verdict — pure verdict over the REPORTS. Prints the table and returns 1
-# when any stem: has no out/<stem>.json (MISSING), assertions.failed>0, or rc!=0.
+# aggregate_verdict — the verdict FROM THE REPORTS, IN NUMBERS.
+#
+# THREE OUTCOMES, THREE NAMES. A request ends one of three ways, and the verdict
+# reports each separately, because folding any of them into another is how a suite
+# goes quiet:
+#   answered + assertion passed — the check ran and said yes;
+#   answered + assertion failed — the check ran and said no        (FAILED);
+#   NOT ANSWERED                — the check did not run at all      (UNANSWERED).
+# Plus the degenerate case of a report with no assertions at all, printed as MUTE
+# rather than allowed to read as "nothing failed". UNANSWERED is never subtracted,
+# whitelisted or explained away.
+#
+# Returns 1 when for ANY stem: out/<stem>.json is absent (MISSING),
+# assertions.failed>0, requests.failed>0 (UNANSWERED), assertions.total==0 (MUTE),
+# or rc!=0. Shape mirrors services/iam/tests/newman/scripts/assert-suites-green.sh.
 aggregate_verdict() {
   local out_dir="$1"; shift
-  local bad=0 stem json rcfile rc total failed requests
-  printf "%-25s %10s %10s %10s %8s\n" "COLLECTION" "ASSERT" "FAILED" "REQUESTS" "RC"
+  local bad=0 stem json rcfile rc total failed requests unanswered
+  local n_total=$# reported=0 t_req=0 t_ass=0 t_fail=0 t_unans=0 t_mute=0
+  printf "%-25s %10s %10s %10s %12s %8s\n" "COLLECTION" "ASSERT" "FAILED" "REQUESTS" "UNANSWERED" "RC"
   for stem in "$@"; do
     json="${out_dir}/${stem}.json"
     rcfile="${out_dir}/${stem}.rc"
     rc="n/a"
     [[ -f "$rcfile" ]] && rc="$(cat "$rcfile")"
     if [[ ! -f "$json" ]]; then
-      printf "%-25s %10s %10s %10s %8s\n" "$stem" "-" "-" "-" "MISSING"
+      printf "%-25s %10s %10s %10s %12s %8s\n" "$stem" "-" "-" "-" "-" "MISSING"
       bad=1
       continue
     fi
-    total=0; failed=0; requests=0
-    read -r total failed requests < <(
-      jq -r '"\(.run.stats.assertions.total) \(.run.stats.assertions.failed) \(.run.stats.requests.total)"' \
-        "$json" 2>/dev/null || echo "0 0 0"
+    total=0; failed=0; requests=0; unanswered=0
+    read -r total failed requests unanswered < <(
+      jq -r '"\(.run.stats.assertions.total) \(.run.stats.assertions.failed) \(.run.stats.requests.total) \(.run.stats.requests.failed)"' \
+        "$json" 2>/dev/null || echo "0 0 0 0"
     )
-    [[ "$total" =~ ^[0-9]+$ ]]    || total=0
-    [[ "$failed" =~ ^[0-9]+$ ]]   || failed=0
-    [[ "$requests" =~ ^[0-9]+$ ]] || requests=0
-    printf "%-25s %10s %10s %10s %8s\n" "$stem" "$total" "$failed" "$requests" "$rc"
+    [[ "$total" =~ ^[0-9]+$ ]]      || total=0
+    [[ "$failed" =~ ^[0-9]+$ ]]     || failed=0
+    [[ "$requests" =~ ^[0-9]+$ ]]   || requests=0
+    [[ "$unanswered" =~ ^[0-9]+$ ]] || unanswered=0
+    printf "%-25s %10s %10s %10s %12s %8s\n" "$stem" "$total" "$failed" "$requests" "$unanswered" "$rc"
+    reported=$((reported + 1))
+    t_req=$((t_req + requests)); t_ass=$((t_ass + total))
+    t_fail=$((t_fail + failed)); t_unans=$((t_unans + unanswered))
     if [[ "$failed" -gt 0 ]]; then bad=1; fi
     if [[ "$rc" != "0" ]];    then bad=1; fi
+    if [[ "$unanswered" -gt 0 ]]; then
+      echo "  ^ ${stem}: ${unanswered} request(s) got NO response — the check did not run:" >&2
+      jq -r '[.run.failures[]? | select((.error.name? // "") != "AssertionError")
+              | "      NOT EXECUTED: \(.source.name? // "?") <- \(.error.message? // "no response")"]
+             | unique | .[]' "$json" 2>/dev/null || true
+      bad=1
+    fi
+    if [[ "$total" -eq 0 ]]; then
+      echo "  ^ ${stem}: MUTE — 0 assertions; a suite that asked nothing cannot be green" >&2
+      t_mute=$((t_mute + 1))
+      bad=1
+    fi
   done
+  # The verdict in numbers, on one line. Read the FIRST pair first: a run that
+  # stopped early leaves every other counter looking healthy.
+  echo "TOTAL: ${reported}/${n_total} collection(s) reported, ${t_req} request(s), ${t_ass} assertion(s), ${t_fail} failed, ${t_unans} UNANSWERED, ${t_mute} mute report(s)"
   return "$bad"
 }
 
