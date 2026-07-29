@@ -1,69 +1,38 @@
 #!/usr/bin/env bash
-
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 
-# audit-list-filter.sh — CI gate (RBAC sub-phase D §11 / issue #111) for kacho-nlb.
+# audit-list-filter.sh — CI gate for kacho-nlb's public List<Resource>: the page
+# a caller receives must be narrowed to the rows that caller may see (per-object,
+# kacho-iam BatchCheck), not merely to their project.
 #
-# Refuses to ship a public `List<Resource>` use-case that returns rows without
-# consulting `authzfilter.Filter` (the canonical per-object RBAC list-filter port
-# wrapped around kacho-iam AuthorizeService.BatchCheck). Per §11 / security.md,
-# every public List<Resource> RPC must filter results per-object (read==enforce,
-# fail-closed, no-leak).
+# This is a THIN wrapper. What is checked, and why the analysis parses the tree
+# instead of searching its text, is documented on tools/listfiltergate; how this
+# service is laid out is documented on services/nlb/tools/auditlistfilter. Only
+# the invocation lives here.
 #
-# nlb layout: handlers are colocated per resource package
-# (internal/apps/kacho/api/<res>/), and the list-filter is wired in the List
-# use-case file (<res>/list.go), not a separate handler dir. Heuristic:
-#   1. Collect every internal/apps/kacho/api/<res>/list.go.
-#   2. For each, require BOTH `authzfilter.Filter` (field on the use-case) AND
-#      `authzfilter.FilterVisiblePage(` (the per-page per-object filter call).
-#   3. If either token is missing, print the candidate path and exit 1.
+# Why the analysis is no longer this file. The previous edition iterated
+# internal/apps/kacho/api/*/list.go — it recognised a resource by a FILE being called
+# list.go — and then searched that file's text for the filter. Moving the List
+# use-case into any other file of the same package removed the resource from its view
+# entirely, and a text search cannot tell a call from a sentence describing one, so
+# deleting the filter while leaving its comment kept the gate green. On a tree
+# without internal/apps/kacho/api it printed a message and exited 0, so "could not
+# find the tree" and "the tree is clean" were the same verdict.
 #
-# Override:
-#   tools/audit-list-filter.sh --allow="<res>" extends the whitelist (admin-only
-#   / catalog-style List where every authenticated caller sees every row).
+# Arguments are forwarded as-is:
+#   --allow=<resource>  exclude a cluster-catalog resource; an entry with nothing
+#                       left to exclude is itself a finding.
+#   --root=<dir>        audit another tree (used by the gate's own tests).
 
 set -euo pipefail
 
-WHITELIST=()
-while [[ ${1:-} == --allow=* ]]; do
-  WHITELIST+=("${1#--allow=}")
-  shift || true
-done
+# The service root is resolved BEFORE changing directory, and passed explicitly:
+# `go run ./services/…` has to be issued from the module root, so the default
+# "audit the current directory" would otherwise audit the repository instead of this
+# service. A --root given by the caller appears later on the command line and wins.
+SERVICE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$(dirname "$0")/../../.."
 
-is_whitelisted() {
-  local r=$1
-  for w in "${WHITELIST[@]:-}"; do [[ "$w" == "$r" ]] && return 0; done
-  return 1
-}
-
-ROOT=internal/apps/kacho/api
-if [[ ! -d "$ROOT" ]]; then
-  echo "audit-list-filter: not in kacho-nlb (no $ROOT)" >&2
-  exit 0
-fi
-
-FAIL=0
-for file in "$ROOT"/*/list.go; do
-  [[ -e "$file" ]] || continue
-  res=$(basename "$(dirname "$file")")
-  is_whitelisted "$res" && continue
-  if grep -q 'authzfilter\.Filter' "$file" && grep -q 'authzfilter\.FilterVisiblePage(' "$file"; then
-    continue
-  fi
-  echo "audit-list-filter: $res — List use-case missing authzfilter wiring"
-  echo "  file: $file"
-  FAIL=1
-done
-
-if [[ $FAIL -ne 0 ]]; then
-  echo
-  echo "RBAC sub-phase D §11 (issue #111) requires every public List<Resource>"
-  echo "RPC to filter results per-object through authzfilter.Filter"
-  echo "(kacho-iam AuthorizeService.BatchCheck backend, relations viewer ∪ v_list)."
-  echo "Whitelist the resource (admin-only / catalog) with --allow=<res>"
-  echo "if the bypass is intentional."
-  exit 1
-fi
-
-echo "audit-list-filter: OK"
+exec go run ./services/nlb/tools/auditlistfilter/cmd/audit-list-filter \
+  --root="$SERVICE_ROOT" "$@"
