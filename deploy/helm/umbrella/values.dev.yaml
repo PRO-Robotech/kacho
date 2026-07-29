@@ -956,7 +956,6 @@ hydra:
           - kacho_principal_id
           - kacho_account_id
           - kacho_active_account
-          - kacho_project_id
           - kacho_user_id
           - kacho_sa_key_id
           - kacho_hydra_client_id

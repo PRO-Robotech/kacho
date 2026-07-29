@@ -30,8 +30,8 @@ const (
 // Текущая поверхность — только CRUD без key-credentials. Key-creds RPC (CreateKey/ListKeys через Ory Hydra
 // client_credentials, OAuth2 token endpoint) появятся позже.
 //
-// Добавлены optional `project_id` (project-scoped SAs in
-// addition to legacy account-scoped) и `enabled` toggle.
+// Служебная учётка привязана к Account'у; `enabled` решает, вправе ли она
+// аутентифицироваться.
 //
 // Resource id prefix: `sva-`.
 type ServiceAccount struct {
@@ -46,9 +46,6 @@ type ServiceAccount struct {
 	Description string `protobuf:"bytes,4,opt,name=description,proto3" json:"description,omitempty"`
 	// Creation timestamp.
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	// Optional ID of the Project that owns this ServiceAccount. Empty =
-	// account-scoped (legacy compatible).
-	ProjectId string `protobuf:"bytes,6,opt,name=project_id,json=projectId,proto3" json:"project_id,omitempty"`
 	// Whether this ServiceAccount can authenticate. Defaults to true; toggle
 	// false to disable without deletion.
 	Enabled bool `protobuf:"varint,7,opt,name=enabled,proto3" json:"enabled,omitempty"`
@@ -125,13 +122,6 @@ func (x *ServiceAccount) GetCreatedAt() *timestamppb.Timestamp {
 		return x.CreatedAt
 	}
 	return nil
-}
-
-func (x *ServiceAccount) GetProjectId() string {
-	if x != nil {
-		return x.ProjectId
-	}
-	return ""
 }
 
 func (x *ServiceAccount) GetEnabled() bool {
@@ -425,7 +415,7 @@ var File_kacho_cloud_iam_v1_service_account_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_service_account_proto_rawDesc = "" +
 	"\n" +
-	"(kacho/cloud/iam/v1/service_account.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xec\x02\n" +
+	"(kacho/cloud/iam/v1/service_account.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xdf\x02\n" +
 	"\x0eServiceAccount\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
 	"\n" +
@@ -433,14 +423,13 @@ const file_kacho_cloud_iam_v1_service_account_proto_rawDesc = "" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x04 \x01(\tR\vdescription\x129\n" +
 	"\n" +
-	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1d\n" +
-	"\n" +
-	"project_id\x18\x06 \x01(\tR\tprojectId\x12\x18\n" +
+	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x18\n" +
 	"\aenabled\x18\a \x01(\bR\aenabled\x12F\n" +
 	"\x06labels\x18\b \x03(\v2..kacho.cloud.iam.v1.ServiceAccount.LabelsEntryR\x06labels\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"k\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x06\x10\aR\n" +
+	"project_id\"k\n" +
 	"\x1cCreateServiceAccountMetadata\x12,\n" +
 	"\x12service_account_id\x18\x01 \x01(\tR\x10serviceAccountId\x12\x1d\n" +
 	"\n" +

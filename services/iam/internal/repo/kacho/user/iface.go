@@ -12,7 +12,6 @@ import (
 
 type ReaderIface interface {
 	Get(ctx context.Context, id domain.UserID) (domain.User, error)
-	GetByExternalID(ctx context.Context, ext domain.ExternalSubject) (domain.User, error)
 	GetByEmail(ctx context.Context, email domain.Email) (domain.User, error)
 	List(ctx context.Context, filter ListFilter) ([]domain.User, string, error)
 
@@ -44,7 +43,7 @@ type ReaderIface interface {
 	// все Account'ы, ORDER BY created_at ASC. Используется invite-flow'ом
 	// чтобы привязать project-scoped AccessBinding к тому же (старейшему
 	// ACTIVE) user-row, который api-gateway резолвит из JWT invitee
-	// (GetByExternalID). Возвращает nil-срез если ACTIVE-row нет.
+	// (LookupSubject). Возвращает nil-срез если ACTIVE-row нет.
 	FindActiveByEmail(ctx context.Context, email domain.Email) ([]domain.User, error)
 
 	// ListAccountsForUser — все Account'ы, где у user'а есть ACTIVE-row.
@@ -75,15 +74,6 @@ type WriterIface interface {
 	// FK violation на account_id → SQLSTATE 23503 → ErrFailedPrecondition; на
 	// DEFERRABLE FK violation проверяется на COMMIT.
 	InsertActive(ctx context.Context, u domain.User) (domain.User, error)
-
-	// ReEnable — атомарный CAS BLOCKED → ACTIVE для recovery
-	// (InternalUserService.OnRecoveryCompleted). Идемпотентен:
-	// уже-ACTIVE row проходит без изменения статуса (re-enable — no-op, не
-	// ошибка). 0 rows RETURNING → ErrNotFound (row не существует, либо PENDING —
-	// recovery работает только по ACTIVE/BLOCKED). Single-statement
-	// UPDATE … WHERE invite_status IN ('ACTIVE','BLOCKED') защищен row-lock'ом
-	// (запрет #10, не TOCTOU). Возвращает (re-enabled row, wasBlocked).
-	ReEnable(ctx context.Context, userID domain.UserID) (domain.User, bool /*wasBlocked*/, error)
 
 	// Delete — UserService.Delete. RESTRICT если у user'а есть Account'ы /
 	// GroupMember'ы / AccessBinding'и.

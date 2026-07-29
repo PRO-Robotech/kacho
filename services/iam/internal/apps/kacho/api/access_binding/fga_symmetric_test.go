@@ -574,9 +574,6 @@ func (w *abFakeWriter) InsertRecoveryCompletion(context.Context, domain.Recovery
 func (w *abFakeWriter) UpsertUserTokenRevokeAll(context.Context, domain.UserTokenRevocation, domain.UserID) error {
 	return nil
 }
-func (w *abFakeWriter) Savepoint(context.Context, string) error           { return nil }
-func (w *abFakeWriter) RollbackToSavepoint(context.Context, string) error { return nil }
-func (w *abFakeWriter) ReleaseSavepoint(context.Context, string) error    { return nil }
 func (w *abFakeWriter) AdvisoryXactLock(_ context.Context, key string) error {
 	w.repo.recordTxOp("advisory_xact_lock:" + key)
 	return nil
@@ -754,9 +751,6 @@ func (u *fakeUserRdr) Get(_ context.Context, id domain.UserID) (domain.User, err
 		return domain.User{}, iamerr.Wrapf(iamerr.ErrNotFound, "User %s not found", id)
 	}
 	return domain.User{ID: id, AccountID: domain.AccountID(acc)}, nil
-}
-func (u *fakeUserRdr) GetByExternalID(_ context.Context, _ domain.ExternalSubject) (domain.User, error) {
-	return domain.User{}, stderrors.New("not implemented in fake")
 }
 func (u *fakeUserRdr) GetByEmail(_ context.Context, _ domain.Email) (domain.User, error) {
 	return domain.User{}, stderrors.New("not implemented in fake")
