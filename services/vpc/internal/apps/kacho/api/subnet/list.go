@@ -102,6 +102,12 @@ func filterVisibleSubnets(ctx context.Context, filter ListFilter, subjectID stri
 // ListOperationsUseCase — операции, относящиеся к конкретному subnet-id.
 // NB: без repo.Get-precondition — операции должны быть доступны и после Delete
 // (история операций; rows в `operations` не имеют FK cascade).
+//
+// Выдача сужена до операций САМОГО вызывающего (operations.ListForCaller —
+// предикат владения внутри SQL WHERE). Право на список не есть право на
+// чтение: строка операции несёт ресурс целиком в Response и личность
+// инициатора, поэтому кросс-принципальная история на этой поверхности не
+// выдаётся.
 type ListOperationsUseCase struct {
 	opsRepo operations.Repo
 }
@@ -116,7 +122,7 @@ func (u *ListOperationsUseCase) Execute(ctx context.Context, subnetID string, p 
 	if err := corevalidate.ResourceID("subnet", ids.PrefixSubnet, subnetID); err != nil {
 		return nil, "", err
 	}
-	return u.opsRepo.List(ctx, operations.ListFilter{
+	return operations.ListForCaller(ctx, u.opsRepo, operations.ListFilter{
 		ResourceID: subnetID,
 		PageSize:   p.PageSize,
 		PageToken:  p.PageToken,
