@@ -492,15 +492,24 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="LST-CR-VAL-UNSUPPORTED-PROTOCOL",
-    title="Create Listener with protocol=HTTP → InvalidArgument 'must be one of TCP, UDP'",
+    title="Create Listener with protocol=HTTP (not a value of the enum) → InvalidArgument",
     classes=["VAL"], priority="P1",
     steps=[
         *_setup_lb("bad-proto"),
+        # The assertion used to read `oneOf([403, 400, 200])` — it accepted the
+        # SUCCESS its own title calls a rejection, so it could not fail and never
+        # did. That is why the swallow behind it went unseen: `protocol:"HTTP"` is
+        # not a value of the enum, the edge dropped it to the zero value, the
+        # listener was created with whatever the service defaults to, and the case
+        # reported green. The edge now refuses an enum value outside the
+        # dictionary, so the outcome is deterministic: 400 / INVALID_ARGUMENT.
+        # `retry_until_authorized` still absorbs the read-your-writes 403 window on
+        # the freshly created parent balancer.
         retry_until_authorized(Step(name="cr-http", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "http-{{runId}}",
                    "protocol": "HTTP", "port": 80, "targetPort": 8080},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 400, 200]));",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ])),
         *_cleanup_lb(),
     ],

@@ -95,7 +95,6 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/protobuf/encoding/protojson"
 
 	computepb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 	// geo.v1 — Region/Zone leaf-сервис kacho-geo.
@@ -330,24 +329,14 @@ func NewMux(
 		return nil, fmt.Errorf("internal REST route table is empty: Internal*Service descriptors not linked — refusing to serve without external-listener isolation")
 	}
 
-	// JSON-marshallers (отличаются ТОЛЬКО `EmitUnpopulated`):
-	//   - public: EmitUnpopulated=true — отдаем явные нулевые значения
-	//     (`""`/`{}`/`[]`/`null`) для proto-полей. На публичной поверхности
-	//     (Network/Subnet/Address/NIC/SG/RT/Gateway/PE) `description`/`labels`/
-	//     `cidr_blocks`/`v4_address_ids` и т.п. — полезный контракт, клиент
-	//     должен видеть поле даже если оно пустое.
-	//   - internal: EmitUnpopulated=false — на internal/admin endpoints
-	//     (`/internal`-projections, AddressPool) часть инфра-полей до
-	//     материализации пустые; пустые поля скрываем чтобы UI/админам видеть
-	//     только реально заполненные значения.
+	// JSON-marshallers — форма ответа задаётся в newPublicJSONPb /
+	// newInternalJSONPb (strict_enum.go); отличаются они ТОЛЬКО `EmitUnpopulated`.
 	//
-	// `DiscardUnknown: true` — ОСОЗНАННОЕ решение, не недосмотр. Ключ тела, для
-	// которого в message запроса нет поля, отбрасывается, и вызывающий получает
-	// `200` за то, чего сервер не делал. Цена известна и измерена: гейт
-	// TestNewmanCollectionsSendNoUnknownRequestFields статически сверяет КАЖДЫЙ
-	// запрос регрессионных suite'ов с контрактом RPC, который его обслуживает.
+	// Разбор тела: неизвестный КЛЮЧ отбрасывается, неизвестное ЗНАЧЕНИЕ
+	// ПЕРЕЧИСЛЕНИЯ — отвергается. Это два разных «неизвестных», и у protojson
+	// на них один флаг, поэтому второе отделено своим проходом (strict_enum.go).
 	//
-	// Почему НЕ переключено на отказ (взвешено, не отложено):
+	// Ключ остаётся отбрасываемым (взвешено, не отложено):
 	//
 	//  1. СНЯТО 2026-07-28. Консоль собирала тело PATCH как «весь ответ GET +
 	//     update_mask», поэтому в нём ехали `id`, `createdAt`, `status` и
@@ -372,27 +361,17 @@ func NewMux(
 	//     оборачивает mux и отвечает `403` ДО разбора тела, поэтому в
 	//     deny-кейсах тело не читается ни при каком значении флага.
 	//
-	// Порядок, при котором переключение станет дешёвым и обратимым: сначала
-	// свести гейт к нулю (правки в зонах владельцев suite'ов и консоли), потом
-	// отдельным решением закрыть клаузу update_mask — и только затем флаг.
-	publicMarshaler := &runtime.JSONPb{
-		MarshalOptions: protojson.MarshalOptions{
-			UseProtoNames:   false,
-			EmitUnpopulated: true,
-		},
-		UnmarshalOptions: protojson.UnmarshalOptions{
-			DiscardUnknown: true,
-		},
-	}
-	internalMarshaler := &runtime.JSONPb{
-		MarshalOptions: protojson.MarshalOptions{
-			UseProtoNames:   false,
-			EmitUnpopulated: false,
-		},
-		UnmarshalOptions: protojson.UnmarshalOptions{
-			DiscardUnknown: true,
-		},
-	}
+	// Цена оставшегося отбрасывания ключей измеряется гейтом
+	// TestNewmanCollectionsSendNoUnknownRequestFields, который статически
+	// сверяет КАЖДЫЙ запрос регрессионных suite'ов с контрактом RPC.
+	//
+	// Ни один из четырёх доводов на ЗНАЧЕНИЕ перечисления не переносился: маска
+	// говорит про поля, а не про значения; диагностика на неизвестном значении
+	// не «хуже», её просто не было — вызывающему отвечали `200`; и стоимость
+	// была измерена (NLB-CR-VAL-INVALID-AFFINITY: `sessionAffinity` вне
+	// словаря принимался, балансировщик создавался с умолчанием).
+	publicMarshaler := newStrictEnumMarshaler(newPublicJSONPb())
+	internalMarshaler := newStrictEnumMarshaler(newInternalJSONPb())
 
 	publicMux := runtime.NewServeMux(
 		runtime.WithMarshalerOption(runtime.MIMEWildcard, publicMarshaler),
