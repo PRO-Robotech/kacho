@@ -201,13 +201,15 @@ func (a repoAuthz) filterOperations(ctx context.Context, registryID string, ops 
 }
 `
 
+// serveCompliant — композиционный корень, у которого авторизатор НЕ МОЖЕТ оказаться
+// пустым: он присваивается безусловно. Прежде здесь стояла форма настоящего корня
+// («объявлен без инициализатора, присвоен только внутри условия»), и она проходила
+// молча ровно потому, что проверка распознавала один литерал. Теперь эта форма —
+// находка, а образцом «чисто» служит безусловное присваивание.
 const serveCompliant = `package main
 
 func run() error {
-	var listAuthz handler.Authorizer
-	if authzConn != nil {
-		listAuthz = check.NewIAMCheckClient(authzConn)
-	}
+	listAuthz := check.NewIAMCheckClient(authzConn)
 	registryv1.RegisterRegistryServiceServer(grpcSrv, handler.NewRegistryHandler(registryUC, listAuthz))
 	return nil
 }
