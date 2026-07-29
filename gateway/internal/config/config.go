@@ -247,7 +247,33 @@ type Config struct {
 	// (`DELETE /admin/oauth2/auth/sessions/login`). Never derived, same reason.
 	// Empty ⇒ the session kill is disabled, and a production-class gateway
 	// refuses to start.
+	//
+	// THE ADMIN API AUTHENTICATES NOBODY. Ory Hydra's admin API has no
+	// authentication of its own — anyone who can reach it can mint clients, read
+	// sessions and introspect tokens. Its only protection is that it is not
+	// routable, so the two addresses above must always name a cluster-internal
+	// Service and that Service must never be published (no ingress, no
+	// LoadBalancer, no NodePort). Enforced offline by
+	// deploy/tests/helm/admin-hop-transport-test.sh.
 	HydraAdminURL string `envconfig:"KACHO_HYDRA_ADMIN_URL" default:""`
+
+	// HydraAdminCAFile — path to the PEM bundle the gateway verifies the ADMIN
+	// API's certificate against, when that hop is served over TLS.
+	//
+	// Why it exists: since the revocation check moved onto the authN layer, the
+	// admin hop carries the caller's LIVE bearer on every introspection cache
+	// miss, not just administrative calls. Over plaintext that bearer is
+	// readable by anything on the path. Moving the hop to https only helps if
+	// the certificate is VERIFIED, and an in-cluster provider certificate comes
+	// from the internal CA — which this process does not trust by default (its
+	// default pool is the system roots).
+	//
+	// Empty ⇒ no anchor, default transport. Set ⇒ the bundle becomes the ONLY
+	// trust anchor for the hop, and a bundle that cannot be read or holds no
+	// certificate REFUSES THE START (cmd/api-gateway/admin_hop_client.go):
+	// falling back to the system roots would read as configured while verifying
+	// nothing.
+	HydraAdminCAFile string `envconfig:"KACHO_HYDRA_ADMIN_CA_FILE" default:""`
 
 	// JWKSCacheTTL — TTL для JWKS cache (sec); RFC рекомендация 5–60 min.
 	JWKSCacheTTLSeconds int `envconfig:"KACHO_JWKS_CACHE_TTL_SECONDS" default:"300"`

@@ -77,10 +77,40 @@
 # Структурную (chart-level) причину класса — ConfigMap, потребляемый подом без
 # привязки pod-template к его содержимому — ловит офлайновый
 # tests/helm/config-rollout-binding-test.sh, ДО деплоя.
+#
+# ОБЛАСТЬ ИСПОЛНЕНИЯ: почему у гейта ДВА профиля, а не один.
+#
+# Гейт целиком описывает БОЕВУЮ посадку и потому исполнялся только под боевым
+# профилем (`make dev-prod-up`). Одно из его измерений от посадки НЕ ЗАВИСИТ, и
+# ровно поэтому провалилось незамеченным: круг отправителей, которым разрешено
+# ГОВОРИТЬ ЗА пользователя. Пустой круг — это не «менее строгая настройка», это
+# «принимаем переданную личность от ЛЮБОГО пира с сертификатом внутреннего CA»,
+# и на dev-стенде mTLS включён, то есть такие пиры там есть. auth_mode dev не
+# делает это допустимым — он лишь выключает стражу старта, которая на боевом
+# профиле не дала бы поду подняться. Итог: dev-профиль был единственным местом,
+# где несужённый круг мог жить, и единственным местом, куда гейт не приходил.
+#
+#   POSTURE_PROFILE=production (умолчание) — все три проверки, как раньше.
+#   POSTURE_PROFILE=dev — ТОЛЬКО измерение круга отправителей (A), потому что
+#     dev-профиль осознанно расслабляет auth_mode / db_sslmode, и требовать их
+#     здесь значило бы красить гейт на каждом dev-стенде до полной бесполезности.
+#
+# Умолчание — боевое, и боевая цель Makefile пинит `POSTURE_PROFILE=production`
+# явно: иначе `POSTURE_PROFILE=dev make assert-production-posture` сузил бы
+# боевой гейт до одного измерения и увёл бы его в зелёное. Профиль выбирает
+# ЦЕЛЬ, а не тот, кто её зовёт.
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 
 NS="${NS:-kacho}"
+
+# Экспортируется: вердикт секции A читает профиль через $ENV внутри jq-программы
+# (см. там же, почему не вторым --argjson).
+export POSTURE_PROFILE="${POSTURE_PROFILE:-production}"
+case "$POSTURE_PROFILE" in
+  production|dev) ;;
+  *) echo "!!! POSTURE_PROFILE='$POSTURE_PROFILE' — допустимо production|dev"; exit 2 ;;
+esac
 
 # Ожидаемый состав стенда. Список ЖЁСТКИЙ намеренно: если бы гейт просто обходил
 # «те сервисы, что нашлись», то не развернувшийся сервис делал бы гейт зелёным
@@ -156,7 +186,15 @@ skipped() {
 # ─────────────────────────────────────────────────────────────────────────────
 # A. ЖИВОЙ ПРОЦЕСС: посадка, с которой сервис РЕАЛЬНО стартовал.
 # ─────────────────────────────────────────────────────────────────────────────
-echo "=== A. живой процесс: boot security posture (лог текущего контейнера) ==="
+if [ "$POSTURE_PROFILE" = dev ]; then
+  echo "=== A. живой процесс: круг отправителей чужой личности (профиль dev) ==="
+  echo "    Градуируется ОДНО измерение — trusted_forwarders. Остальные (auth_mode,"
+  echo "    db_sslmode, mTLS) dev-профиль расслабляет осознанно; круг — не расслабляет"
+  echo "    никто: пустой круг принимает переданную личность от любого пира с"
+  echo "    сертификатом внутреннего CA, а mTLS на dev-стенде включён."
+else
+  echo "=== A. живой процесс: boot security posture (лог текущего контейнера) ==="
+fi
 
 # boot_line <pod> — строка «boot security posture» из лога ТЕКУЩЕГО экземпляра
 # контейнера. Без `--previous`: нас интересует процесс, исполняющийся ПРЯМО
@@ -215,26 +253,50 @@ for row in $SERVICES; do
     # false» — в настройках стенда. Оператор гейта шёл не туда. Ключ проверяем
     # через has(), поэтому false печатается как false, а «<нет>» остаётся ровно
     # за отсутствием ключа.
+    # Профиль читается ВНУТРИ программы, через $ENV, а не вторым --argjson.
+    # Причина не косметическая: соседние проверки (tests/helm/{iam,registry}-
+    # trusted-forwarder-test.sh) ВЫНИМАЮТ эту программу из файла — чтобы копия не
+    # разъехалась с оригиналом — и вызывают её, связывая ровно один параметр.
+    # Второй --argjson оставил бы их с несвязанной переменной, то есть сломал бы
+    # ровно те проверки, которые следят за этим вердиктом. Переменной в окружении
+    # у них нет → `// "production"` → градуируются все измерения, как они и ждут.
+    #
+    # Расслабляемые dev'ом поля выключаются ЦЕЛИКОМ, а не «мягко»: полу-
+    # градуированный гейт печатал бы отказ на каждом dev-стенде, и его перестали
+    # бы читать.
     verdict="$(printf '%s' "$line" | jq -r --argjson need_fwd "$need_fwd" '
       def shown($k): if has($k) then (.[$k] | tostring) else "<нет>" end;
-      [ (if (.auth_mode // "")   | test("^production(-strict)?$") then empty
+      (($ENV.POSTURE_PROFILE // "production") != "dev") as $all_dims |
+      [ (if ($all_dims | not) or ((.auth_mode // "") | test("^production(-strict)?$")) then empty
          else "auth_mode=\(shown("auth_mode"))" end),
-        (if (.db_sslmode // "")  | test("^(require|verify-ca|verify-full|n/a)$") then empty
+        (if ($all_dims | not) or ((.db_sslmode // "") | test("^(require|verify-ca|verify-full|n/a)$")) then empty
          else "db_sslmode=\(shown("db_sslmode"))" end),
-        (if (.public_mtls   == true) then empty else "public_mtls=\(shown("public_mtls"))"   end),
-        (if (.internal_mtls == true) then empty else "internal_mtls=\(shown("internal_mtls"))" end),
-        (if (.authz_check   == true) then empty else "authz_check=\(shown("authz_check"))"   end),
+        (if ($all_dims | not) or (.public_mtls   == true) then empty else "public_mtls=\(shown("public_mtls"))"   end),
+        (if ($all_dims | not) or (.internal_mtls == true) then empty else "internal_mtls=\(shown("internal_mtls"))" end),
+        (if ($all_dims | not) or (.authz_check   == true) then empty else "authz_check=\(shown("authz_check"))"   end),
         (if ($need_fwd | not) or (.trusted_forwarders == true) then empty
          else "trusted_forwarders=\(shown("trusted_forwarders"))" end)
       ] | join(", ")')"
 
     if [ -n "$verdict" ]; then
-      fail "$svc/$p ИСПОЛНЯЕТСЯ НЕ В PRODUCTION-ПОСАДКЕ: $verdict"
-      echo "      живой самоотчёт: $line"
-      echo "      под стартовал:   $(kubectl -n "$NS" get pod "$p" -o jsonpath='{.status.startTime}' 2>/dev/null)"
-      echo "      ВНИМАНИЕ: 'Ready' у такого пода ничего не опровергает — он не"
-      echo "      перезапускался, поэтому и не падал. Настройки могли уже быть"
-      echo "      переписаны в production, но процесс живёт со СТАРЫМ окружением."
+      if [ "$POSTURE_PROFILE" = dev ]; then
+        fail "$svc/$p НЕ СУЗИЛ КРУГ ОТПРАВИТЕЛЕЙ ЧУЖОЙ ЛИЧНОСТИ: $verdict"
+        echo "      живой самоотчёт: $line"
+        echo "      под стартовал:   $(kubectl -n "$NS" get pod "$p" -o jsonpath='{.status.startTime}' 2>/dev/null)"
+        echo "      Пустой список НЕ означает «не принимаем ни от кого»: транспорт"
+        echo "      сужает круг только на непустом списке, а на пустом принимает"
+        echo "      переданную личность от ЛЮБОГО пира с сертификатом внутреннего CA."
+        echo "      Заполнить круг в профиле стенда по ФАКТИЧЕСКИМ отправителям"
+        echo "      (граф импортов сервиса), затем перекатить под — ручка читается"
+        echo "      один раз, на старте процесса."
+      else
+        fail "$svc/$p ИСПОЛНЯЕТСЯ НЕ В PRODUCTION-ПОСАДКЕ: $verdict"
+        echo "      живой самоотчёт: $line"
+        echo "      под стартовал:   $(kubectl -n "$NS" get pod "$p" -o jsonpath='{.status.startTime}' 2>/dev/null)"
+        echo "      ВНИМАНИЕ: 'Ready' у такого пода ничего не опровергает — он не"
+        echo "      перезапускался, поэтому и не падал. Настройки могли уже быть"
+        echo "      переписаны в production, но процесс живёт со СТАРЫМ окружением."
+      fi
     else
       # Та же `shown`, что и в отказе: успешная строка обязана печатать измерение
       # ровно так же, как печатал бы отказ, иначе два текста об одном и том же
@@ -249,7 +311,11 @@ done
 
 # ─────────────────────────────────────────────────────────────────────────────
 # B. НЕЗАВИСИМЫЙ СВИДЕТЕЛЬ: сама БД сообщает, шифрованы ли соединения.
+#
+# Только боевой профиль: dev-профиль осознанно держит pg без TLS
+# (sslmode=disable у каждого сервиса), поэтому здесь нечего доказывать.
 # ─────────────────────────────────────────────────────────────────────────────
+if [ "$POSTURE_PROFILE" = production ]; then
 echo "=== B. независимое подтверждение: pg_stat_ssl (свидетельствует СУБД) ==="
 
 for row in $SERVICES; do
@@ -291,10 +357,15 @@ for row in $SERVICES; do
     fi
   fi
 done
+fi  # POSTURE_PROFILE=production — секция B
 
 # ─────────────────────────────────────────────────────────────────────────────
 # C. СОХРАНЁННЫЕ НАСТРОЙКИ — ПО ВСЕМ ПУТЯМ ДОСТАВКИ.
+#
+# Только боевой профиль: секция ищет `mode: dev` и `sslmode=disable`, которые
+# dev-профиль несёт ЗАКОННО.
 # ─────────────────────────────────────────────────────────────────────────────
+if [ "$POSTURE_PROFILE" = production ]; then
 echo "=== C. сохранённые настройки: все пути доставки (backstop намерения) ==="
 
 # Разрешаем env КАЖДОГО контейнера из ВСЕХ источников сразу:
@@ -361,8 +432,24 @@ elif [ -n "$bad_cm" ]; then
 else
   ok "ни одного insecure значения в конфиг-файлах ConfigMap'ов"
 fi
+fi  # POSTURE_PROFILE=production — секция C
 
 echo
+if [ "$POSTURE_PROFILE" = dev ]; then
+  if [ "$FAILED" -ne 0 ]; then
+    echo "!!! КРУГ ОТПРАВИТЕЛЕЙ НЕ СУЖЕН — см. ✗ выше."
+    echo "    Это измерение от профиля НЕ зависит: пустой круг принимает переданную"
+    echo "    личность от любого пира с сертификатом внутреннего CA, а mTLS включён"
+    echo "    и на dev-стенде. auth_mode=dev лишь снимает стражу старта, которая на"
+    echo "    боевом профиле не дала бы такому поду подняться."
+    exit 1
+  fi
+  echo "круг отправителей сужен у КАЖДОГО сервиса, который принимает переданную личность"
+  echo "  (профиль dev: градуировано ОДНО измерение — trusted_forwarders;"
+  echo "   auth_mode/db_sslmode/mTLS здесь НЕ проверялись и НЕ доказаны)"
+  exit 0
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   echo "!!! PRODUCTION-POSTURE НЕ ПОДТВЕРЖДЕНА — см. ✗ выше."
   echo "    Напоминание: готовность подов ('Ready') НЕ является доказательством"

@@ -213,6 +213,19 @@ spec:
             - name: KACHO_HYDRA_ADMIN_URL
               value: {{ .Values.hydra.adminUrl | quote }}
             {{- end }}
+            # Trust anchor for the admin hop. Since the revocation check moved
+            # onto the authN layer, that hop carries the caller's LIVE bearer on
+            # every introspection cache miss — not just administrative calls.
+            # Moving it to https only helps if the certificate is VERIFIED, and
+            # an in-cluster provider certificate comes from the internal CA,
+            # which the gateway does not trust by default. Set together with an
+            # https address; a bundle that cannot be read or holds no
+            # certificate REFUSES THE START rather than quietly reverting to the
+            # system root store.
+            {{- if .Values.hydra.adminCa.secretName }}
+            - name: KACHO_HYDRA_ADMIN_CA_FILE
+              value: {{ printf "%s/%s" (trimSuffix "/" .Values.hydra.adminCa.mountPath) .Values.hydra.adminCa.key | quote }}
+            {{- end }}
             {{- end }}
             {{- if .Values.authz }}
             - name: KACHO_API_GATEWAY_AUTHZ_ENABLED
@@ -338,6 +351,16 @@ spec:
               mountPath: {{ .Values.mtls.mountPath | quote }}
               readOnly: true
             {{- end }}
+            {{- if .Values.hydra.adminCa.secretName }}
+            # Trust anchor for the identity provider's ADMIN API (see the
+            # KACHO_HYDRA_ADMIN_CA_FILE env above). Its own mount rather than a
+            # reuse of the mTLS bundle: the hop is one-way server-TLS to a
+            # different peer, and tying it to the backend-dial client-cert would
+            # make it impossible to configure the two independently.
+            - name: hydra-admin-ca
+              mountPath: {{ .Values.hydra.adminCa.mountPath | quote }}
+              readOnly: true
+            {{- end }}
           readinessProbe:
             httpGet:
               path: /healthz
@@ -371,4 +394,12 @@ spec:
         - name: mtls-client
           secret:
             secretName: {{ .Values.mtls.clientSecretName | quote }}
+        {{- end }}
+        {{- if .Values.hydra.adminCa.secretName }}
+        - name: hydra-admin-ca
+          secret:
+            secretName: {{ .Values.hydra.adminCa.secretName | quote }}
+            items:
+              - key: {{ .Values.hydra.adminCa.key | quote }}
+                path: {{ .Values.hydra.adminCa.key | quote }}
         {{- end }}

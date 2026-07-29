@@ -176,11 +176,40 @@ authn: {}
 #     issuer:           https://hydra.api.kacho.cloud
 #     introspectionUrl: http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445/admin/oauth2/introspect
 #     adminUrl:         http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445
+#   adminCa:    trust anchor for the admin hop, when that hop is served over
+#               TLS. Since the revocation check moved onto the authN layer the
+#               hop carries the caller's LIVE bearer on every introspection
+#               cache miss — before that only administrative calls went that
+#               way — so the transport is now a tenant-data question, not just
+#               an operational one. An in-cluster provider certificate is issued
+#               by the internal CA, which the gateway does not trust by default
+#               (its default pool is the system roots); this mounts the bundle
+#               and points KACHO_HYDRA_ADMIN_CA_FILE at it.
+#
+#               Set it together with an https address, never instead of one, and
+#               never a bundle that does not sign the provider's certificate: an
+#               unknown-authority handshake is classified as PERMANENT
+#               misconfiguration by the introspection layer, which then refuses
+#               every request rather than waving them through. A bundle that
+#               cannot be read, or that holds no certificate, refuses the start.
+#
+#     adminCa:
+#       secretName: hydra-admin-tls   # secret carrying the internal-CA bundle
+#       key: ca.crt
+#       mountPath: /etc/api-gateway/hydra-admin-ca
 hydra:
   jwksUrl: ""
   issuer: ""
   introspectionUrl: ""
   adminUrl: ""
+  # Empty secretName ⇒ no volume, no mount, no env: the hop keeps the default
+  # transport. That is correct for a plaintext in-cluster admin API and wrong for
+  # an https one — see admin-hop-transport-test.sh, which fails a profile whose
+  # address is https while this is unset.
+  adminCa:
+    secretName: ""
+    key: ca.crt
+    mountPath: /etc/api-gateway/hydra-admin-ca
 
 # AuthZ — per-RPC authorization middleware.
 #   enabled: when true, every authenticated request is gated by a

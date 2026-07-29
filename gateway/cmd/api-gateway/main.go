@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -199,9 +200,26 @@ func main() {
 	// AuthNRequireMachineTokenBinding), so it would refuse every machine
 	// credential. Whether a token was revoked is a question about ANY token, so
 	// it belongs on the layer every request passes through.
+	// One client for BOTH calls to the provider's admin API — introspection here
+	// and the logout session-kill below. They address the same host, so a trust
+	// anchor configured for one and not the other would be a difference nobody
+	// intended. Built before either consumer so an unusable anchor stops the
+	// process at the composition root rather than at the first request.
+	adminHopClient, ahErr := newAdminHopClient(
+		cfg.HydraAdminCAFile,
+		time.Duration(cfg.IntrospectionTimeoutMs)*time.Millisecond)
+	if ahErr != nil {
+		log.Fatalf("admin API client: %v", ahErr)
+	}
+	if strings.TrimSpace(cfg.HydraAdminCAFile) != "" {
+		logger.Info("admin API hop verified against a pinned trust anchor",
+			"ca_file", cfg.HydraAdminCAFile)
+	}
+
 	if introspectionURL := cfg.ResolvedHydraIntrospectionURL(); introspectionURL != "" {
 		revocationCache, rcErr := middleware.NewIntrospectionCache(middleware.IntrospectionCacheConfig{
 			HydraIntrospectionURL: introspectionURL,
+			HTTPClient:            adminHopClient,
 			MaxEntries:            cfg.IntrospectionCacheSize,
 			TTL:                   time.Duration(cfg.IntrospectionCacheTTLSeconds) * time.Second,
 			Timeout:               time.Duration(cfg.IntrospectionTimeoutMs) * time.Millisecond,
@@ -320,10 +338,15 @@ func main() {
 		logoutVerifier = logoutVerifierAdapter{v: jwtVerifier}
 	}
 	logoutHandler, lerr := handler.NewLogoutHandler(handler.LogoutHandlerConfig{
-		Logger:          logger,
-		Verifier:        logoutVerifier,
-		Revocations:     clients.NewSessionRevocationsAdapter(backends["iamInternal"]),
-		HydraAdminURL:   cfg.ResolvedHydraAdminURL(),
+		Logger:        logger,
+		Verifier:      logoutVerifier,
+		Revocations:   clients.NewSessionRevocationsAdapter(backends["iamInternal"]),
+		HydraAdminURL: cfg.ResolvedHydraAdminURL(),
+		// Same client as the introspection hop: same host, same trust anchor.
+		// Without this the session kill would keep dialing on the system root
+		// store, so an operator who moved the hop to TLS would find revocation
+		// verified and sign-out silently failing on every logout.
+		HTTPClient:      adminHopClient,
 		HookSharedToken: cfg.HookSharedSecret,
 	})
 	if lerr != nil {
@@ -445,6 +468,25 @@ func main() {
 		grpcUnaryInterceptors = append(grpcUnaryInterceptors, cnfGRPCInterceptor.Unary())
 		grpcStreamInterceptors = append(grpcStreamInterceptors, cnfGRPCInterceptor.Stream())
 	}
+	// Route refusal for Internal*Service — BEFORE authorization, AFTER
+	// authentication. Position is the whole point, in both directions.
+	//
+	// Before authz: the decision "there is no such route" belongs to the
+	// UnknownServiceHandler at the END of this chain, so authorization used to
+	// answer first for any Internal* method whose permission the caller lacked —
+	// with PermissionDenied AND THE PERMISSION'S NAME, while its neighbours
+	// answered an indistinguishable "unknown method". That difference is an
+	// existence-oracle for the admin surface, and it also made the isolation
+	// invariant undemonstrable from outside: a probe could not tell "not routed
+	// here" from "routed, but not permitted".
+	//
+	// After authN: the answer must match what a method that does not exist gives
+	// THE SAME CALLER. An unauthenticated caller gets Unauthenticated for every
+	// method; refusing ahead of authN would hand that caller NotFound for
+	// Internal* and Unauthenticated for everything else — the same leak in
+	// different clothes.
+	grpcUnaryInterceptors = append(grpcUnaryInterceptors, proxy.UnaryRefuseInternalRoute())
+	grpcStreamInterceptors = append(grpcStreamInterceptors, proxy.StreamRefuseInternalRoute())
 	if authzMW != nil {
 		grpcUnaryInterceptors = append(grpcUnaryInterceptors, authzMW.Unary())
 		grpcStreamInterceptors = append(grpcStreamInterceptors, authzMW.Stream())

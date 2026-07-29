@@ -35,6 +35,7 @@ bash tests/helm/networkpolicy-egress-test.sh --self-test   # где есть —
 |---|---|
 | `bootstrap-mint-operator-identity-test.sh` | у минта cluster-admin-токена ровно один законный вызывающий, и обе половины этого утверждения (выпускаемый operator-leaf ↔ allow-list SAN в kacho-iam) рендерятся согласованно; личность — НЕ шлюза; умолчание чарта — пустой список (никого) |
 | `config-rollout-binding-test.sh` | каждый workload, читающий настройки из ConfigMap, привязан к их содержимому (`checksum/…`) — иначе правка настроек не перекатывает под и процесс живёт со старым окружением |
+| `admin-hop-transport-test.sh` | хоп к административному API провайдера адресован ВНУТРИ кластера (он не аутентифицирует никого — публикация снимает единственную его защиту), а объявленный https-хоп обязан идти вместе с якорем доверия к внутреннему CA; ручка якоря в чарте шлюза несущая. `--self-test` |
 | `hydra-jwks-url-test.sh` | api-gateway резолвит ДОСТИЖИМЫЙ cluster-internal Hydra JWKS (никогда localhost и никогда публичный issuer) — и в отдельном чарте шлюза, и в профилях умбреллы |
 | `iam-hooks-metrics-mtls-test.sh` | ребро hooks/metrics у kacho-iam несёт mTLS там, где заявлено |
 | `iam-trusted-forwarder-test.sh` | круг отправителей, вправе передавать чужую личность, у kacho-iam сужен списком, список непуст, и гейт посадки это измерение ОЦЕНИВАЕТ |
@@ -48,6 +49,7 @@ bash tests/helm/networkpolicy-egress-test.sh --self-test   # где есть —
 | `prerequisite-secrets-test.sh` | обязательная ссылка на секрет выполнима: секрет либо создаёт чарт, либо его заводит скрипт, который цель развёртывания РЕАЛЬНО зовёт |
 | `prod-profile-fail-closed-test.sh` | умолчание чарта и dev-профиль не ослабляют то, что production-профиль обязан держать закрытым |
 | `registry-trusted-forwarder-test.sh` | то же, что `iam-trusted-forwarder-test.sh`, для публичного листенера kacho-registry |
+| `trusted-forwarder-profiles-test.sh` | ПРОФИЛЬ ЦЕЛИКОМ: у каждого из семи сервисов, принимающих переданную личность, круг отправителей непуст — в dev, dev-prod и prod. Соседние проверки смотрят по одному чарту и не задают вопроса «есть ли на этом стенде хоть один несужённый». `--self-test` |
 | `sec-hardening-test.sh` | контейнерный/подовый hardening-этаж на текущей структуре чартов |
 
 Без `TODO`/`SKIP`/закомментированных утверждений (ban #11/#13).

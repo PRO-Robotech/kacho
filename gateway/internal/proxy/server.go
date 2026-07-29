@@ -29,6 +29,22 @@ type MethodResolver = methodResolverInternal
 //     is not an existence-oracle for admin endpoints ("exists but unimplemented"
 //     would leak reconnaissance). Keep parity with the shimproxy.go contract.
 //
+// THE REFUSAL HERE IS NOT THE WHOLE STORY, and for a while this comment claimed
+// it was. This resolver runs at the END of the interceptor chain, so anything
+// that answers earlier answers INSTEAD. Authorization did: an Internal* method
+// whose permission the caller lacked came back PermissionDenied naming the
+// permission, while its neighbours came back "unknown method" — the very
+// distinction the paragraph above says does not exist. Nine of the platform's
+// seventy-nine Internal* methods behaved that way, all of them ones whose
+// authorization target is resolved from the request body.
+//
+// The uniform answer is therefore produced by route_refusal.go, an interceptor
+// mounted AHEAD of authorization and returning byte-for-byte the error Handler
+// returns here. This resolver remains the backstop: it is what makes the
+// property true for traffic that reaches it, and what the refusal is copied
+// from. Changing the message in one place without the other reintroduces the
+// difference.
+//
 // Маршрутизируются только нативные kacho.cloud.* сервисы; backends не
 // expose'ят посторонних сервисов.
 func Resolver(backends Backends) MethodResolver {

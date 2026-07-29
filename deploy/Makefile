@@ -1,7 +1,7 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 .PHONY: dev-up dev-down dev-prod-up assert-rollout-ready assert-jobs-healthy assert-production-posture \
-        assert-outbox-autovacuum helm-manifest-test \
+        assert-forwarder-narrowing assert-outbox-autovacuum helm-manifest-test \
         reload-svc logs-svc psql preflight e2e-test helm-lint \
         loadtest-address-allocate loadtest-address-allocate-clean \
         reload-svc-iam psql-iam logs-iam fga-bootstrap build-services openfga-model-json \
@@ -198,6 +198,7 @@ dev-up: preflight
 	$(MAKE) fga-bootstrap; \
 	kubectl -n kacho rollout status deploy/kacho-iam --timeout=180s || true; \
 	kubectl -n kacho rollout status deploy/api-gateway --timeout=180s || true; \
+	$(MAKE) --no-print-directory assert-forwarder-narrowing; \
 	end=$$(date +%s); \
 	echo "dev-up complete in $$((end-start))s"; \
 	echo; \
@@ -347,8 +348,30 @@ assert-jobs-healthy:
 #
 # guard-kind-context: гейт читает логи и exec'ается в поды — на чужом (в т.ч.
 # прод) контексте это как минимум утечка диагностики.
+# POSTURE_PROFILE пиньтся ЗДЕСЬ, а не наследуется из окружения: иначе
+# `POSTURE_PROFILE=dev make assert-production-posture` сузил бы боевой гейт до
+# одного измерения и увёл бы его в зелёное — ручка, снимающая защиту, которую
+# никто не проверяет. Профиль выбирает ЦЕЛЬ, а не тот, кто её зовёт.
 assert-production-posture: guard-kind-context
-	@bash scripts/assert-production-posture.sh
+	@POSTURE_PROFILE=production bash scripts/assert-production-posture.sh
+
+# assert-forwarder-narrowing — тот же гейт, но по ОДНОМУ измерению, и он ходит
+# на КАЖДЫЙ стенд, а не только на боевой.
+#
+# Зачем отдельная цель: гейт посадки целиком описывает боевой профиль, поэтому
+# исполнялся только из dev-prod-up. Одно его измерение от посадки не зависит —
+# круг отправителей, которым разрешено говорить за пользователя. Пустой круг
+# принимает переданную личность от ЛЮБОГО пира с сертификатом внутреннего CA, а
+# mTLS на dev-стенде включён. Итог: dev-профиль был единственным местом, где
+# несужённый круг мог жить, и единственным, куда гейт не приходил — так kacho-nlb
+# и работал на dev с пустым кругом, пока шесть его соседей были сужены.
+#
+# Вызывается из dev-up (и, как часть полного гейта, из dev-prod-up). Профиль
+# задан ЗДЕСЬ, а не в окружении вызывающего, и боевая цель выше пинит свой
+# так же явно — иначе `POSTURE_PROFILE=dev make assert-production-posture`
+# сузил бы боевой гейт до одного измерения. Область выбирает ЦЕЛЬ.
+assert-forwarder-narrowing: guard-kind-context
+	@POSTURE_PROFILE=dev bash scripts/assert-production-posture.sh
 
 # assert-outbox-autovacuum — базы с очередями обязаны РАБОТАТЬ со свежей
 # статистикой, а не просто быть так описаны в values.
