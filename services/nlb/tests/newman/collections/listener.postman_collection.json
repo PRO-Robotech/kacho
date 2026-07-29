@@ -7248,7 +7248,7 @@
       ]
     },
     {
-      "name": "LST-CR-VAL-UNSUPPORTED-PROTOCOL — Create Listener with protocol=HTTP → InvalidArgument 'must be one of TCP, UDP'",
+      "name": "LST-CR-VAL-UNSUPPORTED-PROTOCOL — Create Listener with protocol=HTTP (not a value of the enum) → InvalidArgument",
       "description": "class:VAL | priority:P1",
       "item": [
         {
@@ -7614,7 +7614,11 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 400, 200]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
