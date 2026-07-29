@@ -126,7 +126,7 @@ CASES.append(Case(
         Step(name="create-ghost", method="POST", path="/geo/v1/internal/zones", internal=True,
              body={"id": "qa-ghost-{{runId}}-a", "regionId": "qa-ghost-{{runId}}",
                    "name": "QA Ghost Zone {{runId}}", "status": "UP"},
-             test_script=[*assert_operation_envelope()]),
+             test_script=[*assert_operation_failed(9, "FAILED_PRECONDITION", "reference constraint")]),
         # The zone is never committed (FK deterministically rejects), so public Get is a
         # stable 404 — no retry (retry_until_found would wrongly wait for a row that never appears).
         Step(name="zone-not-created", method="GET", path="/geo/v1/zones/qa-ghost-{{runId}}-a",

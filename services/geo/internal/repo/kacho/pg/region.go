@@ -44,6 +44,16 @@ func actorFromCtx(ctx context.Context) string {
 	return p.Type + ":" + p.ID
 }
 
+// derefString разыменовывает partial-update указатель: nil означает «поле не
+// меняется», и тогда конфликт по имени возникнуть не может (COALESCE оставляет
+// прежнее значение) — пустая строка сюда просто не доедет до сообщения.
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
 // openZoneCountExpr — read-time rollup числа зон региона с openForPlacement°=true
 // (advisory-hint, НЕ persisted). Зона open ⟺ zone.status='UP' И region.status='UP',
 // поэтому для DOWN-региона hint=0 by construction.
@@ -159,7 +169,9 @@ func (r *RegionRepo) Insert(ctx context.Context, rg *domain.Region) (*domain.Reg
 			rg.ID, rg.Name, rg.CountryCode, geoStatusName(rg.Status), rg.Infra.NumericInfraID, time.Now().UTC()).
 			Scan(&created.ID, &created.Name, &created.CountryCode, &statusName, &created.Infra.NumericInfraID, &created.CreatedAt)
 		if serr != nil {
-			return dberr.Wrap(serr, "Region", rg.ID)
+			// WrapUnique: 23505 приходит по двум разным ключам (PK id и
+			// глобальная UNIQUE(name)) — сообщение обязано назвать занятый.
+			return dberr.WrapUnique(serr, "Region", rg.ID, rg.Name)
 		}
 		return outbox.Emit(ctx, tx, outboxTable, "Region", created.ID, "CREATED", map[string]any{
 			"id":           created.ID,
@@ -199,7 +211,9 @@ func (r *RegionRepo) Update(ctx context.Context, id string, p region.UpdateParam
 			id, p.Name, statusName, p.CountryCode).
 			Scan(&updated.ID, &updated.Name, &updated.CountryCode, &outStatus, &updated.Infra.NumericInfraID, &updated.CreatedAt)
 		if serr != nil {
-			return dberr.Wrap(serr, "Region", id)
+			// Занятое ИМЯ на Update особенно важно назвать именем: строка с
+			// этим id существует по построению — её и правят.
+			return dberr.WrapUnique(serr, "Region", id, derefString(p.Name))
 		}
 		return outbox.Emit(ctx, tx, outboxTable, "Region", updated.ID, "UPDATED", map[string]any{
 			"id":           updated.ID,

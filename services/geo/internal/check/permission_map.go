@@ -40,12 +40,31 @@ func PermissionMap() authz.RPCMap {
 		// ---- публичный read-only справочник (ambient project-scope EXEMPT, GEO-1) ----
 		// Region/Zone Get/List — admin-curated глобальный catalog: КАЖДЫЙ
 		// аутентифицированный tenant читает его без project-scope гранта (zero-binding
-		// project → 200). `Public:true` тут = «снят per-RPC ReBAC-Check», НЕ
-		// «unauthenticated»: anti-anon principal-цепочка сохраняется (unauthenticated →
-		// UNAUTHENTICATED). Это documented-exception, зеркалит gateway `<exempt>` на тех
-		// же 4 RPC и note в security.md («geo public-read — project-scope EXEMPT»).
-		// Anti-регресс: снятие Check — ТОЛЬКО для этих read-only catalog-RPC; admin
-		// Internal* CRUD ниже остаётся system_admin-гейтед.
+		// project → 200). `Public:true` тут = «снят per-RPC ReBAC-Check». Это
+		// documented-exception, зеркалит gateway `<exempt>` на тех же 4 RPC и note в
+		// security.md («geo public-read — project-scope EXEMPT»). Anti-регресс: снятие
+		// Check — ТОЛЬКО для этих read-only catalog-RPC; admin Internal* CRUD ниже
+		// остаётся system_admin-гейтед.
+		//
+		// ЧТО ИМЕННО СНЯТО, а что нет (не описывать это как «anti-anon сохраняется» —
+		// правка «под комментарий» вернула бы дыру; тот же разбор ниже, у LRO):
+		// на записи с `Public:true` corelib-интерсептор отдаёт allow СРАЗУ, ДО
+		// извлечения субъекта, а principal-цепочка geo (cert-identity →
+		// trusted-principal) личность только ПРОСТАВЛЯЕТ и никого не отвергает.
+		// Собственного барьера «нет принципала → UNAUTHENTICATED» у geo на этих
+		// четырёх RPC НЕТ.
+		//
+		// Реально их закрывают два слоя, оба вне этой таблицы:
+		//   * ОБЯЗАТЕЛЬНЫЙ mTLS на ОБОИХ листенерах — `validateSecurityConfig`
+		//     отказывает в старте без него, а breakglass не honored в production
+		//     posture. Дозвониться сюда без platform-issued client-cert'а нельзя;
+		//   * для tenant-трафика — ветка `<exempt>` авторизации api-gateway: она
+		//     пропускает FGA-Check, но ТРЕБУЕТ аутентифицированного принципала и
+		//     отвечает UNAUTHENTICATED без него.
+		// Ответ этих RPC ни от какой личности не зависит (глобальный каталог, ни
+		// owner-ключа, ни per-caller фильтрации), поэтому запрос без личности не
+		// получает здесь ни личности, ни чужих данных. Появится RPC, чей ответ
+		// зависит от вызывающего, — `Public:true` ему НЕ подходит.
 		"/kacho.cloud.geo.v1.RegionService/Get":  {Public: true},
 		"/kacho.cloud.geo.v1.RegionService/List": {Public: true},
 		"/kacho.cloud.geo.v1.ZoneService/Get":    {Public: true},

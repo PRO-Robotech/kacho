@@ -53,7 +53,8 @@ PK). Зона привязана к региону полем `regionId` — в�
 
 <ApiOperation method="GET" endpoint="/geo/v1/zones/{id}">
 
-Возвращает зону по идентификатору. Публичный read (требует отношение `viewer`).
+Возвращает зону по идентификатору. Публичное чтение: per-RPC authz-Check снят
+(project-scope EXEMPT) — грант не нужен, но **аутентификация обязательна**.
 
 <CodeBlock language="bash">
   {dedent`
@@ -185,11 +186,13 @@ PK). Зона привязана к региону полем `regionId` — в�
   <thead><tr><th>Ситуация</th><th>Код</th><th>Поведение</th></tr></thead>
   <tbody>
     <tr><td>Get/Delete несуществующей зоны</td><td><code>NOT_FOUND</code></td><td><code>"Zone &lt;id&gt; not found"</code></td></tr>
-    <tr><td>Create с уже занятым id</td><td><code>ALREADY_EXISTS</code></td><td>PK-конфликт по <code>id</code></td></tr>
+    <tr><td>Create с уже занятым id</td><td><code>ALREADY_EXISTS</code></td><td><code>"Zone &lt;id&gt; already exists"</code> — PK-конфликт по <code>id</code></td></tr>
+    <tr><td>Create/Update с уже занятым <code>name</code></td><td><code>ALREADY_EXISTS</code></td><td><code>"Zone with name &lt;name&gt; already exists"</code> — <code>name</code> глобально уникален</td></tr>
     <tr><td>Create с <code>regionId</code> несуществующего региона</td><td><code>FAILED_PRECONDITION</code></td><td>Нарушение FK <code>regionId → Region.id</code></td></tr>
     <tr><td>Попытка изменить <code>regionId</code></td><td>—</td><td><code>regionId</code> immutable (FK-привязка задаётся при Create)</td></tr>
     <tr><td>Update без <code>status</code></td><td>—</td><td>Статус не меняется — частичное обновление (см. выше)</td></tr>
-    <tr><td>Read без <code>viewer</code> / admin без <code>system_admin</code></td><td><code>PERMISSION_DENIED</code></td><td>Authz-Check не прошёл</td></tr>
+    <tr><td>Read без аутентификации</td><td><code>UNAUTHENTICATED</code></td><td>Чтение каталога грант не требует, но требует валидного принципала</td></tr>
+    <tr><td>admin CRUD без <code>system_admin</code></td><td><code>PERMISSION_DENIED</code></td><td>Authz-Check не прошёл</td></tr>
   </tbody>
 </table>
 

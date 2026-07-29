@@ -154,7 +154,9 @@ func (r *ZoneRepo) Insert(ctx context.Context, z *domain.Zone) (*domain.Zone, er
 				&created.Infra.NumericInfraID, &created.Infra.HostClasses, &created.Infra.FailureDomainCount, &created.Infra.UnderlayAnchor, &created.Infra.CapacityHint,
 				&created.CreatedAt)
 		if serr != nil {
-			return dberr.Wrap(serr, "Zone", z.ID)
+			// WrapUnique: 23505 приходит по двум разным ключам (PK id и
+			// глобальная UNIQUE(name)) — сообщение обязано назвать занятый.
+			return dberr.WrapUnique(serr, "Zone", z.ID, z.Name)
 		}
 		// FK гарантирует существование региона → SELECT вернёт ровно строку.
 		if serr := tx.QueryRow(ctx, `SELECT status FROM regions WHERE id = $1`, created.RegionID).
@@ -219,7 +221,9 @@ func (r *ZoneRepo) Update(ctx context.Context, id string, p zone.UpdateParams) (
 				&updated.Infra.NumericInfraID, &updated.Infra.HostClasses, &updated.Infra.FailureDomainCount, &updated.Infra.UnderlayAnchor, &updated.Infra.CapacityHint,
 				&updated.CreatedAt)
 		if serr != nil {
-			return dberr.Wrap(serr, "Zone", id)
+			// Занятое ИМЯ на Update особенно важно назвать именем: строка с
+			// этим id существует по построению — её и правят.
+			return dberr.WrapUnique(serr, "Zone", id, derefString(p.Name))
 		}
 		if serr := tx.QueryRow(ctx, `SELECT status FROM regions WHERE id = $1`, updated.RegionID).
 			Scan(&regionStatusName); serr != nil {

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -80,4 +81,41 @@ func Wrap(err error, resource, id string) error {
 		"resource", resource,
 		"id", id)
 	return geoerrors.ErrInternal
+}
+
+// nameConstraintSuffix — суффикс имени ограничения, которым Postgres называет
+// `ADD CONSTRAINT <table>_name_key UNIQUE (name)` из миграции 0004 (regions_name_key /
+// zones_name_key). По нему WrapUnique отличает конфликт по ИМЕНИ от конфликта по id.
+//
+// Предпосылка («ограничение зовётся так») проверяется тестом, читающим сами
+// миграции: переименуют — тест покраснеет, а не маршрутизация тихо вернётся к
+// id-тону.
+const nameConstraintSuffix = "_name_key"
+
+// WrapUnique — Wrap для путей ЗАПИСИ каталога, где 23505 прилетает по ДВУМ
+// разным ключам: первичному `id` и глобальной `UNIQUE (name)` (миграция 0004).
+// Ключи различаются по имени ограничения, и сообщение называет тот, который
+// действительно занят:
+//
+//	<table>_name_key → ErrAlreadyExists "<Resource> with name <name> already exists"
+//	иначе (pkey/…)   → ErrAlreadyExists "<Resource> <id> already exists"
+//
+// Всё, что не 23505, делегируется в Wrap без изменений.
+//
+// Зачем разделение: единый id-тон на оба ключа утверждает то, чего вызывающий не
+// присылал. На Update он к тому же самоопровергается — строка с этим id
+// существует по построению (её и правят), а занято другим ЧУЖОЕ имя, поэтому
+// «Region <id> already exists» отправляет читателя искать несуществующий
+// конфликт по id. Тон name-ветки — общий для дома (vpc/iam/nlb/storage:
+// «<Resource> with name %s already exists»).
+func WrapUnique(err error, resource, id, name string) error {
+	if err == nil {
+		return nil
+	}
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" &&
+		strings.HasSuffix(pgErr.ConstraintName, nameConstraintSuffix) {
+		return fmt.Errorf("%w: %s with name %s already exists", geoerrors.ErrAlreadyExists, resource, name)
+	}
+	return Wrap(err, resource, id)
 }

@@ -50,7 +50,8 @@ Kachō Geo конфигурируется через переменные окр
   <tbody>
     <tr><td><code>KACHO_GEO_AUTHZ_IAM_GRPC_ADDR</code></td><td><em>(пусто)</em></td><td>Internal-адрес kacho-iam для per-RPC Check (обычно iam-internal <code>:9091</code>)</td></tr>
     <tr><td><code>KACHO_GEO_AUTHZ_BREAKGLASS</code></td><td><code>false</code></td><td>Аварийный обход: запускает сервис без authz Check и без mTLS — единственный способ работать без них</td></tr>
-    <tr><td><code>KACHO_GEO_AUTH_MODE</code></td><td><code>dev</code></td><td>Только строгость SSL к БД: <code>dev</code> · <code>production</code> · <code>production-strict</code></td></tr>
+    <tr><td><code>KACHO_GEO_AUTH_MODE</code></td><td><code>production</code></td><td>Posture старта: <code>dev</code> · <code>production</code> · <code>production-strict</code>. Дефолт — <code>production</code> (secure by default)</td></tr>
+    <tr><td><code>KACHO_GEO_AUTHZ_TRUSTED_FORWARDER_SANS</code></td><td><em>(пусто)</em></td><td>Allow-list SAN&apos;ов, которым разрешено передавать личность конечного пользователя (SA api-gateway). В production обязателен непустой</td></tr>
   </tbody>
 </table>
 
@@ -67,8 +68,14 @@ mTLS**. Это аварийный режим: применять только л
 рабочем стенде.
 :::
 
-`KACHO_GEO_AUTH_MODE` влияет только на строгость TLS к базе: `production-strict` требует
-`KACHO_GEO_DB_SSLMODE` ∈ {`require`, `verify-ca`, `verify-full`}.
+`KACHO_GEO_AUTH_MODE` по умолчанию `production`, и в этой posture стартовать нельзя:
+с plaintext-соединением к БД (`KACHO_GEO_DB_SSLMODE` пуст или `disable`), с включённым
+breakglass и с пустым allow-list'ом доверенных форвардеров. `production-strict`
+дополнительно сужает `KACHO_GEO_DB_SSLMODE` до {`require`, `verify-ca`, `verify-full`}.
+
+Отсюда следствие для запуска «как есть»: дефолтный `KACHO_GEO_DB_SSLMODE=disable`
+несовместим с дефолтным `production` — либо задайте TLS к базе, либо выберите `dev`
+явно (локальные фикстуры). Молча в dev-posture сервис не опустится.
 
 ## mTLS (per-edge)
 

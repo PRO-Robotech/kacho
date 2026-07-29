@@ -37,9 +37,69 @@ func seedOwnedOp(t *testing.T, ops *repomock.OpsRepo, owner operations.Principal
 	return op.ID
 }
 
+// systemRecordedOp кладёт в мок операцию, записанную БЕЗ принципала в ctx —
+// ровно так её пишет любой путь, где личности нет (фоновая задача, вызов, не
+// прошедший через principal-extract). Строка при этом получает системный
+// принципал-fallback {system, bootstrap}: так делает и pgRepo.Create, и мок.
+//
+// Именно такая строка делает вопрос «владеет ли безымянный запрос» наблюдаемым:
+// ключ, выведенный из личности-по-умолчанию, совпал бы с принципалом этой строки
+// — и совпал бы с принципалом КАЖДОЙ строки, записанной тем же путём.
+func systemRecordedOp(t *testing.T, ops *repomock.OpsRepo) string {
+	t.Helper()
+	op, err := operations.NewFromContext(context.Background(), lro.OperationPrefix, "create region",
+		&geov1.CreateRegionMetadata{RegionId: "region-sys"})
+	if err != nil {
+		t.Fatalf("NewFromContext: %v", err)
+	}
+	if err := ops.Create(context.Background(), op); err != nil {
+		t.Fatalf("ops.Create: %v", err)
+	}
+	stored, err := ops.Get(context.Background(), op.ID)
+	if err != nil {
+		t.Fatalf("ops.Get: %v", err)
+	}
+	// Предпосылка теста: строка действительно несёт системный принципал-fallback.
+	// Если репозиторий однажды начнёт писать сюда что-то другое, тест ниже
+	// перестанет спрашивать то, ради чего написан, и обязан сказать об этом сам.
+	if want := operations.SystemPrincipal(); stored.Principal.Type != want.Type || stored.Principal.ID != want.ID {
+		t.Fatalf("предпосылка теста не выполнена: строка операции несёт принципал %+v, ожидался системный fallback %+v — "+
+			"без него запрос без личности не с чем сравнивать и проверка ничего не спрашивает", stored.Principal, want)
+	}
+	return op.ID
+}
+
+// anonymousRecordedOp кладёт в мок операцию, чьи колонки принципала несут САМ
+// ЯРЛЫК анонимности (`{system, anonymous}`) — так строка выглядит, когда её
+// записали от имени запроса без credential'а. Ключ такой строки совпадает с
+// ключом ЛЮБОГО другого безымянного запроса, поэтому без отсечения анонимности
+// один безымянный читал и отменял бы операции другого.
+func anonymousRecordedOp(t *testing.T, ops *repomock.OpsRepo) string {
+	t.Helper()
+	op, err := operations.New(lro.OperationPrefix, "create region",
+		&geov1.CreateRegionMetadata{RegionId: "region-anon"})
+	if err != nil {
+		t.Fatalf("operations.New: %v", err)
+	}
+	if err := ops.CreateWithPrincipal(context.Background(), op, anonymousPrincipal); err != nil {
+		t.Fatalf("ops.CreateWithPrincipal: %v", err)
+	}
+	stored, err := ops.Get(context.Background(), op.ID)
+	if err != nil {
+		t.Fatalf("ops.Get: %v", err)
+	}
+	if stored.Principal != anonymousPrincipal {
+		t.Fatalf("предпосылка теста не выполнена: строка несёт принципал %+v, ожидался %+v",
+			stored.Principal, anonymousPrincipal)
+	}
+	return op.ID
+}
+
 var (
 	adminA = operations.Principal{Type: "user", ID: "usr_adminA"}
 	adminB = operations.Principal{Type: "user", ID: "usr_adminB"}
+	// anonymousPrincipal — «неизвестно кто»: ярлык, а не личность.
+	anonymousPrincipal = operations.Principal{Type: "system", ID: operations.AnonymousPrincipalID}
 )
 
 // TestOperationHandler_Get_foreignPrincipal_NotFound — BOLA-гейт: caller B не
@@ -177,6 +237,122 @@ func TestOperationHandler_Cancel_idempotentReCancel_ok(t *testing.T) {
 	}
 	if second.GetId() != opID {
 		t.Fatalf("re-Cancel returned id %q, want same op %q", second.GetId(), opID)
+	}
+}
+
+// TestOperationHandler_GetCancel_requestWithoutPrincipal_ownsNothing — запрос,
+// который никого не называет, не владелец НИЧЕГО: ни читать, ни отменять чужую
+// операцию он не вправе, и отказ — тот же no-leak NotFound, что на чужой.
+//
+// Проверяется именно ветка «личности нет» (`OwnerFromContext` → ok=false), а не
+// «такой операции нет»: операция СУЩЕСТВУЕТ, и её принципал — ровно тот, с
+// которым безымянный запрос совпал бы, выводи мы ключ владения из
+// личности-по-умолчанию (`PrincipalFromContext`) или не отсекай мы анонимность.
+// Тогда он прочитал бы и отменил чужую строку. Прежний тест «несуществующий id →
+// NotFound» это НЕ ловит: там NotFound приходит от отсутствия строки и остаётся
+// зелёным при снятой ветке.
+//
+// Все безымянные случаи обязаны вести себя одинаково (pkg/operations
+// Principal.IsAnonymous): ctx вообще без принципала, ctx с явно снятым
+// принципалом (transport снял носителя у недоверенного отправителя) и ctx с
+// именованной анонимностью `{system, anonymous}`, которую edge выдаёт запросу
+// без credential'а. Последний опаснее прочих: пара непуста, поэтому как ключ
+// владения она выглядит настоящей и совпадает САМА С СОБОЙ — любые два
+// безымянных запроса делили бы один ключ.
+//
+// У каждого случая своя посевная строка — ровно та, с которой его ключ совпал
+// бы при снятой ветке. Иначе подслучай зеленел бы вакуумно: ключ, которому не с
+// чем совпасть, отвергается и без всякой проверки.
+func TestOperationHandler_GetCancel_requestWithoutPrincipal_ownsNothing(t *testing.T) {
+	anonymous := map[string]struct {
+		ctx context.Context
+		// seed кладёт строку, чей принципал совпал бы с ключом этого ctx, если
+		// бы ключ выводили из личности-по-умолчанию / без отсечения анонимности.
+		seed func(*testing.T, *repomock.OpsRepo) string
+	}{
+		"ctx без принципала": {
+			ctx:  context.Background(),
+			seed: systemRecordedOp,
+		},
+		"ctx с явно снятым принципалом": {
+			ctx:  operations.WithoutPrincipal(operations.WithPrincipal(context.Background(), adminA)),
+			seed: systemRecordedOp,
+		},
+		"ctx с именованной анонимностью": {
+			ctx: operations.WithPrincipal(context.Background(), anonymousPrincipal),
+			// Строка, чьи колонки принципала несут сам ярлык анонимности. Такую
+			// строку пишет любой путь, передающий принципал явно, — и именно на
+			// ней видно, что «неизвестно кто» совпадает с «неизвестно кем».
+			seed: anonymousRecordedOp,
+		},
+	}
+
+	for name, tc := range anonymous {
+		t.Run(name, func(t *testing.T) {
+			ops := repomock.NewOpsRepo()
+			opID := tc.seed(t, ops)
+			ctx := tc.ctx
+			oh := handler.NewOperationHandler(ops)
+
+			got, err := oh.Get(ctx, &operationpb.GetOperationRequest{OperationId: opID})
+			if status.Code(err) != codes.NotFound {
+				t.Errorf("Get(%s) вернул %v, ожидался NOT_FOUND: запрос, который никого не называет, "+
+					"не владеет уже записанной операцией %s", name, err, opID)
+			}
+			if got != nil {
+				t.Errorf("Get(%s) отдал тело чужой операции: %+v", name, got)
+			}
+
+			gotCancel, err := oh.Cancel(ctx, &operationpb.CancelOperationRequest{OperationId: opID})
+			if status.Code(err) != codes.NotFound {
+				t.Errorf("Cancel(%s) вернул %v, ожидался NOT_FOUND", name, err)
+			}
+			if gotCancel != nil {
+				t.Errorf("Cancel(%s) отдал тело чужой операции: %+v", name, gotCancel)
+			}
+
+			// Наблюдаемое следствие, а не только код ответа: операция осталась
+			// незавершённой — безымянный запрос её не отменил.
+			after, gerr := ops.Get(context.Background(), opID)
+			if gerr != nil {
+				t.Fatalf("ops.Get после отказа: %v", gerr)
+			}
+			if after.Done {
+				t.Errorf("операция %s отменена запросом (%s), который никого не называет — integrity-брешь control-plane", opID, name)
+			}
+		})
+	}
+}
+
+// TestOperationHandler_GetCancel_explicitSystemPrincipal_ownsItsOperations —
+// та же ФОРМА (системный принципал), но установленный ЯВНО на доверенном
+// internal-пути. Он — настоящая bootstrap-личность и остаётся владельцем своих
+// операций: гейт сужает анонимность, а НЕ bootstrap-личность как таковую.
+//
+// Этот кейс — вторая сторона проверки выше: без него запрет было бы «легче»
+// удовлетворить, отвергая любой системный принципал, и гейт ловил бы форму
+// вместо существа.
+func TestOperationHandler_GetCancel_explicitSystemPrincipal_ownsItsOperations(t *testing.T) {
+	ops := repomock.NewOpsRepo()
+	opID := systemRecordedOp(t, ops)
+	oh := handler.NewOperationHandler(ops)
+
+	ctxSys := operations.WithPrincipal(context.Background(), operations.SystemPrincipal())
+
+	op, err := oh.Get(ctxSys, &operationpb.GetOperationRequest{OperationId: opID})
+	if err != nil {
+		t.Fatalf("явно установленный системный принципал обязан читать СВОЮ операцию, получено: %v", err)
+	}
+	if op.GetId() != opID {
+		t.Fatalf("Get вернул id %q, want %q", op.GetId(), opID)
+	}
+
+	cancelled, err := oh.Cancel(ctxSys, &operationpb.CancelOperationRequest{OperationId: opID})
+	if err != nil {
+		t.Fatalf("явно установленный системный принципал обязан отменять СВОЮ операцию, получено: %v", err)
+	}
+	if !cancelled.GetDone() {
+		t.Fatalf("Cancel: операция обязана стать done=true")
 	}
 }
 

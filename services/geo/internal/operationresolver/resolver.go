@@ -67,7 +67,7 @@ type Readers struct {
 // самодокументирующие метки на switch-диспетче (case *Update*Metadata →
 // kindUpdate) сохранены как type-level seam: если платформенный контракт когда-либо
 // разведёт update-семантику (напр. orphan-Update → Interrupted вместо Done, см.
-// docs/architecture/known-divergences.md §7), точка расхождения уже названа.
+// docs/architecture/known-divergences.md §6), точка расхождения уже названа.
 type kind int
 
 const (

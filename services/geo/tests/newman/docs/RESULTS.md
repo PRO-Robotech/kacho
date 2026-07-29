@@ -5,9 +5,14 @@
 
 ## Статус прогона
 
-**`gen.py` + `validate-cases.py` — GREEN** (локально, pure-Python, без сети):
+**`gen.py` + `validate-cases.py` + `selftest-assertions.js` — GREEN** (локально, без сети):
 - `python3 scripts/gen.py` → 7 коллекций сгенерированы.
 - `python3 scripts/validate-cases.py` → OK, уникальные case-id, все каталогизированы.
+- `node scripts/selftest-assertions.js` → 36 шагов-мутаций с ожидаемым успехом и 3 с
+  ожидаемым отказом: каждый краснеет на подставленной `Operation{error}` и молчит на
+  успешной. Гейт запускается сам из `run.sh` перед newman: до него шаг-мутация
+  проверял только форму 200-конверта, а отказ мутации приезжает в `result.error`,
+  поэтому провалившаяся мутация зачитывалась как принятая.
 
 **Newman-прогон против стенда — PENDING clean-seed CI.** Локальный newman-замер против
 уже-развёрнутого стенда даёт ложные падения, если pod'ы geo/gateway СТАРЕЕ ветки

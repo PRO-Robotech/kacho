@@ -14,7 +14,7 @@ CLASS — тип проверки, DETAIL — конкретику.
 | `GOP` | OperationService (op-poll, generic) |
 | `ANP` | admin-not-on-public (ban #6 guard) |
 | `GEO-REG` / `GEO-ZON` | geo authz-матрица + migrated iam geo-read cases |
-| `GEO-IOP` | geo Operation op-poll bug-lock (RED #55) |
+| `GEO-IOP` | geo Operation — синхронно завершённая форма (done:true + response) |
 
 ## METHOD
 

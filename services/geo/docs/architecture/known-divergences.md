@@ -127,50 +127,7 @@ so a lost-attribution admin mutation is observable in the `geo_outbox` audit row
 itself rather than a silent blank (CWE-778). The normal no-auth path is unaffected
 — `operations.PrincipalFromContext` yields `system:bootstrap`, never an empty ID.
 
-## 6. Config defaults are dev-convenience (`AuthMode=dev`, `DBSSLMode=disable`); production posture is fail-closed but not the default
-
-**What.** `internal/apps/kacho/config` defaults `AuthMode` to `"dev"` and
-`DBSSLMode` to `"disable"`. In `dev` posture `validateAuthMode` only *warns* on a
-plaintext DB connection (it does not fail), and the emergency opt-ins remain
-individually honorable. A deploy whose env template forgets
-`KACHO_GEO_AUTH_MODE=production` therefore starts in `dev` posture with an
-`sslmode=disable` Postgres connection.
-
-**Why it is not a live bypass.** The dangerous relaxations are already fail-closed
-by their own explicit gate, so the `dev` default is a *misconfiguration foothold*,
-not a live escape:
-
-- **Anonymous / no-mTLS admin is impossible without a second explicit flag.** A
-  non-breakglass start — regardless of `AuthMode` — still requires, via
-  `validateSecurityConfig`: a non-empty `KACHO_GEO_AUTHZ_IAM_GRPC_ADDR` (per-RPC
-  authz Check), `mTLS enabled on both listeners`, and a pinned trusted-forwarder
-  SAN **or** the explicit `KACHO_GEO_AUTHZ_TRUST_ANY_FORWARDER=true` dev opt-in.
-  So the `dev` default alone does not open an unauthenticated/unauthorized path.
-- **Breakglass and trust-any are already fail-closed in production** (§5): both are
-  rejected outright under `production`/`production-strict`, and both require an
-  explicit env var even in dev. The only behaviors the `dev` default *itself*
-  relaxes vs production are (a) plaintext DB → warn-not-fail, and (b) the two
-  dev-only opt-ins remain *available if explicitly set*.
-- **Production posture is enforced by the deployed stack.** `security.md` mandates
-  every deploy run `production-mode` (dev-mode on a cluster is a stated security
-  debt), and the Helm/env template — not the binary default — sets it; the
-  `production` branch fail-closes on `sslmode=disable`.
-
-**Why the default is not changed here.** `AuthMode=dev` + `DBSSLMode=disable` is the
-required posture for local `make dev-up` and the testcontainers/unit fixtures
-(local Postgres has no TLS), which `security.md` explicitly permits for
-non-deployed fixtures. Flipping the binary default to `production` would fail-close
-those mandated dev fixtures at startup. Hardening the default belongs to the
-platform (a corelib-level "secure-by-default posture" decision shared by every
-kacho service), not a geo-local flip. Recorded here so the dev-default posture is
-not re-flagged as a geo defect.
-
-**Boundary.** If the platform adopts a fail-closed default posture, it lands in
-`kacho-corelib` (or the shared deploy chart) for all services at once; geo picks it
-up unchanged. Until then the invariant that keeps this safe is: **every deployed
-stack sets `KACHO_GEO_AUTH_MODE=production[-strict]`** (fail-closed on plaintext DB).
-
-## 7. Orphan-`Update` LRO reconciles to `Done(current)` — reconcile-to-committed-reality, not re-apply
+## 6. Orphan-`Update` LRO reconciles to `Done(current)` — reconcile-to-committed-reality, not re-apply
 
 **What.** `operationresolver.resolveExistence` treats `Update`-metadata orphans
 exactly like `Create`: resource present → `Done(current)`, absent → `Interrupted`.
@@ -205,7 +162,7 @@ type-level seam where such a future stricter Update-semantics would attach.
 `Resolver`-contract revision picked up by every service; geo's
 `kindUpdate` case is the attach point. Not planned.
 
-## 8. `resolveExistence` `kind` enum keeps `kindCreate`/`kindUpdate` distinct despite an identical outcome
+## 7. `resolveExistence` `kind` enum keeps `kindCreate`/`kindUpdate` distinct despite an identical outcome
 
 **What.** The `kind` enum has three values (`kindCreate`, `kindUpdate`,
 `kindDelete`) but `resolveExistence` only branches on `kindDelete`; `kindCreate`
@@ -224,7 +181,7 @@ deliberate KISS-vs-self-documentation trade decided in favor of the named labels
 the enum comment states the rationale in-code so a maintainer does not mistake the
 identical branch for an omission. Not a defect; not collapsed.
 
-## 9. `Zone.region_id` is immutable — there is no reparent divergence (correction of a false entry)
+## 8. `Zone.region_id` is immutable — there is no reparent divergence (correction of a false entry)
 
 **Status: NOT a divergence.** This section previously registered "`Zone.Update`
 allows re-pointing `region_id` (reparent)" as a deliberate design choice. Every

@@ -119,12 +119,14 @@ RFC 3339 (`2026-06-24T10:00:00Z`).
 
 ## Авторизация
 
-Авторизация — **per-RPC, ReBAC** через **OpenFGA**, проверяется на **обоих** listener'ах
-(public и internal — internal не освобождён). Интерсептор перед выполнением метода вызывает
-`InternalIAMService.Check` в kacho-iam:
+Авторизация — **per-RPC, ReBAC** через **OpenFGA**: интерсептор перед выполнением метода
+вызывает `InternalIAMService.Check` в kacho-iam, и это одинаково для **обоих** listener'ов
+(internal не освобождён). Исключение — публичное чтение каталога, у которого per-RPC Check
+снят намеренно (см. первый пункт):
 
-- **read** (`RegionService` / `ZoneService` Get/List) — требуют viewer-floor (отношение
-  `viewer` на cluster-scope);
+- **read** (`RegionService` / `ZoneService` Get/List) — project-scope EXEMPT: per-RPC
+  authz-Check снят, грант не нужен; аутентификация обязательна (без принципала —
+  `UNAUTHENTICATED`);
 - **admin** (`InternalRegionService` / `InternalZoneService` Create/Update/Delete) — требуют
   отношение `system_admin`.
 
@@ -163,7 +165,7 @@ flowchart LR
   <tbody>
     <tr><td><code>INVALID_ARGUMENT</code></td><td>400</td><td>Нарушение формата / валидации (например, пустой id)</td></tr>
     <tr><td><code>NOT_FOUND</code></td><td>404</td><td>Корректный по формату, но несуществующий регион/зона</td></tr>
-    <tr><td><code>ALREADY_EXISTS</code></td><td>409</td><td>Create с уже занятым id (PK-конфликт)</td></tr>
+    <tr><td><code>ALREADY_EXISTS</code></td><td>409</td><td>Занят <code>id</code> (PK) либо <code>name</code> (глобальный UNIQUE) — сообщение называет занятый ключ</td></tr>
     <tr><td><code>FAILED_PRECONDITION</code></td><td>409</td><td>Состояние не позволяет (например, удаление региона с зонами — FK <code>RESTRICT</code>)</td></tr>
     <tr><td><code>UNAVAILABLE</code></td><td>503</td><td>Peer (kacho-iam) недоступен — fail-closed</td></tr>
     <tr><td><code>UNAUTHENTICATED</code></td><td>401</td><td>Нет / невалиден JWT</td></tr>

@@ -41,7 +41,8 @@ Consumer-сервисы (Compute, VPC и др.) ссылаются на реги
 
 <ApiOperation method="GET" endpoint="/geo/v1/regions/{id}">
 
-Возвращает регион по идентификатору. Публичный read (требует отношение `viewer`).
+Возвращает регион по идентификатору. Публичное чтение: per-RPC authz-Check снят
+(project-scope EXEMPT) — грант не нужен, но **аутентификация обязательна**.
 
 <CodeBlock language="bash">
   {dedent`
@@ -159,10 +160,12 @@ Consumer-сервисы (Compute, VPC и др.) ссылаются на реги
   <thead><tr><th>Ситуация</th><th>Код</th><th>Поведение</th></tr></thead>
   <tbody>
     <tr><td>Get/Delete несуществующего региона</td><td><code>NOT_FOUND</code></td><td><code>"Region &lt;id&gt; not found"</code></td></tr>
-    <tr><td>Create с уже занятым id</td><td><code>ALREADY_EXISTS</code></td><td>PK-конфликт по <code>id</code></td></tr>
+    <tr><td>Create с уже занятым id</td><td><code>ALREADY_EXISTS</code></td><td><code>"Region &lt;id&gt; already exists"</code> — PK-конфликт по <code>id</code></td></tr>
+    <tr><td>Create/Update с уже занятым <code>name</code></td><td><code>ALREADY_EXISTS</code></td><td><code>"Region with name &lt;name&gt; already exists"</code> — <code>name</code> глобально уникален</td></tr>
     <tr><td><strong>Delete региона, к которому привязаны зоны</strong></td><td><code>FAILED_PRECONDITION</code></td><td>FK <code>Zone.regionId → Region.id ON DELETE RESTRICT</code> блокирует удаление; сначала удалить зоны</td></tr>
     <tr><td>Попытка изменить <code>id</code></td><td>—</td><td><code>id</code> — immutable PK; задаётся только при Create, не меняется</td></tr>
-    <tr><td>Read без отношения <code>viewer</code> / admin без <code>system_admin</code></td><td><code>PERMISSION_DENIED</code></td><td>Authz-Check не прошёл</td></tr>
+    <tr><td>Read без аутентификации</td><td><code>UNAUTHENTICATED</code></td><td>Чтение каталога грант не требует, но требует валидного принципала</td></tr>
+    <tr><td>admin CRUD без <code>system_admin</code></td><td><code>PERMISSION_DENIED</code></td><td>Authz-Check не прошёл</td></tr>
   </tbody>
 </table>
 

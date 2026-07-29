@@ -13,15 +13,19 @@ Black-box regression-план geo через api-gateway REST. Объект — 
 | RegionService.List | GET /geo/v1/regions | sync | region.py |
 | ZoneService.Get | GET /geo/v1/zones/{id} | sync | zone.py |
 | ZoneService.List | GET /geo/v1/zones | sync | zone.py |
-| InternalRegionService.Create | POST /geo/v1/regions (:9091) | async Op | internal-region.py |
-| InternalRegionService.Update | PATCH /geo/v1/regions/{id} (:9091) | async Op | internal-region.py |
-| InternalRegionService.Delete | DELETE /geo/v1/regions/{id} (:9091) | async Op | internal-region.py |
-| InternalZoneService.Create | POST /geo/v1/zones (:9091) | async Op | internal-zone.py |
-| InternalZoneService.Update | PATCH /geo/v1/zones/{id} (:9091) | async Op | internal-zone.py |
-| InternalZoneService.Delete | DELETE /geo/v1/zones/{id} (:9091) | async Op | internal-zone.py |
+| InternalRegionService.Create | POST /geo/v1/internal/regions (:9091) | sync-done Op | internal-region.py |
+| InternalRegionService.Update | PATCH /geo/v1/internal/regions/{id} (:9091) | sync-done Op | internal-region.py |
+| InternalRegionService.Delete | DELETE /geo/v1/internal/regions/{id} (:9091) | sync-done Op | internal-region.py |
+| InternalZoneService.Create | POST /geo/v1/internal/zones (:9091) | sync-done Op | internal-zone.py |
+| InternalZoneService.Update | PATCH /geo/v1/internal/zones/{id} (:9091) | sync-done Op | internal-zone.py |
+| InternalZoneService.Delete | DELETE /geo/v1/internal/zones/{id} (:9091) | sync-done Op | internal-zone.py |
 
-RPC-покрытие: **10/10 implemented**. (OperationService op-poll — cross-cutting,
-operation.py; заблокирован #55.)
+RPC-покрытие: **10/10 implemented**. Мутации возвращают Operation, ЗАВЕРШЁННУЮ
+синхронно (`done:true`, `result.response` — тело ресурса): каталог — config-INSERT
+без саги. Отказ мутации приезжает в `result.error` под HTTP 200, поэтому шаг-мутация
+обязан проверять `result.error` (`assert_operation_envelope` /
+`assert_operation_failed`); предполётный `scripts/selftest-assertions.js` этого
+требует. OperationService — cross-cutting, operation.py.
 
 ## Стратегия по рискам (risk-based)
 
@@ -30,7 +34,7 @@ operation.py; заблокирован #55.)
 | read reachability (gateway→geo dial) | High | CONF/error-guessing (503/code14 regression, migrated) |
 | authz (anon/no-viewer/non-admin/BOLA) | Critical | AUTHZ deny matrix + ban #6 |
 | within-service invariant (FK RESTRICT zones→regions) | High | STATE/NEG (delete-non-empty, ghost-region) |
-| async op lifecycle через gateway | High | STATE (op-poll — RED #55) |
+| результат мутации (отказ приезжает в `result.error` под 200) | Critical | STATE/NEG + предполётный selftest-assertions.js |
 | контракт (verbatim NotFound, timestamp-truncate, two-projection) | High | CONF |
 | pagination | Medium | BVA/PAGE |
 
@@ -40,8 +44,9 @@ operation.py; заблокирован #55.)
   `qa-*-{{runId}}` регионы/зоны (slug-safe suffix) + cleanup внутри кейса. Негативы —
   по фиксированным absent id (`{{garbageRegionId}}`/`{{garbageZoneId}}`) и malformed
   (`{{malformedId}}`). Общего мутабельного state между коллекциями нет → параллельно-безопасно.
-- read-your-writes: internal Create/Update async; op-poll недоступен (#55) →
-  материализация подтверждается публичным Get с bounded-retry (`retry_get_until_found`).
+- read-your-writes: мутация коммитит строку синхронно, поэтому публичный Get видит
+  её сразу; `retry_get_until_found` остаётся ограниченной страховкой на окно
+  видимости записи, а НЕ вердиктом об успехе мутации (вердикт — `result.error`).
 
 ## Прогон
 
@@ -61,7 +66,10 @@ Umbrella (CI): `deploy/scripts/newman-parallel.sh` (geo — в PHASE2-волне
 
 1. `validate-cases.py` (unique + catalogued) — до newman.
 2. `gen.py` (регенерация коллекций).
-3. `run.sh` — целевая + полная; false-green guard роняет на MISSING/failed/rc!=0.
-4. GREEN везде. Прежняя оговорка «кроме RED-known-failing (#55)» снята 2026-07-28:
+3. `selftest-assertions.js` — предполётная самопроверка: каждый шаг-мутация обязан
+   краснеть на операции с ошибкой и молчать на успешной (запускается сам из
+   `run.sh`, без сети). Мутация, проверяющая только форму 200-конверта, роняет гейт.
+4. `run.sh` — целевая + полная; false-green guard роняет на MISSING/failed/rc!=0.
+5. GREEN везде. Прежняя оговорка «кроме RED-known-failing (#55)» снята 2026-07-28:
    оба замка #55 удалены вместе со своими кейсами (см. RESULTS.md), у этого сервиса
    нет ни одного известного красного и ни одной записи в общем гейте.
