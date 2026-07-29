@@ -49,12 +49,19 @@ docker:
 # репозиториев — объединение durable-overlay и живой проекции zot, где сужать
 # нечего. Поэтому решение принимает handler, а гейт разбирает его AST.
 #
+# Вывод начинается с ПЕРЕПИСИ осмотренного: сколько файлов handler'а и composition
+# root'а прочитано, сколько List-RPC найдено, сколько судимо и сколько осталось без
+# приговора. Раньше цель печатала ровно `audit-list-filter: OK` — по этой строке
+# нельзя было отличить «пять RPC судили» от «дерева не нашли вовсе». Ноль
+# прочитанного теперь отказ, а не успех.
+#
 # Команда набирается как `make -C services/registry audit-list-filter` (корневого
 # Makefile в репо нет). Ровно в этой форме её зовёт CI: .github/workflows/ci.yaml,
 # job authz-artifacts. Что CI её действительно зовёт — проверяется тестом
 # tools/auditlistfilter/ci_wiring_test.go, чтобы утверждение не протухло молча.
 # Тот же анализ гоняется внутри обычного `go test ./services/registry/...`
-# (tools/auditlistfilter/audit_test.go, TestAnalyzeRealTree).
+# (tools/auditlistfilter/audit_test.go, TestAnalyzeRealTree), а сама эта команда —
+# в tools/auditlistfilter/census_test.go, с инъекциями на копиях реального дерева.
 audit-list-filter:
 	@go run ./tools/auditlistfilter/cmd/audit-list-filter
 
