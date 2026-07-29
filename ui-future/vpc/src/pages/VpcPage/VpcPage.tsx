@@ -75,7 +75,10 @@ export const VpcPage: FC<VpcPageProps> = ({ context }) => {
                   <Route key={spec.id}>
                     <Route
                       path={spec.route}
-                      element={<ResourceListPage spec={spec} parentField="project_id" parentParam="projectId" />}
+                      // VPC-раздел регистрирует `${route}/create` (ниже) и панель правки.
+                      element={
+                        <ResourceListPage spec={spec} parentField="project_id" parentParam="projectId" panelForms />
+                      }
                     />
                     <Route path={`${spec.route}/create`} element={createElementFor(spec)} />
                     <Route path={`${spec.route}/:uid`} element={<ResourceShell spec={spec} />} />

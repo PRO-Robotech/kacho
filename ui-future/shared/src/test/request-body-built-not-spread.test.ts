@@ -32,22 +32,32 @@ const EDIT_PATHS = [
   ["storage", "storage/src/components/organisms/ResourceFormDialog/ResourceFormDialog.tsx"],
 ] as const;
 
+// ResourceCreatePage is no longer listed per remote: the four vendored copies
+// were folded into the shared one (see shared-organisms-single-source.test.ts),
+// so the shared entry below covers every app that renders it.
 const CREATE_PATHS = [
   ["shared", "shared/src/components/organisms/ResourceCreatePage/ResourceCreatePage.tsx"],
   ["shared", "shared/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx"],
-  ["compute", "compute/src/components/organisms/ResourceCreatePage/ResourceCreatePage.tsx"],
   ["compute", "compute/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx"],
-  ["nlb", "nlb/src/components/organisms/ResourceCreatePage/ResourceCreatePage.tsx"],
   ["nlb", "nlb/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx"],
-  ["registry", "registry/src/components/organisms/ResourceCreatePage/ResourceCreatePage.tsx"],
   ["registry", "registry/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx"],
-  ["storage", "storage/src/components/organisms/ResourceCreatePage/ResourceCreatePage.tsx"],
   ["storage", "storage/src/components/organisms/InlineResourceCreateForm/InlineResourceCreateForm.tsx"],
 ] as const;
 
 const read = (rel: string) => readFileSync(path.join(uiRoot, rel), "utf8");
 
 describe("generic submit paths build the request body", () => {
+  it("lists nothing that no longer exists — a stale entry covers nothing", () => {
+    // The lists above are the inverse of the census below: that one catches a
+    // copy nobody listed, this one catches an entry with nothing left to cover.
+    // Without it, folding a copy away turns the guard into an ENOENT crash
+    // instead of a statement about the tree.
+    const missing = [...EDIT_PATHS, ...CREATE_PATHS]
+      .map(([, rel]) => rel)
+      .filter((rel) => !existsSync(path.join(uiRoot, rel)));
+    expect(missing).toEqual([]);
+  });
+
   it("covers every copy that exists on disk — a new remote must be listed here", () => {
     const listed = new Set<string>([...EDIT_PATHS, ...CREATE_PATHS].map(([, rel]) => rel));
     const found: string[] = [];

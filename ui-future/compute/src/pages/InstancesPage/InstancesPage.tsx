@@ -65,7 +65,9 @@ export const InstancesPage: FC<InstancesPageProps> = ({ context }) => {
                 <Route index element={<ProjectComputeDefaultRedirect />} />
                 <Route
                   path={INSTANCES.route}
-                  element={<ResourceListPage spec={INSTANCES} parentField="project_id" parentParam="projectId" />}
+                  element={
+                    <ResourceListPage spec={INSTANCES} parentField="project_id" parentParam="projectId" panelForms />
+                  }
                 />
                 <Route
                   path={`${INSTANCES.route}/create`}
@@ -75,7 +77,7 @@ export const InstancesPage: FC<InstancesPageProps> = ({ context }) => {
                 <Route path={`${INSTANCES.route}/:uid/edit`} element={<ResourceShell spec={INSTANCES} mode="edit" />} />
                 <Route path={`${INSTANCES.route}/:uid/:tab`} element={<ResourceShell spec={INSTANCES} />} />
                 {/* MachineType — read-only cluster-scoped каталог sizing (без create/edit). */}
-                <Route path={MACHINE_TYPES.route} element={<ResourceListPage spec={MACHINE_TYPES} />} />
+                <Route path={MACHINE_TYPES.route} element={<ResourceListPage spec={MACHINE_TYPES} panelForms />} />
                 <Route path={`${MACHINE_TYPES.route}/:uid`} element={<ResourceShell spec={MACHINE_TYPES} />} />
                 <Route path={`${MACHINE_TYPES.route}/:uid/:tab`} element={<ResourceShell spec={MACHINE_TYPES} />} />
                 <Route path="*" element={<ProjectComputeDefaultRedirect />} />

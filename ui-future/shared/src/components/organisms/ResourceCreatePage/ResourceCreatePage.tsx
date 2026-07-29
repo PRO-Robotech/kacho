@@ -197,6 +197,17 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
 
   const submit = () => {
     let parsed: Record<string, unknown> = obj;
+    // Инвариант спеки — ДО sanitize: он читает UI-дискриминаторы формы (какая
+    // ветка oneof выбрана), а sanitize их как раз и срезает. Поле объявлено на
+    // спеке и читается инлайн-формой; страница его не читала — то есть один и
+    // тот же ресурс проверялся в модалке и не проверялся на странице.
+    if (spec.validate) {
+      const err = spec.validate(parsed);
+      if (err) {
+        toast.error(err);
+        return;
+      }
+    }
     if (spec.sanitize) parsed = spec.sanitize(parsed);
     // sanitize shapes the domain payload; this drops what only ever existed for the
     // widget (`_`-prefixed discriminators, incl. inside array items) so it cannot

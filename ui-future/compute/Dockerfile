@@ -5,16 +5,23 @@ WORKDIR /app
 ARG KACHO_PUBLIC_BASE=/compute-remote/
 ENV KACHO_PUBLIC_BASE=$KACHO_PUBLIC_BASE
 
-COPY compute/package*.json ./
+# Этот remote ставит зависимости сам (свой package-lock), но собирает и
+# исходники shared/ — они лежат рядом, а не внутри его дерева. Установка в
+# КОРЕНЬ стадии даёт обоим деревьям один node_modules: иначе импорты
+# shared/src (react, @radix-ui, clsx …) резолвились бы вверх от /app/shared
+# и не находили ничего, а react нашёлся бы дважды.
+COPY compute/package.json compute/package-lock.json ./
 RUN npm ci
 
-COPY compute/ ./
+COPY shared/ shared/
+COPY compute/ compute/
+WORKDIR /app/compute
 RUN npm run build
 
 FROM nginx:1.27-alpine
 
 COPY compute/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/dist /usr/share/nginx/html
+COPY --from=build /app/compute/dist /usr/share/nginx/html
 
 EXPOSE 80
 

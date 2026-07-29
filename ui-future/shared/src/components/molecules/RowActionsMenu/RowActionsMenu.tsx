@@ -27,6 +27,48 @@ interface Props {
   editAsPanel?: boolean;
 }
 
+/**
+ * Resources with no cross-project "move" semantics.
+ *
+ * The move dialog is a stub that prints the REST call it would make; offering it
+ * for a resource whose API has no such verb advertises an operation that does
+ * not exist. Every domain declared its own resources here — geo (regions/zones)
+ * and iam (accounts/projects) and vpc address pools were already in the shared
+ * copy; compute (instances), storage (volumes/snapshots/disk types) and registry
+ * (registries/repositories/tags) each declared theirs in its own fork of this
+ * file. One closed list means a resource cannot be movable in one app and not in
+ * another.
+ */
+const MOVE_INCAPABLE = [
+  "accounts",
+  "projects",
+  "regions",
+  "zones",
+  "address-pools",
+  // compute
+  "compute-instances",
+  // storage
+  "volumes",
+  "snapshots",
+  "disk-types",
+  // registry (OCI entities)
+  "registries",
+  "repositories",
+  "tags",
+];
+
+/**
+ * Has this resource any row action at all?
+ *
+ * Mirrors the menu assembled below, so a read-only catalog resource does not get
+ * a column holding a button that opens an empty menu. Networks are called out
+ * because their menu carries "create subnet" even when the network itself is not
+ * otherwise actionable.
+ */
+export function resourceHasRowActions(spec: ResourceSpec): boolean {
+  return spec.ops.update || spec.ops.delete || !MOVE_INCAPABLE.includes(spec.id) || spec.id === "networks";
+}
+
 export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: Props) {
   const navigate = useNavigate();
   const params = useParams();
@@ -44,7 +86,7 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
   const isDefaultSg = spec.id === "security-groups" && Boolean(getByPath<boolean>(row, "default_for_network"));
   const showDelete = spec.ops.delete && !isDefaultSg;
 
-  const moveCapable = !["accounts", "projects", "regions", "zones", "address-pools"].includes(spec.id);
+  const moveCapable = !MOVE_INCAPABLE.includes(spec.id);
 
   const isNetwork = spec.id === "networks";
   const currentProjectId = params.projectId ?? projectId ?? null;

@@ -41,9 +41,9 @@ export function SystemRoutes() {
 
       {/* List/cluster страницы — в AdminLayout (горизонтальные табы). */}
       <Route element={<AdminLayout />}>
-        <Route path="regions" element={<ResourceListPage spec={REGISTRY.regions} />} />
-        <Route path="zones" element={<ResourceListPage spec={REGISTRY.zones} />} />
-        <Route path="address-pools" element={<ResourceListPage spec={REGISTRY["address-pools"]} />} />
+        <Route path="regions" element={<ResourceListPage spec={REGISTRY.regions} panelForms />} />
+        <Route path="zones" element={<ResourceListPage spec={REGISTRY.zones} panelForms />} />
+        <Route path="address-pools" element={<ResourceListPage spec={REGISTRY["address-pools"]} panelForms />} />
         <Route
           path="cluster/admins"
           element={

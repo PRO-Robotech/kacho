@@ -9,9 +9,9 @@ import { Button, Checkbox, Input, Segmented, Select, Typography, Tag } from "ant
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
 import { PlusOutlined } from "@ant-design/icons";
 import { api } from "@shared/api/client";
-import { REGISTRY, getByPath, resourceServicePrefix, type ResourceSpec } from "@shared/lib/resource-registry";
+import { REGISTRY, getByPath, type ResourceSpec } from "@shared/lib/resource-registry";
 import { ResourceTable, type Column } from "@shared/components/organisms/ResourceTable";
-import { RowActionsMenu } from "@shared/components/molecules/RowActionsMenu";
+import { RowActionsMenu, resourceHasRowActions } from "@shared/components/molecules/RowActionsMenu";
 import { PanelHeader } from "@shared/components/molecules/PanelHeader";
 import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
 import { type ReactNode } from "react";
@@ -33,6 +33,19 @@ interface Props {
   /** page_size запроса списка (Role — 1000: клиентский system/custom-фильтр
    *  требует всю страницу, иначе custom-роли на 2-й странице выпадут). */
   pageSize?: string;
+  /**
+   * Есть ли у этого ресурса В ЭТОМ приложении форма-страница/панель.
+   *
+   * true  → «Создать» ведёт на `${listBase}/create`, правка открывается панелью;
+   * false → «Создать» ставит флаг модалки `?modal=<specId>-create`.
+   *
+   * Это факт о таблице маршрутов приложения, а не о ресурсе: один и тот же spec
+   * открывается страницей в своём ремоуте и модалкой в чужом. Раньше значение
+   * выводилось из service-префикса spec.id, поэтому каждая копия компонента
+   * несла таблицу маршрутов своего приложения — и копии разошлись. Решает тот,
+   * кто маршруты и зарегистрировал.
+   */
+  panelForms: boolean;
   /** Игнорировать spec.childRoute при drill (клик по строке ведёт на
    *  `${basePath}/${id}` detail, а не на childRoute). Projects внутри IAM-секции
    *  открывают IAM-деталь проекта, а не project-dashboard. */
@@ -45,6 +58,7 @@ export function ResourceListPage({
   parentParam,
   parentValue,
   pageSize,
+  panelForms,
   disableChildRoute = false,
 }: Props) {
   const params = useParams();
@@ -92,17 +106,9 @@ export function ResourceListPage({
   );
   useBreadcrumb(breadcrumb);
 
-  // KAC-231: модалки упразднены в пользу формы-страницы/панели (логика Network)
-  // у модулей с полноценными panel/page-формами: VPC (ResourceShell edit-панель,
-  // ResourceCreatePage) + admin (ResourceCreatePage/ResourceEditPage страницы).
-  // Compute/NLB/IAM остаются на модалках до своей раскатки (их detail ещё не
-  // ResourceShell, /edit редиректит в модалку). panelForms — этот гейт.
-  const panelForms =
-    resourceServicePrefix(spec.id) === "vpc" ||
-    resourceServicePrefix(spec.id) === "iam" ||
-    spec.id === "regions" ||
-    spec.id === "zones" ||
-    spec.id === "address-pools";
+  // KAC-231: модалки упразднены в пользу формы-страницы/панели там, где
+  // приложение действительно зарегистрировало `/create` и панель правки.
+  // Значение приходит пропом от того, кто эти маршруты объявил (см. Props).
   const listBase = location.pathname.endsWith("/") ? location.pathname.slice(0, -1) : location.pathname;
   const createTarget = panelForms ? `${listBase}/create` : `${listBase}?modal=${spec.id}-create`;
   // KAC-246: CTA «Создать» — в header right-slot (шапка), НЕ в page-toolbar.
@@ -197,19 +203,23 @@ export function ResourceListPage({
     projectId: params.projectId,
   }).filter((c) => !hidden.has(c.header));
 
-  columns.push({
-    header: "",
-    className: "text-right whitespace-nowrap",
-    cell: (row) => (
-      <RowActionsMenu
-        spec={spec}
-        row={row}
-        basePath={basePath}
-        projectId={filterValue ?? null}
-        editAsPanel={panelForms}
-      />
-    ),
-  });
+  // Столбец действий — только когда у ресурса есть строчные действия: иначе
+  // read-only каталог получает пустой столбец с кнопкой, открывающей пустое меню.
+  if (resourceHasRowActions(spec)) {
+    columns.push({
+      header: "",
+      className: "text-right whitespace-nowrap",
+      cell: (row) => (
+        <RowActionsMenu
+          spec={spec}
+          row={row}
+          basePath={basePath}
+          projectId={filterValue ?? null}
+          editAsPanel={panelForms}
+        />
+      ),
+    });
+  }
 
   // Какое из пяти состояний показать. Порядок важен: отказ никогда не должен
   // проваливаться в приглашение «создайте первый» — на 403 это сообщает

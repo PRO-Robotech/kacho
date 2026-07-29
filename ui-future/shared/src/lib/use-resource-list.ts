@@ -13,6 +13,43 @@ import { api } from "@shared/api/client";
 import { hasMorePages, mergeCursorPages, type CursorPage } from "./cursor-pages";
 import type { ResourceSpec } from "./resource-registry";
 
+/** A path segment the caller still has to fill: `/…/{registryId}/…`. */
+const UNRESOLVED_PLACEHOLDER = /\{[^}]+\}/;
+
+/** snake_case filter field → camelCase path placeholder (registry_id → registryId). */
+const toPathCamel = (s: string) => s.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
+
+export interface ResolvedListPath {
+  path: string;
+  query: Record<string, string>;
+  /** False while the path still carries a placeholder nobody has filled. */
+  resolved: boolean;
+}
+
+/**
+ * Where the parent id goes: into the path or into the query.
+ *
+ * Child collections are addressed by path (`/registry/v1/registries/{registryId}/repositories`)
+ * and the backend scopes them by that segment. Appending the parent to the query
+ * instead would leave the `{registryId}` literal in the URL, and the request
+ * would go out as written. While any placeholder is still unfilled the request
+ * must not be issued at all — the parent simply is not known yet.
+ */
+export function resolveListPath(
+  apiPath: string,
+  filterField: string | null,
+  filterValue: string | null,
+): ResolvedListPath {
+  let path = apiPath;
+  const query: Record<string, string> = {};
+  if (filterField && filterValue) {
+    const placeholder = `{${toPathCamel(filterField)}}`;
+    if (path.includes(placeholder)) path = path.split(placeholder).join(filterValue);
+    else query[filterField] = filterValue;
+  }
+  return { path, query, resolved: !UNRESOLVED_PLACEHOLDER.test(path) };
+}
+
 /**
  * useResourceList — поллит GET <apiPath>?<filterField>=<filterValue> каждые 3 сек
  * и следует курсору по запросу.
@@ -35,20 +72,22 @@ export function useResourceList<T = Record<string, unknown>>(
   // Значения фильтров обязаны быть в ключе: иначе смена фильтра переиспользует
   // страницы, накопленные для предыдущего набора.
   const extraKey = extraQuery && Object.keys(extraQuery).length > 0 ? JSON.stringify(extraQuery) : null;
+  const target = resolveListPath(spec.apiPath, filterField, filterValue);
 
   const query = useInfiniteQuery({
     queryKey: [spec.id, "list", filterField, filterValue, pageSize ?? null, extraKey],
     initialPageParam: "",
     queryFn: ({ pageParam }) => {
-      const q: Record<string, string> = { ...(extraQuery ?? {}) };
-      if (filterField && filterValue) q[filterField] = filterValue;
+      const q: Record<string, string> = { ...(extraQuery ?? {}), ...target.query };
       if (pageSize) q.pageSize = pageSize;
       if (pageParam) q.pageToken = pageParam as string;
-      return api.list<CursorPage>(spec.apiPath, q);
+      return api.list<CursorPage>(target.path, q);
     },
     getNextPageParam: (lastPage) => lastPage.next_page_token || undefined,
     refetchInterval: 3_000,
-    enabled: !filterField || !!filterValue,
+    // An unfilled path placeholder means the parent is not known yet; issuing
+    // the request would spend every poll on an InvalidArgument.
+    enabled: (!filterField || !!filterValue) && target.resolved,
     staleTime: 0,
   });
 

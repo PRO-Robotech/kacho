@@ -65,7 +65,9 @@ export const StoragePage: FC<StoragePageProps> = ({ context }) => {
                   <Route key={spec.id}>
                     <Route
                       path={spec.route}
-                      element={<ResourceListPage spec={spec} parentField="project_id" parentParam="projectId" />}
+                      element={
+                        <ResourceListPage spec={spec} parentField="project_id" parentParam="projectId" panelForms />
+                      }
                     />
                     <Route
                       path={`${spec.route}/create`}
@@ -77,7 +79,7 @@ export const StoragePage: FC<StoragePageProps> = ({ context }) => {
                   </Route>
                 ))}
                 {/* DiskType — read-only cluster-scoped справочник (без create/edit). */}
-                <Route path={DISK_TYPES.route} element={<ResourceListPage spec={DISK_TYPES} />} />
+                <Route path={DISK_TYPES.route} element={<ResourceListPage spec={DISK_TYPES} panelForms />} />
                 <Route path={`${DISK_TYPES.route}/:uid`} element={<ResourceShell spec={DISK_TYPES} />} />
                 <Route path={`${DISK_TYPES.route}/:uid/:tab`} element={<ResourceShell spec={DISK_TYPES} />} />
                 <Route path="*" element={<ProjectStorageDefaultRedirect />} />

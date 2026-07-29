@@ -8,6 +8,18 @@ Object.assign(globalThis, {
   TextEncoder,
 });
 
+// jsdom ships no ResizeObserver, and ResourceTable measures its own body with
+// one to size the scroll area. Without a stub every render of a list throws
+// before a single row exists, so nothing above the table can be tested.
+if (!("ResizeObserver" in globalThis)) {
+  class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  Object.assign(globalThis, { ResizeObserver: ResizeObserverStub });
+}
+
 // @ant-design/icons мокается через moduleNameMapper (стаб ./antd-icons-stub.tsx
 // с реальными статическими named-экспортами), а НЕ Proxy-моком: Proxy их не
 // даёт, и под --experimental-vm-modules ESM-линкер не находит binding для
@@ -26,7 +38,54 @@ jest.unstable_mockModule("antd", () => {
   const Button = ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
     React.createElement("button", { type: "button", ...props }, children);
   const Input = (props: Record<string, unknown>) => React.createElement("input", props);
+  const Search = (props: Record<string, unknown>) => React.createElement("input", { type: "search", ...props });
   const Textarea = (props: Record<string, unknown>) => React.createElement("textarea", props);
+
+  // Table renders its rows for real. A `<div>` stand-in makes every assertion
+  // about a list's contents — a cell, a row action, an empty state — pass no
+  // matter what the component did, which is worse than having no test.
+  interface MockColumn {
+    title?: React.ReactNode;
+    render?: (value: unknown, row: unknown, index: number) => React.ReactNode;
+  }
+  interface MockTableProps {
+    columns?: MockColumn[];
+    dataSource?: unknown[];
+    rowKey?: (row: unknown) => string;
+    onRow?: (row: unknown) => Record<string, unknown>;
+    locale?: { emptyText?: React.ReactNode };
+  }
+  const Table = ({ columns = [], dataSource = [], rowKey, onRow, locale }: MockTableProps) =>
+    React.createElement(
+      "table",
+      null,
+      React.createElement(
+        "thead",
+        null,
+        React.createElement(
+          "tr",
+          null,
+          columns.map((c, i) => React.createElement("th", { key: i }, c.title)),
+        ),
+      ),
+      React.createElement(
+        "tbody",
+        null,
+        dataSource.length === 0
+          ? React.createElement(
+              "tr",
+              null,
+              React.createElement("td", { colSpan: Math.max(columns.length, 1) }, locale?.emptyText),
+            )
+          : dataSource.map((row, ri) =>
+              React.createElement(
+                "tr",
+                { key: rowKey ? rowKey(row) : ri, ...(onRow ? onRow(row) : {}) },
+                columns.map((c, ci) => React.createElement("td", { key: ci }, c.render?.(undefined, row, ri))),
+              ),
+            ),
+      ),
+    );
   const Select = ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
     React.createElement("select", props, children);
 
@@ -83,7 +142,7 @@ jest.unstable_mockModule("antd", () => {
     Empty: Component,
     Form,
     Image: Component,
-    Input: Object.assign(Input, { TextArea: Textarea }),
+    Input: Object.assign(Input, { TextArea: Textarea, Search }),
     InputNumber: Input,
     Layout,
     List: Component,
@@ -98,7 +157,7 @@ jest.unstable_mockModule("antd", () => {
     Spin: Component,
     Statistic: Component,
     Switch: Input,
-    Table: Component,
+    Table,
     Tabs: Component,
     Tag: Component,
     Tooltip: Component,
