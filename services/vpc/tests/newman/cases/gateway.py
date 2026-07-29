@@ -192,22 +192,33 @@ CASES.append(Case(
     ],
 ))
 
+# GW-CR-NEG-PROJECT-NF — P0-негатив, который прежде не утверждал отказ НИ В ОДНОЙ
+# из двух своих ветек: `oneOf([200, 403])` принимал оба исхода, ветка 200 лишь
+# запоминала id операции, ветка else записывала пустую строку — и следом поллилась
+# операция, которой не существует. То есть кейс занимал слот P0 и не мог упасть.
+#
+# Исход здесь ровно один и он детерминирован: создание шлюза авторизуется
+# отношением `editor` на ПРОЕКТЕ из тела запроса. У несуществующего проекта нет ни
+# одной записи в модели прав, поэтому проверка на краю отказывает fail-closed ДО
+# сервиса — асинхронная операция не создаётся вовсе, и поллить нечего.
 CASES.append(Case(
     id="GW-CR-NEG-PROJECT-NF",
-    title="Create Gateway с nonexistent project → async op.error NOT_FOUND OR sync 403 (IAM blocks unknown projectId)",
+    title="Create Gateway с nonexistent project → 403 fail-closed на краю (операция не создаётся)",
     classes=["NEG", "CONF"], priority="P0",
     steps=[
         Step(name="create-bad-project", method="POST", path="/vpc/v1/gateways",
              body={"projectId": "{{garbageRmId}}", "name": "gw-fnf-{{runId}}",
                    "sharedEgressGatewaySpec": {}},
-             # IAM authz may block before the request reaches the service (403)
-             # or the service accepts it and the async worker returns NotFound.
              test_script=[
-                 "pm.test('200 or 403', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
-                 "if (pm.response.code === 200) { const j = pm.response.json(); pm.environment.set('opId', j.id || ''); }",
-                 "else { pm.environment.set('opId', ''); }",
+                 *assert_status(403),
+                 *assert_grpc_code(7, "PERMISSION_DENIED"),
+                 # Отказ не сообщает, существует ли названный проект: иначе он же и
+                 # есть оракул существования (см. security.md hide-existence).
+                 "pm.test('отказ не подтверждает и не опровергает существование проекта', () => {",
+                 "  const m = String(pm.response.json().message || '');",
+                 "  pm.expect(m, 'текст отказа').to.not.contain('not found');",
+                 "});",
              ]),
-        poll_operation_until_done(),
     ],
 ))
 

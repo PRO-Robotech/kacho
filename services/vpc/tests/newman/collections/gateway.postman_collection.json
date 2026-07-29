@@ -165,7 +165,7 @@
           ]
         },
         {
-          "name": "poll-op-971",
+          "name": "poll-op-1002",
           "request": {
             "method": "GET",
             "header": [
@@ -220,7 +220,7 @@
           ]
         },
         {
-          "name": "get-rya588",
+          "name": "get-rya616",
           "request": {
             "method": "GET",
             "header": [
@@ -311,7 +311,7 @@
           ]
         },
         {
-          "name": "poll-op-972",
+          "name": "poll-op-1003",
           "request": {
             "method": "GET",
             "header": [
@@ -716,7 +716,7 @@
           ]
         },
         {
-          "name": "poll-op-973",
+          "name": "poll-op-1004",
           "request": {
             "method": "GET",
             "header": [
@@ -848,7 +848,7 @@
           ]
         },
         {
-          "name": "poll-op-974",
+          "name": "poll-op-1005",
           "request": {
             "method": "GET",
             "header": [
@@ -1192,7 +1192,7 @@
           ]
         },
         {
-          "name": "poll-op-975",
+          "name": "poll-op-1006",
           "request": {
             "method": "GET",
             "header": [
@@ -1247,7 +1247,7 @@
           ]
         },
         {
-          "name": "patch-rya589",
+          "name": "patch-rya617",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1311,7 +1311,7 @@
           ]
         },
         {
-          "name": "poll-op-976",
+          "name": "poll-op-1007",
           "request": {
             "method": "GET",
             "header": [
@@ -1406,7 +1406,7 @@
           ]
         },
         {
-          "name": "poll-op-977",
+          "name": "poll-op-1008",
           "request": {
             "method": "GET",
             "header": [
@@ -1720,7 +1720,7 @@
           ]
         },
         {
-          "name": "poll-op-978",
+          "name": "poll-op-1009",
           "request": {
             "method": "GET",
             "header": [
@@ -1775,7 +1775,7 @@
           ]
         },
         {
-          "name": "del-happy-rya590",
+          "name": "del-happy-rya618",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1830,7 +1830,7 @@
           ]
         },
         {
-          "name": "poll-op-979",
+          "name": "poll-op-1010",
           "request": {
             "method": "GET",
             "header": [
@@ -1887,7 +1887,7 @@
       ]
     },
     {
-      "name": "GW-CR-NEG-PROJECT-NF — Create Gateway с nonexistent project → async op.error NOT_FOUND OR sync 403 (IAM blocks unknown projectId)",
+      "name": "GW-CR-NEG-PROJECT-NF — Create Gateway с nonexistent project → 403 fail-closed на краю (операция не создаётся)",
       "description": "class:NEG | class:CONF | priority:P0",
       "item": [
         {
@@ -1927,64 +1927,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('200 or 403', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
-                  "if (pm.response.code === 200) { const j = pm.response.json(); pm.environment.set('opId', j.id || ''); }",
-                  "else { pm.environment.set('opId', ''); }"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-980",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  // Postman async-friendly retry: re-invoke same request name",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "pm.test('status 403', () => pm.expect(pm.response.code).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});",
+                  "pm.test('отказ не подтверждает и не опровергает существование проекта', () => {",
+                  "  const m = String(pm.response.json().message || '');",
+                  "  pm.expect(m, 'текст отказа').to.not.contain('not found');",
+                  "});"
                 ]
               }
             }
@@ -2881,7 +2832,7 @@
       ]
     },
     {
-      "name": "GW-LST-FILTER-GARBAGE — List с garbage filter syntax → 400 InvalidArgument",
+      "name": "GW-LST-FILTER-GARBAGE — List с garbage filter syntax → 400 InvalidArgument с именем неизвестного поля",
       "description": "class:FILTER | class:VAL | priority:P1",
       "item": [
         {
@@ -2912,7 +2863,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('200 or 400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('сообщение называет непринятое поле', () => pm.expect(String((pm.response.json()||{}).message||'')).to.eql('Bad expression at column 1. Unknown field: \"this\"'));"
                 ]
               }
             }
@@ -2921,7 +2877,7 @@
       ]
     },
     {
-      "name": "GW-LST-FILTER-UNKNOWN-FIELD — List с filter на unsupported field → 400 InvalidArgument",
+      "name": "GW-LST-FILTER-UNKNOWN-FIELD — List с filter на unsupported field → 400 InvalidArgument с именем поля",
       "description": "class:FILTER | class:VAL | priority:P2",
       "item": [
         {
@@ -2952,7 +2908,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('200 or 400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('сообщение называет непринятое поле', () => pm.expect(String((pm.response.json()||{}).message||'')).to.eql('Bad expression at column 1. Unknown field: \"nonexistent_field\"'));"
                 ]
               }
             }
@@ -3096,7 +3057,7 @@
           ]
         },
         {
-          "name": "poll-op-981",
+          "name": "poll-op-1011",
           "request": {
             "method": "GET",
             "header": [
@@ -3151,7 +3112,7 @@
           ]
         },
         {
-          "name": "patch-rya591",
+          "name": "patch-rya619",
           "request": {
             "method": "PATCH",
             "header": [
@@ -3215,7 +3176,7 @@
           ]
         },
         {
-          "name": "poll-op-982",
+          "name": "poll-op-1012",
           "request": {
             "method": "GET",
             "header": [
@@ -3270,7 +3231,7 @@
           ]
         },
         {
-          "name": "verify-rya592",
+          "name": "verify-rya620",
           "request": {
             "method": "GET",
             "header": [
@@ -3321,7 +3282,7 @@
           ]
         },
         {
-          "name": "cleanup-rya593",
+          "name": "cleanup-rya621",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3375,7 +3336,7 @@
           ]
         },
         {
-          "name": "poll-op-983",
+          "name": "poll-op-1013",
           "request": {
             "method": "GET",
             "header": [
@@ -3489,7 +3450,7 @@
           ]
         },
         {
-          "name": "poll-op-984",
+          "name": "poll-op-1014",
           "request": {
             "method": "GET",
             "header": [
@@ -3544,7 +3505,7 @@
           ]
         },
         {
-          "name": "patch-rya594",
+          "name": "patch-rya622",
           "request": {
             "method": "PATCH",
             "header": [
@@ -3608,7 +3569,7 @@
           ]
         },
         {
-          "name": "poll-op-985",
+          "name": "poll-op-1015",
           "request": {
             "method": "GET",
             "header": [
@@ -3663,7 +3624,7 @@
           ]
         },
         {
-          "name": "verify-rya595",
+          "name": "verify-rya623",
           "request": {
             "method": "GET",
             "header": [
@@ -3714,7 +3675,7 @@
           ]
         },
         {
-          "name": "cleanup-rya596",
+          "name": "cleanup-rya624",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3768,7 +3729,7 @@
           ]
         },
         {
-          "name": "poll-op-986",
+          "name": "poll-op-1016",
           "request": {
             "method": "GET",
             "header": [
@@ -3882,7 +3843,7 @@
           ]
         },
         {
-          "name": "poll-op-987",
+          "name": "poll-op-1017",
           "request": {
             "method": "GET",
             "header": [
@@ -3937,7 +3898,7 @@
           ]
         },
         {
-          "name": "patch-rya597",
+          "name": "patch-rya625",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4001,7 +3962,7 @@
           ]
         },
         {
-          "name": "poll-op-988",
+          "name": "poll-op-1018",
           "request": {
             "method": "GET",
             "header": [
@@ -4056,7 +4017,7 @@
           ]
         },
         {
-          "name": "verify-rya598",
+          "name": "verify-rya626",
           "request": {
             "method": "GET",
             "header": [
@@ -4108,7 +4069,7 @@
           ]
         },
         {
-          "name": "cleanup-rya599",
+          "name": "cleanup-rya627",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4162,7 +4123,7 @@
           ]
         },
         {
-          "name": "poll-op-989",
+          "name": "poll-op-1019",
           "request": {
             "method": "GET",
             "header": [
@@ -4516,7 +4477,7 @@
           ]
         },
         {
-          "name": "poll-op-990",
+          "name": "poll-op-1020",
           "request": {
             "method": "GET",
             "header": [
@@ -4571,7 +4532,7 @@
           ]
         },
         {
-          "name": "patch-multi-rya600",
+          "name": "patch-multi-rya628",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4635,7 +4596,7 @@
           ]
         },
         {
-          "name": "poll-op-991",
+          "name": "poll-op-1021",
           "request": {
             "method": "GET",
             "header": [
@@ -4690,7 +4651,7 @@
           ]
         },
         {
-          "name": "verify-all-rya601",
+          "name": "verify-all-rya629",
           "request": {
             "method": "GET",
             "header": [
@@ -4745,7 +4706,7 @@
           ]
         },
         {
-          "name": "cleanup-rya602",
+          "name": "cleanup-rya630",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4799,7 +4760,7 @@
           ]
         },
         {
-          "name": "poll-op-992",
+          "name": "poll-op-1022",
           "request": {
             "method": "GET",
             "header": [
@@ -4913,7 +4874,7 @@
           ]
         },
         {
-          "name": "poll-op-993",
+          "name": "poll-op-1023",
           "request": {
             "method": "GET",
             "header": [
@@ -5043,7 +5004,7 @@
           ]
         },
         {
-          "name": "poll-op-994",
+          "name": "poll-op-1024",
           "request": {
             "method": "GET",
             "header": [
@@ -5157,7 +5118,7 @@
           ]
         },
         {
-          "name": "poll-op-995",
+          "name": "poll-op-1025",
           "request": {
             "method": "GET",
             "header": [
@@ -5212,7 +5173,7 @@
           ]
         },
         {
-          "name": "list-filtered-lst603",
+          "name": "list-filtered-lst631",
           "request": {
             "method": "GET",
             "header": [
@@ -5265,7 +5226,7 @@
           ]
         },
         {
-          "name": "cleanup-rya604",
+          "name": "cleanup-rya632",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5319,7 +5280,7 @@
           ]
         },
         {
-          "name": "poll-op-996",
+          "name": "poll-op-1026",
           "request": {
             "method": "GET",
             "header": [
@@ -5791,7 +5752,7 @@
           ]
         },
         {
-          "name": "poll-op-997",
+          "name": "poll-op-1027",
           "request": {
             "method": "GET",
             "header": [
@@ -5846,7 +5807,7 @@
           ]
         },
         {
-          "name": "patch-name-only-rya605",
+          "name": "patch-name-only-rya633",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5910,7 +5871,7 @@
           ]
         },
         {
-          "name": "poll-op-998",
+          "name": "poll-op-1028",
           "request": {
             "method": "GET",
             "header": [
@@ -5965,7 +5926,7 @@
           ]
         },
         {
-          "name": "verify-rya606",
+          "name": "verify-rya634",
           "request": {
             "method": "GET",
             "header": [
@@ -6019,7 +5980,7 @@
           ]
         },
         {
-          "name": "cleanup-rya607",
+          "name": "cleanup-rya635",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6073,7 +6034,7 @@
           ]
         },
         {
-          "name": "poll-op-999",
+          "name": "poll-op-1029",
           "request": {
             "method": "GET",
             "header": [
@@ -6187,7 +6148,7 @@
           ]
         },
         {
-          "name": "poll-op-1000",
+          "name": "poll-op-1030",
           "request": {
             "method": "GET",
             "header": [
@@ -6242,7 +6203,7 @@
           ]
         },
         {
-          "name": "get-timed-rya608",
+          "name": "get-timed-rya636",
           "request": {
             "method": "GET",
             "header": [
@@ -6332,7 +6293,7 @@
           ]
         },
         {
-          "name": "poll-op-1001",
+          "name": "poll-op-1031",
           "request": {
             "method": "GET",
             "header": [
@@ -7570,7 +7531,7 @@
           ]
         },
         {
-          "name": "poll-op-1002",
+          "name": "poll-op-1032",
           "request": {
             "method": "GET",
             "header": [
@@ -7625,7 +7586,7 @@
           ]
         },
         {
-          "name": "get-1-rya609",
+          "name": "get-1-rya637",
           "request": {
             "method": "GET",
             "header": [
@@ -7676,7 +7637,7 @@
           ]
         },
         {
-          "name": "lst-includes-lst610",
+          "name": "lst-includes-lst638",
           "request": {
             "method": "GET",
             "header": [
@@ -7778,7 +7739,7 @@
           ]
         },
         {
-          "name": "poll-op-1003",
+          "name": "poll-op-1033",
           "request": {
             "method": "GET",
             "header": [
@@ -7909,7 +7870,7 @@
           ]
         },
         {
-          "name": "poll-op-1004",
+          "name": "poll-op-1034",
           "request": {
             "method": "GET",
             "header": [

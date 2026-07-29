@@ -317,7 +317,7 @@
           ]
         },
         {
-          "name": "poll-op-888",
+          "name": "poll-op-903",
           "request": {
             "method": "GET",
             "header": [
@@ -372,7 +372,7 @@
           ]
         },
         {
-          "name": "get-known-zone-rya499",
+          "name": "get-known-zone-rya513",
           "request": {
             "method": "GET",
             "header": [
@@ -464,7 +464,7 @@
           ]
         },
         {
-          "name": "poll-op-889",
+          "name": "poll-op-904",
           "request": {
             "method": "GET",
             "header": [
@@ -578,7 +578,7 @@
           ]
         },
         {
-          "name": "poll-op-890",
+          "name": "poll-op-905",
           "request": {
             "method": "GET",
             "header": [
@@ -673,7 +673,7 @@
           ]
         },
         {
-          "name": "poll-op-891",
+          "name": "poll-op-906",
           "request": {
             "method": "GET",
             "header": [
