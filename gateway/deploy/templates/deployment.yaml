@@ -168,6 +168,18 @@ spec:
             - name: KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP
               value: "true"
             {{- end }}
+            # enforceStepUp applies the per-RPC authentication floor
+            # (`required_acr_min`) on the authN layer every request passes
+            # through. It is deliberately NOT the knob above: that one demands a
+            # proof of possession, which issuance does not yet mint, so sharing
+            # one switch is how the floor came to be declared per RPC, mirrored
+            # into the identity service, and applied by nothing on every stand.
+            # A production-class environment refuses to start with this off while
+            # the catalog declares a floor.
+            {{- if .Values.authn.enforceStepUp }}
+            - name: KACHO_API_GATEWAY_AUTHN_ENFORCE_STEP_UP
+              value: "true"
+            {{- end }}
             # requireMachineTokenBinding demands that MACHINE principals
             # (service accounts) present a bound token; unbound ⇒ 401. Machines
             # are exempt from step-up because they have no second factor, so

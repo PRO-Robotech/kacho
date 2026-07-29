@@ -148,6 +148,12 @@ api-gateway:
   # JWKS RS256 validation. No devSecret (HS256 dev path is never used in prod).
   authn:
     mode: production-strict
+    # Apply the per-RPC authentication floor the catalog declares. The gateway
+    # refuses to start in a production-class environment without it, so this is
+    # not optional here — it is stated so that no future edit to a chart default
+    # can quietly drop it, the same discipline the forwarder allow-list follows
+    # below. Machine principals are exempt from the floor by the shared rule.
+    enforceStepUp: true
   # Hydra JWKS — the verifier fetches Hydra's JWKS from the cluster-internal
   # Hydra PUBLIC Service (NOT the public ingress hairpin); `issuer` is the public
   # OIDC issuer string the token `iss` claim must match (SEC-J exact-match).

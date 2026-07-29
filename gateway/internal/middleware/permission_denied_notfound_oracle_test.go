@@ -22,10 +22,10 @@ import (
 // repo format IS the wire text):
 //
 //	iam       services/iam/internal/repo/kacho/pg/*.go        (shared.MapRepoErr → iamerr.StripSentinel)
-//	compute   services/compute/internal/repo/*.go             (service.mapRepoErr → stripSentinel)
+//	compute   services/compute/internal/repo/instance_repo.go  (service.mapRepoErr → stripSentinel)
 //	vpc       services/vpc/internal/repo/kacho/pg/*.go
 //	nlb       services/nlb/internal/repo/kacho/pg/*.go        (shared.StripSentinel)
-//	registry  services/registry/internal/repo/kacho/pg/registry.go (wrapPgErr "Registry")
+//	registry  services/registry/internal/repo/kacho/pg/errmap.go    (wrapPgErr, resource "Registry")
 var hideExistenceReachableTypes = map[string]string{
 	// iam — services/iam/internal/repo/kacho/pg/*.go
 	"account":             "Account %s not found",        // account_repo.go
@@ -34,11 +34,10 @@ var hideExistenceReachableTypes = map[string]string{
 	"iam_group":           "Group %s not found",          // group_repo.go
 	"iam_service_account": "ServiceAccount %s not found", // service_account_repo.go
 	"iam_access_binding":  "AccessBinding %s not found",  // access_binding_repo.go
-	// compute — services/compute/internal/repo/*.go
-	"compute_disk":     "Disk %s not found",     // disk_repo.go
-	"compute_image":    "Image %s not found",    // image_repo.go
+	// compute — services/compute/internal/repo/instance_repo.go. Disk / Image /
+	// Snapshot left with the retired block-storage duplicate: no catalog entry
+	// anchors those object types any more, so nothing can reach their row.
 	"compute_instance": "Instance %s not found", // instance_repo.go
-	"compute_snapshot": "Snapshot %s not found", // snapshot_repo.go
 	// vpc — services/vpc/internal/repo/kacho/pg/*.go
 	"vpc_network":           "Network %s not found",
 	"vpc_subnet":            "Subnet %s not found",

@@ -321,6 +321,23 @@ type Config struct {
 	// dev mode без sender-constrained tokens).
 	AuthNEnableDPoP bool `envconfig:"KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP" default:"false"`
 
+	// AuthNEnforceStepUp — apply the per-RPC authentication floor
+	// (`required_acr_min` from the permission catalog) on the authN layer every
+	// request passes through.
+	//
+	// It is a SEPARATE knob from AuthNEnableDPoP on purpose. That one mounts the
+	// proof-of-possession validators — a property of SOME tokens, which issuance
+	// does not yet mint, so demanding it would refuse every machine credential.
+	// How strongly the caller authenticated is a property of EVERY token. Sharing
+	// one toggle is how the floor came to be declared per RPC, mirrored into the
+	// identity service, and applied by nothing on every deployed stand.
+	//
+	// Default false so an in-process fixture may run without it. A
+	// production-class environment does not get that choice: the boot guard
+	// refuses to start when the catalog declares a floor and this is off, so
+	// every deployable profile states it.
+	AuthNEnforceStepUp bool `envconfig:"KACHO_API_GATEWAY_AUTHN_ENFORCE_STEP_UP" default:"false"`
+
 	// AuthNRequireMachineTokenBinding — true → a token whose principal is a
 	// MACHINE (kacho_principal_type=service_account) MUST be sender-constrained
 	// (RFC 7800 `cnf`: DPoP `jkt` or mTLS `x5t#S256`); an unbound machine token

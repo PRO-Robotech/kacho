@@ -131,7 +131,14 @@ type AuthInterceptor struct {
 	// not be asked about at all (no identifier). Separate window and counter — see
 	// WithRevocationCheck.
 	revocationSkips *introspectionFailureReporter
-	logger          *slog.Logger
+	// stepUp / stepUpLookup / stepUpRoutes — the per-RPC authentication floor,
+	// applied on this always-running layer rather than behind a feature toggle.
+	// All three or none; see auth_stepup.go for why the floor cannot live where
+	// proof-of-possession does.
+	stepUp       *StepUpGate
+	stepUpLookup PermissionLookup
+	stepUpRoutes RestRouteResolver
+	logger       *slog.Logger
 
 	// Headers, которые auth-interceptor пропускает в backend metadata
 	// (после успешного auth). Backend через corelib `grpcsrv.PrincipalExtractInterceptor`
@@ -357,6 +364,12 @@ func (a *AuthInterceptor) authorize(ctx context.Context, fullMethod string) (con
 			// re-authenticating.
 			return nil, status.Error(codes.Unavailable, revocationUnavailableReason)
 		}
+		// Same floor, same reason, on the native surface — where the method is
+		// named by the transport and needs no route resolution.
+		if suErr := a.enforceStepUpGRPC(fullMethod, vt); suErr != nil {
+			return nil, suErr
+		}
+		ctx = withTokenContextMetadata(ctx, vt)
 		pType, pID, display, perr := principalFromVerifiedToken(vt)
 		if perr == nil {
 			return a.injectPrincipal(ctx, pType, pID, display), nil
@@ -870,6 +883,16 @@ func (a *AuthInterceptor) tryHydraJWT(w http.ResponseWriter, r *http.Request, ne
 			return true
 		}
 	}
+	// Did the caller authenticate strongly enough for THIS call? Asked before the
+	// principal is written, so a request that has not met the floor never reaches
+	// authz or a backend. The floor lives here, not in the sender-constrained
+	// middleware, because it is a question about every token — see auth_stepup.go.
+	if a.enforceStepUpHTTP(w, r, vt) {
+		return true
+	}
+	// The credential's own context travels either way: it describes the token, not
+	// the person, and the cluster-internal floor decides on the acr it finds here.
+	setTokenContextHeaders(r, vt)
 	if pType, pID, display, perr := principalFromVerifiedToken(vt); perr == nil {
 		setPrincipalHeaders(r, pType, pID, display)
 		a.logger.Info("auth.HTTP: Principal injected (Hydra JWT)", "type", pType, "id", pID)

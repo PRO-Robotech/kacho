@@ -119,6 +119,22 @@ oidc:
 #       key: dev_secret
 #       optional: true
 #
+# Per-RPC authentication floor:
+#
+#   authn:
+#     enforceStepUp: true               # apply the catalog `required_acr_min`
+#
+# The permission catalog states, per RPC, how strongly a caller must have
+# authenticated. Applying it is its OWN switch, separate from enableDpop below:
+# a proof of possession is a property of some tokens and cannot be demanded
+# before issuance mints bound credentials, whereas how strongly the caller
+# authenticated is a property of every token. They shared one switch, no profile
+# set it, and the floor therefore held nowhere while the catalog, its mirror in
+# the identity service and the cluster-internal arm all read as if it did.
+# A production-class environment now refuses to start with this off while the
+# catalog declares a floor, and every deployable profile states it —
+# gateway/deploy/stepup_enforcement_test.go reads those declarations.
+#
 # Sender-constrained tokens (RFC 7800 `cnf`):
 #
 #   authn:

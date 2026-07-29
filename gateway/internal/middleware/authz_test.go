@@ -113,7 +113,7 @@ func withTokenMD(subj string, ptype string) context.Context {
 }
 
 const (
-	createEntry = `{"fqn":"kacho.cloud.vpc.v1.NetworkService/Create","permission":"vpc.networks.create","required_relation":"editor","scope_extractor":{"object_type":"vpc_network","from_request_field":"folder_id"},"required_acr_min":"2","risk_level":"MEDIUM"}`
+	createEntry = `{"fqn":"kacho.cloud.vpc.v1.NetworkService/Create","permission":"vpc.networks.create","required_relation":"editor","scope_extractor":{"object_type":"vpc_network","from_request_field":"project_id"},"required_acr_min":"2","risk_level":"MEDIUM"}`
 	getEntry    = `{"fqn":"kacho.cloud.vpc.v1.NetworkService/Get","permission":"vpc.networks.get","required_relation":"viewer","scope_extractor":{"object_type":"vpc_network","from_request_field":"network_id"},"required_acr_min":"2","risk_level":"LOW"}`
 	deleteEntry = `{"fqn":"kacho.cloud.vpc.v1.NetworkService/Delete","permission":"vpc.networks.delete","required_relation":"editor","scope_extractor":{"object_type":"vpc_network","from_request_field":"network_id"},"required_acr_min":"3","requires_mfa_fresh":true,"risk_level":"HIGH"}`
 	exemptEntry = `{"fqn":"kacho.cloud.iam.v1.AuthService/Login","permission":"<exempt>"}`

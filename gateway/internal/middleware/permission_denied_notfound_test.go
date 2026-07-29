@@ -44,12 +44,12 @@ func TestNotFoundMessage_ContractTone(t *testing.T) {
 		{"iam group", "iam_group", id, "Group " + id + " not found"},
 		{"iam service account", "iam_service_account", id, "ServiceAccount " + id + " not found"},
 		{"iam access binding", "iam_access_binding", id, "AccessBinding " + id + " not found"},
-		// compute — must equal services/compute/internal/repo/*_repo.go.
-		{"compute disk", "compute_disk", id, "Disk " + id + " not found"},
-		{"compute image", "compute_image", id, "Image " + id + " not found"},
+		// compute — must equal services/compute/internal/repo/instance_repo.go.
+		// Disk / Image / Snapshot are gone with the retired block-storage duplicate;
+		// they now take the fallback, asserted with the other unmapped types below.
 		{"compute instance", "compute_instance", id, "Instance " + id + " not found"},
-		{"compute snapshot", "compute_snapshot", id, "Snapshot " + id + " not found"},
-		// registry — must equal services/registry/internal/repo/kacho/pg/registry.go.
+		// registry — must equal what wrapPgErr composes in
+		// services/registry/internal/repo/kacho/pg/errmap.go.
 		{"registry registry", "registry_registry", id, "Registry " + id + " not found"},
 
 		// Fallback (unmapped type / no concrete id) is the NEUTRAL "not found":

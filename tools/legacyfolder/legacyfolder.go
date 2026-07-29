@@ -196,59 +196,34 @@ var exemptFiles = map[string]string{
 	"services/iam/internal/migrations/0001_initial.sql":                           "applied migration: the baseline that created conditions.folder_id; applied migrations are never edited (ban #5)",
 	"services/iam/internal/migrations/0070_conditions_folder_to_project.sql":      "applied migration: the record of the last rename — it must keep naming what it renamed",
 	"services/compute/internal/handler/tenant_interceptor_project_header_test.go": "conformance test: it sends the retired header to prove the server does not honour it; removing the name would remove the proof",
+
+	// Newman cases that ASSERT the retired word is absent from a response, and the
+	// collections generated from them. The literal IS the assertion: remove it and
+	// the proof that the rename reached the wire goes with it.
+	"services/iam/tests/newman/cases/iam-account-redesign.py":                            "conformance case: asserts no pre-redesign container key is served",
+	"services/iam/tests/newman/cases/iam-condition.py":                                   "conformance case: asserts the pre-redesign scope key is never served",
+	"services/iam/tests/newman/collections/iam-account-redesign.postman_collection.json": "generated from the conformance case above; regenerating it reproduces the literal",
+	"services/iam/tests/newman/collections/iam-condition.postman_collection.json":        "generated from the conformance case above; regenerating it reproduces the literal",
 }
 
-// awaitingPass is the price of splitting this sweep across two passes: these
-// files are in trees another pass owns right now, so this one may not touch
-// them. Every entry is an exact path, must exist, and must still match — a
-// stale entry is reported and has to be deleted, so the second pass cannot
-// leave the list behind. Nothing outside the two owned trees may be listed
-// here (see AuditExemptions), which keeps this from becoming a general escape
-// hatch. The count is printed on every run, including a clean one.
-var awaitingPass = map[string]string{
-	// iam's newman tree. A second pass owns services/iam/ and regenerates these
-	// collections from their sources; renaming them here would collide with it.
-	"services/iam/tests/newman/cases/iam-account-redesign.py":                                         "iam newman pass",
-	"services/iam/tests/newman/cases/iam-condition.py":                                                "iam newman pass",
-	"services/iam/tests/newman/collections/authz-deny.postman_collection.json":                        "iam newman pass",
-	"services/iam/tests/newman/collections/authz-sa-apitoken.postman_collection.json":                 "iam newman pass",
-	"services/iam/tests/newman/collections/geo-read.postman_collection.json":                          "iam newman pass",
-	"services/iam/tests/newman/collections/iam-access-binding-redesign.postman_collection.json":       "iam newman pass",
-	"services/iam/tests/newman/collections/iam-account-redesign.postman_collection.json":              "iam newman pass",
-	"services/iam/tests/newman/collections/iam-account.postman_collection.json":                       "iam newman pass",
-	"services/iam/tests/newman/collections/iam-authz-grant-check-propagation.postman_collection.json": "iam newman pass",
-	"services/iam/tests/newman/collections/iam-condition.postman_collection.json":                     "iam newman pass",
-	"services/iam/tests/newman/collections/iam-flat-authz-vbc.postman_collection.json":                "iam newman pass",
-	"services/iam/tests/newman/collections/iam-group.postman_collection.json":                         "iam newman pass",
-	"services/iam/tests/newman/collections/iam-internal-only-check.postman_collection.json":           "iam newman pass",
-	"services/iam/tests/newman/collections/iam-invite-grant-fga.postman_collection.json":              "iam newman pass",
-	"services/iam/tests/newman/collections/iam-permission-catalog.postman_collection.json":            "iam newman pass",
-	"services/iam/tests/newman/collections/iam-project.postman_collection.json":                       "iam newman pass",
-	"services/iam/tests/newman/collections/iam-rbac-rules-labels.postman_collection.json":             "iam newman pass",
-	"services/iam/tests/newman/collections/iam-rbac-scope-grant.postman_collection.json":              "iam newman pass",
-	"services/iam/tests/newman/collections/iam-rbac-subjects.postman_collection.json":                 "iam newman pass",
-	"services/iam/tests/newman/collections/iam-read-authz-vget.postman_collection.json":               "iam newman pass",
-	"services/iam/tests/newman/collections/iam-role-redesign.postman_collection.json":                 "iam newman pass",
-	"services/iam/tests/newman/collections/iam-role.postman_collection.json":                          "iam newman pass",
-	"services/iam/tests/newman/collections/iam-service-account.postman_collection.json":               "iam newman pass",
-	"services/iam/tests/newman/collections/iam-user.postman_collection.json":                          "iam newman pass",
-	"services/iam/tests/newman/collections/iam-whoami.postman_collection.json":                        "iam newman pass",
-	"services/iam/tests/newman/collections/label-revoke-iam.postman_collection.json":                  "iam newman pass",
-	"services/iam/tests/newman/collections/label-revoke-nlb.postman_collection.json":                  "iam newman pass",
-	"services/iam/tests/newman/collections/label-revoke-storage.postman_collection.json":              "iam newman pass",
-	"services/iam/tests/newman/collections/label-revoke-vpc.postman_collection.json":                  "iam newman pass",
-	"services/iam/tests/newman/collections/rbac-subject-channel-equivalence.postman_collection.json":  "iam newman pass",
-	"services/iam/tests/newman/collections/rbac-visibility-set.postman_collection.json":               "iam newman pass",
-	"services/iam/tests/newman/scripts/gen.py":                                                        "iam newman pass",
-
-	// gateway test fixtures spell the retired name as a scope_extractor field.
-	// Neither embedded permission catalog contains it, so this is fixture text
-	// only — but gateway/ belongs to another pass right now.
-	"gateway/internal/e2e/authz_e2e_test.go":                 "gateway pass",
-	"gateway/internal/middleware/authz_test.go":              "gateway pass",
-	"gateway/internal/middleware/permission_catalog_test.go": "gateway pass",
-	"gateway/internal/middleware/resource_extractor_test.go": "gateway pass",
-}
+// awaitingPass is the price of splitting a sweep across two concurrent passes:
+// a file listed here sits in a tree another pass owns right now, so this one may
+// not touch it. Every entry is an exact path, must exist, and must still match —
+// a stale entry is reported and has to be deleted, so the second pass cannot
+// leave the list behind. Nothing outside the two owned trees may be listed here
+// (see AuditExemptions), which keeps this from becoming a general escape hatch.
+// The count is printed on every run, including a clean one.
+//
+// EMPTY IS THE RESTING STATE, and getting back to it is the point. The list once
+// deferred a whole sweep of the iam newman tree and four gateway fixtures, all of
+// which named the retired container through one shared environment key. That key
+// is now spelled with the surviving word, at the generator and in every
+// collection it emits, so the deferrals had nothing left to defer — and a
+// deferral with no subject is a finding, not a state to keep. The four files that
+// still spell the name do so because they ASSERT the server no longer serves it;
+// that is not a deferral, and they moved to exemptFiles where the reason is
+// written down.
+var awaitingPass = map[string]string{}
 
 // awaitingRoots are the only trees an awaitingPass entry may name.
 var awaitingRoots = []string{"services/iam/", "gateway/"}

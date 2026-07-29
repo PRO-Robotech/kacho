@@ -122,6 +122,12 @@ api-gateway:
   authn:
     mode: dev
     devSecret: kacho-dev-jwt-secret-2026
+    # Apply the per-RPC authentication floor the catalog declares. Stated here
+    # and not left to a default: absence is exactly the state in which the floor
+    # was declared everywhere and applied nowhere. Machine principals are exempt
+    # by the shared rule, which is why the e2e fixtures — service-account tokens
+    # throughout — are unaffected.
+    enforceStepUp: true
   # KAC-127: Phase 3 per-RPC authz middleware — ENABLED.
   #
   # The two structural blockers that previously forced `enabled: false` are
