@@ -45,11 +45,33 @@ var retiredKnobs = []struct {
 	{"ListFilter.ModelID", "the Go field behind authz.list-filter.model-id is retired"},
 }
 
-// scannedExtensions — что осматриваем в дереве сервиса. Настройка живёт в коде,
-// в шаблонах чарта и в профилях; списка «где искать» по местам прошлых находок
-// быть не должно.
-var scannedExtensions = map[string]bool{
-	".go": true, ".yaml": true, ".yml": true, ".tpl": true, ".sh": true, ".md": true,
+// Что осматриваем: ВСЁ, что не двоичное. Перечня форматов здесь нет намеренно.
+//
+// Раньше стоял ПЕРЕЧЕНЬ расширений (`.go .yaml .yml .tpl .sh .md`), и он врал:
+// комментарий выше обещал осмотр всего дерева, а из пятнадцати форматов дерева
+// читались шесть. В непрочитанном `.mdx` — 22 файла документационного сайта — обе
+// снятые ручки были ЖИВЫ и описаны как настройка, причём одна с `enabled: true`.
+// Перечень «где искать» всегда отстаёт от следующего формата, поэтому он заменён на
+// обратный принцип: читаем каждый файл, кроме двоичных, и двоичность определяем по
+// СОДЕРЖИМОМУ (нулевой байт), а не по имени — иначе список расширений возвращается
+// с другой стороны.
+var skippedDirs = map[string]bool{
+	".git": true, "node_modules": true, "out": true, "collections": true,
+	".docusaurus": true, "build": true, "dist": true,
+}
+
+// isBinary — есть ли нулевой байт в начале файла.
+func isBinary(b []byte) bool {
+	head := b
+	if len(head) > 8192 {
+		head = head[:8192]
+	}
+	for _, c := range head {
+		if c == 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // selfPath — единственный файл, освобождённый от проверки: он и есть перечень
@@ -67,6 +89,8 @@ func TestRetiredKnobsStayRetired(t *testing.T) {
 
 	var (
 		scanned int
+		binary  int
+		formats = map[string]int{}
 		hits    []string
 	)
 	err := filepath.WalkDir(serviceRoot, func(path string, d os.DirEntry, err error) error {
@@ -74,13 +98,9 @@ func TestRetiredKnobsStayRetired(t *testing.T) {
 			return err
 		}
 		if d.IsDir() {
-			switch d.Name() {
-			case ".git", "node_modules", "out", "collections":
+			if skippedDirs[d.Name()] {
 				return filepath.SkipDir
 			}
-			return nil
-		}
-		if !scannedExtensions[filepath.Ext(path)] {
 			return nil
 		}
 		if filepath.Base(path) == selfPath {
@@ -90,7 +110,16 @@ func TestRetiredKnobsStayRetired(t *testing.T) {
 		if rerr != nil {
 			return rerr
 		}
+		if isBinary(body) {
+			binary++
+			return nil
+		}
 		scanned++
+		ext := filepath.Ext(path)
+		if ext == "" {
+			ext = "(без расширения)"
+		}
+		formats[ext]++
 		for lineNo, line := range strings.Split(string(body), "\n") {
 			for _, k := range retiredKnobs {
 				if strings.Contains(line, k.token) {
@@ -104,11 +133,14 @@ func TestRetiredKnobsStayRetired(t *testing.T) {
 		t.Fatalf("walk service tree: %v", err)
 	}
 
-	// «Ноль находок» обязано быть отличимо от «ноль прочитанного».
+	// «Ноль находок» обязано быть отличимо от «ноль прочитанного» — и от «ноль
+	// прочитанного В ЭТОМ ФОРМАТЕ». Перепись по форматам печатается именно потому,
+	// что прошлая редакция читала шесть форматов из пятнадцати и молчала об этом.
 	if scanned == 0 {
 		t.Fatal("the service tree scan read no files — the check proves nothing")
 	}
-	t.Logf("scanned %d file(s) under %s", scanned, serviceRoot)
+	t.Logf("scanned %d text file(s) under %s (%d binary skipped) across %d format(s): %v",
+		scanned, serviceRoot, binary, len(formats), formats)
 	if len(hits) > 0 {
 		t.Fatalf("retired knob(s) reintroduced:\n  %s", strings.Join(hits, "\n  "))
 	}
