@@ -55,19 +55,48 @@
 //
 // Judgement is made on the AST, never on text: the parser is asked NOT to keep
 // comments, so a comment naming a filter cannot satisfy a rule about calling one.
-// Both directions are locked by fixtures in audit_test.go.
+// Both directions are locked by fixtures in audit_test.go, and against copies of the
+// real tree in census_test.go.
+//
+// # Census
+//
+// Every run states what it opened — handler files, composition-root files, List RPCs
+// discovered, judged and unjudged — on every path, including the one where it refuses.
+// The gate used to answer a clean tree with the four characters "OK", which reads the
+// same whether it judged five RPCs or never found the tree at all; and when the tree
+// was absent it answered with the operating system's word for a missing path and said
+// nothing about having inspected nothing. "Zero findings" has to be unreachable from
+// "zero read", and the number that makes it so has to be printed.
+//
+// # Why there is no whitelist here
+//
+// The sibling gates carry --allow=<resource> for a cluster catalog whose rows are not
+// project-scoped, and treat an entry matching nothing as a finding — an exclusion
+// lives only while it has a subject. Registry needs no such list: enforcement is
+// DECLARED per RPC, so the two failure modes are already covered from both ends. A
+// List RPC nobody declared is a finding (it cannot be excluded by omission), and a
+// declaration whose handler is gone is a finding (it expires by itself). The census
+// therefore reports unjudged RPCs as a number that is never quietly non-zero: every
+// one of them is also a finding.
 package auditlistfilter
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 )
+
+// ErrNotInspected reports that the gate could not read the tree it was pointed at.
+// It is distinct from "the tree has findings": a gate that could not open the code
+// has proven nothing, and its caller exits differently to say so.
+var ErrNotInspected = errors.New("the tree could not be inspected")
 
 // shape is how a List RPC is expected to enforce visibility.
 type shape int
@@ -111,49 +140,128 @@ var bannedEnumeration = map[string]bool{
 // authzField is the handler field holding the per-object authorizer.
 const authzField = "authz"
 
-// Analyze inspects the kacho-registry tree rooted at serviceRoot and returns one
-// finding per violation, sorted. An empty result means the invariant holds.
-func Analyze(serviceRoot string) ([]string, error) {
-	fset := token.NewFileSet()
+// Options configures one audit run.
+type Options struct {
+	// Root is the kacho-registry service root (the directory holding internal/…).
+	Root string
+}
 
-	handlerDir := filepath.Join(serviceRoot, "internal", "handler")
-	handlerFiles, err := parseDir(fset, handlerDir)
+// Report is the census of one run together with its findings: what the gate opened,
+// what it found there, and what it judged. It is printed on every path — see the
+// package comment on why "OK" alone is not an answer.
+type Report struct {
+	HandlerFiles int      // non-test .go files parsed under internal/handler
+	RootFiles    int      // non-test .go files parsed under cmd (composition root)
+	Listings     []string // List RPCs discovered, "<Receiver>.<Method>", sorted
+	Checked      []string // discovered AND declared — the ones actually judged
+	Unjudged     []string // discovered, enforcement not declared — each is also a finding
+	Expired      []string // declared, handler gone — each is also a finding
+	Findings     []string // one line per finding; non-empty ⇒ the gate fails
+}
+
+// Audit inspects the tree at o.Root, writes its census and findings to out, and
+// returns the report plus the verdict. A non-nil error wrapping ErrNotInspected means
+// the tree could not be read at all — which is a refusal, not a pass.
+func Audit(o Options, out io.Writer) (Report, error) {
+	root := o.Root
+	if root == "" {
+		root = "."
+	}
+	rep, err := analyze(root)
+	return finish(rep, out, err)
+}
+
+// Analyze inspects the kacho-registry tree rooted at serviceRoot and returns one
+// finding per violation, sorted. An empty result means the invariant holds. It is the
+// census-free form, kept for callers that only want the verdict; the runnable gate
+// goes through Audit so that what it examined is stated.
+func Analyze(serviceRoot string) ([]string, error) {
+	rep, err := analyze(serviceRoot)
 	if err != nil {
 		return nil, err
 	}
+	return rep.Findings, nil
+}
 
-	var findings []string
+// analyze does the work and fills in the census as it goes.
+func analyze(serviceRoot string) (Report, error) {
+	var rep Report
+	fset := token.NewFileSet()
+
+	handlerDir := filepath.Join(serviceRoot, "internal", "handler")
+	handlerFiles, parsed, err := parseDir(fset, handlerDir)
+	rep.HandlerFiles = parsed
+	if err != nil {
+		rep.Findings = append(rep.Findings, err.Error())
+		// The detail is already on the findings line; the verdict only says which kind
+		// of failure this is, so the reader is not shown the same sentence twice.
+		return rep, ErrNotInspected
+	}
+
 	listMethods, authzMethods := collectMethods(handlerFiles)
+	for name := range listMethods {
+		rep.Listings = append(rep.Listings, name)
+		if _, declared := enforcement[name]; declared {
+			rep.Checked = append(rep.Checked, name)
+		} else {
+			rep.Unjudged = append(rep.Unjudged, name)
+		}
+	}
+	for name := range enforcement {
+		if _, ok := listMethods[name]; !ok {
+			rep.Expired = append(rep.Expired, name)
+		}
+	}
+	sort.Strings(rep.Listings)
+	sort.Strings(rep.Checked)
+	sort.Strings(rep.Unjudged)
+	sort.Strings(rep.Expired)
 
-	findings = append(findings, checkSurfaceIsDeclared(listMethods)...)
-	findings = append(findings, checkHelpersExist(authzMethods)...)
+	// A handler package that parses but declares no List at all is the same failure
+	// one level in: files were read, the surface was not found, and without this the
+	// verdict would rest entirely on the declaration table happening to be non-empty.
+	if len(rep.Listings) == 0 {
+		rep.Findings = append(rep.Findings, fmt.Sprintf(
+			"%s: %d file(s) parsed and not one List RPC among them — nothing was judged, so "+
+				"nothing can be vouched for", handlerDir, parsed))
+	}
+
+	rep.Findings = append(rep.Findings, checkSurfaceIsDeclared(fset, listMethods)...)
+	rep.Findings = append(rep.Findings, checkHelpersExist(authzMethods)...)
 
 	for name, fd := range listMethods {
 		r, declared := enforcement[name]
 		if !declared {
 			continue // already reported by checkSurfaceIsDeclared
 		}
-		findings = append(findings, checkListMethod(fset, name, fd, r)...)
+		rep.Findings = append(rep.Findings, checkListMethod(fset, name, fd, r)...)
 	}
 
-	findings = append(findings, checkFiltersFailClosed(authzMethods)...)
+	rep.Findings = append(rep.Findings, checkFiltersFailClosed(fset, authzMethods)...)
 
-	wiring, err := checkHandlerIsWired(fset, filepath.Join(serviceRoot, "cmd"))
-	if err != nil {
-		return nil, err
+	cmdDir := filepath.Join(serviceRoot, "cmd")
+	wiring, rootFiles, werr := checkHandlerIsWired(fset, cmdDir)
+	rep.RootFiles = rootFiles
+	if werr != nil {
+		rep.Findings = append(rep.Findings, werr.Error())
+		sort.Strings(rep.Findings)
+		return rep, ErrNotInspected
 	}
-	findings = append(findings, wiring...)
+	rep.Findings = append(rep.Findings, wiring...)
 
-	sort.Strings(findings)
-	return findings, nil
+	sort.Strings(rep.Findings)
+	return rep, nil
 }
 
-// parseDir parses every non-test .go file directly inside dir. Comments are NOT
-// retained: the gate must judge code, never prose about code.
-func parseDir(fset *token.FileSet, dir string) ([]*ast.File, error) {
+// parseDir parses every non-test .go file directly inside dir and returns them plus
+// the number parsed. Comments are NOT retained: the gate must judge code, never prose
+// about code.
+func parseDir(fset *token.FileSet, dir string) ([]*ast.File, int, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("read %s: %w", dir, err)
+		return nil, 0, fmt.Errorf("%s could not be read (%v) — nothing was inspected, so "+
+			"nothing can be vouched for; a gate pointed at the wrong tree must not be "+
+			"indistinguishable from a clean one", dir, err)
 	}
 	var out []*ast.File
 	for _, e := range entries {
@@ -163,15 +271,62 @@ func parseDir(fset *token.FileSet, dir string) ([]*ast.File, error) {
 		}
 		f, perr := parser.ParseFile(fset, filepath.Join(dir, name), nil, 0)
 		if perr != nil {
-			return nil, fmt.Errorf("parse %s: %w", name, perr)
+			return nil, len(out), fmt.Errorf("parse %s: %w", name, perr)
 		}
 		out = append(out, f)
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("no Go sources under %s — nothing was inspected, so nothing can be vouched for", dir)
+		return nil, 0, fmt.Errorf("no Go sources under %s — nothing was inspected, so nothing can be vouched for", dir)
 	}
-	return out, nil
+	return out, len(out), nil
 }
+
+// finish prints the census, then the findings, and turns them into the verdict.
+// analyzeErr is non-nil when the tree could not be read; the census still goes out,
+// because the number that explains a refusal is the number of files read.
+func finish(rep Report, out io.Writer, analyzeErr error) (Report, error) {
+	_, _ = fmt.Fprintf(out,
+		"audit-list-filter: examined %d handler file(s) and %d composition-root file(s); "+
+			"%d List RPC(s) (%d checked, %d unjudged)\n",
+		rep.HandlerFiles, rep.RootFiles, len(rep.Listings), len(rep.Checked), len(rep.Unjudged))
+	if len(rep.Checked) > 0 {
+		_, _ = fmt.Fprintf(out, "audit-list-filter: checked %s\n", strings.Join(rep.Checked, ", "))
+	}
+	if len(rep.Unjudged) > 0 {
+		_, _ = fmt.Fprintf(out, "audit-list-filter: unjudged %s\n", strings.Join(rep.Unjudged, ", "))
+	}
+	if len(rep.Expired) > 0 {
+		_, _ = fmt.Fprintf(out, "audit-list-filter: declared with no handler %s\n", strings.Join(rep.Expired, ", "))
+	}
+
+	for _, f := range rep.Findings {
+		_, _ = fmt.Fprintf(out, "audit-list-filter: %s\n", f)
+	}
+	if analyzeErr != nil {
+		return rep, analyzeErr
+	}
+	if len(rep.Findings) == 0 {
+		_, _ = fmt.Fprintln(out, "audit-list-filter: OK")
+		return rep, nil
+	}
+	_, _ = fmt.Fprint(out, explanation)
+	// The caller adds the gate's prefix; carrying one here too would print it twice.
+	return rep, fmt.Errorf("%d finding(s)", len(rep.Findings))
+}
+
+// explanation is the closing note printed under a failing run.
+const explanation = `
+Every public List must hand back only the objects its caller may see.
+In kacho-registry that decision is made in the handler, in one of two shapes:
+  - a page of separately-authorizable objects (registries, repositories,
+    repo-scoped operations) is filtered row by row, and the response is built
+    from the filtered slice;
+  - a page that lives inside one object (tags, referrers) is settled by
+    checking that object before the page is read.
+Enumerating every allowed id is not a substitute: that enumeration is capped
+server-side with no continuation token, so the caller's own objects fall
+outside the cap and disappear.
+`
 
 // collectMethods returns the List-shaped handler methods keyed "<Receiver>.<Method>",
 // and the methods of repoAuthz keyed by their own name.
@@ -214,14 +369,14 @@ func receiverTypeName(fd *ast.FuncDecl) string {
 // checkSurfaceIsDeclared reports List handlers with no declared enforcement, and
 // declarations whose handler is gone. Both directions matter: the first is a new RPC
 // shipping unreviewed, the second is a rule that silently stopped applying.
-func checkSurfaceIsDeclared(list map[string]*ast.FuncDecl) []string {
+func checkSurfaceIsDeclared(fset *token.FileSet, list map[string]*ast.FuncDecl) []string {
 	var out []string
-	for name := range list {
+	for name, fd := range list {
 		if _, ok := enforcement[name]; !ok {
 			out = append(out, fmt.Sprintf(
 				"%s: a List RPC with no declared listauthz enforcement — declare in "+
-					"tools/auditlistfilter what its caller is checked against before it ships",
-				name))
+					"tools/auditlistfilter what its caller is checked against before it ships%s",
+				name, at(fset, fd.Pos())))
 		}
 	}
 	for name := range enforcement {
@@ -256,10 +411,10 @@ func checkHelpersExist(authz map[string]*ast.FuncDecl) []string {
 
 // checkListMethod applies the declared enforcement to one handler method.
 func checkListMethod(fset *token.FileSet, name string, fd *ast.FuncDecl, r rule) []string {
-	out := checkNoEnumeration(name, fd)
+	out := checkNoEnumeration(fset, name, fd)
 	switch r.shape {
 	case rowFilter:
-		return append(out, checkRowFilter(name, fd, r)...)
+		return append(out, checkRowFilter(fset, name, fd, r)...)
 	case objectGate:
 		return append(out, checkObjectGate(fset, name, fd, r)...)
 	}
@@ -267,27 +422,28 @@ func checkListMethod(fset *token.FileSet, name string, fd *ast.FuncDecl, r rule)
 }
 
 // checkNoEnumeration rejects "list everything the subject may see, then narrow".
-func checkNoEnumeration(name string, fd *ast.FuncDecl) []string {
+func checkNoEnumeration(fset *token.FileSet, name string, fd *ast.FuncDecl) []string {
 	var out []string
 	for _, call := range callsNamed(fd.Body, bannedEnumeration) {
 		out = append(out, fmt.Sprintf(
 			"%s: calls %s — enumerating every allowed id is capped server-side with no "+
 				"continuation token, so the caller's own objects fall outside the cap and "+
-				"disappear; check the page that was read instead",
-			name, call))
+				"disappear; check the page that was read instead%s",
+			name, call, at(fset, fd.Pos())))
 	}
 	return out
 }
 
 // checkRowFilter asserts the page is filtered per object AND that the filtered slice
 // is the one the response is built from.
-func checkRowFilter(name string, fd *ast.FuncDecl, r rule) []string {
+func checkRowFilter(fset *token.FileSet, name string, fd *ast.FuncDecl, r rule) []string {
+	where := at(fset, fd.Pos())
 	assigns := authzCallAssignments(fd.Body, r.helper)
 	if len(assigns) == 0 {
 		return []string{fmt.Sprintf(
 			"%s: the page is returned without a per-object visibility filter — it must "+
-				"pass through h.%s.%s (%s)",
-			name, authzField, r.helper, r.object)}
+				"pass through h.%s.%s (%s)%s",
+			name, authzField, r.helper, r.object, where)}
 	}
 
 	ranged := rangedIdents(fd.Body)
@@ -297,21 +453,21 @@ func checkRowFilter(name string, fd *ast.FuncDecl, r rule) []string {
 		if result == "" {
 			out = append(out, fmt.Sprintf(
 				"%s: the result of h.%s.%s is discarded, so the unfiltered page is what "+
-					"the caller receives", name, authzField, r.helper))
+					"the caller receives%s", name, authzField, r.helper, at(fset, as.Pos())))
 			continue
 		}
 		if !ranged[result] {
 			out = append(out, fmt.Sprintf(
 				"%s: h.%s.%s runs but its result %q is never the collection the response "+
-					"is built from — the unfiltered page is what the caller receives",
-				name, authzField, r.helper, result))
+					"is built from — the unfiltered page is what the caller receives%s",
+				name, authzField, r.helper, result, at(fset, as.Pos())))
 		}
 		for _, in := range identArgs(as.Rhs[0].(*ast.CallExpr)) {
 			if ranged[in] {
 				out = append(out, fmt.Sprintf(
 					"%s: the response is built from %q, the unfiltered page handed TO "+
-						"h.%s.%s — build it from the filtered result",
-					name, in, authzField, r.helper))
+						"h.%s.%s — build it from the filtered result%s",
+					name, in, authzField, r.helper, at(fset, as.Pos())))
 			}
 		}
 	}
@@ -326,8 +482,8 @@ func checkObjectGate(fset *token.FileSet, name string, fd *ast.FuncDecl, r rule)
 	if len(assigns) == 0 && len(bare) == 0 {
 		return []string{fmt.Sprintf(
 			"%s: the page is returned without checking the object that holds it — it must "+
-				"pass through h.%s.%s (%s)",
-			name, authzField, r.helper, r.object)}
+				"pass through h.%s.%s (%s)%s",
+			name, authzField, r.helper, r.object, at(fset, fd.Pos()))}
 	}
 
 	var out []string
@@ -354,7 +510,7 @@ func checkObjectGate(fset *token.FileSet, name string, fd *ast.FuncDecl, r rule)
 	if !acted {
 		out = append(out, fmt.Sprintf(
 			"%s: h.%s.%s is called but its verdict is never tested — a denial does not "+
-				"stop the response", name, authzField, r.helper))
+				"stop the response%s", name, authzField, r.helper, at(fset, gatePos)))
 	}
 
 	if readPos := firstUseCaseCall(fd.Body); readPos != token.NoPos && gatePos != token.NoPos && gatePos > readPos {
@@ -369,7 +525,7 @@ func checkObjectGate(fset *token.FileSet, name string, fd *ast.FuncDecl, r rule)
 
 // checkFiltersFailClosed asserts no repoAuthz filter ever returns rows together with
 // an error: a page the check could not vouch for must not reach the caller.
-func checkFiltersFailClosed(authz map[string]*ast.FuncDecl) []string {
+func checkFiltersFailClosed(fset *token.FileSet, authz map[string]*ast.FuncDecl) []string {
 	var out []string
 	for name, fd := range authz {
 		if !strings.HasPrefix(name, "filter") {
@@ -386,19 +542,20 @@ func checkFiltersFailClosed(authz map[string]*ast.FuncDecl) []string {
 			out = append(out, fmt.Sprintf(
 				"repoAuthz.%s: returns rows together with an error — an authorization "+
 					"failure must yield no rows at all, not the page the check could not "+
-					"vouch for", name))
+					"vouch for%s", name, at(fset, ret.Pos())))
 		})
 	}
 	return out
 }
 
 // checkHandlerIsWired asserts the composition root builds the public handler with a
-// real authorizer. A nil one is breakglass: every filter above becomes a no-op.
-func checkHandlerIsWired(fset *token.FileSet, cmdDir string) ([]string, error) {
+// real authorizer. A nil one is breakglass: every filter above becomes a no-op. The
+// second result is how many files it read, for the census.
+func checkHandlerIsWired(fset *token.FileSet, cmdDir string) ([]string, int, error) {
 	var files []*ast.File
-	err := filepath.WalkDir(cmdDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
+	err := filepath.WalkDir(cmdDir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
 		}
 		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
@@ -411,10 +568,14 @@ func checkHandlerIsWired(fset *token.FileSet, cmdDir string) ([]string, error) {
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, len(files), fmt.Errorf("%s could not be walked (%v) — the composition root "+
+			"was not inspected, so nothing can be vouched for: every List filter is a no-op "+
+			"when the handler is built without an authorizer, and that is decided here",
+			cmdDir, err)
 	}
 	if len(files) == 0 {
-		return nil, fmt.Errorf("no Go sources under %s — the composition root could not be inspected", cmdDir)
+		return nil, 0, fmt.Errorf("no Go sources under %s — the composition root was not "+
+			"inspected, so nothing can be vouched for", cmdDir)
 	}
 
 	var out []string
@@ -444,12 +605,22 @@ func checkHandlerIsWired(fset *token.FileSet, cmdDir string) ([]string, error) {
 			"%s: no call to NewRegistryHandler — the public handler, and with it every "+
 				"List filter, is never wired", cmdDir))
 	}
-	return out, nil
+	return out, len(files), nil
 }
 
 // ---------------------------------------------------------------------------
 // AST helpers
 // ---------------------------------------------------------------------------
+
+// at renders a source coordinate for a finding. A red that names the rule but not the
+// place leaves the reader to find it, and the place is what makes the finding
+// actionable.
+func at(fset *token.FileSet, pos token.Pos) string {
+	if pos == token.NoPos {
+		return ""
+	}
+	return "\n  at " + fset.Position(pos).String()
+}
 
 // isAuthzCall reports whether call is `<x>.authz.<helper>(…)`.
 func isAuthzCall(call *ast.CallExpr, helper string) bool {

@@ -5,12 +5,24 @@
 // gate. It is what `make -C services/registry audit-list-filter` issues and what CI
 // runs; the same analysis also travels with `go test ./services/registry/...`.
 //
+// Every run prints the census first — how many handler and composition-root files
+// were read, how many List RPCs were found, how many of them were judged — so the
+// verdict can be read against the extent of what produced it. Previously a clean tree
+// produced the two words "audit-list-filter: OK", which reads identically whether
+// five RPCs were judged or the tree was never opened. What is asserted, and why this
+// service carries no whitelist, is documented on package auditlistfilter.
+//
 // Exit status is the verdict: 0 when every public List enforces per-object
 // visibility, 1 when it does not, 2 when the tree could not be inspected at all —
-// a gate that cannot read the code must not report success.
+// a gate that cannot read the code must not report success. The 1-versus-2
+// distinction is only visible when this command is BUILT; the Makefile target runs it
+// under `go run`, which reports any non-zero status as 1. Both remain failures, so
+// nothing may key on the number reaching CI — the reason is on the output, where the
+// census says how much was read.
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -22,29 +34,15 @@ func main() {
 	root := flag.String("root", ".", "path to the kacho-registry service root")
 	flag.Parse()
 
-	findings, err := auditlistfilter.Analyze(*root)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "audit-list-filter: %v\n", err)
-		os.Exit(2)
-	}
-	if len(findings) == 0 {
-		fmt.Println("audit-list-filter: OK")
+	// The census and the findings both go to stdout, in that order, so that one
+	// stream carries the whole answer: what was read, then what was found in it.
+	_, err := auditlistfilter.Audit(auditlistfilter.Options{Root: *root}, os.Stdout)
+	if err == nil {
 		return
 	}
-
-	for _, f := range findings {
-		fmt.Fprintf(os.Stderr, "audit-list-filter: %s\n", f)
+	fmt.Fprintf(os.Stderr, "audit-list-filter: %v\n", err)
+	if errors.Is(err, auditlistfilter.ErrNotInspected) {
+		os.Exit(2)
 	}
-	fmt.Fprint(os.Stderr, "\n"+
-		"Every public List must hand back only the objects its caller may see.\n"+
-		"In kacho-registry that decision is made in the handler, in one of two shapes:\n"+
-		"  - a page of separately-authorizable objects (registries, repositories,\n"+
-		"    repo-scoped operations) is filtered row by row, and the response is built\n"+
-		"    from the filtered slice;\n"+
-		"  - a page that lives inside one object (tags, referrers) is settled by\n"+
-		"    checking that object before the page is read.\n"+
-		"Enumerating every allowed id is not a substitute: that enumeration is capped\n"+
-		"server-side with no continuation token, so the caller's own objects fall\n"+
-		"outside the cap and disappear.\n")
 	os.Exit(1)
 }
