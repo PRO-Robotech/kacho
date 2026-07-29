@@ -16,13 +16,16 @@ interface ListProps {
   spec: ResourceSpec;
   parentField?: string;
   parentParam?: string;
+  /** Есть ли у ресурса форма-страница/панель в этом разделе — решает тот,
+   *  кто зарегистрировал маршруты (см. ResourceListPage.Props). */
+  panelForms: boolean;
 }
 
-export function VpcListShell({ spec, parentField, parentParam }: ListProps) {
+export function VpcListShell({ spec, parentField, parentParam, panelForms }: ListProps) {
   const { projectId } = useParams();
   return (
     <>
-      <ResourceListPage spec={spec} parentField={parentField} parentParam={parentParam} />
+      <ResourceListPage spec={spec} parentField={parentField} parentParam={parentParam} panelForms={panelForms} />
       {projectId && <ResourceFormModal projectId={projectId} />}
     </>
   );

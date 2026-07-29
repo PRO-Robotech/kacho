@@ -165,7 +165,8 @@ export function AppRoutes() {
                   // VpcListShell = ResourceListPage + ResourceFormModal mount
                   // (модалка открывается по ?modal=<spec>-create или
                   // ?modal=<spec>-edit&id=<uid>).
-                  <VpcListShell spec={spec} parentField="project_id" parentParam="projectId" />
+                  // VPC-раздел регистрирует `${route}/create` и панель правки (ниже).
+                  <VpcListShell spec={spec} parentField="project_id" parentParam="projectId" panelForms />
                 }
               />
               <Route
@@ -213,7 +214,11 @@ export function AppRoutes() {
             <Route key={spec.id}>
               <Route
                 path={`/projects/:projectId/compute/${spec.route}`}
-                element={<ResourceListPage spec={spec} parentField="project_id" parentParam="projectId" />}
+                // Правка compute-ресурса в vpc-разделе — модалка: панели правки
+                // (ResourceShell) этот раздел для них не регистрирует.
+                element={
+                  <ResourceListPage spec={spec} parentField="project_id" parentParam="projectId" panelForms={false} />
+                }
               />
               <Route
                 path={`/projects/:projectId/compute/${spec.route}/create`}
@@ -236,7 +241,10 @@ export function AppRoutes() {
             <Route key={spec.id}>
               <Route
                 path={`/projects/:projectId/nlb/${spec.route}`}
-                element={<ResourceListPage spec={spec} parentField="project_id" parentParam="projectId" />}
+                // Как и compute выше: в vpc-разделе у NLB-ресурсов панели правки нет.
+                element={
+                  <ResourceListPage spec={spec} parentField="project_id" parentParam="projectId" panelForms={false} />
+                }
               />
               <Route
                 path={`/projects/:projectId/nlb/${spec.route}/create`}
@@ -281,9 +289,12 @@ export function AppRoutes() {
                 навигации между admin-сущностями + кнопкой "Создать <singular>"
                 в правом header-slot. */}
           <Route element={<AdminLayout />}>
-            <Route path="/system/regions" element={<ResourceListPage spec={REGISTRY.regions} />} />
-            <Route path="/system/zones" element={<ResourceListPage spec={REGISTRY.zones} />} />
-            <Route path="/system/address-pools" element={<ResourceListPage spec={REGISTRY["address-pools"]} />} />
+            <Route path="/system/regions" element={<ResourceListPage spec={REGISTRY.regions} panelForms />} />
+            <Route path="/system/zones" element={<ResourceListPage spec={REGISTRY.zones} panelForms />} />
+            <Route
+              path="/system/address-pools"
+              element={<ResourceListPage spec={REGISTRY["address-pools"]} panelForms />}
+            />
             {/* KAC-196: Cluster admins (Grant/Revoke) — единственная admin-страница,
                   не следующая ResourceListPage pattern: кастомная таблица с denorm
                   ClusterAdminEntry + GrantAdminModal вместо ResourceFormModal. */}

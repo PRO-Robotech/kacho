@@ -29,8 +29,14 @@ export function RolesListShell() {
   const effectiveAccountId = account?.id ?? accountList[0]?.id ?? null;
 
   return effectiveAccountId ? (
-    <ResourceListPage spec={REGISTRY.roles} parentField="accountId" parentValue={effectiveAccountId} pageSize="1000" />
+    <ResourceListPage
+      spec={REGISTRY.roles}
+      parentField="accountId"
+      parentValue={effectiveAccountId}
+      pageSize="1000"
+      panelForms
+    />
   ) : (
-    <ResourceListPage spec={REGISTRY.roles} pageSize="1000" />
+    <ResourceListPage spec={REGISTRY.roles} pageSize="1000" panelForms />
   );
 }

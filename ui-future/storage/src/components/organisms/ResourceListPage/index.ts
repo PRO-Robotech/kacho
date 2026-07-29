@@ -1,1 +1,1 @@
-export * from "./ResourceListPage";
+export * from "@shared/components/organisms/ResourceListPage";

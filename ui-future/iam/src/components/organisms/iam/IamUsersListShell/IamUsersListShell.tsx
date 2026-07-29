@@ -25,5 +25,5 @@ export function IamUsersListShell() {
     [navigate],
   );
   useHeaderRight(inviteAction);
-  return <ResourceListPage spec={REGISTRY.users} />;
+  return <ResourceListPage spec={REGISTRY.users} panelForms />;
 }

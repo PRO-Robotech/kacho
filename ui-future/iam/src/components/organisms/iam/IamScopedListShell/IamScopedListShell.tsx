@@ -28,11 +28,13 @@ export function IamScopedListShell({
   }
 
   return (
+    // IAM-секция регистрирует /iam/<resource>/create и /:id/edit.
     <ResourceListPage
       spec={spec}
       parentField="account_id"
       parentValue={account.id}
       disableChildRoute={disableChildRoute}
+      panelForms
     />
   );
 }

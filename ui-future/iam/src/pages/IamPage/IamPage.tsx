@@ -79,7 +79,7 @@ export const IamPage: FC<IamPageProps> = ({ context }) => {
               <IamFrame>
                 <Routes>
                   <Route index element={<Navigate to="/iam/accounts" replace />} />
-                  <Route path="accounts" element={<ResourceListPage spec={REGISTRY.accounts} />} />
+                  <Route path="accounts" element={<ResourceListPage spec={REGISTRY.accounts} panelForms />} />
                   <Route path="accounts/create" element={<ResourceCreatePage spec={REGISTRY.accounts} />} />
                   <Route path="accounts/:uid" element={<ResourceShell spec={REGISTRY.accounts} />} />
                   <Route path="accounts/:uid/edit" element={<ResourceShell spec={REGISTRY.accounts} mode="edit" />} />
@@ -139,7 +139,10 @@ export const IamPage: FC<IamPageProps> = ({ context }) => {
                   <Route path="access-bindings" element={<AccessBindingsPage />} />
                   <Route path="access-bindings/create" element={<AccessBindingCreatePage />} />
                   <Route path="access-bindings/:uid" element={<ResourceShell spec={REGISTRY["access-bindings"]} />} />
-                  <Route path="access-bindings/:uid/:tab" element={<ResourceShell spec={REGISTRY["access-bindings"]} />} />
+                  <Route
+                    path="access-bindings/:uid/:tab"
+                    element={<ResourceShell spec={REGISTRY["access-bindings"]} />}
+                  />
                   <Route path="operations" element={<IamOperationsPage />} />
                   <Route path="access" element={<AccessPage />} />
                   <Route path="access/grant" element={<AccessGrantPage />} />

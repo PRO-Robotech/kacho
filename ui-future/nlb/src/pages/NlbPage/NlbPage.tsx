@@ -69,7 +69,9 @@ export const NlbPage: FC<NlbPageProps> = ({ context }) => {
                     <Route key={spec.id}>
                       <Route
                         path={spec.route}
-                        element={<ResourceListPage spec={spec} parentField="project_id" parentParam="projectId" />}
+                        element={
+                          <ResourceListPage spec={spec} parentField="project_id" parentParam="projectId" panelForms />
+                        }
                       />
                       <Route
                         path={`${spec.route}/create`}
