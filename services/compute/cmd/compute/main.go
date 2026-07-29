@@ -474,6 +474,24 @@ func validateAuthMode(cfg config.Config, logger *slog.Logger) (productionMode bo
 			"— it bypasses ALL per-RPC authz Check on both listeners (every RPC allowed without IAM "+
 			"authorization); breakglass is a non-production emergency escape only", cfg.AuthMode)
 	}
+	// Тот же класс, что breakglass выше, и такой же отказ старта: SkipPeerValidation
+	// снимает НЕ одну проверку, а ВСЕ кросс-сервисные разом. dialPeers при нём
+	// подменяет каждый peer-клиент no-op-заглушкой, для которой любой чужой
+	// идентификатор «существует», — отваливаются существование проекта, существование
+	// зоны, когерентность размещения подсети интерфейса и высвобождение интерфейса и
+	// тома на удалении. Это аварийный dev-выключатель; на развёрнутом стенде он
+	// означает, что ресурсы создаются со ссылками в никуда и с межзональными
+	// интерфейсами, а высвобождение чужих ресурсов просто не происходит.
+	//
+	// Проверяется ДО разбора режима, рядом с breakglass, по той же причине: иначе
+	// причина утонула бы в жалобах на рёбра, требование mTLS с которых этот же
+	// выключатель и снимает (см. insecureEdgesInProductionStrict).
+	if cfg.SkipPeerValidation && (cfg.AuthMode == "production" || cfg.AuthMode == "production-strict") {
+		return false, fmt.Errorf("production mode (%s): KACHO_COMPUTE_SKIP_PEER_VALIDATION must not be enabled "+
+			"— it disables EVERY cross-service check at once (project existence, zone existence, NIC subnet "+
+			"placement coherence, NIC/volume release on Delete): peers are replaced by no-op stubs for which "+
+			"any foreign id \"exists\"; skipping peer validation is a non-production escape only", cfg.AuthMode)
+	}
 
 	switch cfg.AuthMode {
 	case "dev":

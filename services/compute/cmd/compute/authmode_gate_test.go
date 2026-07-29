@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
@@ -109,14 +110,27 @@ func TestValidateAuthMode_ProductionStrict_EachEdgeRequired(t *testing.T) {
 }
 
 // SkipPeerValidation снимает требование на project/geo peer-рёбра (они не
-// дозваниваются), но server-listener'ы и authz по-прежнему обязаны быть mTLS.
-func TestValidateAuthMode_ProductionStrict_SkipPeerValidationDropsPeerEdges(t *testing.T) {
+// дозваниваются) — но живёт эта ветка теперь ТОЛЬКО в dev: в production обоих
+// видов сам выключатель отказывает в старте
+// (TestValidateAuthMode_Production_SkipPeerValidationRefusesBoot). Здесь
+// проверяется, что dev-предупреждение о небезопасном транспорте не жалуется на
+// рёбра, которых при выключателе нет: иначе оператор dev-стенда получал бы
+// требование включить mTLS на проводе, который никто не поднимает.
+func TestValidateAuthMode_Dev_SkipPeerValidationDropsPeerEdgesFromWarning(t *testing.T) {
 	cfg := allEdgesSecured()
+	cfg.AuthMode = "dev"
 	cfg.SkipPeerValidation = true
 	cfg.IAMProjectMTLS.Enable = false
 	cfg.GeoMTLS.Enable = false
-	if _, err := validateAuthMode(cfg, discardLogger()); err != nil {
-		t.Fatalf("peer edges not dialed under SkipPeerValidation; gate must not require them: %v", err)
+
+	var buf bytes.Buffer
+	if _, err := validateAuthMode(cfg, captureLogger(&buf)); err != nil {
+		t.Fatalf("dev must not gate transport at all; got: %v", err)
+	}
+	for _, edge := range []string{"IAM_PROJECT_MTLS", "GEO_MTLS"} {
+		if strings.Contains(buf.String(), edge) {
+			t.Errorf("peer edge %s is not dialed under SkipPeerValidation; the dev warning must not name it: %s", edge, buf.String())
+		}
 	}
 }
 
@@ -495,5 +509,67 @@ func TestValidateAuthMode_Dev_AllowsListFilterFailOpen(t *testing.T) {
 	cfg := config.Config{AuthMode: "dev", ListFilterFailOpen: true}
 	if _, err := validateAuthMode(cfg, discardLogger()); err != nil {
 		t.Fatalf("dev must keep the emergency degraded mode available; got: %v", err)
+	}
+}
+
+// KACHO_COMPUTE_SKIP_PEER_VALIDATION снимает КАЖДУЮ кросс-сервисную проверку
+// сразу (существование проекта, существование зоны, когерентность размещения
+// подсети интерфейса, высвобождение интерфейса и тома на удалении): dialPeers
+// подменяет все peer-клиенты no-op-заглушками, для которых любой чужой
+// идентификатор «существует». Это аварийный dev-выключатель того же рода, что
+// AuthZBreakglass, и обязан вести себя так же — production ОТКАЗЫВАЕТ В СТАРТЕ.
+func TestValidateAuthMode_Production_SkipPeerValidationRefusesBoot(t *testing.T) {
+	cfg := securedProduction()
+	cfg.SkipPeerValidation = true
+	_, err := validateAuthMode(cfg, discardLogger())
+	if err == nil {
+		t.Fatalf("skip-peer-validation in production must refuse boot, got nil")
+	}
+	if !strings.Contains(err.Error(), "KACHO_COMPUTE_SKIP_PEER_VALIDATION") {
+		t.Errorf("refusal must name the knob so the operator can act on it; got: %v", err)
+	}
+}
+
+// То же в production-strict: там выключатель вдобавок СНИМАЛ требование mTLS с
+// project/geo/vpc-рёбер, поэтому его молчаливое принятие ослабляло и соседний гейт.
+func TestValidateAuthMode_ProductionStrict_SkipPeerValidationRefusesBoot(t *testing.T) {
+	cfg := allEdgesSecured()
+	cfg.SkipPeerValidation = true
+	_, err := validateAuthMode(cfg, discardLogger())
+	if err == nil {
+		t.Fatalf("skip-peer-validation in production-strict must refuse boot, got nil")
+	}
+	if !strings.Contains(err.Error(), "KACHO_COMPUTE_SKIP_PEER_VALIDATION") {
+		t.Errorf("refusal must name the knob; got: %v", err)
+	}
+}
+
+// dev — единственный режим, где выключатель задуман; там он остаётся доступен.
+func TestValidateAuthMode_Dev_SkipPeerValidationAllowed(t *testing.T) {
+	if _, err := validateAuthMode(config.Config{AuthMode: "dev", SkipPeerValidation: true}, discardLogger()); err != nil {
+		t.Fatalf("dev must keep the skip-peer-validation escape available; got: %v", err)
+	}
+}
+
+// Наблюдаемый уровень: процесс НЕ стартует. runServe обязан вернуть ошибку
+// раньше, чем поднимет хоть один листенер или откроет пул к БД — то есть отказ
+// виден как невозможность запуска, а не как WARN в логе живого процесса.
+func TestRunServe_SkipPeerValidationInProduction_RefusesToStart(t *testing.T) {
+	cfg := securedProduction()
+	cfg.SkipPeerValidation = true
+
+	done := make(chan error, 1)
+	go func() { done <- runServe(cfg) }()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatalf("runServe must refuse to start with skip-peer-validation in production")
+		}
+		if !strings.Contains(err.Error(), "KACHO_COMPUTE_SKIP_PEER_VALIDATION") {
+			t.Errorf("startup refusal must name the knob; got: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatalf("runServe did not refuse to start — the process came up with every cross-service check disabled")
 	}
 }
