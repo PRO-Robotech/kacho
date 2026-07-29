@@ -96,8 +96,8 @@ func moduleRootForFields(t *testing.T) string {
 }
 
 // computeNonTestSources — непроверочный Go-код сервиса, склеенный для поиска
-// ссылок, БЕЗ тел функций-отказов. Пустой результат — находка, а не «ноль
-// нарушений».
+// ссылок, БЕЗ тел функций-отказов. Пустой результат роняет гейт: «ноль
+// нарушений» обязано быть отличимо от «ноль прочитанного».
 func computeNonTestSources(t *testing.T) string {
 	t.Helper()
 	root := filepath.Join(moduleRootForFields(t), "services", "compute")
@@ -206,7 +206,7 @@ func requestMessages(t *testing.T) map[protoreflect.FullName]requestEntry {
 
 // TestRequestFields_EveryFieldIsClassified — исчерпывающая классификация: каждое
 // поле каждого входного сообщения выставленной поверхности лежит ровно в одной из
-// трёх полос. Поле, не попавшее никуда, — находка: именно так «принято и
+// трёх полос. Поле, не попавшее никуда, роняет гейт: именно так «принято и
 // выброшено» и появляется, ведь добавить поле в proto дешевле, чем реализовать.
 func TestRequestFields_EveryFieldIsClassified(t *testing.T) {
 	blob := computeNonTestSources(t)
@@ -273,8 +273,8 @@ func TestRequestFields_RejectedOnesReallyRefuse(t *testing.T) {
 }
 
 // TestRequestFields_NoStaleRejectionEntry — исключение живёт, пока у него есть
-// предмет: запись про поле, которого в контракте больше нет, — находка, а не
-// безобидный остаток (её унаследует следующая слепая зона).
+// предмет: запись про поле, которого в контракте больше нет, роняет гейт, а не
+// доживает безобидным остатком (её унаследует следующая слепая зона).
 func TestRequestFields_NoStaleRejectionEntry(t *testing.T) {
 	msgs := requestMessages(t)
 	for msg, declared := range rejectedRequestFields {
