@@ -26,16 +26,20 @@ import (
 )
 
 // computeResourceTables maps each outbox resource_kind to its compute table. The
-// kind labels match what repo.Insert/Delete write to compute_fga_register_outbox
-// ("Instance"/"Disk"/"Image"/"Snapshot"). All rows carry (id, project_id).
+// kind labels match what repo.Insert/Delete write to compute_fga_register_outbox.
+// All rows carry (id, project_id).
+//
+// Instance is the whole list. Disk, Image and Snapshot were here until kacho-storage
+// became the sole owner of block storage and the retire migration dropped compute's
+// copies of those three tables; enumerating them now would ask the database for
+// relations that no longer exist. The kinds may still appear in outbox rows written
+// before the retire, which is what computeKindToTable's empty return is for: an
+// unknown kind reports "not found" rather than failing the pass.
 var computeResourceTables = []struct {
 	kind  string
 	table string
 }{
 	{"Instance", "instances"},
-	{"Disk", "disks"},
-	{"Image", "images"},
-	{"Snapshot", "snapshots"},
 }
 
 // FGAReconcileAdapter implements reconciler.ResourceEnumerator + TupleRegistry over
@@ -62,8 +66,8 @@ func computeKindToTable(kind string) string {
 }
 
 // ListResources enumerates every live compute resource as (kind, id, project_id).
-// DiskType / Region / Zone are Internal admin catalogs (no project_id / no
-// owner-tuple) and are out-by-design — not listed.
+// Region / Zone belong to kacho-geo, and block storage to kacho-storage; neither is
+// compute's to enumerate.
 func (a *FGAReconcileAdapter) ListResources(ctx context.Context) ([]reconciler.ResourceRow, error) {
 	var out []reconciler.ResourceRow
 	for _, rt := range computeResourceTables {
