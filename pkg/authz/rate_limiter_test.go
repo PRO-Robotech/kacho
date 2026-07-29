@@ -10,6 +10,18 @@ import (
 	"time"
 )
 
+// spend моделирует один un-absorbed check: спросить бюджет и, если он есть,
+// списать. Ровно эту пару делает Interceptor.authorize (HasBudget до обращения к
+// модели прав, Charge — после ответа, который кэш не поглотит). Существующие
+// утверждения ниже описывают именно эту суммарную семантику.
+func spend(rl *rateLimiter, subjectID string) bool {
+	if !rl.HasBudget(subjectID) {
+		return false
+	}
+	rl.Charge(subjectID)
+	return true
+}
+
 // clock — управляемый источник времени для детерминированного теста refill.
 type clock struct{ t time.Time }
 
@@ -18,13 +30,13 @@ func (c *clock) advance(d time.Duration) {
 	c.t = c.t.Add(d)
 }
 
-// TestRateLimiter_Disabled — ratePerSec ≤ 0 → Allow всегда true (limiter off).
+// TestRateLimiter_Disabled — ratePerSec ≤ 0 → бюджет всегда есть (limiter off).
 func TestRateLimiter_Disabled(t *testing.T) {
 	for _, rate := range []float64{0, -1} {
 		rl := newRateLimiter(rate)
 		for i := 0; i < 1000; i++ {
-			if !rl.Allow("usr_x") {
-				t.Fatalf("ratePerSec=%v: Allow must always be true when disabled (denied at i=%d)", rate, i)
+			if !spend(rl, "usr_x") {
+				t.Fatalf("ratePerSec=%v: budget must always be available when disabled (refused at i=%d)", rate, i)
 			}
 		}
 	}
@@ -39,7 +51,7 @@ func TestRateLimiter_BurstThenExhaust(t *testing.T) {
 
 	allowed := 0
 	for i := 0; i < 100; i++ {
-		if rl.Allow("usr_x") {
+		if spend(rl, "usr_x") {
 			allowed++
 		}
 	}
@@ -58,11 +70,11 @@ func TestRateLimiter_RefillOverTime(t *testing.T) {
 
 	// Исчерпываем burst.
 	for i := 0; i < 20; i++ {
-		if !rl.Allow("usr_x") {
+		if !spend(rl, "usr_x") {
 			t.Fatalf("burst not fully consumed at i=%d", i)
 		}
 	}
-	if rl.Allow("usr_x") {
+	if spend(rl, "usr_x") {
 		t.Fatalf("expected deny immediately after burst exhausted")
 	}
 
@@ -70,7 +82,7 @@ func TestRateLimiter_RefillOverTime(t *testing.T) {
 	clk.advance(500 * time.Millisecond)
 	got := 0
 	for i := 0; i < 10; i++ {
-		if rl.Allow("usr_x") {
+		if spend(rl, "usr_x") {
 			got++
 		}
 	}
@@ -87,12 +99,12 @@ func TestRateLimiter_RefillCapsAtBurst(t *testing.T) {
 	rl.now = clk.now
 
 	// Один вызов создаёт bucket (tokens=20 → 19).
-	rl.Allow("usr_x")
+	spend(rl, "usr_x")
 	// Огромная пауза: refill = 3600×10 = 36000, но cap = burst = 20.
 	clk.advance(time.Hour)
 	got := 0
 	for i := 0; i < 100; i++ {
-		if rl.Allow("usr_x") {
+		if spend(rl, "usr_x") {
 			got++
 		}
 	}
@@ -112,7 +124,7 @@ func TestRateLimiter_HardCapBoundsBuckets(t *testing.T) {
 	// 10_000 уникальных subject'ов — на порядки больше потолка. Без внутренней
 	// границы map вырос бы до 10k (OOM-вектор).
 	for i := 0; i < 10_000; i++ {
-		rl.Allow(fmt.Sprintf("usr_%d", i))
+		spend(rl, fmt.Sprintf("usr_%d", i))
 		if len(rl.buckets) > 100 {
 			t.Fatalf("buckets exceeded hard cap: got %d at i=%d", len(rl.buckets), i)
 		}
@@ -139,11 +151,11 @@ func TestRateLimiter_EvictInactive(t *testing.T) {
 	rl.now = clk.now
 
 	// Старый subject: lastSeen = t0.
-	rl.Allow("usr_old")
+	spend(rl, "usr_old")
 	// Проходит 2 минуты.
 	clk.advance(2 * time.Minute)
 	// Свежий subject: lastSeen = t0+2m.
-	rl.Allow("usr_fresh")
+	spend(rl, "usr_fresh")
 
 	// Evict всё, что старше 1 минуты → должен уйти только usr_old.
 	removed := rl.EvictInactive(1 * time.Minute)
@@ -159,30 +171,30 @@ func TestRateLimiter_EvictInactive(t *testing.T) {
 }
 
 // TestRateLimiter_Concurrent — data-race guard: rateLimiter documented Thread-safe,
-// но до этого теста ни один кейс не гонял Allow/EvictInactive из нескольких
+// но до этого теста ни один кейс не гонял HasBudget/Charge/EvictInactive из нескольких
 // goroutine (в отличие от Cache, у которого есть TestCache_Concurrent). Спавним N
-// goroutine, бьющих Allow по пересекающимся И уникальным subject-id, пока ещё одна
+// goroutine, бьющих бюджет по пересекающимся И уникальным subject-id, пока ещё одна
 // goroutine периодически зовёт EvictInactive — весь map/bucket-mutation-путь под
 // rl.mu. Прогоняется под -race; падает (concurrent map write / detected race), если
-// будущая оптимизация сузит или уберёт lock в Allow или eviction-sweep.
+// будущая оптимизация сузит или уберёт lock в HasBudget/Charge или eviction-sweep.
 func TestRateLimiter_Concurrent(t *testing.T) {
-	rl := newRateLimiter(1000) // положительный rate → Allow идёт по locked-пути
+	rl := newRateLimiter(1000) // положительный rate → бюджет идёт по locked-пути
 	const goroutines = 32
 	const iterations = 500
 
 	var wg sync.WaitGroup
 	wg.Add(goroutines + 1)
 
-	// Writer-heavy: Allow по overlapping (usr_shared_%2) и уникальным (usr_g%d_i%d)
+	// Writer-heavy: расход по overlapping (usr_shared_%2) и уникальным (usr_g%d_i%d)
 	// subject'ам — вставка новых bucket'ов конкурирует с eviction-sweep'ом.
 	for g := 0; g < goroutines; g++ {
 		go func(g int) {
 			defer wg.Done()
 			for i := 0; i < iterations; i++ {
 				if i%2 == 0 {
-					rl.Allow(fmt.Sprintf("usr_shared_%d", i%2))
+					spend(rl, fmt.Sprintf("usr_shared_%d", i%2))
 				} else {
-					rl.Allow(fmt.Sprintf("usr_g%d_i%d", g, i))
+					spend(rl, fmt.Sprintf("usr_g%d_i%d", g, i))
 				}
 			}
 		}(g)
@@ -199,7 +211,7 @@ func TestRateLimiter_Concurrent(t *testing.T) {
 	wg.Wait()
 
 	// Sanity: лимитер работоспособен после конкурентной нагрузки.
-	if !rl.Allow("usr_after_load") {
+	if !spend(rl, "usr_after_load") {
 		t.Fatalf("rate limiter must admit a fresh subject after concurrent load")
 	}
 }

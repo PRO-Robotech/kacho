@@ -70,16 +70,48 @@ func newRateLimiterWithLimit(ratePerSec float64, maxBuckets int) *rateLimiter {
 	}
 }
 
-// Allow возвращает true если subjectID может выполнить одну Check'у сейчас.
-// Если rate-limit disabled (ratePerSec ≤ 0) — всегда true.
+// HasBudget сообщает, осталось ли у subjectID право вызвать ещё одну Check'у,
+// НЕ расходуя бюджет. Тратит его Charge — и только на исход, который кэш не
+// поглотит. Если rate-limit disabled (ratePerSec ≤ 0) — всегда true.
+//
+// Почему проверка и трата разнесены: спросить бюджет нужно ДО обращения к
+// модели прав (отсечка, срабатывающая после вопроса, ничего не защищает), а
+// списать — только ПОСЛЕ ответа (аутентифицированный вызывающий не должен
+// платить за то, что ему разрешено). Два шага не атомарны, поэтому под
+// конкуренцией одновременно «в полёте» может оказаться чуть больше `burst`
+// вопросов — величина ограничена параллелизмом сервера, а не вызывающим, и на
+// смысл лимита не влияет: он ограничивает УСТОЙЧИВЫЙ темп, а не мгновенный.
 //
 // Реализация — стандартный token-bucket: refill по elapsed-time × rate.
-func (rl *rateLimiter) Allow(subjectID string) bool {
+func (rl *rateLimiter) HasBudget(subjectID string) bool {
 	if rl.ratePerSec <= 0 {
 		return true
 	}
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
+	return rl.refillLocked(subjectID).tokens >= 1.0
+}
+
+// Charge списывает один токен с бюджета subjectID. Вызывается ТОЛЬКО для
+// проверки, чей исход кэш не поглощает (см. Interceptor.authorize): повторяемые
+// отказы идут в модель каждый раз, и именно их темп бюджет ограничивает.
+// Разрешение кэшируется и потому самоограничено — оно не платит.
+func (rl *rateLimiter) Charge(subjectID string) {
+	if rl.ratePerSec <= 0 {
+		return
+	}
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+	b := rl.refillLocked(subjectID)
+	b.tokens -= 1.0
+	if b.tokens < 0 {
+		b.tokens = 0
+	}
+}
+
+// refillLocked возвращает bucket subject'а, пополнив его по прошедшему времени
+// (создав при первом обращении). Вызывается под rl.mu.
+func (rl *rateLimiter) refillLocked(subjectID string) *bucket {
 	now := rl.now()
 	b, exists := rl.buckets[subjectID]
 	if !exists {
@@ -90,19 +122,15 @@ func (rl *rateLimiter) Allow(subjectID string) bool {
 		}
 		b = &bucket{tokens: rl.burst, lastSeen: now}
 		rl.buckets[subjectID] = b
+		return b
 	}
-	// Refill.
 	elapsed := now.Sub(b.lastSeen).Seconds()
 	b.tokens += elapsed * rl.ratePerSec
 	if b.tokens > rl.burst {
 		b.tokens = rl.burst
 	}
 	b.lastSeen = now
-	if b.tokens < 1.0 {
-		return false
-	}
-	b.tokens -= 1.0
-	return true
+	return b
 }
 
 // evictForInsertLocked освобождает место в buckets при достижении потолка
