@@ -40,9 +40,9 @@ func (r *listOnlyRepo) CreateWithPrincipal(context.Context, operations.Operation
 func (r *listOnlyRepo) Get(context.Context, string) (*operations.Operation, error) {
 	return nil, operations.ErrNotFound
 }
-func (r *listOnlyRepo) MarkDone(context.Context, string, *anypb.Any) error  { return nil }
+func (r *listOnlyRepo) MarkDone(context.Context, string, *anypb.Any) error   { return nil }
 func (r *listOnlyRepo) MarkError(context.Context, string, *spb.Status) error { return nil }
-func (r *listOnlyRepo) Cancel(context.Context, string) error                { return nil }
+func (r *listOnlyRepo) Cancel(context.Context, string) error                 { return nil }
 
 func (r *listOnlyRepo) List(_ context.Context, _ operations.ListFilter) ([]operations.Operation, string, error) {
 	return append([]operations.Operation(nil), r.rows...), "", nil
