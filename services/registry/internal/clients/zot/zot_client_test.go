@@ -451,23 +451,32 @@ func TestZot_REG22_ListRepositories_NextTokenIsOpaqueOffset(t *testing.T) {
 
 // REG-22 — ListRepositories агрегирует размер/last-update/download-count из GlobalSearch,
 // tag_count из ImageList, а artifact_types — из типов тегов. Mixed-repo (docker + helm)
-// несёт ОБА типа; ghost (0 тегов) скрывается.
+// несёт ОБА типа; repo без тегов приходит с tag_count=0 (скрытие — не здесь, см.
+// TestZot_ListRepositories_EmptyRepo_SurfacedForUnion).
 func TestZot_REG22_ListRepositories_AggregatesAndMixedArtifactTypes(t *testing.T) {
 	fz := newFakeZot()
 	// mixed: контейнерный образ + helm-чарт → ArtifactTypes = [CONTAINER_IMAGE, HELM_CHART].
 	fz.addGqlTag("reg-A/mixed", containerTag("app-v1", "sha256:c1", 300, "linux", "amd64"))
 	fz.addGqlTag("reg-A/mixed", helmTag("chart-1", "sha256:h1", 40))
 	fz.setGqlAgg("reg-A/mixed", 1000, "2026-03-01T12:00:00Z", 42)
-	// ghost: агрегат есть, тегов нет → скрывается.
-	fz.setGqlAgg("reg-A/ghost", 0, "2026-01-01T00:00:00Z", 0)
+	// empty: агрегат есть, тегов нет → tag_count=0, судьбу решает объединение.
+	fz.setGqlAgg("reg-A/empty", 0, "2026-01-01T00:00:00Z", 0)
 	srv := fz.server(t)
 
 	cli := zotclient.New(srv.URL)
 	repos, _, err := cli.ListRepositories(t.Context(), registry.RepoListQuery{RegistryID: "reg-A"})
 	require.NoError(t, err)
-	require.Len(t, repos, 1, "ghost repo (0 тегов) скрыт")
+	require.Len(t, repos, 2, "оба имени, которые помнит движок")
 
-	r := repos[0]
+	byName := map[string]*domain.Repository{}
+	for _, r := range repos {
+		byName[r.Name] = r
+	}
+	require.Contains(t, byName, "empty")
+	require.Zero(t, byName["empty"].TagCount, "тегов нет — счётчик нулевой")
+
+	r := byName["mixed"]
+	require.NotNil(t, r)
 	require.Equal(t, "mixed", r.Name)
 	require.Equal(t, int32(2), r.TagCount)
 	require.Equal(t, int64(1000), r.SizeBytes, "size из GlobalSearch, не Σ тегов")
@@ -503,19 +512,33 @@ func TestZot_REG22_ListRepositories_AggregateFallback(t *testing.T) {
 	require.Equal(t, time.May, r.UpdatedAt.Month(), "fallback: max PushTimestamp")
 }
 
-// ListRepositories — repo с НУЛЁМ тегов (все удалены, запись осталась до GC) скрывается
-// из проекции: пустой repo для tenant'а эквивалентен удалённому.
-func TestZot_ListRepositories_HidesEmptyRepo(t *testing.T) {
+// ListRepositories — repo с НУЛЁМ тегов (все удалены, запись осталась до GC) адаптер
+// ОТДАЁТ с tag_count=0, а не скрывает. Скрыть его здесь нельзя: то же самое имя может
+// быть живым долговременным репозиторием (у него есть строка наложения, он читается
+// поштучно и удаляется только явным DeleteRepository), а может быть просто следом
+// удалённого содержимого — различает их наличие строки наложения, которого адаптер не
+// видит. Решение принимает объединение overlay ⊔ projection; что имя без строки
+// наложения тенанту невидимо, зафиксировано в
+// apps/kacho/api/registry TestListRepositories_EngineSeam_CoversEveryRowClass.
+func TestZot_ListRepositories_EmptyRepo_SurfacedForUnion(t *testing.T) {
 	fz := newFakeZot()
 	fz.addGqlTag("reg-A/live", containerTag("v1", "sha256:live1", 110, "linux", "amd64"))
-	fz.setGqlAgg("reg-A/ghost", 5, "2026-01-01T00:00:00Z", 1) // GlobalSearch помнит, тегов нет
+	fz.setGqlAgg("reg-A/empty", 5, "2026-01-01T00:00:00Z", 1) // GlobalSearch помнит, тегов нет
 	srv := fz.server(t)
 
 	cli := zotclient.New(srv.URL)
 	repos, _, err := cli.ListRepositories(t.Context(), registry.RepoListQuery{RegistryID: "reg-A"})
 	require.NoError(t, err)
-	require.Len(t, repos, 1, "ghost repo (0 тегов) скрыт")
-	require.Equal(t, "live", repos[0].Name)
+	require.Len(t, repos, 2, "оба имени, которые помнит движок, доходят до объединения")
+
+	byName := map[string]*domain.Repository{}
+	for _, r := range repos {
+		byName[r.Name] = r
+	}
+	require.Contains(t, byName, "empty", "имя без тегов не должно теряться в адаптере")
+	require.Zero(t, byName["empty"].TagCount)
+	require.Contains(t, byName, "live")
+	require.Equal(t, int32(1), byName["live"].TagCount)
 }
 
 // REG-24 — ListTags возвращает теги repo с digest + размером образа (Size из GraphQL) +

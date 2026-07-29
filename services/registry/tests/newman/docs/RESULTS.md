@@ -131,14 +131,22 @@ Existence-hiding + verb-tier invariants black-box through api-gateway:
 
 - **Stranger / anonymous existence-hiding cases — GREEN.** On this stand a stranger
   dev-JWT carries an unregistered `sub`, so the gateway treats it as UNAUTHENTICATED
-  → HTTP 401 (code 16, "subject: unauthenticated request"). The stranger cases
-  (`REG-AZ-GET-STRANGER-HIDDEN`, `REG-AZ-LIST-STRANGER-EMPTY`,
-  `REG-AZ-CREATE-STRANGER-DENY`) accept the full denied/empty range
-  `[200-empty, 401, 403, 404]`, assert **never success-with-data** (List array empty
-  when 200; the fixture `regId` is never revealed), and gate the "no `deny_reasons`
-  leak" check to responses that are **not** 401 (an unauthenticated 401 carries a
-  generic reason, not a resource-existence leak). `REG-AZ-GET-ANON-401` (no bearer
-  → 401) is GREEN as-is.
+  → HTTP 401 (code 16, "subject: unauthenticated request"). Which gate refuses first
+  (401 unauthenticated / 403 scope-Check / 404 existence-hiding) depends on the stand,
+  therefore the stranger cases accept **several refusal codes — and only refusal codes**:
+  `REG-AZ-GET-STRANGER-HIDDEN` and `REG-AZ-CREATE-STRANGER-DENY` assert
+  `[401, 403, 404]`, **never 200** (a read of one resource by id and a create have no
+  "empty success": a 200 there means the stranger read, respectively created, in
+  someone else's project). `REG-AZ-LIST-STRANGER-EMPTY` is the one shape where 200 is
+  admissible — a non-member gets an **empty page**, not a 403 — so its 200 branch
+  carries a mandatory emptiness assertion emitted by the helper itself, and the fixture
+  `regId` is never revealed. The "no `deny_reasons` leak" check stays gated to
+  responses that are **not** 401 (an unauthenticated 401 carries a generic reason, not
+  a resource-existence leak). `REG-AZ-GET-ANON-401` (no bearer → 401) is GREEN as-is.
+  > Until 2026-07-29 all three accepted `200` alongside the refusal codes — i.e. they
+  > counted as a pass the very outcome they exist to catch. Fixed; each repaired case
+  > was proven by injection: it goes red on a simulated stranger success and stays
+  > silent on a legitimate refusal.
 - **Viewer-tier cases — fixture-gated (SKIP on single-user stand).**
   `REG-AZ-GET-VIEWER-OK`, `REG-AZ-UPDATE-VIEWER-DENY`, `REG-AZ-DELETE-VIEWER-DENY`
   each begin with a guard: when `jwtProjectViewerA` is empty they emit a **console-only
