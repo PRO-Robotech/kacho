@@ -199,7 +199,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmok{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmok{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1090,7 +1090,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmnk{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmnk{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1144,7 +1144,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmvmct{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"], \"containerSpec\": {\"command\": [\"x\"]}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmvmct{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"containerSpec\": {\"command\": [\"x\"]}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1388,7 +1388,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmbyname{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtName}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmbyname{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtName}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1756,7 +1756,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmnomt{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmnomt{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1810,7 +1810,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmcpu{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"], \"cpuGuaranteePercent\": 101}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmcpu{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"cpuGuaranteePercent\": 101}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1864,7 +1864,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmmtabs{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{garbageMachineTypeId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmmtabs{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{garbageMachineTypeId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2000,7 +2000,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmnb{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmnb{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2054,7 +2054,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmbare{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmbare{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2108,7 +2108,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmbt{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"vm.image\", \"id\": \"img-x:tag\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmbt{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"vm.image\", \"id\": \"img-x:tag\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2162,7 +2162,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmout{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\", \"name\": \"ubuntu\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmout{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\", \"name\": \"ubuntu\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2351,7 +2351,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmsa{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"], \"serviceAccountId\": \"svate85k1x8bphdnn0wp\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmsa{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"serviceAccountId\": \"svate85k1x8bphdnn0wp\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2720,7 +2720,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmsamf{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"], \"serviceAccountId\": \"not!!a!!sa!!id\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmsamf{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"serviceAccountId\": \"not!!a!!sa!!id\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -2748,7 +2748,7 @@
       ]
     },
     {
-      "name": "INST-RD-CR-VAL-UNREACHABLE-GUARD — COMP-1-14: Create VM БЕЗ sshPublicKeys И БЕЗ external, БЕЗ acknowledgeUnreachable → sync 400 FAILED_PRECONDITION 'VM will be RUNNING but unreachable ...'. [verifies COMP-1-14 · error-guessing 'boots≠usable']",
+      "name": "INST-RD-CR-VAL-UNREACHABLE-GUARD — COMP-1-14: Create VM БЕЗ external, БЕЗ acknowledgeUnreachable → sync 400 FAILED_PRECONDITION 'VM will be RUNNING but unreachable ...'. [verifies COMP-1-14 · error-guessing 'boots≠usable']",
       "description": "class:VAL | class:NEG | priority:P1",
       "item": [
         {
@@ -2802,7 +2802,7 @@
       ]
     },
     {
-      "name": "INST-RD-CR-CRUD-UNREACHABLE-ACK — COMP-1-14: Create VM БЕЗ ssh/external + acknowledgeUnreachable=true → guard снят → done (bastion-only легальный кейс). [verifies COMP-1-14 · state negative→positive]",
+      "name": "INST-RD-CR-CRUD-UNREACHABLE-ACK — COMP-1-14: Create VM БЕЗ external + acknowledgeUnreachable=true → guard снят → done (bastion-only легальный кейс). [verifies COMP-1-14 · state negative→positive]",
       "description": "class:CRUD | class:STATE | priority:P1",
       "item": [
         {
@@ -3331,7 +3331,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmnonet{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmnonet{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3520,7 +3520,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmudn{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"], \"useDefaultNetwork\": true}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmudn{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"acknowledgeUnreachable\": true, \"useDefaultNetwork\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3888,7 +3888,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmsv{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"], \"secondaryVolumeSpecs\": [{\"sizeGib\": 0, \"volumeTypeId\": \"vt-ssd\", \"mountPath\": \"/data\"}]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmsv{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"secondaryVolumeSpecs\": [{\"sizeGib\": 0, \"volumeTypeId\": \"vt-ssd\", \"mountPath\": \"/data\"}]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3942,7 +3942,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmnetset{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"], \"networkSettings\": {\"type\": \"SOFTWARE_ACCELERATED\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmnetset{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"networkSettings\": {\"type\": \"SOFTWARE_ACCELERATED\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4003,7 +4003,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmfsspec{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"], \"filesystemSpecs\": [{\"mode\": \"READ_WRITE\", \"deviceName\": \"fs0\", \"filesystemId\": \"fs-1\"}]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmfsspec{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"filesystemSpecs\": [{\"mode\": \"READ_WRITE\", \"deviceName\": \"fs0\", \"filesystemId\": \"fs-1\"}]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4064,7 +4064,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmlclspec{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"], \"localDiskSpecs\": [{\"size\": \"107374182400\"}]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmlclspec{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"localDiskSpecs\": [{\"size\": \"107374182400\"}]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4125,7 +4125,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmmntpol{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"], \"maintenancePolicy\": \"MIGRATE\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmmntpol{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"maintenancePolicy\": \"MIGRATE\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4186,7 +4186,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmmntgrc{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"], \"maintenanceGracePeriod\": \"60s\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmmntgrc{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"maintenanceGracePeriod\": \"60s\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4247,7 +4247,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmserprt{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"], \"serialPortSettings\": {\"sshAuthorization\": \"OS_LOGIN\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmserprt{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"serialPortSettings\": {\"sshAuthorization\": \"OS_LOGIN\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4282,7 +4282,68 @@
       ]
     },
     {
-      "name": "INST-RD-CR-VAL-UNSUPPORTED-ALL-SIX-AT-ONCE — Create со ВСЕМИ шестью непринимаемыми полями → одна 400 с шестью fieldViolations (легаси-клиент узнаёт про все за один заход, а не по одному на запрос); проверка идёт ПЕРВОЙ — instanceKind снят, но отвечают всё равно непринимаемые поля, не instance_kind. [class:NEG · accepted-and-ignored ban]",
+      "name": "INST-RD-CR-VAL-UNSUPPORTED-SSH-PUBLIC-KEYS — Create с sshPublicKeys → sync 400 INVALID_ARGUMENT + fieldViolation 'ssh_public_keys'; сообщение обобщённое (имя поля живёт в details, не в тексте). compute не доставляет ключи в гостя: ни колонки, ни потребителя — а страж достижимости поле раньше УДОВЛЕТВОРЯЛО, то есть отпускал ровно тот случай, ради которого заведён. [class:NEG · accepted-and-ignored ban]",
+      "description": "class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "cr-ssh-public-keys",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmsshkey{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('field violation on \"ssh_public_keys\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'ssh_public_keys');",
+                  "  pm.expect(fv, 'fieldViolation for ssh_public_keys').to.be.an('object');",
+                  "});",
+                  "pm.test('message stays generic (field name lives in details)', () => pm.expect(pm.response.json().message).to.eql('invalid argument'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "INST-RD-CR-VAL-UNSUPPORTED-ALL-SIX-AT-ONCE — Create со ВСЕМИ семью непринимаемыми полями → одна 400 с семью fieldViolations (легаси-клиент узнаёт про все за один заход, а не по одному на запрос); проверка идёт ПЕРВОЙ — instanceKind снят, но отвечают всё равно непринимаемые поля, не instance_kind. [class:NEG · accepted-and-ignored ban]",
       "description": "class:VAL | class:NEG | priority:P1",
       "item": [
         {
@@ -4308,7 +4369,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmall6{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"], \"networkSettings\": {\"type\": \"SOFTWARE_ACCELERATED\"}, \"filesystemSpecs\": [{\"mode\": \"READ_WRITE\", \"deviceName\": \"fs0\", \"filesystemId\": \"fs-1\"}], \"localDiskSpecs\": [{\"size\": \"107374182400\"}], \"maintenancePolicy\": \"MIGRATE\", \"maintenanceGracePeriod\": \"60s\", \"serialPortSettings\": {\"sshAuthorization\": \"OS_LOGIN\"}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmall6{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true, \"networkSettings\": {\"type\": \"SOFTWARE_ACCELERATED\"}, \"filesystemSpecs\": [{\"mode\": \"READ_WRITE\", \"deviceName\": \"fs0\", \"filesystemId\": \"fs-1\"}], \"localDiskSpecs\": [{\"size\": \"107374182400\"}], \"maintenancePolicy\": \"MIGRATE\", \"maintenanceGracePeriod\": \"60s\", \"serialPortSettings\": {\"sshAuthorization\": \"OS_LOGIN\"}, \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4327,12 +4388,12 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('all six unsupported fields reported at once, and nothing else', () => {",
+                  "pm.test('all seven unsupported fields reported at once, and nothing else', () => {",
                   "  const j = pm.response.json();",
                   "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
                   "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
                   "  const got = (det.fieldViolations || []).map(v => v.field).sort();",
-                  "  pm.expect(got).to.eql(['filesystem_specs','local_disk_specs','maintenance_grace_period','maintenance_policy','network_settings','serial_port_settings']);",
+                  "  pm.expect(got).to.eql(['filesystem_specs','local_disk_specs','maintenance_grace_period','maintenance_policy','network_settings','serial_port_settings','ssh_public_keys']);",
                   "});"
                 ]
               }
@@ -4586,7 +4647,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insdup{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insdup{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -4726,7 +4787,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insdup{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insdup{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5032,7 +5093,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmbadzone{{runId}}\", \"zoneId\": \"no-such-zone\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmbadzone{{runId}}\", \"zoneId\": \"no-such-zone\", \"instanceKind\": \"VM\", \"machineTypeId\": \"mt-placeholder0000000\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5304,7 +5365,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmupd{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmupd{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -5989,7 +6050,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmimm{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmimm{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6574,7 +6635,7 @@
       ]
     },
     {
-      "name": "INST-RD-UPD-CRUD-NEXTBOOT-DEFERRAL — COMP-1-27: Update updateMask=ssh_public_keys → Operation done (принято с deferral, НЕ reject) → Get.statusReason содержит 'takes effect on next boot' (next-boot deferred class). [verifies COMP-1-27 · state-transition deferral]",
+      "name": "INST-RD-UPD-CRUD-NEXTBOOT-DEFERRAL — COMP-1-27: Update updateMask=vmSpec → Operation done (принято с deferral, НЕ reject) → Get.statusReason содержит 'takes effect on next boot' (next-boot deferred class). [verifies COMP-1-27 · state-transition deferral]",
       "description": "class:CRUD | class:STATE | priority:P1",
       "item": [
         {
@@ -6735,7 +6796,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmnb{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmnb{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -6903,7 +6964,7 @@
           ]
         },
         {
-          "name": "patch-ssh-rya11",
+          "name": "patch-vmspec-rya11",
           "request": {
             "method": "PATCH",
             "header": [
@@ -6926,7 +6987,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"updateMask\": \"sshPublicKeys\", \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5newkey nb@team\"]}",
+              "raw": "{\"updateMask\": \"vmSpec\", \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\"}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7257,11 +7318,11 @@
       ]
     },
     {
-      "name": "INST-RD-GET-CONF-FIELD-ABSENCE — COMP-1-24/28: public Instance.Get НЕ несёт retired YC-cruft (platformId/resources/resourcesSpec/coreFraction/schedulingPolicy/gpuSettings/reservedInstancePoolId/application) НИ инфра-полей (hostId/hostGroupId/placementPolicy/nodeId/topologyKey) НИ brand-токенов (yc.host/gce/aws); vmSpec.metadataOptions vendor-agnostic. [verifies COMP-1-24/28 · conformance field-absence]",
-      "description": "class:CONF | class:SEC | priority:P0",
+      "name": "INST-RD-UPD-VAL-UNSUPPORTED-SSH-PUBLIC-KEYS — Update с sshPublicKeys (маска пустая — full-object PATCH) → sync 400 INVALID_ARGUMENT + fieldViolation 'ssh_public_keys'; Operation НЕ создана. ключи не доставляются в гостя; прежняя метка «вступит в силу при следующей загрузке» подтверждала приём того, чего не будет. [class:NEG · accepted-and-ignored ban]",
+      "description": "class:VAL | class:NEG | priority:P1",
       "item": [
         {
-          "name": "seed-mt-ifa",
+          "name": "seed-mt-isshpub",
           "request": {
             "method": "POST",
             "header": [
@@ -7284,7 +7345,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"mtifa{{runId}}\", \"family\": \"STANDARD\", \"effectiveResources\": {\"vCpu\": 2, \"memoryMib\": 8192, \"gpus\": 0}, \"availableZones\": [\"{{existingZoneId}}\", \"{{existingZoneAltId}}\"], \"status\": \"AVAILABLE\"}",
+              "raw": "{\"name\": \"mtisshpub{{runId}}\", \"family\": \"STANDARD\", \"effectiveResources\": {\"vCpu\": 2, \"memoryMib\": 8192, \"gpus\": 0}, \"availableZones\": [\"{{existingZoneId}}\", \"{{existingZoneAltId}}\"], \"status\": \"AVAILABLE\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7396,7 +7457,7 @@
           ]
         },
         {
-          "name": "seed-inst-fa",
+          "name": "seed-inst-sshpub",
           "request": {
             "method": "POST",
             "header": [
@@ -7418,7 +7479,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmfa{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmsshpub{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7536,7 +7597,7 @@
           ]
         },
         {
-          "name": "warm-fa-rya12",
+          "name": "warm-sshpub-rya12",
           "request": {
             "method": "GET",
             "header": [
@@ -7586,9 +7647,9 @@
           ]
         },
         {
-          "name": "get",
+          "name": "upd-ssh-public-keys-rya13",
           "request": {
-            "method": "GET",
+            "method": "PATCH",
             "header": [
               {
                 "key": "Content-Type",
@@ -7606,6 +7667,15 @@
                 "instances",
                 "{{instanceId}}"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           },
           "event": [
@@ -7614,14 +7684,34 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const raw = JSON.stringify(j).toLowerCase();",
-                  "pm.test('no retired sizing keys', () => { ['platformId','resources','resourcesSpec','coreFraction'].forEach(k => pm.expect(j[k], k).to.be.oneOf([undefined, null])); });",
-                  "pm.test('no retired scheduling/gpu/pool/app keys', () => { ['schedulingPolicy','gpuSettings','reservedInstancePoolId','application'].forEach(k => pm.expect(j[k], k).to.be.oneOf([undefined, null])); });",
-                  "pm.test('no infra/placement keys (two-projection)', () => { ['hostId','hostGroupId','placementPolicy','hostAffinityRules','nodeId','topologyKey'].forEach(k => pm.expect(j[k], k).to.be.oneOf([undefined, null])); });",
-                  "pm.test('no brand/infra tokens in serialized body', () => { ['yc.host','gcehttp','awsv1','awsv2','preemptible','gpuclusterid','reservedinstancepool','platformid'].forEach(t => pm.expect(raw, t).to.not.include(t)); });",
-                  "pm.test('vmSpec.metadataOptions vendor-agnostic (no gce_*/aws_*)', () => { const mo = (j.vmSpec && j.vmSpec.metadataOptions) || {}; pm.expect(mo.gceHttpEndpoint).to.be.oneOf([undefined, null]); pm.expect(mo.awsV1HttpEndpoint).to.be.oneOf([undefined, null]); });"
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('field violation on \"ssh_public_keys\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'ssh_public_keys');",
+                  "  pm.expect(fv, 'fieldViolation for ssh_public_keys').to.be.an('object');",
+                  "});",
+                  "pm.test('message stays generic (field name lives in details)', () => pm.expect(pm.response.json().message).to.eql('invalid argument'));"
                 ]
               }
             }
@@ -7801,11 +7891,11 @@
       ]
     },
     {
-      "name": "INST-RD-LST-CRUD-FILTER-OK — COMP-1-34/36: List(projectId) → 200, содержит свой свежий Instance (listauthz row-filter, anti-BOLA); List filter=name=<name> → содержит его же (whitelist name=). [verifies COMP-1-34/36 · use-case + filter]",
-      "description": "class:CRUD | class:FILTER | class:PAGE | priority:P1",
+      "name": "INST-RD-UPD-VAL-UNSUPPORTED-METADATA — Update с metadata (маска пустая — full-object PATCH) → sync 400 INVALID_ARGUMENT + fieldViolation 'metadata'; Operation НЕ создана. канал правки метаданных существует и живёт в отдельном RPC — :updateMetadata. [class:NEG · accepted-and-ignored ban]",
+      "description": "class:VAL | class:NEG | priority:P1",
       "item": [
         {
-          "name": "seed-mt-ilst",
+          "name": "seed-mt-imetada",
           "request": {
             "method": "POST",
             "header": [
@@ -7828,7 +7918,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"name\": \"mtilst{{runId}}\", \"family\": \"STANDARD\", \"effectiveResources\": {\"vCpu\": 2, \"memoryMib\": 8192, \"gpus\": 0}, \"availableZones\": [\"{{existingZoneId}}\", \"{{existingZoneAltId}}\"], \"status\": \"AVAILABLE\"}",
+              "raw": "{\"name\": \"mtimetada{{runId}}\", \"family\": \"STANDARD\", \"effectiveResources\": {\"vCpu\": 2, \"memoryMib\": 8192, \"gpus\": 0}, \"availableZones\": [\"{{existingZoneId}}\", \"{{existingZoneAltId}}\"], \"status\": \"AVAILABLE\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7940,7 +8030,7 @@
           ]
         },
         {
-          "name": "seed-inst-lst",
+          "name": "seed-inst-metada",
           "request": {
             "method": "POST",
             "header": [
@@ -7962,7 +8052,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"inslst{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmmetada{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8080,7 +8170,7 @@
           ]
         },
         {
-          "name": "warm-lst-rya13",
+          "name": "warm-metada-rya14",
           "request": {
             "method": "GET",
             "header": [
@@ -8130,9 +8220,9 @@
           ]
         },
         {
-          "name": "list-lst14",
+          "name": "upd-metadata-rya15",
           "request": {
-            "method": "GET",
+            "method": "PATCH",
             "header": [
               {
                 "key": "Content-Type",
@@ -8140,15 +8230,25 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/compute/v1/instances?projectId={{_suiteProjectId}}&pageSize=1000",
+              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "compute",
                 "v1",
-                "instances?projectId={{_suiteProjectId}}&pageSize=1000"
+                "instances",
+                "{{instanceId}}"
               ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"metadata\": {\"k\": \"v\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
           },
           "event": [
@@ -8157,78 +8257,34 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// bounded read-your-writes retry until own fresh id is present in the list",
-                  "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
-                  "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_lstRetryCount', '0');",
-                  "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
-                  "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
-                  "let _present = false;",
-                  "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('instanceId')); } catch (e) {}",
-                  "if (pm.response.code === 200 && !_present && _lrc < 50) {",
-                  "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
-                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 600) { /* list-visibility wait */ }",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
-                  "pm.environment.unset('_lstRetryCount');",
-                  "pm.environment.unset('_lstRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('instances is array', () => pm.expect(pm.response.json().instances||[]).to.be.an('array'));",
-                  "pm.test('contains own fresh instance', () => pm.expect((pm.response.json().instances||[]).map(x=>x.id)).to.include(pm.environment.get('instanceId')));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "list-filter-name-lst15",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/compute/v1/instances?projectId={{_suiteProjectId}}&filter=name%3D%22inslst{{runId}}%22",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "compute",
-                "v1",
-                "instances?projectId={{_suiteProjectId}}&filter=name%3D%22inslst{{runId}}%22"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry until own fresh id is present in the list",
-                  "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
-                  "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_lstRetryCount', '0');",
-                  "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
-                  "let _present = false;",
-                  "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('instanceId')); } catch (e) {}",
-                  "if (pm.response.code === 200 && !_present && _lrc < 50) {",
-                  "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
-                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 600) { /* list-visibility wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_lstRetryCount');",
-                  "pm.environment.unset('_lstRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('filter name= contains own instance', () => pm.expect((pm.response.json().instances||[]).map(x=>x.id)).to.include(pm.environment.get('instanceId')));"
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('field violation on \"metadata\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'metadata');",
+                  "  pm.expect(fv, 'fieldViolation for metadata').to.be.an('object');",
+                  "});",
+                  "pm.test('message stays generic (field name lives in details)', () => pm.expect(pm.response.json().message).to.eql('invalid argument'));"
                 ]
               }
             }
@@ -8361,6 +8417,2866 @@
         },
         {
           "name": "poll-op-53",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "INST-RD-UPD-VAL-UNSUPPORTED-NETWORK-SETTINGS — Update с networkSettings (маска пустая — full-object PATCH) → sync 400 INVALID_ARGUMENT + fieldViolation 'network_settings'; Operation НЕ создана. compute не конфигурирует сетевое ускорение. [class:NEG · accepted-and-ignored ban]",
+      "description": "class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "seed-mt-inetwor",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/compute/v1/internal/machineTypes",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "internal",
+                "machineTypes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"mtinetwor{{runId}}\", \"family\": \"STANDARD\", \"effectiveResources\": {\"vCpu\": 2, \"memoryMib\": 8192, \"gpus\": 0}, \"availableZones\": [\"{{existingZoneId}}\", \"{{existingZoneAltId}}\"], \"status\": \"AVAILABLE\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.machineTypeId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('mtId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-54",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "assert-op-success",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation succeeded (response, no error)', () => pm.expect(Boolean(j.response) && !j.error, JSON.stringify(j)).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "seed-inst-networ",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmnetwor{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^epd[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.instanceId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('instanceId', String(v));",
+                  "} catch (e) {}",
+                  "pm.test('metadata.instanceId is ins- (pre-allocated at Create)', () => pm.expect(pm.environment.get('instanceId')||'').to.match(/^ins-/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-55",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "assert-op-success",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation succeeded (response, no error)', () => pm.expect(Boolean(j.response) && !j.error, JSON.stringify(j)).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "warm-networ-rya16",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances",
+                "{{instanceId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "upd-network-settings-rya17",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances",
+                "{{instanceId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"networkSettings\": {\"type\": \"SOFTWARE_ACCELERATED\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('field violation on \"network_settings\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'network_settings');",
+                  "  pm.expect(fv, 'fieldViolation for network_settings').to.be.an('object');",
+                  "});",
+                  "pm.test('message stays generic (field name lives in details)', () => pm.expect(pm.response.json().message).to.eql('invalid argument'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "del-inst",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances",
+                "{{instanceId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-56",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-mt",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/compute/v1/internal/machineTypes/{{mtId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "internal",
+                "machineTypes",
+                "{{mtId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-57",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "INST-RD-UPD-VAL-UNSUPPORTED-SERIAL-PORT-SETTINGS — Update с serialPortSettings (маска пустая — full-object PATCH) → sync 400 INVALID_ARGUMENT + fieldViolation 'serial_port_settings'; Operation НЕ создана. compute не конфигурирует доступ к последовательному порту. [class:NEG · accepted-and-ignored ban]",
+      "description": "class:VAL | class:NEG | priority:P1",
+      "item": [
+        {
+          "name": "seed-mt-iserial",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/compute/v1/internal/machineTypes",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "internal",
+                "machineTypes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"mtiserial{{runId}}\", \"family\": \"STANDARD\", \"effectiveResources\": {\"vCpu\": 2, \"memoryMib\": 8192, \"gpus\": 0}, \"availableZones\": [\"{{existingZoneId}}\", \"{{existingZoneAltId}}\"], \"status\": \"AVAILABLE\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.machineTypeId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('mtId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-58",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "assert-op-success",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation succeeded (response, no error)', () => pm.expect(Boolean(j.response) && !j.error, JSON.stringify(j)).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "seed-inst-serial",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmserial{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^epd[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.instanceId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('instanceId', String(v));",
+                  "} catch (e) {}",
+                  "pm.test('metadata.instanceId is ins- (pre-allocated at Create)', () => pm.expect(pm.environment.get('instanceId')||'').to.match(/^ins-/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-59",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "assert-op-success",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation succeeded (response, no error)', () => pm.expect(Boolean(j.response) && !j.error, JSON.stringify(j)).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "warm-serial-rya18",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances",
+                "{{instanceId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "upd-serial-port-settings-rya19",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances",
+                "{{instanceId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"serialPortSettings\": {\"sshAuthorization\": \"OS_LOGIN\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('field violation on \"serial_port_settings\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'serial_port_settings');",
+                  "  pm.expect(fv, 'fieldViolation for serial_port_settings').to.be.an('object');",
+                  "});",
+                  "pm.test('message stays generic (field name lives in details)', () => pm.expect(pm.response.json().message).to.eql('invalid argument'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "del-inst",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances",
+                "{{instanceId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-60",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-mt",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/compute/v1/internal/machineTypes/{{mtId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "internal",
+                "machineTypes",
+                "{{mtId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-61",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "INST-RD-GET-VAL-UNSUPPORTED-SERIAL-PORT — GET :serialPortOutput?port=2 → sync 400 INVALID_ARGUMENT + fieldViolation 'port': ответ синтетический и от порта не зависит, поэтому принятый номер порта — обещание выбора, которого нет. [class:NEG · accepted-and-ignored ban]",
+      "description": "class:VAL | class:NEG | priority:P2",
+      "item": [
+        {
+          "name": "seed-mt-iserp",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/compute/v1/internal/machineTypes",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "internal",
+                "machineTypes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"mtiserp{{runId}}\", \"family\": \"STANDARD\", \"effectiveResources\": {\"vCpu\": 2, \"memoryMib\": 8192, \"gpus\": 0}, \"availableZones\": [\"{{existingZoneId}}\", \"{{existingZoneAltId}}\"], \"status\": \"AVAILABLE\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.machineTypeId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('mtId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-62",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "assert-op-success",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation succeeded (response, no error)', () => pm.expect(Boolean(j.response) && !j.error, JSON.stringify(j)).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "seed-inst-serp",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmserp{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^epd[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.instanceId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('instanceId', String(v));",
+                  "} catch (e) {}",
+                  "pm.test('metadata.instanceId is ins- (pre-allocated at Create)', () => pm.expect(pm.environment.get('instanceId')||'').to.match(/^ins-/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-63",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "assert-op-success",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation succeeded (response, no error)', () => pm.expect(Boolean(j.response) && !j.error, JSON.stringify(j)).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "warm-serp-rya20",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances",
+                "{{instanceId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "serial-port-rya21",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}:serialPortOutput?port=2",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances",
+                "{{instanceId}}:serialPortOutput?port=2"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('field violation on \"port\"', () => {",
+                  "  const j = pm.response.json();",
+                  "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
+                  "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
+                  "  const fv = (det.fieldViolations || []).find(v => v.field === 'port');",
+                  "  pm.expect(fv, 'fieldViolation for port').to.be.an('object');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "del-inst",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances",
+                "{{instanceId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-64",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-mt",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/compute/v1/internal/machineTypes/{{mtId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "internal",
+                "machineTypes",
+                "{{mtId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-65",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "INST-RD-GET-CONF-FIELD-ABSENCE — COMP-1-24/28: public Instance.Get НЕ несёт retired YC-cruft (platformId/resources/resourcesSpec/coreFraction/schedulingPolicy/gpuSettings/reservedInstancePoolId/application) НИ инфра-полей (hostId/hostGroupId/placementPolicy/nodeId/topologyKey) НИ brand-токенов (yc.host/gce/aws); vmSpec.metadataOptions vendor-agnostic. [verifies COMP-1-24/28 · conformance field-absence]",
+      "description": "class:CONF | class:SEC | priority:P0",
+      "item": [
+        {
+          "name": "seed-mt-ifa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/compute/v1/internal/machineTypes",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "internal",
+                "machineTypes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"mtifa{{runId}}\", \"family\": \"STANDARD\", \"effectiveResources\": {\"vCpu\": 2, \"memoryMib\": 8192, \"gpus\": 0}, \"availableZones\": [\"{{existingZoneId}}\", \"{{existingZoneAltId}}\"], \"status\": \"AVAILABLE\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.machineTypeId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('mtId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-66",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "assert-op-success",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation succeeded (response, no error)', () => pm.expect(Boolean(j.response) && !j.error, JSON.stringify(j)).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "seed-inst-fa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insvmfa{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^epd[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.instanceId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('instanceId', String(v));",
+                  "} catch (e) {}",
+                  "pm.test('metadata.instanceId is ins- (pre-allocated at Create)', () => pm.expect(pm.environment.get('instanceId')||'').to.match(/^ins-/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-67",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "assert-op-success",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation succeeded (response, no error)', () => pm.expect(Boolean(j.response) && !j.error, JSON.stringify(j)).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "warm-fa-rya22",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances",
+                "{{instanceId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances",
+                "{{instanceId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const raw = JSON.stringify(j).toLowerCase();",
+                  "pm.test('no retired sizing keys', () => { ['platformId','resources','resourcesSpec','coreFraction'].forEach(k => pm.expect(j[k], k).to.be.oneOf([undefined, null])); });",
+                  "pm.test('no retired scheduling/gpu/pool/app keys', () => { ['schedulingPolicy','gpuSettings','reservedInstancePoolId','application'].forEach(k => pm.expect(j[k], k).to.be.oneOf([undefined, null])); });",
+                  "pm.test('no infra/placement keys (two-projection)', () => { ['hostId','hostGroupId','placementPolicy','hostAffinityRules','nodeId','topologyKey'].forEach(k => pm.expect(j[k], k).to.be.oneOf([undefined, null])); });",
+                  "pm.test('no brand/infra tokens in serialized body', () => { ['yc.host','gcehttp','awsv1','awsv2','preemptible','gpuclusterid','reservedinstancepool','platformid'].forEach(t => pm.expect(raw, t).to.not.include(t)); });",
+                  "pm.test('vmSpec.metadataOptions vendor-agnostic (no gce_*/aws_*)', () => { const mo = (j.vmSpec && j.vmSpec.metadataOptions) || {}; pm.expect(mo.gceHttpEndpoint).to.be.oneOf([undefined, null]); pm.expect(mo.awsV1HttpEndpoint).to.be.oneOf([undefined, null]); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "del-inst",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances",
+                "{{instanceId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-68",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-mt",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/compute/v1/internal/machineTypes/{{mtId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "internal",
+                "machineTypes",
+                "{{mtId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-69",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "INST-RD-LST-CRUD-FILTER-OK — COMP-1-34/36: List(projectId) → 200, содержит свой свежий Instance (listauthz row-filter, anti-BOLA); List filter=name=<name> → содержит его же (whitelist name=). [verifies COMP-1-34/36 · use-case + filter]",
+      "description": "class:CRUD | class:FILTER | class:PAGE | priority:P1",
+      "item": [
+        {
+          "name": "seed-mt-ilst",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/compute/v1/internal/machineTypes",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "internal",
+                "machineTypes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"name\": \"mtilst{{runId}}\", \"family\": \"STANDARD\", \"effectiveResources\": {\"vCpu\": 2, \"memoryMib\": 8192, \"gpus\": 0}, \"availableZones\": [\"{{existingZoneId}}\", \"{{existingZoneAltId}}\"], \"status\": \"AVAILABLE\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.machineTypeId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('mtId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-70",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "assert-op-success",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation succeeded (response, no error)', () => pm.expect(Boolean(j.response) && !j.error, JSON.stringify(j)).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "seed-inst-lst",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"inslst{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('Operation envelope returned', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.id, 'operation.id').to.match(/^epd[a-z0-9]+$/);",
+                  "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
+                  "});",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.instanceId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('instanceId', String(v));",
+                  "} catch (e) {}",
+                  "pm.test('metadata.instanceId is ins- (pre-allocated at Create)', () => pm.expect(pm.environment.get('instanceId')||'').to.match(/^ins-/));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-71",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "assert-op-success",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation succeeded (response, no error)', () => pm.expect(Boolean(j.response) && !j.error, JSON.stringify(j)).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "warm-lst-rya23",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances",
+                "{{instanceId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 40) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "list-lst24",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances?projectId={{_suiteProjectId}}&pageSize=1000",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances?projectId={{_suiteProjectId}}&pageSize=1000"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry until own fresh id is present in the list",
+                  "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
+                  "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_lstRetryCount', '0');",
+                  "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
+                  "let _present = false;",
+                  "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('instanceId')); } catch (e) {}",
+                  "if (pm.response.code === 200 && !_present && _lrc < 50) {",
+                  "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
+                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 600) { /* list-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_lstRetryCount');",
+                  "pm.environment.unset('_lstRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('instances is array', () => pm.expect(pm.response.json().instances||[]).to.be.an('array'));",
+                  "pm.test('contains own fresh instance', () => pm.expect((pm.response.json().instances||[]).map(x=>x.id)).to.include(pm.environment.get('instanceId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "list-filter-name-lst25",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances?projectId={{_suiteProjectId}}&filter=name%3D%22inslst{{runId}}%22",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances?projectId={{_suiteProjectId}}&filter=name%3D%22inslst{{runId}}%22"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry until own fresh id is present in the list",
+                  "// (opgate removed -> eventual-consistency); retries SELF while id absent.",
+                  "if (pm.environment.get('_lstRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_lstRetryCount', '0');",
+                  "  pm.environment.set('_lstRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _lrc = parseInt(pm.environment.get('_lstRetryCount') || '0', 10);",
+                  "let _present = false;",
+                  "try { const _arr = Object.values(pm.response.json()).find(v => Array.isArray(v)) || []; _present = _arr.map(x => x.id).includes(pm.environment.get('instanceId')); } catch (e) {}",
+                  "if (pm.response.code === 200 && !_present && _lrc < 50) {",
+                  "  pm.environment.set('_lstRetryCount', String(_lrc + 1));",
+                  "  const _lrd = Date.now(); while (Date.now() - _lrd < 600) { /* list-visibility wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_lstRetryCount');",
+                  "pm.environment.unset('_lstRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('filter name= contains own instance', () => pm.expect((pm.response.json().instances||[]).map(x=>x.id)).to.include(pm.environment.get('instanceId')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "del-inst",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/compute/v1/instances/{{instanceId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "instances",
+                "{{instanceId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-72",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-mt",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{internalBaseUrl}}/compute/v1/internal/machineTypes/{{mtId}}",
+              "host": [
+                "{{internalBaseUrl}}"
+              ],
+              "path": [
+                "compute",
+                "v1",
+                "internal",
+                "machineTypes",
+                "{{mtId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-73",
           "request": {
             "method": "GET",
             "header": [
@@ -8678,7 +11594,7 @@
           ]
         },
         {
-          "name": "poll-op-54",
+          "name": "poll-op-74",
           "request": {
             "method": "GET",
             "header": [
@@ -8781,7 +11697,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insdel{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insdel{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8818,7 +11734,7 @@
           ]
         },
         {
-          "name": "poll-op-55",
+          "name": "poll-op-75",
           "request": {
             "method": "GET",
             "header": [
@@ -8899,7 +11815,7 @@
           ]
         },
         {
-          "name": "warm-del-rya16",
+          "name": "warm-del-rya26",
           "request": {
             "method": "GET",
             "header": [
@@ -8988,7 +11904,7 @@
           ]
         },
         {
-          "name": "poll-op-56",
+          "name": "poll-op-76",
           "request": {
             "method": "GET",
             "header": [
@@ -9091,7 +12007,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insdel{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insdel{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9128,7 +12044,7 @@
           ]
         },
         {
-          "name": "poll-op-57",
+          "name": "poll-op-77",
           "request": {
             "method": "GET",
             "header": [
@@ -9248,7 +12164,7 @@
           ]
         },
         {
-          "name": "poll-op-58",
+          "name": "poll-op-78",
           "request": {
             "method": "GET",
             "header": [
@@ -9334,7 +12250,7 @@
           ]
         },
         {
-          "name": "poll-op-59",
+          "name": "poll-op-79",
           "request": {
             "method": "GET",
             "header": [
@@ -9523,7 +12439,7 @@
           ]
         },
         {
-          "name": "poll-op-60",
+          "name": "poll-op-80",
           "request": {
             "method": "GET",
             "header": [
@@ -9626,7 +12542,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insmtfk{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"sshPublicKeys\": [\"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team\"]}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"insmtfk{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"instanceKind\": \"VM\", \"machineTypeId\": \"{{mtId}}\", \"bootSource\": {\"type\": \"storage.image\", \"id\": \"img-9k2m4x7q1n8p:22.04-lts\"}, \"vmSpec\": {\"userData\": \"#cloud-config\\n{}\", \"metadataOptions\": {\"metadataEndpoint\": \"ENABLED\", \"metadataTokenRequired\": true}}, \"networkInterfaceSpecs\": [{\"subnetId\": \"{{existingSubnetId}}\", \"securityGroupIds\": [\"{{existingSgId}}\"]}], \"acknowledgeUnreachable\": true}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -9663,7 +12579,7 @@
           ]
         },
         {
-          "name": "poll-op-61",
+          "name": "poll-op-81",
           "request": {
             "method": "GET",
             "header": [
@@ -9744,7 +12660,7 @@
           ]
         },
         {
-          "name": "warm-mtfk-rya17",
+          "name": "warm-mtfk-rya27",
           "request": {
             "method": "GET",
             "header": [
@@ -9834,7 +12750,7 @@
           ]
         },
         {
-          "name": "poll-op-62",
+          "name": "poll-op-82",
           "request": {
             "method": "GET",
             "header": [
@@ -9991,7 +12907,7 @@
           ]
         },
         {
-          "name": "poll-op-63",
+          "name": "poll-op-83",
           "request": {
             "method": "GET",
             "header": [
@@ -10077,7 +12993,7 @@
           ]
         },
         {
-          "name": "poll-op-64",
+          "name": "poll-op-84",
           "request": {
             "method": "GET",
             "header": [

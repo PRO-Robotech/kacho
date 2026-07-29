@@ -272,20 +272,6 @@ compute:
   # (instances/disks/images/snapshots, и т.п.).
   authzIam:
     grpcAddr: kacho-iam-internal.kacho.svc.cluster.local:9091
-    tls: false
-  # KAC-198 follow-up: write-side FGA for new compute resources
-  # (`compute_<resource>:<id>#project@project:<project_id>`) so per-resource
-  # Get/Update/Delete Checks resolve via `viewer from project` cascade.
-  # Same store + bootstrap-Secrets as vpc/nlb.
-  authz:
-    tupleWrite:
-      enabled: true
-      openfgaEndpoint: kacho-umbrella-openfga:8080
-      storeIdSecretName: kacho-iam-openfga-store
-      storeIdSecretKey: store_id
-      modelIdSecretName: openfga-model-id
-      modelIdSecretKey: current
-      timeoutMs: 2000
 
 # ─── kacho-storage — Storage control-plane (Volume/Snapshot/Image/DiskType) ───
 # Enabled for the dev/newman stand. Base values.yaml keeps it OFF and pins the

@@ -72,7 +72,6 @@ describe("compute-instances registry contract (COMP-1)", () => {
       zone_id: "ru-central1-a",
       machine_type_id: "mt-standard-2",
       boot_source: { type: "storage.image", id: "img-x:22.04", name: "Ubuntu", resolved_digest: "sha256:…" },
-      ssh_public_keys: "ssh-ed25519 AAAA user@host\n\n",
     });
     const all = keysDeep(body);
     for (const retired of RETIRED) {
@@ -82,7 +81,8 @@ describe("compute-instances registry contract (COMP-1)", () => {
     // boot_source is narrowed to the two input fields — name/resolved_digest are
     // output-only and rejected on input.
     expect(body.boot_source).toEqual({ type: "storage.image", id: "img-x:22.04" });
-    expect(body.ssh_public_keys).toEqual(["ssh-ed25519 AAAA user@host"]);
+    // sshPublicKeys снят с формы вместе с приёмом на сервере.
+    expect(body).not.toHaveProperty("ssh_public_keys");
     expect(body).not.toHaveProperty("container_spec");
   });
 
@@ -139,21 +139,18 @@ describe("compute-instances registry contract (COMP-1)", () => {
     }
     const mask = computeUpdateMask(before, after, fields);
 
-    // UpdateInstanceRequest's whole field set, minus instance_id/update_mask.
+    // The fields UpdateInstanceRequest still ACCEPTS, minus instance_id/update_mask.
+    // The legacy ones (metadata, network_settings, maintenance_*, serial_port_settings,
+    // ssh_public_keys) are refused by the server with the field named, so a form that
+    // could ever emit them would hand the operator a 400 — they are not "mutable".
     const mutable = new Set([
       "name",
       "description",
       "labels",
-      "metadata",
       "service_account_id",
-      "network_settings",
-      "maintenance_policy",
-      "maintenance_grace_period",
-      "serial_port_settings",
       "machine_type_id",
       "cpu_guarantee_percent",
       "placement_group_id",
-      "ssh_public_keys",
       "vm_spec",
     ]);
     expect(mask.filter((path) => !mutable.has(path.split(".")[0]))).toEqual([]);

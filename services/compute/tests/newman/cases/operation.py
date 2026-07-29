@@ -37,7 +37,7 @@ def _cleanup_mt():
 
 
 def _inst_body(suffix, project="{{_suiteProjectId}}", mt="{{mtId}}"):
-    # sshPublicKeys lifts the F5 unreachable-guard (COMP-1, 3aa7883c): создание VM без
+    # acknowledgeUnreachable снимает F5 unreachable-guard: создание VM без внешнего адреса и
     # ssh-ключей И без внешнего адреса — sync FAILED_PRECONDITION ("VM will be RUNNING
     # but unreachable … set acknowledgeUnreachable:true"). Эти кейсы про Operation-
     # семантику, а не про достижимость, поэтому снимаем гейт ключом — так же, как
@@ -47,7 +47,7 @@ def _inst_body(suffix, project="{{_suiteProjectId}}", mt="{{mtId}}"):
             "bootSource": dict(_BOOT_STORAGE),
             "vmSpec": {"userData": "#cloud-config\n{}",
                        "metadataOptions": {"metadataEndpoint": "ENABLED", "metadataTokenRequired": True}},
-            "sshPublicKeys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey op@team"],
+            "acknowledgeUnreachable": True,
             "networkInterfaceSpecs": [{"subnetId": "{{existingSubnetId}}",
                                        "securityGroupIds": ["{{existingSgId}}"]}]}
 

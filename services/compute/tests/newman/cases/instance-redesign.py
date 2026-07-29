@@ -41,6 +41,8 @@ MT = "/compute/v1/machineTypes"                   # public read (:8080)
 _PLACEHOLDER_MT = "mt-placeholder0000000"
 _BOOT_STORAGE = {"type": "storage.image", "id": "img-9k2m4x7q1n8p:22.04-lts"}
 _BOOT_REGISTRY = {"type": "registry.image", "id": "ml/bert-trainer:cu121"}
+# sshPublicKeys больше НЕ приём (compute не доставляет ключи в гостя) — значение
+# живёт только в негативах, доказывающих отказ.
 _SSH = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey ml@team"]
 _SA_WELLFORMED = "svate85k1x8bphdnn0wp"           # well-formed sva- (existence НЕ проверяется в COMP-1)
 
@@ -69,7 +71,7 @@ def _cleanup_mt(id_var="mtId", name="cleanup-mt"):
             poll_operation_until_done()]
 
 
-def _vm_body(suffix, mt="{{mtId}}", name=None, ssh=True, boot=None, nic=True, extra=None):
+def _vm_body(suffix, mt="{{mtId}}", name=None, ack=True, boot=None, nic=True, extra=None):
     b = {"projectId": "{{_suiteProjectId}}",
          "name": name if name is not None else f"insvm{suffix}{{{{runId}}}}",
          "zoneId": "{{existingZoneId}}", "instanceKind": "VM", "machineTypeId": mt,
@@ -78,8 +80,11 @@ def _vm_body(suffix, mt="{{mtId}}", name=None, ssh=True, boot=None, nic=True, ex
                     "metadataOptions": {"metadataEndpoint": "ENABLED", "metadataTokenRequired": True}}}
     if nic:
         b["networkInterfaceSpecs"] = [{"subnetId": "{{existingSubnetId}}", "securityGroupIds": ["{{existingSgId}}"]}]
-    if ssh:
-        b["sshPublicKeys"] = list(_SSH)
+    if ack:
+        # Страж достижимости снимается ПРИЗНАНИЕМ. Раньше его снимал sshPublicKeys —
+        # список ключей, который compute никуда не доставляет: страж отпускал ровно
+        # тот случай, ради которого заведён.
+        b["acknowledgeUnreachable"] = True
     if extra:
         b.update(extra)
     return b
@@ -396,23 +401,23 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="INST-RD-CR-VAL-UNREACHABLE-GUARD",
-    title="COMP-1-14: Create VM БЕЗ sshPublicKeys И БЕЗ external, БЕЗ acknowledgeUnreachable → sync 400 "
+    title="COMP-1-14: Create VM БЕЗ external, БЕЗ acknowledgeUnreachable → sync 400 "
           "FAILED_PRECONDITION 'VM will be RUNNING but unreachable ...'. [verifies COMP-1-14 · error-guessing 'boots≠usable']",
     classes=["VAL", "NEG"], priority="P1",
     steps=[Step(name="cr-unreachable", method="POST", path=INSTANCES,
-                body=_vm_body("unr", mt=_PLACEHOLDER_MT, ssh=False),
+                body=_vm_body("unr", mt=_PLACEHOLDER_MT, ack=False),
                 test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
                              "pm.test('text mentions unreachable', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('unreachable'));"])],
 ))
 
 CASES.append(Case(
     id="INST-RD-CR-CRUD-UNREACHABLE-ACK",
-    title="COMP-1-14: Create VM БЕЗ ssh/external + acknowledgeUnreachable=true → guard снят → done "
+    title="COMP-1-14: Create VM БЕЗ external + acknowledgeUnreachable=true → guard снят → done "
           "(bastion-only легальный кейс). [verifies COMP-1-14 · state negative→positive]",
     classes=["CRUD", "STATE"], priority="P1",
     steps=[
         *_seed_mt("ack"),
-        *_create_inst_steps("create", _vm_body("ack", ssh=False, extra={"acknowledgeUnreachable": True})),
+        *_create_inst_steps("create", _vm_body("ack")),
         retry_until_authorized(Step(name="get", method="GET", path=INSTANCES + "/{{instanceId}}",
             test_script=[*assert_status(200), "pm.test('instanceKind VM', () => pm.expect(pm.response.json().instanceKind).to.eql('VM'));"])),
         *_delete_inst(),
@@ -532,9 +537,15 @@ CASES.append(_unsupported_field_case(
     "serialPortSettings", "serial_port_settings", {"sshAuthorization": "OS_LOGIN"},
     "compute не конфигурирует доступ к последовательному порту."))
 
+CASES.append(_unsupported_field_case(
+    "INST-RD-CR-VAL-UNSUPPORTED-SSH-PUBLIC-KEYS", "sshkey",
+    "sshPublicKeys", "ssh_public_keys", list(_SSH),
+    "compute не доставляет ключи в гостя: ни колонки, ни потребителя — а страж достижимости "
+    "поле раньше УДОВЛЕТВОРЯЛО, то есть отпускал ровно тот случай, ради которого заведён."))
+
 CASES.append(Case(
     id="INST-RD-CR-VAL-UNSUPPORTED-ALL-SIX-AT-ONCE",
-    title="Create со ВСЕМИ шестью непринимаемыми полями → одна 400 с шестью fieldViolations "
+    title="Create со ВСЕМИ семью непринимаемыми полями → одна 400 с семью fieldViolations "
           "(легаси-клиент узнаёт про все за один заход, а не по одному на запрос); "
           "проверка идёт ПЕРВОЙ — instanceKind снят, но отвечают всё равно непринимаемые поля, "
           "не instance_kind. [class:NEG · accepted-and-ignored ban]",
@@ -547,15 +558,16 @@ CASES.append(Case(
                     "maintenancePolicy": "MIGRATE",
                     "maintenanceGracePeriod": "60s",
                     "serialPortSettings": {"sshAuthorization": "OS_LOGIN"},
+                    "sshPublicKeys": list(_SSH),
                 }).items() if k != "instanceKind"},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
-                             "pm.test('all six unsupported fields reported at once, and nothing else', () => {",
+                             "pm.test('all seven unsupported fields reported at once, and nothing else', () => {",
                              "  const j = pm.response.json();",
                              "  const det = (j.details || []).find(d => (d['@type']||'').includes('BadRequest'));",
                              "  pm.expect(det, 'BadRequest detail').to.be.an('object');",
                              "  const got = (det.fieldViolations || []).map(v => v.field).sort();",
                              "  pm.expect(got).to.eql(['filesystem_specs','local_disk_specs','maintenance_grace_period',"
-                             "'maintenance_policy','network_settings','serial_port_settings']);",
+                             "'maintenance_policy','network_settings','serial_port_settings','ssh_public_keys']);",
                              "});"])],
 ))
 
@@ -699,20 +711,93 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="INST-RD-UPD-CRUD-NEXTBOOT-DEFERRAL",
-    title="COMP-1-27: Update updateMask=ssh_public_keys → Operation done (принято с deferral, НЕ reject) → "
+    title="COMP-1-27: Update updateMask=vmSpec → Operation done (принято с deferral, НЕ reject) → "
           "Get.statusReason содержит 'takes effect on next boot' (next-boot deferred class). "
           "[verifies COMP-1-27 · state-transition deferral]",
     classes=["CRUD", "STATE"], priority="P1",
     steps=[
         *_seed_instance("nb"),
-        retry_until_authorized(Step(name="patch-ssh", method="PATCH", path=INSTANCES + "/{{instanceId}}",
-            # camelCase mask (см. immutable-matrix): 'ssh_public_keys' snake → protojson reject.
-            body={"updateMask": "sshPublicKeys", "sshPublicKeys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5newkey nb@team"]},
+        retry_until_authorized(Step(name="patch-vmspec", method="PATCH", path=INSTANCES + "/{{instanceId}}",
+            # camelCase mask (см. immutable-matrix): snake-путь protojson отвергнет.
+            body={"updateMask": "vmSpec", "vmSpec": {"userData": "#cloud-config\n{}"}},
             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(), assert_op_success(),
         Step(name="get", method="GET", path=INSTANCES + "/{{instanceId}}",
              test_script=[*assert_status(200),
                           "pm.test('statusReason: takes effect on next boot', () => pm.expect((pm.response.json().statusReason||'').toLowerCase()).to.include('takes effect on next boot'));"]),
+        *_delete_inst(),
+        *_cleanup_mt(),
+    ],
+))
+
+
+# ===========================================================================
+# Принято-и-проигнорировано на Update — тот же запрет, вторая половина
+# ===========================================================================
+# Прикрытие маской было ЧАСТИЧНЫМ и потому обманчивым: known-set этих полей не
+# содержит, поэтому ЯВНОЕ упоминание в маске давало generic «unknown field», — но
+# при ПУСТОЙ маске (full-object PATCH) тело снова принималось и выбрасывалось.
+# Один и тот же параметр отвечал по-разному в зависимости от маски, а в «тихой»
+# ветке — успехом.
+#
+# sshPublicKeys вдобавок штамповал statusReason «takes effect on next boot»:
+# продукт не просто игнорировал параметр, он ПОДТВЕРЖДАЛ его приём.
+
+def _unsupported_update_field_case(case_id, json_key, proto_field, value, why):
+    """Непринимаемый ключ в теле Update при ПУСТОЙ маске → sync 400 + fieldViolation."""
+    return Case(
+        id=case_id,
+        title=f"Update с {json_key} (маска пустая — full-object PATCH) → sync 400 INVALID_ARGUMENT + "
+              f"fieldViolation '{proto_field}'; Operation НЕ создана. {why} "
+              "[class:NEG · accepted-and-ignored ban]",
+        classes=["VAL", "NEG"], priority="P1",
+        steps=[
+            *_seed_instance(proto_field.replace("_", "")[:6]),
+            retry_until_authorized(Step(name=f"upd-{proto_field.replace('_', '-')}", method="PATCH",
+                path=INSTANCES + "/{{instanceId}}", body={json_key: value},
+                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                             *assert_field_violation(proto_field),
+                             "pm.test('message stays generic (field name lives in details)', () => "
+                             "pm.expect(pm.response.json().message).to.eql('invalid argument'));"])),
+            *_delete_inst(),
+            *_cleanup_mt(),
+        ],
+    )
+
+
+CASES.append(_unsupported_update_field_case(
+    "INST-RD-UPD-VAL-UNSUPPORTED-SSH-PUBLIC-KEYS",
+    "sshPublicKeys", "ssh_public_keys", list(_SSH),
+    "ключи не доставляются в гостя; прежняя метка «вступит в силу при следующей загрузке» "
+    "подтверждала приём того, чего не будет."))
+
+CASES.append(_unsupported_update_field_case(
+    "INST-RD-UPD-VAL-UNSUPPORTED-METADATA",
+    "metadata", "metadata", {"k": "v"},
+    "канал правки метаданных существует и живёт в отдельном RPC — :updateMetadata."))
+
+CASES.append(_unsupported_update_field_case(
+    "INST-RD-UPD-VAL-UNSUPPORTED-NETWORK-SETTINGS",
+    "networkSettings", "network_settings", {"type": "SOFTWARE_ACCELERATED"},
+    "compute не конфигурирует сетевое ускорение."))
+
+CASES.append(_unsupported_update_field_case(
+    "INST-RD-UPD-VAL-UNSUPPORTED-SERIAL-PORT-SETTINGS",
+    "serialPortSettings", "serial_port_settings", {"sshAuthorization": "OS_LOGIN"},
+    "compute не конфигурирует доступ к последовательному порту."))
+
+CASES.append(Case(
+    id="INST-RD-GET-VAL-UNSUPPORTED-SERIAL-PORT",
+    title="GET :serialPortOutput?port=2 → sync 400 INVALID_ARGUMENT + fieldViolation 'port': ответ "
+          "синтетический и от порта не зависит, поэтому принятый номер порта — обещание выбора, "
+          "которого нет. [class:NEG · accepted-and-ignored ban]",
+    classes=["VAL", "NEG"], priority="P2",
+    steps=[
+        *_seed_instance("serp"),
+        retry_until_authorized(Step(name="serial-port", method="GET",
+            path=INSTANCES + "/{{instanceId}}:serialPortOutput?port=2",
+            test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                         *assert_field_violation("port")])),
         *_delete_inst(),
         *_cleanup_mt(),
     ],

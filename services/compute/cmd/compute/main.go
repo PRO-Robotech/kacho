@@ -474,6 +474,24 @@ func validateAuthMode(cfg config.Config, logger *slog.Logger) (productionMode bo
 			"— it bypasses ALL per-RPC authz Check on both listeners (every RPC allowed without IAM "+
 			"authorization); breakglass is a non-production emergency escape only", cfg.AuthMode)
 	}
+	// Тот же класс, что breakglass выше, и такой же отказ старта: SkipPeerValidation
+	// снимает НЕ одну проверку, а ВСЕ кросс-сервисные разом. dialPeers при нём
+	// подменяет каждый peer-клиент no-op-заглушкой, для которой любой чужой
+	// идентификатор «существует», — отваливаются существование проекта, существование
+	// зоны, когерентность размещения подсети интерфейса и высвобождение интерфейса и
+	// тома на удалении. Это аварийный dev-выключатель; на развёрнутом стенде он
+	// означает, что ресурсы создаются со ссылками в никуда и с межзональными
+	// интерфейсами, а высвобождение чужих ресурсов просто не происходит.
+	//
+	// Проверяется ДО разбора режима, рядом с breakglass, по той же причине: иначе
+	// причина утонула бы в жалобах на рёбра, требование mTLS с которых этот же
+	// выключатель и снимает (см. insecureEdgesInProductionStrict).
+	if cfg.SkipPeerValidation && (cfg.AuthMode == "production" || cfg.AuthMode == "production-strict") {
+		return false, fmt.Errorf("production mode (%s): KACHO_COMPUTE_SKIP_PEER_VALIDATION must not be enabled "+
+			"— it disables EVERY cross-service check at once (project existence, zone existence, NIC subnet "+
+			"placement coherence, NIC/volume release on Delete): peers are replaced by no-op stubs for which "+
+			"any foreign id \"exists\"; skipping peer validation is a non-production escape only", cfg.AuthMode)
+	}
 
 	switch cfg.AuthMode {
 	case "dev":
@@ -636,9 +654,20 @@ func insecureListenersInProduction(cfg config.Config) error {
 //     forwarded principal, всегда обязательны;
 //   - project/geo/vpc-subnet peer-рёбра (IAMProjectMTLS / GeoMTLS / VPCMTLS) —
 //     дозваниваются на request-path каждой мутации, кроме SkipPeerValidation;
+//   - vpc NIC-attach (VPCNicMTLS) и storage volume-attach (StorageMTLS) —
+//     internal :9091 сагами Create/Delete, активны при заданном адресе;
 //   - authz Check-ребро (IAMAuthzMTLS) — per-RPC FGA-gate, активно кроме breakglass;
 //   - register-drainer ребро (IAMRegisterMTLS) — реплеит FGA-registration в iam,
 //     активно при FGARegisterDrainerEnabled.
+//
+// Заявление о полноте здесь — не риторика: оно проверяется механически. Гейт
+// TestEdgeCensus_GuardCoversEveryDialedEdge переписывает по синтаксису main.go
+// каждое место, где composition root резолвит TLS-креды, и требует, чтобы
+// отключение любого такого ребра роняло эту функцию. Обратный гейт
+// (TestEdgeCensus_GuardDemandsNothingUndialed) не даёт остаться требованию на
+// провод, который сняли. Руками этот перечень поддерживать больше не нужно — и,
+// что важнее, нельзя разойтись с кодом молча: два ребра (NIC-attach и
+// volume-attach) уже выпадали из него именно так.
 func insecureEdgesInProductionStrict(cfg config.Config) error {
 	var insecure []string
 	if !cfg.PublicServerMTLS.Enable {
@@ -658,6 +687,18 @@ func insecureEdgesInProductionStrict(cfg config.Config) error {
 		// несёт forwarded principal, значит plaintext на нём компрометирует subject.
 		if cfg.VPCGRPCAddr != "" && !cfg.VPCMTLS.Enable {
 			insecure = append(insecure, "VPC_MTLS_ENABLE")
+		}
+		// vpc InternalNetworkInterfaceService — NIC-attach/release сага (:9091).
+		// Несёт forwarded principal и привязку интерфейса к машине; провод живой
+		// ровно тогда, когда задан адрес (иначе dialPeers ставит no-op-клиент).
+		if cfg.VPCInternalGRPCAddr != "" && !cfg.VPCNicMTLS.Enable {
+			insecure = append(insecure, "VPC_NIC_MTLS_ENABLE")
+		}
+		// storage InternalVolumeService — attach/detach тома (:9091). Payload
+		// самоописывающийся (несёт project/instance/zone), поэтому plaintext на
+		// нём — это ещё и подмена привязки тома, не только subject'а.
+		if cfg.StorageInternalGRPCAddr != "" && !cfg.StorageMTLS.Enable {
+			insecure = append(insecure, "STORAGE_MTLS_ENABLE")
 		}
 	}
 	if !cfg.AuthZBreakglass && !cfg.IAMAuthzMTLS.Enable {

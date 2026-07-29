@@ -152,9 +152,86 @@ func RejectUnsupportedCreateFields(req *computev1.CreateInstanceRequest) error {
 	if req.GetSerialPortSettings() != nil {
 		add("serial_port_settings", "serialPortSettings is not supported: compute does not configure serial-port access")
 	}
+	// sshPublicKeys — седьмое поле того же класса, найденное обходом дескрипторов.
+	// Ключи не персистятся ни в одной колонке и никому не выдаются: подсистемы их
+	// доставки в гостя (metadata-сервис / guest-agent) в control-plane нет. Хуже
+	// того, поле УДОВЛЕТВОРЯЛО страж достижимости ниже по потоку — «машина будет
+	// запущена и недостижима» снималось списком ключей, который никуда не доедет,
+	// то есть страж отпускал ровно тот случай, ради которого заведён.
+	if len(req.GetSshPublicKeys()) > 0 {
+		add("ssh_public_keys", "sshPublicKeys is not supported: compute does not deliver keys into the guest")
+	}
 	if n == 0 {
 		return nil
 	}
+	return b.Err()
+}
+
+// RejectUnsupportedUpdateFields отвергает поля UpdateInstanceRequest, за которыми
+// в compute нет ни одной подсистемы: `ssh_public_keys`, `metadata`,
+// `network_settings`, `maintenance_policy`, `maintenance_grace_period`,
+// `serial_port_settings`.
+//
+// Прикрытие маской было ЧАСТИЧНЫМ и потому обманчивым: known-set
+// (instanceUpdateKnown) этих полей не содержит, поэтому явное упоминание в маске
+// давало generic «unknown field», — но при ПУСТОЙ маске (full-object PATCH,
+// api-conventions) тело снова принималось и выбрасывалось. Один и тот же параметр
+// отвечал по-разному в зависимости от маски, а в «тихой» ветке — успехом.
+// `ssh_public_keys` вдобавок штамповал метку «вступит в силу при следующей
+// загрузке»: продукт не просто игнорировал параметр, он подтверждал его приём.
+//
+// `metadata` не «легаси-мусор»: канал правки метаданных существует и живёт в
+// отдельном RPC (UpdateMetadata), поэтому отказ здесь — не потеря возможности, а
+// указание на настоящий канал.
+//
+// Форма отказа и её обоснование — общие с RejectUnsupportedCreateFields.
+// Вызывается ПЕРВЫМ стейтментом Update: иначе поле, названное в маске, ответило
+// бы про `update_mask`, а не про себя.
+func RejectUnsupportedUpdateFields(req *computev1.UpdateInstanceRequest) error {
+	b := coreerrors.InvalidArgument()
+	n := 0
+	add := func(field, desc string) {
+		b.AddFieldViolation(field, desc)
+		n++
+	}
+	if len(req.GetSshPublicKeys()) > 0 {
+		add("ssh_public_keys", "sshPublicKeys is not supported: compute does not deliver keys into the guest")
+	}
+	if len(req.GetMetadata()) > 0 {
+		add("metadata", "metadata is not updated here: use InstanceService.UpdateMetadata")
+	}
+	if req.GetNetworkSettings() != nil {
+		add("network_settings", "networkSettings is not supported: compute does not configure network acceleration")
+	}
+	if req.GetMaintenancePolicy() != computev1.MaintenancePolicy_MAINTENANCE_POLICY_UNSPECIFIED {
+		add("maintenance_policy", "maintenancePolicy is not supported: compute does not schedule host maintenance")
+	}
+	if req.GetMaintenanceGracePeriod() != nil {
+		add("maintenance_grace_period", "maintenanceGracePeriod is not supported: compute does not schedule host maintenance")
+	}
+	if req.GetSerialPortSettings() != nil {
+		add("serial_port_settings", "serialPortSettings is not supported: compute does not configure serial-port access")
+	}
+	if n == 0 {
+		return nil
+	}
+	return b.Err()
+}
+
+// RejectUnsupportedSerialPortFields отвергает `port` у GetSerialPortOutput.
+// Ответ RPC синтетический и от порта не зависит (control-plane консолей гостя не
+// держит), поэтому принятый номер порта — обещание выбора, которого нет.
+//
+// Зацепка — ЗАДАННОЕ значение: proto3 не отличает «не прислано» от нуля, а
+// документированный дефолт поля равен 1, поэтому любой ненулевой номер означает,
+// что вызывающий порт выбрал.
+func RejectUnsupportedSerialPortFields(req *computev1.GetInstanceSerialPortOutputRequest) error {
+	if req.GetPort() == 0 {
+		return nil
+	}
+	b := coreerrors.InvalidArgument()
+	b.AddFieldViolation("port",
+		"port is not supported: the serial-port output is control-plane synthetic and does not depend on the port")
 	return b.Err()
 }
 
@@ -178,7 +255,6 @@ func CreateReqFromProto(req *computev1.CreateInstanceRequest) instance.CreateIns
 		BootSource:             bootSourceFromProto(req.BootSource),
 		ServiceAccountID:       req.ServiceAccountId,
 		PlacementGroupID:       req.PlacementGroupId,
-		SSHPublicKeys:          req.SshPublicKeys,
 		UseDefaultNetwork:      req.UseDefaultNetwork,
 		AssignExternalAddress:  req.AssignExternalAddress,
 		AcknowledgeUnreachable: req.AcknowledgeUnreachable,
@@ -196,6 +272,11 @@ func CreateReqFromProto(req *computev1.CreateInstanceRequest) instance.CreateIns
 
 // Update инициирует обновление Instance.
 func (h *InstanceHandler) Update(ctx context.Context, req *computev1.UpdateInstanceRequest) (*operationpb.Operation, error) {
+	// Непринимаемые поля — ПЕРВЫМ стейтментом (см. RejectUnsupportedUpdateFields):
+	// названное в маске поле обязано отвечать про себя, а не про update_mask.
+	if err := RejectUnsupportedUpdateFields(req); err != nil {
+		return nil, err
+	}
 	if req.InstanceId == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance_id required")
 	}
@@ -215,7 +296,6 @@ func (h *InstanceHandler) Update(ctx context.Context, req *computev1.UpdateInsta
 		MachineTypeID:       req.MachineTypeId,
 		CPUGuaranteePercent: req.CpuGuaranteePercent,
 		PlacementGroupID:    req.PlacementGroupId,
-		SSHPublicKeys:       req.SshPublicKeys,
 		VMSpec:              vmSpecFromProto(req.VmSpec),
 		UpdateMask:          mask,
 	}
@@ -379,6 +459,9 @@ func (h *InstanceHandler) Delete(ctx context.Context, req *computev1.DeleteInsta
 
 // GetSerialPortOutput — sync RPC: синтетический текст.
 func (h *InstanceHandler) GetSerialPortOutput(ctx context.Context, req *computev1.GetInstanceSerialPortOutputRequest) (*computev1.GetInstanceSerialPortOutputResponse, error) {
+	if err := RejectUnsupportedSerialPortFields(req); err != nil {
+		return nil, err
+	}
 	if req.InstanceId == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance_id required")
 	}

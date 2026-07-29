@@ -2487,18 +2487,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         description: "Доступность metadata-эндпоинта из гостевой ОС.",
       },
       {
-        name: "ssh_public_keys",
-        label: "SSH-ключи",
-        type: "text",
-        rows: 3,
-        createOnly: true,
-        visibleWhen: { field: "instance_kind", equals: "VM" },
-        placeholder: "ssh-ed25519 AAAA… user@host\n(по одному ключу на строку)",
-        description:
-          "По одному ключу на строку. Без ssh-ключа и без внешнего адреса VM недостижима — включите внешний " +
-          "адрес или отметьте «допустить недостижимость».",
-      },
-      {
         name: "assign_external_address",
         label: "Внешний адрес",
         type: "bool",
@@ -2633,7 +2621,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       service_account_id: "",
       vm_spec: { user_data: "", metadata_options: { metadata_endpoint: "ENABLED" } },
       container_spec: { restart_policy: "NEVER", working_dir: "" },
-      ssh_public_keys: "",
       assign_external_address: false,
       acknowledge_unreachable: false,
       use_default_network: true,
@@ -3687,7 +3674,6 @@ export function gibToBytes(v: unknown): string | undefined {
  *     resolved_digest / materialized_volume are output-only and rejected on input;
  *   - keep exactly the `spec` oneof arm matching instance_kind, and drop the
  *     VM-only inputs on a CONTAINER;
- *   - ssh_public_keys: textarea → string[] (one key per line);
  *   - NIC items: form-internal representation → NetworkInterfaceSpec;
  *   - drop empty optional scalars rather than sending "".
  * Form-only `_`-keys are removed here for the fields this function rebuilds, and
@@ -3703,7 +3689,6 @@ export function sanitizeInstanceCreate(obj: Record<string, unknown>): Record<str
 
   if (kind === "CONTAINER") {
     delete o["vm_spec"];
-    delete o["ssh_public_keys"];
     delete o["assign_external_address"];
     delete o["acknowledge_unreachable"];
     const cs = { ...((o["container_spec"] as Record<string, unknown> | undefined) ?? {}) };
@@ -3711,13 +3696,6 @@ export function sanitizeInstanceCreate(obj: Record<string, unknown>): Record<str
     o["container_spec"] = cs;
   } else {
     delete o["container_spec"];
-    const raw = typeof o["ssh_public_keys"] === "string" ? (o["ssh_public_keys"] as string) : "";
-    const keys = raw
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (keys.length > 0) o["ssh_public_keys"] = keys;
-    else delete o["ssh_public_keys"];
     const vs = { ...((o["vm_spec"] as Record<string, unknown> | undefined) ?? {}) };
     if (!vs["user_data"]) delete vs["user_data"];
     o["vm_spec"] = vs;

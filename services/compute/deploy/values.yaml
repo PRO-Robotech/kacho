@@ -46,7 +46,6 @@ auth:
   trustedForwarderSANs: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
 
 iamAddr: "kacho-iam.kacho.svc.cluster.local:9090"
-# KAC-127: resourceManagerAddr удалён — RM-fallback больше не поддерживается.
 vpcAddr: "vpc.kacho.svc.cluster.local:9090"
 # vpcInternalAddr — internal-порт kacho-vpc (:9091): InternalZoneService —
 # compute берёт справочник зон из VPC-модуля (см. docs/architecture/07-known-divergences.md §6.1).
@@ -158,7 +157,6 @@ authzIam:
   # gRPC address of kacho-iam internal port (AuthorizeService.{Check,BatchCheck}).
   # Empty string ⇒ filter + per-RPC authz disabled (dev / breakglass).
   grpcAddr: "kacho-iam.kacho.svc.cluster.local:9091"
-  tls: false
 
 # ==========================================================================
 # KAC-127 Phase 4 — OPA sidecar for in-pod policy decisions
@@ -186,25 +184,6 @@ opa:
       cpu: 200m
       memory: 128Mi
 
-
-# KAC-198 follow-up: write-side FGA tuple for new compute resources
-# (`compute_<resource>:<id>#project@project:<project_id>`) so per-resource
-# Checks resolve via `viewer from project` cascade. Production: enabled=true
-# with the shared OpenFGA store id (umbrella values.dev.yaml injects
-# storeId/modelId from the OpenFGA bootstrap-job-populated Secrets).
-authz:
-  tupleWrite:
-    enabled: false           # Toggle write-side FGA (production: true)
-    openfgaEndpoint: ""      # OpenFGA HTTP API host:port (shared cluster store)
-    storeId: ""              # OpenFGA store id (shared with kacho-iam)
-    modelId: ""              # Pinned authorization_model_id (empty → store default)
-    timeoutMs: 2000          # Per-call write timeout
-    # Optional bootstrap-job-populated Secret refs (preferred over plain values
-    # so kacho-iam's openfga-bootstrap-job stays single source of truth).
-    storeIdSecretName: ""    # default: ""    e.g. kacho-iam-openfga-store
-    storeIdSecretKey: ""     # default: "store_id"
-    modelIdSecretName: ""    # default: ""    e.g. openfga-model-id-secret
-    modelIdSecretKey: ""     # default: "model_id"
 
 # INFRA sec-hardening — единый security-floor, идентичный kacho-iam/geo/nlb/registry.
 #

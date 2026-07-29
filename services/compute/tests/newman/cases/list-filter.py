@@ -64,7 +64,9 @@ def _instance_body(name_suffix, project_var, mt="{{mtId}}"):
     #   instanceKind=VM · machineTypeId (single sizing channel) · bootSource{type,id} ·
     #   vmSpec (kind-matching spec-arm). Legacy platformId/resourcesSpec/bootDiskSpec are
     #   RESERVED in CreateInstanceRequest (ban #2) → the old body 400'd 'instanceKind is
-    #   required'. sshPublicKeys lifts the F5 unreachable-guard (VM reachable).
+    #   required'. acknowledgeUnreachable lifts the F5 unreachable-guard: sshPublicKeys used
+#   to lift it, but compute never delivered those keys anywhere, so the guard released
+#   exactly the case it exists for. The field is refused now (400, field named).
     #
     #   Net-spec arm: useDefaultNetwork, NOT networkInterfaceSpecs. These cases are
     #   about List authz filtering; networking is incidental. The body used to point
@@ -85,7 +87,7 @@ def _instance_body(name_suffix, project_var, mt="{{mtId}}"):
         "vmSpec": {"userData": "#cloud-config\n{}",
                    "metadataOptions": {"metadataEndpoint": "ENABLED", "metadataTokenRequired": True}},
         "useDefaultNetwork": True,
-        "sshPublicKeys": ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIexampledeadbeefkey lf@team"],
+        "acknowledgeUnreachable": True,
     }
 
 

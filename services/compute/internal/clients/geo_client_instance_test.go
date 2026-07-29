@@ -65,8 +65,8 @@ func geoInstanceReq() instance.CreateInstanceReq {
 		NetworkInterfaceSpecs: []instance.NetworkInterfaceSpec{
 			{SubnetID: "sub-a", SecurityGroupIDs: []string{"scg-a"}},
 		},
-		SSHPublicKeys: []string{"ssh-ed25519 AAAA user@h"},
-		VMSpec:        &domain.VMSpec{},
+		AcknowledgeUnreachable: true,
+		VMSpec:                 &domain.VMSpec{},
 	}
 }
 

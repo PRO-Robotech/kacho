@@ -76,7 +76,6 @@ type CreateInstanceReq struct {
 	// Launch-*Specs (SKELETON — структурная валидация формы, materialize → COMP-2).
 	NetworkInterfaceSpecs  []NetworkInterfaceSpec
 	SecondaryVolumeSpecs   []SecondaryVolumeSpec
-	SSHPublicKeys          []string
 	UseDefaultNetwork      bool
 	AssignExternalAddress  bool
 	AcknowledgeUnreachable bool
@@ -107,7 +106,6 @@ type UpdateInstanceReq struct {
 	MachineTypeID       string
 	CPUGuaranteePercent int32
 	PlacementGroupID    string
-	SSHPublicKeys       []string
 	VMSpec              *domain.VMSpec
 	UpdateMask          []string
 }
@@ -276,12 +274,18 @@ func ValidateCreateInstanceReq(req CreateInstanceReq) error {
 			return serviceerr.InvalidArg("secondary_volume_specs.size_gib", "secondaryVolumeSpecs[].sizeGiB must be > 0")
 		}
 	}
-	// F5 — unreachable-guard: VM без ssh И без external → FAILED_PRECONDITION (снимается
-	// acknowledgeUnreachable). CONTAINER exempt (нужен NIC для egress, не ssh/external).
+	// F5 — unreachable-guard: VM без external-адреса → FAILED_PRECONDITION (снимается
+	// acknowledgeUnreachable). CONTAINER exempt (нужен NIC для egress, не external).
+	//
+	// Прежде страж снимался ещё и непустым sshPublicKeys — то есть списком ключей,
+	// который compute никуда не доставляет. Условие пропускало ровно тот случай, от
+	// которого защищает: машина оставалась недостижимой, а вызывающий получал
+	// подтверждение обратного. Поле снято с приёма
+	// (handler.RejectUnsupportedCreateFields), вместе с ним снят и этот терм.
 	if req.InstanceKind == domain.InstanceKindVM &&
-		len(req.SSHPublicKeys) == 0 && !req.AssignExternalAddress && !req.AcknowledgeUnreachable {
+		!req.AssignExternalAddress && !req.AcknowledgeUnreachable {
 		return status.Error(codes.FailedPrecondition,
-			"VM will be RUNNING but unreachable (no sshPublicKeys and no external address); set acknowledgeUnreachable:true to proceed")
+			"VM will be RUNNING but unreachable (no external address); set acknowledgeUnreachable:true to proceed")
 	}
 	return nil
 }
@@ -396,12 +400,15 @@ func (s *InstanceService) resolveMachineType(ctx context.Context, ref string) (*
 
 // instanceUpdateKnown — known-set маски Update (snake_case proto/spec-пути; COMP-1
 // F10). instance_kind/zone_id immutable, bootSource Reinstall-only — НЕ в наборе
-// (спец-reject срабатывает первым). ssh_public_keys/vm_spec — next-boot deferred;
+// (спец-reject срабатывает первым). vm_spec — next-boot deferred;
 // machine_type_id/cpu_guarantee_percent/placement_group_id — STOPPED-gated.
+// ssh_public_keys в наборе НЕТ: поле не принимается вовсе
+// (handler.RejectUnsupportedUpdateFields) — раньше оно числилось «отложенным до
+// следующей загрузки», хотя загружать было нечего.
 var instanceUpdateKnown = map[string]struct{}{
 	"name": {}, "description": {}, "labels": {}, "service_account_id": {},
 	"machine_type_id": {}, "cpu_guarantee_percent": {}, "placement_group_id": {},
-	"ssh_public_keys": {}, "vm_spec": {},
+	"vm_spec": {},
 }
 
 // instanceStoppedGatedMask — маска-поля, требующие STOPPED (sizing/placement, F10).
@@ -491,10 +498,6 @@ func (s *InstanceService) Update(ctx context.Context, req UpdateInstanceReq) (*o
 					in.VMSpec = req.VMSpec
 					nextBoot = true
 					changed = append(changed, "vm_spec")
-				case "ssh_public_keys":
-					// next-boot deferred: ключи не персистятся на durable-row в COMP-1
-					// (launch-spec skeleton) — фиксируется только deferral-marker.
-					nextBoot = true
 				}
 			}
 			if nextBoot {
