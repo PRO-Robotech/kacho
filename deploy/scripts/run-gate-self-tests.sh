@@ -39,6 +39,7 @@ DECLARED="
 scripts/assert-ban6-external-isolation.py
 scripts/assert-outbox-autovacuum.sh
 tests/helm/admin-hop-transport-test.sh
+tests/helm/image-rollout-binding-test.sh
 tests/helm/makefile-destructive-guarded-test.sh
 tests/helm/networkpolicy-egress-test.sh
 tests/helm/outbox-autovacuum-naptime-test.sh
