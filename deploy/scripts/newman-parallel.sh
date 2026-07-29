@@ -236,6 +236,34 @@ if [ "${#wave2[@]}" -gt 0 ]; then
   launch_wave "${wave2[@]}"
 fi
 
+# ─── WAVE 3: суита, которой нужен ВЫКЛЮЧЕННЫЙ store прав ─────────────────────
+# Кейс «шлюз отказывает, когда хранилище прав недоступно» нельзя гонять рядом с
+# остальными: условие, которое он проверяет, ломает их все. Раньше из этого
+# следовало исключение в гейте — то есть инвариант «нет ответа о правах ⇒ отказ,
+# никогда не 200» не проверялся ни разу, а выглядело это как зелёная суита.
+# Теперь у него СВОЯ волна, которая условие СОЗДАЁТ: сворачивает store в ноль,
+# гоняет одну коллекцию и поднимает обратно, дожидаясь готовности.
+#
+# Последней — потому что это единственный момент, когда стенд можно ломать: все
+# остальные суиты уже отчитались. Исключений ей не полагается: не отработала ⇒
+# отчёта нет ⇒ гейт ниже докладывает `authz-failclosed(no-report)` и краснеет.
+FAILCLOSED_WAVE="${FAILCLOSED_WAVE:-true}"
+FAILCLOSED_SH="$REPO_ROOT/services/iam/tests/newman/scripts/run-failclosed.sh"
+if [ "$FAILCLOSED_WAVE" = "true" ] && [[ " $SERVICES " == *" iam "* ]] && [ -f "$FAILCLOSED_SH" ]; then
+  echo "[parallel] WAVE 3 fail-closed (store прав сворачивается в ноль и поднимается обратно)"
+  # Код возврата НЕ теряется: он уходит в RC (RAW-вердикт), а сам прогон
+  # оставляет out/authz-failclosed.json, по которому вердикт вынесет гейт.
+  if ( cd "$REPO_ROOT/services/iam/tests/newman" \
+        && env SETUP_NS="$NS" DELAY="$DELAY" \
+           EXTRA_NEWMAN_ARGS="--env-var baseUrl=http://localhost:$GW_PORT --env-var internalBaseUrl=http://localhost:$GW_INTERNAL_PORT --env-var externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
+           bash "$FAILCLOSED_SH" ); then
+    echo "===== [failclosed] GREEN ====="
+  else
+    echo "===== [failclosed] RED ====="
+    RC=1
+  fi
+fi
+
 echo
 # ─── Verdict: RAW (what newman reported) + GATED (what CI grades) ────────────
 # Local runners used to grade on RAW only, while CI graded through

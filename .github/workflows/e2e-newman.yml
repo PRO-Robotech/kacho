@@ -23,6 +23,23 @@ on:
   # (~35м) не нужно гонять повторно после мерджа — PR-дерево уже провалидировано.
   pull_request:
     branches: [main]
+
+  # …и на push в интеграционную ветку. Одного условия на PR в main НЕ ХВАТИЛО, и
+  # здесь это дороже, чем у ci/ui: `redesign/integration` живёт месяцами и в main
+  # не мержится, поэтому ЕДИНСТВЕННЫЙ прогон чёрного ящика по всему продукту не
+  # отрабатывал на ней ни разу. Всё, что ловится только на собранном стенде
+  # (регистрация RPC, проброс Internal*, цепочка authz, миграции, fga-seed),
+  # месяцами не проверялось вовсе — при том, что вся работа шла именно там.
+  #
+  # Очередь за self-hosted ранером это растит, и осознанно: `concurrency` ниже
+  # ключуется на ref и отменяет предыдущий прогон той же ветки, поэтому живых
+  # прогонов на ветку остаётся один. Пуши в интеграционную ветку — это мерджи
+  # готовых веток, а не поток коммитов.
+  #
+  # Фильтра по путям сознательно нет: он стал бы слепой зоной ровно того же рода,
+  # что и отсутствующий триггер (чарт/фикстура/скрипт ломают стенд не хуже кода).
+  push:
+    branches: [redesign/integration]
   workflow_dispatch:
 
 permissions:
@@ -145,7 +162,31 @@ jobs:
       # отчёты в out/; вердикт выносит assert-suites-green.sh (шаги ниже), который знает
       # known-RED whitelist и считает отсутствие отчёта провалом («(no-report)»), поэтому
       # ранний обрыв прогона спрятать нельзя.
-      - name: newman — параллельно (iam+vpc+compute+nlb, один seed+стенд)
+      # ВИДИМОСТЬ ПОКА ПРОГОН ИДЁТ. Восемь суит гоняются одним шагом
+      # параллельно, а их вывод уходит в файлы — до этой правки в интерфейсе
+      # сорок минут не было видно ничего, кроме крутящегося шага, и первое число
+      # появлялось вместе с гейтами. Прогон, за которым нельзя следить,
+      # отлаживают следующим прогоном; цена ошибки в фикстуре — полный цикл стенда.
+      #
+      # Канал выбран по одному критерию — «видно, НЕ ДОЖИДАЯСЬ конца»:
+      #   * лог шага стримится ⇒ таблица прогресса (каждые 20с: суита, стадия,
+      #     отчётов из скольких, запросов, утверждений, УПАВШИХ, без ответа) видна
+      #     сразу;
+      #   * `::error file=…,line=…::` всплывает в интерфейсе тогда же, с
+      #     координатой в исходнике кейса — крестик, который можно чинить, не
+      #     скачивая артефакт.
+      # `$GITHUB_STEP_SUMMARY` для реального времени НЕ ГОДИТСЯ: файл сводки
+      # читается, когда ШАГ ЗАВЕРШИЛСЯ. Он используется ниже — короткими
+      # шагами-гейтами, которые как раз и завершаются один за другим.
+      #
+      # Наблюдатель НЕ выносит вердикт (и говорит это в первой же строке):
+      # вердикт — у шагов-гейтов. Второй, более мягкий вердикт рядом с первым —
+      # способ получить два разных ответа на один вопрос.
+      # Наблюдатель запускается ВНУТРИ этого шага, а не отдельным: он обязан
+      # писать в СТРИМЯЩИЙСЯ лог, а стрим — у идущего шага. Фоновый процесс,
+      # запущенный в предыдущем шаге, писал бы в лог, который уже закрыт, — вся
+      # затея с реальным временем ровно на этом и разваливается.
+      - name: newman — параллельно (+ live-отчёт в этот же лог)
         working-directory: deploy
         # Belt-and-suspenders: step-timeout < job-timeout (90) так, что даже если
         # newman-параллель зависнет/затянется, шаг убивается САМ и pipeline доходит до
@@ -159,7 +200,30 @@ jobs:
         env:
           DELAY: "10"   # per-request pacing (ms); parallel fan-out уже нагружает стенд
           JOBS: "2"     # per-suite collection concurrency (nlb форсированно 1)
-        run: ./scripts/newman-parallel.sh || true
+        run: |
+          rm -f /tmp/newman-live.stop
+          python3 "${GITHUB_WORKSPACE}/.github/scripts/newman-live.py" watch --interval 20 &
+          live_pid=$!
+          # `|| true` — НЕ проглатывание: код возврата прогона здесь ни на что не
+          # влияет by design, вердикт выносят шаги-гейты ниже по СОДЕРЖИМОМУ
+          # отчётов (и считают отсутствие отчёта провалом). Ранний обрыв прогона
+          # спрятать нельзя.
+          ./scripts/newman-parallel.sh || true
+          touch /tmp/newman-live.stop
+          wait "$live_pid" || true
+
+      # Итоговая сводка в интерфейс: числа по каждой суите (отчётов из скольких,
+      # запросов, утверждений, УПАВШИХ, без ответа, пустых отчётов) + разворачиваемый
+      # список находок с адресом в исходнике кейса. Отдельным коротким шагом —
+      # `$GITHUB_STEP_SUMMARY` попадает в интерфейс, когда ШАГ завершился, поэтому
+      # писать её из длинного шага прогона бессмысленно.
+      #
+      # Это ОТЧЁТ, не вердикт (шаг всегда зелёный): вердикт выносят гейты ниже.
+      # Второй вердикт рядом с первым — способ получить два разных ответа на один
+      # вопрос, поэтому его здесь нет.
+      - name: сводка прогона (числа + находки)
+        if: always()
+        run: python3 .github/scripts/newman-live.py report
 
       # НАСТОЯЩИЙ гейт. ОДИН скрипт (живёт в iam) применяется к КАЖДОМУ сервису — он
       # глобит `collections/` + `out/` относительно cwd, поэтому запускается из каталога
@@ -177,24 +241,43 @@ jobs:
       #
       # Whitelist вычитает только известные (каждый — с тикетом); НОВОЕ падение и
       # отсутствие отчёта («(no-report)») гейт по-прежнему валит.
+      #
+      # Гейт iam заодно грейдит коллекцию authz-failclosed — ту, которой нужен
+      # ВЫКЛЮЧЕННЫЙ store прав. Её гоняет WAVE 3 внутри newman-parallel.sh
+      # (services/iam/tests/newman/scripts/run-failclosed.sh: свернуть в ноль →
+      # выждать кэш решений шлюза → одна коллекция → поднять и дождаться
+      # готовности), после того как все остальные суиты отчитались. Отдельным
+      # шагом CI она НЕ гоняется намеренно: путь один и тот же локально и здесь,
+      # иначе местный прогон и CI отвечали бы по-разному. Раньше на её месте было
+      # исключение в гейте — то есть инвариант «нет ответа о правах ⇒ отказ,
+      # никогда не 200» не проверялся ни разу. Исключения больше нет: не
+      # отработала волна ⇒ нет отчёта ⇒ `authz-failclosed(no-report)` ⇒ красный.
       - name: гейт — newman зелёный (iam)
         if: always()
         working-directory: services/iam/tests/newman
+        env:
+          SUITE_LABEL: iam
         run: bash scripts/assert-suites-green.sh
 
       - name: гейт — newman зелёный (vpc)
         if: always()
         working-directory: services/vpc/tests/newman
+        env:
+          SUITE_LABEL: vpc
         run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
 
       - name: гейт — newman зелёный (compute)
         if: always()
         working-directory: services/compute/tests/newman
+        env:
+          SUITE_LABEL: compute
         run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
 
       - name: гейт — newman зелёный (nlb)
         if: always()
         working-directory: services/nlb/tests/newman
+        env:
+          SUITE_LABEL: nlb
         run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
 
       # storage + registry + geo: их редизайн раньше НЕ был под e2e-покрытием (не в
@@ -205,16 +288,22 @@ jobs:
       - name: гейт — newman зелёный (storage)
         if: always()
         working-directory: services/storage/tests/newman
+        env:
+          SUITE_LABEL: storage
         run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
 
       - name: гейт — newman зелёный (registry)
         if: always()
         working-directory: services/registry/tests/newman
+        env:
+          SUITE_LABEL: registry
         run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
 
       - name: гейт — newman зелёный (geo)
         if: always()
         working-directory: services/geo/tests/newman
+        env:
+          SUITE_LABEL: geo
         run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
 
       # api-gateway: суита ИСПОЛНЯЛАСЬ (сервис входит в умолчание SERIVCES
@@ -227,6 +316,8 @@ jobs:
       - name: гейт — newman зелёный (api-gateway)
         if: always()
         working-directory: gateway/tests/newman
+        env:
+          SUITE_LABEL: api-gateway
         run: bash "${GITHUB_WORKSPACE}/services/iam/tests/newman/scripts/assert-suites-green.sh"
 
       # Ни один сервис из умолчания SERVICES не должен снова оказаться исполняемым
