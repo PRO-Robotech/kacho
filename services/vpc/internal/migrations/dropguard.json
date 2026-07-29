@@ -1,0 +1,17 @@
+{
+  "service": "vpc",
+  "drops": [
+    {
+      "version": 2,
+      "table": "kacho_vpc.address_pool_address_override",
+      "kind": "retire",
+      "expect_rows": 0
+    },
+    {
+      "version": 2,
+      "table": "kacho_vpc.cloud_pool_selector",
+      "kind": "retire",
+      "expect_rows": 0
+    }
+  ]
+}

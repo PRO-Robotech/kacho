@@ -1,0 +1,62 @@
+{
+  "service": "compute",
+  "drops": [
+    {
+      "version": 6,
+      "table": "hypervisor_node_index_free",
+      "kind": "retire",
+      "expect_rows": 0
+    },
+    {
+      "version": 6,
+      "table": "hypervisors",
+      "kind": "retire",
+      "expect_rows": 0
+    },
+    {
+      "version": 11,
+      "table": "zones",
+      "kind": "retire",
+      "expect_rows": 3,
+      "note": "Geography moved to kacho-geo, which owns and seeds the same axis. These rows are the catalogue our own migrations wrote (0001, then 0003); no tenant can write here — the table has no create path on any surface."
+    },
+    {
+      "version": 11,
+      "table": "regions",
+      "kind": "retire",
+      "expect_rows": 1,
+      "note": "Same move as zones: an admin-curated catalogue seeded by 0003, re-established on the geo side."
+    },
+    {
+      "version": 13,
+      "table": "attached_disks",
+      "kind": "retire",
+      "expect_rows": 0
+    },
+    {
+      "version": 21,
+      "table": "disks",
+      "kind": "retire",
+      "expect_rows": 0
+    },
+    {
+      "version": 21,
+      "table": "images",
+      "kind": "retire",
+      "expect_rows": 0
+    },
+    {
+      "version": 21,
+      "table": "snapshots",
+      "kind": "retire",
+      "expect_rows": 0
+    },
+    {
+      "version": 22,
+      "table": "disk_types",
+      "kind": "retire",
+      "expect_rows": 4,
+      "note": "Catalogue seeded by 0001, never written by a tenant: kacho-storage owns DiskType and seeds the same four entries on its own side, so nothing a caller created is lost."
+    }
+  ]
+}
