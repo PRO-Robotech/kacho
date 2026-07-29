@@ -29,6 +29,14 @@ package middleware_test
 // deleted for the same reason — never served on any listener and absent from the
 // enforced authorization model. Six more Set/UpdateAccessBindings grant-surface
 // FQNs left the set. 36 → 30.
+//
+// Set revision (service-account disable is an action): ServiceAccountService
+// Disable/Enable JOINED category A. The state they write decides whether a
+// machine identity may authenticate at all — one call answers, for the whole
+// principal, the question SAKeyService/Revoke answers for a single key, and it
+// also stops the next mint. The set literals below moved to 24; the prose
+// counts in the paragraphs above are the historical trail, the assertions are
+// the contract.
 
 import (
 	"os"
@@ -42,17 +50,39 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// sensitiveACR2Set — the 30 FQNs that MUST carry required_acr_min="2" after the
+// sensitiveACR2Set — the 24 FQNs that MUST carry required_acr_min="2" after the
 // refinement (grant-surface + credential + tenancy-root, domain-agnostic). Any
 // drift (an RPC added or dropped) fails this test. Categories A–H per the
 // APPROVED acceptance doc.
 func sensitiveACR2Set() map[string]struct{} {
 	fqns := []string{
-		// A — credential mint/destroy (4)
+		// A — credential mint/destroy (6). ServiceAccount Disable/Enable belong
+		// here and not with the routine lifecycle: they decide whether a machine
+		// identity may authenticate AT ALL. Disable is every Revoke this account
+		// has at once and then some — it also stops the next mint, on every door
+		// (client_credentials hook, federated assertion, key issuance, docker
+		// token) — and Enable hands all of that back. Classifying the pair with
+		// the credential surface keeps the INTERACTIVE cost of the two answers
+		// the same: a human who must re-authenticate to revoke one key would
+		// otherwise reach the same outcome for the whole principal through the
+		// cheaper door.
+		//
+		// What this does NOT do, stated here because the opposite is easy to
+		// assume: it is not a second authorization gate, and it is INERT for
+		// machine callers — pkg/grpcsrv.EvaluateStepUp short-circuits to allow
+		// for a service-account principal before the floor is read at all. A
+		// service account holding `v_update` on the target disables it with no
+		// step-up whatsoever. That is the platform's deliberate posture (a
+		// machine has no interactive ceremony to perform), and it means the whole
+		// of WHO may do this is decided by the model, exactly as it is for
+		// Update. The floor raises assurance for humans; it grants nothing and
+		// withholds nothing from machines.
 		"kacho.cloud.iam.v1.UserTokenService/Issue",
 		"kacho.cloud.iam.v1.UserTokenService/Revoke",
 		"kacho.cloud.iam.v1.SAKeyService/Issue",
 		"kacho.cloud.iam.v1.SAKeyService/Revoke",
+		"kacho.cloud.iam.v1.ServiceAccountService/Disable",
+		"kacho.cloud.iam.v1.ServiceAccountService/Enable",
 		// B — iam binding grant (5; Create is exempt-permission + acr=2, net-strengthening).
 		// Invite belongs here: it inlines an AccessBinding create (project_id+role_id)
 		// in the invite tx — the same privilege AccessBindingService/Create issues.
@@ -98,7 +128,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	require.NoError(t, err)
 
 	sensitive := sensitiveACR2Set()
-	require.Len(t, sensitive, 22, "the acceptance-doc sensitive set must contain exactly 22 FQNs")
+	require.Len(t, sensitive, 24, "the acceptance-doc sensitive set must contain exactly 24 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -119,7 +149,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 22, "exactly 22 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 24, "exactly 24 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -239,10 +269,14 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// other 23). DiskType then took 5 more, all routine (2 public reads + 3 internal
 	// admin mutations): 215→210. The exempt count is untouched throughout — none of
 	// the retired RPCs was exempt.
-	assert.Equal(t, 22, n2, "sensitive count")
+	// ServiceAccountService Disable/Enable are net-new entries and both land in
+	// the sensitive band (the state they write is what decides whether a machine
+	// identity may authenticate): 22→24 sensitive, 296→298 total. Routine and
+	// exempt are untouched — neither action displaced an existing RPC.
+	assert.Equal(t, 24, n2, "sensitive count")
 	assert.Equal(t, 210, n1, "routine count")
 	assert.Equal(t, 64, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 296, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 298, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

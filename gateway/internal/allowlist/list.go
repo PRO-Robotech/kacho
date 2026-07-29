@@ -167,11 +167,16 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.iam.v1.UserService/Delete":         {},
 	"/kacho.cloud.iam.v1.UserService/ListOperations": {}, // per-resource ops (REST GET /iam/v1/users/{user_id}/operations)
 	// iam.v1 — ServiceAccountService
-	"/kacho.cloud.iam.v1.ServiceAccountService/Get":            {},
-	"/kacho.cloud.iam.v1.ServiceAccountService/List":           {},
-	"/kacho.cloud.iam.v1.ServiceAccountService/Create":         {},
-	"/kacho.cloud.iam.v1.ServiceAccountService/Update":         {},
-	"/kacho.cloud.iam.v1.ServiceAccountService/Delete":         {},
+	"/kacho.cloud.iam.v1.ServiceAccountService/Get":    {},
+	"/kacho.cloud.iam.v1.ServiceAccountService/List":   {},
+	"/kacho.cloud.iam.v1.ServiceAccountService/Create": {},
+	"/kacho.cloud.iam.v1.ServiceAccountService/Update": {},
+	"/kacho.cloud.iam.v1.ServiceAccountService/Delete": {},
+	// Disable / Enable — explicit actions over the state that decides whether a
+	// service account may authenticate. Public on purpose: it is the owner of a
+	// machine identity who takes it out of service, not only a cluster operator.
+	"/kacho.cloud.iam.v1.ServiceAccountService/Disable":        {},
+	"/kacho.cloud.iam.v1.ServiceAccountService/Enable":         {},
 	"/kacho.cloud.iam.v1.ServiceAccountService/ListOperations": {},
 	// iam.v1 — GroupService
 	"/kacho.cloud.iam.v1.GroupService/Get":            {},
