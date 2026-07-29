@@ -240,6 +240,50 @@ func main() {
 			"knob", "KACHO_HYDRA_INTROSPECTION_URL")
 	}
 
+	// --- Per-RPC authentication floor, on the layer that always runs ---
+	//
+	// The catalog says, per RPC, how strongly a caller must have authenticated.
+	// That demand used to be applied only inside the sender-constrained-token
+	// middleware below, which mounts behind a toggle no profile sets — so it held
+	// nowhere, while the catalog, the identity service's mirror of it and the
+	// cluster-internal arm all read as if it did. Same reasoning as the revocation
+	// check above: proof-of-possession is a property of SOME tokens and may sit
+	// behind a toggle; how strongly the caller authenticated is a property of
+	// EVERY token and belongs where every request passes.
+	stepUpCatalog, scErr := middleware.LoadEmbeddedPermissionCatalog(cfg.AuthZPermissionCatalogFile)
+	stepUpFloors := -1 // unread catalog is an unknown, never a zero — see the guard
+	if scErr != nil {
+		logger.Error("permission catalog unreadable; the authentication floor cannot be applied",
+			"err", scErr)
+	} else {
+		stepUpFloors = countDeclaredACRFloors(stepUpCatalog)
+	}
+	stepUpMounted := false
+	if cfg.AuthNEnforceStepUp && scErr == nil && jverr == nil && jwtVerifier != nil {
+		authInterceptor = authInterceptor.WithStepUp(
+			middleware.NewStepUpGate(time.Now),
+			middleware.NewCatalogPermissionLookup(stepUpCatalog),
+			middleware.NewRestRouter(),
+		)
+		stepUpMounted = authInterceptor.StepUpMounted()
+	}
+	if suErr := validateProductionStepUpConfig(cfg.AppEnv, StepUpConfig{
+		DeclaredFloors: stepUpFloors,
+		Enforced:       stepUpMounted,
+	}); suErr != nil {
+		log.Fatalf("step-up startup-validation: %v", suErr)
+	}
+	if stepUpMounted {
+		logger.Info("authentication floor active on the authN path",
+			"catalog_entries", stepUpCatalog.Size(), "entries_with_floor", stepUpFloors)
+	} else {
+		// Reachable only outside a production-class env — the guard above refuses
+		// otherwise. A local unit fixture may legitimately run without it.
+		logger.Warn("authentication floor NOT applied: the per-RPC assurance demand in the "+
+			"permission catalog holds nowhere in this process",
+			"knob", stepUpEnforceKnob)
+	}
+
 	// --- DPoP / JWT verifier / mTLS-bound / step-up gate ---
 	//
 	// All wiring is feature-gated by KACHO_API_GATEWAY_AUTHN_ENABLE_DPOP.
@@ -275,10 +319,9 @@ func main() {
 
 		// Step-up (ACR) gate keys on the per-RPC `required_acr_min` from the
 		// permission catalog, resolved from the REST (method, path) via the
-		// generated route table. Loaded here (independently of the authz
-		// middleware, which may be disabled) so a high-assurance RPC actually
-		// forces re-authentication when the presented token's ACR is too low.
-		stepUpCatalog, scErr := middleware.LoadEmbeddedPermissionCatalog(cfg.AuthZPermissionCatalogFile)
+		// generated route table. The catalog is the one loaded above, where the
+		// floor is applied unconditionally; this arm re-states it for the
+		// sender-constrained path and decides nothing the layer above did not.
 		if scErr != nil {
 			log.Fatalf("step-up permission catalog: %v", scErr)
 		}

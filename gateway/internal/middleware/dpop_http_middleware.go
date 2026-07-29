@@ -41,7 +41,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -434,13 +433,11 @@ func injectVerifiedTokenHeaders(r *http.Request, t *VerifiedToken) {
 	// never who anyone is, so it travels either way: the layer ahead may have
 	// resolved a principal properly, and dropping its audit and step-up context
 	// along with the fabricated name would trade one defect for another.
-	r.Header.Set(principalmeta.HeaderTokenACR, t.ACR)
-	r.Header.Set(principalmeta.HeaderTokenJti, t.JTI)
-	r.Header.Set(principalmeta.HeaderTokenScope, t.Scope)
-	r.Header.Set(principalmeta.HeaderGRPCMetaTokenACR, t.ACR)
-	r.Header.Set(principalmeta.HeaderGRPCMetaTokenJti, t.JTI)
-	r.Header.Set(principalmeta.HeaderGRPCMetaTokenScope, t.Scope)
-	if !t.ExpiresAt.IsZero() {
-		r.Header.Set(principalmeta.HeaderTokenExp, fmt.Sprintf("%d", t.ExpiresAt.Unix()))
-	}
+	//
+	// Written by the shared producer in auth_stepup.go, which the ALWAYS-MOUNTED
+	// authN layer calls too. This middleware was the header's only producer, and
+	// it mounts behind a toggle no profile sets — so the cluster-internal floor,
+	// which decides on the acr forwarded from here, read an absent value on every
+	// request. One producer is right; one producer that never runs is not.
+	setTokenContextHeaders(r, t)
 }

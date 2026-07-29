@@ -42,7 +42,7 @@ const authzCatalogJSON = `[
 		"fqn":"kacho.cloud.vpc.v1.NetworkService/Create",
 		"permission":"vpc.networks.create",
 		"required_relation":"editor",
-		"scope_extractor":{"object_type":"vpc_network","from_request_field":"folder_id"},
+		"scope_extractor":{"object_type":"vpc_network","from_request_field":"project_id"},
 		"required_acr_min":"2","risk_level":"MEDIUM"
 	},
 	{

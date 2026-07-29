@@ -30,13 +30,18 @@ import "fmt"
 // Sources (repo layer of the owning service):
 //
 //	iam       services/iam/internal/repo/kacho/pg/{account,project,user_pool,group,service_account,access_binding}_repo.go
-//	compute   services/compute/internal/repo/{disk,image,instance,snapshot}_repo.go
+//	compute   services/compute/internal/repo/instance_repo.go
 //	vpc       services/vpc/internal/repo/kacho/pg/*.go (+ repo/helpers/sg.go)
 //	nlb       services/nlb/internal/repo/kacho/pg/{load_balancer,listener,target_group}_repo.go
-//	registry  services/registry/internal/repo/kacho/pg/registry.go
+//	registry  services/registry/internal/repo/kacho/pg/errmap.go (wrapPgErr composes
+//	          "<Resource> %s not found" from the resource name its caller passes)
 //
 // A new object-scoped resource adds its line here with the text taken from its
-// repo layer — never invented, or the refusal stops matching the miss.
+// repo layer — never invented, or the refusal stops matching the miss. A retired
+// one takes its line WITH it: a row no catalog entry can reach still says the
+// platform answers in an owner's voice, and that claim outlived three resources
+// once already (see TestHideExistenceTablesCarryNoUnreachableType, which walks
+// this table against the catalog rather than against the list above).
 var hideExistenceNotFoundFormats = map[string]string{
 	// iam
 	"account":             "Account %s not found",
@@ -45,11 +50,9 @@ var hideExistenceNotFoundFormats = map[string]string{
 	"iam_group":           "Group %s not found",
 	"iam_service_account": "ServiceAccount %s not found",
 	"iam_access_binding":  "AccessBinding %s not found",
-	// compute
-	"compute_disk":     "Disk %s not found",
-	"compute_image":    "Image %s not found",
+	// compute — Disk / Image / Snapshot are NOT here: that duplicate of block
+	// storage was retired (kacho-storage owns those), and their rows went with it.
 	"compute_instance": "Instance %s not found",
-	"compute_snapshot": "Snapshot %s not found",
 	// vpc
 	"vpc_network":     "Network %s not found",
 	"vpc_subnet":      "Subnet %s not found",

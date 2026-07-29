@@ -118,8 +118,22 @@ type CatalogEntry struct {
 	//
 	// A scope-filtered row carries neither `RequiredRelation` nor `ScopeExtractor`:
 	// naming a relation the edge does not check is the defect the lane removes.
-	// `pkg/authz/catalogparity` fails the build when the owning service's own
-	// per-RPC map disagrees with the catalog on this axis.
+	//
+	// Two guards hold this axis, and it is worth knowing which answers what,
+	// because the sentence here used to name a single unconditional one and there
+	// was no such thing:
+	//
+	//   - `pkg/authz/catalogparity.Compare` reports a contradiction when the
+	//     owning service's own per-RPC map DECLARES this method and disagrees
+	//     about who narrows the call. Every service map is compelled to run that
+	//     comparison by internal/repohygiene/catalogparity_test.go, which also
+	//     pins the surviving disagreements repo-wide.
+	//   - Compare walks the SERVICE MAP, so a row the owning service declares
+	//     nowhere — including a service that keeps no map at all — is the one
+	//     disagreement it cannot see, and it is the strongest: the edge stops
+	//     checking on a promise nobody made. That case is measured and pinned
+	//     separately by TestScopeFilteredCatalogRowsAreBackedByAServiceMap in the
+	//     same file.
 	ScopeFiltered bool `json:"scope_filtered"`
 }
 

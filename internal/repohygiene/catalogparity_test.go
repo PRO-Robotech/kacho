@@ -33,6 +33,7 @@
 package repohygiene
 
 import (
+	"encoding/json"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -86,6 +87,167 @@ var knownDivergenceRoster = []string{
 	`/kacho.cloud.registry.v1.InternalRegistryService/GetRegistryStats: catalog anchors scope on object type "cluster", service map anchors on "registry_registry"`,
 	`/kacho.cloud.registry.v1.InternalRegistryService/GetRegistryStats: catalog requires relation "system_viewer", service map requires "v_get"`,
 	`/kacho.cloud.registry.v1.InternalRegistryService/TriggerGarbageCollection: catalog requires relation "admin", service map requires "v_delete"`,
+}
+
+// unbackedScopeFilteredRows — строки каталога, которые ОБЕЩАЮТ, что сужение
+// делает сервис-владелец, тогда как ни одна карта прав в дереве этого не
+// подтверждает.
+//
+// Почему это отдельный гейт, а не следствие сверки выше. `catalogparity.Compare`
+// обходит методы КАРТЫ СЕРВИСА и сверяет их с каталогом. Метод, которого в карте
+// нет вовсе — включая случай «у сервиса карты нет ни одной», — в обход не
+// попадает, поэтому самое сильное расхождение (обещали сужение, не заявил никто)
+// проходит молча. Полоса `scope_filtered` — это ПОЛОЖИТЕЛЬНОЕ обещание, на
+// основании которого край перестаёт спрашивать модель; необеспеченное, оно
+// оставляет вызов с одной лишь аутентификацией.
+//
+// Что осталось и почему: девять RPC iam про сам граф выдач. У iam карты прав нет
+// (он и есть сервис авторизации — своё решение он принимает в хендлерах, а не
+// картой), поэтому подтвердить обещание в этом дереве нечем. Запись здесь — не
+// разрешение, а СЧЁТ: пока она стоит, «край не спрашивает» держится на разборе
+// хендлеров iam, а не на проверяемом объявлении.
+var unbackedScopeFilteredRows = []string{
+	"kacho.cloud.iam.v1.AccessBindingService/ExpandAccess",
+	"kacho.cloud.iam.v1.AccessBindingService/List",
+	"kacho.cloud.iam.v1.AccessBindingService/ListByRole",
+	"kacho.cloud.iam.v1.AccessBindingService/ListBySubject",
+	"kacho.cloud.iam.v1.AccessBindingService/ListSubjectPrivileges",
+	"kacho.cloud.iam.v1.AuthorizeService/Check",
+	"kacho.cloud.iam.v1.AuthorizeService/ExpandRelations",
+	"kacho.cloud.iam.v1.AuthorizeService/ListObjects",
+	"kacho.cloud.iam.v1.AuthorizeService/ListSubjects",
+}
+
+// catalogRow — минимальная форма строки каталога, нужная этому файлу.
+type catalogRow struct {
+	FQN           string `json:"fqn"`
+	ScopeFiltered bool   `json:"scope_filtered"`
+}
+
+// TestScopeFilteredCatalogRowsAreBackedByAServiceMap — обещание полосы
+// `scope_filtered` обязано быть подтверждено картой прав владельца.
+//
+// Что делать, если гейт сработал, — ровно три исхода, четвёртого нет:
+//
+//  1. сервис действительно сужает страницу сам -> объявить это в его карте
+//     (`ScopeFiltered: true`), чтобы обещание каталога было проверяемым;
+//  2. сервис НЕ сужает -> строка каталога лжёт: край не спрашивает модель, а
+//     сервис не спрашивает её за него. Убрать `scope_filtered` из аннотации proto
+//     и перегенерировать каталог;
+//  3. подтвердить нечем прямо сейчас (у владельца нет карты) -> внести сюда с
+//     разбором, чем именно держится сужение.
+//
+// «Оставить необеспеченным молча» исходом не является: край перестаёт спрашивать
+// модель на основании обещания, которого никто не давал.
+func TestScopeFilteredCatalogRowsAreBackedByAServiceMap(t *testing.T) {
+	root := repoRoot(t)
+
+	raw, err := os.ReadFile(filepath.Join(root, catalogEmbedPath))
+	if err != nil {
+		t.Fatalf("не прочитан вшитый каталог %s: %v", catalogEmbedPath, err)
+	}
+	var rows []catalogRow
+	if err := json.Unmarshal(raw, &rows); err != nil {
+		t.Fatalf("разбор каталога %s: %v", catalogEmbedPath, err)
+	}
+
+	declared := map[string]bool{}
+	for _, r := range rows {
+		if r.ScopeFiltered {
+			declared[r.FQN] = true
+		}
+	}
+	if len(declared) == 0 {
+		t.Fatalf("в каталоге нет ни одной строки `scope_filtered` — гейт беспредметен. Либо "+
+			"полоса снята (тогда удали и его, и %s), либо изменился ключ поля.", "unbackedScopeFilteredRows")
+	}
+
+	backed := map[string]bool{}
+	fset := token.NewFileSet()
+	for _, p := range discoverAuthzMapPackages(t, root) {
+		f, perr := parser.ParseFile(fset, filepath.Join(root, p.MapFile), nil, 0)
+		if perr != nil {
+			t.Fatalf("разбор карты прав %s: %v", p.MapFile, perr)
+		}
+		for _, m := range scopeFilteredMethods(f) {
+			backed[m] = true
+		}
+	}
+	if len(backed) == 0 {
+		t.Fatalf("ни одна карта прав не объявляет `ScopeFiltered: true` — либо разбор перестал "+
+			"видеть эту форму, либо полосу больше никто не заявляет. В обоих случаях гейт ниже "+
+			"объявил бы НЕОБЕСПЕЧЕННЫМИ все %d строк каталога, что было бы неверно.", len(declared))
+	}
+
+	var actual []string
+	for fqn := range declared {
+		if !backed[fqn] {
+			actual = append(actual, fqn)
+		}
+	}
+	sort.Strings(actual)
+
+	pinned := slices.Clone(unbackedScopeFilteredRows)
+	sort.Strings(pinned)
+
+	for _, fqn := range actual {
+		if !slices.Contains(pinned, fqn) {
+			t.Errorf("каталог обещает `scope_filtered`, но карта прав владельца этого не "+
+				"подтверждает:\n  %s\n\n"+
+				"Край на этом обещании ПЕРЕСТАЁТ спрашивать модель. Исходы: объявить сужение в "+
+				"карте сервиса / снять `scope_filtered` из аннотации proto и перегенерировать "+
+				"каталог / внести сюда с разбором.", fqn)
+		}
+	}
+	for _, fqn := range pinned {
+		if !slices.Contains(actual, fqn) {
+			t.Errorf("запись пережила свой предмет — эта строка каталога больше не является "+
+				"необеспеченной:\n  %s\n\n"+
+				"Удали её из unbackedScopeFilteredRows, иначе список перестаёт быть счётом и "+
+				"становится слепой зоной, которую унаследует следующий.", fqn)
+		}
+	}
+}
+
+// scopeFilteredMethods — ключи карты прав, значение которых объявляет
+// `ScopeFiltered: true`.
+//
+// Разбор идёт по дереву, а не регуляркой: та же строка встречается в прозе
+// комментариев рядом с каждым таким объявлением (они объясняют, почему полоса
+// выбрана), и текстовый поиск зачёл бы объяснение за объявление.
+func scopeFilteredMethods(f *ast.File) []string {
+	var out []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		kv, ok := n.(*ast.KeyValueExpr)
+		if !ok {
+			return true
+		}
+		key, ok := kv.Key.(*ast.BasicLit)
+		if !ok || key.Kind != token.STRING {
+			return true
+		}
+		lit, ok := kv.Value.(*ast.CompositeLit)
+		if !ok {
+			return true
+		}
+		for _, el := range lit.Elts {
+			field, ok := el.(*ast.KeyValueExpr)
+			if !ok {
+				continue
+			}
+			name, ok := field.Key.(*ast.Ident)
+			if !ok || name.Name != "ScopeFiltered" {
+				continue
+			}
+			if v, ok := field.Value.(*ast.Ident); ok && v.Name == "true" {
+				if method, uerr := strconv.Unquote(key.Value); uerr == nil {
+					out = append(out, strings.TrimPrefix(method, "/"))
+				}
+			}
+		}
+		return true
+	})
+	return out
 }
 
 // authzMapPackage — пакет, объявляющий карту прав сервиса, и его тест чётности.

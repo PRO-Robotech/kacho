@@ -139,10 +139,11 @@ func buildGRPCNotFoundStatus(desc permissionDeniedDescriptor) *status.Status {
 // wrapPgErr) and passes the message through unchanged. Sources:
 //
 //	iam       services/iam/internal/repo/kacho/pg/{account,project,user_pool,group,service_account,access_binding}_repo.go
-//	compute   services/compute/internal/repo/{disk,image,instance,snapshot}_repo.go
+//	compute   services/compute/internal/repo/instance_repo.go
 //	vpc       services/vpc/internal/repo/kacho/pg/*.go (+ repo/helpers/sg.go)
 //	nlb       services/nlb/internal/repo/kacho/pg/{load_balancer,listener,target_group}_repo.go
-//	registry  services/registry/internal/repo/kacho/pg/registry.go (wrapPgErr resource="Registry")
+//	registry  services/registry/internal/repo/kacho/pg/errmap.go (wrapPgErr composes
+//	          "<Resource> %s not found" from the resource name its caller passes)
 //
 // The map must cover every object type reachable through
 // CatalogEntry.HidesExistenceOnDeny; the drift guard
@@ -150,6 +151,12 @@ func buildGRPCNotFoundStatus(desc permissionDeniedDescriptor) *status.Status {
 // embedded catalog and fails when a new object-scoped resource is added without
 // its entry. A new resource adds its line here (text taken from its repo layer,
 // never invented) in the same change that makes it object-scoped.
+//
+// The REVERSE direction is guarded too, and only because it was not:
+// TestHideExistenceTablesCarryNoUnreachableType (internal/repohygiene) fails on a
+// row no catalog entry can reach. Three block-storage rows survived the retirement
+// of compute's duplicate that way, and the source list above went on naming
+// repository files that had been deleted.
 var hideExistenceNotFoundFormats = map[string]string{
 	// iam — services/iam/internal/repo/kacho/pg/*.go
 	"account":             "Account %s not found",
@@ -158,11 +165,10 @@ var hideExistenceNotFoundFormats = map[string]string{
 	"iam_group":           "Group %s not found",
 	"iam_service_account": "ServiceAccount %s not found",
 	"iam_access_binding":  "AccessBinding %s not found",
-	// compute — services/compute/internal/repo/*.go
-	"compute_disk":     "Disk %s not found",
-	"compute_image":    "Image %s not found",
+	// compute — services/compute/internal/repo/instance_repo.go. Disk / Image /
+	// Snapshot are NOT here: that duplicate of block storage was retired
+	// (kacho-storage owns those), and their rows went with it.
 	"compute_instance": "Instance %s not found",
-	"compute_snapshot": "Snapshot %s not found",
 	// vpc — services/vpc/internal/repo/kacho/pg/*.go
 	"vpc_network":     "Network %s not found",
 	"vpc_subnet":      "Subnet %s not found",

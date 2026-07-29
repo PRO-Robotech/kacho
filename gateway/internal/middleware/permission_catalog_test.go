@@ -21,7 +21,7 @@ func TestPermissionCatalog_LoadFromBytes_ArrayShape(t *testing.T) {
 			"fqn": "kacho.cloud.vpc.v1.NetworkService/Create",
 			"permission": "vpc.networks.create",
 			"required_relation": "editor",
-			"scope_extractor": {"object_type": "project", "from_request_field": "folder_id"},
+			"scope_extractor": {"object_type": "project", "from_request_field": "project_id"},
 			"required_acr_min": "2"
 		}
 	]`)
@@ -33,7 +33,7 @@ func TestPermissionCatalog_LoadFromBytes_ArrayShape(t *testing.T) {
 	assert.Equal(t, "vpc.networks.create", entry.Permission)
 	assert.Equal(t, "editor", entry.RequiredRelation)
 	assert.Equal(t, "project", entry.ScopeExtractor.ObjectType)
-	assert.Equal(t, "folder_id", entry.ScopeExtractor.FromRequestField)
+	assert.Equal(t, "project_id", entry.ScopeExtractor.FromRequestField)
 	assert.Equal(t, "2", entry.RequiredACRMin)
 }
 
