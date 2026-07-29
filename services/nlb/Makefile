@@ -104,6 +104,17 @@ helm-lint:
 helm-render-guard:
 	bash deploy/tests/render-guard.sh
 
+# newman-assertion-census — гейт честности утверждений суиты. Стенда не требует:
+# исполняет скрипты сгенерированных коллекций против подставленных ответов и смотрит,
+# ЧТО они утверждают. Ловит две вещи: кейс, для которого успех и отказ неразличимы
+# (упасть на своём предмете он не может), и умолчание авторизации, подменяющее
+# незасеянного субъекта суиты другим, более полномочным. Несёт проверку собственной
+# предпосылки: по каждому предикату инъекция дефекта ловится, законные конструкции той
+# же формы пропускаются. Любая находка — дефект, а не шум гейта.
+.PHONY: newman-assertion-census
+newman-assertion-census:
+	@cd tests/newman && node scripts/selftest-assertions.js
+
 .PHONY: migrate-up migrate-down migrate-status
 migrate-up:
 	KACHO_NLB_REPOSITORY__POSTGRES__URL=$$DSN bin/$(BINARY_MIG) up --dialect=postgres --dsn=$$DSN

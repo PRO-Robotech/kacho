@@ -90,11 +90,26 @@ PRE_GLOBAL = [
     "pm.environment.set('_suiteRegionAltId', pm.environment.get('existingRegionAltId'));",
     "// Default auth: project-editor JWT on project A (sufficient for most happy-path steps).",
     "// Per-step auth= overrides via _auth_pre_script.",
-    "// fallback на jwtBootstrap (cluster-admin) пока per-subject JWT не засеяны setup.sh —",
-    "// снимает булк 401 на happy-path; authz-специфичные шаги (per-step auth=) остаются точны.",
-    "const __defaultJwt = pm.environment.get('jwtProjectEditorA') || pm.variables.get('jwtProjectEditorA') || pm.environment.get('jwtBootstrap') || '';",
+    # СУБЪЕКТ СУИТЫ НЕ ПОДМЕНЯЕТСЯ. Здесь стоял fallback на jwtBootstrap
+    # (кластерный администратор) «пока per-subject JWT не засеяны». Подмена молчаливая:
+    # при незасеянном jwtProjectEditorA вся суита уезжала под администратора и проверяла
+    # КАСКАД ЕГО ПРАВ, а не то, что заявлено (проектный editor). Зелёная суита при этом
+    # ничего не говорила о заявленном субъекте, а happy-path 401, который fallback
+    # «снимал», был честным сообщением о несделанном посеве.
+    "const __defaultJwt = pm.environment.get('jwtProjectEditorA') || pm.variables.get('jwtProjectEditorA') || '';",
     "if (__defaultJwt && !pm.request.headers.has('Authorization')) {",
     "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __defaultJwt});",
+    "}",
+    # REQUIRED-FIXTURE GUARD: отсутствие фикстуры — ОТКАЗ с именем переменной, а не
+    # подмена и не тишина. Пустой идентификатор уезжает в запрос как есть и отвергается
+    # на авторизации, поэтому каждый последующий провал называл бы неверную причину.
+    "const __needed = ['baseUrl', 'existingProjectId', 'existingRegionId', 'jwtProjectEditorA'];",
+    "const __missing = __needed.filter((k) => !(pm.environment.get(k) || pm.variables.get(k) || ''));",
+    "if (__missing.length > 0) {",
+    "  pm.test('FIXTURE REQUIRED: ' + __missing.join(', '), () => pm.expect.fail('the suite fixture "
+    "seed did not run: ' + __missing.join(', ') + ' are empty. Seed via tests/authz-fixtures "
+    "(prodrun.sh patches the suite env). Falling back to another subject would test a DIFFERENT "
+    "principal and report green about a subject that was never exercised.'));",
     "}",
 ]
 
@@ -642,11 +657,22 @@ def conf_alreadyexists_block(prefix: str, create_path: str, name_template: str,
     """CONF: duplicate (project_id, name) on Create returns ALREADY_EXISTS verbatim text.
 
     NLB pattern: sync 409 on duplicate name (partial UNIQUE in DB). Worker also returns
-    error envelope if INSERT race wins both syncs."""
+    error envelope if INSERT race wins both syncs.
+
+    ДВЕ ЗАКОННЫЕ ФОРМЫ ОТКАЗА, И ОБЕ ПРОВЕРЯЮТСЯ. Прежде шаг принимал `oneOf([200, 409])`
+    и утверждал что-либо ТОЛЬКО в ветке 409; ветки на 200 не было вовсе, а следующий
+    поллинг требовал лишь `done`, который удавшаяся операция удовлетворяет так же, как
+    провалившаяся. То есть дубль, ПРИНЯТЫЙ системой, проходил кейс, названный «duplicate
+    → ALREADY_EXISTS»: упасть на том, ради чего кейс существует, он не мог.
+
+    Теперь: 200 обязан быть конвертом операции, чей идентификатор захватывается, а
+    следующий поллинг требует, чтобы операция несла ОШИБКУ (`must_fail`). Синхронная
+    ветка 409 по-прежнему пинит код и текст; при ней операции нет, поллинг это видит по
+    пустому opId и молчит — единственный его немой случай, задокументированный."""
     body_extra = body_extra or {}
     return Case(
         id=f"{prefix}-CR-CONF-ALREADY-EXISTS",
-        title=f"Create duplicate name → 409 ALREADY_EXISTS verbatim text",
+        title=f"Create duplicate name → refused: sync 409 ALREADY_EXISTS or Operation carrying the error",
         classes=["CONF", "NEG", "IDEM"], priority="P1",
         steps=[
             Step(name="create-first", method="POST", path=create_path,
@@ -659,12 +685,26 @@ def conf_alreadyexists_block(prefix: str, create_path: str, name_template: str,
             Step(name="create-dup", method="POST", path=create_path,
                  body={"projectId": "{{_suiteProjectId}}", "name": name_template, **body_extra},
                  test_script=[
-                     "pm.test('rejected (sync 409 or async error)', () => pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
+                     # Первый оператор снимает opId предыдущей (УДАВШЕЙСЯ) операции:
+                     # иначе поллинг ниже опросил бы её и увидел успех там, где предмет
+                     # кейса — отказ.
+                     "pm.environment.unset('opId');",
+                     "pm.test('duplicate refused: sync 409 or async Operation error', () => "
+                     "pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
                      "if (pm.response.code === 409) {",
                      "  pm.test('grpc code 6 (ALREADY_EXISTS)', () => pm.expect(pm.response.json().code).to.eql(6));",
                      "  pm.test('mentions already exists', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('already exists'));",
+                     "} else if (pm.response.code === 200) {",
+                     # 200 законен ТОЛЬКО как конверт операции, которая затем завершится
+                     # ошибкой. Захватываем её id; вердикт выносит поллинг с must_fail.
+                     "  pm.test('async lane: 200 is an Operation envelope', () => "
+                     "pm.expect(pm.response.json().id, pm.response.text()).to.be.a('string'));",
+                     *save_from_response("j.id", "opId"),
                      "}",
                  ]),
+            # Асинхронная полоса адъюдицируется здесь: операция ОБЯЗАНА нести ошибку.
+            # На синхронной 409 операции нет — opId пуст, и поллинг это видит.
+            poll_operation_until_done(must_fail=True),
             Step(name="cleanup-first", method="DELETE", path=f"{create_path}/{{{{createdId}}}}",
                  test_script=[*save_from_response("j.id", "opId")]),
             poll_operation_until_done(),
