@@ -1858,8 +1858,12 @@ type ExpandAccessResponse struct {
 	// Deduplicated; a principal granted both directly and via a group appears
 	// once (no double-grant anomaly).
 	Principals []*Principal `protobuf:"bytes,1,rep,name=principals,proto3" json:"principals,omitempty"`
-	// True when the userset exceeded `max_results` and was truncated (the audit
-	// answer is then a lower bound — narrow the query).
+	// True when `principals` is a LOWER BOUND rather than the whole grantee set.
+	// Two reasons, and neither is continuable: the grant store cut its own
+	// enumeration at its server-side ceiling — it offers no continuation token, so
+	// the rest is unreachable — or the resolved set exceeded `max_results` and was
+	// trimmed. Either way: narrow the query. Raising `max_results` does not lift
+	// the store's ceiling.
 	Truncated     bool `protobuf:"varint,2,opt,name=truncated,proto3" json:"truncated,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
