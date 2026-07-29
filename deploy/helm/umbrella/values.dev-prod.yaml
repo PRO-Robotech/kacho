@@ -42,6 +42,17 @@
 # On the insecure-dev stand both are optional secretKeyRefs (absent) → dev iam
 # boots without them; production iam MUST have them.
 
+# ─── provider ADMIN listener over TLS ───────────────────────────────────────
+# This stand runs the PRODUCTION posture, and both the gateway and iam refuse to
+# start on a plaintext or unanchored hop to the provider's admin API. dev leaves
+# that hop in the clear (it is dev-class and exempt); this overlay is where it
+# stops being exempt, so the certificate is issued here and the three consumers
+# below are pointed at it together.
+mtls:
+  hydraAdminTls:
+    enabled: true
+    secretName: kacho-umbrella-hydra-admin-tls
+
 # ─── api-gateway (edge) — production-strict authN ───────────────────────────
 api-gateway:
   # Composition-root prod-guard (validateProductionAuthzConfig): an env NOT labelled
@@ -80,6 +91,17 @@ api-gateway:
   # values.dev.yaml (Hydra self.issuer). Requires the :9097 upstream fix (kacho-iam.env).
   hydra:
     jwksUrl: "http://kacho-iam-internal.kacho.svc.cluster.local:9097/.well-known/jwks.json"
+    # dev declares both admin-API addresses in the clear; this stand is
+    # production-class, so it addresses them over TLS with the anchor pinned.
+    # Introspection asks about a bearer by SENDING it, on every authenticated
+    # request that misses the cache — the wire carries a live end-user credential,
+    # not merely administrative calls.
+    introspectionUrl: "https://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445/admin/oauth2/introspect"
+    adminUrl: "https://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445"
+    adminCa:
+      secretName: kacho-umbrella-hydra-admin-tls
+      key: ca.crt
+      mountPath: /etc/api-gateway/hydra-admin-ca
 
 # ─── kacho-vpc ──────────────────────────────────────────────────────────────
 vpc:
@@ -198,6 +220,12 @@ kacho-iam:
   # expected issuer → the RS256 token verifies). deep-merges over dev's hydraAdminUrl.
   kacho:
     iam:
+      # Provider-ADMIN hop: declared (never derived) and over TLS with the anchor
+      # pinned — the internal-CA bundle already mounted for mTLS is the same CA
+      # that signs the provider's admin certificate. dev's plaintext value is
+      # deep-merged over here; leaving it would refuse the start on this stand.
+      hydraAdminUrl: "https://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445"
+      hydraAdminCaFile: /etc/kacho-iam/tls/server/ca.crt
       hydraTokenURL: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/oauth2/token"
       # Bootstrap-admin SA ES256 (P-256, PKCS#8) signing key — signs the
       # private_key_jwt client_assertion the mint exchanges at Hydra. Empty ⇒ env
@@ -314,7 +342,26 @@ hydra:
           # Hydra's token endpoint. Scoped to the production-mode overlay (dev-mode authn
           # accepts HS256 and never verifies the Hydra `iss`, so dev.yaml is untouched).
           issuer: "http://localhost:28080/.ory/hydra/public"
+      # ADMIN listener over TLS — and only the admin listener. The provider
+      # resolves TLS per listener (serve.admin.tls / serve.public.tls each
+      # override the shared serve.tls field by field), so the public OIDC
+      # listener this stand reaches over plain http (ingress, JWKS) is untouched.
+      serve:
+        admin:
+          tls:
+            cert:
+              path: /etc/hydra-admin-tls/tls.crt
+            key:
+              path: /etc/hydra-admin-tls/tls.key
   deployment:
+    extraVolumes:
+      - name: hydra-admin-tls
+        secret:
+          secretName: kacho-umbrella-hydra-admin-tls
+    extraVolumeMounts:
+      - name: hydra-admin-tls
+        mountPath: /etc/hydra-admin-tls
+        readOnly: true
     extraEnv:
       - name: OAUTH2_TOKEN_HOOK_AUTH_CONFIG_VALUE
         valueFrom:
@@ -326,3 +373,22 @@ hydra:
           secretKeyRef:
             name: kacho-iam-hook-token
             key: token
+
+# ─── Kratos self-service UI — provider ADMIN hop over TLS ───────────────────
+# dev declares the plaintext admin address; this stand serves that listener over
+# TLS, so the consent flow must address it over https and trust the internal CA
+# that signed it. Left at dev's value the flow would fail outright — the listener
+# no longer answers http.
+kratos-selfservice-ui:
+  kratosSelfServiceUI:
+    # The provider's ADMIN listener now serves TLS (mtls.hydraAdminTls), so this
+    # consumer must address it over https AND trust the internal CA that signed
+    # it — the chart mounts the bundle and exports NODE_EXTRA_CA_CERTS. Left at
+    # the chart's plaintext default, the consent flow would fail on this stand:
+    # the listener no longer answers http at all.
+    hydraAdminUrl: https://kacho-umbrella-hydra-admin:4445
+    caCert:
+      secretName: kacho-umbrella-hydra-admin-tls
+      key: ca.crt
+      mountPath: /etc/kratos-ui-ca
+

@@ -20,6 +20,11 @@ import (
 const (
 	testIntrospectURL = "http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445/admin/oauth2/introspect"
 	testAdminURL      = "http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445"
+
+	// The same two addresses over TLS — the shape a production-class stand is
+	// required to carry.
+	tlsIntrospectURL = "https://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445/admin/oauth2/introspect"
+	tlsAdminURL      = "https://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445"
 )
 
 // Production-class env with no introspection endpoint MUST be refused: with it
@@ -87,14 +92,54 @@ func TestDevClassToleratesUnsetEndpoints(t *testing.T) {
 	}
 }
 
-// Both addresses set → production boots.
+// The sanctioned production shape — both addresses over TLS, anchored — boots.
+//
+// This is the other half of the guard: it must stay SILENT on a configuration
+// that is actually correct. A guard that only ever fires is indistinguishable
+// from one that fires at random, and the first false refusal gets it removed.
 func TestProdAcceptsBothEndpoints(t *testing.T) {
 	err := validateProductionRevocationConfig("production", RevocationConfig{
-		IntrospectionURL: testIntrospectURL,
-		AdminURL:         testAdminURL,
+		IntrospectionURL: tlsIntrospectURL,
+		AdminURL:         tlsAdminURL,
+		AdminCAFile:      "/etc/api-gateway/hydra-admin-ca/ca.crt",
 	})
 	if err != nil {
 		t.Fatalf("expected nil for a fully configured production revocation path, got: %v", err)
+	}
+}
+
+// TLS with nothing to verify against is refused as well. Moving the address to
+// https and stopping there is the well-meant half-step that takes the API down:
+// the provider's in-cluster certificate comes from the internal CA, this process
+// trusts the system roots, and the introspection layer files an unknown-authority
+// handshake as a PERMANENT misconfiguration — after which it refuses every
+// request instead of waving them through.
+func TestProdRefusesTLSHopWithoutTrustAnchor(t *testing.T) {
+	err := validateProductionRevocationConfig("production", RevocationConfig{
+		IntrospectionURL: tlsIntrospectURL,
+		AdminURL:         tlsAdminURL,
+		AdminCAFile:      "",
+	})
+	if err == nil {
+		t.Fatalf("expected refusal for an https hop with no pinned anchor, got nil")
+	}
+	if !strings.Contains(err.Error(), "KACHO_HYDRA_ADMIN_CA_FILE") {
+		t.Fatalf("the refusal must name the anchor knob, got: %v", err)
+	}
+}
+
+// A dev-class stand may legitimately have the provider's admin API on plaintext
+// (no internal CA, port-forward, no cert at all). The transport requirement rides
+// the same dev-class exemption as the rest of this guard — stated as its own case
+// so the exemption is a decision on record rather than a side effect.
+func TestDevClassToleratesPlaintextHop(t *testing.T) {
+	for _, env := range []string{"dev", "local", "test"} {
+		if err := validateProductionRevocationConfig(env, RevocationConfig{
+			IntrospectionURL: testIntrospectURL,
+			AdminURL:         testAdminURL,
+		}); err != nil {
+			t.Fatalf("%s: expected tolerance for a plaintext hop, got: %v", env, err)
+		}
 	}
 }
 
@@ -112,6 +157,46 @@ func TestProdRefusesNonAdminIntrospectionPath(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "/admin/oauth2/introspect") {
 		t.Fatalf("the refusal must name the path the admin API actually serves, got: %v", err)
+	}
+}
+
+// ─── the hop must not carry a credential in the clear ────────────────────────
+//
+// What rides this hop decided these two tests. Introspection asks about a bearer
+// by SENDING it, on every cache miss, for every authenticated request — so the
+// wire carries a live end-user credential, not merely an administrative call. A
+// bearer is a bearer: whoever reads it off the wire can use it until it expires.
+//
+// Plaintext was accepted here for the whole life of the guard: the scheme check
+// admitted "http" and "https" alike, so a production-class stand booted with the
+// hop in the clear and nothing said so.
+
+// Production-class + a plaintext introspection address MUST be refused.
+func TestProdRefusesPlaintextIntrospectionHop(t *testing.T) {
+	err := validateProductionRevocationConfig("production", RevocationConfig{
+		IntrospectionURL: testIntrospectURL, // http://…
+		AdminURL:         tlsAdminURL,
+	})
+	if err == nil {
+		t.Fatalf("expected refusal for a plaintext introspection hop, got nil")
+	}
+	// The refusal is operator diagnostics: it must name the knob to change.
+	if !strings.Contains(err.Error(), "KACHO_HYDRA_INTROSPECTION_URL") {
+		t.Fatalf("the refusal must name the knob, got: %v", err)
+	}
+}
+
+// Production-class + a plaintext admin base MUST be refused.
+func TestProdRefusesPlaintextAdminHop(t *testing.T) {
+	err := validateProductionRevocationConfig("production", RevocationConfig{
+		IntrospectionURL: tlsIntrospectURL,
+		AdminURL:         testAdminURL, // http://…
+	})
+	if err == nil {
+		t.Fatalf("expected refusal for a plaintext admin hop, got nil")
+	}
+	if !strings.Contains(err.Error(), "KACHO_HYDRA_ADMIN_URL") {
+		t.Fatalf("the refusal must name the knob, got: %v", err)
 	}
 }
 
