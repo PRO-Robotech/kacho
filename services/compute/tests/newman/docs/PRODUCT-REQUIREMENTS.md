@@ -1,15 +1,15 @@
 # Регламент продуктовых требований — kacho-compute (от QA)
 
 Нормативный список **продуктовых требований** к публичному API `kacho-compute`, выведенный из
-каталога тест-кейсов (`CASES-INDEX.md`) и контракта (verbatim-YC Compute API + acceptance-spec).
-Это **регламент**, на соответствие которому агент `compute-yc-parity-auditor` проверяет любое
+каталога тест-кейсов (`CASES-INDEX.md`) и опубликованного контракта Compute API Kachō
+(+ acceptance-spec). Это **регламент**, на соответствие которому сверяется любое
 изменение кода / proto / миграций / тестов: для каждого затронутого `REQ-*` — соблюдён ли он.
 Нарушение → блокирующее замечание.
 
 **Кто ведёт.** Тестировщики добавляют сюда новые `REQ-*` по мере выявления требований (из ревью,
-прогонов, probe'ов реального YC). Формат — ниже. Не путать с:
+прогонов, проб собственного API). Формат — ниже. Не путать с:
 - `REQUIREMENTS.md` — бэклог *улучшений* (testability/contract-clarification asks), не нормативный.
-- `docs/architecture/07-known-divergences.md` — намеренные расхождения с YC (исключения из регламента,
+- `docs/architecture/07-known-divergences.md` — намеренные отступления от конвенций Kachō (исключения из регламента,
   помечаются в REQ как «Divergence: …»).
 - баги/задачи — GitHub Issues (`kacho-compute/CLAUDE.md` §14.4).
 
@@ -19,13 +19,13 @@
 <нормативная формулировка: продукт ДОЛЖЕН / НЕ ДОЛЖЕН ...>
 - Validated-by: <case-id-паттерны из CASES-INDEX, через запятую> (или «gap — нет кейса»)
 - Agent-check: <где смотреть, чтобы проверить соответствие: файл/слой/proto/миграция>
-- Divergence: <если намеренное отклонение от verbatim-YC — ссылка>
+- Divergence: <если намеренное отступление от конвенций Kachō — ссылка>
 ```
 
 **Области (`<AREA>`):** `RES` (модель/lifecycle), `VAL` (валидация), `NAME`, `SIZE` (disk size),
 `UPD` (UpdateMask), `LIST`, `DEL`, `OPS` (Operations LRO), `STATE` (Instance state-машина),
 `ATTACH` (disk attach/detach), `NAT`, `IMG` (Image source/family), `SNAP`, `REF` (cross-service refs),
-`AUTHZ`, `SEC`, `CONF` (verbatim-YC parity), `CAT` (DiskType/Zone справочники).
+`AUTHZ`, `SEC`, `CONF` (контракт: тексты ошибок, коды, точность), `CAT` (DiskType/Zone справочники).
 
 ---
 
@@ -65,10 +65,10 @@ ID ресурсов: Instance/Disk — `epd`; Image/Snapshot — `fd8`. api-gate
 - Agent-check: `internal/migrations/0001_initial.sql` (нет envelope-колонок); `internal/repo/*.go` (`DELETE FROM`).
 
 ### REQ-RES-06 — created_at в proto-ответе truncate до секунд                                  [P1]
-Поле `created_at` всех ресурсов в proto-ответе НЕ содержит дробной секунды (verbatim YC).
+Поле `created_at` всех ресурсов в proto-ответе НЕ содержит дробной секунды (конвенция Kachō).
 - Validated-by: `*-CR-CRUD-OK` (assert `assert_created_at_seconds`)
 - Agent-check: `internal/protoconv/protoconv.go` — `timestamppb.New(t.Truncate(time.Second))` (единственное место конверсии).
-- Divergence: нет (паритет YC).
+- Divergence: нет.
 
 ### REQ-RES-07 — ~~Move в другой проект~~ — REMOVED (KAC-266)   [obsolete]
 `Move` RPC у Disk и Instance удалён из контракта (proto + impl) в KAC-266. Перенос ресурса
@@ -85,7 +85,7 @@ lowercase/digits/`-`/`_`, длина ≤63. UPPERCASE / digit-start / hyphen-sta
 ⚠️ Это НЕ `NameVPC` (там uppercase разрешён) — нужен `corevalidate.NameCompute`.
 - Validated-by: `*-CR-VAL-NAME-{EMPTY-OK,UPPERCASE,DIGIT-START,HYPHEN-START,SPECIAL-CHARS}`, `*-CR-BVA-NAME-{MAX-63,OVER-64}`, `INST-CR-VAL-NAME-*`
 - Agent-check: `kacho-corelib/validate/validate.go` (`NameCompute`); вызов в начале каждого `Create`/`Update` (`internal/service/*.go`).
-- Divergence: точный YC-контракт для empty/edge — `# probe-needed`; см. `docs/architecture/07-known-divergences.md`.
+- Divergence: формулировка контракта для empty/edge ещё не закреплена — `# probe-needed`; см. `docs/architecture/07-known-divergences.md`.
 
 ### REQ-VAL-01 — required-поля Create — sync `InvalidArgument`                                  [P0]
 До создания Operation проверяются required: `project_id` (все), `zone_id` (Disk/Instance),
@@ -132,7 +132,7 @@ Snapshot — `source_disk_id`, `disk_size`, `storage_size`; Instance — `zone_i
 - Divergence: точный текст — `# probe-needed`.
 
 ### REQ-UPD-03 — пустой mask → full-object PATCH; immutable из body silently игнорируются          [P2]
-Verbatim YC behaviour.
+Единая `update_mask`-дисциплина Kachō (конвенции API).
 - Validated-by: `DISK-UPD-MASK-EMPTY-FULL-PATCH`
 - Agent-check: ветка empty-mask в `Update`.
 
@@ -163,7 +163,7 @@ Pagination cursor `(created_at, id)` ASC,ASC; `page_token` opaque base64.
 - Agent-check: `kacho-corelib/filter.Parse` с whitelist + использование в `List`.
 
 ### REQ-LIST-04 — Instance.List view=BASIC (default) → metadata не возвращается                   [P2]
-Verbatim YC: BASIC опускает `Instance.metadata`; FULL — включает.
+Контракт Kachō: BASIC опускает `Instance.metadata`; FULL — включает.
 - Validated-by: `INST-LST-VIEW-BASIC-NO-METADATA`, `INST-UMETA-CRUD-OK` (Get?view=FULL)
 - Agent-check: `internal/handler/instance_handler.go` / `protoconv` — обнуление metadata при BASIC view в List.
 
@@ -173,7 +173,7 @@ Verbatim YC: BASIC опускает `Instance.metadata`; FULL — включае
 
 ### REQ-AUTHZ-01 — Get/Update/Delete/Start/Stop/... несуществующего ресурса → sync `NotFound`   [P1]
 Well-formed-но-отсутствующий id → `NotFound` (Get — sync; mutate — sync через AuthZ-Get-guard).
-malformed/wrong-prefix id у реального YC → `InvalidArgument "invalid <res> id '<X>'"`, у нас пока `NotFound` — divergence.
+Конвенция Kachō требует на malformed/wrong-prefix id sync `InvalidArgument "invalid <res> id '<X>'"`; здесь пока `NotFound` — отступление.
 - Validated-by: `*-GET-NEG-NOTFOUND`, `*-UPD-AUTHZ-NF-SYNC`, `*-DEL-NEG-NOTFOUND`, `INST-{START,STOP}-AUTHZ-NF-SYNC`, `INST-SPO-*-NF-SYNC`
 - Agent-check: `internal/service/*.go` mutate-методы — Get перед Operation; `internal/repo/*.go` `ErrNotFound`.
 - Divergence: malformed-id → NotFound вместо InvalidArgument; `docs/architecture/07-known-divergences.md` (паритет kacho-vpc gotcha #1).
@@ -182,13 +182,13 @@ malformed/wrong-prefix id у реального YC → `InvalidArgument "invalid
 Partial UNIQUE `(project_id, name) WHERE name <> ''` для disks/images/snapshots/instances.
 - Validated-by: `*-CR-NEG-DUP-NAME`
 - Agent-check: `internal/migrations/0001_initial.sql` partial UNIQUE; `mapRepoErr` 23505 → `ALREADY_EXISTS`.
-- Divergence: точный YC text — `# probe-needed`.
+- Divergence: точный текст ещё не закреплён — `# probe-needed`.
 
 ### REQ-AUTHZ-03 — error mapping: ErrNotFound→NOT_FOUND, ErrAlreadyExists→ALREADY_EXISTS, ErrFailedPrecondition→FAILED_PRECONDITION, ErrInvalidArg→INVALID_ARGUMENT, ErrInternal→INTERNAL (без leak)   [P0]
 - Validated-by: все NEG-кейсы (проверка grpc code); `*-SEC-*` (нет pgx/stack leak в INTERNAL)
 - Agent-check: `internal/service/maperr.go` `mapRepoErr` + `stripSentinel`.
 
-### REQ-CONF-01 — NotFound текст формата «<Resource> <id> not found» (verbatim YC)                [P1]
+### REQ-CONF-01 — NotFound текст формата «<Resource> <id> not found» (контракт-тон)              [P1]
 Disk / Image / Snapshot / Instance / Disk type / Zone / Operation.
 - Validated-by: `*-GET-CONF-NF-TEXT`, `OP-GET-CONF-NF-TEXT`
 - Agent-check: error-text в `internal/repo`/`internal/service` (`fmt.Errorf("%s %s not found", ...)`).
@@ -209,7 +209,7 @@ NIC и не валидирует subnet/security_group/address через kacho-
 и NIC-ассерты `INST-CR-CRUD-OK` удалены. (One-to-one NAT IPAM через AddOneToOneNat также удалён.)
 
 ### REQ-REF-03 — Disk source image/snapshot, Snapshot source disk, Image source — existence-check в worker'е (не FK)   [P1]
-Та же БД, но НЕ FK (verbatim YC: можно удалить Image/Disk оставив зависимый ресурс). Отсутствие source → `NotFound`. Disk size ≥ image.min_disk_size / snapshot.disk_size, иначе `InvalidArgument`.
+Та же БД, но НЕ FK (осознанное решение: можно удалить Image/Disk, оставив зависимый ресурс). Отсутствие source → `NotFound`. Disk size ≥ image.min_disk_size / snapshot.disk_size, иначе `InvalidArgument`.
 - Validated-by: `DISK-CR-{CRUD-FROM-IMAGE-OK,NEG-SOURCE-IMAGE-NOTFOUND,NEG-SOURCE-SNAPSHOT-NOTFOUND}`, `IMG-CR-{CRUD-FROM-*,NEG-SOURCE-DISK-NOTFOUND}`, `SNAP-CR-{CRUD-OK,NEG-DISK-NOTFOUND}`, `SNAP-DEL-STATE-DISK-DELETABLE-AFTER`
 - Agent-check: `internal/migrations/0001_initial.sql` (source-колонки НЕ FK); existence-check в `do*Create`.
 

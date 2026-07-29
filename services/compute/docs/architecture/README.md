@@ -8,21 +8,22 @@
 > Документы ниже — детализация по конкретным темам.
 >
 > Происхождение сервиса: написан заново на проверенных паттернах `kacho-vpc`
-> (flat resources + Operations LRO + Clean Architecture + verbatim YC parity).
+> (flat resources + Operations LRO + Clean Architecture + собственный
+> опубликованный контракт Kachō).
 > Где видишь «как в VPC» — буквально смотри одноимённый файл в `../kacho-vpc/`.
 
 ## Содержание
 
 | # | Документ | О чём |
 |---|---|---|
-| 00 | [Overview](00-overview.md) | Что делает kacho-compute, какие ресурсы owns, что вне скоупа, 6 принципов проекта, Clean Architecture, verbatim-YC parity goal |
+| 00 | [Overview](00-overview.md) | Что делает kacho-compute, какие ресурсы owns, что вне скоупа, 6 принципов проекта, Clean Architecture, цель — соответствие опубликованному контракту Kachō |
 | 01 | [Resources](01-resources.md) | Детально по каждому ресурсу: Disk, Image, Snapshot, Instance (+`nic_id`→kacho-vpc NIC), DiskType, Region, Zone (Geography, owner kacho-compute) — proto-поля, ID-префиксы, status-enum'ы, полный список RPC с пометкой implemented/blocked/Unimplemented, инварианты, cross-resource links |
 | 02 | [Data Flows](02-data-flows.md) | Sequence-диаграммы compute-сценариев: Operations LRO worker, Disk.Create, Image.Create (source oneof), Snapshot.Create, Instance.Create (boot-disk validation, без авто-NIC — KAC-266), AttachDisk/DetachDisk, outbox + LISTEN/NOTIFY + InternalWatchService |
 | 03 | [Instance Lifecycle](03-instance-lifecycle.md) | State-машина `Instance.Status` (PROVISIONING/RUNNING/STOPPING/STOPPED/STARTING/RESTARTING/UPDATING/ERROR/CRASHED/DELETING), transition-таблица (RPC × precondition × end-status × Operation.response), control-plane имитация, AttachDisk/DetachDisk/NAT инварианты |
 | 04 | [API Surface](04-api-surface.md) | Таблица всех публичных RPC (REST path, method, request/response, Operation metadata/response, sync-vs-async, implemented/blocked) + internal RPC (InternalWatchService / InternalDiskTypeService / InternalRegionService / InternalZoneService на :9091) |
 | 05 | [Database](05-database.md) | Схема `kacho_compute`, миграции (`0003_geography_owner.sql` — regions+zones owned by compute; `0005_instance_nic_id.sql` — `instance_network_interfaces.nic_id`): все таблицы, колонки, индексы, FK, partial UNIQUE, outbox trigger, seed, flat-схема, xmin OCC |
 | 06 | [Conventions & Gotchas](06-conventions.md) | Compute-specific правила: naming, error mapping, timestamp truncation, UpdateMask discipline, pagination, filter, hard-delete, Operation prefix `epd`, cross-service ref-validation, `nic_id`-on-Instance, Geography owner=compute, `KACHO_COMPUTE_SKIP_PEER_VALIDATION` |
-| 07 | [Намеренные решения / расхождения с YC](07-known-divergences.md) | Реестр осознанных by-design решений (НЕ баги; verbatim-parity отложена) — id-syntax validation, name-policy probe, Instance precondition тексты, control-plane имитация, DiskType/Region/Zone admin-CRUD, Geography owner=kacho-compute (KAC-15), Instance NIC ↔ kacho-vpc NetworkInterface (KAC-9), blocked-on-missing-service |
+| 07 | [Намеренные решения / отступления от конвенций](07-known-divergences.md) | Реестр осознанных by-design решений (НЕ баги) — id-syntax validation, name-policy probe, Instance precondition тексты, control-plane имитация, DiskType/Region/Zone admin-CRUD, Geography owner=kacho-compute (KAC-15), Instance NIC ↔ kacho-vpc NetworkInterface (KAC-9), blocked-on-missing-service |
 | 08 | [UI](08-ui.md) | Интеграция с `kacho-ui` (Vite + React SPA): compute-views (Instances/Disks/Images/Snapshots), generic CRUD-страницы, polling Operation, attach/detach disk, Start/Stop/Restart actions, DiskType/Zone dropdowns — forward-looking design |
 | 09 | [Go skills applied](09-go-skills-applied.md) | Какие практики `golang-*` скилов применены: clean architecture / DI, error handling, context propagation, graceful shutdown, slog, testing pyramid, naming, grpc, pgx-database |
 
@@ -90,7 +91,7 @@ kacho-compute **не знает** про:
 
 - `../../CLAUDE.md` — operational правила для AI-агентов (компактнее).
 - GitHub Issues — `github.com/PRO-Robotech/kacho-compute/issues` (долги, баги, planned). `TODO.md` упразднён.
-- [07-known-divergences.md](07-known-divergences.md) — registry by-design расхождений с verbatim YC.
+- [07-known-divergences.md](07-known-divergences.md) — реестр by-design отступлений от конвенций Kachō.
 - `../../tests/newman/` — e2e regression suite (`cases/*.py` → `gen.py` → Postman-коллекции).
 - Эталон-сервис (паттерны) — `../../../kacho-vpc/` (буквально смотри одноимённые файлы).
 - Proto — `../../../kacho-proto/proto/kacho/cloud/compute/v1/`.

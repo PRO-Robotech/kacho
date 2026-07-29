@@ -7,9 +7,10 @@ naming/structure по `testing-code-coach`. Структура — копия `.
 Источник истины — декларативные case-файлы `cases/*.py`; коллекции в `collections/`
 **генерируются** скриптом `scripts/gen.py`.
 
-> Критерий приёмки: **любой compute-кейс должен зеленеть и против реального YC Compute API**
-> (verbatim parity). Кейсы с `# probe-needed:` фиксируют наше текущее поведение там, где точный
-> YC-контракт ещё не verified — список — в `docs/REQUIREMENTS.md` §A.
+> Критерий приёмки: **любой compute-кейс зеленеет на собственных чёрных ящиках, и ни одно
+> изменение не ломает объявленный контракт Kachō**. Кейсы с `# probe-needed:` фиксируют
+> текущее поведение там, где точная формулировка контракта ещё не закреплена — список
+> в `docs/REQUIREMENTS.md` §A.
 
 ## Структура
 
@@ -34,13 +35,13 @@ tests/newman/
 │   ├── TAXONOMY.md            — классы кейсов и naming convention
 │   ├── TEST-PLAN.md           — карта покрытия (RPC × класс)
 │   ├── CASES-INDEX.md         — каталог кейсов + уникальные паттерны
-│   ├── PRODUCT-REQUIREMENTS.md — НОРМАТИВНЫЙ регламент REQ-* (от QA; compute-yc-parity-auditor проверяет соответствие)
+│   ├── PRODUCT-REQUIREMENTS.md — НОРМАТИВНЫЙ регламент REQ-* (от QA; сверяется при ревью изменений)
 │   ├── REQUIREMENTS.md        — бэклог *улучшений* (testability / probe-needed asks — не нормативный)
 │   └── RESULTS.md             — последний прогон pass/fail + история версий + skill-mapping
 └── out/                     — newman raw output + summary.txt (gitignored snap-логи)
 ```
 (Найденные дефекты/наблюдения — в GitHub Issues `PRO-Robotech/kacho-compute`, см. `kacho-compute/CLAUDE.md` §14.4;
-by-design расхождения с verbatim YC — `docs/architecture/07-known-divergences.md`. Отдельного bug-map нет.)
+by-design отступления от конвенций Kachō — `docs/architecture/07-known-divergences.md`. Отдельного bug-map нет.)
 
 ## Быстрый старт
 
@@ -53,7 +54,7 @@ python3 scripts/gen.py            # все ресурсы; или: python3 scrip
 ./scripts/run.sh                  # сводка → out/summary.txt
 ./scripts/run.sh --service disk   # один ресурс
 # 3b. Прогнать ПО ОДНОМУ кейсу за раз с зачисткой ресурсов после каждого
-#     (низкий resource-footprint в любой момент → безопасно при quota-guard, как у YC)
+#     (низкий resource-footprint в любой момент → безопасно при quota-guard)
 ./scripts/run-incremental.sh                        # все ~296 кейсов; сводка → out/incremental/summary.txt
 ./scripts/run-incremental.sh --resume               # продолжить прерванный прогон
 ./scripts/run-incremental.sh --service instance     # один ресурс
