@@ -6429,8 +6429,12 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('not 500', () => pm.expect(pm.response.code).to.not.eql(500));",
-                  "pm.test('handled 2xx/4xx (name отвергнут)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 413]));",
+                  "pm.test('name отвергнут синхронно: 400', () => pm.expect(pm.response.code, pm.response.text()).to.eql(400));",
                   "let j; try { j = pm.response.json(); } catch(e) { j = {}; }",
+                  "if (pm.response.code === 400) {",
+                  "  pm.test('grpc code 3 (INVALID_ARGUMENT)', () => pm.expect(j.code).to.eql(3));",
+                  "  pm.test('контрактный текст: Illegal argument name', () => pm.expect(j.message || '').to.include('Illegal argument name'));",
+                  "}",
                   "const body = JSON.stringify(j).toLowerCase();",
                   "pm.test('no pgx/sqlstate/panic/goroutine leak', () => { pm.expect(body).to.not.include('sqlstate'); pm.expect(body).to.not.include('panic'); pm.expect(body).to.not.include('goroutine'); pm.expect(body).to.not.include('pgx'); });"
                 ]

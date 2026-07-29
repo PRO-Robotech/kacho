@@ -741,8 +741,22 @@ CASES.append(Case(
                 body=_vol_body("sec", name="vol'; DROP TABLE volumes;--"),
                 test_script=[
                     "pm.test('not 500', () => pm.expect(pm.response.code).to.not.eql(500));",
-                    "pm.test('handled 2xx/4xx (name отвергнут)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 413]));",
+                    # Заголовок кейса заявляет СИНХРОННЫЙ отказ — и утверждение теперь
+                    # требует ровно его. Прежде здесь стоял oneOf([200, 400, 413]): рядом
+                    # с отказом принимался и УСПЕХ, то есть ровно тот исход, ради ловли
+                    # которого кейс написан. И это не «терпимость к стенду» — 200 здесь
+                    # недостижим by construction: имя проверяется формой на кромке
+                    # запроса (self-validating VolumeName, тот же charset, что DB-CHECK),
+                    # полезная нагрузка внедрения ему не соответствует. Пара к этому
+                    # утверждению зафиксирована в
+                    # services/storage/internal/domain/domain_test.go
+                    # (TestVolumeNameValidate), поэтому требование не догадка.
+                    "pm.test('name отвергнут синхронно: 400', () => pm.expect(pm.response.code, pm.response.text()).to.eql(400));",
                     "let j; try { j = pm.response.json(); } catch(e) { j = {}; }",
+                    "if (pm.response.code === 400) {",
+                    "  pm.test('grpc code 3 (INVALID_ARGUMENT)', () => pm.expect(j.code).to.eql(3));",
+                    "  pm.test('контрактный текст: Illegal argument name', () => pm.expect(j.message || '').to.include('Illegal argument name'));",
+                    "}",
                     "const body = JSON.stringify(j).toLowerCase();",
                     "pm.test('no pgx/sqlstate/panic/goroutine leak', () => { pm.expect(body).to.not.include('sqlstate'); pm.expect(body).to.not.include('panic'); pm.expect(body).to.not.include('goroutine'); pm.expect(body).to.not.include('pgx'); });",
                 ])],
