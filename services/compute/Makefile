@@ -20,9 +20,20 @@ test-short:
 vet:
 	go vet ./...
 
-# audit-list-filter — RBAC v2 / KAC-219 / W6 CI gate.
-# Refuses to ship a public List<Resource> handler without authzfilter wiring.
-# Whitelist admin-only / catalog handlers via --allow=<HandlerName>.
+# audit-list-filter — CI gate for the public List<Resource> surface: a caller must
+# receive only the rows it may see (per-object, kacho-iam BatchCheck), not every row
+# of its project. The check parses the tree, so a resource is recognised by what its
+# declaration IS — a `List` method on a `<X>Handler` type — and never by what the
+# receiver variable is called; see tools/listfiltergate for the whole contract.
+#
+# The run always prints its census (files, resources, checked, whitelisted): "zero
+# findings" must be distinguishable from "zero read", so a tree the gate could not
+# open is a finding, not an OK. Exclusions are named in tools/audit-list-filter.sh
+# and an exclusion with nothing left to exclude is a finding too.
+#
+# Invoked by CI as `make -C services/compute audit-list-filter`; the gate's own
+# detection logic is locked by services/compute/tools/audit_list_filter_test.go,
+# which runs it against the real tree through this same wrapper.
 audit-list-filter:
 	@./tools/audit-list-filter.sh
 
