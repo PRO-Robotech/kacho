@@ -52,8 +52,15 @@ authn:
   trustedForwarder: false
 # per-RPC Check через kacho-iam.InternalIAMService.Check (port 9091).
 # project-level list-filter тоже идет через InternalIAMService.Check на
-#   INTERNAL :9091 (iamEndpoint) — НЕ на public :9090. listFilter.authorizeEndpoint
-#   и пр. — наследие старого ListObjects-подхода, код их больше не читает.
+#   INTERNAL :9091 (iamEndpoint) — НЕ на public :9090.
+#
+# listFilter.authorizeEndpoint КОД ЧИТАЕТ. Здесь стояло обратное («наследие старого
+# ListObjects-подхода, код их больше не читает»), и это было неверно: его читает
+# Config.ListFilterAuthorizeEndpoint() (config.go), а production boot-guard
+# ValidateListFilter ОТКАЗЫВАЕТ в старте, когда фильтр включён, а ни
+# authorizeEndpoint, ни iamEndpoint не заданы. Пустое значение здесь означает не
+# «не используется», а «взять iamEndpoint». Пометка «код не читает» на ручке,
+# от которой зависит решение о доступе, — прямое приглашение её удалить.
 authz:
   iamEndpoint: ""           # default cluster-internal kacho-iam-internal:9091
   breakglass: false          # dev override — пропустить все Check

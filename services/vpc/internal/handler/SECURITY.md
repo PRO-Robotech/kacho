@@ -103,20 +103,30 @@ hostname/db/query-fragment в тексте. Прямых `status.Errorf(codes.In
   project/cloud через resource-manager. Контракт `TenantFromCtx` спроектирован
   так, чтобы interceptor можно было заменить без правок handler'ов (объектная
   авторизация от него не зависит — она в permission-модели).
-- **`OperationService.Get(operation_id)` без project-ownership-check** —
-  единственный public RPC без проверки (`internal/handler/operation_handler.go`).
-  Требует `project_id` на таблице `operations` (она в `kacho-corelib`, shared) либо
-  резолва через `metadata.resource_id` → ресурс → project.
-- **Per-RPC FGA-gate на IPAM** — `InternalAddressService.*`
-  (`AllocateInternalIP`/`AllocateExternalIP`/референс-tracking) пока exempt от
-  interceptor-level FGA-Check (skip через `methodIsInternal`, не в
-  `internal/apps/kacho/check/permission_map.go`) — авторизуются in-handler. Прочие
-  internal RPC (`InternalNetworkService`, `InternalAddressPoolService`) уже гейтятся
-  cluster-scoped FGA-Check на `:9091`.
-- **Production boot fail-fast по authz** — при отсутствии `authz.iam-endpoint`
-  authz-interceptor молча не поднимается (Warn, dev-fallback); жесткий отказ старта в
-  production-mode без сконфигурированного IAM делегирован deploy-values, а не
-  code-уровневым boot-gate'ом. `KACHO_VPC_REQUIRE_IAM` закрывает только мутирующий
-  `Create` (UNAVAILABLE, пока register-drainer не подключен к IAM).
+> [!warning] Раздел был устаревшим: три пункта объявляли ОТКРЫТЫМИ дыры, закрытые в коде
+> Ниже они оставлены как закрытые — с указанием, чем именно закрыты. Держать их в
+> списке «что осталось» хуже, чем не иметь списка: документ по безопасности,
+> перечисляющий несуществующие дыры, обесценивает и те пункты, которые настоящие, а
+> читателю, планирующему работу, показывает фронт, которого нет. Проверено по коду
+> 2026-07-30.
+
+- ~~**`OperationService.Get(operation_id)` без project-ownership-check**~~ — **ЗАКРЫТО.**
+  Ownership энфорсится в хендлере: `OperationHandler.Get/Cancel` идут через
+  ownership-scoped `GetOwned`/`CancelOwned` (владелец — creator-principal из доверенного
+  контекста), чужой id → `NotFound` без утечки существования. В карте разрешений оба RPC
+  помечены `Public`, и это означает «ReBAC-exempt», а НЕ «без проверки»: в модели нет
+  object type `vpc_operation` и per-operation tuple не эмитится, поэтому Check не имел бы
+  пути и отверг бы даже поллинг владельцем; anti-anon в production-режиме сохраняется.
+- ~~**Per-RPC FGA-gate на IPAM**~~ — **ЗАКРЫТО.** `InternalAddressService.*`
+  (`AllocateInternalIP`/`AllocateExternalIP`/референс-tracking) присутствуют в
+  `internal/apps/kacho/check/permission_map.go` и гейтятся **object-scoped** на самом
+  `vpc_address:<address_id>` (мутации → `v_update`, чтение референта → `v_get`). Наличие в
+  карте снимает их с прежнего `methodIsInternal`-обхода; закрытие залочено регрессией
+  (`internal/apps/kacho/check/interceptor_test.go`).
+- ~~**Production boot fail-fast по authz**~~ — **ЗАКРЫТО.** `Config.Validate()` в
+  production-режиме ОТКАЗЫВАЕТ в старте без `authz.iam-endpoint`
+  (`errAuthzEndpointRequired`), а не логирует предупреждение и запускается в degraded
+  state. Отдельно `ValidateListFilter` отказывает в старте, если карта несёт ScopeFiltered
+  RPC, а list-filter выключен, без резолвимого адреса или с мягким проходом.
 </content>
 </invoke>
