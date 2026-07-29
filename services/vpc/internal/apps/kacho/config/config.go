@@ -92,11 +92,6 @@ type AuthZConfig struct {
 	// ListFilter — конфиг FGA-filtered List handlers.
 	ListFilter ListFilterConfig `mapstructure:"list-filter"`
 
-	// TupleWrite — write-side FGA. Когда Enabled=true и OpenFGAEndpoint+StoreID
-	// выставлены, каждый успешный resource Create публикует
-	// `vpc_<resource>:<id>#project@project:<project_id>` tuple.
-	TupleWrite TupleWriteConfig `mapstructure:"tuple-write"`
-
 	// TrustedForwarderSANs — круг отправителей (личности сертификата,
 	// SPIFFE-SAN), которым РАЗРЕШЕНО передавать личность конечного пользователя в
 	// метаданных `x-kacho-principal-*`. Уезжает в grpcsrv.WithTrustedForwarders на
@@ -152,35 +147,45 @@ func (c Config) TrustedForwarders() []string {
 	return out
 }
 
-// TupleWriteConfig — конфигурация write-side FGA.
+// ListFilterAuthorizeEndpoint — адрес, по которому РЕАЛЬНО поднимается соединение
+// фильтра видимости (`AuthorizeService.BatchCheck`): своё поле
+// `authz.list-filter.authorize-endpoint`, а если оно пусто — запасное
+// `authz.iam-endpoint`. Пустая строка означает «ребро не дилится вовсе»
+// (composition root тогда отдаёт nil-соединение, а фильтр вырождается в
+// пропускающий).
 //
-// Source: yaml `authz.tuple-write.{enabled,openfga-endpoint,store-id,model-id,timeout-ms}`.
-// ENV-override: `KACHO_VPC_AUTHZ__TUPLE_WRITE__ENABLED=true`, etc.
+// Единственный источник этого значения на процесс: его читает и проводка
+// (cmd/vpc/main.go buildAuthorizeConn), и стража старта (ValidateListFilter,
+// ValidatePeerTransport). Поэтому «стража увидела ребро» ⟺ «ребро дилится» — по
+// построению, а не по совпадению двух одинаково написанных условий.
+func (c Config) ListFilterAuthorizeEndpoint() string {
+	if ep := strings.TrimSpace(c.AuthZ.ListFilter.AuthorizeEndpoint); ep != "" {
+		return ep
+	}
+	return strings.TrimSpace(c.AuthZ.IAMEndpoint)
+}
+
+// ListFilterEdgeUsesMTLS — предикат «соединение фильтра видимости поднимается с
+// проверяемым транспортом». true ⟺ composition root пойдёт по client-cert-пути;
+// false ⟺ он возьмёт insecure-креденшелы.
 //
-// Без этого блока созданные VPC-ресурсы не получают per-resource hierarchy
-// tuple → per-resource FGA Check `no path` → fail-closed deny.
-type TupleWriteConfig struct {
-	// Enabled — главный toggle. Default false (write-side выключен).
-	// В production: true.
-	Enabled bool `mapstructure:"enabled"`
-
-	// OpenFGAEndpoint — host:port OpenFGA HTTP API (например
-	// `kacho-umbrella-openfga:8080`). Тот же store, что использует kacho-iam.
-	OpenFGAEndpoint string `mapstructure:"openfga-endpoint"`
-
-	// StoreID — OpenFGA store id (shared с kacho-iam).
-	StoreID string `mapstructure:"store-id"`
-
-	// ModelID — pinned authorization_model_id. Empty → store default.
-	ModelID string `mapstructure:"model-id"`
-
-	// TimeoutMs — таймаут одного write-вызова (default 2000ms).
-	TimeoutMs int `mapstructure:"timeout-ms"`
+// Ручек две, и любая из них включает один и тот же путь: собственная
+// `authz.list-filter.authorize-tls.enable` и общая с ребром per-RPC Check
+// `KACHO_VPC_IAM_AUTHZ_MTLS_ENABLE` (личность клиента одна на оба ребра к iam).
+// Тот же предикат читает и проводка, и стража — иначе они разойдутся, и ребро,
+// несущее решение о видимости, поднимется незащищённым при довольной страже.
+func (c Config) ListFilterEdgeUsesMTLS(m MTLSConfig) bool {
+	return c.AuthZ.ListFilter.AuthorizeTLS.Enable || m.IAMAuthzMTLS.Enable
 }
 
 // ListFilterConfig — конфигурация FGA-filtered List.
 //
-// Source: yaml `authz.list-filter.{enabled,timeout-ms,cache-ttl,max-entries,model-id,fail-open}`.
+// Source: yaml `authz.list-filter.{enabled,timeout-ms,cache-ttl,max-entries,fail-open}`.
+//
+// Версию модели авторизации сюда не передают: её закрепляет за собой kacho-iam —
+// единственный, кто ходит в хранилище прав, — и запрос BatchCheck поля под неё не
+// несёт. Ручка `model-id` здесь принималась и не читалась никем, поэтому снята с
+// контракта целиком (вместе с ключом чарта и мостом из окружения).
 // ENV-override: `KACHO_VPC_AUTHZ__LIST_FILTER__ENABLED=true`, etc.
 //
 // Когда Enabled=true И authz.iam-endpoint выставлен → каждая List-RPC спрашивает
@@ -212,11 +217,6 @@ type ListFilterConfig struct {
 
 	// MaxEntries — hard cap кэша (default 10000). LRU eviction.
 	MaxEntries int `mapstructure:"max-entries"`
-
-	// ModelID — pinned authorization_model_id.
-	// Empty → kacho-iam использует свой default. В production:
-	// тот же model id, что seed-ит kacho-iam.
-	ModelID string `mapstructure:"model-id"`
 
 	// FailOpen — если true, FGA-error возвращает unfiltered list.
 	// Default false (fail-closed). WARN-log + Critical-alert при включении.

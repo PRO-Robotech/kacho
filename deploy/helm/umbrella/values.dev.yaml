@@ -515,16 +515,6 @@ vpc:
     listFilter:
       enabled: true
       authorizeEndpoint: kacho-iam.kacho.svc.cluster.local:9090
-    tupleWrite:
-      enabled: true
-      # OpenFGA HTTP API (http port 8080; grpc is 8081). Same store kacho-iam
-      # writes its account/project tuples into.
-      openfgaEndpoint: kacho-umbrella-openfga:8080
-      storeIdSecretName: kacho-iam-openfga-store
-      storeIdSecretKey: store_id
-      modelIdSecretName: openfga-model-id
-      modelIdSecretKey: current
-      timeoutMs: 2000
 
 # ─── KAC-105: IAM stack (sub-phase 2.0) ─────────────────────────────────
 # Отдельные Postgres-инстансы (запрет #8: database-per-service):

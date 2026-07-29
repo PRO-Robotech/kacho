@@ -165,7 +165,7 @@
           ]
         },
         {
-          "name": "poll-op-1435",
+          "name": "poll-op-1429",
           "request": {
             "method": "GET",
             "header": [
@@ -278,7 +278,7 @@
           ]
         },
         {
-          "name": "poll-op-1436",
+          "name": "poll-op-1430",
           "request": {
             "method": "GET",
             "header": [
@@ -424,7 +424,7 @@
           ]
         },
         {
-          "name": "poll-op-1437",
+          "name": "poll-op-1431",
           "request": {
             "method": "GET",
             "header": [
@@ -578,7 +578,7 @@
           ]
         },
         {
-          "name": "poll-op-1438",
+          "name": "poll-op-1432",
           "request": {
             "method": "GET",
             "header": [
@@ -742,7 +742,7 @@
           ]
         },
         {
-          "name": "poll-op-1439",
+          "name": "poll-op-1433",
           "request": {
             "method": "GET",
             "header": [
@@ -850,7 +850,7 @@
           ]
         },
         {
-          "name": "poll-op-1440",
+          "name": "poll-op-1434",
           "request": {
             "method": "GET",
             "header": [
@@ -1032,7 +1032,7 @@
           ]
         },
         {
-          "name": "poll-op-1441",
+          "name": "poll-op-1435",
           "request": {
             "method": "GET",
             "header": [
@@ -1127,7 +1127,7 @@
           ]
         },
         {
-          "name": "poll-op-1442",
+          "name": "poll-op-1436",
           "request": {
             "method": "GET",
             "header": [
@@ -1281,7 +1281,7 @@
           ]
         },
         {
-          "name": "poll-op-1443",
+          "name": "poll-op-1437",
           "request": {
             "method": "GET",
             "header": [
@@ -1482,7 +1482,7 @@
           ]
         },
         {
-          "name": "poll-op-1444",
+          "name": "poll-op-1438",
           "request": {
             "method": "GET",
             "header": [
@@ -1684,7 +1684,7 @@
           ]
         },
         {
-          "name": "poll-op-1445",
+          "name": "poll-op-1439",
           "request": {
             "method": "GET",
             "header": [
@@ -1797,7 +1797,7 @@
           ]
         },
         {
-          "name": "poll-op-1446",
+          "name": "poll-op-1440",
           "request": {
             "method": "GET",
             "header": [
@@ -1952,7 +1952,7 @@
           ]
         },
         {
-          "name": "poll-op-1447",
+          "name": "poll-op-1441",
           "request": {
             "method": "GET",
             "header": [
@@ -2082,7 +2082,7 @@
           ]
         },
         {
-          "name": "poll-op-1448",
+          "name": "poll-op-1442",
           "request": {
             "method": "GET",
             "header": [
@@ -2236,7 +2236,7 @@
           ]
         },
         {
-          "name": "poll-op-1449",
+          "name": "poll-op-1443",
           "request": {
             "method": "GET",
             "header": [
@@ -2344,7 +2344,7 @@
           ]
         },
         {
-          "name": "poll-op-1450",
+          "name": "poll-op-1444",
           "request": {
             "method": "GET",
             "header": [
@@ -2489,7 +2489,7 @@
           ]
         },
         {
-          "name": "poll-op-1451",
+          "name": "poll-op-1445",
           "request": {
             "method": "GET",
             "header": [
@@ -2643,7 +2643,7 @@
           ]
         },
         {
-          "name": "poll-op-1452",
+          "name": "poll-op-1446",
           "request": {
             "method": "GET",
             "header": [
@@ -2751,7 +2751,7 @@
           ]
         },
         {
-          "name": "poll-op-1453",
+          "name": "poll-op-1447",
           "request": {
             "method": "GET",
             "header": [
@@ -2909,7 +2909,7 @@
           ]
         },
         {
-          "name": "poll-op-1454",
+          "name": "poll-op-1448",
           "request": {
             "method": "GET",
             "header": [
@@ -3063,7 +3063,7 @@
           ]
         },
         {
-          "name": "poll-op-1455",
+          "name": "poll-op-1449",
           "request": {
             "method": "GET",
             "header": [
@@ -3171,7 +3171,7 @@
           ]
         },
         {
-          "name": "poll-op-1456",
+          "name": "poll-op-1450",
           "request": {
             "method": "GET",
             "header": [
@@ -3313,7 +3313,7 @@
           ]
         },
         {
-          "name": "poll-op-1457",
+          "name": "poll-op-1451",
           "request": {
             "method": "GET",
             "header": [
@@ -3467,7 +3467,7 @@
           ]
         },
         {
-          "name": "poll-op-1458",
+          "name": "poll-op-1452",
           "request": {
             "method": "GET",
             "header": [
@@ -3722,7 +3722,7 @@
           ]
         },
         {
-          "name": "poll-op-1459",
+          "name": "poll-op-1453",
           "request": {
             "method": "GET",
             "header": [
@@ -3830,7 +3830,7 @@
           ]
         },
         {
-          "name": "poll-op-1460",
+          "name": "poll-op-1454",
           "request": {
             "method": "GET",
             "header": [
@@ -3973,7 +3973,7 @@
           ]
         },
         {
-          "name": "poll-op-1461",
+          "name": "poll-op-1455",
           "request": {
             "method": "GET",
             "header": [
@@ -4316,7 +4316,7 @@
           ]
         },
         {
-          "name": "poll-op-1462",
+          "name": "poll-op-1456",
           "request": {
             "method": "GET",
             "header": [
@@ -4424,7 +4424,7 @@
           ]
         },
         {
-          "name": "poll-op-1463",
+          "name": "poll-op-1457",
           "request": {
             "method": "GET",
             "header": [
@@ -4583,7 +4583,7 @@
           ]
         },
         {
-          "name": "poll-op-1464",
+          "name": "poll-op-1458",
           "request": {
             "method": "GET",
             "header": [
@@ -4784,7 +4784,7 @@
           ]
         },
         {
-          "name": "poll-op-1465",
+          "name": "poll-op-1459",
           "request": {
             "method": "GET",
             "header": [
@@ -4892,7 +4892,7 @@
           ]
         },
         {
-          "name": "poll-op-1466",
+          "name": "poll-op-1460",
           "request": {
             "method": "GET",
             "header": [
@@ -5011,7 +5011,7 @@
           ]
         },
         {
-          "name": "poll-op-1467",
+          "name": "poll-op-1461",
           "request": {
             "method": "GET",
             "header": [
@@ -5157,7 +5157,7 @@
           ]
         },
         {
-          "name": "poll-op-1468",
+          "name": "poll-op-1462",
           "request": {
             "method": "GET",
             "header": [
@@ -5311,7 +5311,7 @@
           ]
         },
         {
-          "name": "poll-op-1469",
+          "name": "poll-op-1463",
           "request": {
             "method": "GET",
             "header": [
@@ -5419,7 +5419,7 @@
           ]
         },
         {
-          "name": "poll-op-1470",
+          "name": "poll-op-1464",
           "request": {
             "method": "GET",
             "header": [
@@ -5551,7 +5551,7 @@
           ]
         },
         {
-          "name": "poll-op-1471",
+          "name": "poll-op-1465",
           "request": {
             "method": "GET",
             "header": [
@@ -5705,7 +5705,7 @@
           ]
         },
         {
-          "name": "poll-op-1472",
+          "name": "poll-op-1466",
           "request": {
             "method": "GET",
             "header": [
@@ -5818,7 +5818,7 @@
           ]
         },
         {
-          "name": "poll-op-1473",
+          "name": "poll-op-1467",
           "request": {
             "method": "GET",
             "header": [
@@ -5950,7 +5950,7 @@
           ]
         },
         {
-          "name": "poll-op-1474",
+          "name": "poll-op-1468",
           "request": {
             "method": "GET",
             "header": [
@@ -6334,7 +6334,7 @@
           ]
         },
         {
-          "name": "poll-op-1475",
+          "name": "poll-op-1469",
           "request": {
             "method": "GET",
             "header": [
@@ -6442,7 +6442,7 @@
           ]
         },
         {
-          "name": "poll-op-1476",
+          "name": "poll-op-1470",
           "request": {
             "method": "GET",
             "header": [
@@ -6561,7 +6561,7 @@
           ]
         },
         {
-          "name": "poll-op-1477",
+          "name": "poll-op-1471",
           "request": {
             "method": "GET",
             "header": [
@@ -6656,7 +6656,7 @@
           ]
         },
         {
-          "name": "poll-op-1478",
+          "name": "poll-op-1472",
           "request": {
             "method": "GET",
             "header": [
@@ -6810,7 +6810,7 @@
           ]
         },
         {
-          "name": "poll-op-1479",
+          "name": "poll-op-1473",
           "request": {
             "method": "GET",
             "header": [
@@ -6918,7 +6918,7 @@
           ]
         },
         {
-          "name": "poll-op-1480",
+          "name": "poll-op-1474",
           "request": {
             "method": "GET",
             "header": [
@@ -7037,7 +7037,7 @@
           ]
         },
         {
-          "name": "poll-op-1481",
+          "name": "poll-op-1475",
           "request": {
             "method": "GET",
             "header": [
@@ -7156,7 +7156,7 @@
           ]
         },
         {
-          "name": "poll-op-1482",
+          "name": "poll-op-1476",
           "request": {
             "method": "GET",
             "header": [
@@ -7317,7 +7317,7 @@
           ]
         },
         {
-          "name": "poll-op-1483",
+          "name": "poll-op-1477",
           "request": {
             "method": "GET",
             "header": [
@@ -7568,7 +7568,7 @@
           ]
         },
         {
-          "name": "poll-op-1484",
+          "name": "poll-op-1478",
           "request": {
             "method": "GET",
             "header": [
@@ -7676,7 +7676,7 @@
           ]
         },
         {
-          "name": "poll-op-1485",
+          "name": "poll-op-1479",
           "request": {
             "method": "GET",
             "header": [
@@ -7819,7 +7819,7 @@
           ]
         },
         {
-          "name": "poll-op-1486",
+          "name": "poll-op-1480",
           "request": {
             "method": "GET",
             "header": [
@@ -8027,7 +8027,7 @@
           ]
         },
         {
-          "name": "poll-op-1487",
+          "name": "poll-op-1481",
           "request": {
             "method": "GET",
             "header": [
@@ -8135,7 +8135,7 @@
           ]
         },
         {
-          "name": "poll-op-1488",
+          "name": "poll-op-1482",
           "request": {
             "method": "GET",
             "header": [
@@ -8277,7 +8277,7 @@
           ]
         },
         {
-          "name": "poll-op-1489",
+          "name": "poll-op-1483",
           "request": {
             "method": "GET",
             "header": [
@@ -8431,7 +8431,7 @@
           ]
         },
         {
-          "name": "poll-op-1490",
+          "name": "poll-op-1484",
           "request": {
             "method": "GET",
             "header": [
@@ -8539,7 +8539,7 @@
           ]
         },
         {
-          "name": "poll-op-1491",
+          "name": "poll-op-1485",
           "request": {
             "method": "GET",
             "header": [
@@ -8649,7 +8649,7 @@
           ]
         },
         {
-          "name": "poll-op-1492",
+          "name": "poll-op-1486",
           "request": {
             "method": "GET",
             "header": [
@@ -8838,7 +8838,7 @@
           ]
         },
         {
-          "name": "poll-op-1493",
+          "name": "poll-op-1487",
           "request": {
             "method": "GET",
             "header": [
@@ -8946,7 +8946,7 @@
           ]
         },
         {
-          "name": "poll-op-1494",
+          "name": "poll-op-1488",
           "request": {
             "method": "GET",
             "header": [
@@ -9038,7 +9038,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected (400 sync or async FailedPrecondition)', () => pm.expect(pm.response.code).to.be.oneOf([400, 200]));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('operation completed inline', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('overlapping CIDR refused (FailedPrecondition)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(9));",
+                  "pm.test('refusal names the overlap', () => pm.expect((j.error && j.error.message) || '').to.match(/overlap/i));"
                 ]
               }
             }
@@ -9084,7 +9088,7 @@
           ]
         },
         {
-          "name": "poll-op-1495",
+          "name": "poll-op-1489",
           "request": {
             "method": "GET",
             "header": [
@@ -9238,7 +9242,7 @@
           ]
         },
         {
-          "name": "poll-op-1496",
+          "name": "poll-op-1490",
           "request": {
             "method": "GET",
             "header": [
@@ -9346,7 +9350,7 @@
           ]
         },
         {
-          "name": "poll-op-1497",
+          "name": "poll-op-1491",
           "request": {
             "method": "GET",
             "header": [
@@ -9438,7 +9442,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('operation completed inline', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('absent CIDR refused (FailedPrecondition)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(9));",
+                  "pm.test('refusal names the missing block', () => pm.expect((j.error && j.error.message) || '').to.contain('not found in subnet'));"
                 ]
               }
             }
@@ -9484,7 +9492,7 @@
           ]
         },
         {
-          "name": "poll-op-1498",
+          "name": "poll-op-1492",
           "request": {
             "method": "GET",
             "header": [
@@ -9825,7 +9833,7 @@
           ]
         },
         {
-          "name": "poll-op-1499",
+          "name": "poll-op-1493",
           "request": {
             "method": "GET",
             "header": [
@@ -9933,7 +9941,7 @@
           ]
         },
         {
-          "name": "poll-op-1500",
+          "name": "poll-op-1494",
           "request": {
             "method": "GET",
             "header": [
@@ -10052,7 +10060,7 @@
           ]
         },
         {
-          "name": "poll-op-1501",
+          "name": "poll-op-1495",
           "request": {
             "method": "GET",
             "header": [
@@ -10156,7 +10164,7 @@
           ]
         },
         {
-          "name": "poll-op-1502",
+          "name": "poll-op-1496",
           "request": {
             "method": "GET",
             "header": [
@@ -10302,7 +10310,7 @@
           ]
         },
         {
-          "name": "poll-op-1503",
+          "name": "poll-op-1497",
           "request": {
             "method": "GET",
             "header": [
@@ -10399,7 +10407,7 @@
       ]
     },
     {
-      "name": "SUB-CR-BVA-NAME-EMPTY — Create с empty name → VPC permissive (200) или 400",
+      "name": "SUB-CR-BVA-NAME-EMPTY — Create с empty name → 200 (пустое имя разрешено контрактом)",
       "description": "class:BVA | class:VAL | priority:P2",
       "item": [
         {
@@ -10456,7 +10464,7 @@
           ]
         },
         {
-          "name": "poll-op-1504",
+          "name": "poll-op-1498",
           "request": {
             "method": "GET",
             "header": [
@@ -10547,7 +10555,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('accepted or rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
                 ]
               }
             }
@@ -10668,7 +10681,7 @@
           ]
         },
         {
-          "name": "poll-op-1505",
+          "name": "poll-op-1499",
           "request": {
             "method": "GET",
             "header": [
@@ -10885,7 +10898,7 @@
           ]
         },
         {
-          "name": "poll-op-1506",
+          "name": "poll-op-1500",
           "request": {
             "method": "GET",
             "header": [
@@ -11044,7 +11057,7 @@
       ]
     },
     {
-      "name": "SUB-CR-VAL-NAME-UPPERCASE — Create с UPPERCASE name → VPC permissive (200) или 400",
+      "name": "SUB-CR-VAL-NAME-UPPERCASE — Create с UPPERCASE name → 200 (заглавные разрешены контрактом)",
       "description": "class:VAL | priority:P2",
       "item": [
         {
@@ -11101,7 +11114,7 @@
           ]
         },
         {
-          "name": "poll-op-1507",
+          "name": "poll-op-1501",
           "request": {
             "method": "GET",
             "header": [
@@ -11192,7 +11205,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('accepted or rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
                 ]
               }
             }
@@ -11313,7 +11331,7 @@
           ]
         },
         {
-          "name": "poll-op-1508",
+          "name": "poll-op-1502",
           "request": {
             "method": "GET",
             "header": [
@@ -11529,7 +11547,7 @@
           ]
         },
         {
-          "name": "poll-op-1509",
+          "name": "poll-op-1503",
           "request": {
             "method": "GET",
             "header": [
@@ -11745,7 +11763,7 @@
           ]
         },
         {
-          "name": "poll-op-1510",
+          "name": "poll-op-1504",
           "request": {
             "method": "GET",
             "header": [
@@ -11961,7 +11979,7 @@
           ]
         },
         {
-          "name": "poll-op-1511",
+          "name": "poll-op-1505",
           "request": {
             "method": "GET",
             "header": [
@@ -12178,7 +12196,7 @@
           ]
         },
         {
-          "name": "poll-op-1512",
+          "name": "poll-op-1506",
           "request": {
             "method": "GET",
             "header": [
@@ -12394,7 +12412,7 @@
           ]
         },
         {
-          "name": "poll-op-1513",
+          "name": "poll-op-1507",
           "request": {
             "method": "GET",
             "header": [
@@ -12610,7 +12628,7 @@
           ]
         },
         {
-          "name": "poll-op-1514",
+          "name": "poll-op-1508",
           "request": {
             "method": "GET",
             "header": [
@@ -12826,7 +12844,7 @@
           ]
         },
         {
-          "name": "poll-op-1515",
+          "name": "poll-op-1509",
           "request": {
             "method": "GET",
             "header": [
@@ -13043,7 +13061,7 @@
           ]
         },
         {
-          "name": "poll-op-1516",
+          "name": "poll-op-1510",
           "request": {
             "method": "GET",
             "header": [
@@ -13569,7 +13587,7 @@
           ]
         },
         {
-          "name": "poll-op-1526",
+          "name": "poll-op-1520",
           "request": {
             "method": "GET",
             "header": [
@@ -13677,7 +13695,7 @@
           ]
         },
         {
-          "name": "poll-op-1517",
+          "name": "poll-op-1511",
           "request": {
             "method": "GET",
             "header": [
@@ -13796,7 +13814,7 @@
           ]
         },
         {
-          "name": "poll-op-1518",
+          "name": "poll-op-1512",
           "request": {
             "method": "GET",
             "header": [
@@ -13956,7 +13974,7 @@
           ]
         },
         {
-          "name": "poll-op-1519",
+          "name": "poll-op-1513",
           "request": {
             "method": "GET",
             "header": [
@@ -14125,7 +14143,7 @@
           ]
         },
         {
-          "name": "poll-op-1527",
+          "name": "poll-op-1521",
           "request": {
             "method": "GET",
             "header": [
@@ -14233,7 +14251,7 @@
           ]
         },
         {
-          "name": "poll-op-1520",
+          "name": "poll-op-1514",
           "request": {
             "method": "GET",
             "header": [
@@ -14352,7 +14370,7 @@
           ]
         },
         {
-          "name": "poll-op-1521",
+          "name": "poll-op-1515",
           "request": {
             "method": "GET",
             "header": [
@@ -14512,7 +14530,7 @@
           ]
         },
         {
-          "name": "poll-op-1522",
+          "name": "poll-op-1516",
           "request": {
             "method": "GET",
             "header": [
@@ -14681,7 +14699,7 @@
           ]
         },
         {
-          "name": "poll-op-1528",
+          "name": "poll-op-1522",
           "request": {
             "method": "GET",
             "header": [
@@ -14789,7 +14807,7 @@
           ]
         },
         {
-          "name": "poll-op-1523",
+          "name": "poll-op-1517",
           "request": {
             "method": "GET",
             "header": [
@@ -14908,7 +14926,7 @@
           ]
         },
         {
-          "name": "poll-op-1524",
+          "name": "poll-op-1518",
           "request": {
             "method": "GET",
             "header": [
@@ -15069,7 +15087,7 @@
           ]
         },
         {
-          "name": "poll-op-1525",
+          "name": "poll-op-1519",
           "request": {
             "method": "GET",
             "header": [
@@ -15371,7 +15389,7 @@
       ]
     },
     {
-      "name": "SUB-AUTHZ-EMPTY-PROJECT-HEADER — List с пустым x-kacho-project-id header → текущее: 200 (dev mode)",
+      "name": "SUB-AUTHZ-EMPTY-PROJECT-HEADER — Заголовок x-kacho-project-id от клиента не задаёт scope → 200 по своему проекту",
       "description": "class:AUTHZ | priority:P1",
       "item": [
         {
@@ -15398,11 +15416,21 @@
           },
           "event": [
             {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.request.headers.upsert({key: 'x-kacho-project-id', value: '{{garbageRmId}}'});"
+                ]
+              }
+            },
+            {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('OK in dev or PermissionDenied in production', () => pm.expect(pm.response.code).to.be.oneOf([200, 403, 401]));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('client-asserted project header is not honoured as scope', () => pm.expect(pm.response.json()).to.be.an('object'));"
                 ]
               }
             }
@@ -15468,7 +15496,7 @@
           ]
         },
         {
-          "name": "poll-op-1532",
+          "name": "poll-op-1526",
           "request": {
             "method": "GET",
             "header": [
@@ -15576,7 +15604,7 @@
           ]
         },
         {
-          "name": "poll-op-1529",
+          "name": "poll-op-1523",
           "request": {
             "method": "GET",
             "header": [
@@ -15695,7 +15723,7 @@
           ]
         },
         {
-          "name": "poll-op-1530",
+          "name": "poll-op-1524",
           "request": {
             "method": "GET",
             "header": [
@@ -15859,7 +15887,7 @@
           ]
         },
         {
-          "name": "poll-op-1531",
+          "name": "poll-op-1525",
           "request": {
             "method": "GET",
             "header": [
@@ -16028,7 +16056,7 @@
           ]
         },
         {
-          "name": "poll-op-1535",
+          "name": "poll-op-1529",
           "request": {
             "method": "GET",
             "header": [
@@ -16136,7 +16164,7 @@
           ]
         },
         {
-          "name": "poll-op-1533",
+          "name": "poll-op-1527",
           "request": {
             "method": "GET",
             "header": [
@@ -16298,7 +16326,7 @@
           ]
         },
         {
-          "name": "poll-op-1534",
+          "name": "poll-op-1528",
           "request": {
             "method": "GET",
             "header": [
@@ -16410,8 +16438,8 @@
       ]
     },
     {
-      "name": "SUB-CR-VAL-NAME-NULL — Create с name=null → 400",
-      "description": "class:VAL | class:NEG | priority:P2",
+      "name": "SUB-CR-VAL-NAME-NULL — Create с name=null → 200 (protojson: null = поле не задано; пустое имя разрешено)",
+      "description": "class:VAL | priority:P2",
       "item": [
         {
           "name": "pre-create-net",
@@ -16467,7 +16495,7 @@
           ]
         },
         {
-          "name": "poll-op-1536",
+          "name": "poll-op-1530",
           "request": {
             "method": "GET",
             "header": [
@@ -16558,7 +16586,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
                 ]
               }
             }
@@ -16679,7 +16712,7 @@
           ]
         },
         {
-          "name": "poll-op-1537",
+          "name": "poll-op-1531",
           "request": {
             "method": "GET",
             "header": [
@@ -16897,7 +16930,7 @@
           ]
         },
         {
-          "name": "poll-op-1538",
+          "name": "poll-op-1532",
           "request": {
             "method": "GET",
             "header": [
@@ -17309,7 +17342,7 @@
           ]
         },
         {
-          "name": "poll-op-1542",
+          "name": "poll-op-1536",
           "request": {
             "method": "GET",
             "header": [
@@ -17417,7 +17450,7 @@
           ]
         },
         {
-          "name": "poll-op-1539",
+          "name": "poll-op-1533",
           "request": {
             "method": "GET",
             "header": [
@@ -17536,7 +17569,7 @@
           ]
         },
         {
-          "name": "poll-op-1540",
+          "name": "poll-op-1534",
           "request": {
             "method": "GET",
             "header": [
@@ -17699,7 +17732,7 @@
           ]
         },
         {
-          "name": "poll-op-1541",
+          "name": "poll-op-1535",
           "request": {
             "method": "GET",
             "header": [
@@ -17868,7 +17901,7 @@
           ]
         },
         {
-          "name": "poll-op-1545",
+          "name": "poll-op-1539",
           "request": {
             "method": "GET",
             "header": [
@@ -17976,7 +18009,7 @@
           ]
         },
         {
-          "name": "poll-op-1543",
+          "name": "poll-op-1537",
           "request": {
             "method": "GET",
             "header": [
@@ -18121,7 +18154,7 @@
           ]
         },
         {
-          "name": "poll-op-1544",
+          "name": "poll-op-1538",
           "request": {
             "method": "GET",
             "header": [
@@ -18331,7 +18364,7 @@
           ]
         },
         {
-          "name": "poll-op-1548",
+          "name": "poll-op-1542",
           "request": {
             "method": "GET",
             "header": [
@@ -18439,7 +18472,7 @@
           ]
         },
         {
-          "name": "poll-op-1546",
+          "name": "poll-op-1540",
           "request": {
             "method": "GET",
             "header": [
@@ -18534,7 +18567,7 @@
           ]
         },
         {
-          "name": "poll-op-1547",
+          "name": "poll-op-1541",
           "request": {
             "method": "GET",
             "header": [
@@ -18703,7 +18736,7 @@
           ]
         },
         {
-          "name": "poll-op-1549",
+          "name": "poll-op-1543",
           "request": {
             "method": "GET",
             "header": [
@@ -18920,7 +18953,7 @@
           ]
         },
         {
-          "name": "poll-op-1550",
+          "name": "poll-op-1544",
           "request": {
             "method": "GET",
             "header": [
@@ -19137,7 +19170,7 @@
           ]
         },
         {
-          "name": "poll-op-1551",
+          "name": "poll-op-1545",
           "request": {
             "method": "GET",
             "header": [
@@ -19354,7 +19387,7 @@
           ]
         },
         {
-          "name": "poll-op-1552",
+          "name": "poll-op-1546",
           "request": {
             "method": "GET",
             "header": [
@@ -19462,7 +19495,7 @@
           ]
         },
         {
-          "name": "poll-op-1553",
+          "name": "poll-op-1547",
           "request": {
             "method": "GET",
             "header": [
@@ -19570,7 +19603,7 @@
           ]
         },
         {
-          "name": "poll-op-1554",
+          "name": "poll-op-1548",
           "request": {
             "method": "GET",
             "header": [
@@ -19704,7 +19737,7 @@
           ]
         },
         {
-          "name": "poll-op-1555",
+          "name": "poll-op-1549",
           "request": {
             "method": "GET",
             "header": [
@@ -19798,7 +19831,7 @@
           ]
         },
         {
-          "name": "poll-op-1556",
+          "name": "poll-op-1550",
           "request": {
             "method": "GET",
             "header": [
@@ -19952,7 +19985,7 @@
           ]
         },
         {
-          "name": "poll-op-1557",
+          "name": "poll-op-1551",
           "request": {
             "method": "GET",
             "header": [
@@ -20060,7 +20093,7 @@
           ]
         },
         {
-          "name": "poll-op-1558",
+          "name": "poll-op-1552",
           "request": {
             "method": "GET",
             "header": [
@@ -20168,7 +20201,7 @@
           ]
         },
         {
-          "name": "poll-op-1559",
+          "name": "poll-op-1553",
           "request": {
             "method": "GET",
             "header": [
@@ -20303,7 +20336,7 @@
           ]
         },
         {
-          "name": "poll-op-1560",
+          "name": "poll-op-1554",
           "request": {
             "method": "GET",
             "header": [
@@ -20398,7 +20431,7 @@
           ]
         },
         {
-          "name": "poll-op-1561",
+          "name": "poll-op-1555",
           "request": {
             "method": "GET",
             "header": [
@@ -20586,7 +20619,7 @@
           ]
         },
         {
-          "name": "poll-op-1562",
+          "name": "poll-op-1556",
           "request": {
             "method": "GET",
             "header": [
@@ -20694,7 +20727,7 @@
           ]
         },
         {
-          "name": "poll-op-1563",
+          "name": "poll-op-1557",
           "request": {
             "method": "GET",
             "header": [
@@ -20802,7 +20835,7 @@
           ]
         },
         {
-          "name": "poll-op-1564",
+          "name": "poll-op-1558",
           "request": {
             "method": "GET",
             "header": [
@@ -20910,7 +20943,7 @@
           ]
         },
         {
-          "name": "poll-op-1565",
+          "name": "poll-op-1559",
           "request": {
             "method": "GET",
             "header": [
@@ -21125,7 +21158,7 @@
           ]
         },
         {
-          "name": "poll-op-1566",
+          "name": "poll-op-1560",
           "request": {
             "method": "GET",
             "header": [
@@ -21220,7 +21253,7 @@
           ]
         },
         {
-          "name": "poll-op-1567",
+          "name": "poll-op-1561",
           "request": {
             "method": "GET",
             "header": [
@@ -21315,7 +21348,7 @@
           ]
         },
         {
-          "name": "poll-op-1568",
+          "name": "poll-op-1562",
           "request": {
             "method": "GET",
             "header": [
@@ -21410,7 +21443,7 @@
           ]
         },
         {
-          "name": "poll-op-1569",
+          "name": "poll-op-1563",
           "request": {
             "method": "GET",
             "header": [
@@ -21558,7 +21591,7 @@
           ]
         },
         {
-          "name": "poll-op-1570",
+          "name": "poll-op-1564",
           "request": {
             "method": "GET",
             "header": [
@@ -21666,7 +21699,7 @@
           ]
         },
         {
-          "name": "poll-op-1571",
+          "name": "poll-op-1565",
           "request": {
             "method": "GET",
             "header": [
@@ -21774,7 +21807,7 @@
           ]
         },
         {
-          "name": "poll-op-1572",
+          "name": "poll-op-1566",
           "request": {
             "method": "GET",
             "header": [
@@ -21909,7 +21942,7 @@
           ]
         },
         {
-          "name": "poll-op-1573",
+          "name": "poll-op-1567",
           "request": {
             "method": "GET",
             "header": [
@@ -22004,7 +22037,7 @@
           ]
         },
         {
-          "name": "poll-op-1574",
+          "name": "poll-op-1568",
           "request": {
             "method": "GET",
             "header": [
@@ -22192,7 +22225,7 @@
           ]
         },
         {
-          "name": "poll-op-1575",
+          "name": "poll-op-1569",
           "request": {
             "method": "GET",
             "header": [
@@ -22300,7 +22333,7 @@
           ]
         },
         {
-          "name": "poll-op-1576",
+          "name": "poll-op-1570",
           "request": {
             "method": "GET",
             "header": [
@@ -22410,7 +22443,7 @@
           ]
         },
         {
-          "name": "poll-op-1577",
+          "name": "poll-op-1571",
           "request": {
             "method": "GET",
             "header": [
@@ -22598,7 +22631,7 @@
           ]
         },
         {
-          "name": "poll-op-1578",
+          "name": "poll-op-1572",
           "request": {
             "method": "GET",
             "header": [
@@ -22810,7 +22843,7 @@
           ]
         },
         {
-          "name": "poll-op-1579",
+          "name": "poll-op-1573",
           "request": {
             "method": "GET",
             "header": [
@@ -23022,7 +23055,7 @@
           ]
         },
         {
-          "name": "poll-op-1580",
+          "name": "poll-op-1574",
           "request": {
             "method": "GET",
             "header": [
@@ -23234,7 +23267,7 @@
           ]
         },
         {
-          "name": "poll-op-1581",
+          "name": "poll-op-1575",
           "request": {
             "method": "GET",
             "header": [
@@ -23726,7 +23759,7 @@
           ]
         },
         {
-          "name": "poll-op-1591",
+          "name": "poll-op-1583",
           "request": {
             "method": "GET",
             "header": [
@@ -23834,7 +23867,7 @@
           ]
         },
         {
-          "name": "poll-op-1592",
+          "name": "poll-op-1584",
           "request": {
             "method": "GET",
             "header": [
@@ -23988,7 +24021,7 @@
           ]
         },
         {
-          "name": "poll-op-1582",
+          "name": "poll-op-1576",
           "request": {
             "method": "GET",
             "header": [
@@ -24118,7 +24151,7 @@
           ]
         },
         {
-          "name": "poll-op-1593",
+          "name": "poll-op-1585",
           "request": {
             "method": "GET",
             "header": [
@@ -24272,7 +24305,7 @@
           ]
         },
         {
-          "name": "poll-op-1594",
+          "name": "poll-op-1586",
           "request": {
             "method": "GET",
             "header": [
@@ -24380,7 +24413,7 @@
           ]
         },
         {
-          "name": "poll-op-1595",
+          "name": "poll-op-1587",
           "request": {
             "method": "GET",
             "header": [
@@ -24534,7 +24567,7 @@
           ]
         },
         {
-          "name": "poll-op-1583",
+          "name": "poll-op-1577",
           "request": {
             "method": "GET",
             "header": [
@@ -24669,7 +24702,7 @@
           ]
         },
         {
-          "name": "poll-op-1596",
+          "name": "poll-op-1588",
           "request": {
             "method": "GET",
             "header": [
@@ -24823,7 +24856,7 @@
           ]
         },
         {
-          "name": "poll-op-1597",
+          "name": "poll-op-1589",
           "request": {
             "method": "GET",
             "header": [
@@ -24931,7 +24964,7 @@
           ]
         },
         {
-          "name": "poll-op-1598",
+          "name": "poll-op-1590",
           "request": {
             "method": "GET",
             "header": [
@@ -25073,103 +25106,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-1584",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  // Postman async-friendly retry: re-invoke same request name",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "assert-overlap",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "const j = pm.response.json();",
-                  "pm.test('error code 3 or 9 (sync or async)', () => {",
-                  "  if (j.error) pm.expect(j.error.code).to.be.oneOf([3, 9]);",
-                  "});"
+                  "pm.test('operation completed inline', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('overlapping CIDR refused (FailedPrecondition)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(9));",
+                  "pm.test('refusal names the overlap', () => pm.expect((j.error && j.error.message) || '').to.match(/overlap/i));"
                 ]
               }
             }
@@ -25215,7 +25156,7 @@
           ]
         },
         {
-          "name": "poll-op-1599",
+          "name": "poll-op-1591",
           "request": {
             "method": "GET",
             "header": [
@@ -25369,7 +25310,7 @@
           ]
         },
         {
-          "name": "poll-op-1600",
+          "name": "poll-op-1592",
           "request": {
             "method": "GET",
             "header": [
@@ -25477,7 +25418,7 @@
           ]
         },
         {
-          "name": "poll-op-1601",
+          "name": "poll-op-1593",
           "request": {
             "method": "GET",
             "header": [
@@ -25669,7 +25610,7 @@
           ]
         },
         {
-          "name": "poll-op-1602",
+          "name": "poll-op-1594",
           "request": {
             "method": "GET",
             "header": [
@@ -25823,7 +25764,7 @@
           ]
         },
         {
-          "name": "poll-op-1603",
+          "name": "poll-op-1595",
           "request": {
             "method": "GET",
             "header": [
@@ -25931,7 +25872,7 @@
           ]
         },
         {
-          "name": "poll-op-1604",
+          "name": "poll-op-1596",
           "request": {
             "method": "GET",
             "header": [
@@ -26085,7 +26026,7 @@
           ]
         },
         {
-          "name": "poll-op-1585",
+          "name": "poll-op-1578",
           "request": {
             "method": "GET",
             "header": [
@@ -26189,7 +26130,7 @@
           ]
         },
         {
-          "name": "poll-op-1586",
+          "name": "poll-op-1579",
           "request": {
             "method": "GET",
             "header": [
@@ -26324,7 +26265,7 @@
           ]
         },
         {
-          "name": "poll-op-1605",
+          "name": "poll-op-1597",
           "request": {
             "method": "GET",
             "header": [
@@ -26478,7 +26419,7 @@
           ]
         },
         {
-          "name": "poll-op-1606",
+          "name": "poll-op-1598",
           "request": {
             "method": "GET",
             "header": [
@@ -26586,7 +26527,7 @@
           ]
         },
         {
-          "name": "poll-op-1607",
+          "name": "poll-op-1599",
           "request": {
             "method": "GET",
             "header": [
@@ -26740,7 +26681,7 @@
           ]
         },
         {
-          "name": "poll-op-1587",
+          "name": "poll-op-1580",
           "request": {
             "method": "GET",
             "header": [
@@ -26869,7 +26810,7 @@
           ]
         },
         {
-          "name": "poll-op-1608",
+          "name": "poll-op-1600",
           "request": {
             "method": "GET",
             "header": [
@@ -27023,7 +26964,7 @@
           ]
         },
         {
-          "name": "poll-op-1609",
+          "name": "poll-op-1601",
           "request": {
             "method": "GET",
             "header": [
@@ -27131,7 +27072,7 @@
           ]
         },
         {
-          "name": "poll-op-1610",
+          "name": "poll-op-1602",
           "request": {
             "method": "GET",
             "header": [
@@ -27273,103 +27214,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-1588",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  // Postman async-friendly retry: re-invoke same request name",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "check",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "const j = pm.response.json();",
-                  "pm.test('completed', () => pm.expect(j.done).to.eql(true));",
-                  "// Ожидаемое: error c кодом 9 (FailedPrecondition cannot remove primary)",
-                  "// либо silent success (продукт permissive)"
+                  "pm.test('operation completed inline', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('primary anchor refused (InvalidArgument)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(3));",
+                  "pm.test('refusal uses the immutable contract tone', () => pm.expect((j.error && j.error.message) || '').to.contain('ipv4_cidr_primary is immutable after Subnet.Create'));"
                 ]
               }
             }
@@ -27415,7 +27264,7 @@
           ]
         },
         {
-          "name": "poll-op-1611",
+          "name": "poll-op-1603",
           "request": {
             "method": "GET",
             "header": [
@@ -27569,7 +27418,7 @@
           ]
         },
         {
-          "name": "poll-op-1612",
+          "name": "poll-op-1604",
           "request": {
             "method": "GET",
             "header": [
@@ -27677,7 +27526,7 @@
           ]
         },
         {
-          "name": "poll-op-1613",
+          "name": "poll-op-1605",
           "request": {
             "method": "GET",
             "header": [
@@ -27867,7 +27716,7 @@
           ]
         },
         {
-          "name": "poll-op-1589",
+          "name": "poll-op-1581",
           "request": {
             "method": "GET",
             "header": [
@@ -27971,7 +27820,7 @@
           ]
         },
         {
-          "name": "poll-op-1590",
+          "name": "poll-op-1582",
           "request": {
             "method": "GET",
             "header": [
@@ -28103,7 +27952,7 @@
           ]
         },
         {
-          "name": "poll-op-1614",
+          "name": "poll-op-1606",
           "request": {
             "method": "GET",
             "header": [
@@ -28257,7 +28106,7 @@
           ]
         },
         {
-          "name": "poll-op-1624",
+          "name": "poll-op-1616",
           "request": {
             "method": "GET",
             "header": [
@@ -28365,7 +28214,7 @@
           ]
         },
         {
-          "name": "poll-op-1615",
+          "name": "poll-op-1607",
           "request": {
             "method": "GET",
             "header": [
@@ -28574,7 +28423,7 @@
           ]
         },
         {
-          "name": "poll-op-1625",
+          "name": "poll-op-1617",
           "request": {
             "method": "GET",
             "header": [
@@ -28682,7 +28531,7 @@
           ]
         },
         {
-          "name": "poll-op-1616",
+          "name": "poll-op-1608",
           "request": {
             "method": "GET",
             "header": [
@@ -28891,7 +28740,7 @@
           ]
         },
         {
-          "name": "poll-op-1626",
+          "name": "poll-op-1618",
           "request": {
             "method": "GET",
             "header": [
@@ -28999,7 +28848,7 @@
           ]
         },
         {
-          "name": "poll-op-1617",
+          "name": "poll-op-1609",
           "request": {
             "method": "GET",
             "header": [
@@ -29208,7 +29057,7 @@
           ]
         },
         {
-          "name": "poll-op-1627",
+          "name": "poll-op-1619",
           "request": {
             "method": "GET",
             "header": [
@@ -29316,7 +29165,7 @@
           ]
         },
         {
-          "name": "poll-op-1618",
+          "name": "poll-op-1610",
           "request": {
             "method": "GET",
             "header": [
@@ -29525,7 +29374,7 @@
           ]
         },
         {
-          "name": "poll-op-1628",
+          "name": "poll-op-1620",
           "request": {
             "method": "GET",
             "header": [
@@ -29633,7 +29482,7 @@
           ]
         },
         {
-          "name": "poll-op-1619",
+          "name": "poll-op-1611",
           "request": {
             "method": "GET",
             "header": [
@@ -29842,7 +29691,7 @@
           ]
         },
         {
-          "name": "poll-op-1629",
+          "name": "poll-op-1621",
           "request": {
             "method": "GET",
             "header": [
@@ -29950,7 +29799,7 @@
           ]
         },
         {
-          "name": "poll-op-1620",
+          "name": "poll-op-1612",
           "request": {
             "method": "GET",
             "header": [
@@ -30159,7 +30008,7 @@
           ]
         },
         {
-          "name": "poll-op-1630",
+          "name": "poll-op-1622",
           "request": {
             "method": "GET",
             "header": [
@@ -30267,7 +30116,7 @@
           ]
         },
         {
-          "name": "poll-op-1621",
+          "name": "poll-op-1613",
           "request": {
             "method": "GET",
             "header": [
@@ -30476,7 +30325,7 @@
           ]
         },
         {
-          "name": "poll-op-1631",
+          "name": "poll-op-1623",
           "request": {
             "method": "GET",
             "header": [
@@ -30584,7 +30433,7 @@
           ]
         },
         {
-          "name": "poll-op-1622",
+          "name": "poll-op-1614",
           "request": {
             "method": "GET",
             "header": [
@@ -30793,7 +30642,7 @@
           ]
         },
         {
-          "name": "poll-op-1632",
+          "name": "poll-op-1624",
           "request": {
             "method": "GET",
             "header": [
@@ -30901,7 +30750,7 @@
           ]
         },
         {
-          "name": "poll-op-1623",
+          "name": "poll-op-1615",
           "request": {
             "method": "GET",
             "header": [
@@ -31110,7 +30959,7 @@
           ]
         },
         {
-          "name": "poll-op-1633",
+          "name": "poll-op-1625",
           "request": {
             "method": "GET",
             "header": [
@@ -31330,7 +31179,7 @@
           ]
         },
         {
-          "name": "poll-op-1634",
+          "name": "poll-op-1626",
           "request": {
             "method": "GET",
             "header": [
@@ -31550,7 +31399,7 @@
           ]
         },
         {
-          "name": "poll-op-1635",
+          "name": "poll-op-1627",
           "request": {
             "method": "GET",
             "header": [
@@ -31770,7 +31619,7 @@
           ]
         },
         {
-          "name": "poll-op-1636",
+          "name": "poll-op-1628",
           "request": {
             "method": "GET",
             "header": [
@@ -31990,7 +31839,7 @@
           ]
         },
         {
-          "name": "poll-op-1637",
+          "name": "poll-op-1629",
           "request": {
             "method": "GET",
             "header": [
@@ -32210,7 +32059,7 @@
           ]
         },
         {
-          "name": "poll-op-1638",
+          "name": "poll-op-1630",
           "request": {
             "method": "GET",
             "header": [
@@ -32430,7 +32279,7 @@
           ]
         },
         {
-          "name": "poll-op-1639",
+          "name": "poll-op-1631",
           "request": {
             "method": "GET",
             "header": [
@@ -32650,7 +32499,7 @@
           ]
         },
         {
-          "name": "poll-op-1640",
+          "name": "poll-op-1632",
           "request": {
             "method": "GET",
             "header": [
@@ -32854,7 +32703,7 @@
           ]
         },
         {
-          "name": "poll-op-1641",
+          "name": "poll-op-1633",
           "request": {
             "method": "GET",
             "header": [
@@ -32962,7 +32811,7 @@
           ]
         },
         {
-          "name": "poll-op-1642",
+          "name": "poll-op-1634",
           "request": {
             "method": "GET",
             "header": [
@@ -33081,7 +32930,7 @@
           ]
         },
         {
-          "name": "poll-op-1643",
+          "name": "poll-op-1635",
           "request": {
             "method": "GET",
             "header": [
@@ -33227,7 +33076,7 @@
           ]
         },
         {
-          "name": "poll-op-1644",
+          "name": "poll-op-1636",
           "request": {
             "method": "GET",
             "header": [
@@ -33381,7 +33230,7 @@
           ]
         },
         {
-          "name": "poll-op-1645",
+          "name": "poll-op-1637",
           "request": {
             "method": "GET",
             "header": [
@@ -33489,7 +33338,7 @@
           ]
         },
         {
-          "name": "poll-op-1646",
+          "name": "poll-op-1638",
           "request": {
             "method": "GET",
             "header": [
@@ -33608,7 +33457,7 @@
           ]
         },
         {
-          "name": "poll-op-1647",
+          "name": "poll-op-1639",
           "request": {
             "method": "GET",
             "header": [
@@ -33727,7 +33576,7 @@
           ]
         },
         {
-          "name": "poll-op-1648",
+          "name": "poll-op-1640",
           "request": {
             "method": "GET",
             "header": [
@@ -33874,7 +33723,7 @@
           ]
         },
         {
-          "name": "poll-op-1649",
+          "name": "poll-op-1641",
           "request": {
             "method": "GET",
             "header": [
@@ -34028,7 +33877,7 @@
           ]
         },
         {
-          "name": "poll-op-1650",
+          "name": "poll-op-1642",
           "request": {
             "method": "GET",
             "header": [
@@ -34136,7 +33985,7 @@
           ]
         },
         {
-          "name": "poll-op-1651",
+          "name": "poll-op-1643",
           "request": {
             "method": "GET",
             "header": [
@@ -34279,7 +34128,7 @@
           ]
         },
         {
-          "name": "poll-op-1652",
+          "name": "poll-op-1644",
           "request": {
             "method": "GET",
             "header": [
@@ -34433,7 +34282,7 @@
           ]
         },
         {
-          "name": "poll-op-1653",
+          "name": "poll-op-1645",
           "request": {
             "method": "GET",
             "header": [
@@ -34541,7 +34390,7 @@
           ]
         },
         {
-          "name": "poll-op-1654",
+          "name": "poll-op-1646",
           "request": {
             "method": "GET",
             "header": [
@@ -34683,7 +34532,7 @@
           ]
         },
         {
-          "name": "poll-op-1655",
+          "name": "poll-op-1647",
           "request": {
             "method": "GET",
             "header": [
@@ -34778,7 +34627,7 @@
           ]
         },
         {
-          "name": "poll-op-1656",
+          "name": "poll-op-1648",
           "request": {
             "method": "GET",
             "header": [
@@ -34892,7 +34741,7 @@
           ]
         },
         {
-          "name": "poll-op-1657",
+          "name": "poll-op-1649",
           "request": {
             "method": "GET",
             "header": [
@@ -35000,7 +34849,7 @@
           ]
         },
         {
-          "name": "poll-op-1658",
+          "name": "poll-op-1650",
           "request": {
             "method": "GET",
             "header": [
@@ -35189,7 +35038,7 @@
           ]
         },
         {
-          "name": "poll-op-1659",
+          "name": "poll-op-1651",
           "request": {
             "method": "GET",
             "header": [
@@ -35284,7 +35133,7 @@
           ]
         },
         {
-          "name": "poll-op-1660",
+          "name": "poll-op-1652",
           "request": {
             "method": "GET",
             "header": [
@@ -35398,7 +35247,7 @@
           ]
         },
         {
-          "name": "poll-op-1661",
+          "name": "poll-op-1653",
           "request": {
             "method": "GET",
             "header": [
@@ -35506,7 +35355,7 @@
           ]
         },
         {
-          "name": "poll-op-1662",
+          "name": "poll-op-1654",
           "request": {
             "method": "GET",
             "header": [
@@ -35614,7 +35463,7 @@
           ]
         },
         {
-          "name": "poll-op-1663",
+          "name": "poll-op-1655",
           "request": {
             "method": "GET",
             "header": [
@@ -35722,7 +35571,7 @@
           ]
         },
         {
-          "name": "poll-op-1664",
+          "name": "poll-op-1656",
           "request": {
             "method": "GET",
             "header": [
@@ -35830,7 +35679,7 @@
           ]
         },
         {
-          "name": "poll-op-1665",
+          "name": "poll-op-1657",
           "request": {
             "method": "GET",
             "header": [
@@ -35979,7 +35828,7 @@
           ]
         },
         {
-          "name": "poll-op-1666",
+          "name": "poll-op-1658",
           "request": {
             "method": "GET",
             "header": [
@@ -36074,7 +35923,7 @@
           ]
         },
         {
-          "name": "poll-op-1667",
+          "name": "poll-op-1659",
           "request": {
             "method": "GET",
             "header": [
@@ -36169,7 +36018,7 @@
           ]
         },
         {
-          "name": "poll-op-1668",
+          "name": "poll-op-1660",
           "request": {
             "method": "GET",
             "header": [
@@ -36264,7 +36113,7 @@
           ]
         },
         {
-          "name": "poll-op-1669",
+          "name": "poll-op-1661",
           "request": {
             "method": "GET",
             "header": [
@@ -36359,7 +36208,7 @@
           ]
         },
         {
-          "name": "poll-op-1670",
+          "name": "poll-op-1662",
           "request": {
             "method": "GET",
             "header": [
@@ -36473,7 +36322,7 @@
           ]
         },
         {
-          "name": "poll-op-1671",
+          "name": "poll-op-1663",
           "request": {
             "method": "GET",
             "header": [
@@ -36581,7 +36430,7 @@
           ]
         },
         {
-          "name": "poll-op-1672",
+          "name": "poll-op-1664",
           "request": {
             "method": "GET",
             "header": [
@@ -36689,7 +36538,7 @@
           ]
         },
         {
-          "name": "poll-op-1673",
+          "name": "poll-op-1665",
           "request": {
             "method": "GET",
             "header": [
@@ -36797,7 +36646,7 @@
           ]
         },
         {
-          "name": "poll-op-1674",
+          "name": "poll-op-1666",
           "request": {
             "method": "GET",
             "header": [
@@ -36905,7 +36754,7 @@
           ]
         },
         {
-          "name": "poll-op-1675",
+          "name": "poll-op-1667",
           "request": {
             "method": "GET",
             "header": [
@@ -37013,7 +36862,7 @@
           ]
         },
         {
-          "name": "poll-op-1676",
+          "name": "poll-op-1668",
           "request": {
             "method": "GET",
             "header": [
@@ -37121,7 +36970,7 @@
           ]
         },
         {
-          "name": "poll-op-1677",
+          "name": "poll-op-1669",
           "request": {
             "method": "GET",
             "header": [
@@ -37269,7 +37118,7 @@
           ]
         },
         {
-          "name": "poll-op-1678",
+          "name": "poll-op-1670",
           "request": {
             "method": "GET",
             "header": [
@@ -37364,7 +37213,7 @@
           ]
         },
         {
-          "name": "poll-op-1679",
+          "name": "poll-op-1671",
           "request": {
             "method": "GET",
             "header": [
@@ -37459,7 +37308,7 @@
           ]
         },
         {
-          "name": "poll-op-1680",
+          "name": "poll-op-1672",
           "request": {
             "method": "GET",
             "header": [
@@ -37609,7 +37458,7 @@
           ]
         },
         {
-          "name": "poll-op-1681",
+          "name": "poll-op-1673",
           "request": {
             "method": "GET",
             "header": [
@@ -37704,7 +37553,7 @@
           ]
         },
         {
-          "name": "poll-op-1682",
+          "name": "poll-op-1674",
           "request": {
             "method": "GET",
             "header": [
@@ -37799,7 +37648,7 @@
           ]
         },
         {
-          "name": "poll-op-1683",
+          "name": "poll-op-1675",
           "request": {
             "method": "GET",
             "header": [
@@ -37894,7 +37743,7 @@
           ]
         },
         {
-          "name": "poll-op-1684",
+          "name": "poll-op-1676",
           "request": {
             "method": "GET",
             "header": [

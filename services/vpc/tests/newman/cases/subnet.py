@@ -767,8 +767,18 @@ CASES.append(Case(
         Step(name="add-overlap-self", method="POST",
              path="/vpc/v1/subnets/{{subId}}:add-cidr-blocks",
              body={"ipv4CidrBlocks": ["10.210.0.0/24"]},  # overlaps with existing
+             # AddCidrBlocks выполняет работу СИНХРОННО внутри вызова
+             # (operations.RunSync), но отказ наружу кодом ответа не поднимается —
+             # он записывается В САМУ операцию, которая возвращается уже
+             # завершённой. Значит исход один: 200 с операцией, несущей ошибку.
+             # Прежнее `oneOf([400, 200])` под заголовком «rejected» проходило и
+             # при полном отсутствии отказа, и ни один другой шаг отказ не смотрел.
              test_script=[
-                 "pm.test('rejected (400 sync or async FailedPrecondition)', () => pm.expect(pm.response.code).to.be.oneOf([400, 200]));",
+                 *assert_status(200),
+                 "const j = pm.response.json();",
+                 "pm.test('operation completed inline', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                 "pm.test('overlapping CIDR refused (FailedPrecondition)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(9));",
+                 "pm.test('refusal names the overlap', () => pm.expect((j.error && j.error.message) || '').to.match(/overlap/i));",
              ]),
         Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -793,8 +803,15 @@ CASES.append(Case(
         Step(name="rcb-nonexistent", method="POST",
              path="/vpc/v1/subnets/{{subId}}:remove-cidr-blocks",
              body={"ipv4CidrBlocks": ["192.168.99.0/24"]},  # never was in subnet
+             # Тот же порядок: работа синхронна, отказ живёт в возвращённой
+             # операции. Удаление блока, которого в подсети нет, — отказ, а не
+             # идемпотентный no-op (remove_cidr_blocks.go: removedV4 != len(v4)).
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(200),
+                 "const j = pm.response.json();",
+                 "pm.test('operation completed inline', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                 "pm.test('absent CIDR refused (FailedPrecondition)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(9));",
+                 "pm.test('refusal names the missing block', () => pm.expect((j.error && j.error.message) || '').to.contain('not found in subnet'));",
              ]),
         Step(name="cleanup", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
              test_script=[*save_from_response("j.id", "opId")]),

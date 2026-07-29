@@ -514,11 +514,38 @@ CASES.append(_sg_wrap("SG", "v9pf",
 CASES.extend(list_total_size_check_block("SG", "/vpc/v1/securityGroups"))
 
 # v10: SG-specific rule validation
+#
+# Заголовок каждого кейса обещает ОДИН исход, и утверждение проверяет ровно его.
+# Прежде на всю пятёрку стояло `oneOf([200, 400])` под меткой «rejected sync or
+# async»: и приём правила, и отказ в нём проходили одинаково, поэтому ни один из
+# четырёх отрицательных кейсов не мог упасть — независимо от того, что делает
+# продукт.
+#
+# Что делает продукт (services/vpc/internal/apps/kacho/api/securitygroup):
+#   * `validateSGRule` вызывается СИНХРОННО, до создания операции, и проверяет
+#     направление, описание, метки и CIDR-блоки → отказ виден кодом 400;
+#   * неизвестное значение перечисления направления не доходит даже до сервиса:
+#     его отвергает разбор тела на краю — тоже 400;
+#   * диапазон портов и имя протокола не проверяются НИГДЕ: ни в use-case, ни в
+#     доменной модели, ни ограничением БД (правила лежат одним JSONB-полем).
+#     Правило с портом вне диапазона или с несуществующим протоколом сохраняется
+#     как есть.
+#
+# Последнее — дефект продукта, а не свойство контракта, поэтому три кейса ниже
+# заявляют отказ и остаются КРАСНЫМИ до фикса. Подгонять утверждение под текущее
+# поведение нельзя: тогда дефект стал бы задокументированным контрактом. Сам фикс
+# — продуктовое решение (какие имена протоколов считать законными, как относиться
+# к протоколам без портов), он идёт своим порядком, а не побочным эффектом правки
+# тестов: https://github.com/PRO-Robotech/kacho/issues/103. Декларация —
+# docs/RESULTS.md, «Known failing tests — product bugs».
 for case_id, rule, expect_ok in [
+    # verifies https://github.com/PRO-Robotech/kacho/issues/103 — диапазон портов не проверяется (RED)
     ("SG-URL-VAL-PORT-NEG", {"fromPort": -2, "toPort": 22}, False),
+    # verifies https://github.com/PRO-Robotech/kacho/issues/103 — верхняя граница порта не проверяется (RED)
     ("SG-URL-VAL-PORT-OVER-65535", {"fromPort": 65536, "toPort": 65536}, False),
     ("SG-URL-VAL-PORT-ANY-MINUS-1", {"fromPort": -1, "toPort": -1}, True),
     ("SG-URL-VAL-DIRECTION-UNKNOWN", {"fromPort": 80, "toPort": 80, "direction": "DIAGONAL"}, False),
+    # verifies https://github.com/PRO-Robotech/kacho/issues/103 — имя протокола не проверяется (RED)
     ("SG-URL-VAL-PROTOCOL-UNKNOWN", {"fromPort": 80, "toPort": 80, "protocolName": "klingon"}, False),
 ]:
     rule_full = {"description": "test", "direction": rule.pop("direction", "INGRESS"),
@@ -543,10 +570,11 @@ for case_id, rule, expect_ok in [
             retry_until_authorized(
                 Step(name="update-rule-bad", method="PATCH", path="/vpc/v1/securityGroups/{{sgId}}/rules",
                      body={"additionRuleSpecs": [rule_full]},
-                     test_script=[
-                         f"pm.test('{'200' if expect_ok else 'rejected sync or async'}', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                         *(save_from_response("j.id", "opId") if expect_ok else []),
-                     ]),
+                     test_script=(
+                         [*assert_status(200), *save_from_response("j.id", "opId")]
+                         if expect_ok else
+                         [*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]
+                     )),
                 retry_on=(403,)),
         ] + ([poll_operation_until_done()] if expect_ok else []) + [
             Step(name="cleanup-sg", method="DELETE", path="/vpc/v1/securityGroups/{{sgId}}",
@@ -559,11 +587,22 @@ for case_id, rule, expect_ok in [
 # v11 edge cases
 CASES.append(Case(
     id="SG-LST-PAGE-NEGATIVE-SIZE",
-    title="List с pageSize=-1 → 400 или 200",
+    # Размер страницы вне [0..1000] ОТВЕРГАЕТСЯ, а не подменяется умолчанием
+    # (конвенция pagination). Исход ровно один, поэтому и утверждение одно:
+    # прежнее `oneOf([200, 400])` под заголовком «rejected or default» проходило
+    # и при отказе, и при его отсутствии — то есть не отделяло соблюдение
+    # контракта от нарушения. Проверка детерминирована: у прогона есть субъект,
+    # поэтому ранний выход по пустому субъекту не срабатывает и валидация
+    # страницы выполняется всегда.
+    title="List с pageSize=-1 → 400 InvalidArgument (отвергается, не clamp\'ится)",
     classes=["BVA", "VAL"], priority="P2",
     steps=[Step(name="lst-neg", method="GET",
                 path="/vpc/v1/securityGroups?projectId={{_suiteProjectId}}&pageSize=-1",
-                test_script=["pm.test('rejected or default', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"])],
+                test_script=[
+                    *assert_status(400),
+                    *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                    "pm.test('names the offending field', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('page_size'));",
+                ])],
 ))
 
 CASES.append(Case(

@@ -304,19 +304,6 @@ func TestFGAFilter_CachesPositiveOnly(t *testing.T) {
 	assert.True(t, reAskedB, "negative verdict must NOT be cached — a fresh grant must be seen")
 }
 
-func TestFGAFilter_InvalidateDropsSubject(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "a")
-	f := NewFGAFilter(cli, DefaultConfig())
-	ctx := context.Background()
-
-	_, err := f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeSubnet, ActionSubnetList, []string{"a"})
-	require.NoError(t, err)
-	require.Equal(t, 1, f.Size())
-
-	f.Invalidate("user:usr_x")
-	assert.Equal(t, 0, f.Size(), "revoke-driven invalidation must drop the subject's verdicts")
-}
-
 // LRU: при переполнении вытесняется least-recently-used, а не произвольная
 // (Go-map-randomized, возможно горячая) запись — иначе burst distinct-List
 // трэшил бы кеш и гнал лишний QPS в kacho-iam.

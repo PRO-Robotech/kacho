@@ -39,6 +39,19 @@ const (
 		"authorize/iam endpoint (authz.list-filter.authorize-endpoint and authz.iam-endpoint both empty) " +
 		"— the filter degrades to passthrough (unfiltered), leaving %d ScopeFiltered RPC(s) fail-open; " +
 		"set authz.list-filter.authorize-endpoint (or authz.iam-endpoint)"
+	// errListFilterFailOpenForbidden — «включён» ещё не значит «решает». Для
+	// ScopeFiltered RPC фильтр — ЕДИНСТВЕННОЕ место, где вызывающего сверяют с
+	// объектами: per-RPC Check для них не задаётся (интерцептор отдаёт
+	// DecisionInternal). При мягком проходе любая ошибка соседа — таймаут, отказ в
+	// правах, недоступность — возвращает НЕфильтрованный список, то есть снимает
+	// эту единственную авторизацию целиком и молча. Требование к такому фильтру не
+	// «включён», а «включён И отказывает при сбое».
+	// %s = Mode.String(); %d = число ScopeFiltered RPC; %s = их имена через ", ".
+	errListFilterFailOpenForbidden = "production mode (%s): authz.list-filter.fail-open must be false " +
+		"— %d RPC(s) are ScopeFiltered (%s) and the data-level list-filter is their ONLY object-scope " +
+		"authorization (no per-RPC Check is configured for them); with fail-open any filter error returns " +
+		"the unfiltered page, so a single peer timeout or refusal silently removes that authorization. " +
+		"Set authz.list-filter.fail-open=false or drop ScopeFiltered from the permission map"
 
 	// errBreakglassForbiddenInProduction — breakglass в production ОТКАЗЫВАЕТ старту
 	// (раньше был только WARN, см. историю ниже). %s = Mode.String(). Текст — часть
@@ -97,6 +110,19 @@ const (
 		"(KACHO_VPC_IAM_REGISTER_MTLS_ENABLE=true) — this edge uses client-cert creds only (no server-TLS variant). " +
 		"Without it the FGA owner-tuple registration that grants resource ownership is dialed over cleartext gRPC " +
 		"(CWE-319 / MITM tampers with authorization-relevant ownership tuples)"
+
+	// errListFilterPeerTransportRequired — соединение фильтра видимости.
+	// Отдельное от ребра per-RPC Check: свой адрес (iam public :9090 против
+	// internal :9091) и свои ручки транспорта, поэтому защита Check-ребра его НЕ
+	// покрывает. Ответ этого ребра решает, какие объекты вызывающий увидит в List,
+	// то есть оно несёт решение о доступе и подпадает под то же требование, что
+	// остальные исходящие. %s = Mode.String().
+	errListFilterPeerTransportRequired = "production mode (%s): outbound vpc→iam list-filter authorize edge " +
+		"(authz.list-filter.authorize-endpoint → AuthorizeService.BatchCheck) requires client mTLS — set " +
+		"KACHO_VPC_AUTHZ__LIST_FILTER__AUTHORIZE_TLS__ENABLE=true (its own client-cert knob) or " +
+		"KACHO_VPC_IAM_AUTHZ_MTLS_ENABLE=true (the client identity shared with the Check edge). This is a " +
+		"SEPARATE connection from the authz Check edge — it targets the iam public listener and carries the " +
+		"per-object visibility decision behind every List, so securing the Check edge alone does not cover it"
 )
 
 // Validate проверяет инварианты Config — чистая функция без побочных эффектов и без
@@ -258,6 +284,12 @@ func (c Config) ValidateServerMTLS(m MTLSConfig) error {
 // пакет check — Validate остаётся чистой и без import-цикла. Пустой список
 // (текущее состояние карты после SEC-фикса 2026-07-05) → guard no-op.
 //
+// Три требования, и все три — про ОДНО: чтобы у ScopeFiltered RPC вообще была
+// авторизация. Фильтр обязан быть (а) включён, (б) с резолвимым адресом и
+// (в) fail-closed. Мягкий проход отдельно оговорён, потому что он проходит первые
+// два: фильтр включён, адрес есть, — а решение всё равно снимается любой ошибкой
+// соседа. «Включён» не равно «решает».
+//
 // Fail-closed: закрывает "helm default fail-open" residual — stock production
 // install с values.yaml default (list-filter.enabled=false) при наличии
 // ScopeFiltered RPC теперь ОТКАЗЫВАЕТ старт, а не логирует WARN и тихо запускается
@@ -271,10 +303,17 @@ func (c Config) ValidateListFilter(scopeFilteredRPCs []string) error {
 			c.AuthN.Mode, len(scopeFilteredRPCs), strings.Join(scopeFilteredRPCs, ", "))
 	}
 	// Enabled, но без резолвимого endpoint'а → buildListFilter даёт passthrough
-	// (conn==nil, WARN + nil-фильтр) — тот же fail-open. Отказываем.
-	if strings.TrimSpace(c.AuthZ.ListFilter.AuthorizeEndpoint) == "" &&
-		strings.TrimSpace(c.AuthZ.IAMEndpoint) == "" {
+	// (conn==nil, WARN + nil-фильтр) — тот же fail-open. Отказываем. Адрес резолвим
+	// ТЕМ ЖЕ методом, что и проводка (своё поле → запасной authz.iam-endpoint).
+	if c.ListFilterAuthorizeEndpoint() == "" {
 		return fmt.Errorf(errListFilterEndpointRequired, c.AuthN.Mode, len(scopeFilteredRPCs))
+	}
+	// Enabled + резолвим, но мягкий проход → любая ошибка фильтра отдаёт
+	// нефильтрованную страницу. Для ScopeFiltered RPC это ЕДИНСТВЕННАЯ авторизация,
+	// откатываться не на что — отказываем.
+	if c.AuthZ.ListFilter.FailOpen {
+		return fmt.Errorf(errListFilterFailOpenForbidden,
+			c.AuthN.Mode, len(scopeFilteredRPCs), strings.Join(scopeFilteredRPCs, ", "))
 	}
 	return nil
 }
@@ -307,6 +346,14 @@ func (c Config) ValidateListFilter(scopeFilteredRPCs []string) error {
 //     ресурсом. Активен, когда register-drainer включён И authz.iam-endpoint задан (иначе не
 //     дилится). Ребро использует ТОЛЬКО client-cert creds (IAMRegisterClientCreds) — server-TLS
 //     варианта нет, поэтому гард требует именно client-mTLS (IAMRegisterMTLS.Enable).
+//   - vpc→iam list-filter authorize edge (authorizeConn → AuthorizeService.BatchCheck, iam
+//     public :9090): per-page фильтр видимости для List. ОТДЕЛЬНОЕ соединение от authz Check
+//     edge — другой листенер и другие ручки транспорта, поэтому защита Check-ребра его НЕ
+//     покрывает; именно на этом расхождении оно и поднималось незащищённым при довольной
+//     страже. Активен, когда фильтр включён И адрес резолвится (ListFilterAuthorizeEndpoint).
+//     Breakglass его НЕ освобождает: breakglass снимает per-RPC Check, а фильтр продолжает
+//     дилиться и продолжает решать, что вызывающий увидит. Ребро использует client-cert creds,
+//     поэтому требование — ListFilterEdgeUsesMTLS (тот же предикат, что читает проводка).
 //
 // MTLSConfig грузится отдельно от viper-Config (envconfig, LoadMTLS), поэтому проверка —
 // отдельный метод, вызываемый сразу после config.LoadMTLS() и ДО cross-service dial'ов.
@@ -339,6 +386,16 @@ func (c Config) ValidatePeerTransport(m MTLSConfig) error {
 	registerEdgeActive := c.IAM.RegisterDrainerEnabled && strings.TrimSpace(c.AuthZ.IAMEndpoint) != ""
 	if registerEdgeActive && !m.IAMRegisterMTLS.Enable {
 		errs = multierr.Append(errs, fmt.Errorf(errRegisterPeerTransportRequired, c.AuthN.Mode))
+	}
+
+	// list-filter authorize edge — активен ровно тогда, когда его поднимает
+	// composition root: фильтр включён И адрес резолвится. Оба условия читаются
+	// теми же методами, что и проводка, поэтому «страж видит ребро» ⟺ «ребро
+	// дилится». breakglass сюда не применяется — он снимает per-RPC Check, а не
+	// фильтр видимости.
+	listFilterEdgeActive := c.AuthZ.ListFilter.Enabled && c.ListFilterAuthorizeEndpoint() != ""
+	if listFilterEdgeActive && !c.ListFilterEdgeUsesMTLS(m) {
+		errs = multierr.Append(errs, fmt.Errorf(errListFilterPeerTransportRequired, c.AuthN.Mode))
 	}
 
 	return errs

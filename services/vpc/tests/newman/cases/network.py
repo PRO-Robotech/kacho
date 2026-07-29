@@ -110,7 +110,15 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="NET-CR-NEG-PROJECT-NOT-FOUND",
-    title="Create с garbage projectId → 403 (IAM authz no-path) или 200 + async NOT_FOUND",
+    # Создание сети гейтится отношением editor на объекте project, взятом ИЗ ТЕЛА
+    # запроса (запись каталога прав vpc.networks.create). У постороннего проекта
+    # такого отношения нет ни у одного тенантского субъекта, поэтому край
+    # отказывает fail-closed и запрос до сервиса не доходит — исход ровно один.
+    #
+    # Прежнее `oneOf([200, 403])` принимало и отказ, и его отсутствие, а ветка 200
+    # клала в opId пустую строку — следующий шаг опрашивал операцию по пустому
+    # идентификатору. Кейс шёл дальше по несозданному ресурсу.
+    title="Create с garbage projectId → 403 (край отказывает до сервиса, anti-BOLA)",
     classes=["NEG"],
     priority="P0",
     steps=[
@@ -119,17 +127,11 @@ CASES.append(Case(
             method="POST",
             path="/vpc/v1/networks",
             body={"projectId": "{{garbageRmId}}", "name": "net-bf-{{runId}}"},
-            # api-gateway может отклонить синхронно (403, FGA no-path для
-            # несуществующего project) либо пропустить и вернуть 200 с operation,
-            # которая упадет асинхронно NOT_FOUND. Оба исхода валидны (sync
-            # project.Exists precheck отсутствует).
             test_script=[
-                "pm.test('rejected sync (403) or accepted async (200)', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
-                "if (pm.response.code === 200) pm.environment.set('opId', pm.response.json().id);",
-                "else pm.environment.set('opId', '');",
+                *assert_status(403),
+                *assert_grpc_code(7, "PERMISSION_DENIED"),
             ],
         ),
-        poll_operation_until_done(),
     ],
 ))
 
@@ -614,20 +616,23 @@ CASES.append(list_pagesize_1_bva("NET", "/vpc/v1/networks"))
 
 CASES.append(Case(
     id="NET-CR-CONF-PROJECT-NF-TEXT",
-    title="Create network в garbage project → 403 (IAM no-path) или operation.error 'Project ... not found'",
+    # Тот же отказ, но проверяется ДРУГОЕ его свойство: он не должен сообщать,
+    # существует ли названный проект. Прежний заголовок обещал сверку текста
+    # «Project ... not found» из операции — а операции в этом сценарии не
+    # возникает вовсе, потому что запрос отвергается на краю. Текст, который кейс
+    # собирался сверять, недостижим ему по построению.
+    title="Create network в garbage project → отказ не раскрывает, существует ли проект",
     classes=["CONF", "NEG"], priority="P1",
     steps=[
         Step(name="create", method="POST", path="/vpc/v1/networks",
              body={"projectId": "{{garbageRmId}}", "name": "net-confnf-{{runId}}"},
-             # api-gateway может заблокировать (403) или принять (200) для
-             # несуществующего project. При 200 worker возвращает NOT_FOUND с
-             # точным текстом.
              test_script=[
-                 "pm.test('rejected sync (403) or accepted async (200)', () => pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
-                 "if (pm.response.code === 200) pm.environment.set('opId', pm.response.json().id);",
-                 "else pm.environment.set('opId', '');",
+                 *assert_status(403),
+                 *assert_grpc_code(7, "PERMISSION_DENIED"),
+                 "const _m = ((pm.response.json() || {}).message || '').toLowerCase();",
+                 "pm.test('refusal says permission denied', () => pm.expect(_m).to.contain('permission denied'));",
+                 "pm.test('refusal does not disclose project existence', () => pm.expect(_m).to.not.contain('not found'));",
              ]),
-        poll_operation_until_done(),
     ],
 ))
 
@@ -645,12 +650,17 @@ for prefix, child, method_short in [
         steps=[
             Step(name="list-child", method="GET",
                  path=f"/vpc/v1/networks/{{{{garbageVpcId}}}}/{child}",
+                 # Вложенный список гейтится отношением v_list на объекте
+                 # vpc_network из пути. У несуществующей сети такого отношения нет
+                 # ни у кого, край отказывает до сервиса, и подмены отказа на 404
+                 # тут не происходит: сокрытие существования включено только для
+                 # одиночного чтения `/Get` с отношением v_get. Исход один.
+                 #
+                 # Прежний список принимал и 200 — то есть заголовок обещал отказ,
+                 # а утверждение проходило и при выдаче содержимого.
                  test_script=[
-                     # 403 добавлен: nested-list по несуществующему garbageVpcId-parent →
-                     # scope_extractor 403 (authz-first) ДО backend 404; 200 (пустой
-                     # массив, если existence не проверяется) остаётся защитимым.
-                     "pm.test('rejected (200/403/404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 403, 404]));",
-                     "// Если 200 — массив пустой; 403 — authz-first; 404 — NotFound",
+                     *assert_status(403),
+                     *assert_grpc_code(7, "PERMISSION_DENIED"),
                  ]),
         ],
     ))
@@ -750,11 +760,22 @@ CASES.append(Case(
 # List/Get edge cases
 CASES.append(Case(
     id="NET-LST-PAGE-NEGATIVE-SIZE",
-    title="List с pageSize=-1 → 400 или 200",
+    # Размер страницы вне [0..1000] ОТВЕРГАЕТСЯ, а не подменяется умолчанием
+    # (конвенция pagination). Исход ровно один, поэтому и утверждение одно:
+    # прежнее `oneOf([200, 400])` под заголовком «rejected or default» проходило
+    # и при отказе, и при его отсутствии — то есть не отделяло соблюдение
+    # контракта от нарушения. Проверка детерминирована: у прогона есть субъект,
+    # поэтому ранний выход по пустому субъекту не срабатывает и валидация
+    # страницы выполняется всегда.
+    title="List с pageSize=-1 → 400 InvalidArgument (отвергается, не clamp\'ится)",
     classes=["BVA", "VAL"], priority="P2",
     steps=[Step(name="lst-neg", method="GET",
                 path="/vpc/v1/networks?projectId={{_suiteProjectId}}&pageSize=-1",
-                test_script=["pm.test('rejected or default', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"])],
+                test_script=[
+                    *assert_status(400),
+                    *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                    "pm.test('names the offending field', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('page_size'));",
+                ])],
 ))
 
 CASES.append(Case(

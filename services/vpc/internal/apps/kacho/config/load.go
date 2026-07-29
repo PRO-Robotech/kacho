@@ -108,31 +108,6 @@ func applyLegacyEnv(v *viper.Viper) {
 		{"KACHO_VPC_PROJECT_CACHE_NEGATIVE_TTL", "network.project-cache.negative-ttl"},
 		{"KACHO_VPC_PROJECT_CACHE_SIZE", "network.project-cache.max-size"},
 		{"KACHO_VPC_AUTH_MODE", "authn.mode"},
-		// write-side FGA store-id / model-id. Helm Deployment пробрасывает их
-		// как Secret-ref ENV (Secret'ы openfga store/model из bootstrap-job);
-		// остальной `authz.tuple-write` приходит из YAML config-файла (ConfigMap).
-		// `authz.tuple-write.*` НЕ в RegisterDefaults — ключи есть только в
-		// ConfigMap с пустым значением — а viper'овский `Unmarshal` декодит из
-		// AllSettings (config-file + defaults + явный Set), НЕ из AutomaticEnv.
-		// Поэтому без явного моста ENV-override молча теряется: write-side FGA
-		// client поднимается с пустым StoreID → guard `tw.StoreID != ""` не
-		// проходит → `fgaTupleWriter` остается nil → hierarchy tuple
-		// `vpc_<resource>:<id>#project@project:<pid>` не публикуется → каждый
-		// per-resource Get/Update FGA Check уходит в `no path` (403). Явный
-		// v.Set детерминированно связывает ENV → ключ (тот же паттерн, что у
-		// legacy DB-env выше).
-		{"KACHO_VPC_AUTHZ__TUPLE_WRITE__STORE_ID", "authz.tuple-write.store-id"},
-		{"KACHO_VPC_AUTHZ__TUPLE_WRITE__MODEL_ID", "authz.tuple-write.model-id"},
-		// Тот же класс фикса для read-side list-filter model-id (тоже Secret-ref
-		// ENV из bootstrap-job). `authz.list-filter.model-id` ЕСТЬ в
-		// RegisterDefaults, поэтому AutomaticEnv его подхватил бы, но явный
-		// биндинг держит оба источника FGA model-id ENV согласованными.
-		{"KACHO_VPC_AUTHZ__LIST_FILTER__MODEL_ID", "authz.list-filter.model-id"},
-		// IAM-integration флаги — ранее читались ad-hoc os.LookupEnv в cmd/
-		// (requireIAM / registerDrainerEnabled). Мост держит backward-compat со
-		// старыми ENV-именами; значение уходит в bool-поле Config через Unmarshal
-		// (строгая bool-валидация: нераспознанная строка → decode-ошибка, а не
-		// тихий false — важно для fail-closed security-свитча Require).
 		{"KACHO_VPC_REQUIRE_IAM", "iam.require"},
 		{"KACHO_VPC_FGA_REGISTER_DRAINER_ENABLED", "iam.register-drainer-enabled"},
 	}

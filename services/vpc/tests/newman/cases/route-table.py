@@ -339,11 +339,21 @@ for case_id, route, expect_ok in [
                  body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                        "name": f"rt-r-{case_id.lower()[-6:]}-{{{{runId}}}}",
                        "staticRoutes": [route]},
-                 test_script=[
-                     f"pm.test('{'200' if expect_ok else 'rejected'}', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                     *(save_from_response("j.id", "opId") if expect_ok else []),
-                     *(save_from_response("j.metadata && j.metadata.routeTableId", "rtId") if expect_ok else []),
-                 ]),
+                 # Статические маршруты валидируются СИНХРОННО, до создания
+                 # операции (routetable/helpers.go::validateStaticRoutes), поэтому
+                 # исход ровно один и на положительной, и на отрицательной ветке.
+                 # Прежнее `oneOf([200, 400])` стояло под заголовком «rejected» и
+                 # принимало оба ответа: проверка не могла упасть ни при отказе,
+                 # ни при его отсутствии.
+                 test_script=(
+                     [*assert_status(200),
+                      *save_from_response("j.id", "opId"),
+                      *save_from_response("j.metadata && j.metadata.routeTableId", "rtId")]
+                     if expect_ok else
+                     [*assert_status(400),
+                      *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                      "pm.test('names the offending static route field', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('static_routes[0]'));"]
+                 )),
         ] + ([poll_operation_until_done(),
               Step(name="cleanup-rt", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
                    test_script=[*save_from_response("j.id", "opId")]),
@@ -354,11 +364,22 @@ for case_id, route, expect_ok in [
 # v11 edge cases
 CASES.append(Case(
     id="RT-LST-PAGE-NEGATIVE-SIZE",
-    title="List с pageSize=-1 → 400 или 200",
+    # Размер страницы вне [0..1000] ОТВЕРГАЕТСЯ, а не подменяется умолчанием
+    # (конвенция pagination). Исход ровно один, поэтому и утверждение одно:
+    # прежнее `oneOf([200, 400])` под заголовком «rejected or default» проходило
+    # и при отказе, и при его отсутствии — то есть не отделяло соблюдение
+    # контракта от нарушения. Проверка детерминирована: у прогона есть субъект,
+    # поэтому ранний выход по пустому субъекту не срабатывает и валидация
+    # страницы выполняется всегда.
+    title="List с pageSize=-1 → 400 InvalidArgument (отвергается, не clamp\'ится)",
     classes=["BVA", "VAL"], priority="P2",
     steps=[Step(name="lst-neg", method="GET",
                 path="/vpc/v1/routeTables?projectId={{_suiteProjectId}}&pageSize=-1",
-                test_script=["pm.test('rejected or default', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"])],
+                test_script=[
+                    *assert_status(400),
+                    *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                    "pm.test('names the offending field', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('page_size'));",
+                ])],
 ))
 
 CASES.append(Case(

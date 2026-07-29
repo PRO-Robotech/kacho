@@ -384,13 +384,18 @@ def ecp_name_block(prefix, create_path, body_extra=None):
     base = lambda name: {"projectId": "{{_suiteProjectId}}", "name": name, **body_extra}
     cases = []
     # BVA name length: 0, 63 (max), 64 (over)
+    # Имя у VPC-ресурса — разрешительный контракт: пустая строка допустима
+    # (domain.RcNameVPC.Validate; частичный UNIQUE-индекс исключает `name <> ''`).
+    # Исход ровно один, поэтому и утверждение одно: прежнее `oneOf([200, 400])`
+    # под именем «accepted or rejected» проходило и при приёме, и при отказе — то
+    # есть не отделяло соблюдение контракта от его нарушения.
     cases.append(Case(
         id=f"{prefix}-CR-BVA-NAME-EMPTY",
-        title="Create с empty name → VPC permissive (200) или 400",
+        title="Create с empty name → 200 (пустое имя разрешено контрактом)",
         classes=["BVA", "VAL"], priority="P2",
         steps=[Step(name="cr-empty", method="POST", path=create_path,
                     body=base(""),
-                    test_script=["pm.test('accepted or rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"])],
+                    test_script=[*assert_status(200), *save_from_response("j.id", "opId")])],
     ))
     cases.append(Case(
         id=f"{prefix}-CR-BVA-NAME-MAX-63",
@@ -410,13 +415,16 @@ def ecp_name_block(prefix, create_path, body_extra=None):
                     body=base("n64" + "abcdefghij"*7),
                     test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
     ))
+    # Тот же разрешительный контракт: заглавные буквы и подчёркивания допустимы
+    # (regex ^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$). Один исход — одно
+    # утверждение.
     cases.append(Case(
         id=f"{prefix}-CR-VAL-NAME-UPPERCASE",
-        title="Create с UPPERCASE name → VPC permissive (200) или 400",
+        title="Create с UPPERCASE name → 200 (заглавные разрешены контрактом)",
         classes=["VAL"], priority="P2",
         steps=[Step(name="cr-upper", method="POST", path=create_path,
                     body=base("InvalidUpperCase-{{runId}}"),
-                    test_script=["pm.test('accepted or rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"])],
+                    test_script=[*assert_status(200), *save_from_response("j.id", "opId")])],
     ))
     cases.append(Case(
         id=f"{prefix}-CR-VAL-NAME-DIGIT-START",
@@ -854,13 +862,18 @@ def list_filter_match_block(prefix, create_path, body_create):
 def neg_invalid_types_block(prefix, create_path, body_create):
     """Negative с invalid type в полях: name=null, labels=строка вместо object."""
     return [
+        # JSON-null для скалярного поля protojson читает как «поле не задано», то
+        # есть имя приходит пустым, а пустое имя контракт допускает → 200.
+        # Прежний заголовок обещал 400, а утверждение принимало и 200: под именем
+        # «rejected» стояла проверка, которая не могла упасть ни на одном из двух
+        # ответов. Теперь заявлен и проверяется ровно тот исход, который есть.
         Case(
             id=f"{prefix}-CR-VAL-NAME-NULL",
-            title="Create с name=null → 400",
-            classes=["VAL", "NEG"], priority="P2",
+            title="Create с name=null → 200 (protojson: null = поле не задано; пустое имя разрешено)",
+            classes=["VAL"], priority="P2",
             steps=[Step(name="cr-null", method="POST", path=create_path,
                         body={**body_create, "name": None},
-                        test_script=["pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"])],
+                        test_script=[*assert_status(200), *save_from_response("j.id", "opId")])],
         ),
         Case(
             id=f"{prefix}-CR-VAL-LABELS-STRING-TYPE",
@@ -1042,13 +1055,20 @@ def headers_content_type_block(prefix, create_path, body_create):
     """Content-Type required: POST без правильного header → behavior."""
     return [
         Case(
+            # Гейта на Content-Type у края нет: маршрутизатор REST разбирает тело
+            # маршалером по умолчанию, когда заголовок отсутствует. Значит исход
+            # один — запрос обслуживается. Это утверждение о контракте («заголовок
+            # не обязателен»), и оно упадёт, если гейт появится.
+            #
+            # Прежнее `oneOf([200, 400, 415])` под именем «lenient or rejected»
+            # принимало любой из трёх ответов, то есть не утверждало ничего.
             id=f"{prefix}-HEADERS-MISSING-CT",
-            title="POST без Content-Type → 415 или 400 или 200 (lenient)",
-            classes=["VAL", "NEG"], priority="P3",
+            title="POST без Content-Type → 200 (край не требует заголовка)",
+            classes=["VAL"], priority="P3",
             steps=[Step(name="post-no-ct", method="POST", path=create_path,
                         body={**body_create, "name": f"{prefix.lower()}-noct-{{{{runId}}}}"},
                         pre_script=["pm.request.headers.remove('Content-Type');"],
-                        test_script=["pm.test('lenient or rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 415]));"])],
+                        test_script=[*assert_status(200), *save_from_response("j.id", "opId")])],
         ),
     ]
 
@@ -1193,20 +1213,22 @@ def subnet_cidr_expand_shrink_pack():
         title="AddCidrBlocks с CIDR пересекающимся с existing prefix → FailedPrecondition",
         classes=["NEG", "CONF"], priority="P0",
         steps=[
+            # Работа идёт синхронно внутри вызова (operations.RunSync), отказ
+            # записывается в САМУ операцию, и она возвращается уже завершённой.
+            # Поэтому исход один: 200 с операцией, несущей ошибку.
+            #
+            # Прежде здесь стояла пара, не способная упасть: код ответа принимал и
+            # 200, и 400, а проверка ошибки была целиком внутри `if (j.error)` —
+            # при отсутствии отказа она проходила вхолостую.
             Step(name="add-overlap", method="POST",
                  path="/vpc/v1/subnets/{{addedSubId}}:add-cidr-blocks",
                  body={"ipv4CidrBlocks": ["10.180.10.0/25"]},  # подсеть 10.180.10.0/24 уже добавлен
                  test_script=[
-                     "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                     *save_from_response("j.id", "opId"),
-                 ]),
-            poll_operation_until_done(),
-            Step(name="assert-overlap", method="GET", path="/operations/{{opId}}",
-                 test_script=[
+                     *assert_status(200),
                      "const j = pm.response.json();",
-                     "pm.test('error code 3 or 9 (sync or async)', () => {",
-                     "  if (j.error) pm.expect(j.error.code).to.be.oneOf([3, 9]);",
-                     "});",
+                     "pm.test('operation completed inline', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                     "pm.test('overlapping CIDR refused (FailedPrecondition)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(9));",
+                     "pm.test('refusal names the overlap', () => pm.expect((j.error && j.error.message) || '').to.match(/overlap/i));",
                  ]),
         ],
     ))
@@ -1280,20 +1302,23 @@ def subnet_cidr_expand_shrink_pack():
         title="RemoveCidrBlocks для primary v4_cidr (первый, primary) → отказ",
         classes=["NEG", "STATE"], priority="P0",
         steps=[
+            # Первый блок семейства — placement-якорь (ipv4CidrPrimary),
+            # неизменяемый после Create; его удаление отвергается конвенционным
+            # immutable-тоном. Работа синхронна, отказ живёт в возвращённой
+            # операции → исход один.
+            #
+            # Прежде проверка прямо допускала «silent success (продукт
+            # permissive)»: кейс, заявленный как отказ, проходил и тогда, когда
+            # якорь молча удалялся.
             Step(name="rm-primary", method="POST",
                  path="/vpc/v1/subnets/{{addedSubId}}:remove-cidr-blocks",
                  body={"ipv4CidrBlocks": ["10.180.0.0/24"]},  # primary subnet CIDR из preflight
                  test_script=[
-                     "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                     *save_from_response("j.id", "opId"),
-                 ]),
-            poll_operation_until_done(),
-            Step(name="check", method="GET", path="/operations/{{opId}}",
-                 test_script=[
+                     *assert_status(200),
                      "const j = pm.response.json();",
-                     "pm.test('completed', () => pm.expect(j.done).to.eql(true));",
-                     "// Ожидаемое: error c кодом 9 (FailedPrecondition cannot remove primary)",
-                     "// либо silent success (продукт permissive)",
+                     "pm.test('operation completed inline', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                     "pm.test('primary anchor refused (InvalidArgument)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(3));",
+                     "pm.test('refusal uses the immutable contract tone', () => pm.expect((j.error && j.error.message) || '').to.contain('ipv4_cidr_primary is immutable after Subnet.Create'));",
                  ]),
         ],
     ))
@@ -1464,14 +1489,26 @@ def conformance_lifecycle_pack(prefix, create_path, body_create):
 def authz_caller_headers_block(prefix, list_path):
     """RBAC-pre kit: проверка headers cross-tenant (анонимный vs admin-claim)."""
     return [
+        # Кейс назывался «List с пустым x-kacho-project-id header», но НИ ОДНОГО
+        # заголовка не трогал, а утверждение принимало 200, 403 и 401 разом — то
+        # есть под именем про заголовок стояла проверка, которая не могла упасть
+        # ни при каком ответе и ничего про заголовок не спрашивала.
+        #
+        # Теперь кейс делает то, что заявляет, и утверждает проверяемое свойство:
+        # заголовок личности, присланный клиентом, НЕ является источником scope.
+        # Подставляем в него посторонний проект — ответ обязан остаться прежним
+        # (200 по проекту из строки запроса, под личностью из токена). Если край
+        # когда-нибудь начнёт доверять этому заголовку, кейс упадёт.
         Case(
             id=f"{prefix}-AUTHZ-EMPTY-PROJECT-HEADER",
-            title="List с пустым x-kacho-project-id header → текущее: 200 (dev mode)",
+            title="Заголовок x-kacho-project-id от клиента не задаёт scope → 200 по своему проекту",
             classes=["AUTHZ"], priority="P1",
             steps=[Step(name="list-with-empty-header", method="GET",
                         path=f"{list_path}?projectId={{{{_suiteProjectId}}}}",
+                        pre_script=["pm.request.headers.upsert({key: 'x-kacho-project-id', value: '{{garbageRmId}}'});"],
                         test_script=[
-                            "pm.test('OK in dev or PermissionDenied in production', () => pm.expect(pm.response.code).to.be.oneOf([200, 403, 401]));",
+                            *assert_status(200),
+                            "pm.test('client-asserted project header is not honoured as scope', () => pm.expect(pm.response.json()).to.be.an('object'));",
                         ])],
         ),
     ]
