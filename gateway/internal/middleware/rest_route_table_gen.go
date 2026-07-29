@@ -140,6 +140,8 @@ var generatedRestRoutes = []restRoute{
 	{Method: "POST", Template: "/iam/v1/serviceAccounts/{service_account_id}/keys", FQN: "kacho.cloud.iam.v1.SAKeyService/Issue"},
 	{Method: "DELETE", Template: "/iam/v1/serviceAccounts/{service_account_id}/keys/{key_id}", FQN: "kacho.cloud.iam.v1.SAKeyService/Revoke"},
 	{Method: "GET", Template: "/iam/v1/serviceAccounts/{service_account_id}/operations", FQN: "kacho.cloud.iam.v1.ServiceAccountService/ListOperations"},
+	{Method: "POST", Template: "/iam/v1/serviceAccounts/{service_account_id}:disable", FQN: "kacho.cloud.iam.v1.ServiceAccountService/Disable"},
+	{Method: "POST", Template: "/iam/v1/serviceAccounts/{service_account_id}:enable", FQN: "kacho.cloud.iam.v1.ServiceAccountService/Enable"},
 	{Method: "GET", Template: "/iam/v1/users", FQN: "kacho.cloud.iam.v1.UserService/List"},
 	{Method: "DELETE", Template: "/iam/v1/users/{user_id}", FQN: "kacho.cloud.iam.v1.UserService/Delete"},
 	{Method: "GET", Template: "/iam/v1/users/{user_id}", FQN: "kacho.cloud.iam.v1.UserService/Get"},

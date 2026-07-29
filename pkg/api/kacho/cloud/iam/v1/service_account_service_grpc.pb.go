@@ -28,6 +28,8 @@ const (
 	ServiceAccountService_Create_FullMethodName         = "/kacho.cloud.iam.v1.ServiceAccountService/Create"
 	ServiceAccountService_Update_FullMethodName         = "/kacho.cloud.iam.v1.ServiceAccountService/Update"
 	ServiceAccountService_Delete_FullMethodName         = "/kacho.cloud.iam.v1.ServiceAccountService/Delete"
+	ServiceAccountService_Disable_FullMethodName        = "/kacho.cloud.iam.v1.ServiceAccountService/Disable"
+	ServiceAccountService_Enable_FullMethodName         = "/kacho.cloud.iam.v1.ServiceAccountService/Enable"
 	ServiceAccountService_ListOperations_FullMethodName = "/kacho.cloud.iam.v1.ServiceAccountService/ListOperations"
 )
 
@@ -52,6 +54,51 @@ type ServiceAccountServiceClient interface {
 	// Deletes the specified service account.
 	// ServiceAccount с висящим AccessBinding → FailedPrecondition.
 	Delete(ctx context.Context, in *DeleteServiceAccountRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// Disables the specified service account: it may no longer authenticate.
+	//
+	// WHY AN ACTION AND NOT A FIELD ON Update. This is the reason the field was
+	// never ADDED to UpdateServiceAccountRequest, not a description of a bug that
+	// was there: an empty `update_mask` means full-object replacement by platform
+	// convention, and a proto3 `bool` cannot say "not sent", so the obvious design
+	// — one more maskable field — would let a client disable an account by simply
+	// not filling it in. The state that decides whether a machine identity still
+	// works must not be reachable by forgetting something.
+	// It is also an EVENT ("this account was taken out of service"), not the
+	// editing of an attribute, and it belongs in the audit trail as one.
+	//
+	// Step-up (acr=2) — this is a security-posture change, not routine lifecycle.
+	// One call answers for the WHOLE principal the question SAKeyService/Revoke
+	// answers for a single key, and it additionally stops the next mint on every
+	// door (client_credentials hook, federated assertion, key issuance, docker
+	// token). At the AAL1 floor a human could reach that outcome more cheaply than
+	// revoking one key.
+	// The floor is INTERACTIVE-ONLY: a service-account principal is exempt from it
+	// by platform rule, so for machine callers this RPC costs exactly what Update
+	// costs. It raises assurance for people; it is not a second authorization gate.
+	//
+	// WHO may call it is `v_update` — the same relation Update carries, on the same
+	// object. Deliberate: whoever may rename a service account may also take it out
+	// of service, and (by the editor projection) may already delete it outright.
+	// The alternative — a relation of its own — would leave every existing operator
+	// unable to use the control until someone re-granted them, which is the wrong
+	// failure mode for something reached for during an incident.
+	//
+	// IDEMPOTENT: the argument is the STATE, not a transition. Disabling an
+	// account that is already disabled succeeds and reports it disabled — the
+	// safe direction of this control must never be the one that fails on retry.
+	//
+	// Already-issued access tokens are NOT invalidated by this call; they expire
+	// on their own schedule. What stops immediately is every path that mints a
+	// NEW one.
+	Disable(ctx context.Context, in *DisableServiceAccountRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// Enables the specified service account: it may authenticate again.
+	//
+	// The counterpart of Disable, and it exists for the same reason the state is
+	// a column rather than a deletion — an account taken out of service has to be
+	// able to come back. A one-way control is one an operator will not reach for.
+	// Same shape throughout: action not field, Operation, step-up, idempotent
+	// (enabling an enabled account succeeds).
+	Enable(ctx context.Context, in *EnableServiceAccountRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Lists operations for the specified service account.
 	ListOperations(ctx context.Context, in *ListServiceAccountOperationsRequest, opts ...grpc.CallOption) (*ListServiceAccountOperationsResponse, error)
 }
@@ -114,6 +161,26 @@ func (c *serviceAccountServiceClient) Delete(ctx context.Context, in *DeleteServ
 	return out, nil
 }
 
+func (c *serviceAccountServiceClient) Disable(ctx context.Context, in *DisableServiceAccountRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(operation.Operation)
+	err := c.cc.Invoke(ctx, ServiceAccountService_Disable_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *serviceAccountServiceClient) Enable(ctx context.Context, in *EnableServiceAccountRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(operation.Operation)
+	err := c.cc.Invoke(ctx, ServiceAccountService_Enable_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *serviceAccountServiceClient) ListOperations(ctx context.Context, in *ListServiceAccountOperationsRequest, opts ...grpc.CallOption) (*ListServiceAccountOperationsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListServiceAccountOperationsResponse)
@@ -145,6 +212,51 @@ type ServiceAccountServiceServer interface {
 	// Deletes the specified service account.
 	// ServiceAccount с висящим AccessBinding → FailedPrecondition.
 	Delete(context.Context, *DeleteServiceAccountRequest) (*operation.Operation, error)
+	// Disables the specified service account: it may no longer authenticate.
+	//
+	// WHY AN ACTION AND NOT A FIELD ON Update. This is the reason the field was
+	// never ADDED to UpdateServiceAccountRequest, not a description of a bug that
+	// was there: an empty `update_mask` means full-object replacement by platform
+	// convention, and a proto3 `bool` cannot say "not sent", so the obvious design
+	// — one more maskable field — would let a client disable an account by simply
+	// not filling it in. The state that decides whether a machine identity still
+	// works must not be reachable by forgetting something.
+	// It is also an EVENT ("this account was taken out of service"), not the
+	// editing of an attribute, and it belongs in the audit trail as one.
+	//
+	// Step-up (acr=2) — this is a security-posture change, not routine lifecycle.
+	// One call answers for the WHOLE principal the question SAKeyService/Revoke
+	// answers for a single key, and it additionally stops the next mint on every
+	// door (client_credentials hook, federated assertion, key issuance, docker
+	// token). At the AAL1 floor a human could reach that outcome more cheaply than
+	// revoking one key.
+	// The floor is INTERACTIVE-ONLY: a service-account principal is exempt from it
+	// by platform rule, so for machine callers this RPC costs exactly what Update
+	// costs. It raises assurance for people; it is not a second authorization gate.
+	//
+	// WHO may call it is `v_update` — the same relation Update carries, on the same
+	// object. Deliberate: whoever may rename a service account may also take it out
+	// of service, and (by the editor projection) may already delete it outright.
+	// The alternative — a relation of its own — would leave every existing operator
+	// unable to use the control until someone re-granted them, which is the wrong
+	// failure mode for something reached for during an incident.
+	//
+	// IDEMPOTENT: the argument is the STATE, not a transition. Disabling an
+	// account that is already disabled succeeds and reports it disabled — the
+	// safe direction of this control must never be the one that fails on retry.
+	//
+	// Already-issued access tokens are NOT invalidated by this call; they expire
+	// on their own schedule. What stops immediately is every path that mints a
+	// NEW one.
+	Disable(context.Context, *DisableServiceAccountRequest) (*operation.Operation, error)
+	// Enables the specified service account: it may authenticate again.
+	//
+	// The counterpart of Disable, and it exists for the same reason the state is
+	// a column rather than a deletion — an account taken out of service has to be
+	// able to come back. A one-way control is one an operator will not reach for.
+	// Same shape throughout: action not field, Operation, step-up, idempotent
+	// (enabling an enabled account succeeds).
+	Enable(context.Context, *EnableServiceAccountRequest) (*operation.Operation, error)
 	// Lists operations for the specified service account.
 	ListOperations(context.Context, *ListServiceAccountOperationsRequest) (*ListServiceAccountOperationsResponse, error)
 	mustEmbedUnimplementedServiceAccountServiceServer()
@@ -171,6 +283,12 @@ func (UnimplementedServiceAccountServiceServer) Update(context.Context, *UpdateS
 }
 func (UnimplementedServiceAccountServiceServer) Delete(context.Context, *DeleteServiceAccountRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedServiceAccountServiceServer) Disable(context.Context, *DisableServiceAccountRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method Disable not implemented")
+}
+func (UnimplementedServiceAccountServiceServer) Enable(context.Context, *EnableServiceAccountRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method Enable not implemented")
 }
 func (UnimplementedServiceAccountServiceServer) ListOperations(context.Context, *ListServiceAccountOperationsRequest) (*ListServiceAccountOperationsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListOperations not implemented")
@@ -286,6 +404,42 @@ func _ServiceAccountService_Delete_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ServiceAccountService_Disable_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DisableServiceAccountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ServiceAccountServiceServer).Disable(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ServiceAccountService_Disable_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ServiceAccountServiceServer).Disable(ctx, req.(*DisableServiceAccountRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ServiceAccountService_Enable_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EnableServiceAccountRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ServiceAccountServiceServer).Enable(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ServiceAccountService_Enable_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ServiceAccountServiceServer).Enable(ctx, req.(*EnableServiceAccountRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ServiceAccountService_ListOperations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListServiceAccountOperationsRequest)
 	if err := dec(in); err != nil {
@@ -330,6 +484,14 @@ var ServiceAccountService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _ServiceAccountService_Delete_Handler,
+		},
+		{
+			MethodName: "Disable",
+			Handler:    _ServiceAccountService_Disable_Handler,
+		},
+		{
+			MethodName: "Enable",
+			Handler:    _ServiceAccountService_Enable_Handler,
 		},
 		{
 			MethodName: "ListOperations",

@@ -131,6 +131,49 @@ function RevokeBindingButton({ id, status, detailBase }: { id: string; status?: 
   );
 }
 
+// ServiceAccountAuthButton — `:disable` / `:enable` как action в шапке detail'а
+// сервисного аккаунта.
+//
+// Отдельная кнопка, а не переключатель в форме редактирования, по той же причине,
+// по которой на сервере это отдельное действие: у формы есть маска полей, и поле,
+// которое забыли прислать, отключило бы учётку молча. У кнопки забыть нечего.
+//
+// Обе стороны спрашивают подтверждение и называют последствие своими словами.
+// Отключение — не косметика: учётка перестаёт получать токены (уже выданные
+// доживают свой срок), и человек, нажимающий это в инциденте, должен видеть
+// именно такую формулировку, а не «сохранить изменения».
+function ServiceAccountAuthButton({ id, enabled }: { id: string; enabled: boolean }) {
+  const verb = enabled ? "disable" : "enable";
+  const mut = useIamMutation({
+    method: "ACTION",
+    path: `${IAM.serviceAccounts}/${encodeURIComponent(id)}:${verb}`,
+    invalidateKeys: [
+      ["iam", "service-accounts"],
+      ["resource", "service-accounts", id],
+    ],
+    successText: enabled ? "Сервисный аккаунт отключён" : "Сервисный аккаунт включён",
+  });
+  if (!id) return null;
+  return (
+    <Popconfirm
+      title={enabled ? "Отключить сервисный аккаунт?" : "Включить сервисный аккаунт?"}
+      description={
+        enabled
+          ? "Аккаунт перестанет получать новые токены и ключи. Уже выданные токены доживут свой срок. Действие обратимо."
+          : "Аккаунт снова сможет получать токены и ключи."
+      }
+      okText={enabled ? "Отключить" : "Включить"}
+      cancelText="Отмена"
+      okButtonProps={{ danger: enabled }}
+      onConfirm={() => void mut.run({})}
+    >
+      <Button danger={enabled} icon={<StopOutlined />} loading={mut.submitting}>
+        {enabled ? "Отключить" : "Включить"}
+      </Button>
+    </Popconfirm>
+  );
+}
+
 // Subject type (UI-строка / enum-имя) → registry specId.
 function subjectSpecId(t: string): string | undefined {
   if (t === "user" || t === "USER" || t === "SUBJECT_TYPE_USER") return "users";
@@ -727,9 +770,31 @@ registerDetailExtension("accounts", {
 });
 
 // ServiceAccount — субъект типа service_account. Вкладки: «Привилегии» + «Токены».
+// Header-action: `:disable` / `:enable` — состояние, решающее, может ли аккаунт
+// вообще аутентифицироваться.
 registerDetailExtension("service-accounts", {
+  headerActions: ({ data }) => {
+    const id = getByPath<string>(data, "id") ?? "";
+    if (!id) return null;
+    // Поле булево: неприсланное и `false` в JSON неразличимы, поэтому явный
+    // `=== false` — единственное безопасное чтение. Считать «включён» по
+    // умолчанию верно: колонка так и объявлена в схеме, и ошибка в эту сторону
+    // предлагает отключить уже отключённое (действие идемпотентно), а не
+    // показывает «включить» для работающего аккаунта.
+    const enabled = getByPath<boolean>(data, "enabled") !== false;
+    return <ServiceAccountAuthButton id={id} enabled={enabled} />;
+  },
   overviewExtra: ({ data }) => [
     { label: "Аккаунт", value: <IamRefLink specId="accounts" refId={getByPath<string>(data, "account_id")} /> },
+    {
+      label: "Аутентификация",
+      value:
+        getByPath<boolean>(data, "enabled") !== false ? (
+          <Tag color="green">Разрешена</Tag>
+        ) : (
+          <Tag color="red">Отключена</Tag>
+        ),
+    },
   ],
   extraTabs: ({ data, detailBase }) => {
     const id = getByPath<string>(data, "id") ?? "";
