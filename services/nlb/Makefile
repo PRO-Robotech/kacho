@@ -101,6 +101,13 @@ helm-lint:
 
 # Asserts cross-service peer-edge wiring (vpc/compute/iam/geo) actually renders
 # into config.yaml + mTLS. Pure chart render — no cluster contact.
+#
+# ВЫЗЫВАЕТСЯ ИЗ CI (.github/workflows/ci.yaml, job `helm` — там уже пришпилен
+# helm v3.17). До этого её не звал НИКТО: ни один workflow, ни одна другая цель.
+# Утверждения о провязке рёбер существовали как текст и ни разу не проверялись —
+# ровно то, против чего страж и написан. Что цель вызывается, залочено гейтом
+# internal/repohygiene/renderguard_test.go: он находит стражей рендера по дереву
+# и требует, чтобы каждый был достижим из конвейера.
 helm-render-guard:
 	bash deploy/tests/render-guard.sh
 

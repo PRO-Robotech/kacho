@@ -8,7 +8,7 @@ MIGRATOR_BIN   := kacho-migrator
 MIGRATOR_CMD   := ./cmd/migrator
 IMAGE          := kacho-vpc:dev
 
-.PHONY: build build-migrator test test-short vet lint docker audit-list-filter proto-install-plugins proto-vendor proto-lint proto-gen
+.PHONY: build build-migrator test test-short vet lint docker audit-list-filter helm-render-guard proto-install-plugins proto-vendor proto-lint proto-gen
 
 build:
 	CGO_ENABLED=0 go build -o bin/$(BINARY) $(CMD)
@@ -44,6 +44,19 @@ vet:
 # against the real tree through this same wrapper.
 audit-list-filter:
 	@./tools/audit-list-filter.sh
+
+# helm-render-guard — офлайновый страж рендера чарта: ребро vpc→geo обязано
+# набирать имя Service `kacho-geo` (его SAN сертификата это имя покрывает), а не
+# голый хост `geo.kacho…`, который не резолвится и не проходит проверку
+# serverName. Чистый `helm template`, кластер не нужен.
+#
+# ЦЕЛИ НЕ БЫЛО ВОВСЕ: скрипт лежал в дереве, и его не звал ни один конвейер, ни
+# один Makefile. Утверждения о провязке ребра существовали как текст и ни разу не
+# проверялись. Теперь цель вызывается из CI (.github/workflows/ci.yaml, job
+# `helm`), а то, что она вызывается, залочено гейтом
+# internal/repohygiene/renderguard_test.go.
+helm-render-guard:
+	bash deploy/render-guard.sh
 
 lint:
 	golangci-lint run ./...

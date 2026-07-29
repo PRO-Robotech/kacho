@@ -189,15 +189,80 @@ for name in order:
     if not guarded(name):
         violations.append((name, reasons))
 
+# ── ПОРЯДОК: страж стоит МЕЖДУ созданием кластера и действиями на нём ────────
+#
+# Наличие стража и его МЕСТО — разные свойства, и второе ловится только так.
+# make исполняет зависимости ДО рецепта (а при -j вообще без гарантии порядка),
+# поэтому страж, записанный зависимостью РЯДОМ с зависимостью, которая кластер
+# создаёт, исполняется РАНЬШЕ создания. Стражу нечего проверять: контекста ещё
+# нет, kind ещё не знает кластера — он отказывает, и цель не доходит до создания
+# вовсе. Так починка стража ломает то, что он охраняет.
+#
+# Законная форма ровно одна: страж вызывается ИЗ РЕЦЕПТА — рецепт идёт после всех
+# зависимостей, то есть после создания. `dev-up` так и делает.
+CREATES_CLUSTER = re.compile(r"\bkind\s+create\s+cluster\b|create-cluster\.sh\b")
+
+
+def creates_cluster(name, seen=None):
+    """Цель создаёт kind-кластер сама либо через свои зависимости."""
+    seen = seen or set()
+    if name in seen or name not in targets:
+        return False
+    seen.add(name)
+    if CREATES_CLUSTER.search(executable_part(targets[name]["recipe"])):
+        return True
+    return any(creates_cluster(p, seen) for p in targets[name]["prereqs"])
+
+
+def guard_via_prereqs(name, seen=None):
+    """Гейт исполнится в рамках ЗАВИСИМОСТЕЙ цели, то есть ДО её рецепта.
+
+    Вызов гейта из рецепта здесь НЕ считается — он и есть законная форма.
+    """
+    seen = seen or set()
+    if name in seen:
+        return False
+    seen.add(name)
+    if name in GUARDS:
+        return True
+    if name not in targets:
+        return False
+    return any(guard_via_prereqs(p, seen) for p in targets[name]["prereqs"])
+
+
+creating = [n for n in order if n not in GUARDS and creates_cluster(n)]
+
+misordered = []
+for name in order:
+    if name in GUARDS:
+        continue
+    prereqs = targets[name]["prereqs"]
+    guard_at = next((i for i, p in enumerate(prereqs) if guard_via_prereqs(p)), None)
+    create_at = next((i for i, p in enumerate(prereqs)
+                      if not guard_via_prereqs(p) and creates_cluster(p)), None)
+    if guard_at is not None and create_at is not None and guard_at < create_at:
+        misordered.append((name, prereqs[guard_at], prereqs[create_at]))
+
 # «Ноль находок» обязано быть отличимо от «ноль осмотренного».
 print(f"осмотрено целей: {len(targets)}; меняют кластер: {len(mutating)}")
 print(f"  {' '.join(sorted(mutating)) or '—'}")
+print(f"создают кластер: {len(creating)}")
+print(f"  {' '.join(sorted(creating)) or '—'}")
 
 if not mutating:
     print()
     print("FAIL: ни одна цель не классифицирована как меняющая кластер.")
     print("      В файле, который поднимает и обслуживает стенд, это означает")
     print("      сломанную классификацию, а не отсутствие таких целей.")
+    sys.exit(1)
+
+# Предпосылка проверки порядка: если кластер не создаёт НИКТО, предикат остался
+# без предмета и его «ноль находок» ничего не значит.
+if not creating:
+    print()
+    print("FAIL: ни одна цель не создаёт kind-кластер.")
+    print("      Проверка ПОРЯДКА стража осталась без предмета: сравнивать место")
+    print("      стража не с чем, и её зелёный ничего не утверждает.")
     sys.exit(1)
 
 if violations:
@@ -213,7 +278,22 @@ if violations:
     print("по замыслу исполняется и на настоящем кластере — guard-destructive.")
     sys.exit(1)
 
-print(f"\nPASS: {os.path.basename(path)} — все {len(mutating)} целей под гейтом")
+if misordered:
+    print()
+    for name, g, c in misordered:
+        print(f"FAIL: у цели '{name}' страж '{g}' стоит в зависимостях РАНЬШЕ, чем '{c}',")
+        print(f"        которая кластер создаёт. make исполняет зависимости до рецепта,")
+        print(f"        поэтому страж отработает на ещё НЕ созданном кластере, откажет —")
+        print(f"        и до создания дело не дойдёт: цель не поднимется вовсе.")
+    print()
+    print("Починка: убрать страж из зависимостей и вызвать его ИЗ РЕЦЕПТА первой")
+    print("строкой — рецепт идёт после всех зависимостей, то есть после создания:")
+    print("    $(MAKE) --no-print-directory guard-kind-context")
+    sys.exit(1)
+
+print(f"\nPASS: {os.path.basename(path)} — все {len(mutating)} целей под гейтом,")
+print(f"      порядок стража относительно создания кластера соблюдён "
+      f"({len(creating)} создающих целей)")
 PY
 }
 
@@ -288,6 +368,62 @@ injected-prints-only-semicolon:
     echo "  ОК  (C2) точка с запятой внутри печатаемой строки не делает её командой"
   else
     echo "  ПРОВАЛ (C2) читатель режет строку по разделителю, а не по кавычке"; echo "$out" | sed 's/^/      /'; rc=1
+  fi
+
+  # (E) ИНЪЕКЦИЯ ДЕФЕКТА ПОРЯДКА: страж записан зависимостью РЯДОМ с зависимостью,
+  #     которая кластер создаёт → гейт обязан краснеть и назвать координату.
+  #     Это ровно та регрессия, из-за которой цель боевой посадки не поднималась.
+  inject E '
+injected-creator:
+	@./kind/create-cluster.sh
+
+injected-guard-before-create: guard-kind-context injected-creator
+	@kubectl -n kacho apply -f manifest.yaml'
+  out="$(run_gate "$tmp/Makefile" 2>&1)"; st=$?
+  if [ $st -ne 0 ] && printf '%s' "$out" | grep -q "injected-guard-before-create"; then
+    echo "  ОК  (E) страж раньше создания кластера → красное, координата названа"
+  else
+    echo "  ПРОВАЛ (E) страж перед созданием кластера прошёл (exit=$st)"; echo "$out" | sed 's/^/      /'; rc=1
+  fi
+
+  # (E2) КОНТРОЛЬ ТОЙ ЖЕ ФОРМЫ: страж вызывается ИЗ РЕЦЕПТА после создающей
+  #      зависимости — законная форма, гейт обязан МОЛЧАТЬ. Без этой половины
+  #      проверка ловила бы форму «страж + создание рядом», а не порядок.
+  inject E2 '
+injected-creator2:
+	@./kind/create-cluster.sh
+
+injected-guard-after-create: injected-creator2
+	@$(MAKE) --no-print-directory guard-kind-context
+	@kubectl -n kacho apply -f manifest.yaml'
+  out="$(run_gate "$tmp/Makefile" 2>&1)"; st=$?
+  if [ $st -eq 0 ]; then
+    echo "  ОК  (E2) страж из рецепта после создания → молчит"
+  else
+    echo "  ПРОВАЛ (E2) законный порядок покрашен"; echo "$out" | sed 's/^/      /'; rc=1
+  fi
+
+  # (E3) КОНТРОЛЬ: страж зависимостью, но НИ ОДНА зависимость кластер не создаёт
+  #      (форма всех читающих гейтов файла) → молчит. Иначе гейт запретил бы
+  #      законную и самую частую конструкцию.
+  inject E3 '
+injected-guard-no-create: guard-kind-context
+	@kubectl -n kacho apply -f manifest.yaml'
+  out="$(run_gate "$tmp/Makefile" 2>&1)"; st=$?
+  if [ $st -eq 0 ]; then
+    echo "  ОК  (E3) страж зависимостью без создающей зависимости → молчит"
+  else
+    echo "  ПРОВАЛ (E3) обычная защищённая цель покрашена"; echo "$out" | sed 's/^/      /'; rc=1
+  fi
+
+  # (E4) ПРЕДПОСЫЛКА ПОРЯДКА: создание кластера из файла исчезло → проверка
+  #      порядка осталась без предмета и обязана объявить себя невыполнимой.
+  sed 's|\./kind/create-cluster\.sh|./kind/bring-up.sh|' "$MAKEFILE" >"$tmp/Makefile"
+  out="$(run_gate "$tmp/Makefile" 2>&1)"; st=$?
+  if [ $st -ne 0 ] && printf '%s' "$out" | grep -q "без предмета"; then
+    echo "  ОК  (E4) исчезло создание кластера → проверка порядка объявлена невыполнимой"
+  else
+    echo "  ПРОВАЛ (E4) без создающей цели проверка порядка осталась зелёной (exit=$st)"; rc=1
   fi
 
   # (D) ПРЕДПОСЫЛКА: гейты переименованы → проверка обязана объявить себя

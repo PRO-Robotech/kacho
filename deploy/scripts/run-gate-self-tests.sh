@@ -27,36 +27,197 @@
 # встречается в шапках и строках помощи у файлов, где ветки нет; поиск по слову
 # нашёл бы их и потребовал запускать несуществующее. Ищем именно разбор
 # аргумента.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# ОБХОД — ВСЁ ДЕРЕВО, И ПРЕДИКАТ ЗЕРКАЛЕН ПО ФОРМАМ РАЗБОРА
+#
+# Обе половины поиска унаследовали форму первых увиденных примеров, и обе давали
+# слепую зону — «ноль расхождений» означало «ноль из того, что поиск умеет
+# видеть»:
+#
+#   • по МЕСТУ: обход шёл только по deploy/ (scripts/assert-*, tests/helm/*.sh).
+#     Самопроверка `.github/scripts/check-newman-suite-gates.py` разбирает
+#     аргумент ровно той формой, которую поиск узнаёт, и всё равно была невидима
+#     — просто потому, что лежит в другом каталоге;
+#   • по ФОРМЕ: узнавались только `[ "$1" = "--self-test" ]` и
+#     `"--self-test" in sys.argv`. Третья законная форма — объявление флага в
+#     argparse (`ap.add_argument("--self-test", …)`) — не узнавалась вовсе, и
+#     самопроверка `.github/scripts/newman-live.py` была невидима даже при
+#     обходе всего дерева.
+#
+# Померено на дереве: узкий предикат по всему дереву находил 10 файлов (9 из них
+# в deploy/), широкий «просто слово --self-test» — 12. Разница ровно два файла:
+# одна настоящая самопроверка формы argparse и ЭТОТ файл, который слово содержит
+# только в прозе, регулярном выражении и строке запуска. Второй попасть в состав
+# не должен — на нём и проверяется, что предикат читает разбор, а не текст.
+#
+# Обход идёт по СОДЕРЖИМОМУ РЕПОЗИТОРИЯ (`git ls-files`): это то же множество,
+# что увидит CI на свежем checkout'е, поэтому вердикт воспроизводим и не зависит
+# от локального мусора в рабочем дереве.
+#
+# Сам обход проверяется инъекцией: `--verify-discovery` (см. конец файла). Флаг
+# назван НЕ `--self-test` намеренно — иначе предикат нашёл бы этот файл и
+# потребовал запускать его из самого себя.
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 
 DEPLOY_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$DEPLOY_ROOT" || exit 2
+REPO_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
+cd "$REPO_ROOT" || exit 2
 
-# Объявленный состав. Держится СИНХРОННЫМ с находкой ниже — расхождение в любую
-# сторону роняет проверку.
+# Объявленный состав, путями от корня репозитория. Держится СИНХРОННЫМ с
+# находкой ниже — расхождение в любую сторону роняет проверку.
 DECLARED="
-scripts/assert-ban6-external-isolation.py
-scripts/assert-outbox-autovacuum.sh
-tests/helm/admin-hop-transport-test.sh
-tests/helm/image-rollout-binding-test.sh
-tests/helm/makefile-destructive-guarded-test.sh
-tests/helm/networkpolicy-egress-test.sh
-tests/helm/outbox-autovacuum-naptime-test.sh
-tests/helm/prerequisite-secrets-test.sh
-tests/helm/trusted-forwarder-profiles-test.sh
+.github/scripts/check-newman-suite-gates.py
+.github/scripts/check-volume-mounts.py
+.github/scripts/newman-live.py
+deploy/scripts/assert-ban6-external-isolation.py
+deploy/scripts/assert-outbox-autovacuum.sh
+deploy/tests/helm/admin-hop-transport-test.sh
+deploy/tests/helm/image-rollout-binding-test.sh
+deploy/tests/helm/makefile-destructive-guarded-test.sh
+deploy/tests/helm/networkpolicy-egress-test.sh
+deploy/tests/helm/outbox-autovacuum-naptime-test.sh
+deploy/tests/helm/prerequisite-secrets-test.sh
+deploy/tests/helm/trusted-forwarder-profiles-test.sh
 "
 
-# Поиск: файл несёт РАЗБОР аргумента --self-test (bash-тест либо разбор argv).
+# Три законные формы разбора аргумента --self-test. Все три — КОД: bash-тест,
+# проверка членства в argv, объявление флага в argparse. Слово в прозе, внутри
+# регулярного выражения или в строке запуска ни одной из них не является.
+SELFTEST_PARSE='= *"--self-test" *\]|"--self-test" +in +sys\.argv|add_argument\( *"--self-test"'
+
+# ЧИТАЕТСЯ ИСПОЛНЯЕМАЯ ЧАСТЬ, А НЕ ТЕКСТ — и это не предосторожность впрок.
+# Первая же редакция обхода по всему дереву нашла САМ ЭТОТ ФАЙЛ: в шапке выше
+# перечислены узнаваемые формы, и перечисление неотличимо от объявления. Гейт,
+# который красят его собственные объяснения, снимут при первом же ложном
+# срабатывании — поэтому строки-комментарии отбрасываются до сравнения.
+executable_lines() { sed -e 's/[[:space:]]#[[:space:]].*$//' -e '/^[[:space:]]*#/d' "$1"; }
+
+# Поиск: файл дерева, несущий РАЗБОР аргумента --self-test.
+#
+# Принимает корень поиска аргументом — так его можно навести на синтетическое
+# дерево и доказать инъекцией, не трогая репозиторий. В синтетическом дереве
+# `git ls-files` не работает, поэтому там используется обход файловой системы;
+# для репозитория авторитет — версионный контроль.
+#
+# Сортировка — байтовая (LC_ALL=C). В локали по умолчанию точка в начале имени
+# при сличении игнорируется, поэтому `.github/…` уезжал ПОСЛЕ `deploy/…`, а
+# объявленный список сортировался иначе — состав «расходился» на одном порядке.
 discover() {
-  local f
-  for f in scripts/assert-*.sh scripts/assert-*.py tests/helm/*.sh; do
-    [ -f "$f" ] || continue
-    if grep -qE '= *"--self-test" *\]|"--self-test" +in +sys\.argv' "$f"; then
+  local root="${1:-$REPO_ROOT}" f
+  {
+    if [ "$root" = "$REPO_ROOT" ] && git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
+      git -C "$root" ls-files -z '*.sh' '*.py'
+    else
+      ( cd "$root" && find . -type f \( -name '*.sh' -o -name '*.py' \) \
+          -not -path './.git/*' -not -path '*/node_modules/*' -not -path '*/vendor/*' \
+          -printf '%P\0' )
+    fi
+  } | while IFS= read -r -d '' f; do
+    [ -f "$root/$f" ] || continue
+    # Исполняемая часть берётся ПОДСТАНОВКОЙ, а не конвейером в grep. С
+    # `pipefail` конвейер `sed … | grep -q` возвращает ОТКАЗ на совпадении:
+    # grep выходит по первому попаданию, sed получает SIGPIPE (141), и статус
+    # конвейера берётся от него. Файл при этом молча выпадает из состава — тем
+    # заметнее, что зависит от РАЗМЕРА файла: на коротких sed успевает
+    # дописать и отказа нет. Ровно так пропал самый длинный из гейтов, а
+    # синтетические фикстуры (по три строки) дефект не показывали.
+    if grep -qE "$SELFTEST_PARSE" <<<"$(executable_lines "$root/$f")"; then
       echo "$f"
     fi
-  done | sort
+  done | LC_ALL=C sort
 }
+
+# ── ИНЪЕКЦИЯ В ОБХОД: доказательство, что предикат читает разбор, а не текст ──
+#
+# Идёт ДО предусловий (yq/helm): обход к ним не обращается, а требовать
+# инструменты для проверки чистого разбора текста значило бы не иметь возможности
+# проверить его там, где инструментов нет.
+if [ "${1:-}" = "--verify-discovery" ]; then
+  echo "=== обход самопроверок: инъекции в синтетическое дерево ==="
+  tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+  rc=0
+  mkdir -p "$tmp/deploy/scripts" "$tmp/.github/scripts" "$tmp/services/x/tools"
+
+  # ТРИ ЗАКОННЫЕ ФОРМЫ — обязаны найтись, в любом каталоге дерева.
+  #
+  # Фикстуры СОБИРАЮТСЯ из подстановки, а не пишутся литералом: литерал сделал бы
+  # этот файл своей же находкой, и «прогонщик себя не находит» держалось бы на
+  # везении. Тот же приём, что и отбрасывание комментариев выше.
+  sfx='--self-test'
+  { echo '#!/usr/bin/env bash'; printf 'if [ "${1:-}" = "%s" ]; then echo x; fi\n' "$sfx"; } \
+    >"$tmp/deploy/scripts/assert-bash-form.sh"
+  { echo 'import sys'; printf 'sys.exit(0 if "%s" in sys.argv[1:] else 1)\n' "$sfx"; } \
+    >"$tmp/.github/scripts/argv-form.py"
+  { echo 'import argparse'; echo 'ap = argparse.ArgumentParser()'
+    printf 'ap.add_argument("%s", action="store_true")\n' "$sfx"; } \
+    >"$tmp/services/x/tools/argparse-form.py"
+
+  # НЕ САМОПРОВЕРКИ — слово есть, разбора нет. Обязаны НЕ найтись, иначе прогон
+  # потребует запускать несуществующую ветку.
+  { echo '#!/usr/bin/env bash'; printf '# Самопроверка: %s (её здесь нет)\n' "$sfx"
+    printf 'echo "запусти: bash $0 %s"\n' "$sfx"; } >"$tmp/deploy/scripts/prose-only.sh"
+  # Форма, на которой сломалась первая редакция: объяснение узнаваемой формы,
+  # записанное КОММЕНТАРИЕМ, — ровно то, чем этот файл красил сам себя.
+  { echo '#!/usr/bin/env bash'
+    printf '# узнаётся форма: [ "$1" = "%s" ] и "%s" in sys.argv\n' "$sfx" "$sfx"
+    echo 'echo ничего'; } >"$tmp/deploy/scripts/comment-only.sh"
+
+  # ДЛИННЫЙ ФАЙЛ, СОВПАДЕНИЕ В НАЧАЛЕ — размерная половина предиката. Короткие
+  # фикстуры выше не различают «нашлось» и «нашлось, но пропало по SIGPIPE»:
+  # у них чтение успевает завершиться. Здесь после совпадения идёт ещё много
+  # строк, поэтому читатель обязан дочитать файл, а не полагаться на удачу.
+  { printf 'if [ "${1:-}" = "%s" ]; then echo x; fi\n' "$sfx"
+    for i in $(seq 1 4000); do echo "# наполнитель $i"; done; } \
+    >"$tmp/deploy/scripts/long-form.sh"
+
+  found="$(discover "$tmp")"
+  want=".github/scripts/argv-form.py
+deploy/scripts/assert-bash-form.sh
+deploy/scripts/long-form.sh
+services/x/tools/argparse-form.py"
+  if [ "$found" = "$want" ]; then
+    echo "  ОК  все формы разбора найдены, в трёх каталогах, включая длинный файл"
+  else
+    echo "  ПРОВАЛ состав не тот"; echo "--- найдено:"; printf '%s\n' "$found" | sed 's/^/      /'
+    echo "--- ожидалось:"; printf '%s\n' "$want" | sed 's/^/      /'; rc=1
+  fi
+  for f in deploy/scripts/prose-only.sh deploy/scripts/comment-only.sh; do
+    if printf '%s\n' "$found" | grep -qx "$f"; then
+      echo "  ПРОВАЛ $f принят за самопроверку — предикат читает текст, а не разбор"; rc=1
+    else
+      echo "  ОК  $f не принят: слово есть, исполняемой ветки нет"
+    fi
+  done
+
+  # ЭТОТ ФАЙЛ обязан остаться вне состава: он содержит слово в прозе, в
+  # регулярном выражении и в строке запуска — но ветки `--self-test` не несёт.
+  if discover | grep -qx "deploy/scripts/$(basename "$0")"; then
+    echo "  ПРОВАЛ прогонщик нашёл САМ СЕБЯ — состав стал бы рекурсивным"; rc=1
+  else
+    echo "  ОК  прогонщик себя не находит"
+  fi
+
+  # РАСХОЖДЕНИЕ В ОБЕ СТОРОНЫ обязано быть красным. Проверяется тем же
+  # сравнением, что и в основном проходе.
+  real="$(discover)"
+  for case in extra gone; do
+    case "$case" in
+      extra) probe="$(printf '%s\n' "$real" | tail -n +2)"; what="самопроверка есть, в списке НЕТ" ;;
+      gone)  probe="$(printf '%s\n%s\n' "$real" "deploy/scripts/gone.sh" | sort)"; what="в списке есть, самопроверки НЕТ" ;;
+    esac
+    if [ "$real" = "$probe" ]; then
+      echo "  ПРОВАЛ ($case) сравнение не различает состав"; rc=1
+    else
+      echo "  ОК  ($case) расхождение видно: $what"
+    fi
+  done
+
+  echo
+  [ $rc -eq 0 ] && echo "PASS: обход самопроверок" || echo "FAIL: обход самопроверок"
+  exit $rc
+fi
 
 # ── ПРЕДУСЛОВИЯ ИСПОЛНЯЮТСЯ ЗДЕСЬ, А НЕ ПРЕДПОЛАГАЮТСЯ У ЗАПУСКАЮЩЕГО ────────
 #
@@ -87,18 +248,20 @@ if ! yq --version 2>&1 | grep -qE 'mikefarah|version v?4'; then
   exit 2
 fi
 echo "=== helm dependency build (самопроверки рендерят умбреллу; charts/*.tgz не в git) ==="
-( cd helm/umbrella && helm dep update >/dev/null 2>&1 ) \
+( cd "$DEPLOY_ROOT/helm/umbrella" && helm dep update >/dev/null 2>&1 ) \
   || { echo "FATAL: helm dep update сорвался — рендер будет неполным, проверки НЕ ВЫПОЛНЕНЫ"; exit 2; }
-rm -rf helm/umbrella/tmpcharts-*
+rm -rf "$DEPLOY_ROOT"/helm/umbrella/tmpcharts-*
 
 FOUND="$(discover)"
-WANT="$(printf '%s\n' $DECLARED | sort)"
+WANT="$(printf '%s\n' $DECLARED | LC_ALL=C sort)"
 
 if [ "$FOUND" != "$WANT" ]; then
   echo "FAIL: состав самопроверок разошёлся с объявленным."
   echo
-  extra="$(comm -23 <(printf '%s\n' "$FOUND") <(printf '%s\n' "$WANT"))"
-  gone="$(comm -13 <(printf '%s\n' "$FOUND") <(printf '%s\n' "$WANT"))"
+  # LC_ALL=C и здесь: оба списка отсортированы байтово, а `comm` без того же
+  # правила сличения объявляет их «неотсортированными» и врёт про разницу.
+  extra="$(LC_ALL=C comm -23 <(printf '%s\n' "$FOUND") <(printf '%s\n' "$WANT"))"
+  gone="$(LC_ALL=C comm -13 <(printf '%s\n' "$FOUND") <(printf '%s\n' "$WANT"))"
   [ -n "$extra" ] && { echo "  самопроверка есть, а в списке её НЕТ (не исполнялась бы):"; printf '    %s\n' $extra; }
   [ -n "$gone" ]  && { echo "  в списке есть, а самопроверки НЕТ (запись без предмета):"; printf '    %s\n' $gone; }
   echo

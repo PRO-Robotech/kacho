@@ -2,20 +2,133 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 
-"""Анализатор одного helm-рендера: каждый volumeMount обязан иметь свой volume.
+"""Каждый volumeMount обязан иметь свой volume — во ВСЕХ комбинациях тумблеров.
 
-Читает манифесты со stdin, печатает найденные расхождения (пусто = чисто),
-код возврата 1 при находках, 2 при ошибке разбора.
+ЗАЧЕМ. `helm template` этого не ловит, и `helm lint` тоже: манифест с монтом на
+несуществующий том рендерится успешно и валится только на apiserver — уже при
+деплое:
 
-Вынесен из bash-обёртки отдельным файлом: inline-python в шелле уже дал два дефекта —
-`python3 - <<'PY' <<<"$out"` (второй redirect перекрывает первый, python читает ДАННЫЕ
-как скрипт) и молчаливое «✓» при падении анализатора.
+    Deployment.apps "compute" is invalid:
+      spec.template.spec.containers[0].volumeMounts[0].name: Not found: "tmp"
+
+Поймано на себе: секция `volumes:` у compute была гейтована
+`{{- if or .Values.opa.enabled .Values.mtls.enable }}`, и при обоих false (ровно
+профиль umbrella-фазы 1) том исчезал, а монт на него оставался. Standalone-рендер
+проблему не показывал — там ДЕФОЛТНЫЕ values, где тумблеры включены. Поэтому
+проверяется МАТРИЦА, а не дефолт.
+
+ТОМ БЫВАЕТ НЕ ТОЛЬКО В `volumes:`. У StatefulSet имя тома объявляет ещё и
+`volumeClaimTemplates`, и это ОСНОВНАЯ форма для набора с состоянием. Анализатор
+про неё не знал, поэтому совершенно корректный StatefulSet реестра читался как
+«монт без тома» — то есть распространить гейт на чарт реестра было нельзя, не
+починив это. Обратная ошибка («StatefulSet — значит всегда можно») запрещена
+тем же предикатом: имя обязано быть объявлено ЛИБО в `volumes`, ЛИБО в
+`volumeClaimTemplates`, и мимо обоих списков не проходит ничего.
+
+ОБЪЁМ ОСМОТРЕННОГО ОБЪЯВЛЯЕТСЯ. «Ноль находок» обязано быть отличимо от «ноль
+прочитанного»: рендер без единого workload'а — ПРОВАЛ (сломанный набор флагов,
+переименованный шаблон), а не чистота. Так же и покрытие: таблица чартов
+сверяется с first-party зависимостями умбреллы, поэтому новый сервисный чарт не
+может тихо оказаться вне гейта, а запись без предмета не может в нём остаться.
+
+Вынесен из bash-обёртки отдельным файлом: inline-python в шелле уже дал два
+дефекта — `python3 - <<'PY' <<<"$out"` (второй redirect перекрывает первый, python
+читает ДАННЫЕ как скрипт) и молчаливое «✓» при падении анализатора.
+
+Запуск:       bash .github/scripts/check-volume-mounts.sh
+Один рендер:  helm template … | python3 .github/scripts/check-volume-mounts.py --stdin
+Самопроверка: --self-test — инъекции в синтетические манифесты, helm не нужен.
 """
+from __future__ import annotations
+
+import pathlib
+import subprocess
 import sys
 
 import yaml
 
+REPO = pathlib.Path(__file__).resolve().parents[2]
+UMBRELLA_CHART = REPO / "deploy/helm/umbrella/Chart.yaml"
+
 WORKLOADS = ("Deployment", "StatefulSet", "Job", "DaemonSet", "CronJob")
+
+# Чарты-склейки: workload'ов с монтами у них нет вовсе, поэтому матрицы им не
+# нужно. Это ИСКЛЮЧЕНИЕ, и оно живёт, пока у него есть предмет: пропажа чарта из
+# зависимостей умбреллы — находка (см. coverage_findings).
+NO_WORKLOAD_CHARTS = {"openfga-bootstrap", "kratos-selfservice-ui"}
+
+
+class Chart:
+    """Один чарт: где лежит, чем рендерится и какие тумблеры гейтят тома.
+
+    `required` — значения, без которых чарт ОСОЗНАННО не рендерится (у kacho-nlb
+    нет и не должно быть дефолтного пароля; гейт обязан это удовлетворить, а не
+    наказывать за правильный fail-closed дизайн). `toggles` — только те ключи,
+    чьи условия реально охватывают `volumes:` / `volumeMounts:` /
+    `volumeClaimTemplates:` либо отдельные записи внутри них; они выведены
+    разбором шаблонов, а не угаданы, и по ним строится ПОЛНАЯ матрица.
+    """
+
+    def __init__(self, name: str, path: str, required: list[str],
+                 toggles: list[tuple[str, str, str]]):
+        self.name = name
+        self.path = path
+        self.required = required
+        self.toggles = toggles
+
+    def renders(self):
+        """Все комбинации тумблеров: (подпись, список аргументов --set)."""
+        for mask in range(1 << len(self.toggles)):
+            sets, label = list(self.required), []
+            for i, (key, off, on) in enumerate(self.toggles):
+                val = on if mask >> i & 1 else off
+                sets += ["--set", "{}={}".format(key, val)]
+                label.append("{}={}".format(key, val if val else '""'))
+            yield " ".join(label) or "дефолт", sets
+
+
+CHARTS = [
+    Chart("vpc", "services/vpc/deploy",
+          ["--set", "image=x", "--set", "name=vpc"],
+          [("opa.enabled", "false", "true"), ("mtls.enable", "false", "true"),
+           ("mtls.edges.geo", "false", "true"), ("mtls.edges.iamAuthz", "false", "true"),
+           ("mtls.edges.iamProject", "false", "true"),
+           ("mtls.edges.iamRegister", "false", "true")]),
+    Chart("compute", "services/compute/deploy",
+          ["--set", "image=x", "--set", "name=compute"],
+          [("opa.enabled", "false", "true"), ("mtls.enable", "false", "true")]),
+    Chart("kacho-nlb", "services/nlb/deploy",
+          ["--set", "db.password=x"],
+          [("mtls.enable", "false", "true"), ("migrator.enable", "false", "true")]),
+    Chart("api-gateway", "gateway/deploy",
+          ["--set", "image=x", "--set", "name=api-gateway"],
+          [("tls.enabled", "false", "true"), ("mtls.enable", "false", "true"),
+           # Не булев тумблер: имя секрета с якорем доверия к внутреннему CA —
+           # пустое значение убирает том, непустое добавляет.
+           ("hydra.adminCa.secretName", "", "internal-ca")]),
+    Chart("registry", "services/registry/deploy", [],
+          [("mtls.enable", "false", "true"),
+           # zot.enabled гейтит САМ StatefulSet, то есть тот единственный
+           # workload платформы, чей том приходит из volumeClaimTemplates.
+           # Условий вокруг секций томов он не несёт, но без обеих его ветвей
+           # матрица не покрывает набор с состоянием ни в одном рендере.
+           ("zot.enabled", "false", "true"),
+           ("zot.storage.persistence", "false", "true"),
+           ("service.dataplaneLB.enabled", "false", "true"),
+           ("service.dataplaneLB.tlsSidecar.enabled", "false", "true")]),
+    Chart("storage", "services/storage/deploy",
+          ["--set", "image.repository=x", "--set", "image.tag=y"],
+          [("migrator.enabled", "false", "true"), ("mtls.enable", "false", "true"),
+           ("mtls.edges.geo", "false", "true"), ("mtls.edges.iam", "false", "true")]),
+    Chart("kacho-iam", "deploy/helm/umbrella/charts/kacho-iam", [],
+          [("mtls.enable", "false", "true"), ("mtls.httpListeners", "false", "true"),
+           ("opaSidecar.enabled", "false", "true"),
+           ("initContainer.migrator.enabled", "false", "true"),
+           ("initContainer.waitForExtAuth.enabled", "false", "true")]),
+    Chart("kacho-geo", "deploy/helm/umbrella/charts/kacho-geo", [],
+          [("mtls.enable", "false", "true"), ("dataMigration.enabled", "false", "true")]),
+    Chart("uif", "ui-future/deploy", [], []),
+]
 
 
 def pod_spec(doc):
@@ -27,32 +140,291 @@ def pod_spec(doc):
     return tmpl.get("spec") or {}
 
 
-def main() -> int:
-    try:
-        docs = list(yaml.safe_load_all(sys.stdin))
-    except yaml.YAMLError as e:
-        print(f"не удалось разобрать YAML: {e}", file=sys.stderr)
-        return 2
+def declared_volume_names(doc, sp) -> set:
+    """Имена, которые ЭТОТ workload объявляет как тома.
 
-    bad = []
+    Два источника, и оба обязательны. `spec.template.spec.volumes` — обычный. У
+    StatefulSet имя объявляет ещё и `spec.volumeClaimTemplates[].metadata.name`:
+    по нему на каждую реплику создаётся PVC, и монт на такое имя совершенно
+    корректен. Читать только первый источник значит краснеть на правильном
+    наборе с состоянием.
+    """
+    names = {v["name"] for v in (sp.get("volumes") or [])
+             if isinstance(v, dict) and "name" in v}
+    if doc.get("kind") == "StatefulSet":
+        for vct in ((doc.get("spec") or {}).get("volumeClaimTemplates") or []):
+            if isinstance(vct, dict):
+                name = (vct.get("metadata") or {}).get("name")
+                if name:
+                    names.add(name)
+    return names
+
+
+def analyze(docs):
+    """Находки, число осмотренных workload'ов, число осмотренных контейнеров."""
+    bad, workloads, containers = [], 0, 0
     for d in docs:
         if not isinstance(d, dict) or d.get("kind") not in WORKLOADS:
             continue
+        workloads += 1
         sp = pod_spec(d)
-        vols = {v["name"] for v in (sp.get("volumes") or []) if isinstance(v, dict) and "name" in v}
-        containers = (sp.get("containers") or []) + (sp.get("initContainers") or [])
-        for c in containers:
-            mounts = {m["name"] for m in (c.get("volumeMounts") or []) if isinstance(m, dict) and "name" in m}
+        vols = declared_volume_names(d, sp)
+        for c in (sp.get("containers") or []) + (sp.get("initContainers") or []):
+            containers += 1
+            mounts = {m["name"] for m in (c.get("volumeMounts") or [])
+                      if isinstance(m, dict) and "name" in m}
             missing = mounts - vols
             if missing:
                 name = (d.get("metadata") or {}).get("name", "?")
-                bad.append(f"{d['kind']} {name} / контейнер {c.get('name', '?')}: "
-                           f"монт без тома {sorted(missing)} (есть тома: {sorted(vols) or 'нет'})")
+                bad.append("{} {} / контейнер {}: монт без тома {} (объявлены тома: {})".format(
+                    d["kind"], name, c.get("name", "?"), sorted(missing), sorted(vols) or "нет"))
+    return bad, workloads, containers
 
+
+def analyze_text(text: str):
+    return analyze(list(yaml.safe_load_all(text)))
+
+
+def stdin_mode() -> int:
+    """Анализ одного рендера со stdin — анализатор отдельно от драйвера."""
+    try:
+        bad, workloads, _ = analyze_text(sys.stdin.read())
+    except yaml.YAMLError as e:
+        print("не удалось разобрать YAML: {}".format(e), file=sys.stderr)
+        return 2
     for line in bad:
         print(line)
+    if not workloads:
+        print("в рендере НЕТ ни одного workload'а — проверять было нечего, "
+              "и это провал, а не чистота", file=sys.stderr)
+        return 2
     return 1 if bad else 0
 
 
+def coverage_findings() -> list:
+    """Ни один сервисный чарт умбреллы не может оказаться вне гейта молча.
+
+    Прежняя обёртка несла РУЧНОЙ список из четырёх чартов при восьми сервисных.
+    Список, который никто не сверяет, отстаёт молча: новый чарт просто не
+    проверяется, и об этом ничто не сообщает.
+    """
+    out = []
+    try:
+        dep_doc = yaml.safe_load(UMBRELLA_CHART.read_text(encoding="utf-8"))
+    except OSError as e:
+        return ["не прочитан {}: {} — покрытие НЕ проверено".format(UMBRELLA_CHART, e)]
+
+    first_party = {d["name"] for d in (dep_doc.get("dependencies") or [])
+                   if str(d.get("repository", "")).startswith("file://")}
+    if not first_party:
+        return ["в {} не разобрано ни одной file://-зависимости — покрытие сверять не с чем, "
+                "а это не «покрыто всё»".format(UMBRELLA_CHART)]
+
+    covered = {c.name for c in CHARTS}
+    for name in sorted(first_party - covered - NO_WORKLOAD_CHARTS):
+        out.append("чарт '{}' — first-party зависимость умбреллы, но его нет в таблице этого "
+                   "гейта: его монты не проверяются, и об этом ничто не сообщает".format(name))
+    for name in sorted(covered - first_party):
+        out.append("чарт '{}' есть в таблице гейта, но он больше не зависимость умбреллы — "
+                   "запись без предмета, удали её".format(name))
+    for name in sorted(NO_WORKLOAD_CHARTS - first_party):
+        out.append("'{}' объявлен беззагрузочным исключением, но он больше не зависимость "
+                   "умбреллы — запись без предмета, удали её".format(name))
+    return out
+
+
+def render(chart: Chart, sets: list):
+    """Рендер чарта. Возвращает (манифесты | None, первая строка диагностики)."""
+    p = subprocess.run(["helm", "template", "t", str(REPO / chart.path)] + sets,
+                       capture_output=True, text=True)
+    if p.returncode != 0:
+        return None, (p.stderr or p.stdout).strip().split("\n")[0]
+    return p.stdout, ""
+
+
+def main() -> int:
+    rc = 0
+    for line in coverage_findings():
+        print("  ✗ покрытие: {}".format(line))
+        rc = 1
+
+    renders = workloads_seen = 0
+    for chart in CHARTS:
+        for label, sets in chart.renders():
+            manifests, err = render(chart, sets)
+            if manifests is None:
+                print("  ✗ {} ({}) — рендер упал: {}".format(chart.name, label, err))
+                rc = 1
+                continue
+            try:
+                bad, workloads, _ = analyze_text(manifests)
+            except yaml.YAMLError as e:
+                print("  ✗ {} ({}) — YAML не разобран: {}".format(chart.name, label, e))
+                rc = 1
+                continue
+            renders += 1
+            workloads_seen += workloads
+            if not workloads:
+                print("  ✗ {} ({}) — в рендере НЕТ workload'ов: проверять было нечего".format(
+                    chart.name, label))
+                rc = 1
+            elif bad:
+                print("  ✗ {} ({}):".format(chart.name, label))
+                for b in bad:
+                    print("      {}".format(b))
+                rc = 1
+            else:
+                print("  ✓ {} ({})".format(chart.name, label))
+
+    print("\nосмотрено: чартов {}, рендеров {}, workload'ов {}".format(
+        len(CHARTS), renders, workloads_seen))
+    if renders == 0 or workloads_seen == 0:
+        print("FAIL: гейт не осмотрел НИ ОДНОГО workload'а — это провал, а не чистота")
+        return 1
+    return rc
+
+
+def self_test() -> int:
+    """Инъекции в синтетические манифесты: гейт краснеет на дефекте и молчит на
+    законной конструкции той же формы. helm не нужен."""
+    rc = 0
+
+    def case(name, text, want, want_in=""):
+        nonlocal rc
+        bad, workloads, containers = analyze_text(text)
+        ok = len(bad) == want and (not want_in or any(want_in in b for b in bad))
+        print("  {} {} (находок {}, ожидалось {}; workload'ов {}, контейнеров {})".format(
+            "ОК    " if ok else "ПРОВАЛ", name, len(bad), want, workloads, containers))
+        if not ok:
+            for b in bad:
+                print("        {}".format(b))
+            rc = 1
+
+    case("монт без тома → находка", """
+kind: Deployment
+metadata: {name: d}
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+""", 1, "tmp")
+
+    case("монт с томом из volumes → молчание", """
+kind: Deployment
+metadata: {name: d}
+spec:
+  template:
+    spec:
+      containers:
+        - name: app
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {}}]
+""", 0)
+
+    # Контроль, ради которого правился анализатор.
+    case("StatefulSet: том из volumeClaimTemplates → молчание", """
+kind: StatefulSet
+metadata: {name: s}
+spec:
+  volumeClaimTemplates:
+    - metadata: {name: storage}
+      spec: {accessModes: [ReadWriteOnce]}
+  template:
+    spec:
+      containers:
+        - name: app
+          volumeMounts: [{name: storage, mountPath: /var/lib/data}]
+""", 0)
+
+    # И обратное: заявки не делают StatefulSet бланкетно правым.
+    case("StatefulSet: монт мимо volumes И заявок → находка", """
+kind: StatefulSet
+metadata: {name: s}
+spec:
+  volumeClaimTemplates:
+    - metadata: {name: storage}
+      spec: {accessModes: [ReadWriteOnce]}
+  template:
+    spec:
+      containers:
+        - name: app
+          volumeMounts:
+            - {name: storage, mountPath: /var/lib/data}
+            - {name: config, mountPath: /etc/app}
+""", 1, "config")
+
+    case("initContainer судится так же → находка", """
+kind: StatefulSet
+metadata: {name: s}
+spec:
+  volumeClaimTemplates:
+    - metadata: {name: storage}
+      spec: {accessModes: [ReadWriteOnce]}
+  template:
+    spec:
+      initContainers:
+        - name: init
+          volumeMounts: [{name: seed, mountPath: /seed}]
+      containers:
+        - name: app
+          volumeMounts: [{name: storage, mountPath: /d}]
+""", 1, "seed")
+
+    case("CronJob вложен глубже, монт всё равно виден → находка", """
+kind: CronJob
+metadata: {name: c}
+spec:
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: app
+              volumeMounts: [{name: tmp, mountPath: /tmp}]
+""", 1, "tmp")
+
+    # Заявка на том у НЕ-StatefulSet именем не объявляет: поле там не действует,
+    # и принимать его за объявление значило бы пропускать настоящий дефект.
+    case("Deployment с полем заявок: имя НЕ объявлено → находка", """
+kind: Deployment
+metadata: {name: d}
+spec:
+  volumeClaimTemplates:
+    - metadata: {name: storage}
+  template:
+    spec:
+      containers:
+        - name: app
+          volumeMounts: [{name: storage, mountPath: /d}]
+""", 1, "storage")
+
+    bad, workloads, _ = analyze_text("kind: ConfigMap\nmetadata: {name: c}\n")
+    if workloads == 0 and not bad:
+        print("  ОК     манифест без workload'ов даёт ноль осмотренного — отличимо от чистоты")
+    else:
+        print("  ПРОВАЛ учёт осмотренного: workload'ов {}, находок {}".format(workloads, len(bad)))
+        rc = 1
+
+    cov = coverage_findings()
+    if cov:
+        print("  ПРОВАЛ покрытие таблицы разошлось с умбреллой:")
+        for line in cov:
+            print("        {}".format(line))
+        rc = 1
+    else:
+        print("  ОК     покрытие: все first-party чарты умбреллы в таблице ({})".format(len(CHARTS)))
+
+    print()
+    print("PASS: check-volume-mounts --self-test" if rc == 0
+          else "FAIL: check-volume-mounts --self-test")
+    return rc
+
+
 if __name__ == "__main__":
+    if "--self-test" in sys.argv[1:]:
+        sys.exit(self_test())
+    if "--stdin" in sys.argv[1:]:
+        sys.exit(stdin_mode())
     sys.exit(main())

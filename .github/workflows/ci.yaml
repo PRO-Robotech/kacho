@@ -426,6 +426,22 @@ jobs:
       - name: каждый volumeMount имеет свой volume (матрица тумблеров)
         run: bash .github/scripts/check-volume-mounts.sh
 
+      # Офлайновые стражи рендера сервисных чартов: провязка межсервисного ребра
+      # обязана РЕАЛЬНО попасть в манифест (адрес соседа в config.yaml,
+      # serverName для mTLS, отсутствие мёртвого хоста). Чистый `helm template`,
+      # кластер не нужен — поэтому им место здесь, а не в прогоне на стенде.
+      #
+      # Не звал НИКТО: у kacho-nlb цель существовала и не встречалась ни в одном
+      # конвейере, у kacho-vpc цели не было вовсе — скрипт просто лежал в дереве.
+      # Оба стража были мёртвыми при полностью здоровом виде. Что они вызываются,
+      # залочено гейтом internal/repohygiene/renderguard_test.go: он находит
+      # стражей по дереву и требует достижимости каждого из конвейера, поэтому
+      # следующий такой скрипт не сможет тихо остаться немым.
+      - name: стражи рендера сервисных чартов (vpc, nlb)
+        run: |
+          make -C services/vpc helm-render-guard
+          make -C services/nlb helm-render-guard
+
       - name: mtls-off список покрывает values.dev.yaml
         working-directory: deploy
         run: make check-mtls-off-complete
