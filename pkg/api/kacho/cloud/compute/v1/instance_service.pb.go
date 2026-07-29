@@ -4160,7 +4160,7 @@ const file_kacho_cloud_compute_v1_instance_service_proto_rawDesc = "" +
 	"\x0fInstanceService\x12\xca\x01\n" +
 	"\x03Get\x12*.kacho.cloud.compute.v1.GetInstanceRequest\x1a .kacho.cloud.compute.v1.Instance\"u\x8a\xb5\x18\x15compute.instances.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x1f\n" +
 	"\x10compute_instance\x12\vinstance_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02%\x12#/compute/v1/instances/{instance_id}\x12\xc6\x01\n" +
-	"\x04List\x12,.kacho.cloud.compute.v1.ListInstancesRequest\x1a-.kacho.cloud.compute.v1.ListInstancesResponse\"a\x8a\xb5\x18\x18compute.instanceses.list\x92\xb5\x18\x06v_list\x9a\xb5\x18\x15\n" +
+	"\x04List\x12,.kacho.cloud.compute.v1.ListInstancesRequest\x1a-.kacho.cloud.compute.v1.ListInstancesResponse\"a\x8a\xb5\x18\x18compute.instanceses.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x17\x12\x15/compute/v1/instances\x12\xe6\x01\n" +
 	"\x06Create\x12-.kacho.cloud.compute.v1.CreateInstanceRequest\x1a .kacho.cloud.operation.Operation\"\x8a\x01\x8a\xb5\x18\x18compute.instances.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +

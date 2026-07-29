@@ -1221,7 +1221,7 @@ const file_kacho_cloud_vpc_v1_security_group_service_proto_rawDesc = "" +
 	"\x14SecurityGroupService\x12\xde\x01\n" +
 	"\x03Get\x12+.kacho.cloud.vpc.v1.GetSecurityGroupRequest\x1a!.kacho.cloud.vpc.v1.SecurityGroup\"\x86\x01\x8a\xb5\x18\x17vpc.security_groups.get\x92\xb5\x18\x05v_get\x9a\xb5\x18'\n" +
 	"\x12vpc_security_group\x12\x11security_group_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02,\x12*/vpc/v1/securityGroups/{security_group_id}\x12\xcb\x01\n" +
-	"\x04List\x12-.kacho.cloud.vpc.v1.ListSecurityGroupsRequest\x1a..kacho.cloud.vpc.v1.ListSecurityGroupsResponse\"d\x8a\xb5\x18\x1avpc.security_groupses.list\x92\xb5\x18\x06v_list\x9a\xb5\x18\x15\n" +
+	"\x04List\x12-.kacho.cloud.vpc.v1.ListSecurityGroupsRequest\x1a..kacho.cloud.vpc.v1.ListSecurityGroupsResponse\"d\x8a\xb5\x18\x1avpc.security_groupses.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x18\x12\x16/vpc/v1/securityGroups\x12\xf4\x01\n" +
 	"\x06Create\x12..kacho.cloud.vpc.v1.CreateSecurityGroupRequest\x1a .kacho.cloud.operation.Operation\"\x97\x01\x8a\xb5\x18\x1avpc.security_groups.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
