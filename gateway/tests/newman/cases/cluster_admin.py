@@ -515,41 +515,37 @@ CASES.append(Case(
 
 
 # ---------------------------------------------------------------------------
-# CLUSTER-ADMIN-INTERNAL-NOT-ON-EXTERNAL-TLS
+# CLUSTER-ADMIN-INTERNAL-NOT-ON-EXTERNAL-TLS — REMOVED, and here is the whole reason
 # ---------------------------------------------------------------------------
-# ban #6: Internal* is never published on the advertised external TLS endpoint. A
-# 200/401/403 here would be a critical leak — 401 in particular would prove the
-# route EXISTS externally and is merely unauthenticated.
+# The invariant (ban #6: Internal* is never published on the advertised external TLS
+# endpoint) is NOT dropped. It is checked, over gRPC, by
+# deploy/scripts/assert-ban6-external-isolation.py, which enumerates EVERY
+# `service Internal*` in proto/ — InternalClusterService among them, by construction
+# rather than by a maintained list — dials the external listener under the widest
+# principal the seed has, and requires a routing refusal for each. It also carries the
+# three controls without which such a verdict means nothing: a public method on the SAME
+# listener must answer (otherwise "unknown method" only proves the port is shut), each
+# Internal method must answer on its owner's internal endpoint (otherwise the refusal
+# proves the method exists nowhere), and a method removed from proto is a harness failure
+# rather than a pass.
 #
-# `externalBaseUrl` is harness configuration: the step FAILS naming the variable if
-# it is unset (require_env_url, injected by the "external" mux) rather than silently
-# skipping. A DNS/connection error IS accepted as PASS — an endpoint that does not
-# resolve is not exposing anything.
-CASES.append(Case(
-    id="CLUSTER-ADMIN-INTERNAL-NOT-ON-EXTERNAL-TLS",
-    title="POST /iam/v1/internal/cluster/admins on the external TLS endpoint → 404 (ban #6)",
-    classes=["NEG", "SEC"],
-    priority="P0",
-    steps=[
-        Step(
-            name="grant-on-external-tls",
-            method="POST",
-            path="/iam/v1/internal/cluster/admins",
-            mux="external",
-            auth="jwtBootstrap",
-            body={"subjectType": "USER", "subjectId": ABSENT_USER_ID},
-            test_script=[
-                "pm.test('EXT-TLS: cluster-admin mutation is NOT routable on the external endpoint', () => {",
-                "  const code = pm.response.code;",
-                "  // Unreachable endpoint (DNS / connection refused) = not exposed = PASS.",
-                "  if (code === undefined) { return; }",
-                "  pm.expect(code, 'CRITICAL: InternalClusterService reachable on the external TLS endpoint!')",
-                "    .to.eql(404);",
-                "});",
-            ],
-        ),
-    ],
-))
+# WHAT THE CASE THAT STOOD HERE ACTUALLY DID. It POSTed to the external endpoint and
+# asserted `if (code === undefined) { return; }` above the check — an unanswered request
+# counted as a pass, with the comment declaring that unreachable means not exposed. On the
+# live stand the request WAS unanswered, for a reason that has nothing to do with
+# exposure: `unable to verify the first certificate` — newman was never given the internal
+# CA. So the P0 probe passed without a single byte of evidence, and would have passed
+# identically had the route been wide open. That the listener itself is fine was shown in
+# the same run by 79 gRPC probes against it with full chain verification.
+#
+# WHY IT IS NOT REPAIRED IN PLACE. Handing newman the CA would fix the certificate, not
+# the case: the external listener negotiates ALPN h2 and speaks ONLY gRPC. Measured
+# 2026-07-29 on kind-kacho — a plain HTTP request there (including `--http1.1`) is closed
+# after the headers with no HTTP response at all. A REST probe on that surface cannot be
+# evidence IN PRINCIPLE; it can only ever produce "no answer", which is a broken harness,
+# not a proof of isolation. That is precisely the reading this file already rejects for
+# the two Go-covered scenarios below: a case that cannot enter its own branch is worse
+# than no case.
 
 
 # ===========================================================================
