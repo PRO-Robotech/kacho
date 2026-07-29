@@ -73,23 +73,19 @@ authz:
   # указан явно. Dev: enabled=false → use-case'ы возвращают unfiltered list.
   listFilter:
     enabled: false           # Toggle list-filter (production: true). Использует authz.iamEndpoint (:9091).
-    authorizeEndpoint: ""    # наследие старого ListObjects: код больше не читает; list-filter идет через iamEndpoint :9091.
+    # Адрес iam AuthorizeService (публичный :9090). Пусто → берётся authz.iamEndpoint.
+    # Соединение поднимается ОТДЕЛЬНО от ребра per-RPC Check и требует проверяемого
+    # транспорта: боевая посадка без authorizeTls.enable (или без общего с Check
+    # client-cert'а KACHO_VPC_IAM_AUTHZ_MTLS_ENABLE) НЕ СТАРТУЕТ.
+    authorizeEndpoint: ""
     authorizeTls:
       enable: false
     timeoutMs: 1000          # Per-call FGA timeout (ONE BatchCheck; the whole-filter budget is derived)
     cacheTtl: 5s             # LRU TTL
     maxEntries: 10000        # Cache hard cap (LRU eviction)
-    modelId: ""              # Pinned authorization_model_id
-    failOpen: false          # Default fail-closed
-  # write-side FGA: each resource Create publishes
-  # `vpc_<resource>:<id>#project@project:<project_id>` so per-resource Checks
-  # resolve. Production: enabled=true with the shared OpenFGA store id.
-  tupleWrite:
-    enabled: false           # Toggle write-side FGA (production: true)
-    openfgaEndpoint: ""      # OpenFGA HTTP API host:port (shared cluster store)
-    storeId: ""              # OpenFGA store id (shared with kacho-iam)
-    modelId: ""              # Pinned authorization_model_id (empty → store default)
-    timeoutMs: 2000          # Per-call write timeout
+    # Мягкий проход. Для ScopeFiltered RPC фильтр — единственная авторизация, и
+    # боевая посадка с failOpen: true на таких методах НЕ СТАРТУЕТ.
+    failOpen: false
 extapi:
   # peer kacho-iam.ProjectService.Get.
   iam:

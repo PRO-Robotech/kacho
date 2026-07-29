@@ -131,7 +131,6 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("authz.list-filter.timeout-ms", 1000)
 	v.SetDefault("authz.list-filter.cache-ttl", 5*time.Second)
 	v.SetDefault("authz.list-filter.max-entries", 10000)
-	v.SetDefault("authz.list-filter.model-id", "")
 	v.SetDefault("authz.list-filter.fail-open", false)
 
 	// iam — интеграция с kacho-iam. require — fail-closed boot-gate (default off:

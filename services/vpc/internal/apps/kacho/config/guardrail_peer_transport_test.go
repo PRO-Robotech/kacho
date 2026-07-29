@@ -282,6 +282,178 @@ func TestValidatePeerTransport_Dev_GeoRegister_NoGuard(t *testing.T) {
 	require.NoError(t, c.ValidatePeerTransport(m))
 }
 
+// --- Исходящее ребро фильтра видимости (list-filter → AuthorizeService.BatchCheck).
+//
+// Это ОТДЕЛЬНОЕ соединение, а не то же самое, что authz Check edge: у него свой
+// адрес (iam public :9090 против internal :9091) и свой набор ручек транспорта.
+// Ответ этого ребра решает, какие объекты вызывающий увидит в List, поэтому
+// требование к нему то же, что к остальным исходящим: проверяемый транспорт в
+// любом боевом режиме. ---
+
+// prodCfgListFilterEdge — production Config, где ВСЕ прочие исходящие рёбра
+// удовлетворены, а фильтр видимости включён со своим адресом. База, чтобы
+// изолировать проверяемое ребро.
+func prodCfgListFilterEdge(mode Mode) (Config, MTLSConfig) {
+	c := prodCfg(mode, "kacho-iam-internal:9091", false)
+	c.AuthZ.IAMTLS.Enable = true // authz Check edge — verified server-TLS
+	c.AuthZ.ListFilter.Enabled = true
+	c.AuthZ.ListFilter.AuthorizeEndpoint = "kacho-iam:9090"
+	var m MTLSConfig // client-mTLS выключен на всех рёбрах
+	return c, m
+}
+
+// vpc9c-C-00: демонстрация ДЫРЫ. Конфигурация проходит S1, S2, S3 и S4 в его
+// прежнем виде — то есть сервис стартовал бы, — при том что соединение фильтра
+// видимости поднимается без проверяемого транспорта.
+func TestPeerTransport_GapDemonstration_ListFilterAuthorizeEdge(t *testing.T) {
+	c, m := prodCfgListFilterEdge(ModeProduction)
+	m.PublicServerMTLS.Enable = true
+	m.InternalServerMTLS.Enable = true
+
+	// Прочие гарды довольны.
+	require.NoError(t, c.Validate(), "S1 does not look at the visibility-filter edge")
+	require.NoError(t, c.ValidateServerMTLS(m), "S2 guards listeners only")
+	require.NoError(t, c.ValidateListFilter([]string{"/svc/List"}),
+		"S3 requires the filter to be ON, not to be dialled over verified transport")
+
+	// Проводка при этом реально выбирает незащищённый путь.
+	require.False(t, c.ListFilterEdgeUsesMTLS(m),
+		"this is the condition under which the composition root dials insecure")
+
+	// S4 обязан отклонить такой старт.
+	require.Error(t, c.ValidatePeerTransport(m))
+}
+
+// vpc9c-C-01: production + ребро фильтра без проверяемого транспорта → отказ,
+// и сообщение называет именно это ребро (прочие удовлетворены).
+func TestValidatePeerTransport_Production_ListFilterEdgeInsecure_Fails(t *testing.T) {
+	c, m := prodCfgListFilterEdge(ModeProduction)
+	err := c.ValidatePeerTransport(m)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "list-filter authorize edge")
+	require.Contains(t, err.Error(), "production mode (production)")
+	// Изоляция ребра — по НАЧАЛУ чужого сообщения: прозу «в отличие от Check-ребра»
+	// собственный текст содержит намеренно, и совпадение по подстроке «authz Check
+	// edge» проверяло бы формулировку, а не то, какое ребро отвергнуто.
+	require.NotContains(t, err.Error(), "outbound vpc→iam authz Check edge")
+	require.NotContains(t, err.Error(), "ProjectService.Get edge")
+	require.NotContains(t, err.Error(), "vpc→geo edge")
+}
+
+// vpc9c-C-02: production-strict — тот же отказ (любой IsProduction()).
+func TestValidatePeerTransport_ProductionStrict_ListFilterEdgeInsecure_Fails(t *testing.T) {
+	c, m := prodCfgListFilterEdge(ModeProductionStrict)
+	err := c.ValidatePeerTransport(m)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "list-filter authorize edge")
+	require.Contains(t, err.Error(), "production mode (production-strict)")
+}
+
+// vpc9c-C-03: ребро защищено собственной ручкой authz.list-filter.authorize-tls → проходит.
+func TestValidatePeerTransport_Production_ListFilterEdgeOwnMTLS_Passes(t *testing.T) {
+	c, m := prodCfgListFilterEdge(ModeProduction)
+	c.AuthZ.ListFilter.AuthorizeTLS.Enable = true
+	require.True(t, c.ListFilterEdgeUsesMTLS(m))
+	require.NoError(t, c.ValidatePeerTransport(m))
+}
+
+// vpc9c-C-04: ребро защищено общим с Check-ребром client-cert'ом → проходит
+// (проводка переиспользует ту же личность, гард обязан считать так же).
+func TestValidatePeerTransport_Production_ListFilterEdgeSharedAuthzMTLS_Passes(t *testing.T) {
+	c, m := prodCfgListFilterEdge(ModeProduction)
+	m.IAMAuthzMTLS.Enable = true
+	require.True(t, c.ListFilterEdgeUsesMTLS(m))
+	require.NoError(t, c.ValidatePeerTransport(m))
+}
+
+// vpc9c-C-05: фильтр выключен → ребро не дилится → требования нет.
+func TestValidatePeerTransport_Production_ListFilterDisabled_NoRequirement(t *testing.T) {
+	c, m := prodCfgListFilterEdge(ModeProduction)
+	c.AuthZ.ListFilter.Enabled = false
+	require.NoError(t, c.ValidatePeerTransport(m))
+}
+
+// vpc9c-C-06: фильтр включён, но адреса нет ни своего, ни запасного → ребро не
+// дилится (buildAuthorizeConn отдаёт nil) → требования нет. Отсутствие фильтра при
+// ScopeFiltered RPC ловит S3, а не это ребро.
+func TestValidatePeerTransport_Production_ListFilterNoEndpoint_NoRequirement(t *testing.T) {
+	c, m := prodCfgListFilterEdge(ModeProduction)
+	c.AuthZ.ListFilter.AuthorizeEndpoint = ""
+	c.AuthZ.IAMEndpoint = ""
+	c.AuthZ.Breakglass = true // иначе S1 требует адрес — но он S4 не касается
+	require.NoError(t, c.ValidatePeerTransport(m))
+}
+
+// vpc9c-C-07: адрес берётся запасным (authorize-endpoint пуст, iam-endpoint задан) —
+// ребро дилится, значит требование действует.
+func TestValidatePeerTransport_Production_ListFilterEndpointFallback_Requires(t *testing.T) {
+	c, m := prodCfgListFilterEdge(ModeProduction)
+	c.AuthZ.ListFilter.AuthorizeEndpoint = "" // → fallback на authz.iam-endpoint
+	err := c.ValidatePeerTransport(m)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "list-filter authorize edge")
+}
+
+// vpc9c-C-08: dev-режим гардом не затронут.
+func TestValidatePeerTransport_Dev_ListFilterEdge_NoGuard(t *testing.T) {
+	c, m := prodCfgListFilterEdge(ModeDev)
+	require.NoError(t, c.ValidatePeerTransport(m))
+}
+
+// vpc9c-C-09: breakglass НЕ освобождает это ребро. Breakglass снимает per-RPC
+// Check, но фильтр видимости он не выключает — соединение всё равно дилится и
+// всё равно решает, что вызывающий увидит.
+func TestValidatePeerTransport_Production_Breakglass_ListFilterEdgeStillGuarded(t *testing.T) {
+	c, m := prodCfgListFilterEdge(ModeProduction)
+	c.AuthZ.Breakglass = true
+	err := c.ValidatePeerTransport(m)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "list-filter authorize edge")
+	// authz Check edge при breakglass освобождён — его сообщения быть не должно.
+	require.NotContains(t, err.Error(), "outbound vpc→iam authz Check edge")
+}
+
+// vpc9c-C-10: ListFilterEdgeUsesMTLS — ОДИН предикат для проводки и для стражи.
+// Таблица фиксирует все четыре комбинации двух ручек: расхождение между тем, что
+// проверяет гард, и тем, что выбирает composition root, — это и есть дыра.
+func TestListFilterEdgeUsesMTLS_TableMatchesWiring(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		authorize  bool
+		sharedAuth bool
+		want       bool
+	}{
+		{"neither knob", false, false, false},
+		{"own authorize-tls", true, false, true},
+		{"shared authz client-cert", false, true, true},
+		{"both", true, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var c Config
+			var m MTLSConfig
+			c.AuthZ.ListFilter.AuthorizeTLS.Enable = tc.authorize
+			m.IAMAuthzMTLS.Enable = tc.sharedAuth
+			require.Equal(t, tc.want, c.ListFilterEdgeUsesMTLS(m))
+		})
+	}
+}
+
+// vpc9c-C-11: ListFilterAuthorizeEndpoint — ОДИН резолвер адреса для проводки,
+// S3 и S4. Своё поле выигрывает; пусто → запасной authz.iam-endpoint; оба пусты →
+// пусто (ребро не дилится).
+func TestListFilterAuthorizeEndpoint_ResolutionOrder(t *testing.T) {
+	var c Config
+	c.AuthZ.ListFilter.AuthorizeEndpoint = "authorize:9090"
+	c.AuthZ.IAMEndpoint = "internal:9091"
+	require.Equal(t, "authorize:9090", c.ListFilterAuthorizeEndpoint())
+
+	c.AuthZ.ListFilter.AuthorizeEndpoint = "  "
+	require.Equal(t, "internal:9091", c.ListFilterAuthorizeEndpoint())
+
+	c.AuthZ.IAMEndpoint = ""
+	require.Equal(t, "", c.ListFilterAuthorizeEndpoint())
+}
+
 // vpc9-C-11: ValidateBoot агрегирует S4 — insecure authz edge в production всплывает
 // в едином boot-валидаторе (single-shot gate).
 func TestValidateBoot_Production_IncludesPeerTransport(t *testing.T) {

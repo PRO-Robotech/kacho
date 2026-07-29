@@ -85,3 +85,62 @@ func TestValidateListFilter_Dev_NoGuard(t *testing.T) {
 	c.AuthZ.ListFilter.Enabled = false
 	require.NoError(t, c.ValidateListFilter([]string{"/svc/List"}))
 }
+
+// --- Включён ≠ решает. Для ScopeFiltered RPC фильтр — ЕДИНСТВЕННОЕ место, где
+// вызывающего сверяют с объектами: per-RPC Check по такому методу не задаётся
+// вовсе. Значит требование к нему не «включён», а «включён И отказывает при
+// сбое»: на мягком проходе первая же ошибка соседа возвращает нефильтрованный
+// список, то есть авторизация снимается целиком и молча. ---
+
+// vpc8-C-19: production + ScopeFiltered RPC + фильтр включён, но мягкий проход →
+// отказ старта.
+func TestValidateListFilter_Production_ScopeFiltered_FailOpen_Fails(t *testing.T) {
+	c := prodCfg(ModeProduction, "kacho-iam:9091", false)
+	c.AuthZ.ListFilter.Enabled = true
+	c.AuthZ.ListFilter.AuthorizeEndpoint = "kacho-iam:9090"
+	c.AuthZ.ListFilter.FailOpen = true
+	err := c.ValidateListFilter([]string{"/kacho.cloud.vpc.v1.InternalNetworkInterfaceService/ListByInstance"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "authz.list-filter.fail-open")
+	require.Contains(t, err.Error(), "production mode (production)")
+	// Гард обязан назвать, ЧТО именно останется без авторизации.
+	require.Contains(t, err.Error(), "/kacho.cloud.vpc.v1.InternalNetworkInterfaceService/ListByInstance")
+}
+
+// vpc8-C-20: production-strict — тот же отказ (любой IsProduction()).
+func TestValidateListFilter_ProductionStrict_ScopeFiltered_FailOpen_Fails(t *testing.T) {
+	c := prodCfg(ModeProductionStrict, "kacho-iam:9091", false)
+	c.AuthZ.ListFilter.Enabled = true
+	c.AuthZ.ListFilter.FailOpen = true
+	err := c.ValidateListFilter([]string{"/svc/List"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "authz.list-filter.fail-open")
+	require.Contains(t, err.Error(), "production mode (production-strict)")
+}
+
+// vpc8-C-21: fail-closed (default) → проходит. Контроль на ту же форму: гард
+// обязан молчать на законной конфигурации, иначе он ловит форму, а не существо.
+func TestValidateListFilter_Production_ScopeFiltered_FailClosed_Passes(t *testing.T) {
+	c := prodCfg(ModeProduction, "kacho-iam:9091", false)
+	c.AuthZ.ListFilter.Enabled = true
+	c.AuthZ.ListFilter.FailOpen = false
+	require.NoError(t, c.ValidateListFilter([]string{"/svc/List"}))
+}
+
+// vpc8-C-22: нет ScopeFiltered RPC → мягкий проход допустим (за такими List стоит
+// per-RPC Check, фильтр там — сужение поверх, а не единственная авторизация).
+func TestValidateListFilter_NoScopeFiltered_FailOpen_Passes(t *testing.T) {
+	c := prodCfg(ModeProduction, "kacho-iam:9091", false)
+	c.AuthZ.ListFilter.Enabled = true
+	c.AuthZ.ListFilter.FailOpen = true
+	require.NoError(t, c.ValidateListFilter(nil))
+}
+
+// vpc8-C-23: dev — гарда нет.
+func TestValidateListFilter_Dev_FailOpen_NoGuard(t *testing.T) {
+	var c Config
+	c.AuthN.Mode = ModeDev
+	c.AuthZ.ListFilter.Enabled = true
+	c.AuthZ.ListFilter.FailOpen = true
+	require.NoError(t, c.ValidateListFilter([]string{"/svc/List"}))
+}

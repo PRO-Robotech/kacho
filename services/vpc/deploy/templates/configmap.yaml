@@ -58,12 +58,17 @@ data:
       # public-mTLS → отказ старта (fail-closed). production-strict игнорирует флаг.
       trusted-forwarder: {{ default false .Values.authn.trustedForwarder }}
 
-    # per-RPC Check через kacho-iam.InternalIAMService.Check (port 9091).
-    # project-level list-filter тоже идет через InternalIAMService.Check
-    #   (relation viewer on project:<id>) на INTERNAL :9091 — НЕ на public :9090.
-    #   list-filter.authorize-endpoint / .timeout-ms / .cache-ttl / .max-* / .model-id
-    #   ниже — наследие ListObjects-подхода; код их больше не читает (использует
-    #   authz.iam-endpoint). Удаляются отдельным cleanup.
+    # per-RPC Check — kacho-iam.InternalIAMService.Check на INTERNAL :9091
+    # (authz.iam-endpoint).
+    #
+    # Фильтр видимости (list-filter) — ОТДЕЛЬНОЕ соединение: он спрашивает
+    # AuthorizeService.BatchCheck на PUBLIC :9090 по адресу
+    # list-filter.authorize-endpoint (пусто → запасной authz.iam-endpoint), и все
+    # ключи ниже сервис читает. Раньше здесь стояло обратное утверждение — что
+    # фильтр идёт тем же Check'ом на :9091, а ключи «код больше не читает»; оно
+    # было ложным и скрывало, что у этого соединения свой транспорт: боевая
+    # посадка без list-filter.authorize-tls.enable (или без общего client-cert'а
+    # KACHO_VPC_IAM_AUTHZ_MTLS_ENABLE) НЕ СТАРТУЕТ.
     authz:
       iam-endpoint: {{ default "kacho-iam-internal.kacho.svc.cluster.local:9091" .Values.authz.iamEndpoint | quote }}
       breakglass: {{ default false .Values.authz.breakglass }}
@@ -85,15 +90,7 @@ data:
         timeout-ms: {{ default 1000 .Values.authz.listFilter.timeoutMs }}
         cache-ttl: {{ default "5s" .Values.authz.listFilter.cacheTtl | quote }}
         max-entries: {{ default 10000 .Values.authz.listFilter.maxEntries }}
-        model-id: {{ default "" .Values.authz.listFilter.modelId | quote }}
         fail-open: {{ default false .Values.authz.listFilter.failOpen }}
-      # write-side FGA: publish per-resource hierarchy tuples on Create.
-      tuple-write:
-        enabled: {{ default false .Values.authz.tupleWrite.enabled }}
-        openfga-endpoint: {{ default "" .Values.authz.tupleWrite.openfgaEndpoint | quote }}
-        store-id: {{ default "" .Values.authz.tupleWrite.storeId | quote }}
-        model-id: {{ default "" .Values.authz.tupleWrite.modelId | quote }}
-        timeout-ms: {{ default 2000 .Values.authz.tupleWrite.timeoutMs }}
 
     extapi:
       def-dial-duration: 10s

@@ -561,6 +561,22 @@ func (f *FGAFilter) getCache(subject, resourceType, id string) bool {
 	return true
 }
 
+// Отзыв доступа виден по ИСТЕЧЕНИИ записи, и другого механизма здесь нет.
+//
+// Раньше рядом стоял экспортированный сброс записей субъекта с пометкой
+// «инвалидация по LISTEN/NOTIFY». Ни подписки, ни вызова из прод-кода не было —
+// ни в этом пакете, ни в composition root'е: механизм существовал только в
+// комментарии, а метод звал один тест, чьё сообщение о падении утверждало, что
+// «инвалидация по отзыву роняет вердикты субъекта». То есть описание обещало
+// реакцию на отзыв, которой нет, и следующий читатель чинил бы код под это
+// описание.
+//
+// Что верно: кешируются ТОЛЬКО положительные вердикты и ТОЛЬКО на CacheTTL
+// (по умолчанию 5с), поэтому снятый доступ перестаёт действовать самое позднее
+// через TTL, а отрицательный вердикт не кешируется вовсе — свежая выдача видна
+// сразу. Мгновенное снятие потребовало бы канала уведомлений от владельца выдач
+// (iam) сюда, то есть нового межсервисного ребра и отдельного решения, а не
+// метода, который никто не зовёт.
 func (f *FGAFilter) putCache(subject, resourceType, id string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -590,17 +606,4 @@ func (f *FGAFilter) Size() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.lruLst.Len()
-}
-
-// Invalidate — удаляет записи subject'а из cache (LISTEN/NOTIFY-driven inval).
-func (f *FGAFilter) Invalidate(subject string) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	prefix := subject + "|"
-	for k, el := range f.cache {
-		if len(k) >= len(prefix) && k[:len(prefix)] == prefix {
-			f.lruLst.Remove(el)
-			delete(f.cache, k)
-		}
-	}
 }

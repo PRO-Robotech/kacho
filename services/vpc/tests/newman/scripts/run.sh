@@ -21,9 +21,11 @@
 # коллекция изолирует свои ресурсы по {{runId}}-суффиксам внутри общего
 # existingProjectId, так что параллельный прогон безопасен.
 #
-# Exit-код: 0 только если у каждой коллекции assertions.failed==0, exit-код
-# newman==0 и коллекция присутствует. Любой провал/краш/таймаут/отсутствие →
-# exit 1. Сводка печатается всегда (out/summary.txt).
+# Exit-код: 0 только если КАЖДАЯ коллекция отчиталась, её exit-код newman==0,
+# assertions.failed==0, requests.failed==0 (ни одного запроса без ответа) и
+# assertions.total>0 (что-то действительно выполнилось). Любой провал / краш /
+# таймаут / отсутствие отчёта / «ничего не выполнилось» → exit 1. Сводка
+# печатается всегда (out/summary.txt) и называет числа, а не слово.
 #
 # Outputs:
 #   out/<service>.json — newman JSON reporter (для агрегации)
@@ -86,34 +88,90 @@ run_one() {
 
 # aggregate_verdict — чистая, тестируемая функция вердикта.
 #   aggregate_verdict <out_dir> <stem>...
-# Печатает сводную таблицу и возвращает 1, если у любого stem: отсутствует
-# out/<stem>.json (MISSING), assertions.failed>0 или rc!=0. Иначе 0.
+#
+# ВЕРДИКТ ПО ЧИСЛАМ. У запроса три исхода, и раньше у этой функции были имена
+# только для двух:
+#   ответ пришёл, утверждение сказало «да»  — проверка прошла;
+#   ответ пришёл, утверждение сказало «нет» — FAILED;
+#   ОТВЕТА НЕ ПРИШЛО                        — UNANSWERED (проверка не выполнилась).
+# Третьего исхода в вердикте не было вовсе: колонки ASSERT и REQUESTS печатались,
+# но не оценивались, поэтому коллекция, не выполнившая НИ ОДНОГО запроса, читалась
+# ровно как безупречная (0 провалов) и засчитывалась зелёной. То же и с прогоном,
+# где все запросы остались без ответа: провалов ноль, потому что проверять было
+# нечего.
+#
+# Поэтому теперь:
+#   * UNANSWERED (`.run.stats.requests.failed`) — ОТДЕЛЬНАЯ колонка, и она НИКОГДА
+#     не вычитается и не объясняется: «не смог достучаться» и «мне отказали» —
+#     разные находки, и доказательством является только вторая;
+#   * отчёт без утверждений печатается как NOTHING RAN и валит вердикт: суита,
+#     которая ничего не утверждает, не может пройти;
+#   * итоговая строка называет ЧИСЛА — сколько коллекций отчиталось из скольких
+#     ожидавшихся, сколько запросов, сколько без ответа, сколько утверждений и
+#     сколько упавших. «Ноль находок» обязано быть отличимо от «ноль прочитанного».
+#
+# Возвращает 1, если у любого stem: отсутствует out/<stem>.json (MISSING),
+# assertions.failed>0, requests.failed>0, assertions.total==0 или rc!=0. Иначе 0.
 aggregate_verdict() {
   local out_dir="$1"; shift
-  local bad=0 stem json rcfile rc total failed requests
-  printf "%-25s %10s %10s %10s %8s\n" "COLLECTION" "ASSERT" "FAILED" "REQUESTS" "RC"
+  local bad=0 stem json rcfile rc total failed requests unanswered note
+  local reported=0 expected=$# sum_req=0 sum_unans=0 sum_assert=0 sum_failed=0
+  printf "%-25s %10s %11s %10s %8s %6s  %s\n" \
+    "COLLECTION" "REQUESTS" "UNANSWERED" "ASSERT" "FAILED" "RC" "NOTE"
   for stem in "$@"; do
     json="${out_dir}/${stem}.json"
     rcfile="${out_dir}/${stem}.rc"
     rc="n/a"
     [[ -f "$rcfile" ]] && rc="$(cat "$rcfile")"
     if [[ ! -f "$json" ]]; then
-      printf "%-25s %10s %10s %10s %8s\n" "$stem" "-" "-" "-" "MISSING"
+      printf "%-25s %10s %11s %10s %8s %6s  %s\n" "$stem" "-" "-" "-" "-" "MISSING" \
+        "нет отчёта — коллекция не отработала"
       bad=1
       continue
     fi
-    total=0; failed=0; requests=0
-    read -r total failed requests < <(
-      jq -r '"\(.run.stats.assertions.total) \(.run.stats.assertions.failed) \(.run.stats.requests.total)"' \
-        "$json" 2>/dev/null || echo "0 0 0"
+    reported=$((reported + 1))
+    total=0; failed=0; requests=0; unanswered=0
+    read -r total failed requests unanswered < <(
+      jq -r '"\(.run.stats.assertions.total) \(.run.stats.assertions.failed) \(.run.stats.requests.total) \(.run.stats.requests.failed // 0)"' \
+        "$json" 2>/dev/null || echo "0 0 0 0"
     )
-    [[ "$total" =~ ^[0-9]+$ ]]    || total=0
-    [[ "$failed" =~ ^[0-9]+$ ]]   || failed=0
-    [[ "$requests" =~ ^[0-9]+$ ]] || requests=0
-    printf "%-25s %10s %10s %10s %8s\n" "$stem" "$total" "$failed" "$requests" "$rc"
+    [[ "$total" =~ ^[0-9]+$ ]]      || total=0
+    [[ "$failed" =~ ^[0-9]+$ ]]     || failed=0
+    [[ "$requests" =~ ^[0-9]+$ ]]   || requests=0
+    [[ "$unanswered" =~ ^[0-9]+$ ]] || unanswered=0
+
+    note=""
+    # Отчёт без утверждений — не «чисто», а «ничего не выполнилось». Этот случай
+    # читается как идеальный (0 провалов, 0 без ответа), поэтому назван отдельно.
+    if [[ "$total" -eq 0 ]]; then
+      note="NOTHING RAN — 0 утверждений; суита, которая ничего не утверждает, не проходит"
+      bad=1
+    fi
+    if [[ "$unanswered" -gt 0 ]]; then
+      note="${note:+$note; }UNANSWERED — запросы без ответа НЕ вычитаются"
+      bad=1
+    fi
+
+    printf "%-25s %10s %11s %10s %8s %6s  %s\n" \
+      "$stem" "$requests" "$unanswered" "$total" "$failed" "$rc" "$note"
+
+    # Назвать то, что не ответило: счётчик сам по себе не действие.
+    if [[ "$unanswered" -gt 0 ]]; then
+      jq -r '[.run.failures[]? | select((.error.name? // "") != "AssertionError")
+              | "    NOT EXECUTED: \(.source.name? // "?") <- \(.error.message? // "no response")"]
+             | unique | .[]' "$json" 2>/dev/null || true
+    fi
+
+    sum_req=$((sum_req + requests))
+    sum_unans=$((sum_unans + unanswered))
+    sum_assert=$((sum_assert + total))
+    sum_failed=$((sum_failed + failed))
+
     [[ "$failed" -gt 0 ]] && bad=1
     [[ "$rc" == "0" ]]    || bad=1
   done
+  printf "TOTAL: %d/%d коллекций отчиталось — %d запрос(ов), %d без ответа, %d утверждени(й), %d упавших\n" \
+    "$reported" "$expected" "$sum_req" "$sum_unans" "$sum_assert" "$sum_failed"
   return "$bad"
 }
 

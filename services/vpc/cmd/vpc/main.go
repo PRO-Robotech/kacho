@@ -148,6 +148,35 @@ func runServe(cfg config.Config) error {
 	// breakglass в production сюда не доходит: Config.Validate() отвергает такой
 	// конфиг ещё до этой точки (fail-closed вместо прежнего WARN).
 
+	// Per-edge opt-in mTLS-конфиг из env (KACHO_VPC_*). enable=false на ребре →
+	// insecure (dev backward-compat). Используется для ребер vpc→iam
+	// register-drainer, vpc→geo (zone_id), фильтра видимости и для public/internal
+	// server-листенеров.
+	//
+	// Грузится и проверяется ДО первого соединения — включая соединение с БД.
+	// Это чистая проверка конфигурации, ей нечего ждать от окружения, а отказ,
+	// наступающий позже открытия пула, наблюдался бы как ошибка БД: отказ старта
+	// обязан называть свою причину независимо от того, поднята ли база.
+	mtlsCfg, err := config.LoadMTLS()
+	if err != nil {
+		return fmt.Errorf("load mTLS config: %w", err)
+	}
+	// Fail-closed boot-гардрейл S2: production-strict требует server-mTLS на обоих
+	// листенерах. MTLSConfig грузится вне viper-Config, поэтому проверка — здесь,
+	// ДО привязки листенеров (отказ старта вместо insecure-listener'а).
+	if err := cfg.ValidateServerMTLS(mtlsCfg); err != nil {
+		return fmt.Errorf("config validate (server mTLS): %w", err)
+	}
+	// Fail-closed boot-гардрейл S4: production требует verified transport на КАЖДОМ
+	// исходящем ребре — authz Check (:9091), ProjectService.Get (:9090), vpc→geo,
+	// owner-tuple register и фильтр видимости (AuthorizeService.BatchCheck). Иначе
+	// dialPeer откатился бы в insecure creds, и решение о доступе (или о том, что
+	// вызывающий увидит) уехало бы по незащищённому транспорту. Проверка — здесь,
+	// ДО cross-service dial'ов.
+	if err := cfg.ValidatePeerTransport(mtlsCfg); err != nil {
+		return fmt.Errorf("config validate (peer transport): %w", err)
+	}
+
 	pool, err := coredb.NewPool(ctx, cfg.DSN())
 	if err != nil {
 		return err
@@ -180,27 +209,6 @@ func runServe(cfg config.Config) error {
 	// reconciler-recorder и diagnostic /metrics. Заменяет in-memory MemRecorder —
 	// метрики теперь экспортируются наружу (scrape).
 	metricsAdapter := vpcmetrics.New(buildVersion, buildCommit)
-
-	// Per-edge opt-in mTLS-конфиг из env (KACHO_VPC_*). enable=false на ребре →
-	// insecure (dev backward-compat). Используется для ребер vpc→iam
-	// register-drainer, vpc→geo (zone_id) и для public/internal server-листенеров.
-	mtlsCfg, err := config.LoadMTLS()
-	if err != nil {
-		return fmt.Errorf("load mTLS config: %w", err)
-	}
-	// Fail-closed boot-гардрейл S2: production-strict требует server-mTLS на обоих
-	// листенерах. MTLSConfig грузится вне viper-Config, поэтому проверка — здесь,
-	// ДО привязки листенеров (отказ старта вместо insecure-listener'а).
-	if err := cfg.ValidateServerMTLS(mtlsCfg); err != nil {
-		return fmt.Errorf("config validate (server mTLS): %w", err)
-	}
-	// Fail-closed boot-гардрейл S4: production требует verified transport на исходящих
-	// vpc→iam рёбрах (authz Check :9091 + ProjectService.Get :9090). Иначе dialPeer
-	// откатился бы в insecure creds и per-RPC authz Check ушёл бы по cleartext (MITM →
-	// forge allowed=true → обход авторизации). Проверка — здесь, ДО cross-service dial'ов.
-	if err := cfg.ValidatePeerTransport(mtlsCfg); err != nil {
-		return fmt.Errorf("config validate (peer transport): %w", err)
-	}
 
 	// Самоотчёт о security-posture: ПОСЛЕ всех boot-guard'ов (config/serverMTLS/
 	// peerTransport — т.е. конфиг уже ПРИНЯТ процессом) и ДО подъёма листенеров.
@@ -674,17 +682,16 @@ func runServe(cfg config.Config) error {
 // mTLS — opt-in через authz.list-filter.authorize-tls; когда выключен, переиспользует
 // тот же vpc→iam authz client-cert, что и ребро Check (IAMAuthzMTLS), чтобы одна
 // client-identity покрывала оба ребра. enable=false на обоих → insecure/server-auth
-// dev-путь.
+// dev-путь, и именно эту комбинацию в любом боевом режиме отвергает boot-гардрейл S4
+// (ValidatePeerTransport) — адрес и предикат транспорта здесь и там читаются ОДНИМИ И
+// ТЕМИ ЖЕ методами Config, чтобы страж и проводка не могли разойтись.
 func buildAuthorizeConn(ctx context.Context, cfg config.Config, mtlsCfg config.MTLSConfig, logger *slog.Logger) (clients.Conn, error) {
-	endpoint := cfg.AuthZ.ListFilter.AuthorizeEndpoint
-	if endpoint == "" {
-		endpoint = cfg.AuthZ.IAMEndpoint
-	}
+	endpoint := cfg.ListFilterAuthorizeEndpoint()
 	if endpoint == "" {
 		logger.Warn("authz.list-filter.enabled=true but neither authorize-endpoint nor iam-endpoint set — per-object list-filter disabled")
 		return nil, nil
 	}
-	useMTLS := cfg.AuthZ.ListFilter.AuthorizeTLS.Enable || mtlsCfg.IAMAuthzMTLS.Enable
+	useMTLS := cfg.ListFilterEdgeUsesMTLS(mtlsCfg)
 	conn, err := dialPeer(ctx, "vpc→iam authorize", useMTLS,
 		mtlsCfg.IAMAuthzClientCreds, false, clients.BuildOptions{
 			Endpoint: endpoint,
