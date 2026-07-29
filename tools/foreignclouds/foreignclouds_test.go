@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -139,6 +140,74 @@ func TestStaleExemptionIsReported(t *testing.T) {
 		}
 	}
 	t.Fatalf("a token-free exempt file went unreported")
+}
+
+// TestCoordinateExemptionCanGoStale is the direction the audit could not answer.
+//
+// A coordinate exemption is a line-local licence: it earns its place only while
+// some line OUTSIDE the exemption list would otherwise be a finding. The walk
+// looking for that line did not apply the exemption list to itself, so every
+// coordinate found its own declaration in this package's source and marked
+// itself used. The expiry mechanism was therefore dead by construction — the
+// list could only grow, which is the very defect the audit exists to catch.
+//
+// The tree here contains the coordinates ONLY inside exempt files: the gate's
+// own source and a fixture file. Since those files are skipped wholesale by the
+// scan, no coordinate can stand between a token and a finding, so every one of
+// them must be reported.
+func TestCoordinateExemptionCanGoStale(t *testing.T) {
+	root := t.TempDir()
+
+	// Every exempt file present and carrying tokens, so that no FILE entry is
+	// reported and only the coordinate verdict is left to read.
+	for rel := range exemptFiles {
+		body := "package p // yandex aws gcp azure amazon ycloud gce alibaba aliyun digitalocean hetzner\n"
+		if rel == "tools/foreignclouds/foreignclouds.go" {
+			// The real declaration block: this is exactly what used to satisfy
+			// every coordinate.
+			for _, c := range coordinates {
+				body += "\t{" + strconv.Quote(c.text) + ", " + strconv.Quote(c.why) + "},\n"
+			}
+		}
+		write(t, root, rel, body)
+	}
+
+	var stale []string
+	for _, f := range AuditExemptions(root) {
+		if strings.Contains(f.Text, "stale coordinate exemption") {
+			stale = append(stale, f.Text)
+		}
+	}
+	if len(stale) != len(coordinates) {
+		t.Fatalf("coordinate exemptions reported stale: %d, want all %d.\n"+
+			"An exemption whose only occurrence is inside the exemption list itself "+
+			"suppresses nothing; if it is not reported, the list can never expire.\ngot:\n  %s",
+			len(stale), len(coordinates), strings.Join(stale, "\n  "))
+	}
+}
+
+// TestCoordinateExemptionWithASubjectIsNotReported is the mirror half: the same
+// shape, legitimately in use, must stay silent. Without it the check above would
+// be satisfied by an audit that simply reports every coordinate always.
+func TestCoordinateExemptionWithASubjectIsNotReported(t *testing.T) {
+	root := t.TempDir()
+	for rel := range exemptFiles {
+		write(t, root, rel, "package p // yandex aws gcp azure amazon ycloud gce alibaba aliyun digitalocean hetzner\n")
+	}
+	// One ordinary, non-exempt file where each coordinate really does stand
+	// between a token and a finding.
+	body := ""
+	for _, c := range coordinates {
+		body += "value: " + c.text + "\n"
+	}
+	write(t, root, "deploy/uses-third-party.yaml", body)
+
+	for _, f := range AuditExemptions(root) {
+		if strings.Contains(f.Text, "stale coordinate exemption") {
+			t.Errorf("coordinate in genuine use reported stale — the audit reports the "+
+				"form rather than the substance: %s", f)
+		}
+	}
 }
 
 // TestRealExemptionsAllEarnTheirPlace runs the same audit against the tree.

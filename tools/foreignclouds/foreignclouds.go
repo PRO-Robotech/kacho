@@ -357,19 +357,49 @@ func AuditExemptions(repoRoot string) []Finding {
 
 // unusedCoordinates returns the coordinate exemptions that never stood between
 // a token and a finding.
+//
+// The walk applies THE SAME skip set as Scan — exempt files, dependency
+// manifests, non-authored directories, whatever version control ignores —
+// because a coordinate can only earn its place on a line Scan actually judges.
+// A file Scan skips wholesale has no findings for a coordinate to suppress, so
+// an occurrence there is not use.
+//
+// That was the defect, and it disabled the expiry mechanism outright: the walk
+// read the whole tree including this very file, where every coordinate is
+// spelled out in its own declaration. Each one therefore found itself and was
+// marked used, so no coordinate could EVER be reported stale — the list was able
+// only to grow, which is exactly the blanket allowance the audit exists to
+// prevent. The same held for the fixtures that prove the gate fires, and for a
+// build artefact naming a cloud in an ignored directory.
 func unusedCoordinates(repoRoot string) []coordinate {
 	used := make(map[string]bool, len(coordinates))
+	ignored := ignoredPaths(repoRoot)
+
 	_ = filepath.WalkDir(repoRoot, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
+		rel, relErr := filepath.Rel(repoRoot, path)
+		if relErr != nil {
+			return relErr
+		}
+		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
 			if skipDirs[d.Name()] {
+				return fs.SkipDir
+			}
+			if ignored.covers(rel + "/") {
 				return fs.SkipDir
 			}
 			return nil
 		}
 		if skipFiles[d.Name()] {
+			return nil
+		}
+		if _, exempt := exemptFiles[rel]; exempt {
+			return nil
+		}
+		if ignored.covers(rel) {
 			return nil
 		}
 		for _, line := range strings.Split(readText(path), "\n") {
