@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
@@ -96,11 +97,15 @@ func TestListOperations_ReturnsOpsForTG(t *testing.T) {
 	// Seed two operations directly.
 	op1 := mkOp("oprtgrA1")
 	op2 := mkOp("oprtgrA2")
-	require.NoError(t, opsRepo.Create(context.Background(), op1))
-	require.NoError(t, opsRepo.Create(context.Background(), op2))
+	caller := operations.Principal{Type: "user", ID: "usr-caller", DisplayName: "caller@kacho.local"}
+	require.NoError(t, opsRepo.CreateWithPrincipal(context.Background(), op1, caller))
+	require.NoError(t, opsRepo.CreateWithPrincipal(context.Background(), op2, caller))
 
 	uc := NewListOperationsUseCase(opsRepo)
-	resp, err := uc.Execute(context.Background(), &lbv1.ListTargetGroupOperationsRequest{
+	// Вызывающий назван: список суженный, безымянный контекст получил бы пустую
+	// страницу и утверждение стало бы вакуумным.
+	ctx := operations.WithPrincipal(context.Background(), caller)
+	resp, err := uc.Execute(ctx, &lbv1.ListTargetGroupOperationsRequest{
 		TargetGroupId: "tgr-any",
 	})
 	require.NoError(t, err)

@@ -824,12 +824,19 @@ func (r *OpsRepo) ListOwned(_ context.Context, f operations.ListFilter, owner op
 
 var _ operations.OwnedOperationRepo = (*OpsRepo)(nil)
 
-// extractResourceID — best-effort извлечение resource_id из metadata
-// (для фильтра List). portmock хранит metadata как *anypb.Any; нам достаточно
-// сопоставить через operations.MetadataFor — но это требует знания типа. В
-// тестах ListOperations проверяет только что список непуст, поэтому здесь
-// возвращаем "" (фильтр не применяется) — допустимое упрощение mock'а.
-func extractResourceID(_ *operations.Operation) string { return "" }
+// extractResourceID — денормализованный resource_id строки операции.
+//
+// Возвращает ЯВНО заданное Operation.ResourceID — ровно ту колонку, по которой
+// фильтрует настоящий репозиторий (reflection-fallback по метаданным mock'у не
+// нужен: фикстура ставит поле сама). Раньше здесь стоял безусловный "", то есть
+// фильтр по ресурсу в mock'е не применялся вовсе — под такой фикстурой тест
+// «список этого ресурса» ничего про фильтр не утверждал.
+func extractResourceID(op *operations.Operation) string {
+	if op == nil {
+		return ""
+	}
+	return op.ResourceID
+}
 
 // ---- await-helpers для async Operation worker'ов ----
 

@@ -250,6 +250,63 @@ func (r *OpsRepo) List(_ context.Context, f operations.ListFilter) ([]operations
 	return out, "", nil
 }
 
+// ---- operations.OwnedOperationRepo ----
+//
+// Зеркалит SQL-предикат pgRepo: доступ только владельцу (пара principal
+// type/id); чужой/несуществующий id → ErrNotFound (no-leak).
+
+func opsOwnerMatches(op *operations.Operation, owner operations.Owner) bool {
+	return op.Principal.Type == owner.PrincipalType && op.Principal.ID == owner.PrincipalID
+}
+
+// GetOwned возвращает операцию только если она принадлежит owner.
+func (r *OpsRepo) GetOwned(_ context.Context, id string, owner operations.Owner) (*operations.Operation, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	op, ok := r.ops[id]
+	if !ok || !opsOwnerMatches(op, owner) {
+		return nil, operations.ErrNotFound
+	}
+	cp := *op
+	return &cp, nil
+}
+
+// CancelOwned отменяет операцию owner'а; чужая/нет → ErrNotFound, терминальная →
+// ErrAlreadyDone.
+func (r *OpsRepo) CancelOwned(_ context.Context, id string, owner operations.Owner) (*operations.Operation, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	op, ok := r.ops[id]
+	if !ok || !opsOwnerMatches(op, owner) {
+		return nil, operations.ErrNotFound
+	}
+	if op.Done {
+		return nil, operations.ErrAlreadyDone
+	}
+	op.Done = true
+	cp := *op
+	return &cp, nil
+}
+
+// ListOwned — те же фильтры, что у List, AND предикат владения.
+func (r *OpsRepo) ListOwned(_ context.Context, f operations.ListFilter, owner operations.Owner) ([]operations.Operation, string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []operations.Operation
+	for _, op := range r.ops {
+		if !opsOwnerMatches(op, owner) {
+			continue
+		}
+		if f.ResourceID != "" && op.ResourceID != f.ResourceID {
+			continue
+		}
+		out = append(out, *op)
+	}
+	return out, "", nil
+}
+
+var _ operations.OwnedOperationRepo = (*OpsRepo)(nil)
+
 // MarkDone помечает операцию завершённой с response (терминал success).
 func (r *OpsRepo) MarkDone(_ context.Context, id string, resp *anypb.Any) error {
 	r.mu.Lock()

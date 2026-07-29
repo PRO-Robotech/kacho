@@ -104,6 +104,12 @@ func filterVisibleSecurityGroups(ctx context.Context, filter ListFilter, subject
 //
 // Семантика: с repo.Get-precondition (для SG ListOperations предполагает, что SG
 // еще жив; если удален — возвращается sync NotFound через precondition Get).
+//
+// Выдача сужена до операций САМОГО вызывающего (operations.ListForCaller —
+// предикат владения внутри SQL WHERE). Право на список не есть право на
+// чтение: строка операции несёт ресурс целиком в Response и личность
+// инициатора, поэтому кросс-принципальная история на этой поверхности не
+// выдаётся.
 type ListOperationsUseCase struct {
 	repo    Repo
 	opsRepo operations.Repo
@@ -128,7 +134,7 @@ func (u *ListOperationsUseCase) Execute(ctx context.Context, id string, p Pagina
 		return nil, "", serviceerr.MapRepoErr(gerr)
 	}
 	_ = rd.Close()
-	return u.opsRepo.List(ctx, operations.ListFilter{
+	return operations.ListForCaller(ctx, u.opsRepo, operations.ListFilter{
 		ResourceID: id,
 		PageSize:   p.PageSize,
 		PageToken:  p.PageToken,

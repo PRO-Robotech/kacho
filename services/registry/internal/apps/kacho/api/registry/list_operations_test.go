@@ -45,11 +45,11 @@ func TestListOperations_HappyPath(t *testing.T) {
 	t.Parallel()
 	ops := newMemOps()
 	regID := ids.NewID(ids.PrefixRegistry)
-	ops.put(operations.Operation{ID: ids.NewID(ids.PrefixOperationReg), Description: "Create registry"})
-	ops.put(operations.Operation{ID: ids.NewID(ids.PrefixOperationReg), Description: "Update registry"})
+	ops.put(operations.Operation{ID: ids.NewID(ids.PrefixOperationReg), Description: "Create registry", ResourceID: regID, Principal: opsCaller})
+	ops.put(operations.Operation{ID: ids.NewID(ids.PrefixOperationReg), Description: "Update registry", ResourceID: regID, Principal: opsCaller})
 
 	uc := newUC(&mockRepo{}, &mockZot{}, &mockIAM{}, ops)
-	list, _, err := uc.ListOperations(context.Background(),
+	list, _, err := uc.ListOperations(opsCallerCtx(),
 		registry.ListOperationsQuery{RegistryID: regID})
 	require.NoError(t, err)
 	require.NotEmpty(t, list)
@@ -66,7 +66,7 @@ func TestListOperations_GarbagePageToken_InvalidArgument(t *testing.T) {
 	ops.listErr = coreerrors.InvalidArgument().
 		AddFieldViolation("page_token", "page_token is invalid or malformed").Err()
 	uc := newUC(&mockRepo{}, &mockZot{}, &mockIAM{}, ops)
-	_, _, err := uc.ListOperations(context.Background(),
+	_, _, err := uc.ListOperations(opsCallerCtx(),
 		registry.ListOperationsQuery{RegistryID: ids.NewID(ids.PrefixRegistry), PageToken: "!!garbage!!"})
 	require.Equal(t, codes.InvalidArgument, status.Code(err),
 		"garbage page_token must surface 400, not 500")
@@ -81,10 +81,49 @@ func TestListOperations_RepoError_NoLeak(t *testing.T) {
 	ops.listErr = errors.New(secret)
 
 	uc := newUC(&mockRepo{}, &mockZot{}, &mockIAM{}, ops)
-	_, _, err := uc.ListOperations(context.Background(),
+	_, _, err := uc.ListOperations(opsCallerCtx(),
 		registry.ListOperationsQuery{RegistryID: ids.NewID(ids.PrefixRegistry)})
 	require.Error(t, err)
 	require.Equal(t, codes.Internal, status.Code(err))
 	require.NotContains(t, err.Error(), "relation", "raw pgx/SQL text must not leak")
 	require.NotContains(t, err.Error(), "db-internal-7", "infra detail must not leak")
+}
+
+// TestListOperations_ReturnsOnlyCallerOwnRows — список операций реестра отдаёт
+// операции САМОГО вызывающего. Утверждение на наблюдаемом: строки в ответе.
+// Фейк несёт оба пути (несуженный List и суженный ListOwned), поэтому тест
+// краснеет ровно тогда, когда вызывается несуженный.
+func TestListOperations_ReturnsOnlyCallerOwnRows(t *testing.T) {
+	t.Parallel()
+	ops := newMemOps()
+	regID := ids.NewID(ids.PrefixRegistry)
+	other := operations.Principal{Type: "user", ID: "usr-other", DisplayName: "other@kacho.local"}
+	ops.put(operations.Operation{ID: "op-mine", ResourceID: regID, Principal: opsCaller})
+	ops.put(operations.Operation{ID: "op-foreign", ResourceID: regID, Principal: other})
+
+	uc := newUC(&mockRepo{}, &mockZot{}, &mockIAM{}, ops)
+	list, _, err := uc.ListOperations(opsCallerCtx(), registry.ListOperationsQuery{RegistryID: regID})
+	require.NoError(t, err)
+
+	seen := map[string]bool{}
+	for _, op := range list {
+		seen[op.ID] = true
+	}
+	require.True(t, seen["op-mine"], "своя операция обязана присутствовать")
+	require.False(t, seen["op-foreign"],
+		"чужая операция попала в список: её Response несёт ресурс целиком, а Principal — email инициатора")
+}
+
+// Без ключа владения выдача пуста: несуженный откат запрещён.
+func TestListOperations_UnidentifiedCallerGetsNoRows(t *testing.T) {
+	t.Parallel()
+	ops := newMemOps()
+	regID := ids.NewID(ids.PrefixRegistry)
+	ops.put(operations.Operation{ID: "op-foreign", ResourceID: regID,
+		Principal: operations.Principal{Type: "user", ID: "usr-other", DisplayName: "other@kacho.local"}})
+
+	uc := newUC(&mockRepo{}, &mockZot{}, &mockIAM{}, ops)
+	list, _, err := uc.ListOperations(context.Background(), registry.ListOperationsQuery{RegistryID: regID})
+	require.NoError(t, err)
+	require.Empty(t, list, "без ключа владения выдача обязана быть пустой, а не полной")
 }

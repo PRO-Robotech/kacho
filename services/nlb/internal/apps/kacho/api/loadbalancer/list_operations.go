@@ -34,7 +34,7 @@ func (u *ListOperationsUseCase) Execute(
 	if err := validateLoadBalancerID(id); err != nil {
 		return nil, err
 	}
-	ops, next, err := u.opsRepo.List(ctx, operations.ListFilter{
+	ops, next, err := operations.ListForCaller(ctx, u.opsRepo, operations.ListFilter{
 		ResourceID: id,
 		PageSize:   req.GetPageSize(),
 		PageToken:  req.GetPageToken(),

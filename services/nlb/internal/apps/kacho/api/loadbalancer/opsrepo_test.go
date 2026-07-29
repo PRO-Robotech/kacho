@@ -137,3 +137,61 @@ func awaitOpDone(t *testing.T, repo *fakeOpsRepo, opID string) *operations.Opera
 
 // compile-time guard.
 var _ operations.Repo = (*fakeOpsRepo)(nil)
+
+// ---- operations.OwnedOperationRepo ----
+//
+// Зеркалит SQL-предикат pgRepo: доступ только владельцу (пара principal
+// type/id); чужой/несуществующий id → ErrNotFound (no-leak).
+
+func opsOwnerMatches(op *operations.Operation, owner operations.Owner) bool {
+	return op.Principal.Type == owner.PrincipalType && op.Principal.ID == owner.PrincipalID
+}
+
+func (r *fakeOpsRepo) GetOwned(_ context.Context, id string, owner operations.Owner) (*operations.Operation, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	op, ok := r.ops[id]
+	if !ok || !opsOwnerMatches(op, owner) {
+		return nil, operations.ErrNotFound
+	}
+	c := *op
+	return &c, nil
+}
+
+func (r *fakeOpsRepo) CancelOwned(_ context.Context, id string, owner operations.Owner) (*operations.Operation, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	op, ok := r.ops[id]
+	if !ok || !opsOwnerMatches(op, owner) {
+		return nil, operations.ErrNotFound
+	}
+	if op.Done {
+		return nil, operations.ErrAlreadyDone
+	}
+	op.Done = true
+	c := *op
+	return &c, nil
+}
+
+// ListOwned — те же фильтры, что у List, AND предикат владения. listErr
+// зеркалится: сбой репозитория обязан выглядеть одинаково на обоих путях.
+func (r *fakeOpsRepo) ListOwned(_ context.Context, f operations.ListFilter, owner operations.Owner) ([]operations.Operation, string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.listErr != nil {
+		return nil, "", r.listErr
+	}
+	var out []operations.Operation
+	for _, op := range r.ops {
+		if !opsOwnerMatches(op, owner) {
+			continue
+		}
+		// Фильтр по ресурсу здесь не применяется — ровно как в List выше
+		// (фейк метаданные не разбирает). Предмет этого фейка — предикат
+		// владения, и он единственный, что различает два пути.
+		out = append(out, *op)
+	}
+	return out, "", nil
+}
+
+var _ operations.OwnedOperationRepo = (*fakeOpsRepo)(nil)

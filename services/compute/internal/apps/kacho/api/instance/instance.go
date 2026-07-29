@@ -828,12 +828,18 @@ func (s *InstanceService) GetSerialPortOutput(ctx context.Context, id string) (s
 	return fmt.Sprintf("[control-plane] serial port output for instance %s (status=%s) is not available (control-plane only).\n", in.ID, instanceStatusName(in.Status)), nil
 }
 
-// ListOperations возвращает операции для конкретной ВМ.
+// ListOperations возвращает операции вызывающего над конкретной ВМ.
+//
+// Право на список — не право на чтение: строка операции несёт ресурс целиком в
+// Response и личность инициатора, поэтому выдача сужена до операций самого
+// вызывающего (operations.ListForCaller — предикат владения внутри SQL WHERE).
+// Кросс-принципальная история ресурса на этой поверхности не выдаётся.
 func (s *InstanceService) ListOperations(ctx context.Context, id string, p Pagination) ([]operations.Operation, string, error) {
 	if _, err := s.repo.Get(ctx, id); err != nil {
 		return nil, "", serviceerr.MapRepoErr(err)
 	}
-	return s.opsRepo.List(ctx, operations.ListFilter{ResourceID: id, PageSize: p.PageSize, PageToken: p.PageToken})
+	return operations.ListForCaller(ctx, s.opsRepo,
+		operations.ListFilter{ResourceID: id, PageSize: p.PageSize, PageToken: p.PageToken})
 }
 
 // mirrorReadTimeout — верхняя граница best-effort mirror-READ (Get/List NIC/volume

@@ -446,6 +446,15 @@ func (r *pgRepo) ListOwned(ctx context.Context, filter ListFilter, owner Owner) 
 	if owner.IsAnonymous() {
 		// Нет owner-ключа → своих операций нет. Пустая страница, а не
 		// unscoped-выдача.
+		//
+		// Формат страницы проверяется ДО схлопывания: без этого мусорный курсор
+		// у безымянного вызывающего возвращал бы пустую страницу вместо отказа
+		// по формату — расхождение с контрактом, которое видно только при
+		// определённом состоянии вызывающего (api-conventions: format-validate →
+		// authz → repo).
+		if err := ValidateListPagination(filter); err != nil {
+			return nil, "", err
+		}
 		return nil, "", nil
 	}
 	return r.listWithOwner(ctx, filter, &owner)
@@ -458,7 +467,7 @@ func (r *pgRepo) listWithOwner(ctx context.Context, filter ListFilter, owner *Ow
 	// page_size дисциплина — единая для всех List RPC (api-conventions): 0 →
 	// DefaultPageSize, 1..MaxPageSize → как есть, вне диапазона (отрицательное /
 	// > MaxPageSize) → InvalidArgument (НЕ silent-clamp — это нарушение контракта).
-	pageSize, err := validate.PageSize("page_size", filter.PageSize)
+	pageSize, err := validatePageSize(filter.PageSize)
 	if err != nil {
 		return nil, "", err
 	}
@@ -492,15 +501,7 @@ func (r *pgRepo) listWithOwner(ctx context.Context, filter ListFilter, owner *Ow
 	if filter.PageToken != "" {
 		cursorCreatedAt, cursorID, err := decodePageToken(filter.PageToken)
 		if err != nil {
-			// Garbage page_token — клиентская ошибка формата, а НЕ INTERNAL.
-			// Возвращаем полноценный gRPC InvalidArgument (симметрично
-			// validate.PageSize выше), чтобы сервисные error-mapper'ы, не
-			// узнающие сырой base64/strconv-текст, не схлопывали его в
-			// unclassified→INTERNAL (registry ListOperations #63: 500→400).
-			// security.md #7: format-validate → InvalidArgument.
-			return nil, "", coreerrors.InvalidArgument().
-				AddFieldViolation("page_token", "page_token is invalid or malformed").
-				Err()
+			return nil, "", invalidPageTokenErr()
 		}
 		conditions = append(conditions, fmt.Sprintf(
 			"(created_at, id) > ($%d, $%d)", argIdx, argIdx+1,
@@ -864,6 +865,25 @@ func stringOrEmpty(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// validatePageSize — единая дисциплина page_size для всех List-RPC
+// (api-conventions): 0 → DefaultPageSize, 1..Max — как есть, вне диапазона →
+// InvalidArgument (НЕ silent-clamp: молчаливая правка нарушает контракт).
+func validatePageSize(size int64) (int64, error) {
+	return validate.PageSize("page_size", size)
+}
+
+// invalidPageTokenErr — отказ по формату курсора.
+//
+// Garbage page_token — клиентская ошибка формата, а НЕ INTERNAL: сервисные
+// error-mapper'ы не узнают сырой base64/strconv-текст и схлопнули бы его в
+// unclassified→INTERNAL (registry ListOperations #63: 500→400). Поэтому здесь
+// строится полноценный gRPC InvalidArgument (симметрично validatePageSize).
+func invalidPageTokenErr() error {
+	return coreerrors.InvalidArgument().
+		AddFieldViolation("page_token", "page_token is invalid or malformed").
+		Err()
 }
 
 // encodePageToken кодирует created_at + id в непрозрачный page_token.
