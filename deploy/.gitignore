@@ -23,3 +23,7 @@ ci/.seeded-ids.env
 # newman / e2e harnesses; never check the values in.
 .seeded-ids.env
 .claude/worktrees/
+
+# карта идентификаторов содержимого локальных образов — генерируется `make build-services`,
+# значения машинно-локальны (id образов конкретного docker-демона).
+helm/umbrella/values.image-ids.yaml

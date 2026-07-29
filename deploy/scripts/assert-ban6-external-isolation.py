@@ -41,6 +41,12 @@ deny) — то есть чёрным ящиком эти методы до ре�
 методы, отсечённые раньше, получают `PermissionDenied` С ИМЕНЕМ ПРАВА — то есть
 для них укрытие под «метода не существует» не работает.
 
+СОСТОЯНИЕ ОСТАТКА НА СЕГОДНЯ (замер kind-kacho, 2026-07-29, после перевода проб
+на protoset): методов в полосе `INCONCLUSIVE` — **0**, все 79 доходят до решения
+о маршрутизации и получают одинаковый отказ. Разбор ниже сохранён потому, что
+полоса возвращается сама собой, стоит прогнать пробу под более узким принципалом,
+— но описывать её как наблюдаемый сейчас остаток было бы неправдой.
+
 Как закрыть остаток честно (в порядке предпочтения):
   1. отказывать в маршруте для `Internal*Service` ДО authz-интерсептора — тогда
      все 79 доходят до одинакового `NotFound`, и укрытие становится равномерным;
@@ -69,10 +75,38 @@ REST») падал ровно по этой причине.
 1. **CONTROL-LIVENESS** — публичный метод на ТОМ ЖЕ листенере обязан быть
    отмаршрутизирован и отвечен без gRPC-ошибки. Иначе «unknown method» ниже
    удовлетворяется листенером, который просто лежит, или протухшим токеном.
-2. **CONTROL-COUNTERPART** — для каждого домена хотя бы один Internal*-метод
+2. **CONTROL-COUNTERPART** — для КАЖДОГО домена хотя бы один Internal*-метод
    обязан быть ДОКАЗАННО обслужен на своём cluster-internal листенере (:9091,
    mTLS) в том же прогоне. Без этого «метода нет на внешнем» неотличимо от
    «метода нет нигде» — та самая пустота, ради которой контроль и заведён.
+   **Непокрытый домен роняет прогон** (rc=2, измерение не выполнено). Прежняя
+   версия заявляла это же требование в шапке, а в коде валила прогон только
+   когда не подтверждён НИ ОДИН домен; покрытие печаталось числом и ни на что
+   не влияло. Живьём подтверждался один домен из восьми — то есть про 53 метода
+   из 79 «нет на внешнем» не было подкреплено ничем.
+
+   **Дескрипторы берутся из protoset, а не из reflection.** Причина не в
+   удобстве: reflection на cluster-internal листенере ЗАКРЫТ намеренно — сам
+   reflection-RPC не значится в карте прав и отвергается fail-closed, как любой
+   незаявленный метод. Это правильно (reflection перечисляет админскую
+   поверхность), и снимать его ради пробы нельзя. grpcurl без reflection
+   получает дескрипторы из `buf build proto` — предмет по-прежнему берётся из
+   `proto/`, источника истины.
+
+   **Чем доказывается «обслужен» без reflection.** На cluster-internal
+   листенерах не установлен обработчик неизвестного сервиса, поэтому
+   незарегистрированный метод отклоняется диспетчером gRPC (`Unimplemented:
+   unknown service`) ДО интерсепторов — раньше, чем кто-либо спросит о правах.
+   Значит любой ответ, который НЕ является отказом маршрутизации (в том числе
+   отказ в правах), доказывает, что метод на листенере зарегистрирован.
+   Это утверждение о листенере, а не догадка, поэтому оно ПРОВЕРЯЕТСЯ: на том
+   же листенере, тем же соединением, пробуется заведомо чужой Internal-метод, и
+   он ОБЯЗАН получить отказ маршрутизации. Не получил — предпосылка на этом
+   листенере не выполняется, домен НЕ засчитывается.
+
+   Порядок обратный тому, что на внешнем листенере: там отказ в правах отвечает
+   РАНЬШЕ резолвера (стоит обработчик неизвестного сервиса), поэтому там он не
+   доказывает ничего и остаётся `INCONCLUSIVE`.
 3. **CONTROL-RESOLUTION** — дескриптор каждого пробуемого метода обязан
    резолвиться. Ошибка резолва на стороне grpcurl (опечатка в имени, метод
    удалён из proto) классифицируется как **отказ харнесса**, НИКОГДА как «не
@@ -118,17 +152,30 @@ UNRESOLVED = "UNRESOLVED"  # ответа по существу не было �
 INCONCLUSIVE = "INCONCLUSIVE"
 
 # Домен proto-пакета → cluster-internal gRPC-эндпоинт владельца (для встречного
-# контроля). Домен без эндпоинта не «пропускается молча»: его методы считаются
-# отдельно как counterpart-unconfirmed и это печатается числом.
+# контроля): (цель-проброса, порт, authority-для-TLS).
+#
+# Домен без эндпоинта РОНЯЕТ прогон: «мы не знаем, где его слушают» — это не
+# повод засчитать изоляцию его методов.
+#
+# apigateway пробрасывается на ПОД (`deploy/…`), а не на Service: внутренний
+# gRPC-листенер шлюза не выставлен ни одним Service, а проброс адресует под и
+# порт напрямую. Домен из-за этого не выпадает: отсутствие Service — не причина
+# оставить восьмой домен неподтверждённым.
 INTERNAL_ENDPOINTS = {
-    "iam": ("kacho-iam-internal", 9091),
-    "geo": ("kacho-geo-internal", 9091),
-    "loadbalancer": ("kacho-nlb-internal", 9091),
-    "registry": ("registry-internal", 9091),
-    "vpc": ("vpc", 9091),
-    "compute": ("compute", 9091),
-    "storage": ("kacho-storage", 9091),
+    "iam": ("svc/kacho-iam-internal", 9091, "kacho-iam-internal.kacho.svc.cluster.local"),
+    "geo": ("svc/kacho-geo-internal", 9091, "kacho-geo-internal.kacho.svc.cluster.local"),
+    "loadbalancer": ("svc/kacho-nlb-internal", 9091, "kacho-nlb-internal.kacho.svc.cluster.local"),
+    "registry": ("svc/registry-internal", 9091, "registry-internal.kacho.svc.cluster.local"),
+    "vpc": ("svc/vpc", 9091, "vpc.kacho.svc.cluster.local"),
+    "compute": ("svc/compute", 9091, "compute.kacho.svc.cluster.local"),
+    "storage": ("svc/kacho-storage", 9091, "kacho-storage.kacho.svc.cluster.local"),
+    "apigateway": ("deploy/api-gateway", 9091, "api-gateway.kacho.svc.cluster.local"),
 }
+
+# Вердикты встречного контроля (отдельные от вердиктов внешней пробы — вопрос
+# другой и порядок обработки на этом листенере другой, см. шапку).
+SERVED = "ОБСЛУЖЕН"
+ABSENT = "НЕ ЗАРЕГИСТРИРОВАН"
 
 # Публичные методы для CONTROL-LIVENESS. Берём read-RPC двух разных доменов:
 # один домен мог бы лежать сам по себе, и тогда контроль сообщил бы про стенд, а
@@ -200,6 +247,31 @@ def classify(transcript: str) -> tuple[str, str]:
     return REACHABLE, "ответ телом (2xx)"
 
 
+def counterpart_verdict(transcript: str) -> tuple[str, str]:
+    """«Обслужен ли метод на СВОЁМ cluster-internal листенере».
+
+    Другой вопрос, чем у внешней пробы, и другой порядок обработки на сервере,
+    поэтому вердикт отдельный, а не переиспользование внешнего.
+
+    На этих листенерах не установлен обработчик неизвестного сервиса, поэтому
+    незарегистрированный метод отклоняет диспетчер gRPC ДО интерсепторов. Значит:
+
+      ABSENT     — отказ маршрутизации: метода на листенере НЕТ;
+      SERVED     — всё остальное по существу, ВКЛЮЧАЯ отказ в правах: до прав
+                   доходит только зарегистрированный метод;
+      UNRESOLVED — ответа по существу не было (отказ харнесса), не вердикт.
+
+    Утверждение «до прав доходит только зарегистрированный» проверяется на том
+    же листенере контрольной пробой заведомо чужого метода — см. serve_check().
+    """
+    v, d = classify(transcript)
+    if v == UNRESOLVED:
+        return UNRESOLVED, d
+    if v == ISOLATED:
+        return ABSENT, d
+    return SERVED, d
+
+
 def internal_rpcs(proto_glob: str = PROTO_GLOB) -> list[tuple[str, str, str]]:
     """(package, ServiceName, MethodName) для каждого `service Internal*` в proto."""
     rows: list[tuple[str, str, str]] = []
@@ -241,26 +313,45 @@ def _free_port() -> int:
 
 class PortForward:
     """kubectl port-forward на время блока. Проброс — часть харнесса: если он не
-    поднялся, это UNRESOLVED, а не «недостижимо»."""
+    поднялся, это UNRESOLVED, а не «недостижимо».
 
-    def __init__(self, ns: str, svc: str, port: int):
-        self.ns, self.svc, self.port = ns, svc, port
+    target — готовая координата вида `svc/<имя>` либо `deploy/<имя>`: часть
+    внутренних листенеров не выставлена ни одним Service, и проброс на под —
+    единственный способ их опросить. Отсутствие Service не повод не проверять.
+    """
+
+    def __init__(self, ns: str, target: str, port: int):
+        self.ns, self.target, self.port = ns, target, port
         self.local = _free_port()
         self.proc: subprocess.Popen | None = None
+        self.ready = False          # проброс реально принял соединение
+        self.error = ""             # почему не принял — называемая причина
 
     def __enter__(self) -> "PortForward":
+        # stderr НЕ выбрасывается: не поднявшийся проброс — это отдельная,
+        # называемая причина. Прежде он глушился в /dev/null, `__enter__`
+        # возвращал себя в любом случае, и каждая проба получала «Failed to
+        # dial: connection refused» — то есть сорванный харнесс выглядел
+        # неотличимо от недоступного листенера. Разбор занимал часы, а вывод
+        # «листенер не ответил» был просто неверен.
         self.proc = subprocess.Popen(
-            ["kubectl", "-n", self.ns, "port-forward", f"svc/{self.svc}",
+            ["kubectl", "-n", self.ns, "port-forward", self.target,
              f"{self.local}:{self.port}"],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
         )
-        deadline = time.time() + 15
+        deadline = time.time() + 20
         while time.time() < deadline:
+            if self.proc.poll() is not None:
+                self.error = (self.proc.stderr.read() or "").strip() if self.proc.stderr else ""
+                self.error = self.error or f"kubectl port-forward вышел с кодом {self.proc.returncode}"
+                return self
             try:
                 with socket.create_connection(("127.0.0.1", self.local), 0.3):
+                    self.ready = True
                     return self
             except OSError:
                 time.sleep(0.2)
+        self.error = f"проброс {self.target}:{self.port} не открылся за 20 c"
         return self
 
     def __exit__(self, *_exc) -> None:
@@ -272,12 +363,35 @@ class PortForward:
                 self.proc.kill()
 
 
+def build_protoset(dest: str) -> str | None:
+    """Дескрипторы предмета из `proto/` — тем же деревом, что и перечень методов.
+
+    Нужны потому, что reflection на cluster-internal листенерах закрыт
+    НАМЕРЕННО (он перечисляет админскую поверхность), и его отказ приходит
+    grpcurl'у как невозможность собрать запрос — то есть как отказ харнесса.
+    Открывать reflection ради пробы значило бы ослабить проверяемое, чтобы
+    проверка прошла.
+    """
+    if not shutil.which("buf"):
+        return None
+    r = subprocess.run(["buf", "build", os.path.join(REPO_ROOT, "proto"), "-o", dest],
+                       capture_output=True, text=True, timeout=120)
+    return dest if r.returncode == 0 and os.path.exists(dest) else None
+
+
 def grpc_probe(addr: str, method: str, *, cacert: str, authority: str,
                bearer: str | None = None, cert: str | None = None,
-               key: str | None = None, timeout: int = 25) -> str:
-    cmd = ["grpcurl", "-cacert", cacert, "-authority", authority, "-max-time", "15"]
-    if cert and key:
-        cmd += ["-cert", cert, "-key", key]
+               key: str | None = None, timeout: int = 25,
+               protoset: str | None = None, plaintext: bool = False) -> str:
+    cmd = ["grpcurl", "-max-time", "15"]
+    if protoset:
+        cmd += ["-protoset", protoset]
+    if plaintext:
+        cmd += ["-plaintext"]
+    else:
+        cmd += ["-cacert", cacert, "-authority", authority]
+        if cert and key:
+            cmd += ["-cert", cert, "-key", key]
     if bearer:
         cmd += ["-H", f"authorization: Bearer {bearer}"]
     cmd += ["-d", "{}", addr, method]
@@ -288,6 +402,12 @@ def grpc_probe(addr: str, method: str, *, cacert: str, authority: str,
         return "Timeout expired"
     except FileNotFoundError:
         return "Failed to dial: grpcurl not found in PATH"
+
+
+# Ответ TLS-стороны, означающий «здесь говорят открытым текстом». Внутренний
+# листенер шлюза в dev-посадке поднимается без mTLS, и это не отказ харнесса —
+# это другая посадка, о которой отчёт обязан сказать вслух.
+_PLAINTEXT_HINT = "first record does not look like a tls handshake"
 
 
 def _kube_secret_file(ns: str, secret: str, key: str, dest: str) -> bool:
@@ -323,8 +443,23 @@ def main(argv: list[str]) -> int:
     if not _kube_secret_file(ns, "kacho-internal-ca-root", "ca.crt", ca):
         print("HARNESS: не прочитан internal-CA (secret kacho-internal-ca-root)", file=sys.stderr)
         return 2
-    have_client = (_kube_secret_file(ns, "api-gateway-client-tls", "tls.crt", crt)
-                   and _kube_secret_file(ns, "api-gateway-client-tls", "tls.key", key))
+    # Client-cert — НЕ «если получится». Без него встречный контроль не проводится
+    # ни для одного домена, а прогон без встречного контроля не имеет предмета.
+    if not (_kube_secret_file(ns, "api-gateway-client-tls", "tls.crt", crt)
+            and _kube_secret_file(ns, "api-gateway-client-tls", "tls.key", key)):
+        print("HARNESS: не прочитан client-cert (secret api-gateway-client-tls) — "
+              "встречный контроль невозможен, а без него вердикт об изоляции пуст",
+              file=sys.stderr)
+        return 2
+
+    # Дескрипторы предмета. Без них grpcurl спрашивал бы их у сервера
+    # (reflection), а на cluster-internal листенерах reflection закрыт намеренно.
+    protoset = build_protoset(os.path.join(wd, "kacho.binpb"))
+    if not protoset:
+        print("HARNESS: не собран protoset (`buf build proto`) — дескрипторы пришлось бы "
+              "спрашивать у сервера, а reflection на внутренних листенерах закрыт "
+              "намеренно; проба свелась бы к отказу харнесса", file=sys.stderr)
+        return 2
 
     if not os.path.exists(FIXTURES):
         print(f"HARNESS: нет посева {FIXTURES} — без токена проба не различает "
@@ -343,15 +478,20 @@ def main(argv: list[str]) -> int:
 
     gw_authority = "api-gateway.kacho.svc.cluster.local"
     rc = 0
-    with PortForward(ns, "api-gateway", 8443) as ext:
+    with PortForward(ns, "svc/api-gateway", 8443) as ext:
         addr = f"127.0.0.1:{ext.local}"
+        # Не поднявшийся проброс — НАЗЫВАЕМАЯ причина, а не «листенер не ответил».
+        if not ext.ready:
+            print(f"HARNESS: проброс до внешнего листенера не поднялся: {ext.error}",
+                  file=sys.stderr)
+            return 2
 
         # ── CONTROL-LIVENESS ────────────────────────────────────────────────
         print("== CONTROL-LIVENESS: внешний листенер маршрутизирует публичный метод ==")
         alive = 0
         for m in LIVENESS_METHODS:
             v, d = classify(grpc_probe(addr, m, cacert=ca, authority=gw_authority,
-                                       bearer=bearer))
+                                       bearer=bearer, protoset=protoset))
             ok = v == REACHABLE
             alive += 1 if ok else 0
             print(f"  {m:<52} {v:<11} {'OK' if ok else d}")
@@ -365,26 +505,85 @@ def main(argv: list[str]) -> int:
         print("\n== CONTROL-COUNTERPART: тот же метод ОБСЛУЖЕН на своём :9091 ==")
         domains = sorted({domain_of(p) for p, _, _ in rows})
         confirmed: set[str] = set()
+        unconfirmed: list[tuple[str, str]] = []
+
+        def probe_internal(target: str, port: int, authority: str,
+                           method: str) -> tuple[str, str, str]:
+            """Проба внутреннего листенера: mTLS, при открытом порту — открытым текстом.
+
+            Возвращает (вердикт, деталь, режим). Режим печатается: посадка
+            листенера — факт о стенде, который отчёт не вправе замалчивать
+            (внутренний листенер шлюза в dev-посадке слушает без mTLS).
+
+            КАЖДАЯ попытка идёт по СВЕЖЕМУ пробросу. Неудачное TLS-рукопожатие
+            против открытого порта сервер закрывает, и kubectl-проброс на этом
+            умирает — повтор по тому же пробросу получал бы «не дозвонились», то
+            есть отказ харнесса вместо ответа. Свой проброс на попытку дороже, но
+            даёт ответ вместо артефакта.
+            """
+            def once(plain: bool) -> str:
+                with PortForward(ns, target, port) as pf:
+                    if not pf.ready:
+                        return f"Failed to dial: проброс не поднялся — {pf.error}"
+                    return grpc_probe(
+                        f"127.0.0.1:{pf.local}", method, cacert=ca, authority=authority,
+                        cert=None if plain else crt, key=None if plain else key,
+                        protoset=protoset, plaintext=plain)
+
+            t = once(plain=False)
+            if _PLAINTEXT_HINT in t.lower():
+                v, d = counterpart_verdict(once(plain=True))
+                return v, d, "plaintext"
+            v, d = counterpart_verdict(t)
+            return v, d, "mTLS"
+
         for dom in domains:
             ep = INTERNAL_ENDPOINTS.get(dom)
             rep = next(((p, s, mm) for p, s, mm in rows if domain_of(p) == dom), None)
-            if not ep or not rep or not have_client:
-                print(f"  {dom:<14} — встречный контроль НЕ проведён "
-                      f"({'нет internal-эндпоинта' if not ep else 'нет client-cert'})")
+            # Заведомо ЧУЖОЙ Internal-метод — контроль предпосылки «до прав
+            # доходит только зарегистрированный метод». Берётся из другого домена,
+            # поэтому на этом листенере его заведомо нет.
+            sentinel = next((f"{p}.{s}/{m}" for p, s, m in rows if domain_of(p) != dom), None)
+            if not ep:
+                unconfirmed.append((dom, "не объявлен cluster-internal эндпоинт домена"))
+                print(f"  {dom:<14} — НЕ ПОДТВЕРЖДЁН: нет эндпоинта в INTERNAL_ENDPOINTS")
                 continue
-            svc, port = ep
-            with PortForward(ns, svc, port) as pf:
-                method = f"{rep[0]}.{rep[1]}/{rep[2]}"
-                v, d = classify(grpc_probe(
-                    f"127.0.0.1:{pf.local}", method, cacert=ca,
-                    authority=f"{svc}.{ns}.svc.cluster.local", cert=crt, key=key))
-            served = v == REACHABLE
-            if served:
+            if not rep or not sentinel:
+                unconfirmed.append((dom, "не из чего собрать пробу"))
+                print(f"  {dom:<14} — НЕ ПОДТВЕРЖДЁН: не из чего собрать пробу")
+                continue
+            target, port, authority = ep
+            method = f"{rep[0]}.{rep[1]}/{rep[2]}"
+            v, d, mode = probe_internal(target, port, authority, method)
+            sv, sd, _ = probe_internal(target, port, authority, sentinel)
+
+            # Предпосылка: на ЭТОМ листенере незарегистрированный метод обязан
+            # получать отказ маршрутизации. Не получает — из «отказали в правах»
+            # нельзя вывести «метод зарегистрирован», и домен не засчитывается.
+            if sv != ABSENT:
+                unconfirmed.append(
+                    (dom, f"контроль предпосылки провален: чужой метод получил '{sv}' ({sd})"))
+                print(f"  {dom:<14} {method:<50} НЕ ПОДТВЕРЖДЁН — предпосылка не выполняется: "
+                      f"чужой метод на том же листенере ответил '{sv}'")
+                continue
+            if v == SERVED:
                 confirmed.add(dom)
-            print(f"  {dom:<14} {method:<58} {'ОБСЛУЖЕН' if served else 'НЕ подтверждён: ' + d}")
-        if not confirmed:
-            print("HARNESS: ни один Internal*-метод не подтверждён обслуженным на своём "
-                  "listener — 'нет на внешнем' неотличимо от 'нет нигде'", file=sys.stderr)
+                print(f"  {dom:<14} {method:<50} ОБСЛУЖЕН [{mode}] (контроль: чужой метод → {ABSENT})")
+            else:
+                unconfirmed.append((dom, f"{v}: {d}"))
+                print(f"  {dom:<14} {method:<50} НЕ ПОДТВЕРЖДЁН: {v} — {d}")
+
+        # Непокрытый домен РОНЯЕТ прогон. Печатать покрытие числом и идти дальше
+        # значит объявлять изолированными методы, про которые не установлено даже
+        # того, что они где-то работают.
+        if unconfirmed:
+            print(f"\nHARNESS: встречный контроль НЕ подтверждён для доменов: "
+                  f"{', '.join(d for d, _ in unconfirmed)}", file=sys.stderr)
+            for d, why in unconfirmed:
+                print(f"  {d}: {why}", file=sys.stderr)
+            print("Для этих доменов «метода нет на внешнем листенере» неотличимо от "
+                  "«метода нет нигде» — это не изоляция, а отсутствие измерения.",
+                  file=sys.stderr)
             return 2
 
         # ── ПРЕДМЕТ ─────────────────────────────────────────────────────────
@@ -393,7 +592,8 @@ def main(argv: list[str]) -> int:
         for pkg, svc, meth in rows:
             method = f"{pkg}.{svc}/{meth}"
             v, d = classify(grpc_probe(addr, method, cacert=ca,
-                                       authority=gw_authority, bearer=bearer))
+                                       authority=gw_authority, bearer=bearer,
+                                       protoset=protoset))
             if v == ISOLATED:
                 isolated += 1
             elif v == REACHABLE:
@@ -411,8 +611,12 @@ def main(argv: list[str]) -> int:
     print(f"\nпроверено Internal*-методов: {total} (сервисов: "
           f"{len({(p, s) for p, s, _ in rows})}, доменов: {len(domains)})")
     print(f"недостижимо на внешнем листенере: {isolated}")
-    print(f"из них со встречным контролем домена: {cover} "
-          f"(подтверждённые домены: {' '.join(sorted(confirmed)) or '—'})")
+    # Досюда прогон доходит только когда встречный контроль подтверждён для ВСЕХ
+    # доменов — непокрытый роняет его выше. Поэтому число здесь равно total и
+    # печатается как подтверждение, а не как «покрытие, которое ни на что не влияет».
+    print(f"из них со встречным контролем домена: {cover}/{total} "
+          f"(подтверждено доменов: {len(confirmed)}/{len(domains)} — "
+          f"{' '.join(sorted(confirmed))})")
     print(f"достижимо (нарушение ban #6): {len(violations)}")
     print(f"НЕ проверено (authz ответил раньше резолвера): {len(inconclusive)}")
     print(f"отказ харнесса (не вердикт): {len(unresolved)}")
@@ -513,6 +717,63 @@ def self_test() -> int:
     ok = verdicts == [ISOLATED, INCONCLUSIVE]
     print(f"  {verdicts} — {'ОК' if ok else 'ПРОВАЛ'}")
     rc |= 0 if ok else 1
+
+    # ── ВСТРЕЧНЫЙ КОНТРОЛЬ: отдельный вопрос, отдельный вердикт ──────────────
+    # На cluster-internal листенере порядок ОБРАТНЫЙ внешнему: диспетчер gRPC
+    # отклоняет незарегистрированный метод ДО интерсепторов, поэтому отказ в
+    # правах там доказывает регистрацию. Если бы встречный контроль пользовался
+    # внешним классификатором, он засчитывал бы обслуженными только те методы,
+    # что ответили по существу, — а таких на закрытом периметре меньшинство, и
+    # именно поэтому подтверждался один домен из восьми.
+    print("\nсамопроверка встречного контроля (:9091 — свой порядок обработки):")
+
+    def check_cp(label: str, transcript: str, expect: str) -> None:
+        nonlocal rc
+        got, detail = counterpart_verdict(transcript)
+        ok = got == expect
+        mark = "ОК" if ok else f"ПРОВАЛ (ждали {expect}, получили {got})"
+        print(f"  {label:<58} → {got:<18} {mark}  [{detail}]")
+        rc |= 0 if ok else 1
+
+    check_cp("(G) отказ в правах на своём листенере — метод ЕСТЬ",
+             "ERROR:\n  Code: PermissionDenied\n  Message: permission denied", SERVED)
+    check_cp("(G2) ответ владельца по существу — метод ЕСТЬ",
+             "ERROR:\n  Code: InvalidArgument\n  Message: subject required", SERVED)
+    check_cp("(H) unknown service — метода на листенере НЕТ",
+             "ERROR:\n  Code: Unimplemented\n  Message: unknown service "
+             "kacho.cloud.vpc.v1.InternalAddressPoolService", ABSENT)
+    # Контроль: отказ харнесса не имеет права читаться как «обслужен». Именно в
+    # эту полосу уходил закрытый reflection — grpcurl не мог собрать запрос.
+    check_cp("(H2) reflection закрыт — дескриптор не получен: отказ ХАРНЕССА",
+             'Error invoking method "x/Y": rpc error: code = PermissionDenied desc = '
+             'failed to query for service descriptor "x": permission denied (rpc not mapped)',
+             UNRESOLVED)
+    check_cp("(H3) не дозвонились — отказ харнесса, а не «обслужен»",
+             'Failed to dial target host "127.0.0.1:1": connection refused', UNRESOLVED)
+
+    print("\nсамопроверка предпосылки встречного контроля:")
+    # Предпосылка «до прав доходит только зарегистрированный метод» ВЕРНА лишь
+    # там, где незарегистрированный получает отказ маршрутизации. Контрольная
+    # проба чужим методом это и проверяет; вот обе её стороны.
+    sentinel_ok, _ = counterpart_verdict(
+        "ERROR:\n  Code: Unimplemented\n  Message: unknown service kacho.cloud.iam.v1.InternalIAMService")
+    sentinel_bad, _ = counterpart_verdict(
+        "ERROR:\n  Code: PermissionDenied\n  Message: permission denied")
+    ok = sentinel_ok == ABSENT and sentinel_bad != ABSENT
+    print(f"  чужой метод → {sentinel_ok}; если бы он отвечал отказом в правах → "
+          f"{sentinel_bad} (предпосылка сорвана, домен не засчитывается) — "
+          f"{'ОК' if ok else 'ПРОВАЛ'}")
+    rc |= 0 if ok else 1
+
+    print("\nсамопроверка карты внутренних эндпоинтов:")
+    # Домен без эндпоинта роняет прогон, поэтому карта обязана покрывать ВСЕ
+    # домены, у которых есть Internal*-методы. Расхождение — находка здесь, а не
+    # «непокрытый домен» на живом стенде.
+    doms = {domain_of(p) for p, _, _ in internal_rpcs()}
+    gap = sorted(doms - set(INTERNAL_ENDPOINTS))
+    print(f"  доменов с Internal*-методами: {len(doms)}; без эндпоинта: "
+          f"{', '.join(gap) if gap else 'нет'} — {'ПРОВАЛ' if gap else 'ОК'}")
+    rc |= 1 if gap else 0
 
     print("\nсамопроверка перечисления предмета:")
     rows = internal_rpcs()
