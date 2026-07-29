@@ -313,6 +313,114 @@ func (x *DeleteServiceAccountMetadata) GetAccountId() string {
 	return ""
 }
 
+type DisableServiceAccountMetadata struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the ServiceAccount that is being disabled.
+	ServiceAccountId string `protobuf:"bytes,1,opt,name=service_account_id,json=serviceAccountId,proto3" json:"service_account_id,omitempty"`
+	// ID of the owning Account (denormalized; non-first, see CreateServiceAccountMetadata).
+	AccountId     string `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DisableServiceAccountMetadata) Reset() {
+	*x = DisableServiceAccountMetadata{}
+	mi := &file_kacho_cloud_iam_v1_service_account_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DisableServiceAccountMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DisableServiceAccountMetadata) ProtoMessage() {}
+
+func (x *DisableServiceAccountMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_service_account_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DisableServiceAccountMetadata.ProtoReflect.Descriptor instead.
+func (*DisableServiceAccountMetadata) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_service_account_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *DisableServiceAccountMetadata) GetServiceAccountId() string {
+	if x != nil {
+		return x.ServiceAccountId
+	}
+	return ""
+}
+
+func (x *DisableServiceAccountMetadata) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
+type EnableServiceAccountMetadata struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the ServiceAccount that is being enabled.
+	ServiceAccountId string `protobuf:"bytes,1,opt,name=service_account_id,json=serviceAccountId,proto3" json:"service_account_id,omitempty"`
+	// ID of the owning Account (denormalized; non-first, see CreateServiceAccountMetadata).
+	AccountId     string `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EnableServiceAccountMetadata) Reset() {
+	*x = EnableServiceAccountMetadata{}
+	mi := &file_kacho_cloud_iam_v1_service_account_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EnableServiceAccountMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EnableServiceAccountMetadata) ProtoMessage() {}
+
+func (x *EnableServiceAccountMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_service_account_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EnableServiceAccountMetadata.ProtoReflect.Descriptor instead.
+func (*EnableServiceAccountMetadata) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_service_account_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *EnableServiceAccountMetadata) GetServiceAccountId() string {
+	if x != nil {
+		return x.ServiceAccountId
+	}
+	return ""
+}
+
+func (x *EnableServiceAccountMetadata) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
 var File_kacho_cloud_iam_v1_service_account_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_service_account_proto_rawDesc = "" +
@@ -344,6 +452,14 @@ const file_kacho_cloud_iam_v1_service_account_proto_rawDesc = "" +
 	"\x1cDeleteServiceAccountMetadata\x12,\n" +
 	"\x12service_account_id\x18\x01 \x01(\tR\x10serviceAccountId\x12\x1d\n" +
 	"\n" +
+	"account_id\x18\x02 \x01(\tR\taccountId\"l\n" +
+	"\x1dDisableServiceAccountMetadata\x12,\n" +
+	"\x12service_account_id\x18\x01 \x01(\tR\x10serviceAccountId\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x02 \x01(\tR\taccountId\"k\n" +
+	"\x1cEnableServiceAccountMetadata\x12,\n" +
+	"\x12service_account_id\x18\x01 \x01(\tR\x10serviceAccountId\x12\x1d\n" +
+	"\n" +
 	"account_id\x18\x02 \x01(\tR\taccountIdB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
 var (
@@ -358,18 +474,20 @@ func file_kacho_cloud_iam_v1_service_account_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_iam_v1_service_account_proto_rawDescData
 }
 
-var file_kacho_cloud_iam_v1_service_account_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_kacho_cloud_iam_v1_service_account_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_kacho_cloud_iam_v1_service_account_proto_goTypes = []any{
-	(*ServiceAccount)(nil),               // 0: kacho.cloud.iam.v1.ServiceAccount
-	(*CreateServiceAccountMetadata)(nil), // 1: kacho.cloud.iam.v1.CreateServiceAccountMetadata
-	(*UpdateServiceAccountMetadata)(nil), // 2: kacho.cloud.iam.v1.UpdateServiceAccountMetadata
-	(*DeleteServiceAccountMetadata)(nil), // 3: kacho.cloud.iam.v1.DeleteServiceAccountMetadata
-	nil,                                  // 4: kacho.cloud.iam.v1.ServiceAccount.LabelsEntry
-	(*timestamppb.Timestamp)(nil),        // 5: google.protobuf.Timestamp
+	(*ServiceAccount)(nil),                // 0: kacho.cloud.iam.v1.ServiceAccount
+	(*CreateServiceAccountMetadata)(nil),  // 1: kacho.cloud.iam.v1.CreateServiceAccountMetadata
+	(*UpdateServiceAccountMetadata)(nil),  // 2: kacho.cloud.iam.v1.UpdateServiceAccountMetadata
+	(*DeleteServiceAccountMetadata)(nil),  // 3: kacho.cloud.iam.v1.DeleteServiceAccountMetadata
+	(*DisableServiceAccountMetadata)(nil), // 4: kacho.cloud.iam.v1.DisableServiceAccountMetadata
+	(*EnableServiceAccountMetadata)(nil),  // 5: kacho.cloud.iam.v1.EnableServiceAccountMetadata
+	nil,                                   // 6: kacho.cloud.iam.v1.ServiceAccount.LabelsEntry
+	(*timestamppb.Timestamp)(nil),         // 7: google.protobuf.Timestamp
 }
 var file_kacho_cloud_iam_v1_service_account_proto_depIdxs = []int32{
-	5, // 0: kacho.cloud.iam.v1.ServiceAccount.created_at:type_name -> google.protobuf.Timestamp
-	4, // 1: kacho.cloud.iam.v1.ServiceAccount.labels:type_name -> kacho.cloud.iam.v1.ServiceAccount.LabelsEntry
+	7, // 0: kacho.cloud.iam.v1.ServiceAccount.created_at:type_name -> google.protobuf.Timestamp
+	6, // 1: kacho.cloud.iam.v1.ServiceAccount.labels:type_name -> kacho.cloud.iam.v1.ServiceAccount.LabelsEntry
 	2, // [2:2] is the sub-list for method output_type
 	2, // [2:2] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
@@ -388,7 +506,7 @@ func file_kacho_cloud_iam_v1_service_account_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_service_account_proto_rawDesc), len(file_kacho_cloud_iam_v1_service_account_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -402,6 +402,99 @@ func (x *DeleteServiceAccountRequest) GetServiceAccountId() string {
 	return ""
 }
 
+type DisableServiceAccountRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the ServiceAccount resource to disable.
+	//
+	// The whole request. There is deliberately nothing else here: an action with
+	// no mask is an action nobody can half-send.
+	ServiceAccountId string `protobuf:"bytes,1,opt,name=service_account_id,json=serviceAccountId,proto3" json:"service_account_id,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *DisableServiceAccountRequest) Reset() {
+	*x = DisableServiceAccountRequest{}
+	mi := &file_kacho_cloud_iam_v1_service_account_service_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DisableServiceAccountRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DisableServiceAccountRequest) ProtoMessage() {}
+
+func (x *DisableServiceAccountRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_service_account_service_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DisableServiceAccountRequest.ProtoReflect.Descriptor instead.
+func (*DisableServiceAccountRequest) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_service_account_service_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *DisableServiceAccountRequest) GetServiceAccountId() string {
+	if x != nil {
+		return x.ServiceAccountId
+	}
+	return ""
+}
+
+type EnableServiceAccountRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the ServiceAccount resource to enable.
+	ServiceAccountId string `protobuf:"bytes,1,opt,name=service_account_id,json=serviceAccountId,proto3" json:"service_account_id,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *EnableServiceAccountRequest) Reset() {
+	*x = EnableServiceAccountRequest{}
+	mi := &file_kacho_cloud_iam_v1_service_account_service_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EnableServiceAccountRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EnableServiceAccountRequest) ProtoMessage() {}
+
+func (x *EnableServiceAccountRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_service_account_service_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EnableServiceAccountRequest.ProtoReflect.Descriptor instead.
+func (*EnableServiceAccountRequest) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_service_account_service_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *EnableServiceAccountRequest) GetServiceAccountId() string {
+	if x != nil {
+		return x.ServiceAccountId
+	}
+	return ""
+}
+
 type ListServiceAccountOperationsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the ServiceAccount resource to list operations for.
@@ -416,7 +509,7 @@ type ListServiceAccountOperationsRequest struct {
 
 func (x *ListServiceAccountOperationsRequest) Reset() {
 	*x = ListServiceAccountOperationsRequest{}
-	mi := &file_kacho_cloud_iam_v1_service_account_service_proto_msgTypes[6]
+	mi := &file_kacho_cloud_iam_v1_service_account_service_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -428,7 +521,7 @@ func (x *ListServiceAccountOperationsRequest) String() string {
 func (*ListServiceAccountOperationsRequest) ProtoMessage() {}
 
 func (x *ListServiceAccountOperationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_service_account_service_proto_msgTypes[6]
+	mi := &file_kacho_cloud_iam_v1_service_account_service_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -441,7 +534,7 @@ func (x *ListServiceAccountOperationsRequest) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use ListServiceAccountOperationsRequest.ProtoReflect.Descriptor instead.
 func (*ListServiceAccountOperationsRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_service_account_service_proto_rawDescGZIP(), []int{6}
+	return file_kacho_cloud_iam_v1_service_account_service_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListServiceAccountOperationsRequest) GetServiceAccountId() string {
@@ -477,7 +570,7 @@ type ListServiceAccountOperationsResponse struct {
 
 func (x *ListServiceAccountOperationsResponse) Reset() {
 	*x = ListServiceAccountOperationsResponse{}
-	mi := &file_kacho_cloud_iam_v1_service_account_service_proto_msgTypes[7]
+	mi := &file_kacho_cloud_iam_v1_service_account_service_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -489,7 +582,7 @@ func (x *ListServiceAccountOperationsResponse) String() string {
 func (*ListServiceAccountOperationsResponse) ProtoMessage() {}
 
 func (x *ListServiceAccountOperationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_service_account_service_proto_msgTypes[7]
+	mi := &file_kacho_cloud_iam_v1_service_account_service_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -502,7 +595,7 @@ func (x *ListServiceAccountOperationsResponse) ProtoReflect() protoreflect.Messa
 
 // Deprecated: Use ListServiceAccountOperationsResponse.ProtoReflect.Descriptor instead.
 func (*ListServiceAccountOperationsResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_service_account_service_proto_rawDescGZIP(), []int{7}
+	return file_kacho_cloud_iam_v1_service_account_service_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ListServiceAccountOperationsResponse) GetOperations() []*operation.Operation {
@@ -558,6 +651,10 @@ const file_kacho_cloud_iam_v1_service_account_service_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"Y\n" +
 	"\x1bDeleteServiceAccountRequest\x12:\n" +
+	"\x12service_account_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x10serviceAccountId\"Z\n" +
+	"\x1cDisableServiceAccountRequest\x12:\n" +
+	"\x12service_account_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x10serviceAccountId\"Y\n" +
+	"\x1bEnableServiceAccountRequest\x12:\n" +
 	"\x12service_account_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x10serviceAccountId\"\xb4\x01\n" +
 	"#ListServiceAccountOperationsRequest\x12:\n" +
 	"\x12service_account_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x10serviceAccountId\x12'\n" +
@@ -569,7 +666,7 @@ const file_kacho_cloud_iam_v1_service_account_service_proto_rawDesc = "" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\x9b\f\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xfc\x10\n" +
 	"\x15ServiceAccountService\x12\xe5\x01\n" +
 	"\x03Get\x12,.kacho.cloud.iam.v1.GetServiceAccountRequest\x1a\".kacho.cloud.iam.v1.ServiceAccount\"\x8b\x01\x8a\xb5\x18\x18iam.service_accounts.get\x92\xb5\x18\x05v_get\x9a\xb5\x18)\n" +
 	"\x13iam_service_account\x12\x12service_account_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02.\x12,/iam/v1/serviceAccounts/{service_account_id}\x12\x94\x01\n" +
@@ -583,7 +680,13 @@ const file_kacho_cloud_iam_v1_service_account_service_proto_rawDesc = "" +
 	"\x1cUpdateServiceAccountMetadata\x12\x0eServiceAccount\x82\xd3\xe4\x93\x021:\x01*2,/iam/v1/serviceAccounts/{service_account_id}\x12\xa8\x02\n" +
 	"\x06Delete\x12/.kacho.cloud.iam.v1.DeleteServiceAccountRequest\x1a .kacho.cloud.operation.Operation\"\xca\x01\x8a\xb5\x18\x1biam.service_accounts.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18)\n" +
 	"\x13iam_service_account\x12\x12service_account_id\xa2\xb5\x18\x011\xb2\xd2*5\n" +
-	"\x1cDeleteServiceAccountMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02.*,/iam/v1/serviceAccounts/{service_account_id}\x12\xb4\x02\n" +
+	"\x1cDeleteServiceAccountMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02.*,/iam/v1/serviceAccounts/{service_account_id}\x12\xb0\x02\n" +
+	"\aDisable\x120.kacho.cloud.iam.v1.DisableServiceAccountRequest\x1a .kacho.cloud.operation.Operation\"\xd0\x01\x8a\xb5\x18\x1ciam.service_accounts.disable\x92\xb5\x18\bv_update\x9a\xb5\x18)\n" +
+	"\x13iam_service_account\x12\x12service_account_id\xa2\xb5\x18\x012\xb2\xd2*/\n" +
+	"\x1dDisableServiceAccountMetadata\x12\x0eServiceAccount\x82\xd3\xe4\x93\x029:\x01*\"4/iam/v1/serviceAccounts/{service_account_id}:disable\x12\xab\x02\n" +
+	"\x06Enable\x12/.kacho.cloud.iam.v1.EnableServiceAccountRequest\x1a .kacho.cloud.operation.Operation\"\xcd\x01\x8a\xb5\x18\x1biam.service_accounts.enable\x92\xb5\x18\bv_update\x9a\xb5\x18)\n" +
+	"\x13iam_service_account\x12\x12service_account_id\xa2\xb5\x18\x012\xb2\xd2*.\n" +
+	"\x1cEnableServiceAccountMetadata\x12\x0eServiceAccount\x82\xd3\xe4\x93\x028:\x01*\"3/iam/v1/serviceAccounts/{service_account_id}:enable\x12\xb4\x02\n" +
 	"\x0eListOperations\x127.kacho.cloud.iam.v1.ListServiceAccountOperationsRequest\x1a8.kacho.cloud.iam.v1.ListServiceAccountOperationsResponse\"\xae\x01\x8a\xb5\x18/iam.service_account_operationses.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18)\n" +
 	"\x13iam_service_account\x12\x12service_account_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x029\x127/iam/v1/serviceAccounts/{service_account_id}/operationsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
@@ -599,7 +702,7 @@ func file_kacho_cloud_iam_v1_service_account_service_proto_rawDescGZIP() []byte 
 	return file_kacho_cloud_iam_v1_service_account_service_proto_rawDescData
 }
 
-var file_kacho_cloud_iam_v1_service_account_service_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_kacho_cloud_iam_v1_service_account_service_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
 var file_kacho_cloud_iam_v1_service_account_service_proto_goTypes = []any{
 	(*GetServiceAccountRequest)(nil),             // 0: kacho.cloud.iam.v1.GetServiceAccountRequest
 	(*ListServiceAccountsRequest)(nil),           // 1: kacho.cloud.iam.v1.ListServiceAccountsRequest
@@ -607,34 +710,40 @@ var file_kacho_cloud_iam_v1_service_account_service_proto_goTypes = []any{
 	(*CreateServiceAccountRequest)(nil),          // 3: kacho.cloud.iam.v1.CreateServiceAccountRequest
 	(*UpdateServiceAccountRequest)(nil),          // 4: kacho.cloud.iam.v1.UpdateServiceAccountRequest
 	(*DeleteServiceAccountRequest)(nil),          // 5: kacho.cloud.iam.v1.DeleteServiceAccountRequest
-	(*ListServiceAccountOperationsRequest)(nil),  // 6: kacho.cloud.iam.v1.ListServiceAccountOperationsRequest
-	(*ListServiceAccountOperationsResponse)(nil), // 7: kacho.cloud.iam.v1.ListServiceAccountOperationsResponse
-	nil,                           // 8: kacho.cloud.iam.v1.CreateServiceAccountRequest.LabelsEntry
-	nil,                           // 9: kacho.cloud.iam.v1.UpdateServiceAccountRequest.LabelsEntry
-	(*ServiceAccount)(nil),        // 10: kacho.cloud.iam.v1.ServiceAccount
-	(*fieldmaskpb.FieldMask)(nil), // 11: google.protobuf.FieldMask
-	(*operation.Operation)(nil),   // 12: kacho.cloud.operation.Operation
+	(*DisableServiceAccountRequest)(nil),         // 6: kacho.cloud.iam.v1.DisableServiceAccountRequest
+	(*EnableServiceAccountRequest)(nil),          // 7: kacho.cloud.iam.v1.EnableServiceAccountRequest
+	(*ListServiceAccountOperationsRequest)(nil),  // 8: kacho.cloud.iam.v1.ListServiceAccountOperationsRequest
+	(*ListServiceAccountOperationsResponse)(nil), // 9: kacho.cloud.iam.v1.ListServiceAccountOperationsResponse
+	nil,                           // 10: kacho.cloud.iam.v1.CreateServiceAccountRequest.LabelsEntry
+	nil,                           // 11: kacho.cloud.iam.v1.UpdateServiceAccountRequest.LabelsEntry
+	(*ServiceAccount)(nil),        // 12: kacho.cloud.iam.v1.ServiceAccount
+	(*fieldmaskpb.FieldMask)(nil), // 13: google.protobuf.FieldMask
+	(*operation.Operation)(nil),   // 14: kacho.cloud.operation.Operation
 }
 var file_kacho_cloud_iam_v1_service_account_service_proto_depIdxs = []int32{
-	10, // 0: kacho.cloud.iam.v1.ListServiceAccountsResponse.service_accounts:type_name -> kacho.cloud.iam.v1.ServiceAccount
-	8,  // 1: kacho.cloud.iam.v1.CreateServiceAccountRequest.labels:type_name -> kacho.cloud.iam.v1.CreateServiceAccountRequest.LabelsEntry
-	11, // 2: kacho.cloud.iam.v1.UpdateServiceAccountRequest.update_mask:type_name -> google.protobuf.FieldMask
-	9,  // 3: kacho.cloud.iam.v1.UpdateServiceAccountRequest.labels:type_name -> kacho.cloud.iam.v1.UpdateServiceAccountRequest.LabelsEntry
-	12, // 4: kacho.cloud.iam.v1.ListServiceAccountOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	12, // 0: kacho.cloud.iam.v1.ListServiceAccountsResponse.service_accounts:type_name -> kacho.cloud.iam.v1.ServiceAccount
+	10, // 1: kacho.cloud.iam.v1.CreateServiceAccountRequest.labels:type_name -> kacho.cloud.iam.v1.CreateServiceAccountRequest.LabelsEntry
+	13, // 2: kacho.cloud.iam.v1.UpdateServiceAccountRequest.update_mask:type_name -> google.protobuf.FieldMask
+	11, // 3: kacho.cloud.iam.v1.UpdateServiceAccountRequest.labels:type_name -> kacho.cloud.iam.v1.UpdateServiceAccountRequest.LabelsEntry
+	14, // 4: kacho.cloud.iam.v1.ListServiceAccountOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
 	0,  // 5: kacho.cloud.iam.v1.ServiceAccountService.Get:input_type -> kacho.cloud.iam.v1.GetServiceAccountRequest
 	1,  // 6: kacho.cloud.iam.v1.ServiceAccountService.List:input_type -> kacho.cloud.iam.v1.ListServiceAccountsRequest
 	3,  // 7: kacho.cloud.iam.v1.ServiceAccountService.Create:input_type -> kacho.cloud.iam.v1.CreateServiceAccountRequest
 	4,  // 8: kacho.cloud.iam.v1.ServiceAccountService.Update:input_type -> kacho.cloud.iam.v1.UpdateServiceAccountRequest
 	5,  // 9: kacho.cloud.iam.v1.ServiceAccountService.Delete:input_type -> kacho.cloud.iam.v1.DeleteServiceAccountRequest
-	6,  // 10: kacho.cloud.iam.v1.ServiceAccountService.ListOperations:input_type -> kacho.cloud.iam.v1.ListServiceAccountOperationsRequest
-	10, // 11: kacho.cloud.iam.v1.ServiceAccountService.Get:output_type -> kacho.cloud.iam.v1.ServiceAccount
-	2,  // 12: kacho.cloud.iam.v1.ServiceAccountService.List:output_type -> kacho.cloud.iam.v1.ListServiceAccountsResponse
-	12, // 13: kacho.cloud.iam.v1.ServiceAccountService.Create:output_type -> kacho.cloud.operation.Operation
-	12, // 14: kacho.cloud.iam.v1.ServiceAccountService.Update:output_type -> kacho.cloud.operation.Operation
-	12, // 15: kacho.cloud.iam.v1.ServiceAccountService.Delete:output_type -> kacho.cloud.operation.Operation
-	7,  // 16: kacho.cloud.iam.v1.ServiceAccountService.ListOperations:output_type -> kacho.cloud.iam.v1.ListServiceAccountOperationsResponse
-	11, // [11:17] is the sub-list for method output_type
-	5,  // [5:11] is the sub-list for method input_type
+	6,  // 10: kacho.cloud.iam.v1.ServiceAccountService.Disable:input_type -> kacho.cloud.iam.v1.DisableServiceAccountRequest
+	7,  // 11: kacho.cloud.iam.v1.ServiceAccountService.Enable:input_type -> kacho.cloud.iam.v1.EnableServiceAccountRequest
+	8,  // 12: kacho.cloud.iam.v1.ServiceAccountService.ListOperations:input_type -> kacho.cloud.iam.v1.ListServiceAccountOperationsRequest
+	12, // 13: kacho.cloud.iam.v1.ServiceAccountService.Get:output_type -> kacho.cloud.iam.v1.ServiceAccount
+	2,  // 14: kacho.cloud.iam.v1.ServiceAccountService.List:output_type -> kacho.cloud.iam.v1.ListServiceAccountsResponse
+	14, // 15: kacho.cloud.iam.v1.ServiceAccountService.Create:output_type -> kacho.cloud.operation.Operation
+	14, // 16: kacho.cloud.iam.v1.ServiceAccountService.Update:output_type -> kacho.cloud.operation.Operation
+	14, // 17: kacho.cloud.iam.v1.ServiceAccountService.Delete:output_type -> kacho.cloud.operation.Operation
+	14, // 18: kacho.cloud.iam.v1.ServiceAccountService.Disable:output_type -> kacho.cloud.operation.Operation
+	14, // 19: kacho.cloud.iam.v1.ServiceAccountService.Enable:output_type -> kacho.cloud.operation.Operation
+	9,  // 20: kacho.cloud.iam.v1.ServiceAccountService.ListOperations:output_type -> kacho.cloud.iam.v1.ListServiceAccountOperationsResponse
+	13, // [13:21] is the sub-list for method output_type
+	5,  // [5:13] is the sub-list for method input_type
 	5,  // [5:5] is the sub-list for extension type_name
 	5,  // [5:5] is the sub-list for extension extendee
 	0,  // [0:5] is the sub-list for field type_name
@@ -652,7 +761,7 @@ func file_kacho_cloud_iam_v1_service_account_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_service_account_service_proto_rawDesc), len(file_kacho_cloud_iam_v1_service_account_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   12,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
