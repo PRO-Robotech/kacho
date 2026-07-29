@@ -44,9 +44,10 @@ import (
 // Гейт видимости owner-tuple на done = phantom-ресурс (ban #9) — запрещён.
 type Registrar interface {
 	// Register синхронно регистрирует owner/containment-tuple'ы intent'а в
-	// kacho-iam. Возвращает НЕ-nil только на transient-сбоях (iam недоступен и
-	// т.п.), чтобы вызывающий залогировал best-effort; proxy-rejection'ы
-	// (не-registrable relations) — не ошибка (см. SyncRegistrar.Register).
+	// kacho-iam. Возвращает НЕ-nil на ЛЮБОМ неуспехе — и временном (iam
+	// недоступен), и терминальном (отказ в правах, malformed tuple), — чтобы
+	// вызывающий залогировал best-effort. Успехом считается только применение
+	// tuple либо его идемпотентный повтор.
 	Register(ctx context.Context, intent domain.FGARegisterIntent) error
 }
 
@@ -71,9 +72,9 @@ func NewSyncRegistrar(cli RegisterResourceClient) *SyncRegistrar {
 // RegisterResource с per-call deadline, форвардя mirror-поля (labels/parent) и
 // монотонный source_version (см. ниже). НЕ короткозамыкается: атакует ВСЕ tuple'ы
 // даже при ошибке на предыдущем (containment `project`-tuple — первый в intent'е —
-// всегда попадёт в попытку). Возвращает объединённую ошибку ТОЛЬКО transient-
-// сбоев (classifySyncRegisterErr); proxy-rejection не-registrable relation'ов —
-// benign (не всплывает). nil cli → no-op.
+// всегда попадёт в попытку). Возвращает объединённую ошибку по всем неуспешным
+// tuple'ам (classifySyncRegisterErr — успех только применение либо идемпотентный
+// повтор). nil cli → no-op.
 func (s *SyncRegistrar) Register(ctx context.Context, intent domain.FGARegisterIntent) error {
 	if s.cli == nil {
 		return nil
@@ -112,23 +113,32 @@ func (s *SyncRegistrar) Register(ctx context.Context, intent domain.FGARegisterI
 }
 
 // classifySyncRegisterErr классифицирует per-tuple RegisterResource-ответ для
-// BEST-EFFORT sync-пути:
+// BEST-EFFORT sync-пути. Успех — только успех; всё остальное сурфейсится:
 //
-//   - nil / AlreadyExists → nil (применён либо idempotent OK — повторный tuple);
-//   - PermissionDenied / InvalidArgument → nil (BENIGN): tuple НЕ registrable
-//     через iam-proxy — либо не-containment relation (nlb эмитит creator `admin`
-//     и parent-link `load_balancer`, а least-priv proxy-policy принимает только
-//     {project,account,parent,owner}), либо malformed. Async register-drainer его
-//     ТОЖЕ не применяет (identical), поэтому это НЕ сбой видимости, а ожидаемый
-//     отказ policy — всплытие наружу дало бы per-create лог-шум. Containment
-//     `project`-tuple accepted, его успех и закрывает read-your-writes окно.
-//   - transient (Unavailable/DeadlineExceeded/Internal/…) → raw: iam не обработал
-//     → use-case логирует best-effort, register-drainer досведёт из durable outbox.
+//   - nil / AlreadyExists → nil. Повторная регистрация того же tuple — успех
+//     (RegisterResource идемпотентен, read-delta), а не сбой.
+//   - PermissionDenied / InvalidArgument → raw. Это ТЕРМИНАЛЬНЫЙ отказ: повтор
+//     идентичного запроса не может изменить ни решение о доступе, ни разбор
+//     malformed-tuple. Async register-drainer его не «досводит» — он его POISON'ит
+//     (см. classifyRegisterErr в register_applier.go), поэтому молчание здесь
+//     означало бы, что о нерегистрируемом ресурсе не узнает вообще никто.
+//   - transient (Unavailable/DeadlineExceeded/Internal/…) → raw. iam не обработал
+//     запрос; register-drainer досведёт из durable outbox.
 //
-// Замечание про сокрытие: use-case всё равно ГЛОТАЕТ любой возврат (best-effort),
-// поэтому классификация влияет ТОЛЬКО на то, что попадёт в лог. Authz-мисконфиг
-// (даже `project`-tuple → PermissionDenied) authoritative всплывает через
-// register-drainer retry/poison-метрики — sync-путь опционален by design.
+// Почему НЕ «benign» (историческая правка): раньше отказ в правах считался
+// ожидаемым, потому что nlb клал в intent привилегионное `admin` и структурное
+// `load_balancer`, которых least-priv proxy-policy не принимает — и на каждом
+// create получался предсказуемый отказ, который решили не логировать. Этих
+// отношений в intent'ах БОЛЬШЕ НЕТ (см. domain/fga_intent.go): эмитится только
+// containment `project`, и proxy-policy его принимает. Значит рутинного,
+// ожидаемого отказа не осталось — любой отказ теперь означает, что ресурс не
+// получил проекции, которая ему полагается. Обоснование пережило свой предмет;
+// молчание — нет.
+//
+// Возврат влияет только на то, что попадёт в лог (вызывающий best-effort глотает
+// результат — гейтить Operation.done на видимость tuple запрещено, ban #9). Но
+// этот лог и есть единственный признак поломки sync-пути, и «ноль отказов за всю
+// жизнь контроля» обязано быть отличимо от «отказы есть, но их не показывают».
 func classifySyncRegisterErr(err error) error {
 	if err == nil {
 		return nil
@@ -140,10 +150,8 @@ func classifySyncRegisterErr(err error) error {
 	switch st.Code() {
 	case codes.OK, codes.AlreadyExists:
 		return nil
-	case codes.PermissionDenied, codes.InvalidArgument:
-		return nil // benign proxy-rejection — см. doc
 	default:
-		return err // transient — всплывает для best-effort лога
+		return err
 	}
 }
 

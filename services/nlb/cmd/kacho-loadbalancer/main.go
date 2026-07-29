@@ -730,8 +730,15 @@ func closeAll(conns []clients.Conn, logger *slog.Logger) {
 // Возвращает nil (→ use-case'ы делают unfiltered project-scoped
 // passthrough), если list-filter выключен в конфиге ИЛИ iam conn недоступен
 // (graceful start без iam). Иначе — FGAFilter поверх iam.AuthorizeService.BatchCheck
-// (conn — iamPublicConn, тот же, которым nlb зовёт ProjectService.Get; mTLS — через
-// mtls.iam-project). read==enforce (relation viewer), fail-closed (FailOpen=false).
+// (conn — iamInternalConn, тот же, которым nlb зовёт InternalIAMService.Check;
+// mTLS — через mtls.iam-register). read==enforce (relation viewer), fail-closed
+// (FailOpen=false).
+//
+// Ребро именно ВНУТРЕННЕЕ, и это не деталь: iam-register и iam-project —
+// намеренно РАЗНЫЕ поля конфигурации (у листенеров разные dial-host'ы, единый
+// ServerName не может быть корректен для обоих), поэтому назвать не то поле в
+// godoc или в загрузочном логе значит отправить оператора крутить ручку, которая
+// на это соединение не влияет.
 func buildListFilter(cfg *config.Config, iamConn clients.Conn, logger *slog.Logger) authzfilter.Filter {
 	lf := cfg.Authz.ListFilter
 	if !lf.Enabled || iamConn == nil {
@@ -758,6 +765,8 @@ func buildListFilter(cfg *config.Config, iamConn clients.Conn, logger *slog.Logg
 		"worst_case_depth_waves", f.WorstCaseDepth(),
 		"cache_ttl", lf.CacheTTL,
 		"cache_max_entries", lf.CacheMaxEntries, "fail_open", lf.FailOpen,
-		"iam_authz_mtls", cfg.MTLS.IAMProject.Enable)
+		// mtls.iam-register — ручка, которая реально закрывает ЭТО соединение
+		// (iamInternalConn). mtls.iam-project управляет другим, публичным ребром.
+		"iam_authz_mtls", cfg.MTLS.IAMRegister.Enable)
 	return f
 }
