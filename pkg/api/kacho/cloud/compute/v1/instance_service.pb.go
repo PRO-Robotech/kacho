@@ -440,7 +440,12 @@ type CreateInstanceRequest struct {
 	Spec isCreateInstanceRequest_Spec `protobuf_oneof:"spec"`
 	// Guaranteed CPU baseline per vCPU, in percent (0..100; 0 = burstable). Family-gated.
 	CpuGuaranteePercent int32 `protobuf:"varint,32,opt,name=cpu_guarantee_percent,json=cpuGuaranteePercent,proto3" json:"cpu_guarantee_percent,omitempty"`
-	// SSH public keys to inject (F5/F6). Accepted + structurally validated in COMP-1.
+	// NOT ACCEPTED. compute puts nothing into the guest: there is no metadata-service
+	// and no guest-agent, so keys have nowhere to be delivered and no column to live in.
+	// A set value is refused synchronously with INVALID_ARGUMENT naming this field
+	// (accepted-and-ignored is not a lawful outcome). Kept on the contract rather than
+	// removed because the REST edge discards unknown body keys, so removal would turn a
+	// named refusal back into a silent 200. See docs/architecture/07-known-divergences.md §7.1.
 	SshPublicKeys []string `protobuf:"bytes,33,rep,name=ssh_public_keys,json=sshPublicKeys,proto3" json:"ssh_public_keys,omitempty"`
 	// Secondary Volumes to attach (F6 launch skeleton). Structurally validated in
 	// COMP-1 (size_gib > 0, mount_path); materialize is COMP-2.
@@ -448,10 +453,10 @@ type CreateInstanceRequest struct {
 	// Use the project-default subnet+SG instead of network_interface_specs (F6). One of
 	// network_interface_specs / use_default_network is required.
 	UseDefaultNetwork bool `protobuf:"varint,35,opt,name=use_default_network,json=useDefaultNetwork,proto3" json:"use_default_network,omitempty"`
-	// Request an external address (F5 unreachable-guard signal). A VM with neither
-	// ssh_public_keys nor an external address is unreachable unless acknowledged.
+	// Request an external address (F5 unreachable-guard signal). A VM without an
+	// external address is unreachable unless acknowledged.
 	AssignExternalAddress bool `protobuf:"varint,36,opt,name=assign_external_address,json=assignExternalAddress,proto3" json:"assign_external_address,omitempty"`
-	// Acknowledge that the VM will be RUNNING but unreachable (no ssh, no external),
+	// Acknowledge that the VM will be RUNNING but unreachable (no external address),
 	// lifting the unreachable-guard (F5). Not needed for CONTAINER.
 	AcknowledgeUnreachable bool `protobuf:"varint,37,opt,name=acknowledge_unreachable,json=acknowledgeUnreachable,proto3" json:"acknowledge_unreachable,omitempty"`
 	// Opaque placement-group slug (COMP-1 passthrough; existence/coherence → COMP-3).
@@ -859,7 +864,10 @@ type UpdateInstanceRequest struct {
 	CpuGuaranteePercent int32 `protobuf:"varint,21,opt,name=cpu_guarantee_percent,json=cpuGuaranteePercent,proto3" json:"cpu_guarantee_percent,omitempty"`
 	// Opaque placement-group slug (STOPPED-gated placement, F10; COMP-1 passthrough).
 	PlacementGroupId string `protobuf:"bytes,22,opt,name=placement_group_id,json=placementGroupId,proto3" json:"placement_group_id,omitempty"`
-	// SSH public keys (next-boot deferred class, F10 — accepted with deferral).
+	// NOT ACCEPTED — same reason as on Create. It used to be stamped as "takes effect on
+	// next boot", which confirmed acceptance of something that would never happen. A set
+	// value is refused synchronously with INVALID_ARGUMENT naming this field, with an
+	// empty mask and a naming mask alike.
 	SshPublicKeys []string `protobuf:"bytes,23,rep,name=ssh_public_keys,json=sshPublicKeys,proto3" json:"ssh_public_keys,omitempty"`
 	// VM spec (next-boot deferred class, F10 — user_data/metadata_options).
 	VmSpec        *VmSpec `protobuf:"bytes,24,opt,name=vm_spec,json=vmSpec,proto3" json:"vm_spec,omitempty"`
@@ -1257,7 +1265,9 @@ type GetInstanceSerialPortOutputRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the instance to return the serial port output for.
 	InstanceId string `protobuf:"bytes,1,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
-	// Serial port to retrieve data from. The default is 1.
+	// NOT ACCEPTED. The response is control-plane synthetic and does not depend on the
+	// port, so accepting a port number promised a choice that does not exist. A non-zero
+	// value is refused synchronously with INVALID_ARGUMENT naming this field.
 	Port          int64 `protobuf:"varint,2,opt,name=port,proto3" json:"port,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

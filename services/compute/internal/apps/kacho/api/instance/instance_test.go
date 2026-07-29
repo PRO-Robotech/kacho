@@ -91,8 +91,9 @@ func baseCreateReq() CreateInstanceReq {
 		MachineTypeID:         testMTStd,
 		BootSource:            domain.BootSource{Type: bootSourceStorageImage, ID: "img-9k2m4x7q1n8p:22.04-lts"},
 		NetworkInterfaceSpecs: []NetworkInterfaceSpec{{SubnetID: "sub-abc", SecurityGroupIDs: []string{"scg-def"}}},
-		SSHPublicKeys:         []string{"ssh-ed25519 AAAA ml@team"},
-		VMSpec:                &domain.VMSpec{},
+		// Страж достижимости снимается ПРИЗНАНИЕМ (sshPublicKeys больше не приём).
+		AcknowledgeUnreachable: true,
+		VMSpec:                 &domain.VMSpec{},
 	}
 }
 
@@ -327,14 +328,14 @@ func TestInstance_COMP_1_13_ServiceAccountMalformed(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
-// COMP-1-14/15: unreachable-guard (VM без ssh И external → FP; ack снимает; CONTAINER exempt).
+// COMP-1-14/15: unreachable-guard (VM без external → FP; ack снимает; CONTAINER exempt).
 func TestInstance_COMP_1_14_UnreachableGuard(t *testing.T) {
 	k := newInstanceSvc(t, true)
 	ctx := context.Background()
 
-	// VM без ssh, без external, без ack → FailedPrecondition.
+	// VM без external, без ack → FailedPrecondition.
 	guarded := baseCreateReq()
-	guarded.SSHPublicKeys = nil
+	guarded.AcknowledgeUnreachable = false
 	guarded.AssignExternalAddress = false
 	_, err := k.svc.Create(ctx, guarded)
 	require.Equal(t, codes.FailedPrecondition, status.Code(err))
@@ -348,10 +349,10 @@ func TestInstance_COMP_1_14_UnreachableGuard(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, portmock.AwaitOpDone(t, k.ops, op.ID).Error)
 
-	// external вместо ssh → OK.
+	// external вместо признания → OK.
 	ext := baseCreateReq()
 	ext.Name = "vm-ext"
-	ext.SSHPublicKeys = nil
+	ext.AcknowledgeUnreachable = false
 	ext.AssignExternalAddress = true
 	op, err = k.svc.Create(ctx, ext)
 	require.NoError(t, err)
@@ -485,15 +486,19 @@ func TestInstance_COMP_1_26_UpdateImmutable(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
-// COMP-1-27: next-boot deferral (ssh/vmSpec) accepted with statusReason; bootSource → Reinstall-only;
+// COMP-1-27: next-boot deferral (vmSpec) accepted with statusReason; bootSource → Reinstall-only;
 // STOPPED-gate (machineTypeId) на не-STOPPED → sync FailedPrecondition (always-reject in COMP-1).
 func TestInstance_COMP_1_27_UpdateDeferralAndGate(t *testing.T) {
 	k := newInstanceSvc(t, true)
 	seedInst(k.repo, seedID, domain.InstanceStatusProvisioning)
 	ctx := context.Background()
 
-	// next-boot deferred: sshPublicKeys → done, statusReason set.
-	op, err := k.svc.Update(ctx, UpdateInstanceReq{InstanceID: seedID, SSHPublicKeys: []string{"ssh-ed25519 AAAA"}, UpdateMask: []string{"ssh_public_keys"}})
+	// next-boot deferred: vmSpec → done, statusReason set.
+	//
+	// sshPublicKeys из этого набора СНЯТ: он ничего не откладывал — ключи не
+	// доставлялись вовсе, а метка «вступит в силу при следующей загрузке»
+	// подтверждала приём того, чего не будет.
+	op, err := k.svc.Update(ctx, UpdateInstanceReq{InstanceID: seedID, VMSpec: &domain.VMSpec{}, UpdateMask: []string{"vm_spec"}})
 	require.NoError(t, err)
 	in := instanceFromOp(t, portmock.AwaitOpDone(t, k.ops, op.ID))
 	require.Contains(t, in.StatusReason, "takes effect on next boot")

@@ -54,7 +54,9 @@ func validCreateReq() *computev1.CreateInstanceRequest {
 		InstanceKind:  computev1.InstanceKind_VM,
 		MachineTypeId: "mt-std2",
 		BootSource:    &computev1.BootSource{Type: "storage.image", Id: "img-x:22.04"},
-		SshPublicKeys: []string{"ssh-ed25519 AAAA user@h"},
+		// Страж достижимости снимается ПРИЗНАНИЕМ: sshPublicKeys БОЛЬШЕ не приём —
+		// ключи никуда не доставлялись, поэтому снимать им стража значило врать.
+		AcknowledgeUnreachable: true,
 		NetworkInterfaceSpecs: []*computev1.NetworkInterfaceSpec{
 			{SubnetId: "sub-a", SecurityGroupIds: []string{"scg-a"}},
 		},
@@ -119,18 +121,17 @@ func TestInstanceHandler_Create_BareBootSourceID(t *testing.T) {
 		"bare bootSource.id (no tag/digest) must be sync InvalidArgument")
 }
 
-// TestInstanceHandler_Create_VMUnreachableGuard — VM без ssh И без external-адреса И
-// без acknowledgeUnreachable (F5) → sync FailedPrecondition (unreachable-guard).
+// TestInstanceHandler_Create_VMUnreachableGuard — VM без external-адреса И без
+// acknowledgeUnreachable (F5) → sync FailedPrecondition (unreachable-guard).
 // Net-spec остаётся валидным (проверка net-spec идёт раньше guard'а).
 func TestInstanceHandler_Create_VMUnreachableGuard(t *testing.T) {
 	h, _ := newInstanceHandlerForValidation(t)
 	req := validCreateReq()
-	req.SshPublicKeys = nil
 	req.AssignExternalAddress = false
 	req.AcknowledgeUnreachable = false
 	_, err := h.Create(context.Background(), req)
 	require.Equal(t, codes.FailedPrecondition, status.Code(err),
-		"VM with no ssh/external/ack must be sync FailedPrecondition (unreachable-guard)")
+		"VM with no external/ack must be sync FailedPrecondition (unreachable-guard)")
 	require.Contains(t, status.Convert(err).Message(), "unreachable")
 }
 

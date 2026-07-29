@@ -617,7 +617,12 @@ message CreateInstanceRequest {
   // Guaranteed CPU baseline per vCPU, in percent (0..100; 0 = burstable). Family-gated.
   int32 cpu_guarantee_percent = 32;
 
-  // SSH public keys to inject (F5/F6). Accepted + structurally validated in COMP-1.
+  // NOT ACCEPTED. compute puts nothing into the guest: there is no metadata-service
+  // and no guest-agent, so keys have nowhere to be delivered and no column to live in.
+  // A set value is refused synchronously with INVALID_ARGUMENT naming this field
+  // (accepted-and-ignored is not a lawful outcome). Kept on the contract rather than
+  // removed because the REST edge discards unknown body keys, so removal would turn a
+  // named refusal back into a silent 200. See docs/architecture/07-known-divergences.md §7.1.
   repeated string ssh_public_keys = 33;
 
   // Secondary Volumes to attach (F6 launch skeleton). Structurally validated in
@@ -628,11 +633,11 @@ message CreateInstanceRequest {
   // network_interface_specs / use_default_network is required.
   bool use_default_network = 35;
 
-  // Request an external address (F5 unreachable-guard signal). A VM with neither
-  // ssh_public_keys nor an external address is unreachable unless acknowledged.
+  // Request an external address (F5 unreachable-guard signal). A VM without an
+  // external address is unreachable unless acknowledged.
   bool assign_external_address = 36;
 
-  // Acknowledge that the VM will be RUNNING but unreachable (no ssh, no external),
+  // Acknowledge that the VM will be RUNNING but unreachable (no external address),
   // lifting the unreachable-guard (F5). Not needed for CONTAINER.
   bool acknowledge_unreachable = 37;
 
@@ -723,7 +728,10 @@ message UpdateInstanceRequest {
   // Opaque placement-group slug (STOPPED-gated placement, F10; COMP-1 passthrough).
   string placement_group_id = 22 [(length) = "<=50"];
 
-  // SSH public keys (next-boot deferred class, F10 — accepted with deferral).
+  // NOT ACCEPTED — same reason as on Create. It used to be stamped as "takes effect on
+  // next boot", which confirmed acceptance of something that would never happen. A set
+  // value is refused synchronously with INVALID_ARGUMENT naming this field, with an
+  // empty mask and a naming mask alike.
   repeated string ssh_public_keys = 23;
 
   // VM spec (next-boot deferred class, F10 — user_data/metadata_options).
@@ -772,7 +780,9 @@ message GetInstanceSerialPortOutputRequest {
     (length) = "<=50"
   ];
 
-  // Serial port to retrieve data from. The default is 1.
+  // NOT ACCEPTED. The response is control-plane synthetic and does not depend on the
+  // port, so accepting a port number promised a choice that does not exist. A non-zero
+  // value is refused synchronously with INVALID_ARGUMENT naming this field.
   int64 port = 2 [(value) = "1,2,3,4"];
 }
 

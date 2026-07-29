@@ -249,17 +249,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         description: "Доступность metadata-эндпоинта из гостевой ОС (vendor-agnostic).",
       },
       {
-        name: "ssh_public_keys",
-        label: "SSH-ключи",
-        type: "text",
-        rows: 3,
-        createOnly: true,
-        visibleWhen: { field: "instance_kind", equals: "VM" },
-        placeholder: "ssh-ed25519 AAAA… user@host\n(по одному ключу на строку)",
-        description:
-          "SSH-ключи (по одному на строку). Без ssh-ключа и без внешнего адреса VM недостижима — включите внешний адрес или отметьте «допустить недостижимость».",
-      },
-      {
         name: "assign_external_address",
         label: "Внешний адрес",
         type: "bool",
@@ -326,15 +315,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       service_account_id: "",
       vm_spec: { user_data: "", metadata_options: { metadata_endpoint: "ENABLED" } },
       container_spec: { restart_policy: "NEVER", working_dir: "" },
-      ssh_public_keys: "",
       assign_external_address: false,
       acknowledge_unreachable: false,
       use_default_network: true,
       labels: {},
     }),
     // UI-форма → wire. Оставляем ровно одну ветку oneof spec по instance_kind;
-    // boot_source режем до {type,id}; ssh_public_keys (textarea) → string[];
-    // пустые опциональные скаляры не шлём.
+    // boot_source режем до {type,id}; пустые опциональные скаляры не шлём.
     sanitize: (obj) => {
       const out: Record<string, unknown> = { ...obj };
       const kind = out.instance_kind;
@@ -345,7 +332,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
 
       if (kind === "CONTAINER") {
         delete out.vm_spec;
-        delete out.ssh_public_keys;
         delete out.assign_external_address;
         delete out.acknowledge_unreachable;
         const cs = { ...((out.container_spec as Record<string, unknown> | undefined) ?? {}) };
@@ -353,14 +339,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         out.container_spec = cs;
       } else {
         delete out.container_spec;
-        // ssh_public_keys: textarea → string[] (одна строка = один ключ), пустые срезаем.
-        const raw = typeof out.ssh_public_keys === "string" ? out.ssh_public_keys : "";
-        const keys = raw
-          .split("\n")
-          .map((s) => s.trim())
-          .filter(Boolean);
-        if (keys.length > 0) out.ssh_public_keys = keys;
-        else delete out.ssh_public_keys;
         const vs = { ...((out.vm_spec as Record<string, unknown> | undefined) ?? {}) };
         if (!vs.user_data) delete vs.user_data;
         out.vm_spec = vs;
