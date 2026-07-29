@@ -272,7 +272,7 @@ ctx-propagation.
 `internal/clients/existence_cache.go` (`existsCache` — positive-only, region/zone),
 `internal/clients/project_cache.go` (`CachedProjectClient` — TTL+LRU pos/neg через
 container/list, clock-inject) и `internal/authzfilter/filter.go` (`FGAFilter`-cache —
-TTL + prefix-`Invalidate` + slice-deep-copy) держат по своей mutex+map+expiry-реализации.
+TTL + slice-deep-copy) держат по своей mutex+map+expiry-реализации.
 
 Не сведены в один generic намеренно: три **разные** политики eviction/invalidation, а не
 один primitive:
@@ -282,9 +282,15 @@ TTL + prefix-`Invalidate` + slice-deep-copy) держат по своей mutex+
 - `CachedProjectClient`: true-LRU c раздельными positive/negative TTL + clock-injection
   под unit-тесты;
 - `FGAFilter`-cache: positive-only per-object вердикты видимости (`subject|type|id`) с
-  LRU-bound + prefix-based `Invalidate(subject)` (LISTEN/NOTIFY-driven).
+  LRU-bound и истечением по TTL. Отзыв доступа виден по ИСТЕЧЕНИИ записи, и другого
+  механизма нет: отрицательный вердикт не кешируется вовсе, поэтому свежая выдача
+  видна сразу, а снятый доступ перестаёт действовать самое позднее через TTL.
+  (Раньше здесь значился `Invalidate(subject)` «по LISTEN/NOTIFY» — ни подписки, ни
+  вызова из прод-кода не было, механизм существовал только в описании; метод удалён
+  вместе с этой строкой. Мгновенное снятие потребовало бы канала уведомлений от
+  владельца выдач — отдельного межсервисного ребра и отдельного решения.)
 
-Единый `ttlcache[V]`, покрывающий LRU + clock + prefix-invalidation + copy-hook, нёс бы
+Единый `ttlcache[V]`, покрывающий LRU + clock + copy-hook, нёс бы
 больше policy-knob-сложности, чем убирает дублирования — net-negative для LEAN-цели.
 Каждый кеш индивидуально оправдан (hot-path RTT-removal) и покрыт `-race` unit-тестом.
 Сведение оправдано, только если появится 4-й кеш с той же политикой.
