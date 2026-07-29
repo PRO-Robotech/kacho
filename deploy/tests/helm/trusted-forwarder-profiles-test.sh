@@ -75,15 +75,34 @@ kacho-iam|iam|cm:kacho-iam-config:authn.trusted-forwarder-sans
 "
 
 # Профили, которыми РЕАЛЬНО поднимается стенд (см. deploy/Makefile: dev-up
-# рендерит values.dev.yaml, dev-prod-up накладывает values.dev-prod.yaml поверх;
-# values.prod.yaml — канонический боевой, рендерится самостоятельно).
+# рендерит values.dev.yaml, dev-prod-up накладывает values.dev-prod.yaml поверх).
 # `<имя>|<файлы через запятую>` — запятая, а не пробел: строки разбираются
 # пословно, и файл со слоями иначе развалился бы на два «профиля».
+#
+# ВЕСЬ СМЫСЛ ЭТОЙ ПРОВЕРКИ В ТОМ, ЧТО ЕДИНИЦА ИЗМЕРЕНИЯ — НАБОР `-f`, КОТОРЫМ
+# ПОДНИМАЮТСЯ. Значит боевой набор обязан быть среди измеряемых. Одного
+# values.prod.yaml для этого недостаточно: боевой кластер поднимается им ПЛЮС
+# двумя оверлеями (см. шапку values.fe3455-prod.yaml и шаг рендера в CI), а
+# круг отправителей — величина послойная: слой волен переопределить здоровое
+# умолчание нижнего. Профиль, которым никто не поднимается, и профиль, которым
+# поднимаются, — разные вопросы, и мерить надо второй.
 PROFILES="
 dev|values.dev.yaml
 dev-prod|values.dev.yaml,values.dev-prod.yaml
 prod|values.prod.yaml
+fe3455|values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml
 "
+
+# Четвёртый слой боевого набора — values.fe3455-ory.yaml — НЕ в репозитории
+# (несёт учётные данные стенда, см. его шапку). Поэтому он добавляется к набору
+# fe3455, только когда файл на месте: в CI меряются три слоя, на машине, где
+# файл есть, — все четыре. Что именно измерено, печатается ниже — «измерили
+# меньше» не должно выглядеть как «измерили всё».
+OPTIONAL_ORY="values.fe3455-ory.yaml"
+if [ -f "$UMBRELLA/$OPTIONAL_ORY" ]; then
+  PROFILES="$PROFILES
+fe3455+ory|values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml,$OPTIONAL_ORY"
+fi
 
 # render <файлы-через-запятую> — рендер умбреллы; пустой вывод считаем сорванным.
 render() {
@@ -179,7 +198,14 @@ PY
 # профиль объявляет kacho-nlb пустой круг.
 # ─────────────────────────────────────────────────────────────────────────────
 if [ "${1:-}" = "--self-test" ]; then
-  echo "=== self-test: инъекция пустого круга у kacho-nlb в dev-профиле ==="
+  echo "=== self-test: инъекция пустого круга у kacho-nlb — в КАЖДЫЙ объявленный профиль ==="
+  # Инъекция прогоняется по ВСЕМ профилям из PROFILES, а не по одному dev.
+  # Иначе самопроверка доказывала бы работоспособность гейта на профиле, который
+  # в список внесли первым, и молчала бы о том, что остальные строки списка,
+  # возможно, не измеряются вовсе — а именно этим и был дефект: боевой набор,
+  # которым поднимается кластер, в списке отсутствовал, и никто этого не видел.
+  # Теперь добавить профиль в список, не измеряя его, нельзя: самопроверка
+  # потребует, чтобы внесённый в него дефект стал виден.
   inj="$(mktemp)"; trap 'rm -f "$inj"' EXIT
   cat >"$inj" <<'EOF'
 kacho-nlb:
@@ -187,18 +213,43 @@ kacho-nlb:
     authz:
       trustedForwarderSANs: []
 EOF
-  r="$(helm template kacho-umbrella "$UMBRELLA" -f "$UMBRELLA/values.dev.yaml" -f "$inj" 2>/dev/null)"
-  [ -n "$r" ] || fatal "self-test: рендер сорвался"
-  tmp="$(mktemp)"; printf '%s' "$r" >"$tmp"
-  got="$(extract "$tmp" | awk '$1=="nlb"{print $2}')"
-  rm -f "$tmp"
-  if [ "$got" = "0" ]; then
-    echo "PASS: $SCRIPT --self-test (инъекция даёт 0 принимаемых записей → гейт краснеет)"
-    exit 0
+  rc=0
+  checked=0
+  for profile in $PROFILES; do
+    name="${profile%%|*}"; files="${profile#*|}"
+    args=(); IFS=,
+    for f in $files; do args+=(-f "$UMBRELLA/$f"); done
+    unset IFS
+    r="$(helm template kacho-umbrella "$UMBRELLA" "${args[@]}" -f "$inj" 2>/dev/null)"
+    if [ -z "$r" ]; then
+      echo "  ПРОВАЛ $name: рендер с инъекцией сорвался — профиль объявлен, но не измеряется"
+      rc=1; continue
+    fi
+    tmp="$(mktemp)"; printf '%s' "$r" >"$tmp"
+    got="$(extract "$tmp" | awk '$1=="nlb"{print $2}')"
+    rm -f "$tmp"
+    checked=$((checked + 1))
+    if [ "$got" = "0" ]; then
+      echo "  ОК     $name: пустой круг извлечён как 0 записей → гейт покраснеет"
+    else
+      echo "  ПРОВАЛ $name: при пустом круге извлечено '$got', ожидалось 0 —"
+      echo "         на этом профиле гейт не отличает пустой круг от сужённого."
+      rc=1
+    fi
+  done
+
+  # «Ноль находок» обязано быть отличимо от «ноль осмотренного».
+  if [ "$checked" -eq 0 ]; then
+    echo "FAIL: не проверено ни одного профиля — список PROFILES пуст или не разбирается."
+    exit 1
   fi
-  echo "FAIL: self-test — при пустом круге извлечено '$got', ожидалось 0."
-  echo "      Значит гейт не отличает пустой круг от сужённого и зелен по построению."
-  exit 1
+  echo
+  if [ $rc -eq 0 ]; then
+    echo "PASS: $SCRIPT --self-test (профилей проверено: $checked)"
+  else
+    echo "FAIL: $SCRIPT --self-test"
+  fi
+  exit $rc
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
