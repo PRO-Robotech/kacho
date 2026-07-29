@@ -169,8 +169,22 @@ func FGAProjectTuple(objectType, objectID, projectID string) FGATuple {
 // operations.PrincipalFromContext at the transport edge) — domain stays free of
 // the operations import to honour the domain-layer dependency rule.
 func FGASubjectFromPrincipal(principalType, principalID string) string {
+	// Зарезервированное слово анонимности отсекается ОТДЕЛЬНО от типа: тип
+	// объявляет отправитель заголовков личности, поэтому `{user, anonymous}` —
+	// такая же «неизвестно кто», как `{system, anonymous}`, и по типу неотличима.
+	// Слово продублировано здесь константой, а не импортом: доменный слой не
+	// зависит от operations (правило слоёв). Значение обязано совпадать с
+	// operations.AnonymousPrincipalID — расхождение ловит тест.
 	if principalType == "" || principalID == "" || principalType == "system" {
+		return ""
+	}
+	if principalID == AnonymousPrincipalID {
 		return ""
 	}
 	return principalType + ":" + principalID
 }
+
+// AnonymousPrincipalID — зеркало operations.AnonymousPrincipalID для доменного
+// слоя, которому запрещено импортировать operations. Совпадение значений
+// проверяется тестом; разъехавшись, они превратили бы «неизвестно кто» в субъект.
+const AnonymousPrincipalID = "anonymous"

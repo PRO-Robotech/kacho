@@ -56,7 +56,13 @@ func OperationToProto(op *operations.Operation) *operationpb.Operation {
 // (internal/authzfilter/subject.go) — vpc был единственным, кто читал его иначе.
 func SubjectFromContext(ctx context.Context) string {
 	p := operations.PrincipalFromContext(ctx)
-	if p.Type == "" || p.ID == "" || p.Type == "system" {
+	// Зарезервированное слово анонимности отсекается ОТДЕЛЬНО от типа:
+	// `{user, anonymous}` — та же «неизвестно кто», но тип объявляет отправитель
+	// заголовков, поэтому проверять надо само слово. Предикат общий
+	// (operations.Principal.IsAnonymous), чтобы производитель метки и её
+	// распознаватели не разъехались; `system` остаётся отдельным, более
+	// строгим отказом.
+	if p.IsAnonymous() || p.Type == "system" {
 		return ""
 	}
 	return p.Type + ":" + p.ID

@@ -41,9 +41,19 @@ func PermissionMap() authz.RPCMap {
 		// Region/Zone Get/List — admin-curated глобальный catalog: КАЖДЫЙ
 		// аутентифицированный tenant читает его без project-scope гранта (zero-binding
 		// project → 200). `Public:true` тут = «снят per-RPC ReBAC-Check», НЕ
-		// «unauthenticated»: anti-anon principal-цепочка сохраняется (unauthenticated →
-		// UNAUTHENTICATED). Это documented-exception, зеркалит gateway `<exempt>` на тех
-		// же 4 RPC и note в security.md («geo public-read — project-scope EXEMPT»).
+		// «доступно без аутентификации». Это documented-exception, зеркалит gateway
+		// `<exempt>` на тех же 4 RPC и note в security.md («geo public-read —
+		// project-scope EXEMPT»).
+		//
+		// ГДЕ ИМЕННО отсекается неаутентифицированный вызывающий: на КРАЮ. Ветка
+		// `<exempt>` api-gateway всё равно требует валидный принципал, поэтому
+		// запрос без удостоверения не доходит сюда вовсе. В СОБСТВЕННОЙ цепочке geo
+		// такого барьера НЕТ: на записи с `Public:true` authz отвечает allow ДО
+		// извлечения субъекта, а principal-extract личность только проставляет и
+		// никого не отвергает (то же уточнение — ниже, у geo_operation). Прежняя
+		// формулировка «anti-anon цепочка сохраняется» читалась как «барьер стоит
+		// здесь» и провоцировала правку «под комментарий», которая вернула бы дыру.
+		// Второй реальный слой — обязательный mTLS на обоих листенерах.
 		// Anti-регресс: снятие Check — ТОЛЬКО для этих read-only catalog-RPC; admin
 		// Internal* CRUD ниже остаётся system_admin-гейтед.
 		"/kacho.cloud.geo.v1.RegionService/Get":  {Public: true},

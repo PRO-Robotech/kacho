@@ -15,6 +15,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
+
+	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
 
 // Subject-resolution + FilterPage normalisation tests. kacho-nlb derives the FGA
@@ -83,16 +85,23 @@ func TestFilterPage_EmptyPageNoCall(t *testing.T) {
 // SECURITY (CWE-862): a system/empty subject on a List path (a request whose
 // forwarded principal was dropped — anonymous peer, non-forwarder mTLS, missing
 // x-kacho-principal-* headers) MUST NOT short-circuit to an unfiltered page.
-// FilterPage delegates to the filter, which is the sole per-object authz layer for
-// ScopeFiltered List RPCs; short-circuiting here re-opens cross-tenant enumeration.
+// ScopeFiltered List RPCs have no per-RPC Check behind them, so a page handed out
+// here is cross-tenant enumeration with nothing left to stop it.
+//
+// The refusal used to be delegated to the filter. It is now taken here, before the
+// filter is consulted at all, so it no longer depends either on a filter BEING
+// wired (it may be nil) or on the wired filter's own discipline. The assertions
+// therefore pin the outcome the caller sees — refused, no page — and that the
+// filter is NOT relied upon; they no longer pin "the filter was consulted", which
+// was the mechanism, not the property.
 func TestFilterPage_SystemSubjectDoesNotBypass(t *testing.T) {
-	flt := &fakeFilter{visible: nil}
+	flt := &fakeFilter{visible: []string{"nlb-a"}} // would hand the page back if asked
 	got, err := FilterPage(context.Background(), flt,
 		ResourceTypeLoadBalancer, ActionLoadBalancerList, []string{"nlb-a"})
-	require.NoError(t, err)
+	require.Error(t, err, "an unnamed caller must be refused")
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
 	assert.Empty(t, got, "system subject MUST NOT yield an unfiltered page (cross-tenant leak)")
-	require.Equal(t, 1, flt.calls, "the filter must be consulted")
-	assert.Empty(t, flt.gotSubj, "the (empty) subject must be passed through, not swapped for a bypass")
+	assert.Zero(t, flt.calls, "the refusal must not depend on the filter's cooperation")
 }
 
 // SECURITY: with the real enabled FGAFilter an empty/system subject fails closed
@@ -188,4 +197,63 @@ func TestFilterVisiblePage_FailClosed(t *testing.T) {
 	require.Error(t, err)
 	assert.Nil(t, got)
 	assert.Equal(t, codes.Unavailable, status.Code(err))
+}
+
+// TestFilterPage_UnnamedCallerIsCutOffEvenWithoutAFilter — за ScopeFiltered-List
+// нет per-RPC Check, на который можно откатиться: фильтр по данным — ЕДИНСТВЕННЫЙ
+// слой авторизации. Поэтому вызывающий, которого никто не назвал, обязан получать
+// отказ БЕЗУСЛОВНО, а не «когда фильтр подключён» — и ровно тот же отказ, что при
+// подключённом фильтре: положение вызывающего одинаково, значит и ответ обязан
+// быть одинаков.
+//
+// Привязка отсечки к наличию фильтра означает, что посадка без фильтра отдаёт всю
+// страницу кому угодно, и держится это лишь на boot-guard'е — то есть контроль
+// существует ровно до первой конфигурации, которая его не включила. vpc и storage
+// эту отсечку уже сделали безусловной; nlb был последним.
+func TestFilterPage_UnnamedCallerIsCutOffEvenWithoutAFilter(t *testing.T) {
+	ids := []string{"nlb-1", "nlb-2"}
+
+	for _, tc := range []struct {
+		name string
+		ctx  context.Context
+	}{
+		{"no principal at all", context.Background()},
+		{"edge anonymity marker", operations.WithPrincipal(context.Background(),
+			operations.Principal{Type: "system", ID: operations.AnonymousPrincipalID})},
+		{"marker declared as a tenant", operations.WithPrincipal(context.Background(),
+			operations.Principal{Type: "user", ID: operations.AnonymousPrincipalID})},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := FilterPage(tc.ctx, nil, "nlb_load_balancer", "v_list", ids)
+			require.Error(t, err, "unnamed caller must be refused, not handed a page")
+			assert.Equal(t, codes.Unauthenticated, status.Code(err))
+			assert.Emptyf(t, got, "unnamed caller must not enumerate; got %v", got)
+		})
+	}
+}
+
+// TestFilterPage_NamedCallerStillPassesThroughWithoutAFilter — обратная сторона:
+// сужение анонимности не должно ломать посадку без фильтра для НАЗВАННОГО
+// вызывающего (dev/in-process фикстуры), иначе это не отсечка анонимности, а
+// поломка списков.
+func TestFilterPage_NamedCallerStillPassesThroughWithoutAFilter(t *testing.T) {
+	ids := []string{"nlb-1", "nlb-2"}
+	ctx := operations.WithPrincipal(context.Background(),
+		operations.Principal{Type: "user", ID: "usr_alice"})
+
+	got, err := FilterPage(ctx, nil, "nlb_load_balancer", "v_list", ids)
+	require.NoError(t, err)
+	assert.Equal(t, ids, got, "named caller keeps the documented no-filter passthrough")
+}
+
+// TestFGASubjectFromPrincipal_ReservedWordMirrorsOperations — доменное зеркало
+// зарезервированного слова обязано совпадать с общим предикатом платформы.
+// Разъехавшись, они превратили бы «неизвестно кто» в субъект.
+func TestFGASubjectFromPrincipal_ReservedWordMirrorsOperations(t *testing.T) {
+	assert.Equal(t, operations.AnonymousPrincipalID, domain.AnonymousPrincipalID,
+		"domain mirror of the reserved anonymity word drifted from operations")
+	for _, pType := range []string{"user", "service_account", "system", ""} {
+		assert.Emptyf(t, domain.FGASubjectFromPrincipal(pType, operations.AnonymousPrincipalID),
+			"the reserved word must never become a subject, declared type %q", pType)
+	}
 }
