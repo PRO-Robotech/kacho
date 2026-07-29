@@ -1,0 +1,70 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+{{- /*
+  Serving certificate for the identity provider's ADMIN listener (:4445), issued
+  by the SEC-F internal-CA ClusterIssuer.
+
+  WHY THIS EXISTS. The admin listener carries, on every authenticated request
+  that misses the introspection cache, the CALLER'S LIVE BEARER — introspection
+  asks about a token by sending it. It also carries the administrative bearer on
+  every OAuth2 client registration, trust grant and session teardown iam makes. In
+  the clear, all of that is readable by anything on the path, and the admin API it
+  opens authenticates nobody: reaching it IS the authorization.
+
+  WHY ONLY THE ADMIN LISTENER. The provider resolves TLS PER LISTENER — the
+  runtime reads `serve.admin.tls.*` and `serve.public.tls.*`, each overriding the
+  shared `serve.tls` field by field. So the admin listener moves to TLS while the
+  public OIDC listener — which the ingress, the gateway's JWKS fetch, iam and the
+  Kratos self-service UI all read over plain http — is left exactly as it was.
+  A note in deploy/tests/helm/admin-hop-transport-test.sh used to state the
+  opposite (one shared block, therefore untouchable); that note was wrong and is
+  corrected there.
+
+  The consumers verify against ca.crt of this same secret; a cert-manager
+  Certificate secret carries ca.crt alongside tls.crt/tls.key, so no separate
+  bundle has to be distributed.
+
+  Gated on mtls.enabled AND mtls.hydraAdminTls.enabled. `and` in Go templates is
+  NOT short-circuiting, so the sections are defaulted to empty dicts first — the
+  same nil-pointer trap already documented in pg-certificates.yaml.
+*/ -}}
+{{- $mtls := .Values.mtls | default dict -}}
+{{- $hydraTLS := $mtls.hydraAdminTls | default dict -}}
+{{- if and $mtls.enabled $hydraTLS.enabled -}}
+{{- $ca := .Values.mtls.internalCA -}}
+{{- $rel := .Release.Name -}}
+{{- $ns := .Release.Namespace -}}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $hydraTLS.secretName | default (printf "%s-hydra-admin-tls" $rel) | quote }}
+  namespace: {{ $ns | quote }}
+  labels:
+    app.kubernetes.io/name: hydra-admin
+    app.kubernetes.io/component: hydra-admin-server-tls
+    app.kubernetes.io/part-of: kacho
+spec:
+  secretName: {{ $hydraTLS.secretName | default (printf "%s-hydra-admin-tls" $rel) | quote }}
+  duration: 2160h        # 90d
+  renewBefore: 360h      # 15d
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  usages:
+    - server auth
+  {{- /* Every in-cluster spelling a consumer may dial. A SAN the consumer does
+         not use is harmless; one it uses and the cert lacks fails the handshake,
+         which the introspection layer treats as PERMANENT and answers by
+         refusing every request — so the list is deliberately generous. */}}
+  dnsNames:
+    - {{ printf "%s-hydra-admin" $rel | quote }}
+    - {{ printf "%s-hydra-admin.%s" $rel $ns | quote }}
+    - {{ printf "%s-hydra-admin.%s.svc" $rel $ns | quote }}
+    - {{ printf "%s-hydra-admin.%s.svc.cluster.local" $rel $ns | quote }}
+    - "localhost"
+  issuerRef:
+    name: {{ $ca.clusterIssuerName | quote }}
+    kind: ClusterIssuer
+    group: cert-manager.io
+{{- end }}

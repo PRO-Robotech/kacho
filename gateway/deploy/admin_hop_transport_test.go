@@ -1,0 +1,232 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+// admin_hop_transport_test.go — no production-class stack may carry the hop to
+// the identity provider's ADMIN API in the clear, and none may carry it over TLS
+// with nothing to verify the peer against.
+//
+// WHAT RIDES THIS HOP. Since the revocation check moved onto the authN layer,
+// introspection runs on every authenticated request that misses the short-TTL
+// cache — and it asks about a bearer by SENDING it. So the wire carries a LIVE
+// END-USER credential, not merely administrative calls, and a bearer read off the
+// wire is usable by whoever read it until it expires. On the same host, iam's
+// facade carries the administrative bearer for every OAuth2 client registration,
+// trust grant and session teardown. The admin API authenticates nobody: reaching
+// it IS the authorization.
+//
+// WHY THIS READS DECLARATIONS. Same reason as its neighbours token_shape_test.go
+// and revocation_endpoint_test.go: the contract is what the profiles DECLARE, it
+// needs no chart dependencies, and it therefore can never skip. The umbrella's
+// dependencies are not vendored, so a render-based check here would be skipped on
+// every machine that has not run `helm dep build` — which is exactly when it
+// would be needed.
+//
+// WHY THE EXEMPTION IS DERIVED, NOT LISTED. Whether a stack is production-class
+// is read from the stack's OWN declaration (the gateway's environment label and
+// iam's authn mode), not from a hard-coded list of names here. A hard-coded list
+// goes stale silently the moment a stand changes posture, and the stale entry
+// then exempts the very stack that just started needing the check.
+package deploy_test
+
+import (
+	"fmt"
+	"net/url"
+	"strings"
+	"testing"
+)
+
+// resolveStackAt merges a stack's profiles in order (the way helm does) and reads
+// the string at an ABSOLUTE path in the merged tree.
+//
+// Its neighbour resolveStack is rooted at the gateway's own sub-tree; this hop is
+// declared by two different charts, so the absolute form is needed to read iam's
+// side without duplicating the merge.
+func resolveStackAt(t *testing.T, stack []string, path ...string) (string, bool) {
+	t.Helper()
+	merged := map[string]any{}
+	for _, profile := range stack {
+		merged = mergeInto(merged, umbrellaValues(t, profile))
+	}
+	var cur any = merged
+	for _, key := range path {
+		m, ok := cur.(map[string]any)
+		if !ok {
+			return "", false
+		}
+		if cur, ok = m[key]; !ok {
+			return "", false
+		}
+	}
+	s, ok := cur.(string)
+	return s, ok && strings.TrimSpace(s) != ""
+}
+
+// devClassEnvLabels — the labels the gateway's own boot guard treats as
+// dev-class. Mirrored from validateProductionRevocationConfig; every other value,
+// INCLUDING an empty one, is production-class.
+var devClassEnvLabels = map[string]bool{"dev": true, "local": true, "test": true}
+
+// stackIsProductionClass reports whether a stack deploys the production security
+// posture, by reading what the stack declares about itself.
+//
+// Either process being production-class makes the stack production-class: they
+// share the hop, and a stand where one of them refuses to start is not a working
+// stand.
+func stackIsProductionClass(t *testing.T, stack []string) bool {
+	t.Helper()
+	if label, ok := resolveStack(t, stack, "appEnv"); ok && !devClassEnvLabels[strings.ToLower(strings.TrimSpace(label))] {
+		return true
+	}
+	mode, ok := resolveStackAt(t, stack, "kacho-iam", "config", "authn", "mode")
+	return ok && strings.HasPrefix(strings.TrimSpace(mode), "production")
+}
+
+// Every production-class stack must address the gateway's two admin-API endpoints
+// over TLS. A plaintext address here is refused at start by the gateway's boot
+// guard — this gate is what keeps that refusal from being discovered on a stand.
+func TestStacks_GatewayAdminHopIsNotInTheClear(t *testing.T) {
+	for name, stack := range deployableStacks {
+		t.Run(name, func(t *testing.T) {
+			if !stackIsProductionClass(t, stack) {
+				t.Skipf("%s is dev-class by its own declaration — the transport requirement "+
+					"rides the same exemption as the gateway's boot guard", name)
+			}
+			for _, knob := range []string{"introspectionUrl", "adminUrl"} {
+				got, ok := resolveStack(t, stack, "hydra", knob)
+				if !ok {
+					t.Errorf("%s: api-gateway.hydra.%s is not declared", name, knob)
+					continue
+				}
+				if err := requireTLSHop(got); err != nil {
+					t.Errorf("%s: api-gateway.hydra.%s %v", name, knob, err)
+				}
+			}
+			// TLS without an anchor is not a partial improvement: the provider's
+			// in-cluster certificate is internal-CA issued, the gateway trusts the
+			// system roots, and the introspection layer files an unknown authority
+			// as a PERMANENT misconfiguration — after which it refuses every request.
+			if _, ok := resolveStack(t, stack, "hydra", "adminCa", "secretName"); !ok {
+				t.Errorf("%s: api-gateway.hydra.adminCa.secretName is not declared while the hop "+
+					"is https — the gateway would verify against the system roots, which an "+
+					"internal-CA certificate never chains to, and then refuse every request", name)
+			}
+		})
+	}
+}
+
+// And the same for iam, the platform's sole facade to the provider. Its hop must
+// additionally be DECLARED rather than derived: the derivation is never empty, so
+// a profile that never named the address still read as configured — while
+// addressing the public ingress hostname, which does not resolve in-cluster.
+func TestStacks_IAMProviderAdminHopIsDeclaredAndNotInTheClear(t *testing.T) {
+	for name, stack := range deployableStacks {
+		t.Run(name, func(t *testing.T) {
+			got, ok := resolveStackAt(t, stack, "kacho-iam", "kacho", "iam", "hydraAdminUrl")
+			if !ok {
+				t.Fatalf("%s: kacho-iam.kacho.iam.hydraAdminUrl is not declared — iam then "+
+					"DERIVES it from the issuer, which names the public ingress host and does "+
+					"not resolve inside the cluster; the derivation is never empty, so the "+
+					"facade reads as configured while addressing a host nobody chose", name)
+			}
+			if !stackIsProductionClass(t, stack) {
+				return // declared is required everywhere; TLS only where production posture applies
+			}
+			if err := requireTLSHop(got); err != nil {
+				t.Errorf("%s: kacho-iam.kacho.iam.hydraAdminUrl %v", name, err)
+			}
+			if _, ok := resolveStackAt(t, stack, "kacho-iam", "kacho", "iam", "hydraAdminCaFile"); !ok {
+				t.Errorf("%s: kacho-iam.kacho.iam.hydraAdminCaFile is not declared while the hop "+
+					"is https — iam would verify against the system roots and every call on the "+
+					"hop would fail with an unknown authority", name)
+			}
+		})
+	}
+}
+
+// requireTLSHop reports why an address is unfit to carry a credential.
+func requireTLSHop(raw string) error {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return fmt.Errorf("is not a valid URL: %v", err)
+	}
+	if u.Scheme != "https" {
+		return fmt.Errorf("is %q — the hop carries a live bearer on every introspection cache miss "+
+			"and the administrative bearer on every facade call, so in the clear anything on "+
+			"the path can read and reuse them; address the admin listener over https", raw)
+	}
+	return nil
+}
+
+// adminHopConsumers — every place a profile can name the provider's ADMIN API.
+//
+// This list is the point of the test below. The defect it guards is not "one
+// address was left in the clear" but "the listener moved to TLS and a consumer
+// was left behind" — which is silent until that consumer's flow is exercised. The
+// Kratos self-service UI was exactly that: it dials the admin API for the consent
+// flow, its address lives under a different chart, and it was overlooked while the
+// gateway and iam were being moved. Adding a consumer means adding it here.
+var adminHopConsumers = map[string][]string{
+	"api-gateway.hydra.introspectionUrl":  {"api-gateway", "hydra", "introspectionUrl"},
+	"api-gateway.hydra.adminUrl":          {"api-gateway", "hydra", "adminUrl"},
+	"kacho-iam.kacho.iam.hydraAdminUrl":   {"kacho-iam", "kacho", "iam", "hydraAdminUrl"},
+	"kratos-selfservice-ui…hydraAdminUrl": {"kratos-selfservice-ui", "kratosSelfServiceUI", "hydraAdminUrl"},
+}
+
+// Once a stack serves the admin listener over TLS, EVERY consumer that names it
+// must address it over https. The listener does not answer http any more, so a
+// consumer left behind does not degrade — it stops working, and only in the flow
+// nobody runs on a smoke test.
+func TestStacks_AdminHopConsumersAgreeWithTheListener(t *testing.T) {
+	for name, stack := range deployableStacks {
+		t.Run(name, func(t *testing.T) {
+			on, _ := resolveStackBoolAt(t, stack, "mtls", "hydraAdminTls", "enabled")
+			if !on {
+				t.Skipf("%s does not serve the admin listener over TLS — consumers may address "+
+					"it over http, and the transport gates above cover whether it may stay that way", name)
+			}
+			checked := 0
+			for label, path := range adminHopConsumers {
+				got, ok := resolveStackAt(t, stack, path...)
+				if !ok {
+					continue // a consumer this stack does not deploy or does not name
+				}
+				checked++
+				if !strings.HasPrefix(strings.TrimSpace(got), "https://") {
+					t.Errorf("%s: %s is %q while this stack serves the admin listener over TLS — "+
+						"that listener no longer answers http, so this consumer's flow fails outright",
+						name, label, got)
+				}
+			}
+			// "Nothing found" must be distinguishable from "nothing wrong": a
+			// renamed values key would silently empty this test.
+			if checked == 0 {
+				t.Errorf("%s: no admin-API consumer declaration was found at any known path — "+
+					"the keys were renamed and this gate is now inspecting nothing", name)
+			}
+			t.Logf("%s: %d/%d consumer declarations inspected", name, checked, len(adminHopConsumers))
+		})
+	}
+}
+
+// resolveStackBoolAt reads a boolean at an ABSOLUTE path in the merged stack.
+// Its neighbour resolveStackBool is rooted at the gateway's own sub-tree; this
+// switch lives at the umbrella root.
+func resolveStackBoolAt(t *testing.T, stack []string, path ...string) (bool, bool) {
+	t.Helper()
+	merged := map[string]any{}
+	for _, profile := range stack {
+		merged = mergeInto(merged, umbrellaValues(t, profile))
+	}
+	var cur any = merged
+	for _, key := range path {
+		m, ok := cur.(map[string]any)
+		if !ok {
+			return false, false
+		}
+		if cur, ok = m[key]; !ok {
+			return false, false
+		}
+	}
+	b, ok := cur.(bool)
+	return b, ok
+}

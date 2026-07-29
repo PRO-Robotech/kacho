@@ -49,6 +49,59 @@ type RevocationConfig struct {
 	IntrospectionURL string
 	// AdminURL — resolved admin API base for the logout session-kill (empty ⇒ unset).
 	AdminURL string
+	// AdminCAFile — the trust anchor the admin hop is verified against
+	// (KACHO_HYDRA_ADMIN_CA_FILE; empty ⇒ none pinned). Read here because on
+	// this hop TLS without a pinned anchor is not a partial improvement — see
+	// validateAdminHopTransport.
+	AdminCAFile string
+}
+
+// adminHopCAKnob — the setting naming the admin hop's trust anchor. Named in the
+// refusal so an operator can act on it without reading this file.
+const adminHopCAKnob = "KACHO_HYDRA_ADMIN_CA_FILE"
+
+// validateAdminHopTransport refuses a production-class admin hop that carries a
+// credential readable on the wire, and a TLS one that verifies nothing.
+//
+// WHY PLAINTEXT IS REFUSED HERE AND NOT MERELY WARNED. Since the revocation check
+// moved onto the authN layer, this hop is taken on every authenticated request
+// that misses the short-TTL cache, and introspection asks about a bearer by
+// SENDING it. So the wire carries a live end-user credential, not an
+// administrative call — and a bearer read off the wire is usable by whoever read
+// it, for as long as it lives. That is a tenant-data question, which is why it
+// fails the start rather than logging.
+//
+// WHY TLS WITHOUT AN ANCHOR IS REFUSED TOO. The provider's certificate on an
+// in-cluster address is issued by the internal CA, and this process trusts the
+// system roots by default. An operator who moves the address to https and stops
+// there gets an unknown-authority handshake, which the introspection layer
+// classifies as a PERMANENT misconfiguration and answers by refusing every
+// request (see permanentTransportFailure in the middleware). Refusing at boot
+// turns a fleet-wide outage discovered in production into a message at the one
+// moment the operator is looking.
+//
+// The scheme is read from the address itself rather than from a separate switch:
+// a switch could disagree with the address, and then the two would have to be
+// kept in step by hand.
+func validateAdminHopTransport(knob, raw, caFile string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme == "" {
+		return "" // shape is reported by validateAdminEndpoint
+	}
+	if u.Scheme == "http" {
+		return knob + " is plaintext (" + raw + ") — the revocation check asks about a " +
+			"bearer by SENDING it, on every authenticated request that misses the cache, so " +
+			"this hop carries a live end-user credential in the clear and anything on the path " +
+			"can read and reuse it; address the provider's admin API over https"
+	}
+	if u.Scheme == "https" && strings.TrimSpace(caFile) == "" {
+		return knob + " is https (" + raw + ") but " + adminHopCAKnob + " is empty — the " +
+			"provider's in-cluster certificate is issued by the internal CA and this process " +
+			"trusts the system roots, so every handshake fails with an unknown authority; the " +
+			"introspection layer treats that as a permanent misconfiguration and then refuses " +
+			"EVERY request. Pin the bundle together with the address"
+	}
+	return ""
 }
 
 // validateProductionRevocationConfig refuses to start when the deploy
@@ -75,6 +128,9 @@ func validateProductionRevocationConfig(env string, cfg RevocationConfig) error 
 				"keeps working until it expires on its own")
 	} else if err := validateAdminEndpoint(cfg.IntrospectionURL, introspectionAdminPath); err != nil {
 		problems = append(problems, "KACHO_HYDRA_INTROSPECTION_URL "+err.Error())
+	} else if p := validateAdminHopTransport(
+		"KACHO_HYDRA_INTROSPECTION_URL", cfg.IntrospectionURL, cfg.AdminCAFile); p != "" {
+		problems = append(problems, p)
 	}
 
 	if strings.TrimSpace(cfg.AdminURL) == "" {
@@ -84,6 +140,9 @@ func validateProductionRevocationConfig(env string, cfg RevocationConfig) error 
 				"at the identity provider")
 	} else if err := validateAdminEndpoint(cfg.AdminURL, ""); err != nil {
 		problems = append(problems, "KACHO_HYDRA_ADMIN_URL "+err.Error())
+	} else if p := validateAdminHopTransport(
+		"KACHO_HYDRA_ADMIN_URL", cfg.AdminURL, cfg.AdminCAFile); p != "" {
+		problems = append(problems, p)
 	}
 
 	if len(problems) == 0 {

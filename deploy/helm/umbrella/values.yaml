@@ -310,6 +310,29 @@ mtls:
     caNamespace: ""
     caDuration: "87600h"      # 10y root
     caRenewBefore: "720h"     # 30d
+  # ─── provider ADMIN listener server-TLS (templates/hydra-admin-certificate.yaml) ─
+  # The admin listener (:4445) carries the CALLER'S LIVE BEARER on every
+  # authenticated request that misses the introspection cache (introspection asks
+  # about a token by SENDING it), and the administrative bearer on every OAuth2
+  # client registration, trust grant and session teardown iam performs. The admin
+  # API authenticates nobody — reaching it IS the authorization — so in the clear
+  # all of that is readable, and reusable, by anything on the path.
+  #
+  # Enabling this issues the serving cert; the profile must ALSO switch the
+  # provider to it (hydra.hydra.config.serve.admin.tls.*) and point the two
+  # consumers at https with the matching trust anchor. A production-class gateway
+  # and iam both REFUSE TO START on a plaintext or unanchored hop, so the three
+  # move together by construction.
+  #
+  # Only the ADMIN listener moves: the provider resolves TLS per listener
+  # (serve.admin.tls / serve.public.tls each override the shared serve.tls field
+  # by field), so the public OIDC listener the ingress and JWKS readers use over
+  # plain http is untouched.
+  hydraAdminTls:
+    enabled: false
+    # Secret carrying tls.crt/tls.key for the provider and ca.crt for consumers.
+    # Empty → "<release>-hydra-admin-tls".
+    secretName: ""
   # ─── bootstrap-operator identity (templates/bootstrap-operator-certificate.yaml) ─
   # A client-auth-ONLY internal-CA leaf whose sole purpose is to call
   # iam.v1.InternalBootstrapTokenService/MintBootstrapToken on kacho-iam :9091

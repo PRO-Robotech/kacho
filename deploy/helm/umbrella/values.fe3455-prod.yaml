@@ -279,7 +279,12 @@ kacho-iam:
       # недостижимый изнутри кластера → CreateOAuthClient fails → SAKey.Issue
       # завершается ошибкой ("internal worker error"). Admin API НИКОГДА не
       # публикуется наружу — только cluster-internal Service (Ory split public/admin).
-      hydraAdminUrl: http://kacho-umbrella-hydra-admin.kacho.svc:4445
+      # Over TLS: the hop carries the administrative bearer, and the admin API it
+      # opens authenticates nobody. Plaintext here is refused at start by
+      # config.validateProductionProviderAdminHop; so is https with no anchor.
+      # The SAN list on the serving certificate covers this `.svc` spelling.
+      hydraAdminUrl: https://kacho-umbrella-hydra-admin.kacho.svc:4445
+      hydraAdminCaFile: /etc/kacho-iam/tls/server/ca.crt
 kacho-nlb:
   image:
     tag: main-b622b388

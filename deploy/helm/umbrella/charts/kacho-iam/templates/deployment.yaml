@@ -411,6 +411,14 @@ spec:
             - name: KACHO_IAM_HYDRA_ADMIN_URL
               value: {{ . | quote }}
             {{- end }}
+            {{- with .Values.kacho.iam.hydraAdminCaFile }}
+            # Trust anchor for the provider-ADMIN hop (https). Unset → the default
+            # system-root pool, which an internal-CA certificate never chains to.
+            # Set → that bundle becomes the ONLY anchor for the hop, and one that
+            # cannot be read refuses the start.
+            - name: KACHO_IAM_HYDRA_ADMIN_CA_FILE
+              value: {{ . | quote }}
+            {{- end }}
             {{- range $k, $v := .Values.env }}
             - name: {{ $k }}
               value: {{ $v | quote }}

@@ -31,7 +31,24 @@ kacho:
     # which is UNREACHABLE from inside the cluster (public ingress hostname does not resolve
     # in-cluster) → CreateOAuthClient fails → SAKey.Issue op errors ("internal worker error").
     # Every deployed profile MUST point this at the cluster-internal hydra-admin Service.
+    # Every deployed profile MUST declare it: a production-class iam REFUSES TO
+    # START when it is left to the derivation (config.validateProductionProviderAdminHop).
     hydraAdminUrl: ""
+    # Trust anchor for the provider-ADMIN hop when that hop is served over TLS
+    # (env KACHO_IAM_HYDRA_ADMIN_CA_FILE). The hop carries the administrative
+    # bearer on every OAuth2 client registration, trust grant and session
+    # teardown, and the admin API it opens authenticates nobody — so production
+    # addresses it over https, and https here is only meaningful if the peer is
+    # VERIFIED. The provider's in-cluster certificate is issued by the internal
+    # CA, which this process does not trust by default (its default pool is the
+    # system roots).
+    #
+    # The internal-CA bundle is already in the pod when mtls.enable is on, at
+    # <mtls.mountPath>/server/ca.crt — the same CA that signs the provider's admin
+    # certificate — so no extra volume is needed. A bundle that cannot be read, or
+    # that holds no certificate, REFUSES THE START rather than silently falling
+    # back to the system roots.
+    hydraAdminCaFile: ""
     # Bootstrap-token (#58) — non-interactive production-seed entry point
     # (InternalBootstrapTokenService.MintBootstrapToken, :9091). The signing key is
     # an ES256 (P-256, PKCS#8) private-key PEM held in a Secret; empty secret name →

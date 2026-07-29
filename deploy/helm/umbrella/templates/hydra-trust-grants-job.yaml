@@ -55,8 +55,20 @@ spec:
             seccompProfile:
               type: RuntimeDefault
           env:
+            {{- $adminTLS := (.Values.mtls | default dict).hydraAdminTls | default dict }}
+            {{- if and (.Values.mtls | default dict).enabled $adminTLS.enabled }}
+            # The admin listener serves TLS on this profile; curl must address it
+            # over https AND verify it against the internal CA that signed it (the
+            # mounted ca.crt). --insecure here would defeat the reason the listener
+            # was moved to TLS in the first place.
             - name: HYDRA_ADMIN_URL
-              value: "http://kacho-umbrella-hydra-admin.{{ .Release.Namespace }}.svc.cluster.local:4445"
+              value: "https://{{ .Release.Name }}-hydra-admin.{{ .Release.Namespace }}.svc.cluster.local:4445"
+            - name: CURL_CA_BUNDLE
+              value: /etc/hydra-admin-ca/ca.crt
+            {{- else }}
+            - name: HYDRA_ADMIN_URL
+              value: "http://{{ .Release.Name }}-hydra-admin.{{ .Release.Namespace }}.svc.cluster.local:4445"
+            {{- end }}
           command:
             - sh
             - -c
@@ -119,7 +131,23 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- if and (.Values.mtls | default dict).enabled ((.Values.mtls | default dict).hydraAdminTls | default dict).enabled }}
+            - name: hydra-admin-ca
+              mountPath: /etc/hydra-admin-ca
+              readOnly: true
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir: {}
+        {{- $adminTLS := ((.Values.mtls | default dict).hydraAdminTls | default dict) }}
+        {{- if and (.Values.mtls | default dict).enabled $adminTLS.enabled }}
+        # ca.crt of the admin listener's serving secret — the internal-CA bundle
+        # that signed it, so curl verifies the peer instead of trusting anything.
+        - name: hydra-admin-ca
+          secret:
+            secretName: {{ $adminTLS.secretName | default (printf "%s-hydra-admin-tls" .Release.Name) | quote }}
+            items:
+              - key: ca.crt
+                path: ca.crt
+        {{- end }}
 {{- end }}

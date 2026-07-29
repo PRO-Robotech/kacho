@@ -99,6 +99,14 @@ mtls:
     # The Ory/OpenFGA tier (pg-kratos/pg-hydra/pg-openfga) is excluded — those DSNs
     # are managed by their own charts and are not on the kacho ssl-mode floor.
     services: [vpc, compute, iam, geo, nlb, storage, registry]
+  # Serving certificate for the provider's ADMIN listener. LOAD-BEARING: this
+  # profile addresses that listener over https from both the gateway and iam, and
+  # BOTH refuse to start on a plaintext or unanchored hop — so the certificate,
+  # the provider's serve.admin.tls block and the two consumer addresses move
+  # together or not at all.
+  hydraAdminTls:
+    enabled: true
+    secretName: kacho-umbrella-hydra-admin-tls
 cert-manager:
   enabled: true
 
@@ -175,8 +183,26 @@ api-gateway:
     #
     # The admin API has no authentication of its own; it is protected by not
     # being routable. It must never be published outside the cluster.
-    introspectionUrl: "http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445/admin/oauth2/introspect"
-    adminUrl: "http://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445"
+    #
+    # OVER TLS, AND ANCHORED. Since the revocation check moved onto the authN
+    # layer, this hop is taken on every authenticated request that misses the
+    # introspection cache — and introspection asks about a bearer by SENDING it.
+    # So the wire carries a live end-user credential, not merely administrative
+    # calls, and a bearer read off the wire is usable by whoever read it. The
+    # gateway REFUSES TO START production-class on a plaintext hop, and equally
+    # on an https one with no anchor: the provider's in-cluster certificate is
+    # issued by the internal CA, the process trusts the system roots, and the
+    # introspection layer treats an unknown authority as a permanent
+    # misconfiguration — after which it refuses every request.
+    introspectionUrl: "https://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445/admin/oauth2/introspect"
+    adminUrl: "https://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445"
+    # ca.crt of the provider's admin serving secret (templates/hydra-admin-certificate.yaml)
+    # — the internal-CA bundle that signs it. Mounted as a volume and pointed at by
+    # KACHO_HYDRA_ADMIN_CA_FILE; an unreadable or certificate-less bundle refuses the start.
+    adminCa:
+      secretName: kacho-umbrella-hydra-admin-tls
+      key: ca.crt
+      mountPath: /etc/api-gateway/hydra-admin-ca
   # AuthZ: per-RPC IAM Check fan-out, fail-CLOSED on transient IAM errors.
   authz:
     enabled: true
@@ -376,6 +402,19 @@ kacho-iam:
     metricsClientAuthMode: server-tls-only
   kacho:
     iam:
+      # Route to the provider's ADMIN API. DECLARED, never derived: the fallback
+      # derivation yields the PUBLIC ingress hostname, which does not resolve
+      # in-cluster — and because a derivation is never empty, the facade read as
+      # configured on this profile, which never declared it at all. A
+      # production-class iam now refuses to start in that state.
+      #
+      # Over TLS with the anchor pinned, for the same reason the gateway's hop is:
+      # every OAuth2 client registration, trust grant and session teardown carries
+      # the administrative bearer here, and the admin API it opens authenticates
+      # nobody. The anchor is the internal-CA bundle already mounted for mTLS —
+      # the same CA that signs the provider's admin certificate.
+      hydraAdminUrl: "https://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445"
+      hydraAdminCaFile: /etc/kacho-iam/tls/server/ca.crt
       # Machine-credential lifetime, production posture.
       #
       # accessTokenTtl pins `access_token_lifespan` ON EACH SA-key OAuth2 client
@@ -809,6 +848,27 @@ hydra:
         access_token: jwt
         jwt:
           scope_claim: list
+      # ─── ADMIN listener over TLS (and ONLY the admin listener) ─────────────
+      # What rides it: the caller's LIVE bearer on every introspection cache miss
+      # (introspection asks about a token by sending it), plus the administrative
+      # bearer on everything iam registers. The admin API authenticates nobody —
+      # reaching it IS the authorization — so in the clear all of that is readable
+      # and reusable by anything on the path.
+      #
+      # Per-listener on purpose. The provider resolves TLS for each listener
+      # separately: `serve.admin.tls.*` and `serve.public.tls.*` each override the
+      # shared `serve.tls` field by field. So the public OIDC listener — read over
+      # plain http by the ingress, the gateway's JWKS fetch, iam and the Kratos
+      # self-service UI — is left exactly as it was. (A note in
+      # deploy/tests/helm/admin-hop-transport-test.sh claimed one shared block made
+      # this impossible; that claim was wrong and is corrected there.)
+      serve:
+        admin:
+          tls:
+            cert:
+              path: /etc/hydra-admin-tls/tls.crt
+            key:
+              path: /etc/hydra-admin-tls/tls.key
       # ─── Token TTL discipline (acceptance §5.2) ───────────────────────────
       # This block is what values.dev.yaml's TTL comment has always CLAIMED
       # lived here ("PRODUCTION: 15m, kept in values.prod.yaml"). It did not:
@@ -875,6 +935,10 @@ hydra:
       - name: SSL_CERT_FILE
         value: /etc/kacho-iam-ca/ca.crt
     extraVolumes:
+      # Serving keypair for the ADMIN listener (templates/hydra-admin-certificate.yaml).
+      - name: hydra-admin-tls
+        secret:
+          secretName: kacho-umbrella-hydra-admin-tls
       - name: kacho-iam-internal-ca
         secret:
           # Reuse the SEC-F server secret — its ca.crt is the internal-CA bundle
@@ -884,6 +948,9 @@ hydra:
             - key: ca.crt
               path: ca.crt
     extraVolumeMounts:
+      - name: hydra-admin-tls
+        mountPath: /etc/hydra-admin-tls
+        readOnly: true
       - name: kacho-iam-internal-ca
         mountPath: /etc/kacho-iam-ca
         readOnly: true
@@ -902,10 +969,19 @@ kratos-selfservice-ui:
       existingSecret: kratos-selfservice-ui-cookie-secret
       existingSecretKey: cookieSecret
     # Outbound TLS verification stays ON in production (dev-only skip flag not set
-    # here). The in-cluster kratos/hydra upstreams are addressed over plain http
-    # cluster-internal; if an https terminator is introduced, wire the internal-CA
-    # bundle via caCert.secretName instead of disabling verification.
+    # here). Kratos upstreams remain plain http cluster-internal; the provider's
+    # ADMIN listener does not — see below.
     insecureSkipTLSVerify: false
+    # The provider's ADMIN listener now serves TLS (mtls.hydraAdminTls), so this
+    # consumer must address it over https AND trust the internal CA that signed
+    # it — the chart mounts the bundle and exports NODE_EXTRA_CA_CERTS. Left at
+    # the chart's plaintext default, the consent flow would fail on this stand:
+    # the listener no longer answers http at all.
+    hydraAdminUrl: https://kacho-umbrella-hydra-admin:4445
+    caCert:
+      secretName: kacho-umbrella-hydra-admin-tls
+      key: ca.crt
+      mountPath: /etc/kratos-ui-ca
 
 # ─── Defense-in-depth pod-to-pod NetworkPolicy — ON in production ───────────
 # (the dev default keeps it OFF so :9091 port-forward debugging works).
