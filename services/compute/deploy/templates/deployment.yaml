@@ -253,8 +253,6 @@ spec:
             {{- with .Values.authzIam }}
             - name: KACHO_COMPUTE_AUTHZ_IAM_GRPC_ADDR
               value: "{{ .grpcAddr }}"
-            - name: KACHO_COMPUTE_AUTHZ_IAM_TLS
-              value: "{{ .tls }}"
             {{- end }}
             {{- with .Values.listFilter }}
             - name: KACHO_COMPUTE_LIST_FILTER_ENABLED
@@ -267,42 +265,6 @@ spec:
               value: "{{ .cacheMaxEntries }}"
             - name: KACHO_COMPUTE_LIST_FILTER_FAIL_OPEN
               value: "{{ .failOpen }}"
-            {{- end }}
-            {{/* fgawrite — write-side OpenFGA tuple for new compute resources
-                  (compute_instance|disk|image|snapshot) so FGA cascade
-                  `viewer from project` has a path. Same shape as kacho-vpc
-                  authz.tupleWrite. Disabled by default; umbrella values.dev.yaml
-                  enables it + injects storeId/modelId from the OpenFGA
-                  bootstrap-job-populated Secrets. */}}
-            {{- if .Values.authz.tupleWrite.enabled }}
-            - name: KACHO_COMPUTE_AUTHZ_TUPLE_WRITE_ENABLED
-              value: "true"
-            - name: KACHO_COMPUTE_AUTHZ_TUPLE_WRITE_OPENFGA_ENDPOINT
-              value: "{{ .Values.authz.tupleWrite.openfgaEndpoint }}"
-            - name: KACHO_COMPUTE_AUTHZ_TUPLE_WRITE_TIMEOUT_MS
-              value: "{{ .Values.authz.tupleWrite.timeoutMs }}"
-            {{- if .Values.authz.tupleWrite.storeIdSecretName }}
-            - name: KACHO_COMPUTE_AUTHZ_TUPLE_WRITE_STORE_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.authz.tupleWrite.storeIdSecretName }}
-                  key: {{ default "store_id" .Values.authz.tupleWrite.storeIdSecretKey }}
-                  optional: true
-            {{- else if .Values.authz.tupleWrite.storeId }}
-            - name: KACHO_COMPUTE_AUTHZ_TUPLE_WRITE_STORE_ID
-              value: "{{ .Values.authz.tupleWrite.storeId }}"
-            {{- end }}
-            {{- if .Values.authz.tupleWrite.modelIdSecretName }}
-            - name: KACHO_COMPUTE_AUTHZ_TUPLE_WRITE_MODEL_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.authz.tupleWrite.modelIdSecretName }}
-                  key: {{ default "model_id" .Values.authz.tupleWrite.modelIdSecretKey }}
-                  optional: true
-            {{- else if .Values.authz.tupleWrite.modelId }}
-            - name: KACHO_COMPUTE_AUTHZ_TUPLE_WRITE_MODEL_ID
-              value: "{{ .Values.authz.tupleWrite.modelId }}"
-            {{- end }}
             {{- end }}
           volumeMounts:
             # Writable scratch для read-only-rootfs (безусловно: rootfs read-only

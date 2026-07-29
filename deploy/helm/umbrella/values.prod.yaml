@@ -291,19 +291,9 @@ compute:
     trustedForwarderSANs: "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
   authzIam:
     grpcAddr: kacho-iam-internal.kacho.svc.cluster.local:9091
-    tls: false
   listFilter:
     enabled: true
     failOpen: false
-  authz:
-    tupleWrite:
-      enabled: true
-      openfgaEndpoint: kacho-umbrella-openfga:8080
-      storeIdSecretName: kacho-iam-openfga-store
-      storeIdSecretKey: store_id
-      modelIdSecretName: openfga-model-id
-      modelIdSecretKey: current
-      timeoutMs: 2000
   # mTLS: server (gateway/vpc/nlb dial here) + client (compute→iam, compute→vpc,
   # compute→storage).
   mtls:

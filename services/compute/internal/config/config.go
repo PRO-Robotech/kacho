@@ -13,9 +13,14 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
-// envPrefix — корневой сегмент имён env для kacho-compute (KACHO_<DOMAIN>).
-// LoadPrefixed выводит env-имя каждого поля из иерархии: envPrefix + tag/field.
-const envPrefix = "KACHO_COMPUTE"
+// EnvPrefix — корневой сегмент имён env для kacho-compute (KACHO_<DOMAIN>).
+// LoadPrefixed выводит env-имя каждого поля из иерархии: EnvPrefix + tag/field.
+//
+// Экспортирован, чтобы гейт «чарт не выставляет переменных, которых процесс не
+// читает» перечислял имена ТЕМ ЖЕ префиксом, каким их читает Load: собственная
+// копия префикса в тесте разъехалась бы с кодом ровно так же, как разъехался
+// сам чарт.
+const EnvPrefix = "KACHO_COMPUTE"
 
 // Config — конфигурация kacho-compute.
 type Config struct {
@@ -188,7 +193,7 @@ type Config struct {
 	// ===== opt-in mTLS (per-edge) =====
 	//
 	// Каждое ребро — независимый grpcclient.TLSClient / grpcsrv.TLSServer value-struct.
-	// envconfig.Process(envPrefix, &cfg) выводит env-имена из тега родительского поля:
+	// envconfig.Process(EnvPrefix, &cfg) выводит env-имена из тега родительского поля:
 	// `IAM_REGISTER_MTLS` → KACHO_COMPUTE_IAM_REGISTER_MTLS_{ENABLE,CERTFILE,KEYFILE,
 	// CAFILES,SERVERNAME}. Enable=false (default) → insecure (dev backward-compat).
 	// Per-edge enable → независимый rollback/rollout.
@@ -335,13 +340,13 @@ func (c Config) MigrateDSN() string {
 
 // Load загружает конфигурацию из переменных окружения.
 //
-// Использует LoadPrefixed(envPrefix): абсолютно-тегированные поля
+// Использует LoadPrefixed(EnvPrefix): абсолютно-тегированные поля
 // (`envconfig:"KACHO_COMPUTE_..."`) резолвятся как есть, а вложенные
 // per-edge TLS value-структуры (grpcclient.TLSClient / grpcsrv.TLSServer) с
 // относительным тегом (`IAM_REGISTER_MTLS`) получают независимые
 // KACHO_COMPUTE_<EDGE>_<NAME> имена (per-edge prefixing).
 func Load() (Config, error) {
 	var c Config
-	err := corecfg.LoadPrefixed(envPrefix, &c)
+	err := corecfg.LoadPrefixed(EnvPrefix, &c)
 	return c, err
 }
