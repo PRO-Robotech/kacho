@@ -73,6 +73,53 @@ func computeFullMethod(sd grpc.ServiceDesc, method string) string {
 	return "/" + sd.ServiceName + "/" + method
 }
 
+// servedFullMethods — ЕДИНАЯ перепись выставленной RPC-поверхности: unary
+// (`sd.Methods`) И стримы (`sd.Streams`). Обе половины гейта — «карта покрывает
+// каждый RPC» и «запись правильной формы» — обязаны обходить ОДИН И ТОТ ЖЕ
+// набор. Разойдясь, они дают ровно тот дефект, ради которого гейт заведён:
+// половина «покрытие» видит стримовый RPC и рапортует запись присутствующей, а
+// половина «форма» стримы не обходит — полузаполненная запись для стрима ей
+// невидима и роняет RPC в рантайме на nil-deref вместо честного отказа. Общая
+// перепись делает это расхождение невозможным by construction, а не чинит один
+// его экземпляр.
+//
+// grpc-go диспатчит стрим через тот же authz-интерсептор (`authzIntr.Stream()` в
+// composition root), поэтому запись для стрима читается интерсептором ровно так
+// же, как для unary — разного обращения они не заслуживают.
+func servedFullMethods() []string {
+	var out []string
+	for _, sd := range servedServiceDescs() {
+		for _, mi := range sd.Methods {
+			out = append(out, computeFullMethod(sd, mi.MethodName))
+		}
+		out = append(out, streamFullMethods(sd)...)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// streamFullMethods — стримовая часть переписи одного сервиса.
+func streamFullMethods(sd grpc.ServiceDesc) []string {
+	var out []string
+	for _, si := range sd.Streams {
+		out = append(out, computeFullMethod(sd, si.StreamName))
+	}
+	return out
+}
+
+// servedStreamFullMethods — стримовая часть переписи целиком. Нужна как проверка
+// СВОЕЙ предпосылки: обход стримов имеет смысл, только пока compute хоть один
+// стрим поднимает. Если стримов не станет, «ноль находок» будет неотличим от
+// «ноль прочитанного».
+func servedStreamFullMethods() []string {
+	var out []string
+	for _, sd := range servedServiceDescs() {
+		out = append(out, streamFullMethods(sd)...)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // TestPermissionMap_CoversEveryServedComputeRPC — гейт КЛАССА gateway-catalog ↔
 // backend-PermissionMap drift (security.md инв. 4 «permission-catalog полон и в
 // синхроне»), а не одного экземпляра. Портирован из storage, где такой гейт был
@@ -91,19 +138,14 @@ func computeFullMethod(sd grpc.ServiceDesc, method string) string {
 func TestPermissionMap_CoversEveryServedComputeRPC(t *testing.T) {
 	m := check.PermissionMap()
 
+	served := servedFullMethods()
+	require.NotEmpty(t, served,
+		"served RPC census is empty — the walk found nothing, so it would have asserted nothing")
+
 	var missing []string
-	for _, sd := range servedServiceDescs() {
-		for _, mi := range sd.Methods {
-			fm := computeFullMethod(sd, mi.MethodName)
-			if _, ok := m[fm]; !ok {
-				missing = append(missing, fm)
-			}
-		}
-		for _, si := range sd.Streams {
-			fm := computeFullMethod(sd, si.StreamName)
-			if _, ok := m[fm]; !ok {
-				missing = append(missing, fm)
-			}
+	for _, fm := range served {
+		if _, ok := m[fm]; !ok {
+			missing = append(missing, fm)
 		}
 	}
 	sort.Strings(missing)
@@ -120,27 +162,52 @@ func TestPermissionMap_CoversEveryServedComputeRPC(t *testing.T) {
 // TestPermissionMap_ServedEntriesWellFormed — запись мало «иметь»: интерсептор
 // разыменовывает Extract и Check'ает по Relation. Полузаполненная запись
 // (Relation без Extract) роняет RPC в рантайме на nil-deref, а не на честный отказ.
+//
+// Обходится ВСЯ выставленная поверхность (servedFullMethods): стрим — такой же
+// вход в интерсептор, как unary, и кривая запись для него так же разыменовывается.
 func TestPermissionMap_ServedEntriesWellFormed(t *testing.T) {
 	m := check.PermissionMap()
 
-	for _, sd := range servedServiceDescs() {
-		for _, mi := range sd.Methods {
-			fm := computeFullMethod(sd, mi.MethodName)
-			entry, ok := m[fm]
-			if !ok {
-				continue // покрыто TestPermissionMap_CoversEveryServedComputeRPC
-			}
-			if entry.Public {
-				require.Emptyf(t, entry.Relation, "%s: Public entry must not carry a Relation", fm)
-				require.Nilf(t, entry.Extract, "%s: Public entry must not carry an Extract", fm)
-				continue
-			}
-			if entry.ScopeFiltered {
-				continue // авторизуется на data-уровне (ListObjects), single-object Check не делается
-			}
-			require.NotEmptyf(t, entry.Relation, "%s: required relation must be set", fm)
-			require.NotNilf(t, entry.Extract, "%s: must carry an ObjectExtractor", fm)
+	served := servedFullMethods()
+	require.NotEmpty(t, served,
+		"served RPC census is empty — the walk found nothing, so it would have asserted nothing")
+
+	for _, fm := range served {
+		entry, ok := m[fm]
+		if !ok {
+			continue // покрыто TestPermissionMap_CoversEveryServedComputeRPC
 		}
+		if entry.Public {
+			require.Emptyf(t, entry.Relation, "%s: Public entry must not carry a Relation", fm)
+			require.Nilf(t, entry.Extract, "%s: Public entry must not carry an Extract", fm)
+			continue
+		}
+		if entry.ScopeFiltered {
+			continue // авторизуется на data-уровне (ListObjects), single-object Check не делается
+		}
+		require.NotEmptyf(t, entry.Relation, "%s: required relation must be set", fm)
+		require.NotNilf(t, entry.Extract, "%s: must carry an ObjectExtractor", fm)
+	}
+}
+
+// TestPermissionMap_WellFormedGateSeesStreams — предпосылка гейта выше: он имеет
+// смысл, только пока перепись действительно содержит стримы. Утверждение, что
+// стримовая часть непуста и что каждый её элемент попал в общую перепись, —
+// защита от тихого возврата слепой зоны: обход, снова сузившийся до unary,
+// оставит этот тест красным вместо того, чтобы молча ничего не проверять.
+func TestPermissionMap_WellFormedGateSeesStreams(t *testing.T) {
+	streams := servedStreamFullMethods()
+	require.NotEmpty(t, streams,
+		"compute serves no streaming RPC — the stream half of the census has no subject; "+
+			"if that is now true by design, retire this gate deliberately instead of leaving it vacuous")
+
+	all := make(map[string]struct{})
+	for _, fm := range servedFullMethods() {
+		all[fm] = struct{}{}
+	}
+	for _, fm := range streams {
+		require.Containsf(t, all, fm,
+			"streaming RPC %s is missing from the shared census — the well-formedness gate would not see it", fm)
 	}
 }
 
