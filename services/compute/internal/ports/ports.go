@@ -77,13 +77,20 @@ type InstanceRepo interface {
 	// обновлённую ВМ (+ outbox UPDATED в той же TX). Within-service-инвариант на
 	// DB-уровне (CAS), не software check-then-act — защита от second-writer-wins.
 	SetStatusCAS(ctx context.Context, id string, expected, next domain.InstanceStatus) (*domain.Instance, error)
-	// GateForAttach — compute-local CAS-гейт disk/NIC-attach саги: атомарно
-	// проверяет, что инстанс в {RUNNING, STOPPED}, и возвращает self-describing
-	// payload (zone_id, project_id, name) для форварда в storage/vpc. Инстанс не в
-	// допустимом состоянии → ErrFailedPrecondition ("Instance must be RUNNING or
-	// STOPPED"); отсутствует → ErrNotFound. Гейт закрывает attach-vs-delete гонку
-	// (Delete переводит инстанс в DELETING первым → гейт видит DELETING → 0 rows),
-	// на DB-уровне (CAS), не software check-then-act.
+	// GateForAttach — ОДНОСТЕЙТМЕНТНАЯ ПРЕДПРОВЕРКА disk/NIC-attach саги, НЕ
+	// compare-and-swap: она ничего не пишет и не держит строку. Возвращает
+	// self-describing payload (zone_id, project_id, name) для форварда в storage/vpc,
+	// если инстанс в {RUNNING, STOPPED}; не в допустимом состоянии →
+	// ErrFailedPrecondition ("Instance must be RUNNING or STOPPED"); отсутствует →
+	// ErrNotFound. Существование и состояние решаются одним стейтментом (один снимок),
+	// поэтому полоса ошибки не может назвать не то, что произошло.
+	//
+	// Гонку attach-vs-delete она СУЖАЕТ, но НЕ ЗАКРЫВАЕТ: после возврата конкурентный
+	// Delete успевает поставить DELETING и отпустить привязки, пока форвард ещё в пути.
+	// Закрытие требует сериализации, которой у предпроверки нет (счётчик in-flight на
+	// строке либо advisory-lock, удерживаемый обеими сагами) — это отдельная работа с
+	// db-/system-design-ревью; до неё остаток закрывается компенсацией инициатора и
+	// sweeper'ом владельца привязки. Реализация: instance_repo.go GateForAttach.
 	GateForAttach(ctx context.Context, id string) (zoneID, projectID, name string, err error)
 	// MarkDeleting атомарно переводит инстанс в DELETING (идемпотентно: повтор на
 	// уже-DELETING инстансе — no-op OK). Возвращает инстанс (для self-describing

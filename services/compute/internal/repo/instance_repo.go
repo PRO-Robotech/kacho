@@ -307,31 +307,46 @@ func (r *InstanceRepo) SetStatusCAS(ctx context.Context, id string, expected, ne
 	return in, nil
 }
 
-// GateForAttach — compute-local CAS-гейт attach-саги (disk/NIC): атомарно
-// проверяет, что инстанс в {RUNNING, STOPPED}, и возвращает self-describing payload
-// (zone_id/project_id/name) для форварда в storage/vpc. Реализован conditional
-// SELECT `WHERE status IN (...)` — 0 rows означает либо отсутствие инстанса
-// (NotFound), либо недопустимое состояние (FailedPrecondition). Гейт закрывает
-// attach-vs-delete гонку (Delete ставит DELETING первым → status IN(...) не сматчит).
+// GateForAttach — ОДНОСТЕЙТМЕНТНАЯ ПРЕДПРОВЕРКА attach-саги (disk/NIC), не
+// compare-and-swap. Возвращает self-describing payload (zone_id/project_id/name) для
+// форварда в storage/vpc, если инстанс в {RUNNING, STOPPED}.
+//
+// ЧТО ОНА ГАРАНТИРУЕТ. Существование и состояние решаются ОДНИМ стейтментом, то есть
+// на одном снимке: не бывает ответа, в котором «инстанса нет» и «инстанс есть, но не в
+// том состоянии» приходят из двух разных моментов времени. Прежде здесь стояли ДВА
+// запроса — conditional SELECT, а на 0 rows отдельный EXISTS, — и между ними строка
+// могла исчезнуть или сменить статус: полоса ошибки называла не то, что произошло
+// (FailedPrecondition про уже удалённый инстанс, NotFound про существующий).
+//
+// ЧЕГО ОНА НЕ ГАРАНТИРУЕТ, И ЭТО ВАЖНО. Она ничего не пишет и не держит строку,
+// поэтому гонку attach-vs-delete она СУЖАЕТ, а НЕ ЗАКРЫВАЕТ: после её возврата
+// конкурентный Delete успевает поставить DELETING и отпустить привязки, пока форвард в
+// storage/vpc ещё в пути, — и привязка ляжет на инстанс, которого уже нет. Прежний
+// godoc заявлял обратное («атомарно», «CAS», «закрывает гонку»), и это ровно тот класс,
+// из-за которого следующий контрибьютор чинит код под неверный комментарий.
+//
+// ОТКРЫТЫЙ ОСТАТОК. Настоящее закрытие требует сериализации, которой у предпроверки
+// нет: либо счётчик attach-in-flight на строке инстанса (миграция + отпускание на всех
+// путях), либо advisory-lock на id, удерживаемый обоими сагами, — и то и другое меняет
+// схему/контракт и идёт через db- и system-design-ревью. До этого остаток обязан
+// закрываться компенсацией инициатора (compensation-outbox) и sweeper'ом владельца
+// привязки; см. data-integrity.md §«Cross-service saga-compensation».
 func (r *InstanceRepo) GateForAttach(ctx context.Context, id string) (string, string, string, error) {
 	var zoneID, projectID, name string
+	var eligible bool
+	// Один стейтмент, один снимок: и существование, и пригодность состояния.
 	err := r.pool.QueryRow(ctx,
-		`SELECT zone_id, project_id, name FROM instances
-		  WHERE id = $1 AND status IN ('RUNNING','STOPPED')`, id).
-		Scan(&zoneID, &projectID, &name)
+		`SELECT zone_id, project_id, name, status IN ('RUNNING','STOPPED')
+		   FROM instances WHERE id = $1`, id).
+		Scan(&zoneID, &projectID, &name, &eligible)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			// Различаем «нет инстанса» vs «в недопустимом состоянии».
-			var exists bool
-			if e2 := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM instances WHERE id = $1)`, id).Scan(&exists); e2 != nil {
-				return "", "", "", wrapPgErr(e2, "Instance", id)
-			}
-			if !exists {
-				return "", "", "", fmt.Errorf("%w: Instance %s not found", ports.ErrNotFound, id)
-			}
-			return "", "", "", fmt.Errorf("%w: Instance must be RUNNING or STOPPED", ports.ErrFailedPrecondition)
+			return "", "", "", fmt.Errorf("%w: Instance %s not found", ports.ErrNotFound, id)
 		}
 		return "", "", "", wrapPgErr(err, "Instance", id)
+	}
+	if !eligible {
+		return "", "", "", fmt.Errorf("%w: Instance must be RUNNING or STOPPED", ports.ErrFailedPrecondition)
 	}
 	return zoneID, projectID, name, nil
 }
