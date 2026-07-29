@@ -1,27 +1,26 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// Package tools_regression holds Go-level regression tests for the repo's shell
-// CI gates (currently audit-list-filter.sh). Keeping them under `go test ./...`
-// means the gate's own detection logic is exercised by the standard verification
-// harness — a shell-gate that silently stops catching regressions is itself a
-// regression, so we lock its behaviour with fixtures.
+// Package tools_regression holds Go-level regression tests for this service's CI
+// gates (audit-list-filter, audit-known-failing). Keeping them under
+// `go test ./...` means each gate's own detection logic is exercised by the
+// standard verification harness — a gate that silently stops catching regressions
+// is itself a regression, so its behaviour is locked with fixtures.
 //
-// Two distinct things are asserted here, and both are needed:
-//   - TestAuditListFilter — the gate's DETECTION LOGIC against synthetic fixtures
-//     (does it still catch each leak shape?);
+// Three distinct things are asserted here, and all three are needed:
+//   - TestAuditListFilter — the gate's DETECTION LOGIC against synthetic fixtures,
+//     in both directions (does it still catch each leak shape, and does it stay
+//     silent on the legitimate shape that resembles it?);
+//   - TestAuditListFilter_NothingExaminedIsNotOK / _ReportsWhatItExamined — the
+//     gate's own premise: "zero findings" must be unreachable from "zero read";
 //   - TestAuditListFilter_RealTreePasses — the gate against THIS SERVICE'S REAL
-//     tree, inside the ordinary `go test ./...` run.
+//     tree, through the very command CI issues, inside the ordinary
+//     `go test ./...` run.
 //
-// A note on why the second one exists, since this comment used to say something
-// that is no longer true. It was written when NO CI job invoked
-// `make audit-list-filter`, which made routing the gate through `go test` the only
-// thing that covered storage at all. CI has since grown that step
-// (.github/workflows/ci.yaml, job authz-artifacts, four services), so the claim
-// went stale in place — and a stale claim about whether a gate runs is exactly the
-// hazard the gate is for. Both paths are kept deliberately: `go test` reaches the
-// real tree wherever tests run, the make target is what CI issues. The wiring is no
-// longer described in prose alone — see ci_gate_wiring_test.go.
+// Both routes to the gate are kept deliberately: `go test` reaches the real tree
+// wherever tests run, and `make -C services/storage audit-list-filter` is what CI
+// issues (.github/workflows/ci.yaml, job authz-artifacts). Which of the two is
+// wired is asserted, not narrated — see ci_gate_wiring_test.go.
 package tools_regression
 
 import (
@@ -29,7 +28,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/services/storage/tools/auditlistfilter"
 )
 
 // scriptDir returns the directory this test file lives in (…/tools), which also
@@ -43,6 +45,15 @@ func scriptDir(t *testing.T) string {
 	return filepath.Dir(self)
 }
 
+// runScript runs one of this directory's gate wrappers exactly as CI would, and
+// returns its combined output plus the verdict.
+func runScript(t *testing.T, name string) (string, error) {
+	t.Helper()
+	cmd := exec.Command("bash", filepath.Join(scriptDir(t), name))
+	raw, err := cmd.CombinedOutput()
+	return string(raw), err
+}
+
 // writeFile writes content to path, creating parent dirs.
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
@@ -54,31 +65,27 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// runGate materialises a throwaway workspace (tools/ + fixture repo/service
-// files), copies the real audit-list-filter.sh into it, runs it, and returns the
-// combined output plus the process error (nil ⇒ exit 0, non-nil ⇒ gate failed).
-// The script does `cd "$(dirname "$0")/.."` and inspects internal/repo/pg +
-// internal/apps/kacho/api, so a copy in <tmp>/tools sees only our fixtures.
+// runGate materialises a throwaway service tree from the fixture files and runs
+// the gate's analyser against it, returning its output plus the verdict (nil ⇒
+// clean, non-nil ⇒ the gate fails the tree).
 func runGate(t *testing.T, files map[string]string) (string, error) {
 	t.Helper()
-	root := t.TempDir()
+	return runGateArgs(t, files)
+}
 
-	src, err := os.ReadFile(filepath.Join(scriptDir(t), "audit-list-filter.sh"))
-	if err != nil {
-		t.Fatalf("read real script: %v", err)
-	}
-	dst := filepath.Join(root, "tools", "audit-list-filter.sh")
-	writeFile(t, dst, string(src))
-	if err := os.Chmod(dst, 0o755); err != nil {
-		t.Fatalf("chmod script: %v", err)
-	}
+// runGateArgs is runGate with an explicit whitelist. The whitelist is passed per
+// invocation rather than baked in, because an entry matching no resource in the
+// fixture tree is itself a finding — see TestAuditListFilter_ExpiredWhitelistEntryIsAFinding.
+func runGateArgs(t *testing.T, files map[string]string, allow ...string) (string, error) {
+	t.Helper()
+	root := t.TempDir()
 	for rel, content := range files {
 		writeFile(t, filepath.Join(root, rel), content)
 	}
 
-	cmd := exec.Command("bash", dst)
-	out, err := cmd.CombinedOutput()
-	return string(out), err
+	var buf strings.Builder
+	_, err := auditlistfilter.Audit(auditlistfilter.Options{Root: root, Allow: allow}, &buf)
+	return buf.String(), err
 }
 
 const (
@@ -174,6 +181,20 @@ func (u *UseCase) List() error {
 	return nil
 }
 `
+	// repoNarrowsRenamedReceiver — the SAME compliant adapter, written with the
+	// receiver named `repo` instead of `r`. Nothing about the resource changed: it is
+	// still a *VolumeRepo with a public List. A gate that keys on the receiver's NAME
+	// stops seeing the resource here and reports OK for whatever the use-case does.
+	repoNarrowsRenamedReceiver = `package pg
+
+func (repo *VolumeRepo) Insert() {
+	_ = "INSERT ... project_id = $1"
+}
+
+func (repo *VolumeRepo) List() {
+	_ = "SELECT ... WHERE v.project_id = $1"
+}
+`
 	// ucCompliantMentionsListObjects — the mirror case: a compliant List whose
 	// comment EXPLAINS why ListObjects is banned must not be flagged for saying so.
 	ucCompliantMentionsListObjects = `package volume
@@ -195,6 +216,7 @@ func TestAuditListFilter(t *testing.T) {
 	cases := []struct {
 		name    string
 		files   map[string]string
+		allow   []string
 		wantErr bool // true ⇒ gate must exit non-zero
 	}{
 		{
@@ -274,6 +296,48 @@ func TestAuditListFilter(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			// Identification must key on WHAT the declaration is (a public List on a
+			// *…Repo), not on what the receiver happens to be CALLED. Renaming `r` to
+			// `repo` is a refactor nobody would flag in review, and it used to make the
+			// resource invisible to the gate — the leak below then reported OK.
+			name: "blind spot: renaming the receiver must not hide an unfiltered List",
+			files: map[string]string{
+				"internal/repo/pg/volume_repo.go":          repoNarrowsRenamedReceiver,
+				"internal/apps/kacho/api/volume/volume.go": ucNoPerObjectFilter,
+			},
+			wantErr: true,
+		},
+		{
+			// …and the converse, so the fix is not merely "flag everything": the same
+			// renamed receiver on a COMPLIANT resource must stay silent.
+			name: "compliant: renamed receiver on a fully compliant resource",
+			files: map[string]string{
+				"internal/repo/pg/volume_repo.go":          repoNarrowsRenamedReceiver,
+				"internal/apps/kacho/api/volume/volume.go": ucCompliant,
+			},
+			wantErr: false,
+		},
+		{
+			// The use-case List is found by WHAT it is, not by which file holds it:
+			// splitting a package into list.go/create.go is routine (vpc does exactly
+			// that), and it must neither hide a leak nor manufacture a false red.
+			name: "compliant: use-case List lives in list.go, not <resource>.go",
+			files: map[string]string{
+				"internal/repo/pg/volume_repo.go":        repoNarrows,
+				"internal/apps/kacho/api/volume/list.go": ucCompliant,
+			},
+			wantErr: false,
+		},
+		{
+			// Same split, leaking: the gate must read the package, not one filename.
+			name: "leak: use-case List in list.go never filters per-object",
+			files: map[string]string{
+				"internal/repo/pg/volume_repo.go":        repoNarrows,
+				"internal/apps/kacho/api/volume/list.go": ucNoPerObjectFilter,
+			},
+			wantErr: true,
+		},
+		{
 			// Whitelisted cluster-catalog resource: List need not narrow.
 			name: "whitelist: disk_type cluster-catalog List not project-scoped",
 			files: map[string]string{
@@ -284,13 +348,14 @@ func (r *DiskTypeRepo) List() {
 }
 `,
 			},
+			allow:   []string{"disk_type"},
 			wantErr: false,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			out, err := runGate(t, tc.files)
+			out, err := runGateArgs(t, tc.files, tc.allow...)
 			gotErr := err != nil
 			if gotErr != tc.wantErr {
 				t.Fatalf("gate exit: gotErr=%v wantErr=%v\n--- output ---\n%s", gotErr, tc.wantErr, out)
@@ -299,20 +364,119 @@ func (r *DiskTypeRepo) List() {
 	}
 }
 
+// TestAuditListFilter_NothingExaminedIsNotOK — "zero findings" must be
+// distinguishable from "zero read".
+//
+// Both shapes below used to print OK and exit 0, which is the worst answer a gate
+// can give: it is indistinguishable from a clean tree, so a gate pointed at the
+// wrong place, or at a tree whose adapters moved, certifies a service it never
+// opened. A gate that examined nothing has proven nothing and must say so.
+func TestAuditListFilter_NothingExaminedIsNotOK(t *testing.T) {
+	cases := []struct {
+		name  string
+		files map[string]string
+	}{
+		{
+			// The adapter root does not exist at all (wrong directory, moved layout).
+			name:  "adapter root absent",
+			files: map[string]string{"internal/apps/kacho/api/volume/volume.go": ucCompliant},
+		},
+		{
+			// The root exists but holds no public List adapter — nothing was judged.
+			name:  "adapter root holds no public List",
+			files: map[string]string{"internal/repo/pg/doc.go": "package pg\n"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := runGate(t, tc.files)
+			if err == nil {
+				t.Fatalf("gate exited 0 having examined nothing — that is not a pass\n--- output ---\n%s", out)
+			}
+		})
+	}
+}
+
+// TestAuditListFilter_ReportsWhatItExamined — the gate must state its census, so a
+// passing run can be read as "N resources judged" rather than "the word OK".
+func TestAuditListFilter_ReportsWhatItExamined(t *testing.T) {
+	out, err := runGate(t, map[string]string{
+		"internal/repo/pg/volume_repo.go":          repoNarrows,
+		"internal/apps/kacho/api/volume/volume.go": ucCompliant,
+	})
+	if err != nil {
+		t.Fatalf("compliant fixture must pass: %v\n--- output ---\n%s", err, out)
+	}
+	for _, want := range []string{"1 adapter file", "1 resource", "checked volume"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("gate output must state what it examined (missing %q)\n--- output ---\n%s", want, out)
+		}
+	}
+}
+
+// TestAuditListFilter_ExpiredWhitelistEntryIsAFinding — an exclusion must expire by
+// itself. `--allow=<resource>` suppresses a check; once no such resource exists the
+// entry suppresses nothing, and the next resource to inherit that name inherits the
+// blind spot silently. A whitelist entry with nothing left to exclude is a finding.
+func TestAuditListFilter_ExpiredWhitelistEntryIsAFinding(t *testing.T) {
+	files := map[string]string{
+		"internal/repo/pg/volume_repo.go":          repoNarrows,
+		"internal/apps/kacho/api/volume/volume.go": ucCompliant,
+	}
+	out, err := runGateArgs(t, files, "--allow=retired_resource")
+	if err == nil {
+		t.Fatalf("a whitelist entry matching no resource must be reported\n--- output ---\n%s", out)
+	}
+	if !strings.Contains(out, "retired_resource") {
+		t.Errorf("the finding must name the expired entry\n--- output ---\n%s", out)
+	}
+
+	// Converse: an entry that still has a subject must stay silent.
+	files["internal/repo/pg/disk_type_repo.go"] = `package pg
+
+func (r *DiskTypeRepo) List() {
+	_ = "SELECT ... FROM disk_types"
+}
+`
+	if out, err := runGateArgs(t, files, "disk_type"); err != nil {
+		t.Fatalf("a whitelist entry that still matches a resource must not be a finding: %v\n--- output ---\n%s", err, out)
+	}
+}
+
 // TestAuditListFilter_RealTreePasses гоняет гейт против НАСТОЯЩЕГО дерева
-// kacho-storage (не фикстур). Смысл — покрытие: `make audit-list-filter` не
-// вызывается ни одним CI-job'ом, поэтому сам по себе скрипт лишь «лежит рядом».
-// `go test ./services/storage/...` в CI гоняется, и через этот тест гейт наконец
-// судит реальные List'ы: обронённое сужение по project_id, пропавший
-// required-projectId backstop или снятый per-object фильтр уронят сборку здесь.
+// kacho-storage (не фикстур) и ЧЕРЕЗ ту же команду, которую издаёт CI — сам
+// скрипт, а не только его Go-анализатор. Так под тестом оказывается вся цепочка:
+// обёртка → `go run` → cmd-флаги → разбор. Обронённое сужение по `project_id`,
+// пропавший required-projectId backstop или снятый per-object фильтр уронят
+// сборку здесь.
+//
+// Два пути к гейту держатся НАМЕРЕННО, и это не дубль: `make -C services/storage
+// audit-list-filter` — то, что издаёт CI (.github/workflows/ci.yaml, job
+// authz-artifacts, пять сервисов; проверяется ci_gate_wiring_test.go), а этот
+// тест доводит гейт до реального дерева везде, где вообще гоняются тесты.
+// Прежняя редакция этого комментария объясняла второй путь иначе — «make-таргет
+// не вызывается ни одним CI-job'ом, поэтому go test единственное покрытие». Это
+// перестало быть правдой, когда шаг в CI появился, и осталось написанным: ровно
+// тот класс, ради которого гейт и стоит. Утверждение больше не живёт в прозе.
 //
 // Тест НЕ помечен -short-скипом намеренно: unit-джоба CI гоняет именно `-short`, а
 // гейт стоит миллисекунды и не требует Docker/Postgres.
 func TestAuditListFilter_RealTreePasses(t *testing.T) {
-	script := filepath.Join(scriptDir(t), "audit-list-filter.sh")
-	cmd := exec.Command("bash", script)
-	out, err := cmd.CombinedOutput()
+	out, err := runScript(t, "audit-list-filter.sh")
 	if err != nil {
 		t.Fatalf("audit-list-filter must pass against the real kacho-storage tree: %v\n--- output ---\n%s", err, out)
 	}
+
+	// A pass is only worth reading if it says what it judged. "OK" on a tree the
+	// gate never opened is the failure mode this asserts against — and it is the
+	// production invocation, so the whitelist wiring is asserted here too.
+	if strings.Contains(out, "examined 0 ") || strings.Contains(out, ", 0 resource") {
+		t.Fatalf("the gate passed having examined nothing — that is not a pass\n--- output ---\n%s", out)
+	}
+	for _, want := range []string{"checked ", "whitelisted disk_type"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("real-tree run must report its census (missing %q)\n--- output ---\n%s", want, out)
+		}
+	}
+	t.Log(strings.TrimSpace(out))
 }

@@ -299,3 +299,22 @@ func TestStorageListAuthzGateIsInvokedByCI(t *testing.T) {
 		"exists but nothing runs it, which is how it went unnoticed that storage's List " +
 		"filtered nothing per object")
 }
+
+// TestStorageKnownFailingGateIsInvokedByCI — same assertion for the gate that stops
+// a "known failing" record from outliving its fix.
+//
+// It is asserted here for the same reason as the one above, and the reason is not
+// symmetry: the records this gate governs are precisely the ones nobody revisits.
+// A gate over stale claims that is itself never run would be the joke version of
+// the defect it exists to catch.
+func TestStorageKnownFailingGateIsInvokedByCI(t *testing.T) {
+	root := repoRoot(t)
+	for _, inv := range collectMakeInvocations(t, root) {
+		if inv.target == "audit-known-failing" && inv.dir == "services/storage" {
+			t.Logf("invoked by %s", inv.workflow)
+			return
+		}
+	}
+	t.Error("no workflow issues `make -C services/storage audit-known-failing` — a gate " +
+		"nothing runs cannot notice that an exclusion outlived its subject")
+}

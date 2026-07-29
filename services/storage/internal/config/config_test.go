@@ -168,7 +168,8 @@ func TestValidate_unknownMode(t *testing.T) {
 
 // TestValidate_productionRequiresListFilter — production ОБЯЗАН нести включённый
 // per-object list-filter публичного List. Per-RPC Check гейтит List лишь на
-// project-tier `viewer`; сужение страницы до per-object `viewer ∪ v_list` делает
+// project-tier `viewer`; сужение страницы до per-object `viewer` (то же отношение,
+// что энфорсит Get) делает
 // ТОЛЬКО фильтр. С выключенным фильтром любой член проекта видит КАЖДЫЙ том/снимок/
 // образ проекта, включая объекты без per-object гранта (over-show / BOLA-lite,
 // CWE-862). Fail-closed зеркалит требование mTLS и authz-адреса.

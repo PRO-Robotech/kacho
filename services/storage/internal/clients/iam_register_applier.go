@@ -12,9 +12,13 @@
 // Классификация ошибок (её потребляет corelib outbox/drainer):
 //   - OK                     → nil (drainer ставит sent_at).
 //   - codes.InvalidArgument  → ErrPermanent (malformed tuple = poison, без вечных ретраев).
-//   - codes.PermissionDenied → transient: отсутствующий grant fga_writer@iam_fgaproxy:system
-//     — вопрос порядка provisioning'а, лечится после SA-grant-миграции; ретрай даёт
-//     owner-tuple осесть, поэтому НЕ poison (как в vpc/compute/nlb).
+//   - codes.PermissionDenied → ErrPermanent. Отказ по правам НЕ временный: решение
+//     зависит от (вызывающий, отношение, объект), повтор не меняет ни одного из трёх,
+//     поэтому идентичный запрос пройти не может. Классификация «transient» здесь не
+//     покупала будущий успех, а заклинивала ГОЛОВУ партиции (партиция — ресурс), из-за
+//     чего снятие регистрации, стоящее в очереди за регистрацией, не доезжало — грант
+//     переживал удаление ресурса. Подробный разбор размена и его пары с redrive —
+//     на classifyRegisterErr.
 //   - всё остальное (Unavailable, DeadlineExceeded, транспорт) → transient (ретрай с
 //     backoff; intent остаётся durable, sent_at NULL, не теряется).
 //

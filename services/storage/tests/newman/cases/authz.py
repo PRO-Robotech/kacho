@@ -19,7 +19,7 @@ public-RPC проходит per-RPC InternalIAMService.Check с proto-scope_extr
 субъект листит ТОТ ЖЕ проект → объект не должен появиться. Закрывает то, что раньше
 здесь было ЯВНО объявлено дырой: до этого набор проверял ТОЛЬКО кросс-ПРОЕКТНОЕ
 измерение, поэтому зелёный прогон storage НЕ был доказательством per-object фильтра
-(`viewer ∪ v_list` через iam BatchCheck, internal/authzfilter) — его лочили только
+(per-object `viewer` через iam BatchCheck, internal/authzfilter) — его лочили только
 Go-тесты use-case-слоя (internal/apps/kacho/api/*/list_filter_test.go) и CI-гейт
 tools/audit-list-filter.sh.
 
@@ -89,7 +89,6 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK",
-    # verifies https://github.com/PRO-Robotech/kacho/issues/62 (edit role does not materialize storage verbs — RED until iam fix)
     title="[INV-10] alice List volumes projectId=projectA1 (есть viewer) → not 403; result содержит ТОЛЬКО projectA1 (нет кросс-проектной утечки)",
     classes=["AUTHZ", "SEC", "POS"], priority="P0",
     # verifies CS1-S1-13

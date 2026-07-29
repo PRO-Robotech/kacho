@@ -31,10 +31,11 @@ const loadedPeerLatency = 600 * time.Millisecond
 // контракта, сужать её нельзя) обязана отфильтроваться БЕЗ 503, когда пир отвечает
 // за loadedPeerLatency на батч, и уложиться в бюджет операции с реальным запасом.
 //
-// Арифметика (см. filter.go): страница 1000 → ceil(1000/100)=10 батчей на relation;
-// relations две и они ПОСЛЕДОВАТЕЛЬНЫ по построению (v_list спрашивается только у
-// отказанных viewer'ом). Наивная форма гоняла батчи внутри relation
-// ПОСЛЕДОВАТЕЛЬНО, каждый под своим per-call дедлайном → 10..20 round-trip'ов
+// Арифметика (см. filter.go): страница 1000 → ceil(1000/100)=10 батчей на каждое
+// отношение видимости; отношение сейчас ОДНО (`viewer` — тот же предикат, что
+// энфорсит Get), а спрашиваются отношения последовательно, поэтому глубина растёт
+// линейно по их числу. Наивная форма гоняла батчи ВНУТРИ отношения
+// ПОСЛЕДОВАТЕЛЬНО, каждый под своим per-call дедлайном → десяток round-trip'ов
 // подряд, и ЛЮБОЙ из них дольше дедлайна ронял весь List в Unavailable. Бюджет
 // принадлежит ЗАПРОСУ (ctx операции), а не каждой партии.
 func TestFGAFilter_MaxPageWithinBudget_UnderLoadedPeerLatency(t *testing.T) {
@@ -72,7 +73,7 @@ func TestFGAFilter_MaxPageWithinBudget_UnderLoadedPeerLatency(t *testing.T) {
 		pageSize, maxBatchCheckSize, loadedPeerLatency)
 
 	// (2) Разбиение allowed/denied НЕ портится параллельными батчами: тот же
-	//     предикат (viewer ∪ v_list), тот же порядок курсора.
+	//     предикат (`viewer`), тот же порядок курсора.
 	assert.Equal(t, want, got,
 		"parallel batches must not corrupt the allowed/denied partitioning nor the cursor order")
 

@@ -387,7 +387,6 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="IMG-CR-BVA-DESC-OVER-257",
-    # verifies https://github.com/PRO-Robotech/kacho/issues/61 (image Create missing sync BVA — RED until storage fix)
     title="Create Image c description длиной 257 (≤256 + 1) → sync 400 INVALID_ARGUMENT (BVA верхняя граница description)",
     classes=["BVA", "VAL", "NEG"], priority="P1",
     # verifies STOR-1-30
@@ -398,7 +397,6 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="IMG-CR-BVA-LABELS-OVER-65",
-    # verifies https://github.com/PRO-Robotech/kacho/issues/61 (image Create missing sync BVA — RED until storage fix)
     title="Create Image c 65 labels (≤64 + 1) → sync 400 INVALID_ARGUMENT (BVA верхняя граница labels)",
     classes=["BVA", "VAL", "NEG"], priority="P1",
     # verifies STOR-1-30
