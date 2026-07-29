@@ -397,7 +397,8 @@ func (u *UseCase) ListOperations(ctx context.Context, volumeID string, p Paginat
 	if err != nil {
 		return nil, "", err
 	}
-	return u.ops.List(ctx, operations.ListFilter{ResourceID: volumeID, PageSize: size, PageToken: p.PageToken})
+	return operations.ListForCaller(ctx, u.ops,
+		operations.ListFilter{ResourceID: volumeID, PageSize: size, PageToken: p.PageToken})
 }
 
 // Attach — атомарный CAS-insert строки volume_attachments (internal :9091, §3.2).

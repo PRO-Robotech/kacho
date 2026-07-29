@@ -179,6 +179,9 @@ func TestListListeners_InvalidFilter(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
+// opsHistoryCaller — вызывающий, которому принадлежат засеянные операции.
+var opsHistoryCaller = operations.Principal{Type: "user", ID: "usr-hist", DisplayName: "hist@kacho.local"}
+
 // TestListOperations_GWT_LST_026_PerListenerHistory — filter by listener_id.
 func TestListOperations_GWT_LST_026_PerListenerHistory(t *testing.T) {
 	t.Parallel()
@@ -193,7 +196,7 @@ func TestListOperations_GWT_LST_026_PerListenerHistory(t *testing.T) {
 			&lbv1.CreateListenerMetadata{ListenerId: listenerID, LoadBalancerId: string(suite.listener.LoadBalancerID)},
 		)
 		require.NoError(t, err)
-		require.NoError(t, suite.ops.Create(context.Background(), op))
+		require.NoError(t, suite.ops.CreateWithPrincipal(context.Background(), op, opsHistoryCaller))
 	}
 	op3, err := operations.New(
 		ids.PrefixOperationNLB,
@@ -201,10 +204,13 @@ func TestListOperations_GWT_LST_026_PerListenerHistory(t *testing.T) {
 		&lbv1.CreateListenerMetadata{ListenerId: "lstUNRELATED0000001"},
 	)
 	require.NoError(t, err)
-	require.NoError(t, suite.ops.Create(context.Background(), op3))
+	require.NoError(t, suite.ops.CreateWithPrincipal(context.Background(), op3, opsHistoryCaller))
 
 	uc := NewListOperationsUseCase(suite.ops)
-	resp, err := uc.Run(context.Background(), &lbv1.ListListenerOperationsRequest{
+	// Вызывающий назван: список суженный, безымянный контекст получил бы пустую
+	// страницу и утверждение о фильтре по listener_id стало бы вакуумным.
+	ctx := operations.WithPrincipal(context.Background(), opsHistoryCaller)
+	resp, err := uc.Run(ctx, &lbv1.ListListenerOperationsRequest{
 		ListenerId: listenerID,
 	})
 	require.NoError(t, err)

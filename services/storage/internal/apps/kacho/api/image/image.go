@@ -388,7 +388,8 @@ func (u *UseCase) ListOperations(ctx context.Context, imageID string, p Paginati
 	if err != nil {
 		return nil, "", err
 	}
-	return u.ops.List(ctx, operations.ListFilter{ResourceID: imageID, PageSize: size, PageToken: p.PageToken})
+	return operations.ListForCaller(ctx, u.ops,
+		operations.ListFilter{ResourceID: imageID, PageSize: size, PageToken: p.PageToken})
 }
 
 // GetInternal — full (infra) проекция Image (internal :9091) — data-plane.

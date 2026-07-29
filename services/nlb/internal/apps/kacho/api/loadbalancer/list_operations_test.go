@@ -42,11 +42,15 @@ func TestListOperations_HappyPath(t *testing.T) {
 	op1.Metadata = meta1
 	meta2, _ := anypb.New(&lbv1.UpdateNetworkLoadBalancerMetadata{NetworkLoadBalancerId: "nlb-a"})
 	op2.Metadata = meta2
-	require.NoError(t, opsRepo.Create(context.Background(), op1))
-	require.NoError(t, opsRepo.Create(context.Background(), op2))
+	caller := operations.Principal{Type: "user", ID: "usr-caller", DisplayName: "caller@kacho.local"}
+	require.NoError(t, opsRepo.CreateWithPrincipal(context.Background(), op1, caller))
+	require.NoError(t, opsRepo.CreateWithPrincipal(context.Background(), op2, caller))
 
 	uc := NewListOperationsUseCase(opsRepo)
-	resp, err := uc.Execute(context.Background(), &lbv1.ListNetworkLoadBalancerOperationsRequest{
+	// Вызывающий назван: список суженный, безымянный контекст получил бы пустую
+	// страницу и утверждение стало бы вакуумным.
+	ctx := operations.WithPrincipal(context.Background(), caller)
+	resp, err := uc.Execute(ctx, &lbv1.ListNetworkLoadBalancerOperationsRequest{
 		NetworkLoadBalancerId: "nlb-a",
 	})
 	require.NoError(t, err)
@@ -62,7 +66,11 @@ func TestListOperations_RepoError_NoLeak(t *testing.T) {
 	opsRepo.listErr = errors.New(secret)
 
 	uc := NewListOperationsUseCase(opsRepo)
-	_, err := uc.Execute(context.Background(), &lbv1.ListNetworkLoadBalancerOperationsRequest{
+	// Вызывающий назван: иначе выдача схлопывается в пустую и сбой репозитория,
+	// про который этот тест, вообще не наступает.
+	ctx := operations.WithPrincipal(context.Background(),
+		operations.Principal{Type: "user", ID: "usr-caller", DisplayName: "caller@kacho.local"})
+	_, err := uc.Execute(ctx, &lbv1.ListNetworkLoadBalancerOperationsRequest{
 		NetworkLoadBalancerId: "nlb-a",
 	})
 	require.Error(t, err)

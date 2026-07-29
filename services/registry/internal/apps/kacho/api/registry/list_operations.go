@@ -34,7 +34,7 @@ func (u *UseCase) ListOperations(ctx context.Context, q ListOperationsQuery) ([]
 	if err := ValidateRegistryID(q.RegistryID); err != nil {
 		return nil, "", err
 	}
-	ops, next, err := u.ops.List(ctx, operations.ListFilter{
+	ops, next, err := operations.ListForCaller(ctx, u.ops, operations.ListFilter{
 		ResourceID: q.RegistryID,
 		PageSize:   q.PageSize,
 		PageToken:  q.PageToken,

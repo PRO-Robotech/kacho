@@ -596,3 +596,66 @@ func aliceCtx() context.Context {
 	return operations.WithPrincipal(context.Background(),
 		operations.Principal{Type: "user", ID: "usr-alice", DisplayName: "alice"})
 }
+
+// ---- operations.OwnedOperationRepo ----
+//
+// Список операций ownership-scoped: фейк несёт оба пути. ListOwned зеркалит
+// List, добавляя предикат владения (и тот же listErr — сбой репозитория обязан
+// выглядеть одинаково на обоих путях).
+
+func opsOwnerMatches(op *operations.Operation, owner operations.Owner) bool {
+	return op.Principal.Type == owner.PrincipalType && op.Principal.ID == owner.PrincipalID
+}
+
+func (m *memOps) GetOwned(_ context.Context, id string, owner operations.Owner) (*operations.Operation, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	op, ok := m.ops[id]
+	if !ok || !opsOwnerMatches(op, owner) {
+		return nil, operations.ErrNotFound
+	}
+	cp := *op
+	return &cp, nil
+}
+
+func (m *memOps) CancelOwned(_ context.Context, id string, owner operations.Owner) (*operations.Operation, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	op, ok := m.ops[id]
+	if !ok || !opsOwnerMatches(op, owner) {
+		return nil, operations.ErrNotFound
+	}
+	if op.Done {
+		return nil, operations.ErrAlreadyDone
+	}
+	op.Done = true
+	cp := *op
+	return &cp, nil
+}
+
+func (m *memOps) ListOwned(_ context.Context, _ operations.ListFilter, owner operations.Owner) ([]operations.Operation, string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.listErr != nil {
+		return nil, "", m.listErr
+	}
+	out := make([]operations.Operation, 0, len(m.ops))
+	for _, op := range m.ops {
+		if !opsOwnerMatches(op, owner) {
+			continue
+		}
+		out = append(out, *op)
+	}
+	return out, "", nil
+}
+
+var _ operations.OwnedOperationRepo = (*memOps)(nil)
+
+// opsCaller / opsCallerCtx — назвавший себя вызывающий: список операций теперь
+// суженный, поэтому безымянный контекст получил бы пустую страницу и любое
+// утверждение о выдаче стало бы вакуумным.
+var opsCaller = operations.Principal{Type: "user", ID: "usr-caller", DisplayName: "caller@kacho.local"}
+
+func opsCallerCtx() context.Context {
+	return operations.WithPrincipal(context.Background(), opsCaller)
+}
