@@ -330,7 +330,7 @@ func (r *InstanceRepo) SetStatusCAS(ctx context.Context, id string, expected, ne
 // путях), либо advisory-lock на id, удерживаемый обоими сагами, — и то и другое меняет
 // схему/контракт и идёт через db- и system-design-ревью. До этого остаток обязан
 // закрываться компенсацией инициатора (compensation-outbox) и sweeper'ом владельца
-// привязки; см. data-integrity.md §«Cross-service saga-compensation».
+// привязки; см. правило data-integrity о компенсации кросс-сервисной саги.
 func (r *InstanceRepo) GateForAttach(ctx context.Context, id string) (string, string, string, error) {
 	var zoneID, projectID, name string
 	var eligible bool
