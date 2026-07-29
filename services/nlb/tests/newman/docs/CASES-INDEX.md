@@ -154,7 +154,11 @@ Immutability + drain toggle + lean projection + delete-release:
 - `*-CR-VAL-PORT-OVER` — VAL,BVA/P1 — port=65536 → InvalidArgument
 - `*-CR-VAL-PORT-NEGATIVE` — VAL,BVA/P2 — port=-1 → InvalidArgument
 - `*-CR-VAL-UNSUPPORTED-PROTOCOL` — VAL/P1 — protocol="HTTP" → InvalidArgument (only TCP/UDP)
-- `*-CR-VAL-INTERNAL-NO-SUBNET` — VAL/P0 — INTERNAL without subnet_id → InvalidArgument (Verifies REQ-LST-VAL-INTERNAL-SUBNET)
+- ~~`*-CR-VAL-INTERNAL-NO-SUBNET`~~ — **RETIRED (sub-phase 8.1)** — `subnet_id` left
+  `CreateListenerRequest` when the VIP moved Listener→LoadBalancer, so the request the case
+  sent is an ordinary valid create and there is no refusal to demand. Replaced by
+  `NLB-CR-VAL-SOURCE-REQUIRED` + `NLB-CR-VAL-PLACEMENT-MISMATCH` (an INTERNAL LB names its VIP
+  source via `v4Source`/`v6Source`). Rationale in `cases/listener.py`, in place of the case.
 - `*-CR-VAL-NAME-REGEX` — VAL/P1 — invalid name regex
 - `*-CR-BVA-PORT-MIN-1` — BVA/P2 — port=1 → OK
 - `*-CR-BVA-PORT-MAX-65535` — BVA/P2 — port=65535 → OK
@@ -370,7 +374,10 @@ These extended patterns saturate the RPC × class matrix to ≥320 total cases f
 - `*-CR-CRUD-NO-OPTIONAL-FIELDS` — CRUD/P2 — Create with only required fields → OK
 - `*-CR-CRUD-WITH-DESCRIPTION` — CRUD/P2 — Create with non-empty description → OK
 - `*-CR-CRUD-AFFINITY-CLIENT-IP` — CRUD/P2 — Create with sessionAffinity=CLIENT_IP_ONLY → OK
-- `*-CR-VAL-IPV-UNKNOWN` — VAL/P1 — ip_version=IPV9 → InvalidArgument
+- ~~`*-CR-VAL-IPV-UNKNOWN`~~ — **RETIRED (sub-phase 8.1)** — `ip_version` is `reserved 8` on
+  `CreateListenerRequest`; the listener inherits the parent LB's per-family VIP and carries no
+  address, so "unknown enum value" is no longer a statement about this request. The family/slot
+  rule is covered by `NLB-CR-VAL-ADDRESS-FAMILY-SLOT`. Rationale in `cases/listener.py`.
 - `*-CR-VAL-TARGET-PORT-ZERO` — VAL,BVA/P1 — target_port=0 → InvalidArgument
 - `*-CR-VAL-TARGET-PORT-OVER` — VAL,BVA/P1 — target_port=65536 → InvalidArgument
 - `*-CR-CRUD-IPV6` — CRUD/P1 — Create with ip_version=IPV6 → OK

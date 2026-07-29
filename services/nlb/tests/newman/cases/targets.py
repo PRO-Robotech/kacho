@@ -263,7 +263,15 @@ CASES.append(Case(
         Step(name="add-bogon", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"externalIp": {"address": "127.0.0.1"}, "weight": 100}]},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 # SYNC-VALIDATE lane. The bogon classes are refused by
+                 # domain.Target.Validate -> TargetExternalIP.Validate (domain/target.go,
+                 # classifyBogon), which add_targets.go:96 runs BEFORE the Operation is
+                 # minted -> INVALID_ARGUMENT, i.e. 400 / grpc code 3, always.
+                 # The previous `oneOf([200, 400])` also accepted the ACCEPTANCE this case
+                 # exists to prove impossible, so a regression removing the bogon check
+                 # left it green. Same assertion as the green TGR-CR-VAL-TARGET-BOGON-*
+                 # block, which drives the identical domain check from the Create path.
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
         *_cleanup_tg(),
     ],
@@ -275,15 +283,18 @@ CASES.append(Case(
     classes=["VAL"], priority="P0",
     steps=[
         *_setup_tg("ipref-out"),
+        # WORKER lane. The sync validator only parses the address and requires a
+        # non-empty subnet_id (domain/target.go TargetIPRef.Validate); membership of the
+        # subnet CIDR needs the peer's CIDR blocks, so it is decided by the worker
+        # (add_targets.go validateIPRefTarget -> addressInAnyCIDR) and surfaces on the
+        # Operation. `200` alone is therefore NOT a pass: what used to follow this step
+        # was a bare poll, which asserts only `done` — satisfied just as well by an
+        # Operation that SUCCEEDED, i.e. by the product accepting an out-of-CIDR address.
         Step(name="add-out", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"ipRef": {"subnetId": "{{existingSubnetId}}",
                                           "address": "10.99.99.99"}, "weight": 100}]},
-             test_script=[
-                 "pm.test('rejected (sync or async)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                 *save_from_response("j.id", "opId"),
-             ]),
-        poll_operation_until_done(),
+             test_script=assert_refused_sync_or_async("ip_ref.address outside the subnet CIDR")),
+        poll_operation_until_done(must_fail=True),
         *_cleanup_tg(),
     ],
 ))
@@ -292,6 +303,23 @@ CASES.append(Case(
 # ---------------------------------------------------------------------------
 # Peer-validate failures
 # ---------------------------------------------------------------------------
+#
+# LANE (whole section). Nothing here is decided synchronously: AddTargets validates
+# only the request SHAPE before minting the Operation — target_group_id present and
+# well-formed, list non-empty and within MaxTargetsPerGroup, then per-target
+# domain.Target.Validate (the 4-way oneof, the weight bound, the external_ip bogon
+# classes). Whether an instance / NIC / subnet EXISTS, and whether it sits in the
+# target group's region, is answered by peers and is therefore checked by the WORKER
+# (add_targets.go doAdd -> validateTargetPeer -> validateInstanceTarget /
+# validateNicTarget / validateIPRefTarget). So the lawful refusal here is `200`
+# carrying an Operation that FAILS.
+#
+# Which is exactly why `oneOf([200, 400, 404])` followed by a bare
+# `poll_operation_until_done()` asserted nothing: `200` satisfied the first statement
+# on its own, and the poll only asserted `done` — true of a SUCCEEDED Operation too.
+# A regression that stopped peer-validating targets altogether would have kept every
+# case in this section green while the target group quietly accepted a member that
+# does not exist. `assert_refused_sync_or_async` + `must_fail=True` states both lanes.
 
 CASES.append(Case(
     id="TGT-ADD-NEG-INSTANCE-UNKNOWN",
@@ -301,11 +329,8 @@ CASES.append(Case(
         *_setup_tg("inst-nx"),
         Step(name="add-inst-nx", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"instanceId": "epdinstdoesnotexist0", "weight": 100}]},
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
-                 *save_from_response("j.id", "opId"),
-             ]),
-        poll_operation_until_done(),
+             test_script=assert_refused_sync_or_async("unknown instance_id")),
+        poll_operation_until_done(must_fail=True),
         *_cleanup_tg(),
     ],
 ))
@@ -321,11 +346,8 @@ CASES.append(Case(
         # retried away, so retry_on is narrowed to (403,).
         retry_until_authorized(Step(name="add-nic-nx", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"nicId": "e9bnicdoesnotexist00", "weight": 100}]},
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
-                 *save_from_response("j.id", "opId"),
-             ]), retry_on=(403,)),
-        poll_operation_until_done(),
+             test_script=assert_refused_sync_or_async("unknown nic_id")), retry_on=(403,)),
+        poll_operation_until_done(must_fail=True),
         *_cleanup_tg(),
     ],
 ))
@@ -339,11 +361,8 @@ CASES.append(Case(
         Step(name="add-sub-nx", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"ipRef": {"subnetId": "e9bsubdoesnotexist00",
                                           "address": "10.0.0.5"}, "weight": 100}]},
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
-                 *save_from_response("j.id", "opId"),
-             ]),
-        poll_operation_until_done(),
+             test_script=assert_refused_sync_or_async("unknown ip_ref.subnet_id")),
+        poll_operation_until_done(must_fail=True),
         *_cleanup_tg(),
     ],
 ))
@@ -364,11 +383,8 @@ CASES.append(Case(
         Step(name="add-inst-other-region", method="POST",
              path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"instanceId": "{{absentInstanceCrossRegionId}}", "weight": 100}]},
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                 *save_from_response("j.id", "opId"),
-             ]),
-        poll_operation_until_done(),
+             test_script=assert_refused_sync_or_async("instance_id that does not resolve in the region")),
+        poll_operation_until_done(must_fail=True),
         *_cleanup_tg(),
     ],
 ))
@@ -385,11 +401,8 @@ CASES.append(Case(
         Step(name="add-nic-other-region", method="POST",
              path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"nicId": "{{absentNicCrossRegionId}}", "weight": 100}]},
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                 *save_from_response("j.id", "opId"),
-             ]),
-        poll_operation_until_done(),
+             test_script=assert_refused_sync_or_async("nic_id that does not resolve in the region")),
+        poll_operation_until_done(must_fail=True),
         *_cleanup_tg(),
     ],
 ))
@@ -404,11 +417,8 @@ CASES.append(Case(
              path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
              body={"targets": [{"ipRef": {"subnetId": "{{existingSubnetCrossRegionId}}",
                                           "address": "10.0.0.5"}, "weight": 100}]},
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                 *save_from_response("j.id", "opId"),
-             ]),
-        poll_operation_until_done(),
+             test_script=assert_refused_sync_or_async("ip_ref.subnet_id in another region")),
+        poll_operation_until_done(must_fail=True),
         *_cleanup_tg(),
     ],
 ))
@@ -633,10 +643,17 @@ CASES.append(Case(
         Step(name="rm-empty", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
              body={"targets": []},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                 *save_from_response("j.id", "opId"),
+                 # SYNC-VALIDATE lane, exactly like the AddTargets twin above: the
+                 # empty-list guard sits in remove_targets.go:65, before the Operation is
+                 # minted, so there is no async lane to tolerate and no Operation to poll
+                 # (the poll that used to follow had no subject on this path). Message is
+                 # contract — pinned by remove_targets_test.go:165.
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                 "pm.test(\"message is 'at least one target is required'\", () => "
+                 "  pm.expect(pm.response.json().message || '', pm.response.text())"
+                 "    .to.include('at least one target is required'));",
+                 "pm.environment.unset('opId');",
              ]),
-        poll_operation_until_done(),
         *_cleanup_tg(),
     ],
 ))
