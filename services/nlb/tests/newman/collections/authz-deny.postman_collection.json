@@ -274,11 +274,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -298,7 +302,7 @@
           ]
         },
         {
-          "name": "get-viewer-rya316",
+          "name": "get-viewer-rya312",
           "request": {
             "method": "GET",
             "header": [
@@ -450,11 +454,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -959,11 +967,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -1134,11 +1146,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -1912,11 +1928,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -2087,11 +2107,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -2654,11 +2678,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -2761,246 +2789,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "AZD-FGA-UNAVAILABLE-FAIL-CLOSED — FGA service unavailable → PERMISSION_DENIED fail-closed (Verifies REQ-AZD-FAIL-CLOSED)",
-      "description": "class:AZD | priority:P0",
-      "item": [
-        {
-          "name": "probe-cr",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "networkLoadBalancers"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-fga-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// AZD per-step: bearer from env 'jwtProjectEditorA'",
-                  "const __t = pm.environment.get('jwtProjectEditorA') || pm.variables.get('jwtProjectEditorA') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
-                  "  });",
-                  "  pm.request.headers.remove('Authorization');",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('either 200 (FGA up) or 403 (FGA down fail-closed)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 403, 503]));",
-                  "if (pm.response.code === 403) pm.test('mentions authorization service', () =>   pm.expect((pm.response.json().message||'').toLowerCase()).    to.include('authorization'));",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.metadata && j.metadata.networkLoadBalancerId);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('nlbId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-9",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup-best-effort",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "networkLoadBalancers",
-                "{{nlbId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// AZD per-step: bearer from env 'jwtProjectEditorA'",
-                  "const __t = pm.environment.get('jwtProjectEditorA') || pm.variables.get('jwtProjectEditorA') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
-                  "  });",
-                  "  pm.request.headers.remove('Authorization');",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-10",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -3082,11 +2879,80 @@
       ]
     },
     {
-      "name": "AZD-PERMISSION-CATALOG-COMPLETE — Permission catalog contains all 26 loadbalancer.* permissions (Verifies REQ-AZD-CATALOG)",
+      "name": "AZD-PERMISSION-CATALOG-COMPLETE — The live grantable catalog carries the loadbalancer module and every resource the nlb permission strings are built from (Verifies REQ-AZD-CATALOG)",
       "description": "class:AZD | priority:P0",
       "item": [
         {
-          "name": "probe-cr",
+          "name": "read-catalog",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/permissionCatalog",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "permissionCatalog"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// AZD per-step: bearer from env 'jwtProjectEditorA'",
+                  "const __t = pm.environment.get('jwtProjectEditorA') || pm.variables.get('jwtProjectEditorA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const mods = j.modules || [];",
+                  "pm.test('catalog is non-empty (a read that returned nothing is not a pass)', () =>   pm.expect(mods.length, JSON.stringify(j)).to.be.above(0));",
+                  "const lb = mods.find(m => m.module === 'loadbalancer');",
+                  "pm.test('grantable module loadbalancer is present', () =>   pm.expect(lb, 'modules: ' + mods.map(m => m.module).join(',')).to.be.an('object'));",
+                  "const names = ((lb || {}).resources || []).map(r => r.resource);",
+                  "['networkLoadBalancers', 'listeners', 'targetGroups'].forEach(r => {",
+                  "  pm.test('grantable resource loadbalancer.' + r, () =>     pm.expect(names, 'resources: ' + names.join(',')).to.include(r));",
+                  "  pm.test('loadbalancer.' + r + ' is verb-bearing (per-object rules compile)', () =>     pm.expect(((lb || {}).resources || []).find(x => x.resource === r).hasVerbRelations)      .to.eql(true));",
+                  "});",
+                  "pm.test('closed verb set is the one nlb permission strings are built from', () =>   pm.expect(j.closedVerbs || []).to.have.members(['get','list','create','update','delete']));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AZD-CUSTOM-ROLE-TARGET-MANAGER — Custom role targetManager can AddTargets on a real TG but not Update its metadata",
+      "description": "class:AZD | priority:P1",
+      "item": [
+        {
+          "name": "tm-setup-tg",
           "request": {
             "method": "POST",
             "header": [
@@ -3096,19 +2962,19 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers",
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "nlb",
                 "v1",
-                "networkLoadBalancers"
+                "targetGroups"
               ]
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-cat-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"azd-tm-tg-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcp\": {\"port\": 8080}}}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -3140,38 +3006,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// The 30 loadbalancer.* permissions (design §6.2). If a denial",
-                  "// arrives, the message MUST reference one of these strings.",
-                  "const expected = [",
-                  "  'loadbalancer.networkLoadBalancers.get',",
-                  "  'loadbalancer.networkLoadBalancers.list',",
-                  "  'loadbalancer.networkLoadBalancers.create',",
-                  "  'loadbalancer.networkLoadBalancers.update',",
-                  "  'loadbalancer.networkLoadBalancers.delete',",
-                  "  'loadbalancer.networkLoadBalancers.move',",
-                  "  'loadbalancer.networkLoadBalancers.getTargetStates',",
-                  "  'loadbalancer.networkLoadBalancers.listOperations',",
-                  "  'loadbalancer.listeners.get',",
-                  "  'loadbalancer.listeners.list',",
-                  "  'loadbalancer.listeners.create',",
-                  "  'loadbalancer.listeners.update',",
-                  "  'loadbalancer.listeners.delete',",
-                  "  'loadbalancer.listeners.listOperations',",
-                  "  'loadbalancer.targetGroups.get',",
-                  "  'loadbalancer.targetGroups.list',",
-                  "  'loadbalancer.targetGroups.create',",
-                  "  'loadbalancer.targetGroups.update',",
-                  "  'loadbalancer.targetGroups.delete',",
-                  "  'loadbalancer.targetGroups.move',",
-                  "  'loadbalancer.targetGroups.addTargets',",
-                  "  'loadbalancer.targetGroups.removeTargets',",
-                  "  'loadbalancer.targetGroups.listOperations',",
-                  "  'loadbalancer.operations.get',",
-                  "  'loadbalancer.operations.list',",
-                  "  'loadbalancer.operations.cancel',",
-                  "];",
-                  "pm.test('26 permissions enumerated', () => pm.expect(expected.length).to.eql(26));",
-                  "pm.test('request accepted (catalog covered by editor binding)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -3179,8 +3014,331 @@
                   "} catch (e) {}",
                   "try {",
                   "  const j = pm.response.json();",
-                  "  const v = (j.metadata && j.metadata.networkLoadBalancerId);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('nlbId', String(v));",
+                  "  const v = (j.metadata && j.metadata.targetGroupId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('tmTgId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-9",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tmTgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "add-as-tm-rya313",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{tmTgId}}:addTargets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups",
+                "{{tmTgId}}:addTargets"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"targets\": [{\"externalIp\": {\"address\": \"203.0.113.32\"}, \"weight\": 100}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// AZD per-step: bearer from env 'jwtCustomRoleTargetManager'",
+                  "const __t = pm.environment.get('jwtCustomRoleTargetManager') || pm.variables.get('jwtCustomRoleTargetManager') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtCustomRoleTargetManager is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtCustomRoleTargetManager is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('targetManager may AddTargets (the verb its role grants)', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-10",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "pm.test('operation succeeded', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "upd-as-tm-denied",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{tmTgId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups",
+                "{{tmTgId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"description\", \"description\": \"x\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// AZD per-step: bearer from env 'jwtCustomRoleTargetManager'",
+                  "const __t = pm.environment.get('jwtCustomRoleTargetManager') || pm.variables.get('jwtCustomRoleTargetManager') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtCustomRoleTargetManager is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtCustomRoleTargetManager is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('targetManager may NOT Update metadata (verb not in the role)', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([403, 404]));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "tm-rm-target",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{tmTgId}}:removeTargets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups",
+                "{{tmTgId}}:removeTargets"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"targets\": [{\"externalIp\": {\"address\": \"203.0.113.32\"}}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// AZD per-step: bearer from env 'jwtProjectEditorA'",
+                  "const __t = pm.environment.get('jwtProjectEditorA') || pm.variables.get('jwtProjectEditorA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.request.headers.remove('Authorization');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
                   "} catch (e) {}"
                 ]
               }
@@ -3214,11 +3372,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -3238,7 +3400,7 @@
           ]
         },
         {
-          "name": "cleanup-best-effort",
+          "name": "tm-cleanup-tg",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3248,15 +3410,15 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}",
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{tmTgId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "nlb",
                 "v1",
-                "networkLoadBalancers",
-                "{{nlbId}}"
+                "targetGroups",
+                "{{tmTgId}}"
               ]
             }
           },
@@ -3321,11 +3483,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -3347,137 +3513,7 @@
       ]
     },
     {
-      "name": "AZD-CUSTOM-ROLE-TARGET-MANAGER — Custom role targetManager can AddTargets but not Update TG metadata",
-      "description": "class:AZD | priority:P1",
-      "item": [
-        {
-          "name": "add-as-tm",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{garbageTgrId}}:addTargets",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "targetGroups",
-                "{{garbageTgrId}}:addTargets"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"targets\": [{\"externalIp\": {\"address\": \"203.0.113.32\"}, \"weight\": 100}]}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// AZD per-step: bearer from env 'jwtCustomRoleTargetManager'",
-                  "const __t = pm.environment.get('jwtCustomRoleTargetManager') || pm.variables.get('jwtCustomRoleTargetManager') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.test('harness config: jwtCustomRoleTargetManager is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtCustomRoleTargetManager is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
-                  "  });",
-                  "  pm.request.headers.remove('Authorization');",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('OK or 404 (TG missing) or 403 if role-resolve still in cascade', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 403, 404]));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "upd-as-tm-denied",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{garbageTgrId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "targetGroups",
-                "{{garbageTgrId}}"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"updateMask\": \"description\", \"description\": \"x\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// AZD per-step: bearer from env 'jwtCustomRoleTargetManager'",
-                  "const __t = pm.environment.get('jwtCustomRoleTargetManager') || pm.variables.get('jwtCustomRoleTargetManager') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.test('harness config: jwtCustomRoleTargetManager is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtCustomRoleTargetManager is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
-                  "  });",
-                  "  pm.request.headers.remove('Authorization');",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('Update denied for targetManager', () =>   pm.expect(pm.response.code).to.be.oneOf([403, 404]));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "AZD-CUSTOM-ROLE-UNKNOWN-PERMISSION — iam.Role.Create with unknown permission → InvalidArgument (covered by drift test)",
+      "name": "AZD-CUSTOM-ROLE-UNKNOWN-PERMISSION — iam.Role.Create naming a permission outside the catalog → refused, never created",
       "description": "class:AZD | priority:P1",
       "item": [
         {
@@ -3535,8 +3571,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected or route-missing', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404]));",
-                  "if (pm.response.code === 400) pm.test('grpc 3', () =>   pm.expect(pm.response.json().code).to.eql(3));"
+                  "pm.test('role naming an unknown permission is refused (never created)', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 403, 404]));",
+                  "if (pm.response.code === 400) pm.test('grpc 3 (INVALID_ARGUMENT)', () =>   pm.expect(pm.response.json().code).to.eql(3));"
                 ]
               }
             }
@@ -3716,11 +3752,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -3740,7 +3780,7 @@
           ]
         },
         {
-          "name": "setup-cr-cr317",
+          "name": "setup-cr-cr314",
           "request": {
             "method": "POST",
             "header": [
@@ -3855,11 +3895,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -3879,7 +3923,7 @@
           ]
         },
         {
-          "name": "del-rya318",
+          "name": "del-rya315",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3978,11 +4022,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -4286,11 +4334,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -4310,7 +4362,7 @@
           ]
         },
         {
-          "name": "del-by-creator-rya319",
+          "name": "del-by-creator-rya316",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4409,11 +4461,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -4493,7 +4549,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('OK or 403 (env may not yet seed SA binding)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                  "pm.test('service account with an editor binding on the project may Create', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -4536,11 +4592,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -4553,7 +4613,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -4643,11 +4707,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -4673,7 +4741,7 @@
       "description": "class:AZD | priority:P1",
       "item": [
         {
-          "name": "cr-as-group-member",
+          "name": "cr-as-group-member-rya317",
           "request": {
             "method": "POST",
             "header": [
@@ -4727,7 +4795,22 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('OK or 403 (env may not yet seed group binding)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('member of an editor group inherits Create on the project', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -4770,11 +4853,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -4787,7 +4874,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('nlbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -4877,11 +4968,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -5333,10 +5428,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected or empty', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
+                  "pm.test('stranger is refused, or listed and shown nothing', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 403]));",
                   "if (pm.response.code === 200) {",
                   "  const ops = (pm.response.json().operations || pm.response.json().items || []);",
                   "  pm.test('scope-filtered (empty for stranger)', () =>     pm.expect(ops.length).to.eql(0));",
+                  "} else {",
+                  "  pm.test('403 is a permission refusal (grpc 7), not an incidental error', () =>     pm.expect(pm.response.json().code).to.eql(7));",
                   "}"
                 ]
               }

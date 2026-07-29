@@ -194,11 +194,25 @@ def poll_operation_until_done() -> Step:
         method="GET",
         path="/operations/{{opId}}",
         test_script=[
-            "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+            # Nothing to poll: the preceding step was refused synchronously and minted no
+            # Operation. This is the ONLY case in which the step asserts nothing.
+            "if (!pm.environment.get('opId')) {",
             "  pm.environment.unset('_pollCount');",
             "  return;",
             "}",
-            "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+            # A REFUSED OPERATION READ IS RED. The early return used to sit ABOVE this line,
+            # so the assertion could not fail by construction — only the responses it already
+            # accepts ever reached it. Any non-200 on GET /operations/{id} (403 on somebody
+            # else's operation, 404, 5xx) counted as a passed step while the outcome of the
+            # mutation the step exists for stayed UNKNOWN. Unknown is not the same as fine.
+            "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+            # The assertion above has already said no; leave before json() throws on an error
+            # body — a script exception would hide the very failure it reports (and lands in
+            # the fourth outcome category of assert-suites-green.sh, not in `failed`).
+            "if (pm.response.code !== 200) {",
+            "  pm.environment.unset('_pollCount');",
+            "  return;",
+            "}",
             "const j = pm.response.json();",
             "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
             # Poll budget raised 6→30 to match the Koren-1 baseline of the other

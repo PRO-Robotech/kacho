@@ -480,12 +480,18 @@ CASES.append(Case(
     classes=["VAL", "BVA"], priority="P2",
     steps=[
         *_setup_lb("port-neg"),
+        # SYNC-VALIDATE lane, identical to the two siblings above: -1 survives the
+        # int32-overflow narrowing (domain.LbPortFromProto) and is then refused by
+        # LbPort.Validate inside listener.Validate() — create.go:134/160, before the
+        # Operation is minted. So the outcome is the same 400 / grpc 3 that
+        # LST-CR-VAL-PORT-ZERO and -PORT-OVER already assert on this very code path;
+        # there was never a reason for this one to be the tolerant member of the trio.
+        # The `200` it used to accept was the acceptance the title calls invalid, and
+        # the `403` is what the retry wrapper absorbs — asserting it defeats the wrap.
         retry_until_authorized(Step(name="cr-pn", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "pn-{{runId}}",
                    "protocol": "TCP", "port": -1, "targetPort": 8080},
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 400, 200]));",
-             ])),
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])),
         *_cleanup_lb(),
     ],
 ))
@@ -515,29 +521,32 @@ CASES.append(Case(
     ],
 ))
 
-CASES.append(Case(
-    id="LST-CR-VAL-INTERNAL-NO-SUBNET",
-    title="INTERNAL Listener without subnet_id → InvalidArgument (Verifies REQ-LST-VAL-INTERNAL-SUBNET)",
-    classes=["VAL"], priority="P0",
-    steps=[
-        *_setup_lb("int-no-subnet", lb_type="INTERNAL"),
-        retry_until_authorized(Step(name="cr-int-no-subnet", method="POST", path=_LST_BASE,
-             body={"loadBalancerId": "{{nlbId}}", "name": "noint-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080},
-             test_script=[
-                 "pm.test('rejected (sync or async)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
-                 *save_from_response("j.id", "opId"),
-             ])),
-        poll_operation_until_done(),
-        Step(name="check", method="GET", path="/operations/{{opId}}",
-             test_script=[
-                 "const j = pm.response.json();",
-                 "if (j.error) pm.test('error code 3', () => pm.expect(j.error.code).to.eql(3));",
-             ]),
-        *_cleanup_lb(),
-    ],
-))
+# RETIRED: LST-CR-VAL-INTERNAL-NO-SUBNET — the subject left the product, it did not break.
+#
+# Sub-phase 8.1 moved the VIP from the Listener to the LoadBalancer, and `subnet_id` left
+# `CreateListenerRequest` with it (`reserved 8, 9` / `reserved "ip_version",
+# "address_spec"`; migration 0028 dropped the columns behind them, and `domain.Listener`
+# carries none). What the case sent was therefore an ORDINARY, VALID listener create,
+# which the service accepts and is specified to accept: `subnet_id` is not "missing", it
+# is not a field.
+#
+# It could not be repaired by tightening the assertion. `oneOf([403, 200, 400])` hid the
+# problem — the create returned 200 and the case passed — but demanding a refusal would
+# have made it permanently RED against correct behaviour, i.e. a "known failing" entry
+# waiting to be born, and those outlive their fixes and start lying about the product
+# (testing.md §«E2E НИКОГДА не пропускаются»). A case with no subject is retired.
+#
+# WHERE THE RULE LIVES NOW — AND IT HAD TO BE WRITTEN, NOT POINTED AT. "You must say
+# where the VIP comes from" is enforced on the PARENT: LoadBalancer.Create refuses a body
+# declaring no source for either family (vip_source.go, "load balancer must declare a vip
+# source for at least one ip family"; sync, before any Operation exists; unit 8.1-19).
+# The first version of this note cited `NLB-CR-VAL-SOURCE-REQUIRED` as the successor —
+# and that case DID NOT EXIST anywhere in the tree. A retirement justified by a successor
+# that does not exist is a deletion with a footnote, so the successor was written:
+# NLB-CR-VAL-SOURCE-REQUIRED now lives in cases/load-balancer.py and is red-proven.
+# Alongside it, NLB-CR-VAL-PLACEMENT-MISMATCH covers a source incoherent with the
+# placement. The positive listener-on-INTERNAL-parent path stays covered by
+# LST-CR-CRUD-INTERNAL above.
 
 CASES.append(Case(
     id="LST-CR-VAL-NAME-REGEX",
@@ -623,15 +632,23 @@ CASES.append(Case(
         poll_operation_until_done(),
         # Second create is the duplicate under test — the parent-tuple is already warm from
         # cr-1, but wrap for symmetry so a late tuple-eviction can't red the ALREADY_EXISTS.
+        #
+        # WORKER lane. Nothing on the sync path looks for a duplicate: Create validates the
+        # request, reads the parent LB and mints the Operation, and it is the worker's
+        # INSERT that meets the UNIQUE on (load_balancer_id, port, protocol) — create.go
+        # doCreate -> Listeners().Insert -> 23505 -> ALREADY_EXISTS. So the refusal REQ-LST-
+        # UNIQ-PORT-PROTO names arrives on the Operation, and `200` is only the envelope
+        # carrying it. Previously `200` closed the case by itself and the bare poll that
+        # followed asserted `done` — which the DUPLICATE HAVING BEEN CREATED satisfies
+        # equally well. `sync_codes=(409,)` keeps the lawful shape should the constraint
+        # ever be prechecked synchronously; it is a refusal either way, and 200 is held to
+        # account by the poll below.
         retry_until_authorized(Step(name="cr-2-dup", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "pp2-{{runId}}",
                    "protocol": "TCP", "port": 86, "targetPort": 8086},
-             test_script=[
-                 "pm.test('rejected (sync 409 or async)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 409]));",
-                 *save_from_response("j.id", "opId"),
-             ])),
-        poll_operation_until_done(),
+             test_script=assert_refused_sync_or_async(
+                 "duplicate (load_balancer_id, port, protocol)", sync_codes=(409,)))),
+        poll_operation_until_done(must_fail=True),
         *_cleanup_lst(),
         *_cleanup_lb(),
     ],
@@ -642,19 +659,41 @@ CASES.append(Case(
     title="VIP allocated but INSERT fails → FreeIP compensation (Verifies REQ-LST-COMP-FREEIP)",
     classes=["CONF", "NEG"], priority="P1",
     steps=[
-        # Cannot trigger DB-level CHECK failure from client. Closest observable
-        # surrogate: trigger a deterministic conflict by attempting Create with
-        # a value that worker validation rejects after VIP allocation.
+        # SYNC-VALIDATE lane. An unresolvable `defaultTargetGroupId` is refused by
+        # `prevalidateTargetGroup` (create.go:123 → tg_ref.go `lookupWiredTargetGroup`)
+        # BEFORE the Operation is minted: FAILED_PRECONDITION, i.e. 400 / grpc code 9,
+        # with the actionable text pinned by target_group_id_test.go:53. Deterministic —
+        # `garbageTgrId` resolves for nobody.
+        #
+        # The old assertion was named 'rejected or accepted' and listed five codes; it is
+        # hard to write a statement that says less. It admitted the acceptance, every
+        # refusal, and the authz denial the wrapper exists to absorb, so no product
+        # behaviour could have failed it.
+        #
+        # SUBJECT NOTICE (for the owner, not a silent retirement). The case TITLE claims
+        # FreeIP compensation after a post-VIP-allocation INSERT failure — REQ-LST-COMP-
+        # FREEIP. A Listener no longer allocates a VIP at all: it is a (port, protocol) on
+        # the parent LB's anycast VIP, Create is "чистый INSERT строки-листенера ... без
+        # acquireVIP-саги и без обращения к vpc" (create.go:25-30), and migration 0028
+        # dropped the address columns as dead by construction. So there is no compensation
+        # branch left to exercise, exactly as with the already-removed
+        # LST-DEL-CRUD-AUTO-VIP-FREE / -BYO-CLEAR-REF (see the note above LST-DEL-CRUD-OK).
+        # What the case DOES exercise — an unresolvable TG reference is refused, and
+        # refused synchronously — is real and worth asserting, so it is asserted here
+        # rather than the case being dropped on my own authority. REQ-LST-COMP-FREEIP
+        # itself needs an owner decision: retire it, or re-home it on the LoadBalancer
+        # where the VIP saga and its compensation now live.
         *_setup_lb("vip-comp"),
         retry_until_authorized(Step(name="cr-likely-fail", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "vipc-{{runId}}",
                    "protocol": "TCP", "port": 87, "targetPort": 8087, "defaultTargetGroupId": "{{garbageTgrId}}"},
              test_script=[
-                 "pm.test('rejected or accepted', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 404, 409]));",
-                 *save_from_response("j.id", "opId"),
+                 *assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
+                 "pm.test('refusal guides the caller to create the TargetGroup first', () => "
+                 "  pm.expect(pm.response.json().message || '', pm.response.text())"
+                 "    .to.include('create the TargetGroup first'));",
+                 "pm.environment.unset('opId');",
              ])),
-        poll_operation_until_done(),
         *_cleanup_lb(),
     ],
 ))
@@ -726,14 +765,35 @@ CASES.append(Case(
         # never persisted → the update resolves it to NotFound). Retrying that 404 would
         # only burn the budget; tolerating it keeps the region-mismatch intent (409 when
         # the alt region IS seeded) without reddening the fixture-absent lane.
+        # SYNC-VALIDATE lane, both branches. Naming a TG in `update_mask` makes Update
+        # resolve it BEFORE minting the Operation (update.go:204 → lookupWiredTargetGroup),
+        # so neither outcome is ever an Operation:
+        #   * alt region seeded  → the TG exists in this project with a different region →
+        #     FAILED_PRECONDITION "default target group region … does not match listener
+        #     region …" → 400 / grpc 9 (update.go:218, pinned by update_test.go:159-163);
+        #   * alt region unseeded → its Create Operation errored "Region not found", so
+        #     tgAltId is a pre-allocated phantom that resolves to nothing →
+        #     `targetGroupMissErr` → NOT_FOUND "TargetGroup <id> not found" → 404 / grpc 5.
+        # Both are refusals and both are now stated. `409` was never producible here —
+        # ALREADY_EXISTS is not on this path, and FAILED_PRECONDITION transcodes to 400,
+        # as the green TGR-DEL-* / cross-resource cases assert. `200` was the acceptance
+        # the case exists to exclude, and the trailing poll had no subject on either
+        # branch (nothing is minted), so it was asserting nothing.
         retry_until_authorized(Step(name="upd-default-tg-mismatch", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
              body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{tgAltId}}"},
              test_script=[
-                 "pm.test('rejected (region-mismatch 409 when alt region seeded, or absent-TG 404 when unseeded)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 409]));",
-                 *save_from_response("j.id", "opId"),
+                 "pm.test('repoint refused (400 region-mismatch, or 404 when the alt-region TG never persisted)', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 404]));",
+                 "pm.test('grpc code 9 (FAILED_PRECONDITION) or 5 (NOT_FOUND)', () => {",
+                 "  const j = pm.response.json();",
+                 "  pm.expect(j.code, JSON.stringify(j)).to.be.oneOf([9, 5]);",
+                 "});",
+                 "pm.test('the refusal names its reason (region mismatch, or the TG not being there)', () => {",
+                 "  const m = pm.response.json().message || '';",
+                 "  pm.expect(m, pm.response.text()).to.match(/does not match listener region|not found/);",
+                 "});",
+                 "pm.environment.unset('opId');",
              ]), retry_on=(403,)),
-        poll_operation_until_done(),
         Step(name="cleanup-tg-alt", method="DELETE", path="/nlb/v1/targetGroups/{{tgAltId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -768,16 +828,28 @@ CASES.append(Case(
 ))
 
 CASES.append(Case(
-    # index: *-LST-NEG-LB-UNKNOWN (cross-domain List-by-parent-not-found pattern)
+    # index: *-LST-NEG-LB-UNKNOWN (list narrowed by a parent id that does not resolve)
     id="LST-LST-NEG-LB-UNKNOWN",
-    title="List by unknown load_balancer_id → 404 NotFound",
+    title="List narrowed by an unknown load_balancer_id → 200 with NO listeners "
+          "(the filter matches nothing; it must not fall back to the whole project)",
     classes=["NEG", "LSG"], priority="P1",
     steps=[
+        # `load_balancer_id` is an OPTIONAL FILTER on a project-scoped list, not a parent
+        # path segment: List requires `project_id` and passes `load_balancer_id` straight
+        # into the repo filter without an existence check (list.go:47-61). There is no
+        # parent to be "not found", so the 404 the old title promised was never
+        # producible — and the 200 it accepted alongside was accepted UNEXAMINED, which
+        # is the half that could actually go wrong: a filter that is dropped rather than
+        # applied answers 200 with every listener in the project. That is the regression
+        # this case is positioned to catch, so that is what it now asserts.
         Step(name="lst-unknown-lb", method="GET",
              path=f"{_LST_BASE}?projectId={{{{_suiteProjectId}}}}&loadBalancerId={{{{garbageNlbId}}}}",
              test_script=[
-                 "pm.test('rejected (404) or empty (200)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
+                 *assert_status(200),
+                 "pm.test('no listeners are returned for a load balancer that does not exist', () => {",
+                 "  const j = pm.response.json();",
+                 "  pm.expect(j.listeners || [], pm.response.text()).to.be.an('array').that.is.empty;",
+                 "});",
              ]),
     ],
 ))
@@ -841,12 +913,16 @@ CASES.append(Case(
         # NAMED negative (task round-4b): the fresh-LB editor-tuple lag was pre-empting the
         # target_port=0 InvalidArgument with a 403. Wrap retries only the transient 403/404 so
         # the real InvalidArgument assertion runs — the negative is preserved, not weakened.
+        # SYNC-VALIDATE lane: target_port goes through the SAME LbPort.Validate as port
+        # (listener.Validate() combines l.Port and l.TargetPort — domain/listener.go:37),
+        # so 0 is refused before the Operation exists → 400 / grpc 3, as the green
+        # LST-CR-VAL-PORT-ZERO asserts for the sibling field. The wrap absorbs only the
+        # transient fresh-LB 403; naming 403 (or 200) in the assertion would have made
+        # both the wrap and the negative pointless — which is what it did.
         retry_until_authorized(Step(name="cr-tp-0", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "tp0-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 0},
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
-             ])),
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])),
         *_cleanup_lb(),
     ],
 ))
@@ -857,28 +933,61 @@ CASES.append(Case(
     classes=["VAL", "BVA"], priority="P1",
     steps=[
         *_setup_lb("tp-over"),
+        # SYNC-VALIDATE lane — same statement as LST-CR-VAL-TARGET-PORT-ZERO, upper end:
+        # 65536 clears the int32 narrowing and is refused by LbPort.Validate (range
+        # [1, 65535]) inside listener.Validate(), before the Operation is minted.
         retry_until_authorized(Step(name="cr-tp-o", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "tpo-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 65536},
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
-             ])),
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])),
         *_cleanup_lb(),
     ],
 ))
 
+# LST-CR-VAL-IPV-UNKNOWN — NOT retired: RE-POINTED at the control it was always about.
+#
+# `ip_version` is gone from the contract (`reserved 8`), so the field the case named no
+# longer exists and its body was a plain valid create asserted as `oneOf([403, 200, 400])`
+# — every possible answer. The first pass at this file retired it alongside
+# LST-CR-VAL-INTERNAL-NO-SUBNET, on the stated grounds that "an unknown enum name is
+# discarded by the edge anyway". That was true until 2026-07-29 and is now FALSE, which
+# is exactly why retiring it was the wrong call: the edge gained the opposite behaviour
+# days earlier (gateway/internal/restmux/strict_enum.go). protojson used to discard an
+# unknown enum VALUE NAME as silently as an unknown key, leaving the service a zero value
+# it could not tell from "unset" — so the caller was answered success for a setting the
+# server never made. Unknown KEYS are still discarded on purpose (that boundary carries
+# the update-mask clause), so re-pointing at a dead field would still test nothing.
+#
+# But the question — "is a value outside the enum dictionary refused?" — is about the
+# request vocabulary, not about VIP sources, and `protocol` is a LIVE required enum on
+# CreateListenerRequest. So the case asks it there. Retiring the only case-id whose
+# subject is that control, while the control had no black-box probe anywhere in the tree,
+# would have removed end-to-end coverage of something landed days before.
+
 CASES.append(Case(
     id="LST-CR-VAL-IPV-UNKNOWN",
-    title="Create with ip_version=IPV9 (unknown enum) → InvalidArgument",
+    title="Create with an out-of-dictionary enum value (protocol) → InvalidArgument at the edge",
     classes=["VAL"], priority="P1",
     steps=[
-        *_setup_lb("ipv-unk"),
-        retry_until_authorized(Step(name="cr-ipv-unk", method="POST", path=_LST_BASE,
-             body={"loadBalancerId": "{{nlbId}}", "name": "ipv-{{runId}}",
-                   "protocol": "TCP", "port": 80, "targetPort": 8080},
+        *_setup_lb("enum-unk"),
+        # The value is a string absent from `Listener.Protocol`
+        # (PROTOCOL_UNSPECIFIED | TCP | UDP). Numeric forms stay legal — proto3 enums are
+        # open and narrowing them would change the contract rather than fix a defect — so
+        # only the string dictionary is asserted.
+        #
+        # No read-your-writes wrapper: this is a body-parse refusal at the edge, so the
+        # request never reaches the per-object authz gate and there is no fresh-tuple
+        # window to absorb.
+        Step(name="cr-enum-unk", method="POST", path=_LST_BASE,
+             body={"loadBalancerId": "{{nlbId}}", "name": "enum-{{runId}}",
+                   "protocol": "DOES_NOT_EXIST", "port": 80, "targetPort": 8080},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
-             ])),
+                 "pm.environment.unset('opId');",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                 "pm.test('names the field whose enum value was refused', () => "
+                 "  pm.expect((pm.response.json().message || '')).to.include("
+                 "    'invalid value for enum field protocol'));",
+             ]),
         *_cleanup_lb(),
     ],
 ))
@@ -888,17 +997,28 @@ CASES.append(Case(
     title="Create with ip_version=IPV6 → OK",
     classes=["CRUD"], priority="P1",
     steps=[
+        # The MIRROR of the defect fixed across this file: a case whose title promises
+        # SUCCESS accepting refusals. 'OK or InsufficientPool' let 400, 409 and 403 all
+        # pass, so the one thing it exists to prove — that this create is accepted — was
+        # the only outcome not required. The listener draws from no pool at all (the VIP
+        # is the parent LB's), so 'InsufficientPool' has no mechanism behind it; and the
+        # request is shape-identical to the green LST-CR-CRUD-INTERNAL, which asserts a
+        # strict 200. `must_succeed=True` closes the same hole one step later: a bare poll
+        # asserts only `done`, which an Operation that FAILED satisfies just as well.
+        #
+        # SUBJECT NOTICE (owner decision, not silently retired — cf. LST-CR-VAL-IPV-UNKNOWN,
+        # retired above): `ip_version` is `reserved 8` on CreateListenerRequest, so this
+        # body no longer sends it and the case now says only "a valid listener create
+        # succeeds" — already covered by LST-CR-CRUD-INTERNAL. It is kept, asserting
+        # honestly, until the owner decides whether an IPv6 listener case belongs on the
+        # LoadBalancer (v6Source) instead.
         *_setup_lb("ipv6"),
         retry_until_authorized(Step(name="cr-ipv6", method="POST", path=_LST_BASE,
              body={"loadBalancerId": "{{nlbId}}", "name": "v6-{{runId}}",
                    "protocol": "TCP", "port": 80, "targetPort": 8080},
-             test_script=[
-                 "pm.test('OK or InsufficientPool', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 409]));",
-                 *save_from_response("j.id", "opId"),
-                 *save_from_response("j.metadata && j.metadata.listenerId", "lstId"),
-             ])),
-        poll_operation_until_done(),
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                          *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
+        poll_operation_until_done(must_succeed=True),
         Step(name="cleanup-best-effort", method="DELETE", path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -940,14 +1060,29 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")])),
         poll_operation_until_done(),
+        # Same mirror-defect as LST-CR-CRUD-IPV6: 'accepted or no-op' accepted the 400 that
+        # would mean the clear was REFUSED. Clearing is unambiguous on the sync path — an
+        # applied TG field with an empty value drops the reference and skips the resolve
+        # entirely (update.go:177-192, `if tg == "" → next.DefaultTargetGroupID = {}`), so
+        # there is no branch that lawfully refuses this and nothing for the tolerance to
+        # cover. 403 is the read-your-writes window the wrapper already absorbs.
         retry_until_authorized(Step(name="upd-clear", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
              body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": ""},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(must_succeed=True),
+        # …and the case is named for the CLEAR, which it never checked: it asserted the
+        # response code of the mutation and stopped, so a service that accepted the PATCH
+        # and kept the reference passed. Read it back (same statement as the green
+        # `get-after-refused-repoint` in LST-UPD-SEC-TG-CROSS-PROJECT).
+        retry_until_authorized(Step(name="get-after-clear", method="GET",
+             path=f"{_LST_BASE}/{{{{lstId}}}}",
              test_script=[
-                 "pm.test('accepted or no-op', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
-                 *save_from_response("j.id", "opId"),
+                 *assert_status(200),
+                 "pm.test('the target group reference is actually cleared', () => {",
+                 "  const j = pm.response.json();",
+                 "  pm.expect(j.targetGroupId || j.defaultTargetGroupId || '', pm.response.text()).to.eql('');",
+                 "});",
              ])),
-        poll_operation_until_done(),
         *_cleanup_lst(),
         *_cleanup_lb(),
     ],
@@ -968,13 +1103,30 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="LST-LST-FILTER-NAME",
-    title="List Listeners with filter name=\"x\" → 200",
+    title="List Listeners with filter name=\"x\" → 200, and every row returned is named \"x\"",
     classes=["LSG"], priority="P2",
     steps=[
+        # The request had to be corrected before the assertion could mean anything. It
+        # carried no `projectId`, and List requires one (list.go:47-50), so it could only
+        # ever answer 400 "project_id required" — while its title promised 200 and its
+        # `oneOf([200, 400, 404])` accepted that 400 as a pass. The name filter, the whole
+        # subject of the case, was never reached. Scoping it to the suite project (as the
+        # green LST-LST-LSG-PROJECT-SCOPED-OK does) is what puts the filter on the path.
+        #
+        # The garbage `loadBalancerId` is dropped for the same reason: it emptied the page
+        # by itself, so the filter could not have been observed doing anything. Now the
+        # suite's own listeners are in scope, and the assertion is falsifiable — a filter
+        # that is parsed and ignored returns them, and every one of them fails the name
+        # check (shared.ParseNameFilter → repo `name =` predicate, list.go:52-60).
         Step(name="lst-filter", method="GET",
-             path=f"{_LST_BASE}?loadBalancerId={{{{garbageNlbId}}}}&filter=name%3D%22x%22",
+             path=f"{_LST_BASE}?projectId={{{{_suiteProjectId}}}}&filter=name%3D%22x%22",
              test_script=[
-                 "pm.test('handled', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
+                 *assert_status(200),
+                 "pm.test('the name filter is applied, not merely accepted', () => {",
+                 "  const rows = pm.response.json().listeners || [];",
+                 "  pm.expect(rows, pm.response.text()).to.be.an('array');",
+                 "  rows.forEach(r => pm.expect(r.name, pm.response.text()).to.eql('x'));",
+                 "});",
              ]),
     ],
 ))
@@ -1155,19 +1307,25 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="LST-LST-BVA-PAGESIZE-NEGATIVE",
-    title="List listeners with pageSize=-1 → rejected (400) or coerced to default (200). "
-          "Technique: BVA (min-1 / below-range) — mirrors NLB-LST-BVA-PAGESIZE-NEGATIVE",
+    title="List listeners with pageSize=-1 → 400 InvalidArgument (rejected, never clamped). "
+          "Technique: BVA (min-1 / below-range)",
     classes=["BVA", "VAL", "LSG"], priority="P2",
     steps=[
-        # grpc-gateway may reject a negative int64 at transcode (400) or the backend
-        # may coerce <0 like 0→default (200); both are lawful, neither is a 200-with-
-        # bad-page. Mirror of the tolerant NLB negative-pageSize case.
+        # SYNC-VALIDATE lane, and it is not a matter of opinion: `shared.ValidatePagination`
+        # refuses `pageSize < 0` in its FIRST statement (pagination.go:31) — the same
+        # statement, the same `if`, that refuses `> 1000` for the green
+        # LST-LST-BVA-PAGESIZE-1001 above. list.go:64 runs it before the repo is touched.
+        # There is no coercion branch: only `0` becomes the server default, and it does so
+        # further down, in corevalidate.PageSize, which -1 never reaches.
+        #
+        # So the "or coerced to default (200)" half of the old title described behaviour
+        # the product does not have, and the assertion that encoded it accepted the very
+        # outcome api-conventions forbids ("page_size вне [0..1000] → InvalidArgument;
+        # отвергается, не clamp'ится"). CASES-INDEX has said `→ InvalidArgument` for this
+        # id all along — the case simply did not assert it.
         Step(name="lst-neg", method="GET",
              path=f"{_LST_BASE}?projectId={{{{_suiteProjectId}}}}&pageSize=-1",
-             test_script=[
-                 "pm.test('rejected or coerced (400/200), never 5xx', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-             ]),
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]),
     ],
 ))
 

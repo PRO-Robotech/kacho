@@ -88,20 +88,31 @@ def _cidr_alloc_pre():
         "var __oct2 = 16 + (__h % 220);",
         "var __oct3 = ((Math.floor(__h / 256) % 256) + __seq) % 256;",
         "pm.environment.set('_subnetCidr', '10.' + __oct2 + '.' + __oct3 + '.0/24');",
+        # v6 anchor for a dualstack subnet, from the SAME run-scoped entropy: a ULA /64
+        # under fd00::/8 keyed on the two octets, so parallel runs land in distinct blocks
+        # exactly as the v4 side does.
+        "pm.environment.set('_subnetCidr6', 'fd' + (__oct2 % 256).toString(16) + ':'"
+        " + (__oct3 % 256).toString(16) + '::/64');",
     ]
 
 
-def _provision_subnet(placement, suffix, save_var="vpcSubnetId"):
+def _provision_subnet(placement, suffix, save_var="vpcSubnetId", dualstack=False):
     """Provision a ZONAL or REGIONAL vpc Subnet in the seeded network; save its id.
 
     placement_type is server-derived (F6): the subnet body carries only the placement
     anchor (zoneId → ZONAL, regionId → REGIONAL), never placementType.
+
+    `dualstack` additionally anchors an IPv6 range on the subnet (`ipv6CidrPrimary`,
+    optional per CreateSubnetRequest), which is what makes an INTERNAL v6 Address
+    allocatable from it — the fixture a dualstack INTERNAL load balancer needs.
     """
     loc = {}
     if placement == "ZONAL":
         loc["zoneId"] = "{{existingZoneId}}"
     else:
         loc["regionId"] = "{{existingRegionId}}"
+    if dualstack:
+        loc["ipv6CidrPrimary"] = "{{_subnetCidr6}}"
     return [
         Step(name=f"provision-{placement.lower()}-subnet-{suffix}", method="POST", path=_VPC_SUBNETS,
              pre_script=_cidr_alloc_pre(),
@@ -560,9 +571,15 @@ CASES.append(Case(
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}:move",
              body={"destinationProjectId": "{{_suiteProjectCrossId}}"},
              test_script=[
-                 "pm.test('rejected with FailedPrecondition', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400, 409]));",
-                 *save_from_response("j.id", "opId"),
+                 # Move refuses SYNCHRONOUSLY while a listener is wired to a target group
+                 # (loadbalancer/move.go: HasWiredTargetGroup -> FAILED_PRECONDITION), so no
+                 # Operation is minted. Accepting 200 let the move GO THROUGH and still pass
+                 # the case whose only subject is that it must not.
+                 "pm.environment.unset('opId');",
+                 *assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
+                 "pm.test('says a wired listener blocks the move', () => "
+                 "  pm.expect((pm.response.json().message || '')).to.include("
+                 "    'has a listener wired to a target group; repoint before Move'));",
              ]),
         poll_operation_until_done(),
         Step(name="check-fp", method="GET", path="/operations/{{opId}}",
@@ -618,12 +635,15 @@ CASES.append(Case(
         Step(name="move-self", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:move",
              body={"destinationProjectId": "{{_suiteProjectId}}"},
              test_script=[
-                 "pm.test('rejected (sync 400 or async error)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
-                 "if (pm.response.code === 400) {",
-                 "  pm.test('grpc 3 INVALID_ARGUMENT', () => "
-                 "    pm.expect(pm.response.json().code).to.eql(3));",
-                 "}",
+                 # Same-project Move is refused SYNCHRONOUSLY, before any peer call
+                 # (loadbalancer/move.go). The code check used to be written
+                 # `if (code === 400)`, i.e. it only ran once the refusal it was meant to
+                 # establish had already happened.
+                 "pm.environment.unset('opId');",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                 "pm.test('names the same-destination condition', () => "
+                 "  pm.expect(pm.response.json().message || '').to.eql("
+                 "    'destination project is the same as source'));",
              ]),
         *_cleanup_lb(),
     ],
@@ -995,15 +1015,31 @@ CASES.append(Case(
     title="Create with name length=3 (lower bound) → OK",
     classes=["BVA"], priority="P2",
     steps=[
+        # The lower bound is only tested if a 3-character name is ACCEPTED. Accepting 409
+        # as well made the case pass whether or not the boundary held — and the reason it
+        # was written that way is real but fixable: the literal name "abc" is not
+        # run-scoped, so a load balancer leaked by an earlier run occupies it and the next
+        # run collides on UNIQUE(project_id, name).
+        #
+        # That belongs to the fixture, not to the assertion: derive the three characters
+        # from runId (a letter plus two base-36 digits of its hash) so every run gets its
+        # own name and still sits exactly on the boundary.
         Step(name="cr-3char", method="POST", path=_CREATE_BASE,
-             body={**_LB_BODY, "name": "abc"},
+             pre_script=[
+                 "var __r = (pm.environment.get('runId') || 'x0');",
+                 "var __h = 0; for (var i = 0; i < __r.length; i++) { __h = ((__h << 5) - __h + __r.charCodeAt(i)) | 0; }",
+                 "__h = Math.abs(__h) % 1296;",
+                 "var __s = __h.toString(36); while (__s.length < 2) { __s = '0' + __s; }",
+                 "pm.environment.set('_lbName3', 'a' + __s);",
+             ],
+             body={**_LB_BODY, "name": "{{_lbName3}}"},
              test_script=[
-                 "pm.test('OK or rejected (depends on uniqueness)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
+                 "pm.test('a 3-character name is accepted (lower bound of the name range)', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                  *save_from_response("j.id", "opId"),
                  *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId"),
              ]),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["nlbId"]),
         Step(name="cleanup", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -1218,10 +1254,14 @@ CASES.append(Case(
         Step(name="cr-bad-proj", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{garbageProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "name": "bad-proj-{{runId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
-             test_script=[
-                 "pm.test('rejected (404/403)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 403, 404]));",
-             ]),
+             # An unknown project is refused by whichever side sees it first: the gateway
+             # cannot resolve the scope for the anti-BOLA check (403), or the backend/peer
+             # answers that it does not exist (400/404). What must never happen is the LB
+             # being created in a project that is not there — which is what accepting a
+             # bare 200 permitted, with nothing polled afterwards to contradict it.
+             test_script=assert_refused_sync_or_async("unknown project_id",
+                                                     sync_codes=(400, 403, 404))),
+        poll_operation_until_done(must_fail=True),
     ],
 ))
 
@@ -1386,21 +1426,37 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="NLB-UPD-STATE-MASK-EMPTY",
-    title="Update with empty update_mask → InvalidArgument 'update_mask is required'",
+    title="Update with an empty update_mask → full-object PATCH applies the mutable fields",
     classes=["STATE", "VAL"], priority="P1",
     steps=[
         *_setup_lb("mask-empty"),
-        # Empty-mask Update on the caller's OWN fresh LB — first mutating access; editor tuple
-        # can still be draining under parallel load → authz-first 403 BEFORE the mask validation.
-        # Retry SELF on 403/404 until authorized, THEN the real assertion (400 mask-required |
-        # 200) runs on the authorized attempt — NOT masked.
+        # THE TITLE WAS WRONG AND THE ASSERTION HID IT. An empty mask is not an error: it is
+        # the full-object PATCH of the update_mask discipline (api-conventions.md, "mask
+        # пустой → full-object PATCH"), and loadbalancer/update.go implements exactly that —
+        # it iterates the mask, an empty one rejects nothing, and labelsInMask /
+        # securityGroupsInMask read empty as "touches everything". Asserting
+        # `oneOf([403, 200, 400])` agreed with the contract and with its opposite at once,
+        # so nobody noticed the case was named for behaviour the product does not have.
+        #
+        # Still wrapped for read-your-writes: the first mutating access to the caller's own
+        # fresh LB can be denied while the editor tuple materializes. That is a timing
+        # window, not an outcome — the outcome asserted is acceptance, and the read below
+        # proves the field actually landed.
         retry_until_authorized(
             Step(name="upd-empty", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
-                 body={"description": "x"},
+                 body={"description": "empty-mask patch {{runId}}"},
                  test_script=[
-                     "pm.test('rejected (400)', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
+                     "pm.test('empty mask is a full-object PATCH, not an error', () => "
+                     "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                     *save_from_response("j.id", "opId"),
                  ]),
             retry_on=(403, 404)),
+        poll_operation_until_done(must_succeed=True),
+        Step(name="get-after-empty-mask", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+             test_script=[*assert_status(200),
+                          "pm.test('the mutable field from the body was applied', () => "
+                          "  pm.expect(pm.response.json().description)"
+                          "    .to.eql(pm.variables.replaceIn('empty-mask patch {{runId}}')));"]),
         *_cleanup_lb(),
     ],
 ))
@@ -1667,19 +1723,25 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="NLB-CR-VAL-WRONG-CT",
-    title="POST without Content-Type → 415/400/200 (lenient)",
-    classes=["VAL", "NEG"], priority="P3",
+    title="POST without Content-Type → accepted (the edge marshaler is registered on MIMEWildcard)",
+    classes=["VAL"], priority="P3",
     steps=[
+        # Content negotiation here has one answer, so the case states it. The public REST
+        # mux registers its JSON marshaler under `runtime.MIMEWildcard`
+        # (gateway/internal/restmux/mux.go), the fallback for a request declaring no
+        # Content-Type — the body parses and the create proceeds. "handled (200/400/415)"
+        # could only fail on a 5xx: it accepted acceptance and both refusals, i.e. asserted
+        # nothing about the edge. A red here means the marshaler registration changed, and
+        # THAT is the finding.
         Step(name="cr-no-ct", method="POST", path=_CREATE_BASE,
              body={**_LB_BODY, "name": "noct-{{runId}}"},
              pre_script=["pm.request.headers.remove('Content-Type');"],
              test_script=[
-                 "pm.test('handled (200/400/415)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 415]));",
+                 *assert_status(200),
                  *save_from_response("j.id", "opId"),
                  *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId"),
              ]),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["nlbId"]),
         Step(name="cleanup-best-effort", method="DELETE",
              path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -1834,12 +1896,21 @@ CASES.append(Case(
     steps=[
         Step(name="lops-unknown", method="GET",
              path=f"{_CREATE_BASE}/{{{{garbageNlbId}}}}/operations?pageSize=1",
-             test_script=["pm.test('empty list (200) or authz-first (403)', () => "
-                          "  pm.expect(pm.response.code, JSON.stringify(pm.response.json())).to.be.oneOf([200, 403]));",
+             # Two lawful answers, and BOTH are now stated. Either the list runs and is
+             # empty (an absent parent owns no operations), or the gateway refuses earlier
+             # because it cannot resolve the scope of an unknown parent — in which case it
+             # must be a genuine permission refusal, not any 403 that happens by. The 403
+             # arm previously carried no statement at all, so half the outcomes went
+             # unchecked.
+             test_script=["pm.test('empty list (200) or authz-first refusal (403)', () => "
+                          "  pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 403]));",
                           "if (pm.response.code === 200) {",
                           "  const j = pm.response.json();",
                           "  pm.test('operations empty (no ops for unknown parent)', () => "
                           "    pm.expect(j.operations || []).to.be.an('array').that.is.empty);",
+                          "} else {",
+                          "  pm.test('403 is a permission refusal (grpc 7), not an incidental error', () => "
+                          "    pm.expect(pm.response.json().code).to.eql(7));",
                           "}"]),
     ],
 ))
@@ -2090,10 +2161,13 @@ CASES.append(Case(
         Step(name="upd-65", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              body={"updateMask": "labels", "labels": {f"k{i}": f"v{i}" for i in range(65)}},
              test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 200, 400]));",
-                 *save_from_response("j.id", "opId"),
+                 # Update re-runs domain Validate on the merged object BEFORE the Operation
+                 # exists (loadbalancer/update.go -> updated.Validate() -> ValidateLabels,
+                 # "too many labels (max 64)"), so this is a sync refusal. 65 labels being
+                 # ACCEPTED is the regression, and it used to satisfy the case.
+                 "pm.environment.unset('opId');",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
-        poll_operation_until_done(),
         *_cleanup_lb(),
     ],
 ))
@@ -2106,12 +2180,15 @@ CASES.append(Case(
         *_setup_lb("mv-dst-unk"),
         Step(name="mv-unknown-dst", method="POST", path=f"{_CREATE_BASE}/{{{{nlbId}}}}:move",
              body={"destinationProjectId": "{{garbageProjectId}}"},
-             test_script=[
-                 "pm.test('rejected (404/403/200 then op-error)', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404]));",
-                 *save_from_response("j.id", "opId"),
-             ]),
-        poll_operation_until_done(),
+             # The destination project is peer-checked SYNCHRONOUSLY, before the Operation
+             # row exists (loadbalancer/move.go -> projectClient.Get -> peerErrToStatus),
+             # and the gateway may refuse even earlier when it cannot resolve the
+             # destination scope. All of those are refusals; the move SUCCEEDING into a
+             # project that does not exist is not, and that is what a bare 200 was allowed
+             # to be.
+             test_script=assert_refused_sync_or_async("unknown destination project",
+                                                     sync_codes=(400, 403, 404))),
+        poll_operation_until_done(must_fail=True),
         *_cleanup_lb(),
     ],
 ))
@@ -2257,21 +2334,56 @@ CASES.append(Case(
                  "    pm.expect(m).to.satisfy(s => s.includes('region') || s.includes('zone'));",
                  "  });",
                  "} else {",
-                 "  // single-region stand: in-region drain zone lawfully handled — capture any",
-                 "  // accepted LB for cleanup so a lawful async 200 never leaks a VIP.",
-                 "  pm.test('single-region: in-region drain zone lawfully handled (foreign-zone negative needs a 2nd geo region)', () => "
-                 "    pm.expect(pm.response.code).to.be.oneOf([200, 400, 404, 503]));",
-                 "  const j = pm.response.json();",
-                 "  if (pm.response.code === 200) { if (j.id) pm.environment.set('opId', j.id); if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('drainFzLbId', j.metadata.networkLoadBalancerId); }",
+                 "  // SINGLE-REGION STAND — and this branch does NOT exercise the drain-zone",
+                 "  // rule. '<region>-a' is then a zone INSIDE the LB's region, so there is no",
+                 "  // foreign zone to reject; what the request still violates is placement,",
+                 "  // because existingSubnetId is a ZONAL subnet while the LB is",
+                 "  // INTERNAL_REGIONAL (create.go: 'subnet placement does not match load",
+                 "  // balancer placement'). So the answer is a refusal for an unrelated reason.",
+                 "  // Saying so is the point: what stood here accepted 200/400/404/503 — every",
+                 "  // possible answer — and read as if the negative had been covered. It has",
+                 "  // not been, and it cannot be until a SECOND geo region is seeded: an open",
+                 "  // debt, not a pass.",
+                 "  pm.test('single-region: request refused (placement); the foreign-zone rule is NOT covered here', () => "
+                 "    pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 403, 404]));",
                  "}"]),
-        poll_operation_until_done(),
-        Step(name="cleanup-drain-fz-lb", method="DELETE", path=f"{_CREATE_BASE}/{{{{drainFzLbId}}}}",
-             test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
+        # No cleanup pair any more: neither branch can now produce a load balancer, so a
+        # DELETE of the never-set drainFzLbId would only address a literal {{drainFzLbId}}.
     ],
 ))
 
 # 8.1-11 — placement mismatch: ZONAL LB + REGIONAL subnet source.
+# 8.1-19 — a load balancer must say where its VIP comes from. This case exists because
+# LST-CR-VAL-INTERNAL-NO-SUBNET was retired: the listener lost `subnet_id` when the VIP
+# moved to the parent, and the rule "you must name a VIP source" moved with it. The
+# retirement note in cases/listener.py cited this case-id as the successor while it did
+# not exist — so a rule the product enforces, and that a P0 case used to reach for, had
+# no black-box coverage at all. It does now.
+#
+# Sync, before any Operation exists: buildFamilySpecs finds no source for either family
+# and refuses (vip_source.go, "load balancer must declare a vip source for at least one
+# ip family"; unit-locked as 8.1-19 in create_test.go). The message is contract and is
+# asserted, so an unrelated refusal cannot stand in for this one. Fixture-free — the body
+# is deliberately incomplete, nothing needs seeding.
+CASES.append(Case(
+    id="NLB-CR-VAL-SOURCE-REQUIRED",
+    title="Create with no v4Source and no v6Source → InvalidArgument "
+          "'load balancer must declare a vip source for at least one ip family' (Verifies 8.1-19)",
+    classes=["VAL", "NEG"], priority="P0",
+    steps=[
+        Step(name="cr-no-source", method="POST", path=_CREATE_BASE,
+             body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
+                   "placement": "INTERNAL_ZONAL", "name": "no-src-{{runId}}"},
+             test_script=[
+                 "pm.environment.unset('opId');",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                 "pm.test('names the missing vip source', () => "
+                 "  pm.expect(pm.response.json().message || '').to.eql("
+                 "    'load balancer must declare a vip source for at least one ip family'));",
+             ]),
+    ],
+))
+
 CASES.append(Case(
     id="NLB-CR-VAL-PLACEMENT-MISMATCH",
     title="ZONAL LB with a REGIONAL subnet source → InvalidArgument placement mismatch (Verifies 8.1-11)",
@@ -2608,26 +2720,34 @@ CASES.append(Case(
     title="Create INTERNAL REGIONAL dualstack LB — v4 subnet-auto + v6 address-link (Verifies 8.1-05)",
     classes=["CRUD"], priority="P2",
     steps=[
-        *_provision_subnet("REGIONAL", "dualstack"),
+        # THE FIXTURE WAS THE DEFECT, NOT THE PRODUCT. The v6 leg used to link
+        # `existingAddressIPv6Id`, which the seeder allocates as an EXTERNAL, ZONAL address
+        # (deploy/scripts/seed-nlb-fixtures.sh step 4b: `externalIpv6AddressSpec` with a
+        # zoneId). Linking it into an INTERNAL_REGIONAL load balancer breaks two rules at
+        # once, and the service is right to refuse both times: an external address cannot
+        # back an internal LB (8.1-10) and a zone-bound address cannot back a REGIONAL one
+        # (8.1-11b). Both answer the deliberately generic `Illegal argument addressId`
+        # (loadbalancer/create.go resolveLinkedAddress; unit-locked in create_test.go).
+        # So the case demanded a success the service is specified to refuse — the mirror
+        # image of an assertion that cannot fail: one that cannot pass.
+        #
+        # A dualstack INTERNAL LB needs an INTERNAL v6 address that is REGIONAL and in the
+        # same network as the v4 leg (resolveSources enforces same-network across families).
+        # The subnet is therefore provisioned with BOTH anchors and the v6 address is drawn
+        # from that very subnet — same network, same placement, same region by construction.
+        *_provision_subnet("REGIONAL", "dualstack", dualstack=True),
+        *_provision_internal_address("vpcSubnetId", "ds-v6", save_var="vpcAddr6Id", family="v6"),
         # Cross-service RYW: the fresh v4 vpc Subnet (vpcSubnetId) peer-read can be transiently
         # stale under parallel load (`subnet <id> not found`, 400). Retry SELF only on the
         # transient not-found so the real dualstack-accept path is exercised instead of falling
-        # into the tolerant else (which would SILENTLY skip the scenario). v6Source uses the
-        # stable seeded existingAddressIPv6Id — no retry needed for that leg.
+        # into the tolerant else (which would SILENTLY skip the scenario).
         retry_create_until_present(Step(name="cr-dualstack", method="POST", path=_CREATE_BASE,
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "placement": "INTERNAL_REGIONAL", "name": "lb-ds-{{runId}}",
                    "v4Source": {"subnetId": "{{vpcSubnetId}}"},
-                   "v6Source": {"addressId": "{{existingAddressIPv6Id}}"}},
+                   "v6Source": {"addressId": "{{vpcAddr6Id}}"}},
              test_script=[
                  "pm.environment.unset('nlbId');",
-                 # The seeded v6 address is a PRECONDITION of this case, not a lane property:
-                 # seed-nlb-fixtures.sh provisions a v6 block in the same EXTERNAL_PUBLIC pool
-                 # (the premise XRES-E2E-EXTERNAL-IPV6-VIP already asserts unconditionally).
-                 # Stating it here means an unseeded v6 lane is RED and named, instead of
-                 # falling through to a "never a 5xx" branch that verifies no dualstack at all.
-                 "pm.test('seeded IPv6 address fixture is present (dualstack precondition)', () => "
-                 "  pm.expect(pm.environment.get('existingAddressIPv6Id') || '').to.match(/^adr[a-z0-9]+$/));",
                  "pm.test('dualstack create accepted (both families same network)', () => "
                  "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                  "const j = pm.response.json();",
@@ -2639,9 +2759,12 @@ CASES.append(Case(
              test_script=[
                  "const j = pm.response.json();",
                  "pm.test('v4AddressId set (auto from subnet)', () => pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));",
-                 "pm.test('v6AddressId set (linked)', () => pm.expect(j.v6AddressId).to.eql(pm.environment.get('existingAddressIPv6Id')));",
+                 "pm.test('v6AddressId set (linked)', () => pm.expect(j.v6AddressId).to.eql(pm.environment.get('vpcAddr6Id')));",
              ])),
         *_cleanup_lb(),
+        # The linked BYO address survives the LB delete (only the reference is cleared), so
+        # it is reclaimed here, before the subnet it was drawn from.
+        *_cleanup_vpc(_VPC_ADDRESSES, "vpcAddr6Id"),
         *_cleanup_vpc(_VPC_SUBNETS, "vpcSubnetId"),
     ],
 ))

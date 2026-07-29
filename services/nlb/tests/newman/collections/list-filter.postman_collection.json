@@ -134,11 +134,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -162,7 +166,7 @@
           ]
         },
         {
-          "name": "list-own-lst359",
+          "name": "list-own-lst354",
           "request": {
             "method": "GET",
             "header": [
@@ -235,7 +239,7 @@
           ]
         },
         {
-          "name": "del-own-rya360",
+          "name": "del-own-rya355",
           "request": {
             "method": "DELETE",
             "header": [
@@ -334,11 +338,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -461,11 +469,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -485,7 +497,7 @@
           ]
         },
         {
-          "name": "list-tg-lst361",
+          "name": "list-tg-lst356",
           "request": {
             "method": "GET",
             "header": [
@@ -558,7 +570,7 @@
           ]
         },
         {
-          "name": "del-tg-rya362",
+          "name": "del-tg-rya357",
           "request": {
             "method": "DELETE",
             "header": [
@@ -657,11 +669,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -848,11 +864,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -935,7 +955,7 @@
           ]
         },
         {
-          "name": "del-a-rya363",
+          "name": "del-a-rya358",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1034,11 +1054,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",

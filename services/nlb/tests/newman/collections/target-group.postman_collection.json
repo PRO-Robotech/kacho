@@ -116,11 +116,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -140,7 +144,7 @@
           ]
         },
         {
-          "name": "get-rya573",
+          "name": "get-rya565",
           "request": {
             "method": "GET",
             "header": [
@@ -257,11 +261,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -366,11 +374,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -455,11 +467,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -564,11 +580,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -588,7 +608,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya574",
+          "name": "setup-materialize-tg-rya566",
           "request": {
             "method": "GET",
             "header": [
@@ -637,7 +657,7 @@
           ]
         },
         {
-          "name": "get-rya575",
+          "name": "get-rya567",
           "request": {
             "method": "GET",
             "header": [
@@ -753,11 +773,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -945,11 +969,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -969,7 +997,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya576",
+          "name": "setup-materialize-tg-rya568",
           "request": {
             "method": "GET",
             "header": [
@@ -1018,7 +1046,7 @@
           ]
         },
         {
-          "name": "upd-rya577",
+          "name": "upd-rya569",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1108,11 +1136,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -1197,11 +1229,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -1306,11 +1342,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -1330,7 +1370,7 @@
           ]
         },
         {
-          "name": "del-rya578",
+          "name": "del-rya570",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1411,11 +1451,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -1559,11 +1603,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -1583,7 +1631,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya579",
+          "name": "setup-materialize-tg-rya571",
           "request": {
             "method": "GET",
             "header": [
@@ -1632,7 +1680,7 @@
           ]
         },
         {
-          "name": "move-cr580",
+          "name": "move-cr572",
           "request": {
             "method": "POST",
             "header": [
@@ -1732,11 +1780,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -1831,11 +1883,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -1920,11 +1976,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -2029,11 +2089,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -2053,7 +2117,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya581",
+          "name": "setup-materialize-tg-rya573",
           "request": {
             "method": "GET",
             "header": [
@@ -2102,7 +2166,7 @@
           ]
         },
         {
-          "name": "lops-rya582",
+          "name": "lops-rya574",
           "request": {
             "method": "GET",
             "header": [
@@ -2220,11 +2284,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -2286,7 +2354,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected (sync 400 or async error)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -2324,11 +2396,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -2390,7 +2466,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -2439,7 +2519,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -2488,7 +2572,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -2537,7 +2625,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -2586,7 +2678,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -2635,7 +2731,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -2684,7 +2784,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -2733,7 +2837,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -2782,7 +2890,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -2831,7 +2943,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected (sync or async)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -2880,7 +2996,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -2929,7 +3049,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -2978,7 +3102,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -3027,7 +3155,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -3076,7 +3208,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -3125,7 +3261,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -3174,7 +3314,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
                 ]
               }
             }
@@ -3223,7 +3367,68 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected (sync or async)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));"
+                  "pm.environment.unset('opId');",
+                  "pm.test('unknown region_id refused (sync 400, or an Operation that fails)', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 200]));",
+                  "if (pm.response.code === 200) {",
+                  "  const j = pm.response.json();",
+                  "  pm.test('accepted response carries the Operation that must then fail', () =>     pm.expect(j.id, pm.response.text()).to.be.a('string'));",
+                  "  if (j.id) pm.environment.set('opId', j.id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-19",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "pm.test('operation refused the request (carries an error)', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));"
                 ]
               }
             }
@@ -3289,7 +3494,7 @@
           ]
         },
         {
-          "name": "poll-op-19",
+          "name": "poll-op-20",
           "request": {
             "method": "GET",
             "header": [
@@ -3315,11 +3520,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -3425,7 +3634,7 @@
           ]
         },
         {
-          "name": "poll-op-20",
+          "name": "poll-op-21",
           "request": {
             "method": "GET",
             "header": [
@@ -3451,11 +3660,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -3702,7 +3915,7 @@
           ]
         },
         {
-          "name": "poll-op-21",
+          "name": "poll-op-22",
           "request": {
             "method": "GET",
             "header": [
@@ -3728,11 +3941,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -3752,7 +3969,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya583",
+          "name": "setup-materialize-tg-rya575",
           "request": {
             "method": "GET",
             "header": [
@@ -3854,7 +4071,7 @@
           ]
         },
         {
-          "name": "poll-op-22",
+          "name": "poll-op-23",
           "request": {
             "method": "GET",
             "header": [
@@ -3880,11 +4097,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -3956,7 +4177,7 @@
           ]
         },
         {
-          "name": "poll-op-23",
+          "name": "poll-op-24",
           "request": {
             "method": "GET",
             "header": [
@@ -3982,11 +4203,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -4006,7 +4231,7 @@
           ]
         },
         {
-          "name": "del-blocked-rya584",
+          "name": "del-blocked-rya576",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4049,62 +4274,13 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
-                  "try {",
+                  "pm.environment.unset('opId');",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 9 (FAILED_PRECONDITION)', () => {",
                   "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-24",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
+                  "});",
+                  "pm.test('names the listeners that block the delete', () =>   pm.expect((pm.response.json().message || '')).to.include(    'target group is referenced by listeners'));"
                 ]
               }
             }
@@ -4176,11 +4352,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -4265,11 +4445,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -4354,11 +4538,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -4463,11 +4651,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -4487,7 +4679,7 @@
           ]
         },
         {
-          "name": "del-blocked-rya585",
+          "name": "del-blocked-rya577",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4530,62 +4722,13 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
-                  "try {",
+                  "pm.environment.unset('opId');",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 9 (FAILED_PRECONDITION)', () => {",
                   "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-29",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
+                  "});",
+                  "pm.test('names the targets that block the delete', () =>   pm.expect((pm.response.json().message || '')).to.match(    /TargetGroup has \\d+ target\\(s\\); remove them first via RemoveTargets/));"
                 ]
               }
             }
@@ -4640,7 +4783,7 @@
           ]
         },
         {
-          "name": "poll-op-30",
+          "name": "poll-op-29",
           "request": {
             "method": "GET",
             "header": [
@@ -4666,11 +4809,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -4729,7 +4876,7 @@
           ]
         },
         {
-          "name": "poll-op-31",
+          "name": "poll-op-30",
           "request": {
             "method": "GET",
             "header": [
@@ -4755,11 +4902,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -4838,7 +4989,7 @@
           ]
         },
         {
-          "name": "poll-op-32",
+          "name": "poll-op-31",
           "request": {
             "method": "GET",
             "header": [
@@ -4864,11 +5015,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -4888,7 +5043,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya586",
+          "name": "setup-materialize-tg-rya578",
           "request": {
             "method": "GET",
             "header": [
@@ -4985,7 +5140,7 @@
           ]
         },
         {
-          "name": "poll-op-33",
+          "name": "poll-op-32",
           "request": {
             "method": "GET",
             "header": [
@@ -5011,11 +5166,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -5063,19 +5222,20 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
-                  "try {",
+                  "pm.environment.unset('opId');",
+                  "pm.test('delete of a TG with a live target refused (sync 400, or an Operation that fails)', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 200]));",
+                  "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
+                  "  pm.test('accepted response carries the Operation that must then fail', () =>     pm.expect(j.id, pm.response.text()).to.be.a('string'));",
+                  "  if (j.id) pm.environment.set('opId', j.id);",
+                  "}"
                 ]
               }
             }
           ]
         },
         {
-          "name": "poll-op-34",
+          "name": "poll-op-33",
           "request": {
             "method": "GET",
             "header": [
@@ -5101,11 +5261,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -5118,7 +5282,8 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "pm.test('operation refused the request (carries an error)', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));"
                 ]
               }
             }
@@ -5173,7 +5338,7 @@
           ]
         },
         {
-          "name": "poll-op-35",
+          "name": "poll-op-34",
           "request": {
             "method": "GET",
             "header": [
@@ -5199,11 +5364,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -5262,7 +5431,7 @@
           ]
         },
         {
-          "name": "poll-op-36",
+          "name": "poll-op-35",
           "request": {
             "method": "GET",
             "header": [
@@ -5288,11 +5457,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -5371,7 +5544,7 @@
           ]
         },
         {
-          "name": "poll-op-37",
+          "name": "poll-op-36",
           "request": {
             "method": "GET",
             "header": [
@@ -5397,11 +5570,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -5421,7 +5598,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya587",
+          "name": "setup-materialize-tg-rya579",
           "request": {
             "method": "GET",
             "header": [
@@ -5523,7 +5700,7 @@
           ]
         },
         {
-          "name": "poll-op-38",
+          "name": "poll-op-37",
           "request": {
             "method": "GET",
             "header": [
@@ -5549,11 +5726,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -5625,7 +5806,7 @@
           ]
         },
         {
-          "name": "poll-op-39",
+          "name": "poll-op-38",
           "request": {
             "method": "GET",
             "header": [
@@ -5651,11 +5832,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -5712,62 +5897,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
-                  "try {",
+                  "pm.environment.unset('opId');",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 9 (FAILED_PRECONDITION)', () => {",
                   "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-40",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
+                  "});",
+                  "pm.test('names the listeners that block the move', () =>   pm.expect((pm.response.json().message || '')).to.match(    /target group is referenced by \\d+ listener\\(s\\); repoint them before moving/));"
                 ]
               }
             }
@@ -5813,7 +5949,7 @@
           ]
         },
         {
-          "name": "poll-op-41",
+          "name": "poll-op-39",
           "request": {
             "method": "GET",
             "header": [
@@ -5839,11 +5975,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -5902,7 +6042,7 @@
           ]
         },
         {
-          "name": "poll-op-42",
+          "name": "poll-op-40",
           "request": {
             "method": "GET",
             "header": [
@@ -5928,11 +6068,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -5991,7 +6135,7 @@
           ]
         },
         {
-          "name": "poll-op-43",
+          "name": "poll-op-41",
           "request": {
             "method": "GET",
             "header": [
@@ -6017,11 +6161,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -6534,8 +6682,8 @@
       ]
     },
     {
-      "name": "TGR-CR-VAL-WRONG-CT — POST without Content-Type → 415/400/200 lenient",
-      "description": "class:VAL | class:NEG | priority:P3",
+      "name": "TGR-CR-VAL-WRONG-CT — POST without Content-Type → accepted (the edge marshaler is registered on MIMEWildcard)",
+      "description": "class:VAL | priority:P3",
       "item": [
         {
           "name": "cr-no-ct",
@@ -6583,7 +6731,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('handled', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 415]));",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -6600,7 +6748,7 @@
           ]
         },
         {
-          "name": "poll-op-44",
+          "name": "poll-op-42",
           "request": {
             "method": "GET",
             "header": [
@@ -6626,11 +6774,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -6643,7 +6795,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -6689,7 +6845,7 @@
           ]
         },
         {
-          "name": "poll-op-45",
+          "name": "poll-op-43",
           "request": {
             "method": "GET",
             "header": [
@@ -6715,11 +6871,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -7098,6 +7258,265 @@
           ]
         },
         {
+          "name": "poll-op-44",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-tg",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{tgId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups",
+                "{{tgId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-45",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TGR-CR-VAL-LABELS-UPPERCASE-KEY — Create TG with uppercase label key → InvalidArgument",
+      "description": "class:VAL | priority:P1",
+      "item": [
+        {
+          "name": "cr-lbl-upper",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"port\": 8080, \"healthCheck\": {\"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcp\": {\"port\": 80}}, \"deregistrationDelay\": \"300s\", \"slowStart\": \"30s\", \"name\": \"tg-lbl-upper-{{runId}}\", \"labels\": {\"BADKEY\": \"v\"}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TGR-CR-CRUD-NO-OPTIONAL-FIELDS — Create TG with only required fields → OK",
+      "description": "class:CRUD | priority:P2",
+      "item": [
+        {
+          "name": "cr-min",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"tg-min-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcp\": {\"port\": 80}}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.targetGroupId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('tgId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "poll-op-46",
           "request": {
             "method": "GET",
@@ -7124,11 +7543,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -7213,11 +7636,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -7239,11 +7666,11 @@
       ]
     },
     {
-      "name": "TGR-CR-VAL-LABELS-UPPERCASE-KEY — Create TG with uppercase label key → InvalidArgument",
-      "description": "class:VAL | priority:P1",
+      "name": "TGR-CR-VAL-TG-NAME-COLLISION-CROSS-REGION — Same name in another region of the same project → AlreadyExists (the name is UNIQUE per project; region is not part of the key)",
+      "description": "class:VAL | class:CONF | priority:P2",
       "item": [
         {
-          "name": "cr-lbl-upper",
+          "name": "cr-r1",
           "request": {
             "method": "POST",
             "header": [
@@ -7265,56 +7692,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"port\": 8080, \"healthCheck\": {\"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcp\": {\"port\": 80}}, \"deregistrationDelay\": \"300s\", \"slowStart\": \"30s\", \"name\": \"tg-lbl-upper-{{runId}}\", \"labels\": {\"BADKEY\": \"v\"}}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "TGR-CR-CRUD-NO-OPTIONAL-FIELDS — Create TG with only required fields → OK",
-      "description": "class:CRUD | priority:P2",
-      "item": [
-        {
-          "name": "cr-min",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/targetGroups",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "targetGroups"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"tg-min-{{runId}}\", \"port\": 8080, \"healthCheck\": {\"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcp\": {\"port\": 80}}}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"port\": 8080, \"healthCheck\": {\"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcp\": {\"port\": 80}}, \"deregistrationDelay\": \"300s\", \"slowStart\": \"30s\", \"name\": \"xreg-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -7371,11 +7749,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -7388,7 +7770,60 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cr-r2",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionAltId}}\", \"port\": 8080, \"healthCheck\": {\"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcp\": {\"port\": 80}}, \"deregistrationDelay\": \"300s\", \"slowStart\": \"30s\", \"name\": \"xreg-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.unset('opId');",
+                  "pm.test('status 409', () => pm.expect(pm.response.code).to.eql(409));",
+                  "pm.test('grpc code 6 (ALREADY_EXISTS)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(6);",
+                  "});",
+                  "pm.test('names the colliding target group and its project', () =>   pm.expect((pm.response.json().message || '')).to.match(    /TargetGroup '.+' already exists in project /));"
                 ]
               }
             }
@@ -7460,401 +7895,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "TGR-CR-VAL-TG-NAME-COLLISION-CROSS-REGION — Same name in different region → allowed (project_id+name UNIQUE, region orthogonal)",
-      "description": "class:VAL | priority:P2",
-      "item": [
-        {
-          "name": "cr-r1",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/targetGroups",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "targetGroups"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"port\": 8080, \"healthCheck\": {\"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcp\": {\"port\": 80}}, \"deregistrationDelay\": \"300s\", \"slowStart\": \"30s\", \"name\": \"xreg-{{runId}}\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.metadata && j.metadata.targetGroupId);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('tgId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-50",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cr-r2",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/targetGroups",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "targetGroups"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionAltId}}\", \"port\": 8080, \"healthCheck\": {\"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcp\": {\"port\": 80}}, \"deregistrationDelay\": \"300s\", \"slowStart\": \"30s\", \"name\": \"xreg-{{runId}}\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('rejected (UNIQUE on project_id+name only) or allowed', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.metadata && j.metadata.targetGroupId);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('tgId2', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-51",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup-2",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{tgId2}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "targetGroups",
-                "{{tgId2}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-52",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup-tg",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{tgId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "targetGroups",
-                "{{tgId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-53",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -7933,7 +7982,7 @@
           ]
         },
         {
-          "name": "poll-op-54",
+          "name": "poll-op-50",
           "request": {
             "method": "GET",
             "header": [
@@ -7959,11 +8008,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -8059,7 +8112,7 @@
           ]
         },
         {
-          "name": "poll-op-55",
+          "name": "poll-op-51",
           "request": {
             "method": "GET",
             "header": [
@@ -8085,11 +8138,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -8168,7 +8225,7 @@
           ]
         },
         {
-          "name": "poll-op-56",
+          "name": "poll-op-52",
           "request": {
             "method": "GET",
             "header": [
@@ -8194,11 +8251,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -8294,7 +8355,7 @@
           ]
         },
         {
-          "name": "poll-op-57",
+          "name": "poll-op-53",
           "request": {
             "method": "GET",
             "header": [
@@ -8320,11 +8381,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -8403,6 +8468,418 @@
           ]
         },
         {
+          "name": "poll-op-54",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-tg",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{tgId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups",
+                "{{tgId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-55",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TGR-CR-CRUD-DEREG-MAX-3600 — Create TG with deregistration_delay_seconds=3600 (upper bound) → OK",
+      "description": "class:BVA | class:CRUD | priority:P2",
+      "item": [
+        {
+          "name": "cr-dereg-3600",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"port\": 8080, \"healthCheck\": {\"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcp\": {\"port\": 80}}, \"deregistrationDelay\": \"3600s\", \"slowStart\": \"30s\", \"name\": \"tg-dereg-max-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.targetGroupId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('tgId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-56",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-tg",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{tgId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups",
+                "{{tgId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-57",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TGR-CR-CRUD-SLOW-START-MIN-0 — Create TG with slow_start_seconds=0 (lower) → OK",
+      "description": "class:BVA | class:CRUD | priority:P2",
+      "item": [
+        {
+          "name": "cr-ss-0",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"port\": 8080, \"healthCheck\": {\"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcp\": {\"port\": 80}}, \"deregistrationDelay\": \"300s\", \"slowStart\": \"0s\", \"name\": \"tg-ss-0-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.targetGroupId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('tgId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "poll-op-58",
           "request": {
             "method": "GET",
@@ -8429,11 +8906,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -8518,11 +8999,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -8544,11 +9029,11 @@
       ]
     },
     {
-      "name": "TGR-CR-CRUD-DEREG-MAX-3600 — Create TG with deregistration_delay_seconds=3600 (upper bound) → OK",
+      "name": "TGR-CR-CRUD-SLOW-START-MAX-900 — Create TG with slow_start_seconds=900 (upper) → OK",
       "description": "class:BVA | class:CRUD | priority:P2",
       "item": [
         {
-          "name": "cr-dereg-3600",
+          "name": "cr-ss-900",
           "request": {
             "method": "POST",
             "header": [
@@ -8570,7 +9055,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"port\": 8080, \"healthCheck\": {\"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcp\": {\"port\": 80}}, \"deregistrationDelay\": \"3600s\", \"slowStart\": \"30s\", \"name\": \"tg-dereg-max-{{runId}}\"}",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"port\": 8080, \"healthCheck\": {\"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcp\": {\"port\": 80}}, \"deregistrationDelay\": \"300s\", \"slowStart\": \"900s\", \"name\": \"tg-ss-900-{{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -8627,11 +9112,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -8716,407 +9205,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "TGR-CR-CRUD-SLOW-START-MIN-0 — Create TG with slow_start_seconds=0 (lower) → OK",
-      "description": "class:BVA | class:CRUD | priority:P2",
-      "item": [
-        {
-          "name": "cr-ss-0",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/targetGroups",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "targetGroups"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"port\": 8080, \"healthCheck\": {\"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcp\": {\"port\": 80}}, \"deregistrationDelay\": \"300s\", \"slowStart\": \"0s\", \"name\": \"tg-ss-0-{{runId}}\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.metadata && j.metadata.targetGroupId);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('tgId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-62",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup-tg",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{tgId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "targetGroups",
-                "{{tgId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-63",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "TGR-CR-CRUD-SLOW-START-MAX-900 — Create TG with slow_start_seconds=900 (upper) → OK",
-      "description": "class:BVA | class:CRUD | priority:P2",
-      "item": [
-        {
-          "name": "cr-ss-900",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/targetGroups",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "targetGroups"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"port\": 8080, \"healthCheck\": {\"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcp\": {\"port\": 80}}, \"deregistrationDelay\": \"300s\", \"slowStart\": \"900s\", \"name\": \"tg-ss-900-{{runId}}\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.metadata && j.metadata.targetGroupId);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('tgId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-64",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup-tg",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{tgId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "targetGroups",
-                "{{tgId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-65",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -9195,7 +9292,7 @@
           ]
         },
         {
-          "name": "poll-op-66",
+          "name": "poll-op-62",
           "request": {
             "method": "GET",
             "header": [
@@ -9221,11 +9318,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",
@@ -9245,7 +9346,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya588",
+          "name": "setup-materialize-tg-rya580",
           "request": {
             "method": "GET",
             "header": [
@@ -9294,7 +9395,7 @@
           ]
         },
         {
-          "name": "lst-filt-lst589",
+          "name": "lst-filt-lst581",
           "request": {
             "method": "GET",
             "header": [
@@ -9386,7 +9487,7 @@
           ]
         },
         {
-          "name": "poll-op-67",
+          "name": "poll-op-63",
           "request": {
             "method": "GET",
             "header": [
@@ -9412,11 +9513,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+                  "if (!pm.environment.get('opId')) {",
                   "  pm.environment.unset('_pollCount');",
                   "  return;",
                   "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
                   "const j = pm.response.json();",
                   "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
                   "if (!j.done && pc < 30) {",

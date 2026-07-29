@@ -94,8 +94,8 @@ AZD case (`AZD-LIFECYCLE-INTERNAL-MTLS-ONLY`).
 | VIP compensation on Create-fail (§4.5) | `LST-CR-CONF-VIP-COMPENSATION` |
 | BYO `SetReference` atomic CAS (§4.5) | `LST-CR-STATE-BYO-USED`, `LST-CR-CRUD-BYO`, `LST-DEL-CRUD-BYO-CLEAR-REF` |
 | xmin OCC on Update (§3.1, запрет #10) | `NLB-UPD-CONF-OCC-RACE` |
-| Permission catalog completeness (§6.2) | `AZD-PERMISSION-CATALOG-COMPLETE` (explicit 30-strings enumeration) |
-| FGA fail-closed for all failure modes (§15) | `AZD-FGA-UNAVAILABLE-FAIL-CLOSED`, `AZD-NLB-CR-ANONYMOUS-UNAUTH` |
+| Permission catalog completeness (§6.2) | `AZD-PERMISSION-CATALOG-COMPLETE` (reads `GET /iam/v1/permissionCatalog` — the live grantable taxonomy the nlb permission strings are built from; the compiled per-RPC table is gated by `make permission-catalog-check`) |
+| FGA fail-closed for all failure modes (§15) | `AUTHZ-FAILCLOSED-OPENFGA-DOWN` (own wave in `services/iam/tests/newman` — it needs the authorization store scaled to zero, a condition this suite cannot create), `AZD-NLB-CR-ANONYMOUS-UNAUTH` |
 | D-11 sync creator-tuple (§6.3) | `AZD-OWNER-RELATION-CREATOR` |
 | D-13 stream cleanup (§5.2) | `AZD-LIFECYCLE-DELETED-TUPLE-CLEANUP` |
 | Cache invalidation ≤10s (NFR-9) | `AZD-CACHE-INVALIDATION-REVOKE` |

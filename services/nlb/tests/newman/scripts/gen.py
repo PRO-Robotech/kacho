@@ -176,6 +176,49 @@ def assert_absent_id_rejected() -> List[str]:
     ]
 
 
+def assert_refused_sync_or_async(what: str, sync_codes=(400,)) -> List[str]:
+    """The request under test is REFUSED, by whichever of the two lawful lanes decides it.
+
+    Kachō mutations answer with an Operation (ban #9), so a refusal has two shapes and a
+    case naming one input as illegal must accept both — and NOTHING else:
+
+      * the sync validator refuses before the Operation exists → `400 INVALID_ARGUMENT`;
+      * the worker refuses (a peer that does not resolve, a DB constraint, a state guard)
+        → `200` carrying an Operation that finishes WITH an error.
+
+    What this replaces was `oneOf([200, 400])` with nothing after it. Written that way the
+    second lane is not checked at all: `200` alone passes, so the case is satisfied by the
+    product ACCEPTING exactly the input it exists to prove refused, and a regression that
+    drops the guard leaves it green. That is not tolerance of an ordering, it is the
+    absence of an assertion.
+
+    Pair this with `poll_operation_until_done(must_fail=True)` as the very next step — that
+    is what states the second lane. On the sync lane `opId` is cleared here, so the poll has
+    no subject and asserts nothing; on the async lane it holds the Operation to account.
+    `what` names the input in the assertion text so a failure is actionable.
+
+    `sync_codes` widens the FIRST lane where the ordering genuinely admits more than one
+    refusal — the gateway can deny before the backend looks at the body (`403`), and a
+    resource it cannot resolve reads as absent (`404`). Every entry must be a REFUSAL;
+    `200` is supplied by this helper as the async lane and belongs nowhere else.
+    """
+    codes = ", ".join(str(c) for c in (*sync_codes, 200))
+    named = "/".join(str(c) for c in sync_codes)
+    return [
+        "pm.environment.unset('opId');",
+        f"pm.test('{what} refused (sync {named}, or an Operation that fails)', () => "
+        f"  pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([{codes}]));",
+        "if (pm.response.code === 200) {",
+        "  const j = pm.response.json();",
+        # An accepted mutation that hands back no Operation leaves nothing to hold to
+        # account: the refusal would be asserted against a subject that does not exist.
+        "  pm.test('accepted response carries the Operation that must then fail', () => "
+        "    pm.expect(j.id, pm.response.text()).to.be.a('string'));",
+        "  if (j.id) pm.environment.set('opId', j.id);",
+        "}",
+    ]
+
+
 def save_from_response(jsonpath: str, env_var: str) -> List[str]:
     return [
         "try {",
@@ -405,6 +448,7 @@ def retry_create_until_present(step: Step, budget: int = 25, interval_ms: int = 
 def poll_operation_until_done(
     fixture_ids: Optional[List[str]] = None,
     must_succeed: bool = False,
+    must_fail: bool = False,
     retry_from: Optional[str] = None,
     retry_when: str = "not found",
     retry_budget: int = 8,
@@ -440,6 +484,16 @@ def poll_operation_until_done(
     "the mutation failed" into "the assertion about it did not run" — the case then
     greens on the miss. `fixture_ids` implies `must_succeed`.
 
+    `must_fail` — the MIRROR statement, for a case whose subject is a REFUSAL decided by
+    the worker rather than by the sync validator (a peer that does not resolve, a DB
+    constraint, a state guard). There the lawful shapes are `400` before the Operation
+    exists, or `200` and an Operation that finishes WITH an error — and `200` on its own is
+    neither. A bare `poll_operation_until_done()` after such a step asserts only `done`,
+    which a SUCCESSFUL operation satisfies just as well, so the refusal the case is named
+    for is never checked: the delete that was supposed to be blocked goes through and the
+    case still greens. This asserts the error is there. Never use it where acceptance is
+    legitimate — it would then fail on correct behaviour.
+
     `retry_from` — bounded ASYNC-LANE read-your-writes re-drive. `retry_create_until_present`
     only sees the SYNC response of a create, so it covers a peer miss that is rejected
     before the Operation is minted. The very same cross-service window can instead land
@@ -454,11 +508,25 @@ def poll_operation_until_done(
     _poll_seq += 1
     ids = list(fixture_ids or [])
     script = [
-        "if (!pm.environment.get('opId') || pm.response.code !== 200) {",
+        # Nothing to poll: the preceding step was refused synchronously and minted no
+        # Operation. This is the ONLY case in which the step asserts nothing.
+        "if (!pm.environment.get('opId')) {",
         "  pm.environment.unset('_pollCount');",
         "  return;",
         "}",
-        "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+        # A REFUSED OPERATION READ IS RED. The early return used to sit ABOVE this line,
+        # so the assertion could not fail by construction — only the responses it already
+        # accepts ever reached it. Any non-200 on GET /operations/{id} (403 on somebody
+        # else's operation, 404, 5xx) counted as a passed step while the outcome of the
+        # mutation the step exists for stayed UNKNOWN. Unknown is not the same as fine.
+        "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+        # The assertion above has already said no; leave before json() throws on an error
+        # body — a script exception would hide the very failure it reports (and lands in
+        # the fourth outcome category of assert-suites-green.sh, not in `failed`).
+        "if (pm.response.code !== 200) {",
+        "  pm.environment.unset('_pollCount');",
+        "  return;",
+        "}",
         "const j = pm.response.json();",
         "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
         # Poll budget raised 6→30 to match the Koren-1 baseline of the other
@@ -520,6 +588,9 @@ def poll_operation_until_done(
             "pm.environment.unset('_opRedriveStarted');",
         ]
 
+    if must_fail and (ids or must_succeed):
+        raise ValueError("poll_operation_until_done: must_fail contradicts must_succeed/fixture_ids")
+
     if ids:
         script += [
             "pm.test('fixture operation succeeded (no phantom resource id)', () => "
@@ -529,6 +600,11 @@ def poll_operation_until_done(
         script += [
             "pm.test('operation succeeded', () => "
             "  pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);",
+        ]
+    elif must_fail:
+        script += [
+            "pm.test('operation refused the request (carries an error)', () => "
+            "  pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
         ]
 
     return Step(
@@ -716,6 +792,7 @@ def load_cases_module(path: Path):
     mod.assert_unscoped_rejected = assert_unscoped_rejected
     mod.assert_absent_id_rejected = assert_absent_id_rejected
     mod.assert_field_violation = assert_field_violation
+    mod.assert_refused_sync_or_async = assert_refused_sync_or_async
     mod.assert_operation_envelope = assert_operation_envelope
     mod.save_from_response = save_from_response
     mod.poll_operation_until_done = poll_operation_until_done

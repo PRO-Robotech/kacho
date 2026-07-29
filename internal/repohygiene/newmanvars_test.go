@@ -47,15 +47,19 @@ var runtimeVars = map[string]bool{
 // он защищал от НОВЫХ случаев, пока чинится старый: без allowlist'а пришлось бы либо
 // держать CI красным, либо не ставить гейт вовсе.
 //
-// Каждая запись обязана нести ссылку на тикет. Пустеет — удаляется вместе с этой картой.
+// Ключ — "<сервис>/<переменная>" (ровно та форма, которой гейт ниже адресует находку),
+// значение — ссылка на тикет.
+//
+// Исключение самоистекающее: TestKnownGapsStillHaveSubject падает, как только переменная
+// перестаёт быть находкой — её засеяли, либо кейс, который её требовал, убрали. Запись,
+// пережившая свой фикс, — не безобидный мусор: она НАВСЕГДА выводит переменную из-под
+// гейта, и следующий настоящий пробел по ней проходит незамеченным. Пустеет — удаляется
+// вместе с этой картой.
 var knownGaps = map[string]string{
-	// list-filter-d (kacho-vpc): per-object filtered List. Фикстуры не умеют
-	// AccessBinding с resourceNames (per-object грант) и не сеют subnet'ы — нужен
-	// новый субъект S + проект + 2 подсети + binding на одну из них.
-	// Сломан с момента написания; docstring кейса утверждает обратное.
-	"vpc/listFilterProjectId": "PRO-Robotech/kacho#1",
-	"vpc/subnetVisibleId":     "PRO-Robotech/kacho#1",
-	"vpc/subnetHiddenId":      "PRO-Robotech/kacho#1",
+	// Пусто. Пробелы list-filter-d (kacho-vpc) — listFilterProjectId, subnetVisibleId,
+	// subnetHiddenId по PRO-Robotech/kacho#1 — закрыты посевом: переменные приезжают в
+	// env-файл набора. Записи сняты 2026-07-29, когда гейт срока годности показал, что
+	// предмета у них больше нет (пережили свой фикс, 73b394ab).
 }
 
 var (
@@ -63,9 +67,25 @@ var (
 	setRe = regexp.MustCompile(`(?:environment|collectionVariables|globals)\.set\(\s*['"]([A-Za-z_][A-Za-z0-9_]*)`)
 )
 
-// TestNewmanVariablesAreDefined — ни одна используемая {{var}} не остаётся без источника.
-func TestNewmanVariablesAreDefined(t *testing.T) {
-	root := repoRoot(t)
+// newmanScan — разбор наборов: что коллекции используют и что при этом ниоткуда не
+// берётся. Ключи обеих карт — "<сервис>/<переменная>", ровно как в knownGaps.
+//
+// knownGaps здесь НЕ применяется намеренно. Гейт и проверка срока годности исключений
+// обязаны считать находки ОДНИМ предикатом: если бы срок годности мерился уже
+// отфильтрованным набором, исключённая запись всегда подтверждала бы сама себя и не
+// смогла бы истечь никогда.
+type newmanScan struct {
+	used        map[string]bool // переменная встречается в коллекции набора
+	unsourced   map[string]bool // ...и её никто не выставляет: env, скрипт, runtime
+	collections int             // сколько файлов коллекций реально прочитано
+}
+
+// scanNewmanVars — единственное место, где вычисляются находки этого гейта.
+func scanNewmanVars(t *testing.T, root string) newmanScan {
+	t.Helper()
+
+	scan := newmanScan{used: map[string]bool{}, unsourced: map[string]bool{}}
+
 	suites, err := filepath.Glob(filepath.Join(root, "services", "*", "tests", "newman"))
 	if err != nil {
 		t.Fatalf("glob: %v", err)
@@ -73,17 +93,14 @@ func TestNewmanVariablesAreDefined(t *testing.T) {
 	if gw := filepath.Join(root, "gateway", "tests", "newman"); dirExists(gw) {
 		suites = append(suites, gw)
 	}
-	if len(suites) == 0 {
-		t.Skip("newman-наборов не найдено")
-	}
 
-	var problems []string
 	for _, suite := range suites {
 		svc := suiteName(root, suite)
 		cols, _ := filepath.Glob(filepath.Join(suite, "collections", "*.json"))
 		if len(cols) == 0 {
 			continue // набора нет (напр. geo — только README)
 		}
+		scan.collections += len(cols)
 
 		defined := map[string]bool{}
 		envs, _ := filepath.Glob(filepath.Join(suite, "environments", "*.json"))
@@ -109,21 +126,33 @@ func TestNewmanVariablesAreDefined(t *testing.T) {
 			}
 		}
 
-		var missing []string
 		for v := range used {
+			scan.used[svc+"/"+v] = true
 			if defined[v] || runtimeVars[v] {
 				continue
 			}
-			if _, known := knownGaps[svc+"/"+v]; known {
-				continue
-			}
-			missing = append(missing, v)
-		}
-		sort.Strings(missing)
-		for _, m := range missing {
-			problems = append(problems, svc+": {{"+m+"}} — не в env, не выставляется скриптом, не runtime")
+			scan.unsourced[svc+"/"+v] = true
 		}
 	}
+	return scan
+}
+
+// TestNewmanVariablesAreDefined — ни одна используемая {{var}} не остаётся без источника.
+func TestNewmanVariablesAreDefined(t *testing.T) {
+	scan := scanNewmanVars(t, repoRoot(t))
+	if scan.collections == 0 {
+		t.Skip("newman-наборов не найдено")
+	}
+
+	var problems []string
+	for key := range scan.unsourced {
+		if _, known := knownGaps[key]; known {
+			continue
+		}
+		svc, v, _ := strings.Cut(key, "/")
+		problems = append(problems, svc+": {{"+v+"}} — не в env, не выставляется скриптом, не runtime")
+	}
+	sort.Strings(problems)
 
 	if len(problems) > 0 {
 		t.Errorf("%d newman-переменн(ая|ых) без источника — Postman подставит их ЛИТЕРАЛОМ, и падение "+
@@ -140,6 +169,43 @@ func TestKnownGapsAreTracked(t *testing.T) {
 		if !strings.Contains(issue, "#") {
 			t.Errorf("knownGaps[%q] = %q — нужна ссылка на тикет (owner/repo#N)", k, issue)
 		}
+	}
+}
+
+// TestKnownGapsStillHaveSubject — исключение обязано умереть вместе со своим предметом.
+//
+// Ссылка на тикет (её проверяет TestKnownGapsAreTracked) говорит лишь, что запись КОГДА-ТО
+// завели осмысленно. Она ничего не говорит о том, жив ли пробел сейчас. Пробел чинят в
+// другом месте — в посеве фикстур, — и запись про это не узнаёт: она молча переживает свой
+// фикс и продолжает держать переменную вне гейта. Тогда СЛЕДУЮЩИЙ настоящий пробел по этой
+// же переменной будет поглощён невидимо, а карта исключений превратится в утверждение о
+// продукте, которое давно неверно.
+//
+// Поэтому запись, которой больше нечего исключать, — находка, а не «просто больше не нужна».
+func TestKnownGapsStillHaveSubject(t *testing.T) {
+	if len(knownGaps) == 0 {
+		return // исключать нечего — гейт взведён для следующей записи
+	}
+
+	scan := scanNewmanVars(t, repoRoot(t))
+	if scan.collections == 0 {
+		// Предпосылка не выполнена: предмет исключений не прочитан вовсе, поэтому
+		// «находки нет» здесь означало бы «не смотрели», а не «пробел закрыт».
+		t.Skip("newman-наборов не найдено — судить о сроке годности knownGaps не по чему")
+	}
+
+	for key, issue := range knownGaps {
+		if scan.unsourced[key] {
+			continue // пробел жив, исключение по-прежнему имеет предмет
+		}
+		reason := "переменная теперь откуда-то берётся (env-файл набора, pm.*.set в коллекции или runtime)"
+		if !scan.used[key] {
+			reason = "переменную больше не использует ни одна коллекция набора"
+		}
+		t.Errorf("исключение knownGaps[%q] (%s) больше не нужно: %s. Удали запись — иначе эта "+
+			"переменная навсегда останется вне гейта, и следующий настоящий пробел по ней "+
+			"пройдёт незамеченным. (прочитано коллекций: %d)",
+			key, issue, reason, scan.collections)
 	}
 }
 
