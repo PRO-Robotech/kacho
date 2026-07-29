@@ -58,7 +58,11 @@ func copyRealTree(t *testing.T) string {
 			if walkErr != nil {
 				return walkErr
 			}
-			if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			// _test.go КОПИРУЮТСЯ. Анализатор их не парсит, но одна проверка читает их
+			// как ЗАКРЕПЛЕНИЕ предпосылки заявленного исключения (отказ ручки в
+			// production). Копия без тестов лишала бы это закрепление предмета, и
+			// инъекционные прогоны видели бы дерево иначе, чем настоящее.
+			if d.IsDir() || !strings.HasSuffix(path, ".go") {
 				return nil
 			}
 			r, relErr := filepath.Rel(src, path)
@@ -322,5 +326,149 @@ func TestGateNothingExaminedIsNotOK(t *testing.T) {
 			}
 			t.Log(strings.TrimSpace(out))
 		})
+	}
+}
+
+// TestGateVerdictSignalIsFlowSensitive — предпосылка признака «вердикт гейта
+// проверен». Признак собирался из ВСЕГО тела метода: множество сравнений
+// `<ident> != nil` где угодно, включая ветку ДРУГОГО вызова и позицию ДО гейта. Имя
+// `err` есть почти в каждом методе, поэтому признак выполнялся у метода, который
+// вердикт гейта не смотрел вовсе.
+//
+// Инъекция в обе стороны, на копии настоящего дерева:
+//   (а) вердикт гейта не проверяется, но рядом стоит НЕ ОТНОСЯЩЕЕСЯ к нему `err != nil`
+//       → гейт обязан краснеть и назвать место;
+//   (б) вердикт проверяется как положено → гейт обязан молчать (это и есть настоящее
+//       дерево, оно проверяется остальными тестами файла).
+func TestGateVerdictSignalIsFlowSensitive(t *testing.T) {
+	t.Run("defect: an unrelated err != nil satisfies the signal", func(t *testing.T) {
+		root := copyRealTree(t)
+		mustReplace(t, root, filepath.Join("internal", "handler", "public.go"),
+			`	if err := h.authz.checkRepo(ctx, registryID, repository, relationVList); err != nil {
+		return nil, err
+	}`,
+			`	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	verdict := h.authz.checkRepo(ctx, registryID, repository, relationVList)
+	_ = verdict`)
+
+		out, err := runCommand(t, root)
+		if err == nil {
+			t.Fatalf("a gate whose verdict is dropped must fail the audit\n--- output ---\n%s", out)
+		}
+		if !strings.Contains(out, "verdict is never tested") {
+			t.Errorf("the finding must say the verdict is not tested\n--- output ---\n%s", out)
+		}
+		if !strings.Contains(out, "public.go:") {
+			t.Errorf("a red without a coordinate is not actionable\n--- output ---\n%s", out)
+		}
+		t.Log(strings.TrimSpace(out))
+	})
+
+	t.Run("legitimate: a verdict tested in a branch that returns stays silent", func(t *testing.T) {
+		// Тот же метод, переписанный в двухшаговую форму: присваивание, затем ветвь с
+		// возвратом. Существо то же, форма другая — гейт обязан молчать, иначе он ловит
+		// написание, а не смысл, и первый же безобидный рефактор его отключит.
+		root := copyRealTree(t)
+		mustReplace(t, root, filepath.Join("internal", "handler", "public.go"),
+			`	if err := h.authz.checkRepo(ctx, registryID, repository, relationVList); err != nil {
+		return nil, err
+	}`,
+			`	scopeErr := h.authz.checkRepo(ctx, registryID, repository, relationVList)
+	if scopeErr != nil {
+		return nil, scopeErr
+	}`)
+
+		out, err := runCommand(t, root)
+		if err != nil {
+			t.Fatalf("the same check in another shape must stay silent: %v\n--- output ---\n%s", err, out)
+		}
+		t.Log(strings.TrimSpace(out))
+	})
+}
+
+// TestGateSeesANilAuthorizerBehindAVariable — предпосылка проверки «корень не собирает
+// обработчик без авторизатора». Она распознавала ТОЛЬКО литерал `nil`, а настоящий
+// корень передаёт переменную, — то есть не могла сработать ни разу.
+//
+// Три направления:
+//   (а) переменной присвоен nil → находка;
+//   (б) объявлена без инициализатора и присвоена только внутри условия, а закрепления
+//       отказа ручки в production НЕТ → находка (исключение без предмета не живёт);
+//   (в) присвоена безусловно → молчание.
+func TestGateSeesANilAuthorizerBehindAVariable(t *testing.T) {
+	realWiring := `	var listAuthz handler.Authorizer
+	if authzConn != nil {
+		listAuthz = check.NewIAMCheckClient(authzConn)
+	}`
+
+	t.Run("defect: the variable is assigned nil", func(t *testing.T) {
+		root := copyRealTree(t)
+		mustReplace(t, root, filepath.Join("cmd", "kacho-registry", "serve.go"), realWiring,
+			`	var listAuthz handler.Authorizer
+	listAuthz = nil`)
+
+		out, err := runCommand(t, root)
+		if err == nil {
+			t.Fatalf("a nil authorizer behind a variable must fail the audit\n--- output ---\n%s", out)
+		}
+		if !strings.Contains(out, "nil authorizer") || !strings.Contains(out, "serve.go:") {
+			t.Errorf("the finding must name the shape and the place\n--- output ---\n%s", out)
+		}
+		t.Log(strings.TrimSpace(out))
+	})
+
+	t.Run("defect: conditional-only assignment with no production refusal pinned", func(t *testing.T) {
+		root := copyRealTree(t)
+		// Настоящая форма корня остаётся; убираем ЗАКРЕПЛЕНИЕ отказа ручки. Исключение,
+		// у которого не стало предмета, обязано становиться находкой — иначе оно
+		// унаследует слепую зону.
+		unpinTests(t, root)
+
+		out, err := runCommand(t, root)
+		if err == nil {
+			t.Fatalf("without the production-refusal pin the conditional nil must be a finding\n--- output ---\n%s", out)
+		}
+		if !strings.Contains(out, "assigned only inside a conditional") {
+			t.Errorf("the finding must name how nil is reachable\n--- output ---\n%s", out)
+		}
+		t.Log(strings.TrimSpace(out))
+	})
+
+	t.Run("legitimate: unconditional assignment stays silent", func(t *testing.T) {
+		root := copyRealTree(t)
+		mustReplace(t, root, filepath.Join("cmd", "kacho-registry", "serve.go"), realWiring,
+			`	listAuthz := check.NewIAMCheckClient(authzConn)`)
+
+		out, err := runCommand(t, root)
+		if err != nil {
+			t.Fatalf("an unconditionally built authorizer must stay silent: %v\n--- output ---\n%s", err, out)
+		}
+		t.Log(strings.TrimSpace(out))
+	})
+}
+
+// unpinTests removes, from the copied composition root, the tests that pin the
+// production refusal of the knob which can leave the authorizer nil.
+func unpinTests(t *testing.T, root string) {
+	t.Helper()
+	removed := 0
+	err := filepath.WalkDir(filepath.Join(root, "cmd"), func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil || d.IsDir() || !strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		if rmErr := os.Remove(path); rmErr != nil {
+			return rmErr
+		}
+		removed++
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("unpin: %v", err)
+	}
+	if removed == 0 {
+		t.Fatalf("unpin removed nothing — the copied tree carries no composition-root tests, " +
+			"so this direction of the injection proves nothing")
 	}
 }

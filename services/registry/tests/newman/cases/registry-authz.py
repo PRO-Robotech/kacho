@@ -8,10 +8,20 @@ Black-box через api-gateway REST (`/registry/v1/registries`). Провер�
 раскрытия существования ресурса (никакого `deny_reasons`-оракула наружу, никакого
 success-with-data), а `List` не-члена возвращает пустой массив (не 403).
 
-Адаптация под текущий стенд (single-user). На fe3455 зарегистрирован ровно ОДИН
-IAM-юзер (cluster-admin). `external_id` юзера проецируется из Kratos-IdP и не
-создаётся публичным API — поэтому «зарегистрированный-но-негрантнутый stranger» и
-viewer-tier юзер здесь не провиженятся:
+Субъекты приходят из ОБЩЕГО ПОСЕВА ФИКСТУР, а не из закоммиченных окружений:
+`tests/authz-fixtures/prodseed_matrix.py` заводит и наблюдателя (`jwtProjectViewerA`),
+и негрантнутого чужака (`jwtStranger`), и кладёт их токены в окружение суиты
+(`prodrun.sh` → `patch-env.py`). В закоммиченные окружения подписанные токены не
+кладутся НИКОГДА, поэтому там эти переменные пусты by design.
+
+Прежняя редакция этой шапки объявляла обратное — «стенд single-user, viewer здесь не
+провиженится» — и на этом основании часть кейсов молчала. Обоснование устарело: посев
+такого субъекта заводит. Отсутствие фикстуры теперь ОТКАЗ (шаг краснеет и называет
+переменную), а не пропуск; прогон суиты без посева — неверная конфигурация, и она
+видна сразу.
+
+Диапазоны кодов отказа остаются широкими — отказать может любой из трёх рубежей, и
+какой сработает первым, зависит от порядка проверок и от того, заведён ли субъект:
 
 - **Stranger** — dev-JWT с незарегистрированным `sub` gateway трактует как
   UNAUTHENTICATED → HTTP 401 (code 16, "subject: unauthenticated request"), НЕ как
@@ -23,15 +33,15 @@ viewer-tier юзер здесь не провиженятся:
   фикстуры (её regId) не раскрывается ни в одном ответе. Проверка «нет deny_reasons»
   гейтится на код != 401 (unauthenticated-тело несёт generic-причину, не
   resource-existence leak).
-- **Viewer-tier** (GET-VIEWER-OK / UPDATE-VIEWER-DENY / DELETE-VIEWER-DENY) — требуют
-  зарегистрированного viewer-юзера, которого стенд дать не может. Кейс fixture-gated:
-  при пустом `jwtProjectViewerA` кейс НЕ эмитит зелёный pm.test (console-note + return
-  без assertion — не false-green, ban #13), при наличии токена — полный энфорс реальных
-  assertions. Граница «viewer держит v_get, но НЕ v_update/v_delete → Update/Delete =
-  NOT_FOUND (existence-hidden)» ДОПОЛНИТЕЛЬНО покрыта всегда-исполняемым Go-тестом
+- **Viewer-tier** (GET-VIEWER-OK / UPDATE-VIEWER-DENY / DELETE-VIEWER-DENY и их
+  repo-близнецы) — требуют субъекта-наблюдателя из посева. При пустом
+  `jwtProjectViewerA` кейс ОТКАЗЫВАЕТ (падающее утверждение с именем переменной и
+  указанием, чем её заполнить) — не молчит и не зеленеет. Граница «viewer держит
+  v_get, но НЕ v_update/v_delete → Update/Delete = NOT_FOUND (existence-hidden)»
+  ДОПОЛНИТЕЛЬНО покрыта всегда-исполняемым Go-тестом
   internal/check/viewer_boundary_test.go (реальный corelib authz-interceptor поверх
-  registry PermissionMap + fake CheckClient, грантящий ровно v_get) — граница НЕ висит
-  только на fixture-gated SKIP'е.
+  registry PermissionMap + fake CheckClient, грантящий ровно v_get). Покрытие в
+  другом месте — не основание молчать здесь.
 
 Инвариант existence-hiding (authenticated-ungranted → 404, никогда 403, без leak'а)
 отдельно верифицируется GREEN control-plane-сьютом и data-plane-харнессом.
@@ -97,19 +107,31 @@ def _never_reveals_regid():
 
 
 def _viewer_gate():
-    # Viewer-tier кейсы требуют зарегистрированного viewer-юзера. На single-user
-    # стенде (external_id проецируется из Kratos-IdP, публичным API не создаётся)
-    # фикстуры нет. В этом случае кейс НЕ эмитит зелёный pm.test: раньше здесь стоял
-    # pm.test('SKIPPED', () => pm.expect(true).to.eql(true)) — no-op assertion, которая
-    # не может упасть и рапортовала непроверенную границу как green (ban #13, inflate
-    # pass-count). Теперь при отсутствии фикстуры — console-note + return БЕЗ assertion
-    # (кейс отражается как «нет тестов», а не false-green). При наличии токена —
-    # реальные viewer-assertions (полный энфорс). Сама граница v_get→NOT_FOUND всегда
-    # покрыта Go-тестом internal/check/viewer_boundary_test.go.
+    # Viewer-tier кейсы проверяют границу «держит v_get, но НЕ v_update/v_delete» и
+    # требуют для этого субъекта-наблюдателя. Субъект приходит из общего посева
+    # фикстур (`tests/authz-fixtures/prodseed_matrix.py` заводит его и кладёт токен в
+    # `jwtProjectViewerA`); в закоммиченные окружения подписанные токены не кладутся
+    # НИКОГДА, поэтому переменная в них пуста by design и заполняется посевом.
+    #
+    # ОТСУТСТВИЕ ФИКСТУРЫ — ОТКАЗ, А НЕ ПРОПУСК. Здесь последовательно стояли две
+    # неверные формы: сперва `pm.test('SKIPPED', () => pm.expect(true).to.eql(true))`
+    # — утверждение, которое не может упасть; затем console-note + return вообще без
+    # утверждения. Второе опиралось на то, что рядом, в prerequest-скрипте, стоит
+    # harness-config-страж (gen.py `_auth_pre_script`), и он краснеет сам. Так и есть
+    # — но это делает ЭТУ функцию ловушкой: скопированная в шаг без `auth=<envVar>`,
+    # она даст настоящую тишину. Поэтому гейт краснеет СВОИМИ силами и говорит, чего
+    # не хватает.
+    #
+    # Граница дополнительно покрыта всегда-исполняемым Go-тестом
+    # internal/check/viewer_boundary_test.go — но покрытие в другом месте не является
+    # основанием молчать здесь.
     return [
         "const _viewer = pm.environment.get('jwtProjectViewerA') || '';",
         "if (!_viewer) {",
-        "  console.log('SKIP viewer-tier (no jwtProjectViewerA fixture); boundary covered by internal/check/viewer_boundary_test.go');",
+        "  pm.test('FIXTURE REQUIRED: jwtProjectViewerA (viewer-tier boundary NOT verified)', () => "
+        "pm.expect.fail('jwtProjectViewerA is empty: the viewer subject was never seeded, so this case "
+        "exercised NO viewer at all. Seed it via tests/authz-fixtures (prodseed_matrix.py writes the "
+        "token into the suite env). Absence of a fixture is a refusal, not a skip.'));",
         "  return;",
         "}",
     ]
@@ -401,8 +423,16 @@ CASES.append(Case(
                           "pm.environment.set('regMissMsg', pm.response.json().message||'');"]),
         Step(name="reg-deny-stranger", method="GET", path=f"{REG}/{{{{regIdAz}}}}", auth="jwtStranger",
              test_script=[
+                 # Сравнение форматов возможно ТОЛЬКО когда отказ пришёл как 404 —
+                 # именно его байт-идентичность и проверяется. Но раньше при любом
+                 # другом коде шаг молчал: ни одного утверждения на шести из семи
+                 # возможных форм ответа, включая 200. То есть чужак, ПРОЧИТАВШИЙ
+                 # чужой реестр, прошёл бы этот шаг незамеченным. Поэтому сначала —
+                 # утверждение, исполняющееся ВСЕГДА: отказ, и только отказ.
+                 "pm.test('stranger denied (401/403/404), never 200', () => "
+                 "pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));",
                  "if (pm.response.code !== 404) {",
-                 "  console.log('SKIP byte-identity: stranger not authenticated-404 on this stand (code '+pm.response.code+')');",
+                 "  console.log('byte-identity comparison applies to the 404 shape only; this stand answered '+pm.response.code+' (authz-first ordering) — the deny/miss format pair is not comparable here');",
                  "  return;",
                  "}",
                  *assert_grpc_code(5, "NOT_FOUND"),

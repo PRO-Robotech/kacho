@@ -486,7 +486,7 @@ func TestInstance_COMP_1_26_UpdateImmutable(t *testing.T) {
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }
 
-// COMP-1-27: next-boot deferral (vmSpec) accepted with statusReason; bootSource → Reinstall-only;
+// COMP-1-27: next-boot deferral (vmSpec) accepted with statusReason; bootSource → immutable;
 // STOPPED-gate (machineTypeId) на не-STOPPED → sync FailedPrecondition (always-reject in COMP-1).
 func TestInstance_COMP_1_27_UpdateDeferralAndGate(t *testing.T) {
 	k := newInstanceSvc(t, true)
@@ -503,10 +503,10 @@ func TestInstance_COMP_1_27_UpdateDeferralAndGate(t *testing.T) {
 	in := instanceFromOp(t, portmock.AwaitOpDone(t, k.ops, op.ID))
 	require.Contains(t, in.StatusReason, "takes effect on next boot")
 
-	// bootSource → Reinstall-only reject.
+	// bootSource → immutable reject (нет операции, которой его меняют).
 	_, err = k.svc.Update(ctx, UpdateInstanceReq{InstanceID: seedID, UpdateMask: []string{"boot_source"}})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
-	require.Contains(t, status.Convert(err).Message(), "bootSource cannot be changed via Update; use Reinstall")
+	require.Contains(t, status.Convert(err).Message(), "bootSource is immutable after Instance.Create")
 
 	// STOPPED-gated machineTypeId on non-STOPPED → sync FailedPrecondition (always-reject).
 	_, err = k.svc.Update(ctx, UpdateInstanceReq{InstanceID: seedID, MachineTypeID: "mt-bigger", UpdateMask: []string{"machine_type_id"}})

@@ -30,17 +30,6 @@ spec:
         # этот файл не накладывает (offline-рендер, чужой реестр), получает "unset" —
         # и тогда привязки нет, что честно: привязывать не к чему.
         kacho.cloud/image-id: {{ dig "kachoImageIds" "compute" "unset" (.Values.global | default dict) | quote }}
-        {{- if .Values.opa.enabled }}
-        # OPA-политика приезжает в sidecar примонтированным ConfigMap'ом и
-        # читается им на старте. Без привязки pod-template к её СОДЕРЖИМОМУ
-        # правка политики не перекатывает под, и sidecar продолжает применять
-        # ту, что загрузил при запуске, — при том что ConfigMap уже новый.
-        # Это класс инцидента kacho-storage (2026-07-25) на authz-политике:
-        # хранимое намерение разъезжается с исполняемым правилом, а всё выглядит
-        # здоровым. compute потребляет ТОЛЬКО этот ConfigMap (остальные настройки
-        # приходят инлайн в pod-template и потому перекатывают под сами).
-        kacho.cloud/opa-config-checksum: {{ include (print $.Template.BasePath "/opa-configmap.yaml") . | sha256sum }}
-      {{- end }}
     spec:
       # INFRA sec-hardening (2026-07-16) — единый floor, идентичный kacho-iam.
       securityContext:
@@ -298,64 +287,15 @@ spec:
               port: grpc
             initialDelaySeconds: 10
             periodSeconds: 30
-        # ==================================================================
-        # KAC-127 Phase 4 — OPA sidecar for in-pod policy decisions.
-        # ==================================================================
-        # OPA pulls a signed bundle from kacho-iam (BundleService) every
-        # 30–60s; bundle contains the FGA model + condition policies. The
-        # sidecar is bound to 127.0.0.1 only — main container has loopback
-        # access; nothing outside the pod can talk to it.
-        {{- if .Values.opa.enabled }}
-        - name: opa
-          image: "{{ .Values.opa.image }}"
-          imagePullPolicy: {{ .Values.opa.imagePullPolicy }}
-          args:
-            - "run"
-            - "--server"
-            - "--addr=127.0.0.1:{{ .Values.opa.port }}"
-            - "--diagnostic-addr=0.0.0.0:8282"
-            - "--config-file=/config/opa-config.yaml"
-          ports:
-            - name: opa-diag
-              containerPort: 8282
-          volumeMounts:
-            - name: opa-config
-              mountPath: /config
-              readOnly: true
-          resources:
-            requests:
-              cpu: {{ .Values.opa.resources.requests.cpu }}
-              memory: {{ .Values.opa.resources.requests.memory }}
-            limits:
-              cpu: {{ .Values.opa.resources.limits.cpu }}
-              memory: {{ .Values.opa.resources.limits.memory }}
-          readinessProbe:
-            httpGet:
-              path: /health?bundles
-              port: opa-diag
-            initialDelaySeconds: 5
-            periodSeconds: 10
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: opa-diag
-            initialDelaySeconds: 10
-            periodSeconds: 30
-        {{- end }}
       # volumes БЕЗУСЛОВНЫ: /tmp нужен всегда, потому что rootfs read-only независимо от
-      # opa/mtls. Раньше блок был гейтован `if or opa.enabled mtls.enable` — и при обоих
-      # false (ровно профиль umbrella-фазы 1, MTLS_OFF) том исчезал, а volumeMounts на
-      # него оставался → `Deployment.apps "compute" is invalid: volumeMounts[0].name:
-      # Not found: "tmp"`. Standalone `helm template` этого не показывал: там дефолтные
-      # values, где opa/mtls включены.
+      # mtls. Раньше блок был гейтован условием по ручкам — и при выключенных (ровно
+      # профиль umbrella-фазы 1, MTLS_OFF) том исчезал, а volumeMounts на него оставался
+      # → `Deployment.apps "compute" is invalid: volumeMounts[0].name: Not found: "tmp"`.
+      # Standalone `helm template` этого не показывал: там дефолтные values, где ручки
+      # включены.
       volumes:
         - name: tmp
           emptyDir: {}
-        {{- if .Values.opa.enabled }}
-        - name: opa-config
-          configMap:
-            name: {{ .Values.name }}-opa-config
-        {{- end }}
         {{- if .Values.mtls.enable }}
         # SEC-F mTLS — cert-manager internal-CA secrets (server + client).
         - name: mtls-server

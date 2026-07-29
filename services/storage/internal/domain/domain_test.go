@@ -16,7 +16,13 @@ func TestVolumeNameValidate(t *testing.T) {
 		}
 	}
 	bad := []string{"Vol-Data", "vol_data!", "1vol", "-vol", "vol-", "оём",
-		"way-too-long-name-that-clearly-exceeds-the-sixty-three-char-limit-x"}
+		"way-too-long-name-that-clearly-exceeds-the-sixty-three-char-limit-x",
+		// Полезная нагрузка внедрения отвергается ФОРМОЙ имени, синхронно, тем же
+		// контрактным текстом. Это утверждение — пара к чёрному ящику: кейс suite'ы
+		// требует ровно 400 и этот текст, и требовать он вправе только потому, что
+		// здесь зафиксировано, что иначе быть не может. Прежде кейс допускал рядом с
+		// отказом и успех, то есть принимал исход, ради ловли которого написан.
+		"vol'; DROP TABLE volumes;--"}
 	for _, n := range bad {
 		err := VolumeName(n).Validate()
 		if err == nil {

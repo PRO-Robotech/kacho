@@ -528,3 +528,113 @@ tools/foreignclouds with the reason written down. Nothing else is exempt.
 `)
 	return b.String()
 }
+
+// ---------------------------------------------------------------------------
+// Заявленный долг: сокращение, которое гейт намеренно НЕ роняет
+// ---------------------------------------------------------------------------
+
+// debtTokens — имена чужого облака, которые гейт НЕ считает нарушением, потому что
+// починить их одним изменением нельзя. Сейчас в списке одно: двухбуквенное сокращение
+// провайдера (см. пояснение к `tokens` выше).
+//
+// Зачем отдельный счёт. Исключение, о котором молчат, неотличимо от отсутствия
+// предмета: пока сокращение просто не входило в список токенов, гейт печатал «OK», и по
+// его выводу нельзя было узнать, что запрет #2 в дереве нарушен — вместе с тем, что
+// нарушение оформлено как ЦЕЛЬ («parity goal» в обзорных документах, критерий приёмки,
+// целый реестр расхождений относительно чужого API). Число делает долг видимым, не
+// заваливая находки, которые исправимы прямо сейчас.
+var debtTokens = []string{"yc"}
+
+// Debt — сводка заявленного долга: сколько вхождений в скольких файлах.
+type Debt struct {
+	Occurrences int
+	Files       int
+	TopFiles    []string // до десяти файлов с наибольшим числом вхождений, отсортированы
+}
+
+// ScanDebt считает вхождения debtTokens по тому же дереву и по тем же правилам
+// границ, что и Scan. Не влияет на вердикт — только на его наблюдаемость.
+func ScanDebt(repoRoot string) (Debt, error) {
+	perFile := map[string]int{}
+	ignored := ignoredPaths(repoRoot)
+
+	err := filepath.WalkDir(repoRoot, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, relErr := filepath.Rel(repoRoot, path)
+		if relErr != nil {
+			return relErr
+		}
+		rel = filepath.ToSlash(rel)
+		if rel == "." {
+			return nil
+		}
+		if d.IsDir() {
+			if d.Name() == ".git" || ignored.covers(rel) {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if ignored.covers(rel) {
+			return nil
+		}
+		content := readText(path)
+		if content == "" {
+			return nil
+		}
+		n := 0
+		for _, line := range strings.Split(content, "\n") {
+			n += countDebtTokens(line)
+		}
+		if n > 0 {
+			perFile[rel] = n
+		}
+		return nil
+	})
+	if err != nil {
+		return Debt{}, err
+	}
+
+	d := Debt{Files: len(perFile)}
+	names := make([]string, 0, len(perFile))
+	for f, n := range perFile {
+		d.Occurrences += n
+		names = append(names, f)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		if perFile[names[i]] != perFile[names[j]] {
+			return perFile[names[i]] > perFile[names[j]]
+		}
+		return names[i] < names[j]
+	})
+	for i, f := range names {
+		if i == 10 {
+			break
+		}
+		d.TopFiles = append(d.TopFiles, fmt.Sprintf("%s (%d)", f, perFile[f]))
+	}
+	return d, nil
+}
+
+// countDebtTokens counts debt-token occurrences in s with the same identifier
+// boundaries Scan uses, so the number is comparable with the findings above it.
+func countDebtTokens(s string) int {
+	lower := strings.ToLower(s)
+	n := 0
+	for _, tok := range debtTokens {
+		for i := 0; ; {
+			j := strings.Index(lower[i:], tok)
+			if j < 0 {
+				break
+			}
+			start := i + j
+			end := start + len(tok)
+			if !alnumAt(lower, start-1) && !alnumAt(lower, end) {
+				n++
+			}
+			i = end
+		}
+	}
+	return n
+}

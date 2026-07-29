@@ -6,9 +6,12 @@ package repo_test
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
@@ -73,7 +76,8 @@ func seedFixtureMachineTypes(t *testing.T, db *sql.DB) {
 
 // TestIntegration_InstanceRepo_Lifecycle покрывает post-cutover repo-поверхность
 // InstanceRepo: Insert (без привязок — attached_disks удалена), GateForAttach
-// state-CAS, SetStatusCAS, MarkDeleting, Delete (финальный row-delete). Attach-state
+// (одностейтментная предпроверка состояния, НЕ compare-and-swap), SetStatusCAS,
+// MarkDeleting, Delete (финальный row-delete). Attach-state
 // живёт в kacho-storage — здесь его нет (см. storage S2 integration).
 func TestIntegration_InstanceRepo_Lifecycle(t *testing.T) {
 	if testing.Short() {
@@ -131,4 +135,95 @@ func TestIntegration_InstanceRepo_Lifecycle(t *testing.T) {
 	// GateForAttach на удалённом → NotFound.
 	_, _, _, err = instRepo.GateForAttach(ctx, inID)
 	require.ErrorIs(t, err, serviceerr.ErrNotFound)
+}
+
+// countingTracer считает запросы, ушедшие в Postgres, отбирая их по подстроке. Нужен,
+// чтобы проверить ЧИСЛО стейтментов, а не только ответ: именно число и есть предмет.
+type countingTracer struct {
+	match string
+	n     int
+}
+
+func (c *countingTracer) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
+	if strings.Contains(data.SQL, c.match) {
+		c.n++
+	}
+	return ctx
+}
+
+func (c *countingTracer) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
+
+// TestIntegration_InstanceGateForAttach_OneStatementDecidesBothLanes — предпроверка
+// обязана решать существование и пригодность состояния ОДНИМ стейтментом.
+//
+// Почему проверяется ЧИСЛО запросов, а не гонка. Прежняя форма спрашивала дважды
+// (conditional SELECT, затем EXISTS на 0 rows), и полоса ответа могла назвать не то, что
+// произошло: строка, исчезнувшая между запросами, отвечала FailedPrecondition вместо
+// NotFound. Проба «погонять параллельно с удалением» на это НЕ ловится — окно между
+// двумя локальными запросами слишком узкое, сорок раундов его не задели, и такая проба
+// была бы утверждением, которое не может упасть. Число стейтментов — тот же предмет,
+// выраженный детерминированно: два запроса означают два момента времени, один запрос
+// означает один снимок.
+func TestIntegration_InstanceGateForAttach_OneStatementDecidesBothLanes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	dsn := setupTestDB(t)
+
+	cfg, err := pgxpool.ParseConfig(dsn)
+	require.NoError(t, err)
+	tr := &countingTracer{match: "FROM instances"}
+	cfg.ConnConfig.Tracer = tr
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
+	require.NoError(t, err)
+	defer pool.Close()
+
+	instRepo := repo.NewInstanceRepo(pool)
+
+	// Полоса «нет инстанса» — та, на которой прежняя форма делала второй запрос.
+	tr.n = 0
+	_, _, _, err = instRepo.GateForAttach(ctx, ids.NewID(ids.PrefixInstance))
+	require.ErrorIs(t, err, serviceerr.ErrNotFound)
+	require.Equal(t, 1, tr.n,
+		"полоса «инстанса нет» решена %d стейтментами — существование и состояние обязаны "+
+			"решаться одним снимком, иначе полоса ответа может назвать не то, что произошло", tr.n)
+
+	// Полоса «есть, но состояние не то» — тот же счёт.
+	inID := ids.NewID(ids.PrefixInstance)
+	_, err = instRepo.Insert(ctx, &domain.Instance{
+		ID: inID, ProjectID: "f", CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
+		Name: "vm-lane", ZoneID: "ru-central1-a", Status: domain.InstanceStatusRunning,
+		FQDN: inID + ".auto.internal", InstanceKind: domain.InstanceKindVM, MachineTypeID: "mt-std2",
+		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
+		BootSource:         domain.BootSource{Type: "storage.image", ID: "img-x:22.04", ImageKind: domain.ImageKindStorageImage},
+	})
+	require.NoError(t, err)
+	_, err = instRepo.MarkDeleting(ctx, inID)
+	require.NoError(t, err)
+
+	tr.n = 0
+	_, _, _, err = instRepo.GateForAttach(ctx, inID)
+	require.ErrorIs(t, err, serviceerr.ErrFailedPrecondition)
+	require.Equal(t, 1, tr.n,
+		"полоса «состояние не то» решена %d стейтментами", tr.n)
+
+	// Положительная полоса — тоже один стейтмент (контроль: правка не превратила
+	// счётчик в «чем меньше, тем лучше» за счёт потери проверки состояния).
+	okID := ids.NewID(ids.PrefixInstance)
+	_, err = instRepo.Insert(ctx, &domain.Instance{
+		ID: okID, ProjectID: "f", CreatedAt: time.Now().UTC().Truncate(time.Microsecond),
+		Name: "vm-lane-ok", ZoneID: "ru-central1-a", Status: domain.InstanceStatusRunning,
+		FQDN: okID + ".auto.internal", InstanceKind: domain.InstanceKindVM, MachineTypeID: "mt-std2",
+		EffectiveResources: domain.EffectiveResources{VCPU: 2, MemoryMiB: 8192},
+		BootSource:         domain.BootSource{Type: "storage.image", ID: "img-x:22.04", ImageKind: domain.ImageKindStorageImage},
+	})
+	require.NoError(t, err)
+	tr.n = 0
+	zone, project, name, err := instRepo.GateForAttach(ctx, okID)
+	require.NoError(t, err)
+	require.Equal(t, "ru-central1-a", zone)
+	require.Equal(t, "f", project)
+	require.Equal(t, "vm-lane-ok", name)
+	require.Equal(t, 1, tr.n, "положительная полоса решена %d стейтментами", tr.n)
 }

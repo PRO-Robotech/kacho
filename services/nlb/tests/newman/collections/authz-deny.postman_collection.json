@@ -21,11 +21,14 @@
           "pm.environment.set('_suiteRegionAltId', pm.environment.get('existingRegionAltId'));",
           "// Default auth: project-editor JWT on project A (sufficient for most happy-path steps).",
           "// Per-step auth= overrides via _auth_pre_script.",
-          "// fallback на jwtBootstrap (cluster-admin) пока per-subject JWT не засеяны setup.sh —",
-          "// снимает булк 401 на happy-path; authz-специфичные шаги (per-step auth=) остаются точны.",
-          "const __defaultJwt = pm.environment.get('jwtProjectEditorA') || pm.variables.get('jwtProjectEditorA') || pm.environment.get('jwtBootstrap') || '';",
+          "const __defaultJwt = pm.environment.get('jwtProjectEditorA') || pm.variables.get('jwtProjectEditorA') || '';",
           "if (__defaultJwt && !pm.request.headers.has('Authorization')) {",
           "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __defaultJwt});",
+          "}",
+          "const __needed = ['baseUrl', 'existingProjectId', 'existingRegionId', 'jwtProjectEditorA'];",
+          "const __missing = __needed.filter((k) => !(pm.environment.get(k) || pm.variables.get(k) || ''));",
+          "if (__missing.length > 0) {",
+          "  pm.test('FIXTURE REQUIRED: ' + __missing.join(', '), () => pm.expect.fail('the suite fixture seed did not run: ' + __missing.join(', ') + ' are empty. Seed via tests/authz-fixtures (prodrun.sh patches the suite env). Falling back to another subject would test a DIFFERENT principal and report green about a subject that was never exercised.'));",
           "}"
         ]
       }

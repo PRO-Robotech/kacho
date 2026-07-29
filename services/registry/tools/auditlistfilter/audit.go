@@ -157,6 +157,11 @@ type Report struct {
 	Unjudged     []string // discovered, enforcement not declared — each is also a finding
 	Expired      []string // declared, handler gone — each is also a finding
 	Findings     []string // one line per finding; non-empty ⇒ the gate fails
+	// Notes — заявленные исключения, у которых проверена ПРЕДПОСЫЛКА (например: nil
+	// достижим только под ручкой, чей отказ в production закреплён тестом). Не роняют
+	// вердикт, но печатаются числом: исключение, которого не видно, неотличимо от
+	// пропущенной находки, а исключение без предмета обязано становиться находкой.
+	Notes []string
 }
 
 // Audit inspects the tree at o.Root, writes its census and findings to out, and
@@ -240,7 +245,7 @@ func analyze(serviceRoot string) (Report, error) {
 	rep.Findings = append(rep.Findings, checkFiltersFailClosed(fset, authzMethods)...)
 
 	cmdDir := filepath.Join(serviceRoot, "cmd")
-	wiring, rootFiles, werr := checkHandlerIsWired(fset, cmdDir)
+	wiring, wiringNotes, rootFiles, werr := checkHandlerIsWired(fset, cmdDir)
 	rep.RootFiles = rootFiles
 	if werr != nil {
 		rep.Findings = append(rep.Findings, werr.Error())
@@ -248,6 +253,8 @@ func analyze(serviceRoot string) (Report, error) {
 		return rep, ErrNotInspected
 	}
 	rep.Findings = append(rep.Findings, wiring...)
+	rep.Notes = append(rep.Notes, wiringNotes...)
+	sort.Strings(rep.Notes)
 
 	sort.Strings(rep.Findings)
 	return rep, nil
@@ -297,6 +304,13 @@ func finish(rep Report, out io.Writer, analyzeErr error) (Report, error) {
 	}
 	if len(rep.Expired) > 0 {
 		_, _ = fmt.Fprintf(out, "audit-list-filter: declared with no handler %s\n", strings.Join(rep.Expired, ", "))
+	}
+
+	// Заявленные исключения печатаются числом ДО находок: исключение, которого не
+	// видно, неотличимо от пропущенной находки.
+	_, _ = fmt.Fprintf(out, "audit-list-filter: %d declared exception(s) with a verified premise\n", len(rep.Notes))
+	for _, n := range rep.Notes {
+		_, _ = fmt.Fprintf(out, "audit-list-filter: note: %s\n", n)
 	}
 
 	for _, f := range rep.Findings {
@@ -487,24 +501,34 @@ func checkObjectGate(fset *token.FileSet, name string, fd *ast.FuncDecl, r rule)
 	}
 
 	var out []string
-	checked := map[string]bool{}
-	for _, id := range errorTestedIdents(fd.Body) {
-		checked[id] = true
-	}
 
 	gatePos := token.NoPos
-	acted := false
 	for _, as := range assigns {
 		if pos := as.Pos(); gatePos == token.NoPos || pos < gatePos {
 			gatePos = pos
-		}
-		if n := assignedName(as); n != "" && checked[n] {
-			acted = true
 		}
 	}
 	for _, call := range bare {
 		if pos := call.Pos(); gatePos == token.NoPos || pos < gatePos {
 			gatePos = pos
+		}
+	}
+
+	// Признак «вердикт проверен» берётся ПОСЛЕ вызова гейта и только из ветви, которая
+	// покидает метод. Прежде он собирался из ВСЕГО тела: множество всех сравнений
+	// `<ident> != nil` где угодно, включая ветку ДРУГОГО вызова и позицию ДО гейта. А
+	// имя в Go переиспользуется — `err` есть почти в каждом методе, — поэтому признак
+	// выполнялся у метода, который вердикт гейта не смотрел вовсе. Проверка формы без
+	// содержания: она держалась на совпадении имени, а не на том, что отказ
+	// останавливает ответ.
+	checked := map[string]bool{}
+	for _, id := range errorTestedLeavingAfter(fd.Body, gatePos) {
+		checked[id] = true
+	}
+	acted := false
+	for _, as := range assigns {
+		if n := assignedName(as); n != "" && checked[n] {
+			acted = true
 		}
 	}
 	if !acted {
@@ -551,8 +575,9 @@ func checkFiltersFailClosed(fset *token.FileSet, authz map[string]*ast.FuncDecl)
 // checkHandlerIsWired asserts the composition root builds the public handler with a
 // real authorizer. A nil one is breakglass: every filter above becomes a no-op. The
 // second result is how many files it read, for the census.
-func checkHandlerIsWired(fset *token.FileSet, cmdDir string) ([]string, int, error) {
+func checkHandlerIsWired(fset *token.FileSet, cmdDir string) ([]string, []string, int, error) {
 	var files []*ast.File
+	var notes []string
 	err := filepath.WalkDir(cmdDir, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -568,13 +593,13 @@ func checkHandlerIsWired(fset *token.FileSet, cmdDir string) ([]string, int, err
 		return nil
 	})
 	if err != nil {
-		return nil, len(files), fmt.Errorf("%s could not be walked (%v) — the composition root "+
+		return nil, nil, len(files), fmt.Errorf("%s could not be walked (%v) — the composition root "+
 			"was not inspected, so nothing can be vouched for: every List filter is a no-op "+
 			"when the handler is built without an authorizer, and that is decided here",
 			cmdDir, err)
 	}
 	if len(files) == 0 {
-		return nil, 0, fmt.Errorf("no Go sources under %s — the composition root was not "+
+		return nil, nil, 0, fmt.Errorf("no Go sources under %s — the composition root was not "+
 			"inspected, so nothing can be vouched for", cmdDir)
 	}
 
@@ -591,12 +616,33 @@ func checkHandlerIsWired(fset *token.FileSet, cmdDir string) ([]string, int, err
 				return true
 			}
 			found = true
-			if len(call.Args) >= 2 && isNil(call.Args[1]) {
-				out = append(out, fmt.Sprintf(
-					"%s: NewRegistryHandler is wired with a nil authorizer — that is "+
-						"breakglass, and it turns every per-object List filter into a no-op",
-					fset.Position(call.Pos()).String()))
+			if len(call.Args) < 2 {
+				return true
 			}
+			// АРГУМЕНТ ОТСЛЕЖИВАЕТСЯ КАК ПЕРЕМЕННАЯ. Прежде здесь распознавался только
+			// литерал `nil` — конструкция, которую никто не пишет: настоящий корень
+			// передаёт переменную. Проверка выглядела включённой и не могла сработать ни
+			// разу. Теперь идентификатор разрешается в объемлющей функции: объявление без
+			// инициализатора, присваивание только внутри условия, присваивание nil.
+			reachable, how := argNilReachable(f, call, 1)
+			if !reachable {
+				return true
+			}
+			msg := fmt.Sprintf(
+				"%s: NewRegistryHandler can be wired with a nil authorizer (%s) — that is "+
+					"breakglass, and it turns every per-object List filter into a no-op",
+				fset.Position(call.Pos()).String(), how)
+			if how == howConditional && productionRefusalPinned(cmdDir) {
+				// ЗАЯВЛЕННОЕ, ПРОВЕРЯЕМОЕ исключение: nil достижим только под ручкой,
+				// которую загрузочный страж отвергает в production, и этот отказ
+				// закреплён тестом в том же пакете. Исключение не вечное и не на слово:
+				// исчезнет тест — запись станет находкой. Печатается числом, поэтому
+				// невидимой быть не может.
+				notes = append(notes, msg+" — не фатально, пока отказ ручки в production "+
+					"закреплён тестом композиционного корня (имя содержит Breakglass и Production)")
+				return true
+			}
+			out = append(out, msg)
 			return true
 		})
 	}
@@ -605,7 +651,149 @@ func checkHandlerIsWired(fset *token.FileSet, cmdDir string) ([]string, int, err
 			"%s: no call to NewRegistryHandler — the public handler, and with it every "+
 				"List filter, is never wired", cmdDir))
 	}
-	return out, len(files), nil
+	return out, notes, len(files), nil
+}
+
+// howLiteral / howAssignedNil / howConditional — как именно nil достижим у аргумента.
+const (
+	howLiteral     = "a literal nil at the call site"
+	howAssignedNil = "assigned nil in the enclosing function"
+	howConditional = "declared without an initializer and assigned only inside a conditional"
+)
+
+// argNilReachable resolves argument argIdx of call and reports whether it can be nil.
+// A direct constructor call cannot; an identifier is traced inside the function that
+// contains the call: `var x T` with every assignment nested in a conditional leaves nil
+// reachable on the path where the condition does not hold.
+func argNilReachable(f *ast.File, call *ast.CallExpr, argIdx int) (bool, string) {
+	if argIdx >= len(call.Args) {
+		return false, ""
+	}
+	arg := call.Args[argIdx]
+	if isNil(arg) {
+		return true, howLiteral
+	}
+	id, ok := arg.(*ast.Ident)
+	if !ok {
+		return false, ""
+	}
+	fd := enclosingFunc(f, call.Pos())
+	if fd == nil || fd.Body == nil {
+		return false, ""
+	}
+
+	declaredNoInit := false
+	assignedNil := false
+	unconditional := false
+
+	// Верхний уровень тела функции: только здесь присваивание безусловно.
+	for _, st := range fd.Body.List {
+		if st.Pos() > call.Pos() {
+			break
+		}
+		switch v := st.(type) {
+		case *ast.DeclStmt:
+			gd, ok := v.Decl.(*ast.GenDecl)
+			if !ok || gd.Tok != token.VAR {
+				continue
+			}
+			for _, spec := range gd.Specs {
+				vs, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+				for _, n := range vs.Names {
+					if n.Name != id.Name {
+						continue
+					}
+					if len(vs.Values) == 0 {
+						declaredNoInit = true
+					} else if isNil(vs.Values[0]) {
+						assignedNil = true
+					} else {
+						unconditional = true
+					}
+				}
+			}
+		case *ast.AssignStmt:
+			for i, lhs := range v.Lhs {
+				n, ok := lhs.(*ast.Ident)
+				if !ok || n.Name != id.Name {
+					continue
+				}
+				if i < len(v.Rhs) && isNil(v.Rhs[i]) {
+					assignedNil = true
+				} else {
+					unconditional = true
+				}
+			}
+		}
+	}
+
+	// Присваивание nil где угодно (в том числе внутри условия) делает nil достижимым.
+	ast.Inspect(fd.Body, func(n ast.Node) bool {
+		as, ok := n.(*ast.AssignStmt)
+		if !ok {
+			return true
+		}
+		for i, lhs := range as.Lhs {
+			l, ok := lhs.(*ast.Ident)
+			if ok && l.Name == id.Name && i < len(as.Rhs) && isNil(as.Rhs[i]) {
+				assignedNil = true
+			}
+		}
+		return true
+	})
+
+	switch {
+	case assignedNil:
+		return true, howAssignedNil
+	case declaredNoInit && !unconditional:
+		return true, howConditional
+	default:
+		return false, ""
+	}
+}
+
+// enclosingFunc returns the function declaration whose body contains pos.
+func enclosingFunc(f *ast.File, pos token.Pos) *ast.FuncDecl {
+	for _, d := range f.Decls {
+		fd, ok := d.(*ast.FuncDecl)
+		if !ok || fd.Body == nil {
+			continue
+		}
+		if fd.Body.Pos() <= pos && pos <= fd.Body.End() {
+			return fd
+		}
+	}
+	return nil
+}
+
+// productionRefusalPinned reports whether the composition-root package pins, by test,
+// that the knob which can leave the authorizer nil is REFUSED in production. This is
+// the premise of the non-fatal note above: if the pin disappears, the note must become
+// a finding, so the exclusion cannot outlive its subject.
+func productionRefusalPinned(cmdDir string) bool {
+	pinned := false
+	_ = filepath.WalkDir(cmdDir, func(path string, d os.DirEntry, walkErr error) error {
+		if walkErr != nil || d.IsDir() || !strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return nil
+		}
+		for _, line := range strings.Split(string(raw), "\n") {
+			if !strings.HasPrefix(line, "func Test") {
+				continue
+			}
+			if strings.Contains(line, "Breakglass") && strings.Contains(line, "Production") {
+				pinned = true
+			}
+		}
+		return nil
+	})
+	return pinned
 }
 
 // ---------------------------------------------------------------------------
@@ -708,20 +896,55 @@ func rangedIdents(body *ast.BlockStmt) map[string]bool {
 // errorTestedIdents returns identifiers compared against nil somewhere in the body —
 // the shape of acting on a verdict, in both the `if err := f(); err != nil` and the
 // `err := f()` … `if err != nil` spellings.
-func errorTestedIdents(body *ast.BlockStmt) []string {
+// errorTestedLeavingAfter returns the identifiers compared `!= nil` in an `if` that
+// (a) stands AFTER `after` and (b) leaves the method from its body (return/panic).
+// Both conditions matter. Without (a) a comparison belonging to an earlier, unrelated
+// call satisfies the signal, and Go reuses `err` everywhere. Without (b) a branch that
+// merely logs the denial and falls through counts as acting on it, while the page is
+// returned anyway — which is the very thing this gate exists to forbid.
+func errorTestedLeavingAfter(body *ast.BlockStmt, after token.Pos) []string {
 	var out []string
 	ast.Inspect(body, func(n ast.Node) bool {
-		bin, ok := n.(*ast.BinaryExpr)
+		ifs, ok := n.(*ast.IfStmt)
+		if !ok {
+			return true
+		}
+		if after != token.NoPos && ifs.Pos() <= after {
+			return true
+		}
+		bin, ok := ifs.Cond.(*ast.BinaryExpr)
 		if !ok || bin.Op != token.NEQ {
 			return true
 		}
 		id, ok := bin.X.(*ast.Ident)
-		if ok && isNil(bin.Y) {
-			out = append(out, id.Name)
+		if !ok || !isNil(bin.Y) {
+			return true
 		}
+		if !leavesMethod(ifs.Body) {
+			return true
+		}
+		out = append(out, id.Name)
 		return true
 	})
 	return out
+}
+
+// leavesMethod reports whether the block certainly ends the method (a return, or a
+// panic). A branch that logs and continues does not.
+func leavesMethod(b *ast.BlockStmt) bool {
+	found := false
+	ast.Inspect(b, func(n ast.Node) bool {
+		switch v := n.(type) {
+		case *ast.ReturnStmt:
+			found = true
+		case *ast.CallExpr:
+			if id, ok := v.Fun.(*ast.Ident); ok && id.Name == "panic" {
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
 }
 
 // firstUseCaseCall returns the position of the earliest `<x>.uc.<Method>(…)` call.

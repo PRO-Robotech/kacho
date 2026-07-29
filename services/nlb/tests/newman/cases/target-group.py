@@ -197,24 +197,39 @@ CASES.append(Case(
     steps=[
         *_setup_tg("mv"),
         # Cross-project move needs the DESTINATION project (existingProjectCrossId) to
-        # exist AND be visible to the caller. It is a cross-domain deploy-precondition
-        # (iam-seeded): if unseeded / cross-account-invisible, nlb->iam ProjectService.Get
-        # lawfully returns "Project <id> not found" (anti-oracle NotFound). Wrap in the
-        # cross-service RYW retry (destination may lag right after seed) and, on a bare
-        # lane, assert the lawful reject instead of hard-failing — the move-back + cleanup
-        # then no-op. On a seeded lane the full cross-project round-trip runs.
+        # exist AND be visible to the caller — это ФИКСТУРА СУИТЫ, засеваемая
+        # tests/authz-fixtures, а не переменная погода.
+        #
+        # Прежде здесь стояла ветка «фикстуры нет → законный отказ», и кейс принимал И
+        # состоявшийся перенос, И отказ на 400/403/404. То есть кейс «Move TG
+        # cross-project» проходил ровно тогда, когда переноса НЕ БЫЛО, и его основной
+        # предмет не проверялся ни разу — а `move-back` и уборка при этом «схлопывались
+        # в no-op», так что и они ничего не говорили. Терпимость к сорванной фикстуре —
+        # запрещённая форма (testing.md): отсутствие фикстуры обязано быть ОТКАЗОМ,
+        # названным по имени, а не альтернативным зачётом.
+        #
+        # Кросс-сервисное окно видимости назначения остаётся: retry_create_until_present
+        # переигрывает шаг на транзиентном «not found». По исчерпании бюджета кейс
+        # требует именно перенос.
         retry_create_until_present(Step(name="move", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:move",
              body={"destinationProjectId": "{{_suiteProjectCrossId}}"},
              test_script=[
                  "pm.environment.unset('tgMoved');",
+                 "const _dst = pm.environment.get('_suiteProjectCrossId') || '';",
+                 "if (!_dst) {",
+                 "  pm.test('FIXTURE REQUIRED: existingProjectCrossId (destination project)', () => "
+                 "pm.expect.fail('the destination project fixture was never seeded, so a cross-project "
+                 "move could not have been attempted. Seed via tests/authz-fixtures. Absence of a "
+                 "fixture is a refusal, not an alternative pass.'));",
+                 "  pm.environment.unset('opId');",
+                 "  return;",
+                 "}",
+                 "pm.test('cross-project move accepted as Operation', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                  "if (pm.response.code === 200) {",
-                 "  pm.test('cross-project move accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
                  "  pm.environment.set('tgMoved', '1');",
                  *save_from_response("j.id", "opId"),
                  "} else {",
                  "  pm.environment.unset('opId');",
-                 "  pm.test('destination-project fixture absent → lawful reject, never silent 200', () => "
-                 "    pm.expect(pm.response.code).to.be.oneOf([400, 403, 404]));",
                  "}",
              ])),
         poll_operation_until_done(),

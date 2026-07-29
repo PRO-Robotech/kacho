@@ -203,17 +203,28 @@ hidden-existence sentinel, and reduce the handler to sentinel→gRPC-status tran
 Until a second caller exists, the single filtered path is the whole surface and the risk
 the finding describes (a future caller forgetting to filter) has no live instance.
 
-## 7. Newman black-box suite is not gated by the per-repo `ci.yaml`
+## 7. Data-plane harness is not invoked by any workflow (the collections ARE)
 
 **Rule.** testing.md: the Newman/Postman suite is the primary regression infra; a new
 RPC/field ships its Newman case in the same PR.
 
-**Divergence.** `.github/workflows/ci.yaml` runs only build-vet-test (unit `-short`),
-integration (testcontainers `./internal/repo/...`), lint and govuln. The black-box
-Newman collections (`tests/newman/cases/registry.py`, `registry-authz.py`) and the
-data-plane harness (`scripts/dataplane-e2e.sh`) are **not** invoked by any workflow in
-this repo — they run against a deployed stand via `tests/newman/scripts/run.sh` /
-`dataplane-e2e.sh`.
+**Divergence — уточнена, прежняя формулировка была неверна.** Здесь стояло, что
+чёрно-ящичные коллекции registry «не вызываются НИ ОДНИМ workflow». Это перестало быть
+правдой: `.github/workflows/e2e-newman.yml` поднимает стек и несёт шаг-гейт «newman
+зелёный (registry)» с рабочим каталогом `services/registry/tests/newman`, а
+`deploy/scripts/newman-parallel.sh` держит `registry` в списке суит (и намеренно гоняет
+её одним потоком — материализация прав тяжёлая). Так что коллекции исполняются.
+
+Что действительно НЕ вызывается ничем — **сквозной харнесс плоскости данных**
+(`scripts/dataplane-e2e.sh`): ни один workflow и ни один скрипт стенда его не зовёт
+(проверяется поиском по имени файла — ноль вхождений вне самого файла, его самопроверки
+и документов). Его инварианты — 401-вызов без токена, регистрация при первой записи,
+запрет разрушительного удаления на плоскости данных, обход по закодированному
+разделителю, классификация артефакта — держатся только ручным прогоном. Это открытый
+долг, а не принятое решение.
+
+Per-repo `ci.yaml` по-прежнему гоняет только сборку/юниты/интеграцию/линт/govuln — это и
+есть исходная часть расхождения, и она сохраняется.
 
 **Why accepted.**
 - Newman is a **through-the-gateway black box**: it needs a live api-gateway + Hydra
@@ -232,10 +243,14 @@ this repo — they run against a deployed stand via `tests/newman/scripts/run.sh
   `internal/check/viewer_boundary_test.go` (real corelib interceptor + PermissionMap),
   and the dataplane unit suite.
 
-**What would revisit this.** A shared CI action in `kacho-deploy`/`kacho-test` that
-stands the stack up and runs `run.sh` + `dataplane-e2e.sh` on registry PRs (e.g. via a
-`repository_dispatch` from this repo). At that point wire this repo's PRs to trigger it;
-until the stand-in-CI exists, the suite is gated at the aggregate-e2e layer.
+**What would revisit this.** Для коллекций это уже произошло — их гоняет
+`e2e-newman.yml` на поднятом стеке. Остаётся харнесс плоскости данных: у него есть всё,
+чтобы быть вызванным (обязательные переменные проверяются на старте, вердикт в числах,
+шаг, снятый с прогона, роняет код возврата, и есть самопроверка честности вердикта
+`make -C services/registry dataplane-e2e-selftest`, которой стенд не нужен). Не хватает
+шага, который выдаёт ему ключ служебной учётки и реестр с правом записи. Пока такого
+шага нет, перечисленные инварианты плоскости данных **не проверяются автоматически** —
+и это записано здесь как число, а не как принятое решение.
 
 ## 8. `AuthMode` Go-config default is `dev` (production posture set by the deploy profile)
 

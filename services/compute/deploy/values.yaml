@@ -158,31 +158,12 @@ authzIam:
   # Empty string ⇒ filter + per-RPC authz disabled (dev / breakglass).
   grpcAddr: "kacho-iam.kacho.svc.cluster.local:9091"
 
-# ==========================================================================
-# KAC-127 Phase 4 — OPA sidecar for in-pod policy decisions
-# ==========================================================================
-# OPA pulls a signed bundle from kacho-iam internal (:9091, BundleService).
-# Bundle contains the FGA model + condition policies and is refreshed every
-# `pollMinDelaySeconds`. Sidecar binds to 127.0.0.1:8181 — only the main
-# container can reach it.
-opa:
-  enabled: false
-  image: openpolicyagent/opa:1.4.2-rootless
-  imagePullPolicy: IfNotPresent
-  port: 8181
-  # Bundle endpoint on kacho-iam (BundleService / signed-bundle pull).
-  bundleService: "kacho-iam.kacho.svc.cluster.local"
-  bundleHTTPSPort: "9443"
-  bundleName: "compute-policy"
-  pollMinDelaySeconds: 30
-  pollMaxDelaySeconds: 60
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
-    limits:
-      cpu: 200m
-      memory: 128Mi
+# Sidecar внутриподовых политик УДАЛЁН (был `opa.*`). Он тянул подписанный bundle с
+# эндпоинта iam, которого больше нет — сервис выдачи bundle'ов из iam удалён, — и ни
+# одна строка кода compute к нему не обращалась (ноль упоминаний в Go). То есть чарт
+# предлагал ручку, включение которой дало бы sidecar, бесконечно опрашивающий
+# несуществующий адрес. Живой механизм политик у iam остаётся своим и этой ручки не
+# касался.
 
 
 # INFRA sec-hardening — единый security-floor, идентичный kacho-iam/geo/nlb/registry.

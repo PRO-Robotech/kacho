@@ -399,7 +399,7 @@ func (s *InstanceService) resolveMachineType(ctx context.Context, ref string) (*
 }
 
 // instanceUpdateKnown — known-set маски Update (snake_case proto/spec-пути; COMP-1
-// F10). instance_kind/zone_id immutable, bootSource Reinstall-only — НЕ в наборе
+// F10). instance_kind/zone_id/boot_source immutable — НЕ в наборе
 // (спец-reject срабатывает первым). vm_spec — next-boot deferred;
 // machine_type_id/cpu_guarantee_percent/placement_group_id — STOPPED-gated.
 // ssh_public_keys в наборе НЕТ: поле не принимается вовсе
@@ -432,8 +432,8 @@ func instanceUpdatedFields(mask []string) []string {
 	return mask
 }
 
-// Update обновляет Instance (COMP-1 mutability-классы, F10). immutable-reject и
-// Reinstall-only-reject срабатывают ДО UpdateMask; STOPPED-gate (sizing/placement) —
+// Update обновляет Instance (COMP-1 mutability-классы, F10). immutable-reject (в том
+// числе boot_source) срабатывает ДО UpdateMask; STOPPED-gate (sizing/placement) —
 // sync FAILED_PRECONDITION (в COMP-1 STOPPED недостижим ⇒ always-reject).
 func (s *InstanceService) Update(ctx context.Context, req UpdateInstanceReq) (*operations.Operation, error) {
 	if req.InstanceID == "" {
@@ -513,7 +513,7 @@ func (s *InstanceService) Update(ctx context.Context, req UpdateInstanceReq) (*o
 }
 
 func validateInstanceUpdate(req UpdateInstanceReq) error {
-	// immutable-switch + Reinstall-only ДО corevalidate.UpdateMask (known-set не несёт
+	// immutable-switch ДО corevalidate.UpdateMask (known-set не несёт
 	// этих полей → UpdateMask отверг бы их generic "unknown field" вместо конвенционных
 	// текстов). camelCase в сообщении — часть контракта (api-conventions).
 	for _, f := range req.UpdateMask {
@@ -523,7 +523,13 @@ func validateInstanceUpdate(req UpdateInstanceReq) error {
 		case "zone_id":
 			return serviceerr.InvalidArg(f, "zoneId is immutable after Instance.Create")
 		case "boot_source":
-			return serviceerr.InvalidArg(f, "bootSource cannot be changed via Update; use Reinstall")
+			// Текст ОТКАЗА не имеет права называть операцию, которой нет. Прежний
+			// отправлял вызывающего к Reinstall — такого RPC нет ни в контракте, ни в
+			// маршрутах, ни в коде: слово встречалось только здесь и в трёх пинах на
+			// этот же текст. Поле неизменяемо, и сменить его нечем, поэтому тон —
+			// общий контрактный (api-conventions «<field> is immutable after
+			// <Resource>.Create»), как у двух соседних веток.
+			return serviceerr.InvalidArg(f, "bootSource is immutable after Instance.Create")
 		}
 	}
 	if err := corevalidate.UpdateMask("update_mask", req.UpdateMask, instanceUpdateKnown); err != nil {

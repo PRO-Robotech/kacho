@@ -13,7 +13,6 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/repomock"
 )
@@ -109,53 +108,20 @@ func volumeIDsOf(att []*domain.VolumeAttachment) []string {
 	return out
 }
 
-// УСТАРЕЛО ПО ЗАМЫСЛУ. Сужение по видимости ТОМА было первой попыткой, и оно
-// ломало снос: привязку, которую сервис отказывался вернуть, цикл отцепления
-// пропускал, а строку инстанса удалял безусловно — том оставался занят навсегда,
-// операция рапортовала успех. Заменено вопросом про ИНСТАНС (всё-или-ничего),
-// см. TestListAttachments_TeardownSeesEveryAttachmentOfAnInstanceItMayDelete и
-// TestListAttachments_ForeignInstanceReturnsNothing.
+// Сужение по видимости ТОМА было первой попыткой и здесь БОЛЬШЕ НЕ ПРОВЕРЯЕТСЯ: оно
+// ломало снос — привязку, которую сервис отказывался вернуть, цикл отцепления
+// пропускал, а строку инстанса удалял безусловно, так что том оставался занят навсегда,
+// а операция рапортовала успех. Вопрос задаётся про ИНСТАНС, всё-или-ничего.
 //
-// TestListAttachments_ReturnsOnlyAttachmentsOfVolumesTheSubjectMaySee — ГЛАВНАЯ
-// регрессия. Субъект вправе видеть один том из двух; назвав чужой инстанс, он не
-// должен получить привязку чужого тома.
-func retiredListAttachmentsVolumeScopedVisibility(t *testing.T) {
-	f := &fakeListFilter{allow: map[string]bool{"vol00000000000000001": true}}
-	uc := newListUC(readerAttachments(attPair()), f)
-
-	got, err := uc.ListAttachments(aliceCtx(), []string{"ins-mine", "ins-theirs"})
-	if err != nil {
-		t.Fatalf("ListAttachments: %v", err)
-	}
-
-	// Наблюдаемое: что именно уехало вызывающему.
-	if ids := volumeIDsOf(got); len(ids) != 1 || ids[0] != "vol00000000000000001" {
-		t.Fatalf("ListAttachments returned %v, want only [vol00000000000000001] — a binding of a "+
-			"volume the subject may not see must not come back merely because the caller named "+
-			"the instance it is attached to", ids)
-	}
-	for _, a := range got {
-		if a.InstanceID == "ins-theirs" || a.InstanceName == "theirs" || a.DeviceName == "vdb" {
-			t.Fatalf("the foreign binding leaked through the response: %+v", a)
-		}
-	}
-
-	// Форма вопроса: один батч по id ПРОЧИТАННОЙ страницы, тем же предикатом, что
-	// энфорсит Volume.Get.
-	if f.calls != 1 {
-		t.Fatalf("filter calls = %d, want exactly 1 batched call per page", f.calls)
-	}
-	if f.subject != "user:usr_alice" {
-		t.Fatalf("filter subject = %q, want %q", f.subject, "user:usr_alice")
-	}
-	if f.resType != authzfilter.ResourceTypeVolume || f.action != authzfilter.ActionVolumeList {
-		t.Fatalf("filter asked (%q,%q), want (%q,%q)", f.resType, f.action,
-			authzfilter.ResourceTypeVolume, authzfilter.ActionVolumeList)
-	}
-	if len(f.gotIDs) != 2 {
-		t.Fatalf("filter got %v, want both volume ids of the page", f.gotIDs)
-	}
-}
+// Здесь лежала функция с этой снятой проверкой, переименованная так, что `go test` её
+// не исполнял, — и при этом её же заголовок называл её ГЛАВНОЙ регрессией. Два
+// утверждения в одном комментарии противоречили друг другу, а исполнялось из них ноль.
+// Возврат исполнения показал ровно это: она падает, потому что спрашивает фильтр про
+// идентификаторы ТОМОВ, тогда как сужение спрашивает про инстансы. Тот же сценарий (свой
+// инстанс рядом с чужим) исполняется и проходит ниже, в
+// TestListAttachments_ForeignInstanceReturnsNothing — с действующим вопросом и более
+// строгим ожиданием. Снятую проверку не восстанавливают: восстановленная, она
+// утверждала бы отменённое решение.
 
 // TestListAttachments_NoGrantReturnsNothing — грантов нет вообще → не возвращается
 // ничего (и по форме ответа тоже ничего не узнать).

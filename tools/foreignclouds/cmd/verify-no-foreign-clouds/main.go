@@ -39,8 +39,22 @@ func main() {
 		findings = append(findings, foreignclouds.AuditExemptions(root)...)
 	}
 
+	// ЗАЯВЛЕННЫЙ ДОЛГ печатается ВСЕГДА, до вердикта. Двухбуквенное сокращение
+	// провайдера гейт намеренно не роняет (одним изменением его не убрать), но
+	// молчание об этом делало «OK» неотличимым от чистого дерева: по выводу нельзя
+	// было узнать, что запрет нарушен, причём местами оформлен как ЦЕЛЬ. Число не
+	// меняет вердикт — оно не даёт долгу стать невидимым.
+	if debt, derr := foreignclouds.ScanDebt(root); derr == nil && debt.Occurrences > 0 {
+		fmt.Printf("verify-no-foreign-clouds: declared debt — %d occurrence(s) of the "+
+			"provider abbreviation in %d file(s); not a violation by this gate, and not clean either\n",
+			debt.Occurrences, debt.Files)
+		for _, f := range debt.TopFiles {
+			fmt.Printf("  · %s\n", f)
+		}
+	}
+
 	if len(findings) == 0 {
-		fmt.Println("verify-no-foreign-clouds: OK")
+		fmt.Println("verify-no-foreign-clouds: OK (no violation of the token list; see the declared debt above)")
 		return
 	}
 

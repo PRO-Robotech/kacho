@@ -24,7 +24,9 @@ const fgaRegisterOutboxTable = "compute_fga_register_outbox"
 // emitCompute — обёртка над outbox.Emit с фиксированной таблицей compute_outbox.
 // Должна вызываться внутри той же tx, что и INSERT/UPDATE/DELETE на ресурсной
 // таблице (атомарность). Trigger compute_outbox_notify_trg на каждый INSERT
-// шлёт pg_notify('compute_outbox', sequence_no::text). kind ∈ {Instance, Disk, Image, Snapshot}.
+// шлёт pg_notify('compute_outbox', sequence_no::text). kind ∈ {Instance} — блочное
+// хранение из compute снято (миграция 0021 дропнула disks/images/snapshots), и Disk /
+// Image / Snapshot в этом перечислении больше не значатся.
 func emitCompute(ctx context.Context, tx pgx.Tx, kind, id, eventType string, payload map[string]any) error {
 	if payload == nil {
 		payload = map[string]any{}
@@ -50,7 +52,8 @@ func domainToMap(v any) map[string]any {
 // emitFGARegisterIntent writes one FGA-register/unregister intent row into
 // compute_fga_register_outbox IN THE SAME tx as the resource Insert/Update/Delete
 // (transactional outbox — no dual-write). event ∈ {fga.register,
-// fga.unregister}; kind ∈ {Instance, Disk, Image, Snapshot}. The payload carries
+// fga.unregister}; kind ∈ {Instance} (block storage left compute in migration 0021,
+// so Disk / Image / Snapshot are no longer among the kinds). The payload carries
 // the project-hierarchy owner-tuple set AND the owner's labels + parent-scope
 // (project) so the register-drainer can feed IAM resource_mirror.
 // labels may be nil/empty (graceful — empty mirror labels). parent_account_id is

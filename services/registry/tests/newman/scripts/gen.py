@@ -101,6 +101,21 @@ PRE_GLOBAL = [
     "if (__defaultJwt && !pm.request.headers.has('Authorization')) {",
     "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __defaultJwt});",
     "}",
+    # REQUIRED-FIXTURE GUARD. Идентификаторы проекта/региона и токен по умолчанию
+    # приходят из посева фикстур (tests/authz-fixtures → patch-env.py); в
+    # закоммиченных окружениях они пусты by design. Пустое значение НЕ даёт пропуска
+    # — оно уезжает в URL как `projectId=`, и запрос отвергается на авторизации до
+    # всякой проверки предмета: суита краснеет каскадом, а причина («посев не
+    # выполнялся») в отчёте не названа НИГДЕ. Поэтому отсутствие фикстуры — отказ,
+    # названный по имени, на ПЕРВОМ же шаге прогона.
+    "const __needed = ['baseUrl', 'existingProjectId', 'existingRegionId', 'jwtProjectEditorA'];",
+    "const __missing = __needed.filter((k) => !(pm.environment.get(k) || pm.variables.get(k) || ''));",
+    "if (__missing.length > 0) {",
+    "  pm.test('FIXTURE REQUIRED: ' + __missing.join(', '), () => pm.expect.fail('the suite fixture "
+    "seed did not run: ' + __missing.join(', ') + ' are empty. Seed via tests/authz-fixtures "
+    "(prodrun.sh patches the suite env). An empty id is not a skip — it is sent as-is and the "
+    "request is refused on authorization, so every later failure names the wrong cause.'));",
+    "}",
 ]
 
 

@@ -90,11 +90,23 @@ found "pass genuinely". The third name in its recommendation
   visibility) is a **phantom LB**: the wraps fail-closed after 30s but cannot green a parent that
   never persisted. This is the alloc-throughput residual, not a test-retry gap.
 
-## Known failing — product bugs
+## Closed — was «known failing», fixed in the product
 
-### `NLB-CR-VAL-INVALID-AFFINITY` — an unknown enum value is accepted and dropped
+### `NLB-CR-VAL-INVALID-AFFINITY` — an unknown enum value is now REFUSED
 
-Measured on the live stand 2026-07-28 against the shipped build:
+**Эта запись была ложной с момента фикса.** Она объявляла кейс «остаётся КРАСНЫМ, пока
+продукт не выполнит контракт», и оставалась в этом виде после того, как продукт его
+выполнил: значение перечисления вне словаря отвергается на краю
+(`gateway/internal/restmux/strict_enum.go`, коммит `d67d15fb` «значение перечисления вне
+словаря отвергается, а не принимается за умолчание»). Устаревшее исключение — это ложное
+утверждение о продукте: по нему ставят в очередь работу, которой не требуется, и красный,
+если он появится, объясняют уже закрытой причиной.
+
+Ниже сохранён разбор ИСХОДНОГО дефекта (замер 2026-07-28 на прежней сборке) — он
+объясняет, почему кейс написан именно так и почему его нельзя ослаблять обратно. Ожидание
+кейса (`400` / `INVALID_ARGUMENT`) не менялось; менялся продукт.
+
+Замер на прежней сборке:
 
 | request | result |
 |---|---|
@@ -109,9 +121,10 @@ along with unknown fields, so nlb receives `SESSION_AFFINITY_UNSPECIFIED` and ca
 distinguish "bogus" from "absent". The fix belongs to the gateway
 (`gateway/internal/restmux/mux.go`, where the trade-off is written down), not to nlb.
 
-The case asserts its declared contract (`400` / `INVALID_ARGUMENT`) and stays RED until the
-product meets it. It is NOT relaxed back to `oneOf([200, 400])`: that spelling passed in both
-worlds and is precisely why the behaviour went unnoticed. The same swallow has already cost
+The case asserts its declared contract (`400` / `INVALID_ARGUMENT`). It is NOT relaxed back to
+`oneOf([200, 400])`: that spelling passed in both worlds and is precisely why the behaviour went
+unnoticed — and it is the reason the case went green by a PRODUCT change rather than by an
+adjusted expectation. The same swallow has already cost
 this suite once — see the `adminState` note in `NLB-GTS-STATE-LB-DISABLED`, where a value the
 transcoder dropped surfaced as a confusing `HEALTHY`-vs-`INACTIVE` failure.
 

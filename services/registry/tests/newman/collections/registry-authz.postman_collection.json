@@ -24,6 +24,11 @@
           "const __defaultJwt = pm.environment.get('jwtProjectEditorA') || pm.variables.get('jwtProjectEditorA') || '';",
           "if (__defaultJwt && !pm.request.headers.has('Authorization')) {",
           "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __defaultJwt});",
+          "}",
+          "const __needed = ['baseUrl', 'existingProjectId', 'existingRegionId', 'jwtProjectEditorA'];",
+          "const __missing = __needed.filter((k) => !(pm.environment.get(k) || pm.variables.get(k) || ''));",
+          "if (__missing.length > 0) {",
+          "  pm.test('FIXTURE REQUIRED: ' + __missing.join(', '), () => pm.expect.fail('the suite fixture seed did not run: ' + __missing.join(', ') + ' are empty. Seed via tests/authz-fixtures (prodrun.sh patches the suite env). An empty id is not a skip — it is sent as-is and the request is refused on authorization, so every later failure names the wrong cause.'));",
           "}"
         ]
       }
@@ -351,7 +356,7 @@
                 "exec": [
                   "const _viewer = pm.environment.get('jwtProjectViewerA') || '';",
                   "if (!_viewer) {",
-                  "  console.log('SKIP viewer-tier (no jwtProjectViewerA fixture); boundary covered by internal/check/viewer_boundary_test.go');",
+                  "  pm.test('FIXTURE REQUIRED: jwtProjectViewerA (viewer-tier boundary NOT verified)', () => pm.expect.fail('jwtProjectViewerA is empty: the viewer subject was never seeded, so this case exercised NO viewer at all. Seed it via tests/authz-fixtures (prodseed_matrix.py writes the token into the suite env). Absence of a fixture is a refusal, not a skip.'));",
                   "  return;",
                   "}",
                   "const _n = parseInt(pm.environment.get('_azViewerRetry') || '0', 10);",
@@ -502,7 +507,7 @@
                 "exec": [
                   "const _viewer = pm.environment.get('jwtProjectViewerA') || '';",
                   "if (!_viewer) {",
-                  "  console.log('SKIP viewer-tier (no jwtProjectViewerA fixture); boundary covered by internal/check/viewer_boundary_test.go');",
+                  "  pm.test('FIXTURE REQUIRED: jwtProjectViewerA (viewer-tier boundary NOT verified)', () => pm.expect.fail('jwtProjectViewerA is empty: the viewer subject was never seeded, so this case exercised NO viewer at all. Seed it via tests/authz-fixtures (prodseed_matrix.py writes the token into the suite env). Absence of a fixture is a refusal, not a skip.'));",
                   "  return;",
                   "}",
                   "pm.test('denied 403/404 (no v_update)', () => pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
@@ -569,7 +574,7 @@
                 "exec": [
                   "const _viewer = pm.environment.get('jwtProjectViewerA') || '';",
                   "if (!_viewer) {",
-                  "  console.log('SKIP viewer-tier (no jwtProjectViewerA fixture); boundary covered by internal/check/viewer_boundary_test.go');",
+                  "  pm.test('FIXTURE REQUIRED: jwtProjectViewerA (viewer-tier boundary NOT verified)', () => pm.expect.fail('jwtProjectViewerA is empty: the viewer subject was never seeded, so this case exercised NO viewer at all. Seed it via tests/authz-fixtures (prodseed_matrix.py writes the token into the suite env). Absence of a fixture is a refusal, not a skip.'));",
                   "  return;",
                   "}",
                   "pm.test('denied 403/404 (no v_delete)', () => pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
@@ -1173,7 +1178,7 @@
                 "exec": [
                   "const _viewer = pm.environment.get('jwtProjectViewerA') || '';",
                   "if (!_viewer) {",
-                  "  console.log('SKIP viewer-tier (no jwtProjectViewerA fixture); boundary covered by internal/check/viewer_boundary_test.go');",
+                  "  pm.test('FIXTURE REQUIRED: jwtProjectViewerA (viewer-tier boundary NOT verified)', () => pm.expect.fail('jwtProjectViewerA is empty: the viewer subject was never seeded, so this case exercised NO viewer at all. Seed it via tests/authz-fixtures (prodseed_matrix.py writes the token into the suite env). Absence of a fixture is a refusal, not a skip.'));",
                   "  return;",
                   "}",
                   "const _n = parseInt(pm.environment.get('_azRepoViewerRetry') || '0', 10);",
@@ -1257,7 +1262,7 @@
                 "exec": [
                   "const _viewer = pm.environment.get('jwtProjectViewerA') || '';",
                   "if (!_viewer) {",
-                  "  console.log('SKIP viewer-tier (no jwtProjectViewerA fixture); boundary covered by internal/check/viewer_boundary_test.go');",
+                  "  pm.test('FIXTURE REQUIRED: jwtProjectViewerA (viewer-tier boundary NOT verified)', () => pm.expect.fail('jwtProjectViewerA is empty: the viewer subject was never seeded, so this case exercised NO viewer at all. Seed it via tests/authz-fixtures (prodseed_matrix.py writes the token into the suite env). Absence of a fixture is a refusal, not a skip.'));",
                   "  return;",
                   "}",
                   "pm.test('denied 403/404 (no v_update), never 200 op', () => pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
@@ -1498,8 +1503,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "pm.test('stranger denied (401/403/404), never 200', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));",
                   "if (pm.response.code !== 404) {",
-                  "  console.log('SKIP byte-identity: stranger not authenticated-404 on this stand (code '+pm.response.code+')');",
+                  "  console.log('byte-identity comparison applies to the 404 shape only; this stand answered '+pm.response.code+' (authz-first ordering) — the deny/miss format pair is not comparable here');",
                   "  return;",
                   "}",
                   "pm.test('grpc code 5 (NOT_FOUND)', () => {",

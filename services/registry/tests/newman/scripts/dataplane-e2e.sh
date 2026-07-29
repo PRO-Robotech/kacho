@@ -20,8 +20,8 @@
 #   CLIENT_ID       OAuth client_id SA-ключа (из IssueSAKey, show-once)
 #   SA_KEY_PEM      путь к приватному PEM SA-ключа (из IssueSAKey, show-once)
 #   REGISTRY_ID     id реестра-namespace (reg…) с гранта push/pull на caller-SA
-#   ADMIN_JWT       (опц.) Bearer control-plane для cross-check ListRepositories
-#   GATEWAY_URL     (опц.) базовый URL api-gateway REST для control-plane cross-check
+#   ADMIN_JWT       Bearer control-plane для cross-check ListRepositories
+#   GATEWAY_URL     базовый URL api-gateway REST для control-plane cross-check
 #   RUN             (опц.) суффикс изоляции прогона; иначе 1-й арг; иначе date +%s
 #
 # Вызов:
@@ -30,9 +30,23 @@
 #   ADMIN_JWT="$JWT" GATEWAY_URL=http://localhost:38080 \
 #   ./scripts/dataplane-e2e.sh 1720000000
 #
-# Exit-код: ненулевой, если провалена ЛЮБАЯ hard-assertion (401/200/202/201/405/400).
-# Documented-only проверки (существование-hiding для non-granted principal, control-
-# plane cross-check при пустом ADMIN_JWT/GATEWAY_URL) НЕ роняют exit-код — печатают DOC.
+# ВЕРДИКТ — ТРИ ИСХОДА, ТРИ ИМЕНИ. Шаг заканчивается одним из трёх способов, и каждый
+# считается ОТДЕЛЬНО, потому что складывание любого из них в другой — ровно тот способ,
+# которым сквозной прогон замолкает:
+#   исполнен + утверждение сказало «да»  — PASS;
+#   исполнен + утверждение сказало «нет» — FAIL     (hard-failure);
+#   НЕ ИСПОЛНЕН                          — NOT-RUN  (проверка не состоялась).
+# NOT-RUN никогда не вычитается и не объясняется: шаг, снятый с прогона, не проверил
+# ничего. Поэтому отказ на инициализации загрузки (шаг 4) — hard-failure, а НЕ
+# «документированный пропуск»: он снимал с прогона пять шагов (блоб, манифест,
+# скачивание, область блоба, список тегов), и прогон при этом печатал PASS.
+#
+# Отдельной строкой печатается UNVERIFIED — инвариант, условие для которого харнесс
+# СОЗДАТЬ НЕ МОЖЕТ by construction (второй SA без грантов: ключ показывается один раз
+# и здесь не чеканится). Это открытый долг с числом, а не зачёт: итоговая строка при
+# непустом UNVERIFIED слова PASS не содержит.
+#
+# Exit-код: 0 ТОЛЬКО когда hard-failures==0 И not-run==0.
 
 set -uo pipefail
 
@@ -62,6 +76,12 @@ fail_env() { echo "FATAL: missing required env $1" >&2; exit 2; }
 [[ -n "${CLIENT_ID:-}" ]]   || fail_env CLIENT_ID
 [[ -n "${SA_KEY_PEM:-}" ]]  || fail_env SA_KEY_PEM
 [[ -n "${REGISTRY_ID:-}" ]] || fail_env REGISTRY_ID
+# Cross-check плоскости управления (шаг 10) проверяет register-on-first-push и
+# классификацию артефакта — инварианты того же потока, не украшение. Прежде они были
+# «опциональными»: пустой ADMIN_JWT/GATEWAY_URL тихо снимал их с прогона — это и есть
+# механизм маски. Отсутствие фикстуры обязано быть ОТКАЗОМ, а не пропуском.
+[[ -n "${ADMIN_JWT:-}" ]]   || fail_env ADMIN_JWT
+[[ -n "${GATEWAY_URL:-}" ]] || fail_env GATEWAY_URL
 [[ -f "$SA_KEY_PEM" ]]      || { echo "FATAL: SA_KEY_PEM not a file: $SA_KEY_PEM" >&2; exit 2; }
 command -v curl    >/dev/null || { echo "FATAL: curl not found"    >&2; exit 2; }
 command -v python3 >/dev/null || { echo "FATAL: python3 not found" >&2; exit 2; }
@@ -71,8 +91,10 @@ trap 'rm -rf "$TMP"' EXIT
 BODY="$TMP/body"
 HDR="$TMP/hdr"
 
+HARD_PASSES=0
 HARD_FAILS=0
-DOC_NOTES=0
+NOT_RUN=0
+UNVERIFIED=0
 
 echo "=== kacho-registry data-plane OCI e2e ==="
 echo "  run=$RUN  registry=$REGISTRY_ID  repo=$REPO:$TAG"
@@ -101,6 +123,7 @@ assert_hard() {
   for e in "$@"; do
     if [[ "$actual" == "$e" ]]; then
       echo "PASS [hard] $label — HTTP $actual"
+      HARD_PASSES=$((HARD_PASSES + 1))
       return 0
     fi
   done
@@ -109,11 +132,18 @@ assert_hard() {
   return 1
 }
 
-# doc_note LABEL … — печатает документирующую (не-hard) строку.
-doc_note() {
-  echo "DOC  [documented-only] $*"
-  DOC_NOTES=$((DOC_NOTES + 1))
-}
+# pass_hard / fail_hard — утверждение, доказанное не HTTP-кодом (заголовок, тело).
+pass_hard() { echo "PASS [hard] $*"; HARD_PASSES=$((HARD_PASSES + 1)); }
+fail_hard() { echo "FAIL [hard] $*"; HARD_FAILS=$((HARD_FAILS + 1)); }
+
+# not_run LABEL … — шаг, который ДОЛЖЕН был исполниться, не исполнился. Проверки в нём
+# не состоялись, поэтому это не пропуск, а провал: считается и роняет exit-код.
+not_run() { echo "NOT-RUN $*"; NOT_RUN=$((NOT_RUN + 1)); }
+
+# unverified LABEL … — инвариант, условие для которого харнесс создать НЕ МОЖЕТ by
+# construction. Открытый долг с числом: печатается, считается, попадает в итоговую
+# строку — и НИКОГДА не читается как «проверено».
+unverified() { echo "UNVERIFIED $*"; UNVERIFIED=$((UNVERIFIED + 1)); }
 
 # body_contains STR — 0 если тело $BODY содержит STR.
 body_contains() { grep -qF -- "$1" "$BODY"; }
@@ -141,8 +171,7 @@ if [[ -n "$TOKEN" ]]; then
   HAVE_TOKEN=1
   echo "       token acquired (len=${#TOKEN})"
 else
-  echo "FAIL [hard] token extraction — empty .token/.access_token"
-  HARD_FAILS=$((HARD_FAILS + 1))
+  fail_hard "token extraction — empty .token/.access_token"
 fi
 AUTH=(-H "Authorization: Bearer ${TOKEN}")
 echo
@@ -154,10 +183,9 @@ echo "--- 2. ping without token → 401 challenge ---"
 code="$(do_req GET "${DATAPLANE_URL}/v2/")"
 assert_hard "GET /v2/ no-token" "$code" 401 || true
 if grep -qiE '^WWW-Authenticate:[[:space:]]*Bearer[[:space:]]+realm=' "$HDR"; then
-  echo "PASS [hard] WWW-Authenticate Bearer realm present"
+  pass_hard "WWW-Authenticate Bearer realm present"
 else
-  echo "FAIL [hard] WWW-Authenticate Bearer realm missing"
-  HARD_FAILS=$((HARD_FAILS + 1))
+  fail_hard "WWW-Authenticate Bearer realm missing"
 fi
 echo
 
@@ -169,40 +197,46 @@ if [[ "$HAVE_TOKEN" == 1 ]]; then
   code="$(do_req GET "${DATAPLANE_URL}/v2/" "${AUTH[@]}")"
   assert_hard "GET /v2/ with-token" "$code" 200 || true
 else
-  echo "SKIP [hard] GET /v2/ with-token — no token"
-  HARD_FAILS=$((HARD_FAILS + 1))
+  not_run "GET /v2/ with-token — токен не получен (шаг 1)"
 fi
 echo
 
 # ---------------------------------------------------------------------------
-# 4. push-init POST /v2/{reg}/{repo}/blobs/uploads/ → 202 (grant present)
-#    ИЛИ 404 (documented existence-hiding: caller-SA без v_create в namespace)
+# 4. push-init POST /v2/{reg}/{repo}/blobs/uploads/ → 202.
+#
+#    404 здесь — HARD-FAILURE, а не «документированное existence-hiding». Контракт
+#    вызова (см. REGISTRY_ID в заголовке) требует реестр, на котором у caller-SA ЕСТЬ
+#    грант push/pull; 404 означает, что фикстура не та, которую харнесс требует. А
+#    цена мягкости была не в одной строке: 404 снимал с прогона шаги 5, 5b и 6 —
+#    блоб, манифест, скачивание, область блоба и список тегов, — и прогон печатал
+#    PASS. Существование-hiding для НЕГРАНТНУТОГО принципала — отдельный инвариант,
+#    условие для которого этот харнесс создать не может (шаг 7, UNVERIFIED).
 # ---------------------------------------------------------------------------
-echo "--- 4. push-init blobs/uploads/ → 202 (or 404 no-grant, documented) ---"
+echo "--- 4. push-init blobs/uploads/ → 202 (404 = hard-failure, не пропуск) ---"
 UPLOAD_URL=""
 PUSH_SKIP=0
 if [[ "$HAVE_TOKEN" == 1 ]]; then
   code="$(do_req POST "${DATAPLANE_URL}/v2/${REGISTRY_ID}/${REPO}/blobs/uploads/" "${AUTH[@]}")"
   if [[ "$code" == 202 ]]; then
-    echo "PASS [hard] push-init — HTTP 202 (grant present)"
+    pass_hard "push-init — HTTP 202 (grant present)"
     loc="$(awk 'BEGIN{IGNORECASE=1} /^Location:/ {v=$2; sub(/\r$/,"",v); print v}' "$HDR" | tail -1)"
     if [[ -z "$loc" ]]; then
-      echo "FAIL [hard] push-init — 202 without Location header"
-      HARD_FAILS=$((HARD_FAILS + 1)); PUSH_SKIP=1
+      fail_hard "push-init — 202 without Location header"
+      PUSH_SKIP=1
     elif [[ "$loc" == http* ]]; then
       UPLOAD_URL="$loc"
     else
       UPLOAD_URL="${DATAPLANE_URL}${loc}"
     fi
   elif [[ "$code" == 404 ]]; then
-    doc_note "push-init → 404 — existence-hiding: caller-SA lacks v_create in registry_registry:${REGISTRY_ID}; push/pull steps skipped"
+    fail_hard "push-init — HTTP 404: у caller-SA нет v_create в registry_registry:${REGISTRY_ID}. Харнесс требует грантнутый реестр; на 404 шаги 5/5b/6 не исполняются, поэтому это провал, а не пропуск"
     PUSH_SKIP=1
   else
-    echo "FAIL [hard] push-init — HTTP $code (expected 202, or documented 404)"
-    HARD_FAILS=$((HARD_FAILS + 1)); PUSH_SKIP=1
+    fail_hard "push-init — HTTP $code (expected 202)"
+    PUSH_SKIP=1
   fi
 else
-  echo "SKIP push-init — no token"; PUSH_SKIP=1
+  not_run "push-init — токен не получен (шаг 1)"; PUSH_SKIP=1
 fi
 echo
 
@@ -247,7 +281,7 @@ PY
     -H "Content-Type: application/vnd.oci.image.manifest.v1+json" --data-binary "@${TMP}/manifest.json")"
   if assert_hard "PUT manifest" "$code" 201; then MANIFEST_OK=1; fi
 else
-  echo "SKIP push — no upload session (step 4 skipped/failed)"
+  not_run "monolithic push (блоб + манифест) — нет сессии загрузки (шаг 4 провалился)"
 fi
 echo
 
@@ -288,10 +322,10 @@ PY
       -H "Content-Type: application/vnd.oci.image.manifest.v1+json" --data-binary "@${TMP}/helmmanifest.json")"
     if assert_hard "PUT helm manifest" "$code" 201; then HELM_OK=1; fi
   else
-    doc_note "helm push-init → HTTP $hcode (no session) — helm-classify e2e skipped (follow-up)"
+    not_run "helm push-init → HTTP $hcode (нет сессии) — классификация артефакта не проверена"
   fi
 else
-  echo "SKIP helm push — push disabled"
+  not_run "helm push — push отключён (шаг 4 провалился)"
 fi
 echo
 
@@ -317,25 +351,24 @@ if [[ "$MANIFEST_OK" == 1 ]]; then
   code="$(do_req GET "${DATAPLANE_URL}/v2/${REGISTRY_ID}/${REPO}/tags/list" "${AUTH[@]}")"
   assert_hard "GET tags/list" "$code" 200 || true
   if body_contains "\"${TAG}\""; then
-    echo "PASS [hard] tags/list contains ${TAG}"
+    pass_hard "tags/list contains ${TAG}"
   else
-    echo "FAIL [hard] tags/list missing ${TAG}"
-    HARD_FAILS=$((HARD_FAILS + 1))
+    fail_hard "tags/list missing ${TAG}"
   fi
 else
-  echo "SKIP pull — manifest not pushed"
+  not_run "pull (манифест / блоб / список тегов) — манифест не запушен"
 fi
 echo
 
 # ---------------------------------------------------------------------------
 # 7. NEGATIVE existence-hiding
 #    (a) push-init на свежий repo БЕЗ Authorization → 401 (hard)
-#    (b) non-granted principal → 404 (documented-only; отдельный SA не минтим здесь)
+#    (b) non-granted principal → 404 (UNVERIFIED: второй SA здесь не чеканится)
 # ---------------------------------------------------------------------------
 echo "--- 7. negative existence-hiding ---"
 code="$(do_req POST "${DATAPLANE_URL}/v2/${REGISTRY_ID}/${REPO}-noauth/blobs/uploads/")"
 assert_hard "push-init no-auth (fresh repo)" "$code" 401 || true
-doc_note "non-granted principal push/pull → 404 (existence-hiding): требует второго SA без v_* на объекте; здесь не минтим (SA-key show-once). Инвариант: deny === 404, факт существования чужого repo не раскрывается"
+unverified "non-granted principal push/pull → 404 (existence-hiding): требует ВТОРОГО SA без v_* на объекте, а ключ показывается один раз и здесь не чеканится. Условие харнесс создать не может — инвариант остаётся НЕ проверенным (открытый долг), а не зачтённым"
 echo
 
 # ---------------------------------------------------------------------------
@@ -347,8 +380,7 @@ if [[ "$HAVE_TOKEN" == 1 ]]; then
   code="$(do_req DELETE "${DATAPLANE_URL}/v2/${REGISTRY_ID}/${REPO}/manifests/${TAG}" "${AUTH[@]}")"
   assert_hard "DELETE manifest" "$code" 405 || true
 else
-  echo "SKIP [hard] DELETE manifest — no token"
-  HARD_FAILS=$((HARD_FAILS + 1))
+  not_run "DELETE manifest — токен не получен (шаг 1)"
 fi
 echo
 
@@ -360,16 +392,16 @@ if [[ "$HAVE_TOKEN" == 1 ]]; then
   code="$(do_req GET "${DATAPLANE_URL}/v2/${REGISTRY_ID}/..%2f..%2fetc/manifests/x" "${AUTH[@]}")"
   assert_hard "traversal GET" "$code" 400 || true
 else
-  echo "SKIP [hard] traversal GET — no token"
-  HARD_FAILS=$((HARD_FAILS + 1))
+  not_run "traversal GET — токен не получен (шаг 1)"
 fi
 echo
 
 # ---------------------------------------------------------------------------
-# 10. control-plane cross-check (documented): ListRepositories видит register-on-
-#     first-push repo. Требует ADMIN_JWT + GATEWAY_URL; иначе DOC-skip.
+# 10. control-plane cross-check: ListRepositories видит register-on-first-push repo
+#     + классификация артефакта. ADMIN_JWT/GATEWAY_URL — ОБЯЗАТЕЛЬНЫ (проверены на
+#     старте), поэтому «DOC-skip при пустых переменных» здесь больше не существует.
 # ---------------------------------------------------------------------------
-echo "--- 10. control-plane cross-check ListRepositories + artifact_type (documented) ---"
+echo "--- 10. control-plane cross-check ListRepositories + artifact_type ---"
 # at_of REPO — печатает artifact_type репо REPO из последнего тела $BODY (пусто, если нет).
 at_of() {
   python3 - "$BODY" "$1" <<'PY'
@@ -384,75 +416,84 @@ for r in d.get("repositories", []):
 print("")
 PY
 }
-if [[ -n "$ADMIN_JWT" && -n "$GATEWAY_URL" ]]; then
-  # poll-retry: register-on-first-push материализует v_list на repo асинхронно
-  # (FGA-пропагация ~0.6–2s) — тянем ListRepositories, пока docker-repo не появится.
-  DOCKER_AT=""
-  for _a in $(seq 1 10); do
-    code="$(do_req GET "${GATEWAY_URL}/registry/v1/registries/${REGISTRY_ID}/repositories" \
-      -H "Authorization: Bearer ${ADMIN_JWT}")"
-    DOCKER_AT="$(at_of "$REPO")"
-    [[ -n "$DOCKER_AT" ]] && break
-    sleep 1.5
-  done
-  if [[ "$code" == 200 && -n "$DOCKER_AT" ]]; then
-    echo "PASS [documented] ListRepositories contains ${REPO} (register-on-first-push visible) — HTTP 200"
-    # GWT-1: docker/oci config → CONTAINER_IMAGE.
-    if [[ "$DOCKER_AT" == "ARTIFACT_TYPE_CONTAINER_IMAGE" ]]; then
-      echo "PASS [hard] ${REPO} artifact_type = ARTIFACT_TYPE_CONTAINER_IMAGE"
-    else
-      echo "FAIL [hard] ${REPO} artifact_type = '${DOCKER_AT}' (expected ARTIFACT_TYPE_CONTAINER_IMAGE)"
-      HARD_FAILS=$((HARD_FAILS + 1))
-    fi
-    # GWT-10: back-compat — существующие поля не пропали.
-    if python3 - "$BODY" "$REPO" <<'PY'
+# poll-retry: register-on-first-push материализует v_list на repo асинхронно
+# (FGA-пропагация ~0.6–2s) — тянем ListRepositories, пока docker-repo не появится.
+DOCKER_AT=""
+for _a in $(seq 1 10); do
+  code="$(do_req GET "${GATEWAY_URL}/registry/v1/registries/${REGISTRY_ID}/repositories" \
+    -H "Authorization: Bearer ${ADMIN_JWT}")"
+  DOCKER_AT="$(at_of "$REPO")"
+  [[ -n "$DOCKER_AT" ]] && break
+  sleep 1.5
+done
+if [[ "$code" == 200 && -n "$DOCKER_AT" ]]; then
+  pass_hard "ListRepositories contains ${REPO} (register-on-first-push visible) — HTTP 200"
+  # GWT-1: docker/oci config → CONTAINER_IMAGE.
+  if [[ "$DOCKER_AT" == "ARTIFACT_TYPE_CONTAINER_IMAGE" ]]; then
+    pass_hard "${REPO} artifact_type = ARTIFACT_TYPE_CONTAINER_IMAGE"
+  else
+    fail_hard "${REPO} artifact_type = '${DOCKER_AT}' (expected ARTIFACT_TYPE_CONTAINER_IMAGE)"
+  fi
+  # GWT-10: back-compat — существующие поля не пропали.
+  if python3 - "$BODY" "$REPO" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
 for r in d.get("repositories", []):
-    if r.get("name") == sys.argv[2]:
-        sys.exit(0 if all(k in r for k in ("tag_count", "size_bytes", "updated_at")) else 1)
+  if r.get("name") == sys.argv[2]:
+      sys.exit(0 if all(k in r for k in ("tag_count", "size_bytes", "updated_at")) else 1)
 sys.exit(1)
 PY
-    then
-      echo "PASS [hard] ${REPO} back-compat fields (tag_count/size_bytes/updated_at) present"
-    else
-      echo "FAIL [hard] ${REPO} back-compat fields missing"
-      HARD_FAILS=$((HARD_FAILS + 1))
-    fi
+  then
+    pass_hard "${REPO} back-compat fields (tag_count/size_bytes/updated_at) present"
   else
-    doc_note "ListRepositories cross-check — HTTP $code, ${REPO} absent after poll; FGA-пропагация register-on-first-push ~0.6–2s"
-  fi
-  # GWT-2: helm-config образ → HELM_CHART (если helm-push прошёл).
-  if [[ "$HELM_OK" == 1 ]]; then
-    HELM_AT=""
-    for _a in $(seq 1 10); do
-      code="$(do_req GET "${GATEWAY_URL}/registry/v1/registries/${REGISTRY_ID}/repositories" \
-        -H "Authorization: Bearer ${ADMIN_JWT}")"
-      HELM_AT="$(at_of "$HELM_REPO")"
-      [[ -n "$HELM_AT" ]] && break
-      sleep 1.5
-    done
-    if [[ "$HELM_AT" == "ARTIFACT_TYPE_HELM_CHART" ]]; then
-      echo "PASS [hard] ${HELM_REPO} artifact_type = ARTIFACT_TYPE_HELM_CHART"
-    else
-      echo "FAIL [hard] ${HELM_REPO} artifact_type = '${HELM_AT}' (expected ARTIFACT_TYPE_HELM_CHART)"
-      HARD_FAILS=$((HARD_FAILS + 1))
-    fi
-  else
-    doc_note "helm-classify e2e skipped — helm push (5b) не прошёл"
+    fail_hard "${REPO} back-compat fields missing"
   fi
 else
-  doc_note "control-plane cross-check skipped — set ADMIN_JWT + GATEWAY_URL to verify register-on-first-push visibility + artifact_type"
+  fail_hard "ListRepositories cross-check — HTTP $code, ${REPO} отсутствует после polling'а (~15s): register-on-first-push не материализовался"
+fi
+# GWT-2: helm-config образ → HELM_CHART (если helm-push прошёл).
+if [[ "$HELM_OK" == 1 ]]; then
+  HELM_AT=""
+  for _a in $(seq 1 10); do
+    code="$(do_req GET "${GATEWAY_URL}/registry/v1/registries/${REGISTRY_ID}/repositories" \
+      -H "Authorization: Bearer ${ADMIN_JWT}")"
+    HELM_AT="$(at_of "$HELM_REPO")"
+    [[ -n "$HELM_AT" ]] && break
+    sleep 1.5
+  done
+  if [[ "$HELM_AT" == "ARTIFACT_TYPE_HELM_CHART" ]]; then
+    pass_hard "${HELM_REPO} artifact_type = ARTIFACT_TYPE_HELM_CHART"
+  else
+    fail_hard "${HELM_REPO} artifact_type = '${HELM_AT}' (expected ARTIFACT_TYPE_HELM_CHART)"
+  fi
+else
+  not_run "helm-classify cross-check — helm push (5b) не прошёл"
 fi
 echo
 
 # ---------------------------------------------------------------------------
 # Итог
 # ---------------------------------------------------------------------------
-echo "=== summary: hard-failures=${HARD_FAILS}  documented-notes=${DOC_NOTES} ==="
-if [[ "$HARD_FAILS" -gt 0 ]]; then
-  echo "RESULT: FAIL (${HARD_FAILS} hard assertion(s) failed)"
+# Вердикт В ЧИСЛАХ. Читать сначала вторую и третью пару: прогон, у которого шаги
+# сняты, оставляет остальные счётчики здоровыми на вид.
+echo "=== summary: hard-pass=${HARD_PASSES}  hard-fail=${HARD_FAILS}  NOT-RUN=${NOT_RUN}  UNVERIFIED=${UNVERIFIED} ==="
+if [[ "$NOT_RUN" -gt 0 ]]; then
+  echo "  ^ ${NOT_RUN} шаг(ов) НЕ ИСПОЛНЕНО — эти проверки не состоялись; «не выполнилось» не зачитывается за «прошло»" >&2
+fi
+if [[ "$UNVERIFIED" -gt 0 ]]; then
+  echo "  ^ ${UNVERIFIED} инвариант(ов) харнесс проверить не может by construction — открытый долг, не зачёт" >&2
+fi
+if [[ "$HARD_FAILS" -gt 0 || "$NOT_RUN" -gt 0 ]]; then
+  echo "RESULT: FAIL (${HARD_FAILS} hard-failure(s), ${NOT_RUN} not-run step(s))"
   exit 1
 fi
-echo "RESULT: PASS (all hard assertions green)"
+if [[ "$HARD_PASSES" -eq 0 ]]; then
+  echo "RESULT: FAIL (0 hard assertions executed — прогон, ничего не спросивший, не зелёный)"
+  exit 1
+fi
+if [[ "$UNVERIFIED" -gt 0 ]]; then
+  echo "RESULT: GREEN-WITH-DEBT (${HARD_PASSES} hard assertion(s) green; ${UNVERIFIED} invariant(s) NOT VERIFIED)"
+  exit 0
+fi
+echo "RESULT: PASS (${HARD_PASSES} hard assertion(s) green)"
 exit 0
