@@ -73,6 +73,14 @@ audit-list-filter:
 dataplane-e2e-selftest:
 	@bash tests/newman/scripts/dataplane-e2e-selftest.sh
 
+# newman-assertion-census — гейт: ни один шаг суиты не имеет права исполнить запрос и
+# не спросить ничего. Стенда не требует: исполняет скрипты сгенерированных коллекций
+# против подставленных ответов и СЧИТАЕТ исполненные утверждения. Несёт собственную
+# проверку предпосылки (инъекция дефекта + две законные конструкции той же формы).
+.PHONY: newman-assertion-census
+newman-assertion-census:
+	@cd tests/newman && node scripts/selftest-assertions.js
+
 .PHONY: migrate-up migrate-down migrate-status
 migrate-up: build-migrator
 	KACHO_REGISTRY_DB_PASSWORD=secret bin/$(MIGRATOR_BIN) up
