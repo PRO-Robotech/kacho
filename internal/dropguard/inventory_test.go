@@ -103,3 +103,108 @@ func TestInventoryRejectsAMigrationWithoutAnUpSection(t *testing.T) {
 		t.Fatal("a migration with no `+goose Up` marker must be an error, not an empty scan")
 	}
 }
+
+// TestInventorySeesEveryTableInAMultiTableDrop — `DROP TABLE a, b;` destroys BOTH.
+//
+// The list form is ordinary SQL and it is exactly what one reaches for when foreign
+// keys make the order of separate statements awkward — one of this tree's own
+// migrations says so in a comment. The reader captured a single identifier after
+// `DROP TABLE`, so on that form the second table and everything after it existed
+// for no part of the gate: not for the declarations it demands, not for the
+// measurement it runs, not for the violations it reports. The table would be
+// destroyed with nothing said about it, and the run would be green — the drop guard
+// itself an instance of the class it was built for.
+//
+// Both directions are asserted here: every name in the list is found (with its own
+// line and its own idempotency verdict), and a single-table drop keeps behaving
+// exactly as before.
+func TestInventorySeesEveryTableInAMultiTableDrop(t *testing.T) {
+	fsys := fstest.MapFS{
+		"0001_initial.sql": &fstest.MapFile{Data: []byte(`
+-- +goose Up
+CREATE TABLE kacho_demo.parents (id TEXT PRIMARY KEY);
+CREATE TABLE kacho_demo.children (id TEXT PRIMARY KEY);
+CREATE TABLE kacho_demo.pivot (id TEXT PRIMARY KEY);
+INSERT INTO kacho_demo.children (id) VALUES ('seed');
+-- +goose Down
+DROP TABLE kacho_demo.parents;
+`)},
+		// The list form, spread over two lines, quoted, schema-qualified, with the
+		// trailing action word — every shape a migration author may legitimately use.
+		"0002_drop_list.sql": &fstest.MapFile{Data: []byte(`
+-- +goose Up
+DROP TABLE IF EXISTS kacho_demo.pivot,
+                     kacho_demo.children,
+                     "kacho_demo"."parents" CASCADE;
+-- +goose Down
+-- irreversible
+`)},
+	}
+
+	inv, err := dropguard.Inventory("demo", fsys)
+	if err != nil {
+		t.Fatalf("inventory: %v", err)
+	}
+
+	got := map[string]int{}
+	for _, d := range inv.Drops {
+		got[d.Table] = d.Line
+	}
+	for _, want := range []string{"kacho_demo.pivot", "kacho_demo.children", "kacho_demo.parents"} {
+		if _, ok := got[want]; !ok {
+			t.Errorf("table %q is dropped by 0002 but the inventory does not see it — it would be "+
+				"destroyed with no declaration demanded and no measurement run; found: %+v", want, inv.Drops)
+		}
+	}
+	if len(inv.Drops) != 3 {
+		t.Fatalf("drops: got %d, want 3 — one per table in the list; %+v", len(inv.Drops), inv.Drops)
+	}
+
+	// Each name carries ITS OWN line, so a message names the coordinate a reader can
+	// open. Collapsing them onto the statement's first line would make two of three
+	// findings point somewhere the table is not written.
+	if got["kacho_demo.pivot"] == got["kacho_demo.children"] {
+		t.Errorf("names on different lines report the same line (%d) — the coordinate is then only "+
+			"approximately true, and the second table is not where the message says",
+			got["kacho_demo.pivot"])
+	}
+
+	// The evidence each drop rests on is per table, and it differs here: children is
+	// seeded before the drop, pivot is not. A reader that fused the list would have
+	// answered for the first table on behalf of all of them.
+	if !inv.SeedsTable("kacho_demo.children", 2) {
+		t.Error("0001 INSERTs into children before 0002 — the drop destroys rows")
+	}
+	if inv.SeedsTable("kacho_demo.pivot", 2) {
+		t.Error("nothing INSERTs into pivot — claiming otherwise would ground a declaration on air")
+	}
+	for _, tbl := range []string{"kacho_demo.pivot", "kacho_demo.children", "kacho_demo.parents"} {
+		if !inv.CreatesTable(tbl) {
+			t.Errorf("0001 CREATEs %s — a drop of it has a subject", tbl)
+		}
+	}
+
+	// MIRROR: a single-table drop is unchanged by the list support, and a comma in a
+	// neighbouring statement does not turn one drop into several.
+	single := fstest.MapFS{
+		"0001_one.sql": &fstest.MapFile{Data: []byte(`
+-- +goose Up
+CREATE TABLE widgets (id TEXT PRIMARY KEY, note TEXT NOT NULL DEFAULT '');
+INSERT INTO widgets (id, note) VALUES ('a', 'x'), ('b', 'y');
+DROP TABLE IF EXISTS widgets;
+-- +goose Down
+-- irreversible
+`)},
+	}
+	sInv, err := dropguard.Inventory("demo", single)
+	if err != nil {
+		t.Fatalf("inventory(single): %v", err)
+	}
+	if len(sInv.Drops) != 1 || sInv.Drops[0].Table != "widgets" {
+		t.Fatalf("single-table drop: got %+v, want exactly one drop of widgets — the column list and "+
+			"the VALUES tuples both contain commas and must not be read as more tables", sInv.Drops)
+	}
+	if !sInv.Drops[0].RecreatedHere {
+		t.Error("the same Up section CREATEs widgets — that is an idempotency preamble")
+	}
+}

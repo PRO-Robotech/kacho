@@ -98,7 +98,18 @@ var (
 	gooseUpRe = regexp.MustCompile(`(?im)^\s*--\s*\+goose\s+Up\s*$`)
 	gooseDnRe = regexp.MustCompile(`(?im)^\s*--\s*\+goose\s+Down\s*$`)
 
-	dropTableRe   = regexp.MustCompile(`(?is)\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?([A-Za-z0-9_."]+)`)
+	// dropTableRe captures the WHOLE table list, not the first name in it.
+	//
+	// `DROP TABLE a, b;` is ordinary SQL, and it is what one reaches for when
+	// foreign keys make the order of separate statements awkward — a migration in
+	// this tree says exactly that in a comment. Capturing one identifier meant the
+	// second table and everything after it existed for no part of this gate: no
+	// declaration was demanded of it, no measurement stepped over it, no violation
+	// named it. It would be destroyed in silence on a green run.
+	//
+	// CREATE TABLE and INSERT INTO take a single table by grammar, so they stay
+	// single-capture; the difference is SQL's, not a choice made here.
+	dropTableRe   = regexp.MustCompile(`(?is)\bDROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?([A-Za-z0-9_."]+(?:\s*,\s*[A-Za-z0-9_."]+)*)`)
 	createTableRe = regexp.MustCompile(`(?is)\bCREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([A-Za-z0-9_."]+)`)
 	insertIntoRe  = regexp.MustCompile(`(?is)\bINSERT\s+INTO\s+([A-Za-z0-9_."]+)`)
 )
@@ -181,17 +192,55 @@ func (i *Inv) addFile(service, name, body string) error {
 		}
 	}
 	for _, loc := range dropTableRe.FindAllStringSubmatchIndex(code, -1) {
-		tbl := normaliseTable(code[loc[2]:loc[3]])
-		i.Drops = append(i.Drops, Drop{
-			Service:       service,
-			Version:       version,
-			Table:         tbl,
-			File:          name,
-			Line:          lineOffset + strings.Count(code[:loc[0]], "\n") + 1,
-			RecreatedHere: created[tbl],
-		})
+		// One Drop per table in the list, each with ITS OWN line: a list may span
+		// several lines, and a coordinate pointing at the statement's first line
+		// would send the reader to somewhere the table is not written.
+		for _, item := range splitTableList(code[loc[2]:loc[3]]) {
+			tbl := normaliseTable(item.name)
+			if tbl == "" {
+				continue
+			}
+			at := loc[2] + item.offset
+			i.Drops = append(i.Drops, Drop{
+				Service:       service,
+				Version:       version,
+				Table:         tbl,
+				File:          name,
+				Line:          lineOffset + strings.Count(code[:at], "\n") + 1,
+				RecreatedHere: created[tbl],
+			})
+		}
 	}
 	return nil
+}
+
+// listItem is one identifier of a comma-separated table list, with its byte offset
+// inside the list so the line it sits on can be reported.
+type listItem struct {
+	name   string
+	offset int
+}
+
+// splitTableList splits `a, b.c, "d"` into its items, keeping each one's offset.
+//
+// Only the list CAPTURED after DROP TABLE is split, never the whole statement: a
+// column list or a VALUES tuple elsewhere in the migration is also full of commas,
+// and reading those as tables would invent drops that never happen.
+func splitTableList(list string) []listItem {
+	var out []listItem
+	start := 0
+	for i := 0; i <= len(list); i++ {
+		if i < len(list) && list[i] != ',' {
+			continue
+		}
+		part := list[start:i]
+		lead := len(part) - len(strings.TrimLeft(part, " \t\r\n"))
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, listItem{name: trimmed, offset: start + lead})
+		}
+		start = i + 1
+	}
+	return out
 }
 
 // normaliseTable lower-cases and unquotes an identifier, keeping any schema
