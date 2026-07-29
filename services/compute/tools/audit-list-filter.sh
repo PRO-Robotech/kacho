@@ -2,73 +2,37 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
 
-# audit-list-filter.sh — CI gate (KAC-219 / RBAC v2 W6) for kacho-compute.
+# audit-list-filter.sh — CI gate for kacho-compute's public List<Resource>: the page
+# a caller receives must be narrowed to the rows that caller may see (per-object,
+# kacho-iam BatchCheck), not merely to their project.
 #
-# Refuses to ship a `List<Resource>` handler in `internal/handler/` that
-# returns rows without consulting `authzfilter.Filter` (the canonical
-# per-object list-filter port over kacho-iam AuthorizeService.BatchCheck).
+# This is a THIN wrapper. What is checked, and why the analysis parses the tree
+# instead of searching its text, is documented on tools/listfiltergate; how this
+# service is laid out is documented on services/compute/tools/auditlistfilter. Only
+# the invocation lives here.
 #
-# Heuristic:
-#   1. Collect every `func (h *<Name>Handler) List(...)` under
-#      internal/handler/*.go.
-#   2. For each candidate file, also grep its body for
-#      `filterVisible` OR `authzfilter.Filter`.
-#   3. If neither token is found in the handler file, print the
-#      candidate path and exit 1.
+# Why the analysis is no longer this file. The previous edition was a grep that
+# recognised a resource by the literal text `func (h *…Handler) List(` — by what the
+# receiver VARIABLE was NAMED — and then searched the whole handler FILE for
+# `filterVisible|authzfilter.Filter`. Renaming `h` to `hd` removed the resource from
+# its view; and because `authzfilter.Filter` also appears as the handler struct's
+# field type, deleting the filter call from List left the gate printing OK. On a
+# tree without internal/handler it printed a message and exited 0, so "could not
+# find the tree" and "the tree is clean" were the same verdict.
 #
-# Whitelisted (admin-only / catalog-style — every authenticated caller
-# sees every row by design; these are cluster-singleton catalogs gated on
-# `viewer on cluster`, they carry no per-object grants to narrow to):
-#   - Region      — global geography catalog; reference data.
-#   - Zone        — global geography catalog; reference data.
-#   - DiskType    — global catalog; reference data.
-#   - MachineType — global sizing catalog; reference data (COMP-1 F7).
-#
-# Override:
-#   tools/audit-list-filter.sh --allow="<handler-name>" extends the
-#   whitelist.
+# Arguments are forwarded as-is:
+#   --allow=<resource>  exclude a cluster-catalog resource; an entry with nothing
+#                       left to exclude is itself a finding.
+#   --root=<dir>        audit another tree (used by the gate's own tests).
 
 set -euo pipefail
 
-WHITELIST=("RegionHandler" "ZoneHandler" "DiskTypeHandler" "MachineTypeHandler")
-while [[ ${1:-} == --allow=* ]]; do
-  WHITELIST+=("${1#--allow=}")
-  shift || true
-done
+# The service root is resolved BEFORE changing directory, and passed explicitly:
+# `go run ./services/…` has to be issued from the module root, so the default
+# "audit the current directory" would otherwise audit the repository instead of this
+# service. A --root given by the caller appears later on the command line and wins.
+SERVICE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$(dirname "$0")/../../.."
 
-is_whitelisted() {
-  local h=$1
-  for w in "${WHITELIST[@]}"; do [[ "$w" == "$h" ]] && return 0; done
-  return 1
-}
-
-ROOT=internal/handler
-if [[ ! -d "$ROOT" ]]; then
-  echo "audit-list-filter: not in kacho-compute (no $ROOT)" >&2
-  exit 0
-fi
-
-FAIL=0
-while IFS= read -r line; do
-  file=${line%%:*}
-  handler=$(printf '%s\n' "$line" | sed -nE 's/.*func \(h \*([A-Za-z]+Handler)\) List\(.*/\1/p')
-  [[ -z "$handler" ]] && continue
-  is_whitelisted "$handler" && continue
-  if grep -qE 'filterVisible|authzfilter\.Filter' "$file"; then
-    continue
-  fi
-  echo "audit-list-filter: $handler — List handler missing authzfilter wiring"
-  echo "  file: $file"
-  FAIL=1
-done < <(grep -nE '^func \(h \*[A-Za-z]+Handler\) List\(' "$ROOT"/*_handler.go)
-
-if [[ $FAIL -ne 0 ]]; then
-  echo
-  echo "RBAC v2 (KAC-214) requires every public List<Resource> RPC to filter"
-  echo "its page through authzfilter.Filter (kacho-iam BatchCheck backend)."
-  echo "Whitelist the handler (admin-only / catalog) with --allow=<Name>"
-  echo "if the bypass is intentional."
-  exit 1
-fi
-
-echo "audit-list-filter: OK"
+exec go run ./services/compute/tools/auditlistfilter/cmd/audit-list-filter \
+  --allow=machine_type --root="$SERVICE_ROOT" "$@"

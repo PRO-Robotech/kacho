@@ -1,0 +1,58 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+// Package auditlistfilter states how kacho-compute is laid out for the public-List
+// gate. The analysis itself — and why it parses instead of grepping — lives in
+// tools/listfiltergate.
+//
+// # This service's shape
+//
+// compute authorizes the page in the TRANSPORT layer: `internal/handler` is one
+// flat package, each resource has its own handler type (`InstanceHandler`,
+// `MachineTypeHandler`), and its `List` runs the page it just read through the
+// generic `filterVisible` helper of internal/handler/list_filter.go, which calls
+// kacho-iam BatchCheck. So the resource is told apart by the receiver TYPE, and the
+// proof of filtering is a call reachable from the List body.
+//
+// # What the previous gate keyed on, and why that was two defects
+//
+// It searched internal/handler/*_handler.go for the literal text
+// `func (h *…Handler) List(` — that is, for what the receiver VARIABLE was NAMED —
+// and then searched the whole FILE for `filterVisible|authzfilter.Filter`. Both
+// halves were wrong, in opposite directions:
+//
+//   - renaming the receiver `h` → `hd` removed the resource from the gate's view
+//     entirely, so whatever its List did afterwards went unjudged;
+//   - the file-wide search accepted `authzfilter.Filter` occurring as the handler
+//     struct's FIELD TYPE. Deleting the filter call from List therefore left the
+//     gate green: the token it looked for was in the struct declaration a few lines
+//     above, and it had nothing to do with what List did.
+//
+// On top of both, a missing internal/handler exited 0 with a message on stderr, so
+// "the gate could not find the tree" and "the tree is clean" were the same verdict.
+//
+// # Whitelist
+//
+// machine_type is the cluster-wide sizing catalog (COMP-1 F7): every authenticated
+// caller is meant to read every row, there are no per-object grants to narrow to.
+// It is the ONLY exclusion left. The previous gate also excluded Region, Zone and
+// DiskType — all three had already moved to kacho-geo and kacho-storage, so those
+// entries excluded nothing and merely stood ready to hide a future resource of the
+// same name. The gate now reports an exclusion with no subject as a finding.
+package auditlistfilter
+
+import "github.com/PRO-Robotech/kacho/tools/listfiltergate"
+
+// Profile describes kacho-compute to the analyser.
+var Profile = listfiltergate.Profile{
+	Service:    "compute",
+	AnchorRoot: "internal/handler",
+	// One package, several handler types: the TYPE tells the resources apart.
+	PerPackage:     false,
+	ReceiverSuffix: "Handler",
+	// filterVisible is the service's own generic helper (internal/handler/
+	// list_filter.go); FilterVisibleIDs is the port it calls, accepted so a handler
+	// that talks to the port directly still counts.
+	Filters: []string{"filterVisible", "FilterVisibleIDs"},
+	Banned:  []string{"ListAllowedIDs", "ListObjects"},
+}

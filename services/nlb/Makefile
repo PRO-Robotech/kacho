@@ -68,10 +68,26 @@ proto-lint: proto-vendor
 proto-gen: proto-vendor
 	cd proto && buf generate
 
-# audit-list-filter — RBAC sub-phase D §11 (issue #111) CI gate. Asserts every
-# public List<Resource> use-case filters per-object through authzfilter.Filter
-# (kacho-iam AuthorizeService.ListObjects backend). security.md: публичный
-# List<Resource> обязан фильтровать результат через listauthz.
+# audit-list-filter — CI gate for the public List<Resource> surface: a caller must
+# receive only the rows it may see (per-object, kacho-iam AuthorizeService.BatchCheck
+# over the page just read), not every row of its project.
+#
+# The backend is BatchCheck, not ListObjects: the older comment here named the latter
+# long after it was removed, and it is now a shape the gate refuses — that answer is
+# capped server-side with no continuation token, so a tenant's own rows fall outside
+# the cap and vanish.
+#
+# The check parses the tree, so a resource is recognised by what its declaration IS —
+# a package declaring `List` on the transport type — and never by which file holds
+# the use-case; see tools/listfiltergate for the whole contract.
+#
+# The run always prints its census (files, packages, resources, checked,
+# whitelisted): "zero findings" must be distinguishable from "zero read", so a tree
+# the gate could not open is a finding, not an OK.
+#
+# Invoked by CI as `make -C services/nlb audit-list-filter`; the gate's own detection
+# logic is locked by services/nlb/tools/audit_list_filter_test.go, which runs it
+# against the real tree through this same wrapper.
 audit-list-filter:
 	@./tools/audit-list-filter.sh
 
