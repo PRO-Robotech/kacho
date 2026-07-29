@@ -6,39 +6,57 @@
 
 | Коллекция | Кейсов | Стадия |
 |---|---:|---|
-| volume | 38 | S1 (CS1-S1-*) |
-| **image** | **39** | **redesign STOR-1 (F9..F14, NET-NEW `img-`)** |
-| snapshot | 21 | S3 (CS1-S3-*) |
+| volume | 41 | S1 (CS1-S1-*) |
+| **image** | **43** | **redesign STOR-1 (F9..F14, NET-NEW `img-`)** |
+| snapshot | 24 | S3 (CS1-S3-*) |
 | disk-type | 8 | S2 (CS1-S2-*) |
-| operation | 3 | OperationService (OpsProxy sop) |
-| authz | 9 | INV-10 public authz (fixture-gated) |
+| operation | 8 | OperationService (OpsProxy sop) |
+| authz | 12 | INV-10 public authz (fixture-gated) |
+| authz-catalog | 18 | матрица доступа к admin-каталогу DiskType (6 субъектов × 3 операции) |
 | internal-volume | 4 | S4 INV-7a external-absence |
-| **Всего** | **122** | |
+| sec-d | 4 | SEC-D owner-tuple через iam (outbox → RegisterResource) |
+| **Всего** | **162** | |
 
-`scripts/validate-cases.py` → OK (122 уникальных case-id, нет дублей, все
-каталогизированы). `python3 scripts/gen.py` → OK (7 коллекций).
+`scripts/validate-cases.py` → OK (162 уникальных case-id, нет дублей, все
+каталогизированы). `python3 scripts/gen.py` → OK (9 коллекций).
 
-## Production-mode прогон (#59) — 5/7 коллекций 0 failed
+Таблица выше — не заметка «на память»: её сверяет с самими коллекциями гейт
+`make -C services/storage audit-known-failing` (`tools/audit-known-failing.sh`,
+дублирован в `go test ./tools/...`). Ростер, отстающий от сюиты, — такое же ложное
+утверждение, как протухшая запись «известное красное» ниже, просто таблицей выше;
+поэтому оба измерения проверяются одним гейтом, а не сверяются глазами.
+
+## Production-mode прогон (#59)
 
 RS256 SA-principal seed (`tests/authz-fixtures/prodseed_matrix.py`), api-gateway
-`authn.mode=production-strict`. Зелёные: **disk-type, internal-volume, operation,
-snapshot, volume** (0 failed). Прод-баг `img`-prefix (gateway authz-edge 400'ил все
+`authn.mode=production-strict`. Прод-баг `img`-prefix (gateway authz-edge 400'ил все
 image Get/Update/Delete) — **пофикшен** (`fix(ids)`: register storage image prefix,
 gateway-only rebuild) → image get-by-id восстановлен.
 
-### Known failing — product bugs (RED до фикса прода, `verified-by:test`)
+### Known failing — product bugs: нет
 
-| Кейс | Коллекция | Issue | Класс |
-|---|---|---|---|
-| IMG-CR-BVA-DESC-OVER-257 / IMG-CR-BVA-LABELS-OVER-65 | image | [#61](https://github.com/PRO-Robotech/kacho/issues/61) | Image.Create не валидирует `description`(>256)/`labels`(>64) синхронно (Volume — валидирует) → 200 Operation вместо 400. |
-| AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK | authz | [#62](https://github.com/PRO-Robotech/kacho/issues/62) | `edit` system-роль не материализует storage-verbs: тот же editor-principal listиет vpc (200), но storage volumes → 403 (role_rule_selectors gap). |
+Записей нет: **оба** прежних дефекта закрыты в дереве, и вместе с ними сняты
+`# verifies …/issues/N`-аннотации кейсов.
+
+- **#61** (Image.Create не валидировал `description`>256 / `labels`>64 синхронно) —
+  `validate.Description`/`validate.Labels` стоят на входе `image.UseCase.Create`,
+  до любого peer/DB-вызова; `IMG-CR-BVA-{DESC-OVER-257,LABELS-OVER-65}` — обычные
+  зелёные кейсы.
+- **#62** (`edit`-роль не материализовала storage-verbs) — селекторы системных ролей
+  расширены на storage-типы миграцией iam `0060_storage_system_role_selectors`;
+  `AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK` — обычный зелёный кейс.
+
+Обе записи прожили дольше своих фиксов и продолжали утверждать, что продукт сломан.
+Чтобы это не повторилось, срок жизни записи теперь проверяется механически: гейт
+`audit-known-failing` требует, чтобы у каждой записи был ОТКРЫТЫЙ тикет и кейс с
+парной аннотацией, и падает на записи, которой больше нечего исключать.
 
 Остальные исходные красные (malformed-id тон `invalid resource id` vs family-specific;
 internal-volume external-absence 403 fail-closed vs [404,405,501]; FieldMask snake→camel)
 были **test-staleness** — приведены к фактическому gateway-контракту (family-agnostic
 edge-message; fail-closed uncatalogued 403; camelCase FieldMask paths), см. диффы кейсов.
 
-## STOR-1 redesign — Image (`cases/image.py`, 39 кейсов)
+## STOR-1 redesign — Image (`cases/image.py`, 43 кейса)
 
 NET-NEW ресурс `Image` (VM boot-образ, REGIONAL/anycast, `img-` prefix) + Volume↔Image
 boot-materialize (`source_image_id`). Трассировка `IMG-* ↔ STOR-1-NN` (F9..F14) — см.

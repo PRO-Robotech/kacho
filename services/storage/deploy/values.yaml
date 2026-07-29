@@ -90,7 +90,8 @@ config:
   # project (анти-BOLA). Требует непустой authzIamGrpcAddr (иначе intents durable).
   fgaRegisterDrainerEnabled: true
   # listFilter — per-object фильтр видимости: прочитанная страница прогоняется
-  # через kacho-iam AuthorizeService.BatchCheck (`viewer ∪ v_list`) по тому же
+  # через kacho-iam AuthorizeService.BatchCheck на `viewer` (то же отношение, что
+  # энфорсит Get: в списке видно ровно то, что Get отдаст) по тому же
   # authzIamGrpcAddr. Защищает ДВЕ разные по цене поверхности:
   #
   #   1. публичный List (Volume/Snapshot/Image) — фильтр ВТОРОЙ слой: за ним

@@ -79,8 +79,17 @@ func (h *InternalVolumeHandler) Detach(ctx context.Context, req *storagev1.Detac
 }
 
 // ListAttachments — батч-чтение привязок по instance_id (compute-mirror, не N+1).
-// Набор сужается до привязок, чей том вызывающему видим (per-object, в use-case);
-// вызывающий без извлечённой identity получает пустой ответ.
+//
+// Авторизация — на уровне данных, в use-case: спрашивается модель про ИНСТАНСЫ,
+// которые назвал вызывающий, и ответ становится «всё или ничего» на инстанс. Это
+// несущее свойство, а не деталь: снос обязан увидеть ВСЕ привязки инстанса, который
+// вправе снести, иначе цикл отцепления пропустит привязку, удалит строку инстанса и
+// оставит том занятым навсегда — при успешном рапорте операции. Сужение по видимости
+// ТОМА было первой попыткой и ровно этим ломало снос; оно снято.
+//
+// Вызывающий без извлечённой identity получает PermissionDenied, а не пустой ответ:
+// пустота читалась бы как «привязок нет», и снос, поверив, удалил бы инстанс. Отсечка
+// безусловна — за этим RPC (ScopeFiltered) per-RPC Check не задаётся вовсе.
 func (h *InternalVolumeHandler) ListAttachments(ctx context.Context, req *storagev1.ListAttachmentsRequest) (*storagev1.ListAttachmentsResponse, error) {
 	atts, err := h.uc.ListAttachments(ctx, req.GetInstanceIds())
 	if err != nil {

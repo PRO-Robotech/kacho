@@ -198,7 +198,7 @@ failed-op + контракт-тон not-found; Cancel: вся поверхнос
 Три `*-LST-OVERSHOW-LEAK-GUARD` закрывают измерение, которое до них было ЯВНОЙ дырой
 (шапка `cases/authz.py`): набор проверял только кросс-**проектную** изоляцию, поэтому
 зелёный прогон storage не был доказательством per-object фильтра страницы List
-(`internal/authzfilter`, `viewer ∪ v_list` через iam BatchCheck). Форма — образец
+(`internal/authzfilter`, per-object `viewer` через iam BatchCheck). Форма — образец
 compute `LF-INST-LST-OVERSHOW-LEAK-GUARD`: владелец создаёт объект в проекте сюиты,
 **никогда**-не-гранченый аутентифицированный субъект (`jwtPureNoBindings`, НЕ
 `jwtNoBindings` — того реально гранят iam-сюиты, kacho-iam#276) листит тот же проект,

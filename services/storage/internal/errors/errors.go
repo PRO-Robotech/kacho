@@ -29,7 +29,8 @@ var (
 	ErrInvalidArg = errors.New("invalid argument")
 	// ErrInternal — некатегоризированная ошибка БД (без утечки pgx-текста).
 	ErrInternal = errors.New("internal database error")
-	// ErrUnimplemented — путь ещё не реализован (скелет). rpc-implementer заменяет
-	// каждую заглушку реальной реализацией по строгому TDD.
+	// ErrUnimplemented — путь ещё не реализован. Единственный носитель —
+	// `Volume.GetInternal` (infra-проекция, ждёт data-plane): осознанный
+	// out-of-scope, а не заглушка скелета.
 	ErrUnimplemented = errors.New("not implemented")
 )

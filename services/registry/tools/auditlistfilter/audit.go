@@ -9,11 +9,14 @@
 // The invariant is the same everywhere; the place it is enforced is not. In storage
 // (and compute/nlb/vpc) a List is project-scoped: the repository narrows rows by
 // project_id and the use-case then runs the page it just read through a batched
-// per-object check. The shell gate there reads internal/repo/pg + internal/service
-// and asserts exactly that.
+// per-object check. The gate there reads internal/repo/pg + the use-case packages
+// and asserts exactly that; it is now an AST walk too
+// (services/storage/tools/auditlistfilter), because its earlier grep recognised a
+// resource by the name of a receiver VARIABLE and stopped seeing the resource the
+// moment someone renamed it.
 //
-// kacho-registry does not have that shape, and pointing storage's script at it would
-// have passed vacuously — the directories it greps do not exist here. Registry
+// kacho-registry does not have that shape, and pointing storage's gate at it would
+// have passed vacuously — the directories it reads do not exist here. Registry
 // authorizes in the HANDLER, because its List surface is not one uniform
 // project-scoped collection:
 //

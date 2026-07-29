@@ -1,7 +1,8 @@
-# kacho-storage — архитектурный обзор (скелет)
+# kacho-storage — архитектурный обзор
 
-Записаны осознанные дизайн-решения скелета (service-scaffolder), чтобы
-`rpc-implementer` наполнял код без переоткрытия контекста.
+Записаны осознанные дизайн-решения сервиса, чтобы не переоткрывать контекст.
+Документ описывает РЕАЛИЗОВАННОЕ поведение: раздел «осталось сделать» здесь не
+живёт — задел ведётся тикетами, а не доком, который никто не сверяет с деревом.
 
 ## Слои и dependency rule
 
@@ -24,8 +25,8 @@
 `internal/apps/kacho/shared/serviceerr`. Отдельного пакета «порты» нет by design:
 каждый порт объявляет тот use-case, который им пользуется.
 
-Скелет прошивает read-путь сквозняком (handler → use-case → adapter-заглушка) —
-adapter-стабы возвращают `codes.Unimplemented`, поэтому wiring проверяем `go test`.
+Все пути прошиты до pgx-адаптера. Единственный оставшийся анкер `Unimplemented` —
+`Volume.GetInternal` (infra-проекция, ждёт data-plane; см. ниже).
 
 ## Async vs sync (api-conventions.md)
 
@@ -89,7 +90,8 @@ software TOCTOU — data-integrity.md ban #10):
   **Но project-scope отвечает лишь «чей это проект», не «какие объекты этому caller'у
   можно».** Поэтому use-case, прочитав СТРАНИЦУ курсором, прогоняет её id через
   per-object фильтр `internal/authzfilter` (kacho-iam `AuthorizeService.BatchCheck`,
-  `viewer ∪ v_list`, батчи ≤100 ограниченным fan-out'ом) и отдаёт только видимые
+  на `viewer` — том же отношении, что энфорсит `Get`; батчи ≤100 ограниченным
+  fan-out'ом) и отдаёт только видимые
   строки в порядке курсора. Без этого слоя ЛЮБОЙ член проекта видел каждый том,
   снимок и образ проекта независимо от per-object грантов (over-show / BOLA-lite),
   хотя `Get`/`Update`/`Delete` тех же ресурсов грант требовали — списки противоречили
@@ -122,19 +124,3 @@ software TOCTOU — data-integrity.md ban #10):
 резолвится при single-repo checkout CI/Docker). Локальная кросс-репо разработка — через
 gitignored root `go.work` (`use ./kacho-*`); CI его не видит → versioned require.
 `replace`-директивы сняты (drop-replace, commit `e6d67c8`).
-
-## Осталось для rpc-implementer (НЕ в скелете)
-
-- Доменные миграции: `volumes` (FK `disk_type_id`, size increase-only CHECK,
-  placement-coherence zone), `volume_attachments` (attach-CAS, FK RESTRICT к volumes),
-  `snapshots` (FK `source_volume_id`), `disk_types`. + встроить corelib `operations`
-  (ревью `db-architect-reviewer`).
-- Repo-логика: handwritten pgx + sqlc-gen (`internal/repo/pg/gen`, `queries/`),
-  attach — атомарный CAS (data-integrity.md), НЕ software TOCTOU.
-- Use-case тела: LRO (`operations.Run` + writer в worker), update_mask discipline,
-  malformed-id-first, peer-validate (geo/iam) с per-call deadline.
-- Clients: реальный дозвон `geo.v1.ZoneService.Get` / `iam.v1.ProjectService.Get`.
-- Authz: подключить `InternalIAMService.Check` в `authz*Interceptor` (оба листенера,
-  fail-closed) — сейчас passthrough-анкер (security.md инвариант).
-- Тесты: integration (testcontainers, concurrent attach-CAS race) + newman e2e.
-- Public RPC → регистрация через `api-gateway-registrar`.

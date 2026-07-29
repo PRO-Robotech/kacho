@@ -11,7 +11,7 @@ IMAGE          := kacho-storage:dev
 # build-context is the PARENT dir (siblings must be COPY-able). See Dockerfile.
 DOCKER_CONTEXT ?= ..
 
-.PHONY: build build-migrator test test-short vet lint audit-list-filter docker generate-mocks sqlc-gen \
+.PHONY: build build-migrator test test-short vet lint audit-list-filter audit-known-failing docker generate-mocks sqlc-gen \
         migrate-up migrate-down migrate-status
 
 build:
@@ -37,7 +37,8 @@ lint:
 #   (1) project-scope: repo.List сужает строки по project_id + use-case требует
 #       непустой projectId (listauthz posture, INV-10 — кросс-проектной утечки нет);
 #   (2) per-object видимость: use-case List прогоняет ПРОЧИТАННУЮ страницу через
-#       authzfilter.FilterVisiblePage (kacho-iam BatchCheck, viewer ∪ v_list).
+#       authzfilter.FilterVisiblePage (kacho-iam BatchCheck на `viewer` — том же
+#       отношении, что энфорсит Get: видно в списке ровно то, что Get отдаст).
 # (1) без (2) — ровно то слепое пятно, с которым storage отгрузил List, показывавший
 # любому члену проекта каждый том/снимок/образ. DiskType (cluster-catalog) whitelisted.
 #
@@ -45,7 +46,7 @@ lint:
 # `make audit-list-filter` из корня отвечает «No rule to make target» — команда
 # набирается как `make -C services/storage audit-list-filter`. Ровно в этой форме её
 # и вызывает CI: .github/workflows/ci.yaml, job authz-artifacts, шаг
-# «listauthz — публичный List фильтрует по объекту (4 сервиса)». Прежняя редакция
+# «listauthz — публичный List фильтрует по объекту (5 сервисов)». Прежняя редакция
 # этого комментария утверждала обратное («CI-workflow этот make-таргет не вызывает») —
 # верно на момент написания, ложно с тех пор, как шаг появился. Чтобы утверждение не
 # протухло снова, оно проверяется: tools/ci_gate_wiring_test.go.
@@ -53,6 +54,21 @@ lint:
 # РЕАЛЬНОГО дерева сервиса внутри обычного `go test ./...`. См. tools/audit-list-filter.sh.
 audit-list-filter:
 	./tools/audit-list-filter.sh
+
+# audit-known-failing — CI gate двух утверждений сюиты о себе самой:
+#   (1) состав (таблица в tests/newman/docs/RESULTS.md) совпадает со сгенерированными
+#       коллекциями — имена, счётчики, итог;
+#   (2) запись «известное красное» не переживает свой фикс: у неё обязан быть
+#       ОТКРЫТЫЙ тикет и кейс с парной `# verifies …/issues/N`-аннотацией (связь в
+#       обе стороны). Закрытый тикет = записи больше нечего исключать = находка.
+# Повод: обе прежние записи пережили свои фиксы, а ростер отстал на две коллекции и
+# 40 кейсов — то есть документ утверждал про продукт неправду в трёх местах сразу.
+# Измерение (2) требует трекера; без него гейт НЕ падает, но печатает каждую
+# непроверенную запись координатой — «не выполнялось» обязано быть отличимо от
+# «прошло». Дубль в go test (tools/audit_known_failing_test.go) гоняет тот же гейт
+# против реальной сюиты. См. tools/audit-known-failing.sh.
+audit-known-failing:
+	./tools/audit-known-failing.sh
 
 # docker — multi-stage образ (storage + kacho-migrator). Контекст — родительский
 # каталог, чтобы COPY подтянул siblings kacho-proto/kacho-corelib (replace ../).
