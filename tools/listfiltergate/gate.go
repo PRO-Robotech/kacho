@@ -135,7 +135,11 @@ type Report struct {
 	Resources   []string // resources discovered, sorted
 	Checked     []string // resources actually judged
 	Whitelisted []string // resources skipped because whitelisted
-	Findings    []string // one line per finding; non-empty ⇒ the gate fails
+	// Unattributed are public List declarations that resolved to no resource —
+	// each one is also a finding. Kept in the census so a passing run can state
+	// that the number is zero, rather than leaving it unsaid.
+	Unattributed []string
+	Findings     []string // one line per finding; non-empty ⇒ the gate fails
 }
 
 // Audit runs the gate against o.Root, writes its census and findings to out, and
@@ -161,14 +165,31 @@ func Audit(p Profile, o Options, out io.Writer) (Report, error) {
 
 	anchors := map[string][]anchorDecl{}
 	for _, u := range units {
-		for res, decls := range u.anchors(p) {
+		found, orphans := u.anchors(p)
+		for res, decls := range found {
 			anchors[res] = append(anchors[res], decls...)
 		}
+		rep.Unattributed = append(rep.Unattributed, orphans...)
 	}
 	for res := range anchors {
 		rep.Resources = append(rep.Resources, res)
 	}
 	sort.Strings(rep.Resources)
+	sort.Strings(rep.Unattributed)
+
+	// A public List the gate could not attribute is a finding, not a census gap.
+	// Reported before the "nothing examined" branch below on purpose: a tree whose
+	// EVERY List is unattributed reads as "no resources found", and "the gate does
+	// not recognise this layout" is a far more actionable answer than "the anchor
+	// root holds no List".
+	for _, orphan := range rep.Unattributed {
+		rep.Findings = append(rep.Findings, fmt.Sprintf(
+			"public List declaration attributed to no resource — its List goes unjudged while the "+
+				"gate reports OK: %s\n  identification is by the declared transport type (%s); either "+
+				"name the type so it is recognised, or state in the service's Profile that this is the "+
+				"transport surface",
+			orphan, p.ReceiverSuffix))
+	}
 
 	if len(rep.Resources) == 0 {
 		rep.Findings = append(rep.Findings, fmt.Sprintf(
@@ -372,9 +393,18 @@ func (u *unit) index() {
 	}
 }
 
-// anchors returns this unit's public List declarations, keyed by resource.
-func (u *unit) anchors(p Profile) map[string][]anchorDecl {
+// anchors returns this unit's public List declarations, keyed by resource, plus
+// the ones it could NOT attribute to any resource.
+//
+// The second return value is not diagnostics — it is a finding. Attribution is by
+// the declared transport type, so a `List` on a type this profile does not
+// recognise falls out of the resource set entirely and goes unjudged. That is the
+// same hole the predecessors had (they keyed on a mutable label and lost a resource
+// to a rename), only one level down: here the census showed it — "more packages
+// than resources" — and nothing acted on the gap.
+func (u *unit) anchors(p Profile) (map[string][]anchorDecl, []string) {
 	out := map[string][]anchorDecl{}
+	var unattributed []string
 	for _, f := range u.files {
 		for _, decl := range f.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
@@ -384,6 +414,8 @@ func (u *unit) anchors(p Profile) map[string][]anchorDecl {
 			_, typ := receiverOf(fn)
 			res, ok := p.resourceOf(u, typ)
 			if !ok {
+				unattributed = append(unattributed, fmt.Sprintf("%s (receiver type %s)",
+					u.fset.Position(fn.Pos()).String(), quoteType(typ)))
 				continue
 			}
 			out[res] = append(out[res], anchorDecl{
@@ -393,7 +425,16 @@ func (u *unit) anchors(p Profile) map[string][]anchorDecl {
 			})
 		}
 	}
-	return out
+	return out, unattributed
+}
+
+// quoteType names a receiver type for a message, including the case where the
+// receiver is not a plain package-local named type at all.
+func quoteType(typ string) string {
+	if typ == "" {
+		return "<not a package-local named type>"
+	}
+	return typ
 }
 
 // resourceOf maps a receiver TYPE to the resource it serves, or reports that the
@@ -595,8 +636,10 @@ func sortedKeys(m map[string]bool) []string {
 // anything — then the findings, and turns findings into an error.
 func finish(p Profile, rep Report, out io.Writer) (Report, error) {
 	_, _ = fmt.Fprintf(out,
-		"audit-list-filter[%s]: examined %d file(s) in %d package(s), %d resource(s) (%d checked, %d whitelisted)\n",
-		p.Service, rep.Files, rep.Packages, len(rep.Resources), len(rep.Checked), len(rep.Whitelisted))
+		"audit-list-filter[%s]: examined %d file(s) in %d package(s), %d resource(s) "+
+			"(%d checked, %d whitelisted, %d List declaration(s) attributed to no resource)\n",
+		p.Service, rep.Files, rep.Packages, len(rep.Resources),
+		len(rep.Checked), len(rep.Whitelisted), len(rep.Unattributed))
 	if len(rep.Checked) > 0 {
 		_, _ = fmt.Fprintf(out, "audit-list-filter[%s]: checked %s\n", p.Service, strings.Join(rep.Checked, ", "))
 	}

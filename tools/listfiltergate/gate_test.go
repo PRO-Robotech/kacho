@@ -333,6 +333,159 @@ func (h *InstanceHandler) ListOperations(ctx context.Context) error {
 	}
 }
 
+// TestAudit_UnattributedListIsAFinding — a public List the gate could not attribute
+// to any resource must be a FINDING, not a silent omission.
+//
+// This gate exists because its predecessors keyed on a mutable label, so a rename
+// removed a resource from their view while they kept printing OK. Identification by
+// the declared transport TYPE is the fix, but it left the same hole one level down:
+// a package whose transport type happens to be named something else contributes no
+// resource at all, and the `List` inside it goes unjudged. The census printed the
+// discrepancy — "7 packages, 3 resources" — and nothing acted on it, so the gate
+// written against this class was an instance of it.
+//
+// The predicate is mirror-symmetric with attribution: whatever the mode, EVERY
+// `List` method declaration in the parsed tree either resolves to a resource or is
+// reported. Declarations that are not the transport surface at all (a differently
+// named method, a type in an unparsed test file) are not `List` declarations and so
+// are outside the predicate by construction, not by exception.
+func TestAudit_UnattributedListIsAFinding(t *testing.T) {
+	cases := []struct {
+		name    string
+		profile Profile
+		files   map[string]string
+		wantErr bool
+		wantIn  string
+	}{
+		{
+			name:    "per-package: transport type named otherwise — the package is lost",
+			profile: pkgProfile,
+			files: map[string]string{
+				// A properly named neighbour, so the run is not "examined nothing".
+				"internal/apps/kacho/api/network/handler.go": `package network
+
+type Handler struct{}
+
+func (h *Handler) List(ctx context.Context) error {
+	rows, _ := h.repo.Page(ctx)
+	visible, _ := FilterVisiblePage(ctx, rows)
+	_ = visible
+	return nil
+}
+`,
+				// Same shape, type named otherwise: it used to vanish from the census.
+				"internal/apps/kacho/api/subnet/handler.go": `package subnet
+
+type SubnetHandler struct{}
+
+func (h *SubnetHandler) List(ctx context.Context) error {
+	rows, _ := h.repo.Page(ctx)
+	return h.reply(rows)
+}
+`,
+			},
+			wantErr: true,
+			wantIn:  "SubnetHandler",
+		},
+		{
+			name:    "flat: receiver type without the transport suffix — the resource is lost",
+			profile: flatProfile,
+			files: map[string]string{
+				"internal/handler/instance_handler.go": `package handler
+
+type InstanceHandler struct{}
+
+func (h *InstanceHandler) List(ctx context.Context) error {
+	rows, _ := h.svc.List(ctx)
+	visible, _ := filterVisible(ctx, h.listFilter, rows)
+	_ = visible
+	return nil
+}
+`,
+				"internal/handler/volume_service.go": `package handler
+
+type VolumeService struct{}
+
+func (s *VolumeService) List(ctx context.Context) error {
+	rows, _ := s.repo.Page(ctx)
+	return s.reply(rows)
+}
+`,
+			},
+			wantErr: true,
+			wantIn:  "VolumeService",
+		},
+		{
+			name:    "MIRROR: every List attributed — silent",
+			profile: pkgProfile,
+			files: map[string]string{
+				"internal/apps/kacho/api/network/handler.go": `package network
+
+type Handler struct{}
+
+func (h *Handler) List(ctx context.Context) error {
+	rows, _ := h.repo.Page(ctx)
+	visible, _ := FilterVisiblePage(ctx, rows)
+	_ = visible
+	return nil
+}
+`,
+				// A package with NO List at all is not a resource by construction —
+				// nlb's announce/operation/shared are exactly this, and must not be
+				// coloured. Otherwise the plain census gap ("more packages than
+				// resources") would be the predicate, and it would fire on them.
+				"internal/apps/kacho/api/shared/helpers.go": `package shared
+
+type Helper struct{}
+
+func (h *Helper) Page(ctx context.Context) error { return nil }
+`,
+			},
+			wantErr: false,
+		},
+		{
+			name:    "MIRROR: List on a non-transport type is not the transport surface",
+			profile: pkgProfile,
+			files: map[string]string{
+				"internal/apps/kacho/api/network/handler.go": `package network
+
+type Handler struct{}
+
+func (h *Handler) List(ctx context.Context) error {
+	rows, _ := h.repo.Page(ctx)
+	visible, _ := FilterVisiblePage(ctx, rows)
+	_ = visible
+	return nil
+}
+`,
+				// Parsed but NOT a transport declaration: the gate only ever looked at
+				// non-test files, and a repository adapter living beside the handler
+				// legitimately has a List. Colouring it would make the gate unusable.
+				"internal/apps/kacho/api/network/repo_test.go": `package network
+
+type fakeRepo struct{}
+
+func (r *fakeRepo) List(ctx context.Context) error { return nil }
+`,
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := run(t, tc.profile, tc.files)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("verdict: gotErr=%v wantErr=%v\n--- output ---\n%s", err != nil, tc.wantErr, out)
+			}
+			if tc.wantIn != "" && !strings.Contains(out, tc.wantIn) {
+				t.Errorf("the finding must name the declaration it could not attribute (%q)\n--- output ---\n%s",
+					tc.wantIn, out)
+			}
+		})
+	}
+}
+
 // TestAudit_NothingExaminedIsNotOK — "zero findings" must be unreachable from "zero
 // read". Both shapes below used to print OK and exit 0, which is the worst answer a
 // gate can give: indistinguishable from a clean tree, so a gate pointed at the wrong
