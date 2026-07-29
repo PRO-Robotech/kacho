@@ -8,8 +8,8 @@
 //   - per-tuple RegisterResource с forward'ом mirror-полей + монотонного
 //     source_version + per-call deadline;
 //   - NON-short-circuit (все tuple'ы атакуются даже при ошибке на предыдущем);
-//   - proxy-rejection (PermissionDenied/InvalidArgument на не-registrable
-//     relation) — BENIGN, не всплывает наружу (async drainer идентичен);
+//   - терминальный отказ (PermissionDenied/InvalidArgument) — ВСПЛЫВАЕТ: повтор
+//     идентичного запроса его не изменит, а async drainer такой intent poison'ит;
 //   - transient-сбой (Unavailable) — всплывает как error (use-case логирует
 //     best-effort);
 //   - nil client → no-op.
@@ -127,35 +127,59 @@ func TestSyncRegistrar_RegistersEachTuple_ForwardsMirrorFields(t *testing.T) {
 	}
 }
 
-// TestSyncRegistrar_ProxyRejection_IsBenign — iam-proxy отвергает creator(admin)
-// tuple (не registrable relation) как PermissionDenied, но принимает
-// project-tuple. Sync-registrar НЕ короткозамыкается: атакует ОБА tuple'а,
-// project-tuple применяется (видимость достигнута), а PermissionDenied на admin
-// — BENIGN (не всплывает, т.к. async drainer его тоже не применит). Register → nil.
-func TestSyncRegistrar_ProxyRejection_IsBenign(t *testing.T) {
+// TestSyncRegistrar_PermissionDenied_Surfaced — отказ владельца прав СУРФЕЙСИТСЯ.
+//
+// Повтор идентичного запроса не может изменить решение о доступе, поэтому такой
+// отказ — не «временная помеха» и не «ожидаемая политика»: единственное
+// отношение, которое nlb сегодня эмитит, — containment `project`, и оно обязано
+// приниматься. Отказ по нему означает неверную настройку прав, а не штатный ход
+// событий; проглотить его — оставить владельца ресурса без доступа молча.
+//
+// Возврат влияет только на лог (вызывающий best-effort глотает результат), но
+// именно этот лог и есть единственный признак поломки на sync-пути.
+func TestSyncRegistrar_PermissionDenied_Surfaced(t *testing.T) {
 	cli := &scriptedRegisterClient{
 		errByRelation: map[string]error{
-			domain.FGARelationAdmin: status.Error(codes.PermissionDenied, "permission denied"),
+			domain.FGARelationProject: status.Error(codes.PermissionDenied, "permission denied"),
 		},
 	}
 	reg := iam.NewSyncRegistrar(cli)
 
 	err := reg.Register(context.Background(), lbUserIntent())
-	require.NoError(t, err, "proxy-rejection of non-registrable relation is benign for best-effort sync path")
-	require.Equal(t, []string{domain.FGARelationProject, domain.FGARelationAdmin}, cli.relations(),
-		"non-short-circuit: both tuples attempted, project-tuple applied")
+	require.Error(t, err, "a rights refusal on the containment tuple must not be swallowed")
+	require.ErrorContains(t, err, "nlb_network_load_balancer:"+testLBID,
+		"the surfaced error names the object whose registration was refused")
 }
 
-// TestSyncRegistrar_InvalidArgument_IsBenign — InvalidArgument на tuple (malformed
-// на стороне proxy) — тоже BENIGN (drainer его бы poison'ил); не всплывает.
-func TestSyncRegistrar_InvalidArgument_IsBenign(t *testing.T) {
+// TestSyncRegistrar_InvalidArgument_Surfaced — malformed tuple тоже сурфейсится:
+// async register-drainer такой intent POISON'ит (терминально), поэтому «drainer
+// досведёт» здесь неверно — досводить нечего, и молчание скрыло бы дефект
+// продюсера.
+func TestSyncRegistrar_InvalidArgument_Surfaced(t *testing.T) {
 	cli := &scriptedRegisterClient{
 		errByRelation: map[string]error{
-			domain.FGARelationAdmin: status.Error(codes.InvalidArgument, "bad tuple"),
+			domain.FGARelationProject: status.Error(codes.InvalidArgument, "bad tuple"),
 		},
 	}
 	reg := iam.NewSyncRegistrar(cli)
-	require.NoError(t, reg.Register(context.Background(), lbUserIntent()))
+	require.Error(t, reg.Register(context.Background(), lbUserIntent()),
+		"a malformed-tuple rejection must not be swallowed")
+}
+
+// TestSyncRegistrar_RefusalDoesNotShortCircuit — отказ на одном tuple не отменяет
+// попытку по остальным (инвариант NON-short-circuit сохраняется и после того, как
+// отказ перестал считаться безобидным).
+func TestSyncRegistrar_RefusalDoesNotShortCircuit(t *testing.T) {
+	cli := &scriptedRegisterClient{
+		errByRelation: map[string]error{
+			domain.FGARelationProject: status.Error(codes.PermissionDenied, "permission denied"),
+		},
+	}
+	reg := iam.NewSyncRegistrar(cli)
+
+	require.Error(t, reg.Register(context.Background(), lbUserIntent()))
+	require.Equal(t, []string{domain.FGARelationProject, domain.FGARelationAdmin}, cli.relations(),
+		"non-short-circuit: every tuple attempted even after a refusal")
 }
 
 // TestSyncRegistrar_TransientError_Surfaced — iam недоступен (Unavailable) на

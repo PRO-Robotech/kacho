@@ -110,6 +110,10 @@ func (r *readerImpl) Close() error {
 type writerImpl struct {
 	tx        pgx.Tx
 	finalised bool // true после Commit или Abort — защита от double-finalize
+	// fgaEmitSeq — порядковый номер следующего FGA-register-intent'а этой tx.
+	// Живёт на writer'е, а не на эмиттере: FGARegisterOutbox() возвращает новый
+	// эмиттер на каждый вызов, а нумерация обязана быть сквозной по всей tx.
+	fgaEmitSeq int64
 }
 
 // Writer-side returns: — writer видит свои writes (reader-методы — поверх
@@ -141,8 +145,12 @@ func (w *writerImpl) Outbox() kacho.OutboxEmitter {
 // FGARegisterOutbox — emit FGA-register-intent в `fga_register_outbox` в той же
 // tx-области writer'а. DML ресурса + register-intent атомарны одной
 // writer-tx (Вариант A — no dual-write).
+//
+// Эмиттер получает указатель на сквозной для tx счётчик: несколько intent'ов
+// ОДНОГО объекта в одной tx обязаны различаться по source_version, иначе
+// применённый последним отменяет предыдущий (см. Emit).
 func (w *writerImpl) FGARegisterOutbox() kacho.FGARegisterEmitter {
-	return &fgaRegisterEmitter{tx: w.tx}
+	return &fgaRegisterEmitter{tx: w.tx, seq: &w.fgaEmitSeq}
 }
 
 // Commit финализирует write-TX. После Commit вызов Abort — no-op.

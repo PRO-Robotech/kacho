@@ -236,8 +236,14 @@ func TestDrift_RPCMethodCount(t *testing.T) {
 //   - возвращённый objectID == ожидаемый "extracted-id";
 //   - err == nil.
 //
-// Это исчерпывающе покрывает все 23 Extract closure'а в PermissionMap →
-// PermissionMap coverage 39% → ≥90%.
+// Покрытие СВЕРЯЕТСЯ С САМОЙ КАРТОЙ, а не с длиной этой таблицы. Утверждение
+// «покрыты все» обязано опираться на то, что покрывается, иначе оно измеряет
+// собственный размер: пока сверка шла с захардкоженным числом, три внутренних
+// извлечения (Subscribe + обе announce-ветки) не проверялись ни разу, а тест
+// заявлял исчерпывающее покрытие и был зелёным.
+//
+// Сверка ДВУСТОРОННЯЯ: запись карты без строки в таблице — пробел покрытия;
+// строка таблицы без записи в карте — тест, стреляющий по несуществующему RPC.
 func TestExtract_AllRPCEntries(t *testing.T) {
 	m := check.PermissionMap()
 
@@ -321,8 +327,55 @@ func TestExtract_AllRPCEntries(t *testing.T) {
 		{"/kacho.cloud.loadbalancer.v1.TargetGroupService/ListOperations",
 			&lbv1.ListTargetGroupOperationsRequest{TargetGroupId: id},
 			"nlb_target_group", id},
+		// Internal listener (:9091) — the SAME authz interceptor runs there, so
+		// these entries decide access exactly as the public ones do.
+		//
+		// Subscribe streams resource ids of EVERY project, so it has no per-request
+		// object: its extractor is the cluster floor, constant by construction. The
+		// case pins that constancy — a future extractor that starts reading the
+		// request would make the gate caller-influenced.
+		{"/kacho.cloud.loadbalancer.v1.InternalResourceLifecycleService/Subscribe",
+			&lbv1.SubscribeRequest{},
+			"cluster", "cluster_kacho_root"},
+		{"/kacho.cloud.loadbalancer.v1.InternalLoadBalancerAnnounceService/GetAnnounceState",
+			&lbv1.GetLoadBalancerAnnounceStateRequest{NetworkLoadBalancerId: id},
+			"nlb_network_load_balancer", id},
+		{"/kacho.cloud.loadbalancer.v1.InternalLoadBalancerAnnounceService/ReportAnnounceState",
+			&lbv1.ReportLoadBalancerAnnounceStateRequest{NetworkLoadBalancerId: id},
+			"nlb_network_load_balancer", id},
 	}
-	require.Lenf(t, cases, 23, "must cover all 23 non-Public RPCs in PermissionMap (got %d)", len(cases))
+	// Reconcile the table against the map itself, in both directions.
+	wantCovered := map[string]struct{}{}
+	for fm, e := range m {
+		if !e.Public {
+			wantCovered[fm] = struct{}{}
+		}
+	}
+	covered := map[string]struct{}{}
+	for _, c := range cases {
+		require.NotContainsf(t, covered, c.fm, "duplicate table row for %q", c.fm)
+		covered[c.fm] = struct{}{}
+	}
+	var missing, extra []string
+	for fm := range wantCovered {
+		if _, ok := covered[fm]; !ok {
+			missing = append(missing, fm)
+		}
+	}
+	for fm := range covered {
+		if _, ok := wantCovered[fm]; !ok {
+			extra = append(extra, fm)
+		}
+	}
+	sort.Strings(missing)
+	sort.Strings(extra)
+	require.Emptyf(t, missing,
+		"non-Public PermissionMap entries with no Extract case — their object extraction is unverified: %v", missing)
+	require.Emptyf(t, extra,
+		"Extract cases for methods that are not non-Public PermissionMap entries (renamed? made Public? removed?): %v", extra)
+	// The count is reported, not asserted: it is a consequence of the reconciliation
+	// above, and asserting it separately would only make the map harder to extend.
+	t.Logf("Extract coverage: %d/%d non-Public PermissionMap entries", len(covered), len(wantCovered))
 
 	for _, c := range cases {
 		t.Run(c.fm, func(t *testing.T) {

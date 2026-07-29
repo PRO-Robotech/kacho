@@ -42,12 +42,18 @@ func TestMove_Happy(t *testing.T) {
 	assert.Equal(t, kachorepo.OutboxActionMoved, events[0].Action)
 	assert.Equal(t, kachorepo.OutboxActionUpdated, events[1].Action)
 
-	// project-rewrite = register(dst) + unregister(src) intents in writer-tx.
+	// project-rewrite = unregister(src) THEN register(dst) in the writer-tx.
+	// The order is the contract, not the style: both intents are about the same
+	// object, so they drain in emission order and the SURVIVING state must be
+	// emitted LAST. The end-to-end consequence is locked in
+	// move_mirror_projection_integration_test.go.
 	require.Len(t, repo.fga, 2)
-	assert.Equal(t, domain.FGAEventRegister, repo.fga[0].EventType)
-	assert.Equal(t, "project:prj-dst", repo.fga[0].Intent.Tuples[0].SubjectID)
-	assert.Equal(t, domain.FGAEventUnregister, repo.fga[1].EventType)
-	assert.Equal(t, "project:prj-src", repo.fga[1].Intent.Tuples[0].SubjectID)
+	assert.Equal(t, domain.FGAEventUnregister, repo.fga[0].EventType,
+		"the source scope comes down FIRST")
+	assert.Equal(t, "project:prj-src", repo.fga[0].Intent.Tuples[0].SubjectID)
+	assert.Equal(t, domain.FGAEventRegister, repo.fga[1].EventType,
+		"the destination scope goes up LAST — it is the state that must survive")
+	assert.Equal(t, "project:prj-dst", repo.fga[1].Intent.Tuples[0].SubjectID)
 }
 
 // TestMove_RegisterDstCarriesLabelsAndParent — regression: the register(dst)
@@ -74,20 +80,20 @@ func TestMove_RegisterDstCarriesLabelsAndParent(t *testing.T) {
 	require.Nil(t, final.Error)
 	require.Len(t, repo.fga, 2)
 
+	// unregister(src) stays bare (IAM uses only object+source_version on unregister).
+	unreg := repo.fga[0]
+	require.Equal(t, domain.FGAEventUnregister, unreg.EventType)
+	require.Equal(t, "project:prj-src", unreg.Intent.Tuples[0].SubjectID)
+	require.Empty(t, unreg.Intent.ParentProjectID)
+	require.Nil(t, unreg.Intent.Labels)
+
 	// register(dst) must carry the mirror fields for the destination.
-	reg := repo.fga[0]
+	reg := repo.fga[1]
 	require.Equal(t, domain.FGAEventRegister, reg.EventType)
 	require.Equal(t, "prj-dst", reg.Intent.ParentProjectID,
 		"register(dst) must set ParentProjectID=dst for the γ parent selector")
 	require.Equal(t, map[string]string{"env": "prod"}, reg.Intent.Labels,
 		"register(dst) must carry the moved TG's labels for the γ label selector")
-
-	// unregister(src) stays bare (IAM uses only object+source_version on unregister).
-	unreg := repo.fga[1]
-	require.Equal(t, domain.FGAEventUnregister, unreg.EventType)
-	require.Equal(t, "project:prj-src", unreg.Intent.Tuples[0].SubjectID)
-	require.Empty(t, unreg.Intent.ParentProjectID)
-	require.Nil(t, unreg.Intent.Labels)
 }
 
 // Same-project destination → InvalidArgument с фиксированным текстом.

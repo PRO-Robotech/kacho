@@ -203,18 +203,28 @@ func (u *MoveLoadBalancerUseCase) doMove(ctx context.Context, id, srcProject, ds
 	); err != nil {
 		return nil, mapDomainErr(err)
 	}
-	// project-rewrite as register(dst) + unregister(src) in the SAME tx.
-	// register(dst) must mirror lbMirrorIntent semantics for the destination
-	// (Labels from the moved record + ParentProjectID=dst) so the kacho-iam
-	// resource_mirror feeding the γ label/parent selector is re-created intact;
-	// the bare lbUnregisterIntent drops both. unregister(src) below stays bare
-	// (IAM uses only object+source_version on unregister).
-	if err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister,
-		lbMirrorIntent(moved)); err != nil {
-		return nil, mapDomainErr(err)
-	}
+	// project-rewrite as unregister(src) THEN register(dst) in the SAME tx.
+	//
+	// ORDER IS PART OF THE CONTRACT, not style. Both intents are about the SAME
+	// object, so they land in one drainer partition (resource_id) and are applied
+	// in emission order, and the emitter stamps each with a strictly newer
+	// source_version than the previous intent of this tx. The surviving state must
+	// therefore be emitted LAST: unregister takes down the source scope, register
+	// then puts the destination scope in place. Swap them and the unregister —
+	// a hard DELETE in IAM, gated `source_version <= tombstone` — carries the newer
+	// version and removes the projection the register has just written, leaving the
+	// moved balancer with no access at all while the Move itself reports success.
+	//
+	// unregister(src) stays bare (IAM uses only object + source_version on
+	// unregister). register(dst) must carry full lbMirrorIntent semantics (Labels
+	// from the moved record + ParentProjectID=dst) so the kacho-iam resource_mirror
+	// feeding the γ label/parent selector is re-created intact.
 	if err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventUnregister,
 		lbUnregisterIntent(id, srcProject)); err != nil {
+		return nil, mapDomainErr(err)
+	}
+	if err := w.FGARegisterOutbox().Emit(ctx, domain.FGAEventRegister,
+		lbMirrorIntent(moved)); err != nil {
 		return nil, mapDomainErr(err)
 	}
 	if err := w.Commit(); err != nil {
