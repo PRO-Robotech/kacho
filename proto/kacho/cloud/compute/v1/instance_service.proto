@@ -1226,8 +1226,23 @@ message PrimaryAddressSpec {
   // If not specified, then this instance will have no external internet access.
   OneToOneNatSpec one_to_one_nat_spec = 2;
 
-  // Internal DNS configuration
-  repeated DnsRecordSpec dns_record_specs = 3;
+  // Field 3 held `dns_record_specs`. WITHDRAWN — number and name stay reserved.
+  //
+  // It was unreachable by construction: this message is reached only through the NIC
+  // spec fields the service REJECTS BY NAME
+  // (`network_interface_specs.primary_v4_address_spec` / `…v6…`) and through the request
+  // of `UpdateNetworkInterface`, which has no handler and answers `Unimplemented`. So no
+  // caller could deliver a record spec even in principle — and if one ever could,
+  // nothing behind it would have acted on it.
+  //
+  // And it is not implementable as an attribute of an interface: a DNS record needs a
+  // zone somebody owns, a record set with its own lifecycle, TTL and propagation
+  // semantics, and its own authorization — that is a domain with its own acceptance.
+  // `dns_zone_id` referred to a zone resource this platform does not have at all. Same
+  // reading, same decision as the withdrawn vpc DNS surface. Lock:
+  // pkg/api/kacho/cloud/compute/v1/dns_contract_test.go.
+  reserved 3;
+  reserved "dns_record_specs";
 }
 
 message OneToOneNatSpec {
@@ -1235,20 +1250,18 @@ message OneToOneNatSpec {
   IpVersion ip_version = 1; //only if address unspecified
   string address = 2; //set static IP by value
 
-  // External DNS configuration
-  repeated DnsRecordSpec dns_record_specs = 3;
+  // Field 3 held `dns_record_specs`. WITHDRAWN — same story as on PrimaryAddressSpec
+  // above, plus one more closed door: this message is also reached from
+  // `AddInstanceOneToOneNatRequest`, whose RPC has no handler either. Number and name
+  // stay reserved.
+  reserved 3;
+  reserved "dns_record_specs";
 }
 
-message DnsRecordSpec {
-  // FQDN (required)
-  string fqdn = 1 [(required) = true];
-  // DNS zone id (optional, if not set, private zone used)
-  string dns_zone_id = 2;
-  // DNS record ttl, values in 0-86400 (optional)
-  int64 ttl = 3 [(value) = "0-86400"];
-  // When set to true, also create PTR DNS record (optional)
-  bool ptr = 4;
-}
+// DnsRecordSpec used to live here, referenced only by the two withdrawn
+// `dns_record_specs` fields above. With those gone nothing referenced it, and keeping it
+// would advertise a shape the service has no way to honour. Nothing is reserved for the
+// message itself: a message no field points at was never on the wire.
 
 message RelocateInstanceRequest {
   // ID of the instance to move.

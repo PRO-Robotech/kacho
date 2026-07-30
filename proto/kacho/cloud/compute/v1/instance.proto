@@ -399,8 +399,20 @@ message PrimaryAddress {
   // One-to-one NAT configuration. If missing, NAT has not been set up.
   OneToOneNat one_to_one_nat = 2;
 
-  // Internal DNS configuration
-  repeated DnsRecord dns_records = 3;
+  // Field 3 held `dns_records`. WITHDRAWN — number and name stay reserved.
+  //
+  // Unlike the input side, this field WAS reachable: this message is produced by
+  // `internal/protoconv` for every interface of every Instance on Get and List. It was
+  // simply never filled — no code path ever set a record — so it went out empty on every
+  // response, and a caller could not tell "no records" from "not implemented".
+  //
+  // Not implementable here either: a DNS record needs a zone somebody owns, a record set
+  // with its own lifecycle, TTL and propagation semantics, and its own authorization —
+  // its own domain with its own acceptance. Withdrawn on both sides together: keeping the
+  // output would keep advertising records nothing can ever produce. Lock:
+  // pkg/api/kacho/cloud/compute/v1/dns_contract_test.go.
+  reserved 3;
+  reserved "dns_records";
 }
 
 message OneToOneNat {
@@ -410,24 +422,17 @@ message OneToOneNat {
   // IP version for the external IP address.
   IpVersion ip_version = 2;
 
-  // External DNS configuration
-  repeated DnsRecord dns_records = 3;
+  // Field 3 held `dns_records`. WITHDRAWN — same story as on PrimaryAddress above: this
+  // message is produced (address + ip_version are filled from the vpc mirror), the record
+  // list never was. Number and name stay reserved.
+  reserved 3;
+  reserved "dns_records";
 }
 
-message DnsRecord {
-  // Name of the A/AAAA record as specified when creating the instance.
-  // Note that if `fqdn' has no trailing '.', it is specified relative to the zone (@see dns_zone_id).
-  string fqdn = 1;
-
-  // DNS zone id for the record (optional, if not set, some private zone is used).
-  string dns_zone_id = 2;
-
-  // DNS record ttl (optional, if not set, a reasonable default is used.)
-  int64 ttl = 3;
-
-  // When true, indicates there is a corresponding auto-created PTR DNS record.
-  bool ptr = 4;
-}
+// DnsRecord used to live here, referenced only by the two withdrawn `dns_records` fields
+// above. With those gone nothing referenced it, and keeping it would advertise a shape the
+// service has no way to honour. Nothing is reserved for the message itself: a message no
+// field points at was never on the wire.
 
 enum IpVersion {
   IP_VERSION_UNSPECIFIED = 0;
