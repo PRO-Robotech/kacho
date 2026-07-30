@@ -283,7 +283,7 @@ kacho-iam:
       # opens authenticates nobody. Plaintext here is refused at start by
       # config.validateProductionProviderAdminHop; so is https with no anchor.
       # The SAN list on the serving certificate covers this `.svc` spelling.
-      hydraAdminUrl: https://kacho-umbrella-hydra-admin.kacho.svc:4445
+      hydraAdminUrl: https://kacho-umbrella-hydra-admin-tls.kacho.svc:4445
       hydraAdminCaFile: /etc/kacho-iam/tls/server/ca.crt
 kacho-nlb:
   image:

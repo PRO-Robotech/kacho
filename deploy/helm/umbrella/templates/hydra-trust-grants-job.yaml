@@ -55,19 +55,25 @@ spec:
             seccompProfile:
               type: RuntimeDefault
           env:
-            {{- $adminTLS := (.Values.mtls | default dict).hydraAdminTls | default dict }}
-            {{- if and (.Values.mtls | default dict).enabled $adminTLS.enabled }}
-            # The admin listener serves TLS on this profile; curl must address it
-            # over https AND verify it against the internal CA that signed it (the
-            # mounted ca.crt). --insecure here would defeat the reason the listener
-            # was moved to TLS in the first place.
+            {{- /*
+              АДРЕС ОБЪЯВЛЯЕТСЯ ЗНАЧЕНИЕМ, А НЕ ЗАШИТ ЗДЕСЬ.
+              Пока он был зашит в шаблон, перепись потребителей по объявлениям
+              его НЕ ВИДЕЛА: она резолвит пути в файлах значений, а у этого
+              потребителя values-ключа не было вовсе. Перевод перехода на другой
+              адрес прошёл бы мимо него — и заметить это было бы нечем: хук
+              латентен, включается отдельным ключом.
+              Путь `hydraTrustGrants.adminUrl` внесён в реестр потребителей
+              (gateway/deploy/admin_hop_transport_test.go), поэтому теперь его
+              транспорт проверяется теми же гейтами, что и у остальных.
+              `required` роняет РЕНДЕР, а не рантайм: незаполненный адрес обязан
+              быть виден до развёртывания, а не хуком, который молча не находит
+              имени.
+            */}}
             - name: HYDRA_ADMIN_URL
-              value: "https://{{ .Release.Name }}-hydra-admin.{{ .Release.Namespace }}.svc.cluster.local:4445"
+              value: {{ required "hydraTrustGrants.adminUrl обязателен, когда включён federationIn: адрес административного API объявляется значением и входит в реестр потребителей" (.Values.hydraTrustGrants | default dict).adminUrl | quote }}
+            {{- with (.Values.hydraTrustGrants | default dict).adminCaFile }}
             - name: CURL_CA_BUNDLE
-              value: /etc/hydra-admin-ca/ca.crt
-            {{- else }}
-            - name: HYDRA_ADMIN_URL
-              value: "http://{{ .Release.Name }}-hydra-admin.{{ .Release.Namespace }}.svc.cluster.local:4445"
+              value: {{ . | quote }}
             {{- end }}
           command:
             - sh

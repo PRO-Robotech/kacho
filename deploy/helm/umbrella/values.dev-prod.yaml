@@ -103,8 +103,8 @@ api-gateway:
     # Introspection asks about a bearer by SENDING it, on every authenticated
     # request that misses the cache — the wire carries a live end-user credential,
     # not merely administrative calls.
-    introspectionUrl: "https://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445/admin/oauth2/introspect"
-    adminUrl: "https://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445"
+    introspectionUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc.cluster.local:4445/admin/oauth2/introspect"
+    adminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc.cluster.local:4445"
     adminCa:
       secretName: kacho-umbrella-hydra-admin-tls
       key: ca.crt
@@ -232,7 +232,7 @@ kacho-iam:
       # pinned — the internal-CA bundle already mounted for mTLS is the same CA
       # that signs the provider's admin certificate. dev's plaintext value is
       # deep-merged over here; leaving it would refuse the start on this stand.
-      hydraAdminUrl: "https://kacho-umbrella-hydra-admin.kacho.svc.cluster.local:4445"
+      hydraAdminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc.cluster.local:4445"
       hydraAdminCaFile: /etc/kacho-iam/tls/server/ca.crt
       hydraTokenURL: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/oauth2/token"
       # Bootstrap-admin SA ES256 (P-256, PKCS#8) signing key — signs the
@@ -383,10 +383,21 @@ hydra:
           # mismatch is not a degraded mode — every RS256 token fails the iss check and
           # the whole surface answers 401.
           issuer: "https://localhost:28080/.ory/hydra/public"
-      # ADMIN listener over TLS — and only the admin listener. The provider
-      # resolves TLS per listener (serve.admin.tls / serve.public.tls each
-      # override the shared serve.tls field by field), so the public OIDC
-      # listener this stand reaches over plain http (ingress, JWKS) is untouched.
+      # ПОЧЕМУ ЗДЕСЬ НЕТ ОБЪЯВЛЕНИЯ TLS ДЛЯ АДМИНИСТРАТИВНОГО ЛИСТЕНЕРА.
+      #
+      # Развёрнутая версия провайдера ручку TLS ОТДЕЛЬНОГО листенера НЕ ЧИТАЕТ:
+      # при выданном, смонтированном и названном в конфигурации сертификате
+      # рукопожатие отвечало ошибкой уровня протокола, а собственная строка
+      # провайдера при старте сообщала, что он поднял ПРОСТОЙ http-сервер на
+      # административном порту. Ручка общая, не полистенная.
+      #
+      # Это ИЗМЕРЕНО (координата и процедура перемера —
+      # deploy/PROVIDER-LISTENER-PREMISE.md), а не выведено из документации: до
+      # этого здесь подряд стояли два взаимоисключающих объяснения, и оба были
+      # неверны — второе ещё и укоряло первое за непроверенное утверждение.
+      #
+      # Поэтому TLS терминирует СОСЕД в этом же поде, а листенер провайдера
+      # уезжает на петлю (см. serve.admin ниже и deployment.extraContainers).
       serve:
         # WITHOUT `--dev` the provider refuses to serve a listener that has neither TLS
         # nor a declared trusted terminator. The ADMIN listener has its own certificate
@@ -404,22 +415,118 @@ hydra:
             - 10.244.0.0/16
             - 10.96.0.0/12
             - 172.18.0.0/16
+            # ПЕТЛЯ — ИСТОЧНИК ПЛЕЙНТЕКСТА ПОСЛЕ УВОДА ЛИСТЕНЕРА.
+            # Административный листенер слушает 127.0.0.1, и плейнтекст ему
+            # приносит СОСЕД ПО ПЕТЛЕ. Без этой записи провайдер боевого класса
+            # (без отладочного флага) отверг бы его как нетерминированный.
             - 127.0.0.1/32
         admin:
-          tls:
-            cert:
-              path: /etc/hydra-admin-tls/tls.crt
-            key:
-              path: /etc/hydra-admin-tls/tls.key
+          # ЛИСТЕНЕР СЛУШАЕТ ТОЛЬКО ПЕТЛЮ. Открытого участка между подами больше
+          # нет КАК ОБЪЕКТА: он не покидает пода. Это свойство по построению, а
+          # не следствие политики, которую надо выдать и поддерживать.
+          host: "127.0.0.1"
+          # ПОРТ УСТУПЛЕН СОСЕДУ. Инверсия обязательна: действующая политика
+          # исходящего трафика боевого профиля разрешает потребителю трафик к
+          # поду провайдера ТОЛЬКО на 4444/4445 и матчит ПОРТ ПОДА. Сядь сосед
+          # на произвольный порт — политика запретила бы переход на том самом
+          # профиле, ради которого работа делается, а стенд без политик этого
+          # не показал бы. Закреплено гейтом admin-hop-port-policy-test.sh.
+          port: 4455
+  service:
+    admin:
+      # Service провайдера СНЯТ. После увода на петлю он целился бы в порт,
+      # который снаружи пода не отвечает: выглядел бы рабочим адресом и однажды
+      # получил бы потребителя — с тихим истечением срока вместо внятного
+      # отказа. Снятый, он даёт отказ РАЗРЕШЕНИЯ ИМЕНИ: забытый потребитель
+      # падает громко и сразу. Потребители адресуют Service терминатора
+      # (templates/hydra-admin-tls-service.yaml).
+      enabled: false
   deployment:
+    # ПРОБЫ ИДУТ ЧЕРЕЗ СОСЕДА К ЭНДПОИНТУ ЗДОРОВЬЯ ПРОВАЙДЕРА.
+    #
+    # Умолчание чарта — httpGet на порт административного листенера с заголовком
+    # `Host: 127.0.0.1`; исполняет их kubelet ПО АДРЕСУ ПОДА, а заголовок петлёй
+    # запрос не делает. После увода на петлю такое обращение невозможно by
+    # construction, и пробы, оставленные как есть, роняли бы под навсегда.
+    #
+    # ГОТОВНОСТЬ ЗАКРЫТА В ОБЕ СТОРОНЫ. Порт — СОСЕДА (значит мёртвый сосед ⇒
+    # соединение не установится ⇒ под не Ready — цена со-размещения, сделанная
+    # наблюдаемой), а ПУТЬ — здоровья ПРОВАЙДЕРА, который сосед проксирует на
+    # петлю (значит повисший провайдер ⇒ апстрим не ответит ⇒ под не Ready).
+    # Статического пути здоровья у соседа нет намеренно — см. его конфигурацию.
+    #
+    # Отступление от умолчания чарта названо: готовность читает /health/ready
+    # (он зависит от состояния провайдера), а не /health/alive.
+    customReadinessProbe:
+      httpGet:
+        path: /health/ready
+        port: 4445
+        scheme: HTTPS
+      initialDelaySeconds: 5
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+    customStartupProbe:
+      httpGet:
+        path: /health/ready
+        port: 4445
+        scheme: HTTPS
+      failureThreshold: 30
+      periodSeconds: 2
+      timeoutSeconds: 5
     extraVolumes:
       - name: hydra-admin-tls
         secret:
           secretName: kacho-umbrella-hydra-admin-tls
-    extraVolumeMounts:
-      - name: hydra-admin-tls
-        mountPath: /etc/hydra-admin-tls
-        readOnly: true
+      - name: hydra-admin-tls-conf
+        configMap:
+          name: kacho-umbrella-hydra-admin-tls-nginx
+      # Корневая файловая система соседа только для чтения, а nginx пишет
+      # pid-файл и временные тела запросов. Два emptyDir — вся его запись.
+      - name: hydra-admin-tls-run
+        emptyDir: {}
+      - name: hydra-admin-tls-cache
+        emptyDir: {}
+    # МОНТИРОВАНИЯ СЕКРЕТА В КОНТЕЙНЕР ПРОВАЙДЕРА БОЛЬШЕ НЕТ. Ручка, которую он
+    # не читает, снята вместе с материалом под неё: держать неработающую ручку
+    # рядом с обходным путём, который существует ИМЕННО ПОТОМУ, что она не
+    # работает, — гарантия того, что следующий снимет терминатор, поверив ей.
+    # Секрет монтируется СОСЕДУ (ниже).
+    extraContainers: |
+      - name: admin-tls
+        image: nginxinc/nginx-unprivileged:1.27-alpine
+        imagePullPolicy: IfNotPresent
+        ports:
+          - name: https-admin
+            containerPort: 4445
+            protocol: TCP
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65534
+          capabilities:
+            drop: ["ALL"]
+          seccompProfile:
+            type: RuntimeDefault
+        volumeMounts:
+          - name: hydra-admin-tls
+            mountPath: /etc/tls
+            readOnly: true
+          - name: hydra-admin-tls-conf
+            mountPath: /etc/nginx/conf.d
+            readOnly: true
+          - name: hydra-admin-tls-run
+            mountPath: /tmp
+          - name: hydra-admin-tls-cache
+            mountPath: /var/cache/nginx
+        resources:
+          requests:
+            cpu: 10m
+            memory: 16Mi
+          limits:
+            cpu: 200m
+            memory: 64Mi
     extraEnv:
       - name: OAUTH2_TOKEN_HOOK_AUTH_CONFIG_VALUE
         valueFrom:
@@ -444,9 +551,17 @@ kratos-selfservice-ui:
     # it — the chart mounts the bundle and exports NODE_EXTRA_CA_CERTS. Left at
     # the chart's plaintext default, the consent flow would fail on this stand:
     # the listener no longer answers http at all.
-    hydraAdminUrl: https://kacho-umbrella-hydra-admin:4445
+    hydraAdminUrl: https://kacho-umbrella-hydra-admin-tls:4445
     caCert:
       secretName: kacho-umbrella-hydra-admin-tls
       key: ca.crt
       mountPath: /etc/kratos-ui-ca
 
+# ─── Хук выдачи доверия внешним эмитентам — адрес административного API ────
+# Объявляется значением (реестр потребителей его резолвит), поэтому перевод
+# перехода на терминатор его больше не минует. Хук латентен (federationIn
+# выключен), но латентность от проверки не освобождает: гейты рендерят его с
+# включённым ключом.
+hydraTrustGrants:
+  adminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc.cluster.local:4445"
+  adminCaFile: /etc/hydra-admin-ca/ca.crt

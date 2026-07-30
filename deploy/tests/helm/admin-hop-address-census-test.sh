@@ -128,8 +128,12 @@ provider_spelling() {
 # обошлось бы дороже, чем внести строку в том же изменении, что создаёт файл.
 ALLOWED_TREE=(
   "deploy/helm/umbrella/templates/hydra-admin-certificate.yaml|SAN сертификата терминатора"
+  "deploy/helm/umbrella/templates/hydra-admin-tls-configmap.yaml|конфигурация терминатора: адрес апстрима и есть её предмет"
+  "deploy/helm/umbrella/templates/hydra-admin-tls-service.yaml|Service терминатора: его имя и есть адрес"
   "deploy/tests/helm/admin-hop-transport-test.sh|гейт транспорта: адрес — его предмет"
   "deploy/tests/helm/admin-hop-address-census-test.sh|эта перепись"
+  "deploy/scripts/assert-admin-hop-transport.sh|живой гейт перехода: пробник обращается по обоим адресам"
+  "deploy/scripts/remeasure-provider-listener-tls.sh|перемер предпосылки"
 )
 
 # ── ПОДДЕРЕВЬЯ ОБХОДА, ОБЪЯВЛЕННЫЕ ЯВНО ──────────────────────────────────────
@@ -224,6 +228,17 @@ census_render() {
   local findings=0
   local docdir; docdir="$(mktemp -d)"
 
+  # РАЗВЁРНУТ ЛИ ТЕРМИНАТОР В ЭТОМ СТЕКЕ. От этого зависит, чем является прямое
+  # обращение к провайдеру: находкой или объявленным dev-классом.
+  #
+  # Стек, где терминатора нет, адресует административный листенер провайдера
+  # НАПРЯМУЮ И ПО ОТКРЫТОМУ ТЕКСТУ — это остаётся ВИДНЫМ (класс называется и
+  # считается ниже), но решает этот вопрос не перепись: транспорт на таких
+  # стеках гейтит освобождение dev-класса в реестре объявлений, и там оно
+  # выведено из САМОЗАЯВЛЕНИЯ стека, а не из списка имён.
+  local terminator_deployed=0
+  grep -q 'name: .*-hydra-admin-tls' "$render" 2>/dev/null && terminator_deployed=1
+
   # Рендер режется на документы. Классификация — ПОДОКУМЕНТНО: адрес имеет
   # смысл только вместе с нагрузкой, которая его несёт.
   awk -v dir="$docdir" '
@@ -294,11 +309,22 @@ census_render() {
   note "объявлено записями реестра адресов: $(grep -c . "$declared_file" 2>/dev/null | head -1)"
 
   if [ "${#direct[@]}" -gt 0 ]; then
-    fail "[$stack] нагрузка адресует административный листенер ПРОВАЙДЕРА напрямую (${#direct[@]}):"
-    printf '        %s\n' "${direct[@]}"
-    note "открытый участок между подами обязан отсутствовать: листенер слушает петлю,"
-    note "его Service снят, потребители адресуют терминатор."
-    findings=$((findings + ${#direct[@]}))
+    if [ "$terminator_deployed" -eq 1 ]; then
+      fail "[$stack] терминатор развёрнут, а нагрузка адресует листенер ПРОВАЙДЕРА напрямую (${#direct[@]}):"
+      printf '        %s\n' "${direct[@]}"
+      note "открытый участок между подами обязан отсутствовать: листенер слушает петлю,"
+      note "его Service снят, потребители адресуют терминатор. Этот потребитель отстал —"
+      note "ровно тот класс, который тих до первого исполнения его потока."
+      findings=$((findings + ${#direct[@]}))
+    else
+      note "класс «терминатора в стеке нет» (${#direct[@]}): адресуют провайдера напрямую,"
+      note "  по открытому тексту — ${direct[*]}"
+      note "  Стек объявляет себя dev-классом; транспорт на нём гейтит освобождение"
+      note "  dev-класса в реестре объявлений (оно выведено из самозаявления стека,"
+      note "  а не из списка имён). Здесь это НАЗВАНО и ПОСЧИТАНО, но находкой не"
+      note "  считается: предмет переписи — потребитель, отставший от ПЕРЕВЕДЁННОГО"
+      note "  перехода, а на этом стеке переход не переводился."
+    fi
   fi
   if [ "${#unaccounted[@]}" -gt 0 ]; then
     fail "[$stack] адрес в рендере, которого НЕ ОБЪЯВЛЯЕТ ни одна запись реестра (${#unaccounted[@]}):"
@@ -418,8 +444,16 @@ spec:
 EOF
   probe "адрес назван только в комментарии (читается исполняемая часть)" 0 "$tmp/comment.yaml"
 
-  # (3) адресует ПРОВАЙДЕРА напрямую — обязано покраснеть.
+  # (3) ТЕРМИНАТОР РАЗВЁРНУТ, а нагрузка адресует провайдера напрямую — это
+  #     отставший потребитель, обязано покраснеть.
   cat >"$tmp/direct.yaml" <<'EOF'
+apiVersion: v1
+kind: Service
+metadata:
+  name: rel-hydra-admin-tls
+spec:
+  ports: [{ port: 4445, targetPort: 4445 }]
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -434,7 +468,34 @@ spec:
           args:
             - --hydra-url=http://rel-hydra-admin
 EOF
-  probe "нагрузка адресует провайдера напрямую" 1 "$tmp/direct.yaml"
+  probe "терминатор развёрнут + потребитель отстал на провайдере" 1 "$tmp/direct.yaml"
+
+  # (3а) ТЕРМИНАТОРА В СТЕКЕ НЕТ — тот же текст находкой НЕ является: переход на
+  #      этом стеке не переводился, и предмета у утверждения нет. Без этой
+  #      половины гейт краснел бы на стеках, которых работа не касалась, и был бы
+  #      ослаблен целиком при первом же таком срабатывании.
+  cat >"$tmp/direct-noterm.yaml" <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: leftover
+spec:
+  template:
+    spec:
+      containers:
+        - name: c
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+          args:
+            - --hydra-url=http://rel-hydra-admin
+EOF
+  probe "терминатора в стеке нет — прямой адрес не находка" 0 "$tmp/direct-noterm.yaml"
+  st_checked=$((st_checked + 1))
+  if census_render "$tmp/direct-noterm.yaml" self "$tmp/declared.txt" 2>&1 | grep -q 'терминатора в стеке нет'; then
+    ok "класс назван и посчитан, а не умолчан"
+  else
+    echo "  ✗ класс «терминатора в стеке нет» не назван — «не находка» стало «не видно»"; st_rc=1
+  fi
 
   # (4) адрес терминатора, которого реестр НЕ объявляет — обязано покраснеть.
   cat >"$tmp/unaccounted.yaml" <<'EOF'
@@ -576,8 +637,19 @@ echo
 echo "── половина 1: обход дерева (объявления и зашитые в шаблон адреса) ──"
 # Тот же комментарий-отбрасывающий взгляд, что и в извлечении адресов: иначе
 # половина 1 объявляет потребителем объяснение, почему адрес непригоден.
+#
+# И тот же водораздел «адрес против имени»: строка, где предмет — ИМЯ СЕКРЕТА или
+# тома (`secretName: …-hydra-admin-tls`), потребителем API не является. Признак
+# адреса на уровне строки — схема, порт или `.svc`; в ШАБЛОНЕ он переживает
+# подстановку (`https://{{ .Release.Name }}-hydra-admin…:4445` схему сохраняет),
+# поэтому зашитый в шаблон адрес — тот самый дефект, ради которого перепись
+# написана, — здесь по-прежнему виден.
+ADDRESS_LINE_RE='://|:[0-9]{2,5}|\.svc'
 tree_hits="$(while IFS= read -r f; do
-  uncommented "$REPO_ROOT/$f" 2>/dev/null | grep -nP "$SUBJECT_RE" 2>/dev/null | sed "s|^|$f:|"
+  uncommented "$REPO_ROOT/$f" 2>/dev/null \
+    | grep -nP "$SUBJECT_RE" 2>/dev/null \
+    | grep -P "$ADDRESS_LINE_RE" 2>/dev/null \
+    | sed "s|^|$f:|"
 done <<<"$(tree_files)")"
 tree_files_hit="$(printf '%s\n' "$tree_hits" | grep -c . )"
 echo "  строк с предметом: $tree_files_hit"
