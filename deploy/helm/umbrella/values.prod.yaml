@@ -417,6 +417,36 @@ kacho-iam:
       # the same CA that signs the provider's admin certificate.
       hydraAdminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc.cluster.local:4445"
       hydraAdminCaFile: /etc/kacho-iam/tls/server/ca.crt
+      # The two hops to the provider's PUBLIC listener, DECLARED for the same
+      # reason and by the same rule as the admin one above — and they were the
+      # half this profile still left to the derivation.
+      #
+      #   hydraJwksUrl  — the keyset iam mirrors on its cluster-internal :9097 is
+      #                   the data-plane's ONLY anchor for deciding whether a token
+      #                   was signed by the provider. Derived, it named the public
+      #                   ingress host: in-cluster that does not resolve, so the
+      #                   mirror fail-closes 502 and every docker pull is a 401 —
+      #                   with nothing at start-up saying why. The gateway's own
+      #                   copy of this address (api-gateway.hydra.jwksUrl, above in
+      #                   this file) has pointed at the in-cluster Service all
+      #                   along; this is the same address for the same reason, and
+      #                   it was simply missing here.
+      #   hydraTokenURL — the client_credentials exchange the `/iam/token` shim and
+      #                   the bootstrap mint post to. Derived, it named the public
+      #                   ingress host too.
+      #
+      # TRANSPORT: plain http, deliberately and temporarily. The provider serves
+      # its public listener without TLS on every profile, and giving it one is not
+      # a knob — the per-listener override was MEASURED absent on 2026-07-30 (see
+      # deploy/helm/umbrella/templates/hydra-admin-certificate.yaml), so the shared
+      # serve.tls must move, which moves the ingress, this mirror and the token
+      # endpoint together. That is its own change with its own acceptance. What is
+      # already in place for it: iam can now be given a pinned anchor for BOTH hops
+      # (hydraJwksCaFile / hydraTokenCaFile), and production REFUSES TO START if
+      # either address is https without one — so the flip cannot land half-done,
+      # verifying against the system roots.
+      hydraJwksUrl: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/.well-known/jwks.json"
+      hydraTokenURL: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/oauth2/token"
       # Machine-credential lifetime, production posture.
       #
       # accessTokenTtl pins `access_token_lifespan` ON EACH SA-key OAuth2 client

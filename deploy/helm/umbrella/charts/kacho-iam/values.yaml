@@ -19,12 +19,29 @@ kacho:
     # в registry `/iam/token` shim. Пусто → env не эмитится, сервис падает на внешний
     # issuer-URL (недостижимый в кластере). Prod-профиль ставит cluster-internal Service.
     hydraTokenURL: ""
+    # Trust anchor for the token-endpoint hop (env KACHO_IAM_HYDRA_TOKEN_CA_FILE).
+    # That hop carries a signed client assertion out and the minted bearer back, so
+    # the same discipline applies as for the admin hop: empty → default transport;
+    # set → the only anchor; unreadable → refuse the start. Production refuses to
+    # start on an https address with this empty.
+    hydraTokenCaFile: ""
     # Upstream Hydra PUBLIC JWKS URL that the cluster-INTERNAL jwks-proxy listener
     # (:9097) mirrors byte-for-byte (env KACHO_IAM_HYDRA_JWKS_URL). Empty → iam falls
     # back to ResolveHydraIssuer()+"/.well-known/jwks.json". Prod sets the in-cluster
     # hydra-public base so the iam→Hydra fetch stays inside the cluster. Hydra remains
     # the token signer/issuer — iam only proxies its JWKS (the served kids are Hydra's).
     hydraJwksUrl: ""
+    # Trust anchor for the JWKS upstream fetch when that hop is served over TLS
+    # (env KACHO_IAM_HYDRA_JWKS_CA_FILE). Empty → the default transport, which is
+    # what the provider's plaintext in-cluster public listener needs today. Set →
+    # that bundle becomes the ONLY anchor for the hop, and one that cannot be read
+    # REFUSES THE START rather than silently falling back to the system roots. A
+    # production-class iam refuses to start when the address is https and this is
+    # empty: the provider's in-cluster certificate is internal-CA issued, the system
+    # roots never chain to it, and the address would read as hardened while every
+    # fetch failed. The bundle is already in the pod when mtls.enable is on, at
+    # <mtls.mountPath>/server/ca.crt — no extra volume is needed.
+    hydraJwksCaFile: ""
     # In-cluster Hydra ADMIN URL (POST /admin/clients + jwt-bearer trust-grants) used by
     # sa_keys (SAKeyService.Issue/Revoke) and user_tokens (env KACHO_IAM_HYDRA_ADMIN_URL).
     # Empty → ResolveHydraAdminURL() derives `https://hydra-admin.<domain>` from the issuer,
