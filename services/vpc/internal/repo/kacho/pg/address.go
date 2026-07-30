@@ -511,10 +511,17 @@ func (w *addressWriter) claimExplicitExternalIPv4(ctx context.Context, ip string
 		     WHERE c.block >>= $1::inet
 		     ORDER BY c.kind, c.pool_id
 		     LIMIT 1
+		), locked AS (
+		    -- FOR SHARE на самом пуле: совместим с другими занятиями и с
+		    -- автоматической выдачей (она берёт тот же share-lock), конфликтует с
+		    -- удалением пула (FOR UPDATE). Без него пул мог быть удалён между
+		    -- изъятием адреса и коммитом строки, и адрес остался бы с ссылкой на
+		    -- несуществующий пул — а вернуть его при удалении было бы уже некуда.
+		    SELECT p.id FROM address_pools p JOIN owner o ON p.id = o.pool_id FOR SHARE OF p
 		), claimed AS (
 		    DELETE FROM address_pool_free_ips f
-		     USING owner o
-		     WHERE f.pool_id = o.pool_id AND f.ip = $1::inet
+		     USING locked l
+		     WHERE f.pool_id = l.id AND f.ip = $1::inet
 		    RETURNING f.pool_id
 		)
 		SELECT COALESCE((SELECT pool_id FROM owner), ''),
