@@ -206,6 +206,21 @@ def _refresh_operator_cert(cert_path: str, key_path: str) -> None:
     ensure_client_cert(BOOTSTRAP_OPERATOR_SECRET, cert_path, key_path)
 
 
+# ── the ONE assertion audience ───────────────────────────────────────────────
+# `aud` of the private_key_jwt client_assertion: the provider's ADVERTISED token
+# endpoint, i.e. its issuer identity + "/oauth2/token". A STRING that is compared, not
+# an address that is dialled (the POST goes wherever the caller says).
+#
+# IT LIVES HERE BECAUSE IT USED TO LIVE IN FOUR PLACES, with three different mechanisms:
+# env-overridable in one seed module, a hard-coded literal in another, an argparse default
+# here, and prose in the values file. When the provider's issuer scheme changed, the
+# env-overridable copy was updated and the hard-coded one silently kept the old value —
+# which does not degrade anything, it makes the provider answer `invalid_client` and the
+# seed obtains no subject token at all. One definition, one override point.
+ASSERTION_AUDIENCE = os.environ.get(
+    "HYDRA_ASSERTION_AUDIENCE", "https://localhost:28080/.ory/hydra/public/oauth2/token")
+
+
 def mint_bootstrap(*, grpc_addr: str | None = None,
                    cert: str | None = None, key: str | None = None) -> str:
     """MintBootstrapToken → cluster system_admin SA RS256 Bearer (acr-exempt).
@@ -413,9 +428,10 @@ def main() -> int:
                    help="api-gateway public (UserTokenService/SAKeyService)")
     p.add_argument("--hydra-token-url", default="http://localhost:14444/oauth2/token",
                    help="Hydra public token endpoint POST target (in-cluster / port-forward)")
-    p.add_argument("--assertion-audience",
-                   default="http://localhost:28080/.ory/hydra/public/oauth2/token",
-                   help="client_assertion aud (Hydra self.issuer token endpoint)")
+    p.add_argument("--assertion-audience", default=ASSERTION_AUDIENCE,
+                   help="client_assertion aud (the provider's advertised token endpoint = "
+                        "its issuer identity + /oauth2/token); default follows "
+                        "HYDRA_ASSERTION_AUDIENCE")
     p.add_argument("--api-audience", default="https://api.kacho.cloud",
                    help="requested token audience (gateway ExpectedAudience)")
     p.add_argument("--mode", choices=["bootstrap", "user", "sa"], required=True)

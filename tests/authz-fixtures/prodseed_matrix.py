@@ -45,9 +45,16 @@ IAM_GRPC = os.environ.get("IAM_INTERNAL_GRPC", "localhost:19091")
 # included, goes through iam).
 HYDRA_TOKEN = os.environ.get("HYDRA_TOKEN_URL", "http://localhost:14444/oauth2/token")
 # `aud` of the private_key_jwt client_assertion = Hydra's advertised token endpoint
-# (self.issuer + /oauth2/token). A STRING, not a dialled URL.
-ASSERT_AUD = os.environ.get(
-    "HYDRA_ASSERTION_AUDIENCE", "http://localhost:28080/.ory/hydra/public/oauth2/token")
+# (self.issuer + /oauth2/token). A STRING, not a dialled URL — the POST goes to
+# HYDRA_TOKEN above, which is a different address entirely.
+#
+# The scheme tracks the provider's ISSUER IDENTITY, not the transport. On a stand whose
+# provider runs without its development flag the issuer must be https (the provider
+# refuses to start otherwise), so this audience is https too even though the listener is
+# reached over plain http through a port-forward. Getting this wrong does not degrade
+# anything — the provider answers `invalid_client` and the seed cannot obtain a single
+# subject token.
+ASSERT_AUD = m.ASSERTION_AUDIENCE
 # Requested token audience = api-gateway ExpectedAudience ("https://"+APIDomain).
 API_AUD = os.environ.get("API_AUDIENCE", "https://api.kacho.cloud")
 # GATEWAY-identity client cert for the iam :9091 grpcurl calls (NOT the mint's

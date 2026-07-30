@@ -91,6 +91,13 @@ api-gateway:
   # values.dev.yaml (Hydra self.issuer). Requires the :9097 upstream fix (kacho-iam.env).
   hydra:
     jwksUrl: "http://kacho-iam-internal.kacho.svc.cluster.local:9097/.well-known/jwks.json"
+    # iss-PIN — the SAME string the provider stamps (hydra.config.urls.self.issuer).
+    # values.dev.yaml declares the http form WITH a trailing slash; this stand's provider
+    # runs without its development flag, so its issuer identity is https and carries no
+    # slash. The verifier compares `iss` EXACTLY (after stripping one trailing slash), so
+    # a scheme mismatch here is not a degraded mode — every RS256 token fails validation
+    # and the whole surface answers 401.
+    issuer: "https://localhost:28080/.ory/hydra/public"
     # dev declares both admin-API addresses in the clear; this stand is
     # production-class, so it addresses them over TLS with the anchor pinned.
     # Introspection asks about a bearer by SENDING it, on every authenticated
@@ -161,7 +168,8 @@ kacho-iam:
       # and k8s dedups to the first (external) → non-deterministic. Aligns iam with the
       # gateway (gateway.hydra.issuer already = this localhost issuer); the in-cluster POST
       # target stays hydraTokenURL. authn.go documents this override for non-derivable issuers.
-      hydraIssuer: "http://localhost:28080/.ory/hydra/public/"
+      # Same string the provider stamps (no trailing slash — see hydra.urls.self.issuer).
+      hydraIssuer: "https://localhost:28080/.ory/hydra/public"
       # ─── bootstrap-mint caller allow-list — REQUIRED to boot here (#58) ──────
       # This profile ENABLES the mint (kacho.iam.bootstrapToken.signingKeySecretName
       # below ⇒ the signing key is injected), and MintBootstrapToken issues a
@@ -274,7 +282,8 @@ registry:
   iam:
     jwksUrl: "https://kacho-iam-internal.kacho.svc.cluster.local:9097/.well-known/jwks.json"
   hydra:
-    issuer: "http://localhost:28080/.ory/hydra/public/"
+    # Same string the provider stamps (no trailing slash — see hydra.urls.self.issuer).
+    issuer: "https://localhost:28080/.ory/hydra/public"
   dataplaneTLSTerminatedExternally: true
 
 # ─── Per-service Postgres — serve self-signed TLS so sslmode=require works ───
@@ -358,7 +367,22 @@ hydra:
           # unaffected — it already trims — so the bootstrap-mint exchange still matches
           # Hydra's token endpoint. Scoped to the production-mode overlay (dev-mode authn
           # accepts HS256 and never verifies the Hydra `iss`, so dev.yaml is untouched).
-          issuer: "http://localhost:28080/.ory/hydra/public"
+          # SCHEME IS https BECAUSE THE PROVIDER REFUSES ANYTHING ELSE WITHOUT ITS
+          # DEVELOPMENT FLAG (see `dev: false` above): «Scheme from configuration key
+          # `urls.self.issuer` must be `https` when `dev` is `false`».
+          #
+          # `iss` IS AN IDENTIFIER, NOT A TRANSPORT. Nothing dials this string — the
+          # provider stamps it into every token's `iss`, consumers compare it as a
+          # string, and the browser-facing base URL is the SEPARATE `self.public` knob
+          # (left in the clear). So moving the scheme here changes the token identity
+          # and nothing about how anybody connects.
+          #
+          # EVERY CONSUMER THAT PINS `iss` MUST CARRY THE SAME STRING, character for
+          # character, and there are four of them (gateway, iam, registry, and the
+          # harness's client_assertion audience). They are set together below; a
+          # mismatch is not a degraded mode — every RS256 token fails the iss check and
+          # the whole surface answers 401.
+          issuer: "https://localhost:28080/.ory/hydra/public"
       # ADMIN listener over TLS — and only the admin listener. The provider
       # resolves TLS per listener (serve.admin.tls / serve.public.tls each
       # override the shared serve.tls field by field), so the public OIDC

@@ -25,7 +25,7 @@ import mint_rs256 as m  # noqa: E402
 PUBLIC = "http://localhost:18080"     # api-gateway public
 IAM_GRPC = "localhost:19091"          # iam-internal :9091 (mTLS)
 HYDRA_TOKEN = "http://localhost:14444/oauth2/token"
-ASSERT_AUD = "http://localhost:28080/.ory/hydra/public/oauth2/token"
+ASSERT_AUD = m.ASSERTION_AUDIENCE   # single source (mint_rs256) — was a stale copy
 API_AUD = "https://api.kacho.cloud"
 MTLS_CERT = "/tmp/iam-mtls/client.crt"
 MTLS_KEY = "/tmp/iam-mtls/client.key"
