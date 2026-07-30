@@ -292,40 +292,30 @@ _BADREG = REG + "/not-an-id/repositories"  # malformed registryId для A06
 # --- CreateRepository: duplicate + empty-name (A02, A05a) -------------------
 
 # A02 (ECP: имя уже занято overlay-строкой): повторный CreateRepository того же
-# (registryId,name) → ALREADY_EXISTS "repository already exists" (DB UNIQUE(registry_id,
-# name), ban #10 — не software TOCTOU). Толерантен к sync-409 И async-op-error пути
-# (INSERT-race в worker'е), как REG-CR-CONF-ALREADY-EXISTS у Registry.
+# (registryId,name) → ALREADY_EXISTS "repository already exists" (DB PRIMARY KEY,
+# ban #10 — не software TOCTOU).
+#
+# ПОЛОСА ОТКАЗА ОДНА, И ОНА СИНХРОННАЯ. Вставка overlay-строки идёт в самом вызове
+# (`InsertConfig` в create_repository.go), и на дубликате use-case ВОЗВРАЩАЕТ ошибку
+# вызывающему — 409, а не конверт операции; осиротевшую операцию он лишь дофинализирует
+# тем же статусом. Асинхронной полосы у этого отказа нет: worker сюда не доходит.
+#
+# Прежде шаг принимал `oneOf([200, 409])`, «толерантно к INSERT-race в worker'е», а
+# завершающий шаг в синхронной ветке утверждал `expect(true).to.eql(true)` — то есть
+# ничего. Кейс не мог упасть ни на принятом дубле, ни на смене полосы отказа. Заявлена
+# полоса, которая есть.
 CASES.append(Case(
     id="REPO-CR-NEG-DUP",  # verifies RG-1-A02
-    title="CreateRepository duplicate (registryId,name) → 409 ALREADY_EXISTS \"repository already exists\" (A02, DB UNIQUE)",
+    title="CreateRepository duplicate (registryId,name) → sync 409 ALREADY_EXISTS \"repository already exists\" (A02, DB UNIQUE)",
     classes=["NEG", "CONF", "IDEM"], priority="P1",
     steps=[
         *_create_repo("dup/svc-{{runId}}"),
         Step(name="create-dup", method="POST", path=_reg_base(),
              body={"repository": "dup/svc-{{runId}}", "description": "dup attempt"},
              test_script=[
-                 "pm.test('dup rejected (409 sync or 200 async-error)', () => pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
-                 "const j = pm.response.json();",
-                 "if (pm.response.code === 409) {",
-                 "  pm.test('grpc code 6 (ALREADY_EXISTS)', () => pm.expect(j.code).to.eql(6));",
-                 "  pm.test('repository already exists text', () => pm.expect((j.message||'').toLowerCase()).to.include('repository already exists'));",
-                 "  pm.environment.set('repoDupSync', '1');",
-                 "} else {",
-                 "  pm.environment.unset('repoDupSync');",
-                 "  if (j.id) pm.environment.set('opId', String(j.id));",
-                 "}",
-             ]),
-        poll_operation_until_done(),
-        Step(name="assert-dup-async", method="GET", path="/operations/{{opId}}",
-             test_script=[
-                 "if (pm.environment.get('repoDupSync') === '1') {",
-                 "  pm.test('dup handled synchronously (409)', () => pm.expect(true).to.eql(true));",
-                 "} else {",
-                 "  const j = pm.response.json();",
-                 "  pm.test('async op done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                 "  const blob = (JSON.stringify(j.error||{}) + (pm.environment.get('lastOpError')||'')).toLowerCase();",
-                 "  pm.test('async op errored ALREADY_EXISTS', () => pm.expect(blob).to.include('exist'));",
-                 "}",
+                 *assert_status(409),
+                 *assert_grpc_code(6, "ALREADY_EXISTS"),
+                 "pm.test('repository already exists text', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('repository already exists'));",
              ]),
     ],
 ))
@@ -403,12 +393,22 @@ CASES.append(Case(
 # --- RenameRepository: collision + malformed newName (A17, A19a) ------------
 
 # A17 (ECP: целевое имя занято): rename src→dst, где dst уже существует durable →
-# ALREADY_EXISTS "repository already exists" (target overlay UNIQUE, D-5). Толерантен
-# к sync-409 И async-op-error (одностейтментная запись под UNIQUE-backstop в worker'е).
+# ALREADY_EXISTS "repository already exists" (target overlay UNIQUE, D-5).
 # src остаётся под старым именем (rename не применён) — cleanup через registry-cascade.
+#
+# ПОЛОСА ОТКАЗА ОДНА, И ОНА АСИНХРОННАЯ — в отличие от создания (A02) и ровно наоборот.
+# `RenameRepository` синхронно проверяет только форму имён, затем возвращает конверт
+# операции (`operations.Run` в rename_repository.go), а занятость целевого имени
+# выясняет уже worker (`assertTargetFree` внутри `doRename`). Значит вызывающий видит
+# 200, и отказ живёт В САМОЙ операции.
+#
+# Прежде шаг принимал `oneOf([200, 409])` и адъюдицировал асинхронную полосу только в
+# ветке `else`, а синхронную — утверждением `expect(true).to.eql(true)`, то есть никак.
+# Заявлена та полоса, которая есть, и вердикт вынесен безусловно: операция ОБЯЗАНА
+# нести код 6 и контрактный текст.
 CASES.append(Case(
     id="REPO-REN-NEG-COLLISION",  # verifies RG-1-A17
-    title="RenameRepository into an existing repo name → 409 ALREADY_EXISTS \"repository already exists\" (A17)",
+    title="RenameRepository into an existing repo name → Operation carries ALREADY_EXISTS \"repository already exists\" (A17)",
     classes=["NEG", "CONF"], priority="P1",
     steps=[
         *_create_repo("col/src-{{runId}}"),
@@ -416,28 +416,18 @@ CASES.append(Case(
         Step(name="rename-collision", method="POST", path=_reg_base() + "/col/src-{{runId}}:rename",
              body={"newName": "col/dst-{{runId}}"},
              test_script=[
-                 "pm.test('collision rejected (409 sync or 200 async-error)', () => pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
-                 "const j = pm.response.json();",
-                 "if (pm.response.code === 409) {",
-                 "  pm.test('grpc code 6 (ALREADY_EXISTS)', () => pm.expect(j.code).to.eql(6));",
-                 "  pm.test('repository already exists text', () => pm.expect((j.message||'').toLowerCase()).to.include('repository already exists'));",
-                 "  pm.environment.set('renColSync', '1');",
-                 "} else {",
-                 "  pm.environment.unset('renColSync');",
-                 "  if (j.id) pm.environment.set('opId', String(j.id));",
-                 "}",
+                 *assert_status(200),
+                 "pm.test('200 — это конверт операции', () => pm.expect(pm.response.json().id, pm.response.text()).to.be.a('string').and.not.empty);",
+                 *save_from_response("j.id", "opId"),
              ]),
         poll_operation_until_done(),
         Step(name="assert-collision-async", method="GET", path="/operations/{{opId}}",
              test_script=[
-                 "if (pm.environment.get('renColSync') === '1') {",
-                 "  pm.test('collision handled synchronously (409)', () => pm.expect(true).to.eql(true));",
-                 "} else {",
-                 "  const j = pm.response.json();",
-                 "  pm.test('async op done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                 "  const blob = (JSON.stringify(j.error||{}) + (pm.environment.get('lastOpError')||'')).toLowerCase();",
-                 "  pm.test('async op errored ALREADY_EXISTS', () => pm.expect(blob).to.include('exist'));",
-                 "}",
+                 *assert_status(200),
+                 "const j = pm.response.json();",
+                 "pm.test('async op done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                 "pm.test('операция несёт ALREADY_EXISTS (код 6)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(6));",
+                 "pm.test('и контрактный текст', () => pm.expect(((j.error||{}).message||'').toLowerCase()).to.include('repository already exists'));",
              ]),
     ],
 ))

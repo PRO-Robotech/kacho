@@ -66,9 +66,29 @@ func (u *GetAddressUseCase) Execute(ctx context.Context, id string) (*kachorepo.
 	return a, nil
 }
 
-// GetByValueUseCase возвращает Address по его IP-значению (external или
-// internal). oneof external_ipv4_address / internal_ipv4_address; optional
-// subnet_id scope.
+// GetByValueUseCase возвращает Address по его ВНУТРЕННЕМУ IP-значению в
+// названной подсети.
+//
+// # Почему только внутренний
+//
+// Область у запроса ровно одна — подсеть (`oneof scope`), и авторизация метода
+// читает именно её (см. AuthZ ниже). Внутренний адрес в подсети размещается,
+// поэтому вопрос «какой адрес имеет значение X внутри подсети S» разрешим.
+// Внешний адрес подсети не имеет вовсе (в схеме `external_ipv4` и
+// `internal_ipv4` — разные nullable jsonb, и `Address` — oneof: адрес бывает
+// либо тем, либо другим), поэтому тот же вопрос про внешнее значение не имеет
+// ответа НИ ПРИ КАКИХ данных.
+//
+// Поэтому запрос, назвавший внешний адрес, отвергается синхронно и по имени
+// поля — первым стейтментом, до любого обращения к хранилищу. Прежде он доезжал
+// до выборки, сужение по подсети не совпадало ни с одной строкой, и вызывающий
+// получал «не найдено» про адрес, который существует: ложное утверждение об
+// отсутствии в ответ на запрос, который контракт рекламирует.
+//
+// Поиск по внешнему адресу здесь НЕ реализуется: ему нужна область, которой у
+// этого RPC нет (проект/аккаунт), а взять её, сняв сужение по подсети, нельзя —
+// это открыло бы межтенантный оракул по внешним адресам. Полноценный поиск —
+// отдельная работа со своей приёмкой.
 //
 // # AuthZ
 //
@@ -87,17 +107,24 @@ func NewGetByValueUseCase(r Repo) *GetByValueUseCase {
 	return &GetByValueUseCase{repo: r}
 }
 
-// Execute — sync-валидация + lookup по IP + загрузка UsedBy.
+// Execute — sync-валидация + lookup по внутреннему IP + загрузка UsedBy.
 func (u *GetByValueUseCase) Execute(ctx context.Context, externalIP, internalIP, subnetID string) (*kachorepo.AddressRecord, error) {
-	if externalIP == "" && internalIP == "" {
-		return nil, serviceerr.InvalidArg("address", "address (external_ipv4_address or internal_ipv4_address) is required")
+	// Первым стейтментом: у этого RPC нет области, в которой внешнее значение
+	// разрешимо, поэтому вопрос отвергается явно и по имени поля — а не тихо
+	// превращается в «не найдено» про существующий адрес.
+	if externalIP != "" {
+		return nil, serviceerr.InvalidArg("external_ipv4_address",
+			"external_ipv4_address: lookup by external address is not supported here — the only scope this request has is subnet_id, and an external address does not belong to a subnet; look the address up by id, or list addresses in the project")
+	}
+	if internalIP == "" {
+		return nil, serviceerr.InvalidArg("internal_ipv4_address", "internal_ipv4_address: required")
 	}
 	r, err := u.repo.Reader(ctx)
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
 	defer func() { _ = r.Close() }()
-	a, err := r.Addresses().GetByValue(ctx, externalIP, internalIP, subnetID)
+	a, err := r.Addresses().GetByValue(ctx, internalIP, subnetID)
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}

@@ -26,9 +26,18 @@ type AddressFilter struct {
 type AddressReaderIface interface {
 	Get(ctx context.Context, id string) (*AddressRecord, error)
 	List(ctx context.Context, f AddressFilter, p Pagination) ([]*AddressRecord, string, error)
-	// GetByValue — lookup-by-IP (external/internal). subnetID — optional scope.
+	// GetByValue — lookup по ВНУТРЕННЕМУ IP; subnetID — необязательное сужение,
+	// и сужает оно по внутренней спецификации адреса (`internal_ipv4.subnet_id`).
 	// ErrNotFound если адреса не существует.
-	GetByValue(ctx context.Context, externalIP, internalIP, subnetID string) (*AddressRecord, error)
+	//
+	// Внешнего значения этот lookup не принимает намеренно: у адреса ровно одна
+	// спецификация (oneof), у внешней подсети нет, поэтому «внешнее значение +
+	// подсеть» не совпадает ни с одной строкой ни при каких данных. Раньше
+	// параметр здесь был, и вызывающий получал за него «не найдено» про
+	// существующий адрес; теперь такой запрос отвергается по имени поля в
+	// use-case'е (address.GetByValueUseCase), а хранилище не делает вид, что
+	// умеет отвечать.
+	GetByValue(ctx context.Context, internalIP, subnetID string) (*AddressRecord, error)
 	// ExistsIP — uniqueness-check IP в БД (external или internal). Используется
 	// AddressService для sync-проверки уникальности.
 	ExistsIP(ctx context.Context, ip string) (bool, error)

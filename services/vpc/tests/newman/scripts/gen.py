@@ -1403,16 +1403,57 @@ def pairwise_subnet_pack():
                 "ipv4CidrPrimary": f"{ipbase}{prefix}"}
         cases.append(Case(
             id=f"SUB-CR-PAIRWISE-{i:02d}",
-            title=f"Pairwise [{i}]: zone={zone} prefix={prefix}",
+            title=f"Pairwise [{i}]: zone={zone} prefix={prefix} → 200, префикс доехал до ресурса",
             classes=["VAL", "CRUD"], priority="P2",
             steps=[
+                # ВСЕ ДЕВЯТЬ КОМБИНАЦИЙ ЗАКОННЫ — установлено по коду, поэтому исход
+                # заявлен один, а не «200 либо 400»:
+                #
+                #  * зона: `zoneA/B/D` резолвятся первым шагом коллекции из живого
+                #    каталога geo (при нехватке зон индекс схлопывается на последнюю
+                #    существующую), поэтому peer-проверка зоны проходит всегда;
+                #  * префикс: v4-валидация отвергает только длиннее /28 — /16, /24, /28
+                #    внутри полосы; сетевой адрес у всех девяти канонический;
+                #  * вложенность в родительскую сеть НЕ ограничивает: обёртка создаёт
+                #    сеть БЕЗ объявленного супернета, а проверка вложенности при пустом
+                #    супернете пропускается by construction. То есть ось префикса здесь
+                #    не взаимодействует с адресным пространством сети — это и был вопрос,
+                #    на который «200 либо 400» позволяло не отвечать;
+                #  * имя и CIDR у каждой комбинации свои, сеть у каждого кейса свежая —
+                #    ни UNIQUE(name), ни EXCLUDE по пересечению не срабатывают.
+                #
+                # Прежнее `oneOf([200, 400])` принимало и приём, и отказ, поэтому ни один
+                # из девяти кейсов не мог упасть — в том числе если бы полоса допустимых
+                # префиксов сузилась или зона перестала резолвиться.
                 Step(name="cr-pw", method="POST", path="/vpc/v1/subnets", body=body,
                      test_script=[
-                         "pm.test('200 or 400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                         *assert_status(200),
+                         # Create исполняется синхронно, поэтому отказ (если бы он был)
+                         # лежал бы В САМОЙ возвращённой операции — проверяем её, а не
+                         # только код ответа.
+                         "pm.test('операция без ошибки', () => "
+                         "pm.expect(pm.response.json().error, pm.response.text()).to.be.undefined);",
                          *save_from_response("j.id", "opId"),
                          *save_from_response("j.metadata && j.metadata.subnetId", "subId"),
                      ]),
                 poll_operation_until_done(),
+                # Ось префикса реальна только если префикс ДОЕХАЛ до ресурса. Однажды он
+                # не доезжал вовсе (край отбрасывал снятое поле), и девять кейсов
+                # зеленели, варьируя ничего. Чтение возвращает ту же строку — это и есть
+                # страж против повторения.
+                retry_until_authorized(
+                    Step(name="verify-pw", method="GET", path="/vpc/v1/subnets/{{subId}}",
+                         test_script=[
+                             *assert_status(200),
+                             f"pm.test('префикс доехал: ipv4CidrPrimary == {ipbase}{prefix}', () => "
+                             f"pm.expect(pm.response.json().ipv4CidrPrimary, pm.response.text()).to.eql('{ipbase}{prefix}'));",
+                             # Имя переменной, а не её значение: Postman подставляет
+                             # `{{...}}` в ПОЛЯХ ЗАПРОСА, но не внутри test-script'а —
+                             # литерал в утверждении сравнивался бы с самой строкой
+                             # «{{zoneA}}» и не мог пройти никогда.
+                             "pm.test('зона доехала', () => "
+                             f"pm.expect(pm.response.json().zoneId, pm.response.text()).to.eql(pm.environment.get('{zone.strip('{}')}')));",
+                         ])),
                 Step(name="cleanup-pw", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
                      test_script=["pm.test('cleanup', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
                                   *save_from_response("j.id", "opId")]),

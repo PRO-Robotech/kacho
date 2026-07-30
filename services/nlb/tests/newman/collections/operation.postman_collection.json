@@ -611,11 +611,11 @@
       ]
     },
     {
-      "name": "OP-LST-CRUD-OK — List operations in project — returns array (may be empty)",
-      "description": "class:CRUD | class:LSG | priority:P1",
+      "name": "OP-LST-NEG-UNROUTED-FAIL-CLOSED — Коллекция /operations (RPC в контракте нет) → 403 fail-closed по отсутствию записи в каталоге прав",
+      "description": "class:NEG | class:SEC | priority:P1",
       "item": [
         {
-          "name": "list-ops",
+          "name": "list-ops-unrouted",
           "request": {
             "method": "GET",
             "header": [
@@ -640,13 +640,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('200 (cataloged) or fail-closed 403 (no catalog entry), never 5xx/leak', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
-                  "if (pm.response.code === 200) {",
+                  "pm.test('status 403', () => pm.expect(pm.response.code).to.eql(403));",
+                  "pm.test('grpc code 7 (PERMISSION_DENIED)', () => {",
                   "  const j = pm.response.json();",
-                  "  pm.test('operations array', () =>     pm.expect(j.operations || j.items || []).to.be.an('array'));",
-                  "} else {",
-                  "  pm.test('403 is the fail-closed catalog default (AUTHZ_DENIED code 7)', () =>     pm.expect(pm.response.json().code).to.eql(7));",
-                  "}"
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(7);",
+                  "});",
+                  "pm.test('отказ не упоминает проект из запроса', () =>   pm.expect(pm.response.text()).to.not.contain(pm.environment.get('_suiteProjectId')));"
                 ]
               }
             }

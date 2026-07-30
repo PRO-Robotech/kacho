@@ -125,27 +125,18 @@ func (r *addressReader) List(ctx context.Context, f kacho.AddressFilter, p kacho
 	return result, nextToken, nil
 }
 
-// GetByValue — lookup-by-IP. subnetID — optional scope.
-func (r *addressReader) GetByValue(ctx context.Context, externalIP, internalIP, subnetID string) (*kacho.AddressRecord, error) {
-	args := []any{}
-	conds := []string{}
-	argIdx := 1
-	if externalIP != "" {
-		conds = append(conds, fmt.Sprintf("external_ipv4->>'address' = $%d", argIdx))
-		args = append(args, externalIP)
-		argIdx++
-	}
-	if internalIP != "" {
-		conds = append(conds, fmt.Sprintf("internal_ipv4->>'address' = $%d", argIdx))
-		args = append(args, internalIP)
-		argIdx++
-	}
-	if len(conds) == 0 {
+// GetByValue — lookup по ВНУТРЕННЕМУ IP. subnetID — необязательное сужение, и
+// сужает оно по той же внутренней спецификации (`internal_ipv4.subnet_id`),
+// поэтому оба условия говорят об одном и том же jsonb-поле. Внешнего значения
+// метод не принимает: см. godoc в `kacho.AddressReaderIface`.
+func (r *addressReader) GetByValue(ctx context.Context, internalIP, subnetID string) (*kacho.AddressRecord, error) {
+	if internalIP == "" {
 		return nil, helpers.ErrInvalidArg
 	}
-	where := "(" + strings.Join(conds, " OR ") + ")"
+	args := []any{internalIP}
+	where := "internal_ipv4->>'address' = $1"
 	if subnetID != "" {
-		where = fmt.Sprintf(`%s AND internal_ipv4->>'subnet_id' = $%d`, where, argIdx)
+		where += ` AND internal_ipv4->>'subnet_id' = $2`
 		args = append(args, subnetID)
 	}
 	q := fmt.Sprintf(`SELECT %s FROM addresses WHERE %s LIMIT 1`, helpers.AddressCols, where)

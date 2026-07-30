@@ -212,18 +212,39 @@ _NOB = "jwtPureNoBindings"  # authenticated, NEVER granted by any suite (setup.s
 
 
 def _assert_absent(case_id, list_field, id_var, what):
-    """Fail-closed + объекта нет в выдаче. Обе ветки (200/403) обязательны:
-    403 — edge отверг не-гранченого на project-scope; 200 — дошло до бэкенда и
-    страница обязана быть отфильтрована. 5xx/утечка → RED."""
+    """Никогда-не-гранченый субъект получает ОТКАЗ, и отказ ничего не рассказывает.
+
+    ИСХОД ОДИН. Запись каталога прав для этих перечислений требует `viewer` на
+    объекте проекта из запроса и НЕ объявлена scope-filtered, поэтому вопрос
+    задаётся краем ДО чтения данных; отношение `viewer` у типа `project`
+    подстановочным туплом не выполняется, а у никогда-не-гранченого субъекта нет
+    ни одного из отношений, от которых оно выводится. Значит бэкенд не набирается
+    и «пустой страницы» на этом пути не рождается — шапка файла это и говорит.
+
+    Прежде первое утверждение принимало `oneOf([200, 403])`, а следующее — то,
+    ради которого сторож существует, — читало массив из тела. На 403 массив пуст
+    by construction, поэтому в ЕДИНСТВЕННОМ достижимом исходе главное утверждение
+    проходило вакуумно, а 200 (то есть открывшийся project-gate для субъекта без
+    единого гранта — настоящая утечка) утверждение принимало как законный исход.
+
+    Теперь заявлен отказ, и вместе с ним — что в теле отказа нет ни идентификатора
+    объекта, ни имени поля выдачи. 200 на этом пути — падение, что и требуется.
+
+    ГРАНИЦА (не расширять мысленно): этот сторож НЕ проверяет per-object фильтр
+    страницы — он проверяет, что цепочка fail-closed на субъекте без грантов.
+    Чем именно per-object фильтр не покрыт черным ящиком и что для этого нужно —
+    в docs/RESULTS.md, раздел «Открытый долг покрытия»."""
     return [
-        f"pm.test('[{case_id}] fail-closed: 200 или 403, не 5xx', "
-        "() => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 403]));",
-        "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-        f"const ids = ((j && j.{list_field}) || []).map(x => x.id);",
-        f"pm.test('[{case_id}] {what} НЕ виден никогда-не-гранченому субъекту "
-        f"(per-object listauthz, не только project-scope)', "
-        f"() => pm.expect(ids, 'leaked page: ' + JSON.stringify(ids))"
-        f".to.not.include(pm.environment.get('{id_var}')));",
+        f"pm.test('[{case_id}] отказ, а не пустая страница: 403', "
+        "() => pm.expect(pm.response.code, pm.response.text()).to.eql(403));",
+        f"pm.test('[{case_id}] grpc code 7 PERMISSION_DENIED', "
+        "() => { let j; try { j = pm.response.json(); } catch(e) { j = null; } "
+        "pm.expect(j && j.code, pm.response.text()).to.eql(7); });",
+        f"pm.test('[{case_id}] в теле отказа нет ни {what}, ни выдачи', () => {{",
+        "  const body = pm.response.text();",
+        f"  pm.expect(body, 'id объекта в теле отказа').to.not.contain(pm.environment.get('{id_var}'));",
+        f"  pm.expect(body, 'поле выдачи в теле отказа').to.not.contain('{list_field}');",
+        "});",
     ]
 
 

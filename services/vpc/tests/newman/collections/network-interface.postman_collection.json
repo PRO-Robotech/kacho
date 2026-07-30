@@ -441,7 +441,7 @@
           ]
         },
         {
-          "name": "get-nic-rya649",
+          "name": "get-nic-rya658",
           "request": {
             "method": "GET",
             "header": [
@@ -1118,7 +1118,7 @@
           ]
         },
         {
-          "name": "get-nic-mac-rya650",
+          "name": "get-nic-mac-rya659",
           "request": {
             "method": "GET",
             "header": [
@@ -2831,7 +2831,7 @@
           ]
         },
         {
-          "name": "list-lst651",
+          "name": "list-lst660",
           "request": {
             "method": "GET",
             "header": [
@@ -3432,7 +3432,7 @@
           ]
         },
         {
-          "name": "get-net-for-sg-rya652",
+          "name": "get-net-for-sg-rya661",
           "request": {
             "method": "GET",
             "header": [
@@ -3699,7 +3699,7 @@
           ]
         },
         {
-          "name": "get-after-upd-rya653",
+          "name": "get-after-upd-rya662",
           "request": {
             "method": "GET",
             "header": [
@@ -4368,7 +4368,7 @@
           ]
         },
         {
-          "name": "del-nic-rya654",
+          "name": "del-nic-rya663",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5213,7 +5213,7 @@
           ]
         },
         {
-          "name": "get-nic-rya655",
+          "name": "get-nic-rya664",
           "request": {
             "method": "GET",
             "header": [
@@ -6116,7 +6116,7 @@
           ]
         },
         {
-          "name": "get-nic-rya656",
+          "name": "get-nic-rya665",
           "request": {
             "method": "GET",
             "header": [
@@ -7127,7 +7127,7 @@
           ]
         },
         {
-          "name": "get-nic-rya657",
+          "name": "get-nic-rya666",
           "request": {
             "method": "GET",
             "header": [
@@ -9092,7 +9092,7 @@
           ]
         },
         {
-          "name": "get-nic-rya658",
+          "name": "get-nic-rya667",
           "request": {
             "method": "GET",
             "header": [
@@ -10662,7 +10662,7 @@
           ]
         },
         {
-          "name": "add-v6-cidr-rya659",
+          "name": "add-v6-cidr-rya668",
           "request": {
             "method": "POST",
             "header": [

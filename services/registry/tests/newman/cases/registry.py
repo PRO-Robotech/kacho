@@ -161,11 +161,22 @@ CASES.append(Case(
                 ])],
 ))
 
-# Create duplicate (project_id, name): partial UNIQUE → sync 409 ALREADY_EXISTS;
-# tolerate an async op-error path (INSERT race) too. Uses its own registry+name.
+# Create duplicate (project_id, name): partial UNIQUE → sync 409 ALREADY_EXISTS с именем.
+#
+# ПОЛОСА ОТКАЗА ОДНА, И ОНА СИНХРОННАЯ — так задумано и так записано в самом коде
+# (`create.go`: «INSERT — синхронно, сохраняет sync-reject семантику REG-04: дубликат →
+# немедленный gRPC AlreadyExists клиенту, а не async-Operation с error»). Осиротевшую
+# операцию use-case лишь дофинализирует тем же статусом, чтобы клиент не поллил вечно;
+# вызывающий всё равно получает синхронную ошибку.
+#
+# Прежде шаг принимал `oneOf([200, 409])` «на случай INSERT-race», а завершающий шаг в
+# синхронной ветке утверждал `expect(true).to.eql(true)` — то есть ничего. Принятый
+# дубль проходил кейс, названный «duplicate → ALREADY_EXISTS». Заявлена полоса, которая
+# есть; состязание двух ОДНОВРЕМЕННЫХ создателей серийный кейс и не ставит, а
+# проигравший всё равно получает тот же синхронный отказ.
 CASES.append(Case(
     id="REG-CR-CONF-ALREADY-EXISTS",  # index: REG-04
-    title="Create duplicate (project_id,name) → 409 ALREADY_EXISTS (sync) or async op-error",
+    title="Create duplicate (project_id,name) → sync 409 ALREADY_EXISTS с именем реестра",
     classes=["CONF", "NEG", "IDEM"], priority="P1",
     steps=[
         *_create_registry("dup-images-{{runId}}", "dupRegId"),
@@ -174,28 +185,13 @@ CASES.append(Case(
                    "regionId": "{{existingRegionId}}",
                    "description": "duplicate attempt", "labels": {"env": "prod"}},
              test_script=[
-                 "pm.test('duplicate rejected (409 sync or 200 async-error)', () => pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
-                 "const j = pm.response.json();",
-                 "if (pm.response.code === 409) {",
-                 "  pm.test('grpc code 6 (ALREADY_EXISTS)', () => pm.expect(j.code).to.eql(6));",
-                 "  pm.test('mentions already exists', () => pm.expect((j.message||'').toLowerCase()).to.include('already exists'));",
-                 "  pm.environment.set('dupSync409', '1');",
-                 "} else {",
-                 "  pm.environment.unset('dupSync409');",
-                 "  if (j.id) pm.environment.set('opId', String(j.id));",
-                 "}",
-             ]),
-        poll_operation_until_done(),
-        Step(name="assert-dup-async", method="GET", path="/operations/{{opId}}",
-             test_script=[
-                 "if (pm.environment.get('dupSync409') === '1') {",
-                 "  pm.test('duplicate handled synchronously (409)', () => pm.expect(true).to.eql(true));",
-                 "} else {",
-                 "  const j = pm.response.json();",
-                 "  pm.test('async op done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                 "  const blob = (JSON.stringify(j.error||{}) + (pm.environment.get('lastOpError')||'')).toLowerCase();",
-                 "  pm.test('async op errored ALREADY_EXISTS', () => pm.expect(blob).to.include('exist'));",
-                 "}",
+                 *assert_status(409),
+                 *assert_grpc_code(6, "ALREADY_EXISTS"),
+                 "pm.test('mentions already exists', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('already exists'));",
+                 # Текст отказа называет ИМЯ, из-за которого он произошёл — это часть
+                 # контракта тона (`registry %s already exists`), и без утверждения она
+                 # молча сползла бы в generic-сообщение.
+                 "pm.test('и называет имя реестра', () => pm.expect(pm.response.json().message||'').to.include('dup-images-'));",
              ]),
         *_delete_registry("dupRegId", tolerant=True),
     ],

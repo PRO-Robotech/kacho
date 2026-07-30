@@ -372,7 +372,7 @@
           ]
         },
         {
-          "name": "get-known-zone-rya513",
+          "name": "get-known-zone-rya522",
           "request": {
             "method": "GET",
             "header": [

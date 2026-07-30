@@ -130,9 +130,23 @@ CASES.append(Case(
                              "pm.test('mentions invalid operation id (malformed-id convention)', () => pm.expect((pm.response.json().message || '').toLowerCase()).to.include('invalid operation id'));"])],
 ))
 
+# Отмена ЗАВЕРШЁННОЙ операции отвергается, и это ровно один исход — установлено по коду,
+# а не по догадке о том, как ведут себя чужие реализации.
+#
+# `CancelOwned` — один CAS `UPDATE … WHERE done = false`; ноль строк классифицируется
+# повторным чтением под тем же предикатом владения. Идемпотентный 200 предусмотрен ТОЛЬКО
+# для операции, уже ОТМЕНЁННОЙ ранее (у неё код ошибки — «отменена»); терминальный успех
+# или сбой дают `ErrAlreadyDone`, и обработчик переводит это в `FAILED_PRECONDITION`
+# «operation <id> already completed». Здесь операция завершилась успехом, отменённой она
+# не была — значит идемпотентная ветка недостижима.
+#
+# Прежнее `oneOf([200, 400])` под заголовком «FailedPrecondition (или 200 idempotent)»
+# принимало и отказ, и приём отмены завершённой операции: упасть на предмете кейса оно не
+# могло. Заявлен код, а вместе с ним и текст — иначе кейс прошёл бы на любом постороннем
+# `FAILED_PRECONDITION` (например на «инстанс не в том состоянии»).
 CASES.append(Case(
     id="OP-CANCEL-NEG-ALREADY-DONE",
-    title="Cancel завершённой operation (Instance.Create уже done) → FailedPrecondition (или 200 idempotent)",
+    title="Cancel завершённой operation (Instance.Create уже done) → 400 FAILED_PRECONDITION 'already completed'",
     classes=["NEG", "STATE"], priority="P1",
     steps=[
         *_seed_mt("cancel"),
@@ -141,11 +155,19 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.instanceId", "instanceId")]),
         poll_operation_until_done(),
-        Step(name="cancel-done", method="POST", path="/operations/{{opId}}:cancel", body={},
-             # probe-needed: YC поведение Cancel на done-op. Обычно FailedPrecondition; иногда idempotent 200 с уже-done op.
-             test_script=["pm.test('FailedPrecondition (400+code9) or idempotent 200', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                          "if (pm.response.code === 400) { pm.test('code 9 FAILED_PRECONDITION', () => pm.expect(pm.response.json().code).to.eql(9)); }",
-                          "if (pm.response.code === 200) { pm.test('op still done', () => pm.expect(pm.response.json().done).to.eql(true)); }"]),
+        # Предмет кейса — отказ в отмене ЗАВЕРШЁННОЙ операции, поэтому её идентификатор
+        # фиксируется отдельной переменной: шаги ниже перезаписывают `opId` своими
+        # операциями, и без фиксации отмена ушла бы не туда.
+        Step(name="pin-done-op", method="GET", path="/operations/{{opId}}",
+             test_script=[*assert_status(200),
+                          "pm.test('операция действительно завершена', () => pm.expect(pm.response.json().done, pm.response.text()).to.eql(true));",
+                          "pm.test('и завершена НЕ отменой (иначе отмена была бы идемпотентной)', () => "
+                          "  pm.expect((pm.response.json().error||{}).code || 0).to.not.eql(1));",
+                          *save_from_response("j.id", "doneOpId")]),
+        Step(name="cancel-done", method="POST", path="/operations/{{doneOpId}}:cancel", body={},
+             test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
+                          "pm.test('текст называет причину — операция уже завершена', () => "
+                          "  pm.expect((pm.response.json().message || '').toLowerCase()).to.include('already completed'));"]),
         Step(name="cleanup", method="DELETE", path=INSTANCES + "/{{instanceId}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),

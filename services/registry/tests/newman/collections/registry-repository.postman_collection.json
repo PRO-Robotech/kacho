@@ -3088,7 +3088,7 @@
       ]
     },
     {
-      "name": "REPO-CR-NEG-DUP — CreateRepository duplicate (registryId,name) → 409 ALREADY_EXISTS \"repository already exists\" (A02, DB UNIQUE)",
+      "name": "REPO-CR-NEG-DUP — CreateRepository duplicate (registryId,name) → sync 409 ALREADY_EXISTS \"repository already exists\" (A02, DB UNIQUE)",
       "description": "class:NEG | class:CONF | class:IDEM | priority:P1",
       "item": [
         {
@@ -3343,110 +3343,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('dup rejected (409 sync or 200 async-error)', () => pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
-                  "const j = pm.response.json();",
-                  "if (pm.response.code === 409) {",
-                  "  pm.test('grpc code 6 (ALREADY_EXISTS)', () => pm.expect(j.code).to.eql(6));",
-                  "  pm.test('repository already exists text', () => pm.expect((j.message||'').toLowerCase()).to.include('repository already exists'));",
-                  "  pm.environment.set('repoDupSync', '1');",
-                  "} else {",
-                  "  pm.environment.unset('repoDupSync');",
-                  "  if (j.id) pm.environment.set('opId', String(j.id));",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-15",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 60) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "assert-dup-async",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (pm.environment.get('repoDupSync') === '1') {",
-                  "  pm.test('dup handled synchronously (409)', () => pm.expect(true).to.eql(true));",
-                  "} else {",
+                  "pm.test('status 409', () => pm.expect(pm.response.code).to.eql(409));",
+                  "pm.test('grpc code 6 (ALREADY_EXISTS)', () => {",
                   "  const j = pm.response.json();",
-                  "  pm.test('async op done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "  const blob = (JSON.stringify(j.error||{}) + (pm.environment.get('lastOpError')||'')).toLowerCase();",
-                  "  pm.test('async op errored ALREADY_EXISTS', () => pm.expect(blob).to.include('exist'));",
-                  "}"
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(6);",
+                  "});",
+                  "pm.test('repository already exists text', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('repository already exists'));"
                 ]
               }
             }
@@ -3876,7 +3778,7 @@
           ]
         },
         {
-          "name": "poll-op-16",
+          "name": "poll-op-15",
           "request": {
             "method": "GET",
             "header": [
@@ -4071,7 +3973,7 @@
       ]
     },
     {
-      "name": "REPO-REN-NEG-COLLISION — RenameRepository into an existing repo name → 409 ALREADY_EXISTS \"repository already exists\" (A17)",
+      "name": "REPO-REN-NEG-COLLISION — RenameRepository into an existing repo name → Operation carries ALREADY_EXISTS \"repository already exists\" (A17)",
       "description": "class:NEG | class:CONF | priority:P1",
       "item": [
         {
@@ -4146,7 +4048,7 @@
           ]
         },
         {
-          "name": "poll-op-17",
+          "name": "poll-op-16",
           "request": {
             "method": "GET",
             "header": [
@@ -4359,7 +4261,7 @@
           ]
         },
         {
-          "name": "poll-op-18",
+          "name": "poll-op-17",
           "request": {
             "method": "GET",
             "header": [
@@ -4541,23 +4443,20 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('collision rejected (409 sync or 200 async-error)', () => pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
-                  "const j = pm.response.json();",
-                  "if (pm.response.code === 409) {",
-                  "  pm.test('grpc code 6 (ALREADY_EXISTS)', () => pm.expect(j.code).to.eql(6));",
-                  "  pm.test('repository already exists text', () => pm.expect((j.message||'').toLowerCase()).to.include('repository already exists'));",
-                  "  pm.environment.set('renColSync', '1');",
-                  "} else {",
-                  "  pm.environment.unset('renColSync');",
-                  "  if (j.id) pm.environment.set('opId', String(j.id));",
-                  "}"
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('200 — это конверт операции', () => pm.expect(pm.response.json().id, pm.response.text()).to.be.a('string').and.not.empty);",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
                 ]
               }
             }
           ]
         },
         {
-          "name": "poll-op-19",
+          "name": "poll-op-18",
           "request": {
             "method": "GET",
             "header": [
@@ -4637,14 +4536,11 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "if (pm.environment.get('renColSync') === '1') {",
-                  "  pm.test('collision handled synchronously (409)', () => pm.expect(true).to.eql(true));",
-                  "} else {",
-                  "  const j = pm.response.json();",
-                  "  pm.test('async op done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "  const blob = (JSON.stringify(j.error||{}) + (pm.environment.get('lastOpError')||'')).toLowerCase();",
-                  "  pm.test('async op errored ALREADY_EXISTS', () => pm.expect(blob).to.include('exist'));",
-                  "}"
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('async op done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('операция несёт ALREADY_EXISTS (код 6)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(6));",
+                  "pm.test('и контрактный текст', () => pm.expect(((j.error||{}).message||'').toLowerCase()).to.include('repository already exists'));"
                 ]
               }
             }
@@ -4728,7 +4624,7 @@
           ]
         },
         {
-          "name": "poll-op-20",
+          "name": "poll-op-19",
           "request": {
             "method": "GET",
             "header": [
@@ -4999,7 +4895,7 @@
           ]
         },
         {
-          "name": "poll-op-21",
+          "name": "poll-op-20",
           "request": {
             "method": "GET",
             "header": [
@@ -5199,7 +5095,7 @@
           ]
         },
         {
-          "name": "poll-op-22",
+          "name": "poll-op-21",
           "request": {
             "method": "GET",
             "header": [
@@ -5559,7 +5455,7 @@
           ]
         },
         {
-          "name": "poll-op-23",
+          "name": "poll-op-22",
           "request": {
             "method": "GET",
             "header": [
@@ -5786,7 +5682,7 @@
           ]
         },
         {
-          "name": "poll-op-24",
+          "name": "poll-op-23",
           "request": {
             "method": "GET",
             "header": [
