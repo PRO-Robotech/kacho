@@ -165,8 +165,17 @@ CASES.append(Case(
         retry_get_until_found(Step(name="confirm-zone", method="GET",
              path="/geo/v1/zones/qa-reg-del-{{runId}}-z",
              test_script=[*assert_status(200)])),
+        # Тон отказа — конвенционный «<ресурс> <id> is not empty» (эталон дома:
+        # «network is not empty»), а НЕ формулировка про ограничение базы.
+        # Внешний ключ здесь — механизм, а не контракт: use-case перехватывает
+        # sentinel и заменяет его конвенционным текстом, и этот текст закреплён
+        # unit-, handler- и интеграционным тестами сервиса.
+        #
+        # Прежде здесь стояло `reference constraint` — формулировка обёртки
+        # repo-слоя, которую кейс приписал публичному контракту, не сверившись
+        # с ним. Проверка была права в коде отказа и неправа в тексте.
         Step(name="delete-region-with-zone", method="DELETE", path="/geo/v1/internal/regions/qa-reg-del-{{runId}}", internal=True,
-             test_script=[*assert_operation_failed(9, "FAILED_PRECONDITION", "reference constraint")]),
+             test_script=[*assert_operation_failed(9, "FAILED_PRECONDITION", "is not empty")]),
         Step(name="region-survived", method="GET", path="/geo/v1/regions/qa-reg-del-{{runId}}",
              test_script=[
                  *assert_status(200),

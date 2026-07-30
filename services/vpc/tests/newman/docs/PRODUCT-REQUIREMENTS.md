@@ -635,10 +635,27 @@ RPC, оперирующие конкретным ресурсом, ДОЛЖНЫ 
 - Проверка: `internal/service/security_group.go` UpdateRules/UpdateRule.
 
 ### REQ-SG-02 — rule-field валидация [P1]
-Правило: `direction` ∈ {INGRESS,EGRESS} (иначе `400`); `protocol` — известный (иначе `400`); порт ∈ [-1.65535]
-(`-1` = any; отрицательный кроме `-1` или > 65535 → `400`).
+Правило: `direction` ∈ {INGRESS,EGRESS} (иначе `400`); `protocol_name` — известный (иначе `400`);
+порт ∈ [-1..65535] (`-1` = any; отрицательный кроме `-1` или > 65535 → `400`).
+
+Уточнено 2026-07-31, когда требование получило реализацию (до этого ни одно из полей
+не читалось ни одной проверкой, и три из пяти кейсов стояли красными):
+
+- `-1` («любой порт») принимается **только на обеих границах сразу**: «от любого до 80» —
+  не диапазон, а два разных утверждения в одном поле → `400`;
+- **перевёрнутый** диапазон (`from_port > to_port`) не описывает ни одного порта → `400`;
+- «известный протокол» = собственное `ANY` продукта **либо** ключевое слово реестра IANA,
+  регистр не важен. Протокол без ключевого слова адресуется второй веткой того же oneof —
+  `protocol_number` ∈ [-1..255] (`-1` = any), вне границ → `400`. Закрытый набор ИМЁН
+  поэтому сужает написание, а не выразимость;
+- отказ **называет поле** (`…ports.from_port` / `…ports.to_port` / `…protocol_name` /
+  `…protocol_number`) и приходит синхронно, до создания операции.
+
 - Validated-by: `*-URL-VAL-DIRECTION-UNKNOWN`, `*-URL-VAL-PROTOCOL-UNKNOWN`, `*-URL-VAL-PORT-ANY-MINUS-1`, `*-URL-VAL-PORT-NEG`, `*-URL-VAL-PORT-OVER-65535`
-- Проверка: `internal/service/security_group.go` — rule-валидация; `sgDirection`/`sgStatus` в `internal/protoconv/protoconv.go`.
+- Проверка: `internal/apps/kacho/api/securitygroup/helpers.go` — `validateSGRule` /
+  `validateSGRulePorts` / `validateSGRuleProtocol` (общая точка для `Create.rule_specs`,
+  `Update.rule_specs`, `UpdateRules.addition_rule_specs`); набор имён протоколов —
+  `internal/domain/security_group_protocol.go`.
 
 ### REQ-SG-03 — optimistic concurrency для UpdateRules (xmin) [P1]
 Конкурентные `UpdateRules` на одну SG не теряют изменения — read-modify-write через Postgres `xmin::text` (lost-update protection).

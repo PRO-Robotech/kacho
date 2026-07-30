@@ -202,7 +202,7 @@
 | `*-CR-VAL-NAME-HYPHEN-START` | VAL | P1 | 6 (add,gat,net,rou,sec,sub) | Create с name начинающимся с дефиса → 400 |
 | `*-CR-VAL-NAME-NULL` | NEG,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Create с name=null → 400 |
 | `*-CR-VAL-NAME-SPECIAL-CHARS` | VAL | P1 | 6 (add,gat,net,rou,sec,sub) | Create с спец-символами в name → 400 |
-| `*-CR-VAL-NAME-UPPERCASE` | VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Create с UPPERCASE name → VPC permissive (200) или 400 |
+| `*-CR-VAL-NAME-UPPERCASE` | VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Create с UPPERCASE name → 200 у разрешительного контракта (add,net,rou,sec,sub); 400 с именем поля у строгого (gat) |
 | `*-CR-VAL-NETWORK-REQUIRED` | NEG,VAL | P0 | 2 (rou,sec) | Create без network_id → InvalidArgument |
 | `*-CR-VAL-REQ-PROJECTID` | VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Create без required поля 'projectId' → 400 InvalidArgument |
 | `*-CR-VAL-REQ-NAME` | VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Create без required поля 'name' → 400 InvalidArgument |

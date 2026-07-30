@@ -37,11 +37,32 @@ func validateCIDRPrefix(field, value string) error {
 
 // validateSGRule — sync-валидация правила.
 //
-// Direction-семантика и CIDR host-bits — cross-field invariants, не newtype-level
-// (description/labels валидируются через r.Validate() внутри SecurityGroup.Validate()).
+// Direction-семантика, диапазон портов, протокол и CIDR host-bits — cross-field
+// invariants, не newtype-level (description/labels валидируются через
+// r.Validate() внутри SecurityGroup.Validate()).
+//
+// Каждый путь, на котором правило приходит ОТ ВЫЗЫВАЮЩЕГО, проходит здесь
+// СИНХРОННО, до создания операции: `Create.rule_specs`, `Update.rule_specs`,
+// `UpdateRules.addition_rule_specs`. `UpdateRule` меняет только
+// description/labels, портов и протокола не касается (его known-set маски —
+// ровно эти два поля).
+//
+// Есть ровно один путь ПОМИМО них: `api/network/default_sg.go` пишет
+// `domain.NewDefaultSecurityGroupRules()` прямо в writer-TX создания сети, минуя
+// эту функцию. Это не дыра — правила там не тенантские, их сочиняет сам продукт,
+// — но и не «все пути проходят здесь». Инвариант держится тестом
+// `TestValidateSGRule_DefaultSecurityGroupRulesPass`: то, что продукт пишет мимо
+// проверки, обязано её проходить. Добавляя новый inline-путь записи правил,
+// добавь его в этот список или проведи через validateSGRule.
 func validateSGRule(field string, r domain.SecurityGroupRule) error {
 	if r.Direction != domain.SecurityGroupRuleDirectionIngress && r.Direction != domain.SecurityGroupRuleDirectionEgress {
 		return serviceerr.InvalidArg(field+".direction", "direction must be INGRESS or EGRESS")
+	}
+	if err := validateSGRulePorts(field, r.FromPort, r.ToPort); err != nil {
+		return err
+	}
+	if err := validateSGRuleProtocol(field, r.ProtocolName, r.ProtocolNumber); err != nil {
+		return err
 	}
 	if err := serviceerr.FromValidation(r.Description.Validate()); err != nil {
 		return err
@@ -60,6 +81,62 @@ func validateSGRule(field string, r domain.SecurityGroupRule) error {
 		if err := validateCIDRPrefix(fmt.Sprintf("%s.cidr_blocks.v6_cidr_blocks[%d]", field, i), c); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// validateSGRulePorts — диапазон портов правила.
+//
+// Каждая граница — либо `-1` («любой порт»), либо число из объявленного в
+// `PortRange` интервала `0-65535`. `-1` принимается ТОЛЬКО на обеих границах
+// сразу: «от любого до 80» не диапазон, а два разных утверждения в одном поле.
+// Перевёрнутый диапазон (`from > to`) не описывает ни одного порта, поэтому
+// отвергается там же, а не сохраняется как правило, которое ничего не значит.
+//
+// Отказ называет ту границу, из-за которой он произошёл, — вызывающий правит
+// поле, а не гадает.
+func validateSGRulePorts(field string, from, to int64) error {
+	fromField, toField := field+".ports.from_port", field+".ports.to_port"
+	anyFrom, anyTo := from == domain.AnyPort, to == domain.AnyPort
+	switch {
+	case anyFrom && anyTo:
+		return nil
+	case anyFrom:
+		return serviceerr.InvalidArg(toField,
+			fmt.Sprintf("from_port %d means any port; to_port must be %d as well", domain.AnyPort, domain.AnyPort))
+	case anyTo:
+		return serviceerr.InvalidArg(fromField,
+			fmt.Sprintf("to_port %d means any port; from_port must be %d as well", domain.AnyPort, domain.AnyPort))
+	}
+	if from < domain.MinPort || from > domain.MaxPort {
+		return serviceerr.InvalidArg(fromField,
+			fmt.Sprintf("from_port must be %d (any) or within %d-%d", domain.AnyPort, domain.MinPort, domain.MaxPort))
+	}
+	if to < domain.MinPort || to > domain.MaxPort {
+		return serviceerr.InvalidArg(toField,
+			fmt.Sprintf("to_port must be %d (any) or within %d-%d", domain.AnyPort, domain.MinPort, domain.MaxPort))
+	}
+	if from > to {
+		return serviceerr.InvalidArg(fromField, "from_port must not be greater than to_port")
+	}
+	return nil
+}
+
+// validateSGRuleProtocol — протокол правила.
+//
+// `protocol_name` объявлен как значение реестра IANA; неизвестное имя —
+// InvalidArgument, а не тихо сохранённая строка. `protocol_number` — номер из
+// того же реестра (`0-255`) либо `-1` («любой»). Обе ветки oneof пусты =
+// «любой протокол» — это законно и проверять нечего.
+func validateSGRuleProtocol(field, name string, number int64) error {
+	if name != "" && !domain.IsKnownProtocolName(name) {
+		return serviceerr.InvalidArg(field+".protocol_name",
+			"protocol_name must be "+domain.AnyProtocolName+" or an IANA protocol keyword (for example tcp, udp, icmp)")
+	}
+	if number != domain.AnyProtocolNumber && (number < domain.MinProtocolNumber || number > domain.MaxProtocolNumber) {
+		return serviceerr.InvalidArg(field+".protocol_number",
+			fmt.Sprintf("protocol_number must be %d (any) or an IANA protocol number within %d-%d",
+				domain.AnyProtocolNumber, domain.MinProtocolNumber, domain.MaxProtocolNumber))
 	}
 	return nil
 }
