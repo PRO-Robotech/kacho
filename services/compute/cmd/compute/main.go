@@ -235,10 +235,12 @@ func runServe(cfg config.Config) error {
 	// Catalog-admin internal RPC (InternalDiskTypeService mutations) relation-gated
 	// (`system_admin on cluster:cluster_kacho_root`, internal/check/permission_map.go);
 	// без verified cert'а / вне allow-list форвардеров их principal снимается →
-	// Check fail-closed. InternalWatchService/Watch — explicit `Public: true` entry
-	// в PermissionMap (нет methodIsInternal-фолбэка в pinned corelib: незамапленный
-	// RPC, unary или stream, fail-closed'ится PermissionDenied); dev-mode (mTLS off)
-	// работает как раньше.
+	// Check fail-closed. InternalWatchService/Watch несёт `ScopeFiltered: true`:
+	// единичный Check по одному объекту с него снят (запрос не называет ни одного
+	// ресурса), но личность вызывающего обязательна, а сужение идёт per-row в handler'е.
+	// Запись в PermissionMap нужна в любом случае — methodIsInternal-фолбэка в pinned
+	// corelib нет, незамапленный RPC (unary или stream) fail-closed'ится
+	// PermissionDenied.
 	internalUnary := []grpc.UnaryServerInterceptor{
 		grpcsrv.UnaryCertIdentityExtract(),
 		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
@@ -339,8 +341,13 @@ func runServe(cfg config.Config) error {
 		return fmt.Errorf("internal listener tls creds: %w", err)
 	}
 
-	// Публичный listener — requireAdmin=false; internal :9091 — requireAdmin=true
-	// (defense-in-depth поверх NetworkPolicy в helm). Зеркалит kacho-vpc.
+	// Публичный listener — requireAdmin=false; internal :9091 — requireAdmin=true.
+	//
+	// Это НЕ «поверх сетевой политики»: у compute её нет ни в одном профиле (см. пункт 13
+	// docs/architecture/07-known-divergences.md). Прежняя редакция называла её здесь
+	// действующим нижним слоем — второй экземпляр того же ложного утверждения в этом
+	// файле, и он опаснее первого: он описывает requireAdmin как ДОБАВКУ к
+	// несуществующему рубежу.
 	grpcSrv := grpcsrv.NewServer(
 		publicCreds,
 		grpc.ChainUnaryInterceptor(publicUnary...),
@@ -1122,10 +1129,13 @@ func registerInternalServices(srv *grpc.Server, svcs *services, pool *pgxpool.Po
 
 // watchVisibility адаптирует построенный per-object фильтр под порт потока журнала.
 //
-// Типизированный nil — отдельная ветка не для красоты: `authzfilter.Filter(nil)`,
-// положенный в интерфейс с другим набором методов, дал бы НЕ-nil значение, чей вызов
-// Narrows() паникует. Явное «нет фильтра» доходит до handler'а как nil, и он
-// отказывает в открытии потока (fail-closed), вместо того чтобы упасть.
+// Ветка нужна из-за НЕСОВПАДЕНИЯ ТИПОВ, а не из-за паники: `authzfilter.Filter` несёт
+// только FilterVisibleIDs, а порт потока требует ещё и Narrows(), поэтому значение
+// приходится сузить до конкретного типа. Проверка `f == nil` рядом отсекает
+// типизированный nil: интерфейс, несущий nil-указатель, сам НЕ равен nil, и handler
+// принял бы его за работающий фильтр. Panic'и на таком значении не было бы —
+// `FGAFilter.Narrows()` начинается с `f != nil` и корректно отвечает «не сужаю»
+// (см. её godoc, первый подслучай); опасность именно в том, что это тихо, а не громко.
 func watchVisibility(listFilter authzfilter.Filter) handler.EventVisibility {
 	f, ok := listFilter.(*authzfilter.FGAFilter)
 	if !ok || f == nil {

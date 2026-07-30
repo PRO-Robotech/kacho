@@ -23,6 +23,11 @@ package main
 // was examined" must not look the same.
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"google.golang.org/grpc"
@@ -87,6 +92,89 @@ func filterCapable(t *testing.T, cfg config.Config) bool {
 	return vis != nil && vis.Narrows()
 }
 
+// TestGuardCoversEveryConditionThatDisablesNarrowing — the premise of the knob list
+// below, which is hand-written and therefore the one part of this file that cannot
+// notice a change on its own.
+//
+// The drift this cannot otherwise catch: a fourth condition is added to
+// FGAFilter.Narrows() (a new switch, a new degraded mode) and no knob is added to
+// requireListFilter — the guard then passes a configuration under which the stream
+// silently cannot narrow. The knob list would still be three long and still green.
+//
+// So the count is pinned to the predicate itself. `Narrows()` is one boolean
+// expression; every conjunct in it is a way to disable narrowing and therefore needs a
+// knob in the guard. If the expression grows, this fails and names what to add.
+func TestGuardCoversEveryConditionThatDisablesNarrowing(t *testing.T) {
+	src, err := os.ReadFile(filepath.Join("..", "..", "internal", "authzfilter", "filter.go"))
+	if err != nil {
+		t.Fatalf("read the filter source that defines narrowing: %v", err)
+	}
+	fset := token.NewFileSet()
+	af, err := parser.ParseFile(fset, "filter.go", src, 0)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+
+	var body ast.Expr
+	ast.Inspect(af, func(n ast.Node) bool {
+		fd, ok := n.(*ast.FuncDecl)
+		if !ok || fd.Name.Name != "Narrows" || fd.Body == nil || len(fd.Body.List) != 1 {
+			return true
+		}
+		if ret, ok := fd.Body.List[0].(*ast.ReturnStmt); ok && len(ret.Results) == 1 {
+			body = ret.Results[0]
+		}
+		return false
+	})
+	if body == nil {
+		t.Fatal("Narrows() is no longer a single return of one expression — this gate read nothing, " +
+			"so it asserted nothing; re-derive the conjunct count by hand and restate it here")
+	}
+
+	// Count the conjuncts of the && chain.
+	conjuncts := 1
+	var walk func(ast.Expr)
+	walk = func(e ast.Expr) {
+		if b, ok := e.(*ast.BinaryExpr); ok && b.Op == token.LAND {
+			conjuncts++
+			walk(b.X)
+			walk(b.Y)
+		}
+	}
+	walk(body)
+	// The chain is (a && b && c && d): 3 && operators over 4 conjuncts. Counting
+	// operators and adding one is the same number without depending on nesting shape.
+	operators := conjuncts - 1
+
+	// One conjunct is `f != nil` — a receiver check, not a configuration knob, so it
+	// has no counterpart in the guard. Every other conjunct must.
+	const receiverChecks = 1
+	wantKnobs := (operators + 1) - receiverChecks
+
+	if got := len(narrowingKnobs()); got != wantKnobs {
+		t.Fatalf("FGAFilter.Narrows() has %d configuration conjunct(s) but the boot guard is exercised "+
+			"against %d knob(s).\nEvery way to disable narrowing needs a knob in requireListFilter, or the "+
+			"guard vouches for narrowing that is not happening. Add the missing knob to narrowingKnobs() "+
+			"and the matching refusal to requireListFilter.", wantKnobs, got)
+	}
+}
+
+// narrowingKnobs — the configuration knobs the guard must refuse, one per way of
+// disabling narrowing. Hand-written; kept honest by the test above.
+func narrowingKnobs() []struct {
+	name    string
+	breakIt func(*config.Config)
+} {
+	return []struct {
+		name    string
+		breakIt func(*config.Config)
+	}{
+		{"master switch off", func(c *config.Config) { c.ListFilterEnabled = false }},
+		{"authorize endpoint unset", func(c *config.Config) { c.AuthZIAMGRPCAddr = "" }},
+		{"soft-pass on error", func(c *config.Config) { c.ListFilterFailOpen = true }},
+	}
+}
+
 // TestBootGuardVerdictMatchesStreamCapability — the two directions.
 func TestBootGuardVerdictMatchesStreamCapability(t *testing.T) {
 	accepted := func() config.Config {
@@ -109,14 +197,7 @@ func TestBootGuardVerdictMatchesStreamCapability(t *testing.T) {
 	// Each knob the guard names, injected one at a time. Rejecting must coincide with
 	// the stream being unable to open; otherwise the guard is the only thing standing
 	// between a served RPC and an unnarrowed answer, and it is not enough.
-	for _, tc := range []struct {
-		name    string
-		breakIt func(*config.Config)
-	}{
-		{"master switch off", func(c *config.Config) { c.ListFilterEnabled = false }},
-		{"authorize endpoint unset", func(c *config.Config) { c.AuthZIAMGRPCAddr = "" }},
-		{"soft-pass on error", func(c *config.Config) { c.ListFilterFailOpen = true }},
-	} {
+	for _, tc := range narrowingKnobs() {
 		t.Run("configuration the guard rejects leaves the stream incapable: "+tc.name, func(t *testing.T) {
 			cfg := accepted()
 			tc.breakIt(&cfg)

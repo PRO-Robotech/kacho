@@ -266,9 +266,11 @@ func PermissionMap() authz.RPCMap {
 		// PermissionDenied ("rpc not mapped"), unary AND stream alike. So every
 		// internal RPC MUST have an explicit entry: relation-gated
 		// (`system_admin on cluster:cluster_kacho_root` — mirrors proto
-		// `required_relation=system_admin`, object_type=cluster) or
-		// Public=true for an explicit exempt (like InternalWatchService/Watch
-		// further down, and OperationService.Get/Cancel above).
+		// `required_relation=system_admin`, object_type=cluster), ScopeFiltered=true
+		// (no single object to ask about — the handler narrows on the data, like
+		// InternalWatchService/Watch further down), or Public=true for an explicit
+		// exempt (OperationService.Get/Cancel below, which authorise on an owner
+		// predicate in SQL).
 
 		// MachineType — read-only sizing catalog (viewer on cluster singleton).
 		// Was unmapped → the public Get/List used across machine-type +

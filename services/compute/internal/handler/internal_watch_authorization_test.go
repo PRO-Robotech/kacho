@@ -323,6 +323,76 @@ func TestIntegration_WatchStreamSince_CursorAdvancesPastDroppedRows(t *testing.T
 		"the cursor must equal the last SCANNED sequence_no, not the last delivered one")
 }
 
+// TestIntegration_Watch_DeletionEventIsNotDeliverableOnceTheObjectIsGone — locks a
+// CONSEQUENCE of per-row narrowing that is not obviously desirable, so that it cannot
+// change silently in either direction.
+//
+// Mechanism. `Instance.Delete` hard-deletes the row and, in the SAME transaction,
+// emits both the `DELETED` journal row and the intent to withdraw the object's
+// registration from the permission model (`internal/repo/instance_repo.go`). Once the
+// drainer applies that intent, no subject — including the one who performed the
+// deletion — can be granted anything on the object, so the per-row question about the
+// `DELETED` row answers "no" and the row is dropped. The payload of a `DELETED` row is
+// `{"id": …}`, carrying no project, so there is no second predicate to fall back on.
+//
+// Why it is locked rather than "fixed" here. Making deletions visible requires
+// deciding WHOSE deletions a caller may see, and the only available answer would be
+// the parent project — i.e. granting project-tier viewers knowledge of objects they
+// were never entitled to see individually. That is an existence oracle and a widening
+// of access, and it is a product decision about deletion-event visibility, not a
+// detail of this fix. Guessing it would be worse than naming it. Recorded as item 14 of
+// docs/architecture/07-known-divergences.md.
+//
+// Delivering the row unconditionally is NOT an option: that is the leak this whole
+// file exists to close.
+//
+// The test also pins the narrower unpleasant part: before the intent is drained the
+// answer may be "yes", so the pre-drain behaviour is timing-dependent. It asserts the
+// SETTLED state (registration withdrawn), which is the state a real deployment reaches.
+func TestIntegration_Watch_DeletionEventIsNotDeliverableOnceTheObjectIsGone(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	base := context.Background()
+	dsn := setupWatchDB(t)
+	pool, err := coredb.NewPool(base, dsn)
+	require.NoError(t, err)
+	defer pool.Close()
+
+	for _, row := range []struct{ id, event string }{
+		{"epi-alive", "CREATED"},
+		{"epi-gone", "DELETED"},
+	} {
+		_, err := pool.Exec(base,
+			`INSERT INTO compute_outbox (resource_kind, resource_id, event_type, payload)
+			 VALUES ('Instance',$1,$2,'{"id":"x"}'::jsonb)`, row.id, row.event)
+		require.NoError(t, err)
+	}
+
+	ctx, cancel := context.WithTimeout(ctxWithUser(base, "usr_alice"), 3*time.Second)
+	defer cancel()
+
+	// The settled state: the model holds nothing about the deleted object, exactly as
+	// after the withdrawal intent drains. It still answers about the live one.
+	vis := &stubVisibility{narrows: true, allow: map[string]bool{"epi-alive": true}}
+	h := NewInternalWatchHandler(pool, dsn, slog.Default(), 0, vis)
+	fs := &fakeWatchStream{ctx: ctx}
+
+	_ = h.Watch(&computev1.WatchRequest{}, fs)
+
+	got := make([]string, 0, len(fs.sent))
+	for _, ev := range fs.sent {
+		got = append(got, ev.GetResourceId())
+	}
+	assert.Equal(t, []string{"epi-alive"}, got,
+		"known consequence: a DELETED row is undeliverable once the object's registration is "+
+			"withdrawn — see the comment above and known-divergences item 14; it must NOT be 'fixed' by "+
+			"delivering the row unconditionally")
+	assert.Contains(t, vis.asked, "epi-gone",
+		"the row must be REFUSED by the model, not skipped before asking — otherwise a later "+
+			"policy decision about deletion visibility would have nowhere to take effect")
+}
+
 // TestWatch_RefusedWhenNothingNarrowsTheStream — the stream must not open when the
 // per-row filter is absent or does not actually narrow.
 //
@@ -392,6 +462,46 @@ func TestNarrowToSubject_SplitsIntoPartitionsTheModelAccepts(t *testing.T) {
 	assert.Len(t, vis.asked, rows, "every row must be asked about exactly once")
 }
 
+// passthroughVisibility — a filter that IS wired and answers, but returns every id it
+// is asked about. This is what the real filter does when its master switch is off,
+// when it has no client to the model, and on any model error in soft-pass mode
+// (authzfilter.FGAFilter.FilterVisibleIDs / handleErr). It reports Narrows() == false,
+// which is the only thing distinguishing it from a working one.
+type passthroughVisibility struct{ asked int }
+
+func (p *passthroughVisibility) FilterVisibleIDs(_ context.Context, _, _, _ string, ids []string) ([]string, error) {
+	p.asked += len(ids)
+	return ids, nil
+}
+func (p *passthroughVisibility) Narrows() bool { return false }
+
+// TestNarrowToSubject_RefusesAFilterThatDoesNotNarrow — the read loop must refuse a
+// non-narrowing filter, not merely a missing one.
+//
+// The entry to the RPC already checks both. The read loop checked only `nil`, and that
+// asymmetry is worse than it looks: a nil filter would panic — loud, recovered into
+// INTERNAL, nothing delivered — whereas a wired-but-passthrough filter returns every id
+// unchanged, so a second caller of the read loop would emit the whole journal SILENTLY,
+// under code that looks filtered. The quiet case was the one left open.
+//
+// Asserted on the observable: an error and no rows, for a filter that would otherwise
+// have said yes to everything.
+func TestNarrowToSubject_RefusesAFilterThatDoesNotNarrow(t *testing.T) {
+	vis := &passthroughVisibility{}
+	h := NewInternalWatchHandler(nil, "", slog.Default(), 0, vis)
+
+	visible, err := h.narrowToSubject(context.Background(), watchTestSubject,
+		[]*computev1.Event{
+			{SequenceNo: 1, ResourceKind: "Instance", ResourceId: "epi-a"},
+			{SequenceNo: 2, ResourceKind: "Instance", ResourceId: "epi-b"},
+		})
+
+	require.Error(t, err, "a filter that passes ids through is not narrowing, so it cannot authorise the rows")
+	assert.Equal(t, codes.PermissionDenied, status.Code(err))
+	assert.Empty(t, visible, "not one row may be returned by a filter that narrows nothing")
+	assert.Zero(t, vis.asked, "such a filter must not even be consulted — its answer means nothing")
+}
+
 // TestWatchStreamSince_WithoutAFilterFailsClosedRatherThanPanics — the narrowing must
 // be refused where the rows are USED, not only at the entry to the RPC.
 //
@@ -406,7 +516,6 @@ func TestNarrowToSubject_SplitsIntoPartitionsTheModelAccepts(t *testing.T) {
 // error, no rows, and no panic.
 func TestWatchStreamSince_WithoutAFilterFailsClosedRatherThanPanics(t *testing.T) {
 	h := NewInternalWatchHandler(nil, "", slog.Default(), 0, nil)
-	fs := &fakeWatchStream{ctx: context.Background()}
 
 	// A non-empty batch is what makes the question unavoidable; an empty one has
 	// nothing to ask about and would pass regardless.
@@ -416,7 +525,10 @@ func TestWatchStreamSince_WithoutAFilterFailsClosedRatherThanPanics(t *testing.T
 	require.Error(t, err, "no filter means no answer about these rows, which is not a yes")
 	assert.Equal(t, codes.PermissionDenied, status.Code(err))
 	assert.Empty(t, visible)
-	assert.Empty(t, fs.sent)
+	// NB: no assertion about a stream here. narrowToSubject takes no stream, so an
+	// `Empty(fs.sent)` on a locally-built fake — as this test first carried — could not
+	// fail for any defect: nothing ever writes to it. The delivered-row observable
+	// belongs to the tests that call Watch.
 }
 
 // TestWatch_UnidentifiedCallerIsRefusedBeforeTouchingTheBackend — the refusal must
