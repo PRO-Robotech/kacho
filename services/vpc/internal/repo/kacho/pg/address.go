@@ -472,17 +472,23 @@ func (w *addressWriter) nextIPv6Offset(ctx context.Context, poolID string) (*big
 // в реестре этого пула — иначе аллокатор предложит его следующему.
 func (w *addressWriter) claimExplicitExternalAddresses(ctx context.Context, a *domain.Address) error {
 	if a.ExternalIpv4 != nil && a.ExternalIpv4.Address != "" && a.ExternalIpv4.AddressPoolID == "" {
-		poolID, err := w.claimExplicitExternalIPv4(ctx, a.ExternalIpv4.Address)
+		canonical, poolID, err := w.claimExplicitExternalIPv4(ctx, a.ExternalIpv4.Address)
 		if err != nil {
 			return err
 		}
+		// Записывается КАНОНИЧЕСКАЯ форма: глобальная уникальность внешнего
+		// адреса — текстовый индекс, поэтому две записи одного адреса в разных
+		// формах разъехались бы по разным ключам. Канонизация на входе use-case
+		// закрывает публичный путь; здесь она закрывает сам путь записи.
+		a.ExternalIpv4.Address = canonical
 		a.ExternalIpv4.AddressPoolID = poolID
 	}
 	if a.ExternalIpv6 != nil && a.ExternalIpv6.Address != "" && a.ExternalIpv6.AddressPoolID == "" {
-		poolID, err := w.claimExplicitExternalIPv6(ctx, a.ID, a.ExternalIpv6.Address)
+		canonical, poolID, err := w.claimExplicitExternalIPv6(ctx, a.ID, a.ExternalIpv6.Address)
 		if err != nil {
 			return err
 		}
+		a.ExternalIpv6.Address = canonical
 		a.ExternalIpv6.AddressPoolID = poolID
 	}
 	return nil
@@ -501,10 +507,10 @@ func (w *addressWriter) claimExplicitExternalAddresses(ctx context.Context, a *d
 // Детерминированный ORDER BY фиксирует выбор и на случай второго kind.
 //
 // Возвращает id пула-владельца ("" — адрес вне всех пулов).
-func (w *addressWriter) claimExplicitExternalIPv4(ctx context.Context, ip string) (string, error) {
+func (w *addressWriter) claimExplicitExternalIPv4(ctx context.Context, ip string) (string, string, error) {
 	addr, perr := netip.ParseAddr(ip)
 	if perr != nil || !addr.Is4() {
-		return "", fmt.Errorf("%w: external_ipv4.address %q is not a valid IPv4 address", helpers.ErrInvalidArg, ip)
+		return "", "", fmt.Errorf("%w: external_ipv4.address %q is not a valid IPv4 address", helpers.ErrInvalidArg, ip)
 	}
 	var ownerPool, claimedPool string
 	err := w.tx.QueryRow(ctx, `
@@ -531,19 +537,19 @@ func (w *addressWriter) claimExplicitExternalIPv4(ctx context.Context, ip string
 		       COALESCE((SELECT pool_id FROM claimed), '')
 	`, addr.String()).Scan(&ownerPool, &claimedPool)
 	if err != nil {
-		return "", fmt.Errorf("claim explicit external ipv4: %w", err)
+		return "", "", fmt.Errorf("claim explicit external ipv4: %w", err)
 	}
 	if ownerPool == "" {
-		return "", nil // адрес вне управляемых диапазонов — реестра нет
+		return addr.String(), "", nil // адрес вне управляемых диапазонов — реестра нет
 	}
 	if claimedPool == "" {
 		// Пул — Internal-admin-ресурс, его id не место в отказе публичного RPC
 		// (он не выставлен и в самом ответе). Вызывающему достаточно того, что
 		// адрес занят; оператору хватает координаты по адресу.
-		return "", fmt.Errorf("%w: external address %s is not available",
+		return "", "", fmt.Errorf("%w: external address %s is not available",
 			helpers.ErrFailedPrecondition, addr.String())
 	}
-	return claimedPool, nil
+	return addr.String(), claimedPool, nil
 }
 
 // claimExplicitExternalIPv6 — занятие явного внешнего IPv6 в книге учёта пула
@@ -562,10 +568,10 @@ func (w *addressWriter) claimExplicitExternalIPv4(ctx context.Context, ip string
 // поэтому счётчик физически не может выдать занятый адрес; для адресов вне
 // первого диапазона номер выходит за его пределы (в том числе отрицательный),
 // а счётчик отрицательных не производит.
-func (w *addressWriter) claimExplicitExternalIPv6(ctx context.Context, addressID, ip string) (string, error) {
+func (w *addressWriter) claimExplicitExternalIPv6(ctx context.Context, addressID, ip string) (string, string, error) {
 	addr, perr := netip.ParseAddr(ip)
 	if perr != nil || !addr.Is6() || addr.Is4In6() {
-		return "", fmt.Errorf("%w: external_ipv6.address %q is not a valid IPv6 address", helpers.ErrInvalidArg, ip)
+		return "", "", fmt.Errorf("%w: external_ipv6.address %q is not a valid IPv6 address", helpers.ErrInvalidArg, ip)
 	}
 
 	var poolID string
@@ -580,21 +586,21 @@ func (w *addressWriter) claimExplicitExternalIPv6(ctx context.Context, addressID
 		 FOR SHARE OF p
 	`, addr.String()).Scan(&poolID, &anchorBlocks)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", nil // адрес вне управляемых диапазонов — реестра нет
+		return addr.String(), "", nil // адрес вне управляемых диапазонов — реестра нет
 	}
 	if err != nil {
-		return "", fmt.Errorf("claim explicit external ipv6: %w", err)
+		return "", "", fmt.Errorf("claim explicit external ipv6: %w", err)
 	}
 	if len(anchorBlocks) == 0 {
-		return "", fmt.Errorf("%w: pool %s owns the address range but declares no v6 blocks", helpers.ErrInternal, poolID)
+		return "", "", fmt.Errorf("%w: pool %s owns the address range but declares no v6 blocks", helpers.ErrInternal, poolID)
 	}
 	anchor, axerr := netip.ParsePrefix(anchorBlocks[0])
 	if axerr != nil {
-		return "", fmt.Errorf("%w: pool %s has unparseable v6 prefix %q", helpers.ErrInternal, poolID, anchorBlocks[0])
+		return "", "", fmt.Errorf("%w: pool %s has unparseable v6 prefix %q", helpers.ErrInternal, poolID, anchorBlocks[0])
 	}
 	offset := offsetFromAnchor(anchor.Addr(), addr)
 	if offset == nil {
-		return "", fmt.Errorf("%w: cannot number %s against the pool anchor",
+		return "", "", fmt.Errorf("%w: cannot number %s against the pool anchor",
 			helpers.ErrInternal, addr.String())
 	}
 
@@ -606,18 +612,18 @@ func (w *addressWriter) claimExplicitExternalIPv6(ctx context.Context, addressID
 		RETURNING pool_id
 	`, poolID, addr.String(), offset.String(), addressID).Scan(&claimed)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", fmt.Errorf("%w: external address %s is not available",
+		return "", "", fmt.Errorf("%w: external address %s is not available",
 			helpers.ErrFailedPrecondition, addr.String())
 	}
 	if err != nil {
-		return "", fmt.Errorf("claim explicit external ipv6: %w", err)
+		return "", "", fmt.Errorf("claim explicit external ipv6: %w", err)
 	}
 	if _, err := w.tx.Exec(ctx, `
 		DELETE FROM ipv6_released_offsets WHERE pool_id = $1 AND "offset" = $2::numeric
 	`, poolID, offset.String()); err != nil {
-		return "", fmt.Errorf("claim explicit external ipv6: %w", err)
+		return "", "", fmt.Errorf("claim explicit external ipv6: %w", err)
 	}
-	return claimed, nil
+	return addr.String(), claimed, nil
 }
 
 // offsetFromAnchor — номер адреса относительно якоря пула (обратная операция к
