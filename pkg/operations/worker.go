@@ -476,14 +476,22 @@ func (w *Worker) execute(j job) {
 	// ресурс молча существует). ClaimForExecution атомарно подтверждает
 	// done=false И сдвигает modified_at=now: live=false → уже разрешена → fn
 	// ПРОПУСКАЕТСЯ; live=true → окно grace исполнения ограничено opTimeout
-	// (< OrphanGrace), Reconciler больше не мис-клеймит. Best-effort: Repo без
-	// executionClaimer (или transient claim-сбой) сохраняет pre-r9b поведение —
-	// terminalWrite-CAS всё равно не даст двойной терминал.
+	// (< OrphanGrace), Reconciler больше не мис-клеймит.
+	//
+	// ЭТО ПРОВЕРКА, А НЕ ПОДСКАЗКА. Если подтвердить не удалось, это не «живая»
+	// и не «терминальная», а «не знаю»; продолжать по «не знаю» на пути,
+	// создающем ресурсы, нельзя. Отказ от исполнения безопасен — строка
+	// остаётся done=false, её добирает Reconciler; исполнение — нет. Одиночный
+	// сетевой сбой при этом работу не отменяет: подтверждение повторяется в
+	// пределах того же бюджета, что и терминальная запись.
 	if claimer, ok := j.repo.(executionClaimer); ok {
-		switch live, claimErr := claimer.ClaimForExecution(workerCtx, j.opID); {
+		live, claimErr := w.claimExecution(workerCtx, claimer, j.opID)
+		switch {
 		case claimErr != nil:
-			w.log.Warn("operation execution-claim failed; proceeding (terminalWrite CAS still guards)",
+			w.claimRec().IncExecutionClaimFailures()
+			w.log.Error("operation liveness not confirmed after retries; refusing to execute (reconciler backstop)",
 				"op", j.opID, "err", claimErr)
+			return
 		case !live:
 			w.log.Warn("operation already terminal before execution; skipping fn to avoid phantom resource",
 				"op", j.opID)
@@ -549,8 +557,17 @@ func (w *Worker) terminalWrite(repo Repo, opID, opName string, write func(contex
 		cancel()
 
 		switch {
-		case err == nil, errors.Is(err, ErrAlreadyDone):
-			// success либо строка уже терминальна (CAS проиграл Cancel/reconciler) — no-op.
+		case err == nil:
+			return
+		case errors.Is(err, ErrAlreadyDone):
+			// Строка уже разрешена (сравнение-и-замена проиграло отмене либо
+			// реконсайлеру), поэтому дописывать нечего. Но это ЕДИНСТВЕННЫЙ
+			// сигнал случая «работа выполнена, а её операция уже разрешена» —
+			// то есть ресурс мог быть создан поверх разрешённой операции.
+			// Проглатывать его молча значит держать этот исход ненаблюдаемым.
+			w.claimRec().IncTerminalWriteAlreadyResolved(opName)
+			w.log.Warn("terminal write skipped: operation already resolved before it finished",
+				"op", opID, "kind", opName)
 			return
 		case errors.Is(err, ErrNotFound):
 			// На worker-пути строка всегда существует — это не transient. Не ретраим.
@@ -692,3 +709,57 @@ func Active() int64 { return defaultRegistry.Active() }
 
 // Ready — pkg-level: живость dispatcher-loop default-registry.
 func Ready() bool { return defaultRegistry.Ready() }
+
+// claimRec — наблюдаемость подтверждения живости. Расширение опционально
+// (см. ClaimRecorder): сервис, ещё не подключивший эти серии, получает no-op,
+// но САМ отказ исполнить работу при этом всё равно логируется на уровне ERROR —
+// контроль не бывает совсем безмолвным.
+func (w *Worker) claimRec() ClaimRecorder {
+	if cr, ok := w.rec.(ClaimRecorder); ok {
+		return cr
+	}
+	return NopRecorder{}
+}
+
+// claimExecution подтверждает живость операции с ограниченным числом повторов.
+//
+// Повторы существуют ради того, чтобы одиночный НЕ-дедлайновый транзиентный сбой
+// (обрыв соединения, рестарт/переключение БД) не отменял работу: такой отказ
+// приходит мгновенно, а контекст исполнения остаётся живым. Мёртвый контекст,
+// наоборот, повторять бессмысленно — там и доменная функция ничего не сделает,
+// поэтому цикл прекращается сразу. Бюджет — тот же, что у терминальной записи,
+// и он заведомо мал относительно opTimeout.
+//
+// Исчерпание бюджета — НЕ «разрешено»: вызывающий обязан отказаться от
+// исполнения (fail-closed).
+func (w *Worker) claimExecution(ctx context.Context, claimer executionClaimer, opID string) (bool, error) {
+	bo := backoff.ExponentialBackoffBuilder().
+		WithInitialInterval(w.tw.InitialInterval).
+		WithMaxInterval(w.tw.MaxInterval).
+		WithMaxElapsedThreshold(w.tw.MaxElapsed).
+		WithRandomizationFactor(0.2).
+		Build()
+	bo.Reset()
+
+	for {
+		live, err := claimer.ClaimForExecution(ctx, opID)
+		if err == nil {
+			return live, nil
+		}
+		if ctx.Err() != nil {
+			return false, err
+		}
+		d := bo.NextBackOff()
+		if d == backoff.Stop {
+			return false, err
+		}
+		w.claimRec().IncExecutionClaimRetries()
+		select {
+		case <-time.After(d):
+		case <-ctx.Done():
+			return false, err
+		case <-w.stopCh:
+			return false, err
+		}
+	}
+}

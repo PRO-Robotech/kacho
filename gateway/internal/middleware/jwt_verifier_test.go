@@ -216,14 +216,30 @@ func TestJWTVerifier_HS256AlgorithmConfusionRejected(t *testing.T) {
 	assert.Contains(t, err.Error(), "alg=")
 }
 
-func TestJWTVerifier_UnknownKidForceRefreshThenFail(t *testing.T) {
+// TestJWTVerifier_UnknownKidForcesRefetchThenFails — неизвестный kid при
+// ПРОГРЕТОМ и свежем наборе ключей.
+//
+// Прежняя редакция этой пробы стартовала с пустым кэшем: там перезапрос
+// происходит по обычному поводу («снимка нет»), поэтому ветка, по которой проба
+// названа, не исполнялась ни разу, а утверждение сводилось к подстроке в тексте
+// ошибки — она возвращается и когда перезапроса не было вовсе. Теперь набор
+// сначала прогревается настоящей проверкой, а затем утверждается ДВА факта:
+// обращение к источнику ключей состоялось (счётчик вырос) и подделка всё равно
+// отвергнута.
+func TestJWTVerifier_UnknownKidForcesRefetchThenFails(t *testing.T) {
 	fix := newJWKSFixture(t, "ES256")
 	v, err := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
 		JWKSURL: fix.url, ExpectedIssuer: testIssuer, ExpectedAudience: testAudience,
 	})
 	require.NoError(t, err)
 
-	// Forge a token with an unknown kid.
+	// Прогрев: набор в кэше, свежий.
+	_, err = v.Verify(context.Background(), fix.sign(t, standardClaims()))
+	require.NoError(t, err)
+	warm := atomic.LoadInt32(&fix.hitCount)
+	require.Equal(t, int32(1), warm, "прогрев должен стоить ровно одно обращение")
+
+	// Подделка с неизвестным kid.
 	priv, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	tok := jwt.NewWithClaims(jwt.SigningMethodES256, standardClaims())
 	tok.Header["kid"] = "unknown-kid"
@@ -233,6 +249,9 @@ func TestJWTVerifier_UnknownKidForceRefreshThenFail(t *testing.T) {
 	_, err = v.Verify(context.Background(), bad)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "jwks resolve")
+	assert.Equal(t, warm+1, atomic.LoadInt32(&fix.hitCount),
+		"неизвестный kid при свежем наборе обязан вызвать перезапрос: иначе ротация "+
+			"подписного ключа отвергает все нововыданные токены до истечения TTL")
 }
 
 func TestJWTVerifier_ExpiredTokenRejected(t *testing.T) {

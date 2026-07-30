@@ -14,8 +14,14 @@
 //  5. Extract custom claims: `acr`, `amr`, `auth_time`, `cnf` (jkt | x5t#S256),
 //     `scope`, `ext_claims` (kacho_*).
 //
-// JWKS cache: in-memory, TTL configurable. Background refresh on cache miss
-// or unknown `kid` (handles 90d Hydra rotation grace window).
+// JWKS cache: in-memory, TTL configurable. Refresh is LAZY, on the request path
+// (no background ticker / prewarm exists — do not read the word "background"
+// into it), and has two distinct triggers: the snapshot went stale by time, and
+// the signer named a `kid` the snapshot does not carry. The second one is what
+// absorbs a mid-grace-window key rotation, and it deliberately ignores the TTL:
+// a snapshot can be perfectly fresh and already incomplete. Its cost is bounded
+// by forcedRefreshMinInterval so an unknown `kid` cannot become a load
+// amplifier.
 //
 // Thread safety: methods are safe for concurrent use; cache uses sync.RWMutex.
 package middleware
@@ -133,9 +139,9 @@ func NewJWTVerifier(cfg JWTVerifierConfig) (*JWTVerifier, error) {
 	}, nil
 }
 
-// JWKSCache — thread-safe TTL cache for a single JWKS endpoint. Refreshes
-// on miss or stale; force-refresh on unknown `kid` to absorb mid-grace-window
-// rotations.
+// JWKSCache — thread-safe TTL cache for a single JWKS endpoint. Refreshes on
+// miss or stale; force-refresh on unknown `kid` (TTL not consulted) to absorb
+// mid-grace-window rotations, rate-limited by forcedRefreshMinInterval.
 type JWKSCache struct {
 	url        string
 	ttl        time.Duration
@@ -149,7 +155,21 @@ type JWKSCache struct {
 	mu        sync.RWMutex
 	set       *JWKSet
 	fetchedAt time.Time
+	// forcedAt — время последней ПОПЫТКИ вынужденного перезапроса (повод —
+	// неизвестный kid). Отмечается до сетевого вызова, а не после успеха: иначе
+	// неотвечающий источник ключей опрашивался бы на каждый запрос.
+	forcedAt time.Time
 }
+
+// forcedRefreshMinInterval — минимальный интервал между ВЫНУЖДЕННЫМИ
+// перезапросами набора ключей (повод — неизвестный kid, а не истёкший TTL).
+//
+// Он существует для того, чтобы неизвестный kid не стал усилителем нагрузки:
+// поток подделок с произвольными kid иначе означал бы обращение к источнику
+// ключей на каждый запрос. Интервал НАМЕРЕННО на порядки короче TTL кэша —
+// смысл вынужденного перезапроса именно в том, чтобы не ждать TTL, — и это
+// соотношение закреплено пробой предпосылки.
+const forcedRefreshMinInterval = 3 * time.Second
 
 // NewJWKSCache constructs a cache; first fetch is lazy on Get.
 func NewJWKSCache(url string, ttl time.Duration, httpClient *http.Client) *JWKSCache {
@@ -167,21 +187,30 @@ func (c *JWKSCache) FetchedAt() time.Time {
 // Resolve looks up a JWK by kid, refreshing the cache when stale or when the
 // kid is unknown. Returns ErrKeyNotFound after a force-refresh if kid still
 // unknown.
+//
+// Два повода перезапроса РАЗНЫЕ и обрабатываются разными ветками. «Снимок
+// устарел по времени» — обычный перезапрос. «Подписант назвал ключ, которого в
+// снимке нет» — ВЫНУЖДЕННЫЙ: снимок при этом может быть совершенно свежим и всё
+// равно неполным, что и происходит при ротации подписного ключа у провайдера.
+// Если бы вынужденный перезапрос проходил через предикат свежести, ротация
+// оборачивалась бы отказом всех НОВОВЫДАННЫХ токенов до истечения TTL.
 func (c *JWKSCache) Resolve(ctx context.Context, kid string) (*JWK, error) {
 	c.mu.RLock()
 	stale := c.set == nil || time.Since(c.fetchedAt) > c.ttl
+	forced := false
 	if !stale && c.set != nil {
 		k, err := c.set.FindByKid(kid)
 		c.mu.RUnlock()
 		if err == nil {
 			return k, nil
 		}
-		// fall through — force refresh on unknown kid (handles rotation)
+		// Свежий снимок, но kid в нём отсутствует → вынужденный перезапрос.
+		forced = true
 	} else {
 		c.mu.RUnlock()
 	}
 
-	if err := c.refresh(ctx); err != nil {
+	if err := c.refresh(ctx, forced); err != nil {
 		return nil, err
 	}
 	c.mu.RLock()
@@ -192,7 +221,12 @@ func (c *JWKSCache) Resolve(ctx context.Context, kid string) (*JWK, error) {
 	return c.set.FindByKid(kid)
 }
 
-func (c *JWKSCache) refresh(ctx context.Context) error {
+// refresh перезапрашивает набор ключей. forced=true означает «повод — не время,
+// а неизвестный kid»: предикат свежести такому вызывающему не применяется, но
+// вместо него действует собственный минимальный интервал
+// (forcedRefreshMinInterval), чтобы поток неизвестных kid не превратился в
+// усилитель нагрузки на источник ключей.
+func (c *JWKSCache) refresh(ctx context.Context, forced bool) error {
 	// Serialize fetches on fetchMu (single-flight) but do NOT hold the RWMutex
 	// across the network I/O below — mu is taken only for the short double-check
 	// read and the final publish. This bounds the critical section on mu to a
@@ -201,9 +235,21 @@ func (c *JWKSCache) refresh(ctx context.Context) error {
 	defer c.fetchMu.Unlock()
 	// Double-check: another goroutine may have refreshed while we waited on fetchMu.
 	c.mu.RLock()
-	fresh := c.set != nil && time.Since(c.fetchedAt) < c.ttl
+	now := time.Now()
+	fresh := c.set != nil && now.Sub(c.fetchedAt) < c.ttl
+	forcedRecently := !c.forcedAt.IsZero() && now.Sub(c.forcedAt) < forcedRefreshMinInterval
 	c.mu.RUnlock()
-	if fresh {
+	if forced {
+		// Уже сходили за набором только что (в том числе — соседняя горутина,
+		// пока мы ждали на fetchMu): её результат уже опубликован, повторное
+		// обращение ничего не добавит. Вызывающий перечитает снимок сам.
+		if forcedRecently {
+			return nil
+		}
+		c.mu.Lock()
+		c.forcedAt = now
+		c.mu.Unlock()
+	} else if fresh {
 		return nil
 	}
 	// c.url is the operator-configured JWKS endpoint (KACHO_HYDRA_JWKS_URL /

@@ -197,17 +197,37 @@ func (p *OpsProxy) Get(ctx context.Context, req *operationpb.GetOperationRequest
 // Cancel проксирует OperationService.Cancel к нужному backend по prefix id.
 // То же ownership-check что и Get — только создавший операцию может ее
 // отменить, и те же требования по metadata propagation что и для Get.
+//
+// Порядок здесь несущий: отмена — МУТАЦИЯ, и она терминальна. Решение о доступе
+// принимается ДО отправки Cancel владельцу (read → check → mutate), потому что
+// проверка, выполненная по ответу мутации, отказать уже не может: строка
+// переведена в CANCELLED, а вызывающий видит отказ на применённое действие.
+// Backend'ы держат собственный ownership-предикат в SQL WHERE (CancelOwned) и
+// остаются авторитетом; эта проверка — второй слой на краю, и она обязана быть
+// расположена так, чтобы её отказ что-то предотвращал.
 func (p *OpsProxy) Cancel(ctx context.Context, req *operationpb.CancelOperationRequest) (*operationpb.Operation, error) {
 	client, err := p.resolveBackend(req.OperationId)
 	if err != nil {
 		return nil, err
 	}
+	readCtx, readCancel := context.WithTimeout(principalmeta.OutgoingFromIncoming(ctx), backendCallTimeout)
+	defer readCancel()
+	existing, err := client.Get(readCtx, &operationpb.GetOperationRequest{OperationId: req.OperationId})
+	if err != nil {
+		return nil, err
+	}
+	if err := checkOperationOwnership(ctx, existing); err != nil {
+		return nil, err
+	}
+
 	callCtx, cancel := context.WithTimeout(principalmeta.OutgoingFromIncoming(ctx), backendCallTimeout)
 	defer cancel()
 	op, err := client.Cancel(callCtx, req)
 	if err != nil {
 		return nil, err
 	}
+	// Пост-проверка остаётся: владелец в ответе обязан быть тем же, кого мы
+	// авторизовали (страховка от подмены строки между двумя вызовами).
 	if err := checkOperationOwnership(ctx, op); err != nil {
 		return nil, err
 	}

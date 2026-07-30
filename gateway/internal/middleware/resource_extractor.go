@@ -615,8 +615,7 @@ func inspectJSONBody(r *http.Request) (map[string]json.RawMessage, bool) {
 	if r.Body == nil || r.ContentLength == 0 {
 		return nil, false
 	}
-	const inspectCap = 1 << 20
-	head, err := io.ReadAll(io.LimitReader(r.Body, inspectCap))
+	head, err := io.ReadAll(io.LimitReader(r.Body, bodyInspectCap))
 	rest := r.Body
 	r.Body = bodyReadCloser{Reader: io.MultiReader(bytes.NewReader(head), rest), Closer: rest}
 	if err != nil || len(head) == 0 {
@@ -628,6 +627,15 @@ func inspectJSONBody(r *http.Request) (map[string]json.RawMessage, bool) {
 	}
 	return doc, true
 }
+
+// bodyInspectCap — сколько байт тела буферизуется для извлечения области.
+//
+// Вынесен в область пакета не ради стиля: он связан с потолком тела запроса
+// (EdgeMaxRequestBodyBytes). Тело, которое край принимает, обязано целиком
+// поддаваться осмотру — иначе законный запрос в пределах потолка резался бы
+// посередине документа, область не извлекалась бы и он получал бы отказ по
+// правам. Соотношение закреплено пробой предпосылки.
+const bodyInspectCap = 1 << 20
 
 // bodyReadCloser pairs a spliced reader with the original body's Closer, so
 // restoring an inspected body does not drop the request's cleanup.

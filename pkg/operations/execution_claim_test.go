@@ -142,22 +142,38 @@ func TestWorker_RunsFn_WhenLive(t *testing.T) {
 	assert.GreaterOrEqual(t, repo.claimCount(), 1, "claim должен быть вызван перед fn")
 }
 
-// Transient-сбой ClaimForExecution НЕ должен ронять операцию: worker деградирует
-// к pre-r9b поведению (исполняет fn), terminalWrite-CAS всё ещё защищает от
-// двойного терминала.
-func TestWorker_ProceedsOnClaimError(t *testing.T) {
+// Подтверждение живости, которое НЕ УДАЛОСЬ, — это «не знаю», а не «можно».
+//
+// Прежняя редакция этой пробы закрепляла обратное: она утверждала, что при
+// сорванном подтверждении работа всё равно исполняется («деградация к прежнему
+// поведению»). Но именно этот исход и создаёт ресурс поверх операции, которую к
+// тому моменту мог разрешить реконсайлер: клиент видит отказ, ресурс молча
+// существует, повтор ловит «уже есть» на то, чего «нет». Ссылка на защиту
+// сравнением-и-заменой при терминальной записи здесь не помогает — она не даёт
+// ДВОЙНОГО терминала, но ресурс к этому моменту уже создан.
+//
+// Поэтому проба перевёрнута: работа не исполняется, строка остаётся
+// незавершённой и достаётся реконсайлеру. Случай «сбой одиночный, повтор
+// прошёл» покрыт отдельно (execution_claim_failclosed_test.go), чтобы отказ не
+// вырождался в «падаем от любого чиха сети».
+func TestWorker_DoesNotRunFn_OnPersistentClaimError(t *testing.T) {
 	repo := newClaimGateRepo(true)
 	repo.claimErr = errors.New("connection refused: claim transient")
 	w := fastTerminalWorker(t, operations.NewMemRecorder())
 
 	var fnCalled atomic.Bool
-	resp := mustAny(t, wrapperspb.String("degraded"))
+	resp := mustAny(t, wrapperspb.String("must-not-happen"))
 	operations.RunWithWorker(w, context.Background(), repo, "op-claim-err", func(context.Context) (*anypb.Any, error) {
 		fnCalled.Store(true)
 		return resp, nil
 	})
 
-	waitFor(t, 3*time.Second, func() bool { return repo.doneCount() >= 1 })
-	assert.True(t, fnCalled.Load(),
-		"transient claim-сбой не должен пропускать fn (деградация к pre-r9b поведению)")
+	waitFor(t, 5*time.Second, func() bool { return repo.claimCount() >= 2 })
+	// Дать worker'у время исполнить fn, если бы он её не пропустил.
+	time.Sleep(200 * time.Millisecond)
+
+	assert.False(t, fnCalled.Load(),
+		"работа не должна исполняться без подтверждённой живости операции")
+	assert.Equal(t, 0, repo.doneCount(),
+		"неподтверждённая операция не должна получать терминальную запись — её добирает реконсайлер")
 }
