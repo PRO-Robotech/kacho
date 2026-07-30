@@ -57,8 +57,7 @@ Compute-specific правила, error mapping, top-10 gotchas. Workspace-уро
   `(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"` (**lowercase**-only + digits
   + hyphens + underscore, empty allowed, start с буквы; regex
   `^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$`). ⚠️ это НЕ `NameVPC` (там uppercase
-  разрешён). Точный контракт против реального YC — probe (см.
-  [`07-known-divergences.md`](07-known-divergences.md) §2). `family` —
+  разрешён). `family` —
   `(pattern) = "|[a-z][-a-z0-9]{1,61}[a-z0-9]"`. `device_name` —
   `(pattern) = "[a-z][a-z0-9-_]{,19}"`. `hostname` — как `name`.
 - `Description` ≤256; `Labels` ≤64 пар (key regex `[a-z][-_./\@0-9a-z]*`, value
