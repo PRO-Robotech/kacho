@@ -102,6 +102,13 @@ func TestPermissionMap_ObjectAndProjectScope(t *testing.T) {
 		},
 
 		// ---- InternalVolumeService (:9091 attach-coordination) — object-scoped ----
+		//
+		// Записи ниже покрывают ТОЛЬКО том. Attach/Detach двухобъектные: запрос
+		// называет ещё и машину, у которой другой владелец, и право на неё
+		// спрашивает use-case (volume.requireInstanceControl) — у RPCEntry второго
+		// слота нет и быть не должно, это ответ на один вопрос. Не читать эти строки
+		// как «здесь весь гейт»: замок второго вопроса —
+		// volume.TestEveryStorageRPCNamingAnInstanceAsksTheModelAboutIt.
 		"/kacho.cloud.storage.v1.InternalVolumeService/Attach": {
 			req: &storagev1.AttachVolumeRequest{VolumeId: "vol_1"}, want: want{"storage_volume", "vol_1"},
 		},
