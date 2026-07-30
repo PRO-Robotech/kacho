@@ -31,6 +31,29 @@ instance_handler.go`) и как строка `"placement_group_id"` (known-set �
 поле. Значит находка — высокой достоверности, а «ноль находок» не означает
 «полей без читателя нет», означает «этим предикатом не найдено».
 
+ИМЯ НЕ УНИКАЛЬНО, И ЭТО ГЛАВНАЯ СЛАБОСТЬ МЕРКИ. Все три формы ищут ИМЯ, а одно и
+то же имя объявлено в разных сообщениях: `placement_group_id` — в пяти сообщениях
+compute, из них живы три. Поэтому найденный читатель мог принадлежать ДРУГОМУ
+сообщению, и поле объявляется читаемым, не будучи им. Так предикат пропустил
+`NetworkInterfaceSpec.nic_id` и `.index` (их имена читаются у соседних сообщений в
+том же файле) — оба найдены глазами и оба оказались настоящими дефектами. Число
+полей, закрытых неуникальным именем, печатается отдельной строкой; список — по
+флагу `--suspect`. Развязать это по-настоящему может только типовой анализ.
+
+ОТСУТСТВИЕ ЧИТАТЕЛЯ — НЕ ВСЕГДА НАХОДКА, И ДВЕ ПРИЧИНЫ ВЫЧИСЛЯЮТСЯ ПО ДЕРЕВУ, а не
+предполагаются (иначе перепись выдаётся за вердикт):
+
+  * `RPC-НЕ-РЕАЛИЗОВАН` — у типа запроса нет обработчика, RPC отвечает
+    `Unimplemented`. Внутри такого запроса поля не «приняты и выброшены» — они не
+    приняты вовсе. Сообщение извиняется только если его НЕ достаёт ни один
+    реализованный RPC (см. `excused_sets`).
+  * `ПРЕДОК-ОТВЕРГАЕТСЯ` / `ОТВЕРГАЕТСЯ-ПО-ИМЕНИ` — сервис отвергает поле явно, с
+    именем поля, синхронно (это исход №2 правила). Всё, что достижимо ТОЛЬКО через
+    отвергнутое поле, недостижимо по построению.
+
+Остаётся «полей БЕЗ читателя» — вот это вердикт, и он требует одного из трёх
+исходов правила по каждому полю.
+
 ИМЕНА ЧИТАЮТСЯ ИЗ СГЕНЕРИРОВАННОГО КОДА, А НЕ УГАДЫВАЮТСЯ. Go-имя поля берётся
 из `pkg/api/**/*.pb.go` (`func (x *Msg) Get<Name>()`), а не выводится
 самодельной камелизацией: правила protoc-gen-go для цифр и подчёркиваний
@@ -186,14 +209,144 @@ def prod_sources(domain):
     return files
 
 
+
+RE_HANDLER = None  # построится под конкретный пакет в has_handler()
+
+
+def has_handler(request_msg, sources):
+    """Есть ли в прод-коде сигнатура обработчика, ПРИНИМАЮЩАЯ этот тип запроса?
+
+    Форма — `context.Context, req *<pkg>v1.<Request>)`: именно так объявлен каждый
+    handler/use-case-вход этого дерева. Тип-ассершен в карте прав
+    (`req.(*vpcv1.XRequest)`) сюда НЕ попадает намеренно: authz резолвит область по
+    чужому полю и о чтении остальных полей ничего не говорит.
+
+    ЗАЧЕМ. RPC, у которого обработчика нет, отвечает `Unimplemented` — его запрос не
+    читает НИКТО и не может: поля внутри такого запроса не «приняты и выброшены»,
+    они не приняты вовсе. Считать их находками того же класса — врать в обе стороны:
+    завышать число и прятать за ним настоящие.
+    """
+    needle = f"context.Context, req *"
+    tail = f".{request_msg})"
+    for _p, text in sources:
+        i = 0
+        while True:
+            i = text.find(needle, i)
+            if i < 0:
+                break
+            seg = text[i:i + len(needle) + 80]
+            if tail in seg:
+                return True
+            i += len(needle)
+    return False
+
+
+RE_REFUSED = re.compile(r'(?:AddFieldViolation|add)\(\s*"([a-z0-9_]+)"')
+
+
+def refused_fields(sources):
+    """Имена полей, которые сервис ОТВЕРГАЕТ ЯВНО (второй законный исход).
+
+    Форма — обращение к билдеру нарушений с именем поля строкой
+    (`AddFieldViolation("serial_port_settings", …)` и его локальная обёртка
+    `add("filesystem_specs", …)`). compute уже пользуется ровно этим приёмом.
+
+    ЗАЧЕМ. Отвергнутое по имени поле НЕ обязано иметь читателя: вызывающий получает
+    синхронный отказ с именем поля, то есть ровно то, что правило требует как исход
+    №2. И всё, что достижимо ТОЛЬКО через такое поле, недостижимо по построению —
+    писать читателя для внутренностей отвергнутого сообщения незачем.
+
+    Предпосылка (её надо пересверять): распознаётся форма, а не смысл. Если сервис
+    начнёт отвергать поля иначе, этот список опустеет, и находки вернутся — что
+    правильнее молчаливого пропуска.
+    """
+    out = set()
+    for _p, text in sources:
+        for m in RE_REFUSED.finditer(text):
+            out.add(m.group(1))
+    return out
+
+
+def excused_sets(messages, roots_impl, roots_unimpl, refused):
+    """Кого нельзя мерить читателем: (по нереализованному RPC, по отвергнутому предку).
+
+    Возвращает два множества имён сообщений.
+    """
+    def reach_from(rootset):
+        seen, queue = set(), list(rootset)
+        while queue:
+            name = queue.pop()
+            if name in seen or name not in messages:
+                continue
+            seen.add(name)
+            for _fn, typ, _rep in messages[name]:
+                if typ and typ not in SCALARS and typ in messages:
+                    queue.append(typ)
+        return seen
+
+    from_impl = reach_from(roots_impl)
+    from_unimpl = reach_from(roots_unimpl)
+    # Сообщение извиняется нереализованностью только если его НЕ достаёт ни один
+    # реализованный RPC: иначе оно живое, и находка в нём настоящая.
+    by_unimpl = {m for m in from_unimpl if m not in from_impl}
+
+    # Входящие рёбра: parent -> (field, child)
+    incoming = {}
+    for parent, fields in messages.items():
+        for fname, typ, _rep in fields:
+            if typ and typ in messages:
+                incoming.setdefault(typ, []).append((parent, fname))
+
+    all_roots = set(roots_impl) | set(roots_unimpl)
+    by_refusal = set()
+    changed = True
+    while changed:
+        changed = False
+        for msg in messages:
+            if msg in by_refusal or msg in all_roots:
+                continue
+            edges = incoming.get(msg, [])
+            if not edges:
+                continue
+            if all(fname in refused or parent in by_refusal for parent, fname in edges):
+                by_refusal.add(msg)
+                changed = True
+    return by_unimpl, by_refusal
+
+
+def homonym_names(messages):
+    """Имена полей, объявленные более чем в одном сообщении домена.
+
+    ЭТО ОБЪЯВЛЕНИЕ СЛАБОСТИ ПРЕДИКАТА, а не украшение. Читатель ищется по ИМЕНИ
+    (геттер / поле структуры / строка), а имя не уникально: `placement_group_id`
+    объявлен в пяти сообщениях compute, из них живы три. Значит найденный читатель
+    мог принадлежать ДРУГОМУ сообщению, и поле объявляется читаемым, не будучи им, —
+    ложноотрицательный результат. Такие поля печатаются числом и списком: их надо
+    смотреть глазами, а не считать закрытыми.
+    """
+    seen, dup = {}, set()
+    for msg, fields in messages.items():
+        for fname, _typ, _rep in fields:
+            if fname in seen and seen[fname] != msg:
+                dup.add(fname)
+            seen[fname] = msg
+    return dup
+
+
 def main():
-    domains = sys.argv[1:] or [os.path.basename(os.path.dirname(d))
-                               for d in sorted(glob.glob(os.path.join(PROTO_ROOT, "*", "v1")))]
+    domains = [a for a in sys.argv[1:] if not a.startswith("-")] or [
+        os.path.basename(os.path.dirname(d))
+        for d in sorted(glob.glob(os.path.join(PROTO_ROOT, "*", "v1")))]
     protos_read = svc_public = rpc_public = 0
     msgs_expanded = fields_seen = 0
     without_gen = []
     premise_failures = []
     findings = []
+    buckets = {"RPC-НЕ-РЕАЛИЗОВАН": [], "ПРЕДОК-ОТВЕРГАЕТСЯ": [],
+               "ОТВЕРГАЕТСЯ-ПО-ИМЕНИ": []}
+    suspect = []
+    unimpl_rpcs = {}
+    refused_by_domain = {}
 
     for domain in domains:
         proto_paths = sorted(glob.glob(os.path.join(PROTO_ROOT, domain, "v1", "*.proto")))
@@ -237,6 +390,16 @@ def main():
             # непрочитанном.
             premise_failures.append(domain)
             continue
+        # Две причины отсутствия читателя, которые находкой НЕ являются, —
+        # вычисляются по дереву, а не предполагаются (см. godoc обеих функций).
+        roots_impl = [r for r in set(roots) if has_handler(r, sources)]
+        roots_unimpl = [r for r in set(roots) if r not in roots_impl]
+        refused = refused_fields(sources)
+        by_unimpl, by_refusal = excused_sets(messages, roots_impl, roots_unimpl, refused)
+        homonyms = homonym_names(messages)
+        unimpl_rpcs[domain] = sorted(roots_unimpl)
+        refused_by_domain[domain] = sorted(refused)
+
         for name in sorted(reach):
             gos = getters.get(name)
             if gos is None:
@@ -251,7 +414,20 @@ def main():
                     findings.append((domain, name, fname, "НЕТ ГЕТТЕРА В GEN"))
                     continue
                 fields_seen += 1
-                if not _has_reader(go, fname, sources):
+                if _has_reader(go, fname, sources):
+                    # Читатель найден ПО ИМЕНИ. Если имя объявлено не в одном
+                    # сообщении домена, он мог принадлежать другому — поле идёт в
+                    # список подозрительных, а не в «закрыто».
+                    if fname in homonyms:
+                        suspect.append((domain, name, fname, go))
+                    continue
+                if name in by_unimpl:
+                    buckets["RPC-НЕ-РЕАЛИЗОВАН"].append((domain, name, fname, go))
+                elif name in by_refusal:
+                    buckets["ПРЕДОК-ОТВЕРГАЕТСЯ"].append((domain, name, fname, go))
+                elif fname in refused:
+                    buckets["ОТВЕРГАЕТСЯ-ПО-ИМЕНИ"].append((domain, name, fname, go))
+                else:
                     findings.append((domain, name, fname, go))
 
     if protos_read == 0:
@@ -272,6 +448,28 @@ def main():
         print(f"ПРЕДПОСЫЛКА НЕ ВЫПОЛНЕНА: у домена {d!r} не найдено ни одного файла "
               f"прод-кода в {prod_trees(d)} — домен НЕ измерен (сопоставь его каталог "
               f"сервиса в DOMAIN_SERVICE_DIR)")
+    for label in ("RPC-НЕ-РЕАЛИЗОВАН", "ПРЕДОК-ОТВЕРГАЕТСЯ", "ОТВЕРГАЕТСЯ-ПО-ИМЕНИ"):
+        rows = buckets[label]
+        print(f"НЕ находка ({label}): {len(rows)}")
+        for domain, msg, fname, go in rows:
+            print(f"    {domain}: {msg}.{fname}  (Go: {go})")
+    for domain, rpcs in sorted(unimpl_rpcs.items()):
+        if rpcs:
+            print(f"    у домена {domain} без обработчика: {', '.join(rpcs)}")
+    # ЧИСЛО, А НЕ СПИСОК — И ЭТО ОСОЗНАННО. Список из 766 строк при 849 осмотренных
+    # полях не указывает ни на что: имена полей в этом дереве почти всегда не
+    # уникальны (`project_id`, `name`, `labels`…), поэтому «подозрителен» почти каждый.
+    # Перечисление, помечающее девять десятых, не помечает ничего — тот же класс, что
+    # ловится в кейсах. Поэтому печатается ЧИСЛО (оно и есть утверждение о слабости
+    # мерки) и даётся флаг, чтобы список получить прицельно.
+    print(f"закрыто ИМЕНЕМ-ОМОНИМОМ (читатель мог принадлежать другому сообщению): "
+          f"{len(suspect)} из {fields_seen}")
+    if "--suspect" in sys.argv:
+        for domain, msg, fname, go in suspect:
+            print(f"    {domain}: {msg}.{fname}  (Go: {go})")
+    else:
+        print("    (список — с флагом --suspect; ложноотрицательные из него ищутся "
+              "глазами: так найдены NetworkInterfaceSpec.nic_id и .index)")
     print(f"полей БЕЗ читателя в прод-коде: {len(findings)}")
     for domain, msg, fname, go in findings:
         print(f"  {domain}: {msg}.{fname}  (Go: {go})")
