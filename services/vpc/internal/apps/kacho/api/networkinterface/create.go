@@ -28,10 +28,6 @@ import (
 // niReferrerType — ReferrerType в address_references для адресов, привязанных к NIC.
 const niReferrerType = "network_interface"
 
-// niUsedByReferrerType — тип референта в NIC.used_by, когда NIC приаттачен к
-// compute-инстансу (зеркало referrer type у Address.used_by).
-const niUsedByReferrerType = "compute_instance"
-
 // niMacRetryAttempts — число попыток сгенерировать уникальный MAC при
 // cloud-wide UNIQUE-collision (~1e-3 на 1M NIC при 40 битах энтропии — см.
 // `internal/apps/kacho/shared/macutil`).
@@ -39,18 +35,19 @@ const niMacRetryAttempts = 3
 
 // CreateInput — параметры для CreateNetworkInterfaceUseCase.Execute.
 //
-// Композиция `domain.NetworkInterface` + request-only поля (`InstanceID` /
-// `Index` для immediate-attach к Compute.Instance): InstanceID/Index — атрибуты
-// запроса (immediate-attach mode), а не самого ресурса, поэтому это не тривиальная
-// обертка `{NetworkInterface: …}`.
+// Композиция `domain.NetworkInterface` + два поля запроса, которые этот путь
+// принимать НЕ вправе (`InstanceID` / `Index`): они остаются в структуре, чтобы
+// отказ был явным и назвал поле — принять и проигнорировать нельзя, а молча
+// исполнить привязку этот путь не может (инвариант привязки живёт в охраняемом
+// пути, см. Execute).
 //
 // Поле `n.ID` на входе пустое — назначаем внутри use-case'а через
 // `ids.NewID(ids.PrefixNetworkInterface)` (NIC имеет собственный prefix `nic`).
 type CreateInput struct {
 	NetworkInterface domain.NetworkInterface
-	// InstanceID — опц. сразу приаттачить NIC к инстансу после создания.
+	// InstanceID — привязка к машине; на этом пути ОТВЕРГАЕТСЯ явно.
 	InstanceID string
-	// Index — информационный (на какой слот инстанса вешать NIC); не персистим.
+	// Index — слот привязки; без привязки смысла не имеет, ОТВЕРГАЕТСЯ явно.
 	Index string
 }
 
