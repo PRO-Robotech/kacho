@@ -9,7 +9,7 @@
 // Вердикт — из ИСПОЛНЕНИЯ, не из наличия слова в тексте: grep находит слово и в
 // комментарии, объясняющем эту же защиту.
 //
-// Два предиката:
+// Три предиката:
 //
 //   A (взаимоисключающие исходы) — кейс, у которого шаг молча принимает И успех, И
 //       отказ, и НИ ОДНО утверждение кейса не падает в «мире успеха». Такой кейс не
@@ -21,6 +21,12 @@
 //       субъектом. Тогда вся суита проверяет каскад прав администратора, а не то, что
 //       заявлено, и отчитывается зелёным. Отсутствие фикстуры обязано быть отказом, а
 //       не тихой подменой.                                            → ОТКАЗ
+//
+//   C (опрос ведёт не тот субъект) — шаг выполнен под явным субъектом, а следующий
+//       за ним опрос операции оставлен на умолчании коллекции. Чтение операции
+//       owner-scoped, поэтому чужой опрос получает 404, неотличимый от «нет такой»:
+//       исход мутации остаётся НЕизвестен, а кейс выглядит продуктовым дефектом.
+//                                                                     → ОТКАЗ
 //
 // Плюс перепись осмотренного: «ноль находок» обязано быть отличимо от «ноль
 // прочитанного». И проверка собственной предпосылки: инъекция дефекта ловится,
@@ -353,7 +359,77 @@ function prove() {
   ] } }] };
   if (checkCollectionB(legitB, 'injected')) problems.push('предикат B ошибочно поймал законную форму (отказ вместо подмены)');
 
+  // --- предикат C: инъекция в обе стороны ---
+  const stepWith = (name, subj) => ({
+    name,
+    request: { method: 'GET', url: { raw: 'x' } },
+    event: subj ? [{ listen: 'prerequest', script: { exec: [
+      `// AZD per-step: bearer from env '${subj}'`,
+      `const __t = pm.environment.get('${subj}') || '';`,
+    ] } }] : [],
+  });
+  // ДЕФЕКТ: мутация под явным субъектом, опрос — на умолчании.
+  if (checkCaseC([stepWith('cr-as-sa', 'jwtServiceAccountEditor'), stepWith('poll-op-1', null)]).length !== 1) {
+    problems.push('предикат C не поймал опрос, оставленный на умолчании после явного субъекта');
+  }
+  // ЗАКОННО: тот же субъект у обоих — молчит.
+  if (checkCaseC([stepWith('cr-as-sa', 'jwtServiceAccountEditor'),
+    stepWith('poll-op-1', 'jwtServiceAccountEditor')]).length !== 0) {
+    problems.push('предикат C покраснел на согласованном субъекте');
+  }
+  // ЗАКОННО: шаг без явного субъекта — заявки нет, сверять нечего.
+  if (checkCaseC([stepWith('cr', null), stepWith('poll-op-1', null)]).length !== 0) {
+    problems.push('предикат C потребовал субъекта там, где его никто не заявлял');
+  }
+  // ЗАКОННО: за шагом идёт не опрос — правило о нём ничего не говорит.
+  if (checkCaseC([stepWith('cr-as-sa', 'jwtServiceAccountEditor'), stepWith('get-after', null)]).length !== 0) {
+    problems.push('предикат C сработал на шаге, который операцию не опрашивает');
+  }
+
   return problems;
+}
+
+// --- предикат C: опрос операции ведётся НЕ ТЕМ субъектом ---------------------
+//
+// Чтение операции owner-scoped по построению: предикат владельца — пара
+// (тип принципала, идентификатор) создателя прямо в SQL, а посторонний получает
+// тот же 404 без утечки, что и на несуществующий идентификатор. Поэтому шаг,
+// выполненный под явным субъектом, и следующий за ним опрос, оставленный на
+// умолчании коллекции, спрашивают об операции РАЗНЫХ субъектов — и честный отказ
+// читается как «операция пропала».
+//
+// Измерено 2026-07-30: служебная учётка создала балансировщик (200, операция
+// заведена), а два опроса сразу за этим вернули 404. Кейс выглядел продуктовым
+// дефектом и был потерянной личностью. Форма встречалась 27 раз в двух
+// коллекциях; в пяти из них субъекты действительно различались.
+const PER_STEP_AUTH = /per-step: (?:anonymous|bearer from env '([^']+)')/;
+
+function stepSubject(step) {
+  for (const ev of step.event || []) {
+    if (ev.listen !== 'prerequest') continue;
+    const src = ((ev.script || {}).exec || []).join('\n');
+    const m = PER_STEP_AUTH.exec(src);
+    if (m) return m[1] || 'anonymous';
+  }
+  return null;   // наследует умолчание коллекции
+}
+
+// Возвращает список расхождений внутри одного кейса.
+function checkCaseC(steps) {
+  const out = [];
+  for (let i = 0; i < steps.length - 1; i += 1) {
+    const subj = stepSubject(steps[i]);
+    if (!subj) continue;                                  // умолчание — не заявка
+    const next = steps[i + 1];
+    if (!/^poll-op/.test(next.name || '')) continue;      // опрос идёт СРАЗУ за шагом
+    const pollSubj = stepSubject(next);
+    if (pollSubj !== subj) {
+      out.push(`шаг ${steps[i].name} выполнен субъектом ${subj}, а опрос ${next.name} — `
+        + `${pollSubj || 'умолчанием коллекции'}: операция читается по владельцу, `
+        + 'и чужой опрос получит 404, неотличимый от «нет такой»');
+    }
+  }
+  return out;
 }
 
 const proveProblems = prove();
@@ -385,8 +461,10 @@ if (collections.length === 0) {
 
 const problemsA = [];
 const problemsB = [];
+const problemsC = [];
 let nCases = 0;
 let nSteps = 0;
+let nAuthedSteps = 0;   // перепись предмета предиката C: «ноль находок» != «ноль осмотренного»
 
 for (const file of collections) {
   const label = file.replace('.postman_collection.json', '');
@@ -400,6 +478,8 @@ for (const file of collections) {
     nSteps += steps.length;
     const a = checkCaseA(caseItem, steps);
     if (a) problemsA.push(`${trail.join(' :: ')}: ${a}`);
+    for (const st of steps) if (stepSubject(st)) nAuthedSteps += 1;
+    for (const c of checkCaseC(steps)) problemsC.push(`${trail.join(' :: ')}: ${c}`);
   }
 }
 
@@ -407,8 +487,10 @@ console.log(`selftest-assertions: коллекций ${collections.length}, ке
 console.log(`  предикат A (принимает взаимоисключающие исходы): ${problemsA.length}`);
 console.log(`  предикат B (умолчание подменяет субъекта):        ${problemsB.length}`);
 console.log(`  заявленная терпимость уборки (исключено):        ${declaredTeardown.length}`);
+console.log(`  предикат C (опрос ведёт не тот субъект):          ${problemsC.length}`
+  + `   [шагов с явным субъектом осмотрено: ${nAuthedSteps}]`);
 
-const fatal = problemsA.concat(problemsB);
+const fatal = problemsA.concat(problemsB).concat(problemsC);
 if (fatal.length > 0) {
   console.error(`SELFTEST FAIL: ${fatal.length} находка(ок):`);
   for (const p of fatal) console.error('  - ' + p);
@@ -418,4 +500,12 @@ if (nCases === 0) {
   console.error('SELFTEST FAIL: ни одного кейса не осмотрено — гейт ничего не проверил');
   process.exit(1);
 }
-console.log(`SELFTEST: PASS — ${nCases} кейс(ов) различают успех и отказ; умолчание субъекта не подменяется`);
+if (nAuthedSteps === 0) {
+  // Предпосылка предиката C: в дереве ЕСТЬ шаги с явным субъектом. Их отсутствие —
+  // не чистота, а сломанный признак (форма записи субъекта изменилась) либо
+  // исчезнувший предмет.
+  console.error('SELFTEST FAIL: ни одного шага с явным субъектом — предикату C нечего проверять');
+  process.exit(1);
+}
+console.log(`SELFTEST: PASS — ${nCases} кейс(ов) различают успех и отказ; умолчание субъекта не подменяется; `
+  + `${nAuthedSteps} шаг(ов) с явным субъектом опрашиваются им же`);

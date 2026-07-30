@@ -1430,21 +1430,32 @@ CASES.append(Case(
     classes=["STATE", "VAL"], priority="P1",
     steps=[
         *_setup_lb("mask-empty"),
-        # THE TITLE WAS WRONG AND THE ASSERTION HID IT. An empty mask is not an error: it is
-        # the full-object PATCH of the update_mask discipline (api-conventions.md, "mask
-        # пустой → full-object PATCH"), and loadbalancer/update.go implements exactly that —
-        # it iterates the mask, an empty one rejects nothing, and labelsInMask /
-        # securityGroupsInMask read empty as "touches everything". Asserting
-        # `oneOf([403, 200, 400])` agreed with the contract and with its opposite at once,
-        # so nobody noticed the case was named for behaviour the product does not have.
+        # AN EMPTY MASK IS A FULL-OBJECT PATCH — AND THE BODY MUST BE A FULL OBJECT.
         #
-        # Still wrapped for read-your-writes: the first mutating access to the caller's own
-        # fresh LB can be denied while the editor tuple materializes. That is a timing
-        # window, not an outcome — the outcome asserted is acceptance, and the read below
-        # proves the field actually landed.
+        # api-conventions.md: "mask пустой → full-object PATCH: применяются все
+        # mutable-поля". Every service reads it the same way — nlb loadbalancer/listener,
+        # compute Instance (instanceFullPatchFields) — the mask-less body REPLACES the
+        # mutable set rather than merging into it. So a body carrying only `description`
+        # also sets `name` to the empty string, and the merged object fails its own
+        # validation: 400 `name is required`.
+        #
+        # Earlier this case sent exactly that body and asserted `oneOf([403, 200, 400])`,
+        # which agreed with the contract and with its opposite at once. Tightening it to
+        # 200 turned it red on the production-posture run of 2026-07-30 — and the product
+        # was right: what was wrong was the body, which was not a full object.
+        #
+        # Both halves are asserted now, because it is the PAIR that distinguishes
+        # full-object PATCH from merge-PATCH, and nothing pinned that before:
+        #   (1) a full body without a mask applies EVERY mutable field it carries;
+        #   (2) a partial body without a mask is refused, naming the field it dropped.
+        #
+        # retry_until_authorized wraps only (1): the first mutating access to the
+        # caller's own fresh LB can be denied while the editor tuple materializes. That
+        # is a timing window, not an outcome.
         retry_until_authorized(
             Step(name="upd-empty", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
-                 body={"description": "empty-mask patch {{runId}}"},
+                 body={"name": "setup-mask-empty-{{runId}}",
+                       "description": "empty-mask patch {{runId}}"},
                  test_script=[
                      "pm.test('empty mask is a full-object PATCH, not an error', () => "
                      "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
@@ -1456,7 +1467,25 @@ CASES.append(Case(
              test_script=[*assert_status(200),
                           "pm.test('the mutable field from the body was applied', () => "
                           "  pm.expect(pm.response.json().description)"
-                          "    .to.eql(pm.variables.replaceIn('empty-mask patch {{runId}}')));"]),
+                          "    .to.eql(pm.variables.replaceIn('empty-mask patch {{runId}}')));",
+                          "pm.test('the name carried in the same body survived it', () => "
+                          "  pm.expect(pm.response.json().name)"
+                          "    .to.eql(pm.variables.replaceIn('setup-mask-empty-{{runId}}')));"]),
+        # (2) The half that makes the first one mean something: without a mask, a body
+        # that omits a required mutable field is REFUSED and says which one. If this ever
+        # answers 200, the product silently became merge-PATCH and (1) would not notice.
+        Step(name="upd-empty-partial-body", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
+             body={"description": "partial body {{runId}}"},
+             test_script=[
+                 "pm.environment.unset('opId');",
+                 *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                 "pm.test('the refusal names the field the body dropped', () => {",
+                 "  const j = pm.response.json();",
+                 "  const fields = ((j.details || []).flatMap(d => d.fieldViolations || []))"
+                 "    .map(v => v.field);",
+                 "  pm.expect(fields, pm.response.text()).to.include('name');",
+                 "});",
+             ]),
         *_cleanup_lb(),
     ],
 ))

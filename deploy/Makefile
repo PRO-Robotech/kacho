@@ -6,6 +6,7 @@
         loadtest-address-allocate loadtest-address-allocate-clean \
         reload-svc-iam psql-iam logs-iam fga-bootstrap build-services openfga-model-json \
         guard-kind-context guard-destructive gate-self-test waiter-discipline \
+        report-reader-discipline \
         reload-svc-nlb psql-nlb logs-nlb seed-nlb e2e-newman stand-provenance
 
 CLUSTER_NAME := kacho
@@ -596,6 +597,21 @@ gate-self-test:
 # «ноль находок» обязано отличаться от «ноль прочитанного».
 waiter-discipline:
 	@bash scripts/assert-waiters-name-their-target.sh
+
+# report-reader-discipline — вердикт о прогоне берётся из СВОДКИ отчёта, а не из
+# массива исполнений.
+#
+# Массив расходится со сводкой в обе стороны, и это измерено на боевом прогоне
+# 2026-07-30: шаг, снявший собственный запрос из предзапросного скрипта, записи
+# в массиве не получает вовсе (его утверждения при этом в сводке есть), а шаг,
+# повторённый самопетлёй, получает несколько записей с ОДНИМ И ТЕМ ЖЕ набором
+# утверждений. Инструмент, считающий по массиву, тихо занижает — а занижение
+# выглядит как улучшение и потому само себя не выдаёт.
+#
+# Перепись осмотренного печатается, и отсутствие читателей ВООБЩЕ — находка, а
+# не чистота: у запрета должен остаться предмет.
+report-reader-discipline:
+	@python3 scripts/assert-report-readers-use-the-summary.py
 
 # Локально: `make helm-manifest-test`; одну проверку — `bash tests/helm/<имя>.sh`.
 #

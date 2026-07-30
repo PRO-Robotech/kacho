@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
@@ -193,6 +194,41 @@ func TestUpdate_EmptyMask_FullPatch(t *testing.T) {
 	final := awaitOpDone(t, opsRepo, op.ID)
 	require.Nil(t, final.Error)
 	require.Equal(t, domain.LbName("renamed"), repo.lbs[lbID].Name)
+}
+
+// The half that gives the one above its meaning: an empty mask REPLACES the
+// mutable set, it does not merge into it. A body that omits `name` therefore
+// clears it, and the merged object is refused — naming the field it dropped.
+//
+// Nothing pinned this, and the e2e case that touched it sent a partial body while
+// asserting acceptance, so it read as a product defect on the production-posture
+// run of 2026-07-30. Both halves are locked here because only the pair tells
+// full-object PATCH apart from merge-PATCH: if the product ever started merging,
+// TestUpdate_EmptyMask_FullPatch would stay green on its own.
+func TestUpdate_EmptyMask_PartialBodyIsRefused(t *testing.T) {
+	t.Parallel()
+	repo := newFakeRepo()
+	lbID := seedLB(t, repo, "prj-a", "edge")
+	uc := NewUpdateLoadBalancerUseCase(repo, newFakeOpsRepo(), &fakeZoneClient{}, nil)
+	_, err := uc.Execute(context.Background(), &lbv1.UpdateNetworkLoadBalancerRequest{
+		NetworkLoadBalancerId: lbID,
+		Description:           "only the description",
+	})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	// The message itself is the fixed opaque "invalid argument" (no leak); the field
+	// travels in google.rpc.BadRequest, which is what the REST caller reads.
+	var fields []string
+	for _, d := range status.Convert(err).Details() {
+		if br, ok := d.(*errdetails.BadRequest); ok {
+			for _, v := range br.GetFieldViolations() {
+				fields = append(fields, v.GetField())
+			}
+		}
+	}
+	require.Contains(t, fields, "name",
+		"the refusal must name the field the mask-less body dropped")
+	require.Equal(t, domain.LbName("edge"), repo.lbs[lbID].Name,
+		"a refused Update must not have touched the row")
 }
 
 func TestUpdate_NotFound(t *testing.T) {

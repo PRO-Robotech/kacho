@@ -622,6 +622,24 @@ func (w *targetGroupWriter) DeleteTargetsDrained(ctx context.Context, tgID strin
 	return int(tag.RowsAffected()), nil
 }
 
+// DeleteTargetsDraining — все дренирующиеся строки группы, без учёта задержки.
+// Вызывается только из TargetGroup.Delete, в той же writer-TX, что и DELETE
+// самой группы: цель, помеченная DRAINING, уже снята вызывающим, а группа,
+// которую сносят, трафика не принимает. `status='ACTIVE'` не трогаем — FK
+// RESTRICT обязан поймать конкурентный AddTargets.
+func (w *targetGroupWriter) DeleteTargetsDraining(ctx context.Context, tgID string) (int, error) {
+	tag, err := w.tx.Exec(ctx,
+		`DELETE FROM kacho_nlb.targets
+          WHERE target_group_id = $1
+            AND status = 'DRAINING'`,
+		tgID,
+	)
+	if err != nil {
+		return 0, mapPgErr(err, "Target", "")
+	}
+	return int(tag.RowsAffected()), nil
+}
+
 func (w *targetGroupWriter) Delete(ctx context.Context, id string) error {
 	tag, err := w.tx.Exec(ctx, `DELETE FROM kacho_nlb.target_groups WHERE id = $1`, id)
 	if err != nil {

@@ -72,8 +72,10 @@ DECLARED="
 .github/scripts/check-volume-mounts.py
 .github/scripts/newman-live.py
 deploy/scripts/assert-admin-hop-transport.sh
+deploy/scripts/assert-alt-fixtures-are-another.py
 deploy/scripts/assert-ban6-external-isolation.py
 deploy/scripts/assert-outbox-autovacuum.sh
+deploy/scripts/assert-report-readers-use-the-summary.py
 deploy/scripts/assert-waiters-name-their-target.sh
 deploy/scripts/remeasure-provider-listener-tls.sh
 deploy/tests/helm/admin-hop-address-census-test.sh
@@ -88,6 +90,7 @@ deploy/tests/helm/networkpolicy-egress-test.sh
 deploy/tests/helm/outbox-autovacuum-naptime-test.sh
 deploy/tests/helm/prerequisite-secrets-test.sh
 deploy/tests/helm/trusted-forwarder-profiles-test.sh
+tests/authz-fixtures/prodseed_all.py
 "
 
 # Три законные формы разбора аргумента --self-test. Все три — КОД: bash-тест,

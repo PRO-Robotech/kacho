@@ -483,6 +483,7 @@ def poll_operation_until_done(
     retry_when: str = "not found",
     retry_budget: int = 8,
     retry_interval_ms: int = 700,
+    auth: Optional[str] = None,
 ) -> Step:
     """Reusable poll step with up-to-30 setNextRequest retries spaced ~500ms apart;
     guards on empty opId. Budget*interval ≈ 15s covers the async-op tail instead of
@@ -642,6 +643,16 @@ def poll_operation_until_done(
         method="GET",
         path="/operations/{{opId}}",
         test_script=script,
+        # THE POLL MUST BE THE SAME PRINCIPAL AS THE MUTATION IT POLLS.
+        # Reading an Operation is owner-scoped by design: the predicate is the
+        # creator's (principal_type, principal_id) in SQL, and a stranger gets the
+        # same no-leak 404 as for an id that does not exist. So a step performed
+        # under `auth="<subject>"` followed by a poll left on the collection default
+        # asks a DIFFERENT subject about that operation, and the honest 404 reads as
+        # "the operation vanished". Measured 2026-07-30: a service account created a
+        # load balancer (200, Operation minted) and the two polls that followed came
+        # back 404 — the case looked like a product defect and was a mislaid identity.
+        auth=auth,
     )
 
 

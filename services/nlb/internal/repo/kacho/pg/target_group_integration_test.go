@@ -295,6 +295,94 @@ func TestTG_DrainLifecycle(t *testing.T) {
 	assert.Empty(t, targetsAfter)
 }
 
+// TestTG_DeleteTargetsDraining_ClearsOnlyDrained — снятие группы не должно ждать
+// задержки дерегистрации, и не должно уносить живые строки.
+//
+// Строка targets ссылается на группу внешним ключом с RESTRICT, поэтому удаление
+// группы, у которой остались дренирующиеся строки, упиралось в ключ — а
+// предпроверка перед этим уже отвечала «сначала снимите цели», то есть предписывала
+// сделанное. Метод снимает ровно дренирующиеся строки в той же транзакции, что и
+// саму группу; ACTIVE остаётся, чтобы внешний ключ поймал конкурентную вставку.
+func TestTG_DeleteTargetsDraining_ClearsOnlyDrained(t *testing.T) {
+	tc := newTestCtx(t)
+	repo := tc.Repo
+	ctx := context.Background()
+
+	tg := newTG("prj01TGDD1234567890ll", "drain-del-tg")
+	drained := domain.Target{
+		InstanceID: option.MustNewOption(domain.InstanceID("epd0DD1")),
+		Weight:     100,
+	}
+	live := domain.Target{
+		InstanceID: option.MustNewOption(domain.InstanceID("epd0DD2")),
+		Weight:     100,
+	}
+	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
+		_, err := w.TargetGroups().Insert(ctx, tg)
+		require.NoError(t, err)
+		n, err := w.TargetGroups().AddTargets(ctx, string(tg.ID), []domain.Target{drained, live})
+		require.NoError(t, err)
+		assert.Equal(t, 2, n)
+	})
+
+	rd, _ := repo.Reader(ctx)
+	all, err := rd.TargetGroups().ListTargets(ctx, string(tg.ID))
+	require.NoError(t, err)
+	_ = rd.Close()
+	require.Len(t, all, 2)
+	var drainedID, liveID string
+	for _, tr := range all {
+		if v, ok := tr.InstanceID.Maybe(); ok && string(v) == "epd0DD1" {
+			drainedID = tr.ID
+		} else {
+			liveID = tr.ID
+		}
+	}
+	require.NotEmpty(t, drainedID)
+	require.NotEmpty(t, liveID)
+
+	// Одна цель снята вызывающим (фаза A), вторая живая.
+	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
+		n, err := w.TargetGroups().RemoveTargetsMarkDraining(ctx, string(tg.ID), []string{drainedID})
+		require.NoError(t, err)
+		assert.Equal(t, 1, n)
+	})
+
+	// Задержку НЕ переводим в прошлое: смысл метода — не ждать её вовсе.
+	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
+		n, err := w.TargetGroups().DeleteTargetsDraining(ctx, string(tg.ID))
+		require.NoError(t, err)
+		assert.Equal(t, 1, n, "снимается ровно дренирующаяся строка")
+	})
+
+	rd2, _ := repo.Reader(ctx)
+	left, err := rd2.TargetGroups().ListTargets(ctx, string(tg.ID))
+	require.NoError(t, err)
+	_ = rd2.Close()
+	require.Len(t, left, 1, "живая строка обязана уцелеть")
+	assert.Equal(t, liveID, left[0].ID)
+
+	// И она обязана держать группу: внешний ключ остаётся авторитетным backstop'ом.
+	w, err := repo.Writer(ctx)
+	require.NoError(t, err)
+	err = w.TargetGroups().Delete(ctx, string(tg.ID))
+	require.Error(t, err, "группа с живой целью не удаляется")
+	w.Abort()
+
+	// Снимаем живую и повторяем — теперь группа уходит одной транзакцией.
+	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
+		n, err := w.TargetGroups().RemoveTargetsMarkDraining(ctx, string(tg.ID), []string{liveID})
+		require.NoError(t, err)
+		assert.Equal(t, 1, n)
+	})
+	commitWriter(t, repo, func(w kacho.RepositoryWriter) {
+		n, err := w.TargetGroups().DeleteTargetsDraining(ctx, string(tg.ID))
+		require.NoError(t, err)
+		assert.Equal(t, 1, n)
+		require.NoError(t, w.TargetGroups().Delete(ctx, string(tg.ID)))
+	})
+}
+
 // TestTG_AddTargets_ReactivatesDrainingTarget — re-add of a target that is
 // mid-removal (status='DRAINING') must reactivate it (status='ACTIVE',
 // drain_started_at=NULL, new weight) in place, NOT be swallowed by ON CONFLICT

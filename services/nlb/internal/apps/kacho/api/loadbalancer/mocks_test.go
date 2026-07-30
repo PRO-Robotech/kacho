@@ -549,6 +549,9 @@ func (q *fakeTGWriter) RemoveTargetsMarkDraining(ctx context.Context, tgID strin
 func (q *fakeTGWriter) DeleteTargetsDrained(ctx context.Context, tgID string, delaySeconds int32) (int, error) {
 	return 0, nil
 }
+func (q *fakeTGWriter) DeleteTargetsDraining(ctx context.Context, tgID string) (int, error) {
+	return 0, nil
+}
 func (q *fakeTGWriter) Delete(ctx context.Context, id string) error {
 	return errors.New("not implemented in fake")
 }

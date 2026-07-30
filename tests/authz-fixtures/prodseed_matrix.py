@@ -77,6 +77,9 @@ RID = str(int(time.time()))[-6:]
 # zone `a` has no v6-capable pool. Mirrors the dev-path setup.sh block 5d ownership table.
 ZONE_SUFFIXES = tuple(os.environ.get("SEED_ZONES", "a,b,c,d,e").split(","))
 NLB_ZONE = os.environ.get("NLB_ZONE", "ru-central1-e")
+# The second region — the value `existingRegionAltId` carries. It is seeded below,
+# with one zone, precisely so that "the other region" is one; see _seed_geo_catalog.
+ALT_REGION = os.environ.get("SEED_ALT_REGION", "ru-central2")
 
 
 def _curl(method, path, token, body=None, base=PUBLIC):
@@ -189,6 +192,31 @@ def grant(sva, role_id, scope_type, scope_id):
         _poll(rb["id"], boot)
 
 
+def custom_role(account_id, name, module, resources, verbs):
+    """Create (or find) a custom Role in account_id and return its id.
+
+    The nlb suite has cases about CUSTOM roles — "a role granting addTargets lets its
+    holder add targets, and nothing else". They need a role that exists. The dev path
+    (setup.sh §13d) creates two; this path used to hand those slots a deliberately
+    ungranted subject, which turned the positive half of each case into a permanent
+    denial. A case that says a subject CAN do something must be given a subject that
+    can, or the invariant is not being checked at all.
+
+    Idempotent: an existing role of the same name in the account is reused, so a
+    re-seed neither collides on the name nor multiplies roles.
+    """
+    listed = _curl("GET", f"/iam/v1/roles?accountId={account_id}&pageSize=1000", boot)
+    for r in listed.get("roles") or []:
+        if r.get("name") == name:
+            return r.get("id", "")
+    resp = _curl("POST", "/iam/v1/roles", boot, {
+        "accountId": account_id, "name": name,
+        "description": "newman fixture: narrow custom role",
+        "rules": [{"module": module, "resources": list(resources), "verbs": list(verbs)}],
+    })
+    return _await(resp, boot, "roleId")
+
+
 def sa_token(sva):
     """Issue an api-audience SA-key, sign client_assertion, exchange -> RS256."""
     kr = _curl("POST", f"/iam/v1/serviceAccounts/{sva}/keys", boot,
@@ -296,6 +324,34 @@ def _seed_geo_catalog():
             break
         time.sleep(0.5)
 
+    # A SECOND region, because "the other region" has to BE another region.
+    #
+    # Every negative case about placement coherence needs a region that is not the
+    # primary one, and `existingRegionAltId` is the handle they all reach for. It used
+    # to hold `ru-central1` — the primary — so the "cross-region" fixtures were built
+    # in the SAME region and the refusals they assert could never fire. On the
+    # production-posture run of 2026-07-30 that showed up as a listener accepting a
+    # cross-region repoint; the repoint was same-region and lawfully accepted, while
+    # the check that would have caught a real one had no producer for its own input.
+    #
+    # One zone is seeded with it: a region with no zone cannot host a zonal fixture,
+    # and a case that needs one would then fail for the wrong reason. No address pool
+    # is seeded here — nothing allocates a VIP in this region, and a pool that nobody
+    # draws from is exactly the kind of fixture that outlives its subject.
+    _curl("POST", "/geo/v1/internal/regions", boot,
+          {"id": ALT_REGION, "name": ALT_REGION, "status": "UP"}, base=INTERNAL)
+    for _ in range(20):
+        if _curl("GET", f"/geo/v1/regions/{ALT_REGION}", boot).get("id") == ALT_REGION:
+            break
+        time.sleep(0.5)
+    _curl("POST", "/geo/v1/internal/zones", boot,
+          {"id": f"{ALT_REGION}-a", "regionId": ALT_REGION,
+           "name": f"{ALT_REGION}-a", "status": "UP"}, base=INTERNAL)
+    for _ in range(20):
+        if _curl("GET", f"/geo/v1/zones/{ALT_REGION}-a", boot).get("id") == f"{ALT_REGION}-a":
+            break
+        time.sleep(0.5)
+
 
 def _seed_address_pool(zone_id, name, v4, v6=()):
     """Seed a default AddressPool (IPAM source for external VIPs: nlb external LB VIP
@@ -399,6 +455,17 @@ def seed() -> dict:
     # subject #276 removed on the dev path.
     sva_purenob, tok_purenob = subject(acctA, f"ps-purenob-{RID}")
     _, tok_viewerA = subject(acctA, f"ps-view-a-{RID}", [(ROLE_VIEW, P, projA1)])
+    # Custom-role subjects. Their cases assert what a NARROW role does and does not
+    # allow — "may addTargets, may not update the group's metadata" — which only means
+    # something when the role exists and is bound. Mirrors the dev path (setup.sh §13d).
+    role_tm = custom_role(acctA, f"ps-nlb-targetmgr-{RID}", "loadbalancer",
+                          ["targetGroups"], ["addTargets", "removeTargets"])
+    role_op = custom_role(acctA, f"ps-nlb-operator-{RID}", "loadbalancer",
+                          ["networkLoadBalancers"], ["start", "stop"])
+    _, tok_crTargetMgr = subject(acctA, f"ps-cr-tm-{RID}",
+                                 [(role_tm, P, projA1)] if role_tm else [])
+    _, tok_crOperator = subject(acctA, f"ps-cr-op-{RID}",
+                                [(role_op, P, projA1)] if role_op else [])
     _, tok_adminA = subject(acctA, f"ps-adm-a-{RID}", [(ROLE_ADMIN, A, acctA)])
     _, tok_adminB = subject(acctB, f"ps-adm-b-{RID}", [(ROLE_ADMIN, A, acctB)])
     _, tok_invitee = subject(acctA, f"ps-inv-{RID}", [(ROLE_ADMIN, A, acctB), (ROLE_EDIT, P, projA1)])
@@ -433,12 +500,16 @@ def seed() -> dict:
         "jwtProjectEditorB": tok_editorCrossA2,
         # project-owner (admin) @ A1
         "jwtProjectOwnerA": tok_ownerA,
-        # tolerant nlb subjects (cases assert oneOf): group-member behaves as editor@A1
-        # (clean 200 + cleanup); custom-role operator/targetManager are ungranted so their
-        # denial asserts (oneOf([403,404])) hold — a valid-but-ungranted SA yields 403.
+        # group-member behaves as editor@A1 (the group cascade itself is exercised by the
+        # iam suite; here the slot only needs a subject that can create and clean up).
         "jwtGroupMemberEditor": tok_editorA,
-        "jwtCustomRoleOperator": tok_nogrant,
-        "jwtCustomRoleTargetManager": tok_nogrant,
+        # Custom-role slots are GRANTED now, each through its own narrow role. They used
+        # to carry the never-granted token, justified as "their denial asserts hold" —
+        # true of the negative halves and fatal to the positive ones: the case saying
+        # "targetManager may addTargets" could only ever see 403, so the verb its role
+        # exists to grant was never once exercised.
+        "jwtCustomRoleOperator": tok_crOperator,
+        "jwtCustomRoleTargetManager": tok_crTargetMgr,
         # ids
         "accountAId": acctA,
         "accountBId": acctB,
@@ -469,7 +540,7 @@ def seed() -> dict:
         "zoneC": "ru-central1-c",
         "zoneD": "ru-central1-d",
         "existingRegionId": "ru-central1",
-        "existingRegionAltId": "ru-central1",
+        "existingRegionAltId": ALT_REGION,
         "baseUrl": PUBLIC,
         "internalBaseUrl": INTERNAL,
     }

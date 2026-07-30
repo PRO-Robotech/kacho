@@ -73,7 +73,7 @@ CASES.append(Case(
         # fixture_ids: an Operation carries the PRE-ALLOCATED id in metadata even when it
         # ends with an error, so a failed create must invalidate it here rather than let a
         # phantom id cascade into an unrelated 403/404 downstream (testing.md).
-        poll_operation_until_done(fixture_ids=["lfNlbId"]),
+        poll_operation_until_done(fixture_ids=["lfNlbId"], auth="jwtProjectEditorA"),
         # read-your-writes over the list-authz visibility window: the per-object filtered
         # List returns 200 with the fresh id ABSENT until the viewer/owner tuple materializes
         # (opgate removed -> eventual-consistency) -> retry while own id is missing.
@@ -88,7 +88,7 @@ CASES.append(Case(
         retry_until_authorized(Step(name="del-own", method="DELETE", path=f"{_NLB}/{{{{lfNlbId}}}}",
              auth="jwtProjectEditorA",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
     ],
 ))
 
@@ -113,7 +113,7 @@ CASES.append(Case(
                                    "tcp": {"port": 80}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "lfTgId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
         retry_until_present(Step(name="list-tg", method="GET",
              path=f"{_TGR}?projectId={{{{_suiteProjectId}}}}&pageSize=1000",
              auth="jwtProjectEditorA",
@@ -125,7 +125,7 @@ CASES.append(Case(
         retry_until_authorized(Step(name="del-tg", method="DELETE", path=f"{_TGR}/{{{{lfTgId}}}}",
              auth="jwtProjectEditorA",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
     ],
 ))
 
@@ -161,7 +161,7 @@ CASES.append(Case(
         # fixture_ids: without it a failed create still published the pre-allocated id, so
         # `list-stranger` asserted "no leak" against a resource that never existed (vacuous
         # green) and `del-a` then 403'd on the phantom — the reported symptom.
-        poll_operation_until_done(fixture_ids=["lfXleakNlbId"]),
+        poll_operation_until_done(fixture_ids=["lfXleakNlbId"], auth="jwtProjectEditorA"),
         # Stranger lists the same project → must NOT see editor's NLB (filter
         # either empties the list or 403s before any row; either way no leak).
         Step(name="list-stranger", method="GET",
@@ -179,6 +179,6 @@ CASES.append(Case(
         retry_until_authorized(Step(name="del-a", method="DELETE", path=f"{_NLB}/{{{{lfXleakNlbId}}}}",
              auth="jwtProjectEditorA",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
     ],
 ))
