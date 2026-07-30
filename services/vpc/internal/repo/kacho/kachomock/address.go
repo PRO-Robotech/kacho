@@ -197,16 +197,13 @@ func (aw *addressWriter) DeleteGuarded(_ context.Context, id string) (*kacho.Add
 	return &cp, nil
 }
 
-func (aw *addressWriter) SetIPSpec(_ context.Context, id string, ext *domain.ExternalIpv4Spec, intn *domain.InternalIpv4Spec) (*kacho.AddressRecord, error) {
+func (aw *addressWriter) SetInternalIPv4(_ context.Context, id string, intn *domain.InternalIpv4Spec) (*kacho.AddressRecord, error) {
 	if _, deleted := aw.w.deletedAddrIDs[id]; deleted {
 		return nil, repo.ErrNotFound
 	}
 	a, ok := aw.w.localAddrs[id]
 	if !ok {
 		return nil, repo.ErrNotFound
-	}
-	if ext != nil {
-		a.ExternalIpv4 = ext
 	}
 	if intn != nil {
 		a.InternalIpv4 = intn

@@ -310,49 +310,30 @@ func withSavepoint(ctx context.Context, tx pgx.Tx, fn func(pgx.Tx) (*kacho.Addre
 	return rec, nil
 }
 
-// SetIPSpec — атомарный UPDATE external_ipv4 / internal_ipv4. Передавайте nil
-// для поля, которое не нужно менять; оба nil — no-op (вернуть Get).
+// SetInternalIPv4 — атомарный UPDATE internal_ipv4. nil → no-op (вернуть Get).
+//
+// Внешний адрес этим путём не пишется НАМЕРЕННО. Занятие внешнего адреса
+// обязано отражаться в книге учёта пула, а единственное место, где это
+// происходит, — Insert (claimExplicitExternalAddresses) и сами аллокаторы.
+// Прежняя ветвь, писавшая external_ipv4 из переданного спека, не имела ни
+// одного вызывающего в прод-коде и была путём ЗАНЯТИЯ мимо реестра — ровно тем
+// классом, из-за которого расходились реестр и реальность.
 //
 // Исполняется под SAVEPOINT: unique-violation попытка аллокатора не отравляет
 // внешнюю writer-TX (см. withSavepoint).
-func (w *addressWriter) SetIPSpec(ctx context.Context, id string, ext *domain.ExternalIpv4Spec, intn *domain.InternalIpv4Spec) (*kacho.AddressRecord, error) {
-	if ext == nil && intn == nil {
+func (w *addressWriter) SetInternalIPv4(ctx context.Context, id string, intn *domain.InternalIpv4Spec) (*kacho.AddressRecord, error) {
+	if intn == nil {
 		return w.Get(ctx, id)
 	}
-	q := `UPDATE addresses SET `
-	args := []any{id}
-	switch {
-	case ext != nil && intn == nil:
-		extJSON, err := helpers.MarshalJSONB(ext, "Address.external_ipv4")
-		if err != nil {
-			return nil, err
-		}
-		q += `external_ipv4 = $2::jsonb`
-		args = append(args, extJSON)
-	case ext == nil && intn != nil:
-		intJSON, err := helpers.MarshalJSONB(intn, "Address.internal_ipv4")
-		if err != nil {
-			return nil, err
-		}
-		q += `internal_ipv4 = $2::jsonb`
-		args = append(args, intJSON)
-	default:
-		extJSON, err := helpers.MarshalJSONB(ext, "Address.external_ipv4")
-		if err != nil {
-			return nil, err
-		}
-		intJSON, err := helpers.MarshalJSONB(intn, "Address.internal_ipv4")
-		if err != nil {
-			return nil, err
-		}
-		q += `external_ipv4 = $2::jsonb, internal_ipv4 = $3::jsonb`
-		args = append(args, extJSON, intJSON)
+	intJSON, err := helpers.MarshalJSONB(intn, "Address.internal_ipv4")
+	if err != nil {
+		return nil, err
 	}
-	q += ` WHERE id = $1 RETURNING ` + helpers.AddressCols
 	return withSavepoint(ctx, w.tx, func(sp pgx.Tx) (*kacho.AddressRecord, error) {
-		a, err := helpers.ScanAddress(sp.QueryRow(ctx, q, args...))
-		if err != nil {
-			return nil, helpers.WrapPgErr(err, "Address", id)
+		a, serr := helpers.ScanAddress(sp.QueryRow(ctx,
+			`UPDATE addresses SET internal_ipv4 = $2::jsonb WHERE id = $1 RETURNING `+helpers.AddressCols, id, intJSON))
+		if serr != nil {
+			return nil, helpers.WrapPgErr(serr, "Address", id)
 		}
 		return a, nil
 	})

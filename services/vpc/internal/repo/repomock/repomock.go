@@ -302,16 +302,13 @@ func (r *AddressRepo) Delete(_ context.Context, id string) error {
 	return nil
 }
 
-// SetIPSpec — mock-stub (порт обязателен, для test'а возвращаем как Update).
-func (r *AddressRepo) SetIPSpec(_ context.Context, id string, ext *domain.ExternalIpv4Spec, intn *domain.InternalIpv4Spec) (*kachorepo.AddressRecord, error) {
+// SetInternalIPv4 — mock-stub (порт обязателен, для test'а возвращаем как Update).
+func (r *AddressRepo) SetInternalIPv4(_ context.Context, id string, intn *domain.InternalIpv4Spec) (*kachorepo.AddressRecord, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	a, ok := r.data[id]
 	if !ok {
 		return nil, repo.ErrNotFound
-	}
-	if ext != nil {
-		a.ExternalIpv4 = ext
 	}
 	if intn != nil {
 		a.InternalIpv4 = intn

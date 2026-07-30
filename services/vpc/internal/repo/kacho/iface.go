@@ -59,7 +59,7 @@ type RepositoryReader interface {
 // extends reader). Outbox-emit живет здесь же — это гарантирует атомарность DML +
 // outbox в одной TX.
 //
-// Атомарность IPAM-flow: Insert + Allocate (SetIPSpec/AllocateIPFromFreelist/
+// Атомарность IPAM-flow: Insert + Allocate (SetInternalIPv4/AllocateIPFromFreelist/
 // AllocateExternalIPv6/…) + outbox-emit идут через единую pgx.Tx writer'а.
 // NetworkInterfaces() — NIC-writer (Insert с возможным MAC-collision sentinel).
 type RepositoryWriter interface {

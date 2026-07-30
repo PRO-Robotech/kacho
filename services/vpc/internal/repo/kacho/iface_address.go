@@ -54,8 +54,8 @@ type AddressReaderIface interface {
 // pgx.Tx (writer-instance).
 //
 // Address имеет специфические writer-методы для IPAM allocate-flow:
-//   - SetIPSpec — атомарное обновление external_ipv4 / internal_ipv4 JSONB-spec
-//     (random-pick allocator: каждая попытка — отдельный SetIPSpec через writer).
+//   - SetInternalIPv4 — атомарное обновление internal_ipv4 JSONB-spec
+//     (random-pick allocator: каждая попытка — отдельный вызов через writer).
 //   - SetInternalIPv6 — то же для v6.
 //   - AllocateIPFromFreelist / ReturnIPToFreelist — PG-native freelist allocator (v4).
 //   - InitIPv6PoolCursor / AllocateExternalIPv6 / FreeExternalIPv6 — sparse v6 allocator.
@@ -85,9 +85,11 @@ type AddressWriterIface interface {
 	//   deletion_protection → ErrFailedPrecondition "...deletion_protection..."
 	//   нет строки          → ErrNotFound
 	DeleteGuarded(ctx context.Context, id string) (*AddressRecord, error)
-	// SetIPSpec атомарно обновляет external_ipv4 / internal_ipv4 JSONB-spec.
-	// nil-spec — поле не меняется; оба nil — no-op.
-	SetIPSpec(ctx context.Context, id string, externalIpv4 *domain.ExternalIpv4Spec, internalIpv4 *domain.InternalIpv4Spec) (*AddressRecord, error)
+	// SetInternalIPv4 атомарно обновляет internal_ipv4 JSONB-spec. nil → no-op.
+	// Внешний адрес этим путём не пишется: его занятие обязано проходить через
+	// книгу учёта пула (Insert/аллокаторы), иначе реестр расходится с
+	// реальностью на пути занятия.
+	SetInternalIPv4(ctx context.Context, id string, internalIpv4 *domain.InternalIpv4Spec) (*AddressRecord, error)
 	// SetInternalIPv6 атомарно обновляет internal_ipv6 JSONB-spec. nil → no-op.
 	SetInternalIPv6(ctx context.Context, id string, spec *domain.InternalIpv6Spec) (*AddressRecord, error)
 

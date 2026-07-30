@@ -65,7 +65,7 @@ func TestCQRS_Address_SetIPSpec_ConflictKeepsTXAlive(t *testing.T) {
 	a.InternalIpv4.SubnetID = subnetID
 	_, err = wA.Addresses().Insert(ctx, a)
 	require.NoError(t, err)
-	_, err = wA.Addresses().SetIPSpec(ctx, a.ID, nil, &domain.InternalIpv4Spec{
+	_, err = wA.Addresses().SetInternalIPv4(ctx, a.ID, &domain.InternalIpv4Spec{
 		SubnetID: subnetID, Address: "10.77.0.5",
 	})
 	require.NoError(t, err)
@@ -80,13 +80,13 @@ func TestCQRS_Address_SetIPSpec_ConflictKeepsTXAlive(t *testing.T) {
 	_, err = wB.Addresses().Insert(ctx, b)
 	require.NoError(t, err)
 
-	_, err = wB.Addresses().SetIPSpec(ctx, b.ID, nil, &domain.InternalIpv4Spec{
+	_, err = wB.Addresses().SetInternalIPv4(ctx, b.ID, &domain.InternalIpv4Spec{
 		SubnetID: subnetID, Address: "10.77.0.5", // конфликт с A
 	})
 	require.Error(t, err, "duplicate internal IP must be rejected")
 
 	// Ключевой контракт: TX не отравлена — retry с другим IP проходит.
-	rec, err := wB.Addresses().SetIPSpec(ctx, b.ID, nil, &domain.InternalIpv4Spec{
+	rec, err := wB.Addresses().SetInternalIPv4(ctx, b.ID, &domain.InternalIpv4Spec{
 		SubnetID: subnetID, Address: "10.77.0.6",
 	})
 	require.NoError(t, err, "writer-TX must stay usable after a unique-violation attempt (savepoint contract)")

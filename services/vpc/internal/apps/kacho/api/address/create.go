@@ -641,7 +641,7 @@ func (u *CreateAddressUseCase) doCreate(ctx context.Context, addrID string, in C
 // переиспользуемый и AllocateUseCase (internal Allocate RPC), чтобы алгоритм не
 // дрейфовал между create- и allocate-путём.
 //
-// Каждый helper принимает открытый Writer-TX — SetIPSpec/SetInternalIPv6/
+// Каждый helper принимает открытый Writer-TX — SetInternalIPv4/SetInternalIPv6/
 // AllocateIPFromFreelist/AllocateExternalIPv6 идут через `w.Addresses().*`,
 // atomic с Insert + Outbox в одной TX.
 
