@@ -101,14 +101,14 @@ Operation metadata/response (из `(kacho.cloud.api.operation)` options).
 | `Update` | `PATCH /compute/v1/zones/{zone_id}` body `{region_id, name, status}` | → `Zone` | |
 | `Delete` | `DELETE /compute/v1/zones/{zone_id}` | → `DeleteZoneResponse{}` | проверяет своих dependents (instances/disks/disk_types); кросс-сервисных (vpc-подсети) НЕ проверяет — admin-ответственность |
 
-> ⚠️ `InternalDiskTypeService` / `InternalZoneService` — kacho-only расширение;
-> в verbatim YC Compute API есть только `DiskTypeService.{Get,List}` /
-> `ZoneService.{Get,List}` (статический discovery, без CRUD). Эти admin-RPC
-> зарегистрированы в `kacho-api-gateway/internal/restmux/mux.go` под блоком
+> ⚠️ `InternalDiskTypeService` / `InternalZoneService` — admin-поверхность
+> справочников; публично у `DiskTypeService` / `ZoneService` только `{Get,List}`
+> (статический discovery, без CRUD). Эти admin-RPC зарегистрированы в
+> `kacho-api-gateway/internal/restmux/mux.go` под блоком
 > `computeInternalAddr` → попадают **только** на cluster-internal listener,
-> **не** на external TLS endpoint (`api.kacho.local:443`, advertised для `yc`
-> CLI). Любой новый admin-RPC, которого нет в verbatim-YC — добавлять ТОЛЬКО в
-> `Internal*` сервис на `:9091` (workspace `CLAUDE.md` §запрет 6). См.
+> **не** на external TLS endpoint (`api.kacho.local:443`, advertised внешним
+> клиентам). Любой admin-RPC, которого нет в публичном API ресурса, — добавлять
+> ТОЛЬКО в `Internal*` сервис на `:9091` (workspace `CLAUDE.md` §запрет 6). См.
 > [`06-conventions.md`](06-conventions.md#admin-boundary).
 
 ### InternalWatchService (`internal_watch_service.proto`) — server-to-server
@@ -129,8 +129,10 @@ prefix id на нужный backend (`epd...` → kacho-compute; `enp...`/`e9b..
 kacho-vpc; `b1g...` → kacho-iam — Account/Project, заменил resource-manager в
 KAC-124). `PrefixOperationCompute == PrefixInstance
 == "epd"`. Неизвестный prefix → `400 INVALID_ARGUMENT "operation_id has unknown
-prefix"` (intentional fail-fast — частично расходится с YC, как и у VPC; общий
-issue в `kacho-api-gateway`). `response` для Delete/Stop/Restart/
+prefix"` (intentional fail-fast; по конвенции by-lane split
+well-formed-но-нерезолвящийся id должен отвечать `404 NotFound`, а `400` полагается
+только malformed — сейчас оба схлопнуты, отступление зафиксировано, общий issue в
+`kacho-api-gateway`). `response` для Delete/Stop/Restart/
 SimulateMaintenanceEvent = `google.protobuf.Empty`; metadata всегда заполнено
 (тип `DeleteXxxMetadata` / etc.) и доступно с момента создания операции.
 

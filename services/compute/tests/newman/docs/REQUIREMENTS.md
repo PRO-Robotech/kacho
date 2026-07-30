@@ -1,22 +1,24 @@
 # REQUIREMENTS — testability / contract-clarification backlog (kacho-compute newman)
 
 Бэклог **улучшений тестируемости** и **запросов на уточнение контракта** — НЕ нормативный
-(нормативный регламент — `PRODUCT-REQUIREMENTS.md`). Здесь: что нужно verified против реального
-YC Compute API, чтобы заменить плейсхолдеры `# probe-needed:` в `cases/*.py` на точные assert'ы.
+(нормативный регламент — `PRODUCT-REQUIREMENTS.md`). Здесь: какие формулировки контракта ещё
+не закреплены, из-за чего в `cases/*.py` стоят плейсхолдеры `# probe-needed:` вместо точных
+assert'ов. Закрытие пункта = решение владельца контракта, записанное в `PRODUCT-REQUIREMENTS.md`,
+плюс ассерт на точный текст/код. Пункт без такого решения не закрывается «сверкой» ни с чем.
 
-Найденные баги/расхождения — НЕ здесь, а GitHub Issues `PRO-Robotech/kacho-compute` (метки `bug`/`tech-debt`),
-см. `kacho-compute/CLAUDE.md` §14.4. By-design расхождения — `docs/architecture/07-known-divergences.md`.
+Найденные баги/отступления — НЕ здесь, а GitHub Issues `PRO-Robotech/kacho-compute` (метки `bug`/`tech-debt`),
+см. `kacho-compute/CLAUDE.md` §14.4. By-design отступления — `docs/architecture/07-known-divergences.md`.
 
-## A. Probe-needed против реального YC Compute API
+## A. Формулировки контракта, ещё не закреплённые
 
-| # | Что probed | Где в кейсах | Текущая формулировка (placeholder) | Желаемое |
+| # | Что не закреплено | Где в кейсах | Текущая формулировка (placeholder) | Желаемое |
 |---|---|---|---|---|
 | PROBE-01 | Текст `NotFound` для Disk/Image/Snapshot/Instance/DiskType/Zone Get garbage id | `*-GET-CONF-NF-TEXT`, `DT/ZONE-GET-CONF-NF-TEXT` | substr `"not found"` | точная формулировка `^<Resource> <id> not found$` (как у kacho-vpc) → regex-assert |
-| PROBE-02 | Текст `NotFound` для Operation Get garbage epd-id | `OP-GET-CONF-NF-TEXT` | substr `"not found"` | `^Operation <id> not found$` или verbatim YC |
-| PROBE-03 | Текст `ALREADY_EXISTS` для duplicate `(project, name)` | `*-CR-NEG-DUP-NAME` | только code 6 | verbatim YC text → assert |
+| PROBE-02 | Текст `NotFound` для Operation Get garbage epd-id | `OP-GET-CONF-NF-TEXT` | substr `"not found"` | `^Operation <id> not found$` (контракт-тон) |
+| PROBE-03 | Текст `ALREADY_EXISTS` для duplicate `(project, name)` | `*-CR-NEG-DUP-NAME` | только code 6 | закрепить текст → assert |
 | PROBE-04 | Текст `InvalidArgument` для unknown disk type_id (и: NotFound vs InvalidArgument?) | `DISK-CR-NEG-TYPE-UNKNOWN` | code 5, substr `"disk type"` | точный code + text |
-| PROBE-05 | unknown zone_id в Disk.Create / Disk.Relocate: `InvalidArgument` (наш паритет VPC) vs `NotFound "Zone ... not found"` (YC?) | `DISK-CR-NEG-ZONE-UNKNOWN`, `DISK-REL-NEG-DEST-ZONE-UNKNOWN` | allow code 3\|5 | зафиксировать YC-поведение → single code |
-| PROBE-06 | Текст `InvalidArgument` для Disk.Update size-decrease | `DISK-UPD-SIZE-DECREASE-REJECT` | code 3 | `"Disk size can only be increased"` или verbatim YC |
+| PROBE-05 | unknown zone_id в Disk.Create / Disk.Relocate: сейчас `InvalidArgument`, а по конвенции by-lane split чужой id — peer-validate lane, то есть `FailedPrecondition` | `DISK-CR-NEG-ZONE-UNKNOWN`, `DISK-REL-NEG-DEST-ZONE-UNKNOWN` | allow code 3\|5 | привести к конвенции → single code |
+| PROBE-06 | Текст `InvalidArgument` для Disk.Update size-decrease | `DISK-UPD-SIZE-DECREASE-REJECT` | code 3 | закрепить `"Disk size can only be increased"` |
 | PROBE-07 | `FailedPrecondition` тексты Instance state-машины: Start-from-RUNNING, Stop-from-STOPPED, Restart-from-STOPPED | `INST-STATE-*` | code 9 | verbatim: "Instance is already running" / "Instance is not running" / ... |
 | PROBE-08 | `FailedPrecondition` текст для Instance.Update {resources_spec/platform_id} на RUNNING | `INST-UPD-RESOURCES-REQUIRES-STOPPED` | code 9 | `"Instance must be stopped"` или verbatim |
 | PROBE-09 | `FailedPrecondition` текст для DetachDisk boot disk | `INST-DD-NEG-BOOT` | code 9 | `"Cannot detach boot disk"` или verbatim |
@@ -27,10 +29,10 @@ YC Compute API, чтобы заменить плейсхолдеры `# probe-ne
 | PROBE-14 | OperationService.Cancel на done-op: `FailedPrecondition` vs idempotent 200 (с уже-done op) | `OP-CANCEL-NEG-ALREADY-DONE` | allow 200\|400 | зафиксировать |
 | PROBE-15 | DiskType/Zone List игнорируют ли `page_token`? (справочники малы) | `DT-LST-PAGE-TOKEN-GARBAGE` | allow 200\|400 | зафиксировать |
 | PROBE-16 | Compute name regex: точное поведение для пустой строки и edge (одна буква, trailing `_`) | `*-CR-VAL-NAME-EMPTY-OK`, `*-CR-BVA-NAME-*` | empty→200, len63→200, len64→400 | verified contract → `corevalidate.NameCompute` |
-| PROBE-17 | malformed/wrong-prefix id (Get/Update/...): YC даёт `InvalidArgument "invalid <res> id '<X>'"`? | (не покрыто отдельным кейсом — паритет VPC gotcha #1) | у нас → `NotFound` | если YC → InvalidArgument: завести divergence + кейс |
+| PROBE-17 | malformed/wrong-prefix id (Get/Update/...): конвенция требует sync `InvalidArgument "invalid <res> id '<X>'"` первым стейтментом | (не покрыто отдельным кейсом — тот же gotcha #1, что в VPC) | сейчас → `NotFound` | отступление уже записано (§1) → добрать кейс |
 | PROBE-18 | Image.Create min_disk_size default (когда не указан) — вычисляется из source? | `IMG-CR-CRUD-OK` (assert minDiskSize > 0) | `> 0` | точная семантика |
 | PROBE-19 | Instance fqdn формат при hostname не указан (`<id>.auto.internal`?) | `INST-CR-CRUD-OK` (assert fqdn non-empty) | non-empty string | regex-assert на формат |
-| PROBE-20 | Instance.List view=BASIC — какие именно поля опускаются кроме metadata? | `INST-LST-VIEW-BASIC-NO-METADATA` | только metadata | полный список (verbatim YC) |
+| PROBE-20 | Instance.List view=BASIC — какие именно поля опускаются кроме metadata? | `INST-LST-VIEW-BASIC-NO-METADATA` | только metadata | закрепить полный список |
 
 ## B. Тестируемость инфраструктуры
 

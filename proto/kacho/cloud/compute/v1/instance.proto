@@ -26,12 +26,12 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v
 // Internal* infra projection is a follow-on (COMP-4).
 message Instance {
 
-  // COMP-1 YC-cruft retire (ban #2): the raw YC sizing/boot/placement surface is
+  // COMP-1 cruft retire (ban #2): the raw legacy sizing/boot/placement surface is
   // removed from the public message. Field numbers AND names are reserved so they
   // can never be reused on the public wire. platform_id/resources → machine_type_id
   // (F2); scheduling_policy{preemptible}/gpu_settings/reserved_instance_pool_id/
   // application → gone; the old MetadataOptions{gce_*,aws_*} → vendor-agnostic
-  // vm_spec.metadata_options (F9); placement_policy (HostAffinityRule{yc.*}) →
+  // vm_spec.metadata_options (F9); placement_policy (HostAffinityRule) →
   // Internal* (COMP-4); bare string image (#34) + image_digest (#35) → boot_source
   // (F3); service_account_id (string, #18) → reference.Referrer service_account (B2, F4).
   reserved 8, 9, 17, 18, 20, 23, 26, 32, 33, 34, 35;
@@ -478,7 +478,7 @@ message PlacementPolicy {
       NOT_IN = 2;
     }
 
-    // Affinity label or one of reserved values - 'yc.hostId', 'yc.hostGroupId'
+    // Affinity label key.
     string key = 1;
     // Include or exclude action
     Operator op = 2;

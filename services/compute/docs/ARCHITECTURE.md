@@ -6,7 +6,8 @@ API → операционные аспекты → тестирование →
 по темам — `docs/architecture/00..09` (ссылки по тексту). Кода в документе нет.
 
 > Происхождение: сервис написан заново на проверенных паттернах `kacho-vpc`
-> (flat resources + Operations LRO + Clean Architecture + verbatim YC parity).
+> (flat resources + Operations LRO + Clean Architecture + собственный
+> опубликованный контракт Kachō).
 > Где видишь «как в VPC» — буквально смотри одноимённый файл в `../kacho-vpc/`.
 
 ---
@@ -65,14 +66,14 @@ Relocate/AttachDisk/DetachDisk/AddOneToOneNat/RemoveOneToOneNat/
 UpdateNetworkInterface/UpdateMetadata/SimulateMaintenanceEvent`) возвращают
 `Operation` (long-running async); клиент полит `OperationService.Get(id)` до
 `done=true`. Все чтения (`Get/List/GetLatestByFamily/GetSerialPortOutput`) —
-синхронные. Ошибки — стандартные gRPC-коды с verbatim-YC текстами (`NOT_FOUND
+синхронные. Ошибки — стандартные gRPC-коды с контрактными текстами Kachō (`NOT_FOUND
 "Disk <id> not found"`, `FAILED_PRECONDITION "The disk <id> is being used"`,
 `INVALID_ARGUMENT "Disk size can only be increased"`, ...). Подробно — [00-overview.md](architecture/00-overview.md), [04-api-surface.md](architecture/04-api-surface.md).
 
 **Нефункциональные.** Чтения идемпотентны; мутации идемпотентны по `Operation.id`;
 изоляция БД — Read Committed (критичные участки на FK/UNIQUE/`xmin`); цель —
-verbatim YC parity (regex, status codes, error texts, timestamp precision,
-state-машина); graceful shutdown — до 30 с на drain LRO-worker'ов
+соответствие опубликованному контракту Kachō (regex, status codes, error
+texts, timestamp precision, state-машина); graceful shutdown — до 30 с на drain LRO-worker'ов
 (`operations.Wait(30s)`); concurrent watch streams — лимит
 `KACHO_COMPUTE_WATCH_MAX_STREAMS` (default 32). **Control plane only**: реального
 data plane нет — Instance.status переходит детерминированной state-машиной без
@@ -171,7 +172,7 @@ PrefixInstance` — api-gateway opsproxy роутит по первым 3 сим
 compute-операции в один backend). DiskType/Region/Zone — литералы. id-колонки —
 `TEXT`.
 **Не валидировать id-формат sync** (`(length) = "<=50"` — max-длина, не format) —
-расхождение с реальным YC, см. [07-known-divergences.md](architecture/07-known-divergences.md) §1.
+отступление от конвенции Kachō, см. [07-known-divergences.md](architecture/07-known-divergences.md) §1.
 
 **UpdateMask discipline.** unknown поле → `InvalidArgument`; immutable поле →
 `InvalidArgument "<field> is immutable after <Resource>.Create"`; пустой mask →
@@ -356,7 +357,8 @@ LISTEN/NOTIFY, Instance NIC cascade delete, xmin OCC); **e2e/newman**
 Instance с `nic_id`. case-id `<DOMAIN>-<ACTION>-<DETAIL>`, напр. `DISK-CR-CRUD-OK`,
 `INST-START-NEG-NOT-STOPPED`;
 каждый case в своём `runId` внутри pre-allocated `existingProjectId`). **Критерий
-приёмки:** любой newman-кейс должен зеленеть и против реального YC Compute API.
+приёмки:** любой newman-кейс должен зеленеть на собственных чёрных ящиках,
+и ни одно изменение не должно ломать объявленный контракт Kachō.
 Найденные баги → GitHub Issues; by-design расхождения → [07-known-divergences.md](architecture/07-known-divergences.md).
 
 ---
@@ -378,7 +380,7 @@ Unavailable), `shutdown` (graceful). Таблицу `operations` каждый с
 ## Часть XIII. Пошаговое воспроизведение проекта
 
 1. **`kacho-proto`** — compute-домен уже зафиксирован
-   (`proto/kacho/cloud/compute/v1/*.proto`, vendored от YC, пакет переименован,
+   (`proto/kacho/cloud/compute/v1/*.proto`, пакет `kacho.cloud.compute.v1`,
    `gen/go` сгенерирован). Новый internal `.proto` — в тот же каталог; `buf
    lint`/`breaking` зелёные.
 2. **`kacho-corelib`** — `ids.PrefixInstance/Disk/Image/Snapshot/OperationCompute`,

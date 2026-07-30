@@ -4,14 +4,14 @@
 `Instance.Status` детерминированы и происходят **внутри worker'а
 соответствующей операции** (worker «имитирует» короткую асинхронную работу:
 меняет status → конечное состояние синхронно в той же TX, без таймеров,
-без heartbeat'ов из VM). Это by-design расхождение с реальным YC (где переходы
+без heartbeat'ов из VM). Это by-design решение control-plane (где переходы
 занимают реальное время и `Instance.status` проходит промежуточные состояния
 типа `STARTING`/`STOPPING`/`PROVISIONING`) — см.
 [`07-known-divergences.md`](07-known-divergences.md) §5.
 
 ## `Instance.Status` enum
 
-Из `instance.proto`, `Instance.Status` (verbatim YC):
+Из `instance.proto`, `Instance.Status` (контракт):
 
 | # | Значение | Семантика |
 |---|---|---|
@@ -52,15 +52,15 @@ precondition по текущему status; нарушение → `FailedPrecond
 | `DetachDisk` | `status ∈ {RUNNING, STOPPED}`; disk attached & **not boot** | — | unchanged | `Instance` |
 | `AddOneToOneNat` | `status ∈ {RUNNING, STOPPED}`; NIC index valid; NAT ещё не задан | — | unchanged | `Instance` |
 | `RemoveOneToOneNat` | `status ∈ {RUNNING, STOPPED}`; NIC index valid; NAT задан | — | unchanged | `Instance` |
-| `UpdateNetworkInterface` | NIC index valid; OCC через `xmin` (read-modify-write); precondition-семантика probe YC (вероятно `STOPPED` для смены subnet) | — | unchanged | `Instance` |
-| `AttachNetworkInterface` | `status ∈ {STOPPED}` (proto-комментарий verbatim YC); NIC index ещё не занят | — | unchanged | `Instance` |
+| `UpdateNetworkInterface` | NIC index valid; OCC через `xmin` (read-modify-write); precondition-семантика ещё не закреплена (вероятно `STOPPED` для смены subnet) | — | unchanged | `Instance` |
+| `AttachNetworkInterface` | `status ∈ {STOPPED}` (по proto-комментарию); NIC index ещё не занят | — | unchanged | `Instance` |
 | `DetachNetworkInterface` | `status ∈ {STOPPED}` (proto-комментарий); NIC index valid; нельзя detach последний NIC | — | unchanged | `Instance` |
 | `GetSerialPortOutput` | any (это **sync** read, не операция) | — | — | `GetInstanceSerialPortOutputResponse{contents}` (синтетический текст) |
 | `Relocate` | `status ∈ {STOPPED}` или RUNNING-с-restart (proto: «running instance will be restarted») — **blocked** (нужен cross-zone disk move) | — | (blocked) | `Instance` |
 | `SimulateMaintenanceEvent` | any — **no-op** | — | unchanged | `google.protobuf.Empty` |
 | `Delete` | any (Instance с дисками — отвязывает по `auto_delete`; для каждого NIC с непустым `nic_id` — delete kacho-vpc `NetworkInterface`) | `DELETING` | (deleted) | `google.protobuf.Empty` |
 
-⚠️ verbatim YC-тексты precondition-ошибок — **probe реального YC** при написании
+⚠️ тексты precondition-ошибок **ещё не закреплены как контракт** — при написании
 acceptance/newman. До probe — placeholder-формулировки (зафиксированы в
 [`07-known-divergences.md`](07-known-divergences.md) §3); примеры ожидаемых:
 `"Instance must be stopped"`, `"Instance is not running"`, `"Instance is already
@@ -106,7 +106,7 @@ stateDiagram-v2
 ## Control-plane simulation note
 
 - Нет реального гипервизора — переходы статусов **мгновенны** (внутри TX worker'а),
-  без задержки provisioning. Реальный YC: provisioning занимает секунды-минуты,
+  без задержки provisioning. С реальным гипервизором provisioning занял бы секунды-минуты,
   `Instance.status` реально проходит `STARTING`/`STOPPING`/etc.
 - `GetSerialPortOutput` возвращает **синтетический** текст (стабильный per-instance
   плейсхолдер вида `[ OK ] Reached target Multi-User System.` и т.п.), не реальный
@@ -114,7 +114,7 @@ stateDiagram-v2
 - `boot_disk` `disk_data` не существует; `Image.Create` через `uri`-source —
   «download» мгновенный, `storage_size` синтетический.
 - `SimulateMaintenanceEvent` — no-op: operation сразу `done`, status не меняется
-  (реальный YC переселил бы Instance согласно `maintenance_policy`).
+  (при живом data plane Instance переселялся бы согласно `maintenance_policy`).
 - При краше pod'а compute операция остаётся `done=false` навсегда (известное
   ограничение `operations.Run` без heartbeat/cleanup — общий для всех kacho-*
   сервисов; `operations.Wait(30s)` на graceful shutdown спасает только от
@@ -156,7 +156,7 @@ stateDiagram-v2
   VPC). `update_mask` discipline та же, что у других Update RPC (unknown поле →
   `InvalidArgument`; пустой mask → full-PATCH мутабельных полей). Смена `subnet_id`
   / `security_group_ids` валидируется через `vpcClient`. Precondition-семантика
-  (требует ли `STOPPED`) — **probe YC** (зафиксировано в `07-known-divergences.md`).
+  (требует ли `STOPPED`) — **ещё не закреплено** (зафиксировано в `07-known-divergences.md`).
 - `AttachNetworkInterface` / `DetachNetworkInterface`: proto-комментарии явно
   требуют `status == STOPPED`; нельзя detach последний NIC (минимум 1 на Instance).
 

@@ -1,61 +1,59 @@
-# Намеренные поведенческие решения (и где они расходятся с verbatim-YC)
+# Намеренные поведенческие решения (и где они отступают от конвенций Kachō)
 
 Это **не баги** и **не задачи** — осознанные решения, которые могут удивить
-ревьюера: либо мы **расходимся** с ожидаемым внешним Compute-контрактом (с
-обоснованием), либо **deliberately не делаем** того, что напрашивается. Цель
-файла — чтобы это не «фиксили» по второму разу.
+ревьюера: либо мы **отступаем** от опубликованного контракта Kachō и его
+конвенций (с обоснованием), либо **deliberately не делаем** того, что
+напрашивается. Цель файла — чтобы это не «фиксили» по второму разу.
 
-**Сюда НЕ пишем** то, что просто корректно реализует verbatim-YC контракт — это
-спека (см. `00-overview.md`, `01-resources.md`, `04-api-surface.md`). Например:
-Compute-ресурсы project-scoped без `cloud_id`/`organization_id`; `metadata`
-омитится из `Instance` в `List`; Disk size max в Update меньше, чем в Create —
-всё это **и есть** YC, расхождения тут нет.
+**Отступление измеряется от нашего собственного контракта** — proto-формы,
+конвенций API (`api-conventions.md`), правил целостности данных и безопасности.
+Сравнение с чужим API предметом записи быть не может: у такой записи нет
+критерия закрытия, потому что закрывать нечего.
 
-Баги / подтверждённые probe-расхождения, которые решили выровнять — GitHub Issues
+**Сюда НЕ пишем** то, что просто корректно реализует контракт — это спека
+(см. `00-overview.md`, `01-resources.md`, `04-api-surface.md`). Например:
+Compute-ресурсы project-scoped; `metadata` омитится из `Instance` в `List`;
+Disk size max в Update меньше, чем в Create — всё это **и есть** контракт,
+отступления тут нет.
+
+Баги / подтверждённые отступления, которые решили выровнять — GitHub Issues
 (`PRO-Robotech/kacho-compute` / `kacho-api-gateway`), см. `06-conventions.md`
 → «Где фиксировать находки» и workspace `CLAUDE.md` §14.4.
 
 ---
 
-## 1. Malformed / wrong-prefix resource id → мы `NotFound`, YC `InvalidArgument`
+## 1. Malformed / wrong-prefix resource id → `NotFound` вместо `InvalidArgument`
 
-Proto-поля `*_id` помечены только `(length) = "<=50"` — это max-длина, не
-format-regex. На входе RPC мы **не валидируем синтаксис** id (нет prefix-check,
-нет base32-check, нет UUID-проверки) — идём в `repo.Get` → если строки нет,
-получаем sentinel `ErrNotFound` → `NOT_FOUND "<Resource> <id> not found"`.
+Конвенция Kachō (`api-conventions.md`) требует: malformed own-owned id →
+**первым стейтментом RPC** sync `InvalidArgument "invalid <res> id '<X>'"`
+(`corevalidate.ResourceID`); well-formed-но-отсутствующий → `NotFound`.
 
-Поведение реального YC (probe 2026-05-11, по аналогии с kacho-vpc#7):
-- well-formed-но-несуществующий id (20 симв., известный prefix `epd...`/`fd8...`,
-  но ресурса нет) → `NotFound "<Resource> <X> not found"` — **совпадаем**.
-- malformed / wrong-prefix id (`not-a-real-disk-id`, `xyz`, чужой prefix) → YC
-  даёт `InvalidArgument "invalid <res> id '<X>'"` — **расходимся** (мы → `NotFound`).
+Здесь первая половина не выполнена. Proto-поля `*_id` помечены только
+`(length) = "<=50"` — это max-длина, не format-regex, а на входе RPC синтаксис id
+**не валидируется** (нет prefix-check, нет base32-check) — идём в `repo.Get` → если
+строки нет, получаем sentinel `ErrNotFound` → `NOT_FOUND "<Resource> <id> not found"`.
+Следствие для вызывающего: явный мусор получает тон **отсутствия ресурса** вместо
+терминального отказа по формату.
 
 Выравнивание затрагивает ~все RPC, берущие resource-id, + newman-кейсы,
-ассертящие «garbage id → InvalidArgument». Паритет с поведением kacho-vpc (тот же
-паттерн). **Что нужно для закрытия:** добавить prefix/format-проверку id в начале
-каждого handler'а (или общий decorator), вернуть `InvalidArgument` с verbatim
-текстом → завести GitHub Issue `PRO-Robotech/kacho-compute`, мигрировать
+ассертящие «garbage id → InvalidArgument». **Что нужно для закрытия:** добавить
+`corevalidate.ResourceID` первым стейтментом каждого handler'а (или общий
+decorator) → завести GitHub Issue `PRO-Robotech/kacho-compute`, мигрировать
 newman-кейсы. Низкоприоритетно (реальные клиенты в это редко упираются).
 
-## 2. Name validation contract не probe-verified против реального YC
+> §2 (name-validation) снят: единственным его содержанием была несверенность с
+> чужим API, то есть предмета у записи не было. Собственный контракт имени
+> зафиксирован proto-pattern'ом и `corevalidate.NameCompute` — см.
+> `06-conventions.md`. Номер не переиспользуется: на §-номера ссылаются другие
+> документы.
 
-Используем proto-pattern через `corevalidate.NameCompute` —
-`^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$` (lowercase + digits + hyphens +
-underscore, **empty allowed**, start с буквы, длина 1-63). Реальный YC может:
-- запрещать пустое имя на Create некоторых ресурсов (хотя proto pattern его
-  допускает `|...`);
-- иметь иные граничные правила (двойной дефис, trailing-underscore и т.п.).
-
-**Что нужно для закрытия:** probe реального YC Compute (`yc compute disk create
---name '<edge>'` для набора edge-case'ов: empty, uppercase, leading/trailing
-hyphen, double-underscore, 64 chars, ...) → если расхождение — выровнять
-`corevalidate.NameCompute` или ввести отдельную проверку, завести Issue.
-
-## 3. Instance precondition error texts не probe-verified
+## 3. Instance precondition error texts ещё не закреплены как контракт
 
 State-машина (см. `03-instance-lifecycle.md`) определена корректно по семантике,
-но **тексты** `FailedPrecondition`-ошибок при нарушении precondition —
-placeholder'ы до probe реального YC. Текущие формулировки (могут отличаться):
+но **тексты** `FailedPrecondition`-ошибок при нарушении precondition пока
+placeholder'ы. По конвенции Kachō тон сообщений — часть контракта (стабильный,
+меняется только осознанно), поэтому незакреплённая формулировка — отступление.
+Текущие формулировки (могут ещё измениться):
 - `Start` при не-`STOPPED` → ожидаем `"Instance is not stopped"` / `"Cannot
   start instance in state <X>"`;
 - `Stop` при не-`RUNNING` → `"Instance is not running"` / `"Cannot stop instance
@@ -71,14 +69,15 @@ placeholder'ы до probe реального YC. Текущие формулир
 - `AttachDisk` disk не READY / wrong zone / уже attached → `"The disk is being
   used"` / `"Disk and instance must be in the same zone"` — probe.
 
-**Что нужно для закрытия:** probe реального YC (намеренно нарушить каждый
-precondition, записать verbatim text+code) → выровнять, завести Issue если
-расхождение. До probe — фиксируется здесь.
+**Что нужно для закрытия:** пройти каждый precondition (намеренно нарушить,
+записать текст+код), зафиксировать формулировки в контракте — регламент
+`tests/newman/docs/PRODUCT-REQUIREMENTS.md` + newman-ассерты на точный текст.
+До закрепления — фиксируется здесь.
 
-## 4. Disk size «only increase» / `Image.min_disk_size` constraint texts не probe-verified
+## 4. Disk size «only increase» / `Image.min_disk_size` constraint texts ещё не закреплены
 
 - `Disk.Update` с уменьшением `size` → ожидаем `InvalidArgument "Disk size can
-  only be increased"` (точный verbatim текст probe).
+  only be increased"` (точная формулировка ещё не закреплена).
 - `Disk.Create` с `image_id`, где `size < image.min_disk_size` → ожидаем
   `InvalidArgument "Disk size <X> is less than minimum disk size <Y> for image
   <id>"` (текст probe).
@@ -87,24 +86,24 @@ precondition, записать verbatim text+code) → выровнять, за�
 - `block_size` whitelist — точный допустимый set (4096, 8192, ...) probe;
   невалидный → `InvalidArgument` (текст probe).
 
-**Что нужно для закрытия:** probe реального YC, выровнять тексты, завести Issue
-если код/текст расходится.
+**Что нужно для закрытия:** закрепить тексты в регламенте
+`tests/newman/docs/PRODUCT-REQUIREMENTS.md` и в newman-ассертах на точный текст;
+несоответствие кода закреплённому тексту — Issue.
 
 ## 5. Control-plane simulation — Instance/Disk lifecycle мгновенный, данных нет
 
 Самое крупное by-design расхождение. Kachō — control plane only:
 - **Instance status transitions мгновенны** — нет реального гипервизора → переходы
   происходят синхронно внутри TX worker'а соответствующей операции (без таймеров,
-  без задержки provisioning). Реальный YC: provisioning занимает секунды-минуты,
-  `Instance.status` реально проходит `STARTING`/`STOPPING`/`PROVISIONING`/etc.
+  без задержки provisioning) — статус наблюдаем сразу после `Operation.done`.
 - **`ERROR` / `CRASHED` статусы не достигаются штатно** — нет реального VM, нечему
-  крашиться (зарезервированы в enum для parity, но в Kachō не выставляются).
+  крашиться (объявлены в enum как часть контракта, но control plane их не выставляет).
 - **`GetSerialPortOutput` — синтетический текст** (стабильный per-instance
   плейсхолдер вида `[ OK ] Reached target Multi-User System.`), не реальный
   console-вывод.
 - **`Image.Create` через `uri`-source — мгновенный «download»** (control-plane
-  заглушка), статус сразу `READY`, `storage_size` синтетический. Реальный YC:
-  скачивает образ из Object Storage по signed URL, статус `CREATING` → `READY`.
+  заглушка), статус сразу `READY`, `storage_size` синтетический: реального
+  скачивания из объектного хранилища нет, промежуточного `CREATING` не бывает.
 - **disk data не существует** — Disk/Snapshot/Image — только метаданные. Snapshot
   «делается» мгновенно из Disk `READY`.
 - **`SimulateMaintenanceEvent` — no-op** (operation сразу `done`, Instance не
@@ -124,16 +123,18 @@ precondition, записать verbatim text+code) → выровнять, за�
 
 ## 6. DiskType / Region / Zone admin CRUD через `Internal*` сервисы — kacho-only расширение
 
-В исходном YC Compute API есть только `DiskTypeService.{Get,List}` /
-`ZoneService.{Get,List}` (статический discovery, без Create/Update/Delete) и нет
-`RegionService` в Compute. Мы добавили `InternalDiskTypeService.{Create,Update,
-Delete}` / `InternalRegionService.{Create,Update,Delete}` / `InternalZoneService.
-{Create,Update,Delete}` на cluster-internal порту `:9091`, проброшено через
+Публичная поверхность справочников — только чтение: `DiskTypeService.{Get,List}` /
+`ZoneService.{Get,List}` / `RegionService.{Get,List}` (статический discovery, без
+Create/Update/Delete). Сеять справочники всё равно кому-то надо, поэтому
+admin-CRUD живёт в `InternalDiskTypeService.{Create,Update,Delete}` /
+`InternalRegionService.{Create,Update,Delete}` / `InternalZoneService.
+{Create,Update,Delete}` на cluster-internal порту `:9091`, проброшенном через
 api-gateway internal mux на `/compute/v1/internal/machineTypes`,
-`/compute/v1/zones` — для admin-tooling / UI seed'ить справочники.
+`/compute/v1/zones` — для admin-tooling / UI.
 
-Это **сознательное kacho-only расширение** (verbatim-YC parity — отложена, см.
-workspace `CLAUDE.md`). На external TLS endpoint эти POST/PATCH/DELETE paths
+Это **сознательное решение** (admin-функция не расширяет публичный сервис
+ресурса — иначе она засветилась бы на external endpoint). На external TLS
+endpoint эти POST/PATCH/DELETE paths
 **не должны** быть доступны (workspace `CLAUDE.md` §запрет 6) — публичными
 остаются только Get/List у `DiskTypeService` / `RegionService` / `ZoneService`.
 
@@ -241,7 +242,7 @@ non-optional enum и на пустом `repeated`, поэтому зацепка
 **Почему поля не сняты с контракта.** Третий законный исход — удалить поле из proto с
 `reserved` номера и имени. Здесь он **не** выбран, и не «на будущее»: REST-край
 разбирает тело с `DiscardUnknown: true` (`gateway/internal/restmux/mux.go`, см. также
-`tests/newman/docs/RESULTS.md` §1 — наблюдалось на retired YC-полях), поэтому снятое
+`tests/newman/docs/RESULTS.md` §1 — наблюдалось на уже снятых полях), поэтому снятое
 поле снова даёт `200` с молча отброшенным ключом. Обещание исчезло бы из схемы, но
 обман вызывающего остался бы — и стал бы ненаблюдаемым для чёрного ящика. Отказ
 убирает и то, и другое. Снятие станет верным ходом, когда край перестанет
@@ -316,7 +317,7 @@ newman); `internal/handler/instance_dropped_fields_test.go` (седьмое по
 NIC-ам по-прежнему выдаются синтетические IP (`10.0.0.x` / `203.0.113.x`), VPC не
 дёргается.
 
-**Referrer-tracking (YC-like, с этой фичи) и эфемерный-in-use:** аллокация
+**Referrer-tracking (с этой фичи) и эфемерный-in-use:** аллокация
 адресов в `AddressService.Create` рождает их в состоянии `reserved=true, used=false`
 (как обычные user-reserved-адреса). Compute после успешного `repo.Insert` инстанса
 помечает их фактическим состоянием:
@@ -344,17 +345,17 @@ NIC-ам по-прежнему выдаются синтетические IP (`
 (`reserved=false, used=true, used_by=[…]`) — никакого «фиктивно reserved» не
 осталось.
 
-**Расхождение с verbatim YC, которое сохраняется:** в реальном YC внутренние
-NIC-адреса инстанса **не** материализуются как видимые в `AddressService.List`
-ресурсы — IPAM прозрачен. У нас каждый авто-аллоцированный NIC-IP — это
-полноценная строка в `addresses` (видна в `GET /vpc/v1/addresses?projectId=...`,
-с `name` вида `<instanceId>-nic0` / `<instanceId>-nat0`, но с правильными
-`reserved=false, used=true, used_by=[…]`). Это сознательный trade-off ради
-переиспользования существующего VPC IPAM без новых cross-service RPC / миграций
-в kacho-vpc; альтернатива (тонкий internal-RPC `AllocateInternalIPInSubnet` /
-`AllocateExternalIPInZone` + лёгкая таблица allocations в kacho-vpc) отложена.
-Newman-кейсы kacho-vpc, проверяющие `AddressService.List`, изолированы по `runId`
-и не пересекаются с compute-инстансами, так что parity-сьюты не ломаются.
+**Осознанный trade-off, который сохраняется:** внутренний IPAM инстанса
+**не прозрачен** — каждый авто-аллоцированный NIC-IP это полноценная строка в
+`addresses`, видимая в `AddressService.List` (`GET /vpc/v1/addresses?projectId=...`,
+`name` вида `<instanceId>-nic0` / `<instanceId>-nat0`, поля
+`reserved=false, used=true, used_by=[…]`). Цена — служебные адреса видны тенанту
+в списке; выигрыш — переиспользование существующего VPC IPAM без новых
+cross-service RPC / миграций в kacho-vpc. Альтернатива (тонкий internal-RPC
+`AllocateInternalIPInSubnet` / `AllocateExternalIPInZone` + лёгкая таблица
+allocations в kacho-vpc) отложена. Newman-кейсы kacho-vpc, проверяющие
+`AddressService.List`, изолированы по `runId` и не пересекаются с
+compute-инстансами, так что суиты не ломаются.
 
 ---
 
@@ -431,17 +432,19 @@ authz не меняет (решение по subject-cert, не по содер�
 
 ---
 
-## Подтверждённые расхождения, вынесенные в issues (здесь — указатель)
+## Подтверждённые отступления, вынесенные в issues (здесь — указатель)
 
-- **Malformed / wrong-prefix resource id → мы `NotFound`, YC `InvalidArgument`**
-  — см. §1 выше. Паритет с поведением kacho-vpc#7. → GitHub Issue
+- **Malformed / wrong-prefix resource id → `NotFound` вместо `InvalidArgument`**
+  — см. §1 выше. Тот же паттерн в kacho-vpc. → GitHub Issue
   `PRO-Robotech/kacho-compute` (создать при выравнивании).
 - **`OperationService.Get`/`Cancel` с bad id** — api-gateway opsproxy парсит
   первые 3 символа id, на любой нероутящийся id возвращает `400 INVALID_ARGUMENT
-  "operation_id has unknown prefix"`; реальный YC для well-formed-но-unroutable
-  id даёт `404 NotFound "Operation <X> not found"` — расхождение по коду. Общий
-  для всех kacho-* (issue в `kacho-api-gateway`, см. `../kacho-vpc/docs/
-  architecture/07-known-divergences.md` §2).
+  "operation_id has unknown prefix"`. По конвенции by-lane split
+  (`api-conventions.md`) well-formed-но-нерезолвящийся own-owned id — это
+  direct-read lane, то есть `404 NotFound "Operation <X> not found"`; malformed —
+  `400 InvalidArgument`. Сейчас различия нет, оба схлопнуты в 400 — отступление по
+  коду. Общий для всех kacho-* (issue в `kacho-api-gateway`, см. `../kacho-vpc/docs/
+  architecture/07-known-divergences.md`).
 
 ---
 
@@ -671,8 +674,8 @@ sentinel→code в отдельный слой (если когда-либо) �
   metadata-типы, error-mapping, outbox-emit) — сохранены дословно; централизована
   только hand-copied обвязка. Изменение контракта диспетчеризации правится в одном месте.
 
-**Осознанно НЕ меняется** (workspace-wide структурные решения / verbatim-YC / нужен
-координированный контрактный тикет):
+**Осознанно НЕ меняется** (workspace-wide структурные решения / замороженный
+контракт / нужен координированный контрактный тикет):
 
 - **Anemic domain — bare-primitive поля, без self-validating newtypes/конструкторов.**
   `domain.Instance/Disk/Image/Snapshot` — плоские структуры string/int; вся
@@ -705,10 +708,10 @@ sentinel→code в отдельный слой (если когда-либо) �
   message ceiling). `UpdateMetadata` тоже upsert'ит произвольные ключи без cap.
   Введение лимита (max total bytes / key-count / per-key-value length) — **поведенческое
   изменение frozen-контракта** (ранее принятый payload начнёт отвергаться
-  `InvalidArgument`), а точное значение cap'а должно быть probe-verified против
-  реального YC (256 KB total user-data) и синхронно отражено в newman + parity с
+  `InvalidArgument`), а точное значение cap'а должно быть закреплено в контракте и
+  синхронно отражено в newman + согласовано с
   Disk/Image/Snapshot-metadata. Поэтому — не тихий internal-edit, а координированный
-  контрактный тикет (как §2/§3/§4 «не probe-verified»). Держим как known gap. (findings7 #5)
+  контрактный тикет (как §3/§4 «формулировка не закреплена»). Держим как known gap. (findings7 #5)
 
 ## Security-hardening audit r8b 2026-07-06 (branch `sec-hardening-r8b-2026-07-06`)
 

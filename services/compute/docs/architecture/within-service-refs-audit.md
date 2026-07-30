@@ -60,7 +60,7 @@ compute-домене): software-guard в `InstanceService.AttachDisk` / `resolve
 | G3  | `instances.zone_id` → `zones(id)` — within-service ref **без FK** (zone — kacho-compute собственный домен после KAC-15, та же БД) | **High** | Missing within-service FK |
 | G4  | `disks.zone_id` → `zones(id)` — within-service ref без FK | **High** | Missing within-service FK |
 | G5  | `disks.type_id` → `disk_types(id)` — within-service ref без FK; `Disk.Create` валидирует software'ом через `diskTypeRepo.Get` | Medium | Missing within-service FK |
-| G6  | `disks.source_image_id` / `disks.source_snapshot_id` — within-service ref без FK; **by-design** (verbatim YC: source image можно удалить, оставив disk; см. `kacho-compute/CLAUDE.md §2 FK contract`) | Info (by-design) | Documented divergence |
+| G6  | `disks.source_image_id` / `disks.source_snapshot_id` — within-service ref без FK; **by-design** soft-ref (source image можно удалить, оставив disk; см. `kacho-compute/CLAUDE.md §2 FK contract`) | Info (by-design) | Documented divergence |
 | G7  | `images.source_image_id` / `images.source_snapshot_id` / `images.source_disk_id` — within-service ref без FK; **by-design** (источник можно удалить) | Info (by-design) | Documented divergence |
 | G8  | `snapshots.source_disk_id` — within-service ref без FK; **by-design** | Info (by-design) | Documented divergence |
 | G9  | Enum-like колонки (`disks.status`, `images.status`, `snapshots.status`, `instances.status`, `zones.status`, `instance_network_interfaces.mode` / `attached_disks.mode`) — нет CHECK | Low | Missing CHECK constraint |
@@ -119,7 +119,7 @@ compute-домене): software-guard в `InstanceService.AttachDisk` / `resolve
 | `(project_id, name)` | уникальный non-empty | `disks_project_name_uniq` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
 | `zone_id` | существует, RESTRICT удаления зоны | ❌ **нет FK** | sync `zones.GetZone` в `DiskService.doCreate` | **G4** |
 | `type_id` | существует в `disk_types(id)` | ❌ **нет FK** | sync `diskTypeRepo.Get` в `DiskService.doCreate` | **G5** |
-| `source_image_id` (nullable, '' = none) | если задан — existed at create time | ❌ нет FK (by-design — verbatim YC, source can be deleted) | sync `imageRepo.Get` в `doCreate` | **G6** (by-design, documented) |
+| `source_image_id` (nullable, '' = none) | если задан — existed at create time | ❌ нет FK (by-design soft-ref: source can be deleted) | sync `imageRepo.Get` в `doCreate` | **G6** (by-design, documented) |
 | `source_snapshot_id` (nullable, '' = none) | если задан — existed at create time | ❌ нет FK (by-design) | sync `snapshotRepo.Get` в `doCreate` | **G6** (by-design) |
 | `size` ≥ `min_disk_size` source-image / `disk_size` source-snapshot | sync-only при Create | sync в `doCreate` | n/a | OK (immutable после Create — нет race) |
 | `status` (TEXT: CREATING/READY/ERROR/DELETING) | значение из enum | ❌ нет CHECK | sync mapping | **G9** (minor) |
@@ -135,7 +135,7 @@ compute-домене): software-guard в `InstanceService.AttachDisk` / `resolve
 | `(project_id, name)` | уникальный non-empty | `images_project_name_uniq` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
 | `(project_id, family, created_at desc)` ordering для GetLatestByFamily | индекс есть | `images_family_idx` ✅ | n/a | OK |
 | `family` | regex `^([a-z][-a-z0-9]{1,61}[a-z0-9])?$` | ❌ нет CHECK | sync `validateImageFamily` в `ImageService.Create` | acceptable (immutable после Create; нет raw-INSERT admin-path) |
-| `source_image_id` (nullable) | если задан — existed at create time | ❌ нет FK (by-design — YC: source can be deleted) | sync `imageRepo.Get` в `doCreate` | **G7** (by-design) |
+| `source_image_id` (nullable) | если задан — existed at create time | ❌ нет FK (by-design soft-ref: source can be deleted) | sync `imageRepo.Get` в `doCreate` | **G7** (by-design) |
 | `source_snapshot_id` (nullable) | если задан — existed at create time | ❌ нет FK (by-design) | sync `snapshotRepo.Get` | **G7** (by-design) |
 | `source_disk_id` (nullable) | если задан — existed at create time | ❌ нет FK (by-design) | sync `diskRepo.Get` | **G7** (by-design) |
 | `status` (TEXT: CREATING/READY/ERROR/DELETING) | значение из enum | ❌ нет CHECK | sync mapping | **G9** (minor) |
@@ -148,7 +148,7 @@ compute-домене): software-guard в `InstanceService.AttachDisk` / `resolve
 | `id` PK | уникальный | `snapshots_pkey` ✅ | n/a | OK |
 | `project_id` (id владельца-проекта) | существует в kacho-iam | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
 | `(project_id, name)` | уникальный non-empty | `snapshots_project_name_uniq` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
-| `source_disk_id` | existed at create time, Disk был READY | ❌ нет FK (by-design — YC: source disk can be deleted) | sync `diskRepo.Get` + status check в `SnapshotService.doCreate` | **G8** (by-design) |
+| `source_disk_id` | existed at create time, Disk был READY | ❌ нет FK (by-design soft-ref: source disk can be deleted) | sync `diskRepo.Get` + status check в `SnapshotService.doCreate` | **G8** (by-design) |
 | `source_disk_idx` для observability | `snapshots_source_disk_idx` partial WHERE `source_disk_id <> ''` ✅ | n/a | OK |
 | `status` (TEXT) | значение из enum | ❌ нет CHECK | sync | **G9** (minor) |
 
@@ -278,7 +278,7 @@ DROP INDEX IF EXISTS attached_disks_disk_id_uniq;
 > **Code-change в repo**: `insertAttachedDiskTx` уже использует unconditional
 > INSERT — partial UNIQUE сработает на 23505 → `wrapPgErr` смаппит в
 > `service.ErrAlreadyExists`. В service-слое `mapRepoErr` маппит `ErrAlreadyExists`
-> в gRPC `AlreadyExists`. **Для verbatim-YC parity** правильнее вернуть
+> в gRPC `AlreadyExists`. **По контракту** точнее вернуть
 > `FailedPrecondition "Disk is already attached"` — нужно расширить
 > `mapRepoErr` или добавить отдельную ветку в `InstanceRepo.AttachDisk` /
 > `insertAttachedDiskTx` для маппинга 23505 на disk_id-UNIQUE в
@@ -444,7 +444,7 @@ ALTER TABLE instances DROP CONSTRAINT IF EXISTS instances_zone_id_fkey;
 > **Code-change**: `mapRepoErr` уже маппит 23503 в `ErrFailedPrecondition`
 > (через `wrapPgErr`). Сообщение получится «The instance ... is being used» —
 > для FK on zone это не очень точно; стоит расширить `wrapPgErr` или
-> service-слой для маппинга по constraint name → точный verbatim YC text.
+> service-слой для маппинга по constraint name → точный контрактный текст.
 >
 > **Integration test**: try Zone.Delete пока есть instance в зоне → FailedPrecondition.
 
@@ -522,10 +522,10 @@ ALTER TABLE disks DROP CONSTRAINT IF EXISTS disks_type_id_fkey;
 
 ### G6 — `disks.source_image_id` / `disks.source_snapshot_id` без FK (by-design)
 
-**Severity**: Info — by-design расхождение с FK-правилом, продиктованное
-verbatim-YC семантикой.
+**Severity**: Info — by-design отступление от FK-правила, продиктованное
+семантикой soft-ref.
 
-**Контекст**. Verbatim YC: можно удалить Image / Snapshot, у которого есть
+**Контекст**. Осознанная семантика: можно удалить Image / Snapshot, у которого есть
 Disk, созданный из этого источника — Disk просто хранит «откуда создан» в
 observability-целях. Соответственно FK нельзя (он бы заблокировал удаление).
 
@@ -535,7 +535,7 @@ observability-целях. Соответственно FK нельзя (он б�
 
 **Существующая запись** (CLAUDE.md §2 FK contract):
 > `disks.source_image_id` / `disks.source_snapshot_id` — **НЕ FK** (Image живёт
-> в этой же БД, но YC семантика: можно удалить Image, у которого есть Disk;
+> в этой же БД, но семантика soft-ref: можно удалить Image, у которого есть Disk;
 > Disk просто хранит «откуда создан»). При Create — existence-check в worker'е.
 
 Это уже задокументировано в CLAUDE.md, дублируется в audit для полноты.
@@ -549,7 +549,7 @@ observability-целях. Соответственно FK нельзя (он б�
 **Severity**: Info — by-design, аналогично G6.
 
 `images.source_image_id` / `source_snapshot_id` / `source_disk_id` —
-observability-поля, не FK. Verbatim YC: source можно удалить.
+observability-поля, не FK. Осознанно: source можно удалить.
 
 **Action**: same as G6.
 
@@ -559,7 +559,7 @@ observability-поля, не FK. Verbatim YC: source можно удалить.
 
 **Severity**: Info — by-design.
 
-`snapshots.source_disk_id` — observability. Verbatim YC: source disk можно
+`snapshots.source_disk_id` — observability. Осознанно: source disk можно
 удалить.
 
 **Action**: same as G6.
@@ -697,7 +697,7 @@ kube-ovn-эпохи. Таблицы и связанный software-слой уд
 | `instances.zone_id` no within-service FK | dangling ref на zones-delete | **G3** (High) |
 | `disks.zone_id` no within-service FK | dangling ref | **G4** (High) |
 | `disks.type_id` no within-service FK | dangling ref | **G5** (Medium) |
-| `disks.source_image_id` / `source_snapshot_id` no FK | by-design (verbatim YC) | **G6** (Info) |
+| `disks.source_image_id` / `source_snapshot_id` no FK | by-design (soft-ref) | **G6** (Info) |
 | `images.source_*_id` no FK | by-design | **G7** (Info) |
 | `snapshots.source_disk_id` no FK | by-design | **G8** (Info) |
 | Enum CHECKs отсутствуют | мусор-INSERT поверхность | **G9** (Low) |
@@ -712,8 +712,8 @@ kube-ovn-эпохи. Таблицы и связанный software-слой уд
 - Создать **KAC-87 epic** «within-service refs DB-coverage closure (compute)» с subtask'ами:
   - **KAC-87.compute.1** — G1 fix (disk-attach race): миграция
     `attached_disks_disk_id_uniq` partial UNIQUE + adjust `mapRepoErr` / repo
-    error mapping → `FailedPrecondition "Disk is already attached"` (verbatim
-    YC text). Integration-test зеркалит `network_interface_attach_race_integration_test.go`
+    error mapping → `FailedPrecondition "Disk is already attached"` (контрактный
+    текст). Integration-test зеркалит `network_interface_attach_race_integration_test.go`
     из kacho-vpc. **Newman-кейс** `INST-ATTACH-DISK-RACE` обязателен (запрет #11).
   - **KAC-87.compute.2** — G2 fix (Instance state-машина CAS): code-only change
     в `InstanceRepo.SetStatus` + `mutateAndReload` с `expectedStatus`, без миграции.

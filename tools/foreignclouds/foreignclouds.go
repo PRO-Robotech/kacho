@@ -351,8 +351,95 @@ func AuditExemptions(repoRoot string) []Finding {
 		})
 	}
 
+	findings = append(findings, auditDebtFiles(repoRoot)...)
+
 	sortFindings(findings)
 	return findings
+}
+
+// auditDebtFiles holds debtFiles to the same standard as every other declared
+// allowance: it must name a real subject, and it must not be able to grow
+// quietly.
+//
+// Both halves matter, and each one was missing for a different reason. The
+// abbreviation stays out of `tokens` because prose in files owned by other work
+// cannot be fixed by this change — but "absent from the dictionary" also meant
+// **absent from the verdict**: a new mention could be added and the gate would
+// still print OK, with only a number moving that nobody compares. Enumerating
+// the remainder puts it back under the verdict without burying the findings that
+// are actionable today: an undeclared mention fails, and a declared entry that
+// no longer has anything to allow fails too.
+func auditDebtFiles(repoRoot string) []Finding {
+	var findings []Finding
+
+	for rel, why := range debtFiles {
+		full := filepath.Join(repoRoot, filepath.FromSlash(rel))
+		if _, err := os.Stat(full); err != nil {
+			findings = append(findings, Finding{
+				Path: rel,
+				Text: "declared provider abbreviation entry points at a file that is gone (" + why + ") — delete it from debtFiles",
+			})
+			continue
+		}
+		if countDebtTokens(readText(full)) == 0 {
+			findings = append(findings, Finding{
+				Path: rel,
+				Text: "stale declared provider abbreviation entry (" + why + "): nothing in this file carries it any more — delete it from debtFiles",
+			})
+		}
+	}
+
+	for _, rel := range undeclaredDebtFiles(repoRoot) {
+		findings = append(findings, Finding{
+			Path: rel,
+			Text: "carries the provider abbreviation but is not declared — remove the mention, " +
+				"or add the path to debtFiles in tools/foreignclouds with the reason it cannot be removed yet",
+		})
+	}
+
+	return findings
+}
+
+// undeclaredDebtFiles returns the files that carry a debt token without an entry
+// in debtFiles. Walk rules are ScanDebt's, so the enumerated list and the printed
+// number are answers about the same set of files — a guard and a self-report that
+// disagree are worse than either alone.
+func undeclaredDebtFiles(repoRoot string) []string {
+	var out []string
+	ignored := ignoredPaths(repoRoot)
+
+	_ = filepath.WalkDir(repoRoot, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		rel, relErr := filepath.Rel(repoRoot, path)
+		if relErr != nil {
+			return relErr
+		}
+		rel = filepath.ToSlash(rel)
+		if rel == "." {
+			return nil
+		}
+		if d.IsDir() {
+			if d.Name() == ".git" || ignored.covers(rel) {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		if ignored.covers(rel) {
+			return nil
+		}
+		if _, declared := debtFiles[rel]; declared {
+			return nil
+		}
+		if countDebtTokens(readText(path)) > 0 {
+			out = append(out, rel)
+		}
+		return nil
+	})
+
+	sort.Strings(out)
+	return out
 }
 
 // unusedCoordinates returns the coordinate exemptions that never stood between
@@ -544,6 +631,50 @@ tools/foreignclouds with the reason written down. Nothing else is exempt.
 // целый реестр расхождений относительно чужого API). Число делает долг видимым, не
 // заваливая находки, которые исправимы прямо сейчас.
 var debtTokens = []string{"yc"}
+
+// debtFiles — files that still carry a debt token, each with the reason it is
+// still there. Keyed by slash-separated path from the repository root.
+//
+// Почему список, а не запись в `tokens`. Промоушен сокращения потребовал бы
+// **whole-file** exemption на каждый файл из остатка — а такая запись глушит и
+// ПОЛНЫЕ имена провайдеров в том же файле, то есть ослабляет гейт ради прозы.
+// Отдельный список слабее по охвату (разрешает только сокращение) и строже по
+// последствиям: полное имя в любом из этих файлов по-прежнему роняет сборку.
+//
+// Запись обязана называть причину и истекает сама: см. auditDebtFiles.
+var debtFiles = map[string]string{
+	// Применённые миграции неизменны (ban #5) — упоминание в них нельзя убрать
+	// никаким изменением этого дерева.
+	"services/compute/internal/migrations/0001_initial.sql":           "applied migration: comment and seeded catalogue keys are frozen (ban #5)",
+	"services/compute/internal/migrations/0016_instance_redesign.sql": "applied migration: comment recording the retirement is frozen (ban #5)",
+
+	// Токен здесь — ПРОВЕРЯЕМОЕ ЗНАЧЕНИЕ, а не проза: кейс утверждает, что
+	// brand-токенов НЕТ в ответе. Убрать его — значит удалить проверку.
+	"services/compute/tests/newman/cases/instance-redesign.py":                            "conformance case: the token is an asserted value — the case proves it is ABSENT from responses",
+	"services/compute/tests/newman/collections/instance-redesign.postman_collection.json": "generated from the case above",
+
+	// Этот файл обязан выписать сокращение, которое считает.
+	"tools/foreignclouds/foreignclouds.go":      "this gate: it has to spell the abbreviation it counts",
+	"tools/foreignclouds/foreignclouds_test.go": "the fixtures that prove this list fires on an undeclared mention and expires on a dead entry",
+
+	// Проза в комментариях, которую эта правка не трогала: файлы находятся в
+	// работе у параллельных задач (newman-кейсы/скрипты, services/iam/internal).
+	// Правка тех же слов рядом с чужими изменениями даёт конфликт на ровном
+	// месте, поэтому вынесено следующим шагом — запись истечёт сама, когда
+	// упоминание уйдёт.
+	"services/compute/tests/newman/cases/operation.py":         "prose comment; file is owned by concurrent newman work",
+	"services/nlb/tests/newman/cases/operation.py":             "prose comment; file is owned by concurrent newman work",
+	"services/compute/tests/newman/scripts/gen.py":             "prose comment in the suite generator; file is owned by concurrent newman work",
+	"services/storage/tests/newman/scripts/gen.py":             "prose comment in the suite generator; file is owned by concurrent newman work",
+	"services/compute/tests/newman/scripts/run-incremental.js": "prose comment in the suite runner; file is owned by concurrent newman work",
+	"services/compute/tests/newman/scripts/run-incremental.sh": "prose comment in the suite runner; file is owned by concurrent newman work",
+	"services/iam/tests/newman/cases/README.md":                "stale path reference in suite docs; directory is owned by concurrent newman work",
+	"services/iam/internal/apps/kacho/shared/doc.go":           "prose comment; services/iam/internal is owned by concurrent work",
+	"services/iam/internal/apps/kacho/shared/errors.go":        "prose comment; services/iam/internal is owned by concurrent work",
+	"services/iam/internal/domain/project.go":                  "prose comment; services/iam/internal is owned by concurrent work",
+	"services/iam/internal/domain/status.go":                   "prose comment; services/iam/internal is owned by concurrent work",
+	"services/iam/internal/repo/kacho/condition/iface.go":      "prose comment; services/iam/internal is owned by concurrent work",
+}
 
 // Debt — сводка заявленного долга: сколько вхождений в скольких файлах.
 type Debt struct {

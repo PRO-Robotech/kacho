@@ -16,8 +16,8 @@ import "kacho/iam/authz/v1/authz_options.proto";
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1";
 
 // ListenerService manages Listener resources as a first-class FGA object
-// (`nlb_listener`). Diverges from upstream YC AddListener/RemoveListener
-// inline pattern (design §3.3, §6.1).
+// (`nlb_listener`). Replaces the inline AddListener/RemoveListener pattern of
+// an earlier revision (design §3.3, §6.1).
 service ListenerService {
   rpc Get(GetListenerRequest) returns (Listener) {
     option (google.api.http) = {get: "/nlb/v1/listeners/{listener_id}"};

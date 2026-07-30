@@ -23,7 +23,7 @@ kacho-storage, его suite живёт в `services/storage/tests/newman/`).
 | `security_injection_block` | SQLi/union/XSS/cmd/path/longpayload в name + filter → не 500, без pgx/stack-leak | INST |
 | `poll_operation_until_done()` (LRO helper) | GET /operations/{opId} с `setNextRequest`-retry до 8 раз; assert `done==true` | каждый Create/Update/Delete/Move/Relocate/Start/Stop/Restart/Attach/Detach/NAT/UpdateMetadata |
 | `assert_op_success()` / `assert_op_error(code,name[,substr])` | проверка `Operation.response` (success) или `Operation.error.code` (failed) | NEG-кейсы (async ошибки), CRUD-кейсы (после poll) |
-| `assert_created_at_seconds()` | CONF: created_at в proto-ответе без дробной секунды (verbatim YC) | INST CRUD-OK |
+| `assert_created_at_seconds()` | CONF: created_at в proto-ответе без дробной секунды (конвенция Kachō) | INST CRUD-OK |
 | `assert_operation_envelope()` | Operation.id matches `^epd[a-z0-9]+$`, metadata is object | каждый Create CRUD-OK |
 
 ## Instance (77 кейсов) — `cases/instance.py` *(многие требуют поднятого kacho-vpc)*

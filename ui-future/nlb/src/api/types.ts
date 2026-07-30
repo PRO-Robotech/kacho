@@ -1,4 +1,4 @@
-// TS-типы для flat API (sub-phase 1.0, verbatim YC proto).
+// TS-типы для flat API (sub-phase 1.0, контракт proto).
 // Ресурсы — плоские объекты (нет metadata/spec/status envelope).
 // grpc-gateway сериализует proto snake_case → JSON snake_case (прямой маппинг).
 

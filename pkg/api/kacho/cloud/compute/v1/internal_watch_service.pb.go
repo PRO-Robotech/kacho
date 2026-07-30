@@ -91,7 +91,7 @@ type Event struct {
 	SequenceNo int64 `protobuf:"varint,1,opt,name=sequence_no,json=sequenceNo,proto3" json:"sequence_no,omitempty"`
 	// Тип ресурса: "Instance", "Disk", "Image", "Snapshot".
 	ResourceKind string `protobuf:"bytes,2,opt,name=resource_kind,json=resourceKind,proto3" json:"resource_kind,omitempty"`
-	// ID ресурса (YC-style: epd..., fd8...).
+	// ID ресурса (`<prefix><base32>`: epd..., fd8...).
 	ResourceId string `protobuf:"bytes,3,opt,name=resource_id,json=resourceId,proto3" json:"resource_id,omitempty"`
 	// Тип события: "CREATED", "UPDATED", "DELETED".
 	EventType string `protobuf:"bytes,4,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`

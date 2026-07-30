@@ -20,7 +20,7 @@ texts, status codes, timestamp precision, regex'ы, behavioural semantics.
                   ┌───────────────────────────────────────────────┐
                   │                kacho-compute                  │
                   │                                               │
-     public  ──►  │   verbatim-YC API (project-scoped)             │
+     public  ──►  │   публичный API (project-scoped)              │
                   │   ├─ Instance (ВМ; state-машина статуса)       │
                   │   ├─ Disk (тома; type → DiskType)              │
                   │   ├─ Image (образы; family / GetLatestByFamily)│
@@ -40,7 +40,7 @@ texts, status codes, timestamp precision, regex'ы, behavioural semantics.
 
 ## Скоуп
 
-### В скоупе (public, verbatim-YC)
+### В скоупе (публичный контракт)
 
 **Disk** — Get / List / Create / Update / Delete / ListOperations /
 Relocate (частично — cross-zone disk move) + access-bindings RPC (no-op скелет под AAA).
@@ -138,15 +138,15 @@ prefix `epd`).
    `internal/handler/*_test.go`, `internal/repo/*integration_test.go`) и newman
    e2e (`tests/newman/cases/*.py`). Каждый RPC и каждый класс кейсов
    (CRUD/VAL/NEG/BVA/CONF/STATE/...) покрыт обоими уровнями. Критерий приёмки:
-   любой newman-кейс для kacho-compute должен зеленеть и против реального YC
-   Compute API (verbatim parity).
+   любой newman-кейс kacho-compute должен зеленеть на собственных чёрных
+   ящиках, и ни одно изменение не должно ломать объявленный контракт Kachō.
 4. **Откладываем на потом ТОЛЬКО кейсы, которым нужен ещё не реализованный
    сервис.** `Disk.Create` со ссылкой на `kms_key_id` требует `kacho-kms`
    (нет → метка `blocked:kacho-kms`). `Image.Create` через `os_product_ids` →
    `kacho-marketplace`. Всё остальное (полный Instance lifecycle,
    attach/detach, NAT) реализуем сразу.
 5. **Подробная прописанная архитектура** живёт в `docs/architecture/*.md`
-   (этот каталог). By-design расхождения с verbatim YC — в
+   (этот каталог). By-design отступления от конвенций Kachō — в
    `docs/architecture/07-known-divergences.md` (НЕ GitHub Issues).
 6. **Для каждого модуля — UI**, встроенный в `kacho-ui` (Vite + React SPA).
    Compute-views в `kacho-ui/src/pages/compute/` (Instances / Disks / Images /
@@ -203,7 +203,7 @@ internal/
                           структурно копия kacho-vpc.
 
   protoconv/              domain ↔ proto конверсия. Единственное место timestamp-truncate
-                          до секунд (verbatim YC).
+                          до секунд (конвенция Kachō).
 
   migrations/             *.sql, embed.FS (migrations.go), goose-стиль up/down.
 

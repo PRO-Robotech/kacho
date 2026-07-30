@@ -18,7 +18,7 @@ interface Props {
   editMode?: boolean;
   // Если true — встроенный <Label> внутри renderer'а не рисуется (label
   // рендерится снаружи, например в AntD Form.Item). Используется для
-  // горизонтального YC-style layout, где label слева, input справа.
+  // горизонтального layout, где label слева, input справа.
   hideLabel?: boolean;
 }
 

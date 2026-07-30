@@ -57,8 +57,7 @@ Compute-specific правила, error mapping, top-10 gotchas. Workspace-уро
   `(pattern) = "|[a-z]([-_a-z0-9]{0,61}[a-z0-9])?"` (**lowercase**-only + digits
   + hyphens + underscore, empty allowed, start с буквы; regex
   `^([a-z]([-_a-z0-9]{0,61}[a-z0-9])?)?$`). ⚠️ это НЕ `NameVPC` (там uppercase
-  разрешён). Точный контракт против реального YC — probe (см.
-  [`07-known-divergences.md`](07-known-divergences.md) §2). `family` —
+  разрешён). `family` —
   `(pattern) = "|[a-z][-a-z0-9]{1,61}[a-z0-9]"`. `device_name` —
   `(pattern) = "[a-z][a-z0-9-_]{,19}"`. `hostname` — как `name`.
 - `Description` ≤256; `Labels` ≤64 пар (key regex `[a-z][-_./\@0-9a-z]*`, value
@@ -66,11 +65,12 @@ Compute-specific правила, error mapping, top-10 gotchas. Workspace-уро
 - `zone_id` — required + existence через `ZoneRegistry` — **локальная таблица
   `zones`** (kacho-compute owns Geography, эпик `KAC-15`; больше нет proxy в
   kacho-vpc и `skipPeer`-fallback). Неизвестная зона → `InvalidArgument "Zone
-  <id> not found"` (probe — YC может давать `NotFound`).
+  <id> not found"` (по конвенции by-lane split чужой id — это peer-validate
+  lane, то есть `FailedPrecondition`; выбор кода здесь ещё не выровнен).
 - Disk `size` — `[4194304 .. 28587302322176]` на Create, `[4194304 ..
   4398046511104]` на Update (из proto `(value)`). `AttachedDiskSpec.DiskSpec.size`
   — `[4194304 .. 4398046511104]`. `block_size` — default 4096, whitelist
-  {4096, ...} (probe YC точный set).
+  {4096, ...} (точный set ещё не закреплён в контракте).
 - Image `min_disk_size` — `[4194304 .. 4398046511104]`.
 - Instance `resources_spec`: `memory ≤ 274877906944` и per-platform range/multiple;
   `cores ∈ {2,4,6,...,80}` и per-platform set; `core_fraction ∈ {0,5,20,50,100}`;
@@ -112,16 +112,16 @@ Compute-specific правила, error mapping, top-10 gotchas. Workspace-уро
 
 `internal/service/maperr.go::mapRepoErr` — единая точка трансляции (копия VPC):
 
-| Sentinel error (`internal/ports`) | gRPC code | Verbatim YC text source |
+| Sentinel error (`internal/ports`) | gRPC code | Контрактный текст |
 |---|---|---|
 | `ErrNotFound` | `NOT_FOUND` | `"<Resource> <id> not found"` (`Disk`, `Image`, `Snapshot`, `Instance`, `Disk type`, `Zone`, `Project`, `Subnet`) |
-| `ErrAlreadyExists` | `ALREADY_EXISTS` | `"<resource> with name '<n>' already exists ..."` (probe verbatim YC text) |
-| `ErrFailedPrecondition` | `FAILED_PRECONDITION` | varies (`"The disk <id> is being used"`, `"Instance must be stopped"`, `"Instance is not running"`, ... — probe verbatim) |
+| `ErrAlreadyExists` | `ALREADY_EXISTS` | `"<resource> with name '<n>' already exists ..."` (точная формулировка ещё не закреплена) |
+| `ErrFailedPrecondition` | `FAILED_PRECONDITION` | varies (`"The disk <id> is being used"`, `"Instance must be stopped"`, `"Instance is not running"`, ... — формулировки ещё не закреплены) |
 | `ErrInvalidArg` | `INVALID_ARGUMENT` | varies (size, block_size, cores, `"Disk size can only be increased"`, ...) |
 | `ErrInternal` | `INTERNAL` | `"internal database error"` (no leak — pgx-текст не утекает наружу) |
 
-`stripSentinel` удаляет sentinel-префикс из текста, чтобы клиент видел verbatim
-YC сообщение без internal-обёртки. Файлы `internal/service/errors.go` +
+`stripSentinel` удаляет sentinel-префикс из текста, чтобы клиент видел
+контрактное сообщение без internal-обёртки. Файлы `internal/service/errors.go` +
 `internal/ports/errors.go` — type-alias'ы как в VPC (sentinel-ы живут в
 leaf-пакете `internal/ports`, чтобы `portmock` мог их возвращать без
 import-cycle). `status.FromError + code != Unknown` guard — не маппить повторно
@@ -129,7 +129,7 @@ import-cycle). `status.FromError + code != Unknown` guard — не маппит�
 
 ## Timestamp truncation
 
-Все `created_at` truncate до **seconds** в proto-ответе (verbatim YC):
+Все `created_at` truncate до **seconds** в proto-ответе (конвенция Kachō):
 `CreatedAt: timestamppb.New(s.CreatedAt.Truncate(time.Second))` — единственное
 место конверсии: `internal/protoconv/protoconv.go` (как в VPC). БД хранит
 микросекунды (`TIMESTAMPTZ DEFAULT now()`), клиент видит секунды.
@@ -145,7 +145,7 @@ Decision table (как в VPC):
 - mask содержит **immutable** поле → `InvalidArgument` (`"<field> is immutable
   after <Resource>.Create"`).
 - mask **пустой** → full-object PATCH: применяются все mutable-поля; immutable из
-  тела **silently игнорируются** (verbatim YC).
+  тела **silently игнорируются** (единая `update_mask`-дисциплина Kachō).
 - mask содержит mutable-поле → применяется; валидируется по тем же правилам, что
   Create.
 
@@ -163,8 +163,8 @@ Decision table (как в VPC):
   `scheduling_policy`, `maintenance_policy`, `maintenance_grace_period`,
   `serial_port_settings`. `metadata` — через `UpdateMetadata` RPC, не через
   `Update`. `resources_spec` (cores/memory/core_fraction/gpus) и `platform_id` —
-  изменяются только когда Instance `STOPPED` (verbatim YC `FailedPrecondition
-  "Instance must be stopped"` — text probe).
+  изменяются только когда Instance `STOPPED` (`FailedPrecondition
+  "Instance must be stopped"` — формулировка ещё не закреплена).
 
 ## Pagination & Filter
 
@@ -172,7 +172,7 @@ Decision table (как в VPC):
   base64 структуры `{created_at, id}`. `page_size` через `corevalidate.PageSize`
   (0 → DefaultPageSize=50, max 1000). Garbage `page_token` → `InvalidArgument`.
   Зеркаль `../kacho-vpc/internal/repo/paging.go`.
-- Filter — `List*` RPC принимают `filter` строку YC-syntax (`name="<v>"`; для
+- Filter — `List*` RPC принимают `filter` строку (`name="<v>"`; для
   Instance proto документирует `id/name/created_at/status/zone_id/platform_id/
   host_id`, но текущая фаза — только `name=`). Парсится через
   `kacho-corelib/filter.Parse` с whitelist полей. `order_by` (`"createdAt desc"`,
@@ -226,8 +226,8 @@ NIC, `nic_id=''`) — для unit/newman/load-тестов без подняты
 - **Правило для новых admin-RPC**: добавлять **только** в `Internal*` сервис на
   `:9091`, регистрировать через `computeInternalAddr` блок в
   `kacho-api-gateway/internal/restmux/mux.go`. **НЕ** расширять публичные
-  `InstanceService`/`DiskService`/etc. для admin-нужд — это сломает verbatim-YC
-  parity и засветит admin-функции на TLS endpoint.
+  `InstanceService`/`DiskService`/etc. для admin-нужд — это засветит
+  admin-функции на external TLS endpoint (запрет 6).
 
 ## Optimistic concurrency
 
@@ -244,14 +244,14 @@ Zero-overhead, миграция не нужна. Используется в `Up
 ## Top-10 gotchas (наследие kacho-vpc + compute-specific)
 
 1. **id sync-валидация** — well-formed-но-несуществующий id → `NotFound`;
-   malformed/wrong-prefix id: реальный YC → `InvalidArgument "invalid <res> id
-   '<X>'"` (probe 2026-05-11), у нас пока `NotFound` через `repo.Get` —
-   расхождение, `docs/architecture/07-known-divergences.md` §1 (паритет с
-   поведением kacho-vpc, gotcha #1). Не использовать UUID/format-валидацию на
-   входе RPC.
+   malformed/wrong-prefix id по конвенции → sync `InvalidArgument "invalid <res>
+   id '<X>'"` (`corevalidate.ResourceID` первым стейтментом), здесь пока
+   `NotFound` через `repo.Get` — отступление,
+   `docs/architecture/07-known-divergences.md` §1 (тот же паттерн в kacho-vpc,
+   gotcha #1). Не использовать UUID-валидацию на входе RPC.
 2. **Name policy compute = lowercase-only** (proto `(pattern) = "|[a-z]([-_a-z0-9]
    {0,61}[a-z0-9])?"`) — `corevalidate.NameCompute` (НЕ переиспользовать
-   `NameVPC` — там uppercase). Точный контракт против YC — probe.
+   `NameVPC` — там uppercase).
 3. **Disk size: разный max в Create vs Update** (28 TiB vs 4 TiB — из proto
    `(value)`). `AttachedDiskSpec.DiskSpec.size` — 4 TiB max.
 4. **Disk.Delete пока attached** → `FailedPrecondition` (FK `attached_disks`
@@ -274,8 +274,8 @@ Zero-overhead, миграция не нужна. Используется в `Up
 
 ## Compute-specific gotchas
 
-11. **`metadata` омитится из `Instance` в ответе `List`** (verbatim YC — proto
-    явно документирует). `Get` с `view=FULL` включает metadata; `view=BASIC`
+11. **`metadata` омитится из `Instance` в ответе `List`** (proto явно
+    документирует — часть контракта). `Get` с `view=FULL` включает metadata; `view=BASIC`
     (default) — нет.
 12. **`status_message` всегда пусто** — control-plane не использует.
 13. **Instance status переходы мгновенны** — нет реального гипервизора;
@@ -303,7 +303,7 @@ Zero-overhead, миграция не нужна. Используется в `Up
 
 ## Что нельзя делать
 
-- НЕ менять public proto без обновления verbatim-YC parity (kacho-proto + buf
+- НЕ менять public proto без прогона контрактных гейтов (kacho-proto + buf
   lint/breaking).
 - НЕ редактировать применённые миграции — только новые.
 - НЕ добавлять admin-нужное в публичный сервис — только в `Internal*` на `:9091`.
@@ -315,7 +315,7 @@ Zero-overhead, миграция не нужна. Используется в `Up
 
 ## Где фиксировать находки
 
-- **Баг / расхождение с verbatim YC / observability-gap / доп-задача** → GitHub
+- **Баг / отступление от контракта / observability-gap / доп-задача** → GitHub
   Issue в `PRO-Robotech/kacho-compute` (если не compute-specific — в
   `PRO-Robotech/kacho-workspace`). Метки: `bug` / `tech-debt` / `enhancement`;
   заблокировано ещё-не-реализованным сервисом → `blocked:kacho-kms` /

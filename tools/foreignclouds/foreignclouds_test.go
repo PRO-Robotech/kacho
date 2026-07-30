@@ -119,9 +119,10 @@ func TestCoordinateExemptionIsLocal(t *testing.T) {
 func TestStaleExemptionIsReported(t *testing.T) {
 	root := t.TempDir()
 	got := AuditExemptions(root)
-	// Every file entry dangles, and every coordinate suppresses nothing.
-	if want := len(exemptFiles) + len(coordinates); len(got) != want {
-		t.Fatalf("expected %d dangling-exemption findings in an empty tree, got %d:\n%s",
+	// Every file entry dangles — exemptions and declared-abbreviation entries
+	// alike — and every coordinate suppresses nothing.
+	if want := len(exemptFiles) + len(debtFiles) + len(coordinates); len(got) != want {
+		t.Fatalf("expected %d dangling-allowance findings in an empty tree, got %d:\n%s",
 			want, len(got), Report(got))
 	}
 
@@ -131,11 +132,10 @@ func TestStaleExemptionIsReported(t *testing.T) {
 		t.Fatalf("%s is expected to be an exemption", rel)
 	}
 	write(t, root, rel, "package foreignclouds\n")
+	// The same path is also a declared-abbreviation entry, so it produces two
+	// stale findings; assert on the exemption one specifically.
 	for _, f := range AuditExemptions(root) {
-		if f.Path == rel {
-			if !strings.Contains(f.Text, "stale exemption") {
-				t.Fatalf("wrong finding for a token-free exempt file: %s", f)
-			}
+		if f.Path == rel && strings.Contains(f.Text, "stale exemption") {
 			return
 		}
 	}
@@ -312,5 +312,94 @@ func TestScan_SkipsWhatVersionControlIgnores(t *testing.T) {
 	}
 	if !sawAuthored {
 		t.Error("authored untracked file was not scanned — the gate must still catch it")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Заявленный остаток по сокращению провайдера
+// ---------------------------------------------------------------------------
+
+// debtAudit runs the declared-allowance audit against a throwaway tree.
+func debtAudit(t *testing.T, root string) []Finding {
+	t.Helper()
+	var out []Finding
+	for _, f := range AuditExemptions(root) {
+		if strings.Contains(f.Text, "provider abbreviation") {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// TestDebtMentionMustBeDeclared — незаявленное вхождение сокращения обязано быть
+// находкой. Пока сокращение просто отсутствовало в словаре, новое упоминание
+// добавлялось молча: число росло, вердикт не менялся. Список без энфорсмента
+// роста — это не список, а комментарий.
+func TestDebtMentionMustBeDeclared(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "tools/foreignclouds/foreignclouds.go", "package foreignclouds\n")
+	write(t, root, "docs/new.md", "смотри yc-стилистику\n")
+
+	got := debtAudit(t, root)
+	var named bool
+	for _, f := range got {
+		if f.Path == "docs/new.md" {
+			named = true
+		}
+	}
+	if !named {
+		t.Fatalf("undeclared mention of the abbreviation was not reported:\n%s", Report(got))
+	}
+}
+
+// TestDebtEntryWithoutSubjectIsReported — запись, которой больше нечего
+// разрешать, обязана истекать сама (testing.md §«Исключение живёт, пока у него
+// есть предмет»). Иначе список только растёт и становится бланкетным.
+func TestDebtEntryWithoutSubjectIsReported(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "tools/foreignclouds/foreignclouds.go", "package foreignclouds\n")
+	// Файл существует, но упоминания в нём уже нет — значит запись мертва.
+	write(t, root, "docs/fixed.md", "здесь всё описано в своих терминах\n")
+
+	saved := debtFiles
+	debtFiles = map[string]string{"docs/fixed.md": "test fixture"}
+	defer func() { debtFiles = saved }()
+
+	got := debtAudit(t, root)
+	var named bool
+	for _, f := range got {
+		if f.Path == "docs/fixed.md" && strings.Contains(f.Text, "stale") {
+			named = true
+		}
+	}
+	if !named {
+		t.Fatalf("dead entry was not reported as stale:\n%s", Report(got))
+	}
+}
+
+// TestDebtEntryWithASubjectIsSilent — обратная половина: законная запись НЕ
+// шумит. Без неё гейт ловил бы форму, а не существо, и первый ложный срабат
+// его бы отключил.
+func TestDebtEntryWithASubjectIsSilent(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "tools/foreignclouds/foreignclouds.go", "package foreignclouds\n")
+	write(t, root, "migrations/0001.sql", "-- yc-style seed key\n")
+
+	saved := debtFiles
+	debtFiles = map[string]string{"migrations/0001.sql": "applied migration, frozen by ban #5"}
+	defer func() { debtFiles = saved }()
+
+	if got := debtAudit(t, root); len(got) != 0 {
+		t.Fatalf("legitimate entry reported:\n%s", Report(got))
+	}
+}
+
+// TestRealDebtListIsExact — список против реального дерева: ни устаревших
+// записей, ни незаявленных упоминаний. Это и есть решение про словарь:
+// сокращение не роняет гейт на прозе, но перечислено с причиной и защищено
+// от роста.
+func TestRealDebtListIsExact(t *testing.T) {
+	if got := debtAudit(t, repoRoot(t)); len(got) != 0 {
+		t.Fatalf("declared remainder disagrees with the tree (%d):\n%s", len(got), Report(got))
 	}
 }

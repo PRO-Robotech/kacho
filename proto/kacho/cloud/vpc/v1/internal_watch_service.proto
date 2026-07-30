@@ -43,7 +43,7 @@ message Event {
   int64 sequence_no = 1;
   // Тип ресурса: "Network", "Subnet", "Address", "RouteTable", "SecurityGroup".
   string resource_kind = 2;
-  // ID ресурса (YC-style: enp..., e9b..., b1g...).
+  // ID ресурса (`<prefix><base32>`: enp..., e9b..., b1g...).
   string resource_id = 3;
   // Тип события: "CREATED", "UPDATED", "DELETED".
   string event_type = 4;

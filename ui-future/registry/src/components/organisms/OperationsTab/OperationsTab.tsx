@@ -1,5 +1,5 @@
 // OperationsTab — generic список операций (LRO) для конкретного ресурса.
-// Использует verbatim YC pattern: GET <spec.apiPath>/{id}/operations.
+// Использует контрактный путь: GET <spec.apiPath>/{id}/operations.
 //
 // Фильтры: input по идентификатору + Select по статусу.
 // Колонки — см. OperationsTable.

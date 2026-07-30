@@ -179,7 +179,7 @@ data:
     #     `iam_role`, `iam_access_binding`, `iam_service_account`, `iam_group`,
     #     `iam_user`, `iam_condition`.
     #   - relations: `viewer` / `editor` / `admin` / `owner` / `member` per the
-    #     YC-style roles vocabulary (KAC-121).
+    #     Kachō roles vocabulary (KAC-121).
     #   - conditional relations: `with` clause names a Condition (built-in or
     #     custom) — FGA pre-compiles CEL on `WriteAuthorizationModel`.
 

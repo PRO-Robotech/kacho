@@ -130,7 +130,7 @@ message AllocateIPResponse {
   bool already_allocated = 3;
 }
 
-// AddressReference — кто использует Address (YC-like referrer-tracking).
+// AddressReference — кто использует Address (referrer-tracking).
 message AddressReference {
   // ID адреса.
   string address_id = 1;

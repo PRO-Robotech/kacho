@@ -4,7 +4,7 @@
 // PATCH с computeUpdateMask и Operation-banner на onSuccess.
 //
 // Применяется по умолчанию ко всем ресурсам, у которых есть spec.fields. Для
-// resource-specific layout (например, YC-style для subnet) детальная страница
+// resource-specific layout (например, свой для subnet) детальная страница
 // может передать свой `renderInlineEdit` в ResourceDetailPage и переопределить
 // эту форму.
 
