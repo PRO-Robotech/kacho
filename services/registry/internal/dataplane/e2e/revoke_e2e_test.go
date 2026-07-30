@@ -35,6 +35,7 @@ import (
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 
 	"github.com/PRO-Robotech/kacho/services/registry/internal/dataplane"
+	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/migrations"
 	kachopg "github.com/PRO-Robotech/kacho/services/registry/internal/repo/kacho/pg"
 )
@@ -81,6 +82,23 @@ func (e2eBackend) BlobInRepo(_ context.Context, _, _, digest string) (bool, erro
 	return digest == "sha256:layer", nil
 }
 func (e2eBackend) CatalogRepoNames(context.Context) ([]string, error) { return nil, nil }
+
+// e2ePresence — durable-предикат существования РЕСУРСА-репозитория (наложение ⊔
+// регистрация). В этом сценарии репозиторий сцены уже существует, поэтому manifest-PUT
+// идёт полосой изменения: durable-регистрация не переделывается, а проверяется мост
+// revoke-safety.
+type e2ePresence struct{ declared bool }
+
+func (p e2ePresence) RepositoryDeclared(context.Context, string, string) (bool, error) {
+	return p.declared, nil
+}
+
+// e2eRepoReg — RepoRegistrar-заглушка. В этом сценарии репозиторий уже существует как
+// ресурс, поэтому первого push нет и регистрация не выполняется; порт подан, потому что
+// nil на пути записи — fail-closed, а не «выключено».
+type e2eRepoReg struct{}
+
+func (e2eRepoReg) RegisterRepository(context.Context, domain.RegisterIntent) error { return nil }
 
 // ---- testcontainers PG16 + миграции -----------------------------------------
 
@@ -164,8 +182,12 @@ func TestE2E_REG33IP_RevokeSafety_RealHandlerRealPGRealForward(t *testing.T) {
 
 	az := &e2eAuthz{vgetOpen: false} // v_get ещё НЕ материализован (как сразу после push нового repo)
 	h := dataplane.New(
-		e2eVerifier{subject: "sva-ci"}, az, e2eBackend{}, fwd,
-		nil, nil, nil, // repoReg/regLookup/uploads — не нужны для revoke-safety моста
+		e2eVerifier{subject: "sva-ci"}, az, e2eBackend{}, e2ePresence{declared: true}, fwd,
+		// repoReg — задан, но регистрацию сцены здесь не проверяем: этот кейс про мост
+		// revoke-safety, а не про первый push. presence=declared:true поэтому же —
+		// репозиторий сцены существует как ресурс, значит manifest-PUT идёт полосой
+		// изменения и durable-регистрацию не переделывает.
+		e2eRepoReg{}, nil, nil,
 		pgRepo,
 		"https://api.kacho.local/iam/token", "registry.kacho.local", logger,
 	)

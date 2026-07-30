@@ -143,6 +143,40 @@ func (b *fakeBackend) CatalogRepoNames(ctx context.Context) ([]string, error) {
 	return b.catalog, nil
 }
 
+// ---- fake RepositoryPresence (durable существование РЕСУРСА-репозитория) ----
+
+// fakePresence — durable-предикат существования репозитория как ресурса (наложение ⊔
+// регистрация). НАМЕРЕННО отделён от fakeBackend.exists (теги в движке): весь смысл
+// исправления в том, что это два РАЗНЫХ вопроса, и тест обязан уметь развести их —
+// «заявлен, но пуст» (declared=true, exists=false) — это ровно тот случай, на котором
+// право писать выбиралось неверно.
+type fakePresence struct {
+	mu       sync.Mutex
+	declared map[string]bool // "reg/repo" → существует как ресурс
+	err      error
+	calls    int
+}
+
+func (p *fakePresence) RepositoryDeclared(ctx context.Context, registryID, repo string) (bool, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.calls++
+	if p.err != nil {
+		return false, p.err
+	}
+	return p.declared[registryID+"/"+repo], nil
+}
+
+// setDeclared отмечает репозиторий существующим (симуляция «регистрация закоммичена»).
+func (p *fakePresence) setDeclared(full string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.declared == nil {
+		p.declared = map[string]bool{}
+	}
+	p.declared[full] = true
+}
+
 // ---- fake Forwarder (reverse-proxy stub) ----------------------------------
 
 type fakeForwarder struct {
@@ -410,31 +444,58 @@ func (g *fakePushGrantRecorder) observedRecCtxErr() error {
 }
 
 // newTestHandler собирает Handler поверх fake-портов с фиксированными realm/service.
+// RepositoryPresence — дефолтная пустая fake: «ни один репозиторий не заявлен как
+// ресурс», т.е. по умолчанию push идёт веткой создания (как и было у большинства
+// кейсов, где fakeBackend.exists пуст). Тест, которому нужен ЗАЯВЛЕННЫЙ репозиторий,
+// подаёт fakePresence явно (newTestHandlerP / newTestHandlerFull).
 // RegistryLookup — дефолтная пустая fake (тесты, не проверяющие ParentProjectID);
 // UploadRecorder / PushGrantRecorder — дефолтные пустые fake (reveal не проверяется).
 func newTestHandler(v TokenVerifier, az Authorizer, be Backend, fw Forwarder, rr RepoRegistrar) *Handler {
-	return newTestHandlerFull(v, az, be, fw, rr, &fakeRegistryLookup{}, &fakeUploadRecorder{}, &fakePushGrantRecorder{})
+	return newTestHandlerFull(v, az, be, presenceFor(be), fw, rr, &fakeRegistryLookup{}, &fakeUploadRecorder{}, &fakePushGrantRecorder{})
+}
+
+// newTestHandlerP — вариант с явной RepositoryPresence (кейсы, где «заявлен как ресурс»
+// и «есть теги в движке» РАСХОДЯТСЯ).
+func newTestHandlerP(v TokenVerifier, az Authorizer, be Backend, pr RepositoryPresence, fw Forwarder, rr RepoRegistrar) *Handler {
+	return newTestHandlerFull(v, az, be, pr, fw, rr, &fakeRegistryLookup{}, &fakeUploadRecorder{}, &fakePushGrantRecorder{})
 }
 
 // newTestHandlerLK — вариант с явной RegistryLookup (проверка project-резолва
 // register-on-first-push).
 func newTestHandlerLK(v TokenVerifier, az Authorizer, be Backend, fw Forwarder, rr RepoRegistrar, lk RegistryLookup) *Handler {
-	return newTestHandlerFull(v, az, be, fw, rr, lk, &fakeUploadRecorder{}, &fakePushGrantRecorder{})
+	return newTestHandlerFull(v, az, be, presenceFor(be), fw, rr, lk, &fakeUploadRecorder{}, &fakePushGrantRecorder{})
 }
 
 // newTestHandlerU — вариант с явной UploadRecorder (REG-33: blob-finalize record +
 // push-time blob-scope reveal).
 func newTestHandlerU(v TokenVerifier, az Authorizer, be Backend, fw Forwarder, rr RepoRegistrar, up UploadRecorder) *Handler {
-	return newTestHandlerFull(v, az, be, fw, rr, &fakeRegistryLookup{}, up, &fakePushGrantRecorder{})
+	return newTestHandlerFull(v, az, be, presenceFor(be), fw, rr, &fakeRegistryLookup{}, up, &fakePushGrantRecorder{})
 }
 
 // newTestHandlerPG — вариант с явными UploadRecorder И PushGrantRecorder (REG-33
 // immediate-pull: push-ownership fallback + record-on-manifest-PUT).
 func newTestHandlerPG(v TokenVerifier, az Authorizer, be Backend, fw Forwarder, rr RepoRegistrar, up UploadRecorder, pg PushGrantRecorder) *Handler {
-	return newTestHandlerFull(v, az, be, fw, rr, &fakeRegistryLookup{}, up, pg)
+	return newTestHandlerFull(v, az, be, presenceFor(be), fw, rr, &fakeRegistryLookup{}, up, pg)
+}
+
+// presenceFor — дефолтная presence для кейсов, которые про глагол записи НЕ спорят:
+// зеркалит fakeBackend.exists, чтобы «repo уже есть» продолжало значить то же, что
+// раньше. Это удобство ФИКСТУРЫ, а не поведение прода: в проде источники разные (durable
+// наложение/регистрация против тегов в движке), и кейсы, где они расходятся, подают
+// presence явно.
+func presenceFor(be Backend) RepositoryPresence {
+	fb, ok := be.(*fakeBackend)
+	if !ok {
+		return &fakePresence{}
+	}
+	declared := make(map[string]bool, len(fb.exists))
+	for full, ex := range fb.exists {
+		declared[full] = ex
+	}
+	return &fakePresence{declared: declared}
 }
 
 // newTestHandlerFull — полный конструктор поверх всех fake-портов.
-func newTestHandlerFull(v TokenVerifier, az Authorizer, be Backend, fw Forwarder, rr RepoRegistrar, lk RegistryLookup, up UploadRecorder, pg PushGrantRecorder) *Handler {
-	return New(v, az, be, fw, rr, lk, up, pg, "https://api.kacho.local/iam/token", "registry.kacho.local", nil)
+func newTestHandlerFull(v TokenVerifier, az Authorizer, be Backend, pr RepositoryPresence, fw Forwarder, rr RepoRegistrar, lk RegistryLookup, up UploadRecorder, pg PushGrantRecorder) *Handler {
+	return New(v, az, be, pr, fw, rr, lk, up, pg, "https://api.kacho.local/iam/token", "registry.kacho.local", nil)
 }

@@ -332,7 +332,11 @@ func runServe(cfg config.Config) error {
 	// InternalIAMService.Check + existence-hiding + stream-proxy. Отдельно от gRPC.
 	var dpServer *http.Server
 	if cfg.DataplaneAddr != "" {
-		dpHandler, dperr := buildDataplaneHandler(cfg, authzConn, registryRepo, zotAdapter, registryRepo, pendingBlobRepo, pushGrantRepo, logger)
+		// registryRepo подаётся трижды и в трёх разных ролях: RepoRegistrar (эмит
+		// интента + durable-признак существования), RepositoryPresence (чтение того же
+		// признака ⊔ строки наложения — по нему выбирается глагол записи) и
+		// RegistryLookup (owning-project реестра для containment scope интента).
+		dpHandler, dperr := buildDataplaneHandler(cfg, authzConn, registryRepo, zotAdapter, registryRepo, registryRepo, pendingBlobRepo, pushGrantRepo, logger)
 		if dperr != nil {
 			return fmt.Errorf("build data-plane proxy: %w", dperr)
 		}
@@ -420,7 +424,7 @@ func runServe(cfg config.Config) error {
 // JWKS-verify Hydra-issued identity-JWT (RS256/ES256) + per-request
 // InternalIAMService.Check + zot stream-proxy. breakglass → bypass AuthN+AuthZ
 // (аварийный режим, как gRPC-листенеры).
-func buildDataplaneHandler(cfg config.Config, authzConn *grpc.ClientConn, repoReg dataplane.RepoRegistrar, backend dataplane.Backend, regLookup dataplane.RegistryLookup, uploads dataplane.UploadRecorder, pushGrants dataplane.PushGrantRecorder, logger *slog.Logger) (http.Handler, error) {
+func buildDataplaneHandler(cfg config.Config, authzConn *grpc.ClientConn, repoReg dataplane.RepoRegistrar, backend dataplane.Backend, presence dataplane.RepositoryPresence, regLookup dataplane.RegistryLookup, uploads dataplane.UploadRecorder, pushGrants dataplane.PushGrantRecorder, logger *slog.Logger) (http.Handler, error) {
 	// Plaintext data-plane обязан стоять за внешней TLS-терминацией (bearer
 	// identity-JWT не должны транзитить открытым текстом). В проде — явный ack
 	// оператора; проверяется независимо от breakglass (риск открытого сокета
@@ -456,7 +460,7 @@ func buildDataplaneHandler(cfg config.Config, authzConn *grpc.ClientConn, repoRe
 		authorizer = check.NewIAMCheckClient(authzConn)
 	}
 
-	return dataplane.New(verifier, authorizer, backend, forwarder, repoReg, regLookup, uploads, pushGrants,
+	return dataplane.New(verifier, authorizer, backend, presence, forwarder, repoReg, regLookup, uploads, pushGrants,
 		cfg.TokenRealm, cfg.ServiceAud, logger).
 		// Anonymous public pull (RG-1 D-7): resolve the iam-issued anon principal id to
 		// the FGA wildcard user:*. Empty → anon disabled (secure-by-default).
