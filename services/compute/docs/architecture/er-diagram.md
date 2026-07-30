@@ -56,8 +56,8 @@ erDiagram
     bigint block_size
     jsonb product_ids
     text status "CREATING | READY | ERROR | DELETING"
-    text source_image_id "no FK (YC: image can be deleted)"
-    text source_snapshot_id "no FK (YC: snapshot can be deleted)"
+    text source_image_id "no FK (soft-ref: image can be deleted)"
+    text source_snapshot_id "no FK (soft-ref: snapshot can be deleted)"
     jsonb disk_placement_policy
     jsonb hardware_generation
     jsonb kms_key "blocked:kacho-kms"
@@ -97,7 +97,7 @@ erDiagram
     bigint disk_size
     jsonb product_ids
     text status
-    text source_disk_id "no FK (YC: source disk can be deleted)"
+    text source_disk_id "no FK (soft-ref: source disk can be deleted)"
     jsonb hardware_generation
     jsonb kms_key
     timestamptz created_at
@@ -203,7 +203,7 @@ erDiagram
   ZONES     }o..o{ INSTANCES : "instances.zone_id (soft-ref, no FK)"
   ZONES     }o..o{ DISKS : "disks.zone_id (soft-ref, no FK)"
   DISK_TYPES }o..o{ DISKS : "disks.type_id (soft-ref, no FK)"
-  IMAGES    }o..o{ DISKS : "source_image_id (soft-ref, no FK — YC: source can be deleted)"
+  IMAGES    }o..o{ DISKS : "source_image_id (soft-ref, no FK: source can be deleted)"
   SNAPSHOTS }o..o{ DISKS : "source_snapshot_id (soft-ref, no FK)"
   DISKS     }o..o{ SNAPSHOTS : "snapshots.source_disk_id (soft-ref, no FK)"
   DISKS     }o..o{ IMAGES : "images.source_disk_id (soft-ref, no FK)"
@@ -233,13 +233,13 @@ Read-only справочник типов дисков. PK `id` (literal — `ne
 ### Public ресурсы (project-scoped, под Operation LRO)
 
 #### `disks`
-Disk. PK `id` (`epd…`). UNIQUE partial `(project_id, name) WHERE name<>''`. Index `disks_project_idx`, `disks_created_at_idx`. Cross-service: `project_id`, `zone_id`, `type_id`, `source_image_id`, `source_snapshot_id` — **no FK**. `source_image_id` / `source_snapshot_id` указывают на ресурсы той же БД (`images`, `snapshots`), но FK не ставится — verbatim YC семантика: после Disk.Create source-resource можно удалить, Disk остаётся живым (просто хранит «откуда был создан»).
+Disk. PK `id` (`epd…`). UNIQUE partial `(project_id, name) WHERE name<>''`. Index `disks_project_idx`, `disks_created_at_idx`. Cross-service: `project_id`, `zone_id`, `type_id`, `source_image_id`, `source_snapshot_id` — **no FK**. `source_image_id` / `source_snapshot_id` указывают на ресурсы той же БД (`images`, `snapshots`), но FK не ставится — осознанная семантика soft-ref: после Disk.Create source-resource можно удалить, Disk остаётся живым (просто хранит «откуда был создан»).
 
 #### `images`
 Image. PK `id` (`fd8…`). UNIQUE partial `(project_id, name) WHERE name<>''`. Index `images_family_idx (project_id, family, created_at DESC) WHERE family <> ''` — для `GetLatestByFamily`. Sources (`source_image_id`, `source_snapshot_id`, `source_disk_id`, `source_uri`) — no FK.
 
 #### `snapshots`
-Snapshot. PK `id` (`fd8…`). UNIQUE partial `(project_id, name) WHERE name<>''`. Index `snapshots_source_disk_idx (source_disk_id) WHERE source_disk_id <> ''`. `source_disk_id` — no FK (YC: source disk можно удалить, snapshot остаётся).
+Snapshot. PK `id` (`fd8…`). UNIQUE partial `(project_id, name) WHERE name<>''`. Index `snapshots_source_disk_idx (source_disk_id) WHERE source_disk_id <> ''`. `source_disk_id` — no FK (soft-ref: source disk можно удалить, snapshot остаётся).
 
 #### `instances`
 Instance. PK `id` (`epd…`). UNIQUE partial `(project_id, name) WHERE name<>''`. Index `instances_project_idx`, `instances_created_at_idx`, `instances_zone_idx`. Cross-service: `project_id`, `zone_id`, `service_account_id`, `gpu_cluster_id`, `host_group_id`, `host_id`, `reserved_instance_pool_id` — все no FK.
@@ -254,7 +254,7 @@ Cross-service soft-refs (no FK):
 - `nic_id` (миграция 0005, эпик KAC-2) — kacho-vpc `network_interfaces.id`; compute создаёт (или attach'ит существующий) kacho-vpc NIC per spec и хранит id. На Instance.Delete compute detach+delete'ит NIC. `''` = legacy / synthetic.
 
 #### `attached_disks`
-M:N Instance↔Disk. PK `(instance_id, disk_id)`. FK `instance_id → instances(id) ON DELETE CASCADE` (Instance.Delete worker сам решает судьбу дисков по `auto_delete`, потом CASCADE чистит attached-row). FK `disk_id → disks(id) ON DELETE RESTRICT` — нельзя удалить Disk пока attached → verbatim YC `"The disk <id> is being used"`.
+M:N Instance↔Disk. PK `(instance_id, disk_id)`. FK `instance_id → instances(id) ON DELETE CASCADE` (Instance.Delete worker сам решает судьбу дисков по `auto_delete`, потом CASCADE чистит attached-row). FK `disk_id → disks(id) ON DELETE RESTRICT` — нельзя удалить Disk пока attached → контрактный текст `"The disk <id> is being used"`.
 
 **Partial UNIQUE** (DB-level гарантии):
 - `attached_disks_boot_uniq (instance_id) WHERE is_boot` — ровно один boot disk на инстанс.
@@ -284,7 +284,7 @@ Per-subscriber cursor для LISTEN/NOTIFY restart-сценария. PK `subscri
 | `disks.project_id` / `instances.project_id` / etc. (id владельца-проекта) | `kacho-iam` | `ProjectService.Get` (`projectClient.Exists`) | n/a (validate-on-write)      |
 | `disks.zone_id` / `instances.zone_id`            | **kacho-compute self**   | local `zones`-table — **same-DB ref, no FK** by choice (admin справочник; service-level existence-check `ZoneRegistry`) | n/a |
 | `disks.type_id`                                  | **kacho-compute self**   | local `disk_types`-table — same-DB ref, no FK   | n/a                          |
-| `disks.source_image_id`                          | **kacho-compute self**   | local `images`-table — **same-DB but no FK** (YC семантика: source можно удалить) | n/a (graceful dangling) |
+| `disks.source_image_id`                          | **kacho-compute self**   | local `images`-table — **same-DB but no FK** (soft-ref: source можно удалить) | n/a (graceful dangling) |
 | `disks.source_snapshot_id`                       | **kacho-compute self**   | local `snapshots`-table — same-DB no FK         | n/a (graceful dangling)      |
 | `snapshots.source_disk_id`                       | **kacho-compute self**   | local `disks`-table — same-DB no FK             | n/a (graceful dangling)      |
 | `images.source_*`                                | **kacho-compute self**   | local same-DB no FK                             | n/a                          |
@@ -311,7 +311,7 @@ Per-subscriber cursor для LISTEN/NOTIFY restart-сценария. PK `subscri
 - `03-instance-lifecycle.md` — Instance state-machine.
 - `05-database.md` — миграционная история, индексы.
 - `06-conventions.md` — соглашения по error-mapping, timestamp, name-policy.
-- `07-known-divergences.md` — by-design расхождения с verbatim YC.
+- `07-known-divergences.md` — by-design отступления от конвенций Kachō.
 - `internal/migrations/0001_initial.sql` … `0006_drop_hypervisors.sql` — источник истины.
 - `kacho-compute/CLAUDE.md §2` (Доменная модель и связи), §10 (Cross-service clients), §12 (Migrations).
 - Workspace `CLAUDE.md` — §«Within-service refs — DB-уровень обязателен» (запрет #10), §«Кросс-доменные ссылки на ресурсы», §E.6 (skill `evgeniy`).
