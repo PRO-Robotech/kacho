@@ -372,6 +372,15 @@ mtls:
   # production profile (values.prod.yaml) flips this true; it REQUIRES enable=true
   # (the server cert-trio it reuses is mounted only when enable=true — no new PKI).
   httpListeners: false
+  # ПОЛИСТЕННЫЕ ПЕРЕОПРЕДЕЛЕНИЯ. Пусто ⇒ берётся общая ручка выше (прежнее поведение
+  # байт-в-байт). Разделение понадобилось потому, что у этих листенеров РАЗНЫЕ
+  # вызывающие: у :9092 — вебхук провайдера личности, который ходит по открытому http
+  # и своего доверия не несёт, а у :9096 едет непротухающий пароль, из-за которого
+  # загрузочная стража отказывается стартовать без TLS. Одной ручкой эти два требования
+  # выполнить нельзя: включишь — падает выдача токенов, выключишь — не стартует сервис.
+  # hooksAndMetrics: false
+  # jwksProxy: true
+  # registryToken: true
   # Per-edge TLS ClientAuth mode for the HTTP listeners (kacho-iam#137). Default
   # server-tls-only: the hooks edge carries three HMAC-authed Ory webhook
   # endpoints (Hydra token/refresh + Kratos provision) that present NO client cert

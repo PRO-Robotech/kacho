@@ -227,7 +227,17 @@ kacho-iam:
   # to start with it in the clear, and it is right to. :9097 carries the signature-
   # verification material. Both stop being readable on the wire here.
   mtls:
-    httpListeners: true
+    # ПОЛИСТЕННО, А НЕ ОДНОЙ РУЧКОЙ — и это не тонкость, а единственная рабочая
+    # комбинация. :9096 обязан быть под TLS (по нему едет пароль, который сервер не
+    # хранит и который не истекает; загрузочная стража права, что отказывается стартовать
+    # иначе). :9097 обязан быть под TLS, потому что по нему край забирает материал для
+    # проверки подписей. А :9092 обязан ОСТАТЬСЯ открытым: его вызывает вебхук провайдера
+    # личности, который ходит по http и своего доверия не несёт, — завернув и его,
+    # получаем «клиент прислал http-запрос на https-сервер», проваленный хук и полностью
+    # неработающую выдачу токенов. Измерено на этом стенде, а не выведено.
+    httpListeners: false
+    jwksProxy: true
+    registryToken: true
   env:
     # UNIFICATION FIX (dev-masked): the iam :9097 JWKS proxy — the endpoint every
     # service is supposed to verify RS256 tokens through (registry-iam-jwks-unify) —
