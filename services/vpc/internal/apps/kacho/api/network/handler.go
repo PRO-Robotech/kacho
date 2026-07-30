@@ -124,7 +124,11 @@ func (h *Handler) Create(ctx context.Context, req *vpcv1.CreateNetworkRequest) (
 		IPv4CidrBlocks: req.Ipv4CidrBlocks,
 		IPv6CidrBlocks: req.Ipv6CidrBlocks,
 	}
-	op, err := h.create.Execute(ctx, n)
+	// `create_default_security_group` — tri-state (`optional bool`), и различие
+	// «не прислано» / `false` обязано дойти до решения: поле объявляет, что явный
+	// выбор вызывающего сильнее конфига стенда, а молчание падает на конфиг.
+	// Прежде поле здесь просто не читалось, и решение всегда принимал конфиг.
+	op, err := h.create.Execute(ctx, n, WithDefaultSecurityGroup(req.CreateDefaultSecurityGroup))
 	if err != nil {
 		return nil, err
 	}

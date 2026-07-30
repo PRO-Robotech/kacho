@@ -37,6 +37,15 @@ vet:
 audit-list-filter:
 	@./tools/audit-list-filter.sh
 
+# Сверщик переписи кейсов сюиты: дублей нет, числа в шапке docs/CASES-INDEX.md
+# совпадают с деревом, ни один заголовок не называет удалённый файл кейсов. Здесь его
+# не было — и там же выжили раздел про `cases/instance.py` (файла нет с 2026-07-21) и
+# перепись 111/43 против 117/49. Конвейер зовёт сверщиков обходом дерева (шаг
+# «перепись кейсов сюиты совпадает с деревом»); эта цель — для локального прогона.
+.PHONY: validate-newman
+validate-newman:
+	cd tests/newman && python3 scripts/validate-cases.py
+
 lint:
 	golangci-lint run ./...
 

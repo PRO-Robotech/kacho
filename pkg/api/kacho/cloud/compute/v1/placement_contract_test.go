@@ -30,21 +30,45 @@ import (
 // option. If placement management is wanted it is introduced on the internal contour
 // with its own acceptance.
 //
-// The number AND the name stay reserved, so a slot a peer might once have populated
-// cannot be reused with different semantics later. The nested rule message goes with
-// the field: once no field references it, keeping it advertises a shape the service has
-// no way to honour (the same standard applied to the withdrawn vpc DNS messages —
-// pkg/api/kacho/cloud/vpc/v1/address_dns_contract_test.go).
+// THE CARRIER GOES TOO, AND NOTHING IS RESERVED — because there is no slot to reserve.
+//
+// The first pass withdrew the field and reserved its number and name inside
+// `PlacementPolicy`. Re-measured by TYPE rather than by name, that carrier turned out to
+// be a full orphan: no field of any message in any package has type `PlacementPolicy`,
+// and no code outside the generated stubs mentions the type at all, so nothing can
+// construct or read one. Its two remaining fields (`placement_group_id`,
+// `placement_group_partition`) are therefore unreadable as well — not by policy, by
+// construction.
+//
+// `placement_group_id` is a HOMONYM, and that is what made the first reading look
+// contradictory. Four other messages declare a field of the same name, and three of them
+// are alive: `Instance` (41), `CreateInstanceRequest` (38) and `UpdateInstanceRequest`
+// (22) — read as a struct field by internal/handler, carried by protoconv, stored in a
+// column and named in the update-mask known-set. The fifth, `DiskPlacementPolicy` (1),
+// is a different message again, reachable through Relocate. Only the copy INSIDE the
+// carrier is dead. A predicate keyed on the field NAME cannot tell these apart; one keyed
+// on the type can, which is why the conclusion is drawn from the type.
+//
+// Reserving numbers inside a deleted message is impossible, and here it is also
+// pointless: numbers are reserved in the message that DECLARES the field, and a message
+// no field points at never appeared on any wire — no peer can have sent field 2 of
+// `PlacementPolicy`, because no request or response ever contained a `PlacementPolicy`.
+// So the removal takes the reservation with it and loses nothing. Same standard already
+// applied in this tree to the withdrawn vpc DNS messages
+// (pkg/api/kacho/cloud/vpc/v1/address_dns_contract_test.go).
 
-// vacatedPlacementField — the message that carried the knob and the slot it occupied.
-var vacatedPlacementField = struct {
-	message protoreflect.Name
-	number  protoreflect.FieldNumber
-	name    protoreflect.Name
-}{"PlacementPolicy", 2, "host_affinity_rules"}
+// withdrawnPlacementMessages must no longer be declared outside the internal contour.
+var withdrawnPlacementMessages = []protoreflect.Name{"HostAffinityRule", "PlacementPolicy"}
 
-// withdrawnPlacementMessages must no longer be declared on the public surface.
-var withdrawnPlacementMessages = []protoreflect.Name{"HostAffinityRule"}
+// livePlacementGroupIdHolders — the messages whose `placement_group_id` is ALIVE, with
+// the number each holds. Locked because the withdrawal above removes a field of the very
+// same name: whoever next reads "placement_group_id was withdrawn" must not take these
+// with it. Instance placement is configured through them.
+var livePlacementGroupIdHolders = map[protoreflect.Name]protoreflect.FieldNumber{
+	"Instance":              41,
+	"CreateInstanceRequest": 38,
+	"UpdateInstanceRequest": 22,
+}
 
 // The walk over the package — including nested messages, which is where the withdrawn
 // rule message was declared — is the shared `computeMessages` helper of this package
@@ -157,53 +181,47 @@ func TestNoMessageDeclaresHostAffinity(t *testing.T) {
 	})
 }
 
-// TestVacatedHostAffinitySlotStaysReserved — the withdrawal is announced in the
-// contract itself: both the name and the number stay reserved, so the slot cannot be
-// reused with different semantics.
-func TestVacatedHostAffinitySlotStaysReserved(t *testing.T) {
-	visited := false
+// TestLivePlacementGroupIdSurvives — the three live `placement_group_id` fields are
+// still declared, each with its own number.
+//
+// This is the lock the homonym needs. The withdrawal above removes a field spelled
+// exactly the same, so a later sweep reading "placement_group_id is gone from compute"
+// could take the live ones with it and silently disable instance placement — the fields
+// the handler reads, protoconv carries and the update-mask known-set names. The test
+// fails if any of them disappears or changes number.
+func TestLivePlacementGroupIdSurvives(t *testing.T) {
+	found := map[protoreflect.Name]protoreflect.FieldNumber{}
 	computeMessages(t, func(md protoreflect.MessageDescriptor) {
-		if md.Name() != vacatedPlacementField.message {
+		want, ok := livePlacementGroupIdHolders[md.Name()]
+		if !ok {
 			return
 		}
-		visited = true
-
-		names := md.ReservedNames()
-		haveName := false
-		for i := 0; i < names.Len(); i++ {
-			if names.Get(i) == vacatedPlacementField.name {
-				haveName = true
-			}
+		f := md.Fields().ByName("placement_group_id")
+		if f == nil {
+			t.Errorf("%s no longer declares placement_group_id: this is the LIVE field "+
+				"(handler reads it, protoconv carries it, the update-mask known-set names "+
+				"it) — not the withdrawn homonym inside the removed carrier", md.FullName())
+			return
 		}
-		if !haveName {
-			t.Errorf("%s does not reserve the name %q", md.FullName(), vacatedPlacementField.name)
-		}
-
-		ranges := md.ReservedRanges()
-		haveNum := false
-		for i := 0; i < ranges.Len(); i++ {
-			r := ranges.Get(i)
-			if vacatedPlacementField.number >= r[0] && vacatedPlacementField.number < r[1] {
-				haveNum = true
-			}
-		}
-		if !haveNum {
-			t.Errorf("%s does not reserve field number %d", md.FullName(),
-				vacatedPlacementField.number)
+		found[md.Name()] = f.Number()
+		if f.Number() != want {
+			t.Errorf("%s.placement_group_id moved from %d to %d: the number is wire "+
+				"identity, it does not move", md.FullName(), want, f.Number())
 		}
 	})
-	if !visited {
-		t.Errorf("%s was never visited — the message this test names is not declared in "+
-			"the package, so the assertion about it never ran",
-			vacatedPlacementField.message)
+	for name := range livePlacementGroupIdHolders {
+		if _, ok := found[name]; !ok {
+			t.Errorf("%s was never visited — the message this test names is not declared "+
+				"in the package, so the assertion about it never ran", name)
+		}
 	}
 }
 
-// TestHostAffinityMessagesAreGone — the message the withdrawn field pointed at is
-// removed too. Leaving it behind keeps advertising a shape the service cannot honour
+// TestWithdrawnPlacementMessagesAreGone — the nested rule message AND its orphan
+// carrier are removed. Leaving it behind keeps advertising a shape the service cannot honour
 // and invites a new field to reach for it. Scoped like the field ban: declaring such a
 // message on the internal contour is lawful, declaring it anywhere else is not.
-func TestHostAffinityMessagesAreGone(t *testing.T) {
+func TestWithdrawnPlacementMessagesAreGone(t *testing.T) {
 	internal := internalReachable(t)
 	computeMessages(t, func(md protoreflect.MessageDescriptor) {
 		if internal[md.FullName()] {
@@ -211,8 +229,9 @@ func TestHostAffinityMessagesAreGone(t *testing.T) {
 		}
 		for _, gone := range withdrawnPlacementMessages {
 			if md.Name() == gone {
-				t.Errorf("kacho.cloud.compute.v1 still declares message %s: no field "+
-					"references it and the service implements no host-affinity behaviour",
+				t.Errorf("kacho.cloud.compute.v1 still declares message %s: no field of "+
+					"any message has this type, so nothing can construct or read one — "+
+					"keeping it advertises a shape the service cannot honour",
 					md.FullName())
 			}
 		}

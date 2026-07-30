@@ -78,6 +78,37 @@ var unsupportedCreateFieldCases = []struct {
 			SshAuthorization: computev1.SerialPortSettings_OS_LOGIN,
 		}
 	}},
+	// Четыре поля ВНУТРИ `network_interface_specs[]`, найденные тем же обходом.
+	// Родитель ЧИТАЕТСЯ (из него берутся subnetId и securityGroupIds), поэтому
+	// прежний обход по верхнему уровню их не видел: отображение proto → domain
+	// (`nicSpecsFromProto`) переносит ровно два поля, остальные молча теряются.
+	//
+	// Два из четырёх предикат тоже пропустил, и по названной причине: он ищет
+	// читателя ПО ИМЕНИ, а `NicId` и `Index` читаются у соседнего сообщения в том же
+	// файле (spec attach-RPC), поэтому поля выглядели закрытыми. Найдены глазами по
+	// списку «закрыто именем-омонимом».
+	{"network_interface_specs.primary_v4_address_spec", func(r *computev1.CreateInstanceRequest) {
+		nicSpec(r).PrimaryV4AddressSpec = &computev1.PrimaryAddressSpec{Address: "10.0.0.7"}
+	}},
+	{"network_interface_specs.primary_v6_address_spec", func(r *computev1.CreateInstanceRequest) {
+		nicSpec(r).PrimaryV6AddressSpec = &computev1.PrimaryAddressSpec{Address: "fd00::7"}
+	}},
+	{"network_interface_specs.nic_id", func(r *computev1.CreateInstanceRequest) {
+		nicSpec(r).NicId = "nic-b3n7k1x9q2m5t8"
+	}},
+	{"network_interface_specs.index", func(r *computev1.CreateInstanceRequest) {
+		nicSpec(r).Index = "3"
+	}},
+}
+
+// nicSpec — первый (и единственный в validCreateReq) элемент network_interface_specs.
+// Мутаторы обязаны СОСТАВЛЯТЬСЯ: два теста таблицы применяют их все подряд к одному
+// запросу, поэтому элемент правится на месте, а не пересоздаётся.
+func nicSpec(r *computev1.CreateInstanceRequest) *computev1.NetworkInterfaceSpec {
+	if len(r.NetworkInterfaceSpecs) == 0 {
+		r.NetworkInterfaceSpecs = []*computev1.NetworkInterfaceSpec{{SubnetId: "sub-a"}}
+	}
+	return r.NetworkInterfaceSpecs[0]
 }
 
 // TestInstanceHandler_Create_RejectsUnsupportedField — каждое из шести полей по

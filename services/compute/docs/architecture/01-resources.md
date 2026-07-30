@@ -66,56 +66,78 @@ async `NotFound`, а malformed/wrong-prefix id → sync `InvalidArgument "invali
 
 ## Instance
 
-Виртуальная машина. Project-level (`project_id`), zone-level (`zone_id`), привязан
-к платформе (`platform_id`), имеет boot-disk + secondary-disks (через
-`attached_disks`), N сетевых интерфейсов (через `instance_network_interfaces`),
-state-машину статуса. Таблица `instances` + дочерние `instance_network_interfaces`
-(CASCADE) + `attached_disks`.
+Единственный мутируемый ресурс compute. Project-level (`project_id`), zone-level
+(`zone_id`), несёт **дискриминатор рода** (`instance_kind`: VM | CONTAINER) и ссылку на
+sizing-каталог (`machine_type_id`), из которого выводится `effective_resources`.
+Загрузочный источник — `boot_source` (том/образ/снимок у kacho-storage), блочное
+хранение здесь НЕ живёт (владелец — kacho-storage). N сетевых интерфейсов — строки
+`instance_network_interfaces`; сами интерфейсы как ресурс живут в kacho-vpc.
 
 ### proto-поля (`instance.proto`, message `Instance`)
 
-| Поле | Тип | Замечания |
-|---|---|---|
-| `id` | string | prefix `epd` |
-| `project_id` | string | partial UNIQUE `(project_id, name) WHERE name <> ''` |
-| `created_at` | Timestamp | truncate до секунд |
-| `name`, `description`, `labels` | | project-scoped label, `name` — partial UNIQUE |
-| `zone_id` | string | required; existence через `ZoneRegistry` (локальная таблица `zones`, эпик `KAC-15`); immutable (меняется через Relocate) |
-| `platform_id` | string | required (`standard-v1/v2/v3`, `highfreq-v3`, `gpu-*` — таблица в `internal/service/platforms.go`) |
-| `resources` | Resources{memory, cores, core_fraction, gpus} | в схеме: `cores`, `memory`, `core_fraction`, `gpus`. proto `ResourcesSpec`: `memory ≤ 274877906944`, `cores ∈ {2,4,...,80}`, `core_fraction ∈ {0,5,20,50,100}`, `gpus ∈ {0,1,2,4}` + per-platform валидация |
-| `status` | Instance.Status enum | `STATUS_UNSPECIFIED=0, PROVISIONING=1, RUNNING=2, STOPPING=3, STOPPED=4, STARTING=5, RESTARTING=6, UPDATING=7, ERROR=8, CRASHED=9, DELETING=10`. Подробно — [`03-instance-lifecycle.md`](03-instance-lifecycle.md) |
-| `metadata` | map<string,string> | суммарно ≤ 256 KiB (proto: "less than 512 KB" суммарно ключей+значений, каждое значение ≤ 256 KB); меняется только через `UpdateMetadata` RPC. **Омитится из ответа List** (часть контракта) |
-| `metadata_options` | MetadataOptions | nullable |
-| `boot_disk` | AttachedDisk{mode, device_name, auto_delete, disk_id} | derived: строка в `attached_disks` с `is_boot=true`; immutable |
-| `secondary_disks` | repeated AttachedDisk | derived из `attached_disks` `is_boot=false`; до 3 при Create (proto `(size) = "<=3"`) |
-| `local_disks` | repeated AttachedLocalDisk | proto-поле есть; реализация отложена |
-| `filesystems` | repeated AttachedFilesystem | `blocked:kacho-filesystem` |
-| `network_interfaces` | repeated NetworkInterface{index, mac_address, subnet_id, primary_v4_address{address, one_to_one_nat{address, ip_version, dns_records}, dns_records}, security_group_ids[], `nic_id`} | строки `instance_network_interfaces`. `nic_id` (proto field 7) — id ресурса **kacho-vpc `NetworkInterface`**, бэкующего этот интерфейс; он source of truth (адрес, SG, data-plane), а `subnet_id`/`primary_v4_address` — read-only denorm-зеркало (epic KAC-9, см. ниже «Instance ↔ kacho-vpc NetworkInterface») |
-| `serial_port_settings` | SerialPortSettings{ssh_authorization} | nullable |
-| `gpu_settings` | GpuSettings{gpu_cluster_id} | `gpu_cluster_id` хранится; реального GpuCluster нет |
-| `fqdn` | string | output-only; вычисляется при Create: `<hostname>.<region_id>.internal` или `<id>.auto.internal` (если hostname не задан) |
-| `scheduling_policy` | SchedulingPolicy{preemptible} | в схеме: `scheduling_preemptible` |
-| `service_account_id` | string | хранится; реального IAM нет |
-| `network_settings` | NetworkSettings{type: STANDARD\|SOFTWARE_ACCELERATED\|HARDWARE_ACCELERATED} | в схеме: `network_settings_type` (default `STANDARD`) |
-| `placement_policy` | PlacementPolicy{placement_group_id, host_affinity_rules[], placement_group_partition} | хранится; реального placement-group нет |
-| `host_group_id` / `host_id` | string | хранятся; реальных host-group/host нет |
-| `maintenance_policy` | MaintenancePolicy{RESTART\|MIGRATE} | в схеме: `maintenance_policy` (имя enum-значения) |
-| `maintenance_grace_period` | Duration | в схеме: `maintenance_grace_period_seconds`; proto `(value) = "1s-24h"` в Create/Update |
-| `hardware_generation` | HardwareGeneration | inherited от boot-image/disk; nullable |
-| `reserved_instance_pool_id` | string | хранится; реального ReservedInstancePool нет |
-| `application` | Application{container_solution, cloudbackup} | хранится; не интерпретируется |
+Состав таблицы сверяется с дескриптором механически —
+`services/compute/tools/resources_doc_census_test.go`: строка про поле, которого нет,
+и действующее поле без строки одинаково валят гейт. До сверки таблица описывала
+ДОРЕДИЗАЙНОВЫЙ ресурс: из 28 строк 10 называли снятые поля (`platform_id`,
+`resources`, `metadata_options`, `gpu_settings`, `scheduling_policy`,
+`service_account_id`, `placement_policy`, `host_group_id`/`host_id`,
+`reserved_instance_pool_id`, `application`), а девять действующих — в том числе
+несущие `instance_kind`, `machine_type_id`, `effective_resources`,
+`cpu_guarantee_percent`, `vm_spec`/`container_spec` — не упоминались вовсе.
+
+| Поле | № | Тип | Замечания |
+|---|---|---|---|
+| `id` | 1 | string | hyphen-канон `ins-<crockford-base32>` |
+| `project_id` | 2 | string | partial UNIQUE `(project_id, name) WHERE name <> ''` |
+| `created_at` | 3 | Timestamp | в ответе truncate до секунд |
+| `name` | 4 | string | project-scoped label, mutable |
+| `description` | 5 | string | ≤256 |
+| `labels` | 6 | map<string,string> | ≤64 записей |
+| `zone_id` | 7 | string | required; существование — peer-валидация в kacho-geo; immutable |
+| `status` | 10 | Instance.Status | state-машина, см. [`03-instance-lifecycle.md`](03-instance-lifecycle.md) |
+| `metadata` | 11 | map<string,string> | меняется только `UpdateMetadata`; **омитится из ответа List** (часть контракта) |
+| `boot_disk` | 12 | AttachedDisk | read-only зеркало привязки тома; источник истины — `volume_attachments` у kacho-storage |
+| `secondary_disks` | 13 | repeated AttachedDisk | то же зеркало |
+| `network_interfaces` | 14 | repeated NetworkInterface | строки `instance_network_interfaces`; `nic_id` — id ресурса kacho-vpc, он источник истины |
+| `fqdn` | 16 | string | output-only; `<hostname>.<region_id>.internal` либо `<id>.auto.internal` |
+| `network_settings` | 19 | NetworkSettings | на входе Create **отвергается по имени** (ускорение сети сервис не настраивает) |
+| `filesystems` | 21 | repeated AttachedFilesystem | домена Filesystem нет; `filesystem_specs` на входе Create **отвергается по имени** |
+| `local_disks` | 22 | repeated AttachedLocalDisk | host-local диски не провижнятся; `local_disk_specs` на входе Create **отвергается по имени** |
+| `serial_port_settings` | 24 | SerialPortSettings | на входе Create **отвергается по имени** |
+| `maintenance_policy` | 29 | MaintenancePolicy | обслуживания хостов сервис не планирует; на входе Create **отвергается по имени** |
+| `maintenance_grace_period` | 30 | Duration | то же |
+| `hardware_generation` | 31 | HardwareGeneration | наследуется от boot-источника; nullable |
+| `cpu_guarantee_percent` | 36 | int32 | доля гарантированного CPU; мутируется только на STOPPED |
+| `instance_kind` | 37 | InstanceKind | **сильный первый дискриминатор** (VM \| CONTAINER), required на Create |
+| `machine_type_id` | 38 | string | ссылка на MachineType-каталог; required; мутируется только на STOPPED |
+| `effective_resources` | 39 | EffectiveResources | output-only, выводится из MachineType |
+| `boot_source` | 40 | BootSource | `storage.image` \| `storage.snapshot` \| `storage.volume` — резолв у kacho-storage |
+| `placement_group_id` | 41 | string | opaque passthrough-слаг; формат-валидация `plg-`; мутируется только на STOPPED |
+| `status_reason` | 42 | string | output-only; причина текущего статуса |
+| `service_account` | 43 | reference.Referrer | dependency-handle на служебную учётку (graceful-dangling) |
+| `vm_spec` | 44 | VmSpec | ветвь `oneof spec` для `instance_kind = VM` |
+| `container_spec` | 45 | ContainerSpec | ветвь `oneof spec` для `instance_kind = CONTAINER` |
 
 (`hostname` из `CreateInstanceRequest` хранится в `instances.hostname` для
 вычисления `fqdn` и не возвращается отдельным полем в `Instance`.)
+
+> [!note] «Отвергается по имени» — это ИСХОД, а не пробел
+> Поле публичного запроса обязано иметь читателя; сервис, который не смотрит на поле,
+> не вправе принимать его молча. Перечисленные выше поля отвергаются синхронно
+> (`INVALID_ARGUMENT` + имя поля в `BadRequest.field_violations`) — см.
+> `internal/handler/instance_handler.go::RejectUnsupportedCreateFields` и лок
+> `instance_create_unsupported_fields_test.go`. То же относится к четырём полям
+> ВНУТРИ `network_interface_specs[]` (`primary_v4_address_spec`,
+> `primary_v6_address_spec`, `nic_id`, `index`).
 
 ### RPC (`instance_service.proto`, service `InstanceService`)
 
 | RPC | sync/async | статус | примечание |
 |---|---|---|---|
 | `Get` | sync | ✅ | `GET /compute/v1/instances/{instance_id}?view=` (BASIC/FULL — FULL включает metadata) |
-| `List` | sync | ✅ | `GET /compute/v1/instances?projectId=`. metadata всегда омитится (часть контракта). filter: `id/name/created_at/status/zone_id/platform_id/host_id` (whitelist; текущая фаза — `name=`) |
-| `Create` | async | ✅ | required `zone_id`/`platform_id`/`resources_spec`/`boot_disk_spec`. metadata `CreateInstanceMetadata{instance_id}`, response `Instance`. boot/secondary disk: `exactly_one` of {`disk_id`, `disk_spec`}. ⚠️ **без авто-NIC** — auto-NIC материализация `materializeNICs` удалена в `KAC-266`: инстанс создаётся **без сетевых интерфейсов** (`instance_network_interfaces` пуст), NIC не создаётся/привязывается на Create; правильная сетевая модель (явная привязка NIC) — будущая переделка. end status `RUNNING`. `filesystem_specs[]` / `local_disk_specs[]` — вместе с ещё четырьмя легаси-полями (`network_settings`, `maintenance_policy`, `maintenance_grace_period`, `serial_port_settings`) **отвергаются** синхронным `INVALID_ARGUMENT` первым стейтментом `Create`, см. `07-known-divergences.md` §7.1 |
-| `Update` | async | ✅ | metadata `UpdateInstanceMetadata`, response `Instance`. mutable: `name`/`description`/`labels`/`service_account_id`/`network_settings`/`placement_policy`/`scheduling_policy`/`maintenance_policy`/`maintenance_grace_period`/`serial_port_settings`. `resources_spec`/`platform_id` — только при `STOPPED` (`FailedPrecondition "Instance must be stopped"`). `metadata` — через `UpdateMetadata`. immutable: `zone_id`/`boot_disk` |
+| `List` | sync | ✅ | `GET /compute/v1/instances?projectId=`. metadata всегда омитится (часть контракта). filter — whitelist РОВНО `name=` (`instance_repo.go`: `filter.Parse(f.Filter, []string{"name"})`); любое другое имя поля → `INVALID_ARGUMENT` с именем поля. Расширение — COMP-3 вместе с индексом, см. `07-known-divergences.md` §12 |
+| `Create` | async | ✅ | required `zone_id`/`instance_kind`/`machine_type_id`/`boot_source` + ветвь `oneof spec` по роду. metadata `CreateInstanceMetadata{instance_id}`, response `Instance`. ⚠️ **без авто-NIC** (`KAC-266`): интерфейсы на Create не материализуются, привязка явная (`AttachNetworkInterface`). Легаси-поля запроса **отвергаются по имени**, синхронно и первым стейтментом: `network_settings`, `filesystem_specs`, `local_disk_specs`, `maintenance_policy`, `maintenance_grace_period`, `serial_port_settings`, `ssh_public_keys` + четыре поля внутри `network_interface_specs[]` (`primary_v4_address_spec`, `primary_v6_address_spec`, `nic_id`, `index`). Снятые редизайном `platform_id`/`resources_spec`/`boot_disk_spec` зарезервированы в proto по номеру И имени — вернуться не могут. end status `RUNNING` |
+| `Update` | async | ✅ | metadata `UpdateInstanceMetadata`, response `Instance`. mutable свободно: `name`/`description`/`labels`. Только при `STOPPED` (F10): `machine_type_id`/`cpu_guarantee_percent`/`placement_group_id`, иначе `FailedPrecondition`. `metadata` — только через `UpdateMetadata`. immutable: `zone_id`/`instance_kind`/`boot_source` |
 | `Delete` | async | ✅ | metadata `DeleteInstanceMetadata`, response `Empty`. worker: обрабатывает attached disks по `auto_delete` (true → DELETE disk; false → строка `attached_disks` чистится CASCADE при DELETE instance), для каждого NIC с непустым `nic_id` — delete kacho-vpc `NetworkInterface` (release его Address-ресурсов; best-effort vpcClient), DELETE instance (CASCADE чистит NIC-строки + attached_disks), освобождает one_to_one_nat addresses (best-effort vpcClient) |
 | `UpdateMetadata` | async | ✅ | `POST /compute/v1/instances/{instance_id}/updateMetadata` body `{delete:[], upsert:{}}`. metadata `UpdateInstanceMetadataMetadata`, response `Instance`. status unchanged |
 | `GetSerialPortOutput` | **sync** | ✅ (синтетика) | `GET /compute/v1/instances/{instance_id}:serialPortOutput?port=1..4`. response `GetInstanceSerialPortOutputResponse{contents}` — синтетический текст (НЕ операция) |
@@ -132,7 +154,9 @@ state-машину статуса. Таблица `instances` + дочерние
 | `ListOperations` | sync | ✅ | `GET /compute/v1/instances/{instance_id}/operations` |
 | `Relocate` | async | 🚫 blocked | `POST :relocate` body `{destination_zone_id, network_interface_specs[1], boot_disk_placement?, secondary_disk_placements[]}`. metadata `RelocateInstanceMetadata`, response `Instance`. Нужен cross-zone disk move + restart-семантика → `Unimplemented` / частично |
 | `SimulateMaintenanceEvent` | async | ⏭️ no-op | `POST :simulateMaintenanceEvent`. metadata `SimulateInstanceMaintenanceEventMetadata`, response `Empty`. operation сразу done |
-| `ListAccessBindings` / `SetAccessBindings` / `UpdateAccessBindings` | — | ⏭️ no-op скелет | |
+| `ListAccessBindings` | — | ⚠️ объявлен, обработчика НЕТ | тип запроса не принимает ни одна сигнатура прод-кода → RPC отвечает `Unimplemented` (12). Права выдаются kacho-iam (`AccessBindingService`), не здесь |
+| `SetAccessBindings` | — | ⚠️ объявлен, обработчика НЕТ | то же: `Unimplemented` (12) |
+| `UpdateAccessBindings` | — | ⚠️ объявлен, обработчика НЕТ | то же: `Unimplemented` (12) |
 
 ### Инварианты
 
@@ -175,67 +199,14 @@ state-машину статуса. Таблица `instances` + дочерние
 
 ---
 
-## Region
+## Region / Zone — сняты со сервинга (этап S7)
 
-Read-only публичный справочник регионов. Таблица `regions`. ID — литерал-строка
-(`ru-central1`), не prefix-id. **kacho-compute — owner Geography** (эпик `KAC-15`,
-перенесено из kacho-vpc; см. workspace `CLAUDE.md` §«Карта владельцев доменов»).
-
-### proto-поля (`region.proto`, message `Region`)
-
-| Поле | Тип | Замечания |
-|---|---|---|
-| `id` | string | PK, литерал (`ru-central1`) |
-| `name` | string | человекочитаемое имя |
-
-### RPC
-
-| RPC | сервис | listener | статус | примечание |
-|---|---|---|---|---|
-| `Get` | `RegionService` | `:9090` public | ✅ | `GET /compute/v1/regions/{region_id}` |
-| `List` | `RegionService` | `:9090` public | ✅ | `GET /compute/v1/regions` |
-| `Create` | `InternalRegionService` | `:9091` internal | ✅ kacho-only | `POST /compute/v1/regions` body `{id, name}` |
-| `Update` | `InternalRegionService` | `:9091` internal | ✅ kacho-only | `PATCH /compute/v1/regions/{region_id}` body `{name}` |
-| `Delete` | `InternalRegionService` | `:9091` internal | ✅ kacho-only | `DELETE /compute/v1/regions/{region_id}` → `DeleteRegionResponse{}`. Блокируется (FK `zones.region_id` RESTRICT) если есть зоны |
-
-Seed (`0003_geography_owner.sql`): `ru-central1` («Russia Central 1»).
-
----
-
-## Zone
-
-Read-only публичный справочник зон. Таблица `zones`. ID — литерал-строка
-(`ru-central1-a` и т.п.), не prefix-id. **kacho-compute — owner** (эпик `KAC-15`).
-
-### proto-поля (`zone.proto`, message `Zone`)
-
-| Поле | Тип | Замечания |
-|---|---|---|
-| `id` | string | PK, литерал (`ru-central1-a`) |
-| `region_id` | string | (`ru-central1`); FK `zones.region_id → regions.id` RESTRICT; индекс `zones_region_idx` |
-| `name` | string | человекочитаемое имя (колонка добавлена в `0003_geography_owner.sql`) |
-| `status` | Zone.Status enum | `STATUS_UNSPECIFIED=0, UP=1, DOWN=2` (в схеме: `status` TEXT, default `UP`) |
-
-### RPC
-
-| RPC | сервис | listener | статус | примечание |
-|---|---|---|---|---|
-| `Get` | `ZoneService` | `:9090` public | ✅ | `GET /compute/v1/zones/{zone_id}` |
-| `List` | `ZoneService` | `:9090` public | ✅ | `GET /compute/v1/zones` (без regionId) |
-| `Create` | `InternalZoneService` | `:9091` internal | ✅ kacho-only | `POST /compute/v1/zones` body `{id, region_id, name, status}` |
-| `Update` | `InternalZoneService` | `:9091` internal | ✅ kacho-only | `PATCH /compute/v1/zones/{zone_id}` body `{region_id, name, status}` |
-| `Delete` | `InternalZoneService` | `:9091` internal | ✅ kacho-only | `DELETE /compute/v1/zones/{zone_id}` → `DeleteZoneResponse{}`. Проверяет своих dependents (instances/disks/disk_types); кросс-сервисных (vpc-подсети) НЕ проверяет — admin-ответственность |
-
-**Источник данных:** компьют читает зоны/регионы **из своих таблиц** — никакого
-proxy в kacho-vpc и `skipPeer`-fallback больше нет (эпик `KAC-15` снёс это).
-Тот же источник используется как `ZoneRegistry` для existence-check `zone_id` в
-Create Instance. Другие сервисы
-(kacho-vpc — `Subnet.zone_id`, `AddressPool.zone_id`, `Address.zone_id`) валидируют
-`zone_id` вызовом нашего `ZoneService.Get` (`kacho-vpc → kacho-compute` runtime-edge).
-Seed (`0003_geography_owner.sql`): `ru-central1-{a,b,d}`, `region_id = ru-central1`,
-`status = UP`.
-
----
+Здесь стояли два раздела с полями и RPC `Region`/`Zone` и утверждение «kacho-compute —
+owner Geography». С этапа S7 это неверно: Geography — домен **kacho-geo**
+(`/geo/v1/regions`, `/geo/v1/zones`); таблиц `regions`/`zones` у compute нет, а
+`Instance.zone_id` проверяется peer-вызовом к geo. Разделы удалены, а не снабжены
+оговоркой: описание чужого домена в документе сервиса читается как «это здесь»,
+сколько бы оговорок к нему ни приписали.
 
 ## Что не compute-ресурс, но рядом живёт
 
