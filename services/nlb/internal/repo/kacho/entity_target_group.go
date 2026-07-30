@@ -40,7 +40,15 @@ type TargetRecord struct {
 	ID             string
 	TargetGroupID  string
 	Status         string
-	DrainStartedAt *time.Time // nil if Status == "ACTIVE"
+	DrainStartedAt *time.Time // nil if Status == TargetStatusActive
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }
+
+// Значения TargetRecord.Status. Названы здесь, а не повторены литералом у
+// каждого читателя: по этому полю принимаются решения (напр. TargetGroup.Delete
+// считает только живые цели), и опечатка в литерале дала бы молча обратный смысл.
+const (
+	TargetStatusActive   = "ACTIVE"
+	TargetStatusDraining = "DRAINING"
+)

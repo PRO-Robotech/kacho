@@ -79,6 +79,72 @@ func TestDelete_HasTargets(t *testing.T) {
 		"has 1 target(s); remove them first via RemoveTargets")
 }
 
+// A target the caller ALREADY removed must not block the delete.
+//
+// RemoveTargets is two-phase by design: phase A takes the target out of the
+// traffic pool immediately and marks the row DRAINING, phase B deletes the row
+// once the deregistration delay has passed (default 300s in the fixtures). From
+// the caller's side the target is gone the moment phase A returns.
+//
+// Delete counted EVERY row, draining ones included, and answered
+// "TargetGroup has N target(s); remove them first via RemoveTargets" — telling
+// the caller to do the thing they had just done, and which no repetition can
+// satisfy: RemoveTargets on a draining target is a documented no-op. The only
+// way out was to wait out the deregistration delay. Measured end-to-end on
+// 2026-07-30: clear default → RemoveTargets (accepted, done, no error) →
+// delete listener → delete LB → delete TG **refused**, and the group survived
+// the teardown it was the last step of.
+func TestDelete_DrainingTargetDoesNotBlock(t *testing.T) {
+	repo := newFakeRepo()
+	tg := makeTG("prj-acme", "del-draining")
+	repo.seedTG(tg)
+	tr := kachoTarget(string(tg.ID), domain.Target{
+		InstanceID: option.MustNewOption(domain.InstanceID("epd0X1")),
+		Weight:     100,
+	})
+	tr.Status = "DRAINING"
+	repo.seedTarget(string(tg.ID), &tr)
+	opsRepo := newFakeOpsRepo()
+	uc := NewDeleteTargetGroupUseCase(repo, opsRepo, nil)
+
+	op, err := uc.Execute(context.Background(), &lbv1.DeleteTargetGroupRequest{
+		TargetGroupId: string(tg.ID),
+	})
+	require.NoError(t, err, "a target already draining is a target the caller removed")
+	final := awaitOpDone(t, opsRepo, op.ID)
+	require.Nil(t, final.Error, "the delete must complete, not fail on the FK it was told to expect")
+}
+
+// ...and an ACTIVE target still blocks, with the same contract text. The refusal
+// exists to stop a group that is still serving traffic from vanishing; that is
+// unchanged, and this is the half that must not be lost while fixing the other.
+func TestDelete_ActiveTargetStillBlocks_MixedWithDraining(t *testing.T) {
+	repo := newFakeRepo()
+	tg := makeTG("prj-acme", "del-mixed")
+	repo.seedTG(tg)
+	drained := kachoTarget(string(tg.ID), domain.Target{
+		InstanceID: option.MustNewOption(domain.InstanceID("epd0X1")),
+		Weight:     100,
+	})
+	drained.Status = "DRAINING"
+	repo.seedTarget(string(tg.ID), &drained)
+	live := kachoTarget(string(tg.ID), domain.Target{
+		InstanceID: option.MustNewOption(domain.InstanceID("epd0X2")),
+		Weight:     100,
+	})
+	repo.seedTarget(string(tg.ID), &live)
+	uc := NewDeleteTargetGroupUseCase(repo, newFakeOpsRepo(), nil)
+
+	_, err := uc.Execute(context.Background(), &lbv1.DeleteTargetGroupRequest{
+		TargetGroupId: string(tg.ID),
+	})
+	require.Equal(t, codes.FailedPrecondition, status.Code(err))
+	// The count names only what the caller can still act on — a draining row is
+	// not something RemoveTargets can be called on again.
+	require.Contains(t, status.Convert(err).Message(),
+		"has 1 target(s); remove them first via RemoveTargets")
+}
+
 // concurrent AddTargets between precheck and DELETE → FK fallback
 // FailedPrecondition (TOCTOU). Simulated via failOnDelete injected in fake.
 func TestDelete_FKFallback_OnConcurrentAdd(t *testing.T) {

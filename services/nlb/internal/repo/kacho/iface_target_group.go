@@ -68,6 +68,14 @@ type TargetGroupWriterIface interface {
 	// Возвращает количество удалённых строк.
 	DeleteTargetsDrained(ctx context.Context, tgID string, delaySeconds int32) (int, error)
 
+	// DeleteTargetsDraining — снять ВСЕ дренирующиеся строки группы, не дожидаясь
+	// deregistration_delay. Единственный вызывающий — TargetGroup.Delete, в СВОЕЙ
+	// writer-TX: дренаж существует, чтобы уже установленные соединения доиграли на
+	// живой группе, а удаляемая группа трафика не принимает — ждать больше нечего.
+	// Строка ACTIVE НЕ удаляется: FK RESTRICT остаётся авторитетным backstop'ом,
+	// если конкурентный AddTargets вставит цель между предпроверкой и удалением.
+	DeleteTargetsDraining(ctx context.Context, tgID string) (int, error)
+
 	// Delete — DELETE target_groups WHERE id=$1. FK-violation от child targets
 	// или от ссылающегося listener (default_target_group_id FK RESTRICT) →
 	// ErrFailedPrecondition.

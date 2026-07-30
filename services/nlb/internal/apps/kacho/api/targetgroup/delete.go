@@ -29,14 +29,22 @@ import (
 //   - ReferencingListenerIDs non-empty → FailedPrecondition с фиксированным текстом
 //     `"target group is referenced by listeners: [<ids>]"` (listeners.default_target_group_id
 //     FK RESTRICT, 0018 — repoint them first).
-//   - ListTargets count > 0 → FailedPrecondition с фиксированным текстом
-//     `"TargetGroup has N target(s); remove them first via RemoveTargets"`.
+//   - ЖИВЫХ (не дренирующихся) targets > 0 → FailedPrecondition с фиксированным
+//     текстом `"TargetGroup has N target(s); remove them first via RemoveTargets"`.
+//     Счёт идёт по строкам, на которые вызывающий ещё МОЖЕТ подействовать: цель со
+//     status='DRAINING' он уже снял через RemoveTargets, повторный RemoveTargets на
+//     ней — задокументированный no-op, и никакое действие клиента отказ не снимает.
+//     Считая её, отказ требовал сделать уже сделанное и оставлял единственный выход
+//     — ждать deregistration_delay (в фикстурах 300с), из-за чего сквозной teardown
+//     обрывался на последнем шаге (измерено 2026-07-30).
 //
 // Worker (TOCTOU backstop):
-//   - Writer-TX → Delete (FK 23503 от child rows → ErrFailedPrecondition) +
-//     outbox DELETED → Commit.
+//   - Writer-TX → снять дренирующиеся строки (их снятия вызывающий уже просил, а
+//     группа, которую сносят, трафика не принимает) → Delete (FK 23503 от child
+//     rows → ErrFailedPrecondition) + outbox DELETED → Commit.
 //   - concurrent AddTargets между sync precheck и worker DELETE —
-//     SQL 23503 ловится mapPgErr → FailedPrecondition.
+//     SQL 23503 ловится mapPgErr → FailedPrecondition. Именно поэтому в TX
+//     удаляются ТОЛЬКО дренирующиеся: живая цель обязана поймать FK.
 type DeleteTargetGroupUseCase struct {
 	repo    Repo
 	opsRepo OpsRepo
@@ -93,9 +101,16 @@ func (u *DeleteTargetGroupUseCase) Execute(
 	if err != nil {
 		return nil, mapDomainErr(err)
 	}
-	if len(targets) > 0 {
+	// Только те, на которые вызывающий ещё может подействовать — см. шапку.
+	live := 0
+	for _, t := range targets {
+		if t != nil && t.Status != kachorepo.TargetStatusDraining {
+			live++
+		}
+	}
+	if live > 0 {
 		return nil, status.Errorf(codes.FailedPrecondition,
-			"TargetGroup has %d target(s); remove them first via RemoveTargets", len(targets))
+			"TargetGroup has %d target(s); remove them first via RemoveTargets", live)
 	}
 
 	// Operation row.
@@ -128,6 +143,13 @@ func (u *DeleteTargetGroupUseCase) doDelete(ctx context.Context, id, projectID s
 	}
 	defer w.Abort()
 
+	// Дренирующиеся строки снимаются в ТОЙ ЖЕ транзакции: их удаления вызывающий
+	// уже просил, а группа, которую сносят, трафика не принимает — дожидаться
+	// deregistration_delay больше не за чем. Живые строки не трогаем: FK RESTRICT
+	// обязан поймать конкурентный AddTargets между предпроверкой и удалением.
+	if _, err := w.TargetGroups().DeleteTargetsDraining(ctx, id); err != nil {
+		return nil, mapDomainErr(err)
+	}
 	if err := w.TargetGroups().Delete(ctx, id); err != nil {
 		return nil, mapDomainErr(err)
 	}

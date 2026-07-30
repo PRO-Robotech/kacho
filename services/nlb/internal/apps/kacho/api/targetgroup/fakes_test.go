@@ -452,6 +452,28 @@ func (q *fakeTGWriter) DeleteTargetsDrained(_ context.Context, _ string, _ int32
 	return 0, nil
 }
 
+// DeleteTargetsDraining removes the DRAINING rows for real, so the FK-RESTRICT
+// emulation in Delete below sees what the database would see. A double that only
+// returned (0, nil) would let TargetGroup.Delete pass the test while the real
+// transaction still hit 23503 — the fake would then be asserting the fix rather
+// than the product.
+func (q *fakeTGWriter) DeleteTargetsDraining(_ context.Context, tgID string) (int, error) {
+	q.r.mu.Lock()
+	defer q.r.mu.Unlock()
+	m, ok := q.r.targets[tgID]
+	if !ok {
+		return 0, nil
+	}
+	n := 0
+	for id, rec := range m {
+		if rec != nil && rec.Status == kachorepo.TargetStatusDraining {
+			delete(m, id)
+			n++
+		}
+	}
+	return n, nil
+}
+
 func (q *fakeTGWriter) Delete(_ context.Context, id string) error {
 	if q.r.failOnDelete != nil {
 		return q.r.failOnDelete
