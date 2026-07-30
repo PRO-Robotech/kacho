@@ -127,8 +127,6 @@ type Options struct {
 	Root string
 	// IssueState resolves one issue in one repository slug. nil ⇒ the `gh` CLI.
 	IssueState func(repo string, num int) (IssueState, error)
-	// SuiteDirs overrides suite discovery (testing). Paths are relative to Root.
-	SuiteDirs []string
 }
 
 // Census is the volume the gate examined. Printed always: "nothing declared" and
@@ -217,10 +215,7 @@ func Scan(o Options) (Report, error) {
 		resolve = ghResolver()
 	}
 
-	suites := o.SuiteDirs
-	if suites == nil {
-		suites = discoverSuites(o.Root)
-	}
+	suites := discoverSuites(o.Root)
 	rep.Census.Suites = len(suites)
 
 	issues := map[issueRef][]string{}
@@ -644,10 +639,10 @@ func firstToken(name string) string {
 // runReport is what one newman JSON report says about one collection.
 type runReport struct {
 	path string
-	// executed holds cursor positions that produced a response.
+	// executed holds cursor positions that produced a response. A position newman
+	// attempted that never answered is deliberately NOT in here: an unanswered request
+	// is not evidence that the case ran, so it falls through to "did not run".
 	executed map[int]bool
-	// attempted holds positions newman attempted that never answered.
-	attempted map[int]bool
 	// failed holds the names a failed assertion was booked under (folder and step).
 	failed map[string]bool
 }
@@ -699,8 +694,7 @@ func readReports(base string, idx suiteIndex) (map[string]*runReport, int) {
 		}
 		n++
 		r := &runReport{
-			path: filepath.ToSlash(path), executed: map[int]bool{},
-			attempted: map[int]bool{}, failed: map[string]bool{},
+			path: filepath.ToSlash(path), executed: map[int]bool{}, failed: map[string]bool{},
 		}
 		length := 0
 		for _, ex := range doc.Run.Executions {
@@ -712,8 +706,6 @@ func readReports(base string, idx suiteIndex) (map[string]*runReport, int) {
 			}
 			if len(ex.Response) > 0 && string(ex.Response) != "null" && len(ex.RequestError) == 0 {
 				r.executed[*ex.Cursor.Position] = true
-			} else {
-				r.attempted[*ex.Cursor.Position] = true
 			}
 		}
 		for _, f := range doc.Run.Failures {
@@ -723,7 +715,6 @@ func readReports(base string, idx suiteIndex) (map[string]*runReport, int) {
 		}
 		if length != 0 && idx.perCollection[name] != 0 && length != idx.perCollection[name] {
 			r.executed = map[int]bool{}
-			r.attempted = map[int]bool{}
 		}
 		out[name] = r
 	}
