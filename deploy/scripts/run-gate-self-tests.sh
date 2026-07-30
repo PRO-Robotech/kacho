@@ -88,6 +88,7 @@ deploy/tests/helm/networkpolicy-egress-test.sh
 deploy/tests/helm/outbox-autovacuum-naptime-test.sh
 deploy/tests/helm/prerequisite-secrets-test.sh
 deploy/tests/helm/trusted-forwarder-profiles-test.sh
+tests/authz-fixtures/prodseed_all.py
 "
 
 # Три законные формы разбора аргумента --self-test. Все три — КОД: bash-тест,

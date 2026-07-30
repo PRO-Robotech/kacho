@@ -194,6 +194,61 @@ def patch(fixtures: dict, paths: list[pathlib.Path]) -> None:
                     *[str(p) for p in paths if p.exists()]], check=True)
 
 
+# ── what version control will actually do with the files we just wrote ──────
+#
+# This used to be a printed CLAIM ("the env files are git-tracked, do not `git add -A`").
+# The claim was FALSE in this tree — .gitignore has carried a rule for both
+# `services/*/tests/newman/environments/local.postman_environment.json` and the gateway's
+# copy since they were untracked — so the message sent the next reader looking for these
+# files in history, where they are not, and described a hazard that no longer had that
+# shape. A statement about the repository is not a check; it goes stale the moment the
+# repository changes and nothing notices.
+#
+# So it is MEASURED instead: git is asked about each path we actually wrote. That cannot
+# drift, and it keeps the real hazard armed — if any of these ever becomes tracked, the
+# next production seed writes a live Hydra-signed bearer into a file `git add -A` would
+# commit, and this says so by name instead of by assumption.
+def env_disposition(paths: list[pathlib.Path], root: pathlib.Path | None = None) -> dict:
+    """Ask git how it treats each path: 'tracked' | 'ignored' | 'untracked-not-ignored'.
+
+    'tracked' is the dangerous one. 'ignored' is the safe state this tree is in.
+    'untracked-not-ignored' is nearly as dangerous — `git add -A` would pick it up.
+    Paths git cannot answer about (no repository) come back as 'unknown'.
+    """
+    root = root or REPO
+    out: dict[str, str] = {}
+    for p in paths:
+        arg = str(p)
+        tracked = subprocess.run(["git", "-C", str(root), "ls-files", "--error-unmatch", arg],
+                                 capture_output=True, text=True)
+        if tracked.returncode == 0:
+            out[arg] = "tracked"
+            continue
+        if "not a git repository" in (tracked.stderr or "").lower():
+            out[arg] = "unknown"
+            continue
+        ignored = subprocess.run(["git", "-C", str(root), "check-ignore", "-q", arg],
+                                 capture_output=True, text=True)
+        out[arg] = "ignored" if ignored.returncode == 0 else "untracked-not-ignored"
+    return out
+
+
+def report_env_disposition(paths: list[pathlib.Path], root: pathlib.Path | None = None) -> int:
+    """Print the measured disposition. Returns the number of committable paths."""
+    disp = env_disposition(paths, root)
+    committable = sorted(k for k, v in disp.items() if v in ("tracked", "untracked-not-ignored"))
+    ignored = [k for k, v in disp.items() if v == "ignored"]
+    unknown = [k for k, v in disp.items() if v == "unknown"]
+    log(f"env files written: {len(disp)}  (ignored by git: {len(ignored)}, "
+        f"committable: {len(committable)}, unknown: {len(unknown)})")
+    if committable:
+        log("WARNING: these now hold LIVE Hydra-signed bearers AND git would commit them:")
+        for k in committable:
+            log(f"           {k}  [{disp[k]}]")
+        log("         commit by explicit path only — never `git add -A`.")
+    return len(committable)
+
+
 # ── per-service extension seeders ───────────────────────────────────────────
 def run_ext(svc: str, project_id: str, project_cross_id: str) -> dict:
     """Run tests/authz-fixtures/prodseed_<svc>_ext.py, if one exists.
@@ -270,13 +325,78 @@ def seed_nlb_resources(boot: str, base_url: str, internal_url: str, project_id: 
     return got
 
 
+def _self_test() -> int:
+    """Injection in both directions for `env_disposition` — the measurement that
+    replaced a printed claim about version control.
+
+    The claim it replaced said the env files were tracked; the tree's .gitignore says
+    otherwise, and nothing noticed for as long as the sentence existed. A measurement
+    can only be trusted if it distinguishes the two states, so both are built here in a
+    throwaway repository and asserted:
+
+      * tracked / untracked-but-not-ignored → the hazard the warning is FOR (loud);
+      * ignored                             → the state this tree is in (quiet).
+
+    The census is asserted too: three paths in, three verdicts out. "No committable
+    paths" must be distinguishable from "nothing was looked at".
+    """
+    import tempfile
+
+    ok = True
+    with tempfile.TemporaryDirectory() as td:
+        root = pathlib.Path(td)
+        subprocess.run(["git", "-C", td, "init", "-q"], check=True)
+        subprocess.run(["git", "-C", td, "config", "user.email", "t@example.invalid"], check=True)
+        subprocess.run(["git", "-C", td, "config", "user.name", "t"], check=True)
+        (root / "envs").mkdir()
+        for n in ("tracked.json", "ignored.json", "loose.json"):
+            (root / "envs" / n).write_text("{}\n")
+        (root / ".gitignore").write_text("envs/ignored.json\n")
+        subprocess.run(["git", "-C", td, "add", ".gitignore", "envs/tracked.json"], check=True)
+        subprocess.run(["git", "-C", td, "commit", "-qm", "fixture"], check=True)
+
+        paths = [root / "envs" / n for n in ("tracked.json", "ignored.json", "loose.json")]
+        disp = env_disposition(paths, root=root)
+        want = {str(paths[0]): "tracked", str(paths[1]): "ignored",
+                str(paths[2]): "untracked-not-ignored"}
+        if disp != want:
+            print(f"SELF-TEST FAIL: disposition {disp} != {want}", file=sys.stderr)
+            ok = False
+        # Census: every path handed in comes back with a verdict — "zero committable"
+        # must not be reachable by looking at nothing.
+        if len(disp) != len(paths):
+            print(f"SELF-TEST FAIL: examined {len(disp)} of {len(paths)} paths", file=sys.stderr)
+            ok = False
+        n = report_env_disposition(paths, root=root)
+        if n != 2:
+            print(f"SELF-TEST FAIL: committable count {n} != 2", file=sys.stderr)
+            ok = False
+        # The quiet direction on its own: an ignored path alone must report nothing
+        # committable — otherwise the warning fires always and stops being read.
+        if report_env_disposition([paths[1]], root=root) != 0:
+            print("SELF-TEST FAIL: an ignored path was reported as committable", file=sys.stderr)
+            ok = False
+
+    # And the live tree: whatever the answer, it must be MEASURED, not assumed. This
+    # prints it, so a change of disposition is visible in the self-test output too.
+    live = env_disposition([env_path(s) for s in ALL_SERVICES])
+    print(f"live tree: {len(live)} env paths examined -> "
+          f"{ {v: sum(1 for x in live.values() if x == v) for v in sorted(set(live.values()))} }")
+    print("SELF-TEST OK" if ok else "SELF-TEST FAILED")
+    return 0 if ok else 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="production-posture newman seed (all suites)")
     ap.add_argument("--services", default=os.environ.get("SERVICES", " ".join(ALL_SERVICES)),
                     help="whitespace/comma separated suite list to patch")
     ap.add_argument("--no-patch-env", action="store_true",
                     help="emit fixtures on stdout without touching the newman envs")
+    ap.add_argument("--self-test", action="store_true",
+                    help="prove env_disposition tells tracked from ignored; touches no stand")
     args = ap.parse_args()
+    if args.self_test:
+        return _self_test()
     services = [s for s in args.services.replace(",", " ").split() if s]
 
     ensure_certs()
@@ -323,13 +443,11 @@ def main() -> int:
             if extra:
                 (out_dir / f"{svc}-fixtures.json").write_text(json.dumps(extra, indent=2) + "\n")
                 patch(extra, [env_path(svc)])
-        # The newman environment files are git-TRACKED, and in this posture the tokens
-        # written into them are genuine Hydra-signed cluster credentials with a real
-        # lifetime — not the well-known dev HMAC strings the dev path leaves behind.
-        # Say so out loud: `git add -A` after a production seed would commit live
-        # bearers. (The seed's own outputs under out/ are gitignored; these are not.)
-        log("NOTE: the patched newman env files are git-tracked and now hold LIVE RS256")
-        log("      bearers. Do not commit them — commit by explicit path, never `-A`.")
+        # In this posture the tokens written into the env files are genuine Hydra-signed
+        # cluster credentials with a real lifetime — not the well-known dev HMAC strings
+        # the dev path leaves behind. Whether that is a hazard depends on what version
+        # control does with those files, so it is MEASURED, never asserted.
+        report_env_disposition([env_path(s) for s in services])
         log("DONE")
         return 0
     finally:
