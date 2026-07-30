@@ -93,7 +93,7 @@ CASES.append(Case(
                    "name": "azd-vok-{{runId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
         # read-your-writes: the viewer's read resolves via the LB->project owner/hierarchy
         # tuple, which is eventually-consistent (opgate removed) -> a fresh LB briefly 404s
         # at the authz gate until it materializes. Retry the SELF read on 403/404.
@@ -105,7 +105,7 @@ CASES.append(Case(
         Step(name="cleanup", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtProjectEditorA",
              test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
     ],
 ))
 
@@ -194,7 +194,7 @@ CASES.append(Case(
                    "name": "azd-mv-{{runId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
         # Subject jwtProjectEditorA: editor on src, NOT editor on cross (editor B holds
         # the other side; the fixture binds A to the src project only). The Move MUST be
         # DENIED. The DENIAL CODE is ORDERING-TOLERANT: move.go runs the peer existence
@@ -231,7 +231,7 @@ CASES.append(Case(
         Step(name="cleanup", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtProjectEditorA",
              test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
     ],
 ))
 
@@ -373,7 +373,7 @@ CASES.append(Case(
                                    "tcp": {"port": 80}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
         # editor on src, NOT on cross → the Move MUST be DENIED, ORDERING-TOLERANT:
         # targetgroup/move.go runs the peer existence precheck `ProjectService.Get(dst)`
         # BEFORE authorizeDestination's dst-scope Check, and iam hide-existence returns
@@ -404,7 +404,7 @@ CASES.append(Case(
         Step(name="cleanup", method="DELETE", path=f"{_TGR}/{{{{tgId}}}}",
              auth="jwtProjectEditorA",
              test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
     ],
 ))
 
@@ -536,11 +536,11 @@ CASES.append(Case(
                  "pm.test('rejected (403 deny / 404 hide / already-done 400/409)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 409]));",
              ]),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectEditorB"),
         Step(name="cleanup", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtProjectEditorA",
              test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
     ],
 ))
 
@@ -668,7 +668,7 @@ CASES.append(Case(
                                    "tcp": {"port": 8080}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tmTgId")]),
-        poll_operation_until_done(fixture_ids=["tmTgId"]),
+        poll_operation_until_done(fixture_ids=["tmTgId"], auth="jwtProjectEditorA"),
         # The custom role's grant materializes eventually-consistent like any other, so a
         # transient deny is retried — the outcome asserted is still success only. If it
         # never converges, either the role or its binding was not seeded
@@ -683,7 +683,7 @@ CASES.append(Case(
                  "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                  *save_from_response("j.id", "opId"),
              ])),
-        poll_operation_until_done(must_succeed=True),
+        poll_operation_until_done(must_succeed=True, auth="jwtCustomRoleTargetManager"),
         # The role carries addTargets/removeTargets and nothing else, so a metadata Update
         # is refused. 404 stays admissible ONLY because the deny may hide existence — but
         # it can no longer stand in for "there was no such group", since the group provably
@@ -701,11 +701,11 @@ CASES.append(Case(
              auth="jwtProjectEditorA",
              body={"targets": [{"externalIp": {"address": "203.0.113.32"}}]},
              test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
         Step(name="tm-cleanup-tg", method="DELETE", path=f"{_TGR}/{{{{tmTgId}}}}",
              auth="jwtProjectEditorA",
              test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
     ],
 ))
 
@@ -784,18 +784,18 @@ CASES.append(Case(
                  "  if (j.metadata && j.metadata.subnetId) pm.environment.set('azdSubnetId', j.metadata.subnetId);",
                  "} else { pm.environment.unset('opId'); }",
              ]),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
         retry_create_until_present(Step(name="setup-cr", method="POST", path=_NLB, auth="jwtProjectEditorA",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "name": "azd-lcd-{{runId}}", "placement": "INTERNAL_ZONAL",
                    "v4Source": {"subnetId": "{{azdSubnetId}}"}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")])),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
         retry_until_authorized(Step(name="del", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtProjectEditorA",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
         Step(name="get-after-delete", method="GET", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtProjectEditorA",
              test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
@@ -838,14 +838,14 @@ CASES.append(Case(
                    "name": "azd-own-{{runId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
         # Creator should be able to Delete (= owner-relation-implied editor permits delete).
         # read-your-writes: the owner tuple this case asserts is eventually-consistent, so the
         # first creator Delete can 403 until it materializes -> retry SELF on 403/404.
         retry_until_authorized(Step(name="del-by-creator", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtProjectEditorA",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
     ],
 ))
 
@@ -874,11 +874,11 @@ CASES.append(Case(
                  *save_from_response("j.id", "opId"),
                  *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId"),
              ]),
-        poll_operation_until_done(fixture_ids=["nlbId"]),
+        poll_operation_until_done(fixture_ids=["nlbId"], auth="jwtServiceAccountEditor"),
         Step(name="cleanup", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtServiceAccountEditor",
              test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtServiceAccountEditor"),
     ],
 ))
 
@@ -909,11 +909,11 @@ CASES.append(Case(
                  *save_from_response("j.id", "opId"),
                  *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId"),
              ])),
-        poll_operation_until_done(fixture_ids=["nlbId"]),
+        poll_operation_until_done(fixture_ids=["nlbId"], auth="jwtGroupMemberEditor"),
         Step(name="cleanup", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtGroupMemberEditor",
              test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(auth="jwtGroupMemberEditor"),
     ],
 ))
 

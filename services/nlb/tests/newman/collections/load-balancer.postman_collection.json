@@ -13270,7 +13270,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\"description\": \"empty-mask patch {{runId}}\"}",
+              "raw": "{\"name\": \"setup-mask-empty-{{runId}}\", \"description\": \"empty-mask patch {{runId}}\"}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -13395,7 +13395,62 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('the mutable field from the body was applied', () =>   pm.expect(pm.response.json().description)    .to.eql(pm.variables.replaceIn('empty-mask patch {{runId}}')));"
+                  "pm.test('the mutable field from the body was applied', () =>   pm.expect(pm.response.json().description)    .to.eql(pm.variables.replaceIn('empty-mask patch {{runId}}')));",
+                  "pm.test('the name carried in the same body survived it', () =>   pm.expect(pm.response.json().name)    .to.eql(pm.variables.replaceIn('setup-mask-empty-{{runId}}')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "upd-empty-partial-body",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "networkLoadBalancers",
+                "{{nlbId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"description\": \"partial body {{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.unset('opId');",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('the refusal names the field the body dropped', () => {",
+                  "  const j = pm.response.json();",
+                  "  const fields = ((j.details || []).flatMap(d => d.fieldViolations || []))    .map(v => v.field);",
+                  "  pm.expect(fields, pm.response.text()).to.include('name');",
+                  "});"
                 ]
               }
             }
