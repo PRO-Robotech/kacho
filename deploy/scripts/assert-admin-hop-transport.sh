@@ -310,6 +310,51 @@ echo "  под провайдера: $HYDRA_POD (release $RELEASE), адрес �
 echo "  терминатор: $TERM_ADDR:$TERM_PORT · листенер провайдера в поде: :$PROV_PORT"
 MARKER="sechat-$(date +%s)-$RANDOM"
 
+# ── SEC-HAT-17: ПРЕДПОСЫЛКА ОБХОДНОГО ПУТИ ──────────────────────────────────
+#
+# Терминатор существует ТОЛЬКО потому, что развёрнутая версия провайдера не
+# читает объявление TLS отдельного листенера. Предмет может измениться ТОЛЬКО
+# вместе с версией — поэтому гейт стоит на ЭТОЙ оси.
+#
+# Версия читается с ЖИВОГО пода, а не из рендера и не из записи: расхождение
+# «что объявлено» и «что работает» разрешается в пользу работающего.
+PREMISE_DOC="$DEPLOY_ROOT/PROVIDER-LISTENER-PREMISE.md"
+REMEASURE="deploy/scripts/remeasure-provider-listener-tls.sh"
+assertion
+if [ ! -f "$PREMISE_DOC" ]; then
+  fail "SEC-HAT-17 записи координаты предпосылки нет ($PREMISE_DOC) — сверять НЕ С ЧЕМ,"
+  note "а «не с чем сверить» означает «не проверили», а не «всё хорошо»."
+else
+  rec_image="$(grep -oE 'oryd/hydra:v[0-9][^`|[:space:]]*' "$PREMISE_DOC" | head -1)"
+  rec_chart="$(grep -oE 'hydra-[0-9]+\.[0-9]+\.[0-9]+' "$PREMISE_DOC" | head -1)"
+  run_image="$(kubectl -n "$NS" get pod "$HYDRA_POD" \
+    -o jsonpath='{.spec.containers[?(@.name=="hydra")].image}' 2>/dev/null | sed 's|^docker\.io/||')"
+  run_chart="$(kubectl -n "$NS" get pod "$HYDRA_POD" \
+    -o jsonpath='{.metadata.labels.helm\.sh/chart}' 2>/dev/null)"
+  if [ "$run_image" = "$rec_image" ] && [ "$run_chart" = "$rec_chart" ]; then
+    ok "SEC-HAT-17 предпосылка измерена на той версии, что работает ($run_image, $run_chart)"
+  else
+    fail "SEC-HAT-17 предпосылка терминатора измерена на «$rec_image / $rec_chart»,"
+    note "разворачивается «$run_image / $run_chart»."
+    note "Перемерить: bash $REMEASURE --image $run_image"
+    note "затем обновить запись в $PREMISE_DOC."
+    note "Показал перемер, что версия объявление ЧИТАЕТ — терминатор подлежит снятию."
+  fi
+fi
+
+# Отдельным утверждением, ЧЕСТНО ПОМЕЧЕННЫМ: это проверка СВОЕЙ КОНФИГУРАЦИИ, а
+# не предпосылки. Снятая мёртвая ручка могла вернуться незаметно — но её
+# отсутствие ничего не говорит о том, читает ли её версия.
+assertion
+if kubectl -n "$NS" get pod "$HYDRA_POD" -o jsonpath='{.spec.containers[?(@.name=="hydra")].volumeMounts[*].mountPath}' 2>/dev/null \
+     | tr ' ' '\n' | grep -q 'hydra-admin-tls'; then
+  fail "своя конфигурация (НЕ предпосылка): секрет TLS снова смонтирован в контейнер провайдера"
+  note "ручка мертва — держать её рядом с обходным путём, который существует именно"
+  note "потому, что она не работает, значит пригласить следующего снять терминатор."
+else
+  ok "своя конфигурация (НЕ предпосылка): мёртвая ручка TLS в контейнер провайдера не вернулась"
+fi
+
 # ── ОДИН пробник выполняет ВСЕ обращения, чтобы отрицательные и положительные
 #    наблюдения были сделаны В ОДИН МОМЕНТ и с одного места. Разнесённые во
 #    времени половины пары доказывают меньше, чем кажется.
