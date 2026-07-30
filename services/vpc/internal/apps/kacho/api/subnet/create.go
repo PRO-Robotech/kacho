@@ -93,6 +93,13 @@ func (u *CreateSubnetUseCase) Execute(ctx context.Context, s domain.Subnet) (*op
 		return nil, err
 	}
 	s.PlacementType = placement
+	// Потолок числа диапазонов — до поэлементной и до квадратичной проверок.
+	if err := validateSubnetCidrCardinality("v4_cidr_blocks", s.V4CidrBlocks); err != nil {
+		return nil, err
+	}
+	if err := validateSubnetCidrCardinality("v6_cidr_blocks", s.V6CidrBlocks); err != nil {
+		return nil, err
+	}
 	// Proto contract: v4_cidr_blocks НЕ required — подсеть может быть создана без
 	// IPv4-диапазона. Пустой список легален; переданные CIDR'ы все равно
 	// валидируются (host-bits=0, /16../28).
@@ -251,6 +258,15 @@ func (u *CreateSubnetUseCase) doCreate(ctx context.Context, subID string, s doma
 	// без дефолта → поле остаётся пустым (легальное состояние).
 	if s.RouteTableID == "" && parentNet.DefaultRouteTableID != "" {
 		s.RouteTableID = parentNet.DefaultRouteTableID
+	} else if s.RouteTableID != "" {
+		// Явная таблица маршрутов от вызывающего: обязана лежать в ТОЙ ЖЕ сети
+		// (внешний ключ проверяет лишь существование строки, а таблица
+		// принадлежит своей сети — иначе подсеть привязывается к таблице чужой
+		// сети и чужого проекта). Проверка в этой же writer-TX, под уже взятым
+		// share-lock'ом сети.
+		if rtErr := validateSubnetRouteTableRef(ctx, w.RouteTables(), s.RouteTableID, s.NetworkID); rtErr != nil {
+			return nil, rtErr
+		}
 	}
 
 	// Пересечения v4 CIDR в рамках одной сети ловятся атомарно DB-level EXCLUDE

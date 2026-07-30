@@ -145,7 +145,22 @@ func (u *UpdateNetworkInterfaceUseCase) doUpdate(ctx context.Context, in UpdateI
 		}
 	}
 	nic := &rec.NetworkInterface
+	prevSGs := append([]string{}, nic.SecurityGroupIDs...)
 	applyNICMask(nic, in)
+	// Группы безопасности проверяются ПОСЛЕ применения маски — проверяется
+	// итоговый набор, а не присланный кусок (пустая маска = полная замена).
+	// Читаем в той же writer-TX, поэтому проверенный набор не может разъехаться
+	// с записываемым. Набор не изменился — читать нечего.
+	if !strSetEqual(prevSGs, nic.SecurityGroupIDs) {
+		parentSub, serr := w.Subnets().Get(ctx, nic.SubnetID)
+		if serr != nil {
+			return nil, serviceerr.MapRepoErr(serr)
+		}
+		if sgErr := validateNICSecurityGroupRefs(ctx, w.SecurityGroups(), nic.SecurityGroupIDs,
+			string(nic.ProjectID), parentSub.NetworkID); sgErr != nil {
+			return nil, sgErr
+		}
+	}
 	updated, err := w.NetworkInterfaces().UpdateMeta(ctx, nic)
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)

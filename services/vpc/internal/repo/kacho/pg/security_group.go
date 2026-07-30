@@ -44,6 +44,33 @@ func (r *securityGroupReader) Get(ctx context.Context, id string) (*kacho.Securi
 	return sg, nil
 }
 
+// GetMany — резолв набора id одним запросом. Дедуп на стороне SQL (`= ANY`),
+// порядок не гарантируется — возвращается карта. Пустой вход → пустая карта без
+// обращения к БД.
+func (r *securityGroupReader) GetMany(ctx context.Context, ids []string) (map[string]*kacho.SecurityGroupRecord, error) {
+	out := make(map[string]*kacho.SecurityGroupRecord, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	q := fmt.Sprintf(`SELECT %s FROM security_groups WHERE id = ANY($1::text[])`, helpers.SGCols)
+	rows, err := r.tx.Query(ctx, q, ids)
+	if err != nil {
+		return nil, helpers.WrapSGErr(err, "")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		sg, serr := helpers.ScanSG(rows)
+		if serr != nil {
+			return nil, helpers.WrapSGErr(serr, "")
+		}
+		out[sg.ID] = sg
+	}
+	if err := rows.Err(); err != nil {
+		return nil, helpers.WrapSGErr(err, "")
+	}
+	return out, nil
+}
+
 // List — cursor-based pagination + filter.Parse (whitelist полей
 // ["name","network_id"]).
 func (r *securityGroupReader) List(ctx context.Context, f kacho.SecurityGroupFilter, p kacho.Pagination) ([]*kacho.SecurityGroupRecord, string, error) {
@@ -291,6 +318,14 @@ func (w *securityGroupWriter) UpdateRules(ctx context.Context, sgID string, dele
 		rules = filtered
 	}
 	rules = append(rules, add...)
+	// Потолок на ИТОГОВОМ наборе: набор аддитивен, поэтому серия формально
+	// законных запросов растила бы его без предела. Синхронный отказ в use-case
+	// ограничивает один запрос, эта проверка — накопленный результат (DB-CHECK
+	// security_groups_rules_cardinality остаётся атомарным backstop'ом).
+	if len(rules) > domain.MaxSecurityGroupRules {
+		return nil, fmt.Errorf("%w: security group %s: at most %d rules per security group",
+			helpers.ErrFailedPrecondition, sgID, domain.MaxSecurityGroupRules)
+	}
 	newRulesJSON, err := helpers.MarshalJSONB(rules, "SecurityGroup.rules")
 	if err != nil {
 		return nil, err

@@ -58,6 +58,14 @@ func (u *AddCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6 []
 	if len(v4) == 0 && len(v6) == 0 {
 		return nil, serviceerr.InvalidArg("v4_cidr_blocks", "v4_cidr_blocks or v6_cidr_blocks is required")
 	}
+	// Потолок — ПЕРВЫМ, до поэлементной валидации и до квадратичной проверки
+	// пересечений: стоимость запроса не может задаваться вызывающим.
+	if err := validateSubnetCidrCardinality("v4_cidr_blocks", v4); err != nil {
+		return nil, err
+	}
+	if err := validateSubnetCidrCardinality("v6_cidr_blocks", v6); err != nil {
+		return nil, err
+	}
 	for i, c := range v4 {
 		if err := validateSubnetV4CIDR(fmt.Sprintf("v4_cidr_blocks[%d]", i), c); err != nil {
 			return nil, err
@@ -124,6 +132,11 @@ func (u *AddCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6 []
 		}
 		mergedV4 := append([]string{}, sub.V4CidrBlocks...)
 		mergedV4 = append(mergedV4, v4...)
+		// Потолок на НАКОПЛЕННОМ наборе (под row-lock подсети): аддитивный
+		// глагол иначе растит набор серией законных запросов.
+		if err := validateSubnetCidrCardinality("v4_cidr_blocks", mergedV4); err != nil {
+			return nil, err
+		}
 		// Проверка пересечений внутри объединенного набора (sync, host-bits уже OK).
 		// Покрывает overlap нового блока с уже существующим в этой же подсети.
 		if err := checkCIDRDisjoint("v4_cidr_blocks", mergedV4); err != nil {
@@ -132,6 +145,9 @@ func (u *AddCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6 []
 		// v6: то же самое.
 		mergedV6 := append([]string{}, sub.V6CidrBlocks...)
 		mergedV6 = appendDedup(mergedV6, v6)
+		if err := validateSubnetCidrCardinality("v6_cidr_blocks", mergedV6); err != nil {
+			return nil, err
+		}
 		if err := checkCIDRDisjoint("v6_cidr_blocks", mergedV6); err != nil {
 			return nil, err
 		}

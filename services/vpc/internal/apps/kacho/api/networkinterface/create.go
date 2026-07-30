@@ -111,6 +111,21 @@ func (u *CreateNetworkInterfaceUseCase) Execute(ctx context.Context, in CreateIn
 	if err := validateNICAddressCardinality(n.V4AddressIDs, n.V6AddressIDs); err != nil {
 		return nil, err
 	}
+	// Привязка интерфейса к машине — НЕ исход публичного создания. Инвариант
+	// привязки (та же зона, принадлежность машины, атомарная смена владельца,
+	// номер слота) живёт в охраняемом пути привязки; создание не может его
+	// исполнить, потому что резолвить машину вправе только её владелец, а
+	// обратного ребра к нему у этого сервиса нет и быть не должно. Принять поле
+	// и не исполнить обещание — не исход (api-conventions «принято-и-
+	// проигнорировано»), поэтому отказ явный, синхронный и с именем поля.
+	if in.InstanceID != "" {
+		return nil, serviceerr.InvalidArg("instance_id",
+			"instance attachment is not performed at NetworkInterface.Create")
+	}
+	if in.Index != "" {
+		return nil, serviceerr.InvalidArg("index",
+			"index is meaningful only for instance attachment, which is not performed at NetworkInterface.Create")
+	}
 	// Sync project.Exists precheck здесь не делаем: он race-prone — между sync-
 	// проверкой и async-частью project может удалить peer-сервис. NotFound для
 	// несуществующего project'а возвращается через `operation.error` из `doCreate`.
@@ -175,12 +190,21 @@ func (u *CreateNetworkInterfaceUseCase) doCreate(ctx context.Context, niID strin
 	if parentSub.ProjectID != n.ProjectID {
 		return nil, serviceerr.MapRepoErr(repo.ErrNotFound)
 	}
+	// Группы безопасности — ссылка от вызывающего без внешнего ключа: проверяем
+	// существование и принадлежность (см. godoc валидатора). Читаем тем же
+	// Reader'ом, что и родительскую подсеть.
+	rdSG, rerr2 := u.repo.Reader(ctx)
+	if rerr2 != nil {
+		return nil, serviceerr.MapRepoErr(rerr2)
+	}
+	sgErr := validateNICSecurityGroupRefs(ctx, rdSG.SecurityGroups(), n.SecurityGroupIDs,
+		string(n.ProjectID), parentSub.NetworkID)
+	_ = rdSG.Close()
+	if sgErr != nil {
+		return nil, sgErr
+	}
 	st := domain.NIStatusAvailable
 	usedByType, usedByID := "", ""
-	if in.InstanceID != "" {
-		st = domain.NIStatusActive
-		usedByType, usedByID = niUsedByReferrerType, in.InstanceID
-	}
 	rec := &domain.NetworkInterface{
 		ID:               niID,
 		ProjectID:        n.ProjectID,

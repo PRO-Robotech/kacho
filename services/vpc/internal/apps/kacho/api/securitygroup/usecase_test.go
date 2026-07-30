@@ -43,6 +43,15 @@ func (m *sgReaderMock) Get(ctx context.Context, id string) (*kacho.SecurityGroup
 	return rd.SecurityGroups().Get(ctx, id)
 }
 
+func (m *sgReaderMock) GetMany(ctx context.Context, ids []string) (map[string]*kacho.SecurityGroupRecord, error) {
+	rd, err := m.repo.Reader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rd.Close() }()
+	return rd.SecurityGroups().GetMany(ctx, ids)
+}
+
 func makeHandler(
 	t *testing.T,
 	sgr *kachomock.Repository,

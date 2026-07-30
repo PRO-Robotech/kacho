@@ -285,6 +285,18 @@ func (a *SecurityGroupAdapter) Get(ctx context.Context, id string) (*kacho.Secur
 	return rd.SecurityGroups().Get(ctx, id)
 }
 
+// GetMany — резолв набора id в ОДНОЙ Reader-TX и одним запросом. Именно этим он
+// и отличается от цикла из Get'ов: тот открывал бы транзакцию чтения на каждый
+// элемент присланного вызывающим массива.
+func (a *SecurityGroupAdapter) GetMany(ctx context.Context, ids []string) (map[string]*kacho.SecurityGroupRecord, error) {
+	rd, err := a.repo.Reader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rd.Close() }()
+	return rd.SecurityGroups().GetMany(ctx, ids)
+}
+
 // List — read через свежую Reader-TX.
 func (a *SecurityGroupAdapter) List(ctx context.Context, f kacho.SecurityGroupFilter, p kacho.Pagination) ([]*kacho.SecurityGroupRecord, string, error) {
 	rd, err := a.repo.Reader(ctx)

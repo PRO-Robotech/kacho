@@ -4,8 +4,11 @@
 package networkinterface
 
 import (
+	"context"
 	"fmt"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
@@ -13,6 +16,7 @@ import (
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/dto"
 
 	// Blank-import регистрирует DTO-трансферы (включая NetworkInterface) через init().
@@ -43,6 +47,52 @@ func validateNICAddressCardinality(v4IDs, v6IDs []string) error {
 	}
 	if len(v6IDs) > 1 {
 		return serviceerr.InvalidArg("v6_address_ids", "at most one IPv6 address per network interface (use multiple NICs for multi-IP)")
+	}
+	return nil
+}
+
+// validateNICSecurityGroupRefs — существование И принадлежность каждой
+// названной группы безопасности. Ссылка приходит массивом от вызывающего, у
+// колонки нет внешнего ключа (jsonb), поэтому единственная защита — эта
+// проверка; без неё интерфейс одного проекта ссылается на группу другого, и
+// владелец группы теряет возможность её удалить (предусловие удаления
+// спрашивает «ссылается ли кто-нибудь», а ссылающийся интерфейс лежит в чужом
+// проекте и владельцу не виден).
+//
+// Резолв — ОДИН запрос на весь массив (`GetMany`), а не обращение к БД на
+// элемент: длину массива задаёт вызывающий.
+//
+// Тон отказа для «нет такой» и «есть, но не твоя» одинаков — иначе это оракул
+// существования. Группа без сети (project-level) принимается в любой подсети
+// проекта; группа с сетью — только в подсети своей сети.
+func validateNICSecurityGroupRefs(
+	ctx context.Context,
+	sgr kachorepo.SecurityGroupReaderIface,
+	ids []string,
+	projectID, subnetNetworkID string,
+) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if len(ids) > domain.MaxNICSecurityGroups {
+		return serviceerr.InvalidArg("security_group_ids",
+			fmt.Sprintf("at most %d security groups per network interface", domain.MaxNICSecurityGroups))
+	}
+	for _, id := range ids {
+		if id == "" {
+			return serviceerr.InvalidArg("security_group_ids", "security group id must not be empty")
+		}
+	}
+	found, err := sgr.GetMany(ctx, ids)
+	if err != nil {
+		return serviceerr.MapRepoErr(err)
+	}
+	for _, id := range ids {
+		sg, ok := found[id]
+		if !ok || string(sg.ProjectID) != projectID ||
+			(sg.NetworkID != "" && sg.NetworkID != subnetNetworkID) {
+			return status.Errorf(codes.InvalidArgument, "security group %s not found", id)
+		}
 	}
 	return nil
 }

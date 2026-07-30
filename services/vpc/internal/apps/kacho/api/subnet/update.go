@@ -117,7 +117,18 @@ func (u *UpdateSubnetUseCase) doUpdate(ctx context.Context, in UpdateInput) (*an
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
+	prevRT := rec.Subnet.RouteTableID
 	applySubnetMask(&rec.Subnet, in)
+	// Таблица маршрутов — ссылка от вызывающего. Внешний ключ гарантирует лишь
+	// существование строки, а таблица принадлежит СВОЕЙ сети, поэтому без этой
+	// проверки подсеть привязывается к таблице чужой сети (и чужого проекта) —
+	// состояние, которого по дизайну не бывает и которое база выразить не может.
+	// Проверка в той же writer-TX, что и запись.
+	if rec.Subnet.RouteTableID != prevRT && rec.Subnet.RouteTableID != "" {
+		if rtErr := validateSubnetRouteTableRef(ctx, w.RouteTables(), rec.Subnet.RouteTableID, rec.Subnet.NetworkID); rtErr != nil {
+			return nil, rtErr
+		}
+	}
 	updated, err := w.Subnets().Update(ctx, &rec.Subnet)
 	if err != nil {
 		return nil, serviceerr.MapRepoErr(err)
