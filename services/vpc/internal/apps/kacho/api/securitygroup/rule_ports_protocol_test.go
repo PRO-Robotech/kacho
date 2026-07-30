@@ -4,14 +4,18 @@
 package securitygroup
 
 import (
-	"strings"
+	"context"
 	"testing"
 
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
 )
 
 // Диапазон портов и протокол правила — предмет контракта, а не свободный текст.
@@ -161,14 +165,80 @@ func TestValidateSGRule_DefaultSecurityGroupRulesPass(t *testing.T) {
 	}
 }
 
-// Отказ приходит СИНХРОННО, первым стейтментом, до создания операции: e2e видит
-// 400 с кодом 3, а не 200 с операцией, которая тихо примет неверное правило.
-func TestUpdateRules_BadPortRefusedSynchronously(t *testing.T) {
-	err := validateSGRule("addition_rule_specs[0]", ruleWithPorts(65536, 65536))
+// Отказ приходит СИНХРОННО, ДО создания операции — это и есть разница между
+// «400 с именем поля» и «200 с операцией, которая тихо примет неверное правило».
+//
+// Каждый из трёх тестов ниже гоняет НАСТОЯЩИЙ use-case и после отказа требует,
+// чтобы в репозитории операций не осталось ни одной строки. Проверять это на
+// самой `validateSGRule` бессмысленно: она про порядок вызовов ничего не знает,
+// и такой тест остался бы зелёным, если перенести валидацию за создание
+// операции — то есть ровно при том дефекте, который он называет.
+func assertRefusedBeforeOperation(t *testing.T, ops *repomock.OpsRepo, err error, wantField string) {
+	t.Helper()
 	if err == nil {
-		t.Fatal("out-of-range port must be refused")
+		t.Fatal("bad rule must be refused synchronously")
 	}
-	if !strings.HasPrefix(fieldViolation(t, err), "addition_rule_specs[0].") {
-		t.Fatalf("refusal must name the offending element, named %q", fieldViolation(t, err))
+	if got := status.Code(err); got != codes.InvalidArgument {
+		t.Fatalf("want INVALID_ARGUMENT, got %v (%v)", got, err)
 	}
+	if got := fieldViolation(t, err); got != wantField {
+		t.Fatalf("refusal must name %q, named %q", wantField, got)
+	}
+	created, _, lerr := ops.List(context.Background(), operations.ListFilter{})
+	if lerr != nil {
+		t.Fatalf("list operations: %v", lerr)
+	}
+	if len(created) != 0 {
+		t.Fatalf("refusal must happen BEFORE the operation is created, found %d operation(s)", len(created))
+	}
+}
+
+func TestUpdateRules_BadPortRefusedBeforeOperation(t *testing.T) {
+	sgr := kachomock.NewRepository()
+	ops := repomock.NewOpsRepo()
+	netA := ids.NewID(ids.PrefixNetwork)
+	sg := seedMockSG(t, sgr, "P", netA, "sg-ports")
+
+	uc := NewUpdateRulesUseCase(sgr, ops, newSGReaderMock(sgr))
+	_, err := uc.Execute(context.Background(), UpdateRulesInput{
+		SecurityGroupID:   sg,
+		AdditionRuleSpecs: []domain.SecurityGroupRule{ruleWithPorts(65536, 65536)},
+	})
+	assertRefusedBeforeOperation(t, ops, err, "addition_rule_specs[0].ports.from_port")
+}
+
+func TestCreate_UnknownProtocolRefusedBeforeOperation(t *testing.T) {
+	sgr := kachomock.NewRepository()
+	ops := repomock.NewOpsRepo()
+	nr := repomock.NewNetworkRepo()
+	netA := ids.NewID(ids.PrefixNetwork)
+	_, _ = nr.Insert(context.Background(), &domain.Network{ID: netA, ProjectID: "P", Name: "net-A"})
+
+	bad := ruleWithPorts(80, 80)
+	bad.ProtocolName = "klingon"
+	uc := NewCreateSecurityGroupUseCase(sgr, nr, &repomock.ProjectClient{OK: true}, ops).
+		WithSGReader(newSGReaderMock(sgr))
+	_, err := uc.Execute(context.Background(), domain.SecurityGroup{
+		ProjectID: "P", NetworkID: netA, Name: domain.RcNameVPC("sg-proto"),
+		Rules: []domain.SecurityGroupRule{bad},
+	})
+	assertRefusedBeforeOperation(t, ops, err, "rule_specs[0].protocol_name")
+}
+
+func TestUpdate_InvertedPortRangeRefusedBeforeOperation(t *testing.T) {
+	sgr := kachomock.NewRepository()
+	ops := repomock.NewOpsRepo()
+	netA := ids.NewID(ids.PrefixNetwork)
+	sg := seedMockSG(t, sgr, "P", netA, "sg-upd")
+
+	uc := NewUpdateSecurityGroupUseCase(sgr, ops)
+	_, err := uc.Execute(context.Background(), UpdateInput{
+		SecurityGroupID: sg,
+		SecurityGroup: domain.SecurityGroup{
+			ID: sg, ProjectID: "P", NetworkID: netA, Name: domain.RcNameVPC("sg-upd"),
+			Rules: []domain.SecurityGroupRule{ruleWithPorts(443, 80)},
+		},
+		UpdateMask: []string{"rule_specs"},
+	})
+	assertRefusedBeforeOperation(t, ops, err, "rule_specs[0].ports.from_port")
 }

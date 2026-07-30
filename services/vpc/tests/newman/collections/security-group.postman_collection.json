@@ -14225,7 +14225,11 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('refusal names from_port', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('from_port'));"
+                  "pm.test('violation field ends with from_port', () => {",
+                  "  const d = (pm.response.json().details || []).find(x => (x.fieldViolations || []).length);",
+                  "  const fields = ((d || {}).fieldViolations || []).map(v => v.field);",
+                  "  pm.expect(fields, JSON.stringify(pm.response.json())).to.satisfy(fs => fs.some(f => String(f).endsWith('from_port')));",
+                  "});"
                 ]
               }
             }
@@ -14661,7 +14665,11 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('refusal names from_port', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('from_port'));"
+                  "pm.test('violation field ends with from_port', () => {",
+                  "  const d = (pm.response.json().details || []).find(x => (x.fieldViolations || []).length);",
+                  "  const fields = ((d || {}).fieldViolations || []).map(v => v.field);",
+                  "  pm.expect(fields, JSON.stringify(pm.response.json())).to.satisfy(fs => fs.some(f => String(f).endsWith('from_port')));",
+                  "});"
                 ]
               }
             }
@@ -16023,7 +16031,11 @@
                   "  const j = pm.response.json();",
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "pm.test('refusal names protocol_name', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('protocol_name'));"
+                  "pm.test('violation field ends with protocol_name', () => {",
+                  "  const d = (pm.response.json().details || []).find(x => (x.fieldViolations || []).length);",
+                  "  const fields = ((d || {}).fieldViolations || []).map(v => v.field);",
+                  "  pm.expect(fields, JSON.stringify(pm.response.json())).to.satisfy(fs => fs.some(f => String(f).endsWith('protocol_name')));",
+                  "});"
                 ]
               }
             }

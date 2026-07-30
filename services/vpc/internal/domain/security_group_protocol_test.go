@@ -14,6 +14,10 @@ func TestIsKnownProtocolName(t *testing.T) {
 		domain.AnyProtocolName, "any", "AnY",
 		"tcp", "TCP", "udp", "icmp", "ipv6-icmp", "esp", "ah", "gre", "sctp",
 		"igmp", "ipip", "vrrp", "l2tp", "udplite", "ethernet",
+		// Псевдонимы: написания, под которыми те же протоколы знают операторы
+		// и /etc/protocols. Отвечать на них отказом значило бы наказывать за
+		// орфографию реестра.
+		"ospf", "OSPF", "icmpv6", "mobile", "ipencap", "all",
 	}
 	for _, name := range known {
 		if !domain.IsKnownProtocolName(name) {
@@ -31,24 +35,18 @@ func TestIsKnownProtocolName(t *testing.T) {
 	}
 }
 
-// Правила, которые продукт создаёт сам, обязаны лежать внутри контракта, иначе
-// default-SG сети нельзя было бы отредактировать через публичный API.
-func TestDefaultSecurityGroupRulesAreWithinContract(t *testing.T) {
+// Имя протокола в правилах, которые продукт создаёт сам, обязано быть внутри
+// набора — иначе default-SG сети нельзя было бы отредактировать через публичный
+// API.
+//
+// Границы портов здесь НЕ переповторяются: их проверяет
+// `securitygroup.TestValidateSGRule_DefaultSecurityGroupRulesPass`, прогоняя те
+// же правила через НАСТОЯЩИЙ валидатор. Копия его логики в этом файле умела бы
+// разойтись с оригиналом молча.
+func TestDefaultSecurityGroupRuleProtocolIsKnown(t *testing.T) {
 	for i, r := range domain.NewDefaultSecurityGroupRules() {
 		if !domain.IsKnownProtocolName(r.ProtocolName) {
 			t.Errorf("default rule %d carries unknown protocol %q", i, r.ProtocolName)
-		}
-		if r.ProtocolNumber != domain.AnyProtocolNumber &&
-			(r.ProtocolNumber < domain.MinProtocolNumber || r.ProtocolNumber > domain.MaxProtocolNumber) {
-			t.Errorf("default rule %d carries protocol number %d outside the contract", i, r.ProtocolNumber)
-		}
-		anyFrom := r.FromPort == domain.AnyPort
-		anyTo := r.ToPort == domain.AnyPort
-		if anyFrom != anyTo {
-			t.Errorf("default rule %d carries a half-any port range %d-%d", i, r.FromPort, r.ToPort)
-		}
-		if !anyFrom && (r.FromPort < domain.MinPort || r.ToPort > domain.MaxPort || r.FromPort > r.ToPort) {
-			t.Errorf("default rule %d carries port range %d-%d outside the contract", i, r.FromPort, r.ToPort)
 		}
 	}
 }

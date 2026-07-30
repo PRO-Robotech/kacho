@@ -41,9 +41,19 @@ func validateCIDRPrefix(field, value string) error {
 // invariants, не newtype-level (description/labels валидируются через
 // r.Validate() внутри SecurityGroup.Validate()).
 //
-// Каждый пишущий путь правила проходит здесь СИНХРОННО, до создания операции:
-// `Create.rule_specs`, `Update.rule_specs`, `UpdateRules.addition_rule_specs`.
-// `UpdateRule` меняет только description/labels, портов и протокола не касается.
+// Каждый путь, на котором правило приходит ОТ ВЫЗЫВАЮЩЕГО, проходит здесь
+// СИНХРОННО, до создания операции: `Create.rule_specs`, `Update.rule_specs`,
+// `UpdateRules.addition_rule_specs`. `UpdateRule` меняет только
+// description/labels, портов и протокола не касается (его known-set маски —
+// ровно эти два поля).
+//
+// Есть ровно один путь ПОМИМО них: `api/network/default_sg.go` пишет
+// `domain.NewDefaultSecurityGroupRules()` прямо в writer-TX создания сети, минуя
+// эту функцию. Это не дыра — правила там не тенантские, их сочиняет сам продукт,
+// — но и не «все пути проходят здесь». Инвариант держится тестом
+// `TestValidateSGRule_DefaultSecurityGroupRulesPass`: то, что продукт пишет мимо
+// проверки, обязано её проходить. Добавляя новый inline-путь записи правил,
+// добавь его в этот список или проведи через validateSGRule.
 func validateSGRule(field string, r domain.SecurityGroupRule) error {
 	if r.Direction != domain.SecurityGroupRuleDirectionIngress && r.Direction != domain.SecurityGroupRuleDirectionEgress {
 		return serviceerr.InvalidArg(field+".direction", "direction must be INGRESS or EGRESS")

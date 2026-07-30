@@ -572,7 +572,15 @@ for case_id, rule, expect_ok, names_field in [
                          [*assert_status(200), *save_from_response("j.id", "opId")]
                          if expect_ok else
                          [*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]
-                         + ([f"pm.test('refusal names {names_field}', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('{names_field}'));"]
+                         # Читается ИМЕННО поле нарушения, а не тело целиком:
+                         # подстрока по всему ответу нашла бы `from_port` и в
+                         # тексте отказа про to_port, то есть проходила бы на
+                         # противоположной границе.
+                         + ([f"pm.test('violation field ends with {names_field}', () => {{",
+                             "  const d = (pm.response.json().details || []).find(x => (x.fieldViolations || []).length);",
+                             "  const fields = ((d || {}).fieldViolations || []).map(v => v.field);",
+                             f"  pm.expect(fields, JSON.stringify(pm.response.json())).to.satisfy(fs => fs.some(f => String(f).endsWith('{names_field}')));",
+                             "});"]
                             if names_field else [])
                      )),
                 retry_on=(403,)),
