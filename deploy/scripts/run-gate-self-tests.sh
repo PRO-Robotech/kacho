@@ -76,6 +76,7 @@ deploy/scripts/assert-ban6-external-isolation.py
 deploy/scripts/assert-outbox-autovacuum.sh
 deploy/scripts/remeasure-provider-listener-tls.sh
 deploy/tests/helm/admin-hop-address-census-test.sh
+deploy/tests/helm/admin-hop-pod-shape-test.sh
 deploy/tests/helm/admin-hop-port-policy-test.sh
 deploy/tests/helm/admin-hop-transport-test.sh
 deploy/tests/helm/image-rollout-binding-test.sh
