@@ -302,6 +302,30 @@ func (w *subnetWriter) Update(ctx context.Context, s *domain.Subnet) (*kacho.Sub
 	return result, nil
 }
 
+// CountAddressesInCidrs — сколько внутренних адресов подсети (v4 и v6) живёт в
+// переданных CIDR'ах. Предусловие снятия диапазона: см. godoc порта.
+// Сравнение inet разных семейств даёт false, поэтому оба семейства передаются
+// одним массивом. Запрос индексирован по internal_subnet_id (generated-колонка,
+// addresses_internal_subnet_idx) — цена страницы не зависит от размера таблицы.
+func (w *subnetWriter) CountAddressesInCidrs(ctx context.Context, subnetID string, cidrs []string) (int64, error) {
+	if len(cidrs) == 0 || subnetID == "" {
+		return 0, nil
+	}
+	var n int64
+	err := w.tx.QueryRow(ctx, `
+		SELECT count(*) FROM addresses a
+		 WHERE a.internal_subnet_id = $1
+		   AND ((coalesce(a.internal_ipv4 ->> 'address', '') <> ''
+		         AND (a.internal_ipv4 ->> 'address')::inet <<= ANY($2::cidr[]))
+		     OR (coalesce(a.internal_ipv6 ->> 'address', '') <> ''
+		         AND (a.internal_ipv6 ->> 'address')::inet <<= ANY($2::cidr[])))
+	`, subnetID, cidrs).Scan(&n)
+	if err != nil {
+		return 0, helpers.WrapPgErr(err, "Subnet", subnetID)
+	}
+	return n, nil
+}
+
 // SetCidrBlocks атомарно обновляет v4_cidr_blocks и v6_cidr_blocks у Subnet
 // (для AddCidrBlocks/RemoveCidrBlocks). Non-overlap-инвариант на ВЕСЬ набор блоков
 // подсетей сети держит child-таблица subnet_cidr_blocks (EXCLUDE gist по

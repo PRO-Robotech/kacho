@@ -58,6 +58,15 @@ type SubnetWriterIface interface {
 	// subnets_no_overlap_v4 / subnets_no_overlap_v6 проверяют primary CIDR
 	// каждого семейства на пересечение с другими подсетями той же сети.
 	SetCidrBlocks(ctx context.Context, id string, v4, v6 []string) (*SubnetRecord, error)
+	// CountAddressesInCidrs — сколько внутренних адресов подсети (обе семьи)
+	// живёт в переданных CIDR'ах. Предусловие для :removeCidrBlocks: снятие
+	// диапазона удаляет строку subnet_cidr_blocks, несущую запрет пересечения
+	// диапазонов внутри сети, — а значит тот же диапазон может достаться другой
+	// подсети той же сети, и один внутренний адрес окажется выдан дважды
+	// (уникальность внутреннего адреса ключуется подсетью, поэтому база этого
+	// уже не поймает). Считается ВНУТРИ той же writer-TX, что и снятие, после
+	// row-lock подсети.
+	CountAddressesInCidrs(ctx context.Context, subnetID string, cidrs []string) (int64, error)
 	// GetForUpdate — Get с `SELECT ... FOR UPDATE` (row-lock) внутри writer-TX.
 	// Сериализует конкурентные read-modify-write над v*_cidr_blocks
 	// (AddCidrBlocks/RemoveCidrBlocks): без него два параллельных запроса читали

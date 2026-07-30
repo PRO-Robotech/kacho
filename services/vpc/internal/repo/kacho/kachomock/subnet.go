@@ -249,6 +249,56 @@ func (sw *subnetWriter) SetCidrBlocks(_ context.Context, id string, v4, v6 []str
 	return &cp, nil
 }
 
+// CountAddressesInCidrs — сколько адресов подсети в mock-состоянии живёт в
+// переданных диапазонах. Считает по тем же полям, что и хранилище (внутренний
+// адрес обеих семей), чтобы unit-проверки предусловия снятия диапазона
+// опирались на предмет, а не на заглушку-ноль.
+func (sw *subnetWriter) CountAddressesInCidrs(_ context.Context, subnetID string, cidrs []string) (int64, error) {
+	if subnetID == "" || len(cidrs) == 0 {
+		return 0, nil
+	}
+	prefixes := make([]netip.Prefix, 0, len(cidrs))
+	for _, c := range cidrs {
+		p, err := netip.ParsePrefix(c)
+		if err != nil {
+			return 0, repo.ErrInvalidArg
+		}
+		prefixes = append(prefixes, p)
+	}
+	var n int64
+	count := func(rec *kacho.AddressRecord) {
+		if rec == nil {
+			return
+		}
+		a := &rec.Address
+		var addrs []string
+		if a.InternalIpv4 != nil && a.InternalIpv4.SubnetID == subnetID && a.InternalIpv4.Address != "" {
+			addrs = append(addrs, a.InternalIpv4.Address)
+		}
+		if a.InternalIpv6 != nil && a.InternalIpv6.SubnetID == subnetID && a.InternalIpv6.Address != "" {
+			addrs = append(addrs, a.InternalIpv6.Address)
+		}
+		for _, raw := range addrs {
+			ip, err := netip.ParseAddr(raw)
+			if err != nil {
+				continue
+			}
+			for _, p := range prefixes {
+				if p.Contains(ip) {
+					n++
+					return
+				}
+			}
+		}
+	}
+	// localAddrs — снимок родительского состояния плюс правки этой writer-TX,
+	// поэтому одного прохода достаточно (второй считал бы адреса дважды).
+	for _, a := range sw.w.localAddrs {
+		count(a)
+	}
+	return n, nil
+}
+
 // Assertion: subnetReader/Writer implements iface.
 var (
 	_ kacho.SubnetReaderIface = (*subnetReader)(nil)

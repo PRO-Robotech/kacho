@@ -6,6 +6,7 @@ package subnet
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -27,8 +28,9 @@ import (
 //     immutable после Create) → InvalidArgument (нельзя сменить placement-якорь).
 //   - CIDR не присутствует в подсети → FailedPrecondition.
 //   - удаление последнего CIDR → FailedPrecondition (subnet не может быть пустой).
-//   - проверки занятости CIDR Address'ами сейчас нет (потребовала бы отдельного
-//     запроса по addresses).
+//   - в снимаемом диапазоне живут адреса подсети → FailedPrecondition
+//     "subnet CIDR <cidr> has allocated addresses" (проверка в той же
+//     writer-TX, после row-lock подсети).
 //
 // Get + SetCidrBlocks + outbox-emit UPDATED атомарны в одной writer-TX.
 type RemoveCidrBlocksUseCase struct {
@@ -102,6 +104,22 @@ func (u *RemoveCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6
 		}
 		if len(remainingV4) == 0 && len(remainingV6) == 0 {
 			return nil, status.Errorf(codes.FailedPrecondition, "cannot remove last CIDR block from subnet")
+		}
+		// Снятие диапазона удаляет строку subnet_cidr_blocks, которая держит
+		// запрет пересечения диапазонов внутри сети. Если в диапазоне живут
+		// адреса, его получит другая подсеть той же сети и выдаст те же адреса
+		// заново — уникальность внутреннего адреса ключуется подсетью, поэтому
+		// база такой дубль уже не поймает. Счёт идёт в той же writer-TX ПОСЛЕ
+		// row-lock подсети (GetForUpdate выше), а конкурентная выдача адреса в
+		// этой подсети сериализуется тем же локом — проверка не гоночная.
+		removed := append(append([]string{}, v4...), v6...)
+		inUse, cerr := w.Subnets().CountAddressesInCidrs(ctx, id, removed)
+		if cerr != nil {
+			return nil, serviceerr.MapRepoErr(cerr)
+		}
+		if inUse > 0 {
+			return nil, status.Errorf(codes.FailedPrecondition,
+				"subnet CIDR %s has allocated addresses", strings.Join(removed, ", "))
 		}
 		updated, uerr := w.Subnets().SetCidrBlocks(ctx, id, remainingV4, remainingV6)
 		if uerr != nil {

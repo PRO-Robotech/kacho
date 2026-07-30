@@ -21,8 +21,9 @@ import (
 //
 // Гарантии:
 //   - CIDR-блок отсутствует в пуле → FailedPrecondition.
-//   - В удаляемом CIDR есть выделенные external-IP → FailedPrecondition
-//     "address pool CIDR <cidr> has allocated addresses" (use-check).
+//   - В удаляемом CIDR есть выделенные external-IP ЛЮБОЙ семьи →
+//     FailedPrecondition "address pool CIDR <cidr> has allocated addresses"
+//     (use-check).
 //   - Удаление опустошит пул (v4 ∪ v6 = ∅) → InvalidArgument.
 //   - Чисто → убрать CIDR из пула + удалить соответствующие free_ips.
 //
@@ -81,23 +82,23 @@ func (u *RemoveCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6
 			"v4_cidr_blocks and v6_cidr_blocks must not be both empty after removal")
 	}
 
-	// Атомарность: DELETE free_ips первым (row-lock сериализует против alloc),
-	// потом use-check по addresses. v6-CIDR в DeleteFreelistForCidrs безвредны
-	// (free_ips всегда v4). Use-check считает только external_ipv4 — для v6
-	// CIDR'ов он вернет 0, и v6-IP блокируются на DB-уровне через
-	// ipv6_allocated_ips (вне scope этого guard'а; v6-removal — best-effort,
-	// см. notes).
+	// Атомарность: DELETE free_ips первым (row-lock сериализует против
+	// конкурентной выдачи v4), потом use-check по обеим семьям. v6-CIDR в
+	// DeleteFreelistForCidrs безвредны (free_ips всегда v4). Выдача v6
+	// сериализуется иначе — row-lock самого пула (GetForUpdate выше против
+	// FOR SHARE в аллокаторе), поэтому счёт по книге учёта v6 не гоночный.
+	removed := append(append([]string{}, v4...), v6...)
 	if err := w.AddressPools().DeleteFreelistForCidrs(ctx, id, v4); err != nil {
 		return nil, err
 	}
-	allocated, err := w.AddressPools().CountAllocatedInCidrs(ctx, id, v4)
+	allocated, err := w.AddressPools().CountAllocatedInCidrs(ctx, id, removed)
 	if err != nil {
 		return nil, err
 	}
 	if allocated > 0 {
 		// verbatim-стиль (как Subnet "network is not empty").
 		return nil, status.Error(codes.FailedPrecondition,
-			fmt.Sprintf("address pool CIDR %s has allocated addresses", strings.Join(v4, ", ")))
+			fmt.Sprintf("address pool CIDR %s has allocated addresses", strings.Join(removed, ", ")))
 	}
 
 	cur.V4CIDRBlocks = remainingV4

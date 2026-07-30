@@ -466,22 +466,37 @@ func (w *addressPoolWriter) DeleteFreelistForCidrs(ctx context.Context, poolID s
 	return nil
 }
 
-// CountAllocatedInCidrs — сколько Address имеют выделенный external_ipv4.address,
-// принадлежащий пулу poolID И попадающий в любой из переданных CIDR'ов
-// (use-check для :removeCidrBlocks). Используется для запрета удаления CIDR,
-// в котором есть аллоцированные IP (FailedPrecondition). Считает только v4
-// (external_ipv4); v6-CIDR в списке не дают совпадений по `::inet << cidr` для
-// v4-адресов и наоборот — безопасно.
+// CountAllocatedInCidrs — сколько адресов пула живёт в переданных CIDR'ах
+// (use-check для :removeCidrBlocks; >0 → диапазон снимать нельзя).
+//
+// Считает ОБЕ семьи, потому что снятие диапазона освобождает его для другого
+// пула независимо от семьи: строка address_pool_cidrs, несущая EXCLUDE, уходит,
+// и следующий владелец начинает выдачу с вершины того же префикса — то есть с
+// адресов, которые уже живут у ресурсов. Ограничения уникальности этого не
+// ловят: и v4, и v6 индексы внешнего адреса, привязанные к пулу, ключуются
+// pool_id.
+//
+// Три слагаемых: внешний IPv4 пула в диапазоне, внешний IPv6 пула в диапазоне и
+// книга учёта v6 (ipv6_allocated_ips) — последняя нужна, потому что она
+// авторитетна для v6-выдачи и переживает расхождение с колонкой адреса.
+// Сравнение inet разных семейств даёт false, поэтому списки семей можно
+// передавать одним массивом.
 func (w *addressPoolWriter) CountAllocatedInCidrs(ctx context.Context, poolID string, cidrs []string) (int64, error) {
 	if len(cidrs) == 0 {
 		return 0, nil
 	}
 	var n int64
 	err := w.tx.QueryRow(ctx, `
-		SELECT count(*) FROM addresses a
-		WHERE a.external_ipv4 ->> 'address_pool_id' = $1
-		  AND coalesce(a.external_ipv4 ->> 'address', '') <> ''
-		  AND (a.external_ipv4 ->> 'address')::inet <<= ANY($2::cidr[])
+		SELECT
+		  (SELECT count(*) FROM addresses a
+		    WHERE (a.external_ipv4 ->> 'address_pool_id' = $1
+		           AND coalesce(a.external_ipv4 ->> 'address', '') <> ''
+		           AND (a.external_ipv4 ->> 'address')::inet <<= ANY($2::cidr[]))
+		       OR (a.external_ipv6 ->> 'address_pool_id' = $1
+		           AND coalesce(a.external_ipv6 ->> 'address', '') <> ''
+		           AND (a.external_ipv6 ->> 'address')::inet <<= ANY($2::cidr[])))
+		+ (SELECT count(*) FROM ipv6_allocated_ips l
+		    WHERE l.pool_id = $1 AND l.ip <<= ANY($2::cidr[]))
 	`, poolID, cidrs).Scan(&n)
 	if err != nil {
 		return 0, helpers.WrapPgErr(err, "AddressPool", poolID)

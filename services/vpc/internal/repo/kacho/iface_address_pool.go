@@ -80,8 +80,9 @@ type AddressPoolWriterIface interface {
 	// DeleteFreelistForCidrs — удалить free_ips, попадающие в любой из CIDR
 	// (:removeCidrBlocks). Берет row-lock — сериализует remove vs alloc.
 	DeleteFreelistForCidrs(ctx context.Context, poolID string, cidrs []string) error
-	// CountAllocatedInCidrs — кол-во Address с выделенным external IPv4 ∈ CIDR
-	// (:removeCidrBlocks use-check). >0 → CIDR нельзя удалить.
+	// CountAllocatedInCidrs — кол-во живых адресов пула (обе семьи: external
+	// IPv4/IPv6 + книга учёта v6) ∈ CIDR (:removeCidrBlocks use-check).
+	// >0 → CIDR нельзя удалить.
 	CountAllocatedInCidrs(ctx context.Context, poolID string, cidrs []string) (int64, error)
 	// InsertCidrBlocks — нормализует v4/v6 CIDR-блоки пула в child-таблицу
 	// address_pool_cidrs (EXCLUDE gist по (kind, block)). DB-level backstop против
