@@ -353,6 +353,45 @@ func TestWatch_RefusedWhenNothingNarrowsTheStream(t *testing.T) {
 	}
 }
 
+// TestNarrowToSubject_SplitsIntoPartitionsTheModelAccepts — the ≤100 partition
+// contract, exercised directly.
+//
+// It is not reachable through the read loop today, because a read batch is itself
+// capped at catchupBatchSize (100), so every group already fits one question. That is
+// exactly why it is asserted here rather than left to a full-stream test: the
+// splitting is what keeps the contract if the read batch is ever raised, and an
+// enforcement path nobody exercises is indistinguishable from one that does not work.
+//
+// The stub refuses any partition larger than the contract, so a broken split fails the
+// call instead of quietly sending an over-sized question the model would reject.
+func TestNarrowToSubject_SplitsIntoPartitionsTheModelAccepts(t *testing.T) {
+	const rows = watchVisibilityBatchSize*2 + 37 // two full partitions and a remainder
+
+	batch := make([]*computev1.Event, 0, rows)
+	ids := make([]string, 0, rows)
+	for i := 0; i < rows; i++ {
+		id := "epi-" + padID(i)
+		ids = append(ids, id)
+		batch = append(batch, &computev1.Event{SequenceNo: int64(i + 1), ResourceKind: "Instance", ResourceId: id})
+	}
+
+	vis := allowAllVisibility(ids...)
+	h := NewInternalWatchHandler(nil, "", slog.Default(), 0, vis)
+
+	visible, err := h.narrowToSubject(context.Background(), watchTestSubject, batch)
+
+	require.NoError(t, err, "each partition must be within the size the model accepts")
+	require.Len(t, visible, rows, "splitting must not lose or duplicate rows")
+	assert.Equal(t, ids, func() []string {
+		got := make([]string, 0, len(visible))
+		for _, ev := range visible {
+			got = append(got, ev.GetResourceId())
+		}
+		return got
+	}(), "input order must survive the split — the journal is ordered by sequence_no")
+	assert.Len(t, vis.asked, rows, "every row must be asked about exactly once")
+}
+
 // TestWatchStreamSince_WithoutAFilterFailsClosedRatherThanPanics — the narrowing must
 // be refused where the rows are USED, not only at the entry to the RPC.
 //
