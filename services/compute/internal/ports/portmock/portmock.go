@@ -378,6 +378,17 @@ type SubnetRegistry struct {
 	data map[string]ports.SubnetPlacement
 	// Err — принудительная ошибка резолва (недоступность peer'а).
 	Err error
+	// calls — сколько раз спросили. Кратность повторяемого поля запроса напрямую
+	// умножает обращения к соседу, поэтому «сколько раз спросили» — предмет
+	// утверждения теста, а не диагностика.
+	calls int
+}
+
+// Calls — число обращений к реестру подсетей с момента создания.
+func (r *SubnetRegistry) Calls() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.calls
 }
 
 // NewSubnetRegistry создаёт SubnetRegistry. Без аргументов засевает подсети,
@@ -411,6 +422,7 @@ func (r *SubnetRegistry) Seed(p ports.SubnetPlacement) {
 func (r *SubnetRegistry) GetSubnet(_ context.Context, subnetID string) (*ports.SubnetPlacement, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.calls++
 	if r.Err != nil {
 		return nil, r.Err
 	}
