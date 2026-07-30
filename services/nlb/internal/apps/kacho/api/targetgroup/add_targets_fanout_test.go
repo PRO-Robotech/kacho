@@ -40,6 +40,12 @@ import (
 const (
 	peerLatency = 1500 * time.Millisecond
 	opBudget    = 4 * time.Minute
+
+	// wantPeerFanout — требуемая нижняя граница параллельности peer-валидации
+	// пачки. Тест намеренно НЕ ссылается на прод-константу: он задаёт требование
+	// (бюджет ниже сходится только при такой параллельности), а не пересказывает
+	// реализацию. Опустить фан-аут ниже этого числа — сделать тест красным.
+	wantPeerFanout = 8
 )
 
 // peerCallRecorder — счётчик обращений к соседям в пределах одной операции +
@@ -130,9 +136,9 @@ func (r *peerCallRecorder) maxConcurrency() int {
 // ---- считающие двойники соседей -------------------------------------------
 
 type countingInstanceClient struct {
-	rec    *peerCallRecorder
-	zoneID string
-	gated  bool // держать вызывающего на защёлке (для утверждения о параллельности)
+	rec     *peerCallRecorder
+	zoneID  string
+	gated   bool // держать вызывающего на защёлке (для утверждения о параллельности)
 	panicOn string
 }
 
@@ -265,7 +271,7 @@ func TestAdd_HundredIPRefsOneSubnet_AsksVpcOnce(t *testing.T) {
 // 300s > 240s, то есть операция терминально падает по дедлайну и не добавляет
 // ни одной цели.
 func TestAdd_HundredTargets_FitsOperationBudget(t *testing.T) {
-	rec := newPeerCallRecorder(targetPeerFanout, time.Second)
+	rec := newPeerCallRecorder(wantPeerFanout, time.Second)
 	repo := newFakeRepo()
 	tg := makeTG("prj-acme", "budget-100")
 	repo.seedTG(tg)
@@ -287,7 +293,7 @@ func TestAdd_HundredTargets_FitsOperationBudget(t *testing.T) {
 	require.Nilf(t, final.Error, "op error: %v", final.Error)
 
 	conc := rec.maxConcurrency()
-	require.GreaterOrEqual(t, conc, targetPeerFanout,
+	require.GreaterOrEqual(t, conc, wantPeerFanout,
 		"peer-валидация пачки обязана идти ограниченным фан-аутом, а не строго по одной")
 
 	total := rec.total()
