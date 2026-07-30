@@ -152,6 +152,46 @@ func RejectUnsupportedCreateFields(req *computev1.CreateInstanceRequest) error {
 	if req.GetSerialPortSettings() != nil {
 		add("serial_port_settings", "serialPortSettings is not supported: compute does not configure serial-port access")
 	}
+	// Четыре поля ВНУТРИ network_interface_specs[], того же класса и найденные тем же
+	// обходом. Родитель читается — из него берутся subnetId и securityGroupIds, — а
+	// отображение proto → domain (`nicSpecsFromProto`) переносит ровно эти два и молча
+	// теряет остальные. Поэтому обход по верхнему уровню их не видел.
+	//
+	// Почему отказ, а не реализация. Адрес интерфейса выделяет IPAM подсети в vpc, и
+	// пути «занять названный адрес при создании машины» в compute нет ни на одном слое:
+	// доменная спека интерфейса несёт ровно subnetId и securityGroupIds. Индекс
+	// назначает сервер (это же говорит контракт). Существующий NIC подключается
+	// отдельным реализованным RPC `AttachNetworkInterface`, а не при создании: приём
+	// `nicId` здесь обещал второй путь, которого нет, — и обещал вопреки собственной
+	// валидации, требующей subnetId безусловно.
+	//
+	// Отказ назван ПУТЁМ поля (`network_interface_specs.<поле>`), без индекса элемента:
+	// имя поля — часть контракта, а номер элемента к причине отказа не относится.
+	for _, nic := range req.GetNetworkInterfaceSpecs() {
+		if nic == nil {
+			continue
+		}
+		if nic.GetPrimaryV4AddressSpec() != nil {
+			add("network_interface_specs.primary_v4_address_spec",
+				"networkInterfaceSpecs[].primaryV4AddressSpec is not supported: the address is "+
+					"allocated by the subnet's IPAM, compute cannot pin a requested one")
+		}
+		if nic.GetPrimaryV6AddressSpec() != nil {
+			add("network_interface_specs.primary_v6_address_spec",
+				"networkInterfaceSpecs[].primaryV6AddressSpec is not supported: the address is "+
+					"allocated by the subnet's IPAM, compute cannot pin a requested one")
+		}
+		if nic.GetNicId() != "" {
+			add("network_interface_specs.nic_id",
+				"networkInterfaceSpecs[].nicId is not supported at Create: attach an existing "+
+					"NetworkInterface with InstanceService.AttachNetworkInterface instead")
+		}
+		if nic.GetIndex() != "" {
+			add("network_interface_specs.index",
+				"networkInterfaceSpecs[].index is not supported: the server assigns interface "+
+					"indexes (0,1,2…)")
+		}
+	}
 	// sshPublicKeys — седьмое поле того же класса, найденное обходом дескрипторов.
 	// Ключи не персистятся ни в одной колонке и никому не выдаются: подсистемы их
 	// доставки в гостя (metadata-сервис / guest-agent) в control-plane нет. Хуже

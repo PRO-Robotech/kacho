@@ -241,7 +241,11 @@ def has_handler(request_msg, sources):
     return False
 
 
-RE_REFUSED = re.compile(r'(?:AddFieldViolation|add)\(\s*"([a-z0-9_]+)"')
+# Путь поля, а не только имя: дерево называет вложенное поле точкой
+# (`network_interface_specs.primary_v4_address_spec`), и предикат, знавший лишь
+# односегментное имя, такой отказ НЕ видел — четыре отвергнутых поля остались бы
+# «находками». Берётся ПОСЛЕДНИЙ сегмент: он и есть имя поля в его сообщении.
+RE_REFUSED = re.compile(r'(?:AddFieldViolation|add)\(\s*"([a-z0-9_.]+)"')
 
 
 def refused_fields(sources):
@@ -263,7 +267,7 @@ def refused_fields(sources):
     out = set()
     for _p, text in sources:
         for m in RE_REFUSED.finditer(text):
-            out.add(m.group(1))
+            out.add(m.group(1).split(".")[-1])
     return out
 
 
@@ -298,6 +302,22 @@ def excused_sets(messages, roots_impl, roots_unimpl, refused):
                 incoming.setdefault(typ, []).append((parent, fname))
 
     all_roots = set(roots_impl) | set(roots_unimpl)
+    unimpl_roots = set(roots_unimpl)
+
+    # РЕБРО ЗАКРЫТО, если по нему нельзя доехать с приёмом: поле отвергнуто по имени,
+    # либо родитель уже недостижим (отвергнут или живёт только под нереализованным
+    # RPC), либо родитель САМ — корень нереализованного RPC.
+    #
+    # Последний случай пришлось добавить отдельно, и без него мерка врала: спека NAT
+    # достижима двумя дверями — из создания машины (через отвергнутую спеку адреса) и
+    # из нереализованного RPC добавления NAT. Первая закрыта отказом, вторая — тем, что
+    # обработчика нет; но проверка «все входящие рёбра закрыты» вторую дверь закрытой
+    # не считала, и всё DNS-поддерево под ней оставалось «находками», хотя доехать до
+    # него нечем ни одним путём.
+    def edge_closed(parent, fname, by_refusal):
+        return fname in refused or parent in by_refusal or parent in by_unimpl \
+            or parent in unimpl_roots
+
     by_refusal = set()
     changed = True
     while changed:
@@ -308,7 +328,7 @@ def excused_sets(messages, roots_impl, roots_unimpl, refused):
             edges = incoming.get(msg, [])
             if not edges:
                 continue
-            if all(fname in refused or parent in by_refusal for parent, fname in edges):
+            if all(edge_closed(parent, fname, by_refusal) for parent, fname in edges):
                 by_refusal.add(msg)
                 changed = True
     return by_unimpl, by_refusal
