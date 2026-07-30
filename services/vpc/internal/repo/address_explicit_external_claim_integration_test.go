@@ -465,3 +465,72 @@ func isAnyErr(err error, targets ...error) bool {
 	}
 	return false
 }
+
+// Пул с ДВУМЯ v6-диапазонами: явный адрес во втором диапазоне не имеет права
+// быть отвергнут только потому, что его номер внутри своего диапазона совпал с
+// номером уже выданного адреса из первого. Номер в книге учёта обязан считаться
+// от ОДНОГО якоря на весь пул — тогда он взаимно однозначен с адресом, и
+// «занято» означает занятость самого адреса, а не совпадение номеров.
+func TestExplicitExternalIPv6_SecondBlock_NotRejectedByOffsetCollision(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
+	require.NoError(t, err)
+	defer pgPool.Close()
+	r := kachopg.New(pgPool, nil)
+	defer r.Close()
+
+	poolID := insertPoolWithCidrs(t, ctx, pgPool, nil,
+		[]string{"2001:db8:d0::/64", "2001:db8:d1::/64"})
+	require.NoError(t, freelistWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
+		return w.Addresses().InitIPv6PoolCursor(ctx, poolID)
+	}))
+
+	// Три автоматические выдачи из ПЕРВОГО диапазона занимают номера 1, 2, 3.
+	for i := 0; i < 3; i++ {
+		autoID := insertTestAddressFreelist(t, ctx, pgPool)
+		require.NoError(t, freelistWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
+			_, e := w.Addresses().AllocateExternalIPv6(ctx, poolID, autoID, "")
+			return e
+		}))
+	}
+
+	// Явный адрес во ВТОРОМ диапазоне, чей номер внутри своего диапазона — 2.
+	const explicitIP = "2001:db8:d1::2"
+	w, err := r.Writer(ctx)
+	require.NoError(t, err)
+	rec, err := w.Addresses().Insert(ctx, &domain.Address{
+		ID:           ids.NewID(ids.PrefixAddress),
+		ProjectID:    "b1gtestproject00000",
+		Type:         domain.AddressTypeExternal,
+		IpVersion:    domain.IpVersionIPv6,
+		ExternalIpv6: &domain.ExternalIpv6Spec{Address: explicitIP},
+	})
+	if err != nil {
+		w.Abort()
+		require.NoError(t, err, "свободный адрес второго диапазона обязан приниматься")
+	}
+	require.NoError(t, w.Commit())
+	require.Equal(t, poolID, rec.ExternalIpv6.AddressPoolID)
+
+	var ledger int
+	require.NoError(t, pgPool.QueryRow(ctx,
+		`SELECT count(*) FROM ipv6_allocated_ips WHERE pool_id = $1 AND ip = $2::inet`,
+		poolID, explicitIP).Scan(&ledger))
+	require.Equal(t, 1, ledger, "занятие обязано попасть в книгу учёта пула")
+
+	// Повторное занятие того же адреса — отказ (книга учёта работает).
+	w2, err := r.Writer(ctx)
+	require.NoError(t, err)
+	_, err = w2.Addresses().Insert(ctx, &domain.Address{
+		ID:           ids.NewID(ids.PrefixAddress),
+		ProjectID:    "b1gtestproject00001",
+		Type:         domain.AddressTypeExternal,
+		IpVersion:    domain.IpVersionIPv6,
+		ExternalIpv6: &domain.ExternalIpv6Spec{Address: explicitIP},
+	})
+	w2.Abort()
+	require.Error(t, err, "второе занятие того же адреса обязано быть отвергнуто")
+}

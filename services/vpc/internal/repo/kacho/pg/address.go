@@ -537,45 +537,52 @@ func (w *addressWriter) claimExplicitExternalIPv4(ctx context.Context, ip string
 // (ipv6_allocated_ips). Роль атомарного CAS играет сама вставка: PK
 // (pool_id, ip) и UNIQUE (pool_id, offset) отвергают второе занятие, а
 // ON CONFLICT DO NOTHING превращает это в 0 строк вместо ошибки, не роняя
-// writer-TX. Освобождённый ранее offset того же адреса снимается из списка
+// writer-TX. Освобождённый ранее номер того же адреса снимается из списка
 // возвратов — иначе счётчик выдал бы его повторно.
 //
-// offset считается от базы СОДЕРЖАЩЕГО блока (той же арифметикой, что у
-// счётчика). Для первого v6-блока пула — ровно нумерация счётчика, поэтому он
-// физически не может выдать занятый адрес. Для остальных блоков счётчик такой
-// адрес не производит вовсе (он работает только с первым блоком); совпадение
-// номера с будущей автоматической выдачей безвредно — вставка вернёт 0 строк, и
-// аллокатор перейдёт к следующему номеру.
+// Номер считается от ОДНОГО якоря на весь пул — базы его ПЕРВОГО v6-диапазона
+// (того самого, которым нумерует счётчик выдачи). Это делает отображение
+// «адрес ↔ номер» взаимно однозначным в пределах пула: два разных адреса не
+// могут получить один номер, поэтому UNIQUE (pool_id, offset) отвергает ровно
+// повторное занятие того же адреса и никогда — свободный адрес другого
+// диапазона. Для адресов первого диапазона нумерация совпадает со счётчиком,
+// поэтому счётчик физически не может выдать занятый адрес; для адресов вне
+// первого диапазона номер выходит за его пределы (в том числе отрицательный),
+// а счётчик отрицательных не производит.
 func (w *addressWriter) claimExplicitExternalIPv6(ctx context.Context, addressID, ip string) (string, error) {
 	addr, perr := netip.ParseAddr(ip)
 	if perr != nil || !addr.Is6() || addr.Is4In6() {
 		return "", fmt.Errorf("%w: external_ipv6.address %q is not a valid IPv6 address", helpers.ErrInvalidArg, ip)
 	}
 
-	var poolID, block string
+	var poolID string
+	var anchorBlocks []string
 	err := w.tx.QueryRow(ctx, `
-		SELECT c.pool_id, c.block::text
+		SELECT p.id, p.v6_cidr_blocks
 		  FROM address_pool_cidrs c
+		  JOIN address_pools p ON p.id = c.pool_id
 		 WHERE c.block >>= $1::inet
 		 ORDER BY c.kind, c.pool_id
 		 LIMIT 1
-		 FOR SHARE
-	`, addr.String()).Scan(&poolID, &block)
+		 FOR SHARE OF p
+	`, addr.String()).Scan(&poolID, &anchorBlocks)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", nil // адрес вне управляемых диапазонов — реестра нет
 	}
 	if err != nil {
 		return "", fmt.Errorf("claim explicit external ipv6: %w", err)
 	}
-
-	prefix, pxerr := netip.ParsePrefix(block)
-	if pxerr != nil {
-		return "", fmt.Errorf("%w: pool %s has unparseable prefix %q", helpers.ErrInternal, poolID, block)
+	if len(anchorBlocks) == 0 {
+		return "", fmt.Errorf("%w: pool %s owns the address range but declares no v6 blocks", helpers.ErrInternal, poolID)
 	}
-	offset := offsetWithinPrefix(prefix.Addr(), addr)
+	anchor, axerr := netip.ParsePrefix(anchorBlocks[0])
+	if axerr != nil {
+		return "", fmt.Errorf("%w: pool %s has unparseable v6 prefix %q", helpers.ErrInternal, poolID, anchorBlocks[0])
+	}
+	offset := offsetFromAnchor(anchor.Addr(), addr)
 	if offset == nil {
-		return "", fmt.Errorf("%w: external_ipv6.address %s is not within pool prefix %s",
-			helpers.ErrFailedPrecondition, addr.String(), block)
+		return "", fmt.Errorf("%w: pool %s: cannot number %s against anchor %s",
+			helpers.ErrInternal, poolID, addr.String(), anchorBlocks[0])
 	}
 
 	var claimed string
@@ -600,21 +607,20 @@ func (w *addressWriter) claimExplicitExternalIPv6(ctx context.Context, addressID
 	return claimed, nil
 }
 
-// offsetWithinPrefix — номер адреса внутри префикса (обратная операция к
-// addOffsetToAddr). nil, если адрес вне префикса или семейства не совпадают.
-func offsetWithinPrefix(base, addr netip.Addr) *big.Int {
-	if !base.Is6() || !addr.Is6() {
+// offsetFromAnchor — номер адреса относительно якоря пула (обратная операция к
+// addOffsetToAddr). Знак сохраняется: адрес ниже якоря даёт отрицательный номер,
+// и это законно — счётчик выдачи отрицательных не производит, а взаимная
+// однозначность «адрес ↔ номер» от знака не зависит. nil — только если
+// семейства не совпадают.
+func offsetFromAnchor(anchor, addr netip.Addr) *big.Int {
+	if !anchor.Is6() || !addr.Is6() {
 		return nil
 	}
-	b := base.As16()
-	a := addr.As16()
-	baseInt := new(big.Int).SetBytes(b[:])
-	addrInt := new(big.Int).SetBytes(a[:])
-	diff := new(big.Int).Sub(addrInt, baseInt)
-	if diff.Sign() < 0 {
-		return nil
-	}
-	return diff
+	a16 := anchor.As16()
+	x16 := addr.As16()
+	anchorInt := new(big.Int).SetBytes(a16[:])
+	addrInt := new(big.Int).SetBytes(x16[:])
+	return new(big.Int).Sub(addrInt, anchorInt)
 }
 
 // ---- IPAM v4 freelist ----
