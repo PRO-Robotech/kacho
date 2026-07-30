@@ -63,6 +63,10 @@ func (u *UpdateRulesUseCase) Execute(ctx context.Context, in UpdateRulesInput) (
 	if in.SecurityGroupID == "" {
 		return nil, status.Error(codes.InvalidArgument, "security_group_id required")
 	}
+	// Потолок — ПЕРВЫМ, до поэлементной валидации и до резолва целей.
+	if err := validateSGRulesCardinality("addition_rule_specs", in.AdditionRuleSpecs); err != nil {
+		return nil, err
+	}
 	for i, r := range in.AdditionRuleSpecs {
 		if err := validateSGRule(fmt.Sprintf("addition_rule_specs[%d]", i), r); err != nil {
 			return nil, err

@@ -73,11 +73,16 @@ var macAddressRe = regexp.MustCompile(`^[0-9a-f]{2}(:[0-9a-f]{2}){5}$`)
 //   - subnet_id existence + address cardinality (≤1 v4/v6) + address existence —
 //     service-слой (validateNICAddressCardinality + validateAddressRef / attach-CAS)
 //     с DB-backstop (FK subnet_id RESTRICT, CHECK ≤1, address_references CAS);
-//   - security_group_ids existence — НЕ энфорсится: jsonb-массив без FK/join-table,
-//     within-service refcheck отсутствует (в отличие от v4/v6 address_ids здесь нет
-//     backstop). SG.Delete не блокируется ссылающимся NIC → возможен dangling ref.
-//     Known gap PRO-Robotech/kacho-vpc#27 (red-тест SG-DEL-NEG-NIC-ATTACHED); фикс —
-//     DB-level join-table + FK RESTRICT (rule #10) отдельным behavioral-PR.
+//   - security_group_ids — существование И принадлежность проверяет service-слой
+//     на ОБЕИХ сторонах: create/update интерфейса (validateNICSecurityGroupRefs:
+//     существование, проект вызывающего, сеть подсети — одним запросом на весь
+//     массив) и delete группы (refcheck в writer-TX). Внешний ключ по jsonb-массиву
+//     невозможен, поэтому это единственная защита; кардинальность массива
+//     ограничена MaxNICSecurityGroups + CHECK network_interfaces_sg_cardinality.
+//     ВАЖНО: обе стороны обязаны стоять ВМЕСТЕ — refcheck на удалении без
+//     проверки владельца на создании превращает защиту целостности в
+//     кросс-тенантный замок (ссылка из чужого проекта блокирует удаление, а
+//     жертва ссылающийся интерфейс не видит).
 func (n NetworkInterface) Validate() error {
 	errs := []error{
 		n.Name.Validate(),

@@ -14,6 +14,7 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	"github.com/PRO-Robotech/kacho/pkg/ids"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
@@ -155,6 +156,21 @@ func prefixesOverlap(a, b netip.Prefix) bool {
 	return false
 }
 
+// validateSubnetCidrCardinality — потолок числа диапазонов подсети НА СЕМЕЙСТВО.
+// Стоит ПЕРЕД попарной проверкой пересечений, потому что та квадратична по
+// величине, которую выбирает вызывающий, и не читает контекст (отмена запроса
+// её не останавливает). Проверяется набор, который БУДЕТ записан, — иначе он
+// растёт серией формально законных запросов. Сужение набора (:removeCidrBlocks)
+// потолком не гейтится: оно обязано проходить всегда. DB-CHECK
+// subnets_cidr_blocks_cardinality — атомарный backstop.
+func validateSubnetCidrCardinality(field string, cidrs []string) error {
+	if len(cidrs) > domain.MaxSubnetCidrBlocks {
+		return serviceerr.InvalidArg(field,
+			fmt.Sprintf("at most %d CIDR blocks per subnet per family", domain.MaxSubnetCidrBlocks))
+	}
+	return nil
+}
+
 // checkCIDRDisjoint — sync-проверка, что массив CIDR не содержит пересекающихся.
 // fieldPrefix — имя поля для error-сообщений (например "v4_cidr_blocks").
 func checkCIDRDisjoint(fieldPrefix string, cidrs []string) error {
@@ -292,4 +308,45 @@ func resolvePlacement(ctx context.Context, zr ZoneRegistry, rr RegionRegistry, s
 		return "", err
 	}
 	return domain.PlacementRegional, nil
+}
+
+// routeTableGetter — то, что нужно от репозитория для проверки ссылки на
+// таблицу маршрутов: только чтение таблицы по id. Узкий порт вместо целого
+// Writer/Reader — валидатор одинаково работает и на sync-пути (Reader), и в
+// writer-TX (Writer видит свои записи).
+type routeTableGetter interface {
+	Get(ctx context.Context, id string) (*kachorepo.RouteTableRecord, error)
+}
+
+// validateSubnetRouteTableRef — существование И принадлежность таблицы
+// маршрутов, названной вызывающим: таблица обязана лежать в ТОЙ ЖЕ сети, что и
+// подсеть (а значит и в том же проекте — сеть у таблицы и у подсети одна).
+// Внешний ключ этого выразить не может: он проверяет лишь наличие строки.
+//
+// Тон отказа для «нет такой» и «есть, но чужой сети» одинаков — иначе это
+// оракул существования. Формат id проверяется тем же вызовом, что и у прочих
+// ссылок, чтобы явный мусор получал терминальный отказ, а не «не найдено».
+//
+// Код и регистр — как у ссылки на значение поля (InvalidArgument, строчная
+// буква), а не как у родительской сети подсети (NotFound, "Network %s not
+// found"): предмет отказа — значение поля запроса, а не адресуемый ресурс.
+// Прецеденты в сервисе разные; выбор осознанный, менять — через тикет.
+func validateSubnetRouteTableRef(ctx context.Context, rtr routeTableGetter, routeTableID, networkID string) error {
+	if routeTableID == "" {
+		return nil
+	}
+	if err := corevalidate.ResourceID("route table", ids.PrefixRouteTable, routeTableID); err != nil {
+		return err
+	}
+	rt, err := rtr.Get(ctx, routeTableID)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			return status.Errorf(codes.InvalidArgument, "route table %s not found", routeTableID)
+		}
+		return serviceerr.MapRepoErr(err)
+	}
+	if rt.NetworkID != networkID {
+		return status.Errorf(codes.InvalidArgument, "route table %s not found", routeTableID)
+	}
+	return nil
 }

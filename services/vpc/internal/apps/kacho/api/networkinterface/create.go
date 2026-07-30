@@ -28,10 +28,6 @@ import (
 // niReferrerType — ReferrerType в address_references для адресов, привязанных к NIC.
 const niReferrerType = "network_interface"
 
-// niUsedByReferrerType — тип референта в NIC.used_by, когда NIC приаттачен к
-// compute-инстансу (зеркало referrer type у Address.used_by).
-const niUsedByReferrerType = "compute_instance"
-
 // niMacRetryAttempts — число попыток сгенерировать уникальный MAC при
 // cloud-wide UNIQUE-collision (~1e-3 на 1M NIC при 40 битах энтропии — см.
 // `internal/apps/kacho/shared/macutil`).
@@ -39,18 +35,19 @@ const niMacRetryAttempts = 3
 
 // CreateInput — параметры для CreateNetworkInterfaceUseCase.Execute.
 //
-// Композиция `domain.NetworkInterface` + request-only поля (`InstanceID` /
-// `Index` для immediate-attach к Compute.Instance): InstanceID/Index — атрибуты
-// запроса (immediate-attach mode), а не самого ресурса, поэтому это не тривиальная
-// обертка `{NetworkInterface: …}`.
+// Композиция `domain.NetworkInterface` + два поля запроса, которые этот путь
+// принимать НЕ вправе (`InstanceID` / `Index`): они остаются в структуре, чтобы
+// отказ был явным и назвал поле — принять и проигнорировать нельзя, а молча
+// исполнить привязку этот путь не может (инвариант привязки живёт в охраняемом
+// пути, см. Execute).
 //
 // Поле `n.ID` на входе пустое — назначаем внутри use-case'а через
 // `ids.NewID(ids.PrefixNetworkInterface)` (NIC имеет собственный prefix `nic`).
 type CreateInput struct {
 	NetworkInterface domain.NetworkInterface
-	// InstanceID — опц. сразу приаттачить NIC к инстансу после создания.
+	// InstanceID — привязка к машине; на этом пути ОТВЕРГАЕТСЯ явно.
 	InstanceID string
-	// Index — информационный (на какой слот инстанса вешать NIC); не персистим.
+	// Index — слот привязки; без привязки смысла не имеет, ОТВЕРГАЕТСЯ явно.
 	Index string
 }
 
@@ -110,6 +107,29 @@ func (u *CreateNetworkInterfaceUseCase) Execute(ctx context.Context, in CreateIn
 	// error. См. helpers.go.
 	if err := validateNICAddressCardinality(n.V4AddressIDs, n.V6AddressIDs); err != nil {
 		return nil, err
+	}
+	// Потолок числа групп — СИНХРОННО, до создания Operation и до любого чтения:
+	// величину задаёт вызывающий, и она определяет стоимость запроса. Проверка
+	// принадлежности каждой группы идёт позже, в writer-TX (там она обязана быть
+	// сериализована с удалением группы), но она уже не может быть вызвана с
+	// массивом произвольной длины.
+	if err := validateNICSecurityGroupCardinality(n.SecurityGroupIDs); err != nil {
+		return nil, err
+	}
+	// Привязка интерфейса к машине — НЕ исход публичного создания. Инвариант
+	// привязки (та же зона, принадлежность машины, атомарная смена владельца,
+	// номер слота) живёт в охраняемом пути привязки; создание не может его
+	// исполнить, потому что резолвить машину вправе только её владелец, а
+	// обратного ребра к нему у этого сервиса нет и быть не должно. Принять поле
+	// и не исполнить обещание — не исход (api-conventions «принято-и-
+	// проигнорировано»), поэтому отказ явный, синхронный и с именем поля.
+	if in.InstanceID != "" {
+		return nil, serviceerr.InvalidArg("instance_id",
+			"instance attachment is not performed at NetworkInterface.Create")
+	}
+	if in.Index != "" {
+		return nil, serviceerr.InvalidArg("index",
+			"index is meaningful only for instance attachment, which is not performed at NetworkInterface.Create")
 	}
 	// Sync project.Exists precheck здесь не делаем: он race-prone — между sync-
 	// проверкой и async-частью project может удалить peer-сервис. NotFound для
@@ -177,10 +197,6 @@ func (u *CreateNetworkInterfaceUseCase) doCreate(ctx context.Context, niID strin
 	}
 	st := domain.NIStatusAvailable
 	usedByType, usedByID := "", ""
-	if in.InstanceID != "" {
-		st = domain.NIStatusActive
-		usedByType, usedByID = niUsedByReferrerType, in.InstanceID
-	}
 	rec := &domain.NetworkInterface{
 		ID:               niID,
 		ProjectID:        n.ProjectID,
@@ -216,6 +232,17 @@ func (u *CreateNetworkInterfaceUseCase) doCreate(ctx context.Context, niID strin
 		w, werr := u.repo.Writer(ctx)
 		if werr != nil {
 			return nil, serviceerr.MapRepoErr(werr)
+		}
+		// Группы безопасности — ссылка от вызывающего без внешнего ключа:
+		// существование и принадлежность проверяются В ЭТОЙ ЖЕ writer-TX, где
+		// пишется интерфейс, и с share-lock'ом на строках групп (writer-сторона
+		// GetMany). Иначе группу можно было удалить между проверкой и коммитом:
+		// её предусловие удаления нашего интерфейса ещё не видит, и ссылка
+		// оставалась бы висячей.
+		if sgErr := validateNICSecurityGroupRefs(ctx, w.SecurityGroups(), n.SecurityGroupIDs,
+			string(n.ProjectID), parentSub.NetworkID); sgErr != nil {
+			w.Abort()
+			return nil, sgErr
 		}
 		// Validate + attach address-refs в этой writer-TX (используем w.Addresses(),
 		// а не отдельный addressRepo). Ошибка attach — не MAC-collision → Abort + return.

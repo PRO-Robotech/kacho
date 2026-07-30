@@ -93,6 +93,11 @@ func (u *CreateSecurityGroupUseCase) Execute(ctx context.Context, sg domain.Secu
 	if err := serviceerr.FromValidation(sg.Validate()); err != nil {
 		return nil, err
 	}
+	// Потолок числа правил — ПЕРВЫМ, до поэлементной валидации и до любого
+	// резолва целей: иначе стоимость запроса задаёт вызывающий.
+	if err := validateSGRulesCardinality("rule_specs", sg.Rules); err != nil {
+		return nil, err
+	}
 	for i, r := range sg.Rules {
 		if err := validateSGRule(fmt.Sprintf("rule_specs[%d]", i), r); err != nil {
 			return nil, err

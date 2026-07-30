@@ -23,6 +23,12 @@ type SecurityGroupFilter struct {
 // SecurityGroupReaderIface — read-операции над SecurityGroup в TX-области.
 type SecurityGroupReaderIface interface {
 	Get(ctx context.Context, id string) (*SecurityGroupRecord, error)
+	// GetMany — резолв набора id ОДНИМ запросом (`WHERE id = ANY(...)`).
+	// Отсутствующие id в карте отсутствуют — вызывающий сам решает, что значит
+	// «не нашёл». Нужен там, где ссылки приходят массивом от вызывающего
+	// (группы на интерфейсе, цели правил группы): резолв в цикле означал бы
+	// обращение к БД на элемент массива, размер которого задаёт вызывающий.
+	GetMany(ctx context.Context, ids []string) (map[string]*SecurityGroupRecord, error)
 	List(ctx context.Context, f SecurityGroupFilter, p Pagination) ([]*SecurityGroupRecord, string, error)
 }
 

@@ -16,7 +16,7 @@ import (
 
 // IPAM-аллокатор (allocateInternalIPv4 / allocateInternalIPv6 в
 // apps/kacho/api/address/create.go) делает retry-on-unique-violation ВНУТРИ
-// одной writer-TX: SetIPSpec → 23505 → попробовать другой IP → SetIPSpec.
+// одной writer-TX: SetInternalIPv4 → 23505 → попробовать другой IP → ещё раз.
 // Postgres абортит TX на первой же ошибке (последующие стейтменты → 25P02
 // in_failed_sql_transaction), поэтому конфликтно-ретраимые writer-методы
 // обязаны исполняться под SAVEPOINT — иначе один конфликт фейлит весь Create
@@ -42,10 +42,10 @@ func allocTestFixture(t *testing.T, ctx context.Context, r *kachopg.Repository, 
 	return created.ID
 }
 
-// TestCQRS_Address_SetIPSpec_ConflictKeepsTXAlive — конфликт UNIQUE
+// TestCQRS_Address_SetInternalIPv4_ConflictKeepsTXAlive — конфликт UNIQUE
 // (addresses_internal_subnet_ip_uniq) на первой попытке НЕ должен абортить
 // writer-TX: вторая попытка с другим IP обязана пройти, Commit — успешен.
-func TestCQRS_Address_SetIPSpec_ConflictKeepsTXAlive(t *testing.T) {
+func TestCQRS_Address_SetInternalIPv4_ConflictKeepsTXAlive(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
@@ -65,7 +65,7 @@ func TestCQRS_Address_SetIPSpec_ConflictKeepsTXAlive(t *testing.T) {
 	a.InternalIpv4.SubnetID = subnetID
 	_, err = wA.Addresses().Insert(ctx, a)
 	require.NoError(t, err)
-	_, err = wA.Addresses().SetIPSpec(ctx, a.ID, nil, &domain.InternalIpv4Spec{
+	_, err = wA.Addresses().SetInternalIPv4(ctx, a.ID, &domain.InternalIpv4Spec{
 		SubnetID: subnetID, Address: "10.77.0.5",
 	})
 	require.NoError(t, err)
@@ -80,13 +80,13 @@ func TestCQRS_Address_SetIPSpec_ConflictKeepsTXAlive(t *testing.T) {
 	_, err = wB.Addresses().Insert(ctx, b)
 	require.NoError(t, err)
 
-	_, err = wB.Addresses().SetIPSpec(ctx, b.ID, nil, &domain.InternalIpv4Spec{
+	_, err = wB.Addresses().SetInternalIPv4(ctx, b.ID, &domain.InternalIpv4Spec{
 		SubnetID: subnetID, Address: "10.77.0.5", // конфликт с A
 	})
 	require.Error(t, err, "duplicate internal IP must be rejected")
 
 	// Ключевой контракт: TX не отравлена — retry с другим IP проходит.
-	rec, err := wB.Addresses().SetIPSpec(ctx, b.ID, nil, &domain.InternalIpv4Spec{
+	rec, err := wB.Addresses().SetInternalIPv4(ctx, b.ID, &domain.InternalIpv4Spec{
 		SubnetID: subnetID, Address: "10.77.0.6",
 	})
 	require.NoError(t, err, "writer-TX must stay usable after a unique-violation attempt (savepoint contract)")

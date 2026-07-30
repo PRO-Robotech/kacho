@@ -105,6 +105,10 @@ func (u *UpdateSecurityGroupUseCase) doUpdate(ctx context.Context, in UpdateInpu
 		return nil, serviceerr.MapRepoErr(err)
 	}
 	applySGMask(&rec.SecurityGroup, in)
+	// Потолок проверяется на ИТОГОВОМ наборе — до резолва целей.
+	if cerr := validateSGRulesCardinality("rule_specs", rec.Rules); cerr != nil {
+		return nil, cerr
+	}
 	// Same-network-валидация SG-target правил (parity с UpdateRules): rule_specs,
 	// переданные через Update, не должны указывать на SG из другой сети. network_id
 	// берем у самой редактируемой SG (immutable).

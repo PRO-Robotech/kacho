@@ -69,7 +69,7 @@ type Repository struct {
 	addressPools map[string]*kacho.AddressPoolRecord
 	// netDefBinds — explicit-биндинги pool ↔ network (network_default).
 	netDefBinds map[string]string // network_id → pool_id
-	// allocatedInCidr — override для CountAllocatedInCidrs(poolID, *): тест-фикстура
+	// allocatedInCidr — override для OccupiedCidrs(poolID, *): тест-фикстура
 	// сообщает «в этом пуле есть N выделенных external-IP» без моделирования
 	// freelist. Ключ — poolID. Mock игнорирует cidr-аргумент.
 	allocatedInCidr map[string]int64
@@ -118,8 +118,8 @@ func NewRepository() *Repository {
 }
 
 // SeedAllocatedInCidr помечает пул как имеющий n выделенных external-IPv4 (для
-// негативного теста RemoveCidrBlocks). Mock возвращает n из
-// CountAllocatedInCidrs(poolID, *) независимо от cidr-аргумента.
+// негативного теста RemoveCidrBlocks). При n>0 mock считает занятыми все
+// переданные в OccupiedCidrs диапазоны.
 func (r *Repository) SeedAllocatedInCidr(poolID string, n int64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

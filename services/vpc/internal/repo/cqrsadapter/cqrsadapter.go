@@ -285,6 +285,18 @@ func (a *SecurityGroupAdapter) Get(ctx context.Context, id string) (*kacho.Secur
 	return rd.SecurityGroups().Get(ctx, id)
 }
 
+// GetMany — резолв набора id в ОДНОЙ Reader-TX и одним запросом. Именно этим он
+// и отличается от цикла из Get'ов: тот открывал бы транзакцию чтения на каждый
+// элемент присланного вызывающим массива.
+func (a *SecurityGroupAdapter) GetMany(ctx context.Context, ids []string) (map[string]*kacho.SecurityGroupRecord, error) {
+	rd, err := a.repo.Reader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rd.Close() }()
+	return rd.SecurityGroups().GetMany(ctx, ids)
+}
+
 // List — read через свежую Reader-TX.
 func (a *SecurityGroupAdapter) List(ctx context.Context, f kacho.SecurityGroupFilter, p kacho.Pagination) ([]*kacho.SecurityGroupRecord, string, error) {
 	rd, err := a.repo.Reader(ctx)
@@ -338,7 +350,7 @@ func (a *SecurityGroupAdapter) Delete(ctx context.Context, id string) error {
 // =============================================================================
 
 // NetworkInterfaceAdapter удовлетворяет узким port-интерфейсам:
-//   - `subnet.NetworkInterfaceRepo` (`ListBySubnet`).
+//   - `subnet.NetworkInterfaceRepo` (`CountBySubnet`).
 type NetworkInterfaceAdapter struct{ repo kacho.Repository }
 
 // NewNetworkInterface собирает NetworkInterfaceAdapter поверх kacho.Repository.
@@ -346,12 +358,13 @@ func NewNetworkInterface(r kacho.Repository) *NetworkInterfaceAdapter {
 	return &NetworkInterfaceAdapter{repo: r}
 }
 
-// ListBySubnet — read через свежую Reader-TX.
-func (a *NetworkInterfaceAdapter) ListBySubnet(ctx context.Context, subnetID string) ([]*kacho.NetworkInterfaceRecord, error) {
+// CountBySubnet — счёт + ограниченная выборка идентификаторов через свежую
+// Reader-TX (предусловие Subnet.Delete).
+func (a *NetworkInterfaceAdapter) CountBySubnet(ctx context.Context, subnetID string, sample int) (int64, []string, error) {
 	rd, err := a.repo.Reader(ctx)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 	defer func() { _ = rd.Close() }()
-	return rd.NetworkInterfaces().ListBySubnet(ctx, subnetID)
+	return rd.NetworkInterfaces().CountBySubnet(ctx, subnetID, sample)
 }

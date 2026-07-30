@@ -146,6 +146,11 @@ func (sw *subnetWriter) Get(_ context.Context, id string) (*kacho.SubnetRecord, 
 	return &cp, nil
 }
 
+// GetForShare — in-memory mock не моделирует row-lock; семантика = Get.
+func (sw *subnetWriter) GetForShare(ctx context.Context, id string) (*kacho.SubnetRecord, error) {
+	return sw.Get(ctx, id)
+}
+
 // GetForUpdate — in-memory mock не моделирует row-lock; семантика = Get.
 func (sw *subnetWriter) GetForUpdate(ctx context.Context, id string) (*kacho.SubnetRecord, error) {
 	return sw.Get(ctx, id)
@@ -247,6 +252,62 @@ func (sw *subnetWriter) SetCidrBlocks(_ context.Context, id string, v4, v6 []str
 	s.V6CidrBlocks = v6
 	cp := *s
 	return &cp, nil
+}
+
+// CountAddressesInCidrs — сколько адресов подсети в mock-состоянии живёт в
+// переданных диапазонах. Считает по тем же полям, что и хранилище (внутренний
+// адрес обеих семей), чтобы unit-проверки предусловия снятия диапазона
+// опирались на предмет, а не на заглушку-ноль.
+func (sw *subnetWriter) OccupiedCidrs(_ context.Context, subnetID string, cidrs []string) ([]string, error) {
+	if subnetID == "" || len(cidrs) == 0 {
+		return nil, nil
+	}
+	prefixes := make([]netip.Prefix, 0, len(cidrs))
+	for _, c := range cidrs {
+		p, err := netip.ParsePrefix(c)
+		if err != nil {
+			return nil, repo.ErrInvalidArg
+		}
+		prefixes = append(prefixes, p)
+	}
+	occupiedIdx := make(map[int]struct{}, len(prefixes))
+	count := func(rec *kacho.AddressRecord) {
+		if rec == nil {
+			return
+		}
+		a := &rec.Address
+		var addrs []string
+		if a.InternalIpv4 != nil && a.InternalIpv4.SubnetID == subnetID && a.InternalIpv4.Address != "" {
+			addrs = append(addrs, a.InternalIpv4.Address)
+		}
+		if a.InternalIpv6 != nil && a.InternalIpv6.SubnetID == subnetID && a.InternalIpv6.Address != "" {
+			addrs = append(addrs, a.InternalIpv6.Address)
+		}
+		for _, raw := range addrs {
+			ip, err := netip.ParseAddr(raw)
+			if err != nil {
+				continue
+			}
+			for i, p := range prefixes {
+				if p.Contains(ip) {
+					occupiedIdx[i] = struct{}{}
+				}
+			}
+		}
+	}
+	// localAddrs — снимок родительского состояния плюс правки этой writer-TX,
+	// поэтому одного прохода достаточно (второй считал бы адреса дважды).
+	for _, a := range sw.w.localAddrs {
+		count(a)
+	}
+	var occupied []string
+	for i, c := range cidrs {
+		if _, ok := occupiedIdx[i]; ok {
+			occupied = append(occupied, c)
+		}
+	}
+	sort.Strings(occupied)
+	return occupied, nil
 }
 
 // Assertion: subnetReader/Writer implements iface.

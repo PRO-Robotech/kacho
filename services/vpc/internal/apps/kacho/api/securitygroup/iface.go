@@ -65,6 +65,11 @@ type NetworkReader interface {
 // `cqrsadapter.SecurityGroupAdapter` (Get) — wired в composition-root.
 type SecurityGroupReader interface {
 	Get(ctx context.Context, id string) (*kachorepo.SecurityGroupRecord, error)
+	// GetMany — резолв набора id ОДНИМ запросом. Нужен для проверки правил со
+	// ссылкой на другую группу: число правил задаёт вызывающий, поэтому резолв
+	// в цикле означал бы отдельное обращение к БД (в этой реализации — ещё и
+	// отдельную транзакцию чтения) на каждый элемент присланного массива.
+	GetMany(ctx context.Context, ids []string) (map[string]*kachorepo.SecurityGroupRecord, error)
 }
 
 // ProjectClient — peer-сервис kacho-iam: проверка существования

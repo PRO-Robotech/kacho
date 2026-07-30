@@ -61,18 +61,6 @@ func (r *addressReader) GetByValue(_ context.Context, intl, subnetID string) (*k
 	return nil, repo.ErrNotFound
 }
 
-func (r *addressReader) ExistsIP(_ context.Context, ip string) (bool, error) {
-	for _, a := range r.snap {
-		if a.ExternalIpv4 != nil && a.ExternalIpv4.Address == ip {
-			return true, nil
-		}
-		if a.InternalIpv4 != nil && a.InternalIpv4.Address == ip {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
 func (r *addressReader) GetReference(_ context.Context, id string) (*domain.AddressReference, error) {
 	// Seeded referrer (SeedReference) → возвращаем его; иначе ErrNotFound. Более
 	// богатая референс-семантика для use-case'ов покрывается
@@ -149,18 +137,6 @@ func (aw *addressWriter) GetByValue(_ context.Context, intl, subnetID string) (*
 	return nil, repo.ErrNotFound
 }
 
-func (aw *addressWriter) ExistsIP(_ context.Context, ip string) (bool, error) {
-	for _, a := range aw.w.localAddrs {
-		if a.ExternalIpv4 != nil && a.ExternalIpv4.Address == ip {
-			return true, nil
-		}
-		if a.InternalIpv4 != nil && a.InternalIpv4.Address == ip {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
 func (aw *addressWriter) GetReference(_ context.Context, _ string) (*domain.AddressReference, error) {
 	return nil, repo.ErrNotFound
 }
@@ -221,16 +197,13 @@ func (aw *addressWriter) DeleteGuarded(_ context.Context, id string) (*kacho.Add
 	return &cp, nil
 }
 
-func (aw *addressWriter) SetIPSpec(_ context.Context, id string, ext *domain.ExternalIpv4Spec, intn *domain.InternalIpv4Spec) (*kacho.AddressRecord, error) {
+func (aw *addressWriter) SetInternalIPv4(_ context.Context, id string, intn *domain.InternalIpv4Spec) (*kacho.AddressRecord, error) {
 	if _, deleted := aw.w.deletedAddrIDs[id]; deleted {
 		return nil, repo.ErrNotFound
 	}
 	a, ok := aw.w.localAddrs[id]
 	if !ok {
 		return nil, repo.ErrNotFound
-	}
-	if ext != nil {
-		a.ExternalIpv4 = ext
 	}
 	if intn != nil {
 		a.InternalIpv4 = intn

@@ -171,6 +171,26 @@ func (u *CreateAddressUseCase) Execute(ctx context.Context, in CreateInput) (*op
 		}
 	}
 
+	// Явный внешний адрес: формат и семейство проверяются СИНХРОННО, первым
+	// делом, и адрес приводится к канонической форме. Без этого в книгу учёта
+	// внешних адресов ложилась любая строка (уникальность внешнего адреса —
+	// текстовый индекс, поэтому «2001:DB8::1» и «2001:db8::1» разъезжались бы),
+	// а занятие адреса в пуле вообще нельзя было бы выразить.
+	if in.ExternalSpec != nil && in.ExternalSpec.Address != "" {
+		canon, err := canonicalExplicitIP("external_ipv4_address_spec.address", in.ExternalSpec.Address, domain.IpVersionIPv4)
+		if err != nil {
+			return nil, err
+		}
+		in.ExternalSpec.Address = canon
+	}
+	if in.ExternalIpv6Spec != nil && in.ExternalIpv6Spec.Address != "" {
+		canon, err := canonicalExplicitIP("external_ipv6_address_spec.address", in.ExternalIpv6Spec.Address, domain.IpVersionIPv6)
+		if err != nil {
+			return nil, err
+		}
+		in.ExternalIpv6Spec.Address = canon
+	}
+
 	// Placement-coherence: existence-валидация `zone_id` external-адреса через geo
 	// (зеркало subnet.validateZoneID). Условная — непустой zone_id → existence-
 	// check; пустой zone_id ВАЛИДЕН (anycast из global-пула, зоне-независим — в
@@ -256,6 +276,29 @@ func (u *CreateAddressUseCase) Execute(ctx context.Context, in CreateInput) (*op
 	})
 
 	return &op, nil
+}
+
+// canonicalExplicitIP — разбор явно заданного адреса + проверка семейства +
+// канонизация. Семейство обязано совпадать с выбранной ветвью спека: адрес
+// «10.0.0.1» в IPv6-спеке — не опечатка вызывающего, а другой ресурс.
+func canonicalExplicitIP(field, address string, want domain.IpVersion) (string, error) {
+	addr, err := netip.ParseAddr(address)
+	if err != nil {
+		return "", serviceerr.InvalidArg(field, "address is not a valid IP")
+	}
+	switch want {
+	case domain.IpVersionIPv4:
+		if !addr.Is4() {
+			return "", serviceerr.InvalidArg(field, "address is not a valid IPv4 address")
+		}
+	case domain.IpVersionIPv6:
+		if !addr.Is6() || addr.Is4In6() {
+			return "", serviceerr.InvalidArg(field, "address is not a valid IPv6 address")
+		}
+	default:
+		return "", serviceerr.InvalidArg(field, "address is not a valid IP")
+	}
+	return addr.String(), nil
 }
 
 // validateInternalIPInSubnet проверяет sync-ом, что explicit IP лежит в CIDR
@@ -598,7 +641,7 @@ func (u *CreateAddressUseCase) doCreate(ctx context.Context, addrID string, in C
 // переиспользуемый и AllocateUseCase (internal Allocate RPC), чтобы алгоритм не
 // дрейфовал между create- и allocate-путём.
 //
-// Каждый helper принимает открытый Writer-TX — SetIPSpec/SetInternalIPv6/
+// Каждый helper принимает открытый Writer-TX — SetInternalIPv4/SetInternalIPv6/
 // AllocateIPFromFreelist/AllocateExternalIPv6 идут через `w.Addresses().*`,
 // atomic с Insert + Outbox в одной TX.
 

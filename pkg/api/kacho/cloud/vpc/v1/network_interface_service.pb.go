@@ -229,12 +229,19 @@ type CreateNetworkInterfaceRequest struct {
 	// ID of the subnet the interface belongs to. The interface's Address resources
 	// must belong to this subnet's CIDR.
 	SubnetId string `protobuf:"bytes,5,opt,name=subnet_id,json=subnetId,proto3" json:"subnet_id,omitempty"`
-	// IDs of security groups to attach. If empty, the network's
-	// default_security_group_id is inherited.
+	// IDs of security groups to attach. Empty means no groups: nothing is
+	// inherited. Every id must exist, belong to the caller's project and — if the
+	// group is bound to a network — to the network of the interface's subnet.
 	SecurityGroupIds []string `protobuf:"bytes,7,rep,name=security_group_ids,json=securityGroupIds,proto3" json:"security_group_ids,omitempty"`
-	// Optional: immediately attach to this instance after creation.
+	// REJECTED on this path (INVALID_ARGUMENT naming the field). Attaching an
+	// interface to an instance is performed by the instance's owner through
+	// InternalNetworkInterfaceService.Attach, which enforces the attachment
+	// invariants (same zone, instance ownership, atomic change of owner, slot
+	// index). This path cannot enforce them, and accepting the field while
+	// silently dropping it would promise an attachment that never happens.
 	InstanceId string `protobuf:"bytes,8,opt,name=instance_id,json=instanceId,proto3" json:"instance_id,omitempty"`
-	// Index on the instance to attach at (used only if instance_id is set).
+	// REJECTED on this path: a slot index is meaningful only for an attachment,
+	// which this path does not perform (see instance_id).
 	Index string `protobuf:"bytes,9,opt,name=index,proto3" json:"index,omitempty"`
 	// References to Address resources (internal_ipv4 / internal_ipv6, in the same
 	// subnet) to attach to the interface. To allocate a fresh IP, first create an

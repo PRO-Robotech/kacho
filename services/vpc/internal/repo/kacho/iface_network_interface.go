@@ -24,13 +24,21 @@ type NetworkInterfaceFilter struct {
 
 // NetworkInterfaceReaderIface — read-операции над NetworkInterface в TX-области.
 //
-// ListBySubnet нужен Subnet.Delete (precondition «нет привязанных NIC»: FK
-// ON DELETE RESTRICT, NIC жестко блокирует свою подсеть). ListByInstance —
-// fast-path фильтр для internal-tooling (тоже мапится на used_by).
+// CountBySubnet нужен Subnet.Delete (predcondition «нет привязанных NIC»: FK
+// ON DELETE RESTRICT, NIC жестко блокирует свою подсеть) — он отвечает на
+// вопрос «сколько», а не «дай их все». ListByInstance — fast-path фильтр для
+// internal-tooling (тоже мапится на used_by).
 type NetworkInterfaceReaderIface interface {
 	Get(ctx context.Context, id string) (*NetworkInterfaceRecord, error)
 	List(ctx context.Context, f NetworkInterfaceFilter, p Pagination) ([]*NetworkInterfaceRecord, string, error)
-	ListBySubnet(ctx context.Context, subnetID string) ([]*NetworkInterfaceRecord, error)
+	// CountBySubnet — сколько интерфейсов держит подсеть и НЕСКОЛЬКО их
+	// идентификаторов для сообщения об отказе. Предусловие удаления отвечает на
+	// вопрос «есть ли хоть один», поэтому вычитывать все строки со всеми их
+	// jsonb-полями не нужно, а вкладывать в текст ошибки неограниченный список
+	// идентификаторов — тем более: текст статуса едет в трейлере ответа и на
+	// обычном размере подсети выходит за бюджеты заголовков у прокси на пути.
+	// sample — сколько идентификаторов вернуть (0 → ни одного).
+	CountBySubnet(ctx context.Context, subnetID string, sample int) (int64, []string, error)
 	// ListByInstanceIDs — batched read NIC-привязок по набору instance_id
 	// (used_by_type='compute_instance' AND used_by_id = ANY). Один запрос на всё
 	// множество (не N+1) для compute-side зеркала Instance.Get/List. Каждая запись

@@ -17,6 +17,21 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
 )
 
+// seedRouteTable — committed RouteTable сети (ссылка на неё обязана резолвиться:
+// подсеть принимает только таблицу СВОЕЙ сети).
+func seedRouteTable(t *testing.T, kr *kachomock.Repository, projectID, networkID, rtID string) {
+	t.Helper()
+	ctx := context.Background()
+	w, err := kr.Writer(ctx)
+	require.NoError(t, err)
+	_, err = w.RouteTables().Insert(ctx, &domain.RouteTable{
+		ID: rtID, ProjectID: projectID, NetworkID: networkID,
+		Name: domain.RcNameVPC("rt-" + rtID[len(rtID)-6:]),
+	})
+	require.NoError(t, err)
+	require.NoError(t, w.Commit())
+}
+
 // seedNetworkWithDefaultRT — committed Network, несущая явный
 // defaultRouteTableId° (то, что провижнит Network.Create).
 func seedNetworkWithDefaultRT(t *testing.T, kr *kachomock.Repository, projectID, networkID, rtID string) {
@@ -65,6 +80,9 @@ func TestSubnet_VPC_1_37_ExplicitRouteTableWins(t *testing.T) {
 	defaultRT := ids.NewID(ids.PrefixRouteTable)
 	explicitRT := ids.NewID(ids.PrefixRouteTable)
 	seedNetworkWithDefaultRT(t, kr, "f1", netID, defaultRT)
+	// Явная таблица обязана существовать и лежать в той же сети — иначе это не
+	// «явный выбор тенанта», а висячая ссылка.
+	seedRouteTable(t, kr, "f1", netID, explicitRT)
 
 	uc := NewCreateSubnetUseCase(kr, &repomock.ProjectClient{OK: true},
 		repomock.NewZoneRegistry(testZone), repomock.NewRegionRegistry(testRegion), or)

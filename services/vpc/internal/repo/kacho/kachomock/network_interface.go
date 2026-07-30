@@ -19,7 +19,7 @@ import (
 // NIC — самостоятельный сетевой интерфейс (first-class, отвязан от Instance),
 // самый «толстый» ресурс VPC. Mock здесь покрывает:
 //   - CRUD (Insert / UpdateMeta / Delete);
-//   - ListBySubnet — для SubnetService.Delete precheck (NIC жестко блокирует
+//   - CountBySubnet — для SubnetService.Delete precheck (NIC жестко блокирует
 //     свою подсеть через ON DELETE RESTRICT).
 //
 // MAC-allocation в mock не моделируется (caller-side responsibility:
@@ -57,16 +57,17 @@ func (r *networkInterfaceReader) List(_ context.Context, f kacho.NetworkInterfac
 	return result, "", nil
 }
 
-func (r *networkInterfaceReader) ListBySubnet(_ context.Context, subnetID string) ([]*kacho.NetworkInterfaceRecord, error) {
-	var result []*kacho.NetworkInterfaceRecord
+// CountBySubnet — счёт и ограниченная выборка по snapshot-состоянию.
+func (r *networkInterfaceReader) CountBySubnet(_ context.Context, subnetID string, sample int) (int64, []string, error) {
+	var all []*kacho.NetworkInterfaceRecord
 	for _, n := range r.snap {
 		if n.SubnetID == subnetID {
 			cp := *n
-			result = append(result, &cp)
+			all = append(all, &cp)
 		}
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
-	return result, nil
+	sort.Slice(all, func(i, j int) bool { return all[i].ID < all[j].ID })
+	return countAndSampleNICs(all, sample)
 }
 
 // ListByInstanceIDs — in-memory batched read NIC-привязок. Index не моделируется
@@ -141,19 +142,20 @@ func (nw *networkInterfaceWriter) List(_ context.Context, f kacho.NetworkInterfa
 	return result, "", nil
 }
 
-func (nw *networkInterfaceWriter) ListBySubnet(_ context.Context, subnetID string) ([]*kacho.NetworkInterfaceRecord, error) {
-	var result []*kacho.NetworkInterfaceRecord
+// CountBySubnet — то же по состоянию writer-TX.
+func (nw *networkInterfaceWriter) CountBySubnet(_ context.Context, subnetID string, sample int) (int64, []string, error) {
+	var all []*kacho.NetworkInterfaceRecord
 	for id, n := range nw.w.localNIs {
 		if _, deleted := nw.w.deletedNIIDs[id]; deleted {
 			continue
 		}
 		if n.SubnetID == subnetID {
 			cp := *n
-			result = append(result, &cp)
+			all = append(all, &cp)
 		}
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
-	return result, nil
+	sort.Slice(all, func(i, j int) bool { return all[i].ID < all[j].ID })
+	return countAndSampleNICs(all, sample)
 }
 
 // ListByInstanceIDs — writer-side batched read NIC-привязок (parity с pg-writer,
@@ -282,3 +284,19 @@ var (
 	_ kacho.NetworkInterfaceReaderIface = (*networkInterfaceReader)(nil)
 	_ kacho.NetworkInterfaceWriterIface = (*networkInterfaceWriter)(nil)
 )
+
+// countAndSampleNICs — общая для обеих mock-сторон выборка: полное число и не
+// более sample идентификаторов.
+func countAndSampleNICs(all []*kacho.NetworkInterfaceRecord, sample int) (int64, []string, error) {
+	if sample < 0 {
+		sample = 0
+	}
+	ids := make([]string, 0, sample)
+	for _, n := range all {
+		if len(ids) >= sample {
+			break
+		}
+		ids = append(ids, n.ID)
+	}
+	return int64(len(all)), ids, nil
+}

@@ -54,7 +54,10 @@ type AddressRefRepo interface {
 // address-bearing NIC через цепочку NIC → Address → Subnet). NIC-репо живет в
 // `internal/repo/kacho/pg/network_interface.go` — wire через composition root.
 type NetworkInterfaceRepo interface {
-	ListBySubnet(ctx context.Context, subnetID string) ([]*kachorepo.NetworkInterfaceRecord, error)
+	// CountBySubnet — «сколько интерфейсов держат подсеть» + несколько их
+	// идентификаторов для текста отказа. Предусловию не нужны ни строки
+	// целиком, ни полный список идентификаторов.
+	CountBySubnet(ctx context.Context, subnetID string, sample int) (int64, []string, error)
 }
 
 // ProjectClient — то, что use-case'ам Subnet нужно от peer-сервиса

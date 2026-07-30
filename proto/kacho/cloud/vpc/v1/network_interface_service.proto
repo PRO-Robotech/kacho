@@ -164,14 +164,21 @@ message CreateNetworkInterfaceRequest {
   // must belong to this subnet's CIDR.
   string subnet_id = 5 [(required) = true, (length) = "<=50"];
 
-  // IDs of security groups to attach. If empty, the network's
-  // default_security_group_id is inherited.
+  // IDs of security groups to attach. Empty means no groups: nothing is
+  // inherited. Every id must exist, belong to the caller's project and — if the
+  // group is bound to a network — to the network of the interface's subnet.
   repeated string security_group_ids = 7;
 
-  // Optional: immediately attach to this instance after creation.
+  // REJECTED on this path (INVALID_ARGUMENT naming the field). Attaching an
+  // interface to an instance is performed by the instance's owner through
+  // InternalNetworkInterfaceService.Attach, which enforces the attachment
+  // invariants (same zone, instance ownership, atomic change of owner, slot
+  // index). This path cannot enforce them, and accepting the field while
+  // silently dropping it would promise an attachment that never happens.
   string instance_id = 8 [(length) = "<=50"];
 
-  // Index on the instance to attach at (used only if instance_id is set).
+  // REJECTED on this path: a slot index is meaningful only for an attachment,
+  // which this path does not perform (see instance_id).
   string index = 9;
 
   // References to Address resources (internal_ipv4 / internal_ipv6, in the same
