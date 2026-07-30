@@ -324,6 +324,23 @@ pg-registry:
 # fetch). The `deployment` block is a TOP-LEVEL Ory chart key → hydra.deployment.
 hydra:
   hydra:
+    # THE FLAG THAT MADE ALL OF THE BELOW INERT.
+    #
+    # `values.dev.yaml` sets `hydra.hydra.dev: true`, which starts the provider as
+    # `hydra serve all --dev`. That flag serves every listener in the CLEAR and makes a
+    # declared TLS block decoration: the admin certificate was issued, mounted and named
+    # in the config, `checksum/hydra-config` matched, the pod was current — and an
+    # openssl handshake against :4445 still answered `wrong version number`, i.e.
+    # plaintext. The subchart's own default is `false` and its comment says "not secure
+    # in production environments"; neither this overlay nor values.prod.yaml used to turn
+    # it back off, so the production profile inherited it from the dev base.
+    #
+    # Visible consequence: the gateway dialled https, got an HTTP answer, correctly
+    # classified it as MISCONFIGURATION rather than an outage (security.md §8) and
+    # fail-closed every request with `503 revocation check unavailable`. The whole API
+    # surface was dead — which is how a control that is present, wired and never
+    # exercised finally announced itself.
+    dev: false
     config:
       urls:
         self:
@@ -347,6 +364,23 @@ hydra:
       # override the shared serve.tls field by field), so the public OIDC
       # listener this stand reaches over plain http (ingress, JWKS) is untouched.
       serve:
+        # WITHOUT `--dev` the provider refuses to serve a listener that has neither TLS
+        # nor a declared trusted terminator. The ADMIN listener has its own certificate
+        # (below). The PUBLIC OIDC listener is deliberately left in the clear on this
+        # stand — the ingress, the JWKS mirror and the token endpoint all reach it over
+        # plain http — so it is declared as terminated by a trusted peer instead: pod
+        # CIDR, service CIDR, the kind node subnet (kubectl port-forward arrives from the
+        # node) and loopback. Documented narrowing for this stand, not a blanket exemption.
+        #
+        # ONE `serve:` KEY. This block and the trusted-terminator list must stay merged:
+        # a second `serve:` mapping in the same parent is a duplicate YAML key, the later
+        # one silently wins, and the first one vanishes without a word from helm.
+        tls:
+          allow_termination_from:
+            - 10.244.0.0/16
+            - 10.96.0.0/12
+            - 172.18.0.0/16
+            - 127.0.0.1/32
         admin:
           tls:
             cert:
