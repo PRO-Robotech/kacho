@@ -288,6 +288,54 @@ func TestDoesNotFireOnAResolvedRecord(t *testing.T) {
 	}
 }
 
+// TestProseWordDoesNotArchiveADeclaration is the sharp edge of the "this one is
+// closed" exemption. A record is exempt when it SAYS it is resolved — as a verdict,
+// which these docs write in capitals (**FIXED**, СНЯТО). The lower-case word inside a
+// quoted error message is not a verdict about anything, and treating it as one silently
+// exempts a live declaration: measured on the real tree, a flagged IPAM record went
+// unread because the error text it quoted contained "resolved".
+func TestProseWordDoesNotArchiveADeclaration(t *testing.T) {
+	root := t.TempDir()
+	suite(t, root, "svc", `# RESULTS
+
+## Known failing — product bugs
+
+> **Under investigation (flagged, not masked)** — `+"`SVC-GET-CRUD-OK`"+` fails with
+> `+"`no address pool resolved for address … (family=0)`"+`, a deterministic Operation error.
+`, map[string][]string{"SVC-GET-CRUD-OK — get own resource": {"get"}})
+
+	rep, err := Scan(Options{Root: root, IssueState: openTracker})
+	if err == nil {
+		t.Fatalf("a quoted error message exempted a live declaration; census %+v", rep.Census)
+	}
+	if !containsAll(rep.Findings, "names no issue") {
+		t.Fatalf("finding must be about the missing issue, got: %v", rep.Findings)
+	}
+}
+
+// TestUppercaseDispositionArchivesOneRow — the same exemption where it belongs: one row
+// of a live section, marked with a verdict, naming a case that now passes.
+func TestUppercaseDispositionArchivesOneRow(t *testing.T) {
+	root := t.TempDir()
+	suite(t, root, "svc", liveDeclaration+`
+| `+"`SVC-LST-CRUD-OK`"+` | listed nothing | 2026-07-01 | **FIXED 2026-07-29** — the filter is applied now |
+`, map[string][]string{
+		"SVC-GET-CRUD-OK — get own resource": {"get"},
+		"SVC-LST-CRUD-OK — lists things":     {"list"},
+	})
+	report(t, root, "svc",
+		[]string{"SVC-GET-CRUD-OK — get own resource", "SVC-LST-CRUD-OK — lists things"},
+		[]string{"SVC-GET-CRUD-OK — get own resource"})
+
+	rep, err := Scan(Options{Root: root, IssueState: openTracker})
+	if err != nil {
+		t.Fatalf("gate fires on a row that states its own fix: %v", rep.Findings)
+	}
+	if rep.Census.Declarations != 1 || rep.Census.ArchivedSections != 1 {
+		t.Fatalf("one live declaration and one skipped record expected, got %+v", rep.Census)
+	}
+}
+
 // TestFiresOnADeclarationNamingNothingResolvable states the gate's own premise: a
 // case id is UPPER-KEBAB and a step is matched by exact name against the generated
 // collections, so a row naming neither cannot be checked by anything here — and

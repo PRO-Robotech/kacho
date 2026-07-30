@@ -67,11 +67,16 @@
 // A table row, a bullet, a blockquote and a paragraph are all read the same way: a
 // declaration must not escape by changing its markdown shape.
 //
-// Text saying the red is already resolved (Closed / Resolved / FIXED / removed /
-// «закрыт» / «снят») marks a RECORD rather than a declaration — as a heading for a
-// whole section, or inside one row for that row alone. History is allowed, and
-// required, to name cases that now pass. Every such skip is counted, so it cannot
-// become a quiet way out.
+// Text saying the red is already resolved marks a RECORD rather than a declaration —
+// as a heading for a whole section, or inside one row for that row alone. History is
+// allowed, and required, to name cases that now pass. Every such skip is counted, so it
+// cannot become a quiet way out.
+//
+// A heading is read case-insensitively ("Closed — was known failing"); one record must
+// carry the word as a VERDICT, in capitals (**FIXED 2026-07-29**, RECONCILED, СНЯТО).
+// The asymmetry is not cosmetic: read case-insensitively, a record quoting an error
+// message that happens to contain "resolved" would exempt itself, and one on this tree
+// did exactly that.
 //
 // # Census
 //
@@ -158,13 +163,23 @@ var (
 	issueRe = regexp.MustCompile(`(?:PRO-Robotech/)?(kacho(?:-[a-z]+)?)(?:#|/issues/)(\d+)`)
 	// declaringRe matches a heading that declares known-failing cases.
 	declaringRe = regexp.MustCompile(`(?i)known[ -]?fail|known[ -]?red|известн\w*[ -]?красн`)
-	// archivedRe matches text that says the red in question is already resolved. It
-	// applies to a HEADING (the whole section is a record) and to one RECORD (that row
-	// is a record inside a live section) — the same words, so a reader and the gate
-	// agree on what "this one is closed" looks like.
-	archivedRe = regexp.MustCompile(
-		`(?i)\bclosed\b|\bresolved\b|\bfixed\b|\bretired\b|\bremoved\b|` +
+	// archivedHeadingRe matches a HEADING that turns its whole section into a record of
+	// something already closed. A heading is a title, so the word is read
+	// case-insensitively ("Closed — was known failing").
+	archivedHeadingRe = regexp.MustCompile(
+		`(?i)\bclosed\b|\bresolved\b|\bfixed\b|\bretired\b|\bremoved\b|\breconciled\b|` +
 			`закрыт|исправлен|снят|удал[её]н|устран[её]н`)
+	// archivedRecordRe matches ONE record that states its own disposition. Here the word
+	// must be a VERDICT, which these docs write in capitals (**FIXED 2026-07-29**,
+	// **TEST-ASSERTION FIXED**, RECONCILED, СНЯТО) — deliberately case-SENSITIVE.
+	//
+	// Case-insensitive would exempt a live declaration on prose: measured on this tree, a
+	// flagged IPAM record went unread because the error message it quoted contained the
+	// word "resolved". An exemption that fires on the vocabulary of the defect rather than
+	// on a decision about it is not an exemption, it is a blind spot.
+	archivedRecordRe = regexp.MustCompile(
+		`\bFIXED\b|\bRESOLVED\b|\bCLOSED\b|\bRETIRED\b|\bREMOVED\b|\bRECONCILED\b|` +
+			`ЗАКРЫТ|ИСПРАВЛЕН|СНЯТ|УДАЛ[ЕЁ]Н|УСТРАНЕН`)
 	whitespace = regexp.MustCompile(`\s`)
 )
 
@@ -364,7 +379,7 @@ func parseRecords(doc, body string) (records []declaration, declaring []section,
 			switch {
 			case lvl == 1:
 				declLevel = 0
-			case archivedRe.MatchString(title):
+			case archivedHeadingRe.MatchString(title):
 				if declaringRe.MatchString(title) || declLevel > 0 {
 					archived++
 				}
@@ -418,7 +433,7 @@ func parseRecords(doc, body string) (records []declaration, declaring []section,
 			}
 		}
 
-		if archivedRe.MatchString(text) {
+		if archivedRecordRe.MatchString(text) {
 			archived++
 			i++
 			continue

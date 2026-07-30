@@ -6,32 +6,26 @@
 suite, nlb included. It used to deduct a "known-RED" set before deciding; that deduction is
 gone. It reports what newman reported.
 
-Seventeen nlb folders were matched by its last revision, on their `-rya<N>` steps — the
-suffix `retry_until_authorized` gives a step it has already wrapped. So these were failures
-**past** an existing bounded retry, and the deduction hid exactly the part worth seeing:
+Its last revision matched **seventeen** nlb folders on their `-rya<N>` steps — the suffix
+`retry_until_authorized` gives a step it has already wrapped. So these were failures **past**
+an existing bounded retry, and the deduction hid exactly the part worth seeing.
 
-`NLB-LIFECYCLE-CONF`, `NLB-CR-CRUD-OK`, `NLB-CR-CRUD-WITH-DESCRIPTION`,
-`NLB-CR-CRUD-DELETION-PROTECTION-TRUE`, `NLB-UPD-STATE-IMMUTABLE-VIP-SOURCE`,
-`NLB-UPD-STATE-IMMUTABLE-PROJECT`, `NLB-UPD-STATE-IMMUTABLE-PLACEMENT`,
-`NLB-UPD-STATE-NO-CHANGE`, `NLB-UPD-STATE-MASK-EMPTY`, `NLB-UPD-CRUD-DRAIN-TOGGLE`,
-`NLB-MV-IDM-SAME-PROJECT`, `NLB-MV-CRUD-OK`, `NLB-DEL-CRUD-OK`,
-`NLB-DEL-STATE-HAS-LISTENER`, `LST-GET-CRUD-OK`, `LST-UPD-CRUD-OK`,
-`LST-UPD-STATE-DEFAULT-TG-REGION-MISMATCH`.
+Those seventeen names are **no longer declared**, and the reason is not that the deduction
+went away: their tracking issue was **closed as completed on 2026-07-19**, eleven days before
+this note, with a product fix and a green run recorded on it. The disposition — with the
+numbers, and with what would have to happen for any of them to be declared again — is in
+§«Closed — was «known failing»: owner-tuple materialization lag» below. Nothing is masked and
+nothing is subtracted; the runner reports what newman reports, and a red on any of these is
+now a **fresh** finding with fresh evidence, not a re-entry in a standing list.
 
-One of those is a placement-coherence **negative** (`LST-UPD-STATE-DEFAULT-TG-REGION-MISMATCH`
-— a listener's default target group in the wrong region must be refused). A name-keyed
-deduction reached it because the folder also contains retry-wrapped own-resource reads;
-nothing about the name says which is which, which is the whole reason the mechanism was
-removed rather than narrowed a fourth time.
-
-Retry budgets are **not** raised to absorb this. A budget large enough to outlast a slow
+Retry budgets are **not** raised to absorb such reds. A budget large enough to outlast a slow
 materialization path turns a visible red into a slow green, and past the runner timeout into
 a cancelled run. Residual non-convergence is a finding about the path.
 
 ### ⚠ ИСПРАВЛЕНО 2026-07-30 — «бюджет ≈30 с» никогда не существовал
 
 Каждое место ниже, где написано, что round 4 поднял бюджет `retry_until_authorized` до
-`60 × 500 ms ≈ 30 s` (строки истории версий round 4 / round 4b, абзац про eventual-consistency
+«60 × 500 мс ≈ 30 с» (строки истории версий round 4 / round 4b, абзац про eventual-consistency
 и «residual tail past 30s», и «wraps fail-closed after 30s»), **описывает изменение, которого в
 `scripts/gen.py` нет**. Факты:
 
@@ -39,8 +33,17 @@ a cancelled run. Residual non-convergence is a finding about the path.
 - ни одно место вызова в `cases/` не передаёт `budget=`, то есть все 27 обёрнутых шагов идут
   на умолчании;
 - в сгенерированных коллекциях охранники несут `_arc < 25` / `_ard < 500`;
-- `git log -S'budget: int = 60'` и `git log -S'budget: int = 40'` по этому файлу — **пусто**:
-  значений 60 и 40 в его истории не было никогда.
+- по всей истории этого файла подпись функции несла **25**: от коммита, который её ввёл
+  (2026-07-19), до сегодняшнего — значений 60 и 40 в ней не было ни разу.
+
+> **Проверять это надо подписью, а не поиском по строке.** Первая редакция записи
+> обосновывалась тем, что `git log -S` на литералы «60» и «40» по этому пути **пуст**. На
+> момент написания так и было — и перестало быть в тот же миг: запись **сама** внесла эти
+> литералы в файл, процитировав свою же команду, поэтому у следующего читателя тот же поиск
+> находит один коммит (её собственный) и выглядит опровержением. Утверждение, чей способ
+> проверки портится самой записью, ничем не лучше необоснованного. Воспроизводимая проверка —
+> прогнать `git log --format=%h -- <путь>` и посмотреть в каждой ревизии строку
+> `def retry_until_authorized(`: значение по умолчанию там одно и то же во всех.
 
 Почему это важнее опечатки: снятое вычитание «известного красного» обосновывало себя как
 покрытие «остаточного хвоста за ~30 с». Обоснование опиралось на окно, которого не было, —
@@ -80,67 +83,63 @@ parseable Postman collections) but cannot execute against any backend.
 | 2026-07-01 | v1 — sub-phase 8.1 VIP model | 358 | not-yet-run | LoadBalancer VIP-source rewrite (see below). `validate-cases.py` OK, all collections regenerated; not executed (stand mid-redeploy). |
 | 2026-07-01 | v2 — first fe3455 run + triage | 358 | 10 (0 product bugs) | First live run of the LoadBalancer suite against fe3455: 142 cases / 544 assertions / 97% pass. All 10 failures triaged, none a product bug (see below). 5 wrong case-expectations corrected + grant-latency case made poll-tolerant + suite-wide `newman run` flow-control fixed. Target: 100% at adequate `--delay`. |
 | 2026-07-18 | round 2 — INTERNAL setup + peer-RYW retry + CI-signature triage | 362 | see below | Root-cause pass over ci-rep2 (load-balancer 62 / cross-resource 19 / listener 16 / authz-deny 6 / target-group 3 / placement-coherence 2 / targets 1 / operation 1). Setup LBs migrated off the contended external AddressPool to pool-independent INTERNAL-inline-subnet; new `retry_create_until_present` primitive for cross-service subnet read-your-writes lag; deterministic + tolerant fixes per signature. Systemic external-pool finding flagged (below). Verified locally (py_compile / gen.py / validate-cases 362); not executed (stand not raised this round). |
-| 2026-07-18 | round 3 — attach-shape conformance + protojson mask fix + serial VIP + residuals | 357 | see below | Root-cause pass over ci-rep3 (load-balancer 29 / cross-resource 8 / listener 7 / list-filter 3 / targets 1 / placement-coherence 1). ci-rep3 **disproved the "residuals = external-VIP exhaustion" hypothesis**: the dominant new signature (~12) was a stale **attach request shape** (`AttachedTargetGroup` nesting + `priority` removed from the contract — verified from proto+handler), newly surfaced because round-2's INTERNAL migration finally let the attach flow RUN. Fixes: nested attach shape everywhere + 5 obsolete `priority` cases removed; protojson-FieldMask snake→camelCase in load-balancer/cross-resource/listener/target-group (round-2 fixed only target-group's `deregistrationDelaySeconds`); nlb `run.sh --jobs` 4→1 (serial collections defeat shared-external-pool contention); list-filter TG healthCheck completion; move + region-mismatch fixture-tolerance; owner-tuple retry budget 25→40; targets add-nic-nx wrapped `retry_on=(403,)`. Verified locally (py_compile / gen.py / validate-cases 357); not executed (stand not raised this round). |
-| 2026-07-18 | round 4 — owner-tuple-lag retry↑60 + eventual-consistency whitelist | 357 | see below | Root-cause pass over ci-rep4 (load-balancer 43 / cross-resource 17 / listener 14). `--jobs 1` (round 3) unblocked the create layer (VIP-exhaustion gone) → the **update-after-create** layer surfaced: the first post-create Get/Update/Delete/Start/Stop/Move/Attach of the caller's OWN fresh LB (and Get/Update of its OWN fresh listener) 403s (`lacks v_update/v_delete/v_get`) / 404s at the authz gate before the owner-tuple materialises. Measured: async op-latency ~1.5s (poll-op p90=3) but materialization p50~10s with a heavy tail — **31/83 wrapped steps exhausted the old 16s budget**; nlb races LAST in the umbrella (iam→vpc→compute→nlb) so the `fga_register_drainer` backlog peaks. Fix (2 levels): (1) `retry_until_authorized` budget **40→60**, interval **400→500ms** (~16s→~30s window); (2) residual saturation tail past 30s = **documented known-RED** in `assert-suites-green.sh` (23 owner-tuple-lag update/del/get/action cases, assertions RUN+report, not gate-blocking — same class as iam#257), tracked in **kacho#11**. Verified locally (py_compile / gen.py / validate-cases 357 / bash -n); not executed (stand not raised this round). |
-| 2026-07-18 | round 4b — child-create owner-tuple-lag wrap + GTS case-fix | 357 | see below | Closes the two create-layer items round 4 left open (below §"NOT whitelisted"). ci-rep4 re-triage: the `cross-resource XRES-*` / `listener LST-CR-*` 403s are the **same owner-tuple-lag as round 4, one step earlier** — round 4 wrapped the first Get/Update/Delete but left the **child-CREATE** (`listeners.create` / `:attachTargetGroup` / `:addTargets` authorized against `editor@lb`/`editor@tg`) UNWRAPPED, so a transient 403 reddened the whole chain. Fix: wrap every own-fresh-parent child-create/mutation in `retry_until_authorized(retry_on=(403,404))` (default budget 60×500ms) — **12 steps in cross-resource** (incl. `create-internal-lb` in `retry_create_until_present` for the cross-service `"subnet <id> not found"` sync-reject) + **32 steps in listener** (all `_setup_lb`-parented creates incl. the sync-validation negatives `cr-tp-0/cr-tp-o/cr-ipv-unk/cr-p0/…` — the wrap retries ONLY the pre-empting 403, the real InvalidArgument still runs, never masked; the 4 garbage-parent/unscoped negatives `cr-no-lb/cr-cross-prj/cr-empty/cr-malformed` stay UNWRAPPED). **GTS case-fix (3):** `NLB-GTS-{CRUD-EMPTY,CRUD-EMPTY-LB-ACTIVE,STATE-LB-STOPPED}` now supply the contract-required `target_group_id` (own inline TG; STOPPED adds one peer-free external_ip target so INACTIVE is exercised, then drains it) instead of the LB-wide call that hard-400s. **Residual (unchanged known-RED, kacho#11):** phantom LBs from `could not allocate load balancer address` (VIP-source alloc failing under peak umbrella load — EXTERNAL shared-pool AND INTERNAL subnet-IPAM cross-service async-visibility) make the parent LB never materialise → wraps fail-closed (retry 30s then real assert) but cannot green a non-existent parent; needs drainer/alloc throughput, not test retry. Verified locally (py_compile / gen.py / validate-cases 357); not executed (stand not raised). |
+| 2026-07-18 | round 3 — attach-shape conformance + protojson mask fix + serial VIP + residuals | 357 | see below | Root-cause pass over ci-rep3 (load-balancer 29 / cross-resource 8 / listener 7 / list-filter 3 / targets 1 / placement-coherence 1). ci-rep3 **disproved the "residuals = external-VIP exhaustion" hypothesis**: the dominant new signature (~12) was a stale **attach request shape** (`AttachedTargetGroup` nesting + `priority` removed from the contract — verified from proto+handler), newly surfaced because round-2's INTERNAL migration finally let the attach flow RUN. Fixes: nested attach shape everywhere + 5 obsolete `priority` cases removed; protojson-FieldMask snake→camelCase in load-balancer/cross-resource/listener/target-group (round-2 fixed only target-group's `deregistrationDelaySeconds`); nlb `run.sh --jobs` 4→1 (serial collections defeat shared-external-pool contention); list-filter TG healthCheck completion; move + region-mismatch fixture-tolerance; owner-tuple retry budget 25→40 (⚠ и это до `scripts/gen.py` НЕ доехало: подпись всегда несла 25); targets add-nic-nx wrapped `retry_on=(403,)`. Verified locally (py_compile / gen.py / validate-cases 357); not executed (stand not raised this round). |
+| 2026-07-18 | round 4 — owner-tuple-lag retry↑60 + eventual-consistency whitelist | 357 | see below | Root-cause pass over ci-rep4 (load-balancer 43 / cross-resource 17 / listener 14). `--jobs 1` (round 3) unblocked the create layer (VIP-exhaustion gone) → the **update-after-create** layer surfaced: the first post-create Get/Update/Delete/Start/Stop/Move/Attach of the caller's OWN fresh LB (and Get/Update of its OWN fresh listener) 403s (`lacks v_update/v_delete/v_get`) / 404s at the authz gate before the owner-tuple materialises. Measured: async op-latency ~1.5s (poll-op p90=3) but materialization p50~10s with a heavy tail — **31/83 wrapped steps exhausted the old 16s budget**; nlb races LAST in the umbrella (iam→vpc→compute→nlb) so the `fga_register_drainer` backlog peaks. Fix (2 levels), КАК ЗАЯВЛЕНО ТОГДА: (1) `retry_until_authorized` budget **40→60**, interval **400→500ms** (~16s→~30s window); (2) residual saturation tail past 30s = **documented known-RED** in `assert-suites-green.sh` (23 owner-tuple-lag update/del/get/action cases, assertions RUN+report, not gate-blocking — same class as iam#257), tracked in **kacho#11**. ⚠ ФАКТ: пункт (1) до `scripts/gen.py` НЕ ДОЕХАЛ — подпись обёртки и тогда, и сейчас несёт 25 × 500 мс ≈ **12.5 с** (см. ⚠ выше); пункт (2) снят вместе со всем вычитанием 2026-07-30, а его тикет закрыт 2026-07-19. Verified locally (py_compile / gen.py / validate-cases 357 / bash -n); not executed (stand not raised this round). |
+| 2026-07-18 | round 4b — child-create owner-tuple-lag wrap + GTS case-fix | 357 | see below | Closes the two create-layer items round 4 left open (below §"NOT whitelisted"). ci-rep4 re-triage: the `cross-resource XRES-*` / `listener LST-CR-*` 403s are the **same owner-tuple-lag as round 4, one step earlier** — round 4 wrapped the first Get/Update/Delete but left the **child-CREATE** (`listeners.create` / `:attachTargetGroup` / `:addTargets` authorized against `editor@lb`/`editor@tg`) UNWRAPPED, so a transient 403 reddened the whole chain. Fix: wrap every own-fresh-parent child-create/mutation in `retry_until_authorized(retry_on=(403,404))` (default budget — фактически 25×500 мс ≈ 12.5 с, не 60×500 как было написано) — **12 steps in cross-resource** (incl. `create-internal-lb` in `retry_create_until_present` for the cross-service `"subnet <id> not found"` sync-reject) + **32 steps in listener** (all `_setup_lb`-parented creates incl. the sync-validation negatives `cr-tp-0/cr-tp-o/cr-ipv-unk/cr-p0/…` — the wrap retries ONLY the pre-empting 403, the real InvalidArgument still runs, never masked; the 4 garbage-parent/unscoped negatives `cr-no-lb/cr-cross-prj/cr-empty/cr-malformed` stay UNWRAPPED). **GTS case-fix (3):** `NLB-GTS-{CRUD-EMPTY,CRUD-EMPTY-LB-ACTIVE,STATE-LB-STOPPED}` now supply the contract-required `target_group_id` (own inline TG; STOPPED adds one peer-free external_ip target so INACTIVE is exercised, then drains it) instead of the LB-wide call that hard-400s. **Residual (unchanged known-RED, kacho#11):** phantom LBs from `could not allocate load balancer address` (VIP-source alloc failing under peak umbrella load — EXTERNAL shared-pool AND INTERNAL subnet-IPAM cross-service async-visibility) make the parent LB never materialise → wraps fail-closed (retry 12.5 с — не 30 с, как было написано — then real assert) but cannot green a non-existent parent; needs drainer/alloc throughput, not test retry. Verified locally (py_compile / gen.py / validate-cases 357); not executed (stand not raised). |
 
-| 2026-07-18 | round 5 — post-replicaCount residual close-out (VIP-migration stragglers + fixture-tolerance + mask camelCase) | 357 | see below | Root-cause pass over ci-rep7 (load-balancer 3 / cross-resource 2 / listener 3) after the openfga `replicaCount 2→1` fix (`b0b2d6b`) removed the FGA read-replica lag. That lag was the last thing holding these EXTERNAL/mutation chains RED at the owner-tuple gate; with it gone the chains reached their FINAL assertions and exposed **case-expectation** defects the lag had masked (three of them under the round-4 lag-whitelist). **6 case-bugs fixed (all test-only, contract-verified against listener.proto / network_load_balancer.proto sub-phase-8.1):** (1) **VIP migration stragglers** — the per-family VIP moved Listener→LoadBalancer (`allocated_address`/`ip_version`/`address_id`/`subnet_id` reserved 12-15 in `listener.proto`; VIP now output `v4AddressId`/`v6AddressId` → bound vpc Address on the LB). `LST-CR-CRUD-AUTO-VIP`, `XRES-E2E-EXTERNAL-FULL-FLOW`, `XRES-E2E-EXTERNAL-IPV6-VIP` (+ latent `XRES-E2E-INTERNAL-FULL-FLOW`) asserted the removed listener-level `allocatedAddress`/`ipVersion` → `undefined`; rewired to assert the auto-VIP on the parent LB (`v4AddressId`/`v6AddressId` match `/^adr/`), listener → ACTIVE. IPv6 case now sources the VIP on the LB via `v6Source:{public:{}}` (Listener has no family), tolerant of an unseeded external-v6 pool. (2) **`LST-UPD-CRUD-OK`** — `updateMask:"name,proxy_protocol_v2"` (snake_case) → grpc-gateway `InvalidArgument "FieldMask.paths contains invalid path"`; fixed to lowerCamelCase `proxyProtocolV2`. (3) **`NLB-ATT-STATE-REGION-MISMATCH` / `LST-UPD-STATE-DEFAULT-TG-REGION-MISMATCH`** — the alt-region fixture `_suiteRegionAltId=ru-central2` is **unseeded** on the stand, so the alt-region TG Create Operation errors `"Region ru-central2 not found"` and `tgAltId`/`tgId` point at a TG that never persisted → the mismatched attach/update lawfully returns **404 NotFound** (not 409). Tolerant-negative broadened to `oneOf([200,400,404,409])`; the listener case's wrap changed to `retry_on=(403,)` so the terminal absent-TG 404 no longer burns the 60× budget. **These 3 were lag-whitelisted in round 4 but the ci-rep7 failure is NOT lag — recommend pruning `^NLB-ATT-STATE-REGION-MISMATCH `/`^LST-UPD-CRUD-OK `/`^LST-UPD-STATE-DEFAULT-TG-REGION-MISMATCH ` from the `assert-suites-green.sh` lag-whitelist now that they pass genuinely (the gate still clamps-to-0, so leaving them only risks masking a future regression).** **2 residuals stay #11 (NOT case-bugs, NOT masked):** `NLB-ATT-CRUD-OK` (attach) + `NLB-LST-FILTER-MATCH` (list) reddened because their INTERNAL subnet-backed setup LB **alloc-phantomed** — Create Operation `done:true` WITH `error code 9 "could not allocate load balancer address"` (INTERNAL subnet-IPAM cross-service async-visibility under `--jobs>1`), so the LB never persisted → attach 403 (no owner-tuple) / list stays `[]`. This is the documented alloc-throughput residual (kacho#11), reproducible only under parallel/umbrella contention; the canonical `run.sh` (`--jobs 1` serial) does not phantom → both pass serially. No test-retry can green a non-existent parent. Verified locally (py_compile / gen.py 357 / validate-cases 357); not executed (stand not raised this round). |
+| 2026-07-18 | round 5 — post-replicaCount residual close-out (VIP-migration stragglers + fixture-tolerance + mask camelCase) | 357 | see below | Root-cause pass over ci-rep7 (load-balancer 3 / cross-resource 2 / listener 3) after the openfga `replicaCount 2→1` fix (`b0b2d6b`) removed the FGA read-replica lag. That lag was the last thing holding these EXTERNAL/mutation chains RED at the owner-tuple gate; with it gone the chains reached their FINAL assertions and exposed **case-expectation** defects the lag had masked (three of them under the round-4 lag-whitelist). **6 case-bugs fixed (all test-only, contract-verified against listener.proto / network_load_balancer.proto sub-phase-8.1):** (1) **VIP migration stragglers** — the per-family VIP moved Listener→LoadBalancer (`allocated_address`/`ip_version`/`address_id`/`subnet_id` reserved 12-15 in `listener.proto`; VIP now output `v4AddressId`/`v6AddressId` → bound vpc Address on the LB). `LST-CR-CRUD-AUTO-VIP`, `XRES-E2E-EXTERNAL-FULL-FLOW`, `XRES-E2E-EXTERNAL-IPV6-VIP` (+ latent `XRES-E2E-INTERNAL-FULL-FLOW`) asserted the removed listener-level `allocatedAddress`/`ipVersion` → `undefined`; rewired to assert the auto-VIP on the parent LB (`v4AddressId`/`v6AddressId` match `/^adr/`), listener → ACTIVE. IPv6 case now sources the VIP on the LB via `v6Source:{public:{}}` (Listener has no family), tolerant of an unseeded external-v6 pool. (2) **`LST-UPD-CRUD-OK`** — `updateMask:"name,proxy_protocol_v2"` (snake_case) → grpc-gateway `InvalidArgument "FieldMask.paths contains invalid path"`; fixed to lowerCamelCase `proxyProtocolV2`. (3) **`NLB-ATT-STATE-REGION-MISMATCH` / `LST-UPD-STATE-DEFAULT-TG-REGION-MISMATCH`** — the alt-region fixture `_suiteRegionAltId=ru-central2` is **unseeded** on the stand, so the alt-region TG Create Operation errors `"Region ru-central2 not found"` and `tgAltId`/`tgId` point at a TG that never persisted → the mismatched attach/update lawfully returns **404 NotFound** (not 409). Tolerant-negative broadened to `oneOf([200,400,404,409])`; the listener case's wrap changed to `retry_on=(403,)` so the terminal absent-TG 404 no longer burns the retry budget (25×, не 60× — см. ⚠ выше). **These 3 were lag-whitelisted in round 4 but the ci-rep7 failure is NOT lag — recommend pruning `^NLB-ATT-STATE-REGION-MISMATCH `/`^LST-UPD-CRUD-OK `/`^LST-UPD-STATE-DEFAULT-TG-REGION-MISMATCH ` from the `assert-suites-green.sh` lag-whitelist now that they pass genuinely (the gate still clamps-to-0, so leaving them only risks masking a future regression).** **2 residuals stay #11 (NOT case-bugs, NOT masked):** `NLB-ATT-CRUD-OK` (attach) + `NLB-LST-FILTER-MATCH` (list) reddened because their INTERNAL subnet-backed setup LB **alloc-phantomed** — Create Operation `done:true` WITH `error code 9 "could not allocate load balancer address"` (INTERNAL subnet-IPAM cross-service async-visibility under `--jobs>1`), so the LB never persisted → attach 403 (no owner-tuple) / list stays `[]`. This is the documented alloc-throughput residual (kacho#11), reproducible only under parallel/umbrella contention; the canonical `run.sh` (`--jobs 1` serial) does not phantom → both pass serially. No test-retry can green a non-existent parent. Verified locally (py_compile / gen.py 357 / validate-cases 357); not executed (stand not raised this round). |
 
-## Known failing — owner-tuple materialization lag (eventual-consistency, whitelisted, round 4)
+## Closed — was «known failing»: owner-tuple materialization lag (kacho#11, closed 2026-07-19)
 
-Not product bugs — **eventual-consistency LATENCY** under peak CI backlog. The owner/creator
-FGA tuple for a just-created LB/listener materializes eventually-consistent (at-least-once
-`fga_register_drainer` + reconciler); nlb races LAST in the umbrella (iam→vpc→compute→nlb) so
-the drainer backlog peaks and the first post-create access of the caller's OWN fresh resource
-can 403/404 at the authz gate before the tuple is visible. The client already retries
-(`retry_until_authorized`, budget 40→60 ×500ms ≈ 30s, round 4); the **residual tail past 30s**
-is a documented known-RED in the shared `assert-suites-green.sh` — **assertions still RUN and
-report (signal preserved), just not gate-blocking**. Same class + rationale as the iam#257
-revoke-deny-latency whitelist. Tracked in **kacho#11** (product fix = drainer throughput / nlb
-earlier in queue / per-suite fresh drainer → retire the whitelist).
+**Записи больше нет. Её предмет закрыт продуктом, а не тестом.** Раздел оставлен как
+запись о том, что именно объявлялось и на каком основании снято, — чтобы список из
+семнадцати имён не вернулся «по аналогии».
 
-Whitelisted — **17** cases, `.parent.name` (re-counted against the gate 2026-07-28;
-this list said 23 and had been wrong since 2026-07-26): `NLB-{CR-CRUD-OK,
-CR-CRUD-WITH-DESCRIPTION,CR-CRUD-DELETION-PROTECTION-TRUE,
-UPD-STATE-IMMUTABLE-{VIP-SOURCE,PROJECT,PLACEMENT},UPD-STATE-{NO-CHANGE,MASK-EMPTY},
-UPD-CRUD-DRAIN-TOGGLE,MV-{IDM-SAME-PROJECT,CRUD-OK},DEL-{CRUD-OK,STATE-HAS-LISTENER},
-LIFECYCLE-CONF}` + `LST-{GET-CRUD-OK,UPD-CRUD-OK,UPD-STATE-DEFAULT-TG-REGION-MISMATCH}`.
+Что объявлялось (round 4, 2026-07-18): первый пост-создательский доступ к СВОЕМУ свежему
+балансировщику или слушателю мог получить 403/404 на authz-гейте, пока owner-tuple ещё не
+материализовался (at-least-once `fga_register_drainer` + реконсайлер), а nlb в умбрелле шёл
+последним (iam→vpc→compute→nlb), где backlog дренажа максимален. Остаток за пределами
+клиентского повтора объявлялся «известным красным» на **17** папках и вычитался из вердикта
+общим прогонщиком.
 
-Six names this paragraph used to list were pruned from the gate on 2026-07-26 because
-they match nothing: `START-CRUD-OK`, `STOP-CRUD-OK`, `STOP-STATE-ALREADY-STOPPED`,
-`DEL-STATE-HAS-ATTACHED`, `ATT-STATE-REGION-MISMATCH`, `ATT-NEG-TG-UNKNOWN` — Start and
-Stop are no longer product calls and there is no `NLB-ATT-*` folder. Counting them here
-overstated by six how much of this suite was masked.
+Почему снято — три независимых основания, каждое проверяемо:
 
-Still outstanding from round 5 above, and worth doing at the next umbrella run: prune
-`^LST-UPD-CRUD-OK ` and `^LST-UPD-STATE-DEFAULT-TG-REGION-MISMATCH `, which that round
-found "pass genuinely". The third name in its recommendation
-(`^NLB-ATT-STATE-REGION-MISMATCH `) is already gone.
+1. **Тикет закрыт.** `PRO-Robotech/kacho#11` закрыт 2026-07-19 как completed. Закрывающий
+   комментарий называет продуктовый фикс тремя слоями (forward-материализация owner-tuple под
+   SHARE-локом вместо сериализующего EXCLUSIVE; sync-регистратор nlb, дающий грант создателя на
+   create-time; двухволновой e2e, где nlb больше не идёт последним) и фиксирует результат
+   прогона: nlb 9/9. То есть запись **пережила свой фикс на одиннадцать дней** и продолжала
+   утверждать, что продукт медленен там, где он уже починен.
+2. **Двум из семнадцати сам этот документ уже вынес другой диагноз.** Round 5 выше нашёл, что
+   `LST-UPD-CRUD-OK` и `LST-UPD-STATE-DEFAULT-TG-REGION-MISMATCH` краснели не от лага, а от
+   ошибок В КЕЙСАХ (snake_case в `updateMask`; ожидание 409 там, где отсутствующая alt-region TG
+   законно даёт 404). Оба кейса в дереве исправлены — `updateMask:"name,proxyProtocolV2"` и
+   `oneOf([400, 404])` с `retry_on=(403,)`, — то есть их основание было неверным и до закрытия
+   тикета.
+3. **Основание опиралось на окно, которого не существовало.** Оно говорило про «остаточный
+   хвост за ~30 с», тогда как обёртка всегда шла на 25 × 500 мс ≈ **12.5 с** (см. ⚠ выше). Замер,
+   приведённый в этом же разделе (материализация p50 ≈ 10 с с тяжёлым хвостом), против 12.5 с
+   маргинален по построению — документ сам говорил, что обёртка не покрывает свой предмет.
 
-**NOT whitelisted (stay RED / fully gated — never masked):**
-- `NLB-GET-STATE-LEAN-PROJECTION` — carries no-leak assertions; whitelisting the case would
-  risk masking a real VIP-source/networkId/subnetId/announce leak, so it stays gated (its
-  GET-lag relies on the budget=60 fix, not the whitelist).
-- `NLB-GTS-{CRUD-EMPTY,CRUD-EMPTY-LB-ACTIVE,STATE-LB-STOPPED}` — **case-expectation finding,
-  not lag; RECONCILED round 4b.** Was calling `GetTargetStates` LB-wide expecting `[]`, but the
-  contract requires `target_group_id` (→ 400 `"target_group_id: required"`, verified in
-  `get_target_states.go` + `GetTargetStatesRequest` proto). Fixed: each case now supplies its own
-  inline TG and passes `?targetGroupId={{tgId}}` (empty TG → `[]`; STOPPED registers one peer-free
-  external_ip target so the `lbStatus==STOPPED ⇒ INACTIVE` branch is actually exercised, then
-  drains it — TargetGroup.Delete blocks on non-empty). Budget-independent, deterministic.
-- `cross-resource XRES-*` / `listener LST-CR-*` child-create `editor`-lag — **WRAPPED round 4b.**
-  Same owner-tuple-lag as the round-4 whitelist, one step earlier: round 4 wrapped the first
-  Get/Update/Delete but left the child-CREATE (`listeners.create` / `:attachTargetGroup` /
-  `:addTargets`, authorized against `editor@lb`/`editor@tg`) UNWRAPPED. Now wrapped in
-  `retry_until_authorized(retry_on=(403,404))` (12 cross-resource incl. `create-internal-lb` in
-  `retry_create_until_present` for the sync `"subnet <id> not found"` peer-visibility reject; 32
-  listener). Fail-closed: a terminal 403 (budget spent) still fails the real assertion, so a
-  genuine deny is never masked; the sync-validation negatives keep their InvalidArgument assert.
-- **Residual (still RED, kacho#11):** any XRES-*/LST-CR-* whose parent LB Create Operation errors
-  `could not allocate load balancer address` (VIP-source allocation failing under peak umbrella
-  load — the shared EXTERNAL pool AND, under `--jobs`>1, INTERNAL subnet-IPAM cross-service async
-  visibility) is a **phantom LB**: the wraps fail-closed after 30s but cannot green a parent that
-  never persisted. This is the alloc-throughput residual, not a test-retry gap.
+Плюс **шесть** имён из этого списка не существовали в наборе вовсе (`START-CRUD-OK`,
+`STOP-CRUD-OK`, `STOP-STATE-ALREADY-STOPPED`, `DEL-STATE-HAS-ATTACHED`,
+`ATT-STATE-REGION-MISMATCH`, `ATT-NEG-TG-UNKNOWN`) — Start/Stop перестали быть вызовами
+продукта, папки `NLB-ATT-*` нет. Их убрали из предиката 2026-07-26; до того счёт «сколько
+замаскировано» был завышен на шесть.
+
+**Что теперь происходит с этими кейсами.** Ничего не вычитается и ничего не ослаблено:
+обёртка `retry_until_authorized` (25 × 500 мс) остаётся — она повторяет, пока ОТВЕТ говорит о
+временном состоянии, и по исчерпании бюджета настоящее утверждение исполняется на терминальном
+ответе. Красный на любом из семнадцати — **новая находка с новым основанием** (свой прогон,
+свой тикет), а не запись в стоячем списке. Механически это держит гейт
+`tools/knownfailingsubject`: запись обязана называть существующий кейс и ОТКРЫТЫЙ тикет, а на
+отчёте прогона — падать, если названный кейс исполнился и прошёл.
+
+Отдельно, чтобы не потерялось при снятии записи: `NLB-GET-STATE-LEAN-PROJECTION` несёт
+утверждения об отсутствии утечки инфра-полей и **никогда** не был в вычитании — он остаётся
+полностью гейтящим. `NLB-GTS-{CRUD-EMPTY,CRUD-EMPTY-LB-ACTIVE,STATE-LB-STOPPED}` и
+child-create `XRES-*`/`LST-CR-*` разобраны в round 4b выше (исправлены как кейсы, не
+маскированы).
 
 ## Closed — was «known failing», fixed in the product
 
@@ -328,20 +327,28 @@ was *already* inline-provisioned; the missing piece was the peer-visibility retr
 - **targets** `TGT-RM-STATE-PHASE-B-RUNNER`: single racey read → bounded self-poll for the async
   drain runner (absent/DRAINING/INACTIVE), still reds if the row stays ACTIVE past budget.
 
-### Known failing — flagged, not masked (residual, external-pool dependent)
+### Что round 2 объявлял как «flagged, not masked» — СНЯТО 2026-07-30 (запись без предмета)
 
-Cases whose semantics **require** an EXTERNAL auto-public-VIP (so they cannot move to an INTERNAL
-subnet without changing what they test) remain dependent on the seeded external AddressPool and will
-red on a lane where it is exhausted under `--jobs 4`. **Not a product bug confirmed this round; not
-masked.** Tracked with the Root-cause-A follow-up:
-- `listener.py`: `LST-CR-CRUD-AUTO-VIP`, `LST-CR-CRUD-BYO`, `LST-DEL-CRUD-AUTO-VIP-FREE`,
-  `LST-DEL-CRUD-BYO-CLEAR-REF` (external auto-VIP / BYO-external-address semantics).
-- `cross-resource.py`: `XRES-E2E-EXTERNAL-FULL-FLOW`, `XRES-E2E-EXTERNAL-IPV6-VIP`, and the EXTERNAL
-  legs of `XRES-E2E-DELETE-LB-NOT-EMPTY-FP` / `XRES-E2E-TEARDOWN-BOTTOM-UP` /
-  `XRES-DANGLING-INSTANCE-READ-GRACEFUL` — E2E external NLB journeys, pool-dependent by design.
+Round 2 объявил, что кейсы, которым по смыслу нужен EXTERNAL auto-public-VIP, будут краснеть на
+дорожке с исчерпанным внешним пулом под `--jobs 4`: в `listener.py` — `LST-CR-CRUD-AUTO-VIP`,
+`LST-CR-CRUD-BYO` и ещё два имени; в `cross-resource.py` — `XRES-E2E-EXTERNAL-FULL-FLOW`,
+`XRES-E2E-EXTERNAL-IPV6-VIP` и внешние ветки `XRES-E2E-DELETE-LB-NOT-EMPTY-FP` /
+`XRES-E2E-TEARDOWN-BOTTOM-UP` / `XRES-DANGLING-INSTANCE-READ-GRACEFUL`.
 
-Recommended verifiable follow-up (needs a live stand): confirm VIP free-on-delete for auto-VIP LBs,
-then either fix the leak (product) or migrate these E2E setups likewise / run nlb `--jobs 1`.
+Запись снята, и вот по каким основаниям:
+
+- **два имени из четырёх в `listener.py` не существуют** — `LST-DEL-CRUD-AUTO-VIP-FREE` и
+  `LST-DEL-CRUD-BYO-CLEAR-REF` набор не генерирует (владение VIP переехало Listener→LoadBalancer в
+  sub-phase 8.1; остался `LST-DEL-CRUD-OK`, и комментарий над ним в `cases/listener.py` это
+  фиксирует). Объявление про кейс, которого нет, не освобождает ничего;
+- **предпосылка снята round 3**: `run.sh` перешёл на `--jobs 1`, то есть дорожки за общий внешний
+  пул больше не состязаются;
+- **у записи не было тикета** — «tracked with the Root-cause-A follow-up» не механизм: истечь
+  такому нечем, и оно не истекло.
+
+Осмысленное продолжение осталось прежним и требует живого стенда: убедиться, что auto-VIP
+освобождается на удалении балансировщика. Если окажется, что не освобождается, это **продуктовая
+находка со своим тикетом**, а не возврат этой записи.
 
 ## Round 3 (2026-07-18) — root-cause pass over ci-rep3
 
@@ -460,15 +467,17 @@ product-side register-outbox drainer latency finding**, not a test bug — flagg
   attach silently 400'd so nothing was actually attached); nesting un-masks real coverage while the
   tolerant assertions keep them green.
 
-### Residual known-failing (unchanged from round 2, pool-dependent by design)
+### Что round 3 оставлял «residual known-failing» — СНЯТО 2026-07-30 вместе с записью round 2
 
-The EXTERNAL-auto-VIP-semantic cases (`listener.py` `LST-CR-CRUD-AUTO-VIP` / `LST-CR-CRUD-BYO` /
-`LST-DEL-*`; `cross-resource.py` `XRES-E2E-EXTERNAL-*`) still require the external pool. With
-`--jobs 1` they no longer contend, so they should now pass on a lane where the pool is seeded —
-to be **confirmed on the next live run**. Independently, `listener.py`'s VIP-shape cases
-(`allocated_address` / listener-level `ipVersion`) exercise the sub-phase-4.0 listener-VIP model
-that 8.1 moved onto the LB — those need their own listener acceptance + rewrite (round-2 follow-up,
-still out of scope). No product bug confirmed this round; nothing masked.
+Round 3 повторил ту же запись словами «всё ещё зависят от внешнего пула», добавив, что с
+`--jobs 1` они состязаться перестали и «должны теперь проходить — подтвердить на следующем живом
+прогоне». Подтверждения не появилось, а запись осталась: это ровно та форма, в которой объявление
+переживает свой предмет. Снято по основаниям, перечисленным в разделе round 2 выше.
+
+Что из round 3 остаётся верным и без записи: VIP-форма слушателя (`allocated_address`,
+listener-level `ipVersion`) относится к модели sub-phase 4.0, которую 8.1 перенесла на
+балансировщик; кейсы под неё переписаны в round 5 (см. историю версий). Продуктовых багов этот
+раунд не подтвердил, и ничего не маскировалось.
 
 ## Acceptance D-4 gate
 
