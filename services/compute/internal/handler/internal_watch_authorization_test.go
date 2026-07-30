@@ -114,7 +114,7 @@ func TestIntegration_Watch_UnidentifiedCallerReceivesNoEvent(t *testing.T) {
 	for _, id := range []string{"epi-a01", "epi-a02", "epi-b01"} {
 		_, err := pool.Exec(base,
 			`INSERT INTO compute_outbox (resource_kind, resource_id, event_type, payload)
-			 VALUES ('Instance',$1,'CREATED','{"projectId":"prj-x","userData":"AWS_SECRET=nope"}'::jsonb)`, id)
+			 VALUES ('Instance',$1,'CREATED','{"projectId":"prj-x","userData":"TENANT_SECRET=nope"}'::jsonb)`, id)
 		require.NoError(t, err)
 	}
 
