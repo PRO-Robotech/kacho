@@ -786,10 +786,15 @@
                 "exec": [
                   "pm.test('[AUTHZ-VOL-LST-OVERSHOW-LEAK-GUARD] отказ, а не пустая страница: 403', () => pm.expect(pm.response.code, pm.response.text()).to.eql(403));",
                   "pm.test('[AUTHZ-VOL-LST-OVERSHOW-LEAK-GUARD] grpc code 7 PERMISSION_DENIED', () => { let j; try { j = pm.response.json(); } catch(e) { j = null; } pm.expect(j && j.code, pm.response.text()).to.eql(7); });",
-                  "pm.test('[AUTHZ-VOL-LST-OVERSHOW-LEAK-GUARD] в теле отказа нет ни Volume, ни выдачи', () => {",
+                  "pm.test('[AUTHZ-VOL-LST-OVERSHOW-LEAK-GUARD] отказ не несёт содержимого: ни Volume, ни выдачи', () => {",
                   "  const body = pm.response.text();",
-                  "  pm.expect(body, 'id объекта в теле отказа').to.not.contain(pm.environment.get('leakVolumeId'));",
-                  "  pm.expect(body, 'поле выдачи в теле отказа').to.not.contain('volumes');",
+                  "  let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "  pm.expect(j, 'тело отказа не разобралось как JSON: ' + body).to.be.an('object');",
+                  "  pm.expect(Object.keys(j), 'ключ выдачи в теле отказа').to.not.include('volumes');",
+                  "  pm.expect(Object.keys(j).filter(k => ['code','message','details'].indexOf(k) < 0),",
+                  "    'посторонний груз в конверте отказа: ' + body).to.eql([]);",
+                  "  pm.expect(body.match(/\\b(vol|snp|img)[0-9a-hjkmnp-tv-z]{17}\\b/g),",
+                  "    'идентификатор объекта хранилища в теле отказа').to.eql(null);",
                   "});"
                 ]
               }
@@ -1203,10 +1208,15 @@
                 "exec": [
                   "pm.test('[AUTHZ-SNP-LST-OVERSHOW-LEAK-GUARD] отказ, а не пустая страница: 403', () => pm.expect(pm.response.code, pm.response.text()).to.eql(403));",
                   "pm.test('[AUTHZ-SNP-LST-OVERSHOW-LEAK-GUARD] grpc code 7 PERMISSION_DENIED', () => { let j; try { j = pm.response.json(); } catch(e) { j = null; } pm.expect(j && j.code, pm.response.text()).to.eql(7); });",
-                  "pm.test('[AUTHZ-SNP-LST-OVERSHOW-LEAK-GUARD] в теле отказа нет ни Snapshot, ни выдачи', () => {",
+                  "pm.test('[AUTHZ-SNP-LST-OVERSHOW-LEAK-GUARD] отказ не несёт содержимого: ни Snapshot, ни выдачи', () => {",
                   "  const body = pm.response.text();",
-                  "  pm.expect(body, 'id объекта в теле отказа').to.not.contain(pm.environment.get('leakSnapshotId'));",
-                  "  pm.expect(body, 'поле выдачи в теле отказа').to.not.contain('snapshots');",
+                  "  let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "  pm.expect(j, 'тело отказа не разобралось как JSON: ' + body).to.be.an('object');",
+                  "  pm.expect(Object.keys(j), 'ключ выдачи в теле отказа').to.not.include('snapshots');",
+                  "  pm.expect(Object.keys(j).filter(k => ['code','message','details'].indexOf(k) < 0),",
+                  "    'посторонний груз в конверте отказа: ' + body).to.eql([]);",
+                  "  pm.expect(body.match(/\\b(vol|snp|img)[0-9a-hjkmnp-tv-z]{17}\\b/g),",
+                  "    'идентификатор объекта хранилища в теле отказа').to.eql(null);",
                   "});"
                 ]
               }
@@ -1705,10 +1715,15 @@
                 "exec": [
                   "pm.test('[AUTHZ-IMG-LST-OVERSHOW-LEAK-GUARD] отказ, а не пустая страница: 403', () => pm.expect(pm.response.code, pm.response.text()).to.eql(403));",
                   "pm.test('[AUTHZ-IMG-LST-OVERSHOW-LEAK-GUARD] grpc code 7 PERMISSION_DENIED', () => { let j; try { j = pm.response.json(); } catch(e) { j = null; } pm.expect(j && j.code, pm.response.text()).to.eql(7); });",
-                  "pm.test('[AUTHZ-IMG-LST-OVERSHOW-LEAK-GUARD] в теле отказа нет ни Image, ни выдачи', () => {",
+                  "pm.test('[AUTHZ-IMG-LST-OVERSHOW-LEAK-GUARD] отказ не несёт содержимого: ни Image, ни выдачи', () => {",
                   "  const body = pm.response.text();",
-                  "  pm.expect(body, 'id объекта в теле отказа').to.not.contain(pm.environment.get('leakImageId'));",
-                  "  pm.expect(body, 'поле выдачи в теле отказа').to.not.contain('images');",
+                  "  let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "  pm.expect(j, 'тело отказа не разобралось как JSON: ' + body).to.be.an('object');",
+                  "  pm.expect(Object.keys(j), 'ключ выдачи в теле отказа').to.not.include('images');",
+                  "  pm.expect(Object.keys(j).filter(k => ['code','message','details'].indexOf(k) < 0),",
+                  "    'посторонний груз в конверте отказа: ' + body).to.eql([]);",
+                  "  pm.expect(body.match(/\\b(vol|snp|img)[0-9a-hjkmnp-tv-z]{17}\\b/g),",
+                  "    'идентификатор объекта хранилища в теле отказа').to.eql(null);",
                   "});"
                 ]
               }
