@@ -406,6 +406,16 @@ func (w *subnetWriter) syncCidrBlocks(ctx context.Context, subnetID, networkID s
 // AddCidrBlocks/RemoveCidrBlocks на той же подсети ждет commit держателя lock'а
 // и затем читает уже обновленное состояние → read-modify-write сериализуется,
 // lost-update исключен.
+// GetForShare — Get с `FOR SHARE` (см. godoc порта).
+func (w *subnetWriter) GetForShare(ctx context.Context, id string) (*kacho.SubnetRecord, error) {
+	q := fmt.Sprintf(`SELECT %s FROM subnets WHERE id = $1 FOR SHARE`, helpers.SubnetCols)
+	s, err := helpers.ScanSubnet(w.tx.QueryRow(ctx, q, id))
+	if err != nil {
+		return nil, helpers.WrapPgErr(err, "Subnet", id)
+	}
+	return s, nil
+}
+
 func (w *subnetWriter) GetForUpdate(ctx context.Context, id string) (*kacho.SubnetRecord, error) {
 	q := fmt.Sprintf(`SELECT %s FROM subnets WHERE id = $1 FOR UPDATE`, helpers.SubnetCols)
 	s, err := helpers.ScanSubnet(w.tx.QueryRow(ctx, q, id))

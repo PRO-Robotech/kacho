@@ -414,8 +414,9 @@ const v6ClaimMaxAttempts = 64
 
 // nextIPv6Offset — очередной номер для выдачи: сначала возврат ранее
 // освобождённого (FOR UPDATE SKIP LOCKED — параллельные аллокаторы берут разные),
-// иначе шаг счётчика пула.
-func (w *addressWriter) nextIPv6Offset(ctx context.Context, poolID string) (*big.Int, error) {
+// иначе шаг счётчика пула. Второе значение — откуда взят номер: у возвращённого
+// номера и у номера счётчика РАЗНЫЙ смысл «адрес вне префикса» (см. вызывающего).
+func (w *addressWriter) nextIPv6Offset(ctx context.Context, poolID string) (*big.Int, bool, error) {
 	var offStr string
 	err := w.tx.QueryRow(ctx, `
 		DELETE FROM ipv6_released_offsets
@@ -429,13 +430,13 @@ func (w *addressWriter) nextIPv6Offset(ctx context.Context, poolID string) (*big
 	case errors.Is(err, pgx.ErrNoRows):
 		// освобождённых номеров нет — шагаем счётчиком
 	case err != nil:
-		return nil, fmt.Errorf("pool op: %w", err)
+		return nil, false, fmt.Errorf("pool op: %w", err)
 	default:
 		off, ok := new(big.Int).SetString(offStr, 10)
 		if !ok {
-			return nil, fmt.Errorf("parse offset %q: invalid integer", offStr)
+			return nil, false, fmt.Errorf("parse offset %q: invalid integer", offStr)
 		}
-		return off, nil
+		return off, true, nil
 	}
 
 	err = w.tx.QueryRow(ctx, `
@@ -445,15 +446,15 @@ func (w *addressWriter) nextIPv6Offset(ctx context.Context, poolID string) (*big
 		RETURNING (next_offset - 1)::text`, poolID).Scan(&offStr)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("%w: pool %s has no ipv6 cursor (InitIPv6PoolCursor not called?)", helpers.ErrFailedPrecondition, poolID)
+			return nil, false, fmt.Errorf("%w: pool %s has no ipv6 cursor (InitIPv6PoolCursor not called?)", helpers.ErrFailedPrecondition, poolID)
 		}
-		return nil, fmt.Errorf("pool op: %w", err)
+		return nil, false, fmt.Errorf("pool op: %w", err)
 	}
 	off, ok := new(big.Int).SetString(offStr, 10)
 	if !ok {
-		return nil, fmt.Errorf("parse cursor offset %q: invalid integer", offStr)
+		return nil, false, fmt.Errorf("parse cursor offset %q: invalid integer", offStr)
 	}
-	return off, nil
+	return off, false, nil
 }
 
 // ---- IPAM: занятие адреса, заданного вызывающим ----
@@ -750,16 +751,25 @@ func (w *addressWriter) AllocateExternalIPv6(ctx context.Context, poolID, addres
 		conflict int
 	)
 	for attempt := 0; attempt < v6ClaimMaxAttempts && !claimed; attempt++ {
-		offset, oerr := w.nextIPv6Offset(ctx, poolID)
+		offset, fromReleased, oerr := w.nextIPv6Offset(ctx, poolID)
 		if oerr != nil {
 			return "", oerr
 		}
 		candidate, aerr := addOffsetToAddr(prefix.Addr(), offset)
-		if aerr != nil {
-			return "", fmt.Errorf("%w: %v", helpers.ErrInternal, aerr)
-		}
-		if !prefix.Contains(candidate) {
-			return "", helpers.ErrPoolExhausted
+		outOfPrefix := aerr != nil || !prefix.Contains(candidate)
+		if outOfPrefix {
+			// Номер СЧЁТЧИКА, вышедший за префикс, — настоящее исчерпание.
+			// Возвращённый номер вне префикса — след адреса, занятого явным
+			// указанием вне первого диапазона пула: счётчик такой адрес
+			// произвести не может, поэтому номер просто отбрасывается (он уже
+			// снят с возврата этим же pop'ом). Иначе первая же такая строка
+			// заклинила бы выдачу навсегда: pop → вне префикса → «пул
+			// исчерпан» → откат → номер на месте → следующий запрос падает так же.
+			if !fromReleased {
+				return "", helpers.ErrPoolExhausted
+			}
+			conflict++
+			continue
 		}
 		var got string
 		ierr := w.tx.QueryRow(ctx, `
@@ -833,6 +843,20 @@ func (w *addressWriter) FreeExternalIPv6(ctx context.Context, addressID string) 
 		return nil // idempotent: ничего не было аллоцировано
 	}
 	for _, f := range all {
+		// В список свободных номеров возвращаются ТОЛЬКО те, которые счётчик
+		// способен воспроизвести, — то есть лежащие внутри первого v6-диапазона
+		// пула (счётчик нумерует от его базы). Номер адреса, занятого явным
+		// указанием вне этого диапазона, счётчик не производит вовсе; вернув
+		// такой номер, мы бы заставили следующую выдачу вывести из него адрес
+		// вне префикса, признать пул исчерпанным и откатиться — номер вернулся
+		// бы на место, и выдача встала бы навсегда.
+		reusable, rerr := w.offsetIsWithinPoolAnchor(ctx, f.poolID, f.offStr)
+		if rerr != nil {
+			return rerr
+		}
+		if !reusable {
+			continue
+		}
 		if _, err := w.tx.Exec(ctx,
 			`INSERT INTO ipv6_released_offsets (pool_id, "offset") VALUES ($1, $2::numeric)
 			 ON CONFLICT (pool_id, "offset") DO NOTHING`,
@@ -845,6 +869,39 @@ func (w *addressWriter) FreeExternalIPv6(ctx context.Context, addressID string) 
 		return helpers.WrapPgErr(err, "Address", addressID)
 	}
 	return nil
+}
+
+// offsetIsWithinPoolAnchor — воспроизводим ли номер счётчиком пула: адрес
+// base(v6_cidr_blocks[0]) + offset обязан лежать внутри того же первого
+// диапазона. Пул без v6-диапазонов (их могли снять) — номер не воспроизводим.
+func (w *addressWriter) offsetIsWithinPoolAnchor(ctx context.Context, poolID, offStr string) (bool, error) {
+	var blocks []string
+	if err := w.tx.QueryRow(ctx,
+		`SELECT v6_cidr_blocks FROM address_pools WHERE id = $1`, poolID).Scan(&blocks); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil // пул удалён — возвращать номер некуда
+		}
+		return false, fmt.Errorf("pool op: %w", err)
+	}
+	if len(blocks) == 0 {
+		return false, nil
+	}
+	anchor, perr := netip.ParsePrefix(blocks[0])
+	if perr != nil {
+		return false, fmt.Errorf("%w: pool %s has unparseable v6 prefix %q", helpers.ErrInternal, poolID, blocks[0])
+	}
+	off, ok := new(big.Int).SetString(offStr, 10)
+	if !ok {
+		return false, fmt.Errorf("parse offset %q: invalid integer", offStr)
+	}
+	if off.Sign() < 0 {
+		return false, nil
+	}
+	ip, aerr := addOffsetToAddr(anchor.Addr(), off)
+	if aerr != nil {
+		return false, nil
+	}
+	return anchor.Contains(ip), nil
 }
 
 // ---- Referrer-tracking (atomic CAS upsert) ----

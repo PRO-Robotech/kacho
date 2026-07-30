@@ -6,7 +6,9 @@ package repo_test
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,6 +17,7 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/address"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/addresspool"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/subnet"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
@@ -340,4 +343,92 @@ func TestIntegration_Subnet_DeletePrecondition_MessageBounded(t *testing.T) {
 		"отказ обязан называть полное число")
 	assert.Contains(t, st.Message(), "and 15 more", "перечень обязан быть ограничен, остальное — числом")
 	assert.Less(t, len(st.Message()), 512, "текст отказа обязан быть ограничен по построению")
+}
+
+// Выдача внутреннего адреса обязана быть сериализована с мутацией набора
+// диапазонов подсети: она ЧИТАЕТ набор и на основании прочитанного пишет адрес.
+// Проба детерминированная — держим на строке подсети ту же исключительную
+// блокировку, что берёт снятие диапазона, и требуем, чтобы выдача её ДОЖДАЛАСЬ.
+// Со слабым чтением (без share-lock) выдача проходит мимо и записывает адрес по
+// снимку, которого уже нет: тогда снятие успевает освободить диапазон, а адрес
+// остаётся вне объявленных диапазонов своей подсети.
+//
+// Неявная блокировка внешнего ключа этого не даёт: она берётся, только когда
+// меняется колонка подсети, а выдача адреса её не меняет.
+func TestIntegration_SubnetCIDR_InternalAllocate_WaitsForRangeMutation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
+	require.NoError(t, err)
+	defer pgPool.Close()
+	r := kachopg.New(pgPool, nil)
+	defer r.Close()
+
+	_, subnetID := mkSubnetWithBlocks(t, r, ctx, []string{"10.30.0.0/24", "10.30.1.0/24"})
+
+	addrID := ids.NewID(ids.PrefixAddress)
+	require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
+		_, e := w.Addresses().Insert(ctx, &domain.Address{
+			ID:           addrID,
+			ProjectID:    "b1gtestproject00000",
+			Type:         domain.AddressTypeInternal,
+			IpVersion:    domain.IpVersionIPv4,
+			Reserved:     true,
+			InternalIpv4: &domain.InternalIpv4Spec{SubnetID: subnetID},
+		})
+		return e
+	}))
+
+	// Держим строку подсети под той же блокировкой, что берёт снятие диапазона.
+	holder, err := pgPool.Begin(ctx)
+	require.NoError(t, err)
+	var lockedID string
+	require.NoError(t, holder.QueryRow(ctx,
+		`SELECT id FROM subnets WHERE id = $1 FOR UPDATE`, subnetID).Scan(&lockedID))
+
+	done := make(chan error, 1)
+	go func() {
+		waitCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		uc := address.NewAllocateUseCase(r, nil)
+		_, e := uc.AllocateInternalIP(waitCtx, addrID)
+		done <- e
+	}()
+
+	select {
+	case e := <-done:
+		_ = holder.Rollback(ctx)
+		t.Fatalf("выдача адреса не дождалась мутатора набора диапазонов (err=%v) — значит набор читается без блокировки, и адрес может быть записан по снимку, которого уже нет", e)
+	case <-time.After(1500 * time.Millisecond):
+		// ожидаемо: выдача ждёт держателя блокировки
+	}
+
+	require.NoError(t, holder.Rollback(ctx))
+
+	select {
+	case e := <-done:
+		require.NoError(t, e, "после снятия блокировки выдача обязана пройти")
+	case <-time.After(5 * time.Second):
+		t.Fatal("выдача не завершилась после освобождения строки подсети")
+	}
+
+	// Выданный адрес обязан лежать в объявленных диапазонах подсети.
+	rd, err := r.Reader(ctx)
+	require.NoError(t, err)
+	rec, err := rd.Addresses().Get(ctx, addrID)
+	require.NoError(t, err)
+	sub, err := rd.Subnets().Get(ctx, subnetID)
+	require.NoError(t, err)
+	_ = rd.Close()
+	ip := netip.MustParseAddr(rec.InternalIpv4.Address)
+	inDeclared := false
+	for _, raw := range sub.V4CidrBlocks {
+		if netip.MustParsePrefix(raw).Contains(ip) {
+			inDeclared = true
+			break
+		}
+	}
+	require.True(t, inDeclared, "выданный адрес %s вне объявленных диапазонов %v", ip, sub.V4CidrBlocks)
 }

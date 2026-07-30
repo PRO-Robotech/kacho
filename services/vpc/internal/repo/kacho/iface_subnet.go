@@ -67,6 +67,14 @@ type SubnetWriterIface interface {
 	// уже не поймает). Считается ВНУТРИ той же writer-TX, что и снятие, после
 	// row-lock подсети.
 	CountAddressesInCidrs(ctx context.Context, subnetID string, cidrs []string) (int64, error)
+	// GetForShare — Get с `SELECT ... FOR SHARE` внутри writer-TX. Нужен путям,
+	// которые ЧИТАЮТ набор диапазонов подсети и на основании прочитанного пишут
+	// адрес (аллокатор внутренних IP): без него снятие диапазона могло пройти
+	// между чтением набора и записью адреса, и адрес оказывался бы вне
+	// объявленных диапазонов своей подсети. Share-lock совместим сам с собой
+	// (параллельные аллокации не сериализуются) и конфликтует ровно с
+	// GetForUpdate мутаторов набора.
+	GetForShare(ctx context.Context, id string) (*SubnetRecord, error)
 	// GetForUpdate — Get с `SELECT ... FOR UPDATE` (row-lock) внутри writer-TX.
 	// Сериализует конкурентные read-modify-write над v*_cidr_blocks
 	// (AddCidrBlocks/RemoveCidrBlocks): без него два параллельных запроса читали

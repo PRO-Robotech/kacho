@@ -52,7 +52,14 @@ import (
 // Pre-conditions (проверяет caller): addr.InternalIpv4 != nil, .Address == "",
 // .SubnetID != "".
 func allocateInternalV4IntoTx(ctx context.Context, w Writer, addr *kachorepo.AddressRecord) (*kachorepo.AddressRecord, error) {
-	sub, err := w.Subnets().Get(ctx, addr.InternalIpv4.SubnetID)
+	// FOR SHARE: набор диапазонов подсети читается и служит основанием для
+	// записи адреса, поэтому чтение обязано быть сериализовано со снятием
+	// диапазона (оно берёт FOR UPDATE). Иначе снятие могло пройти между чтением
+	// набора и записью адреса, и адрес оказывался бы вне объявленных диапазонов
+	// своей подсети — ровно то состояние, которое предусловие снятия и
+	// запрещает. Share-lock совместим сам с собой: параллельные аллокации не
+	// сериализуются.
+	sub, err := w.Subnets().GetForShare(ctx, addr.InternalIpv4.SubnetID)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +158,8 @@ func allocateInternalV4IntoTx(ctx context.Context, w Writer, addr *kachorepo.Add
 // Pre-conditions (проверяет caller): addr.InternalIpv6 != nil, .Address == "",
 // .SubnetID != "".
 func allocateInternalV6IntoTx(ctx context.Context, w Writer, addr *kachorepo.AddressRecord) (*kachorepo.AddressRecord, error) {
-	sub, err := w.Subnets().Get(ctx, addr.InternalIpv6.SubnetID)
+	// FOR SHARE — по той же причине, что и в v4-ветке.
+	sub, err := w.Subnets().GetForShare(ctx, addr.InternalIpv6.SubnetID)
 	if err != nil {
 		return nil, err
 	}

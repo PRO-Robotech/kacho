@@ -534,3 +534,61 @@ func TestExplicitExternalIPv6_SecondBlock_NotRejectedByOffsetCollision(t *testin
 	w2.Abort()
 	require.Error(t, err, "второе занятие того же адреса обязано быть отвергнуто")
 }
+
+// Освобождение явного адреса ВТОРОГО диапазона не имеет права заклинить выдачу.
+// Номер такого адреса лежит вне счётного пространства первого диапазона (того,
+// которым нумерует счётчик), поэтому вернуть его «в свободные номера» нельзя:
+// следующая выдача вывела бы из него адрес вне своего префикса, признала бы пул
+// исчерпанным, откатила транзакцию — и номер вернулся бы на место. Пул перестал
+// бы выдавать адреса навсегда, для всех тенантов, и сам бы не восстановился.
+func TestExplicitExternalIPv6_ReleaseOfSecondBlock_DoesNotWedgeAllocation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
+	require.NoError(t, err)
+	defer pgPool.Close()
+	r := kachopg.New(pgPool, nil)
+	defer r.Close()
+
+	poolID := insertPoolWithCidrs(t, ctx, pgPool, nil,
+		[]string{"2001:db8:e0::/64", "2001:db8:e1::/64"})
+	require.NoError(t, freelistWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
+		return w.Addresses().InitIPv6PoolCursor(ctx, poolID)
+	}))
+
+	// Явный адрес второго диапазона: занимается, затем освобождается.
+	const explicitIP = "2001:db8:e1::7"
+	addrID := ids.NewID(ids.PrefixAddress)
+	w, err := r.Writer(ctx)
+	require.NoError(t, err)
+	_, err = w.Addresses().Insert(ctx, &domain.Address{
+		ID:           addrID,
+		ProjectID:    "b1gtestproject00000",
+		Type:         domain.AddressTypeExternal,
+		IpVersion:    domain.IpVersionIPv6,
+		ExternalIpv6: &domain.ExternalIpv6Spec{Address: explicitIP},
+	})
+	if err != nil {
+		w.Abort()
+		require.NoError(t, err)
+	}
+	require.NoError(t, w.Commit())
+	require.NoError(t, freelistWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
+		return w.Addresses().FreeExternalIPv6(ctx, addrID)
+	}))
+
+	// Автоматическая выдача обязана продолжать работать — дважды подряд.
+	for i := 0; i < 2; i++ {
+		autoID := insertTestAddressFreelist(t, ctx, pgPool)
+		var ip string
+		require.NoError(t, freelistWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
+			got, e := w.Addresses().AllocateExternalIPv6(ctx, poolID, autoID, "")
+			ip = got
+			return e
+		}), "выдача %d после освобождения адреса второго диапазона обязана пройти", i+1)
+		require.True(t, netip.MustParsePrefix("2001:db8:e0::/64").Contains(netip.MustParseAddr(ip)),
+			"счётчик обязан выдавать из своего диапазона, выдал %s", ip)
+	}
+}

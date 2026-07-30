@@ -146,6 +146,11 @@ func (sw *subnetWriter) Get(_ context.Context, id string) (*kacho.SubnetRecord, 
 	return &cp, nil
 }
 
+// GetForShare — in-memory mock не моделирует row-lock; семантика = Get.
+func (sw *subnetWriter) GetForShare(ctx context.Context, id string) (*kacho.SubnetRecord, error) {
+	return sw.Get(ctx, id)
+}
+
 // GetForUpdate — in-memory mock не моделирует row-lock; семантика = Get.
 func (sw *subnetWriter) GetForUpdate(ctx context.Context, id string) (*kacho.SubnetRecord, error) {
 	return sw.Get(ctx, id)
