@@ -12,10 +12,32 @@ grant-semantic (editor/viewer/admin/no-grant/cross-account/cross-project), so ea
 assumes; the principal being an SA rather than a human User does not change the
 FGA relation resolved.
 
-The ONE class that genuinely needs a human User principal with an `acr` step-up
-claim (interactive Kratos->Hydra OIDC) — `jwtAccountAdminAStepUp` and the static
-`apiToken*` — is NOT minted here (production-user-gated, #59 follow-up); those env
-keys are left untouched so their cases fail loudly rather than being faked.
+WHAT IS NOT MINTED HERE, AND WHY — stated per credential, because the previous blanket
+sentence was WRONG for half of them and that error cost nine assertions that never ran:
+
+  - `jwtAccountAdminAStepUp` — genuinely needs a human User principal carrying an `acr`
+    step-up claim, which only an interactive Kratos->Hydra login produces. Not mintable
+    by any machine path. Left unset so its cases fail loudly rather than being faked.
+  - `apiTokenValid` / `apiTokenRevoked` / `apiTokenMalformed` — minted (see the block in
+    `seed()`). These are SERVICE-ACCOUNT KEYS, not human credentials; the case-file says
+    so itself. Lumping them with the step-up token was the mistake.
+  - `apiTokenExpired` — not minted, and not fakeable: the provider signs the token and
+    owns its lifetime (900s), so "already expired" cannot be produced at seed time. It
+    needs its own wave that CREATES the condition (issue, then outwait the lifetime).
+    Until that wave exists its two assertions are an open debt, counted, not masked.
+
+THE OTHER STRUCTURAL LIMIT, MEASURED 2026-07-30 — no human principal reaches the edge.
+An Account is owned by a User by construction, so a case that CREATES an account needs a
+human caller. There is no machine path to one, and this is not for want of trying:
+`UserTokenService.Issue` accepts no audience (the request message has no such field) and
+the use-case's `AudiencePrefix` is never set by the composition root, so the issued
+client carries an EMPTY audience whitelist. Measured end-to-end on the production-posture
+stand: requesting the api audience at the exchange is refused ("Requested audience ... has
+not been whitelisted"); exchanging without one yields `aud: []`, which the edge rejects
+401. Separately, a client_credentials token carries no `acr`, and 236 of the 300 catalog
+entries require acr >= 1. Account.Create itself is `<exempt>` so acr is not its blocker —
+the audience is. Every case asserting "the caller is user X" therefore stays RED under
+this seed, and that is a counted debt, not something to paper over here.
 
 Usage:
     prodseed_matrix.py [--deps vpc,compute,storage,registry,nlb,iam] > fixtures.json
@@ -189,16 +211,27 @@ def grant(sva, role_id, scope_type, scope_id):
         _poll(rb["id"], boot)
 
 
-def sa_token(sva):
-    """Issue an api-audience SA-key, sign client_assertion, exchange -> RS256."""
+def sa_token_with_key(sva):
+    """Issue an api-audience SA-key, exchange it -> (RS256 bearer, key id).
+
+    The key id is returned because REVOCATION is part of the contract some cases probe:
+    a token whose backing key was revoked must stop being accepted. You cannot revoke a
+    key you did not keep the id of.
+    """
     kr = _curl("POST", f"/iam/v1/serviceAccounts/{sva}/keys", boot,
                {"serviceAccountId": sva, "audience": [API_AUD]})
     done = _poll(kr.get("id"), boot)
     if done.get("error"):
         raise RuntimeError(f"SA-key issue errored for {sva}: {done['error']}")
-    cid, key, kid = m._extract_oauth(done.get("response", {}))
+    resp = done.get("response", {})
+    cid, key, kid = m._extract_oauth(resp)
     assertion = m.sign_client_assertion(cid, key, kid, ASSERT_AUD)
-    return m.exchange(HYDRA_TOKEN, assertion, API_AUD)
+    return m.exchange(HYDRA_TOKEN, assertion, API_AUD), kid
+
+
+def sa_token(sva):
+    """Issue an api-audience SA-key, sign client_assertion, exchange -> RS256."""
+    return sa_token_with_key(sva)[0]
 
 
 CLUSTER_ROOT_OBJECT = "cluster:cluster_kacho_root"
@@ -409,6 +442,37 @@ def seed() -> dict:
     seed_net_a1 = _seed_network(projA1, f"ps-seed-net-a1-{RID}")
     seed_net_b1 = _seed_network(projB1, f"ps-seed-net-b1-{RID}")
 
+    # ── статические API-токены ───────────────────────────────────────────────
+    #
+    # ЧТО ЭТО НА САМОМ ДЕЛЕ. В отладочной посадке эти четыре предъявителя ковались
+    # харнессом (HS256 своим секретом, в том числе один — «просроченный» и один — с
+    # заведомо чужой подписью). В боевой посадке ковать их нечем и не нужно: кейс сам
+    # объявляет, что за ними стоит `SAKeyService` — выпуск ключа служебной учётки и его
+    # ОТЗЫВ. То есть три из четырёх выражаются штатным продуктовым путём, и здесь они им
+    # и выражаются, а не подделкой.
+    #
+    # ПОЧЕМУ ЭТО НЕ ОСЛАБЛЕНИЕ. Прежняя запись посева объявляла всю четвёрку
+    # «требующей настоящего интерактивного входа» и не ковала НИ ОДНОГО — вместе со
+    # `jwtAccountAdminAStepUp`, которому интерактивный вход действительно нужен. Это
+    # было верно про повышенный вход и неверно про ключи служебной учётки: они машинные
+    # по природе. Из-за одной формулировки девять утверждений не исполнялись ни разу.
+    #
+    # ЧТО ОСТАЁТСЯ ДОЛГОМ И ПОЧЕМУ ИМЕННО ОНО. `apiTokenExpired` требует предъявителя,
+    # чей срок УЖЕ истёк. Подписывает токены провайдер, срок жизни задаёт он же (900 с),
+    # и укоротить его на один выпуск нельзя. Подделать — значит вернуться ровно к тому,
+    # что здесь убирается. Значит этому кейсу нужна своя волна, создающая условие
+    # (выпустить и переждать срок), а до тех пор он ЧЕСТНО падает, а не зеленеет.
+    #
+    # ОТЗЫВ ПРОВЕРЯЕТСЯ ПО-НАСТОЯЩЕМУ. `apiTokenRevoked` — это выпущенный токен, чей
+    # ключ затем снят `SAKeyService.Revoke`. Если край такой предъявитель всё ещё
+    # принимает, кейс покраснеет — и это будет находка о ПРОДУКТЕ, а не о посеве. Именно
+    # поэтому отдельная служебная учётка: снятие ключа не должно задеть ни `jwtSAA`, ни
+    # действующий `apiTokenValid`.
+    tok_apivalid, _ = sa_token_with_key(sva_saA)
+    sva_apirev, _ = subject(acctA, f"ps-apitok-rev-{RID}", [(ROLE_EDIT, P, projA1)])
+    tok_apirev, key_apirev = sa_token_with_key(sva_apirev)
+    _curl("DELETE", f"/iam/v1/serviceAccounts/{sva_apirev}/keys/{key_apirev}", boot)
+
     fixtures = {
         "jwtBootstrap": boot,
         # no-grant slots
@@ -470,6 +534,14 @@ def seed() -> dict:
         "zoneD": "ru-central1-d",
         "existingRegionId": "ru-central1",
         "existingRegionAltId": "ru-central1",
+        # статические API-токены (см. блок выше). `apiTokenExpired` НЕ выдаётся
+        # намеренно — его условие посевом не создаётся, и подделка вернула бы ровно ту
+        # ложь, ради ухода от которой боевая посадка и заводилась.
+        "apiTokenValid": tok_apivalid,
+        "apiTokenRevoked": tok_apirev,
+        # Синтаксически битый JWS — два сегмента вместо трёх. Единственный из четвёрки,
+        # который посадкой не определяется вовсе: «это не токен» верно везде.
+        "apiTokenMalformed": "eyJhbGciOiJIUzI1NiJ9.bm90LWEtcmVhbC10b2tlbg",
         "baseUrl": PUBLIC,
         "internalBaseUrl": INTERNAL,
     }
