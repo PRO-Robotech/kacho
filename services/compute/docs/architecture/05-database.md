@@ -19,9 +19,18 @@ existence-check в БД в worker'е (см. [`02-data-flows.md`](02-data-flows.m
 - **Partial UNIQUE** `(project_id, name) WHERE name <> ''` для всех 4 мутируемых
   ресурсов — дубль непустого `name` в проекте → `23505` → `ALREADY_EXISTS`;
   пустой `name` допускает несколько ресурсов (permissive by design).
-- **Optimistic concurrency** для read-modify-write (`UpdateNetworkInterface`-style)
-  — Postgres system column `xmin::text` (txid версия row), без отдельной колонки
-  (zero-overhead, миграция не нужна) — как `SecurityGroup.UpdateRules` в VPC.
+- **Правка пишет ТОЛЬКО названные маской колонки** — один `UPDATE ... SET <названные>
+  WHERE id=$1 RETURNING *`, без предварительного чтения. Это инвариант, а не
+  оптимизация: правка, записывающая весь прочитанный ранее снимок, возвращает к
+  старым значениям колонки, которых не называла, поэтому две правки с
+  НЕПЕРЕСЕКАЮЩИМИСЯ масками затирают друг друга — молча, обе с успехом. Так писались
+  `instances` (`updateSet` по `changed`) и теперь `machine_types`.
+- **Optimistic concurrency** (`xmin::text`, Postgres system column, без отдельной
+  колонки) — там, где read-modify-write действительно НЕОБХОДИМ: значение
+  вычисляется из прочитанного (слияние набора правил `SecurityGroup.UpdateRules` в
+  VPC). Для правки по маске он не нужен: снимок в БД не уезжает вовсе, а
+  конкуренция за ОДНУ И ТУ ЖЕ колонку остаётся честным «побеждает последний» —
+  обе правки действительно называли это поле.
 - **Outbox + LISTEN/NOTIFY** — `compute_outbox` + триггер
   `compute_outbox_notify_trg` → `pg_notify('compute_outbox', sequence_no::text)`.
 - **JSONB** для structured-полей, не имеющих собственного запроса

@@ -12,6 +12,12 @@ package handler
 // root'ом serve.go, security.md): Attach/Detach — editor на самом томе, GetInternal —
 // viewer на нём же, admin CRUD DiskType — system_admin на cluster-синглтоне.
 //
+// Attach/Detach этим НЕ исчерпываются: их запрос называет ДВА ресурса с разными
+// владельцами — том и машину, — а per-RPC Check задаётся ровно об одном. Право на
+// машину спрашивает use-case (volume.requireInstanceControl), тем же отношением,
+// которым compute гейтит AttachDisk/DetachDisk. Хендлер по-прежнему тонкий: решение
+// принимает use-case.
+//
 // ListAttachments — исключение: он авторизуется НА УРОВНЕ ДАННЫХ, в use-case. Единого
 // per-RPC вопроса для него не существует — инстансы называет вызывающий, а ответ
 // касается томов, у каждого из которых свой владелец (см. volume.UseCase.ListAttachments
