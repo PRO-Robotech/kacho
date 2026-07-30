@@ -19,17 +19,22 @@
 #   5. run all four suites in parallel (each = its own scripts/run.sh, which itself
 #      fans its collections out with --jobs); per-suite logs to out/<svc>-suite.log
 #   6. aggregate TWICE and print BOTH:
-#        RAW   — every failed assertion / request exactly as newman reported it
-#        GATED — the SAME gate CI runs (services/iam/tests/newman/scripts/
-#                assert-suites-green.sh: known-RED whitelist)
-#      exit code = GATED, so a local run and CI agree on the verdict. The RAW block is
-#      NOT optional output: it is what keeps the whitelist honest — you can always see
-#      how much was failing BEFORE the filter, and a whitelist that starts absorbing new
-#      failures shows up as a growing raw-vs-gated gap instead of as silence.
-#      The gate no longer subtracts anything from the REQUEST count: a request that got
-#      no answer is reported as UNANSWERED and fires the gate. It used to be filtered
-#      away as "DNS noise", which is how eight ban-#6 negatives went unexecuted while
-#      both verdicts read green.
+#        PER-SUITE TOTALS — failed assertions / unanswered requests summed per suite
+#        GATED            — the SAME gate CI runs (services/iam/tests/newman/scripts/
+#                           assert-suites-green.sh), per collection
+#      exit code = GATED, so a local run and CI agree on the verdict.
+#
+#      These two blocks used to be labelled RAW and GATED because the gate DEDUCTED a
+#      "known-RED" set before deciding, and the gap between them was the size of the
+#      deduction. The deduction was removed 2026-07-30 (see the gate's own note), so
+#      the two now agree by construction and the first block is kept for a different
+#      reason: it is the per-suite roll-up, which the per-collection gate output does
+#      not give you at a glance. If they ever disagree again, something has started
+#      subtracting — that is the finding.
+#      Nothing is subtracted from the REQUEST count either: a request that got no
+#      answer is reported as UNANSWERED and fires the gate. It used to be filtered away
+#      as "DNS noise", which is how eight ban-#6 negatives went unexecuted while both
+#      verdicts read green.
 #
 # Usage (after `make dev-up`):
 #   ./scripts/newman-parallel.sh                 # all four
@@ -282,7 +287,7 @@ echo
 GATE="${GATE:-true}"
 GATE_SCRIPT="$REPO_ROOT/services/iam/tests/newman/scripts/assert-suites-green.sh"
 
-echo "===== RAW (pre-whitelist) ====="
+echo "===== PER-SUITE TOTALS (nothing is subtracted; the gate below agrees by construction) ====="
 printf "%-12s %10s %10s %10s\n" "SUITE" "ASSERT-F" "REQ-F" "REPORTS"
 raw_total_a=0; raw_total_r=0
 for svc in $SERVICES; do
@@ -298,10 +303,10 @@ for svc in $SERVICES; do
   raw_total_a=$((raw_total_a + a)); raw_total_r=$((raw_total_r + r))
 done
 printf "%-12s %10s %10s\n" "TOTAL" "$raw_total_a" "$raw_total_r"
-if [ "$RC" -eq 0 ]; then echo "[parallel] RAW verdict: ALL SUITES GREEN"; else echo "[parallel] RAW verdict: one or more suites RED (see per-suite out/summary.txt + out/*.json)"; fi
+if [ "$RC" -eq 0 ]; then echo "[parallel] runner verdict: ALL SUITES GREEN"; else echo "[parallel] runner verdict: one or more suites RED (see per-suite out/summary.txt + out/*.json)"; fi
 
 if [ "$GATE" != "true" ] || [ ! -f "$GATE_SCRIPT" ]; then
-  echo "[parallel] CI gate skipped (GATE=$GATE, script=$GATE_SCRIPT) — grading on RAW"
+  echo "[parallel] CI gate skipped (GATE=$GATE, script=$GATE_SCRIPT) — grading on the per-suite roll-up"
   exit "$RC"
 fi
 
@@ -318,7 +323,9 @@ done
 echo
 if [ "$GATE_RC" -eq 0 ]; then
   echo "[parallel] GATED verdict: GREEN (CI would pass)"
-  [ "$RC" -eq 0 ] || echo "[parallel] NOTE: raw failures above are covered by the known-RED whitelist — read them, do not extend the list to keep this green."
+  # The gate deducts nothing, so GREEN here cannot coexist with failures above. If it
+  # somehow does, the two are counting different things and THAT is the finding.
+  [ "$RC" -eq 0 ] || echo "[parallel] INCONSISTENT: the per-suite roll-up above shows failures while the gate passed — the two disagree, and the gate subtracts nothing. Investigate the counters, do not trust this GREEN."
 else
   echo "[parallel] GATED verdict: RED (CI would fail) — see the per-collection lines above"
 fi
