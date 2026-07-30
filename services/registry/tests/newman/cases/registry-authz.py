@@ -149,11 +149,64 @@ def _deny_leak_gated():
     ]
 
 
-def _never_reveals_regid():
-    # Денай/пустой ответ не должен раскрывать существование фикстуры (её regId).
+def _list_never_reveals_regid():
+    """Перечисление не должно называть чужой реестр — здесь запрет на эхо ВЕРЕН.
+
+    Разница с чтением по id принципиальная и решает, какая проверка корректна.
+    В перечислении вызывающий идентификатор фикстуры НЕ НАЗЫВАЛ: он спросил про
+    проект. Значит появление regId в ответе — новое знание, добытое из запроса,
+    в котором его не было, то есть утечка.
+
+    В чтении по id всё наоборот: идентификатор пришёл ОТ вызывающего, в URL. Требовать
+    его отсутствия в ответе значит требовать, чтобы скрытие отличалось от настоящего
+    промаха, — см. `_hiding_is_indistinguishable`.
+    """
     return [
         "const _rid = pm.environment.get('regIdAz') || '';",
-        "if (_rid) pm.test('never reveals fixture regId', () => pm.expect(pm.response.text()).to.not.include(_rid));",
+        "if (_rid) pm.test('a listing never names a registry the caller did not ask about',"
+        " () => pm.expect(pm.response.text()).to.not.include(_rid));",
+    ]
+
+
+def _hiding_is_indistinguishable():
+    """Скрытие существования проверяется СРАВНЕНИЕМ с настоящим промахом, а не запретом
+    на эхо идентификатора.
+
+    Прежняя формулировка требовала, чтобы в теле отказа НЕ БЫЛО regId фикстуры. Это
+    требование обратно контракту продукта и, если его выполнить, само создаёт оракул.
+    Идентификатор в теле — тот самый, который вызывающий ПОСТАВИЛ В URL: он не сообщает
+    ему ничего нового. А тон промаха — `<Resource> <id> not found` — общий для всей
+    платформы, и край намеренно воспроизводит его ДОСЛОВНО (`notFoundMessage`,
+    `hideExistenceNotFoundFormats`), чтобы «нет доступа» нельзя было отличить от «нет
+    ресурса». Ответ БЕЗ идентификатора отличался бы от настоящего промаха — то есть
+    сообщал бы, что реестр существует.
+
+    Отличимость и есть предмет проверки. Кейс делает два одинаковых запроса одним и тем
+    же чужаком: по СУЩЕСТВУЮЩЕМУ реестру и по well-formed ОТСУТСТВУЮЩЕМУ. Если ответы
+    совпадают побайтово после подстановки идентификатора — оракула нет; любое
+    расхождение (иной текст, иной код, иные details, нейтральное «not found» вместо
+    контрактного тона) означает, что по ответу можно установить существование чужого
+    ресурса, и кейс краснеет.
+    """
+    return [
+        "const _rid = pm.environment.get('regIdAz') || '';",
+        "const _missBody = pm.environment.get('_azHideMissBody');",
+        "const _missCode = pm.environment.get('_azHideMissCode');",
+        "pm.test('the absent-id probe recorded a comparison base', () => {",
+        "  pm.expect(_rid, 'regIdAz is empty — nothing to compare').to.not.equal('');",
+        "  pm.expect(_missBody, 'the well-formed-absent probe did not record a body').to.be.a('string');",
+        "});",
+        "if (_rid && typeof _missBody === 'string') {",
+        "  const _seen = pm.response.text().split(_rid).join('<ID>');",
+        "  pm.test('hiding an existing registry is byte-identical to a genuine miss (no existence oracle)',",
+        "    () => pm.expect(_seen, 'existing: ' + pm.response.text() + ' | absent: ' + _missBody).to.equal(_missBody));",
+        "  pm.test('and indistinguishable by status code too',",
+        "    () => pm.expect(String(pm.response.code)).to.equal(_missCode));",
+        "}",
+        "if (pm.response.code === 404) {",
+        "  pm.test('the refusal carries the platform not-found tone with the caller-supplied id',",
+        "    () => pm.expect((pm.response.json() || {}).message).to.equal('Registry ' + _rid + ' not found'));",
+        "}",
     ]
 
 
@@ -219,13 +272,26 @@ CASES.append(Case(
 
 # Get как jwtStranger на существующем regId. Отказ, и только отказ: у чтения ОДНОГО
 # ресурса по id нет «пустого успеха» — 200 здесь означает, что чужак прочитал чужой
-# реестр. Дополнительно: тело отказа не раскрывает существование фикстуры (её regId).
+# реестр. Плюс главное: отказ на СУЩЕСТВУЮЩЕМ реестре обязан быть неотличим от отказа
+# на отсутствующем — иначе по ответу устанавливается существование чужого ресурса.
+_ABSENT_REG_ID = "reg-DOESNOTEXIST00000"  # well-formed, заведомо отсутствует (парити с REG-GET-NEG-NOTFOUND)
+
 CASES.append(Case(
     id="REG-AZ-GET-STRANGER-HIDDEN",
-    title="Get as jwtStranger on existing regId → denied (401/403/404, never 200), never reveals regId; no deny_reasons (gated !=401)",
+    title="Get as jwtStranger: существующий regId и well-formed отсутствующий отвечают побайтово "
+          "одинаково (модуло сам id) → denied (401/403/404, never 200), no deny_reasons (gated !=401)",
     classes=["AZD", "NEG"], priority="P0",
-    steps=[Step(name="get-stranger", method="GET", path=f"{REG}/{{{{regIdAz}}}}", auth="jwtStranger",
-                test_script=[*_assert_denied(), *_never_reveals_regid(), *_deny_leak_gated()])],
+    steps=[
+        # База сравнения: тот же чужак по заведомо отсутствующему id. Записывается ПЕРВЫМ,
+        # чтобы следующий шаг сравнивал с ответом, полученным в этом же прогоне, а не с
+        # литералом, который разъедется с продуктом молча.
+        Step(name="get-stranger-absent", method="GET", path=f"{REG}/{_ABSENT_REG_ID}", auth="jwtStranger",
+             test_script=[*_assert_denied(),
+                          f"pm.environment.set('_azHideMissBody', pm.response.text().split('{_ABSENT_REG_ID}').join('<ID>'));",
+                          "pm.environment.set('_azHideMissCode', String(pm.response.code));"]),
+        Step(name="get-stranger", method="GET", path=f"{REG}/{{{{regIdAz}}}}", auth="jwtStranger",
+             test_script=[*_assert_denied(), *_hiding_is_indistinguishable(), *_deny_leak_gated()]),
+    ],
 ))
 
 # Positive control: Get как jwtProjectViewerA → 200 (viewer имеет v_get).
@@ -263,7 +329,7 @@ CASES.append(Case(
     steps=[Step(name="list-stranger", method="GET", path=f"{REG}?projectId={{{{existingProjectId}}}}", auth="jwtStranger",
                 test_script=[
                     *_assert_stranger_list("registries"),
-                    *_never_reveals_regid(),
+                    *_list_never_reveals_regid(),
                     *_deny_leak_gated()])],
 ))
 

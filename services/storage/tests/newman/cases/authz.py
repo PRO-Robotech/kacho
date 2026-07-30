@@ -211,7 +211,7 @@ CASES.append(Case(
 _NOB = "jwtPureNoBindings"  # authenticated, NEVER granted by any suite (setup.sh)
 
 
-def _assert_absent(case_id, list_field, id_var, what):
+def _assert_absent(case_id, list_field, what):
     """Никогда-не-гранченый субъект получает ОТКАЗ, и отказ ничего не рассказывает.
 
     ИСХОД ОДИН. Запись каталога прав для этих перечислений требует `viewer` на
@@ -227,8 +227,25 @@ def _assert_absent(case_id, list_field, id_var, what):
     проходило вакуумно, а 200 (то есть открывшийся project-gate для субъекта без
     единого гранта — настоящая утечка) утверждение принимало как законный исход.
 
-    Теперь заявлен отказ, и вместе с ним — что в теле отказа нет ни идентификатора
-    объекта, ни имени поля выдачи. 200 на этом пути — падение, что и требуется.
+    Теперь заявлен отказ, и вместе с ним — что тело отказа не несёт содержимого того,
+    к чему доступ не дан. 200 на этом пути — падение, что и требуется.
+
+    КАК ИМЕННО ЭТО ФОРМУЛИРУЕТСЯ (и почему прежняя формулировка не работала). Сторож
+    искал в СЫРОМ ТЕКСТЕ подстроку с именем поля выдачи — `volumes` / `snapshots` /
+    `images`. Эти же слова стоят в имени действия, которое отказ обязан назвать
+    (`"action":"storage.volumes.list"`), поэтому утверждение падало на КАЖДОМ
+    корректном отказе и не могло отличить «в теле лежит страница» от «в теле названо
+    имя вызванного метода». Ровно тот класс, о котором testing.md говорит «гейт читает
+    исполняемую часть, а не текст».
+
+    Проверяется теперь три вещи, каждая falsifiable и ни одна не сталкивается с
+    именем метода:
+      * у РАЗОБРАННОГО тела нет ключа выдачи (`volumes`/`snapshots`/`images`) — то
+        есть ответ не несёт страницу;
+      * верхний уровень тела — только конверт ошибки (`code`/`message`/`details`):
+        никакого полезного груза сверх отказа;
+      * в теле нет НИ ОДНОГО идентификатора объекта хранилища (`vol…`/`snp…`/`img…`)
+        — шире, чем «нет id этой фикстуры», и именно это значит least-info.
 
     ГРАНИЦА (не расширять мысленно): этот сторож НЕ проверяет per-object фильтр
     страницы — он проверяет, что цепочка fail-closed на субъекте без грантов.
@@ -240,10 +257,15 @@ def _assert_absent(case_id, list_field, id_var, what):
         f"pm.test('[{case_id}] grpc code 7 PERMISSION_DENIED', "
         "() => { let j; try { j = pm.response.json(); } catch(e) { j = null; } "
         "pm.expect(j && j.code, pm.response.text()).to.eql(7); });",
-        f"pm.test('[{case_id}] в теле отказа нет ни {what}, ни выдачи', () => {{",
+        f"pm.test('[{case_id}] отказ не несёт содержимого: ни {what}, ни выдачи', () => {{",
         "  const body = pm.response.text();",
-        f"  pm.expect(body, 'id объекта в теле отказа').to.not.contain(pm.environment.get('{id_var}'));",
-        f"  pm.expect(body, 'поле выдачи в теле отказа').to.not.contain('{list_field}');",
+        "  let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+        "  pm.expect(j, 'тело отказа не разобралось как JSON: ' + body).to.be.an('object');",
+        f"  pm.expect(Object.keys(j), 'ключ выдачи в теле отказа').to.not.include('{list_field}');",
+        "  pm.expect(Object.keys(j).filter(k => ['code','message','details'].indexOf(k) < 0),",
+        "    'посторонний груз в конверте отказа: ' + body).to.eql([]);",
+        "  pm.expect(body.match(/\\b(vol|snp|img)[0-9a-hjkmnp-tv-z]{17}\\b/g),",
+        "    'идентификатор объекта хранилища в теле отказа').to.eql(null);",
         "});",
     ]
 
@@ -281,7 +303,7 @@ CASES.append(Case(
         Step(name="list-as-pure-nob", method="GET",
              path=f"{VOL}?projectId={{{{_suiteProjectId}}}}&pageSize=1000", auth=_NOB,
              test_script=_assert_absent("AUTHZ-VOL-LST-OVERSHOW-LEAK-GUARD",
-                                        "volumes", "leakVolumeId", "Volume")),
+                                        "volumes", "Volume")),
         *_delete(VOL, "leakVolumeId", "cleanup-vol"),
     ],
 ))
@@ -303,7 +325,7 @@ CASES.append(Case(
         Step(name="list-as-pure-nob", method="GET",
              path=f"{SNP}?projectId={{{{_suiteProjectId}}}}&pageSize=1000", auth=_NOB,
              test_script=_assert_absent("AUTHZ-SNP-LST-OVERSHOW-LEAK-GUARD",
-                                        "snapshots", "leakSnapshotId", "Snapshot")),
+                                        "snapshots", "Snapshot")),
         *_delete(SNP, "leakSnapshotId", "cleanup-snapshot"),
         *_delete(VOL, "leakSnapSrcVolumeId", "cleanup-snap-src-vol"),
     ],
@@ -326,7 +348,7 @@ CASES.append(Case(
         Step(name="list-as-pure-nob", method="GET",
              path=f"{IMG}?projectId={{{{_suiteProjectId}}}}&pageSize=1000", auth=_NOB,
              test_script=_assert_absent("AUTHZ-IMG-LST-OVERSHOW-LEAK-GUARD",
-                                        "images", "leakImageId", "Image")),
+                                        "images", "Image")),
         *_delete(IMG, "leakImageId", "cleanup-image"),
         *_delete(VOL, "leakImgSrcVolumeId", "cleanup-img-src-vol"),
     ],
