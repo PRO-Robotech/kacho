@@ -432,3 +432,80 @@ func TestIntegration_SubnetCIDR_InternalAllocate_WaitsForRangeMutation(t *testin
 	}
 	require.True(t, inDeclared, "выданный адрес %s вне объявленных диапазонов %v", ip, sub.V4CidrBlocks)
 }
+
+// Зеркальные семьи предусловия занятости: у подсети — внутренний IPv6, у пула —
+// внешний IPv4. Без них «обе семьи» проверено лишь наполовину, и вторая
+// половина предиката держится на честном слове.
+func TestIntegration_CIDRRelease_MirrorFamilies(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
+	require.NoError(t, err)
+	defer pgPool.Close()
+	r := kachopg.New(pgPool, nil)
+	defer r.Close()
+
+	// --- подсеть: занят ВНУТРЕННИЙ IPv6 ---
+	netID := ids.NewID(ids.PrefixNetwork)
+	subnetID := ids.NewID(ids.PrefixSubnet)
+	require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
+		if _, e := w.Networks().Insert(ctx, &domain.Network{
+			ID: netID, ProjectID: "b1gtestproject00000",
+			Name: domain.RcNameVPC("net-" + netID[len(netID)-6:]),
+		}); e != nil {
+			return e
+		}
+		if _, e := w.Subnets().Insert(ctx, &domain.Subnet{
+			ID: subnetID, ProjectID: "b1gtestproject00000", NetworkID: netID,
+			Name:          domain.RcNameVPC("sub-" + subnetID[len(subnetID)-6:]),
+			PlacementType: domain.PlacementZonal, ZoneID: "zone-a",
+			V4CidrBlocks: []string{"10.40.0.0/24", "10.41.0.0/24"},
+			V6CidrBlocks: []string{"2001:db8:f0::/64", "2001:db8:f1::/64"},
+		}); e != nil {
+			return e
+		}
+		_, e := w.Addresses().Insert(ctx, &domain.Address{
+			ID:           ids.NewID(ids.PrefixAddress),
+			ProjectID:    "b1gtestproject00000",
+			Type:         domain.AddressTypeInternal,
+			IpVersion:    domain.IpVersionIPv6,
+			InternalIpv6: &domain.InternalIpv6Spec{Address: "2001:db8:f1::9", SubnetID: subnetID},
+		})
+		return e
+	}))
+
+	rmSub := subnet.NewRemoveCidrBlocksUseCase(r, repomock.NewOpsRepo())
+	op, err := rmSub.Execute(ctx, subnetID, nil, []string{"2001:db8:f1::/64"})
+	require.NoError(t, err)
+	require.True(t, op.Done)
+	require.NotNil(t, op.Error, "снятие v6-диапазона подсети с живым адресом обязано быть отвергнуто")
+	assert.Equal(t, "subnet CIDR 2001:db8:f1::/64 has allocated addresses",
+		status.FromProto(op.Error).Message())
+
+	// Отказ называет ТОЛЬКО занятый диапазон: чистый в том же запросе не
+	// объявляется занятым.
+	op2, err := rmSub.Execute(ctx, subnetID, []string{"10.41.0.0/24"}, []string{"2001:db8:f1::/64"})
+	require.NoError(t, err)
+	require.NotNil(t, op2.Error)
+	assert.Equal(t, "subnet CIDR 2001:db8:f1::/64 has allocated addresses",
+		status.FromProto(op2.Error).Message(),
+		"в отказе не должно быть чистого диапазона из того же запроса")
+
+	// --- пул: занят ВНЕШНИЙ IPv4 в одном из двух снимаемых диапазонов ---
+	p := mkPoolWithV6(t, ctx, r, "pool-mirror", []string{"198.51.100.0/28", "203.0.113.0/28"}, nil)
+	autoID := insertTestAddressFreelist(t, ctx, pgPool)
+	require.NoError(t, freelistWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
+		_, e := w.Addresses().AllocateIPFromFreelist(ctx, p.ID, autoID)
+		return e
+	}))
+
+	rmPool := addresspool.NewRemoveCidrBlocksUseCase(r)
+	_, err = rmPool.Execute(ctx, p.ID, []string{"198.51.100.0/28"}, nil)
+	require.Error(t, err)
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.FailedPrecondition, st.Code())
+	assert.Equal(t, "address pool CIDR 198.51.100.0/28 has allocated addresses", st.Message())
+}

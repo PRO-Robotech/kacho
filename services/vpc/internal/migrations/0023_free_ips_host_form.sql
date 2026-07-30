@@ -23,20 +23,33 @@
 
 SET search_path TO kacho_vpc, public;
 
+-- Схлопывание в host-форму: из каждой группы строк одного пула, дающих ОДИН и
+-- тот же host-адрес, остаётся ровно одна. Условие «host-форма уже есть» было бы
+-- недостаточным: две строки с разными масками одного адреса (и без host-формы)
+-- пережили бы удаление и столкнулись на первичном ключе при UPDATE.
 DELETE FROM kacho_vpc.address_pool_free_ips f
- WHERE f.ip <> host(f.ip)::inet
-   AND EXISTS (
-        SELECT 1 FROM kacho_vpc.address_pool_free_ips g
-         WHERE g.pool_id = f.pool_id
-           AND g.ip = host(f.ip)::inet);
+ USING kacho_vpc.address_pool_free_ips g
+ WHERE f.pool_id = g.pool_id
+   AND host(f.ip) = host(g.ip)
+   AND (f.ip <> g.ip)
+   AND (masklen(f.ip) < masklen(g.ip)
+        OR (masklen(f.ip) = masklen(g.ip) AND f.ip > g.ip));
 
 UPDATE kacho_vpc.address_pool_free_ips
    SET ip = host(ip)::inet
  WHERE ip <> host(ip)::inet;
 
-ALTER TABLE kacho_vpc.address_pool_free_ips
-    ADD CONSTRAINT address_pool_free_ips_host_form
-    CHECK (ip = host(ip)::inet);
+-- Идемпотентность (IF NOT EXISTS через pg_constraint): ALTER TABLE ADD CONSTRAINT
+-- не поддерживает IF NOT EXISTS для CHECK — тот же DO-guard, что в 0011/0016,
+-- защищает от повторного применения и от гонки двух параллельных migrate-init.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'address_pool_free_ips_host_form') THEN
+        ALTER TABLE kacho_vpc.address_pool_free_ips
+            ADD CONSTRAINT address_pool_free_ips_host_form
+            CHECK (ip = host(ip)::inet);
+    END IF;
+END $$;
 
 -- +goose StatementEnd
 

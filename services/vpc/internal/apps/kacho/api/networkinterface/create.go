@@ -108,6 +108,14 @@ func (u *CreateNetworkInterfaceUseCase) Execute(ctx context.Context, in CreateIn
 	if err := validateNICAddressCardinality(n.V4AddressIDs, n.V6AddressIDs); err != nil {
 		return nil, err
 	}
+	// Потолок числа групп — СИНХРОННО, до создания Operation и до любого чтения:
+	// величину задаёт вызывающий, и она определяет стоимость запроса. Проверка
+	// принадлежности каждой группы идёт позже, в writer-TX (там она обязана быть
+	// сериализована с удалением группы), но она уже не может быть вызвана с
+	// массивом произвольной длины.
+	if err := validateNICSecurityGroupCardinality(n.SecurityGroupIDs); err != nil {
+		return nil, err
+	}
 	// Привязка интерфейса к машине — НЕ исход публичного создания. Инвариант
 	// привязки (та же зона, принадлежность машины, атомарная смена владельца,
 	// номер слота) живёт в охраняемом пути привязки; создание не может его

@@ -91,14 +91,15 @@ func (u *RemoveCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6
 	if err := w.AddressPools().DeleteFreelistForCidrs(ctx, id, v4); err != nil {
 		return nil, err
 	}
-	allocated, err := w.AddressPools().CountAllocatedInCidrs(ctx, id, removed)
+	occupied, err := w.AddressPools().OccupiedCidrs(ctx, id, removed)
 	if err != nil {
 		return nil, err
 	}
-	if allocated > 0 {
-		// verbatim-стиль (как Subnet "network is not empty").
+	if len(occupied) > 0 {
+		// verbatim-стиль (как Subnet "network is not empty"). Названы ЗАНЯТЫЕ
+		// диапазоны, а не весь снимаемый набор.
 		return nil, status.Error(codes.FailedPrecondition,
-			fmt.Sprintf("address pool CIDR %s has allocated addresses", strings.Join(removed, ", ")))
+			fmt.Sprintf("address pool CIDR %s has allocated addresses", strings.Join(occupied, ", ")))
 	}
 
 	cur.V4CIDRBlocks = remainingV4

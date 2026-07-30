@@ -29,22 +29,34 @@ SET search_path TO kacho_vpc, public;
 -- Значение колонки бывает и JSON-скаляром `null` (маршалинг пустого набора),
 -- поэтому проверка ограничивает длину ТОЛЬКО массива: скаляр — не набор сверх
 -- потолка, а отсутствие набора.
-ALTER TABLE kacho_vpc.security_groups
-    ADD CONSTRAINT security_groups_rules_cardinality
-    CHECK (rules IS NULL
-        OR jsonb_typeof(rules) <> 'array'
-        OR jsonb_array_length(rules) <= 256);
+-- Идемпотентность — DO-guard по pg_constraint (ALTER TABLE ADD CONSTRAINT не
+-- поддерживает IF NOT EXISTS для CHECK), как в 0011/0016: защита от повторного
+-- применения и от гонки двух параллельных migrate-init.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'security_groups_rules_cardinality') THEN
+        ALTER TABLE kacho_vpc.security_groups
+            ADD CONSTRAINT security_groups_rules_cardinality
+            CHECK (rules IS NULL
+                OR jsonb_typeof(rules) <> 'array'
+                OR jsonb_array_length(rules) <= 256);
+    END IF;
 
-ALTER TABLE kacho_vpc.subnets
-    ADD CONSTRAINT subnets_cidr_blocks_cardinality
-    CHECK (COALESCE(array_length(v4_cidr_blocks, 1), 0) <= 64
-       AND COALESCE(array_length(v6_cidr_blocks, 1), 0) <= 64);
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'subnets_cidr_blocks_cardinality') THEN
+        ALTER TABLE kacho_vpc.subnets
+            ADD CONSTRAINT subnets_cidr_blocks_cardinality
+            CHECK (COALESCE(array_length(v4_cidr_blocks, 1), 0) <= 64
+               AND COALESCE(array_length(v6_cidr_blocks, 1), 0) <= 64);
+    END IF;
 
-ALTER TABLE kacho_vpc.network_interfaces
-    ADD CONSTRAINT network_interfaces_sg_cardinality
-    CHECK (security_group_ids IS NULL
-        OR jsonb_typeof(security_group_ids) <> 'array'
-        OR jsonb_array_length(security_group_ids) <= 16);
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'network_interfaces_sg_cardinality') THEN
+        ALTER TABLE kacho_vpc.network_interfaces
+            ADD CONSTRAINT network_interfaces_sg_cardinality
+            CHECK (security_group_ids IS NULL
+                OR jsonb_typeof(security_group_ids) <> 'array'
+                OR jsonb_array_length(security_group_ids) <= 16);
+    END IF;
+END $$;
 
 -- +goose StatementEnd
 

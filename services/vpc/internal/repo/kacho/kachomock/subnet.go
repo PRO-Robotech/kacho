@@ -258,19 +258,19 @@ func (sw *subnetWriter) SetCidrBlocks(_ context.Context, id string, v4, v6 []str
 // переданных диапазонах. Считает по тем же полям, что и хранилище (внутренний
 // адрес обеих семей), чтобы unit-проверки предусловия снятия диапазона
 // опирались на предмет, а не на заглушку-ноль.
-func (sw *subnetWriter) CountAddressesInCidrs(_ context.Context, subnetID string, cidrs []string) (int64, error) {
+func (sw *subnetWriter) OccupiedCidrs(_ context.Context, subnetID string, cidrs []string) ([]string, error) {
 	if subnetID == "" || len(cidrs) == 0 {
-		return 0, nil
+		return nil, nil
 	}
 	prefixes := make([]netip.Prefix, 0, len(cidrs))
 	for _, c := range cidrs {
 		p, err := netip.ParsePrefix(c)
 		if err != nil {
-			return 0, repo.ErrInvalidArg
+			return nil, repo.ErrInvalidArg
 		}
 		prefixes = append(prefixes, p)
 	}
-	var n int64
+	occupiedIdx := make(map[int]struct{}, len(prefixes))
 	count := func(rec *kacho.AddressRecord) {
 		if rec == nil {
 			return
@@ -288,10 +288,9 @@ func (sw *subnetWriter) CountAddressesInCidrs(_ context.Context, subnetID string
 			if err != nil {
 				continue
 			}
-			for _, p := range prefixes {
+			for i, p := range prefixes {
 				if p.Contains(ip) {
-					n++
-					return
+					occupiedIdx[i] = struct{}{}
 				}
 			}
 		}
@@ -301,7 +300,14 @@ func (sw *subnetWriter) CountAddressesInCidrs(_ context.Context, subnetID string
 	for _, a := range sw.w.localAddrs {
 		count(a)
 	}
-	return n, nil
+	var occupied []string
+	for i, c := range cidrs {
+		if _, ok := occupiedIdx[i]; ok {
+			occupied = append(occupied, c)
+		}
+	}
+	sort.Strings(occupied)
+	return occupied, nil
 }
 
 // Assertion: subnetReader/Writer implements iface.

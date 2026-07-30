@@ -24,12 +24,18 @@
 
 SET search_path TO kacho_vpc, public;
 
-ALTER TABLE kacho_vpc.addresses
-    ADD CONSTRAINT addresses_single_internal_family
-    CHECK (NOT (
-        internal_ipv4 IS NOT NULL AND COALESCE(internal_ipv4 ->> 'subnet_id', '') <> ''
-    AND internal_ipv6 IS NOT NULL AND COALESCE(internal_ipv6 ->> 'subnet_id', '') <> ''
-    ));
+-- Идемпотентность — DO-guard по pg_constraint (как 0011/0016).
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'addresses_single_internal_family') THEN
+        ALTER TABLE kacho_vpc.addresses
+            ADD CONSTRAINT addresses_single_internal_family
+            CHECK (NOT (
+                internal_ipv4 IS NOT NULL AND COALESCE(internal_ipv4 ->> 'subnet_id', '') <> ''
+            AND internal_ipv6 IS NOT NULL AND COALESCE(internal_ipv6 ->> 'subnet_id', '') <> ''
+            ));
+    END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS addresses_internal_v4_address_idx
     ON kacho_vpc.addresses (((internal_ipv4 ->> 'address')))

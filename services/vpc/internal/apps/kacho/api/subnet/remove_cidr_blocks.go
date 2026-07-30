@@ -118,13 +118,15 @@ func (u *RemoveCidrBlocksUseCase) Execute(ctx context.Context, id string, v4, v6
 		// внешнего ключа нельзя — она берётся только когда меняется колонка
 		// подсети, а выдача адреса её не меняет.
 		removed := append(append([]string{}, v4...), v6...)
-		inUse, cerr := w.Subnets().CountAddressesInCidrs(ctx, id, removed)
+		occupied, cerr := w.Subnets().OccupiedCidrs(ctx, id, removed)
 		if cerr != nil {
 			return nil, serviceerr.MapRepoErr(cerr)
 		}
-		if inUse > 0 {
+		if len(occupied) > 0 {
+			// Названы ЗАНЯТЫЕ диапазоны, а не весь снимаемый набор: иначе отказ
+			// утверждал бы занятость и про чистые диапазоны запроса.
 			return nil, status.Errorf(codes.FailedPrecondition,
-				"subnet CIDR %s has allocated addresses", strings.Join(removed, ", "))
+				"subnet CIDR %s has allocated addresses", strings.Join(occupied, ", "))
 		}
 		updated, uerr := w.Subnets().SetCidrBlocks(ctx, id, remainingV4, remainingV6)
 		if uerr != nil {

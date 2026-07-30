@@ -446,7 +446,7 @@ func TestIntegration_CallerSuppliedSets_Bounded(t *testing.T) {
 		tooManySGs[i] = ids.NewID(ids.PrefixSecurityGroup)
 	}
 	nicUC := niapp.NewCreateNetworkInterfaceUseCase(r, &repomock.ProjectClient{OK: true}, or)
-	nicOp, err := nicUC.Execute(ctx, niapp.CreateInput{
+	_, err = nicUC.Execute(ctx, niapp.CreateInput{
 		NetworkInterface: domain.NetworkInterface{
 			ProjectID:        "prj-owner",
 			Name:             domain.RcNameVPC("nic-many-sg"),
@@ -454,13 +454,13 @@ func TestIntegration_CallerSuppliedSets_Bounded(t *testing.T) {
 			SecurityGroupIDs: tooManySGs,
 		},
 	})
-	if err == nil {
-		got := awaitOpAny(t, or, nicOp.ID)
-		require.NotNil(t, got.Error, "набор групп сверх потолка обязан быть отвергнут")
-		assert.Equal(t, codes.InvalidArgument, status.FromProto(got.Error).Code())
-	} else {
-		assert.Equal(t, "security_group_ids", badRequestField(t, err))
-	}
+	// Синхронно и с именем поля: величину задаёт вызывающий, поэтому отказ обязан
+	// прийти ДО создания операции и до любого чтения. Ветвления по исходу здесь
+	// быть не может — иначе утверждение принимает взаимоисключающие исходы.
+	require.Error(t, err, "набор групп сверх потолка обязан быть отвергнут синхронно")
+	assert.Equal(t, codes.InvalidArgument, status.Code(err))
+	assert.Equal(t, "security_group_ids", badRequestField(t, err))
+	assert.Zero(t, nicCount(ctx, t, r, "prj-owner"), "операция не должна была создаваться")
 
 	// Подсеть: диапазонов больше потолка → синхронный отказ ДО квадратичной
 	// проверки пересечений.

@@ -74,6 +74,7 @@ DECLARED="
 deploy/scripts/assert-ban6-external-isolation.py
 deploy/scripts/assert-outbox-autovacuum.sh
 deploy/tests/helm/admin-hop-transport-test.sh
+deploy/tests/helm/geo-authz-edge-armed-test.sh
 deploy/tests/helm/image-rollout-binding-test.sh
 deploy/tests/helm/makefile-destructive-guarded-test.sh
 deploy/tests/helm/networkpolicy-egress-test.sh

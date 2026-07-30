@@ -206,12 +206,17 @@ func (aw *addressPoolWriter) DeleteFreelistForCidrs(_ context.Context, _ string,
 	return nil
 }
 
-// CountAllocatedInCidrs — возвращает override из parent.allocatedInCidr (seeded
-// тестом); cidr-список mock игнорирует. 0, если не seeded.
-func (aw *addressPoolWriter) CountAllocatedInCidrs(_ context.Context, poolID string, _ []string) (int64, error) {
+// OccupiedCidrs — по override из parent.allocatedInCidr (seeded тестом «в этом
+// пуле есть N выделенных адресов»): непустой счётчик означает, что заняты ВСЕ
+// переданные диапазоны. Mock не моделирует раскладку адресов по диапазонам —
+// точная раскладка проверяется integration-тестом против реального Postgres.
+func (aw *addressPoolWriter) OccupiedCidrs(_ context.Context, poolID string, cidrs []string) ([]string, error) {
 	aw.w.parent.mu.Lock()
 	defer aw.w.parent.mu.Unlock()
-	return aw.w.parent.allocatedInCidr[poolID], nil
+	if aw.w.parent.allocatedInCidr[poolID] == 0 {
+		return nil, nil
+	}
+	return append([]string{}, cidrs...), nil
 }
 
 // InsertCidrBlocks — no-op в mock'е. EXCLUDE-инвариант (пересечение CIDR) —

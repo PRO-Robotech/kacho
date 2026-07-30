@@ -535,8 +535,11 @@ func (w *addressWriter) claimExplicitExternalIPv4(ctx context.Context, ip string
 		return "", nil // адрес вне управляемых диапазонов — реестра нет
 	}
 	if claimedPool == "" {
-		return "", fmt.Errorf("%w: external address %s is not available in address pool %s",
-			helpers.ErrFailedPrecondition, addr.String(), ownerPool)
+		// Пул — Internal-admin-ресурс, его id не место в отказе публичного RPC
+		// (он не выставлен и в самом ответе). Вызывающему достаточно того, что
+		// адрес занят; оператору хватает координаты по адресу.
+		return "", fmt.Errorf("%w: external address %s is not available",
+			helpers.ErrFailedPrecondition, addr.String())
 	}
 	return claimedPool, nil
 }
@@ -589,8 +592,8 @@ func (w *addressWriter) claimExplicitExternalIPv6(ctx context.Context, addressID
 	}
 	offset := offsetFromAnchor(anchor.Addr(), addr)
 	if offset == nil {
-		return "", fmt.Errorf("%w: pool %s: cannot number %s against anchor %s",
-			helpers.ErrInternal, poolID, addr.String(), anchorBlocks[0])
+		return "", fmt.Errorf("%w: cannot number %s against the pool anchor",
+			helpers.ErrInternal, addr.String())
 	}
 
 	var claimed string
@@ -601,8 +604,8 @@ func (w *addressWriter) claimExplicitExternalIPv6(ctx context.Context, addressID
 		RETURNING pool_id
 	`, poolID, addr.String(), offset.String(), addressID).Scan(&claimed)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", fmt.Errorf("%w: external address %s is not available in address pool %s",
-			helpers.ErrFailedPrecondition, addr.String(), poolID)
+		return "", fmt.Errorf("%w: external address %s is not available",
+			helpers.ErrFailedPrecondition, addr.String())
 	}
 	if err != nil {
 		return "", fmt.Errorf("claim explicit external ipv6: %w", err)

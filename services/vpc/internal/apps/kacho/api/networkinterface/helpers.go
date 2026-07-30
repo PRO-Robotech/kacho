@@ -51,6 +51,18 @@ func validateNICAddressCardinality(v4IDs, v6IDs []string) error {
 	return nil
 }
 
+// validateNICSecurityGroupCardinality — потолок числа групп на интерфейсе.
+// Стоит СИНХРОННО, первым делом: длину массива задаёт вызывающий, и она
+// определяет стоимость запроса. DB-CHECK network_interfaces_sg_cardinality —
+// атомарный backstop.
+func validateNICSecurityGroupCardinality(ids []string) error {
+	if len(ids) > domain.MaxNICSecurityGroups {
+		return serviceerr.InvalidArg("security_group_ids",
+			fmt.Sprintf("at most %d security groups per network interface", domain.MaxNICSecurityGroups))
+	}
+	return nil
+}
+
 // validateNICSecurityGroupRefs — существование И принадлежность каждой
 // названной группы безопасности. Ссылка приходит массивом от вызывающего, у
 // колонки нет внешнего ключа (jsonb), поэтому единственная защита — эта
@@ -74,9 +86,8 @@ func validateNICSecurityGroupRefs(
 	if len(ids) == 0 {
 		return nil
 	}
-	if len(ids) > domain.MaxNICSecurityGroups {
-		return serviceerr.InvalidArg("security_group_ids",
-			fmt.Sprintf("at most %d security groups per network interface", domain.MaxNICSecurityGroups))
+	if err := validateNICSecurityGroupCardinality(ids); err != nil {
+		return err
 	}
 	for _, id := range ids {
 		if id == "" {

@@ -312,23 +312,26 @@ func (w *subnetWriter) Update(ctx context.Context, s *domain.Subnet) (*kacho.Sub
 // Сравнение inet разных семейств даёт false, поэтому оба семейства передаются
 // одним массивом. Запрос индексирован по internal_subnet_id (generated-колонка,
 // addresses_internal_subnet_idx) — цена страницы не зависит от размера таблицы.
-func (w *subnetWriter) CountAddressesInCidrs(ctx context.Context, subnetID string, cidrs []string) (int64, error) {
+func (w *subnetWriter) OccupiedCidrs(ctx context.Context, subnetID string, cidrs []string) ([]string, error) {
 	if len(cidrs) == 0 || subnetID == "" {
-		return 0, nil
+		return nil, nil
 	}
-	var n int64
+	var occupied []string
 	err := w.tx.QueryRow(ctx, `
-		SELECT count(*) FROM addresses a
-		 WHERE a.internal_subnet_id = $1
-		   AND ((coalesce(a.internal_ipv4 ->> 'address', '') <> ''
-		         AND (a.internal_ipv4 ->> 'address')::inet <<= ANY($2::cidr[]))
-		     OR (coalesce(a.internal_ipv6 ->> 'address', '') <> ''
-		         AND (a.internal_ipv6 ->> 'address')::inet <<= ANY($2::cidr[])))
-	`, subnetID, cidrs).Scan(&n)
+		SELECT COALESCE(array_agg(c.blk::text ORDER BY c.blk), '{}')
+		  FROM (SELECT unnest($2::text[])::cidr AS blk) AS c
+		 WHERE EXISTS (
+		     SELECT 1 FROM addresses a
+		      WHERE a.internal_subnet_id = $1
+		        AND ((coalesce(a.internal_ipv4 ->> 'address', '') <> ''
+		              AND (a.internal_ipv4 ->> 'address')::inet <<= c.blk)
+		          OR (coalesce(a.internal_ipv6 ->> 'address', '') <> ''
+		              AND (a.internal_ipv6 ->> 'address')::inet <<= c.blk)))
+	`, subnetID, cidrs).Scan(&occupied)
 	if err != nil {
-		return 0, helpers.WrapPgErr(err, "Subnet", subnetID)
+		return nil, helpers.WrapPgErr(err, "Subnet", subnetID)
 	}
-	return n, nil
+	return occupied, nil
 }
 
 // SetCidrBlocks атомарно обновляет v4_cidr_blocks и v6_cidr_blocks у Subnet

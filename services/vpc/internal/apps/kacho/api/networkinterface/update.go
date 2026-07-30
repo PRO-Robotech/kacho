@@ -73,6 +73,10 @@ func (u *UpdateNetworkInterfaceUseCase) Execute(ctx context.Context, in UpdateIn
 	if err := validateNICAddressCardinality(in.NetworkInterface.V4AddressIDs, in.NetworkInterface.V6AddressIDs); err != nil {
 		return nil, err
 	}
+	// Потолок числа групп — синхронно (см. Create).
+	if err := validateNICSecurityGroupCardinality(in.NetworkInterface.SecurityGroupIDs); err != nil {
+		return nil, err
+	}
 
 	op, err := operations.NewFromContext(
 		ctx,
