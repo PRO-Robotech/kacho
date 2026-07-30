@@ -1,5 +1,33 @@
 # RESULTS — kacho-nlb newman regression run history
 
+## Known-RED subtraction removed from the shared gate (2026-07-30)
+
+`services/iam/tests/newman/scripts/assert-suites-green.sh` is the shared verdict for every
+suite, nlb included. It used to deduct a "known-RED" set before deciding; that deduction is
+gone. It reports what newman reported.
+
+Seventeen nlb folders were matched by its last revision, on their `-rya<N>` steps — the
+suffix `retry_until_authorized` gives a step it has already wrapped. So these were failures
+**past** an existing bounded retry, and the deduction hid exactly the part worth seeing:
+
+`NLB-LIFECYCLE-CONF`, `NLB-CR-CRUD-OK`, `NLB-CR-CRUD-WITH-DESCRIPTION`,
+`NLB-CR-CRUD-DELETION-PROTECTION-TRUE`, `NLB-UPD-STATE-IMMUTABLE-VIP-SOURCE`,
+`NLB-UPD-STATE-IMMUTABLE-PROJECT`, `NLB-UPD-STATE-IMMUTABLE-PLACEMENT`,
+`NLB-UPD-STATE-NO-CHANGE`, `NLB-UPD-STATE-MASK-EMPTY`, `NLB-UPD-CRUD-DRAIN-TOGGLE`,
+`NLB-MV-IDM-SAME-PROJECT`, `NLB-MV-CRUD-OK`, `NLB-DEL-CRUD-OK`,
+`NLB-DEL-STATE-HAS-LISTENER`, `LST-GET-CRUD-OK`, `LST-UPD-CRUD-OK`,
+`LST-UPD-STATE-DEFAULT-TG-REGION-MISMATCH`.
+
+One of those is a placement-coherence **negative** (`LST-UPD-STATE-DEFAULT-TG-REGION-MISMATCH`
+— a listener's default target group in the wrong region must be refused). A name-keyed
+deduction reached it because the folder also contains retry-wrapped own-resource reads;
+nothing about the name says which is which, which is the whole reason the mechanism was
+removed rather than narrowed a fourth time.
+
+Retry budgets are **not** raised to absorb this. A budget large enough to outlast a slow
+materialization path turns a visible red into a slow green, and past the runner timeout into
+a cancelled run. Residual non-convergence is a finding about the path.
+
 > Baseline counters established with the initial check-in (KAC-NLB-newman-cases).
 > Updated after every run via `scripts/run.sh` → `out/summary.txt`.
 
