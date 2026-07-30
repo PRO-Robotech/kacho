@@ -338,6 +338,8 @@ jobs:
       # прогоне: именно тогда по ней и планируют работу.
       - name: гейт — запись «известное красное» всё ещё красная
         if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: go run ./tools/knownfailingsubject/cmd/verify-known-failing-subject .
 
       # coverage-гейт: proto RPC → newman case-id. Тоже был в polyrepo и тоже потерялся.
