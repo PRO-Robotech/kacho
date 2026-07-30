@@ -384,7 +384,9 @@ func TestRepo_REG14_RepoTupleIntent_Emit(t *testing.T) {
 	repo := kachopg.NewRegistryRepo(pool)
 	ctx := context.Background()
 
-	regID := "regREPOTUPLE000000000"
+	// Реестр сеятся по-настоящему: интент репозитория той же транзакцией пишет
+	// durable-признак его существования (миграция 0022) с внешним ключом на registries.
+	regID := seedRegistry(t, pool, "prj-REPOTUPLE", "reg-repo-tuple")
 	regIntent := domain.RegisterIntentForRepoPush(regID, "app", "prj-REPOTUPLE", "service_account:sva-ci")
 	require.NoError(t, repo.RegisterRepository(ctx, regIntent))
 	require.Equal(t, 1, countOutbox(t, pool, regID+"/app", domain.FGAEventRegister),

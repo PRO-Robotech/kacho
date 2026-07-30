@@ -32,7 +32,10 @@ func TestRepo_RepoIntent_SerializesOnPerRepoAdvisoryLock(t *testing.T) {
 	repo := kachopg.NewRegistryRepo(pool)
 	ctx := context.Background()
 
-	const regID = "regX000000000000000"
+	// Реестр СЕЯТСЯ по-настоящему: эмиссия интента репозитория теперь той же транзакцией
+	// пишет durable-признак его существования (миграция 0022), а тот ссылается на
+	// registries внешним ключом — под выдуманным id регистрация отвергается 23503.
+	regID := seedRegistry(t, pool, "prj-P", "reg-intent-lock")
 	sameIntent := domain.RegisterIntentForRepoPush(regID, "app", "prj-P", "service_account:sva-ci")
 	otherIntent := domain.RegisterIntentForRepoPush(regID, "other", "prj-P", "service_account:sva-ci")
 

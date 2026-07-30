@@ -118,9 +118,14 @@ func (r *RepositoryConfigRepo) ListConfigsExcludingNames(ctx context.Context, re
 	if excluded == nil {
 		excluded = []string{}
 	}
-	q := fmt.Sprintf(`SELECT %s FROM %s.repository_configs
-		WHERE registry_id = $1 AND name <> ALL($2)
-		ORDER BY created_at ASC, name ASC OFFSET $3 LIMIT $4`, configColumns, schema)
+	// Анти-джойн через unnest, а НЕ `name <> ALL($2)`: форма с массивом сравнивает
+	// каждую строку с каждым элементом (O(строк×имён)) — это заменило бы память
+	// сервиса процессорным временем базы на том же большом реестре. unnest даёт
+	// планировщику хеш-анти-джойн и NULL-безопасен (в списке имён NULL быть не может).
+	q := fmt.Sprintf(`SELECT %s FROM %s.repository_configs c
+		WHERE c.registry_id = $1
+		  AND NOT EXISTS (SELECT 1 FROM unnest($2::text[]) AS x(n) WHERE x.n = c.name)
+		ORDER BY c.created_at ASC, c.name ASC OFFSET $3 LIMIT $4`, configColumns, schema)
 	rows, err := r.pool.Query(ctx, q, registryID, excluded, offset, limit)
 	if err != nil {
 		return nil, mapConfigErr(err)
