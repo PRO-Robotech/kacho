@@ -662,6 +662,24 @@ type runReport struct {
 // whose cursors describe a different number of requests than the committed
 // collection is stale and its execution evidence is dropped — a stale report must
 // not be able to declare a case "passed".
+//
+// THE EXECUTIONS ARRAY IS NOT THE WHOLE RUN, and that is measured, not feared.
+// On the production-posture run of 2026-07-30 the array disagreed with the run
+// summary in both directions: a step that skips its own request from the
+// pre-request script gets no entry at all (its assertions are still counted in
+// run.stats and still listed in run.failures — 143 walked against 153 summarised
+// in one iam collection), while a step retried by a self-loop gets several
+// entries all carrying the SAME accumulated assertions (47 walked against 37 in
+// one vpc collection). So a count taken from this array is wrong in a direction
+// that looks like an improvement.
+//
+// This reader is safe by construction rather than by luck, and the order matters:
+// `failed` is built from run.failures — the authoritative list — and judge()
+// consults it BEFORE `executed`. A step that asserted without executing is
+// therefore booked as still-red from the failure list; `executed` only ever
+// upgrades a subject to "passed", so its incompleteness can lose a passing
+// verdict but can never manufacture one. Do not invert that order, and do not
+// derive any COUNT from the array.
 func readReports(base string, idx suiteIndex) (map[string]*runReport, int) {
 	out := map[string]*runReport{}
 	entries, err := os.ReadDir(filepath.Join(base, "out"))
