@@ -208,31 +208,63 @@ func TestInterceptor_Unary_UnmappedInternalRPC_FailClosed(t *testing.T) {
 	require.Equal(t, 0, *calls)
 }
 
-func TestInterceptor_Stream_InternalWatch_PublicExempt(t *testing.T) {
-	// InternalWatchService/Watch runs on the internal :9091 listener behind the
-	// SAME authzIntr.Stream() as every other internal RPC (cmd/compute/main.go).
-	// It must be reachable — no per-call Check, handler invoked — because it is
-	// mapped Public=true in PermissionMap, not because of a name-based
-	// "methodIsInternal" fallback (which does not exist in the pinned corelib:
-	// an unmapped stream RPC fails closed with PermissionDenied, see
-	// TestInterceptor_Unary_UnmappedInternalRPC_FailClosed above).
-	intr, calls := newTestInterceptor(t, func(_ context.Context, _, _, _ string) (bool, error) {
-		t.Fatal("Check must not be called for Public-exempt Watch RPC")
-		return false, nil
-	})
-	sIntr := intr.Stream()
-	called := false
-	handler := func(srv any, ss grpc.ServerStream) error {
-		called = true
-		return nil
-	}
-	info := &grpc.StreamServerInfo{FullMethod: "/kacho.cloud.compute.v1.InternalWatchService/Watch"}
-	ss := &fakeServerStream{ctx: context.Background()}
+// TestInterceptor_Stream_InternalWatch_ReachesHandlerOnlyWithASubject — the outbox
+// stream reaches its handler only when the request names a caller.
+//
+// # Why this test says the opposite of what it used to
+//
+// Its previous name was "PublicExempt" and it asserted that a stream with an EMPTY
+// context reaches the handler. That is precisely the defect: the interceptor answered
+// allow before reading the subject, so the handler ran for a caller nobody had
+// identified — and the handler then streamed every tenant's resource snapshots.
+//
+// What is genuinely true, and is still asserted here, is that no SINGLE-object Check
+// happens: the rows belong to individually-owned objects the request never names, so
+// one question about one object cannot gate this RPC. What replaces it is not
+// "nothing" but two things: an unconditional subject requirement, asserted here, and
+// per-row narrowing in the handler, asserted in
+// internal/handler/internal_watch_authorization_test.go on what the caller receives.
+//
+// The subject cut must be UNCONDITIONAL — not "when the mode is production". There is
+// no per-RPC Check underneath a scope-filtered RPC to fall back on, so an
+// unrecognised caller plus a missing filter is the original hole again.
+func TestInterceptor_Stream_InternalWatch_ReachesHandlerOnlyWithASubject(t *testing.T) {
+	const watchMethod = "/kacho.cloud.compute.v1.InternalWatchService/Watch"
 
-	err := sIntr(nil, ss, info, handler)
-	require.NoError(t, err)
-	require.True(t, called, "Watch handler must be invoked (Public exempt), not fail-closed as unmapped")
-	require.Equal(t, 0, *calls, "Public entry must skip the Check call entirely")
+	t.Run("identified caller reaches the handler without a single-object Check", func(t *testing.T) {
+		intr, calls := newTestInterceptor(t, func(_ context.Context, _, _, _ string) (bool, error) {
+			t.Fatal("a scope-filtered RPC must not be gated by a single-object Check")
+			return false, nil
+		})
+		called := false
+		handler := func(srv any, ss grpc.ServerStream) error { called = true; return nil }
+		ss := &fakeServerStream{ctx: principalCtx("user", "usr_alice")}
+
+		err := intr.Stream()(nil, ss, &grpc.StreamServerInfo{FullMethod: watchMethod}, handler)
+
+		require.NoError(t, err)
+		require.True(t, called, "an identified caller must reach the handler, which narrows the stream per row")
+		require.Equal(t, 0, *calls, "no single-object Check: the caller names no object to ask about")
+	})
+
+	t.Run("caller the request does not identify never reaches the handler", func(t *testing.T) {
+		intr, _ := newTestInterceptor(t, func(_ context.Context, _, _, _ string) (bool, error) {
+			t.Fatal("the model must not be consulted for a request that names nobody")
+			return false, nil
+		})
+		called := false
+		handler := func(srv any, ss grpc.ServerStream) error { called = true; return nil }
+		ss := &fakeServerStream{ctx: context.Background()} // names nobody
+
+		err := intr.Stream()(nil, ss, &grpc.StreamServerInfo{FullMethod: watchMethod}, handler)
+
+		require.Error(t, err)
+		st, ok := status.FromError(err)
+		require.True(t, ok)
+		require.Equal(t, codes.PermissionDenied, st.Code())
+		require.False(t, called,
+			"the handler must not run for an unidentified caller: it would stream every tenant's snapshots")
+	})
 }
 
 // fakeServerStream — minimal grpc.ServerStream fake carrying only a Context();

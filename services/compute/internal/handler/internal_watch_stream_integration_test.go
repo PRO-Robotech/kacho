@@ -96,9 +96,13 @@ func TestIntegration_WatchStreamSince_BatchBoundary(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = conn.Close(ctx) }()
 
-	h := NewInternalWatchHandler(pool, dsn, slog.Default(), 0)
+	ids := make([]string, 0, total)
+	for i := 0; i < total; i++ {
+		ids = append(ids, "epi-"+padID(i))
+	}
+	h := NewInternalWatchHandler(pool, dsn, slog.Default(), 0, allowAllVisibility(ids...))
 	fs := &fakeWatchStream{ctx: ctx}
-	newCursor, err := h.streamSince(ctx, conn, 0, nil, fs)
+	newCursor, err := h.streamSince(ctx, conn, 0, nil, watchTestSubject, fs)
 	require.NoError(t, err)
 
 	require.Len(t, fs.sent, total, "all outbox rows must be delivered across batch boundaries")
@@ -111,8 +115,22 @@ func TestIntegration_WatchStreamSince_BatchBoundary(t *testing.T) {
 	assert.Equal(t, prev, newCursor, "returned cursor must equal last delivered sequence_no")
 }
 
-// TestIntegration_WatchStreamSince_KindsFilter — resource_kind = ANY($2) фильтр
-// доставляет только запрошенные kind'ы.
+// TestIntegration_WatchStreamSince_KindsFilter — `resource_kind = ANY($2)` сужает
+// то, что ЧИТАЕТСЯ из журнала.
+//
+// Прежняя редакция этого теста просила `kinds=["Disk"]` и требовала, чтобы два
+// Disk-события были ДОСТАВЛЕНЫ. Так больше нельзя, и не из-за ослабления
+// требований: блочное хранение ушло из compute (миграция 0021), у kind'а `Disk`
+// не осталось типа объекта в модели прав, а значит про такую строку невозможно
+// спросить «вправе ли вызывающий её видеть». Неотвечаемый вопрос обязан
+// разрешаться отказом, поэтому строка не доставляется — см.
+// TestIntegration_Watch_KindWithNoObjectTypeIsNotDelivered.
+//
+// Предмет теста — SQL-предикат, и он остаётся проверяемым: запрос про `Disk` не
+// должен ПРОЧИТАТЬ Instance-строки, то есть модель про них даже не спрашивается.
+// Если предикат сломается, чтение приведёт Instance-идентификаторы, и вопрос о
+// них будет задан — тест это увидит. Различение «сузило чтение» и «сузила
+// авторизация» — ровно то, чего не давало утверждение о доставке.
 func TestIntegration_WatchStreamSince_KindsFilter(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
@@ -124,26 +142,45 @@ func TestIntegration_WatchStreamSince_KindsFilter(t *testing.T) {
 	defer pool.Close()
 
 	kinds := []string{"Instance", "Disk", "Image", "Instance", "Disk"}
+	var instanceIDs []string
 	for i, k := range kinds {
+		id := "r-" + padID(i)
 		_, err := pool.Exec(ctx,
 			`INSERT INTO compute_outbox (resource_kind, resource_id, event_type, payload) VALUES ($1,$2,$3,'{}'::jsonb)`,
-			k, "r-"+padID(i), "CREATED")
+			k, id, "CREATED")
 		require.NoError(t, err)
+		if k == "Instance" {
+			instanceIDs = append(instanceIDs, id)
+		}
 	}
 
 	conn, err := pgx.Connect(ctx, dsn)
 	require.NoError(t, err)
 	defer func() { _ = conn.Close(ctx) }()
 
-	h := NewInternalWatchHandler(pool, dsn, slog.Default(), 0)
+	// Просим только Disk — kind без типа объекта.
+	visDisk := allowAllVisibility(append([]string{"r-001", "r-004"}, instanceIDs...)...)
+	h := NewInternalWatchHandler(pool, dsn, slog.Default(), 0, visDisk)
 	fs := &fakeWatchStream{ctx: ctx}
-	_, err = h.streamSince(ctx, conn, 0, []string{"Disk"}, fs)
+	_, err = h.streamSince(ctx, conn, 0, []string{"Disk"}, watchTestSubject, fs)
 	require.NoError(t, err)
 
-	require.Len(t, fs.sent, 2, "only Disk events must pass the kinds filter")
-	for _, ev := range fs.sent {
-		assert.Equal(t, "Disk", ev.GetResourceKind())
+	assert.Empty(t, fs.sent, "kind без типа объекта в модели прав не доставляется")
+	assert.Empty(t, visDisk.asked,
+		"запрос про Disk не должен читать Instance-строки — иначе про них был бы задан вопрос")
+
+	// Просим Instance — предикат обязан привести именно их.
+	visInst := allowAllVisibility(instanceIDs...)
+	h2 := NewInternalWatchHandler(pool, dsn, slog.Default(), 0, visInst)
+	fs2 := &fakeWatchStream{ctx: ctx}
+	_, err = h2.streamSince(ctx, conn, 0, []string{"Instance"}, watchTestSubject, fs2)
+	require.NoError(t, err)
+
+	require.Len(t, fs2.sent, len(instanceIDs), "предикат обязан привести все Instance-строки")
+	for _, ev := range fs2.sent {
+		assert.Equal(t, "Instance", ev.GetResourceKind())
 	}
+	assert.ElementsMatch(t, instanceIDs, visInst.asked, "вопрос задаётся ровно про прочитанные строки")
 }
 
 // TestIntegration_WatchStreamSince_ResumeFromCursor — from_sequence_no resume:
@@ -172,10 +209,14 @@ func TestIntegration_WatchStreamSince_ResumeFromCursor(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = conn.Close(ctx) }()
 
-	h := NewInternalWatchHandler(pool, dsn, slog.Default(), 0)
+	resumeIDs := make([]string, 0, 5)
+	for i := 0; i < 5; i++ {
+		resumeIDs = append(resumeIDs, "epi-"+padID(i))
+	}
+	h := NewInternalWatchHandler(pool, dsn, slog.Default(), 0, allowAllVisibility(resumeIDs...))
 	fs := &fakeWatchStream{ctx: ctx}
 	// resume from the 3rd row → expect exactly the last 2 rows.
-	_, err = h.streamSince(ctx, conn, seqs[2], nil, fs)
+	_, err = h.streamSince(ctx, conn, seqs[2], nil, watchTestSubject, fs)
 	require.NoError(t, err)
 
 	require.Len(t, fs.sent, 2, "resume must skip rows with sequence_no <= cursor")
@@ -205,9 +246,9 @@ func TestIntegration_WatchStreamSince_BadPayloadFallback(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = conn.Close(ctx) }()
 
-	h := NewInternalWatchHandler(pool, dsn, slog.Default(), 0)
+	h := NewInternalWatchHandler(pool, dsn, slog.Default(), 0, allowAllVisibility("epi-bad"))
 	fs := &fakeWatchStream{ctx: ctx}
-	_, err = h.streamSince(ctx, conn, 0, nil, fs)
+	_, err = h.streamSince(ctx, conn, 0, nil, watchTestSubject, fs)
 	require.NoError(t, err)
 
 	require.Len(t, fs.sent, 1, "bad-payload row must still be delivered (fallback), not dropped")
@@ -215,13 +256,21 @@ func TestIntegration_WatchStreamSince_BadPayloadFallback(t *testing.T) {
 }
 
 // TestWatch_ResourceExhausted — cap на одновременные stream'ы: когда все слоты
-// заняты, Watch немедленно возвращает ResourceExhausted (до любого DB-контакта).
+// заняты, Watch возвращает ResourceExhausted (до любого DB-контакта).
+//
+// Вызывающий здесь НАЗВАН и фильтр сужает — иначе тест не отличал бы «слоты
+// заняты» от «отказано в правах»: у отказа тоже нет DB-контакта, и прежняя
+// редакция (пустой контекст) прошла бы по отказу, ничего не сказав про предел.
+// Порядок проверок при этом обратный: авторизация идёт ПЕРЕД учётом слотов, чтобы
+// отвергнутый вызывающий не тратил бюджет параллелизма (см.
+// TestWatch_UnauthorizedCallerConsumesNoStreamSlot).
 func TestWatch_ResourceExhausted(t *testing.T) {
-	h := NewInternalWatchHandler(nil, "", slog.Default(), 1)
+	h := NewInternalWatchHandler(nil, "", slog.Default(), 1, allowAllVisibility())
 	// Занимаем единственный слот — параллельный Watch должен отбиться.
 	h.streamSlot <- struct{}{}
 
-	err := h.Watch(&computev1.WatchRequest{}, &fakeWatchStream{ctx: context.Background()})
+	ctx := ctxWithUser(context.Background(), "usr_alice")
+	err := h.Watch(&computev1.WatchRequest{}, &fakeWatchStream{ctx: ctx})
 	require.Error(t, err)
 	assert.Equal(t, codes.ResourceExhausted, status.Code(err))
 }

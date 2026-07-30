@@ -30,6 +30,31 @@ import (
 // catchupBatchSize — сколько событий читаем за один SELECT при initial-catchup.
 const catchupBatchSize = 100
 
+// watchVisibilityBatchSize — максимум идентификаторов в ОДНОМ вопросе к модели
+// прав. Контракт `AuthorizeService.BatchCheck` отвергает партию больше сотни, и
+// это же ограничение записано в правиле платформы для авторизации на уровне
+// данных. Держится не больше catchupBatchSize, поэтому один прочитанный батч
+// журнала укладывается в один вопрос.
+const watchVisibilityBatchSize = 100
+
+// EventVisibility — то, чем поток сужается до прав вызывающего.
+//
+// Порт УЖЕ, чем authzfilter.Filter, и требует на одну вещь больше — Narrows().
+// Причина в том, что общий фильтр при выключенном мастер-переключателе (или без
+// клиента к модели) возвращает идентификаторы КАК ЕСТЬ. Для списочного RPC это
+// защитимо: под ним остаётся per-RPC Check на проектном ярусе. Под этим потоком
+// не остаётся ничего, поэтому «фильтр подвешен» само по себе не является
+// утверждением о сужении, и спросить об этом нужно отдельно.
+type EventVisibility interface {
+	// FilterVisibleIDs возвращает подмножество ids, видимое subject'у. err != nil —
+	// fail-closed: вызывающий ОБЯЗАН пробросить ошибку, а не отдать строки.
+	FilterVisibleIDs(ctx context.Context, subject, resourceType, action string, ids []string) ([]string, error)
+	// Narrows сообщает, что фильтр действительно сужает выдачу, а не пропускает
+	// идентификаторы сквозь себя (выключен / без клиента к модели / отдаёт
+	// нефильтрованное на ошибке).
+	Narrows() bool
+}
+
 // InternalWatchHandler реализует computev1.InternalWatchServiceServer.
 type InternalWatchHandler struct {
 	computev1.UnimplementedInternalWatchServiceServer
@@ -37,12 +62,15 @@ type InternalWatchHandler struct {
 	dsn        string
 	log        *slog.Logger
 	streamSlot chan struct{}
+	vis        EventVisibility
 }
 
 // NewInternalWatchHandler создаёт handler. pool — для catchup-SELECT'ов; dsn —
 // отдельный connection string для dedicated LISTEN-соединения (вне пула);
-// maxStreams — лимит одновременных Watch-streams (0 → fallback 32).
-func NewInternalWatchHandler(pool *pgxpool.Pool, dsn string, log *slog.Logger, maxStreams int) *InternalWatchHandler {
+// maxStreams — лимит одновременных Watch-streams (0 → fallback 32); vis —
+// per-row сужение потока по правам вызывающего (обязателен: nil → Watch
+// отказывает, поток не открывается).
+func NewInternalWatchHandler(pool *pgxpool.Pool, dsn string, log *slog.Logger, maxStreams int, vis EventVisibility) *InternalWatchHandler {
 	if maxStreams <= 0 {
 		maxStreams = 32
 	}
@@ -51,6 +79,7 @@ func NewInternalWatchHandler(pool *pgxpool.Pool, dsn string, log *slog.Logger, m
 		dsn:        dsn,
 		log:        log,
 		streamSlot: make(chan struct{}, maxStreams),
+		vis:        vis,
 	}
 }
 
@@ -90,7 +119,7 @@ func (h *InternalWatchHandler) Watch(req *computev1.WatchRequest, stream compute
 		cancelClose()
 	}()
 
-	if newCursor, err := h.streamSince(ctx, conn, cursor, kinds, stream); err != nil {
+	if newCursor, err := h.streamSince(ctx, conn, cursor, kinds, "", stream); err != nil {
 		return err
 	} else {
 		cursor = newCursor
@@ -114,7 +143,7 @@ func (h *InternalWatchHandler) Watch(req *computev1.WatchRequest, stream compute
 				return status.Error(codes.Unavailable, "watch notification stream lost")
 			}
 		}
-		if newCursor, err := h.streamSince(ctx, conn, cursor, kinds, stream); err != nil {
+		if newCursor, err := h.streamSince(ctx, conn, cursor, kinds, "", stream); err != nil {
 			return err
 		} else {
 			cursor = newCursor
@@ -129,8 +158,10 @@ func (h *InternalWatchHandler) streamSince(
 	conn *pgx.Conn,
 	cursor int64,
 	kinds []string,
+	subject string,
 	stream computev1.InternalWatchService_WatchServer,
 ) (int64, error) {
+	_ = subject // RED stage: not yet consulted.
 	for {
 		args := []any{cursor}
 		var kindFilter string

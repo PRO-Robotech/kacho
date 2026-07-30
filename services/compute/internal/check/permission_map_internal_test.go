@@ -98,20 +98,46 @@ func TestPermissionMap_CatalogAdmin_EnforcedByInterceptor(t *testing.T) {
 	require.Equal(t, 1, *calls, "catalog mutation must trigger exactly one Check, not be bypassed")
 }
 
-// TestPermissionMap_InternalWatch_MappedPublic — InternalWatchService/Watch is
-// a real, registered internal stream handler (cmd/compute/main.go wires
-// computev1.RegisterInternalWatchServiceServer; internal/handler/internal_watch_handler.go
-// streams compute_outbox via LISTEN/NOTIFY) served on the SAME internal :9091
-// listener that runs authzIntr.Stream(). The pinned corelib authz.Interceptor
-// has no name-based "methodIsInternal" fallback: any RPC absent from
-// PermissionMap resolves to DecisionUnmapped -> PermissionDenied (fail-closed),
-// for streams too (see authz.Interceptor.Stream()). Watch therefore MUST carry
-// an explicit PermissionMap entry with Public=true (the same documented exempt
-// mechanism as OperationService.Get/Cancel above) or every Watch call is
-// dead-on-arrival in production.
-func TestPermissionMap_InternalWatch_MappedPublic(t *testing.T) {
+// TestPermissionMap_InternalWatch_NotExemptFromAuthorization — the outbox stream
+// must be marked as authorised at the DATA level, never as exempt.
+//
+// # Why this test says the opposite of what it used to
+//
+// It previously required `Public == true` and called that the exempt mechanism. That
+// requirement was wrong, and the reason is worth writing down so it is not restored
+// by someone reading only the diff.
+//
+// `Public` makes the interceptor answer allow BEFORE the subject is read — the
+// subject is not extracted and the model is not consulted. That is defensible for
+// the two RPCs that sit next to it, `OperationService.Get/Cancel`, because those
+// authorise on the data: the owning principal is a predicate in the SQL WHERE
+// clause, so a non-owner gets NotFound (see internal/handler/operation_handler.go).
+// The stream had no such predicate. Its request carries neither a subject nor a
+// project, and its payload is the whole resource snapshot, so `Public` on it meant
+// no authorisation at all — one call returned the change journal of every tenant.
+// The comment claiming parity with the operation service was therefore false: the
+// mechanism was the same, the thing that made it safe was absent.
+//
+// `ScopeFiltered` is the correct marker: the interceptor still performs no
+// single-object Check — it cannot, because the rows belong to individually-owned
+// objects the caller never names, so there is no one object to ask about — and the
+// handler narrows the stream per row instead
+// (internal/handler/internal_watch_handler.go). It also puts the RPC under the
+// production boot guard for the per-object filter, which `Public` did not.
+//
+// The entry must still EXIST: the pinned corelib authz.Interceptor has no
+// name-based "methodIsInternal" fallback, so an unmapped RPC — stream included —
+// fails closed as `PermissionDenied (rpc not mapped)`.
+func TestPermissionMap_InternalWatch_NotExemptFromAuthorization(t *testing.T) {
 	m := check.PermissionMap()
 	entry, ok := m["/kacho.cloud.compute.v1.InternalWatchService/Watch"]
-	require.True(t, ok, "InternalWatchService/Watch must be present in PermissionMap (no methodIsInternal fallback exists in the pinned corelib)")
-	require.True(t, entry.Public, "InternalWatchService/Watch must be Public — the exempt mechanism is an explicit PermissionMap entry, not name-based skip")
+	require.True(t, ok,
+		"InternalWatchService/Watch must be present in PermissionMap (no methodIsInternal fallback exists in the pinned corelib)")
+	require.False(t, entry.Public,
+		"Watch must NOT be Public: that answers allow before the subject is even read, and unlike "+
+			"OperationService.Get/Cancel this RPC has no owner predicate to authorise on instead")
+	require.True(t, entry.ScopeFiltered,
+		"Watch must be ScopeFiltered: rows belong to individually-owned objects the caller does not "+
+			"name, so authorisation happens per row in the handler — and the marker is what puts the "+
+			"RPC under the production boot guard for that filter")
 }
