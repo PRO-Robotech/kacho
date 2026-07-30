@@ -649,6 +649,13 @@ func main() {
 		inner = dpopMiddleware.Wrap(inner)
 	}
 	inner = authInterceptor.HTTP(inner)
+	// Потолок тела — СНАРУЖИ всего, что тело читает (проверка прав буферизует
+	// префикс, ключ идемпотентности хэширует префикс, сгенерированный хендлер
+	// разбирает документ дважды: в сообщение и в обобщённое представление ради
+	// проверки имён значений перечислений). Внутри любого из этих звеньев
+	// потолок был бы объявлен и не действовал на самом дорогом участке; порядок
+	// закреплён гейтом TestHTTPBodyCapIsOutermostBodyReader.
+	inner = middleware.HTTPMaxBodyBytes(middleware.EdgeMaxRequestBodyBytes)(inner)
 	httpHandler := middleware.HTTPRequestID(
 		middleware.HTTPRecovery(logger)(inner),
 	)
