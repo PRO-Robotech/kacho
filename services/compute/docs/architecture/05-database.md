@@ -266,16 +266,30 @@ nic_id                TEXT         NOT NULL DEFAULT ''        -- id бэкующ
 mac_address           TEXT         NOT NULL DEFAULT ''
 subnet_id             TEXT         NOT NULL DEFAULT ''        -- VPC subnet ref (НЕ FK — cross-service; denorm-зеркало)
 primary_v4_address    TEXT         NOT NULL DEFAULT ''
-primary_v4_nat        JSONB                                  -- OneToOneNat {address, ip_version, dns_records} | null
-primary_v4_dns_records JSONB       NOT NULL DEFAULT '[]'::jsonb
+primary_v4_nat        JSONB                                  -- OneToOneNat {address, address_id, ephemeral, ip_version} | null
+primary_v4_dns_records JSONB       NOT NULL DEFAULT '[]'::jsonb  -- МЁРТВАЯ (см. ниже)
 primary_v6_address    TEXT         NOT NULL DEFAULT ''
 primary_v6_nat        JSONB
-primary_v6_dns_records JSONB       NOT NULL DEFAULT '[]'::jsonb
+primary_v6_dns_records JSONB       NOT NULL DEFAULT '[]'::jsonb  -- МЁРТВАЯ (см. ниже)
 security_group_ids    JSONB        NOT NULL DEFAULT '[]'::jsonb  -- []string VPC SG refs (НЕ FK; denorm-зеркало)
 PRIMARY KEY (instance_id, idx)
 
 INDEX instance_nic_subnet_idx (subnet_id) WHERE subnet_id <> ''
 ```
+
+> [!warning] `primary_v*_dns_records` — мёртвые колонки, и это не «зарезервировано под будущее»
+> Обе существуют с миграции 0001 и не читаются и не пишутся ни одной строкой кода: репо
+> к таблице `instance_network_interfaces` не обращается вовсе (зеркало NIC приходит от
+> клиента kacho-vpc), а DNS снят с контракта целиком — на входе и на выходе, вместе с
+> сообщениями `DnsRecord`/`DnsRecordSpec` (лок:
+> `pkg/api/kacho/cloud/compute/v1/dns_contract_test.go`). Комментарий колонки
+> `primary_v4_nat` в самой миграции 0001 всё ещё перечисляет `dns_records` в форме
+> JSONB — применённую миграцию не правят (ban #5), поэтому расхождение снято здесь, а не
+> там: в доменной структуре `OneToOneNat` поля `DNSRecords` больше нет.
+>
+> Снятие самих колонок — НОВАЯ миграция и отдельный шаг; пока он не сделан, колонки
+> остаются в схеме, и это записано, чтобы «есть колонка» не читалось как «есть
+> возможность».
 
 На `Instance.Create` compute создаёт (или attach'ит существующий) kacho-vpc
 `NetworkInterface` на каждый NIC spec и кладёт его id в `nic_id`; на

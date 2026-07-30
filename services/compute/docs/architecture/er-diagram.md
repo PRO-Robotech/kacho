@@ -143,11 +143,11 @@ erDiagram
     text subnet_id "cross-service → vpc.subnets (no FK)"
     text primary_v4_address
     text primary_v4_address_id "VPC Address id for ephemeral auto-allocated internal IPv4 (mig 0002)"
-    jsonb primary_v4_nat "OneToOneNat | null"
-    jsonb primary_v4_dns_records
+    jsonb primary_v4_nat "OneToOneNat | null (без dns_records — DNS снят с контракта)"
+    jsonb primary_v4_dns_records "МЁРТВАЯ: не читается и не пишется ничем"
     text primary_v6_address
     jsonb primary_v6_nat
-    jsonb primary_v6_dns_records
+    jsonb primary_v6_dns_records "МЁРТВАЯ: не читается и не пишется ничем"
     jsonb security_group_ids "cross-service → vpc.security_groups (no FK)"
     text nic_id "VPC NetworkInterface id (mig 0005, epic KAC-2); '' = legacy / SKIP_PEER"
   }
