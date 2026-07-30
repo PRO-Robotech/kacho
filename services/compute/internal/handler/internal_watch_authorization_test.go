@@ -353,6 +353,33 @@ func TestWatch_RefusedWhenNothingNarrowsTheStream(t *testing.T) {
 	}
 }
 
+// TestWatchStreamSince_WithoutAFilterFailsClosedRatherThanPanics — the narrowing must
+// be refused where the rows are USED, not only at the entry to the RPC.
+//
+// Watch checks for a working filter before it opens anything, so no current path
+// reaches the read loop without one. That is exactly the shape in which such holes
+// come back: the guard sits at one door, someone later adds a second caller of the
+// read loop, and the missing filter surfaces as a nil dereference — recovered into an
+// opaque INTERNAL, indistinguishable from a database problem, with no statement about
+// authorisation anywhere.
+//
+// So the read loop states the requirement itself. Asserted on the observable: an
+// error, no rows, and no panic.
+func TestWatchStreamSince_WithoutAFilterFailsClosedRatherThanPanics(t *testing.T) {
+	h := NewInternalWatchHandler(nil, "", slog.Default(), 0, nil)
+	fs := &fakeWatchStream{ctx: context.Background()}
+
+	// A non-empty batch is what makes the question unavoidable; an empty one has
+	// nothing to ask about and would pass regardless.
+	visible, err := h.narrowToSubject(context.Background(), watchTestSubject,
+		[]*computev1.Event{{SequenceNo: 1, ResourceKind: "Instance", ResourceId: "epi-x"}})
+
+	require.Error(t, err, "no filter means no answer about these rows, which is not a yes")
+	assert.Equal(t, codes.PermissionDenied, status.Code(err))
+	assert.Empty(t, visible)
+	assert.Empty(t, fs.sent)
+}
+
 // TestWatch_UnidentifiedCallerIsRefusedBeforeTouchingTheBackend — the refusal must
 // happen before any backend contact.
 //
