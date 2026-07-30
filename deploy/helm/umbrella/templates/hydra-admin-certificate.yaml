@@ -27,21 +27,24 @@
   So the per-listener override is not a capability of this version, and the
   "correction" was folklore that nobody re-measured.
 
-  CONSEQUENCE, STATED PLAINLY SO IT IS NOT REDISCOVERED. iam's production
-  boot-guard REQUIRES https for this hop (rightly — the administrative bearer
-  travels it and the API it opens authenticates nobody). The provider cannot give
-  https to this listener alone. Therefore production posture is unreachable on a
-  stand shaped like this until EITHER the shared `serve.tls` gets a certificate —
-  which also moves the PUBLIC listener off plain http, and the ingress, the JWKS
-  mirror and the token endpoint all read it there — OR a dedicated terminator is
-  placed in front of the admin listener. That is ≥6 coupled addresses plus the
-  ingress backend protocol, i.e. its own change with its own acceptance, not a
-  one-knob edit.
+  ЧТО ИЗ ЭТОГО СЛЕДУЕТ И ЧТО СДЕЛАНО. Загрузочная стража iam ТРЕБУЕТ https на
+  этом переходе — справедливо: по нему едет административный предъявитель, а API,
+  который он открывает, не аутентифицирует никого. Дать https одному этому
+  листенеру провайдер не может. Из двух путей — перевести на TLS ОБЩИЙ листенер
+  (тогда с открытого текста уходит и ПУБЛИЧНЫЙ, а его читают ingress, зеркало
+  ключей и точка выдачи токена: ≥6 сцепленных адресов и смена идентичности
+  токена) либо поставить перед административным листенером ТЕРМИНАТОР — выбран
+  второй, и он РЕАЛИЗОВАН: сосед в том же поде провайдера
+  (templates/hydra-admin-tls-configmap.yaml + hydra-admin-tls-service.yaml).
 
-  This Certificate is kept: it is the material either route needs, it is already
-  consumed by the Kratos self-service UI's trust bundle, and issuing it costs
-  nothing. What must NOT happen is another comment asserting the per-listener
-  capability without re-measuring it.
+  ЭТОТ СЕРТИФИКАТ ТЕПЕРЬ ОБСЛУЖИВАЕТ ТЕРМИНАТОР, а не провайдера: SAN'ы ниже
+  называют соседа, имён провайдера в них нет. Материал тот же, секрет тот же,
+  якорь потребителей (`ca.crt` того же секрета) не менялся.
+
+  ЧЕГО ДЕЛАТЬ НЕЛЬЗЯ: снова написать, что провайдер читает полистенный TLS, не
+  перемерив это. Процедура перемера — ИСПОЛНЯЕМАЯ, одной командой:
+  `bash deploy/scripts/remeasure-provider-listener-tls.sh --image <образ>`.
+  Гейт посадки сам краснеет на смене версии провайдера и называет эту команду.
 
   The consumers verify against ca.crt of this same secret; a cert-manager
   Certificate secret carries ca.crt alongside tls.crt/tls.key, so no separate
@@ -86,15 +89,25 @@ spec:
     rotationPolicy: Always
   usages:
     - server auth
-  {{- /* Every in-cluster spelling a consumer may dial. A SAN the consumer does
-         not use is harmless; one it uses and the cert lacks fails the handshake,
-         which the introspection layer treats as PERMANENT and answers by
-         refusing every request — so the list is deliberately generous. */}}
+  {{- /* ИМЕНА ТЕРМИНАТОРА, И ТОЛЬКО ОНИ.
+
+         Каждое внутрикластерное написание, которым потребитель может набрать
+         СОСЕДА. SAN, которым никто не пользуется, безвреден; тот, которым
+         пользуются, а в сертификате его нет, роняет рукопожатие — и слой
+         интроспекции считает это ПОСТОЯННОЙ ошибкой конфигурации, после чего
+         отказывает КАЖДОМУ запросу. Поэтому список намеренно щедр.
+
+         ИМЁН ПРОВАЙДЕРА (`<release>-hydra-admin`) ЗДЕСЬ НЕТ НАМЕРЕННО. Его
+         Service снят, и забытый потребитель обязан падать на разрешении имени —
+         громко и сразу. Верни сюда его имя, и однажды такой потребитель получит
+         ДЕЙСТВИТЕЛЬНЫЙ сертификат по адресу, который ничего не терминирует.
+
+         `localhost` — для проброса порта оператором. */}}
   dnsNames:
-    - {{ printf "%s-hydra-admin" $rel | quote }}
-    - {{ printf "%s-hydra-admin.%s" $rel $ns | quote }}
-    - {{ printf "%s-hydra-admin.%s.svc" $rel $ns | quote }}
-    - {{ printf "%s-hydra-admin.%s.svc.cluster.local" $rel $ns | quote }}
+    - {{ printf "%s-hydra-admin-tls" $rel | quote }}
+    - {{ printf "%s-hydra-admin-tls.%s" $rel $ns | quote }}
+    - {{ printf "%s-hydra-admin-tls.%s.svc" $rel $ns | quote }}
+    - {{ printf "%s-hydra-admin-tls.%s.svc.cluster.local" $rel $ns | quote }}
     - "localhost"
   issuerRef:
     name: {{ $ca.clusterIssuerName | quote }}

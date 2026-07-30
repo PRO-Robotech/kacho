@@ -71,8 +71,12 @@ DECLARED="
 .github/scripts/check-newman-suite-gates.py
 .github/scripts/check-volume-mounts.py
 .github/scripts/newman-live.py
+deploy/scripts/assert-admin-hop-transport.sh
 deploy/scripts/assert-ban6-external-isolation.py
 deploy/scripts/assert-outbox-autovacuum.sh
+deploy/scripts/remeasure-provider-listener-tls.sh
+deploy/tests/helm/admin-hop-address-census-test.sh
+deploy/tests/helm/admin-hop-port-policy-test.sh
 deploy/tests/helm/admin-hop-transport-test.sh
 deploy/tests/helm/image-rollout-binding-test.sh
 deploy/tests/helm/makefile-destructive-guarded-test.sh

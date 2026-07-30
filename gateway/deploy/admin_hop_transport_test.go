@@ -157,7 +157,7 @@ func requireTLSHop(raw string) error {
 	return nil
 }
 
-// adminHopConsumers — every place a profile can name the provider's ADMIN API.
+// adminHopConsumers — every place a profile DECLARES the provider's ADMIN API.
 //
 // This list is the point of the test below. The defect it guards is not "one
 // address was left in the clear" but "the listener moved to TLS and a consumer
@@ -165,17 +165,46 @@ func requireTLSHop(raw string) error {
 // Kratos self-service UI was exactly that: it dials the admin API for the consent
 // flow, its address lives under a different chart, and it was overlooked while the
 // gateway and iam were being moved. Adding a consumer means adding it here.
+//
+// ─── THE BOUNDARY OF THIS REGISTRY, STATED SO ITS COUNT IS NOT READ AS COMPLETE ──
+//
+// This registry resolves PATHS IN VALUES FILES. By construction it therefore does
+// NOT see a consumer whose address arrives as a dependency chart's DEFAULT, nor
+// one baked into a template with no values key at all. Its "4/4 inspected" reads
+// like completeness and is not: measured on this tree, consumers numbered SEVEN
+// while four were declared here.
+//
+// Two of the three it could not see had no probes of their own, so on an address
+// change they would not have gone red — they would have quietly stopped resolving
+// a name, which is worse than failing.
+//
+// The missing half is deploy/tests/helm/admin-hop-address-census-test.sh: it
+// builds the census by walking the tree AND the rendered manifests of every
+// deployable stack, reads THIS registry (rather than keeping a copy of it), and
+// treats an address present in a render but declared by no entry here as a
+// finding. Pairing a declaration-built registry with a mechanical walk is the
+// general rule, not a fix for this hop — see that gate's header.
 var adminHopConsumers = map[string][]string{
 	"api-gateway.hydra.introspectionUrl":  {"api-gateway", "hydra", "introspectionUrl"},
 	"api-gateway.hydra.adminUrl":          {"api-gateway", "hydra", "adminUrl"},
 	"kacho-iam.kacho.iam.hydraAdminUrl":   {"kacho-iam", "kacho", "iam", "hydraAdminUrl"},
 	"kratos-selfservice-ui…hydraAdminUrl": {"kratos-selfservice-ui", "kratosSelfServiceUI", "hydraAdminUrl"},
+	// Was baked into templates/hydra-trust-grants-job.yaml with no values key,
+	// i.e. invisible to this registry by construction. Now declared, so the hop
+	// gates cover it like the rest. Latent (federationIn is off everywhere) —
+	// latency does not exempt it: the census renders it with the key forced on.
+	"hydraTrustGrants.adminUrl": {"hydraTrustGrants", "adminUrl"},
 }
 
-// Once a stack serves the admin listener over TLS, EVERY consumer that names it
-// must address it over https. The listener does not answer http any more, so a
-// consumer left behind does not degrade — it stops working, and only in the flow
-// nobody runs on a smoke test.
+// Once a stack fronts the admin hop with TLS, EVERY consumer that names it must
+// address it over https.
+//
+// A consumer left behind does not degrade — it stops working, and only in the
+// flow nobody runs on a smoke test. Note WHY it stops, because the reason
+// changed: the provider's admin listener still answers plain http, but only on
+// the pod's LOOPBACK, and its own Service is removed. So the old address does not
+// fail a handshake — it fails to resolve. That is the intended shape: loud and
+// immediate, rather than a timeout against something that looks like an address.
 func TestStacks_AdminHopConsumersAgreeWithTheListener(t *testing.T) {
 	for name, stack := range deployableStacks {
 		t.Run(name, func(t *testing.T) {
@@ -192,9 +221,9 @@ func TestStacks_AdminHopConsumersAgreeWithTheListener(t *testing.T) {
 				}
 				checked++
 				if !strings.HasPrefix(strings.TrimSpace(got), "https://") {
-					t.Errorf("%s: %s is %q while this stack serves the admin listener over TLS — "+
-						"that listener no longer answers http, so this consumer's flow fails outright",
-						name, label, got)
+					t.Errorf("%s: %s is %q while this stack fronts the admin hop with TLS — "+
+						"the provider's own admin Service is removed, so this address does not "+
+						"even resolve and this consumer's flow fails outright", name, label, got)
 				}
 			}
 			// "Nothing found" must be distinguishable from "nothing wrong": a
@@ -203,7 +232,13 @@ func TestStacks_AdminHopConsumersAgreeWithTheListener(t *testing.T) {
 				t.Errorf("%s: no admin-API consumer declaration was found at any known path — "+
 					"the keys were renamed and this gate is now inspecting nothing", name)
 			}
-			t.Logf("%s: %d/%d consumer declarations inspected", name, checked, len(adminHopConsumers))
+			// The boundary is logged with the count, not left to the reader of
+			// the number: "4/4" is completeness only over what this registry can
+			// see, and what it cannot see is where the defect lived.
+			t.Logf("%s: %d/%d consumer DECLARATIONS inspected — this registry resolves values "+
+				"paths only; consumers arriving from a dependency's chart default or baked "+
+				"into a template are invisible to it and are covered by "+
+				"deploy/tests/helm/admin-hop-address-census-test.sh", name, checked, len(adminHopConsumers))
 		})
 	}
 }

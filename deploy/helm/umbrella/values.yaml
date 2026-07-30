@@ -318,16 +318,23 @@ mtls:
   # API authenticates nobody — reaching it IS the authorization — so in the clear
   # all of that is readable, and reusable, by anything on the path.
   #
-  # Enabling this issues the serving cert; the profile must ALSO switch the
-  # provider to it (hydra.hydra.config.serve.admin.tls.*) and point the two
-  # consumers at https with the matching trust anchor. A production-class gateway
-  # and iam both REFUSE TO START on a plaintext or unanchored hop, so the three
-  # move together by construction.
+  # Enabling this issues the serving cert AND places the TERMINATOR that uses it:
+  # an nginx sidecar inside the provider's own pod (templates/hydra-admin-tls-*),
+  # plus its own ClusterIP Service. The profile must ALSO point the consumers at
+  # that Service over https with the matching trust anchor. A production-class
+  # gateway and iam both REFUSE TO START on a plaintext or unanchored hop, so the
+  # pieces move together by construction.
   #
-  # Only the ADMIN listener moves: the provider resolves TLS per listener
-  # (serve.admin.tls / serve.public.tls each override the shared serve.tls field
-  # by field), so the public OIDC listener the ingress and JWKS readers use over
-  # plain http is untouched.
+  # WHY A TERMINATOR AND NOT THE PROVIDER'S OWN KNOB. The deployed version does
+  # NOT read a PER-LISTENER TLS declaration — MEASURED, not inferred from docs;
+  # the coordinate and the one-command re-measurement live in
+  # deploy/PROVIDER-LISTENER-PREMISE.md, and the posture gate reddens on any
+  # version change and names that command. Do not write here again that the
+  # provider resolves TLS per listener without re-measuring it: that claim stood
+  # in this very file, was wrong, and had itself replaced a correct note.
+  #
+  # Only the ADMIN hop moves. The public OIDC listener the ingress and JWKS
+  # readers use over plain http is untouched.
   hydraAdminTls:
     enabled: false
     # Secret carrying tls.crt/tls.key for the provider and ca.crt for consumers.
@@ -428,6 +435,38 @@ apiGatewayIngress:
 # set `uif.enabled: true` and reproduce the host/remote images below.
 uif:
   enabled: false
+
+# ─── Хук выдачи доверия внешним эмитентам (templates/hydra-trust-grants-job.yaml)
+# Адрес административного API — ОБЪЯВЛЯЕМОЕ ЗНАЧЕНИЕ, а не зашитая в шаблон
+# строка. Пока он был зашит, перепись потребителей по объявлениям его не видела:
+# она резолвит пути в файлах значений. Путь `hydraTrustGrants.adminUrl` внесён в
+# реестр потребителей (gateway/deploy/admin_hop_transport_test.go).
+#
+# Пусто по умолчанию НАМЕРЕННО: `required` в шаблоне роняет РЕНДЕР, если хук
+# включён, а адрес не назван. Профиль, включающий federationIn, обязан назвать
+# адрес терминатора и якорь доверия — молча уехать на неверный адрес нельзя.
+hydraTrustGrants:
+  adminUrl: ""
+  adminCaFile: /etc/hydra-admin-ca/ca.crt
+
+# ─── Ory Hydra sub-chart — базовые значения умбреллы ───────────────────────
+hydra:
+  # РЕКОНСАЙЛЕР КЛИЕНТОВ ПРОВАЙДЕРА СНЯТ — У НЕГО НЕТ ПРЕДМЕТА.
+  #
+  # Умолчание чарта-зависимости — `true`, и ни один профиль его не переопределял,
+  # поэтому нагрузка разворачивалась ВЕЗДЕ. Померено по дереву и по кластеру:
+  # ресурсов того типа, который он реконсайлит (`OAuth2Client`), НЕТ НИ ОДНОГО —
+  # ни в дереве, ни в живом кластере. То есть он ничего не делал.
+  #
+  # При этом он — потребитель административного API, невидимый переписи по
+  # объявлениям (его адрес приходит умолчанием зависимости), и у него НЕТ НИ ОДНОЙ
+  # ПРОБЫ. При смене адреса он не покраснел бы, а тихо перестал разрешать имя, и
+  # заметить это было бы нечем.
+  #
+  # Возврат — вместе с первым ресурсом его типа, и тогда же: адрес объявить
+  # значением, внести в реестр потребителей, снабдить пробой.
+  maester:
+    enabled: false
 
 # ─── Ory Kratos self-service UI sub-chart ──────────────────────────────────
 # Disabled in base; values.dev.yaml enables it. Service name `kratos-selfservice-ui`
