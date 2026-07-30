@@ -196,10 +196,15 @@ var adminHopConsumers = map[string][]string{
 	"hydraTrustGrants.adminUrl": {"hydraTrustGrants", "adminUrl"},
 }
 
-// Once a stack serves the admin listener over TLS, EVERY consumer that names it
-// must address it over https. The listener does not answer http any more, so a
-// consumer left behind does not degrade — it stops working, and only in the flow
-// nobody runs on a smoke test.
+// Once a stack fronts the admin hop with TLS, EVERY consumer that names it must
+// address it over https.
+//
+// A consumer left behind does not degrade — it stops working, and only in the
+// flow nobody runs on a smoke test. Note WHY it stops, because the reason
+// changed: the provider's admin listener still answers plain http, but only on
+// the pod's LOOPBACK, and its own Service is removed. So the old address does not
+// fail a handshake — it fails to resolve. That is the intended shape: loud and
+// immediate, rather than a timeout against something that looks like an address.
 func TestStacks_AdminHopConsumersAgreeWithTheListener(t *testing.T) {
 	for name, stack := range deployableStacks {
 		t.Run(name, func(t *testing.T) {
@@ -216,9 +221,9 @@ func TestStacks_AdminHopConsumersAgreeWithTheListener(t *testing.T) {
 				}
 				checked++
 				if !strings.HasPrefix(strings.TrimSpace(got), "https://") {
-					t.Errorf("%s: %s is %q while this stack serves the admin listener over TLS — "+
-						"that listener no longer answers http, so this consumer's flow fails outright",
-						name, label, got)
+					t.Errorf("%s: %s is %q while this stack fronts the admin hop with TLS — "+
+						"the provider's own admin Service is removed, so this address does not "+
+						"even resolve and this consumer's flow fails outright", name, label, got)
 				}
 			}
 			// "Nothing found" must be distinguishable from "nothing wrong": a

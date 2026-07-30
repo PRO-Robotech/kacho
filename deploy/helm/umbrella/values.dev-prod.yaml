@@ -540,17 +540,23 @@ hydra:
             key: token
 
 # ─── Kratos self-service UI — provider ADMIN hop over TLS ───────────────────
-# dev declares the plaintext admin address; this stand serves that listener over
-# TLS, so the consent flow must address it over https and trust the internal CA
-# that signed it. Left at dev's value the flow would fail outright — the listener
-# no longer answers http.
+# dev declares the plaintext admin address; on this stand the hop is fronted by a
+# TLS TERMINATOR in the provider's pod, so the consent flow must address the
+# terminator over https and trust the internal CA that signed it. Left at dev's
+# value the flow does not degrade, it stops: the provider's own admin Service is
+# removed, so that address no longer resolves.
 kratos-selfservice-ui:
   kratosSelfServiceUI:
-    # The provider's ADMIN listener now serves TLS (mtls.hydraAdminTls), so this
-    # consumer must address it over https AND trust the internal CA that signed
-    # it — the chart mounts the bundle and exports NODE_EXTRA_CA_CERTS. Left at
-    # the chart's plaintext default, the consent flow would fail on this stand:
-    # the listener no longer answers http at all.
+    # ADDRESS THE TERMINATOR, NOT THE PROVIDER. The admin hop is fronted by a
+    # TLS terminator in the provider's own pod (mtls.hydraAdminTls), so this
+    # consumer must address THAT over https and trust the internal CA that
+    # signed it — the chart mounts the bundle and exports NODE_EXTRA_CA_CERTS.
+    #
+    # Left at the chart's plaintext default this flow does not degrade, it stops:
+    # the provider's own admin Service is REMOVED, so the old address does not
+    # resolve at all. That is deliberate — a consumer left behind must fail
+    # loudly on name resolution rather than time out against something that
+    # looks like a working address.
     hydraAdminUrl: https://kacho-umbrella-hydra-admin-tls:4445
     caCert:
       secretName: kacho-umbrella-hydra-admin-tls

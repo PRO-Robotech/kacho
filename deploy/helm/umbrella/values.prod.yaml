@@ -99,11 +99,13 @@ mtls:
     # The Ory/OpenFGA tier (pg-kratos/pg-hydra/pg-openfga) is excluded — those DSNs
     # are managed by their own charts and are not on the kacho ssl-mode floor.
     services: [vpc, compute, iam, geo, nlb, storage, registry]
-  # Serving certificate for the provider's ADMIN listener. LOAD-BEARING: this
-  # profile addresses that listener over https from both the gateway and iam, and
-  # BOTH refuse to start on a plaintext or unanchored hop — so the certificate,
-  # the provider's serve.admin.tls block and the two consumer addresses move
-  # together or not at all.
+  # Serving certificate for the ADMIN hop — consumed by the TERMINATOR sidecar in
+  # the provider's pod, not by the provider itself (it does not read a
+  # per-listener TLS declaration; measured, see deploy/PROVIDER-LISTENER-PREMISE.md).
+  # LOAD-BEARING: this profile addresses the hop over https from both the gateway
+  # and iam, and BOTH refuse to start on a plaintext or unanchored hop — so the
+  # certificate, the terminator and the consumer addresses move together or not
+  # at all.
   hydraAdminTls:
     enabled: true
     secretName: kacho-umbrella-hydra-admin-tls
@@ -1084,11 +1086,16 @@ kratos-selfservice-ui:
     # here). Kratos upstreams remain plain http cluster-internal; the provider's
     # ADMIN listener does not — see below.
     insecureSkipTLSVerify: false
-    # The provider's ADMIN listener now serves TLS (mtls.hydraAdminTls), so this
-    # consumer must address it over https AND trust the internal CA that signed
-    # it — the chart mounts the bundle and exports NODE_EXTRA_CA_CERTS. Left at
-    # the chart's plaintext default, the consent flow would fail on this stand:
-    # the listener no longer answers http at all.
+    # ADDRESS THE TERMINATOR, NOT THE PROVIDER. The admin hop is fronted by a
+    # TLS terminator in the provider's own pod (mtls.hydraAdminTls), so this
+    # consumer must address THAT over https and trust the internal CA that
+    # signed it — the chart mounts the bundle and exports NODE_EXTRA_CA_CERTS.
+    #
+    # Left at the chart's plaintext default this flow does not degrade, it stops:
+    # the provider's own admin Service is REMOVED, so the old address does not
+    # resolve at all. That is deliberate — a consumer left behind must fail
+    # loudly on name resolution rather than time out against something that
+    # looks like a working address.
     hydraAdminUrl: https://kacho-umbrella-hydra-admin-tls:4445
     caCert:
       secretName: kacho-umbrella-hydra-admin-tls
