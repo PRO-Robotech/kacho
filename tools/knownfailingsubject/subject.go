@@ -78,6 +78,17 @@
 // message that happens to contain "resolved" would exempt itself, and one on this tree
 // did exactly that.
 //
+// # What this gate does NOT see, stated rather than implied
+//
+// It reads `docs/RESULTS.md` of each newman suite, and inside it only the sections whose
+// heading declares known-failing cases. A red declared somewhere else — another document,
+// or a section titled so that nothing marks it as a declaration — is invisible here. That
+// is a real limit, not a rhetorical one, and it is written down for the same reason the
+// premise above is: a gate whose blind spot is undocumented gets trusted for more than it
+// checks. Closing it by matching every section that happens to name a case id was tried
+// and rejected — these documents name cases everywhere, and a rule that fires on all of
+// them teaches contributors to stop naming cases.
+//
 // # Census
 //
 // The gate states what it read: suites, docs, collections, reports, declarations,
