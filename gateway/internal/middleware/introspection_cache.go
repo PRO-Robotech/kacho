@@ -458,6 +458,9 @@ func (c *IntrospectionCache) fetchHydra(ctx context.Context, rawToken string) (I
 
 	form := url.Values{}
 	form.Set("token", rawToken)
+	// #nosec G704 -- адрес берётся из настроек процесса (cfg.HydraIntrospectionURL,
+	// проверяется при старте и не может быть пустым), а не из запроса: подставить его
+	// вызывающему нечем. Правило видит "переменная в адресе" и не различает источник.
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url, strings.NewReader(form.Encode()))
 	if err != nil {
 		// A URL this transport cannot even build a request for is configuration.
@@ -468,6 +471,7 @@ func (c *IntrospectionCache) fetchHydra(ctx context.Context, rawToken string) (I
 	if c.basicUser != "" {
 		req.SetBasicAuth(c.basicUser, c.basicPass)
 	}
+	// #nosec G704 -- тот же адрес из настроек процесса, что и у построения запроса выше.
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		if permanentTransportFailure(err) {

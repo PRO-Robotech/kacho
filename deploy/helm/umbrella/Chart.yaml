@@ -4,6 +4,29 @@ apiVersion: v2
 name: kacho-umbrella
 version: 2.0.0
 description: "Kachō Cloud Control Plane — umbrella chart (flat API + Operations). Bundles the control-plane services (api-gateway, vpc, compute, kacho-iam, kacho-nlb, ui) with their per-service Postgres instances, the Ory identity tier (Kratos + Hydra) and OpenFGA ReBAC engine, plus dev infrastructure (ingress-nginx, in-cluster MinIO). Matches the kind dev stand brought up by `make dev-up` (values.dev.yaml)."
+#
+# ЧЕТЫРЕ ЧАРТА ЛЕЖАТ В `charts/` И НАМЕРЕННО НЕ ОБЪЯВЛЕНЫ ЗАВИСИМОСТЯМИ:
+# kacho-iam, kacho-geo, openfga-bootstrap, kratos-selfservice-ui. Их исходники
+# версионируются здесь же, а `charts/` — это и есть каталог сабчартов: helm
+# загружает оттуда всё, что является чартом, без всякого объявления.
+#
+# Объявить такой чарт зависимостью `file://./charts/<имя>` — значит попросить
+# helm МАТЕРИАЛИЗОВАТЬ его в тот же каталог, где лежит исходник. Так и было, и
+# после `helm dep update` каждый из четырёх существовал в `charts/` ДВАЖДЫ:
+# каталогом-исходником и собранным архивом. Какая из двух копий попадёт в рендер
+# — не определено: замерено на неизменном дереве, шесть рендеров подряд дали
+# каталог 5 раз и архив 1 раз.
+#
+# Чем это стоило: правка сабчарта могла не попасть в рендер, а ДВА РЕНДЕРА ОДНОГО
+# И ТОГО ЖЕ ДЕРЕВА могли отличаться. На этом молча ослеп гейт привязки пода к
+# содержимому образа: его самопроверка вносит дефект в каталог и требует красного,
+# а расхождение копий выглядело для гейта как «шаблон пода изменился», то есть как
+# доказательство привязки. Гейт отчитывался зелёным о workload'е, у которого
+# привязки в этот момент не было вовсе.
+#
+# Здешний же комментарий про `uif` эту ловушку называл прямым текстом — «два
+# одноимённых сабчарта делают рендер helm недетерминированным», — и четыре чарта
+# её воспроизводили. Запрет держит гейт internal/repohygiene/subchartdup_test.go.
 dependencies:
   - name: ingress-nginx
     version: 4.x
@@ -106,32 +129,7 @@ dependencies:
     repository: https://charts.bitnami.com/bitnami
     condition: pg-storage.enabled
 
-  # kacho-iam — vendored sub-chart (Account/Project/User/SA/Group/Role/AccessBinding
-  # + OPA sidecar pipeline + Kratos config). Lives under charts/ (file:// relative).
-  - name: kacho-iam
-    version: ">= 1.0.0"
-    repository: file://./charts/kacho-iam
-
-  # kacho-geo — vendored sub-chart (Geography Region/Zone leaf-service + its
-  # compute→geo data-migration hook-Job). Lives under charts/ (file:// relative)
-  # like kacho-iam, so it renders without the sibling-repo `file://` checkouts.
-  - name: kacho-geo
-    version: ">= 1.0.0"
-    repository: file://./charts/kacho-geo
-
   # ─── Identity / authorization tier ───────────────────────────────────────
-  # openfga-bootstrap — local glue for the external openfga chart: install/upgrade
-  # hooks that provision the OpenFGA store + Authorization Model v2 and manage the
-  # openfga-model-id / kacho-iam-openfga-store Secrets + PDB. Templates self-gate
-  # (openfgaBootstrap.enabled / openfgaPdb.enabled / initDatabase).
-  - name: openfga-bootstrap
-    version: ">= 0.0.0"
-    repository: file://./charts/openfga-bootstrap
-  # kratos-selfservice-ui — Ory Kratos self-service UI (login/registration/recovery),
-  # proxied by kacho-ui. Self-gated (kratosSelfServiceUI.enabled).
-  - name: kratos-selfservice-ui
-    version: ">= 0.0.0"
-    repository: file://./charts/kratos-selfservice-ui
   # OpenFGA — ReBAC engine for kacho-iam.
   - name: openfga
     version: 0.2.x
