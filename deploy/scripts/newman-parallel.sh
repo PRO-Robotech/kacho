@@ -140,6 +140,34 @@ if [ "$SEED" = "true" ]; then
       IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" HYDRA_PUBLIC_PORT="$HYDRA_PORT" \
       DEV_SECRET="$DEV_SECRET" PATCH_ENV=true SETUP_NS="$NS" "${MTLS_ENV[@]}" \
       bash "$REPO_ROOT/tests/authz-fixtures/setup.sh"
+  SEED_RC=$?
+
+  # A FAILED SEED ABORTS THE RUN. It is not a red suite — it is not a result at all.
+  #
+  # This script runs `set -uo pipefail` WITHOUT `-e`, and the seed's exit code used to
+  # be dropped on the floor. So a seed that died on its first step went straight into
+  # WAVE 1, every suite ran against a stand with placeholder credentials, and the
+  # verdict reported the wholesale 401/403 as FAILED ASSERTIONS — i.e. an unexecuted
+  # run wearing the clothes of a product regression. Whoever read that verdict would
+  # triage the product for a defect that lives in the harness.
+  #
+  # Observed 2026-07-30 on the first production-posture run: the seed could not mint
+  # its first token (a request field had been tombstoned in proto and this caller was
+  # never updated), printed a Python traceback, and the runner announced
+  # "WAVE 1 concurrent" on the very next line.
+  #
+  # Aborting is the only defensible outcome: "нет посева" and "продукт сломан" are
+  # different findings, and only the second is evidence (testing.md — «не выполнилось»
+  # никогда не вычитается из вердикта и не засчитывается в «прошло»).
+  if [ "$SEED_RC" -ne 0 ]; then
+    echo
+    echo "===== ПРОГОН НЕДЕЙСТВИТЕЛЕН: посев фикстур упал (rc=$SEED_RC) ====="
+    echo "Суиты НЕ запускались. Это НЕ красный прогон и НЕ зелёный — результата нет."
+    echo "Причина — выше, в выводе tests/authz-fixtures/setup.sh (в боевой посадке он"
+    echo "делегирует prodseed_all.py). Починить посев и ПОВТОРИТЬ; разбирать суиты"
+    echo "против непосеянного стенда нечего."
+    exit 2
+  fi
 
   # Posture the seed actually ran in (written by setup.sh — ONE detector, no re-derivation).
   SEED_POSTURE_RAN="$(cat "$REPO_ROOT/tests/authz-fixtures/out/seed-posture" 2>/dev/null || echo dev)"

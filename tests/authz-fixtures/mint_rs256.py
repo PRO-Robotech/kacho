@@ -206,7 +206,7 @@ def _refresh_operator_cert(cert_path: str, key_path: str) -> None:
     ensure_client_cert(BOOTSTRAP_OPERATOR_SECRET, cert_path, key_path)
 
 
-def mint_bootstrap(ttl_seconds: int = 3600, *, grpc_addr: str | None = None,
+def mint_bootstrap(*, grpc_addr: str | None = None,
                    cert: str | None = None, key: str | None = None) -> str:
     """MintBootstrapToken → cluster system_admin SA RS256 Bearer (acr-exempt).
 
@@ -226,14 +226,25 @@ def mint_bootstrap(ttl_seconds: int = 3600, *, grpc_addr: str | None = None,
     Overrides: BOOTSTRAP_MINT_MTLS_CERT / _KEY (paths), IAM_INTERNAL_GRPC (addr),
     BOOTSTRAP_OPERATOR_SECRET + KACHO_NAMESPACE (where to pull the material from).
     """
-    if not isinstance(ttl_seconds, int):
-        # Guard the signature change: this used to take the gateway internal REST
-        # base-URL first. A stale positional caller must fail LOUDLY here rather
-        # than shipping a URL into the ttl field.
-        raise TypeError(
-            f"mint_bootstrap(ttl_seconds=int, *, grpc_addr, cert, key) — got {ttl_seconds!r}. "
-            "The gateway REST route is gone; the mint is a direct mTLS gRPC call to iam :9091.")
-
+    # NO REQUEST FIELDS, AND NO TTL PARAMETER.
+    #
+    # `MintBootstrapTokenRequest` is empty: tag 1 held `ttl_seconds` and is now a
+    # tombstone (`reserved 1; reserved "ttl_seconds"`) — the lifetime belongs to the
+    # issuer's client configuration, so a per-request value only ever changed the
+    # number in the RESPONSE, understating the expiry of a cluster-admin credential.
+    # See proto/kacho/cloud/iam/v1/internal_bootstrap_token_service.proto.
+    #
+    # This function kept sending `{"ttlSeconds": N}` after that removal, so every
+    # attempt died at the request encoder — `has no known field named ttlSeconds` —
+    # and the PRODUCTION seed could not obtain its first token at all. It stayed
+    # invisible because the production seed path only runs on a production-posture
+    # stand, and CI raises the stand in dev posture, where setup.sh forges its own
+    # HS256 bearers and never reaches this call.
+    #
+    # There is no `ttl_seconds` parameter any more rather than an ignored one: a
+    # parameter that changes nothing still promises something. Dropping it also
+    # preserves what the old TypeError guard was for — a stale positional caller
+    # (this used to take a base-URL first) now fails on arity, by construction.
     addr = grpc_addr or IAM_INTERNAL_GRPC
     cert_path = cert or BOOTSTRAP_MINT_MTLS_CERT
     key_path = key or BOOTSTRAP_MINT_MTLS_KEY
@@ -253,7 +264,7 @@ def mint_bootstrap(ttl_seconds: int = 3600, *, grpc_addr: str | None = None,
 
     args = ["grpcurl", "-insecure", "-max-time", "20",
             "-cert", cert_path, "-key", key_path,
-            "-d", json.dumps({"ttlSeconds": ttl_seconds}), addr,
+            "-d", "{}", addr,
             "kacho.cloud.iam.v1.InternalBootstrapTokenService/MintBootstrapToken"]
     proc = subprocess.run(args, capture_output=True, text=True, timeout=45)
     if proc.returncode != 0:
@@ -410,15 +421,16 @@ def main() -> int:
     p.add_argument("--mode", choices=["bootstrap", "user", "sa"], required=True)
     p.add_argument("--subject", help="user_id (user) or sva_id (sa)")
     p.add_argument("--created-by", help="created_by_user_id for Issue")
-    p.add_argument("--ttl-seconds", type=int, default=3600)
+    # `--ttl-seconds` removed with the request field it fed: the issuer owns the
+    # lifetime, and a flag that changes nothing is a promise nobody keeps.
     args = p.parse_args()
 
     mint_kwargs = {"grpc_addr": args.iam_grpc, "cert": args.mtls_cert, "key": args.mtls_key}
     if args.mode == "bootstrap":
-        print(mint_bootstrap(args.ttl_seconds, **mint_kwargs))
+        print(mint_bootstrap(**mint_kwargs))
         return 0
 
-    admin = mint_bootstrap(args.ttl_seconds, **mint_kwargs)
+    admin = mint_bootstrap(**mint_kwargs)
     created_by = args.created_by or args.subject
     if args.mode == "user":
         print(user_rs256(args.base_url, admin, args.subject, created_by,
