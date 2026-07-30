@@ -346,8 +346,11 @@ fi
 # не предпосылки. Снятая мёртвая ручка могла вернуться незаметно — но её
 # отсутствие ничего не говорит о том, читает ли её версия.
 assertion
-if kubectl -n "$NS" get pod "$HYDRA_POD" -o jsonpath='{.spec.containers[?(@.name=="hydra")].volumeMounts[*].mountPath}' 2>/dev/null \
-     | tr ' ' '\n' | grep -q 'hydra-admin-tls'; then
+# Подстановкой, а не конвейером в `grep -q`: с `pipefail` совпадение роняет
+# статус конвейера через SIGPIPE у писателя слева (см. тот же разбор в
+# deploy/tests/helm/admin-hop-address-census-test.sh).
+mounts="$(kubectl -n "$NS" get pod "$HYDRA_POD" -o jsonpath='{.spec.containers[?(@.name=="hydra")].volumeMounts[*].mountPath}' 2>/dev/null | tr ' ' '\n')"
+if grep -q 'hydra-admin-tls' <<<"$mounts"; then
   fail "своя конфигурация (НЕ предпосылка): секрет TLS снова смонтирован в контейнер провайдера"
   note "ручка мертва — держать её рядом с обходным путём, который существует именно"
   note "потому, что она не работает, значит пригласить следующего снять терминатор."

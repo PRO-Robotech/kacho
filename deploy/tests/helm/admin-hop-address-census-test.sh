@@ -491,7 +491,14 @@ spec:
 EOF
   probe "терминатора в стеке нет — прямой адрес не находка" 0 "$tmp/direct-noterm.yaml"
   st_checked=$((st_checked + 1))
-  if census_render "$tmp/direct-noterm.yaml" self "$tmp/declared.txt" 2>&1 | grep -q 'терминатора в стеке нет'; then
+  # ВЫВОД БЕРЁТСЯ ПОДСТАНОВКОЙ, А НЕ КОНВЕЙЕРОМ В grep -q. С `pipefail` конвейер
+  # `… | grep -q` возвращает ОТКАЗ НА СОВПАДЕНИИ: grep выходит по первому
+  # попаданию, писатель слева получает SIGPIPE (141), и статус берётся от него.
+  # Зависит от объёма вывода, поэтому проявляется через раз — эта самопроверка
+  # так и падала: в одном прогоне зелёная, в другом красная на верном поведении.
+  # Тот же класс уже описан у прогонщика самопроверок; здесь он повторён.
+  out_noterm="$(census_render "$tmp/direct-noterm.yaml" self "$tmp/declared.txt" 2>&1)"
+  if grep -q 'терминатора в стеке нет' <<<"$out_noterm"; then
     ok "класс назван и посчитан, а не умолчан"
   else
     echo "  ✗ класс «терминатора в стеке нет» не назван — «не находка» стало «не видно»"; st_rc=1
@@ -549,7 +556,7 @@ spec:
 EOF
   st_checked=$((st_checked + 1))
   out6="$(census_render "$tmp/testhook.yaml" self "$tmp/declared.txt" 2>&1)"; rc6=$?
-  if [ "$rc6" -eq 0 ] && printf '%s\n' "$out6" | grep -q 'тест-подключение чарта'; then
+  if [ "$rc6" -eq 0 ] && grep -q 'тест-подключение чарта' <<<"$out6"; then
     echo "  ✓ тест-подключение чарта: не находка, но класс назван в выводе"
   else
     echo "  ✗ тест-подключение чарта: rc=$rc6, класс в выводе не назван"
@@ -561,7 +568,7 @@ EOF
   : >"$tmp/empty.yaml"
   st_checked=$((st_checked + 1))
   out7="$(census_render "$tmp/empty.yaml" self "$tmp/declared.txt" 2>&1)"
-  if printf '%s\n' "$out7" | grep -qE 'называют адрес: 0'; then
+  if grep -qE 'называют адрес: 0' <<<"$out7"; then
     echo "  ✓ пустой рендер: объём осмотренного напечатан числом (0), а не умолчанием"
   else
     echo "  ✗ пустой рендер: объём осмотренного не напечатан"
