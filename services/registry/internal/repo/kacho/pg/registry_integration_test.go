@@ -385,7 +385,7 @@ func TestRepo_REG14_RepoTupleIntent_Emit(t *testing.T) {
 	ctx := context.Background()
 
 	// Реестр сеятся по-настоящему: интент репозитория той же транзакцией пишет
-	// durable-признак его существования (миграция 0022) с внешним ключом на registries.
+	// durable-признак его существования (миграция 0014) с внешним ключом на registries.
 	regID := seedRegistry(t, pool, "prj-REPOTUPLE", "reg-repo-tuple")
 	regIntent := domain.RegisterIntentForRepoPush(regID, "app", "prj-REPOTUPLE", "service_account:sva-ci")
 	require.NoError(t, repo.RegisterRepository(ctx, regIntent))

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // repository_registration_integration_test.go — durable-признак существования
-// репозитория (registry_repository_registration, миграция 0022) против реального
+// репозитория (registry_repository_registration, миграция 0014) против реального
 // Postgres 16 (testcontainers).
 //
 // Предмет: признак и намерение пишутся ОДНОЙ транзакцией и потому не могут разъехаться.

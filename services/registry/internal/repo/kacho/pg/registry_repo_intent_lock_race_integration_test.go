@@ -33,7 +33,7 @@ func TestRepo_RepoIntent_SerializesOnPerRepoAdvisoryLock(t *testing.T) {
 	ctx := context.Background()
 
 	// Реестр СЕЯТСЯ по-настоящему: эмиссия интента репозитория теперь той же транзакцией
-	// пишет durable-признак его существования (миграция 0022), а тот ссылается на
+	// пишет durable-признак его существования (миграция 0014), а тот ссылается на
 	// registries внешним ключом — под выдуманным id регистрация отвергается 23503.
 	regID := seedRegistry(t, pool, "prj-P", "reg-intent-lock")
 	sameIntent := domain.RegisterIntentForRepoPush(regID, "app", "prj-P", "service_account:sva-ci")

@@ -319,7 +319,7 @@ func (r *RegistryRepo) Delete(ctx context.Context, id string, intent domain.Regi
 
 // RepositoryDeclared сообщает, существует ли репозиторий как РЕСУРС: есть строка
 // наложения (repository_configs — заявлен через control-plane) ЛИБО строка регистрации
-// (registry_repository_registration — заявлен первым push'ем, миграция 0022). Оба
+// (registry_repository_registration — заявлен первым push'ем, миграция 0014). Оба
 // источника durable и принадлежат сервису.
 //
 // Содержимое движка (теги) в предикат НЕ входит: тег — это содержимое, а не ресурс.
@@ -454,7 +454,7 @@ func emitFGAIntent(ctx context.Context, tx pgx.Tx, eventType string, intent doma
 }
 
 // applyRepoRegistration поддерживает durable-признак существования репозитория
-// (registry_repository_registration, миграция 0022) В ТОЙ ЖЕ tx, что и эмиссия его
+// (registry_repository_registration, миграция 0014) В ТОЙ ЖЕ tx, что и эмиссия его
 // интента: register → строка появляется, unregister → строка исчезает. Атомарность
 // не «соблюдается», а обеспечена by construction — откат tx убирает и строку очереди,
 // и признак, поэтому «намерение эмитировано» и «ресурс существует» разъехаться не могут.
