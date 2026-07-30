@@ -48,9 +48,10 @@ func (stubZotFP) RepositoryProjection(context.Context, string, string) (*domain.
 	return nil, nil
 }
 func (stubZotFP) RepositoryEmpty(context.Context, string, string) (bool, error) { return true, nil }
-func (stubZotFP) RenameRepository(context.Context, string, string, string) error {
+func (stubZotFP) CopyRepositoryTags(context.Context, string, string, string) error {
 	return nil
 }
+func (stubZotFP) PurgeRepositoryTags(context.Context, string, string) error { return nil }
 func (stubZotFP) ListReferrers(context.Context, string, string, string, string) ([]*domain.Referrer, error) {
 	return nil, nil
 }

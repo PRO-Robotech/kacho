@@ -159,11 +159,18 @@ type ZotClient interface {
 	// D-4: source of truth emptiness = engine). zot недоступен → ErrUnavailable
 	// (fail-closed: overlay не сносим, пока не подтвердили пустоту, A14).
 	RepositoryEmpty(ctx context.Context, registryID, repository string) (bool, error)
-	// RenameRepository re-home'ит теги/манифесты/referrers repo old→new в движке
-	// (многошаговая НЕ-атомарная OCI-операция, D-5). Движок недоступен в середине
-	// remap → ErrUnavailable (fail-closed: без частичного rename, старое имя
-	// по-прежнему резолвится, A21). Целевое имя занято в движке → ErrAlreadyExists.
-	RenameRepository(ctx context.Context, registryID, oldName, newName string) error
+	// CopyRepositoryTags копирует ВСЕ теги/манифесты repo old→new в движке —
+	// НЕРАЗРУШАЮЩАЯ фаза переноса (многошаговая НЕ-атомарная OCI-операция, D-5).
+	// Сбой движка → ErrUnavailable (fail-closed): старое имя цело и резолвится, под
+	// новым может остаться ЧАСТИЧНАЯ копия. Идемпотентна: повторная публикация того
+	// же манифеста под тем же тегом — это тот же контент по тому же digest'у.
+	CopyRepositoryTags(ctx context.Context, registryID, oldName, newName string) error
+	// PurgeRepositoryTags снимает ВСЕ теги repo в движке — РАЗРУШАЮЩАЯ фаза переноса,
+	// исполняемая ТОЛЬКО ПОСЛЕ того, как новое имя закреплено в наложении и правах.
+	// Обратный порядок (снять, потом закрепить) на сбое посередине уносит теги из
+	// имени, которое знает тенант и на которое выданы права, — см. rename_repository.go.
+	// Идемпотентна: отсутствующий тег — не ошибка.
+	PurgeRepositoryTags(ctx context.Context, registryID, repository string) error
 	// ListReferrers возвращает referrer-проекцию subject_digest (bounded full-set, D-8),
 	// опционально отфильтрованную server-side по artifactType facet. Пусто → []
 	// (не ошибка, C03). zot недоступен → ErrUnavailable.

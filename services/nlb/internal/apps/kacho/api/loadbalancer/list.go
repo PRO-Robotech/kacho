@@ -68,13 +68,8 @@ func (u *ListLoadBalancersUseCase) Execute(
 		return nil, err
 	}
 
-	rd, err := u.repo.Reader(ctx)
-	if err != nil {
-		return nil, mapDomainErr(err)
-	}
-	defer func() { _ = rd.Close() }()
-
-	recs, next, err := rd.LoadBalancers().List(ctx, filter, kachorepo.Pagination{
+	// Страница читается и read-TX ЗАКРЫВАЕТСЯ до опроса прав (см. readPage).
+	recs, next, err := u.readPage(ctx, filter, kachorepo.Pagination{
 		PageToken: req.GetPageToken(),
 		PageSize:  req.GetPageSize(),
 	})
@@ -100,4 +95,31 @@ func (u *ListLoadBalancersUseCase) Execute(
 		resp.NetworkLoadBalancers = append(resp.NetworkLoadBalancers, pb)
 	}
 	return resp, nil
+}
+
+// readPage читает страницу и ОТДАЁТ соединение пула обратно до возврата: read-TX
+// живёт ровно на время SELECT'а, а не до конца RPC.
+//
+// Reader — это занятая ссуда пула (read-only TX на pgxpool, см. repo/kacho/pg),
+// и следом за чтением идёт FilterVisiblePage — сетевое ожидание ответа iam
+// (BatchCheck волнами, per-call дедлайны). Держать соединение через это ожидание
+// значит вычитать его из пула на всё время round-trip'а соседа: пул один
+// (slave == master), поэтому как только одновременных List'ов становится столько
+// же, сколько соединений в пуле, следующий Reader ИЛИ Writer — то есть Get и любая
+// мутация — ждёт iam, чтобы дотянуться до здоровой БД, и отвечает
+// DEADLINE_EXCEEDED/UNAVAILABLE.
+//
+// Закрывать безопасно: List вычитывает строки в срез целиком (rows.Close внутри),
+// маппинг в proto к БД не обращается, второго запроса в этой TX нет. Порядок
+// зафиксирован тестами list_reader_release_test.go (порядок) и
+// list_pool_release_integration_test.go (реальный пул на одно соединение).
+func (u *ListLoadBalancersUseCase) readPage(
+	ctx context.Context, filter kachorepo.LoadBalancerFilter, page kachorepo.Pagination,
+) ([]*kachorepo.LoadBalancerRecord, string, error) {
+	rd, err := u.repo.Reader(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	defer func() { _ = rd.Close() }()
+	return rd.LoadBalancers().List(ctx, filter, page)
 }

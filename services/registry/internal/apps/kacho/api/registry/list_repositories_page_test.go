@@ -105,7 +105,8 @@ func (z *pageZot) TriggerGC(context.Context, string) error                 { ret
 func (z *pageZot) RepositoryEmpty(context.Context, string, string) (bool, error) {
 	return true, nil
 }
-func (z *pageZot) RenameRepository(context.Context, string, string, string) error { return nil }
+func (z *pageZot) CopyRepositoryTags(context.Context, string, string, string) error { return nil }
+func (z *pageZot) PurgeRepositoryTags(context.Context, string, string) error        { return nil }
 func (z *pageZot) Stats(context.Context, string) (*domain.RegistryStats, error) {
 	return &domain.RegistryStats{}, nil
 }

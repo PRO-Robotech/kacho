@@ -139,13 +139,23 @@ type mockZot struct {
 	statsCalls  []string
 
 	// RG-1 config-overlay Repository projection/engine-порты.
-	projByName   map[string]*domain.Repository
-	projFn       func(registryID, repository string) (*domain.Repository, error)
-	projErr      error
-	empty        bool
-	emptyErr     error
-	renameErr    error
-	renameCalls  [][3]string
+	projByName  map[string]*domain.Repository
+	projFn      func(registryID, repository string) (*domain.Repository, error)
+	projErr     error
+	empty       bool
+	emptyErr    error
+	renameErr   error
+	renameCalls [][3]string
+	// Двухфазный перенос в движке: copy (НЕразрушающая) и purge (разрушающая).
+	// renameSteps фиксирует ПОРЯДОК — предмет находки о переименовании; onPurge даёт
+	// тесту наблюдать состояние наложения В МОМЕНТ разрушающего шага.
+	renameSteps []string
+	purgeErr    error
+	purgeCalls  [][2]string
+	onPurge     func()
+	// tagsByRepo — имена тегов по repo (нужны, чтобы отличить СВОЮ прерванную копию
+	// под целевым именем от чужого содержимого). nil → ListTags отдаёт listTagsResult.
+	tagsByRepo   map[string][]string
 	referrers    []*domain.Referrer
 	referrersErr error
 }
@@ -162,6 +172,13 @@ func (z *mockZot) ListRepositoryNames(ctx context.Context, registryID string) ([
 func (z *mockZot) ListTags(ctx context.Context, q registry.TagListQuery) ([]*domain.Tag, string, error) {
 	z.mu.Lock()
 	defer z.mu.Unlock()
+	if z.tagsByRepo != nil {
+		out := make([]*domain.Tag, 0, len(z.tagsByRepo[q.Repository]))
+		for _, name := range z.tagsByRepo[q.Repository] {
+			out = append(out, &domain.Tag{RegistryID: q.RegistryID, Repository: q.Repository, Tag: name})
+		}
+		return out, "", z.listTagsErr
+	}
 	return z.listTagsResult, "", z.listTagsErr
 }
 func (z *mockZot) DeleteTag(ctx context.Context, registryID, repository, tag string) error {
@@ -241,8 +258,28 @@ func (z *mockZot) RepositoryEmpty(ctx context.Context, registryID, repository st
 	return z.empty, nil
 }
 
-// RenameRepository — записывает engine-remap вызов; renameErr — инъекция сбоя (A21).
-func (z *mockZot) RenameRepository(ctx context.Context, registryID, oldName, newName string) error {
+// CopyRepositoryTags — НЕразрушающая фаза переноса; renameErr — инъекция сбоя (A21).
+func (z *mockZot) CopyRepositoryTags(ctx context.Context, registryID, oldName, newName string) error {
+	z.mu.Lock()
+	z.renameSteps = append(z.renameSteps, "copy")
+	z.mu.Unlock()
+	return z.renameRepositoryLegacy(ctx, registryID, oldName, newName)
+}
+
+// PurgeRepositoryTags — разрушающая фаза (снятие тегов под старым именем).
+func (z *mockZot) PurgeRepositoryTags(ctx context.Context, registryID, repository string) error {
+	z.mu.Lock()
+	z.renameSteps = append(z.renameSteps, "purge")
+	z.purgeCalls = append(z.purgeCalls, [2]string{registryID, repository})
+	hook := z.onPurge
+	z.mu.Unlock()
+	if hook != nil {
+		hook()
+	}
+	return z.purgeErr
+}
+
+func (z *mockZot) renameRepositoryLegacy(ctx context.Context, registryID, oldName, newName string) error {
 	z.mu.Lock()
 	z.renameCalls = append(z.renameCalls, [3]string{registryID, oldName, newName})
 	z.mu.Unlock()
@@ -470,6 +507,15 @@ type mockRepoConfig struct {
 
 func newMockCfg() *mockRepoConfig {
 	return &mockRepoConfig{byName: map[string]*domain.RepositoryConfig{}}
+}
+
+// has — есть ли строка наложения под именем. Нужно хуку мока движка: закреплено ли
+// новое имя В МОМЕНТ разрушающего шага переноса.
+func (m *mockRepoConfig) has(name string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, ok := m.byName[name]
+	return ok
 }
 
 func (m *mockRepoConfig) GetConfig(ctx context.Context, registryID, name string) (*domain.RepositoryConfig, error) {

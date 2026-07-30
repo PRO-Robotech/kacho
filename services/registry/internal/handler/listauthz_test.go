@@ -470,9 +470,10 @@ func (f *fakeZotH) RepositoryProjection(context.Context, string, string) (*domai
 	return nil, nil
 }
 func (f *fakeZotH) RepositoryEmpty(context.Context, string, string) (bool, error) { return true, nil }
-func (f *fakeZotH) RenameRepository(context.Context, string, string, string) error {
+func (f *fakeZotH) CopyRepositoryTags(context.Context, string, string, string) error {
 	return nil
 }
+func (f *fakeZotH) PurgeRepositoryTags(context.Context, string, string) error { return nil }
 func (f *fakeZotH) ListReferrers(context.Context, string, string, string, string) ([]*domain.Referrer, error) {
 	return nil, nil
 }

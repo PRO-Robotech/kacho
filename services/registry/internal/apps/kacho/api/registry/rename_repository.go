@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"google.golang.org/protobuf/types/known/anypb"
 
@@ -85,13 +86,15 @@ func (u *UseCase) doRename(ctx context.Context, registryID, repository, newName 
 		durable = false // ephemeral (проекция без overlay) → auto-promote (A23)
 	}
 
-	if cerr := u.assertTargetFree(ctx, registryID, newName); cerr != nil {
+	if cerr := u.assertTargetAvailable(ctx, registryID, repository, newName); cerr != nil {
 		return nil, cerr
 	}
 
-	// Engine re-home old→new (многошаговая НЕ-атомарная OCI-операция). Движок недоступен
-	// → UNAVAILABLE fail-closed: overlay-имя НЕ меняем, старое имя резолвится (A21).
-	if merr := u.zot.RenameRepository(ctx, registryID, repository, newName); merr != nil {
+	// ФАЗА 1 — копирование в движке (НЕразрушающая). Движок недоступен → UNAVAILABLE
+	// fail-closed: наложение НЕ трогаем, старое имя резолвится (A21). Под новым именем
+	// может остаться частичная копия — она узнаётся как своя и повтор сходится
+	// (assertTargetAvailable), а не отвергается «уже существует».
+	if merr := u.zot.CopyRepositoryTags(ctx, registryID, repository, newName); merr != nil {
 		return nil, mapRepoErr(merr)
 	}
 
@@ -133,6 +136,27 @@ func (u *UseCase) doRename(ctx context.Context, registryID, repository, newName 
 	// новым именем (best-effort non-fatal — drainer at-least-once; unregister old — async).
 	u.syncRegisterOwnerTuples(ctx, registerIntents(intents)...)
 
+	// ФАЗА 2 — снятие тегов под СТАРЫМ именем (разрушающая), и только теперь: имя и
+	// права уже закреплены выше, поэтому сбой на этом шаге не делает содержимое
+	// недостижимым — оно полностью адресуемо под новым именем. Прежний порядок
+	// (снять, потом закрепить) на сбое посередине оставлял часть тегов вне
+	// адресуемого имени, а под новым — набор без наложения и регистрации, куда не
+	// доходил никто, включая администратора аккаунта и облака; при этом операция
+	// докладывала ОТКАЗ, то есть «ничего не произошло».
+	//
+	// Неудача снятия НЕ отменяет состоявшийся перенос: предмет операции — имя, и оно
+	// перенесено. Остаток под старым именем разрегистрирован (unregister-intent выше),
+	// поэтому тенанту он недоступен; забрать его можно повторным переименованием или
+	// удалением репозитория под старым именем. Это осознанный размен, записанный в
+	// docs/architecture/known-divergences.md — а не молчаливое проглатывание: событие
+	// именуется и считается.
+	if perr := u.zot.PurgeRepositoryTags(ctx, registryID, repository); perr != nil {
+		slog.WarnContext(ctx, "rename: stale tags left under the old name (engine purge failed)",
+			"event", "registry.rename.purge_failed",
+			"registry_id", registryID, "old_name", repository, "new_name", newName,
+			"err", perr)
+	}
+
 	proj, perr := u.zot.RepositoryProjection(ctx, registryID, newName)
 	if perr != nil {
 		return nil, mapRepoErr(perr)
@@ -140,12 +164,21 @@ func (u *UseCase) doRename(ctx context.Context, registryID, repository, newName 
 	return mergeRepository(registryID, newName, written, proj), nil
 }
 
-// assertTargetFree — целевое имя свободно (ни overlay-строки, ни проекции с тегами),
-// иначе ALREADY_EXISTS (A17). Двойная проверка (overlay + projection) — целевое имя
-// занято либо durable-overlay, либо pushed-контентом. DB PK-backstop (RekeyConfig/
-// InsertConfig) — авторитетный арбитр под concurrency (A18); эта проверка — ранний
-// reject до engine-remap (не re-home'им в занятое имя).
-func (u *UseCase) assertTargetFree(ctx context.Context, registryID, newName string) error {
+// assertTargetAvailable — целевое имя доступно под перенос, иначе ALREADY_EXISTS
+// (A17). Занято, если под ним есть строка наложения (объявленный ресурс) ЛИБО
+// содержимое, которое НЕ является нашей собственной прерванной копией. DB
+// PK-backstop (RekeyConfig/InsertConfig) остаётся авторитетным арбитром под
+// concurrency (A18); эта проверка — ранний reject до копирования в движке.
+//
+// Почему «своя прерванная копия» — отдельный случай. Копирование НЕразрушающее и
+// идемпотентное, поэтому сбой после первого же скопированного тега оставляет под
+// целевым именем часть тегов источника. Прежняя проверка считала это «имя занято»
+// и терминально блокировала ЛЮБОЙ повтор при полностью целом источнике — то есть
+// операция становилась невыполнимой из-за собственной предыдущей попытки. Признак
+// своей копии: под целевым именем нет строки наложения (это не объявленный ресурс)
+// И все его теги есть у источника (подмножество). Чужое содержимое — теги, которых
+// у источника нет, — по-прежнему отвергается.
+func (u *UseCase) assertTargetAvailable(ctx context.Context, registryID, oldName, newName string) error {
 	if _, err := u.cfg.GetConfig(ctx, registryID, newName); err == nil {
 		return failAlreadyExists("repository already exists")
 	} else if !errors.Is(err, regerrors.ErrNotFound) {
@@ -155,11 +188,67 @@ func (u *UseCase) assertTargetFree(ctx context.Context, registryID, newName stri
 	if perr != nil {
 		return mapRepoErr(perr)
 	}
-	if proj != nil && proj.TagCount > 0 {
+	if proj == nil || proj.TagCount == 0 {
+		return nil
+	}
+	ours, oerr := u.targetIsOwnPartialCopy(ctx, registryID, oldName, newName)
+	if oerr != nil {
+		return oerr
+	}
+	if !ours {
 		return failAlreadyExists("repository already exists")
 	}
 	return nil
 }
+
+// targetIsOwnPartialCopy — все теги под целевым именем есть у источника (значит это
+// остаток прерванного копирования этого же переноса). Читает по одной странице с
+// каждой стороны: если содержимое не умещается в страницу, ответ консервативный
+// (не наша копия → имя занято), потому что доказать подмножество мы не смогли.
+func (u *UseCase) targetIsOwnPartialCopy(ctx context.Context, registryID, oldName, newName string) (bool, error) {
+	srcTags, truncated, err := u.tagNames(ctx, registryID, oldName)
+	if err != nil || truncated {
+		return false, err
+	}
+	dstTags, truncated, err := u.tagNames(ctx, registryID, newName)
+	if err != nil || truncated {
+		return false, err
+	}
+	src := make(map[string]struct{}, len(srcTags))
+	for _, t := range srcTags {
+		src[t] = struct{}{}
+	}
+	for _, t := range dstTags {
+		if _, ok := src[t]; !ok {
+			return false, nil
+		}
+	}
+	return len(dstTags) > 0, nil
+}
+
+// tagNames читает ОДНУ страницу имён тегов repo. Второй результат — «страница
+// оборвана» (есть продолжение): вызывающий обязан трактовать это как «доказать не
+// удалось», а не как «тегов больше нет».
+func (u *UseCase) tagNames(ctx context.Context, registryID, repository string) ([]string, bool, error) {
+	tags, next, err := u.zot.ListTags(ctx, TagListQuery{
+		RegistryID: registryID,
+		Repository: repository,
+		PageSize:   renameTagCompareWindow,
+	})
+	if err != nil {
+		return nil, false, mapRepoErr(err)
+	}
+	out := make([]string, 0, len(tags))
+	for _, t := range tags {
+		out = append(out, t.Tag)
+	}
+	return out, next != "", nil
+}
+
+// renameTagCompareWindow — окно сравнения наборов тегов при опознании своей
+// прерванной копии. Репозиторий с бОльшим числом тегов даёт консервативный ответ
+// (имя занято), а не безразмерное чтение.
+const renameTagCompareWindow = 1000
 
 // renameIntents — FGA outbox-intent'ы rename в той же writer-tx: re-register new repo
 // (parent+owner создателя), unregister old repo, + public-grant governance по итоговому
