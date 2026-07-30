@@ -65,11 +65,31 @@ var retiredBlockStorage = []retiredResource{
 // The type declarations themselves still stand in the canonical FGA model: deleting
 // them is an iam-side change (it mints a new model id and touches
 // services/iam/internal plus the openfga-bootstrap chart), out of reach of the
-// compute retire. What this gate pins instead is the property that actually matters
-// — that they are UNREACHABLE. compute no longer emits, checks or filters on them,
-// and no catalog entry scopes an RPC to them, so no request can be addressed through
-// them. An inert type declaration is dead weight; a type some live path still writes
-// to is a resource that is not really retired.
+// compute retire.
+//
+// WHAT THIS GATE PROVES, EXACTLY: that COMPUTE cannot address them — it emits no
+// tuple, runs no check, filters no list on these types, and no catalog entry scopes
+// one of its RPCs to them. That is the whole of the claim, and it is deliberately
+// narrower than "unreachable".
+//
+// It is narrower because they are NOT unreachable. The retire moved the resource;
+// it did not retract the authorization type, and iam still names all three in four
+// separate vocabularies of its own — the grantable catalog it advertises to clients,
+// the per-verb emission guard, the label-selectable/materializable feed, and the
+// AccessBinding target whitelist — while nine `compute.{disk,image,snapshot}.*`
+// system roles remain seeded and bindable and the wildcard role selectors still list
+// the three dotted names. Measured on a running installation while this comment was
+// written: 34 rows survive in iam's resource mirror and 812 tuples on these three
+// types are in the store, the most recent written the previous day by an ordinary
+// binding reconcile. A reconcile that emits onto a type is not a dead declaration.
+//
+// So do not read this gate as permission to delete the three types from the model.
+// Removing a declared type while a producer still emits onto it turns each of those
+// emissions into a write the store refuses permanently — the failure mode already
+// recorded above `type storage_volume` in the model, arrived at from the opposite
+// direction. The order that works is the reverse: retract the roles, the selectors,
+// the mirror rows and iam's four vocabularies FIRST, and take the declaration out
+// last, when nothing is left to write.
 var retiredAuthzObjects = []string{"compute_disk", "compute_image", "compute_snapshot"}
 
 // retiredFQNs returns the fully-qualified gRPC service names taken off the contract.
