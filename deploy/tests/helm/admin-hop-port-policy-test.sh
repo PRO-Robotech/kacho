@@ -8,8 +8,15 @@
 # ПОЧЕМУ ЭТО ОТДЕЛЬНЫЙ ГЕЙТ, А НЕ ПУНКТ В ГРАНИЦАХ РАБОТЫ
 #
 # «Новых сетевых политик не вводим» НЕ означает «существующие можно не трогать и
-# не проверять». Политика, УЖЕ действующая на боевом профиле, не вправе запрещать
+# не проверять». Политика, объявленная на боевом профиле, не вправе запрещать
 # порт, который переход реально использует.
+#
+# «ОБЪЯВЛЕННАЯ», А НЕ «ДЕЙСТВУЮЩАЯ» — разница измерена и печатается. Селектор
+# политики может не совпасть ни с одним подом; тогда она не ограничивает НИЧЕГО,
+# а в рендере выглядит ровно так же, как работающая. Именно это здесь и
+# обнаружилось: единственная политика, называющая под провайдера, выбирает поды
+# по метке сайдкара, которую не эмитит ни один профиль. Счёт выбранных подов
+# уходит в открытый долг (см. конец файла), а не в зелёное.
 #
 # Ловушка, ради которой гейт написан: политики рендерит НЕ КАЖДЫЙ профиль. Стенд,
 # на котором гоняются живые сценарии, политик не рендерит вовсе — поэтому выбор
@@ -90,6 +97,33 @@ def selector_hits_hydra(sel):
     ml = sel.get("matchLabels") or {}
     return any(ml.get(k) == v for k, v in hydra_labels.items())
 
+def selector_matches(sel, labels):
+    """podSelector против меток шаблона пода. Пустой селектор берёт всё."""
+    if sel is None:
+        return False
+    ml = sel.get("matchLabels") or {}
+    if any(labels.get(k) != v for k, v in ml.items()):
+        return False
+    for e in sel.get("matchExpressions") or []:
+        key, op, vals = e.get("key"), e.get("operator"), e.get("values") or []
+        cur = labels.get(key)
+        if op == "In" and cur not in vals:
+            return False
+        if op == "NotIn" and cur in vals:
+            return False
+        if op == "Exists" and key not in labels:
+            return False
+        if op == "DoesNotExist" and key in labels:
+            return False
+    return True
+
+pod_labels = []
+for d in docs:
+    if d.get("kind") not in ("Deployment", "StatefulSet", "DaemonSet"):
+        continue
+    pod_labels.append(
+        ((d.get("spec") or {}).get("template") or {}).get("metadata", {}).get("labels", {}) or {})
+
 governing = 0
 for d in docs:
     if d.get("kind") != "NetworkPolicy":
@@ -114,6 +148,11 @@ for d in docs:
     if hit:
         governing += 1
         print("POLICY=%s:%s" % (name, ",".join(sorted(ports))))
+        # СКОЛЬКО ПОДОВ ПОЛИТИКА РЕАЛЬНО ВЫБИРАЕТ. Отрендеренная политика и
+        # ДЕЙСТВУЮЩАЯ политика — разные вещи: селектор, не совпавший ни с одним
+        # подом, не ограничивает НИЧЕГО, а в рендере выглядит ровно так же.
+        subjects = sum(1 for lb in pod_labels if selector_matches(spec.get("podSelector"), lb))
+        print("POLICY_SUBJECTS=%s:%d" % (name, subjects))
 print("POLICIES=%d" % governing)
 PY
 }
@@ -195,6 +234,32 @@ EOF
   else
     echo "  ✗ инъекция не различена: sp=$sp, разрешено=$pp"; rc=1
   fi
+
+  # ОТРЕНДЕРЕННАЯ ПОЛИТИКА ≠ ДЕЙСТВУЮЩАЯ. Селектор политики может не совпасть ни
+  # с одним подом — тогда она не ограничивает НИЧЕГО, а в рендере выглядит ровно
+  # так же. Это не гипотеза: единственная политика, называющая под провайдера,
+  # выбирает подов по метке, которую не эмитит ни один профиль.
+  probe "политика без единого выбранного пода — счёт 0, а не «есть политика»" \
+    "POLICY_SUBJECTS=consumer-egress:0" "$tmp/legit.yaml"
+
+  mk_render 4445 4444 4445 >"$tmp/withsubj.yaml"
+  cat >>"$tmp/withsubj.yaml" <<'EOF'
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rel-iam
+spec:
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: iam
+    spec:
+      containers:
+        - name: iam
+EOF
+  probe "политика с выбранным подом — счёт 1" \
+    "POLICY_SUBJECTS=consumer-egress:1" "$tmp/withsubj.yaml"
 
   # ИНЪЕКЦИЯ: политика, НЕ адресующая под провайдера, переход не регулирует и
   # не должна учитываться (иначе чужое правило «разрешало» бы наш порт).
@@ -306,7 +371,7 @@ echo "  умолчание чарта: отладочный флаг = $DEV_DEFA
 echo
 
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
-stacks_total=0; stacks_with_policies=0; prodclass_total=0; prodclass_live=0
+stacks_total=0; stacks_with_policies=0; prodclass_total=0; prodclass_live=0; inert_policies=0
 # Стенд поднимает ровно один стек — на нём и только на нём приём плейнтекста от
 # петли подтверждается ЖИВЫМ наблюдением.
 LIVE_STACK="${LIVE_STACK:-dev-prod}"
@@ -348,6 +413,24 @@ print("unset" if dev is None else str(bool(dev)).lower())
   klass=dev; [ "$effective_dev" = false ] && klass=production
 
   echo "  [$stack] класс: $klass (флаг: $devflag${devflag:+, действует $effective_dev}) · сосед на порту: ${sidecar_port:-НЕТ} · регулирующих политик: $npolicies"
+
+  # ── ОТРЕНДЕРЕННАЯ ПОЛИТИКА ≠ ДЕЙСТВУЮЩАЯ ─────────────────────────────────
+  # Политика, чей селектор не совпал НИ С ОДНИМ подом, не ограничивает ничего, а
+  # в рендере выглядит ровно так же. Это НЕ гипотеза: единственная политика,
+  # называющая под провайдера, выбирает подов по метке, которую сегодня не
+  # эмитит ни один профиль. Поэтому счёт печатается ЯВНО и уходит в открытый
+  # долг, а не в зелёное: обоснование, опирающееся на такую политику, сейчас
+  # силы не имеет.
+  while IFS= read -r ps; do
+    [ -z "$ps" ] && continue
+    pname="${ps%%:*}"; pcount="${ps##*:}"
+    if [ "$pcount" -gt 0 ]; then
+      note "политика $pname выбирает подов: $pcount — действует"
+    else
+      note "политика $pname выбирает подов: 0 — ОТРЕНДЕРЕНА, НО НЕ ДЕЙСТВУЕТ"
+      inert_policies=$((inert_policies + 1))
+    fi
+  done <<<"$(sed -n 's/^POLICY_SUBJECTS=//p' <<<"$info")"
 
   # ── SEC-HAT-21: порт соседа разрешён КАЖДОЙ регулирующей политикой ──
   if [ "$npolicies" -gt 0 ]; then
@@ -448,6 +531,13 @@ echo "  стеков отрендерено: $stacks_total; из них ренд
 echo "  профилей боевого класса: $prodclass_total"
 echo
 echo "── открытый долг (НЕ зачитывается в зелёное) ──"
+echo "  политик, регулирующих переход, но не выбирающих НИ ОДНОГО пода: $inert_policies"
+if [ "$inert_policies" -gt 0 ]; then
+  echo "  (порядок портов остаётся верным ВПЕРЁД: когда такая политика получит"
+  echo "   подданных, переход уже укладывается в её объём. Но сегодня она ничего"
+  echo "   не ограничивает, и обоснование выбора порта ссылаться на неё как на"
+  echo "   действующее ограничение НЕ ВПРАВЕ.)"
+fi
 debt=$((prodclass_total - prodclass_live))
 echo "  профилей боевого класса, чей приём плейнтекста от петли ЖИВЫМ прогоном НЕ подтверждён: $debt"
 echo "  (стенд поднимает «$LIVE_STACK»; остальные подтверждаются первой боевой посадкой)"

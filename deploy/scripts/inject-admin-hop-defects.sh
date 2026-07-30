@@ -181,6 +181,54 @@ sleep 10
 wait_pair "true true" 180 && ok "B: под снова 2/2 Ready" || bad "B: под не вернулся в Ready"
 
 # ═════════════════════════════════════════════════════════════════════════════
+# ИНЪЕКЦИЯ D: СТАТИЧЕСКИЙ ПУТЬ ЗДОРОВЬЯ У СОСЕДА.
+#
+# Самый вероятный будущий дефект этого перехода — не поломка, а «улучшение»:
+# следующий читатель добавит соседу ответ на путь здоровья, как в образце, с
+# которого списан приём. Шифрование останется настоящим, маркер на месте,
+# запись в журнале образцовой — и при этом «под готов» перестанет означать
+# «провайдер отвечает». Здесь это вносится ВЖИВУЮ и требуется покраснение.
+#
+# Дефект вносится на путь, которым ходит ПРОБНИК гейта (/health/ready): именно
+# его запись гейт ищет по маркеру.
+# ═════════════════════════════════════════════════════════════════════════════
+step "D. статический ответ соседа на пути здоровья → гейт обязан покраснеть"
+kubectl -n "$NS" create configmap "$CM_NAME" --dry-run=client -o yaml \
+  --from-literal=admin-tls.conf="log_format kacho_admin_tls '\$request_id ssl_protocol=\$ssl_protocol ssl_cipher=\$ssl_cipher upstream_status=\$upstream_status upstream_time=\$upstream_response_time status=\$status method=\$request_method marker=\$http_x_kacho_probe';
+server {
+  listen 4445 ssl;
+  ssl_certificate /etc/tls/tls.crt;
+  ssl_certificate_key /etc/tls/tls.key;
+  access_log /dev/stdout kacho_admin_tls;
+  location = /health/ready { return 200 'ok'; }
+  location / { proxy_pass http://127.0.0.1:4455; proxy_http_version 1.1; }
+}" | kubectl -n "$NS" apply -f - >/dev/null 2>&1 || bad "D: не удалось внести дефект"
+kubectl -n "$NS" delete pod "$(hydra_pod)" --wait=false >/dev/null 2>&1
+sleep 25
+
+if bash "$DEPLOY_ROOT/scripts/assert-admin-hop-transport.sh" >/tmp/inj-d.txt 2>&1; then
+  bad "D: гейт ЗЕЛЁН при статическом ответе соседа — «под готов» больше ничего не значит"
+  sed 's/^/      /' /tmp/inj-d.txt | tail -12
+else
+  ok "D: гейт покраснел при статическом ответе соседа"
+  grep -E 'SEC-HAT-07|апстрим' /tmp/inj-d.txt | sed 's/^/      /' | head -6
+  # ГЛАВНОЕ: покраснеть он обязан ИМЕННО на полях апстрима, а не «вообще».
+  # Шифрование в этой инъекции настоящее, поэтому все прежние утверждения
+  # зелены — и без чтения полей апстрима прогон был бы ЗЕЛЁНЫМ.
+  if grep -q 'сосед ответил САМ' /tmp/inj-d.txt; then
+    ok "D: причина названа верно — апстрим по пути пробы не спрошен"
+  else
+    bad "D: гейт покраснел, но НЕ на полях апстрима — причина не та"
+  fi
+fi
+
+step "D-восстановление"
+restore_cm || bad "D: восстановление конфигурации не применилось"
+kubectl -n "$NS" delete pod "$(hydra_pod)" --wait=false >/dev/null 2>&1
+sleep 10
+wait_pair "true true" 180 && ok "D: под снова 2/2 Ready" || bad "D: под не вернулся в Ready"
+
+# ═════════════════════════════════════════════════════════════════════════════
 # ИНЪЕКЦИЯ C: обращение к листенеру провайдера снаружи его пода.
 # ═════════════════════════════════════════════════════════════════════════════
 step "C. листенер провайдера недостижим снаружи пода — В ПАРЕ с достижимостью изнутри"

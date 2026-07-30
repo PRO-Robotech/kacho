@@ -37,9 +37,6 @@ DEVPROD="$UMBRELLA/values.dev-prod.yaml"
 
 fail() { echo "FAIL: $1"; exit 1; }
 
-[ -f "$DEV" ]     || fail "values.dev.yaml не найден ($DEV)"
-[ -f "$DEVPROD" ] || fail "values.dev-prod.yaml не найден ($DEVPROD)"
-
 # PyYAML, а НЕ yq: на машинах разработчиков /usr/bin/yq регулярно оказывается
 # python-обёрткой над jq вместо mikefarah yq v4. Её синтаксис несовместим,
 # вызов молча отдаёт пустой вывод — и проверка, сравнивающая с пустотой,
@@ -47,39 +44,15 @@ fail() { echo "FAIL: $1"; exit 1; }
 # так что сами на него наступать не будем.
 python3 -c 'import yaml' 2>/dev/null || fail "нужен python3 с PyYAML (pip install pyyaml)"
 
-TMPD="$(mktemp -d)"
-trap 'rm -rf "$TMPD"' EXIT
-
-# ОБЯЗАТЕЛЬНО перед рендером: сервисные сабчарты вендорятся в charts/*.tgz, и
-# `helm template` берёт ИМЕННО их, а не исходники в services/*/deploy. Без
-# обновления зависимостей проверка молча аттестовала бы СТАРУЮ копию чарта:
-# правку (или её потерю) в исходнике она бы не увидела вовсе. Проверено — без
-# этого шага тест оставался зелёным на заведомо сломанном storage-чарте.
-# Сбой обновления — КРАСНОЕ: непроверенный исходник это не «всё хорошо».
-echo "=== $SCRIPT: helm dep update (иначе рендерится вендоренная копия) ==="
-( cd "$UMBRELLA" && helm dep update >/dev/null 2>&1 ) \
-  || fail "helm dep update сорвался — сабчарты не обновлены из исходников, проверка НЕ ВЫПОЛНЕНА"
-
-echo "=== $SCRIPT: рендер dev-профиля ==="
-helm template kacho-umbrella "$UMBRELLA" -f "$DEV" >"$TMPD/dev.yaml" 2>/dev/null \
-  || fail "helm template (dev) сорвался"
-echo "=== $SCRIPT: рендер production-профиля ==="
-helm template kacho-umbrella "$UMBRELLA" -f "$DEV" -f "$DEVPROD" >"$TMPD/prod.yaml" 2>/dev/null \
-  || fail "helm template (dev-prod) сорвался"
-
-# Третий рендер — с ВКЛЮЧЁННЫМИ OPA-сайдкарами. В dev/dev-prod они выключены,
-# поэтому потребляемые ими ConfigMap'ы (политика, bundle-сервер, JWKS) в первых
-# двух рендерах вообще не появляются, и структурная дыра в них была бы НЕВИДИМА
-# до того дня, когда кто-нибудь включит OPA в проде. Проверять надо конфигурацию,
-# которую чарт СПОСОБЕН выдать, а не только ту, что включена сегодня.
-echo "=== $SCRIPT: рендер с включёнными OPA-сайдкарами ==="
-helm template kacho-umbrella "$UMBRELLA" -f "$DEV" -f "$DEVPROD" \
-  --set vpc.opa.enabled=true \
-  --set compute.opa.enabled=true \
-  --set kacho-iam.opaSidecar.enabled=true >"$TMPD/opa.yaml" 2>/dev/null \
-  || fail "helm template (opa on) сорвался"
-
-python3 - "$TMPD/dev.yaml" "$TMPD/prod.yaml" "$TMPD/opa.yaml" <<'PY'
+# ═════════════════════════════════════════════════════════════════════════════
+# АНАЛИЗ — ОДИН ЭКЗЕМПЛЯР ИСХОДНИКА для боевого прохода И для самопроверки.
+#
+# Пока он был вписан heredoc'ом в середину прохода, доказать инъекцией его было
+# нечем: самопроверке пришлось бы держать ВТОРУЮ копию логики, а две копии
+# расходятся. Теперь обе стороны зовут один и тот же текст.
+# ═════════════════════════════════════════════════════════════════════════════
+PY_ROLLOUT_BINDING=$(cat <<'PYSRC'
+import re
 import sys, yaml
 
 def load(path):
@@ -125,6 +98,41 @@ def consumed_configmaps(workload):
 def pod_annotations(workload):
     meta = ((workload.get("spec") or {}).get("template") or {}).get("metadata") or {}
     return meta.get("annotations") or {}
+
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+
+def content_bindings(workload):
+    """Привязки шаблона пода к СОДЕРЖИМОМУ настроек — по всем законным местам.
+
+    (1) Аннотация, чей ключ содержит "checksum", — КРОМЕ хэширующих СЕКРЕТ.
+        Аннотация секрета меняется по своей причине и покрытием настроек не
+        является; арифметика «привязок не меньше, чем ConfigMap'ов» её
+        засчитывала, и у пода провайдера личности счёт сходился ИМЕННО за её
+        счёт, пока конфигурация соседа-терминатора не была привязана ничем.
+        Заголовок этой проверки об этом и предупреждает: она не доказывает, что
+        привязка относится к своему объекту. Правило подсчёта — допускало.
+
+    (2) Переменная окружения контейнера, чьё ЗНАЧЕНИЕ — 64 шестнадцатеричные
+        цифры, то есть отпечаток содержимого. Это НЕ поблажка: бывают чарты, не
+        пропускающие свои значения через шаблонизацию, и тогда аннотацию
+        вычислить негде — единственное доступное место — спецификация самого
+        контейнера. Признак строгий: имя подделать легко, 64-hex значение
+        появляется только из вычисления.
+    """
+    out = []
+    for k in pod_annotations(workload):
+        if "checksum" not in k.lower():
+            continue
+        if "secret" in k.lower():
+            continue
+        out.append(k)
+    spec = ((workload.get("spec") or {}).get("template") or {}).get("spec") or {}
+    for c in (spec.get("containers") or []) + (spec.get("initContainers") or []):
+        for e in c.get("env") or []:
+            v = e.get("value")
+            if isinstance(v, str) and HEX64.match(v):
+                out.append(f"{c.get('name')}.env.{e.get('name')}")
+    return out
 
 dev_w, dev_cm = index(load(sys.argv[1]))
 prod_w, prod_cm = index(load(sys.argv[2]))
@@ -182,27 +190,23 @@ print(f"\n[1/2] OK — у всех {checked} workload'ов изменение н
 # (политика OPA, JWKS, bundle-конфиг), он пропускает — а привязка нужна и им:
 # правка политики обязана перекатывать под ровно так же, как правка режима.
 #
-# Здесь проверяется покрытие: у workload'а должно быть не меньше аннотаций,
-# привязанных к содержимому (ключ содержит "checksum"), чем он потребляет
-# ConfigMap'ов. Это осознанно СТРУКТУРНАЯ проверка, а не поведенческая — она не
-# доказывает, что аннотация хэширует именно «свой» ConfigMap; она ловит то, что
-# реально ломается на практике: добавили потребляемый ConfigMap и забыли
-# аннотацию (так и появились три латентные дыры под OPA — vpc/compute/iam).
-#
-# Не-checksum аннотации (`openfga-model-id-rev` и т.п.) НЕ засчитываются: они
-# меняются по своей причине и покрытием конфига не являются.
+# Здесь проверяется ПОКРЫТИЕ: у workload'а должно быть не меньше привязок к
+# содержимому, чем он потребляет ConfigMap'ов. Проверка осознанно СТРУКТУРНАЯ —
+# она не доказывает, что привязка относится именно к «своему» ConfigMap'у.
 opa_w, opa_cm = index(load(sys.argv[3]))
-gaps = []
+gaps, checked_w, checked_cm = [], 0, 0
 for key in sorted(opa_w.keys()):
     kind, name = key
     cms = sorted(c for c in consumed_configmaps(opa_w[key]) if c in opa_cm)
     if not cms:
         continue
-    binding = [k for k in pod_annotations(opa_w[key]) if "checksum" in k.lower()]
+    checked_w += 1
+    checked_cm += len(cms)
+    binding = content_bindings(opa_w[key])
     if len(binding) < len(cms):
         gaps.append(
             f"{kind}/{name}: потребляет {len(cms)} ConfigMap'ов ({', '.join(cms)}), "
-            f"а привязанных к содержимому аннотаций всего {len(binding)} "
+            f"а привязок к содержимому всего {len(binding)} "
             f"({', '.join(sorted(binding)) or 'ни одной'})"
         )
 
@@ -211,10 +215,154 @@ if gaps:
     for g in gaps:
         print(f"FAIL: {g}")
     print()
-    print("Каждый потребляемый ConfigMap обязан иметь СВОЮ content-аннотацию —")
+    print("Каждый потребляемый ConfigMap обязан иметь СВОЮ привязку к содержимому —")
     print("иначе его правка не перекатит под и процесс останется со старым содержимым.")
+    print("Аннотация, хэширующая СЕКРЕТ, покрытием настроек НЕ является.")
+    print("Если аннотацию добавить нечем (чужой чарт не пропускает свои значения")
+    print("через шаблонизацию), отпечаток кладётся в спецификацию контейнера —")
+    print("см. templates/_hydra-admin-tls.tpl.")
     sys.exit(1)
 
+# «Ноль находок» обязано быть отличимо от «ноль прочитанного».
+if checked_w == 0:
+    print()
+    print("FAIL: пасс 2 не осмотрел НИ ОДНОГО workload'а с потребляемым ConfigMap.")
+    sys.exit(1)
+print(f"  осмотрено workload'ов: {checked_w}, потребляемых ConfigMap'ов: {checked_cm}")
 print("[2/2] OK — включая конфигурации, выключенные в dev (OPA-сайдкары)")
 print("\nconfig-rollout-binding: OK")
-PY
+PYSRC
+)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# САМОПРОВЕРКА — БЕЗ helm И БЕЗ КЛАСТЕРА.
+#
+# Инъекция в обе стороны на СИНТЕТИЧЕСКИХ рендерах: покрытие обязано краснеть
+# там, где привязки нет, и молчать там, где она есть — включая законную форму,
+# в которой привязка живёт НЕ в аннотации.
+# ═════════════════════════════════════════════════════════════════════════════
+if [ "${1:-}" = "--self-test" ]; then
+  echo "=== $SCRIPT --self-test: покрытие настроек, инъекции в обе стороны ==="
+  rc=0; checked=0
+  st="$(mktemp -d)"; trap 'rm -rf "$st"' EXIT
+
+  mk_triple() { # <каталог> <опции для python-генератора…>
+    python3 - "$1" "${@:2}" <<'PYGEN'
+import sys, os, yaml
+d = sys.argv[1]
+opt = dict(kv.split("=", 1) for kv in sys.argv[2:])
+os.makedirs(d, exist_ok=True)
+
+def wl(name, cms, annotations, env=None):
+    return {"apiVersion": "apps/v1", "kind": "Deployment",
+            "metadata": {"name": name},
+            "spec": {"template": {
+                "metadata": {"annotations": annotations},
+                "spec": {"containers": [{"name": "main", "env": env or []}],
+                         "volumes": [{"name": c, "configMap": {"name": c}} for c in cms]}}}}
+
+def cm(name, val):
+    return {"apiVersion": "v1", "kind": "ConfigMap",
+            "metadata": {"name": name}, "data": {"k": val}}
+
+# Пасс 1 обязан иметь предмет в ЛЮБОМ случае, иначе он свалится раньше пасса 2
+# и мы будем проверять не то. Поэтому в оба профиля кладётся заведомо здоровый
+# workload с расходящимся содержимым и расходящейся аннотацией.
+base = lambda v: [wl("drifting", ["cm-drift"], {"checksum/config": "sha-" + v}), cm("cm-drift", v)]
+yaml.safe_dump_all(base("dev"), open(os.path.join(d, "dev.yaml"), "w"))
+yaml.safe_dump_all(base("prod"), open(os.path.join(d, "prod.yaml"), "w"))
+
+ann = {"checksum/config": "a" * 64}
+env = []
+cms = ["cm-1"]
+mode = opt.get("mode", "ok")
+if mode == "secret-covers":                 # 2 объекта настроек, второй «покрыт» секретом
+    cms = ["cm-1", "cm-2"]; ann["checksum/hydra-secrets"] = "b" * 64
+elif mode == "secret-plus-digest":          # то же + настоящий отпечаток в контейнере
+    cms = ["cm-1", "cm-2"]; ann["checksum/hydra-secrets"] = "b" * 64
+    env = [{"name": "X_CONF_SHA256", "value": "c" * 64}]
+elif mode == "no-binding":
+    ann = {}
+elif mode == "name-not-digest":             # значение похоже на имя, а не на отпечаток
+    cms = ["cm-1", "cm-2"]
+    env = [{"name": "X_CONF_SHA256", "value": "cm-2"}]
+
+docs = base("prod") + [wl("subject", cms, ann, env)] + [cm(c, "x") for c in cms]
+yaml.safe_dump_all(docs, open(os.path.join(d, "opa.yaml"), "w"))
+PYGEN
+  }
+
+  probe() { # <метка> <ожидание: red|green> <mode>
+    local label="$1" want="$2" mode="$3" out code
+    checked=$((checked + 1))
+    rm -rf "$st/c"; mk_triple "$st/c" "mode=$mode"
+    # `set -e` в шапке: присваивание из подстановки с ненулевым кодом оборвало бы
+    # прогон на ПЕРВОЙ же инъекции — и самопроверка выглядела бы «прошедшей до
+    # инъекций». Условный контекст это отключает.
+    if out="$(python3 -c "$PY_ROLLOUT_BINDING" "$st/c/dev.yaml" "$st/c/prod.yaml" "$st/c/opa.yaml" 2>&1)"; then
+      code=0
+    else
+      code=$?
+    fi
+    if [ "$want" = red ]; then
+      if [ $code -ne 0 ]; then echo "  ✓ $label — краснеет"
+      else echo "  ✗ $label — НЕ покраснел:"; sed 's/^/      /' <<<"$out"; rc=1; fi
+    else
+      if [ $code -eq 0 ]; then echo "  ✓ $label — молчит (законная конструкция)"
+      else echo "  ✗ $label — покраснел на ЗАКОННОЙ конструкции:"; sed 's/^/      /' <<<"$out"; rc=1; fi
+    fi
+  }
+
+  echo "-- законные формы привязки --"
+  probe "аннотация покрывает единственный ConfigMap" green ok
+  probe "отпечаток в спецификации контейнера покрывает второй ConfigMap" green secret-plus-digest
+
+  echo
+  echo "-- инъекции --"
+  probe "привязки нет вовсе" red no-binding
+  probe "контрольная сумма СЕКРЕТА закрывает покрытие настроек" red secret-covers
+  probe "значение переменной — имя, а не отпечаток" red name-not-digest
+
+  echo
+  echo "инъекций и законных входов проверено: $checked"
+  [ $rc -eq 0 ] && echo "PASS: $SCRIPT --self-test" || echo "FAIL: $SCRIPT --self-test"
+  exit $rc
+fi
+
+[ -f "$DEV" ]     || fail "values.dev.yaml не найден ($DEV)"
+[ -f "$DEVPROD" ] || fail "values.dev-prod.yaml не найден ($DEVPROD)"
+
+TMPD="$(mktemp -d)"
+trap 'rm -rf "$TMPD"' EXIT
+
+# ОБЯЗАТЕЛЬНО перед рендером: сервисные сабчарты вендорятся в charts/*.tgz, и
+# `helm template` берёт ИМЕННО их, а не исходники в services/*/deploy. Без
+# обновления зависимостей проверка молча аттестовала бы СТАРУЮ копию чарта:
+# правку (или её потерю) в исходнике она бы не увидела вовсе. Проверено — без
+# этого шага тест оставался зелёным на заведомо сломанном storage-чарте.
+# Сбой обновления — КРАСНОЕ: непроверенный исходник это не «всё хорошо».
+echo "=== $SCRIPT: helm dep update (иначе рендерится вендоренная копия) ==="
+( cd "$UMBRELLA" && helm dep update >/dev/null 2>&1 ) \
+  || fail "helm dep update сорвался — сабчарты не обновлены из исходников, проверка НЕ ВЫПОЛНЕНА"
+
+echo "=== $SCRIPT: рендер dev-профиля ==="
+helm template kacho-umbrella "$UMBRELLA" -f "$DEV" >"$TMPD/dev.yaml" 2>/dev/null \
+  || fail "helm template (dev) сорвался"
+echo "=== $SCRIPT: рендер production-профиля ==="
+helm template kacho-umbrella "$UMBRELLA" -f "$DEV" -f "$DEVPROD" >"$TMPD/prod.yaml" 2>/dev/null \
+  || fail "helm template (dev-prod) сорвался"
+
+# Третий рендер — с ВКЛЮЧЁННЫМИ OPA-сайдкарами. В dev/dev-prod они выключены,
+# поэтому потребляемые ими ConfigMap'ы (политика, bundle-сервер, JWKS) в первых
+# двух рендерах вообще не появляются, и структурная дыра в них была бы НЕВИДИМА
+# до того дня, когда кто-нибудь включит OPA в проде. Проверять надо конфигурацию,
+# которую чарт СПОСОБЕН выдать, а не только ту, что включена сегодня.
+echo "=== $SCRIPT: рендер с включёнными OPA-сайдкарами ==="
+helm template kacho-umbrella "$UMBRELLA" -f "$DEV" -f "$DEVPROD" \
+  --set vpc.opa.enabled=true \
+  --set compute.opa.enabled=true \
+  --set kacho-iam.opaSidecar.enabled=true >"$TMPD/opa.yaml" 2>/dev/null \
+  || fail "helm template (opa on) сорвался"
+
+python3 -c "$PY_ROLLOUT_BINDING" "$TMPD/dev.yaml" "$TMPD/prod.yaml" "$TMPD/opa.yaml"
