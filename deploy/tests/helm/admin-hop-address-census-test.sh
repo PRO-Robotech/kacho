@@ -1,0 +1,690 @@
+#!/usr/bin/env bash
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+#
+# ПЕРЕПИСЬ ПОТРЕБИТЕЛЕЙ АДРЕСА АДМИНИСТРАТИВНОГО API ПРОВАЙДЕРА.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# ПОЧЕМУ ОБХОД, А НЕ РЕЕСТР
+#
+# Реестр `adminHopConsumers` (gateway/deploy/admin_hop_transport_test.go)
+# резолвит ПУТИ В ФАЙЛАХ ЗНАЧЕНИЙ и потому BY CONSTRUCTION не видит потребителя,
+# чей адрес приезжает умолчанием чарта-зависимости либо зашит в шаблон. Его число
+# («4/4 проверено») читается как полнота, которой нет.
+#
+# Померено на этом дереве: потребителей СЕМЬ, реестру видны ЧЕТЫРЕ.
+#   • умолчанием зависимости — реконсайлер клиентов провайдера (`maester.enabled`
+#     истинно по умолчанию чарта, ни один профиль не переопределяет) и
+#     тест-подключение самого чарта провайдера. Ни один из двух не лежит в git:
+#     зависимость материализуется архивом, поэтому ТЕКСТОВЫЙ обход дерева их не
+#     видит вовсе — их находит только половина по РЕНДЕРУ;
+#   • зашитым в шаблон — хук выдачи доверия (values-ключа не имеет вовсе).
+#
+# Реконсайлер при этом НЕ ИМЕЕТ ПРОБ: при смене адреса он не покраснел бы, а тихо
+# перестал разрешать имя. Молчаливое прекращение работы хуже отказа — поэтому
+# «потребитель без проб на изменяемом пути» здесь отдельная находка.
+#
+# Обход — не дубль реестра, а его НЕДОСТАЮЩАЯ ПОЛОВИНА. Реестр остаётся
+# единственным местом, где перечислены пути объявлений; эта проверка ЧИТАЕТ его
+# оттуда (а не держит копию) и сверяет с тем, что реально попадает в рендер.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# ПРАВИЛО ВЕРДИКТА
+#
+#   A. НИ ОДНА развёрнутая нагрузка не адресует административный листенер
+#      ПРОВАЙДЕРА напрямую (`<release>-hydra-admin`). Открытого участка между
+#      подами нет как объекта: листенер слушает петлю, его Service снят.
+#   B. КАЖДАЯ нагрузка, адресующая ТЕРМИНАТОР (`<release>-hydra-admin-tls`),
+#      объявлена значением, на которое ссылается запись реестра. Адрес в рендере,
+#      которого не объявляет ни одна запись, — находка (потребитель, невидимый
+#      реестру).
+#   C. Долгоживущая нагрузка (Deployment/StatefulSet/DaemonSet), называющая
+#      адрес, обязана иметь пробу. Без проб она перестанет работать МОЛЧА.
+#   D. Запись списка законных упоминаний, под которую в дереве больше ничего не
+#      подпадает, — находка. Исключение живёт, пока у него есть ПРЕДМЕТ.
+#
+# «Ноль находок» обязано быть отличимо от «ноль прочитанного»: печатаются число
+# прочитанных файлов, документов рендера, найденных адресов и пройденные/
+# исключённые поддеревья — с причиной по каждому исключению.
+#
+# ЗАВИСИМОСТЬ ЧАРТА — ПРЕДУСЛОВИЕ, А НЕ ПРОПУСК. Без материализованного чарта
+# провайдера рендер не содержит ни реконсайлера, ни тест-подключения: обход нашёл
+# бы четырёх потребителей из семи и ОТЧИТАЛСЯ ПОЛНОТОЙ. Поэтому отсутствие
+# зависимости — ОТКАЗ (код 2), а не тихо суженный обход.
+# ─────────────────────────────────────────────────────────────────────────────
+set -uo pipefail
+
+SCRIPT="$(basename "$0")"
+DEPLOY_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+REPO_ROOT="$(cd "$DEPLOY_ROOT/.." && pwd)"
+UMBRELLA="$DEPLOY_ROOT/helm/umbrella"
+REGISTRY_GO="$REPO_ROOT/gateway/deploy/admin_hop_transport_test.go"
+
+FAILURES=0
+ASSERTIONS=0
+fail() { echo "  ✗ $1"; FAILURES=$((FAILURES + 1)); }
+ok()   { echo "  ✓ $1"; }
+note() { echo "    $1"; }
+assertion() { ASSERTIONS=$((ASSERTIONS + 1)); }
+
+# ── ПРЕДМЕТ ОБХОДА ───────────────────────────────────────────────────────────
+#
+# Административный API провайдера в ЛЮБОМ написании: и имя самого провайдера
+# (`…-hydra-admin`), и имя терминатора перед ним (`…-hydra-admin-tls`). Оба —
+# один и тот же API, и переписи нужны оба: первое обязано исчезнуть из нагрузок,
+# второе обязано быть объявленным.
+#
+# `-ca` исключается: `…/hydra-admin-ca/ca.crt` — путь монтирования якоря
+# доверия, а не адрес.
+SUBJECT_RE='hydra-admin(?!-ca)'
+
+# АДРЕС, А НЕ ИМЯ СЕКРЕТА. Имя секрета `<release>-hydra-admin-tls` совпадает с
+# именем терминатора посимвольно, поэтому одного вхождения подстроки мало:
+# требуется признак адреса — схема, порт или `.svc`. Без этого различения
+# ссылка на секрет в томе читалась бы как потребитель API.
+ADDRESS_RE='(https?://)?[a-z0-9-]*hydra-admin(-tls)?[a-z0-9.-]*(:[0-9]+)?'
+address_like() { # <token> → 0, если токен выглядит адресом
+  case "$1" in
+    http://*|https://*) return 0 ;;
+    *:[0-9]*)           return 0 ;;
+    *.svc*)             return 0 ;;
+  esac
+  return 1
+}
+
+# КОММЕНТАРИЙ — НЕ АДРЕС. Отбрасывается ДО извлечения, и это не предосторожность
+# впрок: первая же редакция этой проверки объявила потребителем комментарий в
+# шаблоне iam, который ОБЪЯСНЯЕТ, почему выведенный адрес непригоден
+# (`https://hydra-admin.<domain>` … UNREACHABLE). Гейт, который красят чужие
+# объяснения, снимут при первом ложном срабатывании — тот же класс, что
+# «проверка ищет слово в сыром тексте и находит его в комментарии о самой
+# проверке» (testing.md §гейт на класс, п. 4).
+uncommented() { sed -e 's/[[:space:]]#[[:space:]].*$//' -e '/^[[:space:]]*#/d' "$1"; }
+
+# extract_addresses <файл> — адресоподобные вхождения предмета, по одному в строке.
+extract_addresses() {
+  local tok
+  uncommented "$1" | grep -ohP "$ADDRESS_RE" 2>/dev/null | while IFS= read -r tok; do
+    address_like "$tok" && echo "$tok"
+  done | sort -u
+}
+
+# provider_spelling <адрес> — 0, если это имя ПРОВАЙДЕРА, а не терминатора.
+provider_spelling() {
+  case "$1" in
+    *hydra-admin-tls*) return 1 ;;
+    *hydra-admin*)     return 0 ;;
+  esac
+  return 1
+}
+
+# ── ЗАКОННЫЕ УПОМИНАНИЯ В ДЕРЕВЕ (проверка D: каждая запись обязана иметь предмет)
+#
+# Файлы, где называть адрес — это и есть их работа. Всё остальное в пройденном
+# поддереве, что называет адрес, обязано быть объявлением потребителя, известным
+# реестру.
+# Список ведётся ПО ФАКТУ: запись вносится вместе с файлом, а не впрок. Запись
+# без предмета — находка (проверка D ниже), поэтому «объявлю заранее» здесь
+# обошлось бы дороже, чем внести строку в том же изменении, что создаёт файл.
+ALLOWED_TREE=(
+  "deploy/helm/umbrella/templates/hydra-admin-certificate.yaml|SAN сертификата терминатора"
+  "deploy/tests/helm/admin-hop-transport-test.sh|гейт транспорта: адрес — его предмет"
+  "deploy/tests/helm/admin-hop-address-census-test.sh|эта перепись"
+)
+
+# ── ПОДДЕРЕВЬЯ ОБХОДА, ОБЪЯВЛЕННЫЕ ЯВНО ──────────────────────────────────────
+#
+# Печатаются оба списка. Прозой область не заявляется: печатается то, что реально
+# обошли, и то, что исключили — с причиной и ЧИСЛОМ совпадений под исключением.
+WALK_PREFIXES='deploy/ gateway/deploy/ services/*/deploy/ ui-future/deploy/'
+EXCLUDE_REASON='код сервисов и их тесты: код ЧИТАЕТ объявленное значение и адреса не несёт, литералы в его фикстурах развёрнутой нагрузке адрес не задают'
+
+# tree_files — файлы пройденного поддерева (по содержимому репозитория, как увидит CI).
+tree_files() {
+  git -C "$REPO_ROOT" ls-files \
+    'deploy/*.yaml' 'deploy/*.yml' 'deploy/*.tpl' 'deploy/*.sh' 'deploy/*.py' 'deploy/*.go' \
+    'gateway/deploy/*' 'services/*/deploy/*' 'ui-future/deploy/*' 2>/dev/null \
+    | grep -E '\.(yaml|yml|tpl|sh|py|go)$'
+}
+
+# excluded_files — файлы вне пройденного поддерева (для честного числа под исключением).
+excluded_files() {
+  git -C "$REPO_ROOT" ls-files 2>/dev/null | grep -E '\.(yaml|yml|tpl|sh|py|go)$' \
+    | grep -vE '^(deploy/|gateway/deploy/|services/[^/]+/deploy/|ui-future/deploy/)'
+}
+
+# ── РЕЕСТР ЧИТАЕТСЯ ИЗ ЕГО ЕДИНСТВЕННОГО МЕСТА ───────────────────────────────
+#
+# Пути объявлений берутся из литерала `adminHopConsumers`, а не переписываются
+# сюда: копия разошлась бы с оригиналом, и «расхождение с реестром» стало бы
+# расхождением с копией. Формат строки литерала:
+#   "метка": {"a", "b", "c"},
+registry_paths() {
+  [ -f "$REGISTRY_GO" ] || return 1
+  sed -n '/adminHopConsumers = map\[string\]\[\]string{/,/^}/p' "$REGISTRY_GO" \
+    | grep -oP '\{[^{}]*"\}' \
+    | sed -e 's/[{}"]//g' -e 's/, */./g' -e 's/ //g'
+}
+
+# resolve_declared <пути через \n> <файл значений>… — значения по путям в
+# СЛИТОМ дереве значений, как их сольёт helm (карты сливаются ключ за ключом,
+# всё прочее замещается целиком).
+resolve_declared() {
+  local paths="$1"; shift
+  printf '%s' "$paths" | python3 -c '
+import sys, yaml
+
+def merge(dst, src):
+    for k, v in (src or {}).items():
+        if isinstance(v, dict) and isinstance(dst.get(k), dict):
+            merge(dst[k], v)
+        else:
+            dst[k] = v
+    return dst
+
+paths = [l.strip() for l in sys.stdin if l.strip()]
+merged = {}
+for f in sys.argv[1:]:
+    with open(f) as fh:
+        merge(merged, yaml.safe_load(fh) or {})
+for p in paths:
+    cur = merged
+    for key in p.split("."):
+        if not isinstance(cur, dict) or key not in cur:
+            cur = None
+            break
+        cur = cur[key]
+    if isinstance(cur, str) and cur.strip():
+        print(cur.strip())
+' "$@"
+}
+
+# ── СТЕКИ ────────────────────────────────────────────────────────────────────
+#
+# Те же цепочки `-f`, которыми стенды реально раскатываются. Держатся
+# синхронными с `deployableStacks` — расхождение ловит проверка ниже.
+STACKS='dev:values.dev.yaml
+dev-prod:values.dev.yaml,values.dev-prod.yaml
+prod:values.prod.yaml
+fe3455:values.prod.yaml,values.fe3455.yaml,values.fe3455-prod.yaml
+prorobotech:values.dev.yaml,values.prorobotech.yaml'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# КЛАССИФИКАЦИЯ ОДНОГО РЕНДЕРА — ЧИСТАЯ ФУНКЦИЯ НАД ТЕКСТОМ.
+#
+# Вынесена затем, чтобы самопроверка могла скормить ей синтетический рендер БЕЗ
+# кластера и без helm, и потребовать покраснеть на каждом внесённом дефекте и
+# ПРОМОЛЧАТЬ на законной конструкции той же формы.
+#
+# Аргументы: <файл-рендера> <имя стека> <файл со списком объявленных адресов>
+# Печатает находки, возвращает число находок кодом.
+# ─────────────────────────────────────────────────────────────────────────────
+census_render() {
+  local render="$1" stack="$2" declared_file="$3"
+  local findings=0
+  local docdir; docdir="$(mktemp -d)"
+
+  # Рендер режется на документы. Классификация — ПОДОКУМЕНТНО: адрес имеет
+  # смысл только вместе с нагрузкой, которая его несёт.
+  awk -v dir="$docdir" '
+    BEGIN { n = 0; f = sprintf("%s/doc-%05d", dir, n) }
+    /^---[[:space:]]*$/ { n++; f = sprintf("%s/doc-%05d", dir, n); next }
+    { print > f }
+  ' "$render"
+
+  local docs=0 with_subject=0 doc kind name addrs hook
+  local -a unaccounted=() direct=() noprobe=() testhook=()
+
+  for doc in "$docdir"/doc-*; do
+    [ -f "$doc" ] || continue
+    docs=$((docs + 1))
+    addrs="$(extract_addresses "$doc")"
+    [ -z "$addrs" ] && continue
+    with_subject=$((with_subject + 1))
+
+    kind="$(grep -m1 -oP '^kind:[[:space:]]*\K\S+' "$doc" 2>/dev/null)"
+    name="$(grep -m1 -oP '^[[:space:]]{2}name:[[:space:]]*\K\S+' "$doc" 2>/dev/null | tr -d '"')"
+    [ -z "$kind" ] && kind='?'
+    [ -z "$name" ] && name='?'
+    hook="$(grep -m1 -oP '"?helm\.sh/hook"?:[[:space:]]*\K\S+' "$doc" 2>/dev/null | tr -d '"')"
+
+    case "$kind" in
+      # Объекты, чей ПРЕДМЕТ — сам адрес: Service терминатора, его ConfigMap,
+      # сертификат. Они адрес не потребляют, а определяют.
+      Service|ConfigMap|Certificate|Secret|Endpoints|EndpointSlice) continue ;;
+    esac
+
+    # Тест-подключение чарта провайдера: Pod с хуком `test-*`. Он НЕ
+    # разворачивается установкой/обновлением — только явным `helm test`, которого
+    # ни одна цель дерева не запускает; его отказ виден кодом возврата helm.
+    # Класс назван и посчитан ОТДЕЛЬНО, а не свален в общую находку: чарт
+    # провайдера не вендорён, править его шаблон нечем, и молчаливым этот отказ
+    # не будет.
+    if [ "$kind" = Pod ] && case "$hook" in test-*) true ;; *) false ;; esac; then
+      testhook+=("$kind/$name")
+      continue
+    fi
+
+    local a
+    while IFS= read -r a; do
+      [ -z "$a" ] && continue
+      if provider_spelling "$a"; then
+        # A. адресует ПРОВАЙДЕРА напрямую
+        direct+=("$kind/$name → $a")
+        continue
+      fi
+      # B. адресует терминатор — обязан быть объявлен записью реестра
+      if ! grep -qxF "$a" "$declared_file" 2>/dev/null; then
+        unaccounted+=("$kind/$name → $a")
+      fi
+    done <<<"$addrs"
+
+    # C. долгоживущая нагрузка обязана иметь пробу
+    case "$kind" in
+      Deployment|StatefulSet|DaemonSet)
+        if ! grep -qE '(readiness|liveness|startup)Probe:' "$doc"; then
+          noprobe+=("$kind/$name")
+        fi
+        ;;
+    esac
+  done
+  rm -rf "$docdir"
+
+  echo "  [$stack] документов рендера: $docs, из них называют адрес: $with_subject"
+  note "объявлено записями реестра адресов: $(grep -c . "$declared_file" 2>/dev/null | head -1)"
+
+  if [ "${#direct[@]}" -gt 0 ]; then
+    fail "[$stack] нагрузка адресует административный листенер ПРОВАЙДЕРА напрямую (${#direct[@]}):"
+    printf '        %s\n' "${direct[@]}"
+    note "открытый участок между подами обязан отсутствовать: листенер слушает петлю,"
+    note "его Service снят, потребители адресуют терминатор."
+    findings=$((findings + ${#direct[@]}))
+  fi
+  if [ "${#unaccounted[@]}" -gt 0 ]; then
+    fail "[$stack] адрес в рендере, которого НЕ ОБЪЯВЛЯЕТ ни одна запись реестра (${#unaccounted[@]}):"
+    printf '        %s\n' "${unaccounted[@]}"
+    note "это потребитель, невидимый реестру по объявлениям — тот самый класс, ради"
+    note "которого перепись существует. Сделать адрес объявляемым значением и внести в реестр."
+    findings=$((findings + ${#unaccounted[@]}))
+  fi
+  if [ "${#noprobe[@]}" -gt 0 ]; then
+    fail "[$stack] долгоживущая нагрузка называет адрес и НЕ ИМЕЕТ ни одной пробы (${#noprobe[@]}):"
+    printf '        %s\n' "${noprobe[@]}"
+    note "при смене адреса она не покраснеет, а тихо перестанет разрешать имя."
+    note "Молчаливое прекращение работы хуже отказа: либо проба, либо снять нагрузку."
+    findings=$((findings + ${#noprobe[@]}))
+  fi
+  if [ "${#testhook[@]}" -gt 0 ]; then
+    note "класс «тест-подключение чарта» (${#testhook[@]}): ${testhook[*]}"
+    note "  не разворачивается install/upgrade (хук test-*), запускается только явным"
+    note "  \`helm test\`; отказ виден кодом возврата. Чарт провайдера не вендорён."
+  fi
+  return "$findings"
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# САМОПРОВЕРКА: инъекция в обе стороны, БЕЗ кластера и БЕЗ helm.
+# ─────────────────────────────────────────────────────────────────────────────
+if [ "${1:-}" = "--self-test" ]; then
+  echo "=== $SCRIPT --self-test: классификатор переписи против синтетических рендеров ==="
+  st_rc=0
+  st_checked=0
+  tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
+
+  printf '%s\n' 'https://rel-hydra-admin-tls.ns.svc.cluster.local:4445' >"$tmp/declared.txt"
+
+  # Ожидание задаётся ЧИСЛОМ находок: «покраснел» без указания на сколько
+  # неотличимо от «покраснел не на том».
+  probe() { # <имя> <ожидаемое число находок> <файл рендера>
+    local label="$1" want="$2" file="$3" got out
+    st_checked=$((st_checked + 1))
+    out="$(census_render "$file" self "$tmp/declared.txt" 2>&1)"; got=$?
+    if [ "$got" -eq "$want" ]; then
+      echo "  ✓ $label → находок $got, как ожидалось"
+    else
+      echo "  ✗ $label → находок $got, ожидалось $want"
+      printf '%s\n' "$out" | sed 's/^/      /'
+      st_rc=1
+    fi
+  }
+
+  # (1) ЗАКОННАЯ конструкция той же формы — обязано МОЛЧАТЬ. Без этой половины
+  #     гейт ловит форму, а не существо, и первый ложный срабат его отключит.
+  cat >"$tmp/legit.yaml" <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: consumer
+spec:
+  template:
+    spec:
+      containers:
+        - name: c
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+          env:
+            - name: HYDRA_ADMIN_URL
+              value: "https://rel-hydra-admin-tls.ns.svc.cluster.local:4445"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rel-hydra-admin-tls
+spec:
+  ports: [{ port: 4445, targetPort: 4445 }]
+EOF
+  probe "законный потребитель терминатора + Service терминатора" 0 "$tmp/legit.yaml"
+
+  # (2) ссылка на СЕКРЕТ с тем же именем — не адрес, обязано молчать.
+  cat >"$tmp/secretref.yaml" <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: consumer
+spec:
+  template:
+    spec:
+      volumes:
+        - name: anchor
+          secret: { secretName: rel-hydra-admin-tls }
+      containers:
+        - name: c
+          livenessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+EOF
+  probe "ссылка на секрет того же имени (не адрес)" 0 "$tmp/secretref.yaml"
+
+  # (2а) АДРЕС ТОЛЬКО В КОММЕНТАРИИ — обязано молчать. Это не гипотетика:
+  #      первая редакция этой проверки объявила потребителем комментарий в шаблоне
+  #      iam, который объясняет, почему выведенный адрес непригоден. Инъекция
+  #      закрепляет, что читается исполняемая часть, а не текст.
+  cat >"$tmp/comment.yaml" <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: consumer
+spec:
+  template:
+    spec:
+      containers:
+        - name: c
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+          env:
+            # Пусто → выводится `https://hydra-admin.<domain>` из эмитента,
+            # который в кластере НЕ РАЗРЕШАЕТСЯ. Профиль обязан назвать адрес.
+            - name: HYDRA_ADMIN_URL
+              value: "https://rel-hydra-admin-tls.ns.svc.cluster.local:4445"
+EOF
+  probe "адрес назван только в комментарии (читается исполняемая часть)" 0 "$tmp/comment.yaml"
+
+  # (3) адресует ПРОВАЙДЕРА напрямую — обязано покраснеть.
+  cat >"$tmp/direct.yaml" <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: leftover
+spec:
+  template:
+    spec:
+      containers:
+        - name: c
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+          args:
+            - --hydra-url=http://rel-hydra-admin
+EOF
+  probe "нагрузка адресует провайдера напрямую" 1 "$tmp/direct.yaml"
+
+  # (4) адрес терминатора, которого реестр НЕ объявляет — обязано покраснеть.
+  cat >"$tmp/unaccounted.yaml" <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: invisible
+spec:
+  template:
+    spec:
+      containers:
+        - name: c
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+          env:
+            - name: HYDRA_ADMIN_URL
+              value: "https://rel-hydra-admin-tls.other.svc.cluster.local:4445"
+EOF
+  probe "адрес терминатора вне объявлений реестра" 1 "$tmp/unaccounted.yaml"
+
+  # (5) долгоживущая нагрузка БЕЗ проб — обязано покраснеть (и это ОТДЕЛЬНАЯ
+  #     находка от «вне реестра»: адрес объявлен, а наблюдаемости нет).
+  cat >"$tmp/noprobe.yaml" <<'EOF'
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: silent
+spec:
+  template:
+    spec:
+      containers:
+        - name: c
+          env:
+            - name: HYDRA_ADMIN_URL
+              value: "https://rel-hydra-admin-tls.ns.svc.cluster.local:4445"
+EOF
+  probe "долгоживущая нагрузка без проб" 1 "$tmp/noprobe.yaml"
+
+  # (6) тест-подключение чарта — НЕ находка, но обязано быть НАЗВАНО в выводе.
+  cat >"$tmp/testhook.yaml" <<'EOF'
+apiVersion: v1
+kind: Pod
+metadata:
+  name: rel-hydra-test-connection
+  annotations:
+    "helm.sh/hook": test-success
+spec:
+  containers:
+    - name: healthcheck-ready
+      args: ['rel-hydra-admin:4445/health/ready']
+EOF
+  st_checked=$((st_checked + 1))
+  out6="$(census_render "$tmp/testhook.yaml" self "$tmp/declared.txt" 2>&1)"; rc6=$?
+  if [ "$rc6" -eq 0 ] && printf '%s\n' "$out6" | grep -q 'тест-подключение чарта'; then
+    echo "  ✓ тест-подключение чарта: не находка, но класс назван в выводе"
+  else
+    echo "  ✗ тест-подключение чарта: rc=$rc6, класс в выводе не назван"
+    printf '%s\n' "$out6" | sed 's/^/      /'; st_rc=1
+  fi
+
+  # (7) ПУСТОЙ рендер обязан быть отличим от чистого: ноль документов — это не
+  #     «ноль находок», это «ничего не прочитано».
+  : >"$tmp/empty.yaml"
+  st_checked=$((st_checked + 1))
+  out7="$(census_render "$tmp/empty.yaml" self "$tmp/declared.txt" 2>&1)"
+  if printf '%s\n' "$out7" | grep -qE 'называют адрес: 0'; then
+    echo "  ✓ пустой рендер: объём осмотренного напечатан числом (0), а не умолчанием"
+  else
+    echo "  ✗ пустой рендер: объём осмотренного не напечатан"
+    printf '%s\n' "$out7" | sed 's/^/      /'; st_rc=1
+  fi
+
+  # (8) ПРЕДПОСЫЛКА САМОЙ ПРОВЕРКИ: реестр обязан читаться из своего файла. Если
+  #     литерал переименован/удалён — требование парности потеряло предмет, и
+  #     молчать об этом нельзя.
+  st_checked=$((st_checked + 1))
+  if [ "$(registry_paths | grep -c . )" -ge 1 ]; then
+    echo "  ✓ предпосылка: реестр читается из $(basename "$REGISTRY_GO") ($(registry_paths | grep -c . ) путей)"
+  else
+    echo "  ✗ предпосылка не держится: литерал adminHopConsumers не разобран —"
+    echo "    парность «реестр ↔ обход» проверять НЕЧЕМ, и молчать об этом нельзя"
+    st_rc=1
+  fi
+
+  echo
+  echo "инъекций и законных входов проверено: $st_checked"
+  [ $st_rc -eq 0 ] && echo "PASS: $SCRIPT --self-test" || echo "FAIL: $SCRIPT --self-test"
+  exit $st_rc
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ОСНОВНОЙ ПРОХОД
+# ─────────────────────────────────────────────────────────────────────────────
+command -v helm >/dev/null 2>&1 || { echo "FATAL: нужен helm"; exit 2; }
+
+# ЗНАЧЕНИЯ ЧИТАЮТСЯ PyYAML, А НЕ `yq` — ОСОЗНАННО.
+#
+# В PATH под именем `yq` бывают две разные программы: mikefarah v4 и
+# python-обёртка над jq. На фильтрах вида `.["a"]["b"]` вторая не отдаёт ошибку —
+# она отдаёт ПУСТО. Первая редакция этой проверки на такой машине резолвила НОЛЬ
+# объявленных адресов и печатала «объявлено записями реестра: 0», после чего
+# утверждение о парности «реестр ↔ обход» становилось вакуумным, оставаясь на вид
+# исполненным. Соседний прогонщик самопроверок ровно эту ловушку описывает и
+# отказывается работать на неверном `yq`.
+#
+# Здесь зависимость просто снята: PyYAML разбирает те же файлы однозначно, а
+# «инструмент молча вернул пусто» — тот самый класс, ради которого эта проверка
+# написана. Гейту не пристало быть его экземпляром.
+python3 -c 'import yaml' 2>/dev/null || {
+  echo "FATAL: нужен python3 с PyYAML — им читаются объявления потребителей."
+  exit 2
+}
+
+# ПРЕДУСЛОВИЕ: чарт провайдера материализован. Иначе обход НЕ ВЫПОЛНЕН, а не чист.
+if ! ls "$UMBRELLA"/charts/hydra-*.tgz >/dev/null 2>&1 && [ ! -d "$UMBRELLA/charts/hydra" ]; then
+  echo "FATAL: чарт провайдера не материализован в $UMBRELLA/charts."
+  echo "       Без него рендер не содержит ни реконсайлера клиентов, ни тест-подключения:"
+  echo "       обход нашёл бы часть потребителей и ОТЧИТАЛСЯ ПОЛНОТОЙ."
+  echo "       Собрать: (cd $UMBRELLA && helm dep update)"
+  exit 2
+fi
+
+echo "=== $SCRIPT: перепись потребителей административного адреса ==="
+echo
+echo "── область обхода (объявлена ЯВНО; печатается то, что реально обошли) ──"
+tree_n="$(tree_files | wc -l)"
+excl_n="$(excluded_files | wc -l)"
+excl_hits="$(excluded_files | xargs grep -lP "$SUBJECT_RE" 2>/dev/null | wc -l)"
+echo "  пройдено поддеревьев: $WALK_PREFIXES"
+echo "    файлов прочитано: $tree_n"
+echo "  ИСКЛЮЧЕНО: остальное дерево ($excl_n файлов, из них называют предмет: $excl_hits)"
+echo "    причина: $EXCLUDE_REASON"
+echo "  чарты-зависимости лежат АРХИВАМИ и текстом не читаются —"
+echo "    их содержимое покрывает половина по рендеру ниже (иначе двое из семи"
+echo "    потребителей были бы невидимы обеим половинам)"
+echo
+
+# ── половина 1: текстовый обход дерева ───────────────────────────────────────
+echo "── половина 1: обход дерева (объявления и зашитые в шаблон адреса) ──"
+# Тот же комментарий-отбрасывающий взгляд, что и в извлечении адресов: иначе
+# половина 1 объявляет потребителем объяснение, почему адрес непригоден.
+tree_hits="$(while IFS= read -r f; do
+  uncommented "$REPO_ROOT/$f" 2>/dev/null | grep -nP "$SUBJECT_RE" 2>/dev/null | sed "s|^|$f:|"
+done <<<"$(tree_files)")"
+tree_files_hit="$(printf '%s\n' "$tree_hits" | grep -c . )"
+echo "  строк с предметом: $tree_files_hit"
+
+allowed_paths=""
+for entry in "${ALLOWED_TREE[@]}"; do allowed_paths="$allowed_paths ${entry%%|*}"; done
+
+# Находка: файл в пройденном поддереве, называющий предмет, не входящий в
+# ALLOWED_TREE и не являющийся файлом ЗНАЧЕНИЙ (значения — законное место
+# объявления потребителя; их согласованность проверяют гейты транспорта и
+# половина 2 по рендеру).
+assertion
+unexpected=""
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  case " $allowed_paths " in *" $f "*) continue ;; esac
+  case "$f" in
+    */values*.yaml|*/values.yaml) continue ;;   # объявление потребителя — законно
+  esac
+  unexpected="$unexpected$f"$'\n'
+done <<<"$(printf '%s\n' "$tree_hits" | sed 's/:.*//' | sort -u)"
+unexpected="$(printf '%s' "$unexpected" | grep -c . )"
+if [ "$unexpected" -eq 0 ]; then
+  ok "адрес в дереве называют только объявления значений и файлы, чей предмет — сам адрес"
+else
+  fail "файлы вне списка законных упоминаний называют адрес ($unexpected):"
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    case " $allowed_paths " in *" $f "*) continue ;; esac
+    case "$f" in */values*.yaml|*/values.yaml) continue ;; esac
+    printf '        %s\n' "$f"
+    printf '%s\n' "$tree_hits" | grep "^$f:" | sed 's/^/          /'
+  done <<<"$(printf '%s\n' "$tree_hits" | sed 's/:.*//' | sort -u)"
+  note "адрес, зашитый в шаблон, реестру по объявлениям НЕ ВИДЕН — сделать его"
+  note "объявляемым значением и внести путь в реестр."
+fi
+
+# D. истечение: запись списка законных упоминаний без предмета — находка.
+assertion
+expired=""
+for entry in "${ALLOWED_TREE[@]}"; do
+  p="${entry%%|*}"
+  if [ ! -f "$REPO_ROOT/$p" ] || ! grep -qP "$SUBJECT_RE" "$REPO_ROOT/$p" 2>/dev/null; then
+    expired="$expired  $p — ${entry#*|}"$'\n'
+  fi
+done
+if [ -z "$expired" ]; then
+  ok "все ${#ALLOWED_TREE[@]} записи списка законных упоминаний имеют предмет"
+else
+  fail "запись списка законных упоминаний, под которую в дереве НЕЧЕГО исключать:"
+  printf '%s' "$expired" | sed 's/^/      /'
+  note "исключение живёт, пока у него есть предмет: запись без предмета унаследует"
+  note "следующую слепую зону. Удалить запись либо вернуть предмет."
+fi
+echo
+
+# ── половина 2: обход рендеров (авторитетна для того, что реально разворачивается)
+echo "── половина 2: обход рендеров (умолчания зависимостей и аргументы контейнеров) ──"
+reg_paths="$(registry_paths)"
+reg_n="$(printf '%s\n' "$reg_paths" | grep -c . )"
+assertion
+if [ "$reg_n" -lt 1 ]; then
+  fail "литерал adminHopConsumers не разобран — парность «реестр ↔ обход» проверять нечем"
+else
+  ok "реестр прочитан из $(basename "$REGISTRY_GO"): $reg_n путей объявлений"
+fi
+
+work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
+while IFS= read -r line; do
+  [ -z "$line" ] && continue
+  stack="${line%%:*}"; files="${line#*:}"
+  args=""; IFS=','; for f in $files; do args="$args -f $UMBRELLA/$f"; done; unset IFS
+
+  valuefiles=""; IFS=','; for f in $files; do valuefiles="$valuefiles $UMBRELLA/$f"; done; unset IFS
+
+  render="$work/$stack.yaml"
+  if ! (cd "$UMBRELLA" && helm template kacho-umbrella . $args --namespace kacho) >"$render" 2>"$work/$stack.err"; then
+    fail "[$stack] рендер не собрался — утверждения по этому стеку НЕ ВЫПОЛНЕНЫ (не чисты)"
+    sed 's/^/        /' "$work/$stack.err" | tail -5
+    continue
+  fi
+  # shellcheck disable=SC2086
+  # Адреса, ОБЪЯВЛЕННЫЕ записями реестра в этом стеке. Объявление сводится к
+  # тому же виду, в каком адрес извлекается из рендера: путь интроспекции
+  # (`…:4445/admin/oauth2/introspect`) — тот же host:port, что и голый адрес,
+  # поэтому сравнивается host:port, а не строка целиком.
+  raw="$work/$stack.declared.raw"
+  declared="$work/$stack.declared.txt"
+  # shellcheck disable=SC2086
+  resolve_declared "$reg_paths" $valuefiles >"$raw" 2>"$work/$stack.resolve.err" || {
+    fail "[$stack] объявления потребителей не разобраны — парность проверять НЕЧЕМ"
+    sed 's/^/        /' "$work/$stack.resolve.err" | tail -3
+  }
+  extract_addresses "$raw" >"$declared" 2>/dev/null || : >"$declared"
+
+  assertion
+  census_render "$render" "$stack" "$declared" || true
+done <<<"$STACKS"
+
+echo
+echo "=== вердикт: утверждений $ASSERTIONS, находок $FAILURES ==="
+if [ "$ASSERTIONS" -eq 0 ]; then
+  echo "FAIL: не выполнено НИ ОДНОГО утверждения — это провал, а не чистота."
+  exit 1
+fi
+if [ "$FAILURES" -ne 0 ]; then
+  echo "FAIL: $SCRIPT — $FAILURES находок (см. ✗ выше)"
+  exit 1
+fi
+echo "PASS: $SCRIPT"
