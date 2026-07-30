@@ -1882,36 +1882,35 @@ CASES.append(Case(
     ],
 ))
 
-# ListOperations has list-by-parent semantics: it filters the operations table by
-# resource_id and returns whatever matches — it does NOT assert the parent LB
-# exists (list_operations.go Execute). An unknown but well-formed nlbId therefore
-# yields 200 with an empty operations list, not NotFound (mirrors an empty-but-
-# valid collection). The authz interceptor passes it through (no FGA tuple for a
-# non-existent LB → ErrNoPath passthrough). Technique: error-guessing (unknown
-# parent on a list endpoint), ECP (empty-result equivalence class).
+# Право на список операций родителя решается ДО чтения списка, и на неизвестном
+# родителе решается отказом. Запись каталога прав для этого RPC несёт
+# `required_relation: v_list` + `scope_extractor {nlb_network_load_balancer,
+# network_load_balancer_id}`, hide-existence на ней нет (её включает либо явный флаг,
+# либо эвристика «/Get + v_get»), поэтому у края нет ни одной наводки, по которой
+# неизвестный идентификатор мог бы резолвиться: тупла нет ни у кого, значит `no path`,
+# значит терминальный 403 — и сервис не набирается вовсе.
+#
+# Прежний комментарий утверждал обратное («интерсептор пропускает по ErrNoPath») и
+# заголовок обещал 200 с пустым списком. Пропуск по `no path` — свойство СЕРВИСНОГО
+# интерсептора (`internal/check`), а не края: у края каждый не-hide-existence отказ
+# терминален. Поэтому use-case, который действительно существования родителя не
+# проверяет, на этом пути недостижим, и его семантика к исходу отношения не имеет.
+# Утверждение сведено к тому, что происходит: 403, код 7.
+#
+# Техника: error-guessing (неизвестный родитель на списочном эндпоинте).
 CASES.append(Case(
     id="NLB-LOPS-NEG-NF-UNKNOWN",
-    title="ListOperations of unknown nlbId → 200 with empty operations (list-by-parent, no existence check)",
+    title="ListOperations of unknown nlbId → 403 PERMISSION_DENIED (право на родителя решается до чтения списка)",
     classes=["NEG"], priority="P1",
     steps=[
         Step(name="lops-unknown", method="GET",
              path=f"{_CREATE_BASE}/{{{{garbageNlbId}}}}/operations?pageSize=1",
-             # Two lawful answers, and BOTH are now stated. Either the list runs and is
-             # empty (an absent parent owns no operations), or the gateway refuses earlier
-             # because it cannot resolve the scope of an unknown parent — in which case it
-             # must be a genuine permission refusal, not any 403 that happens by. The 403
-             # arm previously carried no statement at all, so half the outcomes went
-             # unchecked.
-             test_script=["pm.test('empty list (200) or authz-first refusal (403)', () => "
-                          "  pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 403]));",
-                          "if (pm.response.code === 200) {",
-                          "  const j = pm.response.json();",
-                          "  pm.test('operations empty (no ops for unknown parent)', () => "
-                          "    pm.expect(j.operations || []).to.be.an('array').that.is.empty);",
-                          "} else {",
-                          "  pm.test('403 is a permission refusal (grpc 7), not an incidental error', () => "
-                          "    pm.expect(pm.response.json().code).to.eql(7));",
-                          "}"]),
+             test_script=[*assert_status(403), *assert_grpc_code(7, "PERMISSION_DENIED"),
+                          # Отказ на неизвестном родителе не должен рассказывать, что
+                          # родителя нет: это была бы разница между «нет доступа» и
+                          # «не существует», то есть оракул существования.
+                          "pm.test('отказ не сообщает, существует ли родитель', () => "
+                          "  pm.expect((pm.response.json().message || '').toLowerCase()).to.not.contain('not found'));"]),
     ],
 ))
 

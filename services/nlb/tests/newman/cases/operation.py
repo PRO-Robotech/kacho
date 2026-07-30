@@ -94,34 +94,40 @@ CASES.append(Case(
 ))
 
 
-# -- OP-LST-CRUD-OK — list ops visible to subject in project
+# -- OP-LST-NEG-UNROUTED-FAIL-CLOSED — путь без записи в каталоге прав отказывает fail-closed
 CASES.append(Case(
-    id="OP-LST-CRUD-OK",
-    title="List operations in project — returns array (may be empty)",
-    classes=["CRUD", "LSG"], priority="P1",
+    id="OP-LST-NEG-UNROUTED-FAIL-CLOSED",  # index: *-LST-NEG-UNROUTED-FAIL-CLOSED
+    title="Коллекция /operations (RPC в контракте нет) → 403 fail-closed по отсутствию записи в каталоге прав",
+    classes=["NEG", "SEC"], priority="P1",
     steps=[
-        # Project-wide ListOperations is NOT a modeled public RPC in the Kachō contract
-        # (api-conventions: clients poll OperationService.Get(id); there is no Watch/List
-        # over all ops). When the gateway routes such a method with no permission-catalog
-        # entry it fails CLOSED — `AUTHZ_DENIED "catalog: no entry for method"` (security.md
-        # invariant #4) — which is the correct secure default, NOT a leak. Assert the real
-        # contract: either the method is cataloged and returns a 200 array, or it is the
-        # lawful fail-closed 403 (never a silent 200-with-leak, never a 5xx). If a public
-        # project-scoped ListOperations is later added it must carry a catalog entry; this
-        # case then tightens back to 200.
-        Step(name="list-ops", method="GET",
+        # У сервиса операций в контракте ровно два метода — `Get` и `Cancel`
+        # (operation_service.proto); списка по проекту нет ни в контракте, ни в таблице
+        # REST-маршрутов края (там только `/operations/{id}` и `/operations/{id}:cancel`).
+        # Значит предмет этого кейса — не «список операций», а поведение края на пути,
+        # которому не соответствует ни один метод: имя метода не резолвится, записи в
+        # каталоге прав нет, и край отказывает fail-closed — код 7, «catalog: no entry for
+        # method» (инвариант security.md #4). Отказ выносится ДО маршрутизации
+        # grpc-gateway, поэтому 5xx и mux-404 здесь невозможны by construction.
+        #
+        # Прежде кейс назывался «List operations in project — returns array» и принимал
+        # `oneOf([200, 403])` «на случай, если метод каталогизирован». Каталогизировать
+        # нечего: метода нет. Утверждение, принимавшее оба исхода, не могло упасть ни на
+        # одном — в том числе на настоящем регрессе, когда неизвестный путь начал бы
+        # отвечать 200. Заявлен один исход, тот, который есть.
+        #
+        # Если проектный список операций когда-нибудь появится в контракте — он придёт со
+        # своим методом, своей записью в каталоге и своим кейсом; этот останется стражем
+        # умолчания для НЕизвестных путей.
+        Step(name="list-ops-unrouted", method="GET",
              path="/operations?projectId={{_suiteProjectId}}&pageSize=10",
              test_script=[
-                 "pm.test('200 (cataloged) or fail-closed 403 (no catalog entry), never 5xx/leak', () => "
-                 "  pm.expect(pm.response.code).to.be.oneOf([200, 403]));",
-                 "if (pm.response.code === 200) {",
-                 "  const j = pm.response.json();",
-                 "  pm.test('operations array', () => "
-                 "    pm.expect(j.operations || j.items || []).to.be.an('array'));",
-                 "} else {",
-                 "  pm.test('403 is the fail-closed catalog default (AUTHZ_DENIED code 7)', () => "
-                 "    pm.expect(pm.response.json().code).to.eql(7));",
-                 "}"]),
+                 *assert_status(403),
+                 *assert_grpc_code(7, "PERMISSION_DENIED"),
+                 # Отказ по неизвестному методу не должен раскрывать ничего о проекте,
+                 # названном в запросе.
+                 "pm.test('отказ не упоминает проект из запроса', () => "
+                 "  pm.expect(pm.response.text()).to.not.contain(pm.environment.get('_suiteProjectId')));",
+             ]),
     ],
 ))
 

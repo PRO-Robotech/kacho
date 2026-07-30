@@ -266,9 +266,13 @@ was *already* inline-provisioned; the missing piece was the peer-visibility retr
   they cannot see is fail-closed either by `403/404` OR by a **200 scoped-EMPTY** array (list-authz
   push-down — verified empty in ci-rep2, no leak). Cases now accept both **with an explicit empty-array
   leak-guard** (a 200 carrying any row fails). Mutations keep the strict deny.
-- **operation** `OP-LST-CRUD-OK`: project-wide ListOperations is not a modeled public RPC (clients
-  poll `OperationService.Get(id)`); the gateway's `catalog: no entry` → `AUTHZ_DENIED` is the correct
-  fail-closed default, not a leak. Case asserts `200 (if cataloged) | 403 fail-closed`, never 5xx/leak.
+- **operation** `OP-LST-NEG-UNROUTED-FAIL-CLOSED` (was `OP-LST-CRUD-OK`): project-wide ListOperations
+  is not a modeled public RPC and never was — the contract carries only `Get`/`Cancel`, and the edge
+  route table has no `/operations` collection entry. So the tolerance `200 (if cataloged) | 403` was
+  waiting on a method that cannot appear without a new contract, and meanwhile the case could not fail
+  on either answer. The case now states the single real outcome — `403`, code 7 — and thereby guards
+  what actually matters here: the edge's fail-closed default for a path matching no method
+  (security.md #4). A 200 on an unrouted path is now a failure, which is the point.
 - **targets** `TGT-RM-STATE-PHASE-B-RUNNER`: single racey read → bounded self-poll for the async
   drain runner (absent/DRAINING/INACTIVE), still reds if the row stays ACTIVE past budget.
 

@@ -659,20 +659,24 @@ def conf_alreadyexists_block(prefix: str, create_path: str, name_template: str,
     NLB pattern: sync 409 on duplicate name (partial UNIQUE in DB). Worker also returns
     error envelope if INSERT race wins both syncs.
 
-    ДВЕ ЗАКОННЫЕ ФОРМЫ ОТКАЗА, И ОБЕ ПРОВЕРЯЮТСЯ. Прежде шаг принимал `oneOf([200, 409])`
-    и утверждал что-либо ТОЛЬКО в ветке 409; ветки на 200 не было вовсе, а следующий
-    поллинг требовал лишь `done`, который удавшаяся операция удовлетворяет так же, как
-    провалившаяся. То есть дубль, ПРИНЯТЫЙ системой, проходил кейс, названный «duplicate
-    → ALREADY_EXISTS»: упасть на том, ради чего кейс существует, он не мог.
+    ОТКАЗ ЗДЕСЬ РОВНО ОДИН, И ОН СИНХРОННЫЙ. Проверка дубликата имени стоит в use-case'е
+    ДО создания строки операции (`assertNameUnique` в loadbalancer/create.go и
+    targetgroup/create.go), поэтому второй Create получает `AlreadyExists` немедленно —
+    409, а не конверт операции. Асинхронная полоса в этом кейсе недостижима: первый
+    Create дождался `done`, значит его строка закоммичена, значит предпроверка второго её
+    видит. Insert в worker'е остаётся атомарным backstop'ом на состязание двух
+    ОДНОВРЕМЕННЫХ создателей — но серийный кейс такого состязания не ставит.
 
-    Теперь: 200 обязан быть конвертом операции, чей идентификатор захватывается, а
-    следующий поллинг требует, чтобы операция несла ОШИБКУ (`must_fail`). Синхронная
-    ветка 409 по-прежнему пинит код и текст; при ней операции нет, поллинг это видит по
-    пустому opId и молчит — единственный его немой случай, задокументированный."""
+    Прежде шаг принимал `oneOf([200, 409])`. Первая редакция утверждала что-либо только в
+    ветке 409, поэтому принятый дубль проходил кейс, названный «duplicate → ALREADY_EXISTS».
+    Вторая редакция это починила, потребовав ошибку в операции (`must_fail`), — но
+    сохранила приём двух исходов там, где код даёт один, и тем оставляла кейс глухим к
+    настоящему регрессу: перенос проверки из синхронной части в worker'а сменил бы полосу
+    отказа, а утверждение молчало бы. Теперь полоса заявлена: 409, код 6, текст."""
     body_extra = body_extra or {}
     return Case(
         id=f"{prefix}-CR-CONF-ALREADY-EXISTS",
-        title=f"Create duplicate name → refused: sync 409 ALREADY_EXISTS or Operation carrying the error",
+        title=f"Create duplicate name → sync 409 ALREADY_EXISTS verbatim text",
         classes=["CONF", "NEG", "IDEM"], priority="P1",
         steps=[
             Step(name="create-first", method="POST", path=create_path,
@@ -681,30 +685,21 @@ def conf_alreadyexists_block(prefix: str, create_path: str, name_template: str,
                               *save_from_response(
                                   "(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id') && k !== 'projectId').map(k => j.metadata[k])[0]) || ''",
                                   "createdId")]),
-            poll_operation_until_done(),
+            # must_succeed: предмет кейса — отказ ВТОРОГО создания, и он имеет смысл
+            # только если первое действительно создало строку. Сорванная подготовка
+            # обязана краснеть здесь, под своим именем, а не превращать 409 ниже в
+            # необъяснимый 200.
+            poll_operation_until_done(must_succeed=True),
             Step(name="create-dup", method="POST", path=create_path,
                  body={"projectId": "{{_suiteProjectId}}", "name": name_template, **body_extra},
                  test_script=[
-                     # Первый оператор снимает opId предыдущей (УДАВШЕЙСЯ) операции:
-                     # иначе поллинг ниже опросил бы её и увидел успех там, где предмет
-                     # кейса — отказ.
+                     # Снимаем opId предыдущей (удавшейся) операции: синхронный отказ
+                     # новой операции не создаёт, и поллинг ниже не должен опросить чужую.
                      "pm.environment.unset('opId');",
-                     "pm.test('duplicate refused: sync 409 or async Operation error', () => "
-                     "pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
-                     "if (pm.response.code === 409) {",
-                     "  pm.test('grpc code 6 (ALREADY_EXISTS)', () => pm.expect(pm.response.json().code).to.eql(6));",
-                     "  pm.test('mentions already exists', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('already exists'));",
-                     "} else if (pm.response.code === 200) {",
-                     # 200 законен ТОЛЬКО как конверт операции, которая затем завершится
-                     # ошибкой. Захватываем её id; вердикт выносит поллинг с must_fail.
-                     "  pm.test('async lane: 200 is an Operation envelope', () => "
-                     "pm.expect(pm.response.json().id, pm.response.text()).to.be.a('string'));",
-                     *save_from_response("j.id", "opId"),
-                     "}",
+                     *assert_status(409),
+                     *assert_grpc_code(6, "ALREADY_EXISTS"),
+                     "pm.test('mentions already exists', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('already exists'));",
                  ]),
-            # Асинхронная полоса адъюдицируется здесь: операция ОБЯЗАНА нести ошибку.
-            # На синхронной 409 операции нет — opId пуст, и поллинг это видит.
-            poll_operation_until_done(must_fail=True),
             Step(name="cleanup-first", method="DELETE", path=f"{create_path}/{{{{createdId}}}}",
                  test_script=[*save_from_response("j.id", "opId")]),
             poll_operation_until_done(),

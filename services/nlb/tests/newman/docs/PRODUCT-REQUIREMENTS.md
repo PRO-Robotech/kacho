@@ -104,7 +104,7 @@ noted in `docs/architecture/07-known-divergences.md` of kacho-nlb.
 |---|---|---|---|
 | **REQ-OP-GET-INFLIGHT** | `Get` for an in-flight op MUST return `done=false` with metadata; eventual poll MUST converge to `done=true`. | OP-001, OP-002 | `OP-GET-CRUD-IN-FLIGHT`, `OP-GET-CRUD-COMPLETED` |
 | **REQ-OP-GET-NEG-PREFIX** | `Get` with a malformed opId (unknown prefix, non-Crockford-base32) MUST return `INVALID_ARGUMENT` "invalid operation id '<X>'" — same shape as kacho-vpc. | OP-003 | `OP-GET-NEG-NF-INVALID-PREFIX`, `OP-GET-NEG-NF-VALID-PREFIX` |
-| **REQ-OP-LST-01** | `List` MUST return all ops the subject can view in the project, paginated. | OP-004 | `OP-LST-CRUD-OK` |
+| **REQ-OP-LST-01** | There is NO project-wide `List` on OperationService — the contract carries only `Get` and `Cancel`, and clients poll `Get(id)`. A collection path that matches no method MUST fail closed at the edge (`PERMISSION_DENIED`, code 7, "catalog: no entry for method"), never a 200 and never a 5xx/mux-404. | OP-004 | `OP-LST-NEG-UNROUTED-FAIL-CLOSED` |
 | **REQ-OP-CANCEL-DONE** | `Cancel` on already-done op MUST return `FAILED_PRECONDITION` "operation is already completed". | OP-006 | `OP-CANCEL-STATE-ALREADY-DONE` |
 
 ## REQ-AZD-* — Authorization (FGA REBAC)

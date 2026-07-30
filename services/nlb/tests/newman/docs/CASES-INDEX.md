@@ -284,7 +284,7 @@ Immutability + drain toggle + lean projection + delete-release:
 - `*-GET-CRUD-COMPLETED` — CRUD/P0 — Get completed op returns done=true + response
 - `*-GET-NEG-NF-INVALID-PREFIX` — NEG/P0 — malformed opId → InvalidArgument (Verifies REQ-OP-GET-NEG-PREFIX)
 - `*-GET-NEG-NF-VALID-PREFIX` — NEG/P1 — well-formed but missing → NotFound
-- `*-LST-CRUD-OK` — CRUD,LSG/P1 — List ops in project (Verifies REQ-OP-LST-01)
+- `*-LST-NEG-UNROUTED-FAIL-CLOSED` — NEG,SEC/P1 — путь без записи в каталоге прав → 403 fail-closed (Verifies REQ-OP-LST-01)
 - `*-CANCEL-STATE-ALREADY-DONE` — STATE,NEG/P1 — Cancel already-done → FailedPrecondition (Verifies REQ-OP-CANCEL-DONE)
 
 ---
