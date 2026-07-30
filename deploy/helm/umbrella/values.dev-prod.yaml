@@ -474,13 +474,21 @@ hydra:
     # соединение не установится ⇒ под не Ready — цена со-размещения, сделанная
     # наблюдаемой), а ПУТЬ — здоровья ПРОВАЙДЕРА, который сосед проксирует на
     # петлю (значит повисший провайдер ⇒ апстрим не ответит ⇒ под не Ready).
-    # Статического пути здоровья у соседа нет намеренно — см. его конфигурацию.
+    # Статического пути здоровья у соседа нет намеренно, и это ИСПОЛНЯЕТСЯ:
+    # deploy/tests/helm/admin-hop-pod-shape-test.sh краснеет на любом ответе
+    # соседа, не зависящем от апстрима, а живой гейт — на прочерке в полях
+    # апстрима его журнала. Прежде это свойство держалось на комментарии.
     #
-    # Отступление от умолчания чарта названо: готовность читает /health/ready
-    # (он зависит от состояния провайдера), а не /health/alive.
+    # ГОТОВНОСТЬ ЧИТАЕТ /health/alive, А ЗАПУСК — /health/ready. Прежняя редакция
+    # называла отступление наоборот («готовность читает /health/ready, а не
+    # /health/alive») — и втягивала в путь готовности ХРАНИЛИЩЕ, которого
+    # инварианту перехода не требуется: достаточно, чтобы отвечали оба процесса
+    # пода. Падение базы снимало конечные точки перехода целиком, и потребитель
+    # получал отказ разрешения адреса вместо честного отказа провайдера. Запуск
+    # по-прежнему ждёт /health/ready: до миграций трафик принимать нечего.
     customReadinessProbe:
       httpGet:
-        path: /health/ready
+        path: /health/alive
         port: 4445
         scheme: HTTPS
       initialDelaySeconds: 5
@@ -495,6 +503,28 @@ hydra:
       failureThreshold: 30
       periodSeconds: 2
       timeoutSeconds: 5
+    # ПРОБА ЖИВОСТИ ПРОВАЙДЕРА — ПО ЕГО СОБСТВЕННОМУ ПУБЛИЧНОМУ ЛИСТЕНЕРУ, а не
+    # через соседа: иначе сломанный СОСЕД перезапускал бы ПРОВАЙДЕРА. Зависший
+    # процесс без неё не перезапускается вовсе, и под остаётся неготовым
+    # бессрочно, унося конечные точки обоих сервисов. Публичный листенер отдаёт
+    # /health/alive — ИЗМЕРЕНО на oryd/hydra:v26.2.0, не выведено из документации.
+    customLivenessProbe:
+      httpGet:
+        path: /health/alive
+        port: 4444
+        scheme: HTTP
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+    # ОКНО НА ОСТАНОВКУ — у ОБОИХ контейнеров (второй хук в спецификации соседа).
+    # Снятие конечных точек идёт асинхронно с сигналом остановки: без паузы на
+    # хвосте КАЖДОГО переката запросы ещё приезжают в умирающий под, а проверка
+    # отзыва токена классифицирует такой отказ как временный — то есть тихо не
+    # исполняется. `/bin/sleep` в образе провайдера ЕСТЬ — проверено запуском.
+    lifecycle:
+      preStop:
+        exec:
+          command: ["/bin/sleep", "5"]
     extraVolumes:
       - name: hydra-admin-tls
         secret:
@@ -513,41 +543,17 @@ hydra:
     # рядом с обходным путём, который существует ИМЕННО ПОТОМУ, что она не
     # работает, — гарантия того, что следующий снимет терминатор, поверив ей.
     # Секрет монтируется СОСЕДУ (ниже).
+    # СОСЕД-ТЕРМИНАТОР. Спецификация и его конфигурация живут в ОДНОМ месте —
+    # templates/_hydra-admin-tls.tpl, — потому что спецификация обязана нести
+    # ОТПЕЧАТОК конфигурации: аннотацию шаблона пода через значения этого чарта
+    # добавить нечем (через шаблонизацию у него проходит ТОЛЬКО этот список), а
+    # без привязки правка настроек даёт новый объект настроек и побайтово тот же
+    # шаблон пода — переката нет, живой nginx остаётся со старой конфигурацией.
+    #
+    # Прежде спецификация была выписана здесь литералом и ВТОРОЙ РАЗ в соседнем
+    # профиле — байт в байт. Два экземпляра расходятся; один экземпляр не может.
     extraContainers: |
-      - name: admin-tls
-        image: nginxinc/nginx-unprivileged:1.27-alpine
-        imagePullPolicy: IfNotPresent
-        ports:
-          - name: https-admin
-            containerPort: 4445
-            protocol: TCP
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          runAsNonRoot: true
-          runAsUser: 65534
-          capabilities:
-            drop: ["ALL"]
-          seccompProfile:
-            type: RuntimeDefault
-        volumeMounts:
-          - name: hydra-admin-tls
-            mountPath: /etc/tls
-            readOnly: true
-          - name: hydra-admin-tls-conf
-            mountPath: /etc/nginx/conf.d
-            readOnly: true
-          - name: hydra-admin-tls-run
-            mountPath: /tmp
-          - name: hydra-admin-tls-cache
-            mountPath: /var/cache/nginx
-        resources:
-          requests:
-            cpu: 10m
-            memory: 16Mi
-          limits:
-            cpu: 200m
-            memory: 64Mi
+      {{ include "kacho.hydraAdminTls.sidecar" . }}
     extraEnv:
       - name: OAUTH2_TOKEN_HOOK_AUTH_CONFIG_VALUE
         valueFrom:

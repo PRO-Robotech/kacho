@@ -22,8 +22,17 @@
   недоступность fail-closed'ит всю поверхность.
 
   ЦЕНА, НАЗВАННАЯ ЧЕСТНО: жизненный цикл соседа сцеплен с подом провайдера, и
-  готовность пода зависит от соседа. Именно поэтому пробы идут ЧЕРЕЗ соседа (см.
-  ниже) — иначе под объявил бы себя готовым при неотвечающем переходе.
+  готовность пода зависит от соседа. Именно поэтому пробы идут ЧЕРЕЗ соседа —
+  иначе под объявил бы себя готовым при неотвечающем переходе.
+
+  САМО СОДЕРЖИМОЕ ЖИВЁТ В ИМЕНОВАННОМ ШАБЛОНЕ (_hydra-admin-tls.tpl), а не здесь:
+  ТОТ ЖЕ текст читает спецификация соседа, чтобы положить в себя его отпечаток.
+  Два экземпляра текста разошлись бы, и отпечаток стал бы привязкой не к тому
+  содержимому — дырой незаметнее, чем его отсутствие.
+
+  Блочный литерал `|-` (без добавления перевода строки) — часть этого же: тогда
+  sha256 СОХРАНЁННОГО значения побайтово равен отпечатку в спецификации, и гейт
+  формы пода СВЕРЯЕТ их, а не верит на слово.
 
   Гейт на ключ `mtls.enabled AND mtls.hydraAdminTls.enabled` — те же два, что
   выписывают сертификат. `and` в шаблонах Go НЕ короткозамкнут, поэтому секции
@@ -32,91 +41,23 @@
 */ -}}
 {{- $mtls := .Values.mtls | default dict -}}
 {{- $hydraTLS := $mtls.hydraAdminTls | default dict -}}
-{{- if and $mtls.enabled $hydraTLS.enabled -}}
-{{- $rel := .Release.Name -}}
-{{- $ns := .Release.Namespace -}}
-{{- $upstreamPort := $hydraTLS.providerListenerPort | default 4455 -}}
-{{- $listenPort := $hydraTLS.terminatorPort | default 4445 }}
+{{- /*
+  Правого среза `-}}` у ПОСЛЕДНЕГО действия преамбулы здесь быть не должно: он
+  склеивает `apiVersion` с предыдущей строкой, и документ уезжает в рендер без
+  него. Ровно это и произошло при переписывании файла — поймал
+  tests/helm/rendered-documents-well-formed-test.sh, который для того и написан.
+*/ -}}
+{{- if and $mtls.enabled $hydraTLS.enabled }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ printf "%s-hydra-admin-tls-nginx" $rel | quote }}
-  namespace: {{ $ns | quote }}
+  name: {{ printf "%s-hydra-admin-tls-nginx" .Release.Name | quote }}
+  namespace: {{ .Release.Namespace | quote }}
   labels:
     app.kubernetes.io/name: hydra-admin-tls
     app.kubernetes.io/component: hydra-admin-terminator
     app.kubernetes.io/part-of: kacho
 data:
-  admin-tls.conf: |
-    # ЖУРНАЛ — СЕРВЕРНАЯ ПОЛОВИНА СВИДЕТЕЛЬСТВА О ШИФРОВАНИИ.
-    #
-    # О том, что соединение шифровано, сообщает ДАЛЬНИЙ КОНЕЦ, и сообщение
-    # производит транспортный стек, а не значение в настройках. Сторона под
-    # оценкой (iam, шлюз) в этом ответе не участвует. Тот же приём, что
-    # pg_stat_ssl в секции B гейта посадки.
-    #
-    # Поля обязательны все: протокол и шифр заполняет TLS-стек; статус и ВРЕМЯ
-    # апстрима нужны, чтобы видеть, не стал ли посредник владельцем бюджета
-    # запроса; маркер позволяет гейту найти запись ИМЕННО СВОЕЙ пробы, а не
-    # «какую-нибудь».
-    log_format kacho_admin_tls
-      '$request_id ssl_protocol=$ssl_protocol ssl_cipher=$ssl_cipher '
-      'upstream_status=$upstream_status upstream_time=$upstream_response_time '
-      'status=$status method=$request_method marker=$http_x_kacho_probe';
-
-    server {
-      # ЕДИНСТВЕННЫЙ ЛИСТЕНЕР, И ОН TLS. Плейнтекстового у соседа нет НИ ОДНОГО:
-      # конфигурации без TLS не существует, поэтому тихого отката на открытый
-      # текст при невыданном сертификате быть не может — сосед просто не станет
-      # готовым, и под вместе с ним.
-      listen {{ $listenPort }} ssl;
-      http2 on;
-      server_name _;
-
-      ssl_certificate     /etc/tls/tls.crt;
-      ssl_certificate_key /etc/tls/tls.key;
-      ssl_protocols TLSv1.2 TLSv1.3;
-      ssl_session_cache shared:admin_tls:1m;
-      ssl_session_timeout 10m;
-
-      access_log /dev/stdout kacho_admin_tls;
-      error_log  /dev/stderr warn;
-
-      # ПОВЕРХНОСТЬ НЕ СУЖАЕТСЯ: полный проброс, а не список разрешённых путей.
-      # Терминатор решает ТРАНСПОРТ, а не авторизацию. Неполный список ломал бы
-      # поток потребителя МОЛЧА — а авторизации на этом API нет by design, её
-      # введение самостоятельная работа.
-      #
-      # СТАТИЧЕСКОГО ПУТИ ЗДОРОВЬЯ ЗДЕСЬ НЕТ НАМЕРЕННО. В образце, с которого
-      # списан приём, путь здоровья возвращал константу, не зависящую от
-      # апстрима. Скопировать это значило бы получить «под готов» при повисшем
-      # провайдере И ПОТЕРЯТЬ его собственный сигнал готовности: пробы пода
-      # направлены сюда. Поэтому всё, включая /health/*, уходит на апстрим —
-      # и готовность краснеет в ОБЕ стороны: мёртв сосед (соединение не
-      # установится) ИЛИ не отвечает провайдер (апстрим молчит).
-      location / {
-        # АПСТРИМ — ПЕТЛЯ ЭТОГО ЖЕ ПОДА. Снаружи пода до листенера провайдера
-        # не дотянуться по построению.
-        proxy_pass http://127.0.0.1:{{ $upstreamPort }};
-
-        # 1.0 (умолчание proxy_pass) ломает POST интроспекции — а он на пути
-        # КАЖДОГО промаха кэша.
-        proxy_http_version 1.1;
-
-        proxy_set_header Host              $host;
-        proxy_set_header X-Real-IP         $remote_addr;
-        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
-        # БЕЗ ЭТОГО ЗАГОЛОВКА провайдер боевого класса (без отладочного флага)
-        # отвергнет плейнтекст даже от разрешённого источника терминации.
-        proxy_set_header X-Forwarded-Proto https;
-
-        # БЮДЖЕТ ЗАПРОСА ПРИНАДЛЕЖИТ ВЛАДЕЛЬЦУ ЗАПРОСА, А НЕ ПОСРЕДНИКУ.
-        # Значение НЕ КОРОЧЕ самого длинного per-call дедлайна потребителя;
-        # иначе истечение срока определял бы этот файл, и потребитель получал бы
-        # обрыв раньше, чем сам решил сдаться.
-        proxy_connect_timeout 5s;
-        proxy_send_timeout    {{ $hydraTLS.upstreamTimeout | default "30s" }};
-        proxy_read_timeout    {{ $hydraTLS.upstreamTimeout | default "30s" }};
-      }
-    }
+  admin-tls.conf: |-
+    {{- include "kacho.hydraAdminTls.conf" . | nindent 4 }}
 {{- end }}

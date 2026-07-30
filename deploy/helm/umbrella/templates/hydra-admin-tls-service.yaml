@@ -23,7 +23,13 @@
 {{- if and $mtls.enabled $hydraTLS.enabled -}}
 {{- $rel := .Release.Name -}}
 {{- $ns := .Release.Namespace -}}
-{{- $listenPort := $hydraTLS.terminatorPort | default 4445 }}
+{{- /*
+  Порт берётся из ЕДИНСТВЕННОГО объявления (global.kacho.hydraAdminTls) — того
+  же, из которого его читают конфигурация соседа и его спецификация. Прежде
+  здесь стоял свой литерал с собственным умолчанием: расхождение с портом соседа
+  не мешало ни рендеру, ни развёртыванию, и Service тихо целился бы в никуда.
+*/ -}}
+{{- $listenPort := (fromYaml (include "kacho.hydraAdminTls.settings" .)).terminatorPort }}
 apiVersion: v1
 kind: Service
 metadata:
