@@ -190,19 +190,6 @@ func (u *CreateNetworkInterfaceUseCase) doCreate(ctx context.Context, niID strin
 	if parentSub.ProjectID != n.ProjectID {
 		return nil, serviceerr.MapRepoErr(repo.ErrNotFound)
 	}
-	// Группы безопасности — ссылка от вызывающего без внешнего ключа: проверяем
-	// существование и принадлежность (см. godoc валидатора). Читаем тем же
-	// Reader'ом, что и родительскую подсеть.
-	rdSG, rerr2 := u.repo.Reader(ctx)
-	if rerr2 != nil {
-		return nil, serviceerr.MapRepoErr(rerr2)
-	}
-	sgErr := validateNICSecurityGroupRefs(ctx, rdSG.SecurityGroups(), n.SecurityGroupIDs,
-		string(n.ProjectID), parentSub.NetworkID)
-	_ = rdSG.Close()
-	if sgErr != nil {
-		return nil, sgErr
-	}
 	st := domain.NIStatusAvailable
 	usedByType, usedByID := "", ""
 	rec := &domain.NetworkInterface{
@@ -240,6 +227,17 @@ func (u *CreateNetworkInterfaceUseCase) doCreate(ctx context.Context, niID strin
 		w, werr := u.repo.Writer(ctx)
 		if werr != nil {
 			return nil, serviceerr.MapRepoErr(werr)
+		}
+		// Группы безопасности — ссылка от вызывающего без внешнего ключа:
+		// существование и принадлежность проверяются В ЭТОЙ ЖЕ writer-TX, где
+		// пишется интерфейс, и с share-lock'ом на строках групп (writer-сторона
+		// GetMany). Иначе группу можно было удалить между проверкой и коммитом:
+		// её предусловие удаления нашего интерфейса ещё не видит, и ссылка
+		// оставалась бы висячей.
+		if sgErr := validateNICSecurityGroupRefs(ctx, w.SecurityGroups(), n.SecurityGroupIDs,
+			string(n.ProjectID), parentSub.NetworkID); sgErr != nil {
+			w.Abort()
+			return nil, sgErr
 		}
 		// Validate + attach address-refs в этой writer-TX (используем w.Addresses(),
 		// а не отдельный addressRepo). Ошибка attach — не MAC-collision → Abort + return.

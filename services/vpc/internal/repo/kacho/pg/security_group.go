@@ -223,6 +223,38 @@ func (w *securityGroupWriter) Update(ctx context.Context, sg *domain.SecurityGro
 	return result, nil
 }
 
+// GetMany (writer-сторона) — резолв набора с `FOR SHARE`, а не голым чтением.
+// Ссылку на группу проверяет тот, кто её ЗАПИСЫВАЕТ, поэтому проверка обязана
+// быть сериализована с удалением группы: без share-lock'а группа могла быть
+// удалена между проверкой и коммитом интерфейса (её собственное предусловие
+// удаления нашего интерфейса ещё не видит) — и ссылка оставалась висячей.
+// Share-lock самой себе не конфликтует, поэтому параллельные создания
+// интерфейсов с одной группой не сериализуются; конфликтует он ровно с
+// `FOR UPDATE` в удалении группы.
+func (w *securityGroupWriter) GetMany(ctx context.Context, ids []string) (map[string]*kacho.SecurityGroupRecord, error) {
+	out := make(map[string]*kacho.SecurityGroupRecord, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	q := fmt.Sprintf(`SELECT %s FROM security_groups WHERE id = ANY($1::text[]) FOR SHARE`, helpers.SGCols)
+	rows, err := w.tx.Query(ctx, q, ids)
+	if err != nil {
+		return nil, helpers.WrapSGErr(err, "")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		sg, serr := helpers.ScanSG(rows)
+		if serr != nil {
+			return nil, helpers.WrapSGErr(serr, "")
+		}
+		out[sg.ID] = sg
+	}
+	if err := rows.Err(); err != nil {
+		return nil, helpers.WrapSGErr(err, "")
+	}
+	return out, nil
+}
+
 // GetForUpdate — Get с row-lock (`FOR UPDATE`) в writer-TX. Сериализует
 // конкурентный read-modify-write в Update: второй concurrent Update блокируется
 // на GetForUpdate до commit первого, затем читает уже обновленный row (включая

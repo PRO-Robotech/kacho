@@ -13,6 +13,7 @@ package repo_test
 import (
 	"context"
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -489,4 +490,89 @@ func TestIntegration_CallerSuppliedSets_Bounded(t *testing.T) {
 		     SELECT jsonb_agg(to_jsonb('sgr' || g::text)) FROM generate_series(1, $2) g)
 		   WHERE subnet_id = $1`, subID, domain.MaxNICSecurityGroups+1)
 	require.Error(t, dbErr, "проверка базы обязана отвергнуть набор сверх потолка")
+}
+
+// Конкуренция: создание интерфейса со ссылкой на группу против удаления той же
+// группы. Исход обязан быть ровно один из двух — либо интерфейс создан и
+// удаление группы отвергнуто её собственным предусловием, либо группа удалена и
+// создание отвергнуто проверкой ссылки. Висячей ссылки (интерфейс создан, группа
+// удалена) быть не может: проверка ссылки идёт в той же writer-TX, что и запись,
+// и берёт share-lock на строке группы.
+func TestIntegration_NIC_CreateWithSG_VsSecurityGroupDelete_Serialised(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	pool, err := coredb.NewPool(ctx, setupTestDB(t))
+	require.NoError(t, err)
+	t.Cleanup(pool.Close)
+	r := kachopg.New(pool, nil)
+	t.Cleanup(r.Close)
+	or := repomock.NewOpsRepo()
+
+	subID := insertSubnetRow(ctx, t, r, "prj-owner", "sgrace")
+	sgID := insertSGRow(ctx, t, r, "prj-owner", subnetNetworkID(ctx, t, r, subID), "race-sg")
+
+	var (
+		wg        sync.WaitGroup
+		mu        sync.Mutex
+		createErr error
+		deleteErr error
+	)
+	start := make(chan struct{})
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		<-start
+		uc := niapp.NewCreateNetworkInterfaceUseCase(r, &repomock.ProjectClient{OK: true}, or)
+		op, e := uc.Execute(ctx, niapp.CreateInput{
+			NetworkInterface: domain.NetworkInterface{
+				ProjectID:        "prj-owner",
+				Name:             domain.RcNameVPC("nic-race"),
+				SubnetID:         subID,
+				SecurityGroupIDs: []string{sgID},
+			},
+		})
+		mu.Lock()
+		defer mu.Unlock()
+		if e != nil {
+			createErr = e
+			return
+		}
+		got := awaitOpAny(t, or, op.ID)
+		if got.Error != nil {
+			createErr = status.FromProto(got.Error).Err()
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		<-start
+		e := legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
+			return w.SecurityGroups().Delete(ctx, sgID)
+		})
+		mu.Lock()
+		defer mu.Unlock()
+		deleteErr = e
+	}()
+	close(start)
+	wg.Wait()
+
+	// Ровно один исход: висячей ссылки не бывает.
+	nicCreated := createErr == nil
+	sgDeleted := deleteErr == nil
+	require.False(t, nicCreated && sgDeleted,
+		"интерфейс создан со ссылкой на удалённую группу: create=%v delete=%v", createErr, deleteErr)
+	require.True(t, nicCreated || sgDeleted,
+		"хотя бы одна из операций обязана пройти: create=%v delete=%v", createErr, deleteErr)
+
+	// Состояние согласовано: если интерфейс существует — существует и группа.
+	rd, err := r.Reader(ctx)
+	require.NoError(t, err)
+	nics, _, err := rd.NetworkInterfaces().List(ctx, kacho.NetworkInterfaceFilter{ProjectID: "prj-owner"}, kacho.Pagination{})
+	require.NoError(t, err)
+	_, sgErr := rd.SecurityGroups().Get(ctx, sgID)
+	_ = rd.Close()
+	if len(nics) > 0 {
+		require.NoError(t, sgErr, "интерфейс ссылается на группу — группа обязана существовать")
+	}
 }
