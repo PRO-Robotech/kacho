@@ -90,6 +90,17 @@ func TestEveryServiceWithAsyncMutationsResolvesOrphanedOperations(t *testing.T) 
 		if len(builds) == 0 {
 			missing = append(missing,
 				svc+" (async at "+runs[0]+", no operations.NewReconciler under services/"+svc+"/cmd)")
+			continue
+		}
+		// Построить разрешителя мало: функция-строитель обязана быть ДОСТИЖИМА из
+		// композиционного корня. Файл recovery.go, который никто не зовёт, гейт
+		// проходил бы, а разрешитель не запускался бы ни разу — ровно та форма без
+		// содержания, которую этот гейт и ловит. Поймано на себе: правка проводки
+		// была потеряна откатом файла, а гейт продолжал зеленеть.
+		if dead := unreachableReconcilerBuilders(t, filepath.Join(svcRoot, svc, "cmd")); len(dead) > 0 {
+			sort.Strings(dead)
+			missing = append(missing, svc+" (operations.NewReconciler построен, но строитель никем не вызван: "+
+				strings.Join(dead, ", ")+" — разрешитель не запускается)")
 		}
 	}
 
@@ -328,4 +339,101 @@ func operationsLocalName(file *ast.File) (string, bool) {
 		return "operations", true
 	}
 	return "", false
+}
+
+// unreachableReconcilerBuilders — функции композиционного корня, которые строят
+// разрешителя, но которых никто не зовёт.
+//
+// Проверка намеренно мелкая (одно звено): она ловит «файл есть, вызова нет» —
+// состояние, в которое дерево попадает откатом файла или незавершённой правкой
+// проводки. Полный анализ достижимости здесь не нужен и был бы хрупок.
+func unreachableReconcilerBuilders(t *testing.T, cmdDir string) []string {
+	t.Helper()
+	if _, err := os.Stat(cmdDir); err != nil {
+		return nil
+	}
+
+	type builder struct{ file, name string }
+	var builders []builder
+	files := map[string]string{} // rel → содержимое
+
+	root := repoRoot(t)
+	err := filepath.Walk(cmdDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		body, rerr := os.ReadFile(path)
+		if rerr != nil {
+			return rerr
+		}
+		rel, _ := filepath.Rel(root, path)
+		files[rel] = string(body)
+
+		fset := token.NewFileSet()
+		file, perr := parser.ParseFile(fset, rel, body, 0)
+		if perr != nil {
+			t.Fatalf("разбор %s: %v", rel, perr)
+		}
+		local, imported := operationsLocalName(file)
+		if !imported {
+			return nil
+		}
+		for _, decl := range file.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Recv != nil {
+				continue
+			}
+			found := false
+			ast.Inspect(fn, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				sel, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok || sel.Sel.Name != "NewReconciler" {
+					return true
+				}
+				if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == local {
+					found = true
+				}
+				return true
+			})
+			if found {
+				builders = append(builders, builder{file: rel, name: fn.Name.Name})
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("обход %s: %v", cmdDir, err)
+	}
+
+	var dead []string
+	for _, b := range builders {
+		called := false
+		for rel, src := range files {
+			if rel == b.file {
+				continue // вызов из собственного файла тоже считается, см. ниже
+			}
+			if strings.Contains(src, b.name+"(") {
+				called = true
+				break
+			}
+		}
+		if !called {
+			// Вызов из СОБСТВЕННОГО файла: считаем его только если это не само
+			// объявление (объявление тоже содержит «имя(»).
+			body := files[b.file]
+			if strings.Count(body, b.name+"(") > 1 {
+				called = true
+			}
+		}
+		if !called {
+			dead = append(dead, b.file+":"+b.name)
+		}
+	}
+	return dead
 }

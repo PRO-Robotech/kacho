@@ -38,6 +38,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/storage/internal/config"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/handler"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/observability/metrics"
+	"github.com/PRO-Robotech/kacho/services/storage/internal/operationresolver"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
@@ -214,6 +215,22 @@ func runServe(cfg config.Config) error {
 		logger.Warn("FGA register-drainer NOT started (disabled or authz.iam-addr empty) — " +
 			"owner-tuple register-intents stay durable in fga_register_outbox until configured")
 	}
+
+	// ── разрешитель осиротевших операций (durable LRO recovery) ───────────────
+	// Стартовое восстановление прогоняется ДО приёма трафика, периодический проход —
+	// подстраховка. Без него строка операции, пережившая смерть процесса (перекат,
+	// OOM, исчерпание бюджета терминальной записи) или так и не дождавшаяся места в
+	// очереди исполнителя, остаётся «в процессе» НАВСЕГДА, и клиент не узнаёт исхода
+	// ни разу. Частичный индекс под запрос этого прохода схема несла с самого начала
+	// (миграция 0002) — разрешитель был заявлен раньше, чем провязан. См. recovery.go.
+	//
+	// Не зависит ни от kacho-iam, ни от дренажа регистраций: это сверка со СВОЕЙ БД.
+	lroReconciler := startLRORecovery(ctx, pool, operationresolver.Readers{
+		Volume:   volumeRepo,
+		Snapshot: snapshotRepo,
+		Image:    imageRepo,
+	}, logger)
+	go lroReconciler.Run(ctx)
 
 	// ── interceptor-цепочки обоих листенеров (recovery→logging→principal→authz).
 	//
