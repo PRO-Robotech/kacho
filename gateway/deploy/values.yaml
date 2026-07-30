@@ -226,6 +226,24 @@ hydra:
     secretName: ""
     key: ca.crt
     mountPath: /etc/api-gateway/hydra-admin-ca
+  # jwksCa — trust anchor for the KEY-FETCH hop (the JWKS mirror), separate from
+  # the admin one above.
+  #
+  # Two different peers on two different addresses: the admin hop goes to the
+  # identity provider, the key-fetch hop goes to iam's mirror. Tying them to one
+  # bundle would make it impossible to move one to TLS without the other, and it
+  # is exactly that coupling which kept this hop on plaintext — an address knob
+  # existed here, a trust knob did not, so "serve the mirror over TLS" had no
+  # reachable configuration and was worked around by sending the edge straight to
+  # the provider instead, past the facade.
+  #
+  # Empty ⇒ default transport (an in-cluster plaintext mirror needs no anchor).
+  # Set ⇒ that bundle is the ONLY anchor for the hop, and an unreadable one
+  # REFUSES THE START.
+  jwksCa:
+    secretName: ""
+    key: ca.crt
+    mountPath: /etc/api-gateway/hydra-jwks-ca
 
 # AuthZ — per-RPC authorization middleware.
 #   enabled: when true, every authenticated request is gated by a

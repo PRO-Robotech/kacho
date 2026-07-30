@@ -83,14 +83,26 @@ api-gateway:
   authn:
     mode: production-strict     # Bearer REQUIRED + Hydra RS256; missing token → 401
     devSecret: ""               # HS256 dev path OFF (guard fails if non-empty in prod)
-  # UNIFICATION: verify RS256 tokens through the iam :9097 JWKS proxy, NOT Hydra :4444
-  # directly (registry-iam-jwks-unify — iam is the single JWKS facade; direct-Hydra dial
-  # is forbidden). iam :9097 is a byte-identical short-TTL mirror of Hydra's public JWKS
-  # (Hydra stays issuer/signer); it serves plain HTTP cluster-internal (jwks_proxy_mtls=
-  # false) so no CA wiring is needed. `issuer` (iss-pin) is unchanged — inherited from
-  # values.dev.yaml (Hydra self.issuer). Requires the :9097 upstream fix (kacho-iam.env).
+  # UNIFICATION: verify RS256 tokens through the iam :9097 JWKS mirror, NOT Hydra :4444
+  # directly (iam is the single JWKS facade; a direct-provider dial is forbidden). The
+  # mirror is byte-identical and short-TTL; Hydra stays issuer/signer. `issuer` (iss-pin)
+  # is unchanged — inherited from values.dev.yaml.
+  #
+  # THE HOP IS TLS, AND IT IS VERIFIED. Over it travels the material the edge checks every
+  # bearer's SIGNATURE with: whoever substitutes it substitutes the access decision, and
+  # the edge then believes its own answer. The certificate comes from the internal CA,
+  # which the process does not trust by default, so the anchor is configured — same shape
+  # as the admin hop right below.
+  #
+  # This also settles a contradiction that lived in THIS FILE: registry has been fetching
+  # from the same :9097 over https all along (see registry.iam.jwksUrl), while the edge
+  # was told plaintext was fine and the canonical profile went around the facade to the
+  # provider instead. One port cannot be two transports.
   hydra:
-    jwksUrl: "http://kacho-iam-internal.kacho.svc.cluster.local:9097/.well-known/jwks.json"
+    jwksUrl: "https://kacho-iam-internal.kacho.svc.cluster.local:9097/.well-known/jwks.json"
+    jwksCa:
+      secretName: kacho-internal-ca-root
+      key: tls.crt
     # iss-PIN — the SAME string the provider stamps (hydra.config.urls.self.issuer).
     # values.dev.yaml declares the http form WITH a trailing slash; this stand's provider
     # runs without its development flag, so its issuer identity is https and carries no
@@ -196,17 +208,26 @@ kacho-iam:
     repository:
       postgres:
         sslMode: require         # production-strict enforces ssl-mode ∈ {require,verify-ca,verify-full}
-  # NB (deliberately NOT enabling mtls.httpListeners on this stand): mtls.enable=true
-  # (inherited from dev.yaml) already wraps the gRPC listeners (:9090/:9091). The
-  # httpListeners toggle would ALSO TLS-wrap the JWKS-proxy :9097 — but on this stand
-  # the api-gateway verifies RS256 tokens by fetching JWKS from iam :9097 over PLAINTEXT
-  # http (registry-iam-jwks-unify routing, gateway env KACHO_HYDRA_JWKS_URL). TLS-ing
-  # :9097 breaks that fetch ("HTTP request to an HTTPS server") → EVERY token fails
-  # validation → 401. values.prod avoids this by pointing the gateway JWKS at Hydra
-  # public directly (:4444), so httpListeners is safe there; this kind stand routes
-  # through iam :9097, so the hooks/metrics/jwks HTTP listeners stay PLAINTEXT (the
-  # template's documented dev-stand default). The Hydra token_hook reaches :9092 over
-  # http; caller-auth is the X-Kacho-Hook-Token HMAC (env-override below), not transport.
+  # mtls.httpListeners=true — the iam HTTP listeners are TLS, and that is REQUIRED here,
+  # not optional.
+  #
+  # THE COMMENT THAT USED TO STAND HERE SAID THE OPPOSITE, AND IT WAS WRONG. It argued
+  # that TLS-ing these listeners would break the edge's key fetch, so the toggle had to
+  # stay off. That was true only while the edge had no way to trust the internal CA — an
+  # address knob existed, a trust knob did not. The trust knob now exists
+  # (api-gateway.hydra.jwksCa above), so the premise is gone.
+  #
+  # It also pointed at the canonical profile as proof that "off" was safe there, because
+  # that profile sent the edge straight to the provider. That was not safety, it was the
+  # facade bypass wearing a justification — the same bypass this edge had already been
+  # caught at once and fixed. It is fixed in that profile too now.
+  #
+  # What this actually protects: :9096 carries an HTTP Basic password that IS a service
+  # account key's private key — never stored by the server, never expiring. iam refuses
+  # to start with it in the clear, and it is right to. :9097 carries the signature-
+  # verification material. Both stop being readable on the wire here.
+  mtls:
+    httpListeners: true
   env:
     # UNIFICATION FIX (dev-masked): the iam :9097 JWKS proxy — the endpoint every
     # service is supposed to verify RS256 tokens through (registry-iam-jwks-unify) —

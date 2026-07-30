@@ -43,6 +43,19 @@ import (
 // reading this file.
 const adminHopCAEnv = "KACHO_HYDRA_ADMIN_CA_FILE"
 
+// jwksHopCAEnv — то же для ХОПА ЗА КЛЮЧАМИ ВЕРИФИКАЦИИ.
+//
+// Хоп другой, а требование ровно то же: по нему едет материал, которым край
+// проверяет ПОДПИСЬ каждого предъявителя, и подменивший его в пути подменяет решение
+// о доступе. Сертификат на внутрикластерном адресе выписан внутренним центром, в
+// корнях процесса его нет — значит связка задаётся настройкой, как и адрес.
+//
+// БЕЗ ЭТОЙ РУЧКИ ЗАЩИЩЁННЫЙ ТРАНСПОРТ БЫЛ НЕДОСТИЖИМ, и обходили это двумя
+// способами, каждый из которых хуже проблемы: увести край НАПРЯМУЮ к провайдеру мимо
+// фасада (тот самый обход, который у края уже однажды находили и чинили) либо снять
+// проверку сертификата — то есть объявить защиту и не выполнять её.
+const jwksHopCAEnv = "KACHO_HYDRA_JWKS_CA_FILE"
+
 // newAdminHopClient builds the client used for every call to the provider's
 // admin API, bounded by timeout.
 //
@@ -56,6 +69,23 @@ const adminHopCAEnv = "KACHO_HYDRA_ADMIN_CA_FILE"
 // no business accepting a publicly-issued certificate for the same name, and
 // narrowing the anchor is the whole point of pinning it.
 func newAdminHopClient(caFile string, timeout time.Duration) (*http.Client, error) {
+	return newPinnedHopClient(adminHopCAEnv, caFile, timeout)
+}
+
+// newJWKSHopClient — тот же клиент для хопа за ключами верификации.
+//
+// Отдельное имя, ОДНА реализация: два экземпляра одного кода разъезжаются, и
+// разъезжается ровно тот, где дефект ещё не нашли. Разница между хопами — только имя
+// ручки в тексте отказа, и она параметр.
+func newJWKSHopClient(caFile string, timeout time.Duration) (*http.Client, error) {
+	return newPinnedHopClient(jwksHopCAEnv, caFile, timeout)
+}
+
+// newPinnedHopClient строит клиент, доверяющий ТОЛЬКО указанной связке.
+//
+// `envName` попадает в текст отказа: оператор, читающий отказ, обязан узнать, какую
+// ручку ему править, не открывая исходник.
+func newPinnedHopClient(envName, caFile string, timeout time.Duration) (*http.Client, error) {
 	if timeout <= 0 {
 		timeout = 5 * time.Second
 	}
@@ -69,15 +99,15 @@ func newAdminHopClient(caFile string, timeout time.Duration) (*http.Client, erro
 	if err != nil {
 		return nil, fmt.Errorf(
 			"%s=%q cannot be read (%v) — refusing to start: continuing on the system "+
-				"root store would leave the admin hop unverified against the internal CA "+
-				"while reading as configured", adminHopCAEnv, caFile, err)
+				"root store would leave this hop unverified against the internal CA "+
+				"while reading as configured", envName, caFile, err)
 	}
 	pool := x509.NewCertPool()
 	if !pool.AppendCertsFromPEM(pem) {
 		return nil, fmt.Errorf(
 			"%s=%q holds no PEM certificate — refusing to start: the resulting trust "+
-				"store would be EMPTY, so every handshake on the admin hop would fail "+
-				"permanently", adminHopCAEnv, caFile)
+				"store would be EMPTY, so every handshake on this hop would fail "+
+				"permanently", envName, caFile)
 	}
 
 	tr := http.DefaultTransport.(*http.Transport).Clone()
