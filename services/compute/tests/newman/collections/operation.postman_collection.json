@@ -893,7 +893,7 @@
       ]
     },
     {
-      "name": "OP-CANCEL-NEG-ALREADY-DONE — Cancel завершённой operation (Instance.Create уже done) → FailedPrecondition (или 200 idempotent)",
+      "name": "OP-CANCEL-NEG-ALREADY-DONE — Cancel завершённой operation (Instance.Create уже done) → 400 FAILED_PRECONDITION 'already completed'",
       "description": "class:NEG | class:STATE | priority:P1",
       "item": [
         {
@@ -1131,6 +1131,46 @@
           ]
         },
         {
+          "name": "pin-done-op",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('операция действительно завершена', () => pm.expect(pm.response.json().done, pm.response.text()).to.eql(true));",
+                  "pm.test('и завершена НЕ отменой (иначе отмена была бы идемпотентной)', () =>   pm.expect((pm.response.json().error||{}).code || 0).to.not.eql(1));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('doneOpId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "cancel-done",
           "request": {
             "method": "POST",
@@ -1141,13 +1181,13 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}:cancel",
+              "raw": "{{baseUrl}}/operations/{{doneOpId}}:cancel",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "operations",
-                "{{opId}}:cancel"
+                "{{doneOpId}}:cancel"
               ]
             },
             "body": {
@@ -1166,9 +1206,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('FailedPrecondition (400+code9) or idempotent 200', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                  "if (pm.response.code === 400) { pm.test('code 9 FAILED_PRECONDITION', () => pm.expect(pm.response.json().code).to.eql(9)); }",
-                  "if (pm.response.code === 200) { pm.test('op still done', () => pm.expect(pm.response.json().done).to.eql(true)); }"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 9 (FAILED_PRECONDITION)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
+                  "});",
+                  "pm.test('текст называет причину — операция уже завершена', () =>   pm.expect((pm.response.json().message || '').toLowerCase()).to.include('already completed'));"
                 ]
               }
             }

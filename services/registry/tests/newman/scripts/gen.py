@@ -357,42 +357,6 @@ def http_method_not_allowed_block(prefix: str, base_path: str) -> List[Case]:
     ]
 
 
-def conf_alreadyexists_block(prefix: str, create_path: str, name_template: str,
-                              body_extra: Optional[Dict] = None,
-                              id_field_pattern: str = "Id") -> Case:
-    """CONF: duplicate (project_id, name) on Create returns ALREADY_EXISTS verbatim text.
-
-    NLB pattern: sync 409 on duplicate name (partial UNIQUE in DB). Worker also returns
-    error envelope if INSERT race wins both syncs."""
-    body_extra = body_extra or {}
-    return Case(
-        id=f"{prefix}-CR-CONF-ALREADY-EXISTS",
-        title=f"Create duplicate name → 409 ALREADY_EXISTS verbatim text",
-        classes=["CONF", "NEG", "IDEM"], priority="P1",
-        steps=[
-            Step(name="create-first", method="POST", path=create_path,
-                 body={"projectId": "{{_suiteProjectId}}", "name": name_template, **body_extra},
-                 test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                              *save_from_response(
-                                  "(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id') && k !== 'projectId').map(k => j.metadata[k])[0]) || ''",
-                                  "createdId")]),
-            poll_operation_until_done(),
-            Step(name="create-dup", method="POST", path=create_path,
-                 body={"projectId": "{{_suiteProjectId}}", "name": name_template, **body_extra},
-                 test_script=[
-                     "pm.test('rejected (sync 409 or async error)', () => pm.expect(pm.response.code).to.be.oneOf([200, 409]));",
-                     "if (pm.response.code === 409) {",
-                     "  pm.test('grpc code 6 (ALREADY_EXISTS)', () => pm.expect(pm.response.json().code).to.eql(6));",
-                     "  pm.test('mentions already exists', () => pm.expect(pm.response.json().message.toLowerCase()).to.include('already exists'));",
-                     "}",
-                 ]),
-            Step(name="cleanup-first", method="DELETE", path=f"{create_path}/{{{{createdId}}}}",
-                 test_script=[*save_from_response("j.id", "opId")]),
-            poll_operation_until_done(),
-        ],
-    )
-
-
 # ---------------------------------------------------------------------------
 # Postman v2.1 serialization
 # ---------------------------------------------------------------------------
@@ -518,7 +482,6 @@ def load_cases_module(path: Path):
     mod.retry_until_authorized = retry_until_authorized
     mod.retry_until_present = retry_until_present
     mod.http_method_not_allowed_block = http_method_not_allowed_block
-    mod.conf_alreadyexists_block = conf_alreadyexists_block
     spec.loader.exec_module(mod)
     return mod
 

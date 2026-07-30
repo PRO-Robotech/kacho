@@ -784,10 +784,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-VOL-LST-OVERSHOW-LEAK-GUARD] fail-closed: 200 или 403, не 5xx', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 403]));",
-                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "const ids = ((j && j.volumes) || []).map(x => x.id);",
-                  "pm.test('[AUTHZ-VOL-LST-OVERSHOW-LEAK-GUARD] Volume НЕ виден никогда-не-гранченому субъекту (per-object listauthz, не только project-scope)', () => pm.expect(ids, 'leaked page: ' + JSON.stringify(ids)).to.not.include(pm.environment.get('leakVolumeId')));"
+                  "pm.test('[AUTHZ-VOL-LST-OVERSHOW-LEAK-GUARD] отказ, а не пустая страница: 403', () => pm.expect(pm.response.code, pm.response.text()).to.eql(403));",
+                  "pm.test('[AUTHZ-VOL-LST-OVERSHOW-LEAK-GUARD] grpc code 7 PERMISSION_DENIED', () => { let j; try { j = pm.response.json(); } catch(e) { j = null; } pm.expect(j && j.code, pm.response.text()).to.eql(7); });",
+                  "pm.test('[AUTHZ-VOL-LST-OVERSHOW-LEAK-GUARD] в теле отказа нет ни Volume, ни выдачи', () => {",
+                  "  const body = pm.response.text();",
+                  "  pm.expect(body, 'id объекта в теле отказа').to.not.contain(pm.environment.get('leakVolumeId'));",
+                  "  pm.expect(body, 'поле выдачи в теле отказа').to.not.contain('volumes');",
+                  "});"
                 ]
               }
             }
@@ -1198,10 +1201,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNP-LST-OVERSHOW-LEAK-GUARD] fail-closed: 200 или 403, не 5xx', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 403]));",
-                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "const ids = ((j && j.snapshots) || []).map(x => x.id);",
-                  "pm.test('[AUTHZ-SNP-LST-OVERSHOW-LEAK-GUARD] Snapshot НЕ виден никогда-не-гранченому субъекту (per-object listauthz, не только project-scope)', () => pm.expect(ids, 'leaked page: ' + JSON.stringify(ids)).to.not.include(pm.environment.get('leakSnapshotId')));"
+                  "pm.test('[AUTHZ-SNP-LST-OVERSHOW-LEAK-GUARD] отказ, а не пустая страница: 403', () => pm.expect(pm.response.code, pm.response.text()).to.eql(403));",
+                  "pm.test('[AUTHZ-SNP-LST-OVERSHOW-LEAK-GUARD] grpc code 7 PERMISSION_DENIED', () => { let j; try { j = pm.response.json(); } catch(e) { j = null; } pm.expect(j && j.code, pm.response.text()).to.eql(7); });",
+                  "pm.test('[AUTHZ-SNP-LST-OVERSHOW-LEAK-GUARD] в теле отказа нет ни Snapshot, ни выдачи', () => {",
+                  "  const body = pm.response.text();",
+                  "  pm.expect(body, 'id объекта в теле отказа').to.not.contain(pm.environment.get('leakSnapshotId'));",
+                  "  pm.expect(body, 'поле выдачи в теле отказа').to.not.contain('snapshots');",
+                  "});"
                 ]
               }
             }
@@ -1697,10 +1703,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-IMG-LST-OVERSHOW-LEAK-GUARD] fail-closed: 200 или 403, не 5xx', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([200, 403]));",
-                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "const ids = ((j && j.images) || []).map(x => x.id);",
-                  "pm.test('[AUTHZ-IMG-LST-OVERSHOW-LEAK-GUARD] Image НЕ виден никогда-не-гранченому субъекту (per-object listauthz, не только project-scope)', () => pm.expect(ids, 'leaked page: ' + JSON.stringify(ids)).to.not.include(pm.environment.get('leakImageId')));"
+                  "pm.test('[AUTHZ-IMG-LST-OVERSHOW-LEAK-GUARD] отказ, а не пустая страница: 403', () => pm.expect(pm.response.code, pm.response.text()).to.eql(403));",
+                  "pm.test('[AUTHZ-IMG-LST-OVERSHOW-LEAK-GUARD] grpc code 7 PERMISSION_DENIED', () => { let j; try { j = pm.response.json(); } catch(e) { j = null; } pm.expect(j && j.code, pm.response.text()).to.eql(7); });",
+                  "pm.test('[AUTHZ-IMG-LST-OVERSHOW-LEAK-GUARD] в теле отказа нет ни Image, ни выдачи', () => {",
+                  "  const body = pm.response.text();",
+                  "  pm.expect(body, 'id объекта в теле отказа').to.not.contain(pm.environment.get('leakImageId'));",
+                  "  pm.expect(body, 'поле выдачи в теле отказа').to.not.contain('images');",
+                  "});"
                 ]
               }
             }
