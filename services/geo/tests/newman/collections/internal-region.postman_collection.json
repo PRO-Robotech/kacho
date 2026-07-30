@@ -825,9 +825,9 @@
                   "    JSON.stringify(j)).to.eql(true);",
                   "  pm.expect(j.error.code, JSON.stringify(j.error)).to.eql(9);",
                   "});",
-                  "pm.test('result.error message: reference constraint', () => {",
+                  "pm.test('result.error message: is not empty', () => {",
                   "  const j = pm.response.json();",
-                  "  pm.expect(String((j.error || {}).message), JSON.stringify(j.error)).to.include('reference constraint');",
+                  "  pm.expect(String((j.error || {}).message), JSON.stringify(j.error)).to.include('is not empty');",
                   "});"
                 ]
               }

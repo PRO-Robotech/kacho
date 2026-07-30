@@ -375,10 +375,19 @@ def list_pagesize_1_bva(prefix, list_path):
     )
 
 
-def ecp_name_block(prefix, create_path, body_extra=None):
+def ecp_name_block(prefix, create_path, body_extra=None, strict_name=False):
     """ECP/BVA по полю name: пустое, max, over-max, invalid regex.
 
     body_extra — обязательные поля кроме projectId/name (например для Subnet: networkId+zoneId+cidr).
+
+    strict_name — у ресурса СТРОГИЙ контракт имени (только строчные буквы, цифры
+    и дефис) вместо разрешительного контракта остальных VPC-ресурсов. Это не
+    настройка теста «под поведение», а объявленный контракт: он записан в
+    `pkg/validate.NameGateway`, в godoc `domain.Gateway`, в SDK и закреплён
+    unit-тестом — то есть существует независимо от того, что показал прогон.
+    Отличается ровно один исход — заглавные буквы; всё остальное (пустое имя,
+    границы длины, начало с цифры/дефиса, спецсимволы) у обоих контрактов
+    совпадает, поэтому параметр меняет один кейс, а не набор.
     """
     body_extra = body_extra or {}
     base = lambda name: {"projectId": "{{_suiteProjectId}}", "name": name, **body_extra}
@@ -415,16 +424,25 @@ def ecp_name_block(prefix, create_path, body_extra=None):
                     body=base("n64" + "abcdefghij"*7),
                     test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")])],
     ))
-    # Тот же разрешительный контракт: заглавные буквы и подчёркивания допустимы
-    # (regex ^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$). Один исход — одно
-    # утверждение.
+    # Заглавные буквы — единственный исход, который у двух контрактов имени
+    # расходится. Разрешительный (regex ^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$)
+    # их принимает, строгий (^([a-z]([-a-z0-9]{0,61}[a-z0-9])?)?$) отвергает и
+    # называет поле. Исход ровно один в обоих случаях — одно утверждение, без
+    # `oneOf`, иначе кейс проходил бы при любом поведении продукта.
     cases.append(Case(
         id=f"{prefix}-CR-VAL-NAME-UPPERCASE",
-        title="Create с UPPERCASE name → 200 (заглавные разрешены контрактом)",
-        classes=["VAL"], priority="P2",
+        title=("Create с UPPERCASE name → 400 (строгий контракт имени: только строчные)"
+               if strict_name else
+               "Create с UPPERCASE name → 200 (заглавные разрешены контрактом)"),
+        classes=["VAL"] + (["NEG"] if strict_name else []), priority="P2",
         steps=[Step(name="cr-upper", method="POST", path=create_path,
                     body=base("InvalidUpperCase-{{runId}}"),
-                    test_script=[*assert_status(200), *save_from_response("j.id", "opId")])],
+                    test_script=(
+                        [*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                         "pm.test('refusal names the field', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('name'));"]
+                        if strict_name else
+                        [*assert_status(200), *save_from_response("j.id", "opId")]
+                    ))],
     ))
     cases.append(Case(
         id=f"{prefix}-CR-VAL-NAME-DIGIT-START",

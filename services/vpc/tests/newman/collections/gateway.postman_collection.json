@@ -2147,8 +2147,8 @@
       ]
     },
     {
-      "name": "GW-CR-VAL-NAME-UPPERCASE — Create с UPPERCASE name → 200 (заглавные разрешены контрактом)",
-      "description": "class:VAL | priority:P2",
+      "name": "GW-CR-VAL-NAME-UPPERCASE — Create с UPPERCASE name → 400 (строгий контракт имени: только строчные)",
+      "description": "class:VAL | class:NEG | priority:P2",
       "item": [
         {
           "name": "cr-upper",
@@ -2187,12 +2187,12 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "try {",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
                   "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('refusal names the field', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('name'));"
                 ]
               }
             }
