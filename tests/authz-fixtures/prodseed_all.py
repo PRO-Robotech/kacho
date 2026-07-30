@@ -190,8 +190,42 @@ def patch(fixtures: dict, paths: list[pathlib.Path]) -> None:
     tmp = HERE / "out" / "_patch.json"
     tmp.parent.mkdir(parents=True, exist_ok=True)
     tmp.write_text(json.dumps(nonempty, indent=2))
+
+    # СВЕЖЕЕ ДЕРЕВО НЕ СОДЕРЖИТ ЭТИХ ФАЙЛОВ, И ЭТО НАМЕРЕННО: конкретное окружение
+    # newman'а хранит выданные предъявители, поэтому оно вне git. В git рядом лежит
+    # ШАБЛОН — из него окружение и разворачивается.
+    #
+    # Пока разворачивания здесь не было, посев на свежем дереве падал так: список
+    # существующих файлов оказывался ПУСТ, `patch-env.py` получал ноль путей и отвечал
+    # СВОЕЙ СПРАВКОЙ ПО ИСПОЛЬЗОВАНИЮ с кодом 2. То есть посев сообщал «утилита вызвана
+    # неверно» там, где на деле «окружение ещё не развёрнуто». Страж прогонщика при этом
+    # честно объявлял прогон недействительным — но причина в его выводе была подменена, и
+    # читатель шёл разбираться с аргументами вызова.
+    ready: list[pathlib.Path] = []
+    created = 0
+    for p in paths:
+        if not p.exists():
+            template = p.with_name(p.name.replace(".json", ".template.json"))
+            if not template.exists():
+                continue
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(template.read_text())
+            created += 1
+        ready.append(p)
+    if created:
+        log(f"    развёрнуто из шаблона (свежее дерево): {created} окружений")
+
+    # НОЛЬ ОКРУЖЕНИЙ — ЭТО ОТКАЗ, А НЕ ПУСТАЯ РАБОТА. Молча «пропатчить ничего» значит
+    # отдать суитам окружение без единого выданного предъявителя, а такой прогон
+    # отчитается сплошными отказами доступа, неотличимыми от продуктового регресса.
+    if not ready:
+        raise SystemExit(
+            "посев: не найдено ни одного окружения newman и ни одного шаблона рядом "
+            f"с ними (искали: {', '.join(str(p) for p in paths)}). Разворачивать нечего, "
+            "а прогон против такого стенда результата не даёт.")
+
     subprocess.run([sys.executable, str(HERE / "patch-env.py"), str(tmp),
-                    *[str(p) for p in paths if p.exists()]], check=True)
+                    *[str(p) for p in ready]], check=True)
 
 
 # ── what version control will actually do with the files we just wrote ──────

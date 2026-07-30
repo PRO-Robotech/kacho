@@ -125,10 +125,21 @@ func main() {
 	//
 	// Construction failure (e.g. empty resolved JWKS URL) is non-fatal — the
 	// gateway keeps the HMAC-dev path; only the RS256/JWKS strategy is absent.
+	// Хоп за ключами получает СВОЙ якорь доверия, ровно как административный. Пусто ⇒
+	// транспорт по умолчанию (прежнее поведение); нечитаемая связка ⇒ ОТКАЗ В СТАРТЕ,
+	// а не тихий откат к системным корням: край, который «настроен проверять» и не
+	// проверяет, — худшее из состояний, потому что снаружи неотличим от исправного.
+	jwksHopClient, jwksCAErr := newJWKSHopClient(
+		cfg.HydraJWKSCAFile, time.Duration(cfg.JWKSFetchTimeoutSeconds)*time.Second)
+	if jwksCAErr != nil {
+		logger.Error("api-gateway refusing to start", "err", jwksCAErr)
+		os.Exit(1)
+	}
 	jwtVerifier, jverr := middleware.NewJWTVerifier(middleware.JWTVerifierConfig{
 		JWKSURL:          cfg.ResolvedHydraJWKSURL(),
 		JWKSCacheTTL:     time.Duration(cfg.JWKSCacheTTLSeconds) * time.Second,
 		JWKSFetchTimeout: time.Duration(cfg.JWKSFetchTimeoutSeconds) * time.Second,
+		HTTPClient:       jwksHopClient,
 		ExpectedIssuer:   cfg.ResolvedHydraIssuer(),
 		ExpectedAudience: cfg.ExpectedAudience(),
 		ClockSkew:        time.Duration(cfg.JWTClockSkewSeconds) * time.Second,

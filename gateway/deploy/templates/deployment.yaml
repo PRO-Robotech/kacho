@@ -253,6 +253,14 @@ spec:
             - name: KACHO_HYDRA_ADMIN_CA_FILE
               value: {{ printf "%s/%s" (trimSuffix "/" .Values.hydra.adminCa.mountPath) .Values.hydra.adminCa.key | quote }}
             {{- end }}
+            {{- if (.Values.hydra.jwksCa | default dict).secretName }}
+            # Trust anchor for the KEY-FETCH hop. Over this hop travels the material
+            # the edge verifies every bearer's SIGNATURE with, so whoever substitutes
+            # it substitutes the access decision itself. Same requirement as the admin
+            # hop, separate knob because it is a different peer.
+            - name: KACHO_HYDRA_JWKS_CA_FILE
+              value: {{ printf "%s/%s" (trimSuffix "/" .Values.hydra.jwksCa.mountPath) .Values.hydra.jwksCa.key | quote }}
+            {{- end }}
             {{- end }}
             {{- if .Values.authz }}
             - name: KACHO_API_GATEWAY_AUTHZ_ENABLED
@@ -388,6 +396,11 @@ spec:
               mountPath: {{ .Values.hydra.adminCa.mountPath | quote }}
               readOnly: true
             {{- end }}
+            {{- if (.Values.hydra.jwksCa | default dict).secretName }}
+            - name: hydra-jwks-ca
+              mountPath: {{ .Values.hydra.jwksCa.mountPath | quote }}
+              readOnly: true
+            {{- end }}
           readinessProbe:
             httpGet:
               path: /healthz
@@ -429,4 +442,12 @@ spec:
             items:
               - key: {{ .Values.hydra.adminCa.key | quote }}
                 path: {{ .Values.hydra.adminCa.key | quote }}
+        {{- end }}
+        {{- if (.Values.hydra.jwksCa | default dict).secretName }}
+        - name: hydra-jwks-ca
+          secret:
+            secretName: {{ .Values.hydra.jwksCa.secretName | quote }}
+            items:
+              - key: {{ .Values.hydra.jwksCa.key | quote }}
+                path: {{ .Values.hydra.jwksCa.key | quote }}
         {{- end }}

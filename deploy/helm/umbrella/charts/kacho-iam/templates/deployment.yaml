@@ -222,8 +222,19 @@ spec:
               value: {{ printf "%s/tls.key" $srv | quote }}
             - name: KACHO_IAM_INTERNAL_SERVER_MTLS_CLIENTCAFILES
               value: {{ printf "%s/ca.crt" $srv | quote }}
-            {{- if .Values.mtls.httpListeners }}
+            {{- if (dig "hooksAndMetrics" .Values.mtls.httpListeners .Values.mtls) }}
             # Sub-phase 5.5 — HTTP listener TLS (hooks :9092 + /metrics :9095).
+            #
+            # ЭТО РЕБРО ОТДЕЛЕНО ОТ ОСТАЛЬНЫХ, И ВОТ ПОЧЕМУ. Одна общая ручка заворачивала
+            # в TLS ЧЕТЫРЕ листенера разом, а у этого есть вызывающий, который ходит по
+            # открытому http и своего доверия не несёт, — вебхук провайдера личности.
+            # Включение общей ручки роняло выдачу токенов целиком: рукопожатие отвечало
+            # «клиент прислал http-запрос на https-сервер», хук проваливался, и ни один
+            # токен не выпускался. При этом отключить общую ручку тоже нельзя: на ней
+            # висит листенер :9096, по которому едет непротухающий пароль, и загрузочная
+            # стража справедливо отказывается стартовать с ним в открытую.
+            # Значит ручка обязана быть ПОЛИСТЕННОЙ. Умолчание — прежняя общая, так что
+            # существующие профили ведут себя байт-в-байт как раньше.
             # These two listeners were served PLAINTEXT; per-edge, default-off
             # server-side TLS now wraps them (config.MTLSConfig.HooksServerTLSConfig
             # / MetricsServerTLSConfig → tls.NewListener). The per-edge
@@ -266,6 +277,8 @@ spec:
               value: {{ printf "%s/tls.key" $srv | quote }}
             - name: KACHO_IAM_METRICS_SERVER_MTLS_CLIENTCAFILES
               value: {{ printf "%s/ca.crt" $srv | quote }}
+            {{- end }}
+            {{- if (dig "jwksProxy" .Values.mtls.httpListeners .Values.mtls) }}
             # registry-iam-jwks-unify — server-TLS for the cluster-INTERNAL Hydra-JWKS
             # proxy listener (:9097, GET /.well-known/jwks.json). Reuses the SAME SEC-F
             # internal-CA server cert-trio mounted above (no new PKI). ONE-WAY
@@ -274,7 +287,7 @@ spec:
             # fetches it with a plain https client presenting NO client cert, so
             # RequireAndVerifyClientCert would reject the handshake. Registry trusts
             # this leaf via the internal-CA it already mounts (SSL_CERT_DIR). Gated on
-            # mtls.httpListeners (same as hooks/metrics) → dev stays plaintext :9097.
+            # mtls.jwksProxy (defaults to mtls.httpListeners) → dev stays plaintext :9097.
             - name: KACHO_IAM_JWKSPROXY_SERVER_MTLS_ENABLE
               value: "true"
             - name: KACHO_IAM_JWKSPROXY_SERVER_MTLS_CLIENTAUTHMODE
@@ -285,6 +298,8 @@ spec:
               value: {{ printf "%s/tls.key" $srv | quote }}
             - name: KACHO_IAM_JWKSPROXY_SERVER_MTLS_CLIENTCAFILES
               value: {{ printf "%s/ca.crt" $srv | quote }}
+            {{- end }}
+            {{- if (dig "registryToken" .Values.mtls.httpListeners .Values.mtls) }}
             # docker-token listener (:9096, `/iam/token`) server-TLS. По этому хопу
             # `docker login` шлёт HTTP Basic, чей ПАРОЛЬ — приватный ключ ключа
             # служебной учётки: сервер его не хранит (сверяет выведенный SPKI с

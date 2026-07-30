@@ -168,7 +168,29 @@ api-gateway:
   # Hydra PUBLIC Service (NOT the public ingress hairpin); `issuer` is the public
   # OIDC issuer string the token `iss` claim must match (SEC-J exact-match).
   hydra:
-    jwksUrl: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/.well-known/jwks.json"
+    # KEY-FETCH HOP — through the iam mirror, over TLS, VERIFIED.
+    #
+    # THIS LINE USED TO POINT STRAIGHT AT THE PROVIDER, and that was the facade bypass
+    # this edge had already been caught at once and fixed. It came back because the
+    # correct route was unreachable: an address knob existed for this hop, a trust knob
+    # did not, so "fetch from the internal mirror over TLS" could not be configured and
+    # going around the facade looked like the pragmatic choice. It is not a choice any
+    # more — the anchor below makes the right route configurable.
+    #
+    # Why it matters more than tidiness: over this hop travels the material the edge
+    # verifies every bearer's SIGNATURE with. Substituting it substitutes the access
+    # decision, and the edge then believes its own answer. Plaintext, or TLS whose
+    # certificate nobody checks, both leave that open. registry already fetches from
+    # this same :9097 over https (see registry.iam.jwksUrl below) — one port, one
+    # transport.
+    jwksUrl: "https://kacho-iam-internal.kacho.svc.cluster.local:9097/.well-known/jwks.json"
+    # Anchor for the hop above: the internal-CA bundle that signs iam's serving cert.
+    # Unreadable or certificate-less ⇒ REFUSES THE START, exactly like the admin hop —
+    # falling back to the system roots would read as configured and verify nothing.
+    jwksCa:
+      secretName: kacho-iam-server-tls
+      key: ca.crt
+      mountPath: /etc/api-gateway/hydra-jwks-ca
     issuer: "https://hydra.api.kacho.cloud"
     # ─── Revocation path (ADMIN API — not the public issuer above) ──────────
     # A verified signature proves who minted the token and when it lapses. It
