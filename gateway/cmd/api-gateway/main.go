@@ -183,9 +183,16 @@ func main() {
 	// the gateway already has. Left unset, both controls are simply off: no
 	// request is ever checked for revocation, and signing out does not end the
 	// provider-side session. Refuse rather than run without them.
+	// AdminCAFile is part of what this guard JUDGES: it refuses the start when the
+	// hop is https and no anchor is pinned. Omitting it here does not weaken the
+	// guard, it makes it unsatisfiable — the field stays at its zero value, so the
+	// answer is "nothing pinned" whatever the operator configured, and the refusal
+	// names the knob that is already set. Locked by
+	// admin_hop_wiring_test.go::TestCompositionRoot_FeedsTheTrustAnchorToTheRevocationGuard.
 	if rvErr := validateProductionRevocationConfig(cfg.AppEnv, RevocationConfig{
 		IntrospectionURL: cfg.ResolvedHydraIntrospectionURL(),
 		AdminURL:         cfg.ResolvedHydraAdminURL(),
+		AdminCAFile:      cfg.HydraAdminCAFile,
 	}); rvErr != nil {
 		log.Fatalf("revocation config startup-validation: %v", rvErr)
 	}

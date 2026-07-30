@@ -69,3 +69,31 @@ func TestCompositionRoot_RefusesToStartOnAnUnusableTrustAnchor(t *testing.T) {
 		"an unusable trust anchor must stop the process at the composition root. Carrying on would "+
 			"leave the operator believing the hop is verified against the internal CA while it is not")
 }
+
+// The guard that refuses the start must be shown the value it judges.
+//
+// This one cost a production rollout. `validateProductionRevocationConfig`
+// decides "the admin hop is https, so a trust anchor MUST be pinned" by reading
+// RevocationConfig.AdminCAFile — and the composition root built that struct
+// from the two URLs only, leaving AdminCAFile at its zero value. So in a
+// production-class environment the guard concluded "no anchor pinned" NO MATTER
+// WHAT was configured: the chart set KACHO_HYDRA_ADMIN_CA_FILE, the secret was
+// mounted, the file was there, envconfig had parsed it into cfg — and the
+// process still refused to start, naming the very knob that was set.
+//
+// Nothing in the suite could see it. The validator's own unit tests pass the
+// field directly, so they prove the FUNCTION and say nothing about the CALL;
+// the wiring tests above cover the client, which is a different consumer of the
+// same knob. An unsatisfiable boot-guard is worse than a missing one: it fails
+// closed on a correct configuration, and the failure text sends the reader to
+// fix something that is already right.
+func TestCompositionRoot_FeedsTheTrustAnchorToTheRevocationGuard(t *testing.T) {
+	src := compositionRoot(t)
+	require.Regexp(t,
+		regexp.MustCompile(`RevocationConfig\{(?s:[^}]*?)AdminCAFile:\s*cfg\.HydraAdminCAFile`),
+		src,
+		"the revocation startup-guard must be given cfg.HydraAdminCAFile. It REFUSES THE START "+
+			"when the admin hop is https and this field is empty, so a call site that omits it "+
+			"makes the guard unsatisfiable: no configuration can pass it, and the error names "+
+			"the knob the operator has already set")
+}
