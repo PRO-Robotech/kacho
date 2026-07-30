@@ -28,6 +28,8 @@ const (
 	UserService_Invite_FullMethodName         = "/kacho.cloud.iam.v1.UserService/Invite"
 	UserService_Update_FullMethodName         = "/kacho.cloud.iam.v1.UserService/Update"
 	UserService_Delete_FullMethodName         = "/kacho.cloud.iam.v1.UserService/Delete"
+	UserService_Block_FullMethodName          = "/kacho.cloud.iam.v1.UserService/Block"
+	UserService_Unblock_FullMethodName        = "/kacho.cloud.iam.v1.UserService/Unblock"
 	UserService_ListOperations_FullMethodName = "/kacho.cloud.iam.v1.UserService/ListOperations"
 )
 
@@ -60,6 +62,75 @@ type UserServiceClient interface {
 	Update(ctx context.Context, in *UpdateUserRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Deletes the specified user.
 	Delete(ctx context.Context, in *DeleteUserRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// Blocks the specified User membership: it may no longer authenticate into
+	// the Account that row belongs to.
+	//
+	// WHAT IT IS SCOPED TO, because getting this wrong is a cross-tenant outage.
+	// A `users` row is a MEMBERSHIP — one pair of (identity, Account) — and one
+	// identity holds one row per Account it belongs to. This call blocks ONE such
+	// row. The identity keeps working wherever else it is active: token issuance
+	// walks the membership set and serves the first row that may authenticate, and
+	// refuses only when NONE can. A block therefore belongs to the Account that
+	// issued it, and the admin of Account A cannot switch a person off in
+	// Account B.
+	//
+	// WHY AN ACTION AND NOT A FIELD ON Update. This is the reason the state was
+	// never ADDED to UpdateUserRequest, not a description of a bug that was there:
+	// an empty `update_mask` means full-object replacement by platform convention,
+	// and a proto3 enum cannot say "not sent", so the obvious design — one more
+	// maskable field — would let a client block a membership by simply not filling
+	// it in. The state that decides whether a person still has access must not be
+	// reachable by forgetting something. It is also an EVENT ("this membership was
+	// suspended"), not the editing of an attribute, and the audit trail has to be
+	// able to say so.
+	//
+	// Step-up (acr=2) — this is a security-posture change, not routine lifecycle,
+	// and it is classified with the credential surface for the same reason
+	// ServiceAccountService/Disable is: it decides whether a principal may
+	// authenticate at all. The floor is INTERACTIVE-ONLY: a service-account
+	// principal is exempt from it by platform rule, so for machine callers this
+	// RPC costs exactly what Update costs. It raises assurance for people; it is
+	// not a second authorization gate.
+	//
+	// WHO may call it is `v_update` on `iam_user` — the same relation Update
+	// carries, on the same object, which resolves to the admin of the owning
+	// Account (`super_admin: admin from account`) and, by cascade, to the cloud
+	// admin. Deliberate: whoever may rename a membership may also suspend it, and
+	// by the editor projection may already delete it outright. A relation of its
+	// own would leave every existing operator unable to use the control until
+	// someone re-granted them — the wrong failure mode for something reached for
+	// during an incident. An ordinary member does NOT hold it on their own row
+	// (`subject` feeds `viewer`, not `v_update`), which is what keeps self-lifting
+	// impossible.
+	//
+	// IDEMPOTENT: the argument is the STATE, not a transition. Blocking a
+	// membership that is already blocked succeeds and reports it blocked — the
+	// safe direction of this control must never be the one that fails on retry.
+	//
+	// A PENDING invitation cannot be blocked: it carries no external identity yet
+	// (DB CHECK `users_invite_status_consistency`), so there is nothing to refuse
+	// — FAILED_PRECONDITION. Revoke the invitation instead.
+	//
+	// Already-issued access tokens are NOT invalidated by this call; they expire
+	// on their own schedule. What stops immediately is every path that mints a
+	// NEW one (token hook, refresh hook, personal-token issuance, subject
+	// resolution at the edge).
+	Block(ctx context.Context, in *BlockUserRequest, opts ...grpc.CallOption) (*operation.Operation, error)
+	// Unblocks the specified User membership: it may authenticate into that
+	// Account again.
+	//
+	// The counterpart of Block, and it exists for the same reason the state is a
+	// column rather than a deletion — a suspended membership has to be able to
+	// come back. A one-way control is one an operator will not reach for, and a
+	// person with no administrative way back is locked out permanently: self-serve
+	// password recovery deliberately does NOT lift a block (it proves ownership of
+	// a mailbox, which is not what the administrator called into question).
+	//
+	// Same shape throughout: action not field, Operation, step-up, idempotent
+	// (unblocking an active membership succeeds). A PENDING invitation is refused
+	// here too — turning an unconfirmed invitee into an active member is
+	// activation-on-first-login, a different path with a different subject.
+	Unblock(ctx context.Context, in *UnblockUserRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	// Lists operations for the specified user.
 	ListOperations(ctx context.Context, in *ListUserOperationsRequest, opts ...grpc.CallOption) (*ListUserOperationsResponse, error)
 }
@@ -122,6 +193,26 @@ func (c *userServiceClient) Delete(ctx context.Context, in *DeleteUserRequest, o
 	return out, nil
 }
 
+func (c *userServiceClient) Block(ctx context.Context, in *BlockUserRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(operation.Operation)
+	err := c.cc.Invoke(ctx, UserService_Block_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) Unblock(ctx context.Context, in *UnblockUserRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(operation.Operation)
+	err := c.cc.Invoke(ctx, UserService_Unblock_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *userServiceClient) ListOperations(ctx context.Context, in *ListUserOperationsRequest, opts ...grpc.CallOption) (*ListUserOperationsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListUserOperationsResponse)
@@ -161,6 +252,75 @@ type UserServiceServer interface {
 	Update(context.Context, *UpdateUserRequest) (*operation.Operation, error)
 	// Deletes the specified user.
 	Delete(context.Context, *DeleteUserRequest) (*operation.Operation, error)
+	// Blocks the specified User membership: it may no longer authenticate into
+	// the Account that row belongs to.
+	//
+	// WHAT IT IS SCOPED TO, because getting this wrong is a cross-tenant outage.
+	// A `users` row is a MEMBERSHIP — one pair of (identity, Account) — and one
+	// identity holds one row per Account it belongs to. This call blocks ONE such
+	// row. The identity keeps working wherever else it is active: token issuance
+	// walks the membership set and serves the first row that may authenticate, and
+	// refuses only when NONE can. A block therefore belongs to the Account that
+	// issued it, and the admin of Account A cannot switch a person off in
+	// Account B.
+	//
+	// WHY AN ACTION AND NOT A FIELD ON Update. This is the reason the state was
+	// never ADDED to UpdateUserRequest, not a description of a bug that was there:
+	// an empty `update_mask` means full-object replacement by platform convention,
+	// and a proto3 enum cannot say "not sent", so the obvious design — one more
+	// maskable field — would let a client block a membership by simply not filling
+	// it in. The state that decides whether a person still has access must not be
+	// reachable by forgetting something. It is also an EVENT ("this membership was
+	// suspended"), not the editing of an attribute, and the audit trail has to be
+	// able to say so.
+	//
+	// Step-up (acr=2) — this is a security-posture change, not routine lifecycle,
+	// and it is classified with the credential surface for the same reason
+	// ServiceAccountService/Disable is: it decides whether a principal may
+	// authenticate at all. The floor is INTERACTIVE-ONLY: a service-account
+	// principal is exempt from it by platform rule, so for machine callers this
+	// RPC costs exactly what Update costs. It raises assurance for people; it is
+	// not a second authorization gate.
+	//
+	// WHO may call it is `v_update` on `iam_user` — the same relation Update
+	// carries, on the same object, which resolves to the admin of the owning
+	// Account (`super_admin: admin from account`) and, by cascade, to the cloud
+	// admin. Deliberate: whoever may rename a membership may also suspend it, and
+	// by the editor projection may already delete it outright. A relation of its
+	// own would leave every existing operator unable to use the control until
+	// someone re-granted them — the wrong failure mode for something reached for
+	// during an incident. An ordinary member does NOT hold it on their own row
+	// (`subject` feeds `viewer`, not `v_update`), which is what keeps self-lifting
+	// impossible.
+	//
+	// IDEMPOTENT: the argument is the STATE, not a transition. Blocking a
+	// membership that is already blocked succeeds and reports it blocked — the
+	// safe direction of this control must never be the one that fails on retry.
+	//
+	// A PENDING invitation cannot be blocked: it carries no external identity yet
+	// (DB CHECK `users_invite_status_consistency`), so there is nothing to refuse
+	// — FAILED_PRECONDITION. Revoke the invitation instead.
+	//
+	// Already-issued access tokens are NOT invalidated by this call; they expire
+	// on their own schedule. What stops immediately is every path that mints a
+	// NEW one (token hook, refresh hook, personal-token issuance, subject
+	// resolution at the edge).
+	Block(context.Context, *BlockUserRequest) (*operation.Operation, error)
+	// Unblocks the specified User membership: it may authenticate into that
+	// Account again.
+	//
+	// The counterpart of Block, and it exists for the same reason the state is a
+	// column rather than a deletion — a suspended membership has to be able to
+	// come back. A one-way control is one an operator will not reach for, and a
+	// person with no administrative way back is locked out permanently: self-serve
+	// password recovery deliberately does NOT lift a block (it proves ownership of
+	// a mailbox, which is not what the administrator called into question).
+	//
+	// Same shape throughout: action not field, Operation, step-up, idempotent
+	// (unblocking an active membership succeeds). A PENDING invitation is refused
+	// here too — turning an unconfirmed invitee into an active member is
+	// activation-on-first-login, a different path with a different subject.
+	Unblock(context.Context, *UnblockUserRequest) (*operation.Operation, error)
 	// Lists operations for the specified user.
 	ListOperations(context.Context, *ListUserOperationsRequest) (*ListUserOperationsResponse, error)
 	mustEmbedUnimplementedUserServiceServer()
@@ -187,6 +347,12 @@ func (UnimplementedUserServiceServer) Update(context.Context, *UpdateUserRequest
 }
 func (UnimplementedUserServiceServer) Delete(context.Context, *DeleteUserRequest) (*operation.Operation, error) {
 	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedUserServiceServer) Block(context.Context, *BlockUserRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method Block not implemented")
+}
+func (UnimplementedUserServiceServer) Unblock(context.Context, *UnblockUserRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method Unblock not implemented")
 }
 func (UnimplementedUserServiceServer) ListOperations(context.Context, *ListUserOperationsRequest) (*ListUserOperationsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListOperations not implemented")
@@ -302,6 +468,42 @@ func _UserService_Delete_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _UserService_Block_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BlockUserRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).Block(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_Block_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).Block(ctx, req.(*BlockUserRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_Unblock_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UnblockUserRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).Unblock(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_Unblock_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).Unblock(ctx, req.(*UnblockUserRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _UserService_ListOperations_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListUserOperationsRequest)
 	if err := dec(in); err != nil {
@@ -346,6 +548,14 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _UserService_Delete_Handler,
+		},
+		{
+			MethodName: "Block",
+			Handler:    _UserService_Block_Handler,
+		},
+		{
+			MethodName: "Unblock",
+			Handler:    _UserService_Unblock_Handler,
 		},
 		{
 			MethodName: "ListOperations",

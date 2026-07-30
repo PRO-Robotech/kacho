@@ -42,7 +42,18 @@ message User {
   // invite-status.
   // PENDING — invited, еще не login'нулся.
   // ACTIVE  — login'нулся через Kratos, external_id заполнен.
-  // BLOCKED — admin disabled access.
+  // BLOCKED — участие в ЭТОМ Account'е запрещено администратором
+  //   (`UserService.Block`; снимается `UserService.Unblock`).
+  //
+  // Состояние принадлежит СТРОКЕ ЧЛЕНСТВА, а не человеку: одна личность держит
+  // по строке на каждый Account, и запрет в одном Account'е не отключает её в
+  // остальных. Выдача токена перебирает набор членств и обслуживает первое
+  // аутентифицирующееся; отказ приходит, только когда ни одно не может.
+  //
+  // НЕ ИЗМЕНЯЕТСЯ через Update: у пустой `update_mask` семантика полной замены
+  // объекта, а enum в proto3 неотличим от незаданного — клиент, не приславший
+  // поле, запретил бы участие каждому, кого коснулся. Поэтому состояние меняют
+  // ДЕЙСТВИЯ, у которых маски нет.
   InviteStatus invite_status = 7;
 
   // User.id того, кто пригласил (nullable для self-signup bootstrap-row).
@@ -89,6 +100,24 @@ message UpdateUserMetadata {
   // `user_id`. Read by exact field name `account_id` by corelib. May be empty
   // for account-less users (written as SQL NULL — excluded from the
   // account-scoped list).
+  string account_id = 2;
+}
+
+message BlockUserMetadata {
+  // ID of the User membership row that is being blocked.
+  string user_id = 1;
+
+  // ID of the owning Account (denormalized; non-first, see UpdateUserMetadata).
+  // Never empty here: a membership row always has an account, and the block is
+  // an act OF that account.
+  string account_id = 2;
+}
+
+message UnblockUserMetadata {
+  // ID of the User membership row that is being unblocked.
+  string user_id = 1;
+
+  // ID of the owning Account (denormalized; non-first, see UpdateUserMetadata).
   string account_id = 2;
 }
 

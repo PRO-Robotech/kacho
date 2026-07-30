@@ -388,3 +388,25 @@ func TestGateway_D10_OldRMOrganizationServiceBlocked(t *testing.T) {
 		})
 	}
 }
+
+// TestAllowlist_UserBlockUnblock — административный запрет участию проходит
+// директора, и проходит СИММЕТРИЧНО.
+//
+// Отдельная проба, потому что молчаливый исход дороже громкого: метода нет в
+// списке → директор отвергает его ДО каталога и таблицы маршрутов, то есть
+// каталог полон, маршрут отрендерен, а RPC недостижим. И односторонний
+// недосмотр здесь хуже двустороннего: заблокировать смогли, снять — нет.
+func TestAllowlist_UserBlockUnblock(t *testing.T) {
+	for _, m := range []string{
+		"/kacho.cloud.iam.v1.UserService/Block",
+		"/kacho.cloud.iam.v1.UserService/Unblock",
+	} {
+		if !allowlist.IsAllowed(m) {
+			t.Errorf("%s должен быть в allowlist: без записи gRPC-директор отвергает метод "+
+				"раньше каталога, и действие недостижимо при полном каталоге", m)
+		}
+		if allowlist.HasInternalSuffix(m) {
+			t.Errorf("%s — публичный RPC, он не должен считаться Internal*", m)
+		}
+	}
+}

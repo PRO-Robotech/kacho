@@ -105,7 +105,19 @@ type User struct {
 	// invite-status.
 	// PENDING — invited, еще не login'нулся.
 	// ACTIVE  — login'нулся через Kratos, external_id заполнен.
-	// BLOCKED — admin disabled access.
+	// BLOCKED — участие в ЭТОМ Account'е запрещено администратором
+	//
+	//	(`UserService.Block`; снимается `UserService.Unblock`).
+	//
+	// Состояние принадлежит СТРОКЕ ЧЛЕНСТВА, а не человеку: одна личность держит
+	// по строке на каждый Account, и запрет в одном Account'е не отключает её в
+	// остальных. Выдача токена перебирает набор членств и обслуживает первое
+	// аутентифицирующееся; отказ приходит, только когда ни одно не может.
+	//
+	// НЕ ИЗМЕНЯЕТСЯ через Update: у пустой `update_mask` семантика полной замены
+	// объекта, а enum в proto3 неотличим от незаданного — клиент, не приславший
+	// поле, запретил бы участие каждому, кого коснулся. Поэтому состояние меняют
+	// ДЕЙСТВИЯ, у которых маски нет.
 	InviteStatus User_InviteStatus `protobuf:"varint,7,opt,name=invite_status,json=inviteStatus,proto3,enum=kacho.cloud.iam.v1.User_InviteStatus" json:"invite_status,omitempty"`
 	// User.id того, кто пригласил (nullable для self-signup bootstrap-row).
 	InvitedBy string `protobuf:"bytes,8,opt,name=invited_by,json=invitedBy,proto3" json:"invited_by,omitempty"`
@@ -333,6 +345,116 @@ func (x *UpdateUserMetadata) GetAccountId() string {
 	return ""
 }
 
+type BlockUserMetadata struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the User membership row that is being blocked.
+	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// ID of the owning Account (denormalized; non-first, see UpdateUserMetadata).
+	// Never empty here: a membership row always has an account, and the block is
+	// an act OF that account.
+	AccountId     string `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BlockUserMetadata) Reset() {
+	*x = BlockUserMetadata{}
+	mi := &file_kacho_cloud_iam_v1_user_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BlockUserMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BlockUserMetadata) ProtoMessage() {}
+
+func (x *BlockUserMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_user_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BlockUserMetadata.ProtoReflect.Descriptor instead.
+func (*BlockUserMetadata) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_user_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *BlockUserMetadata) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *BlockUserMetadata) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
+type UnblockUserMetadata struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the User membership row that is being unblocked.
+	UserId string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	// ID of the owning Account (denormalized; non-first, see UpdateUserMetadata).
+	AccountId     string `protobuf:"bytes,2,opt,name=account_id,json=accountId,proto3" json:"account_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnblockUserMetadata) Reset() {
+	*x = UnblockUserMetadata{}
+	mi := &file_kacho_cloud_iam_v1_user_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnblockUserMetadata) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnblockUserMetadata) ProtoMessage() {}
+
+func (x *UnblockUserMetadata) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_user_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnblockUserMetadata.ProtoReflect.Descriptor instead.
+func (*UnblockUserMetadata) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_user_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *UnblockUserMetadata) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *UnblockUserMetadata) GetAccountId() string {
+	if x != nil {
+		return x.AccountId
+	}
+	return ""
+}
+
 // Invite-flow.
 type InviteUserMetadata struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
@@ -347,7 +469,7 @@ type InviteUserMetadata struct {
 
 func (x *InviteUserMetadata) Reset() {
 	*x = InviteUserMetadata{}
-	mi := &file_kacho_cloud_iam_v1_user_proto_msgTypes[3]
+	mi := &file_kacho_cloud_iam_v1_user_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -359,7 +481,7 @@ func (x *InviteUserMetadata) String() string {
 func (*InviteUserMetadata) ProtoMessage() {}
 
 func (x *InviteUserMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_user_proto_msgTypes[3]
+	mi := &file_kacho_cloud_iam_v1_user_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -372,7 +494,7 @@ func (x *InviteUserMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use InviteUserMetadata.ProtoReflect.Descriptor instead.
 func (*InviteUserMetadata) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_user_proto_rawDescGZIP(), []int{3}
+	return file_kacho_cloud_iam_v1_user_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *InviteUserMetadata) GetUserId() string {
@@ -431,6 +553,14 @@ const file_kacho_cloud_iam_v1_user_proto_rawDesc = "" +
 	"\x12UpdateUserMetadata\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1d\n" +
 	"\n" +
+	"account_id\x18\x02 \x01(\tR\taccountId\"K\n" +
+	"\x11BlockUserMetadata\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1d\n" +
+	"\n" +
+	"account_id\x18\x02 \x01(\tR\taccountId\"M\n" +
+	"\x13UnblockUserMetadata\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1d\n" +
+	"\n" +
 	"account_id\x18\x02 \x01(\tR\taccountId\"r\n" +
 	"\x12InviteUserMetadata\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1d\n" +
@@ -451,20 +581,22 @@ func file_kacho_cloud_iam_v1_user_proto_rawDescGZIP() []byte {
 }
 
 var file_kacho_cloud_iam_v1_user_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_kacho_cloud_iam_v1_user_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_kacho_cloud_iam_v1_user_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_kacho_cloud_iam_v1_user_proto_goTypes = []any{
 	(User_InviteStatus)(0),        // 0: kacho.cloud.iam.v1.User.InviteStatus
 	(*User)(nil),                  // 1: kacho.cloud.iam.v1.User
 	(*DeleteUserMetadata)(nil),    // 2: kacho.cloud.iam.v1.DeleteUserMetadata
 	(*UpdateUserMetadata)(nil),    // 3: kacho.cloud.iam.v1.UpdateUserMetadata
-	(*InviteUserMetadata)(nil),    // 4: kacho.cloud.iam.v1.InviteUserMetadata
-	nil,                           // 5: kacho.cloud.iam.v1.User.LabelsEntry
-	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
+	(*BlockUserMetadata)(nil),     // 4: kacho.cloud.iam.v1.BlockUserMetadata
+	(*UnblockUserMetadata)(nil),   // 5: kacho.cloud.iam.v1.UnblockUserMetadata
+	(*InviteUserMetadata)(nil),    // 6: kacho.cloud.iam.v1.InviteUserMetadata
+	nil,                           // 7: kacho.cloud.iam.v1.User.LabelsEntry
+	(*timestamppb.Timestamp)(nil), // 8: google.protobuf.Timestamp
 }
 var file_kacho_cloud_iam_v1_user_proto_depIdxs = []int32{
-	6, // 0: kacho.cloud.iam.v1.User.created_at:type_name -> google.protobuf.Timestamp
+	8, // 0: kacho.cloud.iam.v1.User.created_at:type_name -> google.protobuf.Timestamp
 	0, // 1: kacho.cloud.iam.v1.User.invite_status:type_name -> kacho.cloud.iam.v1.User.InviteStatus
-	5, // 2: kacho.cloud.iam.v1.User.labels:type_name -> kacho.cloud.iam.v1.User.LabelsEntry
+	7, // 2: kacho.cloud.iam.v1.User.labels:type_name -> kacho.cloud.iam.v1.User.LabelsEntry
 	3, // [3:3] is the sub-list for method output_type
 	3, // [3:3] is the sub-list for method input_type
 	3, // [3:3] is the sub-list for extension type_name
@@ -483,7 +615,7 @@ func file_kacho_cloud_iam_v1_user_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_user_proto_rawDesc), len(file_kacho_cloud_iam_v1_user_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   5,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

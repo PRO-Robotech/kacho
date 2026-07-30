@@ -10,7 +10,7 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { Button, Cascader, Form, Input, Popconfirm, Select, Space, Table, Tag, Typography, Alert, Tooltip } from "antd";
-import { DeleteOutlined, UserAddOutlined, LinkOutlined } from "@ant-design/icons";
+import { DeleteOutlined, UserAddOutlined, LinkOutlined, StopOutlined, UnlockOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import type { ColumnsType } from "antd/es/table";
 import { iamApi, IAM, type User, type InviteStatus } from "@shared/api/iam";
@@ -21,6 +21,7 @@ import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/Page
 import { IamListShell, useTableScrollY } from "@/components/organisms/iam/IamListShell";
 import { useContext } from "@shared/lib/context-store";
 import { toast } from "@shared/lib/toast";
+import { useAuth } from "@shared/contexts/AuthContext";
 
 function InviteStatusTag({ status }: { status?: InviteStatus }) {
   if (!status) return <Typography.Text type="secondary">—</Typography.Text>;
@@ -28,9 +29,95 @@ function InviteStatusTag({ status }: { status?: InviteStatus }) {
   return <Tag color={color}>{status}</Tag>;
 }
 
+/**
+ * BlockToggle — построчное действие «запретить участие» / «вернуть участие».
+ *
+ * Действие ВЫБИРАЕТСЯ по текущему состоянию, а не показывается парой кнопок:
+ * состояние здесь — предмет, и предлагать «запретить» уже запрещённому значит
+ * предлагать вызов, который ничего не меняет.
+ *
+ * PENDING недоступен НАМЕРЕННО и с названной причиной. Backend такой вызов
+ * отвергает (у неподтверждённого приглашения нет внешней личности, и переводить
+ * его в действующее — это активация при первом входе, другой путь), поэтому
+ * живая кнопка здесь обещала бы возможность, которой нет. Приглашение отзывают,
+ * а не разблокируют.
+ *
+ * САМОБЛОКИРОВКА не запрещается, но предупреждение говорит ПРЯМО, чем она
+ * кончится: снять запрет с себя нельзя — самостоятельного пути снятия не
+ * существует по построению (восстановление пароля блокировку не снимает), и
+ * вернуть доступ придётся администратору аккаунта или администратору облака.
+ * Промолчать об этом значило бы дать оператору выключить себя одним нажатием и
+ * узнать цену потом.
+ */
+function BlockToggle({
+  row,
+  selfUserId,
+  onBlock,
+  onUnblock,
+}: {
+  row: User;
+  selfUserId?: string;
+  onBlock: (id: string) => Promise<unknown>;
+  onUnblock: (id: string) => Promise<unknown>;
+}) {
+  const status = row.invite_status;
+  const who = row.email || row.id;
+
+  if (status === "PENDING") {
+    return (
+      <Tooltip title="Приглашение ещё не подтверждено — запрещать нечего. Отзовите приглашение.">
+        <Button size="small" type="text" disabled icon={<StopOutlined />} />
+      </Tooltip>
+    );
+  }
+
+  if (status === "BLOCKED") {
+    return (
+      <Popconfirm
+        title="Вернуть участие?"
+        description={`Разрешить «${who}» снова входить в этот аккаунт.`}
+        okText="Вернуть"
+        cancelText="Отмена"
+        onConfirm={() => void onUnblock(row.id)}
+      >
+        <Tooltip title="Вернуть участие">
+          <Button size="small" type="text" icon={<UnlockOutlined />} />
+        </Tooltip>
+      </Popconfirm>
+    );
+  }
+
+  const isSelf = !!selfUserId && selfUserId === row.id;
+  return (
+    <Popconfirm
+      title={isSelf ? "Запретить участие СЕБЕ?" : "Запретить участие?"}
+      description={
+        isSelf
+          ? `Вы запрещаете участие себе («${who}»). Снять запрет самостоятельно будет НЕЛЬЗЯ: ` +
+            `восстановление пароля блокировку не снимает. Вернуть доступ сможет только ` +
+            `администратор аккаунта или администратор облака.`
+          : `«${who}» больше не сможет входить в этот аккаунт. Уже выданный токен доживёт свой срок; ` +
+            `новый не выдадут. Участие в других аккаунтах не затрагивается.`
+      }
+      okText={isSelf ? "Да, запретить себе" : "Запретить"}
+      okButtonProps={{ danger: true }}
+      cancelText="Отмена"
+      onConfirm={() => void onBlock(row.id)}
+    >
+      <Tooltip title="Запретить участие">
+        <Button size="small" type="text" danger icon={<StopOutlined />} />
+      </Tooltip>
+    </Popconfirm>
+  );
+}
+
 export function UsersPage() {
   const account = useContext((s) => s.account);
   const navigate = useNavigate();
+  // Своя строка членства — чтобы предупредить про самоблокировку до нажатия, а не
+  // после. `user_id` в /me и есть каноническая действующая строка вызывающего.
+  const { whoami } = useAuth();
+  const selfUserId = whoami?.user_id;
   const headerAction = useMemo(
     () => (
       <Tooltip title={account ? undefined : "Выберите Account вверху секции, чтобы пригласить пользователя"}>
@@ -63,6 +150,24 @@ export function UsersPage() {
     path: (b) => `${IAM.users}/${b as string}`,
     invalidateKeys: [["iam", "users", "list"]],
     successText: "User удалён",
+  });
+
+  // Запрет участию и его снятие — ДЕЙСТВИЯ (`:block` / `:unblock`), а не правка
+  // поля: у действия нет маски, поэтому «забыть поле» и выключить всех, кого
+  // коснулся, здесь невозможно. Права решает backend (`v_update` на этом
+  // пользователе); консоль ничего не предугадывает — при отказе прилетит 403,
+  // и его покажет общий механизм ошибок операции.
+  const blockMut = useIamMutation({
+    method: "ACTION",
+    path: (b) => `${IAM.users}/${b as string}:block`,
+    invalidateKeys: [["iam", "users", "list"]],
+    successText: "Участие запрещено",
+  });
+  const unblockMut = useIamMutation({
+    method: "ACTION",
+    path: (b) => `${IAM.users}/${b as string}:unblock`,
+    invalidateKeys: [["iam", "users", "list"]],
+    successText: "Участие возвращено",
   });
 
   const columns: ColumnsType<User> = [
@@ -107,18 +212,21 @@ export function UsersPage() {
     {
       title: "",
       key: "actions",
-      width: 60,
+      width: 96,
       render: (_v, row) => (
-        <Popconfirm
-          title="Удалить User?"
-          description={`Удалить «${row.email || row.id}»? Owned Account/AccessBinding — см. backend rules.`}
-          okText="Удалить"
-          okButtonProps={{ danger: true }}
-          cancelText="Отмена"
-          onConfirm={() => void del.run(row.id)}
-        >
-          <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-        </Popconfirm>
+        <Space size={0}>
+          <BlockToggle row={row} selfUserId={selfUserId} onBlock={blockMut.run} onUnblock={unblockMut.run} />
+          <Popconfirm
+            title="Удалить User?"
+            description={`Удалить «${row.email || row.id}»? Owned Account/AccessBinding — см. backend rules.`}
+            okText="Удалить"
+            okButtonProps={{ danger: true }}
+            cancelText="Отмена"
+            onConfirm={() => void del.run(row.id)}
+          >
+            <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
