@@ -523,30 +523,28 @@ CASES.extend(list_total_size_check_block("SG", "/vpc/v1/securityGroups"))
 #
 # Что делает продукт (services/vpc/internal/apps/kacho/api/securitygroup):
 #   * `validateSGRule` вызывается СИНХРОННО, до создания операции, и проверяет
-#     направление, описание, метки и CIDR-блоки → отказ виден кодом 400;
+#     направление, диапазон портов, протокол, описание, метки и CIDR-блоки →
+#     отказ виден кодом 400 и называет поле;
 #   * неизвестное значение перечисления направления не доходит даже до сервиса:
 #     его отвергает разбор тела на краю — тоже 400;
-#   * диапазон портов и имя протокола не проверяются НИГДЕ: ни в use-case, ни в
-#     доменной модели, ни ограничением БД (правила лежат одним JSONB-полем).
-#     Правило с портом вне диапазона или с несуществующим протоколом сохраняется
-#     как есть.
+#   * граница порта вне `0-65535` (кроме `-1` = «любой», который обязан стоять на
+#     обеих границах сразу), перевёрнутый диапазон, имя протокола вне реестра
+#     IANA и номер протокола вне `0-255` отвергаются здесь же.
 #
-# Последнее — дефект продукта, а не свойство контракта, поэтому три кейса ниже
-# заявляют отказ и остаются КРАСНЫМИ до фикса. Подгонять утверждение под текущее
-# поведение нельзя: тогда дефект стал бы задокументированным контрактом. Сам фикс
-# — продуктовое решение (какие имена протоколов считать законными, как относиться
-# к протоколам без портов), он идёт своим порядком, а не побочным эффектом правки
-# тестов: https://github.com/PRO-Robotech/kacho/issues/103. Декларация —
-# docs/RESULTS.md, «Known failing tests — product bugs».
-for case_id, rule, expect_ok in [
-    # verifies https://github.com/PRO-Robotech/kacho/issues/103 — диапазон портов не проверяется (RED)
-    ("SG-URL-VAL-PORT-NEG", {"fromPort": -2, "toPort": 22}, False),
-    # verifies https://github.com/PRO-Robotech/kacho/issues/103 — верхняя граница порта не проверяется (RED)
-    ("SG-URL-VAL-PORT-OVER-65535", {"fromPort": 65536, "toPort": 65536}, False),
-    ("SG-URL-VAL-PORT-ANY-MINUS-1", {"fromPort": -1, "toPort": -1}, True),
-    ("SG-URL-VAL-DIRECTION-UNKNOWN", {"fromPort": 80, "toPort": 80, "direction": "DIAGONAL"}, False),
-    # verifies https://github.com/PRO-Robotech/kacho/issues/103 — имя протокола не проверяется (RED)
-    ("SG-URL-VAL-PROTOCOL-UNKNOWN", {"fromPort": 80, "toPort": 80, "protocolName": "klingon"}, False),
+# До 2026-07-31 последняя строка была неверна: порты и протокол не проверялись
+# нигде, и три кейса ниже стояли красными как заявленный дефект продукта
+# (kacho#103). Замер в боевой посадке подтвердил их живьём, дефект закрыт,
+# декларация в docs/RESULTS.md снята вместе с предметом.
+# Отрицательный кейс, у которого отказ ЕСТЬ, но поле не названо, оставляет
+# вызывающего с «что-то не так» — поэтому там, где поле известно, кейс требует
+# его дословно (`names_field`). У направления поля нет: тело отвергает разбор на
+# краю, до сервиса запрос не доходит, и придумывать ему имя было бы враньём.
+for case_id, rule, expect_ok, names_field in [
+    ("SG-URL-VAL-PORT-NEG", {"fromPort": -2, "toPort": 22}, False, "from_port"),
+    ("SG-URL-VAL-PORT-OVER-65535", {"fromPort": 65536, "toPort": 65536}, False, "from_port"),
+    ("SG-URL-VAL-PORT-ANY-MINUS-1", {"fromPort": -1, "toPort": -1}, True, None),
+    ("SG-URL-VAL-DIRECTION-UNKNOWN", {"fromPort": 80, "toPort": 80, "direction": "DIAGONAL"}, False, None),
+    ("SG-URL-VAL-PROTOCOL-UNKNOWN", {"fromPort": 80, "toPort": 80, "protocolName": "klingon"}, False, "protocol_name"),
 ]:
     rule_full = {"description": "test", "direction": rule.pop("direction", "INGRESS"),
                  "ports": {"fromPort": rule["fromPort"], "toPort": rule["toPort"]},
@@ -574,6 +572,8 @@ for case_id, rule, expect_ok in [
                          [*assert_status(200), *save_from_response("j.id", "opId")]
                          if expect_ok else
                          [*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT")]
+                         + ([f"pm.test('refusal names {names_field}', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('{names_field}'));"]
+                            if names_field else [])
                      )),
                 retry_on=(403,)),
         ] + ([poll_operation_until_done()] if expect_ok else []) + [

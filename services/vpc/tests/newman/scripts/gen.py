@@ -1236,6 +1236,20 @@ def subnet_cidr_expand_shrink_pack():
         title="AddCidrBlocks с CIDR пересекающимся с existing prefix → FailedPrecondition",
         classes=["NEG", "CONF"], priority="P0",
         steps=[
+            # Кейс СОЗДАЁТ пересечение сам. Прежде он добавлял 10.180.10.0/25 и
+            # ссылался в комментарии на блок 10.180.10.0/24, «уже добавленный»
+            # соседним кейсом — но каждый кейс набора обёрнут в собственную
+            # сцену (`_subnet_cidr_setup_teardown`: своя сеть, своя подсеть с
+            # единственным primary 10.180.0.0/24, свой teardown), поэтому
+            # накопления между кейсами нет и никогда не было. Пересекаться было
+            # не с чем: /25 в десятом октете и primary в нулевом не пересекаются,
+            # продукт принимал добавление совершенно правильно, а утверждение
+            # «отказ» краснело на предпосылке без производителя.
+            Step(name="add-precondition", method="POST",
+                 path="/vpc/v1/subnets/{{addedSubId}}:add-cidr-blocks",
+                 body={"ipv4CidrBlocks": ["10.180.10.0/24"]},
+                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+            poll_operation_until_done(),
             # Работа идёт синхронно внутри вызова (operations.RunSync), отказ
             # записывается в САМУ операцию, и она возвращается уже завершённой.
             # Поэтому исход один: 200 с операцией, несущей ошибку.
@@ -1245,7 +1259,7 @@ def subnet_cidr_expand_shrink_pack():
             # при отсутствии отказа она проходила вхолостую.
             Step(name="add-overlap", method="POST",
                  path="/vpc/v1/subnets/{{addedSubId}}:add-cidr-blocks",
-                 body={"ipv4CidrBlocks": ["10.180.10.0/25"]},  # подсеть 10.180.10.0/24 уже добавлен
+                 body={"ipv4CidrBlocks": ["10.180.10.0/25"]},  # ⊂ 10.180.10.0/24, добавленного шагом выше
                  test_script=[
                      *assert_status(200),
                      "const j = pm.response.json();",
@@ -1253,6 +1267,13 @@ def subnet_cidr_expand_shrink_pack():
                      "pm.test('overlapping CIDR refused (FailedPrecondition)', () => pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(9));",
                      "pm.test('refusal names the overlap', () => pm.expect((j.error && j.error.message) || '').to.match(/overlap/i));",
                  ]),
+            # Отказ обязан быть бесследным: набор блоков подсети остаётся тем,
+            # каким был до отвергнутого добавления.
+            Step(name="verify-not-added", method="GET", path="/vpc/v1/subnets/{{addedSubId}}",
+                 test_script=[*assert_status(200),
+                              "const c = " + SUBNET_V4_CIDRS + ";",
+                              "pm.test('rejected block not stored', () => pm.expect(c).to.not.include('10.180.10.0/25'));",
+                              "pm.test('existing block intact', () => pm.expect(c).to.include('10.180.10.0/24'));"]),
         ],
     ))
 

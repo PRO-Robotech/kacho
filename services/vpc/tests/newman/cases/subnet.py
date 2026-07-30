@@ -1252,9 +1252,13 @@ for c in required_fields_matrix("SUB", "/vpc/v1/subnets",
 CASES.extend(immutable_fields_matrix("SUB", "/vpc/v1/subnets",
     ["project_id", "network_id", "zone_id", "v4_cidr_blocks", "v6_cidr_blocks"]))
 
-# === Subnet CIDR expand/shrink pack — обернут в setup-сцену ===
-# Создаем один Subnet с primary CIDR 10.180.0.0/24, accumulate 4 cidr через add,
-# потом гоняем 8 кейсов remove/add/overlap/roundtrip.
+# === Subnet CIDR expand/shrink pack — каждый кейс в СВОЕЙ сцене ===
+# Обёртка применяется к КАЖДОМУ кейсу набора: своя сеть, своя подсеть с
+# единственным primary CIDR 10.180.0.0/24, свой teardown. Накопления блоков
+# между кейсами нет — кейс, которому нужно предшествующее состояние, создаёт его
+# сам (см. SUB-ACB-NEG-OVERLAP-SELF). Прежняя редакция этой строки обещала
+# обратное («накапливаем 4 cidr, потом гоняем 8 кейсов»), и на неё опиралась
+# проверка пересечения, у предпосылки которой не было производителя.
 def _subnet_cidr_setup_teardown(case):
     return Case(
         id=case.id, title=case.title, classes=case.classes, priority=case.priority,

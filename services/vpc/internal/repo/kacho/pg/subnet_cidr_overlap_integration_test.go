@@ -362,3 +362,70 @@ func seedNetworkSubnetInExisting(t *testing.T, ctx context.Context, r kachocore.
 	require.NoError(t, ws.Commit())
 	return netID, created.ID
 }
+
+// TestIntegration_SecondaryCidrOverlap_SameSubnet_Rejected — пересечение блоков
+// ВНУТРИ ОДНОЙ подсети отвергается тем же declarative-инвариантом.
+//
+// Замер в боевой посадке (2026-07-30) утверждал обратное — но кейс, который это
+// «показал», добавлял блок, не пересекавшийся ни с чем: его предпосылку должен
+// был создать соседний кейс, а тот работает в собственной сцене. Здесь
+// предпосылка создаётся явно, и обход use-case'а намеренный: `SetCidrBlocks`
+// вызывается напрямую с уже пересекающимся набором, поэтому software-проверка
+// merged-набора (`checkCIDRDisjoint`, под row-lock подсети) в кадр не попадает и
+// отвечает ТОЛЬКО EXCLUDE gist. Без него ban #10 держался бы на software-guard'е.
+func TestIntegration_SecondaryCidrOverlap_SameSubnet_Rejected(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	pool, err := coredb.NewPool(ctx, setupTestDB(t))
+	require.NoError(t, err)
+	defer pool.Close()
+	r := kachopg.New(pool, nil)
+	defer r.Close()
+
+	_, sub := seedNetworkSubnet(t, ctx, r, "proj-sec-self", "net-sec-self", "sub-1", []string{"10.180.0.0/24"})
+	require.NoError(t, addSecondaryCidr(t, ctx, r, sub, []string{"10.180.10.0/24"}, nil))
+
+	// 10.180.10.0/25 ⊂ 10.180.10.0/24 — обе строки принадлежат ЭТОЙ подсети.
+	w, err := r.Writer(ctx)
+	require.NoError(t, err)
+	defer w.Abort()
+	_, err = w.Subnets().SetCidrBlocks(ctx, sub,
+		[]string{"10.180.0.0/24", "10.180.10.0/24", "10.180.10.0/25"}, nil)
+	if err == nil {
+		err = w.Commit()
+	}
+	require.Error(t, err, "intra-subnet overlap must be rejected on DB-level")
+	assert.True(t, errors.Is(err, repo.ErrFailedPrecondition), "want ErrFailedPrecondition, got %v", err)
+	assert.Contains(t, err.Error(), "Subnet CIDRs can not overlap")
+
+	// Отказ бесследен: набор подсети остался прежним.
+	rd, err := r.Reader(ctx)
+	require.NoError(t, err)
+	defer func() { _ = rd.Close() }()
+	got, err := rd.Subnets().Get(ctx, sub)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"10.180.0.0/24", "10.180.10.0/24"}, got.V4CidrBlocks)
+}
+
+// TestIntegration_SecondaryCidrOverlap_SameSubnet_DisjointAccepted — контроль к
+// предыдущему: непересекающийся блок в той же подсети принимается. Без этой
+// пары предыдущий тест доказывал бы лишь «что-то отвергается», а не «отвергается
+// именно пересечение» — и краснел бы одинаково на ошибке в самом инварианте.
+// Здесь же воспроизведена ровно та величина, которую слал упавший e2e-кейс.
+func TestIntegration_SecondaryCidrOverlap_SameSubnet_DisjointAccepted(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	pool, err := coredb.NewPool(ctx, setupTestDB(t))
+	require.NoError(t, err)
+	defer pool.Close()
+	r := kachopg.New(pool, nil)
+	defer r.Close()
+
+	_, sub := seedNetworkSubnet(t, ctx, r, "proj-sec-selfok", "net-sec-selfok", "sub-1", []string{"10.180.0.0/24"})
+	require.NoError(t, addSecondaryCidr(t, ctx, r, sub, []string{"10.180.10.0/25"}, nil),
+		"10.180.10.0/25 does not overlap primary 10.180.0.0/24 and must be accepted")
+}
