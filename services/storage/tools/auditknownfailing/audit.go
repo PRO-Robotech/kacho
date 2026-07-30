@@ -162,6 +162,7 @@ func Audit(o Options, out io.Writer) (Report, error) {
 	rep.Annotations = annotations(caseText)
 
 	resultsPath := filepath.Join(root, "docs", "RESULTS.md")
+	// #nosec G304 -- гейт CI читает свой же документ отчёта; путь собран из корня дерева.
 	results, rerr := os.ReadFile(resultsPath)
 	if rerr != nil {
 		rep.Findings = append(rep.Findings, fmt.Sprintf(
@@ -199,6 +200,7 @@ func readCollections(dir string) (map[string]int, error) {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".postman_collection.json") {
 			continue
 		}
+		// #nosec G304 -- гейт CI читает свой же каталог коллекций; путь из обхода дерева.
 		raw, rerr := os.ReadFile(filepath.Join(dir, e.Name()))
 		if rerr != nil {
 			return out, fmt.Errorf("read %s: %v", e.Name(), rerr)
@@ -226,6 +228,7 @@ func readCases(dir string) (map[string]string, int, error) {
 			continue
 		}
 		path := filepath.Join(dir, e.Name())
+		// #nosec G304 -- гейт CI читает свой же каталог кейсов; путь из обхода дерева.
 		raw, rerr := os.ReadFile(path)
 		if rerr != nil {
 			return out, len(out), fmt.Errorf("read %s: %v", path, rerr)
@@ -498,6 +501,8 @@ func ghResolver(repo string) func(int) (IssueState, error) {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
+		// #nosec G204 -- аргументы фиксированы: номер приходит числом, слаг репозитория —
+		// из настроек прогона. Оболочки нет, склейки строк нет, подставить нечего.
 		cmd := exec.CommandContext(ctx, "gh", "issue", "view", strconv.Itoa(n),
 			"--repo", repo, "--json", "state", "-q", ".state")
 		raw, err := cmd.Output()

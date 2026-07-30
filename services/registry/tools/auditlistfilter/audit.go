@@ -779,6 +779,9 @@ func productionRefusalPinned(cmdDir string) bool {
 		if walkErr != nil || d.IsDir() || !strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
+		// #nosec G304,G122 -- гейт CI читает СВОЙ ЖЕ рабочий каталог: путь приходит из
+		// обхода дерева этого репозитория, а не из запроса. Правила видят обход и
+		// переменную в имени файла; иного входа у инструмента нет по построению.
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			return nil
