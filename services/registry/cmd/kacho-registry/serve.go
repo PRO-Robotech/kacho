@@ -318,7 +318,7 @@ func runServe(cfg config.Config) error {
 	}
 
 	// Публичный control-plane RegistryService на :9090.
-	registryv1.RegisterRegistryServiceServer(grpcSrv, handler.NewRegistryHandler(registryUC, listAuthz))
+	registryv1.RegisterRegistryServiceServer(grpcSrv, handler.NewRegistryHandler(registryUC, listAuthz, cfg.AuthZCacheTTL))
 	// Admin InternalRegistryService ТОЛЬКО на cluster-internal :9091.
 	registryv1.RegisterInternalRegistryServiceServer(internalSrv, handler.NewInternalRegistryHandler(registryUC))
 	// OperationService (LRO poll) на ОБОИХ листенерах: async-мутации идут на public

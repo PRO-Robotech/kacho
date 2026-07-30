@@ -312,7 +312,7 @@ func registryLevelOpH(t *testing.T, id, registryID, desc string) operations.Oper
 
 func newTestHandlerOps(ops operations.Repo, az Authorizer) *RegistryHandler {
 	uc := registry.New(stubRepo{}, stubRepo{}, stubCfg{}, &fakeZotH{}, stubIAM{}, stubGeo{}, stubRepo{}, ops, "registry.kacho.local")
-	return NewRegistryHandler(uc, az)
+	return NewRegistryHandler(uc, az, 0)
 }
 
 // REG-r8 — существование-oracle закрыт: namespace-viewer БЕЗ per-repo v_list на
@@ -398,7 +398,7 @@ func TestHandler_ListOperations_Breakglass_NilAuthorizer_AllVisible(t *testing.T
 
 func newTestHandler(zot registry.ZotClient, az Authorizer) *RegistryHandler {
 	uc := registry.New(stubRepo{}, stubRepo{}, stubCfg{}, zot, stubIAM{}, stubGeo{}, stubRepo{}, newMemOpsH(), "registry.kacho.local")
-	return NewRegistryHandler(uc, az)
+	return NewRegistryHandler(uc, az, 0)
 }
 
 type stubRepo struct{}

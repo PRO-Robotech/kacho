@@ -122,7 +122,7 @@ func newLifecycleHandler(t *testing.T) *RegistryHandler {
 		repositoryObjectRef(validReg, "durable"):   true,
 		repositoryObjectRef(validReg, "ephemeral"): true,
 	}}
-	return NewRegistryHandler(uc, az)
+	return NewRegistryHandler(uc, az, 0)
 }
 
 // Списочная выдача обязана нести ту же исчезаемость, что и поштучное чтение.

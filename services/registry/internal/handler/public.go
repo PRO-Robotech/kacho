@@ -13,6 +13,7 @@ package handler
 
 import (
 	"context"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -32,8 +33,12 @@ type RegistryHandler struct {
 
 // NewRegistryHandler конструирует RegistryHandler. authz — per-repo Check-порт для
 // ScopeFiltered RPC (ListRepositories/ListTags/DeleteTag); nil → breakglass (bypass).
-func NewRegistryHandler(uc *registry.UseCase, authz Authorizer) *RegistryHandler {
-	return &RegistryHandler{uc: uc, authz: newRepoAuthz(authz)}
+// verdictTTL — время жизни кеша ПОЛОЖИТЕЛЬНЫХ вердиктов на этом прямом пути
+// (см. verdict_cache.go): страница контрактно бывает до тысячи элементов, и каждый
+// шёл отдельным вопросом к общему хранилищу прав, тогда как у интерсептора такой кеш
+// есть с самого начала. Ноль → кеша нет (каждый вопрос живой).
+func NewRegistryHandler(uc *registry.UseCase, authz Authorizer, verdictTTL time.Duration) *RegistryHandler {
+	return &RegistryHandler{uc: uc, authz: newRepoAuthz(newCachedAuthorizer(authz, verdictTTL))}
 }
 
 // Get возвращает Registry по id (sync).
