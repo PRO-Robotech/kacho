@@ -21,10 +21,10 @@ whole `registry-repository` suite + repo cases in `registry-redesign`/`registry-
 
 | Collection | Failed (prod-mode) | Class |
 |---|---|---|
-| `registry-repository` | 128 | product bug #64 (repo-create/get/list 404) |
-| `registry-redesign` | 26 (repo cases only) | product bug #64 |
-| `registry-authz` | 4 (repo cases) + 1 | #64 + deny_reasons-detail leak (verify) |
-| `registry` | 2 (list-repos) | product bug #64 Defect B (route-shadow) |
+| `registry-repository` | 128 | product bug [`kacho#64`](https://github.com/PRO-Robotech/kacho/issues/64) (repo-create/get/list 404) |
+| `registry-redesign` | 26 (repo cases only) | product bug [`kacho#64`](https://github.com/PRO-Robotech/kacho/issues/64) |
+| `registry-authz` | 4 (repo cases) + 1 | [`kacho#64`](https://github.com/PRO-Robotech/kacho/issues/64) + deny_reasons-detail leak (verify) |
+| `registry` | 2 (list-repos) | product bug [`kacho#64`](https://github.com/PRO-Robotech/kacho/issues/64) Defect B (route-shadow) |
 
 - **Defect A** — object-scoped owner-tuples for registries don't materialize on the deployed
   stand (registry→iam owner-registration edge not observably active; startup `edges wired`
