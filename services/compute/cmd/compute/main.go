@@ -352,7 +352,7 @@ func runServe(cfg config.Config) error {
 		grpc.ChainStreamInterceptor(internalStream...),
 	)
 	registerPublicServices(grpcSrv, svcs, opsRepo, listFilter)
-	registerInternalServices(internalSrv, svcs, pool, cfg.MigrateDSN(), logger, cfg.WatchMaxStreams)
+	registerInternalServices(internalSrv, svcs, pool, cfg.MigrateDSN(), logger, cfg.WatchMaxStreams, watchVisibility(listFilter))
 
 	// Dependency-aware readiness: /readyz отражает здоровье критичных зависимостей
 	// (database / register-drainer / lro-worker / iam-authz), /healthz — только
@@ -1086,9 +1086,37 @@ func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*clients.SyncRe
 	return clients.NewSyncRegistrar(conn), func() { _ = conn.Close() }, nil
 }
 
-// registerInternalServices — kacho-only/admin RPC на internal listener (:9091,
-// не маршрутизируется наружу; NetworkPolicy + requireAdmin-interceptor).
-func registerInternalServices(srv *grpc.Server, svcs *services, pool *pgxpool.Pool, dsn string, logger *slog.Logger, watchMaxStreams int) {
-	computev1.RegisterInternalWatchServiceServer(srv, handler.NewInternalWatchHandler(pool, dsn, logger.With("component", "internal-watch"), watchMaxStreams, nil))
+// registerInternalServices — kacho-only/admin RPC на internal listener (:9091).
+//
+// «Не маршрутизируется наружу» — про api-gateway: Internal*-сервисы отсекаются его
+// allow-list'ом (`HasInternalSuffix`), поэтому тенантский REST сюда не доходит. Это
+// НЕ значит «сюда доходит только шлюз»: у kacho-compute нет NetworkPolicy ни в одном
+// профиле развёртывания (шаблона нет; у kacho-vpc он есть и намеренно выключен в
+// отладочном профиле), поэтому на уровне сети порт открыт всякому поду namespace'а.
+// Прежняя редакция этого комментария ссылалась на сетевую политику как на
+// действующее ограничение — ссылка была ложной, и именно она делала отсутствие
+// авторизации у потока журнала похожим на осознанный размен.
+//
+// Что здесь РЕАЛЬНО ограничивает доступ: mTLS на листенере, allow-list законных
+// отправителей чужой личности, per-RPC Check на каждом замапленном RPC
+// (`internal/check/permission_map.go`), а для потока журнала изменений — сужение по
+// правам вызывающего на КАЖДУЮ отдаваемую строку. Сетевая политика была бы
+// эшелонированием поверх этого, а не заменой ему.
+func registerInternalServices(srv *grpc.Server, svcs *services, pool *pgxpool.Pool, dsn string, logger *slog.Logger, watchMaxStreams int, vis handler.EventVisibility) {
+	computev1.RegisterInternalWatchServiceServer(srv, handler.NewInternalWatchHandler(pool, dsn, logger.With("component", "internal-watch"), watchMaxStreams, vis))
 	computev1.RegisterInternalMachineTypeServiceServer(srv, handler.NewInternalMachineTypeHandler(svcs.machineType))
+}
+
+// watchVisibility адаптирует построенный per-object фильтр под порт потока журнала.
+//
+// Типизированный nil — отдельная ветка не для красоты: `authzfilter.Filter(nil)`,
+// положенный в интерфейс с другим набором методов, дал бы НЕ-nil значение, чей вызов
+// Narrows() паникует. Явное «нет фильтра» доходит до handler'а как nil, и он
+// отказывает в открытии потока (fail-closed), вместо того чтобы упасть.
+func watchVisibility(listFilter authzfilter.Filter) handler.EventVisibility {
+	f, ok := listFilter.(*authzfilter.FGAFilter)
+	if !ok || f == nil {
+		return nil
+	}
+	return f
 }

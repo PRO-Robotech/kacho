@@ -25,6 +25,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
+
+	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
 )
 
 // catchupBatchSize — сколько событий читаем за один SELECT при initial-catchup.
@@ -84,8 +86,42 @@ func NewInternalWatchHandler(pool *pgxpool.Pool, dsn string, log *slog.Logger, m
 }
 
 // Watch реализует server-stream подписки на события compute_outbox.
+//
+// # Кто получает строки
+//
+// Запрос не несёт ни субъектного, ни проектного предиката, а каждая строка — полный
+// снимок ресурса (проект, имя, метки, метаданные, имя хоста, источник загрузки,
+// пользовательские данные загрузки). Поэтому сужение делается на уровне ДАННЫХ, по
+// правам вызывающего на каждую отдаваемую строку — единого объекта, о котором можно
+// было бы задать один вопрос, у этого RPC не существует.
+//
+// Порядок в начале потока: сначала личность, потом наличие сужения, и только затем
+// расход слота параллелизма и обращение к бэкенду. Оба отказа обязаны наступать до
+// подключения — иначе вызывающий получает retryable-код на ввод, который валидным не
+// станет, и отказ начинает зависеть от доступности БД.
 func (h *InternalWatchHandler) Watch(req *computev1.WatchRequest, stream computev1.InternalWatchService_WatchServer) error {
 	ctx := stream.Context()
+
+	// Личность — безусловно. Пустой субъект НЕ является субъектом: за этим RPC нет
+	// per-RPC Check, на который можно откатиться (он снят по построению, см.
+	// internal/check/permission_map.go), поэтому неназванный вызывающий обязан
+	// отбиваться здесь, а не «в боевом режиме».
+	subject := authzfilter.SubjectFromPrincipal(ctx)
+	if subject == "" {
+		h.log.Warn("watch refused: request names no caller")
+		return status.Error(codes.PermissionDenied, "watch requires an authenticated caller")
+	}
+
+	// Сужение обязано существовать И действительно сужать. Общий фильтр при
+	// выключенном мастер-переключателе (или без клиента к модели) пропускает
+	// идентификаторы сквозь себя; для списочного RPC под этим остаётся per-RPC Check
+	// на проектном ярусе, под этим потоком — ничего. Боевая стража отказывает в
+	// старте на такой настройке (requireListFilter); здесь тот же запрет держится на
+	// любом стенде.
+	if h.vis == nil || !h.vis.Narrows() {
+		h.log.Error("watch refused: per-row visibility filter is absent or does not narrow")
+		return status.Error(codes.PermissionDenied, "watch is unavailable without per-event authorization")
+	}
 
 	select {
 	case h.streamSlot <- struct{}{}:
@@ -119,7 +155,7 @@ func (h *InternalWatchHandler) Watch(req *computev1.WatchRequest, stream compute
 		cancelClose()
 	}()
 
-	if newCursor, err := h.streamSince(ctx, conn, cursor, kinds, "", stream); err != nil {
+	if newCursor, err := h.streamSince(ctx, conn, cursor, kinds, subject, stream); err != nil {
 		return err
 	} else {
 		cursor = newCursor
@@ -143,7 +179,7 @@ func (h *InternalWatchHandler) Watch(req *computev1.WatchRequest, stream compute
 				return status.Error(codes.Unavailable, "watch notification stream lost")
 			}
 		}
-		if newCursor, err := h.streamSince(ctx, conn, cursor, kinds, "", stream); err != nil {
+		if newCursor, err := h.streamSince(ctx, conn, cursor, kinds, subject, stream); err != nil {
 			return err
 		} else {
 			cursor = newCursor
@@ -151,8 +187,19 @@ func (h *InternalWatchHandler) Watch(req *computev1.WatchRequest, stream compute
 	}
 }
 
-// streamSince читает все события из compute_outbox с sequence_no > cursor (и
-// resource_kind ∈ kinds, если задан) и шлёт их в stream.
+// streamSince читает события из compute_outbox с sequence_no > cursor (и
+// resource_kind ∈ kinds, если задан), СУЖАЕТ прочитанный батч до прав subject'а и
+// шлёт оставшееся в stream.
+//
+// # Курсор идёт по ПРОЧИТАННОЙ строке, а не по отправленной
+//
+// Батч читается целиком, затем сужается, затем отправляется — вопрос к модели не
+// задаётся с открытым курсором БД. Позиция продвигается до последней ПРОЧИТАННОЙ
+// строки: если бы она шла за отправленными, полный батч невидимых вызывающему строк
+// перечитывался бы вечно (тот же запрос, те же сто строк, ноль продвижения — цикл
+// внутри занятого слота). То же правило, по которому страничные списки выводят
+// `next_page_token` из последней просмотренной строки: полный обход не пропускает
+// ничего, но порция законно приходит частичной.
 func (h *InternalWatchHandler) streamSince(
 	ctx context.Context,
 	conn *pgx.Conn,
@@ -161,7 +208,6 @@ func (h *InternalWatchHandler) streamSince(
 	subject string,
 	stream computev1.InternalWatchService_WatchServer,
 ) (int64, error) {
-	_ = subject // RED stage: not yet consulted.
 	for {
 		args := []any{cursor}
 		var kindFilter string
@@ -184,7 +230,8 @@ func (h *InternalWatchHandler) streamSince(
 			}
 			return cursor, internalMapErr("query outbox", err)
 		}
-		count := 0
+		batch := make([]*computev1.Event, 0, catchupBatchSize)
+		scanned := cursor
 		for rows.Next() {
 			var seq int64
 			var kind, id, eventType string
@@ -199,29 +246,113 @@ func (h *InternalWatchHandler) streamSince(
 				h.log.Warn("watch: bad payload JSON", "sequence_no", seq, "err", err)
 				payloadStruct = &structpb.Struct{Fields: map[string]*structpb.Value{}}
 			}
-			ev := &computev1.Event{
+			batch = append(batch, &computev1.Event{
 				SequenceNo:   seq,
 				ResourceKind: kind,
 				ResourceId:   id,
 				EventType:    eventType,
 				Payload:      payloadStruct,
 				CreatedAt:    timestamppb.New(createdAt),
-			}
-			if err := stream.Send(ev); err != nil {
-				rows.Close()
-				return cursor, err
-			}
-			cursor = seq
-			count++
+			})
+			scanned = seq
 		}
 		rows.Close()
 		if err := rows.Err(); err != nil {
 			return cursor, internalMapErr("outbox iter", err)
 		}
-		if count < catchupBatchSize {
+
+		visible, err := h.narrowToSubject(ctx, subject, batch)
+		if err != nil {
+			// Модель не ответила — это НЕ «да». Позиция не двигается, строки не уходят.
+			return cursor, err
+		}
+		for _, ev := range visible {
+			if err := stream.Send(ev); err != nil {
+				return cursor, err
+			}
+		}
+		cursor = scanned
+
+		if len(batch) < catchupBatchSize {
 			return cursor, nil
 		}
 	}
+}
+
+// watchObjectTypes — resource_kind журнала → тип объекта в модели прав.
+//
+// Перечисление закрытое, и это часть гейта: kind, которого здесь нет, не имеет типа
+// объекта, поэтому вопрос «вправе ли вызывающий видеть эту строку» задать НЕЛЬЗЯ, и
+// строка не доставляется. Блочное хранение ушло из compute (миграция 0021 дропнула
+// disks/images/snapshots), так что оставшиеся в журнале `Disk`/`Image`/`Snapshot` —
+// ровно этот случай: compute ими больше не владеет и об их видимости не судит.
+// Действие несётся В ТОЙ ЖЕ записи, а не берётся одно на всех: иначе добавленный
+// позже kind унаследовал бы чужой глагол, и модель судила бы о нём по неверному
+// действию, оставаясь при этом «зелёной».
+var watchObjectTypes = map[string]struct{ objectType, action string }{
+	"Instance": {authzfilter.ResourceTypeInstance, authzfilter.ActionInstanceRead},
+}
+
+// narrowToSubject оставляет из батча только строки, которые subject вправе видеть,
+// СОХРАНЯЯ порядок (журнал упорядочен по sequence_no — перестановка сломала бы
+// монотонность потока).
+//
+// Вопрос задаётся партиями не больше watchVisibilityBatchSize и группируется по типу
+// объекта: у модели спрашивают про однотипные идентификаторы. Ошибка любой партии
+// прекращает обработку батча целиком — частично сужённый батч отдавать нельзя.
+func (h *InternalWatchHandler) narrowToSubject(
+	ctx context.Context,
+	subject string,
+	batch []*computev1.Event,
+) ([]*computev1.Event, error) {
+	if len(batch) == 0 {
+		return nil, nil
+	}
+
+	// Идентификаторы по kind'у; kind без записи в таблице сюда не попадает и тем
+	// самым отсекается.
+	byKind := make(map[string][]string, len(watchObjectTypes))
+	dropped := 0
+	for _, ev := range batch {
+		if _, ok := watchObjectTypes[ev.GetResourceKind()]; !ok {
+			dropped++
+			continue
+		}
+		byKind[ev.GetResourceKind()] = append(byKind[ev.GetResourceKind()], ev.GetResourceId())
+	}
+	if dropped > 0 {
+		h.log.Warn("watch: rows dropped — resource kind has no object type in the permission model",
+			"dropped", dropped)
+	}
+
+	allowed := make(map[string]struct{}, len(batch))
+	for kind, ids := range byKind {
+		mapping := watchObjectTypes[kind]
+		for start := 0; start < len(ids); start += watchVisibilityBatchSize {
+			end := start + watchVisibilityBatchSize
+			if end > len(ids) {
+				end = len(ids)
+			}
+			visible, err := h.vis.FilterVisibleIDs(ctx, subject, mapping.objectType, mapping.action, ids[start:end])
+			if err != nil {
+				return nil, err
+			}
+			for _, id := range visible {
+				allowed[id] = struct{}{}
+			}
+		}
+	}
+
+	out := make([]*computev1.Event, 0, len(allowed))
+	for _, ev := range batch {
+		if _, ok := watchObjectTypes[ev.GetResourceKind()]; !ok {
+			continue
+		}
+		if _, ok := allowed[ev.GetResourceId()]; ok {
+			out = append(out, ev)
+		}
+	}
+	return out, nil
 }
 
 // jsonBytesToStruct декодирует raw JSON-bytes (object) в structpb.Struct.

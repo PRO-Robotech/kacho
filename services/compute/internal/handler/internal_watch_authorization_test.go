@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -259,6 +260,67 @@ func TestIntegration_Watch_KindWithNoObjectTypeIsNotDelivered(t *testing.T) {
 	}
 	assert.Equal(t, []string{"epi-live1"}, got,
 		"only rows whose kind maps to a live object type may be delivered")
+}
+
+// TestIntegration_WatchStreamSince_CursorAdvancesPastDroppedRows — the cursor must
+// advance over rows the caller may NOT see, not only over rows it received.
+//
+// This is the trap the narrowing introduces. The read loop continues while a batch
+// came back full, so if the cursor only followed delivered rows, a full batch of
+// rows the caller cannot see would be re-read forever: same query, same hundred
+// rows, no progress, one core spinning inside a held stream slot. The cursor
+// therefore follows the last SCANNED row — the same rule the paged list handlers
+// use for `next_page_token`, and for the same reason: a full traversal must skip
+// nothing while a page may legitimately come back partial.
+//
+// A whole batch is filled with invisible rows plus one visible row after it, so a
+// stalled cursor cannot reach the visible row: delivering it proves progress past
+// the invisible ones. The test is bounded by its own deadline, so a regression
+// shows up as a failure rather than a hang.
+func TestIntegration_WatchStreamSince_CursorAdvancesPastDroppedRows(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	base := context.Background()
+	dsn := setupWatchDB(t)
+	pool, err := coredb.NewPool(base, dsn)
+	require.NoError(t, err)
+	defer pool.Close()
+
+	// A full batch of rows the caller may not see, then one it may.
+	for i := 0; i < catchupBatchSize; i++ {
+		_, err := pool.Exec(base,
+			`INSERT INTO compute_outbox (resource_kind, resource_id, event_type, payload)
+			 VALUES ('Instance',$1,'CREATED','{}'::jsonb)`, "epi-hidden"+padID(i))
+		require.NoError(t, err)
+	}
+	_, err = pool.Exec(base,
+		`INSERT INTO compute_outbox (resource_kind, resource_id, event_type, payload)
+		 VALUES ('Instance','epi-visible','CREATED','{}'::jsonb)`)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(base, 20*time.Second)
+	defer cancel()
+
+	conn, err := pgx.Connect(ctx, dsn)
+	require.NoError(t, err)
+	defer func() { _ = conn.Close(context.Background()) }()
+
+	vis := &stubVisibility{narrows: true, allow: map[string]bool{"epi-visible": true}}
+	h := NewInternalWatchHandler(pool, dsn, slog.Default(), 0, vis)
+	fs := &fakeWatchStream{ctx: ctx}
+
+	newCursor, err := h.streamSince(ctx, conn, 0, nil, watchTestSubject, fs)
+	require.NoError(t, err, "a batch of invisible rows must not stall the read loop")
+
+	got := make([]string, 0, len(fs.sent))
+	for _, ev := range fs.sent {
+		got = append(got, ev.GetResourceId())
+	}
+	assert.Equal(t, []string{"epi-visible"}, got,
+		"the row after a full invisible batch must be reached — proof the cursor moved past them")
+	assert.EqualValues(t, catchupBatchSize+1, newCursor,
+		"the cursor must equal the last SCANNED sequence_no, not the last delivered one")
 }
 
 // TestWatch_RefusedWhenNothingNarrowsTheStream — the stream must not open when the

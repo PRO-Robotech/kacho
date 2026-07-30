@@ -257,21 +257,29 @@ func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any)
 	if entry.Public {
 		return verdict{decision: DecisionInternal, err: nil}
 	}
-	if entry.ScopeFiltered {
-		// scope-filtered List RPC — the handler authorises at the data level
-		// (ListObjects-filtered result, 200 + filtered/EMPTY). Skip the per-RPC
-		// Check; a single-object Check would reject the whole call `no path` 403
-		// before the scope-filter could run.
-		return verdict{decision: DecisionInternal, err: nil}
-	}
-
-	// 3. Subject extract.
+	// 3. Subject extract. Идёт ПЕРЕД ветвлением на ScopeFiltered: «не спрашивать
+	// про один объект» и «не выяснять, кто звонит» — разные вещи, и вторая никогда
+	// не разрешена.
 	subjectFGA, principalID, ok := i.opts.SubjectExtractor(ctx)
 	if !ok {
 		// Нет Principal'а в ctx → fail-closed.
 		logger.Warn("authz_no_principal")
 		atomic.AddUint64(&i.deniedTotal, 1)
 		return verdict{decision: DecisionDenied, err: nil}
+	}
+	if entry.ScopeFiltered {
+		// RPC, авторизуемый на УРОВНЕ ДАННЫХ: строки принадлежат объектам с
+		// индивидуальными владельцами, которых запрос не называет, поэтому единого
+		// объекта для одного вопроса не существует — единичный Check отверг бы весь
+		// вызов `no path` ещё до того, как сужение отработает. Handler читает
+		// страницу/батч и спрашивает модель про идентификаторы ЭТОЙ порции.
+		//
+		// Единичный Check снимается — выяснение личности НЕТ. Под таким RPC нет
+		// второго рубежа: per-RPC Check отсутствует по построению, поэтому
+		// неназванный вызывающий плюс отсутствующий (выключенный, деградировавший)
+		// фильтр — снова исходная дыра. Отсечка выше безусловна и не зависит ни от
+		// режима, ни от того, подвешен ли фильтр.
+		return verdict{decision: DecisionInternal, err: nil}
 	}
 	if i.opts.AllowSystemPrincipal && principalID == "bootstrap" {
 		// Gate the blanket allow to the GENUINE system identity
