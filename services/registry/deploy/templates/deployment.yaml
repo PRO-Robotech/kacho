@@ -317,6 +317,13 @@ spec:
             - name: registry-dataplane-nginx
               mountPath: /etc/nginx/conf.d
               readOnly: true
+            # Trust-anchor для проверки iam-леафа на хопе `/iam/token`: без него
+            # proxy_ssl_verify нечем удовлетворить, и следующий человек «починил бы»
+            # это выключением проверки. Тот же том, которым сам data-plane верифицирует
+            # JWKS-леаф iam (условие рендера тома совпадает с условием sidecar'а).
+            - name: internal-ca
+              mountPath: /etc/registry-ca
+              readOnly: true
         {{- end }}
       volumes:
         # Writable scratch for the read-only-rootfs container.

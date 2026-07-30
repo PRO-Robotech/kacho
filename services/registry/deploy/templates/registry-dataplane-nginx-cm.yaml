@@ -34,8 +34,22 @@ data:
       client_max_body_size 0;
       chunked_transfer_encoding on;
       # Docker Registry v2 token endpoint → iam registry-token shim (:9096).
+      #
+      # ХОП ШИФРУЕТСЯ И СОБЕСЕДНИК ПРОВЕРЯЕТСЯ. По нему `docker login` шлёт HTTP
+      # Basic, чей ПАРОЛЬ — приватный ключ ключа служебной учётки: iam его не
+      # хранит (сверяет выведенный SPKI с сохранённым публичным), срок жизни ключа
+      # не ограничен и ротации нет. Снятый с провода, он предъявляется напрямую и
+      # без окна TTL — поэтому одного шифрования мало: без проверки сертификата
+      # подставленный слушатель собирал бы ключи, оставаясь «зашифрованным».
+      # Trust-anchor — тот же internal-CA, которым data-plane уже верифицирует
+      # JWKS-леаф iam (том internal-ca, см. deployment.yaml).
       location = /iam/token {
-        proxy_pass http://{{ $s.iamTokenShimUpstream }}/iam/token;
+        proxy_pass https://{{ $s.iamTokenShimUpstream }}/iam/token;
+        proxy_ssl_verify on;
+        proxy_ssl_verify_depth 3;
+        proxy_ssl_trusted_certificate /etc/registry-ca/internal-ca.crt;
+        proxy_ssl_name {{ regexReplaceAll ":[0-9]+$" $s.iamTokenShimUpstream "" }};
+        proxy_ssl_server_name on;
         proxy_set_header Host $http_host;
         proxy_set_header X-Forwarded-Proto https;
       }

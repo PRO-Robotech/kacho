@@ -285,6 +285,27 @@ spec:
               value: {{ printf "%s/tls.key" $srv | quote }}
             - name: KACHO_IAM_JWKSPROXY_SERVER_MTLS_CLIENTCAFILES
               value: {{ printf "%s/ca.crt" $srv | quote }}
+            # docker-token listener (:9096, `/iam/token`) server-TLS. По этому хопу
+            # `docker login` шлёт HTTP Basic, чей ПАРОЛЬ — приватный ключ ключа
+            # служебной учётки: сервер его не хранит (сверяет выведенный SPKI с
+            # сохранённым публичным), срок жизни не ограничен, ротации нет. То есть
+            # единственное место в системе, где приватный ключ вообще транзитит, и
+            # снятый с провода он предъявляется без всякого окна TTL — в отличие от
+            # короткоживущего bearer'а на соседней ноге, которая гейт получила раньше.
+            # Тот же internal-CA cert-trio, что у соседних HTTP-рёбер. ONE-WAY
+            # (server-tls-only): caller-auth здесь и ЕСТЬ Basic, а mutual потребовал бы
+            # client-cert у nginx-sidecar реестра. Gated on mtls.httpListeners → dev
+            # остаётся plaintext, и production boot-guard там не срабатывает.
+            - name: KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_CLIENTAUTHMODE
+              value: {{ .Values.mtls.registryTokenClientAuthMode | default "server-tls-only" | quote }}
+            - name: KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $srv | quote }}
+            - name: KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $srv | quote }}
+            - name: KACHO_IAM_REGISTRYTOKEN_SERVER_MTLS_CLIENTCAFILES
+              value: {{ printf "%s/ca.crt" $srv | quote }}
             {{- end }}
             {{- end }}
             # OpenFGA store-id создаётся bootstrap-job'ом, см. umbrella/templates/openfga-bootstrap-job.yaml.
