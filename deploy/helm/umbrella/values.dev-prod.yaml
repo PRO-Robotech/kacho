@@ -383,6 +383,27 @@ hydra:
           # mismatch is not a degraded mode — every RS256 token fails the iss check and
           # the whole surface answers 401.
           issuer: "https://localhost:28080/.ory/hydra/public"
+          # `public` MOVES WITH `issuer`, AND THIS IS THE WHOLE POINT OF THE PAIR.
+          #
+          # The provider derives its ADVERTISED `token_endpoint` from `self.public`, not
+          # from `self.issuer` — measured on the live discovery document:
+          #     issuer         = https://localhost:28080/.ory/hydra/public   (self.issuer)
+          #     token_endpoint = http://localhost:28080/.ory/hydra/public/oauth2/token
+          # while `iss` comes from `self.issuer`. Consumers that build the private_key_jwt
+          # `aud` as «issuer + /oauth2/token» (iam's ResolveHydraTokenEndpoint, and the
+          # harness) therefore sent an https audience to a provider advertising an http
+          # token endpoint, and every exchange came back «hydra rejected the token
+          # exchange» → iam answered `bootstrap token issuer unavailable` → the seed could
+          # not obtain its first token.
+          #
+          # This was self-inflicted: `issuer` had to become https (the provider refuses a
+          # non-https issuer without its development flag) and `public` was left behind, so
+          # the two disagreed. They describe the SAME identity and must move together.
+          #
+          # Neither is a transport: both are identifier strings on a stand whose listener
+          # is reached over plain http behind a trusted terminator. Changing them changes
+          # what the provider ADVERTISES and stamps, not how anybody connects.
+          public: "https://localhost:28080/.ory/hydra/public/"
       # ПОЧЕМУ ЗДЕСЬ НЕТ ОБЪЯВЛЕНИЯ TLS ДЛЯ АДМИНИСТРАТИВНОГО ЛИСТЕНЕРА.
       #
       # Развёрнутая версия провайдера ручку TLS ОТДЕЛЬНОГО листенера НЕ ЧИТАЕТ:
