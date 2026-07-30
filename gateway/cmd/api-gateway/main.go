@@ -658,6 +658,9 @@ func main() {
 		// ReadHeaderTimeout bounds the slow-header (Slowloris) attack surface
 		// independently of the body-read budget: a client trickling request
 		// headers cannot pin a connection/goroutine indefinitely (CWE-400/770).
+		// It applies only from the moment this server owns the connection — the
+		// window BEFORE that (protocol sniffing by the multiplexer) is bounded
+		// separately by edgeFirstByteBudget; see cmux_firstbyte.go.
 		// WriteTimeout is intentionally left unset — the same server multiplexes
 		// grpc-gateway responses (incl. long-lived streaming/long-poll REST) and a
 		// blanket write deadline would truncate them; slow-read draining is bounded
@@ -742,7 +745,7 @@ func main() {
 	}
 	logger.Info("api-gateway started", "addr", cfg.ListenAddr)
 
-	cmuxer := cmux.New(listener)
+	cmuxer := newEdgeCmux(listener, edgeFirstByteBudget)
 	// HTTP/2 с Content-Type: application/grpc → gRPC listener
 	grpcL := cmuxer.MatchWithWriters(
 		cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"),
@@ -837,7 +840,7 @@ func main() {
 		// иначе HTTP/2 over TLS не работает корректно.
 		_ = http2.ConfigureServer(httpSrv, &http2.Server{})
 
-		tlsCmux = cmux.New(tlsListener)
+		tlsCmux = newEdgeCmux(tlsListener, edgeFirstByteBudget)
 		tlsGrpcL := tlsCmux.MatchWithWriters(
 			cmux.HTTP2MatchHeaderFieldSendSettings("content-type", "application/grpc"),
 		)
