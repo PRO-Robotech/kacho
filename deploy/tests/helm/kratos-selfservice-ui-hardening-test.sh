@@ -150,9 +150,15 @@ assert_sc "$MINIO" mc "minio-dev-init"
 # проверка ниже сообщала «container not found» — то есть красное с ложной
 # причиной. Так эта проверка и стояла красной с той правки; предмет её утверждений
 # (этаж PSS у Job'а) к адресу отношения не имеет.
+#
+# ЗНАЧЕНИЕ АДРЕСА — ЗАВЕДОМО ЧУЖОЕ. Правдоподобный вреден дважды: перепись
+# потребителей (admin-hop-address-census-test.sh) справедливо считает его
+# упоминанием и краснеет, а читатель принимает фикстуру за объявление. Первая
+# редакция этой правки поставила сюда настоящий адрес — перепись покраснела
+# сразу же и была права.
 TRUST=$(render "$DEV" "templates/hydra-trust-grants-job.yaml" \
   --set kacho-iam.federationIn.enabled=true \
-  --set hydraTrustGrants.adminUrl=http://kacho-umbrella-hydra-admin:4445 \
+  --set hydraTrustGrants.adminUrl=http://fixture-not-a-consumer.invalid/ \
   --set kacho-iam.federationIn.trustedIssuers[0].issuer=https://idp.example.com \
   --set kacho-iam.federationIn.trustedIssuers[0].jwksUrl=https://idp.example.com/jwks \
   --set kacho-iam.federationIn.trustedIssuers[0].allowedSubjects[0]='*')
