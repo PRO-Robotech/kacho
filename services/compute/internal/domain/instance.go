@@ -106,12 +106,17 @@ type AttachedDisk struct {
 }
 
 // OneToOneNat — конфигурация one-to-one NAT на NIC (output-only зеркало из kacho-vpc).
+//
+// Поле `DNSRecords []byte` снято вместе с DNS-поверхностью контракта: у него не было ни
+// читателя, ни писателя во всём дереве сервиса, а сериализовалось оно в колонку
+// `instance_network_interfaces.primary_v*_nat` (JSONB) с `omitempty` — то есть никогда
+// не появлялось и в персисте. Домен DNS у платформы отсутствует; появится — придёт своим
+// доменом, а не байтовым полем в зеркале NAT.
 type OneToOneNat struct {
-	Address    string `json:"address,omitempty"`
-	AddressID  string `json:"address_id,omitempty"`
-	Ephemeral  bool   `json:"ephemeral,omitempty"`
-	IPVersion  int32  `json:"ip_version,omitempty"`
-	DNSRecords []byte `json:"dns_records,omitempty"`
+	Address   string `json:"address,omitempty"`
+	AddressID string `json:"address_id,omitempty"`
+	Ephemeral bool   `json:"ephemeral,omitempty"`
+	IPVersion int32  `json:"ip_version,omitempty"`
 }
 
 // NetworkInterface — output-only зеркало NIC-привязки (source of truth = kacho-vpc;
