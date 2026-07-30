@@ -627,6 +627,24 @@ registry:
   # here because pg-registry serves TLS (mtls.pgTls.services includes registry),
   # so the DB leg is encrypted rather than conceded.
   authMode: production-strict
+  # ─── Хранилище слоёв: аутентификация + сегментация ──────────────────────────
+  # zot тенантов не различает — он хранит слои по path-префиксу. Пока его порт
+  # отвечал любому, кто до него дозвонился, весь per-request контроль плоскости
+  # данных (подпись docker-Bearer'а, Check, сокрытие существования, запрет
+  # разрушительного DELETE) обходился ОДНИМ хопом из сети подов. Соседним
+  # хранилищам этот профиль защиту уже выдавал (networkPolicy.datastore и
+  # opaSidecar.networkPolicy ниже) — теперь она есть и у третьего.
+  #
+  # ⚠ ШАГ ОПЕРАТОРА: Secret `zot-auth` (ключи username/password/htpasswd, где
+  # htpasswd — bcrypt-строка `<user>:$2y$…` того же пароля) провизионится ВНЕ git,
+  # как `zot-s3-creds`. Без него поды zot и registry не запустятся — это намеренно:
+  # чарт не умеет разворачивать открытое хранилище, а registry в production-режиме
+  # отказывается стартовать без учётных данных (requireZotCredentials).
+  zot:
+    auth:
+      existingSecret: zot-auth
+    networkPolicy:
+      enabled: true
   db:
     # Chart default host (kacho-umbrella-pg-registry) and existingSecret are
     # already correct for this umbrella — only the ssl floor needs stating.

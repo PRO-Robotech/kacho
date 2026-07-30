@@ -41,14 +41,58 @@ type Client struct {
 	blobCache *membershipCache // TTL-мемоизация BlobInRepo (digest→repo membership)
 }
 
+// Option — опция конструктора Client.
+type Option func(*Client)
+
+// WithBasicAuth заставляет адаптер предъявляться zot HTTP-Basic'ом на КАЖДОМ
+// запросе. zot аутентифицирует всех (htpasswd) — иначе любой процесс, дозвонившийся
+// до его порта, читал бы, подменял и удалял содержимое всех тенантов в объезд
+// per-request-контроля плоскости данных.
+//
+// Учётные данные ставятся ОДИН раз, на транспорт, а не в каждом месте сборки
+// запроса: в пакете их шесть (do/headManifest/getManifest/GraphQL/raw-manifest
+// GET/PUT), и «поставить там, где вспомнили» — как раз тот промах, который
+// оставляет часть трафика анонимной. Пустой user ⇒ опция no-op (dev-фикстуры с
+// zot без аутентификации остаются байт-идентичны).
+func WithBasicAuth(username, password string) Option {
+	return func(c *Client) {
+		if username == "" {
+			return
+		}
+		base := c.http.Transport
+		if base == nil {
+			base = http.DefaultTransport
+		}
+		c.http.Transport = &basicAuthTransport{base: base, username: username, password: password}
+	}
+}
+
+// basicAuthTransport добавляет Basic-заголовок в каждый исходящий запрос
+// адаптера. Клонирует запрос (RoundTripper не вправе мутировать переданный ему
+// *http.Request — иначе повтор/трейс наблюдали бы чужой заголовок).
+type basicAuthTransport struct {
+	base               http.RoundTripper
+	username, password string
+}
+
+func (t *basicAuthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	cloned := req.Clone(req.Context())
+	cloned.SetBasicAuth(t.username, t.password)
+	return t.base.RoundTrip(cloned)
+}
+
 // New строит Client для zot-endpoint (baseURL, напр. https://zot.internal:5000).
 // Пустой baseURL → клиент не сконфигурирован (методы отвечают Unavailable).
-func New(baseURL string) *Client {
-	return &Client{
+func New(baseURL string, opts ...Option) *Client {
+	c := &Client{
 		http:      &http.Client{Timeout: 30 * time.Second},
 		baseURL:   strings.TrimRight(baseURL, "/"),
 		blobCache: newMembershipCache(blobCacheTTL, blobCacheMaxEntries),
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 // ready — endpoint zot обязан быть подан (иначе Unavailable, fail-closed).

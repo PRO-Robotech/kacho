@@ -1536,6 +1536,17 @@ registry:
     repository: kacho-registry   # local kind image
     tag: dev
   imagePullPolicy: IfNotPresent
+  # Хранилище слоёв аутентифицирует своих вызывающих и на локальном стенде: открытый
+  # порт zot — объезд ВСЕЙ авторизации плоскости данных одним хопом, и «на dev можно»
+  # ровно такие дыры и прячет (production-posture везде, core rule #16). Значения —
+  # NON-SECRET dev-плейсхолдеры, как пароль pg-registry ниже. htpasswd задан ЯВНО
+  # (bcrypt того же пароля): выведенная из пароля строка несёт случайную соль → её
+  # checksum менялся бы на каждом рендере и перекатывал zot на каждом `helm upgrade`.
+  zot:
+    auth:
+      username: kacho-registry
+      password: changeme-dev-zot
+      htpasswd: "kacho-registry:$2a$10$Tp5G/pTDpzaVxQ8UzLOduOUVMo6rG96xpzEc/hPHzDzFdycxDEdhK"
   authMode: dev                  # relaxes issuer-pin / dataplane-TLS / https-JWKS prod guards
   mtls:
     enable: true

@@ -23,9 +23,32 @@ type ZotForwarder struct {
 // NewZotForwarder строит ZotForwarder на internal-endpoint zot (напр.
 // http://zot:5000). zot никогда не публично достижим — трафик уходит на
 // cluster-internal endpoint. Пустой/битый endpoint → ошибка (composition root fatal).
-func NewZotForwarder(zotEndpoint string, logger *slog.Logger) (*ZotForwarder, error) {
+// ForwardOption — опция конструктора ZotForwarder.
+type ForwardOption func(*forwardOptions)
+
+type forwardOptions struct {
+	username, password string
+}
+
+// WithZotBasicAuth заставляет форвардер предъявляться zot HTTP-Basic'ом ЗА СВОЙ
+// счёт. zot аутентифицирует всех (htpasswd), поэтому анонимный форвард отвергался
+// бы целиком; и наоборот — предъявитель ВЫЗЫВАЮЩЕГО туда по-прежнему не уезжает
+// (его права уже энфорснуты per-request Check выше, а осевший в чужих access-логах
+// Bearer расширял бы harvest-поверхность). Пустой username ⇒ no-op (dev-фикстуры с
+// zot без аутентификации байт-идентичны).
+func WithZotBasicAuth(username, password string) ForwardOption {
+	return func(o *forwardOptions) {
+		o.username, o.password = username, password
+	}
+}
+
+func NewZotForwarder(zotEndpoint string, logger *slog.Logger, opts ...ForwardOption) (*ZotForwarder, error) {
 	if logger == nil {
 		logger = slog.Default()
+	}
+	var o forwardOptions
+	for _, opt := range opts {
+		opt(&o)
 	}
 	if zotEndpoint == "" {
 		return nil, fmt.Errorf("dataplane: zot endpoint is required")
@@ -49,6 +72,12 @@ func NewZotForwarder(zotEndpoint string, logger *slog.Logger) (*ZotForwarder, er
 			pr.Out.Host = pr.In.Host
 			pr.Out.Header.Del("Authorization")
 			pr.Out.Header.Del("Cookie")
+			// Свои учётные данные ставятся ПОСЛЕ снятия чужих — порядок несущий:
+			// обратный порядок вычистил бы наш же заголовок и весь push/pull
+			// получил бы отказ хранилища.
+			if o.username != "" {
+				pr.Out.SetBasicAuth(o.username, o.password)
+			}
 		},
 	}
 	rp.ErrorHandler = func(w http.ResponseWriter, r *http.Request, e error) {
