@@ -401,6 +401,97 @@ func (x *DeleteUserRequest) GetUserId() string {
 	return ""
 }
 
+type BlockUserRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the User membership row to block. The only input: the state is the
+	// verb, so there is no field that could be forgotten.
+	UserId        string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BlockUserRequest) Reset() {
+	*x = BlockUserRequest{}
+	mi := &file_kacho_cloud_iam_v1_user_service_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BlockUserRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BlockUserRequest) ProtoMessage() {}
+
+func (x *BlockUserRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_user_service_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BlockUserRequest.ProtoReflect.Descriptor instead.
+func (*BlockUserRequest) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_user_service_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *BlockUserRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+type UnblockUserRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ID of the User membership row to unblock.
+	UserId        string `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnblockUserRequest) Reset() {
+	*x = UnblockUserRequest{}
+	mi := &file_kacho_cloud_iam_v1_user_service_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnblockUserRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnblockUserRequest) ProtoMessage() {}
+
+func (x *UnblockUserRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_kacho_cloud_iam_v1_user_service_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnblockUserRequest.ProtoReflect.Descriptor instead.
+func (*UnblockUserRequest) Descriptor() ([]byte, []int) {
+	return file_kacho_cloud_iam_v1_user_service_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *UnblockUserRequest) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
 type ListUserOperationsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID of the User resource to list operations for.
@@ -415,7 +506,7 @@ type ListUserOperationsRequest struct {
 
 func (x *ListUserOperationsRequest) Reset() {
 	*x = ListUserOperationsRequest{}
-	mi := &file_kacho_cloud_iam_v1_user_service_proto_msgTypes[6]
+	mi := &file_kacho_cloud_iam_v1_user_service_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -427,7 +518,7 @@ func (x *ListUserOperationsRequest) String() string {
 func (*ListUserOperationsRequest) ProtoMessage() {}
 
 func (x *ListUserOperationsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_user_service_proto_msgTypes[6]
+	mi := &file_kacho_cloud_iam_v1_user_service_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -440,7 +531,7 @@ func (x *ListUserOperationsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUserOperationsRequest.ProtoReflect.Descriptor instead.
 func (*ListUserOperationsRequest) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_user_service_proto_rawDescGZIP(), []int{6}
+	return file_kacho_cloud_iam_v1_user_service_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ListUserOperationsRequest) GetUserId() string {
@@ -476,7 +567,7 @@ type ListUserOperationsResponse struct {
 
 func (x *ListUserOperationsResponse) Reset() {
 	*x = ListUserOperationsResponse{}
-	mi := &file_kacho_cloud_iam_v1_user_service_proto_msgTypes[7]
+	mi := &file_kacho_cloud_iam_v1_user_service_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -488,7 +579,7 @@ func (x *ListUserOperationsResponse) String() string {
 func (*ListUserOperationsResponse) ProtoMessage() {}
 
 func (x *ListUserOperationsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_kacho_cloud_iam_v1_user_service_proto_msgTypes[7]
+	mi := &file_kacho_cloud_iam_v1_user_service_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -501,7 +592,7 @@ func (x *ListUserOperationsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListUserOperationsResponse.ProtoReflect.Descriptor instead.
 func (*ListUserOperationsResponse) Descriptor() ([]byte, []int) {
-	return file_kacho_cloud_iam_v1_user_service_proto_rawDescGZIP(), []int{7}
+	return file_kacho_cloud_iam_v1_user_service_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ListUserOperationsResponse) GetOperations() []*operation.Operation {
@@ -554,6 +645,10 @@ const file_kacho_cloud_iam_v1_user_service_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x03\x10\x04R\x04user\":\n" +
 	"\x11DeleteUserRequest\x12%\n" +
+	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\"9\n" +
+	"\x10BlockUserRequest\x12%\n" +
+	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\";\n" +
+	"\x12UnblockUserRequest\x12%\n" +
 	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\"\x95\x01\n" +
 	"\x19ListUserOperationsRequest\x12%\n" +
 	"\auser_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=20R\x06userId\x12'\n" +
@@ -565,7 +660,7 @@ const file_kacho_cloud_iam_v1_user_service_proto_rawDesc = "" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\x90\t\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xc4\f\n" +
 	"\vUserService\x12\x9a\x01\n" +
 	"\x03Get\x12\".kacho.cloud.iam.v1.GetUserRequest\x1a\x18.kacho.cloud.iam.v1.User\"U\x8a\xb5\x18\riam.users.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x13\n" +
 	"\biam_user\x12\auser_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x19\x12\x17/iam/v1/users/{user_id}\x12v\n" +
@@ -579,7 +674,13 @@ const file_kacho_cloud_iam_v1_user_service_proto_rawDesc = "" +
 	"\x12UpdateUserMetadata\x12\x04User\x82\xd3\xe4\x93\x02\x1c:\x01*2\x17/iam/v1/users/{user_id}\x12\xde\x01\n" +
 	"\x06Delete\x12%.kacho.cloud.iam.v1.DeleteUserRequest\x1a .kacho.cloud.operation.Operation\"\x8a\x01\x8a\xb5\x18\x10iam.users.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x13\n" +
 	"\biam_user\x12\auser_id\xa2\xb5\x18\x011\xb2\xd2*+\n" +
-	"\x12DeleteUserMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x19*\x17/iam/v1/users/{user_id}\x12\xe9\x01\n" +
+	"\x12DeleteUserMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x19*\x17/iam/v1/users/{user_id}\x12\xd2\x01\n" +
+	"\x05Block\x12$.kacho.cloud.iam.v1.BlockUserRequest\x1a .kacho.cloud.operation.Operation\"\x80\x01\x8a\xb5\x18\x0fiam.users.block\x92\xb5\x18\bv_update\x9a\xb5\x18\x13\n" +
+	"\biam_user\x12\auser_id\xa2\xb5\x18\x012\xb2\xd2*\x19\n" +
+	"\x11BlockUserMetadata\x12\x04User\x82\xd3\xe4\x93\x02\":\x01*\"\x1d/iam/v1/users/{user_id}:block\x12\xdc\x01\n" +
+	"\aUnblock\x12&.kacho.cloud.iam.v1.UnblockUserRequest\x1a .kacho.cloud.operation.Operation\"\x86\x01\x8a\xb5\x18\x11iam.users.unblock\x92\xb5\x18\bv_update\x9a\xb5\x18\x13\n" +
+	"\biam_user\x12\auser_id\xa2\xb5\x18\x012\xb2\xd2*\x1b\n" +
+	"\x13UnblockUserMetadata\x12\x04User\x82\xd3\xe4\x93\x02$:\x01*\"\x1f/iam/v1/users/{user_id}:unblock\x12\xe9\x01\n" +
 	"\x0eListOperations\x12-.kacho.cloud.iam.v1.ListUserOperationsRequest\x1a..kacho.cloud.iam.v1.ListUserOperationsResponse\"x\x8a\xb5\x18$iam.user_operationses.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x13\n" +
 	"\biam_user\x12\auser_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02$\x12\"/iam/v1/users/{user_id}/operationsB@Z>github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1b\x06proto3"
 
@@ -595,7 +696,7 @@ func file_kacho_cloud_iam_v1_user_service_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_iam_v1_user_service_proto_rawDescData
 }
 
-var file_kacho_cloud_iam_v1_user_service_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_kacho_cloud_iam_v1_user_service_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_kacho_cloud_iam_v1_user_service_proto_goTypes = []any{
 	(*GetUserRequest)(nil),             // 0: kacho.cloud.iam.v1.GetUserRequest
 	(*ListUsersRequest)(nil),           // 1: kacho.cloud.iam.v1.ListUsersRequest
@@ -603,32 +704,38 @@ var file_kacho_cloud_iam_v1_user_service_proto_goTypes = []any{
 	(*InviteUserRequest)(nil),          // 3: kacho.cloud.iam.v1.InviteUserRequest
 	(*UpdateUserRequest)(nil),          // 4: kacho.cloud.iam.v1.UpdateUserRequest
 	(*DeleteUserRequest)(nil),          // 5: kacho.cloud.iam.v1.DeleteUserRequest
-	(*ListUserOperationsRequest)(nil),  // 6: kacho.cloud.iam.v1.ListUserOperationsRequest
-	(*ListUserOperationsResponse)(nil), // 7: kacho.cloud.iam.v1.ListUserOperationsResponse
-	nil,                                // 8: kacho.cloud.iam.v1.UpdateUserRequest.LabelsEntry
-	(*User)(nil),                       // 9: kacho.cloud.iam.v1.User
-	(*fieldmaskpb.FieldMask)(nil),      // 10: google.protobuf.FieldMask
-	(*operation.Operation)(nil),        // 11: kacho.cloud.operation.Operation
+	(*BlockUserRequest)(nil),           // 6: kacho.cloud.iam.v1.BlockUserRequest
+	(*UnblockUserRequest)(nil),         // 7: kacho.cloud.iam.v1.UnblockUserRequest
+	(*ListUserOperationsRequest)(nil),  // 8: kacho.cloud.iam.v1.ListUserOperationsRequest
+	(*ListUserOperationsResponse)(nil), // 9: kacho.cloud.iam.v1.ListUserOperationsResponse
+	nil,                                // 10: kacho.cloud.iam.v1.UpdateUserRequest.LabelsEntry
+	(*User)(nil),                       // 11: kacho.cloud.iam.v1.User
+	(*fieldmaskpb.FieldMask)(nil),      // 12: google.protobuf.FieldMask
+	(*operation.Operation)(nil),        // 13: kacho.cloud.operation.Operation
 }
 var file_kacho_cloud_iam_v1_user_service_proto_depIdxs = []int32{
-	9,  // 0: kacho.cloud.iam.v1.ListUsersResponse.users:type_name -> kacho.cloud.iam.v1.User
-	10, // 1: kacho.cloud.iam.v1.UpdateUserRequest.update_mask:type_name -> google.protobuf.FieldMask
-	8,  // 2: kacho.cloud.iam.v1.UpdateUserRequest.labels:type_name -> kacho.cloud.iam.v1.UpdateUserRequest.LabelsEntry
-	11, // 3: kacho.cloud.iam.v1.ListUserOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
+	11, // 0: kacho.cloud.iam.v1.ListUsersResponse.users:type_name -> kacho.cloud.iam.v1.User
+	12, // 1: kacho.cloud.iam.v1.UpdateUserRequest.update_mask:type_name -> google.protobuf.FieldMask
+	10, // 2: kacho.cloud.iam.v1.UpdateUserRequest.labels:type_name -> kacho.cloud.iam.v1.UpdateUserRequest.LabelsEntry
+	13, // 3: kacho.cloud.iam.v1.ListUserOperationsResponse.operations:type_name -> kacho.cloud.operation.Operation
 	0,  // 4: kacho.cloud.iam.v1.UserService.Get:input_type -> kacho.cloud.iam.v1.GetUserRequest
 	1,  // 5: kacho.cloud.iam.v1.UserService.List:input_type -> kacho.cloud.iam.v1.ListUsersRequest
 	3,  // 6: kacho.cloud.iam.v1.UserService.Invite:input_type -> kacho.cloud.iam.v1.InviteUserRequest
 	4,  // 7: kacho.cloud.iam.v1.UserService.Update:input_type -> kacho.cloud.iam.v1.UpdateUserRequest
 	5,  // 8: kacho.cloud.iam.v1.UserService.Delete:input_type -> kacho.cloud.iam.v1.DeleteUserRequest
-	6,  // 9: kacho.cloud.iam.v1.UserService.ListOperations:input_type -> kacho.cloud.iam.v1.ListUserOperationsRequest
-	9,  // 10: kacho.cloud.iam.v1.UserService.Get:output_type -> kacho.cloud.iam.v1.User
-	2,  // 11: kacho.cloud.iam.v1.UserService.List:output_type -> kacho.cloud.iam.v1.ListUsersResponse
-	11, // 12: kacho.cloud.iam.v1.UserService.Invite:output_type -> kacho.cloud.operation.Operation
-	11, // 13: kacho.cloud.iam.v1.UserService.Update:output_type -> kacho.cloud.operation.Operation
-	11, // 14: kacho.cloud.iam.v1.UserService.Delete:output_type -> kacho.cloud.operation.Operation
-	7,  // 15: kacho.cloud.iam.v1.UserService.ListOperations:output_type -> kacho.cloud.iam.v1.ListUserOperationsResponse
-	10, // [10:16] is the sub-list for method output_type
-	4,  // [4:10] is the sub-list for method input_type
+	6,  // 9: kacho.cloud.iam.v1.UserService.Block:input_type -> kacho.cloud.iam.v1.BlockUserRequest
+	7,  // 10: kacho.cloud.iam.v1.UserService.Unblock:input_type -> kacho.cloud.iam.v1.UnblockUserRequest
+	8,  // 11: kacho.cloud.iam.v1.UserService.ListOperations:input_type -> kacho.cloud.iam.v1.ListUserOperationsRequest
+	11, // 12: kacho.cloud.iam.v1.UserService.Get:output_type -> kacho.cloud.iam.v1.User
+	2,  // 13: kacho.cloud.iam.v1.UserService.List:output_type -> kacho.cloud.iam.v1.ListUsersResponse
+	13, // 14: kacho.cloud.iam.v1.UserService.Invite:output_type -> kacho.cloud.operation.Operation
+	13, // 15: kacho.cloud.iam.v1.UserService.Update:output_type -> kacho.cloud.operation.Operation
+	13, // 16: kacho.cloud.iam.v1.UserService.Delete:output_type -> kacho.cloud.operation.Operation
+	13, // 17: kacho.cloud.iam.v1.UserService.Block:output_type -> kacho.cloud.operation.Operation
+	13, // 18: kacho.cloud.iam.v1.UserService.Unblock:output_type -> kacho.cloud.operation.Operation
+	9,  // 19: kacho.cloud.iam.v1.UserService.ListOperations:output_type -> kacho.cloud.iam.v1.ListUserOperationsResponse
+	12, // [12:20] is the sub-list for method output_type
+	4,  // [4:12] is the sub-list for method input_type
 	4,  // [4:4] is the sub-list for extension type_name
 	4,  // [4:4] is the sub-list for extension extendee
 	0,  // [0:4] is the sub-list for field type_name
@@ -646,7 +753,7 @@ func file_kacho_cloud_iam_v1_user_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_iam_v1_user_service_proto_rawDesc), len(file_kacho_cloud_iam_v1_user_service_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

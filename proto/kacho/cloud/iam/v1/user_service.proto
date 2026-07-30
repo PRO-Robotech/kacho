@@ -114,6 +114,103 @@ service UserService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
+  // Blocks the specified User membership: it may no longer authenticate into
+  // the Account that row belongs to.
+  //
+  // WHAT IT IS SCOPED TO, because getting this wrong is a cross-tenant outage.
+  // A `users` row is a MEMBERSHIP — one pair of (identity, Account) — and one
+  // identity holds one row per Account it belongs to. This call blocks ONE such
+  // row. The identity keeps working wherever else it is active: token issuance
+  // walks the membership set and serves the first row that may authenticate, and
+  // refuses only when NONE can. A block therefore belongs to the Account that
+  // issued it, and the admin of Account A cannot switch a person off in
+  // Account B.
+  //
+  // WHY AN ACTION AND NOT A FIELD ON Update. This is the reason the state was
+  // never ADDED to UpdateUserRequest, not a description of a bug that was there:
+  // an empty `update_mask` means full-object replacement by platform convention,
+  // and a proto3 enum cannot say "not sent", so the obvious design — one more
+  // maskable field — would let a client block a membership by simply not filling
+  // it in. The state that decides whether a person still has access must not be
+  // reachable by forgetting something. It is also an EVENT ("this membership was
+  // suspended"), not the editing of an attribute, and the audit trail has to be
+  // able to say so.
+  //
+  // Step-up (acr=2) — this is a security-posture change, not routine lifecycle,
+  // and it is classified with the credential surface for the same reason
+  // ServiceAccountService/Disable is: it decides whether a principal may
+  // authenticate at all. The floor is INTERACTIVE-ONLY: a service-account
+  // principal is exempt from it by platform rule, so for machine callers this
+  // RPC costs exactly what Update costs. It raises assurance for people; it is
+  // not a second authorization gate.
+  //
+  // WHO may call it is `v_update` on `iam_user` — the same relation Update
+  // carries, on the same object, which resolves to the admin of the owning
+  // Account (`super_admin: admin from account`) and, by cascade, to the cloud
+  // admin. Deliberate: whoever may rename a membership may also suspend it, and
+  // by the editor projection may already delete it outright. A relation of its
+  // own would leave every existing operator unable to use the control until
+  // someone re-granted them — the wrong failure mode for something reached for
+  // during an incident. An ordinary member does NOT hold it on their own row
+  // (`subject` feeds `viewer`, not `v_update`), which is what keeps self-lifting
+  // impossible.
+  //
+  // IDEMPOTENT: the argument is the STATE, not a transition. Blocking a
+  // membership that is already blocked succeeds and reports it blocked — the
+  // safe direction of this control must never be the one that fails on retry.
+  //
+  // A PENDING invitation cannot be blocked: it carries no external identity yet
+  // (DB CHECK `users_invite_status_consistency`), so there is nothing to refuse
+  // — FAILED_PRECONDITION. Revoke the invitation instead.
+  //
+  // Already-issued access tokens are NOT invalidated by this call; they expire
+  // on their own schedule. What stops immediately is every path that mints a
+  // NEW one (token hook, refresh hook, personal-token issuance, subject
+  // resolution at the edge).
+  rpc Block (BlockUserRequest) returns (operation.Operation) {
+    option (google.api.http) = { post: "/iam/v1/users/{user_id}:block" body: "*" };
+    option (kacho.cloud.api.operation) = {
+      metadata: "BlockUserMetadata"
+      response: "User"
+    };
+    option (kacho.iam.authz.v1.permission)        = "iam.users.block";
+    option (kacho.iam.authz.v1.required_relation) = "v_update";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "iam_user"
+      from_request_field: "user_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
+  // Unblocks the specified User membership: it may authenticate into that
+  // Account again.
+  //
+  // The counterpart of Block, and it exists for the same reason the state is a
+  // column rather than a deletion — a suspended membership has to be able to
+  // come back. A one-way control is one an operator will not reach for, and a
+  // person with no administrative way back is locked out permanently: self-serve
+  // password recovery deliberately does NOT lift a block (it proves ownership of
+  // a mailbox, which is not what the administrator called into question).
+  //
+  // Same shape throughout: action not field, Operation, step-up, idempotent
+  // (unblocking an active membership succeeds). A PENDING invitation is refused
+  // here too — turning an unconfirmed invitee into an active member is
+  // activation-on-first-login, a different path with a different subject.
+  rpc Unblock (UnblockUserRequest) returns (operation.Operation) {
+    option (google.api.http) = { post: "/iam/v1/users/{user_id}:unblock" body: "*" };
+    option (kacho.cloud.api.operation) = {
+      metadata: "UnblockUserMetadata"
+      response: "User"
+    };
+    option (kacho.iam.authz.v1.permission)        = "iam.users.unblock";
+    option (kacho.iam.authz.v1.required_relation) = "v_update";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "iam_user"
+      from_request_field: "user_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min)  = "2";
+  }
+
   // Lists operations for the specified user.
   rpc ListOperations (ListUserOperationsRequest) returns (ListUserOperationsResponse) {
     option (google.api.http) = { get: "/iam/v1/users/{user_id}/operations" };
@@ -199,6 +296,17 @@ message UpdateUserRequest {
 
 message DeleteUserRequest {
   // ID of the User resource to delete.
+  string user_id = 1 [(required) = true, (length) = "<=20"];
+}
+
+message BlockUserRequest {
+  // ID of the User membership row to block. The only input: the state is the
+  // verb, so there is no field that could be forgotten.
+  string user_id = 1 [(required) = true, (length) = "<=20"];
+}
+
+message UnblockUserRequest {
+  // ID of the User membership row to unblock.
   string user_id = 1 [(required) = true, (length) = "<=20"];
 }
 
