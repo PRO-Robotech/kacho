@@ -19,7 +19,7 @@ import (
 // NIC — самостоятельный сетевой интерфейс (first-class, отвязан от Instance),
 // самый «толстый» ресурс VPC. Mock здесь покрывает:
 //   - CRUD (Insert / UpdateMeta / Delete);
-//   - ListBySubnet — для SubnetService.Delete precheck (NIC жестко блокирует
+//   - CountBySubnet — для SubnetService.Delete precheck (NIC жестко блокирует
 //     свою подсеть через ON DELETE RESTRICT).
 //
 // MAC-allocation в mock не моделируется (caller-side responsibility:

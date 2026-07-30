@@ -493,3 +493,44 @@ func TestRuleSpecFromProto_Predefined(t *testing.T) {
 	r := ruleSpecFromProto(rs)
 	assert.Equal(t, "self_security_group", r.PredefinedTarget)
 }
+
+// Набор правил аддитивен: серия формально законных добавлений не имеет права
+// растить его без предела. Потолок на НАКОПЛЕННОМ наборе проверяет тот, кто
+// пишет итог, — иначе каждый отдельный запрос проходит, а состояние выходит за
+// объявленный предел.
+func TestSecurityGroup_UpdateRules_AccumulatedCapEnforced(t *testing.T) {
+	kr := kachomock.NewRepository()
+	or := repomock.NewOpsRepo()
+	netID := ids.NewID(ids.PrefixNetwork)
+	sgID := seedMockSG(t, kr, "prj-cap", netID, "cap-sg")
+
+	uc := NewUpdateRulesUseCase(kr, or, newSGReaderMock(kr))
+	// Каждый запрос — в пределах потолка одного запроса, но их сумма его
+	// превышает.
+	batch := func(n int) []domain.SecurityGroupRule {
+		out := make([]domain.SecurityGroupRule, 0, n)
+		for i := 0; i < n; i++ {
+			out = append(out, domain.SecurityGroupRule{
+				Direction: domain.SecurityGroupRuleDirectionIngress,
+				FromPort:  -1, ToPort: -1,
+				V4CidrBlocks: []string{"10.0.0.0/8"},
+			})
+		}
+		return out
+	}
+	half := domain.MaxSecurityGroupRules/2 + 1
+	op1, err := uc.Execute(context.Background(), UpdateRulesInput{
+		SecurityGroupID: sgID, AdditionRuleSpecs: batch(half),
+	})
+	require.NoError(t, err)
+	done1 := repomock.AwaitOpDone(t, or, op1.ID)
+	require.Nil(t, done1.Error, "первый запрос в пределах потолка обязан пройти")
+
+	op2, err := uc.Execute(context.Background(), UpdateRulesInput{
+		SecurityGroupID: sgID, AdditionRuleSpecs: batch(half),
+	})
+	require.NoError(t, err)
+	done2 := repomock.AwaitOpDone(t, or, op2.ID)
+	require.NotNil(t, done2.Error, "накопленный набор сверх потолка обязан быть отвергнут")
+	assert.Equal(t, codes.FailedPrecondition, status.FromProto(done2.Error).Code())
+}

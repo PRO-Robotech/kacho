@@ -350,7 +350,7 @@ func (a *SecurityGroupAdapter) Delete(ctx context.Context, id string) error {
 // =============================================================================
 
 // NetworkInterfaceAdapter удовлетворяет узким port-интерфейсам:
-//   - `subnet.NetworkInterfaceRepo` (`ListBySubnet`).
+//   - `subnet.NetworkInterfaceRepo` (`CountBySubnet`).
 type NetworkInterfaceAdapter struct{ repo kacho.Repository }
 
 // NewNetworkInterface собирает NetworkInterfaceAdapter поверх kacho.Repository.
@@ -358,7 +358,6 @@ func NewNetworkInterface(r kacho.Repository) *NetworkInterfaceAdapter {
 	return &NetworkInterfaceAdapter{repo: r}
 }
 
-// ListBySubnet — read через свежую Reader-TX.
 // CountBySubnet — счёт + ограниченная выборка идентификаторов через свежую
 // Reader-TX (предусловие Subnet.Delete).
 func (a *NetworkInterfaceAdapter) CountBySubnet(ctx context.Context, subnetID string, sample int) (int64, []string, error) {

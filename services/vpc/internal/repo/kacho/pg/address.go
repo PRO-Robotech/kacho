@@ -263,7 +263,9 @@ func (w *addressWriter) GetForUpdate(ctx context.Context, id string) (*kacho.Add
 }
 
 // Update — UPDATE name/description/labels/reserved/deletion_protection.
-// IP-spec колонки НЕ трогаем (immutable; для них есть SetIPSpec).
+// IP-spec колонки НЕ трогаем (immutable; для internal v4 есть SetInternalIPv4,
+// для internal v6 — SetInternalIPv6; внешний адрес пишут только Insert и
+// аллокаторы, ведущие книгу учёта пула).
 //
 // `used` НЕ обновляется здесь намеренно: это system-managed флаг, выставляемый
 // исключительно referrer-методами (SetReference / MarkEphemeralInUse /

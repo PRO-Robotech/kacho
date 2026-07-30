@@ -24,7 +24,7 @@ import (
 const nicColsNI = `ni.id, ni.project_id, ni.created_at, ni.name, ni.description, ni.labels, ni.subnet_id,
 	ni.v4_address_ids, ni.v6_address_ids, ni.security_group_ids, ni.used_by_type, ni.used_by_id, ni.used_by_name, ni.mac_address, ni.status`
 
-// networkInterfaceReader — Get/List/ListBySubnet поверх произвольной pgx.Tx
+// networkInterfaceReader — Get/List/CountBySubnet поверх произвольной pgx.Tx
 // (read-only или RW). NIC ведется в CQRS-модели поверх единой writer-TX, чтобы
 // при NIC.Create обновление `addresses.used`/`address_references` шло в той же
 // TX, что INSERT(NIC) — address не остается помеченным как used, если INSERT(NIC)

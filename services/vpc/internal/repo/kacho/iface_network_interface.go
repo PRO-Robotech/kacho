@@ -24,9 +24,10 @@ type NetworkInterfaceFilter struct {
 
 // NetworkInterfaceReaderIface — read-операции над NetworkInterface в TX-области.
 //
-// ListBySubnet нужен Subnet.Delete (precondition «нет привязанных NIC»: FK
-// ON DELETE RESTRICT, NIC жестко блокирует свою подсеть). ListByInstance —
-// fast-path фильтр для internal-tooling (тоже мапится на used_by).
+// CountBySubnet нужен Subnet.Delete (predcondition «нет привязанных NIC»: FK
+// ON DELETE RESTRICT, NIC жестко блокирует свою подсеть) — он отвечает на
+// вопрос «сколько», а не «дай их все». ListByInstance — fast-path фильтр для
+// internal-tooling (тоже мапится на used_by).
 type NetworkInterfaceReaderIface interface {
 	Get(ctx context.Context, id string) (*NetworkInterfaceRecord, error)
 	List(ctx context.Context, f NetworkInterfaceFilter, p Pagination) ([]*NetworkInterfaceRecord, string, error)

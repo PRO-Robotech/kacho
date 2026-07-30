@@ -352,8 +352,11 @@ func (w *securityGroupWriter) UpdateRules(ctx context.Context, sgID string, dele
 	rules = append(rules, add...)
 	// Потолок на ИТОГОВОМ наборе: набор аддитивен, поэтому серия формально
 	// законных запросов растила бы его без предела. Синхронный отказ в use-case
-	// ограничивает один запрос, эта проверка — накопленный результат (DB-CHECK
-	// security_groups_rules_cardinality остаётся атомарным backstop'ом).
+	// ограничивает ОДИН запрос и потому отвечает InvalidArgument с именем поля;
+	// здесь предмет другой — состояние уже существующей группы не позволяет
+	// добавить ещё, поэтому FailedPrecondition (тот же тон, что у прочих
+	// «состояние не позволяет»). DB-CHECK security_groups_rules_cardinality
+	// остаётся атомарным backstop'ом.
 	if len(rules) > domain.MaxSecurityGroupRules {
 		return nil, fmt.Errorf("%w: security group %s: at most %d rules per security group",
 			helpers.ErrFailedPrecondition, sgID, domain.MaxSecurityGroupRules)

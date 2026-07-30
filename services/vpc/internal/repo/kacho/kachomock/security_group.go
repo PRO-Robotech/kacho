@@ -178,6 +178,13 @@ func (sw *securityGroupWriter) UpdateRules(_ context.Context, sgID string, delet
 		sg.Rules = filtered
 	}
 	sg.Rules = append(sg.Rules, add...)
+	// Потолок НАКОПЛЕННОГО набора — зеркало pg-стороны: глагол аддитивен,
+	// поэтому набор растёт серией формально законных запросов, и проверять его
+	// обязан тот, кто пишет итог. Без зеркала ни один unit-тест не мог бы
+	// добраться до этого предусловия.
+	if len(sg.Rules) > domain.MaxSecurityGroupRules {
+		return nil, repo.ErrFailedPrecondition
+	}
 	cp := *sg
 	return &cp, nil
 }
