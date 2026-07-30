@@ -859,6 +859,26 @@ except Exception: print("")' 2>/dev/null)" = "$NLB_ZONE" ]; then geo_nlb_zone_ok
     sleep 0.5
   done
   [ "$geo_nlb_zone_ok" = 1 ] || log "    WARN: nlb-dedicated zone $NLB_ZONE NOT confirmed — seed-nlb-fixtures.sh will refuse to seed"
+  # A SECOND region, because "the other region" has to BE another region.
+  # `existingRegionAltId` used to hold the PRIMARY region here and in nine env files,
+  # so every cross-region negative built its fixture in the same region and asserted a
+  # refusal that could not fire. One zone comes with it so a zonal fixture in that
+  # region is possible; no address pool — nothing allocates a VIP there. Mirrors
+  # prodseed_matrix.py::_seed_geo_catalog.
+  ALT_REGION="${SEED_ALT_REGION:-ru-central2}"
+  api_internal POST "/geo/v1/internal/regions" "$JWT_BOOTSTRAP" \
+    "{\"id\":\"$ALT_REGION\",\"name\":\"$ALT_REGION\",\"status\":\"UP\"}" >/dev/null 2>&1 || true
+  geo_alt_region_ok=0
+  for _ in $(seq 1 20); do
+    if [ "$(api GET "/geo/v1/regions/$ALT_REGION" "$JWT_BOOTSTRAP" 2>/dev/null | python3 -c 'import sys,json;
+try: print(json.load(sys.stdin).get("id",""))
+except Exception: print("")' 2>/dev/null)" = "$ALT_REGION" ]; then geo_alt_region_ok=1; break; fi
+    sleep 0.5
+  done
+  api_internal POST "/geo/v1/internal/zones" "$JWT_BOOTSTRAP" \
+    "{\"id\":\"$ALT_REGION-a\",\"regionId\":\"$ALT_REGION\",\"name\":\"$ALT_REGION-a\",\"status\":\"UP\"}" >/dev/null 2>&1 || true
+  [ "$geo_alt_region_ok" = 1 ] \
+    || log "    WARN: alt region $ALT_REGION NOT confirmed — cross-region negatives have no condition to assert"
   if [ "$geo_region_ok" = 1 ] && [ "${geo_zones:-0}" -ge 5 ] 2>/dev/null && [ "$geo_nlb_zone_ok" = 1 ]; then
     log "    geo baseline OK (region ru-central1 durable, $geo_zones zones, nlb zone $NLB_ZONE)"
   else

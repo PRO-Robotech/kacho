@@ -72,6 +72,7 @@ DECLARED="
 .github/scripts/check-volume-mounts.py
 .github/scripts/newman-live.py
 deploy/scripts/assert-admin-hop-transport.sh
+deploy/scripts/assert-alt-fixtures-are-another.py
 deploy/scripts/assert-ban6-external-isolation.py
 deploy/scripts/assert-outbox-autovacuum.sh
 deploy/scripts/assert-report-readers-use-the-summary.py

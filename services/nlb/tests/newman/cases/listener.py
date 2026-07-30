@@ -756,41 +756,44 @@ CASES.append(Case(
                                    "tcp": {"port": 80}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgAltId")]),
-        poll_operation_until_done(),
-        # First self-UPDATE of the fresh listener → v_update@nlb_listener owner-tuple lag
-        # (403) is retried; the real reject is what the assertion observes. retry_on=(403,)
-        # ONLY — a 404 here is a terminal, lawful non-acceptance (the alt-region TG could
-        # not be created because `_suiteRegionAltId`=ru-central2 is unseeded on this stand
-        # → its Create Operation errors "Region not found", so tgAltId points at a TG that
-        # never persisted → the update resolves it to NotFound). Retrying that 404 would
-        # only burn the budget; tolerating it keeps the region-mismatch intent (409 when
-        # the alt region IS seeded) without reddening the fixture-absent lane.
-        # SYNC-VALIDATE lane, both branches. Naming a TG in `update_mask` makes Update
-        # resolve it BEFORE minting the Operation (update.go:204 → lookupWiredTargetGroup),
-        # so neither outcome is ever an Operation:
-        #   * alt region seeded  → the TG exists in this project with a different region →
-        #     FAILED_PRECONDITION "default target group region … does not match listener
-        #     region …" → 400 / grpc 9 (update.go:218, pinned by update_test.go:159-163);
-        #   * alt region unseeded → its Create Operation errored "Region not found", so
-        #     tgAltId is a pre-allocated phantom that resolves to nothing →
-        #     `targetGroupMissErr` → NOT_FOUND "TargetGroup <id> not found" → 404 / grpc 5.
-        # Both are refusals and both are now stated. `409` was never producible here —
-        # ALREADY_EXISTS is not on this path, and FAILED_PRECONDITION transcodes to 400,
-        # as the green TGR-DEL-* / cross-resource cases assert. `200` was the acceptance
-        # the case exists to exclude, and the trailing poll had no subject on either
-        # branch (nothing is minted), so it was asserting nothing.
+        # THE FIXTURE MUST SUCCEED, LOUDLY. A Kachō Operation carries the pre-allocated
+        # id in `metadata` even when it finishes with an error, so a create that failed
+        # ("Region not found") still hands the case a phantom `tgAltId` — and the case
+        # then quietly tests a different thing. must_succeed + fixture_ids reddens here,
+        # at the step that actually broke.
+        poll_operation_until_done(must_succeed=True, fixture_ids=["tgAltId"]),
+        # THE PRECONDITION NOW HAS A PRODUCER, AND THAT IS THE WHOLE POINT.
+        #
+        # This case ran on every production-posture run and could not fail for its own
+        # reason: `existingRegionAltId` held the PRIMARY region, so the "alt-region" TG
+        # was created in the SAME region and the repoint was lawfully accepted — 200,
+        # with an Operation. It read as a product accepting a cross-region repoint. The
+        # product was never asked. Nine env declarations carried the same collapse and
+        # no seeder created a second region at all; both seeders now do
+        # (prodseed_matrix.py / setup.sh), and deploy/scripts/assert-alt-fixtures-are-another.py
+        # keeps the pair distinct AND its value produced.
+        #
+        # So the outcome is stated exactly, with no alternative branch to fall into.
+        # Naming a TG in `update_mask` makes Update resolve it BEFORE minting the
+        # Operation (update.go → lookupWiredTargetGroup), so the answer is synchronous:
+        # the TG exists, in this project, in another region → FAILED_PRECONDITION
+        # "default target group region … does not match listener region …" → 400 / grpc 9
+        # (pinned unit-side by update_test.go). A 404 here would mean the fixture did not
+        # persist — that is now caught above, by the fixture's own step, instead of being
+        # accepted here as if it were the refusal under test.
+        #
+        # retry_on=(403,) ONLY: the first self-UPDATE of a freshly created listener can
+        # be denied while the owner tuple materializes. That is a timing window, not an
+        # outcome.
         retry_until_authorized(Step(name="upd-default-tg-mismatch", method="PATCH", path=f"{_LST_BASE}/{{{{lstId}}}}",
              body={"updateMask": "defaultTargetGroupId", "defaultTargetGroupId": "{{tgAltId}}"},
              test_script=[
-                 "pm.test('repoint refused (400 region-mismatch, or 404 when the alt-region TG never persisted)', () => "
-                 "  pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 404]));",
-                 "pm.test('grpc code 9 (FAILED_PRECONDITION) or 5 (NOT_FOUND)', () => {",
-                 "  const j = pm.response.json();",
-                 "  pm.expect(j.code, JSON.stringify(j)).to.be.oneOf([9, 5]);",
-                 "});",
-                 "pm.test('the refusal names its reason (region mismatch, or the TG not being there)', () => {",
+                 "pm.test('cross-region repoint refused synchronously (400)', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(400));",
+                 *assert_grpc_code(9, "FAILED_PRECONDITION"),
+                 "pm.test('the refusal names the region mismatch', () => {",
                  "  const m = pm.response.json().message || '';",
-                 "  pm.expect(m, pm.response.text()).to.match(/does not match listener region|not found/);",
+                 "  pm.expect(m, pm.response.text()).to.match(/does not match listener region/);",
                  "});",
                  "pm.environment.unset('opId');",
              ]), retry_on=(403,)),

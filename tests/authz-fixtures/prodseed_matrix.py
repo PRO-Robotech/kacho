@@ -77,6 +77,9 @@ RID = str(int(time.time()))[-6:]
 # zone `a` has no v6-capable pool. Mirrors the dev-path setup.sh block 5d ownership table.
 ZONE_SUFFIXES = tuple(os.environ.get("SEED_ZONES", "a,b,c,d,e").split(","))
 NLB_ZONE = os.environ.get("NLB_ZONE", "ru-central1-e")
+# The second region — the value `existingRegionAltId` carries. It is seeded below,
+# with one zone, precisely so that "the other region" is one; see _seed_geo_catalog.
+ALT_REGION = os.environ.get("SEED_ALT_REGION", "ru-central2")
 
 
 def _curl(method, path, token, body=None, base=PUBLIC):
@@ -296,6 +299,34 @@ def _seed_geo_catalog():
             break
         time.sleep(0.5)
 
+    # A SECOND region, because "the other region" has to BE another region.
+    #
+    # Every negative case about placement coherence needs a region that is not the
+    # primary one, and `existingRegionAltId` is the handle they all reach for. It used
+    # to hold `ru-central1` — the primary — so the "cross-region" fixtures were built
+    # in the SAME region and the refusals they assert could never fire. On the
+    # production-posture run of 2026-07-30 that showed up as a listener accepting a
+    # cross-region repoint; the repoint was same-region and lawfully accepted, while
+    # the check that would have caught a real one had no producer for its own input.
+    #
+    # One zone is seeded with it: a region with no zone cannot host a zonal fixture,
+    # and a case that needs one would then fail for the wrong reason. No address pool
+    # is seeded here — nothing allocates a VIP in this region, and a pool that nobody
+    # draws from is exactly the kind of fixture that outlives its subject.
+    _curl("POST", "/geo/v1/internal/regions", boot,
+          {"id": ALT_REGION, "name": ALT_REGION, "status": "UP"}, base=INTERNAL)
+    for _ in range(20):
+        if _curl("GET", f"/geo/v1/regions/{ALT_REGION}", boot).get("id") == ALT_REGION:
+            break
+        time.sleep(0.5)
+    _curl("POST", "/geo/v1/internal/zones", boot,
+          {"id": f"{ALT_REGION}-a", "regionId": ALT_REGION,
+           "name": f"{ALT_REGION}-a", "status": "UP"}, base=INTERNAL)
+    for _ in range(20):
+        if _curl("GET", f"/geo/v1/zones/{ALT_REGION}-a", boot).get("id") == f"{ALT_REGION}-a":
+            break
+        time.sleep(0.5)
+
 
 def _seed_address_pool(zone_id, name, v4, v6=()):
     """Seed a default AddressPool (IPAM source for external VIPs: nlb external LB VIP
@@ -469,7 +500,7 @@ def seed() -> dict:
         "zoneC": "ru-central1-c",
         "zoneD": "ru-central1-d",
         "existingRegionId": "ru-central1",
-        "existingRegionAltId": "ru-central1",
+        "existingRegionAltId": ALT_REGION,
         "baseUrl": PUBLIC,
         "internalBaseUrl": INTERNAL,
     }
