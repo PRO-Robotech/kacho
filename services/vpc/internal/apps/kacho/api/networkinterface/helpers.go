@@ -77,6 +77,12 @@ func validateNICSecurityGroupCardinality(ids []string) error {
 // Тон отказа для «нет такой» и «есть, но не твоя» одинаков — иначе это оракул
 // существования. Группа без сети (project-level) принимается в любой подсети
 // проекта; группа с сетью — только в подсети своей сети.
+//
+// Код и регистр выбраны по соседней ссылке ЭТОГО ЖЕ ресурса (validateNICAddressRef:
+// InvalidArgument, "address %s not found"), а не по родительской подсети
+// (NotFound, "Subnet %s not found"): здесь речь о значении ПОЛЯ запроса, а не о
+// самом адресуемом ресурсе. Два соседних прецедента в сервисе действительно
+// разные — выбор сделан осознанно, менять его — через тикет.
 func validateNICSecurityGroupRefs(
 	ctx context.Context,
 	sgr kachorepo.SecurityGroupReaderIface,

@@ -326,6 +326,11 @@ type routeTableGetter interface {
 // Тон отказа для «нет такой» и «есть, но чужой сети» одинаков — иначе это
 // оракул существования. Формат id проверяется тем же вызовом, что и у прочих
 // ссылок, чтобы явный мусор получал терминальный отказ, а не «не найдено».
+//
+// Код и регистр — как у ссылки на значение поля (InvalidArgument, строчная
+// буква), а не как у родительской сети подсети (NotFound, "Network %s not
+// found"): предмет отказа — значение поля запроса, а не адресуемый ресурс.
+// Прецеденты в сервисе разные; выбор осознанный, менять — через тикет.
 func validateSubnetRouteTableRef(ctx context.Context, rtr routeTableGetter, routeTableID, networkID string) error {
 	if routeTableID == "" {
 		return nil
