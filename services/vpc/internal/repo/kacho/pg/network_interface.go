@@ -107,31 +107,6 @@ func (r *networkInterfaceReader) List(ctx context.Context, f kacho.NetworkInterf
 	return out, next, nil
 }
 
-// ListBySubnet возвращает все NIC, привязанные к указанной подсети. Нужен для
-// precondition Subnet.Delete (FK RESTRICT на subnets). Не paginated (Subnet с
-// >1000 NIC — edge-case).
-func (r *networkInterfaceReader) ListBySubnet(ctx context.Context, subnetID string) ([]*kacho.NetworkInterfaceRecord, error) {
-	rows, err := r.tx.Query(ctx,
-		fmt.Sprintf(`SELECT %s FROM network_interfaces WHERE subnet_id = $1 ORDER BY id ASC`, helpers.NICCols),
-		subnetID)
-	if err != nil {
-		return nil, helpers.WrapPgErr(err, "Network interface", "")
-	}
-	defer rows.Close()
-	var out []*kacho.NetworkInterfaceRecord
-	for rows.Next() {
-		n, err := helpers.ScanNI(rows)
-		if err != nil {
-			return nil, helpers.WrapPgErr(err, "Network interface", "")
-		}
-		out = append(out, n)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, helpers.WrapPgErr(err, "Network interface", "")
-	}
-	return out, nil
-}
-
 // CountBySubnet — счёт по индексу network_interfaces_subnet_idx + ограниченная
 // выборка идентификаторов. Ни одна строка целиком не материализуется, размер
 // ответа не зависит от числа интерфейсов подсети.

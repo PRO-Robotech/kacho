@@ -30,7 +30,6 @@ type NetworkInterfaceFilter struct {
 type NetworkInterfaceReaderIface interface {
 	Get(ctx context.Context, id string) (*NetworkInterfaceRecord, error)
 	List(ctx context.Context, f NetworkInterfaceFilter, p Pagination) ([]*NetworkInterfaceRecord, string, error)
-	ListBySubnet(ctx context.Context, subnetID string) ([]*NetworkInterfaceRecord, error)
 	// CountBySubnet — сколько интерфейсов держит подсеть и НЕСКОЛЬКО их
 	// идентификаторов для сообщения об отказе. Предусловие удаления отвечает на
 	// вопрос «есть ли хоть один», поэтому вычитывать все строки со всеми их

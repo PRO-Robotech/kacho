@@ -369,12 +369,3 @@ func (a *NetworkInterfaceAdapter) CountBySubnet(ctx context.Context, subnetID st
 	defer func() { _ = rd.Close() }()
 	return rd.NetworkInterfaces().CountBySubnet(ctx, subnetID, sample)
 }
-
-func (a *NetworkInterfaceAdapter) ListBySubnet(ctx context.Context, subnetID string) ([]*kacho.NetworkInterfaceRecord, error) {
-	rd, err := a.repo.Reader(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rd.Close() }()
-	return rd.NetworkInterfaces().ListBySubnet(ctx, subnetID)
-}
