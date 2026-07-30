@@ -109,7 +109,12 @@ mtls:
   clientSecretName: kacho-geo-client-tls
   mountPath: /etc/kacho-geo/tls   # <mp>/server|client/{tls.crt,tls.key,ca.crt}
   edges:
-    iamAuthz: false   # geo→iam InternalIAMService.Check (:9091)
+    # geo→iam InternalIAMService.Check (:9091) — ребро несёт решение о доступе и
+    # переданную личность вызывающего. Умолчание — взведено: с невзведённым
+    # ребром процесс отказывается стартовать (boot-guard), поэтому «выключено по
+    # умолчанию» означало бы профиль, который не поднимается, и один забытый
+    # ключ в новом профиле — открытый канал под решением о доступе.
+    iamAuthz: true
   serverName:
     iamAuthz: kacho-iam-internal.kacho.svc.cluster.local
 

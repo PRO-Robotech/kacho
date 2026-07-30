@@ -380,6 +380,18 @@ func validateSecurityConfig(cfg config.Config) error {
 	if !cfg.PublicServerMTLS.Enable || !cfg.InternalServerMTLS.Enable {
 		return errors.New("mTLS required on both listeners: set KACHO_GEO_PUBLIC_SERVER_MTLS_ENABLE and KACHO_GEO_INTERNAL_SERVER_MTLS_ENABLE=true (or KACHO_GEO_AUTHZ_BREAKGLASS=true to bypass)")
 	}
+	// Транспорт ИСХОДЯЩЕГО ребра geo→iam. Оно несёт решение о доступе (per-RPC
+	// Check) и переданную личность вызывающего, поэтому обязано быть
+	// verified-транспортом. Невзведённая ручка не даёт ошибки сама по себе:
+	// grpcclient.TLSClientTransportCreds на Enable=false возвращает insecure-creds
+	// БЕЗ ошибки — процесс поднимется, отчитается «authz interceptor enabled», и
+	// каждый Check уйдёт по открытому каналу. Требование стоит на ЛЮБОМ
+	// non-breakglass старте (как и allow-list форвардеров выше): развёрнутый
+	// стенд обязан работать в production-posture независимо от того, dev он
+	// называется или нет. Паритет с vpc/compute, где эта стража уже есть.
+	if !cfg.IAMAuthzMTLS.Enable {
+		return errors.New("verified transport required on the geo→iam authz Check edge: set KACHO_GEO_IAM_AUTHZ_MTLS_ENABLE=true (with cert/key/CA). Without it the per-RPC authorization Check and the forwarded end-user principal travel over cleartext gRPC — the client credentials silently degrade to insecure, so the process starts and reports authz as enabled (or KACHO_GEO_AUTHZ_BREAKGLASS=true to bypass authz entirely, emergency-only)")
+	}
 	// Secure-by-default: непустой allow-list доверенных форвардеров ОБЯЗАТЕЛЕН на
 	// ЛЮБОМ non-breakglass старте (не только production). Пустой список означает
 	// «доверять ЛЮБОМУ mTLS-verified peer'у как форвардеру principal'а» (см.
