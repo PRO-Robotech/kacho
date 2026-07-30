@@ -82,8 +82,8 @@ enum AddressPoolKind {
 }
 
 // InternalAddressPoolService — internal-only RPC для управления пулами +
-// биндинг пулов к Network/Address. Нет публичного аналога в YC, поэтому
-// эти операции не маппятся на api-gateway.
+// биндинг пулов к Network/Address. Публичного аналога нет by design
+// (admin-only, запрет 6), поэтому эти операции не маппятся на публичный mux.
 service InternalAddressPoolService {
   // -- Pool CRUD --
 

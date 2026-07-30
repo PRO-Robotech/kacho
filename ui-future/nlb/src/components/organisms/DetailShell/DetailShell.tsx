@@ -1,4 +1,4 @@
-// DetailShell — обёртка detail-страницы под YC look-and-feel.
+// DetailShell — обёртка detail-страницы под общий look-and-feel консоли.
 //
 // Layout (внутри Content; глобальный ServiceSidebar w=56 рисует Layout.tsx):
 //   ┌─ Sub-pane w=240 ────────┬─ Main pane ────────────────────────────────┐

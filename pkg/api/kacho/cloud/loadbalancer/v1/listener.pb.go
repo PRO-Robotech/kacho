@@ -187,8 +187,8 @@ func (Listener_Substatus) EnumDescriptor() ([]byte, []int) {
 	return file_kacho_cloud_loadbalancer_v1_listener_proto_rawDescGZIP(), []int{0, 2}
 }
 
-// Listener is a standalone first-class resource in kacho-nlb (divergence from
-// upstream YC where Listener was an inline child of NetworkLoadBalancer).
+// Listener is a standalone first-class resource in kacho-nlb — it is NOT an
+// inline child of NetworkLoadBalancer.
 // Reasons: independent FGA object type `nlb_listener`, independent VIP
 // allocation lifecycle, per-Listener operations history, hierarchy tuple
 // `nlb_listener#load_balancer@nlb_load_balancer:<lb_id>` (design §6.1).

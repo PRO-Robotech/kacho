@@ -61,7 +61,7 @@ async function fetchJson<T>(method: string, path: string, body?: unknown): Promi
     },
   };
   if (body !== undefined) {
-    // UI работает в snake_case; YC contract = camelCase. Convert на отправке.
+    // UI работает в snake_case; контракт API = camelCase. Convert на отправке.
     init.body = JSON.stringify(snakeToCamel(body));
   }
   const res = await fetch(url, init);

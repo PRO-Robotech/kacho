@@ -523,7 +523,7 @@ message ListInstancesResponse {
 }
 
 message CreateInstanceRequest {
-  // COMP-1 YC-cruft retire (ban #2): the raw YC sizing/boot input is removed from
+  // COMP-1 cruft retire (ban #2): the raw legacy sizing/boot input is removed from
   // the request. Field numbers + names reserved so they can never be reused.
   // platform_id/resources_spec → machine_type_id; scheduling_policy/gpu_settings/
   // reserved_instance_pool_id/application → gone; metadata_options (old) →
@@ -665,7 +665,7 @@ message CreateInstanceMetadata {
 }
 
 message UpdateInstanceRequest {
-  // COMP-1 YC-cruft retire (ban #2): raw sizing/boot input removed. Field numbers +
+  // COMP-1 cruft retire (ban #2): raw legacy sizing/boot input removed. Field numbers +
   // names reserved so they can never be reused. platform_id/resources_spec →
   // machine_type_id (STOPPED-gated); scheduling_policy/reserved_instance_pool_id/
   // application → gone; metadata_options (old) → vm_spec.metadata_options;

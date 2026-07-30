@@ -1,5 +1,5 @@
 // DopplerButton — antd Button с радиальной "doppler" пульсацией (как
-// loading-state в YC console). Используется на submit-кнопках Create-форм:
+// loading-state в консоли). Используется на submit-кнопках Create-форм:
 // после клика анимация идёт пока async Operation в pending-состоянии и
 // гаснет когда op.done.
 //

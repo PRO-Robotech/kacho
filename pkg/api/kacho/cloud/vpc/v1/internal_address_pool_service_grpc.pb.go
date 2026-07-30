@@ -40,8 +40,8 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // InternalAddressPoolService — internal-only RPC для управления пулами +
-// биндинг пулов к Network/Address. Нет публичного аналога в YC, поэтому
-// эти операции не маппятся на api-gateway.
+// биндинг пулов к Network/Address. Публичного аналога нет by design
+// (admin-only, запрет 6), поэтому эти операции не маппятся на публичный mux.
 type InternalAddressPoolServiceClient interface {
 	Create(ctx context.Context, in *CreateAddressPoolRequest, opts ...grpc.CallOption) (*AddressPool, error)
 	Get(ctx context.Context, in *GetAddressPoolRequest, opts ...grpc.CallOption) (*AddressPool, error)
@@ -195,8 +195,8 @@ func (c *internalAddressPoolServiceClient) GetUtilization(ctx context.Context, i
 // for forward compatibility.
 //
 // InternalAddressPoolService — internal-only RPC для управления пулами +
-// биндинг пулов к Network/Address. Нет публичного аналога в YC, поэтому
-// эти операции не маппятся на api-gateway.
+// биндинг пулов к Network/Address. Публичного аналога нет by design
+// (admin-only, запрет 6), поэтому эти операции не маппятся на публичный mux.
 type InternalAddressPoolServiceServer interface {
 	Create(context.Context, *CreateAddressPoolRequest) (*AddressPool, error)
 	Get(context.Context, *GetAddressPoolRequest) (*AddressPool, error)

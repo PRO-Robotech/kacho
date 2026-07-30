@@ -2319,7 +2319,7 @@ func (x *SerialPortSettings) GetSshAuthorization() SerialPortSettings_SSHAuthori
 // Affinity definition
 type PlacementPolicy_HostAffinityRule struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Affinity label or one of reserved values - 'yc.hostId', 'yc.hostGroupId'
+	// Affinity label key.
 	Key string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
 	// Include or exclude action
 	Op PlacementPolicy_HostAffinityRule_Operator `protobuf:"varint,2,opt,name=op,proto3,enum=kacho.cloud.compute.v1.PlacementPolicy_HostAffinityRule_Operator" json:"op,omitempty"`

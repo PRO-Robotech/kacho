@@ -41,7 +41,7 @@ message Event {
   int64 sequence_no = 1;
   // Тип ресурса: "Instance", "Disk", "Image", "Snapshot".
   string resource_kind = 2;
-  // ID ресурса (YC-style: epd..., fd8...).
+  // ID ресурса (`<prefix><base32>`: epd..., fd8...).
   string resource_id = 3;
   // Тип события: "CREATED", "UPDATED", "DELETED".
   string event_type = 4;

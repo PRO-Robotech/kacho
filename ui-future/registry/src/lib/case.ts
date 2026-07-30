@@ -1,6 +1,6 @@
 // Recursive camelCase ↔ snake_case key transformer.
 //
-// Backend (api-gateway → grpc-gateway) даёт verbatim YC JSON в camelCase.
+// Backend (api-gateway → grpc-gateway) даёт контрактный JSON в camelCase.
 // UI код (registry, types, forms, columns) работает в snake_case (proto-style).
 // api/client.ts применяет:
 //   - request: snake_case → camelCase (UI → wire)

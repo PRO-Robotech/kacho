@@ -36,8 +36,8 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // ListenerService manages Listener resources as a first-class FGA object
-// (`nlb_listener`). Diverges from upstream YC AddListener/RemoveListener
-// inline pattern (design §3.3, §6.1).
+// (`nlb_listener`). Replaces the inline AddListener/RemoveListener pattern of
+// an earlier revision (design §3.3, §6.1).
 type ListenerServiceClient interface {
 	Get(ctx context.Context, in *GetListenerRequest, opts ...grpc.CallOption) (*Listener, error)
 	List(ctx context.Context, in *ListListenersRequest, opts ...grpc.CallOption) (*ListListenersResponse, error)
@@ -123,8 +123,8 @@ func (c *listenerServiceClient) ListOperations(ctx context.Context, in *ListList
 // for forward compatibility.
 //
 // ListenerService manages Listener resources as a first-class FGA object
-// (`nlb_listener`). Diverges from upstream YC AddListener/RemoveListener
-// inline pattern (design §3.3, §6.1).
+// (`nlb_listener`). Replaces the inline AddListener/RemoveListener pattern of
+// an earlier revision (design §3.3, §6.1).
 type ListenerServiceServer interface {
 	Get(context.Context, *GetListenerRequest) (*Listener, error)
 	List(context.Context, *ListListenersRequest) (*ListListenersResponse, error)

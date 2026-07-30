@@ -15,7 +15,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalan
 // TargetGroup — collection of L4 targets with a single embedded HealthCheck.
 // HealthCheck lives on the group (not per-attachment) to align with the
 // `target_groups.health_check JSONB` column (design §5.2). The
-// `AttachedTargetGroup` shim still carries a snapshot for yc-shim JSON
+// `AttachedTargetGroup` still carries a snapshot for back-compat JSON
 // clients but the TG is authoritative.
 message TargetGroup {
   // Reserved for future TG-level fields (TLS terminator, per-group session
@@ -76,11 +76,11 @@ message TargetGroup {
 
 // Target — one backend endpoint. 4-way identity oneof (design §2.5):
 // in-cloud via Instance, in-cloud via NIC, in-cloud raw IP in a subnet, or
-// out-of-cloud raw IP. Replaces the upstream YC 2-field (subnet_id, address)
+// out-of-cloud raw IP. Replaces the earlier 2-field (subnet_id, address)
 // shape — subnet_id+address kept available as a single oneof case
 // (`ip_ref.subnet_id` + `ip_ref.address`) but no longer top-level.
 message Target {
-  // Old top-level YC `subnet_id` (was 1) and `address` (was 2) are reserved
+  // Old top-level `subnet_id` (was 1) and `address` (was 2) are reserved
   // so wire-level tags can never be reused with different semantics.
   reserved 1, 2;
   reserved "subnet_id", "address";

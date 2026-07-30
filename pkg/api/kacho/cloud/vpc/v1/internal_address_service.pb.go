@@ -177,7 +177,7 @@ func (x *AllocateIPResponse) GetAlreadyAllocated() bool {
 	return false
 }
 
-// AddressReference — кто использует Address (YC-like referrer-tracking).
+// AddressReference — кто использует Address (referrer-tracking).
 type AddressReference struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// ID адреса.
