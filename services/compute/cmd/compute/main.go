@@ -235,10 +235,12 @@ func runServe(cfg config.Config) error {
 	// Catalog-admin internal RPC (InternalDiskTypeService mutations) relation-gated
 	// (`system_admin on cluster:cluster_kacho_root`, internal/check/permission_map.go);
 	// без verified cert'а / вне allow-list форвардеров их principal снимается →
-	// Check fail-closed. InternalWatchService/Watch — explicit `Public: true` entry
-	// в PermissionMap (нет methodIsInternal-фолбэка в pinned corelib: незамапленный
-	// RPC, unary или stream, fail-closed'ится PermissionDenied); dev-mode (mTLS off)
-	// работает как раньше.
+	// Check fail-closed. InternalWatchService/Watch несёт `ScopeFiltered: true`:
+	// единичный Check по одному объекту с него снят (запрос не называет ни одного
+	// ресурса), но личность вызывающего обязательна, а сужение идёт per-row в handler'е.
+	// Запись в PermissionMap нужна в любом случае — methodIsInternal-фолбэка в pinned
+	// corelib нет, незамапленный RPC (unary или stream) fail-closed'ится
+	// PermissionDenied.
 	internalUnary := []grpc.UnaryServerInterceptor{
 		grpcsrv.UnaryCertIdentityExtract(),
 		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
@@ -339,8 +341,13 @@ func runServe(cfg config.Config) error {
 		return fmt.Errorf("internal listener tls creds: %w", err)
 	}
 
-	// Публичный listener — requireAdmin=false; internal :9091 — requireAdmin=true
-	// (defense-in-depth поверх NetworkPolicy в helm). Зеркалит kacho-vpc.
+	// Публичный listener — requireAdmin=false; internal :9091 — requireAdmin=true.
+	//
+	// Это НЕ «поверх сетевой политики»: у compute её нет ни в одном профиле (см. пункт 13
+	// docs/architecture/07-known-divergences.md). Прежняя редакция называла её здесь
+	// действующим нижним слоем — второй экземпляр того же ложного утверждения в этом
+	// файле, и он опаснее первого: он описывает requireAdmin как ДОБАВКУ к
+	// несуществующему рубежу.
 	grpcSrv := grpcsrv.NewServer(
 		publicCreds,
 		grpc.ChainUnaryInterceptor(publicUnary...),
@@ -352,7 +359,7 @@ func runServe(cfg config.Config) error {
 		grpc.ChainStreamInterceptor(internalStream...),
 	)
 	registerPublicServices(grpcSrv, svcs, opsRepo, listFilter)
-	registerInternalServices(internalSrv, svcs, pool, cfg.MigrateDSN(), logger, cfg.WatchMaxStreams)
+	registerInternalServices(internalSrv, svcs, pool, cfg.MigrateDSN(), logger, cfg.WatchMaxStreams, watchVisibility(listFilter))
 
 	// Dependency-aware readiness: /readyz отражает здоровье критичных зависимостей
 	// (database / register-drainer / lro-worker / iam-authz), /healthz — только
@@ -589,14 +596,27 @@ func requireTrustedForwarders(cfg config.Config) error {
 	return nil
 }
 
-// requireListFilter — в любом production-режиме per-object FGA-фильтр публичного
-// List обязан быть активен: master-switch включён (ListFilterEnabled=true), задан
+// requireListFilter — в любом production-режиме per-object FGA-фильтр обязан быть
+// активен.
+//
+// Предмет стражи ШИРЕ публичных List'ов, хотя имя историческое. Под ней все RPC,
+// помеченные `ScopeFiltered` в `internal/check/permission_map.go`, — то есть те, у
+// которых per-RPC Check снят и сужение живёт на уровне данных. Для List'а страж —
+// вторая линия: под ним остаётся Check на проектном ярусе, поэтому выключенный фильтр
+// даёт over-show, но не полный обход. Для потока журнала изменений
+// (`InternalWatchService/Watch`) второй линии НЕТ по построению: запрос не называет ни
+// одного ресурса, единого объекта для одного вопроса не существует, и выключенный
+// фильтр означал бы отсутствие авторизации вовсе. Совпадение вердикта стражи и
+// способности потока открыться проверяется в обе стороны — `scope_filtered_boot_guard_test.go`.
+//
+// Условия: master-switch включён (ListFilterEnabled=true), задан
 // authz-endpoint (AuthZIAMGRPCAddr непуст — иначе authzConn=nil → buildListFilter
 // вернёт nil → handler'ы делают bypass фильтра) И фильтр отказывает fail-closed
 // (ListFilterFailOpen=false). Per-RPC FGA Check гейтит List лишь на project-tier
 // `viewer`; сужение страницы до per-object `viewer ∪ v_list` делает ТОЛЬКО этот
 // фильтр. С выключенным фильтром любой principal с project-tier viewer видит ВСЕ
-// Disk/Image/Snapshot/Instance проекта, включая объекты без per-object гранта
+// Instance проекта (блочное хранение ушло из compute миграцией 0021 — Disk/Image/
+// Snapshot тут больше не значатся), включая объекты без per-object гранта
 // (over-show / BOLA-lite, CWE-862 / OWASP A01). Fail-closed зеркалит requireDBSSLMode /
 // requireTrustedForwarders (project-rule security.md → make audit-list-filter).
 //
@@ -1086,9 +1106,40 @@ func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*clients.SyncRe
 	return clients.NewSyncRegistrar(conn), func() { _ = conn.Close() }, nil
 }
 
-// registerInternalServices — kacho-only/admin RPC на internal listener (:9091,
-// не маршрутизируется наружу; NetworkPolicy + requireAdmin-interceptor).
-func registerInternalServices(srv *grpc.Server, svcs *services, pool *pgxpool.Pool, dsn string, logger *slog.Logger, watchMaxStreams int) {
-	computev1.RegisterInternalWatchServiceServer(srv, handler.NewInternalWatchHandler(pool, dsn, logger.With("component", "internal-watch"), watchMaxStreams))
+// registerInternalServices — kacho-only/admin RPC на internal listener (:9091).
+//
+// «Не маршрутизируется наружу» — про api-gateway: Internal*-сервисы отсекаются его
+// allow-list'ом (`HasInternalSuffix`), поэтому тенантский REST сюда не доходит. Это
+// НЕ значит «сюда доходит только шлюз»: у kacho-compute нет NetworkPolicy ни в одном
+// профиле развёртывания (шаблона нет; у kacho-vpc он есть и намеренно выключен в
+// отладочном профиле), поэтому на уровне сети порт открыт всякому поду namespace'а.
+// Прежняя редакция этого комментария ссылалась на сетевую политику как на
+// действующее ограничение — ссылка была ложной, и именно она делала отсутствие
+// авторизации у потока журнала похожим на осознанный размен.
+//
+// Что здесь РЕАЛЬНО ограничивает доступ: mTLS на листенере, allow-list законных
+// отправителей чужой личности, per-RPC Check на каждом замапленном RPC
+// (`internal/check/permission_map.go`), а для потока журнала изменений — сужение по
+// правам вызывающего на КАЖДУЮ отдаваемую строку. Сетевая политика была бы
+// эшелонированием поверх этого, а не заменой ему.
+func registerInternalServices(srv *grpc.Server, svcs *services, pool *pgxpool.Pool, dsn string, logger *slog.Logger, watchMaxStreams int, vis handler.EventVisibility) {
+	computev1.RegisterInternalWatchServiceServer(srv, handler.NewInternalWatchHandler(pool, dsn, logger.With("component", "internal-watch"), watchMaxStreams, vis))
 	computev1.RegisterInternalMachineTypeServiceServer(srv, handler.NewInternalMachineTypeHandler(svcs.machineType))
+}
+
+// watchVisibility адаптирует построенный per-object фильтр под порт потока журнала.
+//
+// Ветка нужна из-за НЕСОВПАДЕНИЯ ТИПОВ, а не из-за паники: `authzfilter.Filter` несёт
+// только FilterVisibleIDs, а порт потока требует ещё и Narrows(), поэтому значение
+// приходится сузить до конкретного типа. Проверка `f == nil` рядом отсекает
+// типизированный nil: интерфейс, несущий nil-указатель, сам НЕ равен nil, и handler
+// принял бы его за работающий фильтр. Panic'и на таком значении не было бы —
+// `FGAFilter.Narrows()` начинается с `f != nil` и корректно отвечает «не сужаю»
+// (см. её godoc, первый подслучай); опасность именно в том, что это тихо, а не громко.
+func watchVisibility(listFilter authzfilter.Filter) handler.EventVisibility {
+	f, ok := listFilter.(*authzfilter.FGAFilter)
+	if !ok || f == nil {
+		return nil
+	}
+	return f
 }

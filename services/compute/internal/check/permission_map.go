@@ -266,9 +266,11 @@ func PermissionMap() authz.RPCMap {
 		// PermissionDenied ("rpc not mapped"), unary AND stream alike. So every
 		// internal RPC MUST have an explicit entry: relation-gated
 		// (`system_admin on cluster:cluster_kacho_root` — mirrors proto
-		// `required_relation=system_admin`, object_type=cluster) or
-		// Public=true for an explicit exempt (like InternalWatchService/Watch
-		// further down, and OperationService.Get/Cancel above).
+		// `required_relation=system_admin`, object_type=cluster), ScopeFiltered=true
+		// (no single object to ask about — the handler narrows on the data, like
+		// InternalWatchService/Watch further down), or Public=true for an explicit
+		// exempt (OperationService.Get/Cancel below, which authorise on an owner
+		// predicate in SQL).
 
 		// MachineType — read-only sizing catalog (viewer on cluster singleton).
 		// Was unmapped → the public Get/List used across machine-type +
@@ -306,13 +308,44 @@ func PermissionMap() authz.RPCMap {
 		// InternalWatchService/Watch — internal server-stream over compute_outbox
 		// (LISTEN/NOTIFY; see internal/handler/internal_watch_handler.go), registered
 		// on the same internal :9091 listener/authzIntr.Stream() chain as the
-		// catalog-admin RPCs above (cmd/compute/main.go). It carries no proto
-		// required_relation and there is no natural per-object FGA target for a
-		// cursor-based outbox tail, so it is explicitly exempt via Public=true —
-		// the same documented mechanism as OperationService.Get/Cancel below, NOT
-		// a name-based "methodIsInternal" skip (the pinned corelib has none: an
-		// unmapped stream RPC fails closed with PermissionDenied).
-		"/kacho.cloud.compute.v1.InternalWatchService/Watch": {Public: true},
+		// catalog-admin RPCs above (cmd/compute/main.go).
+		//
+		// ScopeFiltered, NOT Public. The distinction is the whole point of this entry,
+		// so it is worth stating why, because the previous entry said Public and
+		// justified it by a parity that did not hold.
+		//
+		// True premise: there is no per-object FGA target for a cursor-based outbox
+		// tail. The request names no resource — it carries a cursor and an optional
+		// kind list — while the rows it returns belong to objects with individual
+		// owners. So a single per-RPC Check has nothing to ask about, and asking one
+		// anyway would deny the whole call `no path` before any narrowing could run.
+		//
+		// Wrong conclusion, now corrected: that this makes the RPC exempt "the same
+		// way as OperationService.Get/Cancel below". The mechanism was the same; the
+		// thing that makes it safe there was absent here. Those two authorise ON THE
+		// DATA — the operation's creating principal is a predicate in the SQL WHERE
+		// clause, so a non-owner gets NotFound (operation_handler.go GetOwned /
+		// CancelOwned). The stream had no predicate of any kind, and `Public` makes
+		// the interceptor answer allow BEFORE the subject is read, so one call
+		// returned every tenant's change journal — full resource snapshots, user-data
+		// included.
+		//
+		// What ScopeFiltered means here, concretely: the interceptor still performs no
+		// single-object Check (correct, per the true premise above) but DOES require a
+		// subject — unconditionally, since a scope-filtered RPC has no per-RPC Check
+		// underneath to refuse an unidentified caller (pkg/authz/interceptor.go). The
+		// handler then narrows the stream per delivered row, in partitions of ≤100,
+		// fail-closed on an unanswerable question. The marker also places the RPC
+		// under the production boot guard for that filter (requireListFilter), which
+		// `Public` did not.
+		//
+		// The entry must exist either way: the pinned corelib has no name-based
+		// "methodIsInternal" skip — an unmapped RPC, stream included, fails closed
+		// with PermissionDenied.
+		"/kacho.cloud.compute.v1.InternalWatchService/Watch": {
+			ScopeFiltered: true,
+			Permission:    "compute.instances.list",
+		},
 
 		// =========================
 		// OperationService (LRO; viewer на operation-id).
