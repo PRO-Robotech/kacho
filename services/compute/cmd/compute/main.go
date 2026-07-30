@@ -589,14 +589,27 @@ func requireTrustedForwarders(cfg config.Config) error {
 	return nil
 }
 
-// requireListFilter — в любом production-режиме per-object FGA-фильтр публичного
-// List обязан быть активен: master-switch включён (ListFilterEnabled=true), задан
+// requireListFilter — в любом production-режиме per-object FGA-фильтр обязан быть
+// активен.
+//
+// Предмет стражи ШИРЕ публичных List'ов, хотя имя историческое. Под ней все RPC,
+// помеченные `ScopeFiltered` в `internal/check/permission_map.go`, — то есть те, у
+// которых per-RPC Check снят и сужение живёт на уровне данных. Для List'а страж —
+// вторая линия: под ним остаётся Check на проектном ярусе, поэтому выключенный фильтр
+// даёт over-show, но не полный обход. Для потока журнала изменений
+// (`InternalWatchService/Watch`) второй линии НЕТ по построению: запрос не называет ни
+// одного ресурса, единого объекта для одного вопроса не существует, и выключенный
+// фильтр означал бы отсутствие авторизации вовсе. Совпадение вердикта стражи и
+// способности потока открыться проверяется в обе стороны — `scope_filtered_boot_guard_test.go`.
+//
+// Условия: master-switch включён (ListFilterEnabled=true), задан
 // authz-endpoint (AuthZIAMGRPCAddr непуст — иначе authzConn=nil → buildListFilter
 // вернёт nil → handler'ы делают bypass фильтра) И фильтр отказывает fail-closed
 // (ListFilterFailOpen=false). Per-RPC FGA Check гейтит List лишь на project-tier
 // `viewer`; сужение страницы до per-object `viewer ∪ v_list` делает ТОЛЬКО этот
 // фильтр. С выключенным фильтром любой principal с project-tier viewer видит ВСЕ
-// Disk/Image/Snapshot/Instance проекта, включая объекты без per-object гранта
+// Instance проекта (блочное хранение ушло из compute миграцией 0021 — Disk/Image/
+// Snapshot тут больше не значатся), включая объекты без per-object гранта
 // (over-show / BOLA-lite, CWE-862 / OWASP A01). Fail-closed зеркалит requireDBSSLMode /
 // requireTrustedForwarders (project-rule security.md → make audit-list-filter).
 //
