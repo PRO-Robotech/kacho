@@ -306,14 +306,29 @@ def retry_until_authorized(step: Step, budget: int = 25, interval_ms: int = 500,
 
     Retries the SAME request (setNextRequest -> self) while the response code is in
     `retry_on` (default 403/404), spacing attempts by ~interval_ms (busy-wait -- newman
-    fires setNextRequest before any setTimeout). budget*interval_ms bounds the wait
-    (default 60*500ms = ~30s -- raised from 40*400ms/~16s in round 4: under the full
-    umbrella CI run nlb races LAST (iam->vpc->compute->nlb), so the fga_register_drainer
-    backlog peaks and owner-tuple materialization tails past the old 16s window. Measured
-    in ci-rep4 load-balancer: async op-latency is ~1.5s (poll-op p90=3), but the wrapped
-    first-access materialization was p50~10s with a heavy tail -- 31/83 wrapped steps
-    fully exhausted the 16s budget. 30s captures the mid-band; the residual saturation
-    tail is a documented known-RED, see assert-suites-green.sh / kacho#11.) --
+    fires setNextRequest before any setTimeout). budget*interval_ms bounds the wait:
+    with the defaults in this signature that is 25*500ms = ~12.5s.
+
+    READ THE SIGNATURE, NOT THIS PARAGRAPH'S HISTORY. What stood here claimed
+    "default 60*500ms = ~30s -- raised from 40*400ms/~16s in round 4", and that raise
+    NEVER LANDED IN THIS FILE: `git log -S'budget: int = 60'` and `-S'budget: int = 40'`
+    over this path are both EMPTY, and the emitted guards in collections/*.json carry
+    `_arc < 25` / `_ard < 500` throughout. So for as long as the paragraph stood, these
+    steps were racing a 12.5s window while every reader -- including the removed
+    known-RED whitelist, which justified itself as covering "the residual saturation
+    tail past ~30s" -- believed 30s. A deduction resting on a window that was never
+    shipped is not a narrow exception; it is an unfalsifiable one.
+
+    The measurement it cited is still the useful part and is kept as a measurement:
+    ci-rep4 load-balancer put async op-latency at ~1.5s (poll-op p90=3) while the
+    wrapped first-access materialization was p50~10s with a heavy tail. Against 12.5s
+    that p50 is marginal by construction. The budget is deliberately NOT raised here to
+    make that go away: a budget picked to outlast a slow materialization path converts a
+    visible red into a slow green, and past the runner's own timeout into a cancelled
+    run. If these steps do not converge, the finding is about the materialization path
+    (nlb races LAST in the umbrella, so the fga_register_drainer backlog peaks exactly
+    when nlb reads) and it belongs in docs/RESULTS.md as a number.
+
     fail-closed: on any other code the wrapped step's real test_script runs exactly once,
     and once the budget is spent it ALSO runs on the terminal 403/404 (a genuine,
     non-converging deny still FAILS the real assertions -- never masked, never infinite).

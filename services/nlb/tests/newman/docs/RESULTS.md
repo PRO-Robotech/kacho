@@ -28,6 +28,30 @@ Retry budgets are **not** raised to absorb this. A budget large enough to outlas
 materialization path turns a visible red into a slow green, and past the runner timeout into
 a cancelled run. Residual non-convergence is a finding about the path.
 
+### ⚠ ИСПРАВЛЕНО 2026-07-30 — «бюджет ≈30 с» никогда не существовал
+
+Каждое место ниже, где написано, что round 4 поднял бюджет `retry_until_authorized` до
+`60 × 500 ms ≈ 30 s` (строки истории версий round 4 / round 4b, абзац про eventual-consistency
+и «residual tail past 30s», и «wraps fail-closed after 30s»), **описывает изменение, которого в
+`scripts/gen.py` нет**. Факты:
+
+- подпись функции: `budget: int = 25, interval_ms: int = 500` → **12.5 с**;
+- ни одно место вызова в `cases/` не передаёт `budget=`, то есть все 27 обёрнутых шагов идут
+  на умолчании;
+- в сгенерированных коллекциях охранники несут `_arc < 25` / `_ard < 500`;
+- `git log -S'budget: int = 60'` и `git log -S'budget: int = 40'` по этому файлу — **пусто**:
+  значений 60 и 40 в его истории не было никогда.
+
+Почему это важнее опечатки: снятое вычитание «известного красного» обосновывало себя как
+покрытие «остаточного хвоста за ~30 с». Обоснование опиралось на окно, которого не было, —
+такое исключение нельзя опровергнуть замером, потому что замерять предлагалось не то, что
+исполняется. А замер, приведённый рядом (материализация p50 ≈ 10 с с тяжёлым хвостом), против
+12.5 с маргинален по построению — то есть числа в этом же документе всё время говорили, что
+обёртка не покрывает свой предмет.
+
+Бюджет **не поднят** этой правкой (это был бы обмен видимого красного на медленный зелёный, а
+за таймаутом прогонщика — на отменённый прогон). Приведена к реальности только запись.
+
 > Baseline counters established with the initial check-in (KAC-NLB-newman-cases).
 > Updated after every run via `scripts/run.sh` → `out/summary.txt`.
 
