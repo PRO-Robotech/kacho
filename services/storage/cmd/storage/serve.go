@@ -164,8 +164,26 @@ func runServe(cfg config.Config) error {
 	// authzConn (kacho-iam internal :9091, mTLS) — там живёт AuthorizeService.
 	// Production boot-guard (config.Validate) не пускает старт с выключенным
 	// фильтром, поэтому nil здесь возможен только в dev.
-	listFilter := buildListFilter(cfg, authzConn, logger)
-	volumeUC.WithListFilter(listFilter)
+	//
+	// Тот же клиент модели прав отвечает и на ВТОРОЙ вопрос запросов Attach/Detach —
+	// про ИНСТАНС, в чей набор привязок пишется строка (`v_update` / `v_update ∪
+	// v_delete` на `compute_instance`, см. volume.requireInstanceControl). Это не
+	// «фильтр списка», а гейт мутации, поэтому порт отдельный (authzfilter.ObjectGate)
+	// и fail-open к нему не применяется; вопрос идёт в ту же модель, вызова в compute
+	// не происходит, ацикличность держится.
+	//
+	// Нулевой указатель раскладывается в НУЛЕВЫЕ интерфейсы намеренно: typed-nil в
+	// интерфейсе не равен nil, и проверки вида `filter == nil` у потребителей
+	// молча перестали бы срабатывать.
+	fgaFilter := buildListFilter(cfg, authzConn, logger)
+	var (
+		listFilter   authzfilter.Filter
+		instanceGate authzfilter.ObjectGate
+	)
+	if fgaFilter != nil {
+		listFilter, instanceGate = fgaFilter, fgaFilter
+	}
+	volumeUC.WithListFilter(listFilter).WithInstanceGate(instanceGate)
 	snapshotUC.WithListFilter(listFilter)
 	imageUC.WithListFilter(listFilter)
 
@@ -419,7 +437,11 @@ func serveResult(publicErr, internalErr error) error {
 // operation_budget — фильтрацию всей страницы (выводится из per-call и
 // параллелизма), worst_case_depth — сколько волн он покрывает. По одному конфигу не
 // видно, какое из них реально ограничивает запрос.
-func buildListFilter(cfg config.Config, authzConn *grpc.ClientConn, logger *slog.Logger) authzfilter.Filter {
+// Возвращается КОНКРЕТНЫЙ тип, а не интерфейс: один и тот же клиент модели прав
+// обслуживает два разных порта (видимость страницы и гейт мутации по названному
+// объекту), и вызывающий раскладывает его сам. Возврат интерфейса заставил бы
+// приводить типы либо строить второй клиент к тому же эндпоинту.
+func buildListFilter(cfg config.Config, authzConn *grpc.ClientConn, logger *slog.Logger) *authzfilter.FGAFilter {
 	if !cfg.ListFilterEnabled {
 		logger.Warn("list filter DISABLED (KACHO_STORAGE_LIST_FILTER_ENABLED=false) — " +
 			"public List returns every row of the project regardless of per-object grants; dev only")

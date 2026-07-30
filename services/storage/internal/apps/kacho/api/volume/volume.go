@@ -129,6 +129,11 @@ type UseCase struct {
 	// AuthorizeService.BatchCheck). nil → passthrough (dev / list-filter disabled;
 	// production boot-guard такую посадку запрещает). Инжектится WithListFilter.
 	listFilter authzfilter.Filter
+	// instanceGate — вопрос модели прав про ВТОРОЙ объект запросов Attach/Detach:
+	// инстанс, в чей набор привязок пишется (или из чьего удаляется) строка. nil →
+	// спрашивать негде, и это ОТКАЗ, не passthrough (см. requireInstanceControl).
+	// Инжектится WithInstanceGate.
+	instanceGate authzfilter.ObjectGate
 }
 
 // New собирает UseCase для Volume. reader/writer — CQRS-разделённые порты;
@@ -155,6 +160,13 @@ func (u *UseCase) WithRegistrar(r fgaregister.Registrar) *UseCase {
 // WithListFilter подключает per-object фильтр видимости публичного List.
 func (u *UseCase) WithListFilter(f authzfilter.Filter) *UseCase {
 	u.listFilter = f
+	return u
+}
+
+// WithInstanceGate подключает вопрос модели прав про ИНСТАНС — второй объект
+// запросов Attach/Detach. См. requireInstanceControl.
+func (u *UseCase) WithInstanceGate(g authzfilter.ObjectGate) *UseCase {
+	u.instanceGate = g
 	return u
 }
 
@@ -401,13 +413,78 @@ func (u *UseCase) ListOperations(ctx context.Context, volumeID string, p Paginat
 		operations.ListFilter{ResourceID: volumeID, PageSize: size, PageToken: p.PageToken})
 }
 
+// requireInstanceControl — вопрос модели прав про ВТОРОЙ объект запроса: инстанс.
+//
+// Attach/Detach называют ДВА ресурса с РАЗНЫМИ владельцами — том и машину, — а
+// per-RPC Check интерсептора задаётся ровно об одном (`editor` на
+// `storage_volume:<volume_id>`; та же запись в каталоге шлюза). Про машину не
+// спрашивал никто: она приходит из самоописывающегося payload'а, и CAS сверяет
+// зону/проект СВОЕЙ строки томов, а не права на названную машину. Правдивость
+// payload'а держалась лишь на том, что его выводит compute из своей строки, уже
+// проверив `v_update` на инстансе, — то есть составной путь был защищён, а прямой
+// вызов внутреннего листенера нет.
+//
+// Спрашивается ровно то, чем compute гейтит свои AttachDisk/DetachDisk, — модель
+// прав общая для всех доменов, поэтому вызова в compute не происходит и
+// ацикличность держится (см. authzfilter.ResourceTypeComputeInstance).
+//
+// Три ветки различаются намеренно:
+//   - "" субъект (identity не извлечена, в т.ч. system-принципал) → «не знаю, кто
+//     ты», а не «доверенный»: отказ БЕЗУСЛОВНЫЙ, модель не спрашивается;
+//   - гейт не подключён → «спросить негде» тоже не «да»: отказ. Привяжи мы проверку
+//     к наличию гейта — осталась бы посадка, где мутация в чужую машину проходит
+//     молча, то есть ровно исходная дыра (production boot-guard такую посадку
+//     запрещает, но гейт защиты не должен зависеть от того, что кто-то помнит про
+//     boot-guard);
+//   - ошибка модели → fail-closed отказ как есть: недоступный ответ не есть «да».
+//
+// Порядок несущий: отказ приходит ДО writer'а. Отказ ПОСЛЕ мутации оставил бы строку
+// в наборе привязок чужой машины — вместе с занятым загрузочным слотом.
+func (u *UseCase) requireInstanceControl(ctx context.Context, instanceID, action string, relations []string) error {
+	// Обязательная по форме запроса ссылка несёт СВОЙ required-check: пустая строка
+	// иначе уехала бы в вопрос про объект `compute_instance:` и вернулась бы отказом
+	// прав на ресурс, которого вызывающий не называл.
+	if instanceID == "" {
+		return u.errStatus(fmt.Errorf("%w: instance_id: required", storageerr.ErrInvalidArg))
+	}
+	if authzfilter.SubjectFromPrincipal(ctx) == "" {
+		return status.Error(codes.PermissionDenied, "permission denied")
+	}
+	if u.instanceGate == nil {
+		return status.Error(codes.PermissionDenied, "permission denied")
+	}
+	allowed, err := u.instanceGate.AllowedOnObject(ctx, authzfilter.SubjectFromPrincipal(ctx),
+		authzfilter.ResourceTypeComputeInstance, action, relations, instanceID)
+	if err != nil {
+		return u.errStatus(err)
+	}
+	if !allowed {
+		return status.Error(codes.PermissionDenied, "permission denied")
+	}
+	return nil
+}
+
+// attachRelations / detachRelations — принимаемые отношения на инстансе.
+// Привязка меняет машину (`v_update`); отвязка принимает ДОПОЛНИТЕЛЬНО право сноса
+// (`v_delete`), потому что шаг освобождения томов идёт внутри удаления машины под
+// личностью инициатора — см. authzfilter.RelationInstanceDelete.
+var (
+	attachRelations = []string{authzfilter.RelationInstanceUpdate}
+	detachRelations = []string{authzfilter.RelationInstanceUpdate, authzfilter.RelationInstanceDelete}
+)
+
 // Attach — атомарный CAS-insert строки volume_attachments (internal :9091, §3.2).
-// Malformed vol-id → sync InvalidArgument первым стейтментом (парити с Get). Успех →
-// обновлённый Volume (derived IN_USE) для AttachVolumeResponse. Sync (CAS мгновенный);
-// tenant-мутация остаётся async через compute-AttachDisk (ban #9 не нарушен).
+// Malformed vol-id → sync InvalidArgument первым стейтментом (парити с Get); затем
+// вопрос прав про ИНСТАНС (второй объект запроса, см. requireInstanceControl) — ДО
+// записи. Успех → обновлённый Volume (derived IN_USE) для AttachVolumeResponse.
+// Sync (CAS мгновенный); tenant-мутация остаётся async через compute-AttachDisk
+// (ban #9 не нарушен).
 func (u *UseCase) Attach(ctx context.Context, a *domain.VolumeAttachment) (*domain.Volume, error) {
 	if err := idInvalid(a.VolumeID); err != nil {
 		return nil, u.errStatus(err)
+	}
+	if err := u.requireInstanceControl(ctx, a.InstanceID, authzfilter.ActionVolumeAttach, attachRelations); err != nil {
+		return nil, err
 	}
 	if err := u.writer.Attach(ctx, a); err != nil {
 		return nil, u.errStatus(err)
@@ -420,11 +497,15 @@ func (u *UseCase) Attach(ctx context.Context, a *domain.VolumeAttachment) (*doma
 }
 
 // Detach — идемпотентное удаление строки volume_attachments (internal :9091, §3.3).
-// Malformed vol-id → sync InvalidArgument. Успех → обновлённый Volume (derived
-// AVAILABLE) для DetachVolumeResponse.
+// Malformed vol-id → sync InvalidArgument; затем вопрос прав про ИНСТАНС, с чьего
+// набора снимается привязка (ДО удаления строки). Успех → обновлённый Volume
+// (derived AVAILABLE) для DetachVolumeResponse.
 func (u *UseCase) Detach(ctx context.Context, volumeID, instanceID string) (*domain.Volume, error) {
 	if err := idInvalid(volumeID); err != nil {
 		return nil, u.errStatus(err)
+	}
+	if err := u.requireInstanceControl(ctx, instanceID, authzfilter.ActionVolumeDetach, detachRelations); err != nil {
+		return nil, err
 	}
 	if err := u.writer.Detach(ctx, volumeID, instanceID); err != nil {
 		return nil, u.errStatus(err)

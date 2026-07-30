@@ -101,6 +101,30 @@ type Filter interface {
 	FilterVisibleIDs(ctx context.Context, subject, resourceType, action string, ids []string) ([]string, error)
 }
 
+// ObjectGate — вопрос модели прав про ОДИН НАЗВАННЫЙ объект с ЯВНО указанным
+// набором отношений (union: разрешено, если резолвится ЛЮБОЕ из них).
+//
+// # Зачем отдельный порт, а не Filter
+//
+// Filter отвечает на вопрос ВИДИМОСТИ страницы и пинит отношение сам
+// (visibilityRelations — `viewer`, ровно то, что энфорсит Get). Здесь предмет
+// другой: мутация называет объект ЧУЖОГО домена, и требуемое отношение задаёт
+// вызывающий use-case (`v_update` на привязке, `v_update ∪ v_delete` на отвязке —
+// см. actions.go). Подмешивать это в предикат видимости нельзя: он специально сужен
+// до одного отношения, и его расширение показывало бы в списках то, чего Get не
+// отдаст.
+//
+//   - err != nil → fail-closed: вызывающий ОБЯЗАН отказать, а не продолжить мутацию.
+//     Недоступный ответ модели не есть ответ «да».
+//   - Вердикт НЕ кешируется (в отличие от видимости): кеш Filter'а ключуется без
+//     отношения — он хранит итог «видим», и положить туда вердикт про `v_update`
+//     значило бы выдать один вопрос за другой. Плюс мутаций на порядки меньше, чем
+//     строк списков, поэтому платить нечем, а окно залипания отзыва на мутации не
+//     нужно вовсе.
+type ObjectGate interface {
+	AllowedOnObject(ctx context.Context, subject, resourceType, action string, relations []string, id string) (bool, error)
+}
+
 // Config — параметры FGAFilter.
 type Config struct {
 	// Enabled — master-switch. false → FilterVisibleIDs возвращает ids как есть
@@ -341,6 +365,77 @@ func (f *FGAFilter) FilterVisibleIDs(ctx context.Context, subject, resourceType,
 		}
 	}
 	return out, nil
+}
+
+// AllowedOnObject — см. ObjectGate. Один round-trip: все отношения спрашиваются
+// одним BatchCheck по одному и тому же объекту, разрешено при первом «да».
+//
+// Fail-open здесь НЕ применяется, и это не упущение. Ручка fail-open — осознанный
+// operator-размен на ЧТЕНИИ (страница отдаётся нефильтрованной + audit-WARN). На
+// мутации, которая пишет строку в набор ЧУЖОГО ресурса, «продолжить, потому что
+// модель не ответила» защитимого прочтения не имеет: недоступность iam не делает
+// вызывающего владельцем названной машины.
+func (f *FGAFilter) AllowedOnObject(
+	ctx context.Context,
+	subject, resourceType, action string,
+	relations []string,
+	id string,
+) (bool, error) {
+	if f == nil || !f.cfg.Enabled || f.cli == nil {
+		// Порт есть, спросить негде. Это состояние посадки, а не ответ модели, —
+		// поэтому отказ, а не «да» (production boot-guard такую посадку запрещает:
+		// config.Validate требует ListFilterEnabled=true и адрес authorize-эндпоинта).
+		return false, status.Error(codes.PermissionDenied,
+			"instance gate: the rights model is not configured for this deployment")
+	}
+	if subject == "" {
+		return false, status.Error(codes.Unauthenticated, "instance gate: subject required")
+	}
+	if resourceType == "" || action == "" || id == "" || len(relations) == 0 {
+		return false, fmt.Errorf("authzfilter: resourceType, action, id and at least one relation required")
+	}
+
+	checks := make([]*iamv1.AuthorizeCheckRequest, 0, len(relations))
+	for _, relation := range relations {
+		checks = append(checks, &iamv1.AuthorizeCheckRequest{
+			Subject:          subject,
+			Resource:         &iamv1.ResourceRef{Type: resourceType, Id: id},
+			Action:           action,
+			RequiredRelation: relation,
+		})
+	}
+	resp, cerr := f.batchCheckOnce(ctx, &iamv1.BatchAuthorizeCheckRequest{Checks: checks})
+	if cerr != nil {
+		return false, gateErr(cerr, f.cfg.Timeout)
+	}
+	// Тот же контракт длины, что у страничного пути: расхождение — fail-closed
+	// ошибка, а не «считаем отказом», иначе вердикт одного отношения выдавался бы
+	// за другой.
+	if len(resp.GetResponses()) != len(checks) {
+		return false, status.Errorf(codes.Unavailable,
+			"instance gate: BatchCheck returned %d responses for %d checks",
+			len(resp.GetResponses()), len(checks))
+	}
+	for _, r := range resp.GetResponses() {
+		if r.GetAllowed() {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// gateErr — peer-ошибка вопроса про объект → Unavailable с названным числом
+// (по ошибке ctx не различить per-call дедлайн от дедлайна вызывающего).
+// pgx/SQL-текста здесь нет by construction: источник — gRPC-status iam.
+func gateErr(err error, perCall time.Duration) error {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return status.Errorf(codes.Unavailable,
+			"instance gate: AuthorizeService.BatchCheck deadline exceeded (per-call %s)", perCall)
+	}
+	if s, ok := status.FromError(err); ok && s.Code() != codes.OK && s.Code() != codes.Unknown {
+		return status.Errorf(codes.Unavailable, "instance gate: AuthorizeService.BatchCheck %s: %s", s.Code(), s.Message())
+	}
+	return status.Errorf(codes.Unavailable, "instance gate: AuthorizeService.BatchCheck: %v", err)
 }
 
 // batchVerdicts — вердикты ОДНОГО батча. Каждая горутина пишет в СВОЙ элемент среза
