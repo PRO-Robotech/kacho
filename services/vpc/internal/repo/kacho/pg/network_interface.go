@@ -24,7 +24,7 @@ import (
 const nicColsNI = `ni.id, ni.project_id, ni.created_at, ni.name, ni.description, ni.labels, ni.subnet_id,
 	ni.v4_address_ids, ni.v6_address_ids, ni.security_group_ids, ni.used_by_type, ni.used_by_id, ni.used_by_name, ni.mac_address, ni.status`
 
-// networkInterfaceReader — Get/List/ListBySubnet поверх произвольной pgx.Tx
+// networkInterfaceReader — Get/List/CountBySubnet поверх произвольной pgx.Tx
 // (read-only или RW). NIC ведется в CQRS-модели поверх единой writer-TX, чтобы
 // при NIC.Create обновление `addresses.used`/`address_references` шло в той же
 // TX, что INSERT(NIC) — address не остается помеченным как used, если INSERT(NIC)
@@ -107,29 +107,27 @@ func (r *networkInterfaceReader) List(ctx context.Context, f kacho.NetworkInterf
 	return out, next, nil
 }
 
-// ListBySubnet возвращает все NIC, привязанные к указанной подсети. Нужен для
-// precondition Subnet.Delete (FK RESTRICT на subnets). Не paginated (Subnet с
-// >1000 NIC — edge-case).
-func (r *networkInterfaceReader) ListBySubnet(ctx context.Context, subnetID string) ([]*kacho.NetworkInterfaceRecord, error) {
-	rows, err := r.tx.Query(ctx,
-		fmt.Sprintf(`SELECT %s FROM network_interfaces WHERE subnet_id = $1 ORDER BY id ASC`, helpers.NICCols),
-		subnetID)
+// CountBySubnet — счёт по индексу network_interfaces_subnet_idx + ограниченная
+// выборка идентификаторов. Ни одна строка целиком не материализуется, размер
+// ответа не зависит от числа интерфейсов подсети.
+func (r *networkInterfaceReader) CountBySubnet(ctx context.Context, subnetID string, sample int) (int64, []string, error) {
+	if sample < 0 {
+		sample = 0
+	}
+	var total int64
+	var ids []string
+	err := r.tx.QueryRow(ctx, `
+		SELECT (SELECT count(*) FROM network_interfaces WHERE subnet_id = $1),
+		       COALESCE((SELECT array_agg(id ORDER BY id)
+		                   FROM (SELECT id FROM network_interfaces
+		                          WHERE subnet_id = $1
+		                          ORDER BY id ASC
+		                          LIMIT $2) s), '{}')
+	`, subnetID, sample).Scan(&total, &ids)
 	if err != nil {
-		return nil, helpers.WrapPgErr(err, "Network interface", "")
+		return 0, nil, helpers.WrapPgErr(err, "Network interface", "")
 	}
-	defer rows.Close()
-	var out []*kacho.NetworkInterfaceRecord
-	for rows.Next() {
-		n, err := helpers.ScanNI(rows)
-		if err != nil {
-			return nil, helpers.WrapPgErr(err, "Network interface", "")
-		}
-		out = append(out, n)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, helpers.WrapPgErr(err, "Network interface", "")
-	}
-	return out, nil
+	return total, ids, nil
 }
 
 // ListByInstanceIDs — batched read NIC-привязок по набору instance_id

@@ -214,6 +214,14 @@ func ScanRouteTable(row Scannable) (*kachorepo.RouteTableRecord, error) {
 }
 
 // ScanSG — row-scanner для SecurityGroupRecord.
+// AddressesBySubnetWhere — предикат «адреса этой подсети». Вынесен в общий
+// артефакт, чтобы гейт плана (integration) читал ТУ ЖЕ строку, которую исполняет
+// репозиторий: проверка, EXPLAIN'ящая собственную копию запроса, ничего не
+// сказала бы о запросе продукта. Фильтр идёт по generated-колонке (индекс
+// addresses_internal_subnet_idx), а не по jsonb-выражениям — иначе цена страницы
+// равна размеру таблицы всех проектов.
+const AddressesBySubnetWhere = `internal_subnet_id = $1`
+
 func ScanSG(row Scannable) (*kachorepo.SecurityGroupRecord, error) {
 	var sg kachorepo.SecurityGroupRecord
 	var labelsJSON []byte

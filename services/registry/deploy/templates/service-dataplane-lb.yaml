@@ -7,9 +7,18 @@ Dedicated external VIP for the registry DATA-PLANE (the OCI Registry-v2 endpoint
 console (kacho.in-cloud.io / uif-lb). The control-plane gRPC (:9090) stays on the
 in-cluster `registry` Service; only the data-plane :8080 is published here.
 
-The data-plane serves plaintext HTTP and expects TLS terminated externally
-(DATAPLANE_TLS_TERMINATED_EXTERNALLY=true) — front this VIP with the edge TLS
-terminator / configure the LB accordingly. Gated on service.dataplaneLB.enabled.
+The data-plane pod serves plaintext HTTP; на публичном VIP оно закрывается либо
+TLS-sidecar'ом (dp-tls :8443), либо внешним терминатором.
+
+ОТКРЫТАЯ ПОРТ-ЗАПИСЬ НЕ РЕНДЕРИТСЯ БЕЗ ЯВНОГО ТРЕБОВАНИЯ (plaintext.enabled).
+По этому сокету едет живой предъявитель: клиент получает Bearer по TLS, а затем
+отправляет его на КАЖДЫЙ запрос, и ответ blob-GET может нести подписанную ссылку
+на объектное хранилище. Прежде запись port 80 → :8080 рендерилась безусловно, а
+шапка обещала «поставьте перед VIP внешний терминатор» — при том что файл
+значений боевого профиля фиксирует, что внешнего терминатора там НЕТ (ради этого
+и заведён sidecar). Предпосылку контроля опровергал соседний артефакт, поэтому
+запись стала opt-in: тот, кто действительно держит внешний терминатор, включает
+её осознанно. Gated on service.dataplaneLB.enabled.
 */}}
 {{- if .Values.service.dataplaneLB.enabled }}
 apiVersion: v1
@@ -35,9 +44,11 @@ spec:
   selector:
     app: {{ .Values.name }}
   ports:
+    {{- if .Values.service.dataplaneLB.plaintext.enabled }}
     - name: dataplane
-      port: {{ .Values.service.dataplaneLB.port | default 80 }}
+      port: {{ .Values.service.dataplaneLB.plaintext.port | default 80 }}
       targetPort: dataplane
+    {{- end }}
     {{- if .Values.service.dataplaneLB.httpsPort }}
     # При включённом TLS-sidecar 443 таргетит sidecar (dp-tls :8443, TLS-терминация
     # внутри pod); иначе — плейнтекстовый data-plane (внешняя TLS-терминация на edge).

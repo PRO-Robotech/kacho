@@ -37,7 +37,7 @@ import (
 
 // allocateInternalV4IntoTx — двухфазный (random-pick → deterministic sweep)
 // подбор свободного IPv4 по всем subnet.V4CidrBlocks с атомарным claim'ом
-// каждого кандидата через SetIPSpec в открытой writer-TX. На успех — updated
+// каждого кандидата через SetInternalIPv4 в открытой writer-TX. На успех — updated
 // record с проставленным internal_ipv4.address; иначе — gRPC status
 // (FailedPrecondition при отсутствии v4-CIDR, ResourceExhausted при исчерпании).
 //
@@ -52,7 +52,14 @@ import (
 // Pre-conditions (проверяет caller): addr.InternalIpv4 != nil, .Address == "",
 // .SubnetID != "".
 func allocateInternalV4IntoTx(ctx context.Context, w Writer, addr *kachorepo.AddressRecord) (*kachorepo.AddressRecord, error) {
-	sub, err := w.Subnets().Get(ctx, addr.InternalIpv4.SubnetID)
+	// FOR SHARE: набор диапазонов подсети читается и служит основанием для
+	// записи адреса, поэтому чтение обязано быть сериализовано со снятием
+	// диапазона (оно берёт FOR UPDATE). Иначе снятие могло пройти между чтением
+	// набора и записью адреса, и адрес оказывался бы вне объявленных диапазонов
+	// своей подсети — ровно то состояние, которое предусловие снятия и
+	// запрещает. Share-lock совместим сам с собой: параллельные аллокации не
+	// сериализуются.
+	sub, err := w.Subnets().GetForShare(ctx, addr.InternalIpv4.SubnetID)
 	if err != nil {
 		return nil, err
 	}
@@ -90,14 +97,14 @@ func allocateInternalV4IntoTx(ctx context.Context, w Writer, addr *kachorepo.Add
 			}
 			tried[ip] = struct{}{}
 			addr.InternalIpv4.Address = ip
-			updated, err := w.Addresses().SetIPSpec(ctx, addr.ID, nil, addr.InternalIpv4)
+			updated, err := w.Addresses().SetInternalIPv4(ctx, addr.ID, addr.InternalIpv4)
 			if err != nil {
 				if isUniqueViolation(err) {
 					totalConflicts++
 					addr.InternalIpv4.Address = ""
 					continue
 				}
-				slog.ErrorContext(ctx, "allocator: SetIPSpec returned non-conflict error",
+				slog.ErrorContext(ctx, "allocator: SetInternalIPv4 returned non-conflict error",
 					"subnet_id", sub.ID, "address_id", addr.ID, "ip_attempt", ip, "err", err)
 				return nil, err
 			}
@@ -110,14 +117,14 @@ func allocateInternalV4IntoTx(ctx context.Context, w Writer, addr *kachorepo.Add
 			}
 			tried[candidate] = struct{}{}
 			addr.InternalIpv4.Address = candidate
-			updated, err := w.Addresses().SetIPSpec(ctx, addr.ID, nil, addr.InternalIpv4)
+			updated, err := w.Addresses().SetInternalIPv4(ctx, addr.ID, addr.InternalIpv4)
 			if err != nil {
 				if isUniqueViolation(err) {
 					totalConflicts++
 					addr.InternalIpv4.Address = ""
 					continue
 				}
-				slog.ErrorContext(ctx, "allocator: SetIPSpec returned non-conflict error in sweep",
+				slog.ErrorContext(ctx, "allocator: SetInternalIPv4 returned non-conflict error in sweep",
 					"subnet_id", sub.ID, "address_id", addr.ID, "ip_attempt", candidate, "err", err)
 				return nil, err
 			}
@@ -151,7 +158,8 @@ func allocateInternalV4IntoTx(ctx context.Context, w Writer, addr *kachorepo.Add
 // Pre-conditions (проверяет caller): addr.InternalIpv6 != nil, .Address == "",
 // .SubnetID != "".
 func allocateInternalV6IntoTx(ctx context.Context, w Writer, addr *kachorepo.AddressRecord) (*kachorepo.AddressRecord, error) {
-	sub, err := w.Subnets().Get(ctx, addr.InternalIpv6.SubnetID)
+	// FOR SHARE — по той же причине, что и в v4-ветке.
+	sub, err := w.Subnets().GetForShare(ctx, addr.InternalIpv6.SubnetID)
 	if err != nil {
 		return nil, err
 	}

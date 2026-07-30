@@ -15,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
 )
 
@@ -88,4 +89,37 @@ func TestDecodeGraphQL_ErrorsAndUnmarshal(t *testing.T) {
 	err := decodeGraphQL(
 		strings.NewReader(`{"errors":[{"message":"cannot query field ImageList"}]}`), 1<<20, &out)
 	require.ErrorIs(t, err, regerrors.ErrUnavailable)
+}
+
+// TestListRepositories_AsksEngineForTheWindowOnly — окно режет ДВИЖОК, а не адаптер.
+//
+// Прежде на каждой странице приезжал ВЕСЬ перечень namespace: стоимость страницы не
+// зависела от page_size, а на достаточно большом реестре ответ упирался в ограничитель
+// размера, и перечисление переставало работать НАВСЕГДА — при живом реестре и живых
+// правах, с кодом, приглашающим повторить, хотя валидным он уже не станет.
+func TestListRepositories_AsksEngineForTheWindowOnly(t *testing.T) {
+	var gotQuery string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(body), "GlobalSearch") {
+			gotQuery = string(body)
+			_, _ = w.Write([]byte(`{"data":{"GlobalSearch":{"Repos":[]}}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"data":{"ImageList":{"Results":[]}}}`))
+	}))
+	defer srv.Close()
+
+	cli := New(srv.URL)
+	_, _, err := cli.ListRepositories(context.Background(), registry.RepoListQuery{
+		RegistryID: "reg-A", PageSize: 10,
+	})
+	require.NoError(t, err)
+
+	require.Contains(t, gotQuery, "requestedPage",
+		"движку не передано окно — он присылает весь перечень namespace на каждую страницу")
+	require.Contains(t, gotQuery, "limit:11", "окно = page_size + зонд продолжения")
+	require.Contains(t, gotQuery, "offset:0")
+	require.Contains(t, gotQuery, "ALPHABETIC_ASC",
+		"без заданной сортировки позиция курсора не стабильна между вызовами")
 }

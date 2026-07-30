@@ -419,6 +419,12 @@ func (w *addressPoolWriter) AddCidrToFreelist(ctx context.Context, poolID string
 
 // populateFreelistForCidrs — общая materialise-логика для списка v4-CIDR.
 // Идемпотентна (ON CONFLICT DO NOTHING). Не-v4 (`family <> 4`) фильтруется в SQL.
+//
+// Ключ пишется в host-форме (`host(ip)::inet`) — той же, что использует возврат
+// адреса при удалении. Иначе один адрес лежал бы в двух разных ключах inet
+// (с маской диапазона и без), первичный ключ их не схлопывал бы, и точечное
+// занятие адреса по значению не находило бы строку. Форма закреплена проверкой
+// address_pool_free_ips_host_form (миграция 0023).
 func (w *addressPoolWriter) populateFreelistForCidrs(ctx context.Context, poolID string, cidrs []string) error {
 	for _, cidr := range cidrs {
 		if _, err := w.tx.Exec(ctx, `
@@ -429,7 +435,7 @@ func (w *addressPoolWriter) populateFreelistForCidrs(ctx context.Context, poolID
 				SELECT (ip + 1)::inet, stop FROM ips WHERE ip + 1 < stop
 			)
 			INSERT INTO address_pool_free_ips (pool_id, ip)
-			SELECT $1, ip FROM ips
+			SELECT $1, host(ip)::inet FROM ips
 			ON CONFLICT (pool_id, ip) DO NOTHING
 		`, poolID, cidr); err != nil {
 			return fmt.Errorf("populate freelist for cidr %s: %w", cidr, err)
@@ -460,27 +466,45 @@ func (w *addressPoolWriter) DeleteFreelistForCidrs(ctx context.Context, poolID s
 	return nil
 }
 
-// CountAllocatedInCidrs — сколько Address имеют выделенный external_ipv4.address,
-// принадлежащий пулу poolID И попадающий в любой из переданных CIDR'ов
-// (use-check для :removeCidrBlocks). Используется для запрета удаления CIDR,
-// в котором есть аллоцированные IP (FailedPrecondition). Считает только v4
-// (external_ipv4); v6-CIDR в списке не дают совпадений по `::inet << cidr` для
-// v4-адресов и наоборот — безопасно.
-func (w *addressPoolWriter) CountAllocatedInCidrs(ctx context.Context, poolID string, cidrs []string) (int64, error) {
+// CountAllocatedInCidrs — сколько адресов пула живёт в переданных CIDR'ах
+// (use-check для :removeCidrBlocks; >0 → диапазон снимать нельзя).
+//
+// Считает ОБЕ семьи, потому что снятие диапазона освобождает его для другого
+// пула независимо от семьи: строка address_pool_cidrs, несущая EXCLUDE, уходит,
+// и следующий владелец начинает выдачу с вершины того же префикса — то есть с
+// адресов, которые уже живут у ресурсов. Ограничения уникальности этого не
+// ловят: и v4, и v6 индексы внешнего адреса, привязанные к пулу, ключуются
+// pool_id.
+//
+// Три слагаемых: внешний IPv4 пула в диапазоне, внешний IPv6 пула в диапазоне и
+// книга учёта v6 (ipv6_allocated_ips) — последняя нужна, потому что она
+// авторитетна для v6-выдачи и переживает расхождение с колонкой адреса.
+// Сравнение inet разных семейств даёт false, поэтому списки семей можно
+// передавать одним массивом.
+func (w *addressPoolWriter) OccupiedCidrs(ctx context.Context, poolID string, cidrs []string) ([]string, error) {
 	if len(cidrs) == 0 {
-		return 0, nil
+		return nil, nil
 	}
-	var n int64
+	var occupied []string
 	err := w.tx.QueryRow(ctx, `
-		SELECT count(*) FROM addresses a
-		WHERE a.external_ipv4 ->> 'address_pool_id' = $1
-		  AND coalesce(a.external_ipv4 ->> 'address', '') <> ''
-		  AND (a.external_ipv4 ->> 'address')::inet <<= ANY($2::cidr[])
-	`, poolID, cidrs).Scan(&n)
+		SELECT COALESCE(array_agg(c.blk::text ORDER BY c.blk), '{}')
+		  FROM (SELECT unnest($2::text[])::cidr AS blk) AS c
+		 WHERE EXISTS (
+		         SELECT 1 FROM addresses a
+		          WHERE (a.external_ipv4 ->> 'address_pool_id' = $1
+		                 AND coalesce(a.external_ipv4 ->> 'address', '') <> ''
+		                 AND (a.external_ipv4 ->> 'address')::inet <<= c.blk)
+		             OR (a.external_ipv6 ->> 'address_pool_id' = $1
+		                 AND coalesce(a.external_ipv6 ->> 'address', '') <> ''
+		                 AND (a.external_ipv6 ->> 'address')::inet <<= c.blk))
+		    OR EXISTS (
+		         SELECT 1 FROM ipv6_allocated_ips l
+		          WHERE l.pool_id = $1 AND l.ip <<= c.blk)
+	`, poolID, cidrs).Scan(&occupied)
 	if err != nil {
-		return 0, helpers.WrapPgErr(err, "AddressPool", poolID)
+		return nil, helpers.WrapPgErr(err, "AddressPool", poolID)
 	}
-	return n, nil
+	return occupied, nil
 }
 
 // InsertCidrBlocks — материализует каждый v4/v6 CIDR-блок пула в нормализованную

@@ -65,19 +65,11 @@ func (u *ListUseCase) Run(ctx context.Context, req *lbv1.ListListenersRequest) (
 		return nil, err
 	}
 
-	rd, err := u.repo.Reader(ctx)
-	if err != nil {
-		return nil, mapDomainErr(err)
-	}
-	defer func() { _ = rd.Close() }()
-
-	page, nextToken, err := rd.Listeners().List(ctx,
-		filter,
-		kachorepo.Pagination{
-			PageSize:  req.GetPageSize(),
-			PageToken: req.GetPageToken(),
-		},
-	)
+	// Страница читается и read-TX ЗАКРЫВАЕТСЯ до опроса прав (см. readPage).
+	page, nextToken, err := u.readPage(ctx, filter, kachorepo.Pagination{
+		PageSize:  req.GetPageSize(),
+		PageToken: req.GetPageToken(),
+	})
 	if err != nil {
 		return nil, mapDomainErr(err)
 	}
@@ -100,4 +92,20 @@ func (u *ListUseCase) Run(ctx context.Context, req *lbv1.ListListenersRequest) (
 		resp.Listeners = append(resp.Listeners, pb)
 	}
 	return resp, nil
+}
+
+// readPage читает страницу и ОТДАЁТ соединение пула обратно до возврата — read-TX
+// не удерживается через сетевое ожидание iam в FilterVisiblePage. Полное
+// обоснование и цена удержания — loadbalancer/list.go readPage; закрывать
+// безопасно, потому что List вычитывает строки в срез целиком, а маппинг в proto
+// к БД не обращается.
+func (u *ListUseCase) readPage(
+	ctx context.Context, filter kachorepo.ListenerFilter, page kachorepo.Pagination,
+) ([]*kachorepo.ListenerRecord, string, error) {
+	rd, err := u.repo.Reader(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	defer func() { _ = rd.Close() }()
+	return rd.Listeners().List(ctx, filter, page)
 }

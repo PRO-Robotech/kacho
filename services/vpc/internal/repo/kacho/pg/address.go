@@ -148,22 +148,6 @@ func (r *addressReader) GetByValue(ctx context.Context, internalIP, subnetID str
 	return a, nil
 }
 
-// ExistsIP — uniqueness-check для IPv4 (external OR internal).
-func (r *addressReader) ExistsIP(ctx context.Context, ip string) (bool, error) {
-	var count int
-	err := r.tx.QueryRow(ctx, `
-		SELECT COUNT(*) FROM addresses
-		WHERE (
-			(external_ipv4->>'address' = $1) OR
-			(internal_ipv4->>'address' = $1)
-		)
-	`, ip).Scan(&count)
-	if err != nil {
-		return false, helpers.WrapPgErr(err, "Address", "")
-	}
-	return count > 0, nil
-}
-
 // GetReference — referrer-row. ErrNotFound если адреса нет ИЛИ нет referrer'а.
 func (r *addressReader) GetReference(ctx context.Context, addressID string) (*domain.AddressReference, error) {
 	var out domain.AddressReference
@@ -216,7 +200,17 @@ type addressWriter struct {
 }
 
 // Insert — INSERT addresses RETURNING. CreatedAt — UTC `time.Now()`.
+//
+// Явный внешний адрес (задан вызывающим, а не выдан аллокатором) ЗДЕСЬ же
+// изымается из книги учёта пула-владельца — в той же writer-TX, что INSERT.
+// Это вторая половина контракта ограниченного пула: путь высвобождения
+// возвращает адрес в свободный список, путь ЗАНЯТИЯ обязан его оттуда изъять.
+// Изъятие живёт в единственном пути записи строки адреса, чтобы никакой
+// будущий писатель не мог занять адрес мимо реестра.
 func (w *addressWriter) Insert(ctx context.Context, a *domain.Address) (*kacho.AddressRecord, error) {
+	if err := w.claimExplicitExternalAddresses(ctx, a); err != nil {
+		return nil, err
+	}
 	labelsJSON, err := helpers.MarshalJSONB(domain.LabelsToMap(a.Labels), "Address.labels")
 	if err != nil {
 		return nil, err
@@ -269,7 +263,9 @@ func (w *addressWriter) GetForUpdate(ctx context.Context, id string) (*kacho.Add
 }
 
 // Update — UPDATE name/description/labels/reserved/deletion_protection.
-// IP-spec колонки НЕ трогаем (immutable; для них есть SetIPSpec).
+// IP-spec колонки НЕ трогаем (immutable; для internal v4 есть SetInternalIPv4,
+// для internal v6 — SetInternalIPv6; внешний адрес пишут только Insert и
+// аллокаторы, ведущие книгу учёта пула).
 //
 // `used` НЕ обновляется здесь намеренно: это system-managed флаг, выставляемый
 // исключительно referrer-методами (SetReference / MarkEphemeralInUse /
@@ -316,49 +312,30 @@ func withSavepoint(ctx context.Context, tx pgx.Tx, fn func(pgx.Tx) (*kacho.Addre
 	return rec, nil
 }
 
-// SetIPSpec — атомарный UPDATE external_ipv4 / internal_ipv4. Передавайте nil
-// для поля, которое не нужно менять; оба nil — no-op (вернуть Get).
+// SetInternalIPv4 — атомарный UPDATE internal_ipv4. nil → no-op (вернуть Get).
+//
+// Внешний адрес этим путём не пишется НАМЕРЕННО. Занятие внешнего адреса
+// обязано отражаться в книге учёта пула, а единственное место, где это
+// происходит, — Insert (claimExplicitExternalAddresses) и сами аллокаторы.
+// Прежняя ветвь, писавшая external_ipv4 из переданного спека, не имела ни
+// одного вызывающего в прод-коде и была путём ЗАНЯТИЯ мимо реестра — ровно тем
+// классом, из-за которого расходились реестр и реальность.
 //
 // Исполняется под SAVEPOINT: unique-violation попытка аллокатора не отравляет
 // внешнюю writer-TX (см. withSavepoint).
-func (w *addressWriter) SetIPSpec(ctx context.Context, id string, ext *domain.ExternalIpv4Spec, intn *domain.InternalIpv4Spec) (*kacho.AddressRecord, error) {
-	if ext == nil && intn == nil {
+func (w *addressWriter) SetInternalIPv4(ctx context.Context, id string, intn *domain.InternalIpv4Spec) (*kacho.AddressRecord, error) {
+	if intn == nil {
 		return w.Get(ctx, id)
 	}
-	q := `UPDATE addresses SET `
-	args := []any{id}
-	switch {
-	case ext != nil && intn == nil:
-		extJSON, err := helpers.MarshalJSONB(ext, "Address.external_ipv4")
-		if err != nil {
-			return nil, err
-		}
-		q += `external_ipv4 = $2::jsonb`
-		args = append(args, extJSON)
-	case ext == nil && intn != nil:
-		intJSON, err := helpers.MarshalJSONB(intn, "Address.internal_ipv4")
-		if err != nil {
-			return nil, err
-		}
-		q += `internal_ipv4 = $2::jsonb`
-		args = append(args, intJSON)
-	default:
-		extJSON, err := helpers.MarshalJSONB(ext, "Address.external_ipv4")
-		if err != nil {
-			return nil, err
-		}
-		intJSON, err := helpers.MarshalJSONB(intn, "Address.internal_ipv4")
-		if err != nil {
-			return nil, err
-		}
-		q += `external_ipv4 = $2::jsonb, internal_ipv4 = $3::jsonb`
-		args = append(args, extJSON, intJSON)
+	intJSON, err := helpers.MarshalJSONB(intn, "Address.internal_ipv4")
+	if err != nil {
+		return nil, err
 	}
-	q += ` WHERE id = $1 RETURNING ` + helpers.AddressCols
 	return withSavepoint(ctx, w.tx, func(sp pgx.Tx) (*kacho.AddressRecord, error) {
-		a, err := helpers.ScanAddress(sp.QueryRow(ctx, q, args...))
-		if err != nil {
-			return nil, helpers.WrapPgErr(err, "Address", id)
+		a, serr := helpers.ScanAddress(sp.QueryRow(ctx,
+			`UPDATE addresses SET internal_ipv4 = $2::jsonb WHERE id = $1 RETURNING `+helpers.AddressCols, id, intJSON))
+		if serr != nil {
+			return nil, helpers.WrapPgErr(serr, "Address", id)
 		}
 		return a, nil
 	})
@@ -429,6 +406,240 @@ func (w *addressWriter) DeleteGuarded(ctx context.Context, id string) (*kacho.Ad
 		return nil, fmt.Errorf("%w: address %s has deletion_protection enabled; clear it via Update before Delete", helpers.ErrFailedPrecondition, id)
 	}
 	return nil, fmt.Errorf("%w: address %s is in use", helpers.ErrFailedPrecondition, id)
+}
+
+// v6ClaimMaxAttempts — сколько подряд занятых номеров переступает автоматическая
+// выдача внешнего IPv6, прежде чем отказать. Занятый номер бывает только там, где
+// адрес занял кто-то ещё (явное указание вызывающим), поэтому серия длиннее
+// нескольких — признак того, что диапазон плотно занят, а не гонки.
+const v6ClaimMaxAttempts = 64
+
+// nextIPv6Offset — очередной номер для выдачи: сначала возврат ранее
+// освобождённого (FOR UPDATE SKIP LOCKED — параллельные аллокаторы берут разные),
+// иначе шаг счётчика пула. Второе значение — откуда взят номер: у возвращённого
+// номера и у номера счётчика РАЗНЫЙ смысл «адрес вне префикса» (см. вызывающего).
+func (w *addressWriter) nextIPv6Offset(ctx context.Context, poolID string) (*big.Int, bool, error) {
+	var offStr string
+	err := w.tx.QueryRow(ctx, `
+		DELETE FROM ipv6_released_offsets
+		 WHERE (pool_id, "offset") IN (
+			SELECT pool_id, "offset" FROM ipv6_released_offsets
+			 WHERE pool_id = $1
+			 ORDER BY "offset" ASC
+			 LIMIT 1 FOR UPDATE SKIP LOCKED)
+		RETURNING "offset"::text`, poolID).Scan(&offStr)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		// освобождённых номеров нет — шагаем счётчиком
+	case err != nil:
+		return nil, false, fmt.Errorf("pool op: %w", err)
+	default:
+		off, ok := new(big.Int).SetString(offStr, 10)
+		if !ok {
+			return nil, false, fmt.Errorf("parse offset %q: invalid integer", offStr)
+		}
+		return off, true, nil
+	}
+
+	err = w.tx.QueryRow(ctx, `
+		UPDATE ipv6_pool_cursors
+		   SET next_offset = next_offset + 1
+		 WHERE pool_id = $1
+		RETURNING (next_offset - 1)::text`, poolID).Scan(&offStr)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, false, fmt.Errorf("%w: pool %s has no ipv6 cursor (InitIPv6PoolCursor not called?)", helpers.ErrFailedPrecondition, poolID)
+		}
+		return nil, false, fmt.Errorf("pool op: %w", err)
+	}
+	off, ok := new(big.Int).SetString(offStr, 10)
+	if !ok {
+		return nil, false, fmt.Errorf("parse cursor offset %q: invalid integer", offStr)
+	}
+	return off, false, nil
+}
+
+// ---- IPAM: занятие адреса, заданного вызывающим ----
+
+// claimExplicitExternalAddresses — изъятие явно заданного внешнего адреса из
+// книги учёта пула-владельца. Вызывается из Insert (единственный путь создания
+// строки адреса), поэтому занять адрес мимо реестра невозможно by construction.
+//
+// Адрес ВНЕ диапазонов любого пула — легальный «неуправляемый» внешний адрес:
+// реестра для него не существует, расходиться не с чем, глобальная уникальность
+// по-прежнему держится индексами addresses_external_ip_uniq /
+// addresses_external_v6_ip_uniq. Адрес ВНУТРИ диапазона пула обязан быть занят
+// в реестре этого пула — иначе аллокатор предложит его следующему.
+func (w *addressWriter) claimExplicitExternalAddresses(ctx context.Context, a *domain.Address) error {
+	if a.ExternalIpv4 != nil && a.ExternalIpv4.Address != "" && a.ExternalIpv4.AddressPoolID == "" {
+		canonical, poolID, err := w.claimExplicitExternalIPv4(ctx, a.ExternalIpv4.Address)
+		if err != nil {
+			return err
+		}
+		// Записывается КАНОНИЧЕСКАЯ форма: глобальная уникальность внешнего
+		// адреса — текстовый индекс, поэтому две записи одного адреса в разных
+		// формах разъехались бы по разным ключам. Канонизация на входе use-case
+		// закрывает публичный путь; здесь она закрывает сам путь записи.
+		a.ExternalIpv4.Address = canonical
+		a.ExternalIpv4.AddressPoolID = poolID
+	}
+	if a.ExternalIpv6 != nil && a.ExternalIpv6.Address != "" && a.ExternalIpv6.AddressPoolID == "" {
+		canonical, poolID, err := w.claimExplicitExternalIPv6(ctx, a.ID, a.ExternalIpv6.Address)
+		if err != nil {
+			return err
+		}
+		a.ExternalIpv6.Address = canonical
+		a.ExternalIpv6.AddressPoolID = poolID
+	}
+	return nil
+}
+
+// claimExplicitExternalIPv4 — ОДИН стейтмент: находит пул, чей CIDR содержит
+// адрес, и удаляет строку свободного списка под её row-lock'ом (атомарный CAS,
+// не «прочитал → проверил → записал»). Конкурент, занимающий тот же адрес,
+// ждёт на этой строке и после коммита первого не находит её → 0 строк →
+// FailedPrecondition. Конкурентный автоматический аллокатор берёт наименьший
+// свободный `FOR UPDATE SKIP LOCKED` → залоченную нами строку пропускает.
+//
+// Владелец ищется по address_pool_cidrs — нормализованной карте диапазонов,
+// которую EXCLUDE делает непересекающейся в пределах kind; активный kind в
+// платформе один (EXTERNAL_PUBLIC), поэтому владелец не более одного.
+// Детерминированный ORDER BY фиксирует выбор и на случай второго kind.
+//
+// Возвращает id пула-владельца ("" — адрес вне всех пулов).
+func (w *addressWriter) claimExplicitExternalIPv4(ctx context.Context, ip string) (string, string, error) {
+	addr, perr := netip.ParseAddr(ip)
+	if perr != nil || !addr.Is4() {
+		return "", "", fmt.Errorf("%w: external_ipv4.address %q is not a valid IPv4 address", helpers.ErrInvalidArg, ip)
+	}
+	var ownerPool, claimedPool string
+	err := w.tx.QueryRow(ctx, `
+		WITH owner AS (
+		    SELECT c.pool_id
+		      FROM address_pool_cidrs c
+		     WHERE c.block >>= $1::inet
+		     ORDER BY c.kind, c.pool_id
+		     LIMIT 1
+		), locked AS (
+		    -- FOR SHARE на самом пуле: совместим с другими занятиями и с
+		    -- автоматической выдачей (она берёт тот же share-lock), конфликтует с
+		    -- удалением пула (FOR UPDATE). Без него пул мог быть удалён между
+		    -- изъятием адреса и коммитом строки, и адрес остался бы с ссылкой на
+		    -- несуществующий пул — а вернуть его при удалении было бы уже некуда.
+		    SELECT p.id FROM address_pools p JOIN owner o ON p.id = o.pool_id FOR SHARE OF p
+		), claimed AS (
+		    DELETE FROM address_pool_free_ips f
+		     USING locked l
+		     WHERE f.pool_id = l.id AND f.ip = $1::inet
+		    RETURNING f.pool_id
+		)
+		SELECT COALESCE((SELECT pool_id FROM owner), ''),
+		       COALESCE((SELECT pool_id FROM claimed), '')
+	`, addr.String()).Scan(&ownerPool, &claimedPool)
+	if err != nil {
+		return "", "", fmt.Errorf("claim explicit external ipv4: %w", err)
+	}
+	if ownerPool == "" {
+		return addr.String(), "", nil // адрес вне управляемых диапазонов — реестра нет
+	}
+	if claimedPool == "" {
+		// Пул — Internal-admin-ресурс, его id не место в отказе публичного RPC
+		// (он не выставлен и в самом ответе). Вызывающему достаточно того, что
+		// адрес занят; оператору хватает координаты по адресу.
+		return "", "", fmt.Errorf("%w: external address %s is not available",
+			helpers.ErrFailedPrecondition, addr.String())
+	}
+	return addr.String(), claimedPool, nil
+}
+
+// claimExplicitExternalIPv6 — занятие явного внешнего IPv6 в книге учёта пула
+// (ipv6_allocated_ips). Роль атомарного CAS играет сама вставка: PK
+// (pool_id, ip) и UNIQUE (pool_id, offset) отвергают второе занятие, а
+// ON CONFLICT DO NOTHING превращает это в 0 строк вместо ошибки, не роняя
+// writer-TX. Освобождённый ранее номер того же адреса снимается из списка
+// возвратов — иначе счётчик выдал бы его повторно.
+//
+// Номер считается от ОДНОГО якоря на весь пул — базы его ПЕРВОГО v6-диапазона
+// (того самого, которым нумерует счётчик выдачи). Это делает отображение
+// «адрес ↔ номер» взаимно однозначным в пределах пула: два разных адреса не
+// могут получить один номер, поэтому UNIQUE (pool_id, offset) отвергает ровно
+// повторное занятие того же адреса и никогда — свободный адрес другого
+// диапазона. Для адресов первого диапазона нумерация совпадает со счётчиком,
+// поэтому счётчик физически не может выдать занятый адрес; для адресов вне
+// первого диапазона номер выходит за его пределы (в том числе отрицательный),
+// а счётчик отрицательных не производит.
+func (w *addressWriter) claimExplicitExternalIPv6(ctx context.Context, addressID, ip string) (string, string, error) {
+	addr, perr := netip.ParseAddr(ip)
+	if perr != nil || !addr.Is6() || addr.Is4In6() {
+		return "", "", fmt.Errorf("%w: external_ipv6.address %q is not a valid IPv6 address", helpers.ErrInvalidArg, ip)
+	}
+
+	var poolID string
+	var anchorBlocks []string
+	err := w.tx.QueryRow(ctx, `
+		SELECT p.id, p.v6_cidr_blocks
+		  FROM address_pool_cidrs c
+		  JOIN address_pools p ON p.id = c.pool_id
+		 WHERE c.block >>= $1::inet
+		 ORDER BY c.kind, c.pool_id
+		 LIMIT 1
+		 FOR SHARE OF p
+	`, addr.String()).Scan(&poolID, &anchorBlocks)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return addr.String(), "", nil // адрес вне управляемых диапазонов — реестра нет
+	}
+	if err != nil {
+		return "", "", fmt.Errorf("claim explicit external ipv6: %w", err)
+	}
+	if len(anchorBlocks) == 0 {
+		return "", "", fmt.Errorf("%w: pool %s owns the address range but declares no v6 blocks", helpers.ErrInternal, poolID)
+	}
+	anchor, axerr := netip.ParsePrefix(anchorBlocks[0])
+	if axerr != nil {
+		return "", "", fmt.Errorf("%w: pool %s has unparseable v6 prefix %q", helpers.ErrInternal, poolID, anchorBlocks[0])
+	}
+	offset := offsetFromAnchor(anchor.Addr(), addr)
+	if offset == nil {
+		return "", "", fmt.Errorf("%w: cannot number %s against the pool anchor",
+			helpers.ErrInternal, addr.String())
+	}
+
+	var claimed string
+	err = w.tx.QueryRow(ctx, `
+		INSERT INTO ipv6_allocated_ips (pool_id, ip, "offset", address_id)
+		VALUES ($1, $2::inet, $3::numeric, $4)
+		ON CONFLICT DO NOTHING
+		RETURNING pool_id
+	`, poolID, addr.String(), offset.String(), addressID).Scan(&claimed)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", "", fmt.Errorf("%w: external address %s is not available",
+			helpers.ErrFailedPrecondition, addr.String())
+	}
+	if err != nil {
+		return "", "", fmt.Errorf("claim explicit external ipv6: %w", err)
+	}
+	if _, err := w.tx.Exec(ctx, `
+		DELETE FROM ipv6_released_offsets WHERE pool_id = $1 AND "offset" = $2::numeric
+	`, poolID, offset.String()); err != nil {
+		return "", "", fmt.Errorf("claim explicit external ipv6: %w", err)
+	}
+	return addr.String(), claimed, nil
+}
+
+// offsetFromAnchor — номер адреса относительно якоря пула (обратная операция к
+// addOffsetToAddr). Знак сохраняется: адрес ниже якоря даёт отрицательный номер,
+// и это законно — счётчик выдачи отрицательных не производит, а взаимная
+// однозначность «адрес ↔ номер» от знака не зависит. nil — только если
+// семейства не совпадают.
+func offsetFromAnchor(anchor, addr netip.Addr) *big.Int {
+	if !anchor.Is6() || !addr.Is6() {
+		return nil
+	}
+	a16 := anchor.As16()
+	x16 := addr.As16()
+	anchorInt := new(big.Int).SetBytes(a16[:])
+	addrInt := new(big.Int).SetBytes(x16[:])
+	return new(big.Int).Sub(addrInt, anchorInt)
 }
 
 // ---- IPAM v4 freelist ----
@@ -540,64 +751,57 @@ func (w *addressWriter) AllocateExternalIPv6(ctx context.Context, poolID, addres
 		return curExt6, nil // идемпотентный re-allocate: адрес уже имеет external_ipv6
 	}
 
-	var offset *big.Int
-	{
-		var offStr string
-		err := w.tx.QueryRow(ctx, `
-			DELETE FROM ipv6_released_offsets
-			 WHERE (pool_id, "offset") IN (
-				SELECT pool_id, "offset" FROM ipv6_released_offsets
-				 WHERE pool_id = $1
-				 ORDER BY "offset" ASC
-				 LIMIT 1 FOR UPDATE SKIP LOCKED)
-			RETURNING "offset"::text`, poolID).Scan(&offStr)
+	// Номер может быть уже занят — например адресом, который вызывающий задал
+	// явно (claimExplicitExternalIPv6 пишет ту же книгу учёта). Занятый номер
+	// пропускается: вставка идёт `ON CONFLICT DO NOTHING`, поэтому конфликт даёт
+	// 0 строк, а не ошибку, и writer-TX остаётся живой. Пропуск честен —
+	// пропущенный номер действительно занят.
+	var (
+		ip       netip.Addr
+		claimed  bool
+		conflict int
+	)
+	for attempt := 0; attempt < v6ClaimMaxAttempts && !claimed; attempt++ {
+		offset, fromReleased, oerr := w.nextIPv6Offset(ctx, poolID)
+		if oerr != nil {
+			return "", oerr
+		}
+		candidate, aerr := addOffsetToAddr(prefix.Addr(), offset)
+		outOfPrefix := aerr != nil || !prefix.Contains(candidate)
+		if outOfPrefix {
+			// Номер СЧЁТЧИКА, вышедший за префикс, — настоящее исчерпание.
+			// Возвращённый номер вне префикса — след адреса, занятого явным
+			// указанием вне первого диапазона пула: счётчик такой адрес
+			// произвести не может, поэтому номер просто отбрасывается (он уже
+			// снят с возврата этим же pop'ом). Иначе первая же такая строка
+			// заклинила бы выдачу навсегда: pop → вне префикса → «пул
+			// исчерпан» → откат → номер на месте → следующий запрос падает так же.
+			if !fromReleased {
+				return "", helpers.ErrPoolExhausted
+			}
+			conflict++
+			continue
+		}
+		var got string
+		ierr := w.tx.QueryRow(ctx, `
+			INSERT INTO ipv6_allocated_ips (pool_id, ip, "offset", address_id)
+			VALUES ($1, $2::inet, $3::numeric, $4)
+			ON CONFLICT DO NOTHING
+			RETURNING pool_id`,
+			poolID, candidate.String(), offset.String(), addressID).Scan(&got)
 		switch {
-		case errors.Is(err, pgx.ErrNoRows):
-			// fallthrough
-		case err != nil:
-			return "", fmt.Errorf("pool op: %w", err)
+		case errors.Is(ierr, pgx.ErrNoRows):
+			conflict++
+		case ierr != nil:
+			return "", fmt.Errorf("insert ipv6_allocated_ips: %w", ierr)
 		default:
-			off, ok := new(big.Int).SetString(offStr, 10)
-			if !ok {
-				return "", fmt.Errorf("parse offset %q: invalid integer", offStr)
-			}
-			offset = off
+			ip = candidate
+			claimed = true
 		}
 	}
-
-	if offset == nil {
-		var offStr string
-		err := w.tx.QueryRow(ctx, `
-			UPDATE ipv6_pool_cursors
-			   SET next_offset = next_offset + 1
-			 WHERE pool_id = $1
-			RETURNING (next_offset - 1)::text`, poolID).Scan(&offStr)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				return "", fmt.Errorf("%w: pool %s has no ipv6 cursor (InitIPv6PoolCursor not called?)", helpers.ErrFailedPrecondition, poolID)
-			}
-			return "", fmt.Errorf("pool op: %w", err)
-		}
-		off, ok := new(big.Int).SetString(offStr, 10)
-		if !ok {
-			return "", fmt.Errorf("parse cursor offset %q: invalid integer", offStr)
-		}
-		offset = off
-	}
-
-	ip, err := addOffsetToAddr(prefix.Addr(), offset)
-	if err != nil {
-		return "", fmt.Errorf("%w: %v", helpers.ErrInternal, err)
-	}
-	if !prefix.Contains(ip) {
-		return "", helpers.ErrPoolExhausted
-	}
-
-	if _, err := w.tx.Exec(ctx, `
-		INSERT INTO ipv6_allocated_ips (pool_id, ip, "offset", address_id)
-		VALUES ($1, $2::inet, $3::numeric, $4)`,
-		poolID, ip.String(), offset.String(), addressID); err != nil {
-		return "", fmt.Errorf("insert ipv6_allocated_ips: %w", err)
+	if !claimed {
+		return "", fmt.Errorf("%w: address pool %s: %d consecutive ipv6 offsets already allocated",
+			helpers.ErrFailedPrecondition, poolID, conflict)
 	}
 
 	spec := &domain.ExternalIpv6Spec{
@@ -650,6 +854,20 @@ func (w *addressWriter) FreeExternalIPv6(ctx context.Context, addressID string) 
 		return nil // idempotent: ничего не было аллоцировано
 	}
 	for _, f := range all {
+		// В список свободных номеров возвращаются ТОЛЬКО те, которые счётчик
+		// способен воспроизвести, — то есть лежащие внутри первого v6-диапазона
+		// пула (счётчик нумерует от его базы). Номер адреса, занятого явным
+		// указанием вне этого диапазона, счётчик не производит вовсе; вернув
+		// такой номер, мы бы заставили следующую выдачу вывести из него адрес
+		// вне префикса, признать пул исчерпанным и откатиться — номер вернулся
+		// бы на место, и выдача встала бы навсегда.
+		reusable, rerr := w.offsetIsWithinPoolAnchor(ctx, f.poolID, f.offStr)
+		if rerr != nil {
+			return rerr
+		}
+		if !reusable {
+			continue
+		}
 		if _, err := w.tx.Exec(ctx,
 			`INSERT INTO ipv6_released_offsets (pool_id, "offset") VALUES ($1, $2::numeric)
 			 ON CONFLICT (pool_id, "offset") DO NOTHING`,
@@ -662,6 +880,39 @@ func (w *addressWriter) FreeExternalIPv6(ctx context.Context, addressID string) 
 		return helpers.WrapPgErr(err, "Address", addressID)
 	}
 	return nil
+}
+
+// offsetIsWithinPoolAnchor — воспроизводим ли номер счётчиком пула: адрес
+// base(v6_cidr_blocks[0]) + offset обязан лежать внутри того же первого
+// диапазона. Пул без v6-диапазонов (их могли снять) — номер не воспроизводим.
+func (w *addressWriter) offsetIsWithinPoolAnchor(ctx context.Context, poolID, offStr string) (bool, error) {
+	var blocks []string
+	if err := w.tx.QueryRow(ctx,
+		`SELECT v6_cidr_blocks FROM address_pools WHERE id = $1`, poolID).Scan(&blocks); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil // пул удалён — возвращать номер некуда
+		}
+		return false, fmt.Errorf("pool op: %w", err)
+	}
+	if len(blocks) == 0 {
+		return false, nil
+	}
+	anchor, perr := netip.ParsePrefix(blocks[0])
+	if perr != nil {
+		return false, fmt.Errorf("%w: pool %s has unparseable v6 prefix %q", helpers.ErrInternal, poolID, blocks[0])
+	}
+	off, ok := new(big.Int).SetString(offStr, 10)
+	if !ok {
+		return false, fmt.Errorf("parse offset %q: invalid integer", offStr)
+	}
+	if off.Sign() < 0 {
+		return false, nil
+	}
+	ip, aerr := addOffsetToAddr(anchor.Addr(), off)
+	if aerr != nil {
+		return false, nil
+	}
+	return anchor.Contains(ip), nil
 }
 
 // ---- Referrer-tracking (atomic CAS upsert) ----

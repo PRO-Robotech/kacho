@@ -46,7 +46,6 @@ func RegisterDefaults(v *viper.Viper) {
 	// нашёл соответствующие ENV ключи (`KACHO_NLB_REPOSITORY__POSTGRES__URL`).
 	// Validate ловит пустые после Unmarshal.
 	v.SetDefault("repository.postgres.url", "")
-	v.SetDefault("repository.postgres.slave-url", "")
 
 	// Authn (transport TLS)
 	v.SetDefault("authn.type", "none")

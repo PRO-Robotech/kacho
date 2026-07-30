@@ -317,17 +317,48 @@ func (r *RegistryRepo) Delete(ctx context.Context, id string, intent domain.Regi
 	return nil
 }
 
+// RepositoryDeclared сообщает, существует ли репозиторий как РЕСУРС: есть строка
+// наложения (repository_configs — заявлен через control-plane) ЛИБО строка регистрации
+// (registry_repository_registration — заявлен первым push'ем, миграция 0014). Оба
+// источника durable и принадлежат сервису.
+//
+// Содержимое движка (теги) в предикат НЕ входит: тег — это содержимое, а не ресурс.
+// Заявленный и ещё пустой репозиторий существует; репозиторий, чьи теги удалили, но
+// наложение осталось, — тоже (он и снимается только DeleteRepository). Именно этим
+// предикатом data-plane выбирает глагол записи: существует ⇒ «изменить ЭТОТ
+// репозиторий», не существует ⇒ «создать репозиторий в реестре».
+//
+// Один запрос двумя EXISTS — обе таблицы в схеме сервиса, лишнего round-trip нет.
+func (r *RegistryRepo) RepositoryDeclared(ctx context.Context, registryID, repo string) (bool, error) {
+	if err := r.ready(); err != nil {
+		return false, err
+	}
+	q := fmt.Sprintf(`SELECT
+		  EXISTS (SELECT 1 FROM %s.repository_configs WHERE registry_id = $1 AND name = $2)
+		  OR
+		  EXISTS (SELECT 1 FROM %s.registry_repository_registration WHERE registry_id = $1 AND repo = $2)`,
+		schema, schema)
+	var declared bool
+	if err := r.pool.QueryRow(ctx, q, registryID, repo).Scan(&declared); err != nil {
+		return false, wrapPgErr(err, "Repository", registryID+"/"+repo)
+	}
+	return declared, nil
+}
+
 // RegisterRepository эмитит register-intent (parent+owner tuple) нового repo в
-// registry_outbox. У repo нет собственной ресурсной строки в БД (source of truth =
-// zot) — outbox-строка durable сама по себе, поэтому пишется одиночной tx. Register-
-// drainer применяет её через fga-proxy идемпотентно (повторный push того же repo даёт
-// дубль-intent, iam дедуплицирует → AlreadyApplied).
+// registry_outbox И записывает durable-признак его существования
+// (registry_repository_registration) — обе записи в ОДНОЙ tx (см. emitFGAIntent).
+// Register-drainer применяет intent через fga-proxy идемпотентно (повторный push того
+// же repo даёт дубль-intent, iam дедуплицирует → AlreadyApplied).
 func (r *RegistryRepo) RegisterRepository(ctx context.Context, intent domain.RegisterIntent) error {
 	return r.emitRepoIntent(ctx, domain.FGAEventRegister, intent)
 }
 
 // UnregisterRepository эмитит unregister-intent repo (снятие parent-tuple) в
-// registry_outbox — снятие висячего authz-объекта на удалении последнего тега.
+// registry_outbox И снимает durable-признак существования — обе записи в ОДНОЙ tx
+// (см. emitFGAIntent): ресурса больше нет, поэтому следующая запись под этим именем
+// снова гейтится правом «создавать репозитории в реестре», а не правом на объект,
+// у которого уже нет ни одного tuple.
 func (r *RegistryRepo) UnregisterRepository(ctx context.Context, intent domain.RegisterIntent) error {
 	return r.emitRepoIntent(ctx, domain.FGAEventUnregister, intent)
 }
@@ -419,7 +450,77 @@ func emitFGAIntent(ctx context.Context, tx pgx.Tx, eventType string, intent doma
 	if _, err := tx.Exec(ctx, q, eventType, string(payload), intent.Kind, intent.ResourceID); err != nil {
 		return wrapPgErr(err, "registry_outbox", intent.ResourceID)
 	}
+	return applyRepoRegistration(ctx, tx, eventType, intent)
+}
+
+// applyRepoRegistration поддерживает durable-признак существования репозитория
+// (registry_repository_registration, миграция 0014) В ТОЙ ЖЕ tx, что и эмиссия его
+// интента: register → строка появляется, unregister → строка исчезает. Атомарность
+// не «соблюдается», а обеспечена by construction — откат tx убирает и строку очереди,
+// и признак, поэтому «намерение эмитировано» и «ресурс существует» разъехаться не могут.
+//
+// Сидит в emitFGAIntent, а НЕ в emitRepoIntent, потому что интент репозитория эмитируют
+// ОБА писателя: data-plane (emitRepoIntent, push/удаление последнего тега) и control-plane
+// (runConfigTx: CreateRepository/RenameRepository/DeleteRepository). Признак, поддержанный
+// только на первом пути, пережил бы DeleteRepository — наложение снято, признак остался,
+// значит следующая запись под этим именем гейтилась бы правом на объект, у которого больше
+// нет ни одного tuple: имя оказалось бы заперто для всех, включая владельца реестра.
+//
+// Разбор INSERT/DELETE — идемпотентен (ON CONFLICT DO NOTHING / DELETE без совпадения),
+// поэтому повторный register уже существующего репозитория (re-push, adopt поверх
+// проекции) остаётся no-op'ом, а повторный unregister не падает.
+func applyRepoRegistration(ctx context.Context, tx pgx.Tx, eventType string, intent domain.RegisterIntent) error {
+	registryID, repo, ok := repoRegistrationKey(intent)
+	if !ok {
+		return nil
+	}
+	var q string
+	switch eventType {
+	case domain.FGAEventRegister:
+		q = fmt.Sprintf(`INSERT INTO %s.registry_repository_registration (registry_id, repo)
+			VALUES ($1, $2) ON CONFLICT (registry_id, repo) DO NOTHING`, schema)
+	case domain.FGAEventUnregister:
+		q = fmt.Sprintf(`DELETE FROM %s.registry_repository_registration
+			WHERE registry_id = $1 AND repo = $2`, schema)
+	default:
+		return nil
+	}
+	if _, err := tx.Exec(ctx, q, registryID, repo); err != nil {
+		return wrapPgErr(err, "Repository", intent.ResourceID)
+	}
 	return nil
+}
+
+// repoRegistrationKey извлекает (registry_id, repo) из интента, который объявляет или
+// снимает репозиторий как РЕСУРС, и сообщает ok=false для всех прочих интентов.
+//
+// Дискриминатор — наличие СТРУКТУРНОЙ привязки репозитория к реестру (parent-tuple
+// registry_registry:<reg> → registry_repository:<reg>/<repo>): именно она вводит объект
+// в иерархию и снимается вместе с ним. Ключ берётся из САМОГО tuple, а не из
+// RegisterIntent.Kind/ResourceID: те объявлены полями «для observability, не участвуют
+// в apply» (domain.RegisterIntent) — сделать их несущими значило бы оставить рядом
+// комментарий, противоречащий коду. По этому же признаку мимо проходят интенты
+// public-grant (их единственный tuple — "user:* v_get", привязку не трогает) и интенты
+// самого реестра (их объект — registry_registry).
+func repoRegistrationKey(intent domain.RegisterIntent) (registryID, repo string, ok bool) {
+	const objectPrefix = domain.FGAObjectTypeRepository + ":"
+	for _, t := range intent.Tuples {
+		if t.Relation != domain.FGARelationParent {
+			continue
+		}
+		objectID, found := strings.CutPrefix(t.Object, objectPrefix)
+		if !found {
+			continue
+		}
+		// object-id репозитория — "<registryID>/<repo>"; repo сам может быть
+		// multi-segment ("team/app"), поэтому режем по ПЕРВОМУ разделителю.
+		registryID, repo, found = strings.Cut(objectID, "/")
+		if !found || registryID == "" || repo == "" {
+			continue
+		}
+		return registryID, repo, true
+	}
+	return "", "", false
 }
 
 // marshalLabels сериализует карту labels в JSON-строку (jsonb-колонка через

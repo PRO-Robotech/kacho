@@ -159,11 +159,18 @@ type ZotClient interface {
 	// D-4: source of truth emptiness = engine). zot недоступен → ErrUnavailable
 	// (fail-closed: overlay не сносим, пока не подтвердили пустоту, A14).
 	RepositoryEmpty(ctx context.Context, registryID, repository string) (bool, error)
-	// RenameRepository re-home'ит теги/манифесты/referrers repo old→new в движке
-	// (многошаговая НЕ-атомарная OCI-операция, D-5). Движок недоступен в середине
-	// remap → ErrUnavailable (fail-closed: без частичного rename, старое имя
-	// по-прежнему резолвится, A21). Целевое имя занято в движке → ErrAlreadyExists.
-	RenameRepository(ctx context.Context, registryID, oldName, newName string) error
+	// CopyRepositoryTags копирует ВСЕ теги/манифесты repo old→new в движке —
+	// НЕРАЗРУШАЮЩАЯ фаза переноса (многошаговая НЕ-атомарная OCI-операция, D-5).
+	// Сбой движка → ErrUnavailable (fail-closed): старое имя цело и резолвится, под
+	// новым может остаться ЧАСТИЧНАЯ копия. Идемпотентна: повторная публикация того
+	// же манифеста под тем же тегом — это тот же контент по тому же digest'у.
+	CopyRepositoryTags(ctx context.Context, registryID, oldName, newName string) error
+	// PurgeRepositoryTags снимает ВСЕ теги repo в движке — РАЗРУШАЮЩАЯ фаза переноса,
+	// исполняемая ТОЛЬКО ПОСЛЕ того, как новое имя закреплено в наложении и правах.
+	// Обратный порядок (снять, потом закрепить) на сбое посередине уносит теги из
+	// имени, которое знает тенант и на которое выданы права, — см. rename_repository.go.
+	// Идемпотентна: отсутствующий тег — не ошибка.
+	PurgeRepositoryTags(ctx context.Context, registryID, repository string) error
 	// ListReferrers возвращает referrer-проекцию subject_digest (bounded full-set, D-8),
 	// опционально отфильтрованную server-side по artifactType facet. Пусто → []
 	// (не ошибка, C03). zot недоступен → ErrUnavailable.
@@ -399,18 +406,9 @@ func (u *UseCase) ListRepositories(ctx context.Context, q RepoListQuery) ([]*dom
 		return nil, "", err
 	}
 
-	configs, cerr := u.cfg.ListConfigs(ctx, q.RegistryID)
-	if cerr != nil {
-		return nil, "", mapRepoErr(cerr)
-	}
-	byName := make(map[string]*domain.RepositoryConfig, len(configs))
-	for _, c := range configs {
-		byName[c.Name] = c
-	}
-
 	var out []*domain.Repository
 	if lane == repoLaneDurable {
-		page, next, derr := u.durableEmptyPage(ctx, q.RegistryID, configs, size, cursor)
+		page, next, derr := u.durableEmptyPage(ctx, q.RegistryID, size, cursor)
 		if derr != nil {
 			return nil, "", derr
 		}
@@ -435,6 +433,14 @@ func (u *UseCase) ListRepositories(ctx context.Context, q RepoListQuery) ([]*dom
 	if zerr != nil {
 		return nil, "", zerr
 	}
+	// Строки наложения читаются ТОЛЬКО для имён окна. Прежде здесь стоял полный скан
+	// каталога наложения — на КАЖДОЙ странице, до выбора полосы, вместе с метками:
+	// обход реестра стоил O(N²/page_size) прочитанных строк, а при page_size=1
+	// страница читала весь реестр. Имена окна известны — больше ничего и не нужно.
+	byName, berr := u.configsForWindow(ctx, q.RegistryID, window)
+	if berr != nil {
+		return nil, "", berr
+	}
 	for _, r := range window {
 		// Тот же merge, что у поштучного чтения (GetRepository): у одного объекта одна
 		// публичная проекция, как бы его ни спросили. Он же решает судьбу repo БЕЗ
@@ -453,12 +459,32 @@ func (u *UseCase) ListRepositories(ctx context.Context, q RepoListQuery) ([]*dom
 	return out, encodeRepoCursor(repoLaneProjection, next), nil
 }
 
+// configsForWindow — строки наложения ТОЛЬКО для имён окна проекции.
+func (u *UseCase) configsForWindow(ctx context.Context, registryID string, window []*domain.Repository) (map[string]*domain.RepositoryConfig, error) {
+	if len(window) == 0 {
+		return nil, nil
+	}
+	names := make([]string, 0, len(window))
+	for _, r := range window {
+		names = append(names, r.Name)
+	}
+	configs, err := u.cfg.ConfigsByNames(ctx, registryID, names)
+	if err != nil {
+		return nil, mapRepoErr(err)
+	}
+	byName := make(map[string]*domain.RepositoryConfig, len(configs))
+	for _, c := range configs {
+		byName[c.Name] = c
+	}
+	return byName, nil
+}
+
 // durableEmptyPage — страница полосы (1): строки наложения, которых НЕТ в движке.
 // «Нет в движке» ⇒ тегов нет, поэтому projection-часть таких строк — нули, и поштучно
 // опрашивать движок незачем (ровно это и делало прежнее объединение). Возвращает
 // страницу + позицию следующей ("" — полоса исчерпана).
 func (u *UseCase) durableEmptyPage(
-	ctx context.Context, registryID string, configs []*domain.RepositoryConfig, size int64, cursor string,
+	ctx context.Context, registryID string, size int64, cursor string,
 ) ([]*domain.Repository, string, error) {
 	off, err := decodeRepoOffset(cursor)
 	if err != nil {
@@ -468,27 +494,26 @@ func (u *UseCase) durableEmptyPage(
 	if nerr != nil {
 		return nil, "", nerr
 	}
-	inEngine := make(map[string]struct{}, len(names))
-	for _, n := range names {
-		inEngine[n] = struct{}{}
+	// Отбор «строки наложения, которых нет в движке» ведёт БД: ей передаётся набор
+	// имён движка, и она возвращает РОВНО окно. Прежняя реализация материализовала
+	// ВЕСЬ каталог наложения (с метками) и нарезала окно из него в памяти — на каждой
+	// странице, поэтому стоимость страницы не зависела от page_size и росла с размером
+	// реестра. Курсор остаётся опаковым offset'ом по ОТФИЛЬТРОВАННОМУ набору и имён не
+	// несёт (иначе он раскрывал бы имя скрытого репозитория, existence-oracle).
+	page, perr := u.cfg.ListConfigsExcludingNames(ctx, registryID, names, off, int(size)+1)
+	if perr != nil {
+		return nil, "", mapRepoErr(perr)
 	}
-
-	durable := make([]*domain.RepositoryConfig, 0, len(configs))
-	for _, c := range configs {
-		if _, ok := inEngine[c.Name]; !ok {
-			durable = append(durable, c)
-		}
+	hasMore := int64(len(page)) > size
+	if hasMore {
+		page = page[:size]
 	}
-	if off > len(durable) {
-		off = len(durable)
-	}
-	end := min(off+int(size), len(durable))
-	out := make([]*domain.Repository, 0, end-off)
-	for _, c := range durable[off:end] {
+	out := make([]*domain.Repository, 0, len(page))
+	for _, c := range page {
 		out = append(out, mergeRepository(registryID, c.Name, c, nil))
 	}
-	if end < len(durable) {
-		return out, strconv.Itoa(end), nil
+	if hasMore {
+		return out, strconv.Itoa(off + len(page)), nil
 	}
 	return out, "", nil
 }

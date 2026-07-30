@@ -177,12 +177,17 @@ func (r *subnetReader) AddressesBySubnet(ctx context.Context, subnetID string, p
 		args = append(args, ts, id)
 		argIdx += 2
 	}
+	// Фильтр — по generated-колонке internal_subnet_id (индекс
+	// addresses_internal_subnet_idx), а не по дизъюнкции jsonb-выражений,
+	// которую не покрывает ни один индекс: иначе цена страницы равна размеру
+	// таблицы ВСЕХ проектов, а не размеру страницы. Колонка авторитетна:
+	// «внутренний адрес несёт ровно одну семью» закреплено проверкой
+	// addresses_single_internal_family (миграция 0025).
 	q := fmt.Sprintf(`SELECT %s FROM addresses
-	  WHERE ((internal_ipv4 IS NOT NULL AND internal_ipv4->>'subnet_id' = $1)
-	      OR (internal_ipv6 IS NOT NULL AND internal_ipv6->>'subnet_id' = $1))
+	  WHERE %s
 	    %s
 	  ORDER BY created_at ASC, id ASC
-	  LIMIT $%d`, helpers.AddressCols, tokenCond, argIdx)
+	  LIMIT $%d`, helpers.AddressCols, helpers.AddressesBySubnetWhere, tokenCond, argIdx)
 	args = append(args, pageSize+1)
 
 	rows, err := r.tx.Query(ctx, q, args...)
@@ -302,6 +307,33 @@ func (w *subnetWriter) Update(ctx context.Context, s *domain.Subnet) (*kacho.Sub
 	return result, nil
 }
 
+// CountAddressesInCidrs — сколько внутренних адресов подсети (v4 и v6) живёт в
+// переданных CIDR'ах. Предусловие снятия диапазона: см. godoc порта.
+// Сравнение inet разных семейств даёт false, поэтому оба семейства передаются
+// одним массивом. Запрос индексирован по internal_subnet_id (generated-колонка,
+// addresses_internal_subnet_idx) — цена страницы не зависит от размера таблицы.
+func (w *subnetWriter) OccupiedCidrs(ctx context.Context, subnetID string, cidrs []string) ([]string, error) {
+	if len(cidrs) == 0 || subnetID == "" {
+		return nil, nil
+	}
+	var occupied []string
+	err := w.tx.QueryRow(ctx, `
+		SELECT COALESCE(array_agg(c.blk::text ORDER BY c.blk), '{}')
+		  FROM (SELECT unnest($2::text[])::cidr AS blk) AS c
+		 WHERE EXISTS (
+		     SELECT 1 FROM addresses a
+		      WHERE a.internal_subnet_id = $1
+		        AND ((coalesce(a.internal_ipv4 ->> 'address', '') <> ''
+		              AND (a.internal_ipv4 ->> 'address')::inet <<= c.blk)
+		          OR (coalesce(a.internal_ipv6 ->> 'address', '') <> ''
+		              AND (a.internal_ipv6 ->> 'address')::inet <<= c.blk)))
+	`, subnetID, cidrs).Scan(&occupied)
+	if err != nil {
+		return nil, helpers.WrapPgErr(err, "Subnet", subnetID)
+	}
+	return occupied, nil
+}
+
 // SetCidrBlocks атомарно обновляет v4_cidr_blocks и v6_cidr_blocks у Subnet
 // (для AddCidrBlocks/RemoveCidrBlocks). Non-overlap-инвариант на ВЕСЬ набор блоков
 // подсетей сети держит child-таблица subnet_cidr_blocks (EXCLUDE gist по
@@ -355,16 +387,20 @@ func (w *subnetWriter) syncCidrBlocks(ctx context.Context, subnetID, networkID s
 			blocks = append(blocks, b)
 		}
 	}
-	for _, block := range blocks {
-		if _, err := w.tx.Exec(ctx, `
-			INSERT INTO subnet_cidr_blocks (subnet_id, network_id, block)
-			VALUES ($1, $2, $3::cidr)
-		`, subnetID, networkID, block); err != nil {
-			if helpers.IsExclusionViolation(err) || helpers.IsUniqueViolation(err) {
-				return fmt.Errorf("%w: Subnet CIDRs can not overlap", helpers.ErrFailedPrecondition)
-			}
-			return helpers.WrapPgErr(err, "Subnet", subnetID)
+	if len(blocks) == 0 {
+		return nil
+	}
+	// Один стейтмент на весь набор, а не по обращению на диапазон: набор
+	// перекладывается целиком на КАЖДОМ изменении, под row-lock подсети и
+	// share-lock сети, поэтому его стоимость — время удержания этих локов.
+	if _, err := w.tx.Exec(ctx, `
+		INSERT INTO subnet_cidr_blocks (subnet_id, network_id, block)
+		SELECT $1, $2, b::cidr FROM unnest($3::text[]) AS b
+	`, subnetID, networkID, blocks); err != nil {
+		if helpers.IsExclusionViolation(err) || helpers.IsUniqueViolation(err) {
+			return fmt.Errorf("%w: Subnet CIDRs can not overlap", helpers.ErrFailedPrecondition)
 		}
+		return helpers.WrapPgErr(err, "Subnet", subnetID)
 	}
 	return nil
 }
@@ -373,6 +409,16 @@ func (w *subnetWriter) syncCidrBlocks(ctx context.Context, subnetID, networkID s
 // AddCidrBlocks/RemoveCidrBlocks на той же подсети ждет commit держателя lock'а
 // и затем читает уже обновленное состояние → read-modify-write сериализуется,
 // lost-update исключен.
+// GetForShare — Get с `FOR SHARE` (см. godoc порта).
+func (w *subnetWriter) GetForShare(ctx context.Context, id string) (*kacho.SubnetRecord, error) {
+	q := fmt.Sprintf(`SELECT %s FROM subnets WHERE id = $1 FOR SHARE`, helpers.SubnetCols)
+	s, err := helpers.ScanSubnet(w.tx.QueryRow(ctx, q, id))
+	if err != nil {
+		return nil, helpers.WrapPgErr(err, "Subnet", id)
+	}
+	return s, nil
+}
+
 func (w *subnetWriter) GetForUpdate(ctx context.Context, id string) (*kacho.SubnetRecord, error) {
 	q := fmt.Sprintf(`SELECT %s FROM subnets WHERE id = $1 FOR UPDATE`, helpers.SubnetCols)
 	s, err := helpers.ScanSubnet(w.tx.QueryRow(ctx, q, id))

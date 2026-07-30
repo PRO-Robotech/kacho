@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 
 	"github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/config"
@@ -26,6 +27,7 @@ func secure() config.Config {
 	return config.Config{
 		AuthMode:                  "dev",
 		AuthZIAMGRPCAddr:          "kacho-iam:9091",
+		IAMAuthzMTLS:              grpcclient.TLSClient{Enable: true},
 		PublicServerMTLS:          grpcsrv.TLSServer{Enable: true},
 		InternalServerMTLS:        grpcsrv.TLSServer{Enable: true},
 		AuthZTrustedForwarderSANs: []string{gatewaySAN},
@@ -188,5 +190,61 @@ func TestValidateSecurityConfig_BreakglassInProduction_MessageNamesKnob(t *testi
 				t.Errorf("error must state that the mode is production; got: %q", err.Error())
 			}
 		})
+	}
+}
+
+// ── транспорт ребра, несущего решение о доступе ──
+
+// Ребро geo→iam несёт РЕШЕНИЕ о доступе (per-RPC Check) и переданную личность
+// вызывающего. Если его транспорт не взведён, клиентские creds вырождаются в
+// insecure БЕЗ ошибки: процесс поднимается, печатает «authz interceptor
+// enabled», и каждый Check уходит по открытому каналу. Стража обязана
+// отказывать в старте, а не полагаться на то, что все профили не забудут
+// выставить ручку: до открытого канала ровно одна строка настройки.
+//
+// Проверяется в обе стороны: невзведённое ребро → отказ с именем ручки;
+// взведённое → молчание (гейт не запрещает законное).
+func TestValidateSecurityConfig_AuthzEdgeTransport(t *testing.T) {
+	edgeOff := secure()
+	edgeOff.IAMAuthzMTLS.Enable = false
+
+	edgeOffProd := secure()
+	edgeOffProd.AuthMode = "production"
+	edgeOffProd.IAMAuthzMTLS.Enable = false
+
+	// Ребро не поднимается вовсе (breakglass) — требовать его транспорт не за что.
+	bgNoEdge := config.Config{AuthZBreakglass: true, AuthMode: "dev"}
+
+	cases := []struct {
+		name    string
+		cfg     config.Config
+		wantErr bool
+	}{
+		{"edge transport off → err", edgeOff, true},
+		{"edge transport off, production → err", edgeOffProd, true},
+		{"edge transport on → ok", secure(), false},
+		{"breakglass (edge not dialed) → ok", bgNoEdge, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSecurityConfig(tc.cfg)
+			if tc.wantErr != (err != nil) {
+				t.Fatalf("wantErr=%v, got err=%v", tc.wantErr, err)
+			}
+		})
+	}
+}
+
+// Отказ обязан называть ручку и последствие: иначе стенд не поднять, а причина
+// непонятна. Это рантайм-диагностика оператору, а не публичный артефакт.
+func TestValidateSecurityConfig_AuthzEdgeTransport_MessageNamesKnob(t *testing.T) {
+	cfg := secure()
+	cfg.IAMAuthzMTLS.Enable = false
+	err := validateSecurityConfig(cfg)
+	if err == nil {
+		t.Fatal("unverified authz edge transport must refuse boot, got nil")
+	}
+	if !strings.Contains(err.Error(), "KACHO_GEO_IAM_AUTHZ_MTLS_ENABLE") {
+		t.Errorf("error must name the offending knob; got: %q", err.Error())
 	}
 }

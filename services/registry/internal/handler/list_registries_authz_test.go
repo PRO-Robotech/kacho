@@ -107,7 +107,7 @@ func (r listReader) List(context.Context, registry.ListQuery) ([]*domain.Registr
 
 func newListHandler(reader registry.RegistryReader, az Authorizer) *RegistryHandler {
 	uc := registry.New(reader, stubRepo{}, stubCfg{}, &fakeZotH{}, stubIAM{}, stubGeo{}, stubRepo{}, newMemOpsH(), "registry.kacho.local")
-	return NewRegistryHandler(uc, az)
+	return NewRegistryHandler(uc, az, 0)
 }
 
 const (

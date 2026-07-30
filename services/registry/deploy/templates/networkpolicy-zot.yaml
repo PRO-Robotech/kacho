@@ -1,0 +1,42 @@
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
+{{/*
+Эшелонирование для хранилища слоёв: до порта zot вправе дозвониться ТОЛЬКО поды
+реестра. Аутентификация (statefulset-zot.yaml, http.auth) — первичный контроль;
+эта политика — второй эшелон, ровно как у соседних хранилищ этого умбреллы
+(движок прав, базы), которым боевой профиль сегментацию уже выдаёт «против
+бокового движения».
+
+Политика ограничивает только ВХОД: исход zot (объектное хранилище, DNS) не
+трогаем — иначе профиль с remote-storage перестал бы работать по причине, никак
+не связанной с этой защитой.
+
+Выключено по умолчанию: кластер без сетевого плагина, реализующего
+NetworkPolicy, молча проглотит объект, а стенд, где политики отключены целиком
+(fe3455), не должен получать половину защиты через заднюю дверь — включение
+делает профиль явно.
+*/}}
+{{- if and .Values.zot.enabled .Values.zot.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Values.zot.serviceName }}-allow-registry-only
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.zot.serviceName }}
+    app.kubernetes.io/component: zot-networkpolicy
+spec:
+  podSelector:
+    matchLabels:
+      app: {{ .Values.zot.serviceName }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: {{ .Values.name }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.zot.port }}
+{{- end }}

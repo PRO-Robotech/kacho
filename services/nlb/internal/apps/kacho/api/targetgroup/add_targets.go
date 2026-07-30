@@ -10,7 +10,9 @@ import (
 	"log/slog"
 	"net/netip"
 	"strings"
+	"sync"
 
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -19,10 +21,26 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
+	computeclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/compute"
 	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 )
+
+// targetPeerFanout — верхняя граница ОДНОВРЕМЕННЫХ peer-запросов при валидации
+// одной пачки targets.
+//
+// Бюджет времени принадлежит ЗАПРОСУ, а не элементу: контракт принимает до
+// domain.MaxTargetsPerGroup целей за вызов, каждая instance-цель стоит двух
+// обращений к соседям (compute + geo) со своим 5s-дедлайном, а потолок
+// исполнения операции — 4 минуты. Строго последовательный обход укладывается в
+// него только пока соседи отвечают быстрее 1.2s; медленнее — операция падает
+// терминально по дедлайну и не добавляет НИ ОДНОЙ цели (writer-TX открывается
+// после всех проверок). Ограничение сверху обязательно в другую сторону: без
+// него пачка на 100 целей превратилась бы в 200 одновременных соединений к
+// соседям (CWE-770 — усиление нагрузки на чужой сервис). 8 — тот же предел, что
+// у bounded-fan-out'а per-object authz-Check в registry (listauthz.go).
+const targetPeerFanout = 8
 
 // AddTargetsUseCase — добавляет targets в TG.
 //
@@ -33,7 +51,10 @@ import (
 //
 // Async worker:
 //   - TG.Get + status guard (DELETING → FailedPrecondition);
-//   - per-target peer-validate:
+//   - per-target peer-validate — ограниченным фан-аутом (targetPeerFanout) и с
+//     дедупликацией повторяющегося вопроса в пределах ОДНОЙ операции
+//     (см. peerAnswers): пачка целей в одной зоне спрашивает geo про эту зону
+//     один раз, а не по разу на цель;
 //   - instance: compute.InstanceService.Get + region match (006);
 //   - nic: vpc.NetworkInterfaceService.Get + region match via subnet;
 //   - ip_ref: vpc.SubnetService.Get + region match + IP-in-CIDR (008);
@@ -132,11 +153,9 @@ func (u *AddTargetsUseCase) doAdd(ctx context.Context, tgID string, targets []do
 		return nil, status.Error(codes.FailedPrecondition, "target group is being deleted")
 	}
 
-	// 2. Per-target peer-validate.
-	for i := range targets {
-		if err := u.validateTargetPeer(ctx, tg.RegionID, i, &targets[i]); err != nil {
-			return nil, err
-		}
+	// 2. Per-target peer-validate (bounded fan-out + дедуп вопросов).
+	if err := u.validateTargetsPeer(ctx, tg.RegionID, targets); err != nil {
+		return nil, err
 	}
 
 	// 3. Writer-TX → AddTargets + (conditional) outbox UPDATED → Commit.
@@ -181,18 +200,131 @@ func (u *AddTargetsUseCase) doAdd(ctx context.Context, tgID string, targets []do
 	return marshalTargetGroup(updated)
 }
 
+// validateTargetsPeer — peer-validate ВСЕЙ пачки: ограниченный фан-аут
+// (targetPeerFanout) поверх общей на операцию памяти ответов (peerAnswers).
+//
+// Исход собирается ПО ИНДЕКСУ, а не берётся из errgroup: текст ошибки называет
+// конкретную цель (`target[N]…`), поэтому при двух негодных целях ответ обязан
+// быть детерминированным — ошибка цели с наименьшим индексом, ровно как у
+// прежнего последовательного обхода. Поэтому же фан-аут идёт БЕЗ отмены по
+// первой ошибке: отменённые соседние вызовы вернули бы «context canceled» вместо
+// своего настоящего исхода, и выбор наименьшего индекса стал бы ложью.
+// Отказ от ранней остановки не удорожает вызов для соседей: число вопросов
+// сверху ограничено потолком пачки (domain.MaxTargetsPerGroup) и дедупликацией,
+// а сами вопросы — чтения.
+//
+// Паника пере-возбуждается в ЭТОЙ горутине: recover воркера операций стоит
+// вокруг вызова operation-fn, и без пере-возбуждения фан-аут вынес бы работу
+// из-под него — паника в дочерней горутине роняла бы весь процесс.
+func (u *AddTargetsUseCase) validateTargetsPeer(
+	ctx context.Context, tgRegion domain.RegionID, targets []domain.Target,
+) error {
+	answers := &peerAnswers{}
+	errs := make([]error, len(targets))
+	panicked := make([]any, len(targets))
+
+	g := new(errgroup.Group)
+	g.SetLimit(targetPeerFanout)
+	for i := range targets {
+		g.Go(func() error {
+			defer func() {
+				if p := recover(); p != nil {
+					panicked[i] = p
+				}
+			}()
+			errs[i] = u.validateTargetPeer(ctx, answers, tgRegion, i, &targets[i])
+			return nil // исход — в errs[i]/panicked[i], см. godoc выше
+		})
+	}
+	_ = g.Wait() // ошибок горутины не возвращают: Wait здесь — барьер, не исход
+
+	for _, p := range panicked {
+		if p != nil {
+			panic(p)
+		}
+	}
+	for _, err := range errs {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// peerAnswers — ответы соседей, полученные в пределах ОДНОЙ операции AddTargets.
+//
+// Один и тот же вопрос (та же зона, та же подсеть, тот же инстанс/NIC) задаётся
+// за операцию ровно один раз: пачка из 100 целей одной зоны стоит одного вопроса
+// к geo, а не ста одинаковых. Второй спрашивающий ЖДЁТ первого (sync.Once), а не
+// идёт к соседу сам.
+//
+// Область жизни — намеренно одна операция, а не долгоживущий кэш в адаптере:
+// зона/подсеть/инстанс проверяются как ПРЕДУСЛОВИЕ мутации на пути запроса, и
+// кэш с TTL означал бы решение по устаревшему ответу владельца (adapter'ы
+// остаются stateless pass-through, см. их godoc). В пределах одной операции
+// повторный вопрос ничего нового дать не может — за это окно чужая строка
+// считается неизменной, ровно как и при прежнем последовательном обходе.
+//
+// Ошибка кэшируется вместе с ответом: недоступность соседа fail-closed валит всю
+// операцию, повторять тот же вопрос за неё нечем.
+type peerAnswers struct {
+	instances onceMemo[*computeclient.Instance]
+	nics      onceMemo[*vpcclient.NetworkInterface]
+	subnets   onceMemo[*vpcclient.Subnet]
+	zones     onceMemo[string]
+}
+
+// onceMemo — «один вопрос на ключ» под конкурентными спрашивающими.
+// Обобщён по типу ответа: семантика дедупликации одна на все четыре вопроса
+// (инстанс, NIC, подсеть, регион зоны), различаются только типы ответов.
+type onceMemo[T any] struct {
+	mu    sync.Mutex
+	cells map[string]*memoCell[T]
+}
+
+type memoCell[T any] struct {
+	once sync.Once
+	val  T
+	err  error
+}
+
+// do возвращает ответ на вопрос key, задав его ask ровно один раз.
+//
+// Возвращаемое значение РАЗДЕЛЯЕТСЯ всеми спрашивающими и потому read-only:
+// валидация целей чужую строку не мутирует. Все спрашивающие идут под одним и
+// тем же worker-ctx, поэтому неважно, чья горутина задаст вопрос первой.
+//
+// Ожидание совместимо с ограниченным фан-аутом: ответ производит одна из УЖЕ
+// занявших слот горутин, поэтому ожидающие никогда не зависят от появления
+// свободного слота (взаимной блокировки нет by construction).
+func (m *onceMemo[T]) do(key string, ask func() (T, error)) (T, error) {
+	m.mu.Lock()
+	if m.cells == nil {
+		m.cells = make(map[string]*memoCell[T])
+	}
+	c := m.cells[key]
+	if c == nil {
+		c = &memoCell[T]{}
+		m.cells[key] = c
+	}
+	m.mu.Unlock()
+
+	c.once.Do(func() { c.val, c.err = ask() })
+	return c.val, c.err
+}
+
 // validateTargetPeer — per-target peer-validate. idx — индекс target'а в request
 // массиве (для с фиксированным текстом error text `"target[N]..."`). Errors → gRPC InvalidArgument.
 func (u *AddTargetsUseCase) validateTargetPeer(
-	ctx context.Context, tgRegion domain.RegionID, idx int, t *domain.Target,
+	ctx context.Context, an *peerAnswers, tgRegion domain.RegionID, idx int, t *domain.Target,
 ) error {
 	switch {
 	case isInstanceTarget(t):
-		return u.validateInstanceTarget(ctx, tgRegion, idx, t)
+		return u.validateInstanceTarget(ctx, an, tgRegion, idx, t)
 	case isNicTarget(t):
-		return u.validateNicTarget(ctx, tgRegion, idx, t)
+		return u.validateNicTarget(ctx, an, tgRegion, idx, t)
 	case t.IPRef != nil:
-		return u.validateIPRefTarget(ctx, tgRegion, idx, t)
+		return u.validateIPRefTarget(ctx, an, tgRegion, idx, t)
 	case t.ExternalIP != nil:
 		// bogon-check уже в domain.Target.Validate; peer-validate нет.
 		return nil
@@ -201,18 +333,20 @@ func (u *AddTargetsUseCase) validateTargetPeer(
 }
 
 func (u *AddTargetsUseCase) validateInstanceTarget(
-	ctx context.Context, tgRegion domain.RegionID, idx int, t *domain.Target,
+	ctx context.Context, an *peerAnswers, tgRegion domain.RegionID, idx int, t *domain.Target,
 ) error {
 	instID, _ := t.InstanceID.Maybe()
 	if u.instanceClient == nil {
 		return status.Error(codes.Unavailable, "compute instance client not configured")
 	}
-	inst, err := u.instanceClient.Get(ctx, string(instID))
+	inst, err := an.instances.do(string(instID), func() (*computeclient.Instance, error) {
+		return u.instanceClient.Get(ctx, string(instID))
+	})
 	if err != nil {
 		return mapPeerTargetErr(idx, "instance_id", string(instID), err)
 	}
 	// Instance — всегда ZONAL; его регион знает ТОЛЬКО владелец Geography.
-	r, err := u.regionOfZone(ctx, inst.ZoneID)
+	r, err := u.regionOfZone(ctx, an, inst.ZoneID)
 	if err != nil {
 		return regionUnverifiableErr(idx, "instance_id", string(instID))
 	}
@@ -229,14 +363,19 @@ func (u *AddTargetsUseCase) validateInstanceTarget(
 // строки, между ними нет выводимой связи (data-integrity.md §Placement-coherence
 // «валидировать peer-вызовом geo.v1.ZoneService.Get, не локально»). Пустая зона /
 // нет резолвера / geo недоступен → ошибка (fail-closed на мутации).
-func (u *AddTargetsUseCase) regionOfZone(ctx context.Context, zoneID string) (string, error) {
+//
+// Вопрос про одну зону задаётся один раз на операцию (an.zones) — цели пачки,
+// как правило, лежат в одной зоне.
+func (u *AddTargetsUseCase) regionOfZone(ctx context.Context, an *peerAnswers, zoneID string) (string, error) {
 	if u.zoneRegion == nil {
 		return "", fmt.Errorf("%w: zone→region resolver not configured", domain.ErrUnavailable)
 	}
 	if zoneID == "" {
 		return "", fmt.Errorf("%w: peer resource carries no zone", domain.ErrUnavailable)
 	}
-	r, err := u.zoneRegion.RegionOfZone(ctx, zoneID)
+	r, err := an.zones.do(zoneID, func() (string, error) {
+		return u.zoneRegion.RegionOfZone(ctx, zoneID)
+	})
 	if err != nil {
 		return "", err
 	}
@@ -265,18 +404,23 @@ func regionUnverifiableErr(idx int, field, id string) error {
 }
 
 func (u *AddTargetsUseCase) validateNicTarget(
-	ctx context.Context, tgRegion domain.RegionID, idx int, t *domain.Target,
+	ctx context.Context, an *peerAnswers, tgRegion domain.RegionID, idx int, t *domain.Target,
 ) error {
 	nicID, _ := t.NicID.Maybe()
 	if u.nicClient == nil || u.subnetClient == nil {
 		return status.Error(codes.Unavailable, "vpc nic/subnet client not configured")
 	}
-	nic, err := u.nicClient.Get(ctx, string(nicID))
+	nic, err := an.nics.do(string(nicID), func() (*vpcclient.NetworkInterface, error) {
+		return u.nicClient.Get(ctx, string(nicID))
+	})
 	if err != nil {
 		return mapPeerTargetErr(idx, "nic_id", string(nicID), err)
 	}
-	// NIC region resolved via parent subnet zone.
-	sub, err := u.subnetClient.Get(ctx, nic.SubnetID)
+	// NIC region resolved via parent subnet zone. Подсеть у интерфейсов пачки, как
+	// правило, общая — спрашиваем vpc о ней один раз на операцию.
+	sub, err := an.subnets.do(nic.SubnetID, func() (*vpcclient.Subnet, error) {
+		return u.subnetClient.Get(ctx, nic.SubnetID)
+	})
 	if err != nil {
 		return mapPeerTargetErr(idx, "nic_id", string(nicID), err)
 	}
@@ -293,13 +437,16 @@ func (u *AddTargetsUseCase) validateNicTarget(
 }
 
 func (u *AddTargetsUseCase) validateIPRefTarget(
-	ctx context.Context, tgRegion domain.RegionID, idx int, t *domain.Target,
+	ctx context.Context, an *peerAnswers, tgRegion domain.RegionID, idx int, t *domain.Target,
 ) error {
 	if u.subnetClient == nil {
 		return status.Error(codes.Unavailable, "vpc subnet client not configured")
 	}
 	subID := string(t.IPRef.SubnetID)
-	sub, err := u.subnetClient.Get(ctx, subID)
+	// Адреса пачки, как правило, из одной подсети — спрашиваем vpc о ней один раз.
+	sub, err := an.subnets.do(subID, func() (*vpcclient.Subnet, error) {
+		return u.subnetClient.Get(ctx, subID)
+	})
 	if err != nil {
 		return mapPeerTargetErr(idx, "ip_ref.subnet_id", subID, err)
 	}

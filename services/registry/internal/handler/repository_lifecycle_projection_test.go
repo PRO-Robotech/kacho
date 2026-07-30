@@ -37,6 +37,37 @@ func (c *overlayCfg) ListConfigs(context.Context, string) ([]*domain.RepositoryC
 	return append([]*domain.RepositoryConfig(nil), c.rows...), nil
 }
 
+func (c *overlayCfg) ListConfigsExcludingNames(_ context.Context, _ string, excluded []string, offset, limit int) ([]*domain.RepositoryConfig, error) {
+	skip := make(map[string]struct{}, len(excluded))
+	for _, n := range excluded {
+		skip[n] = struct{}{}
+	}
+	kept := make([]*domain.RepositoryConfig, 0, len(c.rows))
+	for _, r := range c.rows {
+		if _, ok := skip[r.Name]; !ok {
+			kept = append(kept, r)
+		}
+	}
+	if offset >= len(kept) || limit <= 0 {
+		return nil, nil
+	}
+	return append([]*domain.RepositoryConfig(nil), kept[offset:min(offset+limit, len(kept))]...), nil
+}
+
+func (c *overlayCfg) ConfigsByNames(_ context.Context, _ string, names []string) ([]*domain.RepositoryConfig, error) {
+	want := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		want[n] = struct{}{}
+	}
+	var out []*domain.RepositoryConfig
+	for _, r := range c.rows {
+		if _, ok := want[r.Name]; ok {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
 func (c *overlayCfg) InsertConfig(context.Context, *domain.RepositoryConfig, ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
 	return nil, regerrors.ErrUnavailable
 }
@@ -91,7 +122,7 @@ func newLifecycleHandler(t *testing.T) *RegistryHandler {
 		repositoryObjectRef(validReg, "durable"):   true,
 		repositoryObjectRef(validReg, "ephemeral"): true,
 	}}
-	return NewRegistryHandler(uc, az)
+	return NewRegistryHandler(uc, az, 0)
 }
 
 // Списочная выдача обязана нести ту же исчезаемость, что и поштучное чтение.

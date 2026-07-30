@@ -173,7 +173,7 @@ First-class NIC-ресурс домена VPC. Project-level (`project_id` об�
 | `subnet_id` | text NOT NULL FK→`subnets` | `network_interfaces_subnet_id_fkey` **ON DELETE RESTRICT** — NIC жестко блокирует свою подсеть |
 | `mac_address` | text, output-only | аллоцируется при Create (`0e:` + 40 бит crypto/rand), cloud-wide UNIQUE + retry на коллизию |
 | `v4_address_ids[]` / `v6_address_ids[]` | text[] | ссылки на `Address`-ресурсы **по id** (≤1 v4 + ≤1 v6); один `Address` — максимум на одном NIC (enforced сервис-слоем через `addresses.used` + referrer-rows `address_references`, `referrer_type="network_interface"`) |
-| `security_group_ids[]` | text[] | default на Create = `Network.default_security_group_id` сети подсети; принимаются и network-less SG (если в том же project) |
+| `security_group_ids[]` | jsonb | подставляемого умолчания НЕТ: пустой массив остаётся пустым (`Network.default_security_group_id` в этот путь не читается). Каждый переданный id проверяется на существование, принадлежность проекту интерфейса и сеть подсети; network-less (project-level) SG принимается в любой подсети своего проекта. Число групп ограничено (`MaxNICSecurityGroups` + CHECK) |
 | `used_by` | `kacho.cloud.reference.Reference` | денормализованное зеркало «кто использует этот NIC»; flat-колонки `used_by_type`/`used_by_id`/`used_by_name` |
 | `status` | enum | `PROVISIONING` / `ACTIVE` / `AVAILABLE` / `FAILED` / `DELETING` |
 

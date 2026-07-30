@@ -38,6 +38,20 @@ func (r *securityGroupReader) Get(_ context.Context, id string) (*kacho.Security
 	return &cp, nil
 }
 
+// GetMany — карта найденных; отсутствующие id просто отсутствуют (семантика
+// хранилища).
+func (r *securityGroupReader) GetMany(ctx context.Context, ids []string) (map[string]*kacho.SecurityGroupRecord, error) {
+	out := make(map[string]*kacho.SecurityGroupRecord, len(ids))
+	for _, id := range ids {
+		sg, err := r.Get(ctx, id)
+		if err != nil {
+			continue
+		}
+		out[id] = sg
+	}
+	return out, nil
+}
+
 func (r *securityGroupReader) List(_ context.Context, f kacho.SecurityGroupFilter, _ kacho.Pagination) ([]*kacho.SecurityGroupRecord, string, error) {
 	var result []*kacho.SecurityGroupRecord
 	for _, sg := range r.snap {
@@ -75,6 +89,19 @@ func (sw *securityGroupWriter) Get(_ context.Context, id string) (*kacho.Securit
 // GetForUpdate — in-memory mock не моделирует row-lock; семантика = Get.
 func (sw *securityGroupWriter) GetForUpdate(ctx context.Context, id string) (*kacho.SecurityGroupRecord, error) {
 	return sw.Get(ctx, id)
+}
+
+// GetMany — карта найденных в состоянии writer-TX.
+func (sw *securityGroupWriter) GetMany(ctx context.Context, ids []string) (map[string]*kacho.SecurityGroupRecord, error) {
+	out := make(map[string]*kacho.SecurityGroupRecord, len(ids))
+	for _, id := range ids {
+		sg, err := sw.Get(ctx, id)
+		if err != nil {
+			continue
+		}
+		out[id] = sg
+	}
+	return out, nil
 }
 
 func (sw *securityGroupWriter) List(_ context.Context, f kacho.SecurityGroupFilter, _ kacho.Pagination) ([]*kacho.SecurityGroupRecord, string, error) {
@@ -151,6 +178,13 @@ func (sw *securityGroupWriter) UpdateRules(_ context.Context, sgID string, delet
 		sg.Rules = filtered
 	}
 	sg.Rules = append(sg.Rules, add...)
+	// Потолок НАКОПЛЕННОГО набора — зеркало pg-стороны: глагол аддитивен,
+	// поэтому набор растёт серией формально законных запросов, и проверять его
+	// обязан тот, кто пишет итог. Без зеркала ни один unit-тест не мог бы
+	// добраться до этого предусловия.
+	if len(sg.Rules) > domain.MaxSecurityGroupRules {
+		return nil, repo.ErrFailedPrecondition
+	}
 	cp := *sg
 	return &cp, nil
 }

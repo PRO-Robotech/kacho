@@ -5,7 +5,7 @@
         reload-svc logs-svc psql preflight e2e-test helm-lint \
         loadtest-address-allocate loadtest-address-allocate-clean \
         reload-svc-iam psql-iam logs-iam fga-bootstrap build-services openfga-model-json \
-        guard-kind-context guard-destructive gate-self-test \
+        guard-kind-context guard-destructive gate-self-test waiter-discipline \
         reload-svc-nlb psql-nlb logs-nlb seed-nlb e2e-newman stand-provenance
 
 CLUSTER_NAME := kacho
@@ -580,6 +580,22 @@ helm-lint:
 # самопроверка и запись без предмета одинаково роняют прогон.
 gate-self-test:
 	@bash scripts/run-gate-self-tests.sh
+
+# waiter-discipline — ожидание и остановка идут по ЗАХВАЧЕННОМУ идентификатору
+# процесса, а не по шаблону командной строки.
+#
+# Поиск по шаблону сопоставляет его и с командной строкой ТОГО, КТО СПРАШИВАЕТ:
+# сторожевая петля не завершается никогда (ждущий находит сам себя), а остановка
+# по шаблону сносит ждущего вместе с ожидаемым. За один день класс сработал
+# четыре раза у разных исполнителей и каждый раз выглядел как «висит непонятно
+# почему» — то есть маскировался под нагрузку.
+#
+# Гейт превентивный: живых вхождений в дереве НЕТ (0 находок из 230 прочитанных
+# файлов), и знание о классе не было записано нигде — поэтому каждый следующий
+# писал ту же конструкцию с нуля. Перепись осмотренного печатается отдельно:
+# «ноль находок» обязано отличаться от «ноль прочитанного».
+waiter-discipline:
+	@bash scripts/assert-waiters-name-their-target.sh
 
 # Локально: `make helm-manifest-test`; одну проверку — `bash tests/helm/<имя>.sh`.
 #

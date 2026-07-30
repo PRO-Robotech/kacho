@@ -101,13 +101,16 @@ func TestDataplane_FailClosed_DependencyUnavailable_503(t *testing.T) {
 		require.Equal(t, 0, fw.count())
 	})
 
-	t.Run("servePush RepoExists error", func(t *testing.T) {
+	t.Run("servePush repository-existence error", func(t *testing.T) {
 		fw := &fakeForwarder{}
-		az := &fakeAuthz{} // allow-all — ошибка приходит из RepoExists ДО verb-map Check
-		be := &fakeBackend{existsErr: depErr}
-		h := newTestHandler(&fakeVerifier{subject: "sva-ci"}, az, be, fw, &fakeRepoReg{})
+		az := &fakeAuthz{} // allow-all — ошибка приходит из предиката ДО verb-map Check
+		// Предикат пути записи — существование РЕСУРСА (наложение ⊔ регистрация), а не
+		// теги в движке: именно его недоступность обязана fail-closed'иться, потому что
+		// именно он выбирает глагол. backend.RepoExists на этой полосе больше не участвует.
+		pr := &fakePresence{err: depErr}
+		h := newTestHandlerP(&fakeVerifier{subject: "sva-ci"}, az, &fakeBackend{}, pr, fw, &fakeRepoReg{})
 		rec := doReq(h, http.MethodPost, "/v2/reg-A/app/blobs/uploads/", true)
-		require.Equal(t, http.StatusServiceUnavailable, rec.Code, "push RepoExists error → fail-closed 503")
+		require.Equal(t, http.StatusServiceUnavailable, rec.Code, "push existence-предикат недоступен → fail-closed 503")
 		require.Equal(t, 0, fw.count())
 	})
 
@@ -120,13 +123,13 @@ func TestDataplane_FailClosed_DependencyUnavailable_503(t *testing.T) {
 		require.Equal(t, 0, fw.count())
 	})
 
-	t.Run("serveMount dst RepoExists error", func(t *testing.T) {
+	t.Run("serveMount dst repository-existence error", func(t *testing.T) {
 		fw := &fakeForwarder{}
 		az := &fakeAuthz{allow: map[string]bool{"v_get registry_repository:reg-A/src": true}} // src allow
-		be := &fakeBackend{existsErr: depErr}                                                 // dst RepoExists падает
-		h := newTestHandler(&fakeVerifier{subject: "sva-ci"}, az, be, fw, &fakeRepoReg{})
+		pr := &fakePresence{err: depErr}                                                      // предикат dst падает
+		h := newTestHandlerP(&fakeVerifier{subject: "sva-ci"}, az, &fakeBackend{}, pr, fw, &fakeRepoReg{})
 		rec := doReq(h, http.MethodPost, "/v2/reg-A/dst/blobs/uploads/?mount=sha256:x&from=reg-A/src", true)
-		require.Equal(t, http.StatusServiceUnavailable, rec.Code, "mount dst RepoExists error → fail-closed 503")
+		require.Equal(t, http.StatusServiceUnavailable, rec.Code, "mount dst existence-предикат недоступен → fail-closed 503")
 		require.Equal(t, 0, fw.count())
 	})
 
@@ -278,7 +281,7 @@ func TestDataplane_BlobUpload_ChunkPatch_StreamsNoRecord(t *testing.T) {
 // токена проходит (AuthN bypass) и форвардится (AuthZ bypass). Локает breakglass-ветки.
 func TestDataplane_Breakglass_NilVerifier_NilAuthz_Bypasses(t *testing.T) {
 	fw := &fakeForwarder{status: 200}
-	h := New(nil, nil, &fakeBackend{}, fw, &fakeRepoReg{},
+	h := New(nil, nil, &fakeBackend{}, &fakePresence{}, fw, &fakeRepoReg{},
 		&fakeRegistryLookup{}, &fakeUploadRecorder{}, &fakePushGrantRecorder{},
 		"https://api.kacho.local/iam/token", "registry.kacho.local", nil)
 
@@ -307,7 +310,7 @@ func TestDataplane_NilRecorders_PushAndPull_Disabled(t *testing.T) {
 	be := &fakeBackend{exists: map[string]bool{}}
 	rr := &fakeRepoReg{}
 	// uploads=nil, pushGrants=nil, regLookup=nil — все опциональные фичи выключены.
-	h := New(&fakeVerifier{subject: "sva-ci"}, az, be, fw, rr,
+	h := New(&fakeVerifier{subject: "sva-ci"}, az, be, presenceFor(be), fw, rr,
 		nil, nil, nil, "https://api.kacho.local/iam/token", "registry.kacho.local", nil)
 
 	require.Equal(t, 201, doReq(h, http.MethodPost, "/v2/reg-A/app/blobs/uploads/", true).Code)
@@ -323,7 +326,7 @@ func TestDataplane_NilRecorders_PushAndPull_Disabled(t *testing.T) {
 		blobs:  map[string]bool{"reg-A/app|sha256:own": true},
 	}
 	fwEst := &fakeForwarder{status: 200}
-	hEst := New(&fakeVerifier{subject: "sva-ci"}, az, beEst, fwEst, rr,
+	hEst := New(&fakeVerifier{subject: "sva-ci"}, az, beEst, presenceFor(beEst), fwEst, rr,
 		nil, nil, nil, "https://api.kacho.local/iam/token", "registry.kacho.local", nil)
 	require.Equal(t, http.StatusOK, doReq(hEst, http.MethodGet, "/v2/reg-A/app/blobs/sha256:own", true).Code,
 		"established member-blob pull форвардится при nil pushGrants (dropPushGrant no-op)")
@@ -331,7 +334,7 @@ func TestDataplane_NilRecorders_PushAndPull_Disabled(t *testing.T) {
 	// established pull, v_get deny → pushOwnerRevealsRepo no-op (pushGrants nil) → 404.
 	azDeny := &fakeAuthz{allow: map[string]bool{}}
 	fwDeny := &fakeForwarder{}
-	hDeny := New(&fakeVerifier{subject: "sva-ci"}, azDeny, beEst, fwDeny, rr,
+	hDeny := New(&fakeVerifier{subject: "sva-ci"}, azDeny, beEst, presenceFor(beEst), fwDeny, rr,
 		nil, nil, nil, "https://api.kacho.local/iam/token", "registry.kacho.local", nil)
 	require.Equal(t, http.StatusNotFound, doReq(hDeny, http.MethodGet, "/v2/reg-A/app/blobs/sha256:own", true).Code,
 		"v_get deny + nil pushGrants → push-owner мост выключен → 404")
@@ -347,7 +350,7 @@ func TestDataplane_NilUploads_BlobNotInManifest_404(t *testing.T) {
 	fw := &fakeForwarder{}
 	be := &fakeBackend{} // BlobInRepo=false
 	// uploads==nil → blobUploadedToRepo короткозамыкает в false.
-	h := New(&fakeVerifier{subject: "sva-ci"}, az, be, fw, &fakeRepoReg{},
+	h := New(&fakeVerifier{subject: "sva-ci"}, az, be, presenceFor(be), fw, &fakeRepoReg{},
 		&fakeRegistryLookup{}, nil, &fakePushGrantRecorder{},
 		"https://api.kacho.local/iam/token", "registry.kacho.local", nil)
 
@@ -360,7 +363,7 @@ func TestDataplane_NilUploads_BlobNotInManifest_404(t *testing.T) {
 // подставляет дефолтный IAM /token realm и service-audience; challenge их несёт. Локает
 // дефолт-ветки конструктора (наблюдаемо — через WWW-Authenticate).
 func TestDataplane_New_EmptyRealmService_AppliesDefaults(t *testing.T) {
-	h := New(&fakeVerifier{subject: "sva-ci"}, &fakeAuthz{}, &fakeBackend{}, &fakeForwarder{}, &fakeRepoReg{},
+	h := New(&fakeVerifier{subject: "sva-ci"}, &fakeAuthz{}, &fakeBackend{}, &fakePresence{}, &fakeForwarder{}, &fakeRepoReg{},
 		&fakeRegistryLookup{}, &fakeUploadRecorder{}, &fakePushGrantRecorder{}, "", "", nil)
 	rec := doReq(h, http.MethodGet, "/v2/", false) // без токена → challenge
 	require.Equal(t, http.StatusUnauthorized, rec.Code)

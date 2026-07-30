@@ -5,7 +5,6 @@ package securitygroup
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/netip"
 
@@ -20,7 +19,6 @@ import (
 
 	// Blank-import регистрирует трансферы SecurityGroup/time через init().
 	_ "github.com/PRO-Robotech/kacho/services/vpc/internal/dto/toproto"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 )
 
 // validateCIDRPrefix — host-bits = 0; используется в правилах SG (sync-валидация
@@ -96,20 +94,54 @@ func validateSGTargetSameNetwork(
 	if reader == nil {
 		return nil
 	}
-	for i, r := range rules {
+	// Цели резолвятся ОДНИМ запросом на весь набор и с дедупликацией: длину
+	// набора выбирает вызывающий, а одна и та же цель в тысяче правил — это
+	// одна строка, а не тысяча обращений к БД. Порядок сообщений сохраняется:
+	// решение по каждому правилу принимается в исходном порядке по уже
+	// полученной карте.
+	targets := make([]string, 0, len(rules))
+	seen := make(map[string]struct{}, len(rules))
+	for _, r := range rules {
 		if r.SecurityGroupID == "" {
 			continue // CIDR / predefined / no target — not an SG-target rule.
 		}
-		target, err := reader.Get(ctx, r.SecurityGroupID)
-		if err != nil {
-			if errors.Is(err, repo.ErrNotFound) {
-				return serviceerr.InvalidArg(fieldFor(i), errRuleTargetMissing)
-			}
-			return serviceerr.MapRepoErr(err)
+		if _, dup := seen[r.SecurityGroupID]; dup {
+			continue
+		}
+		seen[r.SecurityGroupID] = struct{}{}
+		targets = append(targets, r.SecurityGroupID)
+	}
+	if len(targets) == 0 {
+		return nil
+	}
+	found, err := reader.GetMany(ctx, targets)
+	if err != nil {
+		return serviceerr.MapRepoErr(err)
+	}
+	for i, r := range rules {
+		if r.SecurityGroupID == "" {
+			continue
+		}
+		target, ok := found[r.SecurityGroupID]
+		if !ok {
+			return serviceerr.InvalidArg(fieldFor(i), errRuleTargetMissing)
 		}
 		if target.NetworkID != ownerNetworkID {
 			return serviceerr.InvalidArg(fieldFor(i), errRuleCrossNetwork)
 		}
+	}
+	return nil
+}
+
+// validateSGRulesCardinality — потолок числа правил, синхронно и ДО любого
+// резолва целей. Без потолка стоимость одного запроса линейна по величине,
+// которую выбирает вызывающий, и платится дважды (синхронно и в воркере).
+// Проверяется ИТОГОВЫЙ набор, иначе он растёт серией формально законных
+// запросов. DB-CHECK security_groups_rules_cardinality — атомарный backstop.
+func validateSGRulesCardinality(field string, rules []domain.SecurityGroupRule) error {
+	if len(rules) > domain.MaxSecurityGroupRules {
+		return serviceerr.InvalidArg(field,
+			fmt.Sprintf("at most %d rules per security group", domain.MaxSecurityGroupRules))
 	}
 	return nil
 }

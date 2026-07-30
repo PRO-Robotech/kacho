@@ -50,6 +50,19 @@ type RepositoryConfigReader interface {
 	// ListConfigs возвращает overlay-строки реестра (created_at, name) ASC. Use-case
 	// объединяет их с projection (zot) в overlay ⊔ projection union (A20).
 	ListConfigs(ctx context.Context, registryID string) ([]*domain.RepositoryConfig, error)
+	// ListConfigsExcludingNames — ОКНО строк наложения реестра в том же порядке
+	// (created_at, name) ASC, БЕЗ перечисленных имён: offset/limit.
+	//
+	// Отбор «строки наложения, которых нет в движке» выполняет БД, а не память
+	// сервиса. Прежняя реализация тянула весь каталог наложения (с метками) и
+	// фильтровала его в памяти на КАЖДОЙ странице — стоимость страницы не зависела от
+	// page_size вовсе, а при page_size=1 равнялась размеру реестра. Здесь возвращается
+	// ровно окно.
+	ListConfigsExcludingNames(ctx context.Context, registryID string, excluded []string, offset, limit int) ([]*domain.RepositoryConfig, error)
+	// ConfigsByNames — строки наложения ТОЛЬКО для перечисленных имён (окно
+	// проекции). Пустой список → пусто, обращения к БД нет. Именно это заменяет
+	// полный скан на полосе проекции: имена окна известны, и больше ничего не нужно.
+	ConfigsByNames(ctx context.Context, registryID string, names []string) ([]*domain.RepositoryConfig, error)
 }
 
 // RepositoryConfigWriter — write-порт overlay-таблицы. Мутации атомарны на DB-уровне

@@ -140,15 +140,22 @@ func runServe(configPath string) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
 
-	// pgxpool. MaxConns / ConnLifetime tuning из cfg.Repository.Postgres
-	// расширяется через coredb.NewPool по мере необходимости (см. kacho-corelib/db).
-	pool, err := coredb.NewPool(ctx, cfg.Repository.Postgres.URL)
+	// pgxpool. Строится из cfg.DSN() — URL плюс `pool_max_conns` /
+	// `pool_max_conn_lifetime`: только там ширина пула, объявленная в конфиге,
+	// доезжает до самого пула (см. config.DSN; migrator и LISTEN-feed берут URL
+	// как есть — `pool_*` для них фатален). Ширина решает, сколько одновременных
+	// запросов сервис обслужит, поэтому настройка обязана быть читаемой, а не
+	// декоративной; гейт — cmd/kacho-loadbalancer/pool_wiring_test.go.
+	pool, err := coredb.NewPool(ctx, cfg.DSN())
 	if err != nil {
 		return fmt.Errorf("open pgxpool: %w", err)
 	}
 	defer pool.Close()
 
-	// CQRS-Repository. master = slave (single-pool dev). Use-case'ы,
+	// CQRS-Repository. Реплики нет ни в одной посадке — второй пул не создаётся,
+	// поэтому Reader идёт на тот же master-пул, что и Writer (`New(pool, nil)`).
+	// Это и есть причина, по которой read-TX не удерживается через ожидание
+	// соседа: пул общий с мутациями (см. api/*/list.go readPage). Use-case'ы,
 	// зарегистрированные на handler-слое в следующих 'ах, получают этот
 	// repo через port-интерфейсы (`internal/repo/kacho.Repository`).
 	repo := kachopg.New(pool, nil)

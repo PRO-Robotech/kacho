@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -67,6 +68,17 @@ func engineStub(t *testing.T, repos []engineRepo) *httptest.Server {
 					"LastUpdated": "2026-05-05T00:00:00Z", "DownloadCount": 7,
 				})
 			}
+			// Окно режет ДВИЖОК (requestedPage: limit/offset) — проверено против
+			// настоящего zot v2.1.18. Двойник, игнорирующий окно, отдавал бы каждую
+			// страницу с начала, то есть проверял бы поведение, которого у движка нет.
+			if lim := gqlIntArg(body.Query, "limit"); lim > 0 {
+				off := gqlIntArg(body.Query, "offset")
+				if off >= len(out) {
+					out = out[:0]
+				} else {
+					out = out[off:min(off+lim, len(out))]
+				}
+			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"data": map[string]any{"GlobalSearch": map[string]any{"Repos": out}},
 			})
@@ -91,6 +103,24 @@ func engineStub(t *testing.T, repos []engineRepo) *httptest.Server {
 	}))
 	t.Cleanup(srv.Close)
 	return srv
+}
+
+// gqlIntArg достаёт числовой аргумент GraphQL-запроса (`name:123`); нет — 0.
+func gqlIntArg(query, name string) int {
+	i := strings.Index(query, name+":")
+	if i < 0 {
+		return 0
+	}
+	rest := query[i+len(name)+1:]
+	end := 0
+	for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
+		end++
+	}
+	v, err := strconv.Atoi(rest[:end])
+	if err != nil {
+		return 0
+	}
+	return v
 }
 
 // durableRow — строка наложения (сам ресурс: он существует, пока существует она).

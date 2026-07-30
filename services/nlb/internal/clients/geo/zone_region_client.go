@@ -32,6 +32,12 @@ const DefaultZoneGetTimeout = 5 * time.Second
 // напрямую) — placement-coherence region-precheck (ребро nlb→geo). Отдельный
 // stateless pass-through, без кэша: zone→region — request-path прекондишн на
 // мутации, ошибка fail-closed.
+//
+// «Без кэша» — намеренно и остаётся так: кэш с TTL здесь означал бы решение о
+// допустимости мутации по устаревшему ответу владельца Geography. Повторяющийся
+// вопрос дедуплицируется у ВЫЗЫВАЮЩЕГО, в области одной операции (пачка целей
+// AddTargets в одной зоне спрашивает про эту зону один раз — см. peerAnswers в
+// apps/kacho/api/targetgroup/add_targets.go), а не долгоживущей памятью адаптера.
 type ZoneRegionClient struct {
 	zones   geopb.ZoneServiceClient
 	timeout time.Duration

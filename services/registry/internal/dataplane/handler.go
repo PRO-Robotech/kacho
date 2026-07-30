@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -25,6 +26,7 @@ type Handler struct {
 	verifier   TokenVerifier
 	authz      Authorizer
 	backend    Backend
+	presence   RepositoryPresence
 	forwarder  Forwarder
 	repoReg    RepoRegistrar
 	regLookup  RegistryLookup
@@ -47,7 +49,12 @@ type Handler struct {
 // закрыт); в штатном деплое uploads обязателен. pushGrants==nil → push-ownership
 // fallback выключен (REG-33 immediate-pull не закрыт: собственный pull толкавшего до
 // FGA-материализации останется 404); в штатном деплое pushGrants обязателен.
-func New(verifier TokenVerifier, authz Authorizer, backend Backend, forwarder Forwarder, repoReg RepoRegistrar, regLookup RegistryLookup, uploads UploadRecorder, pushGrants PushGrantRecorder, realm, service string, logger *slog.Logger) *Handler {
+//
+// presence и repoReg — позиционные и обязательные СОЗНАТЕЛЬНО (не builder-опции): по
+// ним принимается решение о праве записи и делается его durable-след. Порт, который
+// можно забыть подать, деградировал бы молча в ту самую дыру, ради которой заведён;
+// nil здесь не «мягкий режим», а fail-closed 503 на пути записи (см. servePush).
+func New(verifier TokenVerifier, authz Authorizer, backend Backend, presence RepositoryPresence, forwarder Forwarder, repoReg RepoRegistrar, regLookup RegistryLookup, uploads UploadRecorder, pushGrants PushGrantRecorder, realm, service string, logger *slog.Logger) *Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -61,6 +68,7 @@ func New(verifier TokenVerifier, authz Authorizer, backend Backend, forwarder Fo
 		verifier:   verifier,
 		authz:      authz,
 		backend:    backend,
+		presence:   presence,
 		forwarder:  forwarder,
 		repoReg:    repoReg,
 		regLookup:  regLookup,
@@ -265,9 +273,17 @@ func (h *Handler) serveBlobScoped(w http.ResponseWriter, r *http.Request, p pars
 // Defect B — deadlock-фикс первого push). Возвращает true ТОЛЬКО если ВСЕ три условия
 // выполнены одновременно:
 //
-//	(a) repo ещё НЕ материализован как tagged repo (RepoExists=false) — first-push in
-//	    progress; у established repo v_get уже прошёл бы и сюда бы не зашли, а если
-//	    v_get-deny на established repo — это ЛЕГИТИМНЫЙ deny (revoke/чужой), не дедлок;
+//	(a) манифеста в движке ещё НЕТ (backend.RepoExists=false) — first-push in progress;
+//	    у established repo v_get уже прошёл бы и сюда бы не зашли, а если v_get-deny на
+//	    established repo — это ЛЕГИТИМНЫЙ deny (revoke/чужой), не дедлок;
+//
+// Условие (a) НАМЕРЕННО спрашивает движок, а не repositoryResourceExists: вопрос здесь —
+// «манифест ещё не запушен?», то есть про СОДЕРЖИМОЕ, и именно его отсутствие образует
+// дедлок первого push. Полосу записи это условие не выбирает (её выбирает servePush по
+// существованию РЕСУРСА), а раскрытие само по себе несут (b) и (c). Заявленный чужой
+// пустой репозиторий этим путём не течёт: чтобы (c) выполнилось, нападающий должен был бы
+// сам загрузить блоб в ЭТОТ репозиторий, а загрузку блоба servePush ему теперь отказывает.
+//
 //	(b) caller держит v_create@registry_registry (namespace) — то же право, что
 //	    авторизовало blob-upload в servePush; доказывает push-authority того же
 //	    проекта/тенанта на ЭТОТ registry (cross-tenant caller его не держит);
@@ -405,10 +421,20 @@ func (h *Handler) dropPushGrantMaterialized(ctx context.Context, p parsed, subje
 // parent-tuple без ретрая). Собственный дедлайн ограничивает post-response-хвост.
 const registerPushTimeout = 10 * time.Second
 
-// servePush — push-путь (blob-upload / manifest-PUT). verb-map: repo существует →
-// v_update@registry_repository; repo новый → v_create@registry_registry (право
-// создавать repo в namespace). cross-repo mount — отдельный exfil-guard (два Check).
-// На успешном manifest-PUT нового repo → register-on-first-push.
+// servePush — push-путь (blob-upload / manifest-PUT). verb-map: репозиторий
+// СУЩЕСТВУЕТ КАК РЕСУРС → v_update@registry_repository; не существует →
+// v_create@registry_registry (право создавать repo в namespace). cross-repo mount —
+// отдельный exfil-guard (два Check). На успешном manifest-PUT НОВОГО репозитория →
+// register-on-first-push, синхронно и fail-closed (см. forwardManifestPut).
+//
+// Предикат существования — repositoryResourceExists (durable-состояние сервиса), а НЕ
+// backend.RepoExists (теги в движке). Разница не косметическая: репозиторий, заявленный
+// через control-plane и ещё пустой, тегов не имеет, поэтому по прежнему предикату
+// «не существовал» — и запись в него гейтилась правом «создавать репозитории в реестре»,
+// которое есть у любого соседа по реестру. Сосед не только писал в чужой объект, но и
+// уносил из ветки создания tuple ВЛАДЕЛЬЦА на него. Окно было повторяемым: удаление
+// последнего тега намеренно оставляет заявленный репозиторий существующим, а тегов у
+// него снова ноль.
 func (h *Handler) servePush(w http.ResponseWriter, r *http.Request, p parsed, subject string) {
 	ctx := r.Context()
 
@@ -420,9 +446,9 @@ func (h *Handler) servePush(w http.ResponseWriter, r *http.Request, p parsed, su
 		}
 	}
 
-	exists, err := h.backend.RepoExists(ctx, p.registryID, p.repo)
+	exists, err := h.repositoryResourceExists(ctx, p.registryID, p.repo)
 	if err != nil {
-		h.failClosed(w, "repo existence check failed", err)
+		h.failClosed(w, "repository existence check failed", err)
 		return
 	}
 
@@ -439,53 +465,129 @@ func (h *Handler) servePush(w http.ResponseWriter, r *http.Request, p parsed, su
 	// REG-33 Defect A: blob PUT/POST-finalize (routeUpload с ?digest=<d>) обязан durable-
 	// записать (registryID, repo, digest) ДО релея 2xx клиенту — иначе docker HEAD сразу
 	// за 201 упрётся в 404 (блоб ещё не в манифесте). Буферизуем (пустой) ответ zot,
-	// на 2xx пишем строку, затем релеим. Прочие push-запросы (POST upload-init, PATCH
-	// chunk, manifest PUT) идут прежним стриминговым Forward.
+	// на 2xx пишем строку, затем релеим.
 	if isBlobFinalize(p, r) {
 		h.forwardBlobFinalize(w, r, p)
 		return
 	}
 
-	status := h.forwarder.Forward(w, r)
+	if p.route == routeManifest && r.Method == http.MethodPut {
+		h.forwardManifestPut(w, r, p, subject, exists)
+		return
+	}
 
-	// На успешном manifest-PUT — durable-побочки на пути ответа ПОСЛЕ Forward. r.Context()
-	// отменяется в момент, когда клиент закрывает соединение, а single-shot docker/CI push
-	// рвёт connection сразу за 201 → cancellable ctx погиб бы ДО коммита записи, безвозвратно
-	// её потеряв (без ретрая). Отвязываем от отмены запроса (как LRO-воркеры) и даём
-	// собственный дедлайн на durable-emit + project-lookup:
-	//   - push-grant (REG-33 immediate-pull) — для ЛЮБОГО успешного manifest-PUT (новый ИЛИ
-	//     re-push): фиксируем push-ownership, чтобы собственный немедленный `docker pull`
-	//     толкавшего раскрылся, пока async register-on-first-push не материализовал v_get в FGA;
-	//   - register-on-first-push — ТОЛЬКО для нового repo: parent-tuple ПЕРВЫМ + owner-tuple
-	//     pushing-SA. Intent несёт ParentProjectID реестра — иначе resource_mirror строка репо
-	//     пустая и iam-reconciler не материализует per-object v_* (репо непуллим даже владельцем).
-	if p.route == routeManifest && r.Method == http.MethodPut && status >= 200 && status < 300 {
-		bgCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), registerPushTimeout)
-		defer cancel()
+	// Прочие push-запросы (POST upload-init, PATCH chunk) — стриминговый Forward без
+	// durable-побочек.
+	h.forwarder.Forward(w, r)
+}
 
-		// push-grant — вспомогательный кеш (не критичный путь): manifest уже в zot, push по
-		// сути завершён. Сбой записи → log-and-continue (как register-emit failure): не рвём
-		// клиенту уже отданный 2xx; худший исход — немедленный pull разок упрётся в pre-fix
-		// окно материализации (не новая регрессия). НЕ fail-closed на завершённый push.
-		if h.pushGrants != nil {
-			if gerr := h.pushGrants.RecordPushGrant(bgCtx, p.registryID, p.repo, subject); gerr != nil {
-				h.logger.Error("push-grant record failed",
-					"repo", p.registryID+"/"+p.repo, "err", gerr)
-			}
+// repositoryResourceExists — существует ли репозиторий как РЕСУРС (durable-состояние
+// сервиса: строка наложения ⊔ строка регистрации). Именно по нему выбирается глагол
+// записи.
+//
+// presence==nil → ошибка, а не «не существует»: ответить «нет» значило бы выбрать полосу
+// создания и вернуть исходную дыру, поэтому неподанный порт — fail-closed на пути записи,
+// а не тихий мягкий режим (security.md: «пустой список = доверять всем» — тот же класс).
+func (h *Handler) repositoryResourceExists(ctx context.Context, registryID, repo string) (bool, error) {
+	if h.presence == nil {
+		return false, errNoRepositoryPresence
+	}
+	return h.presence.RepositoryDeclared(ctx, registryID, repo)
+}
+
+// errNoRepositoryPresence / errNoRepoRegistrar — неподанные порты пути записи. Оба
+// означают НАСТРОЙКУ, а не сбой, и оба ведут в fail-closed: без первого нельзя выбрать
+// право, без второго нельзя сделать регистрацию durable.
+var (
+	errNoRepositoryPresence = errors.New("repository presence port not wired")
+	errNoRepoRegistrar      = errors.New("repository registrar port not wired")
+)
+
+// forwardManifestPut — manifest-PUT, разделённый по тому, существует ли репозиторий как
+// ресурс.
+//
+// Существует (перезапись): стриминговый Forward, как прежде. Новых durable-обязательств
+// нет — регистрация уже сделана, и платить за неё буферизацией на каждом push не за что.
+//
+// НЕ существует (первый push): ответ zot БУФЕРИЗУЕТСЯ (ForwardCapture), durable-работа
+// (резолв проекта + register-intent, он же durable-признак существования) выполняется ДО
+// релея 2xx, и её сбой — отказ: 2xx не релеится, ответ движка отбрасывается.
+//
+// Почему не «отдать 2xx и дописать потом», как было. Строки в очереди при сбое НЕТ вовсе,
+// поэтому backstop-переигрывание переигрывать нечего: оно поднимает существующие
+// отравленные строки, а не отсутствующие. Повтора тоже не было — второй push видел теги
+// в движке, переключался на глагол изменения и упирался в отказ, потому что tuple'ов у
+// репозитория так и не появилось. Регистрация терялась безвозвратно и молча (сбой уходил
+// в лог за уже отданным клиенту 201). Соседняя запись блоба в этом же файле трактует
+// ровно тот же класс отказа fail-closed'ом — здесь теперь так же.
+//
+// Повтор клиента сходится ИМЕННО потому, что предикат существования — durable-состояние
+// сервиса: регистрации не появилось ⇒ ресурса нет ⇒ снова полоса создания ⇒ снова тот же
+// глагол, которым клиент и авторизовался. Идемпотентность со стороны движка: манифест уже
+// лежит там, повторный PUT принимается.
+//
+// Буферизуется ТОЛЬКО ответ; тело запроса по-прежнему стримится в zot (ReverseProxy его
+// не накапливает), поэтому размер образа на память не влияет.
+func (h *Handler) forwardManifestPut(w http.ResponseWriter, r *http.Request, p parsed, subject string, resourceExists bool) {
+	if resourceExists {
+		status := h.forwarder.Forward(w, r)
+		if status >= 200 && status < 300 {
+			h.recordPushGrant(r.Context(), p, subject)
 		}
+		return
+	}
 
-		if !exists {
-			projectID := h.resolveRegistryProject(bgCtx, p.registryID)
-			intent := domain.RegisterIntentForRepoPush(p.registryID, p.repo, projectID, subject)
-			if h.repoReg != nil {
-				if rerr := h.repoReg.RegisterRepository(bgCtx, intent); rerr != nil {
-					// Push успешен; register-intent durable-emit провалился (редкий DB-сбой).
-					// Не рвём клиенту уже отданный ответ — логируем.
-					h.logger.Error("register-on-first-push emit failed",
-						"repo", p.registryID+"/"+p.repo, "err", rerr)
-				}
-			}
-		}
+	captured := h.forwarder.ForwardCapture(r)
+	if captured.Status < 200 || captured.Status >= 300 {
+		writeCaptured(w, captured) // движок не принял манифест — регистрировать нечего
+		return
+	}
+
+	// Durable-работа идёт на detached-контексте (WithoutCancel): single-shot docker/CI
+	// push рвёт соединение сразу за ответом, а отменённый ctx погубил бы коммит уже
+	// принятой движком записи. Собственный дедлайн ограничивает хвост при недоступной БД.
+	bgCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), registerPushTimeout)
+	defer cancel()
+
+	if h.repoReg == nil {
+		// Отказываем ДО резолва проекта: закрепить регистрацию всё равно нечем, читать
+		// БД ради ответа, который уже предрешён, незачем.
+		h.failClosed(w, "repository registration not configured", errNoRepoRegistrar)
+		return
+	}
+	projectID, perr := h.resolveRegistryProject(bgCtx, p.registryID)
+	if perr != nil {
+		h.failClosed(w, "repository registration project lookup failed", perr)
+		return
+	}
+	intent := domain.RegisterIntentForRepoPush(p.registryID, p.repo, projectID, subject)
+	if rerr := h.repoReg.RegisterRepository(bgCtx, intent); rerr != nil {
+		h.failClosed(w, "repository registration emit failed", rerr)
+		return
+	}
+
+	h.recordPushGrant(r.Context(), p, subject)
+	writeCaptured(w, captured)
+}
+
+// recordPushGrant фиксирует push-ownership (REG-33 immediate-pull) для успешного
+// manifest-PUT — нового ИЛИ перезаписи. Вспомогательный кеш, а не критичный путь: манифест
+// уже в движке, регистрация (для нового репозитория) уже закоммичена. Сбой записи →
+// log-and-continue: худший исход — немедленный pull толкавшего разок упрётся в окно
+// материализации, что мост и так лишь сужает. pushGrants==nil → мост выключен (no-op).
+//
+// Отвязку от отмены запроса делает САМА функция (WithoutCancel + собственный дедлайн):
+// клиент закрывает соединение сразу за ответом, поэтому вызывающие передают сюда обычный
+// r.Context() и об этом не думают.
+func (h *Handler) recordPushGrant(ctx context.Context, p parsed, subject string) {
+	if h.pushGrants == nil {
+		return
+	}
+	bgCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), registerPushTimeout)
+	defer cancel()
+	if gerr := h.pushGrants.RecordPushGrant(bgCtx, p.registryID, p.repo, subject); gerr != nil {
+		h.logger.Error("push-grant record failed",
+			"repo", p.registryID+"/"+p.repo, "err", gerr)
 	}
 }
 
@@ -531,20 +633,29 @@ func (h *Handler) forwardBlobFinalize(w http.ResponseWriter, r *http.Request, p 
 }
 
 // resolveRegistryProject резолвит owning-project реестра для containment scope
-// register-intent. regLookup==nil → "" (best-effort, интент без project). Ошибка
-// lookup'а на этом post-response пути логируется; интент всё равно эмитится (хотя бы
-// структурный parent-tuple), не регрессируя ниже прежнего поведения.
-func (h *Handler) resolveRegistryProject(ctx context.Context, registryID string) string {
+// register-intent. Возвращает ДВА РАЗНЫХ исхода, которые прежде схлопывались в одно
+// значение:
+//
+//   - regLookup==nil — резолвер НЕ СКОНФИГУРИРОВАН: ("", nil). Интент уезжает без
+//     project'а, как и раньше (документированный контракт порта, dev-профиль).
+//   - ошибка резолва — состояние НЕИЗВЕСТНО: ("", err). Вызывающий обязан НЕ эмитить
+//     деградированный интент и уйти в fail-closed, чтобы повтор клиента переэмитил
+//     намерение с авторитетным project'ом.
+//
+// Почему нельзя было оставить "" на обоих: принимающая сторона пустой project не
+// проверяет — интент доставлялся УСПЕШНО и помечался отправленным, а сопоставление шло
+// только по общему для кластера уровню, поэтому участники и администратор проекта
+// репозиторий не видели. Следствие постоянное, повтора не было (второй push шёл полосой
+// изменения), и наблюдаемого следа, кроме одной строки в логе, тоже не было.
+func (h *Handler) resolveRegistryProject(ctx context.Context, registryID string) (string, error) {
 	if h.regLookup == nil {
-		return ""
+		return "", nil
 	}
 	projectID, err := h.regLookup.RegistryProjectID(ctx, registryID)
 	if err != nil {
-		h.logger.Error("register-on-first-push project lookup failed",
-			"registry", registryID, "err", err)
-		return ""
+		return "", err
 	}
-	return projectID
+	return projectID, nil
 }
 
 // serveMount — cross-repo blob mount exfil-guard: ДВА Check — v_get на src-repo И
@@ -570,12 +681,15 @@ func (h *Handler) serveMount(w http.ResponseWriter, r *http.Request, p parsed, s
 		h.failClosed(w, "mount src check failed", err)
 		return
 	}
-	// dst verb-map зеркалит servePush: mount пишет блоб в dst-repo, поэтому существующий
-	// repo гейтится v_update@registry_repository, новый — v_create@registry_registry.
-	// Хардкод v_create@registry_repository расходился бы с push-путём (verb-mismatch):
+	// dst verb-map зеркалит servePush — тем же предикатом СУЩЕСТВОВАНИЯ РЕСУРСА
+	// (repositoryResourceExists), а не наличием тегов: существующий repo гейтится
+	// v_update@registry_repository, новый — v_create@registry_registry. Хардкод
+	// v_create@registry_repository расходился бы с push-путём (verb-mismatch):
 	// namespace-creator не прошёл бы mount в новый repo, а v_create-only принципал писал
-	// бы в существующий repo мимо v_update.
-	dstExists, err := h.backend.RepoExists(ctx, p.registryID, p.repo)
+	// бы в существующий repo мимо v_update. Предикат обязан быть тем же, что в servePush,
+	// иначе mount остаётся обходом: сосед монтировал бы слои в чужой заявленный (и потому
+	// бестеговый) репозиторий по общему для реестра праву.
+	dstExists, err := h.repositoryResourceExists(ctx, p.registryID, p.repo)
 	if err != nil {
 		h.failClosed(w, "mount dst existence check failed", err)
 		return
@@ -621,6 +735,20 @@ func (h *Handler) serveMount(w http.ResponseWriter, r *http.Request, p parsed, s
 // iam.Check по всему кросс-тенантному каталогу (N = глобальное число репо, которое
 // вызывающий не контролирует; CWE-770/400 self-amplifying DoS).
 const catalogMaxPageSize = 1000
+
+// catalogDefaultPageSize — размер окна _catalog, когда клиент `n=` НЕ прислал.
+//
+// Каталог движка глобален и межтенантен, а фильтр прав поштучен: страница в N имён —
+// это N вопросов в общее хранилище прав, которое fail-closed гейтит каждый запрос всех
+// сервисов. Само это отношение — принятый платформенный дизайн; вопрос лишь в том,
+// сколько платит запрос, в котором клиент ничего не попросил.
+//
+// 100 — столько, сколько OCI-клиенту реально нужно за один заход (ровно та же граница
+// пакета, что и у per-object проверок страницы в остальном продукте), а не максимум,
+// который система допускает. Ничего не теряется: за окном отдаётся Link rel="next", и
+// клиент, которому нужно больше, либо идёт по нему, либо просит явно и получает до
+// потолка (catalogMaxPageSize).
+const catalogDefaultPageSize = 100
 
 // catalogAuthzConcurrency — верхняя граница параллельных authz-Check при фильтрации
 // одной страницы _catalog (bound fan-out в iam, как blob-scope в zot-адаптере).
@@ -690,12 +818,18 @@ func (h *Handler) serveCatalog(w http.ResponseWriter, r *http.Request, subject s
 	_ = json.NewEncoder(w).Encode(map[string]any{"repositories": visible})
 }
 
-// parseCatalogPageSize разбирает OCI `n=` (размер страницы _catalog). Пусто/битое/
-// ≤0 → потолок catalogMaxPageSize; больше потолка → потолок (кламп, чтобы клиент не
-// снял границу Check-count). Возвращает всегда положительное значение в [1..max].
+// parseCatalogPageSize разбирает OCI `n=` (размер страницы _catalog). Клиент НИЧЕГО не
+// прислал → catalogDefaultPageSize; прислал битое/≤0/сверх потолка → потолок (кламп,
+// чтобы клиент не снял границу Check-count). Возвращает всегда значение в [1..max].
+//
+// Отсутствующий `n=` и `n=` сверх потолка — РАЗНЫЕ случаи, и раньше они схлопывались в
+// потолок. Первый — «клиент не выразил потребности», и отвечать на него максимумом,
+// который система вообще допускает, значит выставлять счёт (до 1000 вопросов в общее
+// хранилище прав) за запрос, которого никто не параметризовал. Второй — выраженная
+// потребность, превышающая границу; её кламп остаётся как был.
 func parseCatalogPageSize(n string) int {
 	if n == "" {
-		return catalogMaxPageSize
+		return catalogDefaultPageSize
 	}
 	v, err := strconv.Atoi(n)
 	if err != nil || v <= 0 || v > catalogMaxPageSize {

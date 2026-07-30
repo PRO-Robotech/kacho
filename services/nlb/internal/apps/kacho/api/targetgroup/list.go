@@ -27,7 +27,8 @@ func NewListTargetGroupsUseCase(repo Repo, authz authzfilter.Filter) *ListTarget
 	return &ListTargetGroupsUseCase{repo: repo, authz: authz}
 }
 
-// Execute — open reader → repo.List → DTO transfer per row.
+// Execute — читает страницу (read-TX закрывается сразу после SELECT'а, см.
+// readPage) → per-object фильтр видимости → DTO transfer per row.
 //
 // RBAC: per-object FGA filter (см. loadbalancer/list.go).
 func (u *ListTargetGroupsUseCase) Execute(
@@ -52,13 +53,8 @@ func (u *ListTargetGroupsUseCase) Execute(
 		return nil, err
 	}
 
-	rd, err := u.repo.Reader(ctx)
-	if err != nil {
-		return nil, mapDomainErr(err)
-	}
-	defer func() { _ = rd.Close() }()
-
-	recs, next, err := rd.TargetGroups().List(ctx, filter, kachorepo.Pagination{
+	// Страница читается и read-TX ЗАКРЫВАЕТСЯ до опроса прав (см. readPage).
+	recs, next, err := u.readPage(ctx, filter, kachorepo.Pagination{
 		PageToken: req.GetPageToken(),
 		PageSize:  req.GetPageSize(),
 	})
@@ -85,4 +81,20 @@ func (u *ListTargetGroupsUseCase) Execute(
 		resp.TargetGroups = append(resp.TargetGroups, pb)
 	}
 	return resp, nil
+}
+
+// readPage читает страницу и ОТДАЁТ соединение пула обратно до возврата — read-TX
+// не удерживается через сетевое ожидание iam в FilterVisiblePage. Полное
+// обоснование и цена удержания — loadbalancer/list.go readPage; закрывать
+// безопасно, потому что List вычитывает строки в срез целиком, а маппинг в proto
+// к БД не обращается.
+func (u *ListTargetGroupsUseCase) readPage(
+	ctx context.Context, filter kachorepo.TargetGroupFilter, page kachorepo.Pagination,
+) ([]*kachorepo.TargetGroupRecord, string, error) {
+	rd, err := u.repo.Reader(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	defer func() { _ = rd.Close() }()
+	return rd.TargetGroups().List(ctx, filter, page)
 }

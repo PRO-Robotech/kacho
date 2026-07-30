@@ -119,6 +119,20 @@ type Config struct {
 	// никогда не публично достижим; клиент ходит на cluster-internal endpoint.
 	ZotAddr string `envconfig:"KACHO_REGISTRY_ZOT_ADDR" default:""`
 
+	// ZotUsername / ZotPassword — учётные данные, которыми и адаптер плоскости
+	// управления, и форвардер плоскости данных предъявляются zot (HTTP Basic
+	// поверх htpasswd zot).
+	//
+	// zot — хранилище слоёв, а не «доверенный внутренний компонент»: он не имеет
+	// собственного понятия о тенантах, поэтому любой процесс, дозвонившийся до его
+	// порта БЕЗ учётных данных, читает, подменяет и удаляет содержимое всех
+	// тенантов, обходя весь per-request контроль плоскости данных одним хопом
+	// («internal = trusted» — запрещённое допущение, security.md §1.4). Пусто в
+	// production/production-strict при заданном ZotAddr → requireZotCredentials
+	// отказывает в старте.
+	ZotUsername string `envconfig:"KACHO_REGISTRY_ZOT_USERNAME" default:""`
+	ZotPassword string `envconfig:"KACHO_REGISTRY_ZOT_PASSWORD" default:""`
+
 	// PendingBlobTTL — freshness-окно durable per-repo учёта загруженных блобов
 	// (registry_pending_blob, REG-33 Defect A). На blob PUT-finalize пишется строка
 	// (registry_id, repo, digest); push-time blob HEAD/GET раскрывает блоб, если он

@@ -61,7 +61,15 @@ service:
   # (fe3455 Beget/Cilium) assigns a separate external IP for the OCI endpoint.
   dataplaneLB:
     enabled: false
-    port: 80              # HTTP LB port → container `dataplane` (:8080)
+    # ─── Открытая (cleartext) порт-запись на публичном VIP — ТОЛЬКО по требованию ─
+    # По этому сокету едет живой предъявитель: клиент забирает Bearer по TLS и затем
+    # отправляет его на КАЖДЫЙ запрос; blob-GET может ответить подписанной ссылкой на
+    # объектное хранилище. Включать можно только там, где перед VIP РЕАЛЬНО стоит
+    # внешний TLS-терминатор (тогда 80 на VIP — внутренний хоп терминатора). При
+    # включённом tlsSidecar внешнего терминатора нет по построению → держи выключенным.
+    plaintext:
+      enabled: false
+      port: 80            # HTTP LB port → container `dataplane` (:8080)
     # HTTPS LB-порт. docker требует https для non-localhost registry — публикуем 443
     # на том же VIP → container `dataplane`. TLS терминируется внешне (edge/Beget),
     # как и весь data-plane (DATAPLANE_TLS_TERMINATED_EXTERNALLY); pod остаётся
@@ -210,6 +218,35 @@ zot:
   # Service name the registry dials + StatefulSet governing service.
   serviceName: zot
   port: 5000
+  # ─── Аутентификация хранилища слоёв (ОБЯЗАТЕЛЬНА, дефолта-пароля НЕТ) ───────
+  # zot не различает тенантов — он хранит слои по path-префиксу. Открытый порт
+  # означает, что процесс в сети подов перечисляет репозитории ВСЕХ тенантов,
+  # выгружает чужие слои, подменяет образ под чужим тегом и удаляет содержимое,
+  # обходя проверку подписи docker-Bearer'а, per-request Check, сокрытие
+  # существования и запрет разрушительного DELETE.
+  #
+  # Дефолтного пароля тут НЕТ намеренно: чарт публичный, значит «дефолт» —
+  # общеизвестный секрет, то есть отсутствие защиты. Нет учётных данных → рендер
+  # ОТКАЗЫВАЕТ.
+  #
+  #   existingSecret — БОЕВАЯ форма: Secret оператора с ключами username/password/htpasswd
+  #                    (учётные данные боевого стенда в git не живут). Ротация — правка
+  #                    секрета + перекат StatefulSet zot (файл читается на старте).
+  #   username/password — профильная форма (dev): чарт сам выпускает Secret.
+  #   htpasswd       — необязательная явная bcrypt-строка (`<user>:$2y$…`, единственная
+  #                    схема, которую zot поддерживает). Пусто → выводится из пароля, но
+  #                    у выведенной соль случайна: checksum меняется на каждом рендере и
+  #                    под перекатывается. Задавай явно, если нужны предсказуемые раскаты.
+  auth:
+    existingSecret: ""
+    username: kacho-registry
+    password: ""
+    htpasswd: ""
+  # Второй эшелон: до порта zot дозваниваются только поды реестра. Выключено по
+  # умолчанию (кластер без поддерживающего плагина молча проглотит объект);
+  # боевой профиль включает — см. networkpolicy-zot.yaml.
+  networkPolicy:
+    enabled: false
   # ZOT_ADDR the registry uses. Empty → derived http://<serviceName>:<port>.
   addr: ""
   # Media-type compat. `docker2s2` lets clients push/pull Docker Image Manifest

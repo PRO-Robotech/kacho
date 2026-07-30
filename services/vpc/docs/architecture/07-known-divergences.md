@@ -23,6 +23,12 @@ Compute-Instance через `nic_id`. Multi-IP на VM собирается из
 
 ## 3. IPv6 — симметрично IPv4
 
+Симметрия — требование, а не наблюдение: предикат, который читает только одну
+семью, оставляет зеркальную половину без защиты (так `AddressPool:removeCidrBlocks`
+считал занятость лишь по IPv4, а глобальная уникальность внешнего адреса
+энфорсилась лишь в полосе IPv4). При добавлении проверки на набор, принимающий
+обе семьи, читать обе — обязательно.
+
 `:addCidrBlocks`/`:removeCidrBlocks` принимают и `v6_cidr_blocks`; `UpdateSubnet`
 несет `v6_cidr_blocks` как soft-immutable / no-op (зеркало v4). Internal IPv6 —
 `Address.internal_ipv6_address` oneof + `InternalAddressService.AllocateInternalIPv6`.

@@ -44,6 +44,33 @@ func (r *securityGroupReader) Get(ctx context.Context, id string) (*kacho.Securi
 	return sg, nil
 }
 
+// GetMany — резолв набора id одним запросом. Дедуп на стороне SQL (`= ANY`),
+// порядок не гарантируется — возвращается карта. Пустой вход → пустая карта без
+// обращения к БД.
+func (r *securityGroupReader) GetMany(ctx context.Context, ids []string) (map[string]*kacho.SecurityGroupRecord, error) {
+	out := make(map[string]*kacho.SecurityGroupRecord, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	q := fmt.Sprintf(`SELECT %s FROM security_groups WHERE id = ANY($1::text[])`, helpers.SGCols)
+	rows, err := r.tx.Query(ctx, q, ids)
+	if err != nil {
+		return nil, helpers.WrapSGErr(err, "")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		sg, serr := helpers.ScanSG(rows)
+		if serr != nil {
+			return nil, helpers.WrapSGErr(serr, "")
+		}
+		out[sg.ID] = sg
+	}
+	if err := rows.Err(); err != nil {
+		return nil, helpers.WrapSGErr(err, "")
+	}
+	return out, nil
+}
+
 // List — cursor-based pagination + filter.Parse (whitelist полей
 // ["name","network_id"]).
 func (r *securityGroupReader) List(ctx context.Context, f kacho.SecurityGroupFilter, p kacho.Pagination) ([]*kacho.SecurityGroupRecord, string, error) {
@@ -196,6 +223,38 @@ func (w *securityGroupWriter) Update(ctx context.Context, sg *domain.SecurityGro
 	return result, nil
 }
 
+// GetMany (writer-сторона) — резолв набора с `FOR SHARE`, а не голым чтением.
+// Ссылку на группу проверяет тот, кто её ЗАПИСЫВАЕТ, поэтому проверка обязана
+// быть сериализована с удалением группы: без share-lock'а группа могла быть
+// удалена между проверкой и коммитом интерфейса (её собственное предусловие
+// удаления нашего интерфейса ещё не видит) — и ссылка оставалась висячей.
+// Share-lock самой себе не конфликтует, поэтому параллельные создания
+// интерфейсов с одной группой не сериализуются; конфликтует он ровно с
+// `FOR UPDATE` в удалении группы.
+func (w *securityGroupWriter) GetMany(ctx context.Context, ids []string) (map[string]*kacho.SecurityGroupRecord, error) {
+	out := make(map[string]*kacho.SecurityGroupRecord, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	q := fmt.Sprintf(`SELECT %s FROM security_groups WHERE id = ANY($1::text[]) FOR SHARE`, helpers.SGCols)
+	rows, err := w.tx.Query(ctx, q, ids)
+	if err != nil {
+		return nil, helpers.WrapSGErr(err, "")
+	}
+	defer rows.Close()
+	for rows.Next() {
+		sg, serr := helpers.ScanSG(rows)
+		if serr != nil {
+			return nil, helpers.WrapSGErr(serr, "")
+		}
+		out[sg.ID] = sg
+	}
+	if err := rows.Err(); err != nil {
+		return nil, helpers.WrapSGErr(err, "")
+	}
+	return out, nil
+}
+
 // GetForUpdate — Get с row-lock (`FOR UPDATE`) в writer-TX. Сериализует
 // конкурентный read-modify-write в Update: второй concurrent Update блокируется
 // на GetForUpdate до commit первого, затем читает уже обновленный row (включая
@@ -291,6 +350,17 @@ func (w *securityGroupWriter) UpdateRules(ctx context.Context, sgID string, dele
 		rules = filtered
 	}
 	rules = append(rules, add...)
+	// Потолок на ИТОГОВОМ наборе: набор аддитивен, поэтому серия формально
+	// законных запросов растила бы его без предела. Синхронный отказ в use-case
+	// ограничивает ОДИН запрос и потому отвечает InvalidArgument с именем поля;
+	// здесь предмет другой — состояние уже существующей группы не позволяет
+	// добавить ещё, поэтому FailedPrecondition (тот же тон, что у прочих
+	// «состояние не позволяет»). DB-CHECK security_groups_rules_cardinality
+	// остаётся атомарным backstop'ом.
+	if len(rules) > domain.MaxSecurityGroupRules {
+		return nil, fmt.Errorf("%w: security group %s: at most %d rules per security group",
+			helpers.ErrFailedPrecondition, sgID, domain.MaxSecurityGroupRules)
+	}
 	newRulesJSON, err := helpers.MarshalJSONB(rules, "SecurityGroup.rules")
 	if err != nil {
 		return nil, err
