@@ -51,13 +51,9 @@ func (r *addressReader) List(_ context.Context, f kacho.AddressFilter, _ kacho.P
 	return result, "", nil
 }
 
-func (r *addressReader) GetByValue(_ context.Context, ext, intl, _ string) (*kacho.AddressRecord, error) {
+func (r *addressReader) GetByValue(_ context.Context, intl, subnetID string) (*kacho.AddressRecord, error) {
 	for _, a := range r.snap {
-		if ext != "" && a.ExternalIpv4 != nil && a.ExternalIpv4.Address == ext {
-			cp := *a
-			return &cp, nil
-		}
-		if intl != "" && a.InternalIpv4 != nil && a.InternalIpv4.Address == intl {
+		if matchesInternalValue(a, intl, subnetID) {
 			cp := *a
 			return &cp, nil
 		}
@@ -140,16 +136,12 @@ func (aw *addressWriter) List(_ context.Context, f kacho.AddressFilter, _ kacho.
 	return result, "", nil
 }
 
-func (aw *addressWriter) GetByValue(_ context.Context, ext, intl, _ string) (*kacho.AddressRecord, error) {
+func (aw *addressWriter) GetByValue(_ context.Context, intl, subnetID string) (*kacho.AddressRecord, error) {
 	for id, a := range aw.w.localAddrs {
 		if _, deleted := aw.w.deletedAddrIDs[id]; deleted {
 			continue
 		}
-		if ext != "" && a.ExternalIpv4 != nil && a.ExternalIpv4.Address == ext {
-			cp := *a
-			return &cp, nil
-		}
-		if intl != "" && a.InternalIpv4 != nil && a.InternalIpv4.Address == intl {
+		if matchesInternalValue(a, intl, subnetID) {
 			cp := *a
 			return &cp, nil
 		}
@@ -324,3 +316,15 @@ var (
 	_ kacho.AddressReaderIface = (*addressReader)(nil)
 	_ kacho.AddressWriterIface = (*addressWriter)(nil)
 )
+
+// matchesInternalValue — общий предикат для reader/writer-двойников: адрес
+// совпадает по ВНУТРЕННЕМУ значению и, если подсеть названа, по ней же. Обе
+// координаты читаются из внутренней спецификации — так же, как в pg. Двойник,
+// который сужение по подсети игнорировал, отвечал там, где настоящее хранилище
+// не находит ничего.
+func matchesInternalValue(a *kacho.AddressRecord, internalIP, subnetID string) bool {
+	if internalIP == "" || a.InternalIpv4 == nil || a.InternalIpv4.Address != internalIP {
+		return false
+	}
+	return subnetID == "" || a.InternalIpv4.SubnetID == subnetID
+}

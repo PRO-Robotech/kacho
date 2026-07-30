@@ -272,7 +272,7 @@
 | `*-GBV-CONF-NOLEAK-FOR-EXISTING-OTHER` | AUTHZ,CONF | P0 | 1 (add) | GetByValue: адрес подсети-1 не находится, когда областью названа подсеть-2 (область реально сужает выборку) |
 | `*-GBV-CRUD-OK` | CRUD | P1 | 1 (add) | GetByValue internal IP со scope subnetId → 200 + сам Address (единственный достижимый положительный путь) |
 | `*-GBV-AUTHZ-UNSCOPED-DENY` | AUTHZ,NEG | P1 | 1 (add) | GetByValue без scope subnetId → 403 fail-closed, ни id ни IP не раскрыты |
-| `*-GBV-CONF-EXT-BY-VALUE-UNREACHABLE` | CONF,NEG | P1 | 1 (add) | GetByValue внешнего IP с единственной доступной областью → 200 (ЗАЯВЛЕННЫЙ КРАСНЫЙ: ветка недостижима by construction, см. RESULTS.md) |
+| `*-GBV-CONF-EXT-BY-VALUE-REFUSED` | CONF,NEG | P1 | 1 (add) | GetByValue внешнего IP → 400 INVALID_ARGUMENT с именем поля: область у запроса одна (подсеть), внешний адрес в подсети не размещается, поэтому вопрос отвергается прямо, а не ложным «не найдено» |
 | `*-GBV-NEG-NF` | AUTHZ,NEG | P0 | 1 (add) | GetByValue несуществующего IP → NotFound (security: не должно leak'ать существование) |
 | `*-GBV-VAL-INVALID-IP` | NEG,VAL | P2 | 1 (add) | GetByValue с garbage IP → 400 или 404 |
 

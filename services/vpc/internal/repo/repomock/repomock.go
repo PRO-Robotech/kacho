@@ -358,16 +358,22 @@ func (r *AddressRepo) ExistsIP(_ context.Context, ip string) (bool, error) {
 	return false, nil
 }
 
-func (r *AddressRepo) GetByValue(_ context.Context, ext, intl, _ string) (*kachorepo.AddressRecord, error) {
+// GetByValue — как и pg-реализация, сужает по ВНУТРЕННЕЙ спецификации: и
+// значение, и подсеть читаются из неё. Двойник, игнорировавший подсеть,
+// отвечал там, где настоящее хранилище не находит ничего, — то есть скрывал
+// ровно то расхождение, из-за которого lookup по внешнему значению отвечал
+// «не найдено» про существующий адрес.
+func (r *AddressRepo) GetByValue(_ context.Context, intl, subnetID string) (*kachorepo.AddressRecord, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, a := range r.data {
-		if ext != "" && a.ExternalIpv4 != nil && a.ExternalIpv4.Address == ext {
-			return a, nil
+		if intl == "" || a.InternalIpv4 == nil || a.InternalIpv4.Address != intl {
+			continue
 		}
-		if intl != "" && a.InternalIpv4 != nil && a.InternalIpv4.Address == intl {
-			return a, nil
+		if subnetID != "" && a.InternalIpv4.SubnetID != subnetID {
+			continue
 		}
+		return a, nil
 	}
 	return nil, repo.ErrNotFound
 }

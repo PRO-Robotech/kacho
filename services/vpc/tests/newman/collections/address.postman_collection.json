@@ -11259,7 +11259,7 @@
       ]
     },
     {
-      "name": "ADR-GBV-CONF-EXT-BY-VALUE-UNREACHABLE — GetByValue внешнего IP с единственной доступной областью → 200 + сам Address (ЗАЯВЛЕННЫЙ КРАСНЫЙ: ветка недостижима by construction)",
+      "name": "ADR-GBV-CONF-EXT-BY-VALUE-REFUSED — GetByValue внешнего IP → 400 INVALID_ARGUMENT с именем поля (не ложное «не найдено»)",
       "description": "class:CONF | class:NEG | priority:P1",
       "item": [
         {
@@ -11669,8 +11669,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('внешний адрес найден по значению', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('addrId')));"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('отказ называет поле, из-за которого он произошёл', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('external_ipv4_address'));",
+                  "pm.test('и не утверждает, что адреса нет', () => pm.expect((pm.response.json().message || '').toLowerCase()).to.not.contain('not found'));"
                 ]
               }
             }
