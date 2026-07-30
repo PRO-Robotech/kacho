@@ -1113,7 +1113,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-PA1] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-PA1] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-PA1] LIST grant: ответ несёт список', () => pm.expect((j && j['instances']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -1585,7 +1587,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-AAA] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-AAA] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-AAA] LIST grant: ответ несёт список', () => pm.expect((j && j['instances']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -2135,7 +2139,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-AAB] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-AAB] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-AAB] LIST grant: ответ несёт список', () => pm.expect((j && j['instances']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -2530,7 +2536,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-INV] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-INSTANCE-LS-OWN-INV] LIST grant: ответ несёт список', () => pm.expect((j && j['instances']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -2588,7 +2596,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-INV] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-INSTANCE-LS-CROSS-INV] LIST grant: ответ несёт список', () => pm.expect((j && j['instances']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }

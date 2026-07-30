@@ -1179,7 +1179,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-NETWORK-LS-OWN-PA1] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-NETWORK-LS-OWN-PA1] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-NETWORK-LS-OWN-PA1] LIST grant: ответ несёт список', () => pm.expect((j && j['networks']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -1647,7 +1649,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-NETWORK-LS-OWN-AAA] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-NETWORK-LS-OWN-AAA] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-NETWORK-LS-OWN-AAA] LIST grant: ответ несёт список', () => pm.expect((j && j['networks']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -2193,7 +2197,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-NETWORK-LS-CROSS-AAB] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-NETWORK-LS-CROSS-AAB] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-NETWORK-LS-CROSS-AAB] LIST grant: ответ несёт список', () => pm.expect((j && j['networks']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -2581,7 +2587,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-NETWORK-LS-OWN-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-NETWORK-LS-OWN-INV] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-NETWORK-LS-OWN-INV] LIST grant: ответ несёт список', () => pm.expect((j && j['networks']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -2639,7 +2647,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-NETWORK-LS-CROSS-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-NETWORK-LS-CROSS-INV] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-NETWORK-LS-CROSS-INV] LIST grant: ответ несёт список', () => pm.expect((j && j['networks']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -3913,7 +3923,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SUBNET-LS-OWN-PA1] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SUBNET-LS-OWN-PA1] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-SUBNET-LS-OWN-PA1] LIST grant: ответ несёт список', () => pm.expect((j && j['subnets']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -4381,7 +4393,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SUBNET-LS-OWN-AAA] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SUBNET-LS-OWN-AAA] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-SUBNET-LS-OWN-AAA] LIST grant: ответ несёт список', () => pm.expect((j && j['subnets']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -4927,7 +4941,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SUBNET-LS-CROSS-AAB] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SUBNET-LS-CROSS-AAB] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-SUBNET-LS-CROSS-AAB] LIST grant: ответ несёт список', () => pm.expect((j && j['subnets']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -5315,7 +5331,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SUBNET-LS-OWN-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SUBNET-LS-OWN-INV] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-SUBNET-LS-OWN-INV] LIST grant: ответ несёт список', () => pm.expect((j && j['subnets']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -5373,7 +5391,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SUBNET-LS-CROSS-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SUBNET-LS-CROSS-INV] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-SUBNET-LS-CROSS-INV] LIST grant: ответ несёт список', () => pm.expect((j && j['subnets']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -6647,7 +6667,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-ADDRESS-LS-OWN-PA1] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-ADDRESS-LS-OWN-PA1] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-ADDRESS-LS-OWN-PA1] LIST grant: ответ несёт список', () => pm.expect((j && j['addresses']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -7115,7 +7137,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-ADDRESS-LS-OWN-AAA] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-ADDRESS-LS-OWN-AAA] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-ADDRESS-LS-OWN-AAA] LIST grant: ответ несёт список', () => pm.expect((j && j['addresses']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -7661,7 +7685,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-ADDRESS-LS-CROSS-AAB] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-ADDRESS-LS-CROSS-AAB] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-ADDRESS-LS-CROSS-AAB] LIST grant: ответ несёт список', () => pm.expect((j && j['addresses']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -8049,7 +8075,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-ADDRESS-LS-OWN-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-ADDRESS-LS-OWN-INV] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-ADDRESS-LS-OWN-INV] LIST grant: ответ несёт список', () => pm.expect((j && j['addresses']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -8107,7 +8135,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-ADDRESS-LS-CROSS-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-ADDRESS-LS-CROSS-INV] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-ADDRESS-LS-CROSS-INV] LIST grant: ответ несёт список', () => pm.expect((j && j['addresses']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -9381,7 +9411,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-ROUTE-TABLE-LS-OWN-PA1] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-ROUTE-TABLE-LS-OWN-PA1] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-ROUTE-TABLE-LS-OWN-PA1] LIST grant: ответ несёт список', () => pm.expect((j && j['routeTables']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -9849,7 +9881,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-ROUTE-TABLE-LS-OWN-AAA] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-ROUTE-TABLE-LS-OWN-AAA] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-ROUTE-TABLE-LS-OWN-AAA] LIST grant: ответ несёт список', () => pm.expect((j && j['routeTables']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -10395,7 +10429,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-ROUTE-TABLE-LS-CROSS-AAB] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-ROUTE-TABLE-LS-CROSS-AAB] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-ROUTE-TABLE-LS-CROSS-AAB] LIST grant: ответ несёт список', () => pm.expect((j && j['routeTables']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -10783,7 +10819,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-ROUTE-TABLE-LS-OWN-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-ROUTE-TABLE-LS-OWN-INV] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-ROUTE-TABLE-LS-OWN-INV] LIST grant: ответ несёт список', () => pm.expect((j && j['routeTables']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -10841,7 +10879,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-ROUTE-TABLE-LS-CROSS-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-ROUTE-TABLE-LS-CROSS-INV] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-ROUTE-TABLE-LS-CROSS-INV] LIST grant: ответ несёт список', () => pm.expect((j && j['routeTables']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -12115,7 +12155,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SECURITY-GROUP-LS-OWN-PA1] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SECURITY-GROUP-LS-OWN-PA1] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-SECURITY-GROUP-LS-OWN-PA1] LIST grant: ответ несёт список', () => pm.expect((j && j['securityGroups']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -12583,7 +12625,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SECURITY-GROUP-LS-OWN-AAA] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SECURITY-GROUP-LS-OWN-AAA] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-SECURITY-GROUP-LS-OWN-AAA] LIST grant: ответ несёт список', () => pm.expect((j && j['securityGroups']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -13129,7 +13173,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SECURITY-GROUP-LS-CROSS-AAB] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SECURITY-GROUP-LS-CROSS-AAB] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-SECURITY-GROUP-LS-CROSS-AAB] LIST grant: ответ несёт список', () => pm.expect((j && j['securityGroups']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -13517,7 +13563,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SECURITY-GROUP-LS-OWN-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SECURITY-GROUP-LS-OWN-INV] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-SECURITY-GROUP-LS-OWN-INV] LIST grant: ответ несёт список', () => pm.expect((j && j['securityGroups']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -13575,7 +13623,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SECURITY-GROUP-LS-CROSS-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-SECURITY-GROUP-LS-CROSS-INV] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-SECURITY-GROUP-LS-CROSS-INV] LIST grant: ответ несёт список', () => pm.expect((j && j['securityGroups']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -14849,7 +14899,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-GATEWAY-LS-OWN-PA1] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-GATEWAY-LS-OWN-PA1] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-GATEWAY-LS-OWN-PA1] LIST grant: ответ несёт список', () => pm.expect((j && j['gateways']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -15317,7 +15369,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-GATEWAY-LS-OWN-AAA] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-GATEWAY-LS-OWN-AAA] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-GATEWAY-LS-OWN-AAA] LIST grant: ответ несёт список', () => pm.expect((j && j['gateways']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -15863,7 +15917,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-GATEWAY-LS-CROSS-AAB] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-GATEWAY-LS-CROSS-AAB] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-GATEWAY-LS-CROSS-AAB] LIST grant: ответ несёт список', () => pm.expect((j && j['gateways']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -16251,7 +16307,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-GATEWAY-LS-OWN-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-GATEWAY-LS-OWN-INV] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-GATEWAY-LS-OWN-INV] LIST grant: ответ несёт список', () => pm.expect((j && j['gateways']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -16309,7 +16367,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-GATEWAY-LS-CROSS-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-GATEWAY-LS-CROSS-INV] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-GATEWAY-LS-CROSS-INV] LIST grant: ответ несёт список', () => pm.expect((j && j['gateways']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -17583,7 +17643,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-NIC-LS-OWN-PA1] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-NIC-LS-OWN-PA1] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-NIC-LS-OWN-PA1] LIST grant: ответ несёт список', () => pm.expect((j && j['networkInterfaces']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -18051,7 +18113,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-NIC-LS-OWN-AAA] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-NIC-LS-OWN-AAA] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-NIC-LS-OWN-AAA] LIST grant: ответ несёт список', () => pm.expect((j && j['networkInterfaces']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -18597,7 +18661,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-NIC-LS-CROSS-AAB] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-NIC-LS-CROSS-AAB] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-NIC-LS-CROSS-AAB] LIST grant: ответ несёт список', () => pm.expect((j && j['networkInterfaces']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -18985,7 +19051,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-NIC-LS-OWN-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-NIC-LS-OWN-INV] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-NIC-LS-OWN-INV] LIST grant: ответ несёт список', () => pm.expect((j && j['networkInterfaces']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }
@@ -19043,7 +19111,9 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-NIC-LS-CROSS-INV] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));"
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-NIC-LS-CROSS-INV] LIST grant: 200 (scope-filtered page)', () => pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+                  "pm.test('[AUTHZ-NIC-LS-CROSS-INV] LIST grant: ответ несёт список', () => pm.expect((j && j['networkInterfaces']) || [], JSON.stringify(j)).to.be.an('array'));"
                 ]
               }
             }

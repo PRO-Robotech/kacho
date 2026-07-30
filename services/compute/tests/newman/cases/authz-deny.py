@@ -55,17 +55,32 @@ def allow_asserts(case_id):
     ]
 
 
-def list_allow_asserts(case_id):
-    """List субъектом, имеющим ГРАНТ на project. `/List` дочерних ресурсов гейтится
-    verb-relation'ом `v_list`, РАЗВЯЗАННЫМ от tier (editor/viewer/admin его не
-    имплицируют), поэтому субъект с tier-грантом, но без явного v_list, корректно
-    получает 403 «lacks relation v_list» — by-design read-gating, а не отказ доступа к
-    проекту. Субъект с v_list получает 200 + отфильтрованный по гранту список. Обе ветки
-    безопасны (свой project — чужого не показано), 401 — FAIL. Дословный паритет с
-    vpc/tests/newman/cases/authz-deny.py, эталоном этой матрицы."""
+def list_allow_asserts(case_id, list_key):
+    """List субъектом, у которого ЕСТЬ доступ к project'у → 200 + отфильтрованный список.
+
+    ИСХОД ОДИН, установлен по матрице «субъект × право на список». `InstanceService/List`
+    — единственный `/List`, который вызывает эта суита, — гейтится отношением `viewer` на
+    `project:<projectId>` (запись каталога прав `{project, project_id}`; тот же scope и
+    отношение в `internal/check/permission_map.go`). В модели `project.viewer` выводится
+    из `editor` → `admin` → `super_admin`, а `super_admin` — из `admin from account`.
+    Значит каждый ALLOW-субъект матрицы держит `viewer`: PA1 и INV — прямым
+    `editor @ project-A1`, AAA — через `admin @ account-A`, AAB и INV на project-B1 —
+    через `admin @ account-B`.
+
+    ПРЕЖНЯЯ ТОЛЕРАНТНОСТЬ ССЫЛАЛАСЬ НА ЧУЖУЮ ПОЛОСУ. Она принимала `200 ИЛИ 403` и
+    объясняла 403 отношением `v_list`, «развязанным от tier». В compute `v_list` гейтит
+    под-списки НА РЕСУРСЕ (`ListOperations` и родственные), а не project-scope List — то
+    есть строка принимала ровно тот отказ, ради ловли которого написана. Внутреннее
+    подтверждение, не требующее модели: строки Create для этого же субъекта и project'а
+    уже требуют «не 403», а Create гейтится `editor` — отношением сильнее, чем нужный
+    списку `viewer`; поэтому и «грант мог не доехать» здесь не защита, он ронял бы
+    сначала Create. Паритет с vpc/tests/newman/cases/authz-deny.py, эталоном матрицы."""
     return [
-        f"pm.test('[{case_id}] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => "
-        f"pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));",
+        "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+        f"pm.test('[{case_id}] LIST grant: 200 (scope-filtered page)', () => "
+        f"pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+        f"pm.test('[{case_id}] LIST grant: ответ несёт список', () => "
+        f"pm.expect((j && j['{list_key}']) || [], JSON.stringify(j)).to.be.an('array'));",
     ]
 
 
@@ -125,7 +140,9 @@ def emit(case_id_prefix, title, scope, method, path, body, subject, mode="gate",
                (Create несёт `projectId`), поэтому решение о доступе принимается по
                матрице и каждая ветка требует СВОЕГО исхода: ANON→401, DENY→403+7,
                ALLOW→не 403 и не 401.
-        list — scope-filtered List: ANON→401; has-access→200|403; no-access→403|200+empty.
+        list — call-gate `viewer` на `project:<projectId>` + сужение результата:
+               ANON→401; has-access→200 + список (403 невозможен, см.
+               list_allow_asserts); no-access→403 ЛИБО 200 + ПУСТОЙ список.
         nf   — object-scoped Get по garbage-id: 404 + code 5 (hide-existence) для ЛЮБОГО
                аутентифицированного субъекта, ANON→401.
         deny — object-scoped Update/Delete по garbage-id: 403 + code 7 для ЛЮБОГО
@@ -162,7 +179,7 @@ def emit(case_id_prefix, title, scope, method, path, body, subject, mode="gate",
         if code == "ANON":
             decision, asserts = "UNAUTH", unauth_asserts(case_id)
         elif decision == "ALLOW":
-            decision, asserts = "LIST-ALLOW", list_allow_asserts(case_id)
+            decision, asserts = "LIST-ALLOW", list_allow_asserts(case_id, list_key)
         else:
             decision, asserts = "LIST-DENY", list_deny_asserts(case_id, list_key)
         step = Step(name=method.lower(), method=method, path=path, body=body, auth=auth, test_script=asserts)

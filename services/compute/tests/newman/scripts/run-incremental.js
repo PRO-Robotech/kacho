@@ -27,7 +27,11 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const newman = require('newman');
+// `newman` подгружается ЛЕНИВО, в момент первого прогона: сухое перечисление
+// (--list) и зачистка обязаны работать там, где библиотеки прогонщика нет, иначе
+// проверить набор кейсов можно только на машине, где стоит всё.
+let _newman = null;
+function newmanLib() { return (_newman || (_newman = require('newman'))); }
 
 const ROOT = path.resolve(__dirname, '..');
 const ENV_FILE = path.join(ROOT, process.env.ENV || 'environments/local.postman_environment.json');
@@ -37,12 +41,31 @@ const PROGRESS = path.join(OUT, 'progress.tsv');
 const SUMMARY = path.join(OUT, 'summary.txt');
 const CLEANUP_EVERY = parseInt(process.env.CLEANUP_EVERY || '25', 10);
 const DELAY_REQUEST = parseInt(process.env.DELAY_REQUEST || '30', 10);
-const ALL_RESOURCES_DEFAULT = ['disk', 'image', 'snapshot', 'instance', 'disk-type', 'operation'];
-const ALL_RESOURCES = process.env.SERVICES ? process.env.SERVICES.split(/[\s,]+/).filter(Boolean) : ALL_RESOURCES_DEFAULT;
+// НАБОР ПО УМОЛЧАНИЮ — ИМЕНА КОЛЛЕКЦИЙ НА ДИСКЕ, а не список руками.
+//
+// Здесь стоял литерал `['disk','image','snapshot','instance','disk-type','operation']`.
+// Пять из шести имён ушли вместе с дублем блочного хранения и переездом кейсов инстанса
+// в `instance-redesign`, поэтому прогон по умолчанию перечислял ОДНУ коллекцию из шести
+// (8 кейсов из 111) и печатал пять строк `[skip]`. Отчёт при этом выглядел исправным: он
+// честно сообщал про то, что прогнал, — «не выполнилось» не вычиталось из вердикта
+// ниоткуда. Второй, независимый от `run.sh`, список имён коллекций разъехаться был обязан;
+// теперь источник один — каталог `collections/`.
+function collectionStems() {
+  return fs.readdirSync(COLLECTIONS_DIR)
+    .filter((f) => f.endsWith('.postman_collection.json'))
+    .map((f) => f.replace(/\.postman_collection\.json$/, ''))
+    .sort();
+}
+const ALL_RESOURCES = process.env.SERVICES ? process.env.SERVICES.split(/[\s,]+/).filter(Boolean) : collectionStems();
 
 const args = process.argv.slice(2);
 const RESUME = args.includes('--resume');
 const CLEANUP_ONLY = args.includes('--cleanup-only');
+// --list — сухой прогон перечисления: печатает, ЧТО будет прогнано, и выходит, не
+// касаясь стенда. Нужен затем, что «сколько кейсов набралось» — самостоятельное
+// утверждение: набор берётся из имён коллекций, и рассинхрон с деревом иначе не
+// виден никак, кроме отсутствующих строк в итоговом отчёте.
+const LIST_ONLY = args.includes('--list');
 const FAILED_ONLY = args.includes('--failed'); // прогнать только кейсы, помеченные FAIL в текущем progress.tsv (точечный re-run после фикса)
 const svcIdx = args.indexOf('--service');
 const ONLY_RESOURCE = svcIdx >= 0 ? args[svcIdx + 1] : null;
@@ -55,15 +78,23 @@ let ONLY_CASES = null;
   if (ids.length) ONLY_CASES = new Set(ids);
 }
 
-fs.mkdirSync(path.join(OUT, 'failed'), { recursive: true });
+if (!LIST_ONLY) fs.mkdirSync(path.join(OUT, 'failed'), { recursive: true });
 
 // --- env ---
-const env = JSON.parse(fs.readFileSync(ENV_FILE, 'utf8'));
-const ev = (k) => { const v = env.values.find(x => x.key === k); return v ? v.value : undefined; };
-const BASE = (ev('baseUrl') || '').replace(/\/$/, '');
-const TEST_PROJECTS = env.values.filter(x => /^existingProject/.test(x.key)).map(x => x.value).filter(Boolean);
-if (!BASE) { console.error('нет baseUrl в env'); process.exit(2); }
-if (!TEST_PROJECTS.length) { console.error('нет existingProject* в env'); process.exit(2); }
+// Окружение читается ТОЛЬКО для настоящего прогона: файл окружения производит посев и
+// в дерево не коммитится (закоммичен лишь шаблон). Сухое перечисление от него не
+// зависит и обязано работать на свежем checkout'е — иначе проверить набор кейсов
+// можно лишь там, где уже поднят стенд, то есть ровно там, где рассинхрон и всплывает.
+let BASE = '';
+let TEST_PROJECTS = [];
+if (!LIST_ONLY) {
+  const env = JSON.parse(fs.readFileSync(ENV_FILE, 'utf8'));
+  const ev = (k) => { const v = env.values.find(x => x.key === k); return v ? v.value : undefined; };
+  BASE = (ev('baseUrl') || '').replace(/\/$/, '');
+  TEST_PROJECTS = env.values.filter(x => /^existingProject/.test(x.key)).map(x => x.value).filter(Boolean);
+  if (!BASE) { console.error('нет baseUrl в env'); process.exit(2); }
+  if (!TEST_PROJECTS.length) { console.error('нет existingProject* в env'); process.exit(2); }
+}
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -134,7 +165,14 @@ function enumerateCases() {
   const cases = [];
   for (const res of resources) {
     const col = path.join(COLLECTIONS_DIR, `${res}.postman_collection.json`);
-    if (!fs.existsSync(col)) { console.error(`[skip] нет коллекции ${res}`); continue; }
+    // НАЗВАННАЯ, НО ОТСУТСТВУЮЩАЯ КОЛЛЕКЦИЯ — ОТКАЗ, А НЕ ПРОПУСК. Набор по умолчанию
+    // берётся с диска, поэтому сюда имя попадает только если его назвал человек
+    // (`--service` / `SERVICES`); тихий пропуск такого имени означал бы «прогнали
+    // меньше, чем просили» без единого следа в вердикте.
+    if (!fs.existsSync(col)) {
+      console.error(`нет коллекции ${res} (${path.basename(col)}); доступны: ${collectionStems().join(', ')}`);
+      process.exit(2);
+    }
     const c = JSON.parse(fs.readFileSync(col, 'utf8'));
     for (const item of (c.item || [])) {
       const name = item.name;
@@ -151,7 +189,7 @@ function enumerateCases() {
 function runFolder(tc) {
   return new Promise((resolve) => {
     const t0 = Date.now();
-    newman.run({
+    newmanLib().run({
       collection: tc.collection,
       environment: ENV_FILE,
       folder: tc.folderName,
@@ -185,6 +223,14 @@ function runFolder(tc) {
     const left = await remainingCount();
     console.log(`[cleanup-only] удалено ~${n}, осталось ${left}`);
     process.exit(left === 0 ? 0 : 1);
+  }
+
+  if (LIST_ONLY) {
+    const cases = enumerateCases();
+    for (const c of cases) console.log(`${c.res}\t${c.id}`);
+    const stems = new Set(cases.map(c => c.res));
+    console.error(`[list] коллекций ${stems.size} (${[...stems].sort().join(', ')}), кейсов ${cases.length}`);
+    process.exit(cases.length ? 0 : 2);
   }
 
   const cases = enumerateCases();

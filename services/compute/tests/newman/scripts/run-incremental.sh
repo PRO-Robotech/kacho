@@ -6,11 +6,16 @@
 # кейсу за раз с зачисткой ресурсов (quota-safe, как для YC). См. шапку run-incremental.js.
 #
 #   ./scripts/run-incremental.sh                # все кейсы, с нуля
+#   ./scripts/run-incremental.sh --list         # СУХОЕ перечисление: что будет прогнано (стенд не нужен)
 #   ./scripts/run-incremental.sh --resume       # продолжить прерванный прогон
-#   ./scripts/run-incremental.sh --service disk # один ресурс
+#   ./scripts/run-incremental.sh --service authz-deny  # одна коллекция (имя = файл в collections/)
 #   ./scripts/run-incremental.sh --cleanup-only # только зачистить тест-папки
 #   CLEANUP_EVERY=10 DELAY_REQUEST=20 ./scripts/run-incremental.sh   # тюнинг
-#   ENV=environments/<файл>.postman_environment.json SERVICES='disk image snapshot instance disk-type operation' ./scripts/run-incremental.sh   # другой стенд
+#   ENV=environments/<файл>.postman_environment.json ./scripts/run-incremental.sh   # другой стенд
+#
+# Набор по умолчанию НЕ перечисляется здесь: он берётся из имён коллекций на диске
+# (см. `collectionStems` в run-incremental.js). Прежний пример называл пять коллекций,
+# которых в дереве уже нет, — а такое имя теперь ОТКАЗ, а не тихий пропуск.
 #
 # Требует: api-gateway доступен по baseUrl из env-файла (локально — port-forward на 18080);
 #          newman установлен (`npm install -g newman`); node >= 18.

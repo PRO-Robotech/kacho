@@ -25,14 +25,18 @@ success-with-data), а `List` не-члена возвращает пустой 
 
 - **Stranger** — dev-JWT с незарегистрированным `sub` gateway трактует как
   UNAUTHENTICATED → HTTP 401 (code 16, "subject: unauthenticated request"), НЕ как
-  authenticated-но-denied 404. Поэтому кейсы принимают НЕСКОЛЬКО ОТКАЗНЫХ кодов
-  `[401, 403, 404]` — какой рубеж откажет первым, зависит от стенда, — но **только
-  отказные**. Успех в список не входит нигде, кроме списочных ответов, где 200 —
-  законная форма «не-член видит пусто»: там 200 допустим ТОЛЬКО вместе с
-  утверждением о пустоте (его эмитит хелпер, пропустить нельзя). Существование
-  фикстуры (её regId) не раскрывается ни в одном ответе. Проверка «нет deny_reasons»
-  гейтится на код != 401 (unauthenticated-тело несёт generic-причину, не
-  resource-existence leak).
+  authenticated-но-denied 404. Поэтому кейсы на ОБЪЕКТНЫХ шагах принимают несколько
+  отказных кодов `[401, 403, 404]` — какой рубеж откажет первым, зависит от стенда, —
+  но **только отказные**. Успех в этот список не входит.
+  СПИСОЧНЫЙ шаг — отдельная полоса, и там диапазон НЕ широкий: у
+  `RegistryService/List` call-gate'а нет вовсе (каталог `<exempt>`, в сервисе
+  `ScopeFiltered`), поэтому ни 403, ни 404 эта полоса произвести не может. Законных
+  исходов ровно два, и различает их ПОСЕВ: незарегистрированный `sub` → 401/16;
+  реальный негрантнутый субъект → 200 + ПУСТОЙ массив. Обе формы разведены и обе
+  утверждают (`_assert_list_filtered_empty` / `_assert_unauthenticated`, развилка
+  `_assert_stranger_list`). Существование фикстуры (её regId) не раскрывается ни в
+  одном ответе. Проверка «нет deny_reasons» гейтится на код != 401
+  (unauthenticated-тело несёт generic-причину, не resource-existence leak).
 - **Viewer-tier** (GET-VIEWER-OK / UPDATE-VIEWER-DENY / DELETE-VIEWER-DENY и их
   repo-близнецы) — требуют субъекта-наблюдателя из посева. При пустом
   `jwtProjectViewerA` кейс ОТКАЗЫВАЕТ (падающее утверждение с именем переменной и
@@ -72,17 +76,64 @@ def _assert_denied():
     return ["pm.test('denied (401/403/404), never 200', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));"]
 
 
-def _assert_denied_or_empty_list(field):
-    # Списочный ответ — единственная форма, где 200 законно стоит рядом с отказом: не-член
-    # не получает 403, он получает ПУСТУЮ страницу (call-gate exempt + row-filter). Поэтому
-    # 200 здесь допустим ТОЛЬКО вместе с утверждением о пустоте, и утверждение эмитит сам
-    # хелпер — чтобы «200» не мог оказаться принят без единой проверки содержимого.
+def _assert_list_filtered_empty(field):
+    """ФОРМА 1 — отфильтрованный успех: субъект аутентифицирован, прав нет, страница ПУСТА.
+
+    `RegistryService/List` не имеет call-gate'а на краю (запись каталога `<exempt>`) и
+    помечен `ScopeFiltered` в сервисе (`internal/check/permission_map.go`), то есть
+    per-RPC Check для него не выполняется вовсе, а отбор делает хендлер построчно.
+    Поэтому у аутентифицированного не-члена законный исход ровно один: 200 с ПУСТЫМ
+    массивом. 200 с непустым массивом — утечка."""
     return [
-        f"pm.test('denied or empty {field} (200-empty/401/403/404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 401, 403, 404]));",
+        f"pm.test('non-member sees an EMPTY {field} page (scope-filtered rows)', () => {{",
+        f"  const _arr = pm.response.json().{field};",
+        f"  pm.expect(_arr, JSON.stringify(pm.response.json())).to.be.an('array');",
+        f"  pm.expect(_arr.length, 'non-member must see nothing (LEAK!): ' + pm.response.text()).to.eql(0);",
+        "});",
+    ]
+
+
+def _assert_unauthenticated():
+    """ФОРМА 2 — отказ аутентификации: субъекта нет, край отказывает 401/16.
+
+    Именно отказ, а не «какой-нибудь 4xx»: код 401 и grpc-код 16. Прежний диапазон
+    включал 403 и 404 «какой рубеж откажет первым» — но на этой полосе рубежа
+    scope-Check'а НЕТ (см. форму 1), а списочный маршрут существует, поэтому ни 403, ни
+    404 она произвести не может: они были не терпимостью, а незаполненными местами."""
+    return [
+        "pm.test('unauthenticated subject is refused (401, grpc 16)', () => {",
+        "  pm.expect(pm.response.code, pm.response.text()).to.eql(401);",
+        "  let _j; try { _j = pm.response.json(); } catch (e) { _j = null; }",
+        "  pm.expect(_j && _j.code, JSON.stringify(_j)).to.eql(16);",
+        "});",
+    ]
+
+
+def _assert_stranger_list(field):
+    """Развилка между двумя формами — по ТОМУ, ЧТО ЗАСЕЯЛ ПОСЕВ, и обе ветки утверждают.
+
+    Матрица «субъект × право на список» для `jwtStranger` даёт РОВНО два законных
+    исхода, и различает их посев, а не поведение продукта:
+
+      - `tests/authz-fixtures/setup.sh` (dev-полоса) кладёт в `jwtStranger` токен с
+        НЕЗАРЕГИСТРИРОВАННЫМ `sub` (пользователь намеренно не заводится) → край не
+        резолвит принципала → 401/16 → ФОРМА 2;
+      - `tests/authz-fixtures/prodseed_matrix.py` (prod-полоса) кладёт токен реального,
+        но НИЧЕМ НЕ ГРАНТНУТОГО субъекта → аутентификация проходит, call-gate'а нет,
+        построчный отбор оставляет пусто → 200 + [] → ФОРМА 1.
+
+    Поэтому здесь НЕ `oneOf`, принимающий успех рядом с отказом, а развилка, у которой
+    КАЖДАЯ ветка несёт полное утверждение своей формы; третий код не проходит ни одну
+    (ветка `else` требует именно 401). Что осталось долгом и названо, а не спрятано: две
+    полосы посева вкладывают в ОДНУ переменную окружения субъектов разного рода, поэтому
+    кейс не может требовать одного исхода. Закрепление смысла `jwtStranger` за одним
+    родом субъекта сделало бы утверждение однозначным — это правка посева, общего для
+    суит, не этого файла."""
+    return [
         "if (pm.response.code === 200) {",
-        f"  const _arr = pm.response.json().{field} || [];",
-        f"  pm.test('{field} is array', () => pm.expect(_arr).to.be.an('array'));",
-        f"  pm.test('non-member sees EMPTY {field} (200 is admissible only as empty)', () => pm.expect(_arr.length).to.eql(0));",
+        *["  " + line for line in _assert_list_filtered_empty(field)],
+        "} else {",
+        *["  " + line for line in _assert_unauthenticated()],
         "}",
     ]
 
@@ -200,16 +251,18 @@ CASES.append(Case(
                     "pm.test('viewer sees fixture (v_get)', () => pm.expect(j.id).to.eql(pm.environment.get('regIdAz')));"])],
 ))
 
-# List как jwtStranger для {{existingProjectId}}. Не-член видит пусто (gateway-exempt
-# call-gate, не 403); stranger здесь unauthenticated → 401. Принимаем оба, при 200 —
-# массив обязан быть пуст, и существование фикстуры не раскрываем.
+# List как jwtStranger для {{existingProjectId}}. Ровно два законных исхода, и различает
+# их ПОСЕВ, а не продукт: dev-посев кладёт незарегистрированный `sub` → 401/16;
+# prod-посев кладёт реального негрантнутого субъекта → 200 + ПУСТОЙ массив (call-gate'а
+# у этого RPC нет, отбор построчный). Каждая ветка утверждает свою форму целиком, третий
+# код не проходит ни одну. Существование фикстуры не раскрывается ни в одном ответе.
 CASES.append(Case(
     id="REG-AZ-LIST-STRANGER-EMPTY",
-    title="List as jwtStranger for existingProjectId → denied/empty (200 empty / 401 / 403 / 404), never reveals regId",
+    title="List as jwtStranger for existingProjectId → 200 + ПУСТОЙ registries (prod-посев) ЛИБО 401/16 (dev-посев); never reveals regId",
     classes=["AZD", "NEG"], priority="P0",
     steps=[Step(name="list-stranger", method="GET", path=f"{REG}?projectId={{{{existingProjectId}}}}", auth="jwtStranger",
                 test_script=[
-                    *_assert_denied_or_empty_list("registries"),
+                    *_assert_stranger_list("registries"),
                     *_never_reveals_regid(),
                     *_deny_leak_gated()])],
 ))

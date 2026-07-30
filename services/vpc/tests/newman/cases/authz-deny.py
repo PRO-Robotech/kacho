@@ -39,9 +39,14 @@ projects, users, bindings, seed networks) и патчит env-файл:
   - Object-scoped MUTATION (`/Update`, `/Delete`) на запрещенный/несуществующий
     ресурс → 403 PERMISSION_DENIED (grpc 7). Existence не скрывается для мутаций
     (deny одинаков для существующего и нет → утечки тоже нет).
-  - `/List` — scope-filtered: НЕ gated «все или ничего», а сужается до видимого
-    subject'у набора. Нет доступа → 403 (gated List RPC) ЛИБО 200 + ПУСТОЙ список
-    (scope-filtered List RPC). 200 + чужие ресурсы = LEAK (валит тест).
+  - `/List` — call-gate `viewer` на `project:<projectId>` (все семь top-level List
+    этой суиты, паритет закреплён в permission_map сервиса) + сужение результата до
+    видимого subject'у набора. ЕСТЬ доступ → 200 + отфильтрованная страница (403 здесь
+    невозможен: `viewer` выводится из tier-гранта, см. `list_allow_asserts`). НЕТ
+    доступа → 403 ЛИБО 200 + ПУСТОЙ список. 200 + чужие ресурсы = LEAK (валит тест).
+    Отношение `v_list`, развязанное от tier, гейтит под-списки НА РЕСУРСЕ
+    (`ListSubnets`/`ListSecurityGroups`/`ListRouteTables`/`ListOperations`) — их эта
+    суита не вызывает.
   - Create-child / админ-only RPC без нужного гранта → 403.
 
 Helpers Case/Step инжектятся через gen.py namespace.
@@ -112,27 +117,49 @@ def allow_asserts(case_id):
     ]
 
 
-def list_allow_asserts(case_id):
-    """List субъектом, имеющим ГРАНТ на project (tier viewer/editor/admin или v_list).
+def list_allow_asserts(case_id, list_key):
+    """List субъектом, у которого ЕСТЬ доступ к project'у → 200 + отфильтрованный список.
 
-    `/List` дочерних ресурсов гейтится verb-relation'ом `v_list`, который РАЗВЯЗАН
-    от tier (anti-#241: editor/viewer/admin НЕ имплицируют v_list). Поэтому субъект
-    с tier-грантом, но без явного v_list, корректно получает 403 «lacks relation
-    v_list» — это by-design read-gating, а не отказ доступа к project'у. Субъект же с
-    v_list (или у кого list-filter резолвит viewer на сами ресурсы) получает
-    200 + отфильтрованный по своему гранту список.
+    ИСХОД ОДИН, и это установлено по матрице «субъект × право на список», а не принято
+    на веру. Все семь top-level `/List` этой суиты (networks / subnets / addresses /
+    routeTables / securityGroups / gateways / networkInterfaces) гейтятся отношением
+    `viewer` на `project:<projectId>` — и на краю (permission_catalog), и в сервисе
+    (`internal/apps/kacho/check/permission_map.go`, где это записано как паритет всех
+    семи). В модели `project.viewer` выводится из `editor`, `editor` из `admin`, `admin`
+    из `super_admin`, а `project.super_admin` — из `admin from account`. Значит каждый
+    ALLOW-субъект матрицы отношение `viewer` держит: PA1 и INV — прямым
+    `editor @ project-A1`, AAA — через `admin @ account-A`, AAB и INV на project-B1 —
+    через `admin @ account-B`. Отказать здесь нечему.
 
-    Обе ветки безопасны (свой project → утечки чужих ресурсов нет), поэтому
-    допускаем 200 ИЛИ 403; 401 (потерянная аутентификация) — fail."""
+    ПОЧЕМУ ПРЕЖНЯЯ ТОЛЕРАНТНОСТЬ БЫЛА ЛОЖНОЙ. Утверждение принимало `200 ИЛИ 403`, а
+    обоснование ссылалось на `v_list`, «развязанный от tier». Такая полоса в vpc есть,
+    но она НЕ здесь: `v_list` гейтит под-списки НА РЕСУРСЕ (`NetworkService/ListSubnets`,
+    `.../ListSecurityGroups`, `.../ListRouteTables`, `.../ListOperations`) — ни один из
+    них эта суита не вызывает. Так утверждение принимало ровно тот отказ, ради ловли
+    которого строка существует, и упасть на регрессии прав не могло.
+
+    Тот же вывод подтверждается изнутри суиты, без обращения к модели: строки Create для
+    ЭТОГО ЖЕ субъекта и project'а уже требуют «не 403», а Create гейтится `editor` —
+    отношением СТРОГО СИЛЬНЕЕ, чем нужный списку `viewer`. Материализация, которой
+    хватает на Create, покрывает и List; поэтому «а вдруг грант ещё не доехал» тоже не
+    защищает 403 — он ронял бы сначала Create."""
     return [
-        f"pm.test('[{case_id}] LIST grant: 200 (v_list/filtered) OR 403 (lacks v_list)', () => "
-        f"pm.expect(pm.response.code, 'expected 200 or 403, body: ' + pm.response.text()).to.be.oneOf([200, 403]));",
+        "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+        f"pm.test('[{case_id}] LIST grant: 200 (scope-filtered page)', () => "
+        f"pm.expect(pm.response.code, 'expected 200, body: ' + pm.response.text()).to.equal(200));",
+        f"pm.test('[{case_id}] LIST grant: ответ несёт список', () => "
+        f"pm.expect((j && j['{list_key}']) || [], JSON.stringify(j)).to.be.an('array'));",
     ]
 
 
 def list_deny_asserts(case_id, list_key):
-    """List без доступа → 403 (gated List RPC) ИЛИ 200 + ПУСТОЙ список (scope-filtered).
-    200 + непустой список чужого project'а = LEAK (валит тест)."""
+    """List БЕЗ доступа к project'у → 403 (call-gate) ИЛИ 200 + ПУСТОЙ список.
+
+    Вторая форма помощника, парная к `list_allow_asserts`. Здесь два исхода законны по
+    построению — какой из двух рубежей ответит первым, зависит от того, гейтится ли
+    конкретный RPC на краю или в сервисе, — но КАЖДАЯ ветка несёт утверждение: отказ
+    либо пустая страница. 200 + непустой список чужого project'а = LEAK (валит тест).
+    Это не смешение успеха и отказа: обе ветки утверждают «чужого не видно»."""
     return [
         "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
         (
@@ -162,7 +189,7 @@ def emit(case_id_prefix, title, scope, method, path, body, subject, mode="gate",
         else:
             access = EXPECT[scope][code]
             if access == "ALLOW":
-                decision, asserts = "LIST-ALLOW", list_allow_asserts(cid)
+                decision, asserts = "LIST-ALLOW", list_allow_asserts(cid, list_key)
             else:
                 decision, asserts = "LIST-DENY", list_deny_asserts(cid, list_key)
     elif mode == "nf":

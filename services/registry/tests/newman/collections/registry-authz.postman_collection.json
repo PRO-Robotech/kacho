@@ -378,7 +378,7 @@
       ]
     },
     {
-      "name": "REG-AZ-LIST-STRANGER-EMPTY — List as jwtStranger for existingProjectId → denied/empty (200 empty / 401 / 403 / 404), never reveals regId",
+      "name": "REG-AZ-LIST-STRANGER-EMPTY — List as jwtStranger for existingProjectId → 200 + ПУСТОЙ registries (prod-посев) ЛИБО 401/16 (dev-посев); never reveals regId",
       "description": "class:AZD | class:NEG | priority:P0",
       "item": [
         {
@@ -427,11 +427,18 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('denied or empty registries (200-empty/401/403/404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 401, 403, 404]));",
                   "if (pm.response.code === 200) {",
-                  "  const _arr = pm.response.json().registries || [];",
-                  "  pm.test('registries is array', () => pm.expect(_arr).to.be.an('array'));",
-                  "  pm.test('non-member sees EMPTY registries (200 is admissible only as empty)', () => pm.expect(_arr.length).to.eql(0));",
+                  "  pm.test('non-member sees an EMPTY registries page (scope-filtered rows)', () => {",
+                  "    const _arr = pm.response.json().registries;",
+                  "    pm.expect(_arr, JSON.stringify(pm.response.json())).to.be.an('array');",
+                  "    pm.expect(_arr.length, 'non-member must see nothing (LEAK!): ' + pm.response.text()).to.eql(0);",
+                  "  });",
+                  "} else {",
+                  "  pm.test('unauthenticated subject is refused (401, grpc 16)', () => {",
+                  "    pm.expect(pm.response.code, pm.response.text()).to.eql(401);",
+                  "    let _j; try { _j = pm.response.json(); } catch (e) { _j = null; }",
+                  "    pm.expect(_j && _j.code, JSON.stringify(_j)).to.eql(16);",
+                  "  });",
                   "}",
                   "const _rid = pm.environment.get('regIdAz') || '';",
                   "if (_rid) pm.test('never reveals fixture regId', () => pm.expect(pm.response.text()).to.not.include(_rid));",
