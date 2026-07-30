@@ -132,6 +132,29 @@ func (r *networkInterfaceReader) ListBySubnet(ctx context.Context, subnetID stri
 	return out, nil
 }
 
+// CountBySubnet — счёт по индексу network_interfaces_subnet_idx + ограниченная
+// выборка идентификаторов. Ни одна строка целиком не материализуется, размер
+// ответа не зависит от числа интерфейсов подсети.
+func (r *networkInterfaceReader) CountBySubnet(ctx context.Context, subnetID string, sample int) (int64, []string, error) {
+	if sample < 0 {
+		sample = 0
+	}
+	var total int64
+	var ids []string
+	err := r.tx.QueryRow(ctx, `
+		SELECT (SELECT count(*) FROM network_interfaces WHERE subnet_id = $1),
+		       COALESCE((SELECT array_agg(id ORDER BY id)
+		                   FROM (SELECT id FROM network_interfaces
+		                          WHERE subnet_id = $1
+		                          ORDER BY id ASC
+		                          LIMIT $2) s), '{}')
+	`, subnetID, sample).Scan(&total, &ids)
+	if err != nil {
+		return 0, nil, helpers.WrapPgErr(err, "Network interface", "")
+	}
+	return total, ids, nil
+}
+
 // ListByInstanceIDs — batched read NIC-привязок по набору instance_id
 // (used_by_type='compute_instance' AND used_by_id = ANY). Один запрос на всё
 // множество (не N+1) для compute-side зеркала Instance.Get/List. Каждая запись

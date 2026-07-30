@@ -238,17 +238,6 @@ func TestIntegration_AddressRepo_ExternalAndInternal(t *testing.T) {
 	assert.Equal(t, "203.0.113.10", created.ExternalIpv4.Address)
 	assert.Nil(t, created.InternalIpv4)
 
-	// ExistsIP.
-	rd, err := r.Reader(ctx)
-	require.NoError(t, err)
-	exists, err := rd.Addresses().ExistsIP(ctx, "203.0.113.10")
-	require.NoError(t, err)
-	assert.True(t, exists)
-	exists, err = rd.Addresses().ExistsIP(ctx, "203.0.113.99")
-	require.NoError(t, err)
-	assert.False(t, exists)
-	require.NoError(t, rd.Close())
-
 	// Internal address — addresses.internal_subnet_id has an FK to subnets.
 	net := &domain.Network{
 		ID:        ids.NewUID(),

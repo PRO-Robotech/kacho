@@ -44,6 +44,11 @@ type DeleteSubnetUseCase struct {
 	opsRepo operations.Repo
 }
 
+// nicSampleInMessage — сколько идентификаторов интерфейсов называет отказ.
+// Остальные обозначаются числом: текст отказа обязан быть ограничен, иначе он
+// не доезжает до вызывающего.
+const nicSampleInMessage = 10
+
 // NewDeleteSubnetUseCase создает DeleteSubnetUseCase. `nicRepo` опционален
 // (nil → NIC-precondition пропускается).
 func NewDeleteSubnetUseCase(r Repo, nicRepo NetworkInterfaceRepo, opsRepo operations.Repo) *DeleteSubnetUseCase {
@@ -76,17 +81,23 @@ func (u *DeleteSubnetUseCase) Execute(ctx context.Context, id string) (*operatio
 	// Отдаем дружелюбный sync FAILED_PRECONDITION; FK RESTRICT в worker'е
 	// остается атомарным backstop'ом.
 	if u.nicRepo != nil {
-		nics, nerr := u.nicRepo.ListBySubnet(ctx, id)
+		// Текст отказа ограничен по построению: несколько идентификаторов
+		// вместо всего списка. Сообщение статуса едет в трейлере ответа, и на
+		// обычном размере подсети полный список выходит за бюджеты заголовков
+		// у прокси на пути — задокументированное предусловие вырождалось бы в
+		// транспортный сбой, из которого вызывающий не узнаёт ни причины, ни
+		// что делать.
+		total, sample, nerr := u.nicRepo.CountBySubnet(ctx, id, nicSampleInMessage)
 		if nerr != nil {
 			return nil, serviceerr.MapRepoErr(nerr)
 		}
-		if len(nics) > 0 {
-			nicIDs := make([]string, 0, len(nics))
-			for _, n := range nics {
-				nicIDs = append(nicIDs, n.ID)
+		if total > 0 {
+			listed := strings.Join(sample, ", ")
+			if int64(len(sample)) < total {
+				listed = fmt.Sprintf("%s and %d more", listed, total-int64(len(sample)))
 			}
 			return nil, status.Errorf(codes.FailedPrecondition,
-				"subnet %s has %d network interface(s) (%s); delete them first", id, len(nics), strings.Join(nicIDs, ", "))
+				"subnet %s has %d network interface(s) (%s); delete them first", id, total, listed)
 		}
 	}
 

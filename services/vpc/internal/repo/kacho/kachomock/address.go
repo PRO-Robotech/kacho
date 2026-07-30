@@ -61,18 +61,6 @@ func (r *addressReader) GetByValue(_ context.Context, intl, subnetID string) (*k
 	return nil, repo.ErrNotFound
 }
 
-func (r *addressReader) ExistsIP(_ context.Context, ip string) (bool, error) {
-	for _, a := range r.snap {
-		if a.ExternalIpv4 != nil && a.ExternalIpv4.Address == ip {
-			return true, nil
-		}
-		if a.InternalIpv4 != nil && a.InternalIpv4.Address == ip {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
 func (r *addressReader) GetReference(_ context.Context, id string) (*domain.AddressReference, error) {
 	// Seeded referrer (SeedReference) → возвращаем его; иначе ErrNotFound. Более
 	// богатая референс-семантика для use-case'ов покрывается
@@ -147,18 +135,6 @@ func (aw *addressWriter) GetByValue(_ context.Context, intl, subnetID string) (*
 		}
 	}
 	return nil, repo.ErrNotFound
-}
-
-func (aw *addressWriter) ExistsIP(_ context.Context, ip string) (bool, error) {
-	for _, a := range aw.w.localAddrs {
-		if a.ExternalIpv4 != nil && a.ExternalIpv4.Address == ip {
-			return true, nil
-		}
-		if a.InternalIpv4 != nil && a.InternalIpv4.Address == ip {
-			return true, nil
-		}
-	}
-	return false, nil
 }
 
 func (aw *addressWriter) GetReference(_ context.Context, _ string) (*domain.AddressReference, error) {

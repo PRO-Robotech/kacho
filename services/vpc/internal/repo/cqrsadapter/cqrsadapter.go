@@ -359,6 +359,17 @@ func NewNetworkInterface(r kacho.Repository) *NetworkInterfaceAdapter {
 }
 
 // ListBySubnet — read через свежую Reader-TX.
+// CountBySubnet — счёт + ограниченная выборка идентификаторов через свежую
+// Reader-TX (предусловие Subnet.Delete).
+func (a *NetworkInterfaceAdapter) CountBySubnet(ctx context.Context, subnetID string, sample int) (int64, []string, error) {
+	rd, err := a.repo.Reader(ctx)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer func() { _ = rd.Close() }()
+	return rd.NetworkInterfaces().CountBySubnet(ctx, subnetID, sample)
+}
+
 func (a *NetworkInterfaceAdapter) ListBySubnet(ctx context.Context, subnetID string) ([]*kacho.NetworkInterfaceRecord, error) {
 	rd, err := a.repo.Reader(ctx)
 	if err != nil {

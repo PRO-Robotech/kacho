@@ -57,6 +57,16 @@ func (r *networkInterfaceReader) List(_ context.Context, f kacho.NetworkInterfac
 	return result, "", nil
 }
 
+// CountBySubnet — счёт и ограниченная выборка по тому же состоянию, что видит
+// ListBySubnet.
+func (r *networkInterfaceReader) CountBySubnet(ctx context.Context, subnetID string, sample int) (int64, []string, error) {
+	all, err := r.ListBySubnet(ctx, subnetID)
+	if err != nil {
+		return 0, nil, err
+	}
+	return countAndSampleNICs(all, sample)
+}
+
 func (r *networkInterfaceReader) ListBySubnet(_ context.Context, subnetID string) ([]*kacho.NetworkInterfaceRecord, error) {
 	var result []*kacho.NetworkInterfaceRecord
 	for _, n := range r.snap {
@@ -139,6 +149,15 @@ func (nw *networkInterfaceWriter) List(_ context.Context, f kacho.NetworkInterfa
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].CreatedAt.Before(result[j].CreatedAt) })
 	return result, "", nil
+}
+
+// CountBySubnet — то же по состоянию writer-TX.
+func (nw *networkInterfaceWriter) CountBySubnet(ctx context.Context, subnetID string, sample int) (int64, []string, error) {
+	all, err := nw.ListBySubnet(ctx, subnetID)
+	if err != nil {
+		return 0, nil, err
+	}
+	return countAndSampleNICs(all, sample)
 }
 
 func (nw *networkInterfaceWriter) ListBySubnet(_ context.Context, subnetID string) ([]*kacho.NetworkInterfaceRecord, error) {
@@ -282,3 +301,19 @@ var (
 	_ kacho.NetworkInterfaceReaderIface = (*networkInterfaceReader)(nil)
 	_ kacho.NetworkInterfaceWriterIface = (*networkInterfaceWriter)(nil)
 )
+
+// countAndSampleNICs — общая для обеих mock-сторон выборка: полное число и не
+// более sample идентификаторов.
+func countAndSampleNICs(all []*kacho.NetworkInterfaceRecord, sample int) (int64, []string, error) {
+	if sample < 0 {
+		sample = 0
+	}
+	ids := make([]string, 0, sample)
+	for _, n := range all {
+		if len(ids) >= sample {
+			break
+		}
+		ids = append(ids, n.ID)
+	}
+	return int64(len(all)), ids, nil
+}

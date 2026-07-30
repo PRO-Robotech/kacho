@@ -5,6 +5,7 @@ package repo_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,6 +18,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/addresspool"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/api/subnet"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/cqrsadapter"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
@@ -122,7 +125,7 @@ func TestIntegration_AddressPoolCIDR_RemoveV6Clean_Succeeds(t *testing.T) {
 
 // --- подсеть: снятие диапазона с живыми адресами ---
 
-func mkSubnetWithBlocks(t *testing.T, ctx context.Context, r kacho.Repository, v4Blocks []string) (networkID, subnetID string) {
+func mkSubnetWithBlocks(t *testing.T, r kacho.Repository, ctx context.Context, v4Blocks []string) (networkID, subnetID string) {
 	t.Helper()
 	networkID = ids.NewID(ids.PrefixNetwork)
 	subnetID = ids.NewID(ids.PrefixSubnet)
@@ -164,7 +167,7 @@ func TestIntegration_SubnetCIDR_RemoveInUse_FailedPrecondition(t *testing.T) {
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
-	_, subnetID := mkSubnetWithBlocks(t, ctx, r, []string{"10.0.0.0/24", "10.0.1.0/24"})
+	_, subnetID := mkSubnetWithBlocks(t, r, ctx, []string{"10.0.0.0/24", "10.0.1.0/24"})
 
 	// Живой внутренний адрес во ВТОРИЧНОМ блоке.
 	require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
@@ -213,7 +216,7 @@ func TestIntegration_SubnetCIDR_RemoveClean_Succeeds(t *testing.T) {
 	r := kachopg.New(pgPool, nil)
 	defer r.Close()
 
-	_, subnetID := mkSubnetWithBlocks(t, ctx, r, []string{"10.1.0.0/24", "10.1.1.0/24"})
+	_, subnetID := mkSubnetWithBlocks(t, r, ctx, []string{"10.1.0.0/24", "10.1.1.0/24"})
 
 	rmUC := subnet.NewRemoveCidrBlocksUseCase(r, repomock.NewOpsRepo())
 	op, err := rmUC.Execute(ctx, subnetID, []string{"10.1.1.0/24"}, nil)
@@ -232,4 +235,109 @@ func TestIntegration_SubnetCIDR_RemoveClean_Succeeds(t *testing.T) {
 	require.NoError(t, pgPool.QueryRow(ctx,
 		`SELECT count(*) FROM subnet_cidr_blocks WHERE subnet_id = $1`, subnetID).Scan(&blockRows))
 	require.Equal(t, 1, blockRows)
+}
+
+// Цена страницы адресов подсети и текст предусловия удаления не зависят от
+// размера таблицы и от числа интерфейсов: план запроса обязан идти по индексу
+// (а не читать таблицу всех проектов), а сообщение об отказе — быть ограничено.
+func TestIntegration_Subnet_ReadPathCost_Bounded(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
+	require.NoError(t, err)
+	defer pgPool.Close()
+	r := kachopg.New(pgPool, nil)
+	defer r.Close()
+
+	_, subnetID := mkSubnetWithBlocks(t, r, ctx, []string{"10.5.0.0/16"})
+
+	// Шум: адреса ЧУЖИХ подсетей в той же таблице.
+	noiseNet, noiseSub := mkSubnetWithBlocks(t, r, ctx, []string{"10.6.0.0/16"})
+	_ = noiseNet
+	require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
+		for i := 1; i < 200; i++ {
+			if _, e := w.Addresses().Insert(ctx, &domain.Address{
+				ID:        ids.NewID(ids.PrefixAddress),
+				ProjectID: "b1gtestproject00000",
+				Type:      domain.AddressTypeInternal,
+				IpVersion: domain.IpVersionIPv4,
+				InternalIpv4: &domain.InternalIpv4Spec{
+					Address: fmt.Sprintf("10.6.0.%d", i), SubnetID: noiseSub,
+				},
+			}); e != nil {
+				return e
+			}
+		}
+		return nil
+	}))
+	_, err = pgPool.Exec(ctx, `ANALYZE addresses`)
+	require.NoError(t, err)
+
+	// Гейт читает ТОТ ЖЕ предикат, который исполняет репозиторий
+	// (helpers.AddressesBySubnetWhere) — иначе он проверял бы собственную копию
+	// запроса и остался бы зелёным при возврате дефекта.
+	rows, err := pgPool.Query(ctx, fmt.Sprintf(`
+		EXPLAIN (FORMAT TEXT)
+		SELECT id FROM addresses WHERE %s
+		 ORDER BY created_at ASC, id ASC LIMIT 51`, helpers.AddressesBySubnetWhere), subnetID)
+	require.NoError(t, err)
+	var plan string
+	for rows.Next() {
+		var line string
+		require.NoError(t, rows.Scan(&line))
+		plan += line + "\n"
+	}
+	rows.Close()
+	require.NoError(t, rows.Err())
+	require.Contains(t, plan, "addresses_internal_subnet_idx",
+		"страница адресов подсети обязана идти по индексу подсети, а не читать таблицу всех проектов: %s", plan)
+}
+
+// Предусловие удаления подсети отвечает на вопрос «есть ли хоть один
+// интерфейс», поэтому ни ответ базы, ни текст отказа не имеют права расти
+// вместе с числом интерфейсов: сообщение статуса едет в трейлере ответа и на
+// обычном размере подсети выходит за бюджеты заголовков у прокси на пути —
+// задокументированное предусловие вырождается в транспортный сбой.
+func TestIntegration_Subnet_DeletePrecondition_MessageBounded(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	pgPool, err := coredb.NewPool(ctx, setupTestDB(t))
+	require.NoError(t, err)
+	defer pgPool.Close()
+	r := kachopg.New(pgPool, nil)
+	defer r.Close()
+
+	_, subnetID := mkSubnetWithBlocks(t, r, ctx, []string{"10.7.0.0/24"})
+
+	const nicCount = 25
+	require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
+		for i := 0; i < nicCount; i++ {
+			if _, e := w.NetworkInterfaces().Insert(ctx, &domain.NetworkInterface{
+				ID:        ids.NewID(ids.PrefixNetworkInterface),
+				ProjectID: "b1gtestproject00000",
+				SubnetID:  subnetID,
+				MAC:       fmt.Sprintf("02:00:00:00:%02x:%02x", i/256, i%256),
+				Status:    domain.NIStatusAvailable,
+			}); e != nil {
+				return e
+			}
+		}
+		return nil
+	}))
+
+	delUC := subnet.NewDeleteSubnetUseCase(r,
+		cqrsadapter.NewNetworkInterface(r), repomock.NewOpsRepo())
+	_, err = delUC.Execute(ctx, subnetID)
+	require.Error(t, err, "подсеть с интерфейсами удалить нельзя")
+	st, ok := status.FromError(err)
+	require.True(t, ok)
+	assert.Equal(t, codes.FailedPrecondition, st.Code())
+	assert.Contains(t, st.Message(), fmt.Sprintf("subnet %s has %d network interface(s)", subnetID, nicCount),
+		"отказ обязан называть полное число")
+	assert.Contains(t, st.Message(), "and 15 more", "перечень обязан быть ограничен, остальное — числом")
+	assert.Less(t, len(st.Message()), 512, "текст отказа обязан быть ограничен по построению")
 }

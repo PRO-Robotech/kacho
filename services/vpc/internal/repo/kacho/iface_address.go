@@ -38,9 +38,6 @@ type AddressReaderIface interface {
 	// use-case'е (address.GetByValueUseCase), а хранилище не делает вид, что
 	// умеет отвечать.
 	GetByValue(ctx context.Context, internalIP, subnetID string) (*AddressRecord, error)
-	// ExistsIP — uniqueness-check IP в БД (external или internal). Используется
-	// AddressService для sync-проверки уникальности.
-	ExistsIP(ctx context.Context, ip string) (bool, error)
 	// GetReference возвращает referrer-row адреса. ErrNotFound если address
 	// не существует ИЛИ у него нет referrer'а.
 	GetReference(ctx context.Context, addressID string) (*domain.AddressReference, error)

@@ -177,12 +177,17 @@ func (r *subnetReader) AddressesBySubnet(ctx context.Context, subnetID string, p
 		args = append(args, ts, id)
 		argIdx += 2
 	}
+	// Фильтр — по generated-колонке internal_subnet_id (индекс
+	// addresses_internal_subnet_idx), а не по дизъюнкции jsonb-выражений,
+	// которую не покрывает ни один индекс: иначе цена страницы равна размеру
+	// таблицы ВСЕХ проектов, а не размеру страницы. Колонка авторитетна:
+	// «внутренний адрес несёт ровно одну семью» закреплено проверкой
+	// addresses_single_internal_family (миграция 0025).
 	q := fmt.Sprintf(`SELECT %s FROM addresses
-	  WHERE ((internal_ipv4 IS NOT NULL AND internal_ipv4->>'subnet_id' = $1)
-	      OR (internal_ipv6 IS NOT NULL AND internal_ipv6->>'subnet_id' = $1))
+	  WHERE %s
 	    %s
 	  ORDER BY created_at ASC, id ASC
-	  LIMIT $%d`, helpers.AddressCols, tokenCond, argIdx)
+	  LIMIT $%d`, helpers.AddressCols, helpers.AddressesBySubnetWhere, tokenCond, argIdx)
 	args = append(args, pageSize+1)
 
 	rows, err := r.tx.Query(ctx, q, args...)
@@ -379,16 +384,20 @@ func (w *subnetWriter) syncCidrBlocks(ctx context.Context, subnetID, networkID s
 			blocks = append(blocks, b)
 		}
 	}
-	for _, block := range blocks {
-		if _, err := w.tx.Exec(ctx, `
-			INSERT INTO subnet_cidr_blocks (subnet_id, network_id, block)
-			VALUES ($1, $2, $3::cidr)
-		`, subnetID, networkID, block); err != nil {
-			if helpers.IsExclusionViolation(err) || helpers.IsUniqueViolation(err) {
-				return fmt.Errorf("%w: Subnet CIDRs can not overlap", helpers.ErrFailedPrecondition)
-			}
-			return helpers.WrapPgErr(err, "Subnet", subnetID)
+	if len(blocks) == 0 {
+		return nil
+	}
+	// Один стейтмент на весь набор, а не по обращению на диапазон: набор
+	// перекладывается целиком на КАЖДОМ изменении, под row-lock подсети и
+	// share-lock сети, поэтому его стоимость — время удержания этих локов.
+	if _, err := w.tx.Exec(ctx, `
+		INSERT INTO subnet_cidr_blocks (subnet_id, network_id, block)
+		SELECT $1, $2, b::cidr FROM unnest($3::text[]) AS b
+	`, subnetID, networkID, blocks); err != nil {
+		if helpers.IsExclusionViolation(err) || helpers.IsUniqueViolation(err) {
+			return fmt.Errorf("%w: Subnet CIDRs can not overlap", helpers.ErrFailedPrecondition)
 		}
+		return helpers.WrapPgErr(err, "Subnet", subnetID)
 	}
 	return nil
 }

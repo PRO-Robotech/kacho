@@ -148,22 +148,6 @@ func (r *addressReader) GetByValue(ctx context.Context, internalIP, subnetID str
 	return a, nil
 }
 
-// ExistsIP — uniqueness-check для IPv4 (external OR internal).
-func (r *addressReader) ExistsIP(ctx context.Context, ip string) (bool, error) {
-	var count int
-	err := r.tx.QueryRow(ctx, `
-		SELECT COUNT(*) FROM addresses
-		WHERE (
-			(external_ipv4->>'address' = $1) OR
-			(internal_ipv4->>'address' = $1)
-		)
-	`, ip).Scan(&count)
-	if err != nil {
-		return false, helpers.WrapPgErr(err, "Address", "")
-	}
-	return count > 0, nil
-}
-
 // GetReference — referrer-row. ErrNotFound если адреса нет ИЛИ нет referrer'а.
 func (r *addressReader) GetReference(ctx context.Context, addressID string) (*domain.AddressReference, error) {
 	var out domain.AddressReference

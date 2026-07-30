@@ -344,20 +344,6 @@ func (r *AddressRepo) SetProjectID(_ context.Context, id, projectID string) (*ka
 	return a, nil
 }
 
-func (r *AddressRepo) ExistsIP(_ context.Context, ip string) (bool, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	for _, a := range r.data {
-		if a.ExternalIpv4 != nil && a.ExternalIpv4.Address == ip {
-			return true, nil
-		}
-		if a.InternalIpv4 != nil && a.InternalIpv4.Address == ip {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
 // GetByValue — как и pg-реализация, сужает по ВНУТРЕННЕЙ спецификации: и
 // значение, и подсеть читаются из неё. Двойник, игнорировавший подсеть,
 // отвечал там, где настоящее хранилище не находит ничего, — то есть скрывал
