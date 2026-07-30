@@ -50,6 +50,36 @@ func (NopRecorder) IncReconcileErrors() {}
 
 var _ Recorder = NopRecorder{}
 
+// ClaimRecorder — ОПЦИОНАЛЬНОЕ расширение Recorder для наблюдаемости
+// pre-execution подтверждения живости и поздней терминальной записи.
+//
+// Почему расширение, а не новые методы базового Recorder: интерфейс реализуют
+// шесть сервисных Prometheus-адаптеров, и дописывание в него ломает их сборку.
+// Расширение подключается сервисом независимо; corelib-овые Nop/Mem реализуют
+// его сразу, и это закреплено проверкой присваиванием ниже.
+//
+// Канонические серии (имена — на стороне сервиса):
+//
+//	operations_execution_claim_retries_total   — повторы подтверждения живости
+//	operations_execution_claim_failures_total  — отказ исполнить: живость не подтверждена
+//	operations_terminal_write_already_resolved_total{op} — терминал не прошёл: строка уже разрешена
+type ClaimRecorder interface {
+	IncExecutionClaimRetries()
+	IncExecutionClaimFailures()
+	IncTerminalWriteAlreadyResolved(op string)
+}
+
+// IncExecutionClaimRetries — no-op.
+func (NopRecorder) IncExecutionClaimRetries() {}
+
+// IncExecutionClaimFailures — no-op.
+func (NopRecorder) IncExecutionClaimFailures() {}
+
+// IncTerminalWriteAlreadyResolved — no-op.
+func (NopRecorder) IncTerminalWriteAlreadyResolved(string) {}
+
+var _ ClaimRecorder = NopRecorder{}
+
 // MemRecorder — in-memory Recorder для тестов и как безопасный дефолт.
 // Concurrency-safe.
 type MemRecorder struct {
@@ -62,6 +92,10 @@ type MemRecorder struct {
 	maxInflight      float64
 	reconcileRuns    float64
 	reconcileErrors  float64
+
+	claimRetries        float64
+	claimFailures       float64
+	terminalAlreadyDone map[string]float64
 }
 
 // NewMemRecorder — пустой in-memory Recorder.
@@ -70,6 +104,8 @@ func NewMemRecorder() *MemRecorder {
 		terminalRetries:  map[string]float64{},
 		terminalFailures: map[string]float64{},
 		orphans:          map[string]float64{},
+
+		terminalAlreadyDone: map[string]float64{},
 	}
 }
 
@@ -118,7 +154,53 @@ func (m *MemRecorder) IncReconcileErrors() {
 	m.reconcileErrors++
 }
 
+// IncExecutionClaimRetries инкрементит счётчик повторов подтверждения живости.
+func (m *MemRecorder) IncExecutionClaimRetries() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.claimRetries++
+}
+
+// IncExecutionClaimFailures инкрементит счётчик отказов исполнить работу из-за
+// неподтверждённой живости операции.
+func (m *MemRecorder) IncExecutionClaimFailures() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.claimFailures++
+}
+
+// IncTerminalWriteAlreadyResolved инкрементит счётчик терминальных записей,
+// не прошедших сравнение-и-замену, потому что строка уже разрешена.
+func (m *MemRecorder) IncTerminalWriteAlreadyResolved(op string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.terminalAlreadyDone[op]++
+}
+
+var _ ClaimRecorder = (*MemRecorder)(nil)
+
 // ---- test-accessors ----
+
+// ExecutionClaimRetries возвращает накопленные повторы подтверждения живости.
+func (m *MemRecorder) ExecutionClaimRetries() float64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.claimRetries
+}
+
+// ExecutionClaimFailures возвращает накопленные отказы исполнить работу без
+// подтверждённой живости.
+func (m *MemRecorder) ExecutionClaimFailures() float64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.claimFailures
+}
+
+// TerminalWriteAlreadyResolved возвращает счётчик поздних терминальных записей
+// по op-лейблу.
+func (m *MemRecorder) TerminalWriteAlreadyResolved(op string) float64 {
+	return m.read(m.terminalAlreadyDone, op)
+}
 
 // TerminalWriteRetries возвращает накопленные ретраи по op-лейблу.
 func (m *MemRecorder) TerminalWriteRetries(op string) float64 { return m.read(m.terminalRetries, op) }

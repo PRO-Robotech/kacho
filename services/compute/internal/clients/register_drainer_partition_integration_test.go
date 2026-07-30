@@ -271,3 +271,48 @@ func TestRegisterDrainer_PartitionHead_UnregisterThenStaleRegister(t *testing.T)
 		})
 	}
 }
+
+// TestRegisterDrainerCompute_PendingIndexSetIsExactlyTwo — предмет: НАБОР частичных индексов по
+// неотправленным строкам, а не наличие двух нужных.
+//
+// Проверка «эти два индекса есть» утверждает наличие и никогда — отсутствие,
+// поэтому третий индекс по тем же строкам она пропускает. А третий индекс здесь
+// не безобиден: очередь почти всё время пуста, последний сбор статистики почти
+// всегда пришёлся на пустой бэклог, и во всплеск планировщик входит с оценкой в
+// одну строку. На такой оценке сортировка бесплатна, поэтому любой более узкий
+// частичный индекс по тем же строкам выглядит дешевле упорядоченного — и план
+// перестаёт останавливаться рано: анти-соединение по партиции прогоняется по
+// разу на КАЖДУЮ неотправленную строку, то есть выборка читает всю очередь,
+// которую разгребает.
+//
+// Поэтому утверждается равенство множества: перечисляем определения всех
+// частичных индексов по `sent_at IS NULL` и требуем ровно два — по ключу
+// партиции и по порядку выборки.
+func TestRegisterDrainerCompute_PendingIndexSetIsExactlyTwo(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test")
+	}
+	ctx := context.Background()
+	pool := setupDrainerDB(t)
+
+	var defs []string
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT coalesce(array_agg(indexdef ORDER BY indexname), '{}')
+		   FROM pg_indexes
+		  WHERE tablename = 'compute_fga_register_outbox'
+		    AND indexdef LIKE '%WHERE (sent_at IS NULL)%'`).Scan(&defs))
+
+	assert.Lenf(t, defs, 2,
+		"compute_fga_register_outbox обязана нести РОВНО два частичных индекса по неотправленным строкам — "+
+			"(resource_id, id) для поиска головы партиции и (attempt_count, id) для "+
+			"упорядоченного внешнего прохода. Любой третий порядок по тем же строкам планировщик "+
+			"берёт при статистике пустой очереди, и выборка теряет раннюю остановку по LIMIT. "+
+			"Найдено: %v", defs)
+
+	joined := ""
+	for _, d := range defs {
+		joined += d + "\n"
+	}
+	assert.Contains(t, joined, "(resource_id, id)")
+	assert.Contains(t, joined, "(attempt_count, id)")
+}
