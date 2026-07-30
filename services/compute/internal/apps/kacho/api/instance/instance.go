@@ -241,6 +241,13 @@ func ValidateCreateInstanceReq(req CreateInstanceReq) error {
 	if err := corevalidate.Labels("labels", req.Labels); err != nil {
 		return err
 	}
+	// Свободная карта данных машины несёт СВОЙ бюджет: правка сливается в уже
+	// накопленное, поэтому потолок размера сообщения хранимое не ограничивает —
+	// карта росла бы от вызова к вызову, и каждая правка навсегда клала бы весь
+	// выросший блоб ещё и в две неподчищаемые служебные таблицы.
+	if field, reason, ok := domain.ValidateInstanceMetadata(req.Metadata); !ok {
+		return serviceerr.InvalidArg(field, reason)
+	}
 	if !domain.ValidCPUGuaranteePercent(req.CPUGuaranteePercent) {
 		return serviceerr.InvalidArg("cpu_guarantee_percent", "cpuGuaranteePercent must be between 0 and 100")
 	}
@@ -606,6 +613,13 @@ func maskIntersects(mask []string, set map[string]struct{}) bool {
 func (s *InstanceService) UpdateMetadata(ctx context.Context, instanceID string, del []string, upsert map[string]string) (*operations.Operation, error) {
 	if instanceID == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance_id required")
+	}
+	// Бюджет ДЕЛЬТЫ — синхронно: отказ называет поле и не стоит строки операции.
+	// Бюджет ИТОГА СЛИЯНИЯ живёт в БД (CHECK), потому что «прочитать → сложить →
+	// проверить → записать» здесь оставляло бы окно между проверкой и записью: две
+	// одновременные правки прошли бы каждая по отдельности и превысили бюджет вместе.
+	if field, reason, ok := domain.ValidateInstanceMetadata(upsert); !ok {
+		return nil, serviceerr.InvalidArg(field, reason)
 	}
 	return lro.RunOp(ctx, s.opsRepo, fmt.Sprintf("Update instance %s metadata", instanceID),
 		&computev1.UpdateInstanceMetadataMetadata{InstanceId: instanceID},
