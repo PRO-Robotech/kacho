@@ -120,11 +120,22 @@ def tree_files(root: str) -> list[str]:
 
 
 def scan(root: str) -> tuple[list[str], list[str], int]:
-    """(читатели массива, читатели БЕЗ сверки со сводкой, файлов осмотрено)."""
+    """(читатели массива, читатели БЕЗ сверки со сводкой, файлов осмотрено).
+
+    Сам гейт из переписи исключён: узнаваемые формы доступа перечислены в его
+    регулярных выражениях, и перечисление неотличимо от использования. Иначе гейт
+    находил бы себя и завышал перепись на единицу — та же ловушка, от которой
+    страхуется `run-gate-self-tests.sh` («прогонщик себя не находит»). Исключение
+    именное и проверяется самопроверкой, а не молчаливое.
+    """
     readers, offenders = [], []
     files = tree_files(root)
+    myself = os.path.realpath(__file__)
     for rel in files:
-        src = executable_lines(os.path.join(root, rel))
+        full = os.path.join(root, rel)
+        if os.path.realpath(full) == myself:
+            continue
+        src = executable_lines(full)
         if not src or not READS_EXECUTIONS.search(src):
             continue
         readers.append(rel)
@@ -219,6 +230,15 @@ def self_test() -> int:
         if run(td) != 1:
             print("SELF-TEST FAIL: внесённый дефект не покраснел", file=sys.stderr)
             ok = False
+
+    # ГЕЙТ СЕБЯ НЕ НАХОДИТ. Формы доступа перечислены в его собственных выражениях,
+    # и без именного исключения он попал бы в перепись читателей отчётов, завысив её.
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+    self_rel = os.path.relpath(os.path.abspath(__file__), repo_root)
+    live_readers, _, _ = scan(repo_root)
+    if self_rel in live_readers:
+        print(f"SELF-TEST FAIL: гейт нашёл сам себя ({self_rel})", file=sys.stderr)
+        ok = False
 
     # Пустое дерево: предпосылки нет — обязан упасть, а не отчитаться «чисто».
     with tempfile.TemporaryDirectory() as td2:
