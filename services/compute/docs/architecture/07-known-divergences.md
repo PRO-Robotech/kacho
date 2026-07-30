@@ -850,8 +850,15 @@ sentinel→code в отдельный слой (если когда-либо) �
 
 ## 12. `List`-фильтр остаётся `name=`, хотя acceptance F14 обещал больше
 
-**Решение:** whitelist `filter` во всех четырёх List-репозиториях compute
-(`instance`/`disk`/`image`/`snapshot`) — **`name=` и только он**. Прежняя редакция
+**Решение:** whitelist `filter` в **единственном** List-репозитории compute, у которого
+`filter` есть (`instance_repo.go`, `filter.Parse(f.Filter, []string{"name"})`) — **`name=`
+и только он**. Прежняя редакция называла «все четыре репозитория
+(`instance`/`disk`/`image`/`snapshot`)»: три из четырёх ушли к kacho-storage вместе с
+дублем блочного хранения, и утверждение осталось про предмет, которого в дереве нет —
+исключение обязано истекать вместе со своим предметом, иначе его унаследует следующая
+слепая зона.
+
+Прежняя редакция
 COMP-1 F14 / COMP-1-36 заявляла ещё `placementGroupId=` и `instanceKind=`; расхождение
 сведено **в пользу кода**, acceptance-док приведён к реализации (§Reconcile F14
 filter-whitelist в `docs/specs/sub-phase-COMP-1-instance-machinetype-acceptance.md`).

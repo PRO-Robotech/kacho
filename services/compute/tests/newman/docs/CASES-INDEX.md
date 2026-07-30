@@ -3,8 +3,11 @@
 Каталог тест-кейсов по ресурсам. Источник истины — `cases/*.py`; коллекции в `collections/`
 **генерируются** `scripts/gen.py`. Здесь — обзорный перечень + уникальные паттерны.
 
-Всего (по `gen.py`): **111 кейсов** — instance-redesign 43, authz-deny 42,
-machine-type 12, operation 8, list-filter 4, sec-d 2.
+Всего (по `gen.py`): **117 кейсов** — instance-redesign 49, authz-deny 42,
+machine-type 12, operation 8, list-filter 4, sec-d 2. Здесь стояло «111 — 43» — число
+дрейфует само, потому что переписано рукой; сверяется одной командой
+(`python3 scripts/gen.py` печатает счётчик по каждой коллекции, стенд не нужен), и
+расхождение с этой строкой — находка, а не опечатка.
 Zone/Region serving removed in Stage S7 (Geography owned by kacho-geo);
 Disk/Image/Snapshot/DiskType — вместе с дублем блочного хранения (владелец —
 kacho-storage, его suite живёт в `services/storage/tests/newman/`).
@@ -26,29 +29,21 @@ kacho-storage, его suite живёт в `services/storage/tests/newman/`).
 | `assert_created_at_seconds()` | CONF: created_at в proto-ответе без дробной секунды (конвенция Kachō) | INST CRUD-OK |
 | `assert_operation_envelope()` | Operation.id matches `^epd[a-z0-9]+$`, metadata is object | каждый Create CRUD-OK |
 
-## Instance (77 кейсов) — `cases/instance.py` *(многие требуют поднятого kacho-vpc)*
+## Instance — `cases/instance-redesign.py`
 
-- **CR**: CRUD-OK (RUNNING + fqdn + boot_disk + NO NIC (no auto-NIC) + id-prefix epd + created_at sec),
-  CRUD-FROM-IMAGE-BOOT-OK, CRUD-BOOT-DISK-ID-OK, VAL-MISSING-{ZONE,PLATFORM,RESOURCES,BOOTDISK,PROJECT},
-  NEG-PROJECT-NOTFOUND, NEG-DUP-NAME, VAL-NAME-UPPERCASE/-DIGIT-START,
-  VAL-CORE-FRACTION-INVALID, VAL-CORES-ODD-INVALID, VAL-BOOTDISK-EXACTLY-ONE, VAL-EMPTY-BODY,
-  VAL-MALFORMED-JSON, CONF-ID-PREFIX-EPD; + security.
-- **GET**: NEG-NOTFOUND, CONF-NF-TEXT. **LST**: CRUD-OK, VAL-PROJECT-REQUIRED, VIEW-BASIC-NO-METADATA; + блоки.
-- **UPD**: CRUD-NAME-DESC-LABELS-OK, RESOURCES-REQUIRES-STOPPED (RUNNING→FailedPrec; after Stop→OK),
-  MASK-IMMUTABLE-ZONE, MASK-UNKNOWN-FIELD, AUTHZ-NF-SYNC.
-- **STATE**: START-FROM-RUNNING (→FailedPrec), STOP-OK, START-FROM-STOPPED-OK, STOP-FROM-STOPPED (→FailedPrec),
-  RESTART-OK, RESTART-FROM-STOPPED (→FailedPrec); + START/STOP-AUTHZ-NF-SYNC.
-- **AD** (attachDisk, body `attachedDiskSpec.volumeId`): CRUD-OK, NEG-WRONG-ZONE, NEG-ALREADY-ATTACHED.
-  **DD** (detachDisk, body `volumeId`): CRUD-OK, NEG-BOOT (→FailedPrec), NEG-NOT-ATTACHED.
-  (bootDisk/secondaryDisks projection field `volumeId`; storage Volume — source of truth.)
-- **NIC** (S4, attach/detach existing kacho-vpc NIC, prefix "nic"): AD-CRUD-OK (attach→mirror index 0→detach→empty),
-  DD-BYINDEX-IDEMPOTENT-OK (detach by slot index + no-op replay), AD-NEG-MALFORMED-NIC (sync 400),
-  AD-NEG-INSTANCE-NF / DD-NEG-INSTANCE-NF (sync 404). UpdateNetworkInterface/AddOneToOneNat/RemoveOneToOneNat — Unimplemented.
-- **UMETA**: CRUD-OK (upsert/delete + FULL-view).
-- **SPO**: CRUD-OK, NEG-NOTFOUND. **SME**: CRUD-OK (no-op). (Move — removed KAC-266.)
-- **LOP**: CRUD-OK, NEG-PARENT-NF.
-- **DEL**: CRUD-OK, STATE-AUTODELETE-BOOT-GONE, STATE-NONAUTODELETE-DISK-REMAINS, NEG-NOTFOUND, CONF-RESPONSE-EMPTY.
-- **LIFECYCLE-CONF** (Create→Get→List→Update→Stop→Start→Delete→List→Get-404).
+Здесь стоял перечень «Instance (77 кейсов) — `cases/instance.py`». Файла в дереве нет:
+кейсы инстанса живут в `cases/instance-redesign.py`, а перечень описывал шаги снятого
+контракта (`platformId`/`resourcesSpec`/`bootDiskSpec`, Disk/Image/Snapshot). Он
+противоречил переписи в шапке ЭТОГО ЖЕ файла — то есть был не устаревшей подробностью,
+а утверждением о покрытии, которого нет.
+
+Пер-кейсовый перечень сюда НЕ переписывается: источник истины — `cases/*.py`, а вторая
+копия расходится с ним молча (ровно это и случилось). Что прогоняется прямо сейчас,
+печатает прогонщик без стенда:
+
+```bash
+./scripts/run-incremental.sh --list      # коллекции и case-id, которые будут прогнаны
+```
 
 ## Zone / Region — removed (Stage S7)
 
