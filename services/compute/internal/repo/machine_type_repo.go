@@ -147,22 +147,67 @@ func (r *MachineTypeRepo) Insert(ctx context.Context, mt *domain.MachineType) (*
 	return created, nil
 }
 
-// Update обновляет machine-type (admin-only, full-row upsert из merged domain-
-// объекта; name immutable — не в SET). RETURNING даёт финальную строку.
-func (r *MachineTypeRepo) Update(ctx context.Context, mt *domain.MachineType) (*domain.MachineType, error) {
-	labelsJSON, err := marshalJSONB(orEmptyMap(mt.Labels), "MachineType.labels")
-	if err != nil {
-		return nil, err
+// Update применяет ТОЛЬКО названные маской колонки одним стейтментом (admin-only;
+// name/id/created_at неизменяемы и в SET не попадают). RETURNING даёт финальную
+// строку; 0 строк → ErrNotFound.
+//
+// Один стейтмент — это и есть инвариант, а не оптимизация. Раньше правка читала
+// строку, сливала маску в памяти и писала ВЕСЬ прочитанный снимок обратно, поэтому
+// две правки с НЕПЕРЕСЕКАЮЩИМИСЯ масками (вывести размер из эксплуатации / поменять
+// метки) затирали друг друга: кто писал вторым, возвращал чужую колонку к значению
+// своего снимка. Обе операции при этом завершались успехом — потеря была молчаливой,
+// а на колонке состояния ещё и возвращала снятый с эксплуатации размер в оборот.
+// Мутация асинхронная, поэтому двух администраторов для этого не требовалось:
+// достаточно двух последовательных вызовов одного скрипта.
+//
+// Версии/xmin здесь не нужны: снимок в БД больше не уезжает вовсе, а конкуренция за
+// ОДНУ И ТУ ЖЕ колонку остаётся честным «побеждает последний» — обе правки
+// действительно называли это поле.
+func (r *MachineTypeRepo) Update(ctx context.Context, id string, u ports.MachineTypeUpdate) (*domain.MachineType, error) {
+	if !u.Touched() {
+		// Ничего не названо — записи не требуется, но исход обязан отличать
+		// существующую строку от отсутствующей.
+		return r.Get(ctx, id)
 	}
-	q := fmt.Sprintf(`UPDATE machine_types
-		SET description=$2, family=$3, v_cpu=$4, memory_mib=$5, gpus=$6, gpu_type=$7, available_zones=$8, status=$9, labels=$10
-		WHERE id=$1 RETURNING %s`, machineTypeCols)
-	updated, err := scanMachineType(r.pool.QueryRow(ctx, q,
-		mt.ID, mt.Description, int32(mt.Family),
-		mt.EffectiveResources.VCPU, mt.EffectiveResources.MemoryMiB, mt.EffectiveResources.GPUs, mt.EffectiveResources.GPUType,
-		orEmptySlice(mt.AvailableZones), int32(mt.Status), labelsJSON))
+
+	set := make([]string, 0, 9)
+	args := []any{id}
+	add := func(col string, val any) {
+		args = append(args, val)
+		set = append(set, fmt.Sprintf("%s=$%d", col, len(args)))
+	}
+
+	if u.Description != nil {
+		add("description", *u.Description)
+	}
+	if u.Family != nil {
+		add("family", int32(*u.Family))
+	}
+	if u.EffectiveResources != nil {
+		add("v_cpu", u.EffectiveResources.VCPU)
+		add("memory_mib", u.EffectiveResources.MemoryMiB)
+		add("gpus", u.EffectiveResources.GPUs)
+		add("gpu_type", u.EffectiveResources.GPUType)
+	}
+	if u.AvailableZones != nil {
+		add("available_zones", orEmptySlice(*u.AvailableZones))
+	}
+	if u.Status != nil {
+		add("status", int32(*u.Status))
+	}
+	if u.LabelsSet {
+		labelsJSON, err := marshalJSONB(orEmptyMap(u.Labels), "MachineType.labels")
+		if err != nil {
+			return nil, err
+		}
+		add("labels", labelsJSON)
+	}
+
+	q := fmt.Sprintf(`UPDATE machine_types SET %s WHERE id=$1 RETURNING %s`,
+		strings.Join(set, ", "), machineTypeCols)
+	updated, err := scanMachineType(r.pool.QueryRow(ctx, q, args...))
 	if err != nil {
-		return nil, wrapPgErr(err, "MachineType", mt.ID)
+		return nil, wrapPgErr(err, "MachineType", id)
 	}
 	return updated, nil
 }
