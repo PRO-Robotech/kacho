@@ -468,29 +468,28 @@ message GpuSettings {
 }
 
 message PlacementPolicy {
-  // Affinity definition
-  message HostAffinityRule {
-    enum Operator {
-      OPERATOR_UNSPECIFIED = 0;
-      // Include action
-      IN = 1;
-      // Exclude action
-      NOT_IN = 2;
-    }
-
-    // Affinity label key.
-    string key = 1;
-    // Include or exclude action
-    Operator op = 2;
-    // Affinity value or host ID or host group ID
-    repeated string values = 3;
-  }
+  // Host affinity is WITHDRAWN from the contract — number and name reserved so the slot
+  // can never be reused with different semantics.
+  //
+  // Two independent reasons. It was never read: no handler, use-case or repository of
+  // kacho-compute referenced the field and no migration stored it, so a caller sending
+  // a fully formed rule that pins a machine to a host would get a success back with
+  // nothing applied anywhere. And it stood on the wrong surface: a rule naming hosts
+  // and host groups is placement physics, and that class of data lives ONLY in the
+  // `Internal*` API on the cluster-internal listener (security.md, "Инфра-чувствительные
+  // данные") — so implementing it where it stood was not an option either. If placement
+  // management is wanted, it is introduced on the internal contour with its own
+  // acceptance.
+  //
+  // The nested `HostAffinityRule` message went with the field: once no field references
+  // it, keeping it advertises a shape the service has no way to honour (the standard
+  // already applied to the withdrawn vpc DNS messages). Lock:
+  // pkg/api/kacho/cloud/compute/v1/placement_contract_test.go.
+  reserved 2;
+  reserved "host_affinity_rules";
 
   // Placement group ID.
   string placement_group_id = 1;
-
-  // List of affinity rules. Scheduler will attempt to allocate instances according to order of rules.
-  repeated HostAffinityRule host_affinity_rules = 2;
 
   // Placement group partition
   int64 placement_group_partition = 3;

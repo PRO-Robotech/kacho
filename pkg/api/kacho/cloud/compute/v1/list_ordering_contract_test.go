@@ -29,25 +29,41 @@ var vacatedOrderBy = map[string]protoreflect.FieldNumber{
 	"ListInstancesRequest": 5,
 }
 
-// computeMessages walks every message of the kacho.cloud.compute.v1 package.
+// computeMessages walks EVERY message of the kacho.cloud.compute.v1 package, nested
+// ones included.
+//
+// The recursion is load-bearing, not tidiness. A walk over `fd.Messages()` alone sees
+// only top-level declarations, so a banned shape declared one level down — and compute
+// declares nested messages, e.g. the withdrawn host-affinity rule inside
+// PlacementPolicy — is invisible to it: the gate reports success while the thing it
+// bans is still in the contract. Every caller of this helper depends on the walk
+// covering the whole package, so the coverage lives here once.
 func computeMessages(t *testing.T, visit func(protoreflect.MessageDescriptor)) {
 	t.Helper()
 	seen := 0
+	var walk func(protoreflect.MessageDescriptors)
+	walk = func(msgs protoreflect.MessageDescriptors) {
+		for i := 0; i < msgs.Len(); i++ {
+			md := msgs.Get(i)
+			seen++
+			visit(md)
+			walk(md.Messages())
+		}
+	}
 	protoregistry.GlobalFiles.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
 		if fd.Package() != "kacho.cloud.compute.v1" {
 			return true
 		}
-		msgs := fd.Messages()
-		for i := 0; i < msgs.Len(); i++ {
-			seen++
-			visit(msgs.Get(i))
-		}
+		walk(fd.Messages())
 		return true
 	})
 	if seen == 0 {
 		t.Fatal("no kacho.cloud.compute.v1 messages found in the global registry — " +
 			"the walk found nothing, so it would have asserted nothing")
 	}
+	// Перепись — отдельное утверждение: «ноль находок» обязано быть отличимо от
+	// «ноль прочитанного».
+	t.Logf("осмотрено сообщений kacho.cloud.compute.v1 (включая вложенные): %d", seen)
 }
 
 // TestListRequestsOfferNoSortKnob — no List…Request of the compute domain declares
