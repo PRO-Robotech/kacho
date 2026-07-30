@@ -27,6 +27,8 @@
 package config
 
 import (
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
@@ -102,19 +104,66 @@ type RepositoryConfig struct {
 	Postgres PostgresConfig `mapstructure:"postgres"`
 }
 
+// PostgresConfig — параметры подключения к `kacho_nlb`.
+//
+// Здесь нет `slave-url`: он объявлял read-replica для CQRS-Reader'а, но ни один
+// путь его не читал — composition root всегда создавал ОДИН пул и передавал
+// `Repository.New(pool, nil)`, то есть обещанной разгрузки чтений не существовало
+// ни в одной посадке. Настройка снята с контракта, а не «подключена по-быстрому»:
+// увести чтения на реплику значит изменить видимость собственных записей
+// (read-your-writes) — это отдельное решение со своим acceptance, а не побочный
+// эффект уборки. Реплика в repo-слое остаётся выразимой (`Repository.New` берёт
+// второй пул), появится настройка — вместе с ней.
 type PostgresConfig struct {
-	URL          string        `mapstructure:"url"`           // postgres://user:pass@host/kacho_nlb
-	MaxConns     int32         `mapstructure:"max-conns"`     // pool size; 0 → pgxpool default
-	ConnLifetime time.Duration `mapstructure:"conn-lifetime"` // 0 → pgxpool default
-	SlaveURL     string        `mapstructure:"slave-url"`     // optional read-replica DSN
+	URL string `mapstructure:"url"` // postgres://user:pass@host/kacho_nlb
+
+	// MaxConns — ширина пула (0 → pgxpool default max(4, NumCPU)). Доезжает до
+	// пула через DSN() как `pool_max_conns`; ширина решает, сколько
+	// одновременных запросов сервис вообще способен обслужить.
+	MaxConns int32 `mapstructure:"max-conns"`
+
+	// ConnLifetime — потолок жизни одного соединения (0 → pgxpool default).
+	// Доезжает до пула через DSN() как `pool_max_conn_lifetime`.
+	ConnLifetime time.Duration `mapstructure:"conn-lifetime"`
 
 	// PasswordFromEnv — имя ENV-переменной с паролем, который подставляется
-	// в URL/SlaveURL по shell-placeholder'у `$(<ИМЯ>)` на этапе Load (см.
+	// в URL по shell-placeholder'у `$(<ИМЯ>)` на этапе Load (см.
 	// load.go::expandPasswordFromEnv). Пароль — Secret в Helm, в ConfigMap
 	// его держать нельзя; viper не понимает `$(VAR)` синтаксис, поэтому
 	// expand делаем явно. Пустая строка — substitution отключён (URL
 	// используется как есть). regression-fix.
 	PasswordFromEnv string `mapstructure:"password-from-env"`
+}
+
+// DSN — connection string ДЛЯ ПУЛА: URL плюс `pool_*`-параметры, которые понимает
+// только `pgxpool.ParseConfig`.
+//
+// Не использовать нигде, кроме создания pgxpool: `pool_max_conns` фатален для
+// `database/sql` (cmd/migrator) и для одиночного `pgx.Conn` (LISTEN-feed
+// lifecycle) — оба берут `Repository.Postgres.URL` как есть.
+//
+// Незаданные ручки не добавляют ничего: DSN пустого/недонастроенного конфига
+// байт-в-байт равен URL, поэтому дефолты pgxpool остаются в силе.
+func (c Config) DSN() string {
+	dsn := c.Repository.Postgres.URL
+	if dsn == "" {
+		return ""
+	}
+	if c.Repository.Postgres.MaxConns > 0 {
+		dsn += poolParamSep(dsn) + "pool_max_conns=" + strconv.FormatInt(int64(c.Repository.Postgres.MaxConns), 10)
+	}
+	if c.Repository.Postgres.ConnLifetime > 0 {
+		dsn += poolParamSep(dsn) + "pool_max_conn_lifetime=" + c.Repository.Postgres.ConnLifetime.String()
+	}
+	return dsn
+}
+
+// poolParamSep — разделитель для дописываемого query-параметра.
+func poolParamSep(dsn string) string {
+	if strings.Contains(dsn, "?") {
+		return "&"
+	}
+	return "?"
 }
 
 // ─── Authn (transport TLS) ───────────────────────────────────────────────────

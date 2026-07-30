@@ -106,6 +106,14 @@ config:
   jobs:
     targetDrain:
       interval: 10s
+  repository:
+    postgres:
+      # Ширина пула pgx и потолок жизни соединения. 0 / 0s → дефолты pgxpool
+      # (max(4, NumCPU) соединений). Доезжают до пула через config.DSN()
+      # (`pool_max_conns` / `pool_max_conn_lifetime`) — до этого настройка
+      # объявлялась и валидировалась, но пулу не передавалась.
+      maxConns: 0
+      connLifetime: 0s
 
 # ─── Database (PostgreSQL `kacho_nlb` schema) ─────────────────────────────────
 db:

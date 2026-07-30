@@ -37,7 +37,8 @@ func NewListLoadBalancersUseCase(repo Repo, authz authzfilter.Filter) *ListLoadB
 	return &ListLoadBalancersUseCase{repo: repo, authz: authz}
 }
 
-// Execute — open reader, repo.List, per-object visibility filter, DTO transfer.
+// Execute — читает страницу (read-TX закрывается сразу после SELECT'а, см.
+// readPage), сужает её per-object фильтром видимости, отдаёт DTO.
 //
 // RBAC: per-object FGA filter. subject из ctx → страница из БД → iam BatchCheck
 // (viewer ∪ v_list) на id этой страницы. Ничего не видно → пустой ответ (no-leak).
