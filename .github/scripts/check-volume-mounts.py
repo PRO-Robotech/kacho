@@ -216,9 +216,38 @@ def coverage_findings() -> list:
 
     first_party = {d["name"] for d in (dep_doc.get("dependencies") or [])
                    if str(d.get("repository", "")).startswith("file://")}
+
+    # СВОЙ ЧАРТ БЫВАЕТ ПРОВЯЗАН ДВУМЯ СПОСОБАМИ, и покрытие обязано видеть оба.
+    #
+    # Сабчарт, чьи исходники версионируются прямо в `charts/`, помечать
+    # зависимостью НЕЛЬЗЯ: `file://./charts/<имя>` заставляет helm материализовать
+    # второй экземпляр рядом с исходником, и какой из двух попадёт в рендер — не
+    # определено (см. шапку deploy/helm/umbrella/Chart.yaml). Такие чарты объявлений
+    # не несут — но своими они быть не перестают, и выпасть из покрытия по причине
+    # «нет строки в dependencies» не должны: ровно так этот гейт и потерял бы
+    # kacho-iam с kacho-geo, не сказав ни слова.
+    #
+    # Признак — «каталог в charts/, который является чартом и которого НИКТО НЕ
+    # ОБЪЯВЛЯЛ», а не список имён. Внешние чарты попадают в `charts/` только по
+    # объявлению, поэтому необъявленный каталог там может быть только своим. Брать
+    # просто «все каталоги в charts/» нельзя: старые версии helm распаковывали туда
+    # и внешние (ingress-nginx, postgresql — они и перечислены в .gitignore), и
+    # тогда гейт потребовал бы покрыть чужой чарт.
+    declared = {d.get("alias") or d.get("name")
+                for d in (dep_doc.get("dependencies") or [])} | \
+               {d.get("name") for d in (dep_doc.get("dependencies") or [])}
+    charts_dir = UMBRELLA_CHART.parent / "charts"
+    vendored = set()
+    if charts_dir.is_dir():
+        vendored = {p.name for p in charts_dir.iterdir()
+                    if p.is_dir() and (p / "Chart.yaml").is_file()
+                    and p.name not in declared}
+    first_party |= vendored
+
     if not first_party:
-        return ["в {} не разобрано ни одной file://-зависимости — покрытие сверять не с чем, "
-                "а это не «покрыто всё»".format(UMBRELLA_CHART)]
+        return ["в {} не разобрано ни одной своей зависимости и не найдено ни одного "
+                "вендоренного сабчарта — покрытие сверять не с чем, а это не "
+                "«покрыто всё»".format(UMBRELLA_CHART)]
 
     covered = {c.name for c in CHARTS}
     for name in sorted(first_party - covered - NO_WORKLOAD_CHARTS):
