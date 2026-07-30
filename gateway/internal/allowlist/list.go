@@ -166,6 +166,13 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.iam.v1.UserService/Update":         {}, // public labels-only mutation (REST PATCH /iam/v1/users/{user_id}); v_update on iam_user, acr 2
 	"/kacho.cloud.iam.v1.UserService/Delete":         {},
 	"/kacho.cloud.iam.v1.UserService/ListOperations": {}, // per-resource ops (REST GET /iam/v1/users/{user_id}/operations)
+	// Административный запрет участию и его снятие (REST POST
+	// /iam/v1/users/{user_id}:block|:unblock). Пара обязана быть здесь ОБЕ: без
+	// записи в этом списке директор отвергает метод раньше, чем что-либо о нём
+	// узнают каталог и таблица маршрутов, и односторонний недосмотр оставил бы
+	// заблокированного без пути снятия.
+	"/kacho.cloud.iam.v1.UserService/Block":   {}, // v_update on iam_user, acr 2
+	"/kacho.cloud.iam.v1.UserService/Unblock": {}, // v_update on iam_user, acr 2
 	// iam.v1 — ServiceAccountService
 	"/kacho.cloud.iam.v1.ServiceAccountService/Get":    {},
 	"/kacho.cloud.iam.v1.ServiceAccountService/List":   {},

@@ -50,7 +50,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// sensitiveACR2Set — the 24 FQNs that MUST carry required_acr_min="2" after the
+// sensitiveACR2Set — the 26 FQNs that MUST carry required_acr_min="2" after the
 // refinement (grant-surface + credential + tenancy-root, domain-agnostic). Any
 // drift (an RPC added or dropped) fails this test. Categories A–H per the
 // APPROVED acceptance doc.
@@ -83,6 +83,22 @@ func sensitiveACR2Set() map[string]struct{} {
 		"kacho.cloud.iam.v1.SAKeyService/Revoke",
 		"kacho.cloud.iam.v1.ServiceAccountService/Disable",
 		"kacho.cloud.iam.v1.ServiceAccountService/Enable",
+		// UserService Block/Unblock belong in the SAME band, for the same reason
+		// and with the same caveat. They write the state that decides whether a
+		// person may authenticate into an Account at all — the human counterpart
+		// of the two above — so a human who must re-authenticate to revoke one
+		// personal token would otherwise reach a strictly larger outcome (all of
+		// someone's access into a tenancy, at once) through the cheaper door.
+		//
+		// Scope, so the classification is not read as more than it is: these two
+		// write ONE membership row, not the whole identity. The person keeps
+		// working wherever else they are active. The floor is likewise INTERACTIVE-
+		// only and INERT for machine callers, exactly as for the pair above: a
+		// service account holding `v_update` on the target blocks it with no
+		// step-up whatsoever. WHO may do it is decided by the model (`v_update` on
+		// `iam_user`, i.e. the account admin and the cloud-admin cascade).
+		"kacho.cloud.iam.v1.UserService/Block",
+		"kacho.cloud.iam.v1.UserService/Unblock",
 		// B — iam binding grant (5; Create is exempt-permission + acr=2, net-strengthening).
 		// Invite belongs here: it inlines an AccessBinding create (project_id+role_id)
 		// in the invite tx — the same privilege AccessBindingService/Create issues.
@@ -128,7 +144,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	require.NoError(t, err)
 
 	sensitive := sensitiveACR2Set()
-	require.Len(t, sensitive, 24, "the acceptance-doc sensitive set must contain exactly 24 FQNs")
+	require.Len(t, sensitive, 26, "the acceptance-doc sensitive set must contain exactly 26 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -149,7 +165,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 24, "exactly 24 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 26, "exactly 26 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -230,7 +246,7 @@ func TestPermissionCatalog_ACR_CreateNetStrengthening(t *testing.T) {
 }
 
 // TestPermissionCatalog_ACR_CountsAndByteIdentity — SEC-ACR-13 / I2: the whole
-// catalog splits 28×"2" / 238×"1" / 64×"" = 330, and both embedded copies
+// catalog splits 26×"2" / 210×"1" / 64×"" = 300, and both embedded copies
 // (gateway + iam) are byte-identical. (NLB CONTRACT removed the 4 routine
 // loadbalancer RPCs Start/Stop/AttachTargetGroup/DetachTargetGroup: 332→328;
 // the UserService/Invite grant-surface correction moved one more 1→2: 328→327.
@@ -273,10 +289,14 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// the sensitive band (the state they write is what decides whether a machine
 	// identity may authenticate): 22→24 sensitive, 296→298 total. Routine and
 	// exempt are untouched — neither action displaced an existing RPC.
-	assert.Equal(t, 24, n2, "sensitive count")
+	// UserService Block/Unblock then did the same for the human counterpart —
+	// administrative suspension of a membership, previously reachable only by
+	// editing the database: 24→26 sensitive, 298→300 total. Routine and exempt
+	// untouched again, for the same reason.
+	assert.Equal(t, 26, n2, "sensitive count")
 	assert.Equal(t, 210, n1, "routine count")
 	assert.Equal(t, 64, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 298, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 300, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

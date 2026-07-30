@@ -150,6 +150,8 @@ var generatedRestRoutes = []restRoute{
 	{Method: "GET", Template: "/iam/v1/users/{user_id}/tokens", FQN: "kacho.cloud.iam.v1.UserTokenService/List"},
 	{Method: "POST", Template: "/iam/v1/users/{user_id}/tokens", FQN: "kacho.cloud.iam.v1.UserTokenService/Issue"},
 	{Method: "DELETE", Template: "/iam/v1/users/{user_id}/tokens/{token_id}", FQN: "kacho.cloud.iam.v1.UserTokenService/Revoke"},
+	{Method: "POST", Template: "/iam/v1/users/{user_id}:block", FQN: "kacho.cloud.iam.v1.UserService/Block"},
+	{Method: "POST", Template: "/iam/v1/users/{user_id}:unblock", FQN: "kacho.cloud.iam.v1.UserService/Unblock"},
 	{Method: "POST", Template: "/iam/v1/users:invite", FQN: "kacho.cloud.iam.v1.UserService/Invite"},
 	{Method: "GET", Template: "/nlb/v1/listeners", FQN: "kacho.cloud.loadbalancer.v1.ListenerService/List"},
 	{Method: "POST", Template: "/nlb/v1/listeners", FQN: "kacho.cloud.loadbalancer.v1.ListenerService/Create"},
