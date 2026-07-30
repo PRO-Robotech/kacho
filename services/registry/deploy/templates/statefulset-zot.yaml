@@ -35,10 +35,65 @@ metadata:
 {{- end }}
 {{- $http := dict "address" "0.0.0.0" "port" (.Values.zot.port | toString) }}
 {{- with .Values.zot.compat }}{{- $_ := set $http "compat" . }}{{- end }}
+{{- /*
+  АУТЕНТИФИКАЦИЯ ХРАНИЛИЩА СЛОЁВ — не опция. zot не различает тенантов: он лишь
+  хранит слои по path-префиксу. Пока он отвечал любому, кто дозвонился до его порта,
+  весь per-request контроль плоскости данных (проверка подписи docker-Bearer'а,
+  Check, сокрытие существования, запрет разрушительного DELETE) обходился ОДНИМ
+  хопом из сети подов: перечисление репозиториев всех тенантов, выгрузка чужих
+  слоёв, подмена образа под чужим тегом, удаление содержимого. «Internal = trusted»
+  — запрещённое допущение (security.md §1.4), и соседним хранилищам этого профиля
+  защита уже выдана.
+
+  Учётные данные приходят ЛИБО секретом оператора (auth.existingSecret — боевая
+  форма: не в git), ЛИБО значениями профиля (dev). Ни того, ни другого → рендер
+  ОТКАЗЫВАЕТ: чарт не умеет разворачивать открытое хранилище.
+*/}}
+{{- $auth := .Values.zot.auth }}
+{{- $authSecret := $auth.existingSecret | default (printf "%s-auth" .Values.zot.serviceName) }}
+{{- $ownSecret := not $auth.existingSecret }}
+{{- if $ownSecret }}
+{{-   if or (not $auth.username) (not $auth.password) }}
+{{-     fail "zot layer store must authenticate its callers: set zot.auth.existingSecret (a Secret with keys username/password/htpasswd) or zot.auth.username + zot.auth.password. Without credentials zot serves every request from the pod network and the registry's per-request authorization is one hop away." }}
+{{-   end }}
+{{- end }}
+{{- $htpasswdDir := "/etc/zot/auth" }}
+{{- $_ := set $http "auth" (dict "htpasswd" (dict "path" (printf "%s/htpasswd" $htpasswdDir))) }}
 {{- $cfg := dict "distSpecVersion" "1.1.0" "storage" $storage "http" $http "log" (dict "level" "info") "extensions" (dict "search" (dict "enable" true)) }}
+{{- /*
+  htpasswd-строка: явно заданная (детерминированная — пода не перекатывает на
+  каждый upgrade) либо выведенная из пароля. У выведенной bcrypt-соль случайна,
+  поэтому её checksum меняется на каждом рендере и под перекатывается — для
+  предсказуемых раскатов задавай zot.auth.htpasswd явно (или existingSecret).
+*/}}
+{{- $htpasswd := "" }}
+{{- if $ownSecret }}
+{{-   $htpasswd = $auth.htpasswd | default (htpasswd $auth.username $auth.password) }}
+{{- end }}
 data:
   config.json: |
     {{- $cfg | toJson | nindent 4 }}
+{{- if $ownSecret }}
+---
+{{/*
+Секрет учётных данных хранилища слоёв (dev/профильная форма). В бою используй
+zot.auth.existingSecret — учётные данные боевого стенда в git не живут.
+  htpasswd — то, что читает zot (bcrypt, единственная схема, которую он поддерживает);
+  username/password — то, чем предъявляется САМ реестр (адаптер + форвардер).
+*/}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $authSecret }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ .Values.zot.serviceName }}
+type: Opaque
+stringData:
+  username: {{ $auth.username | quote }}
+  password: {{ $auth.password | quote }}
+  htpasswd: {{ $htpasswd | quote }}
+{{- end }}
 ---
 apiVersion: v1
 kind: Service
@@ -82,6 +137,12 @@ spec:
         # Хэшируем ИМЕННО $cfg — ровно то, что уходит в config.json выше,
         # а не файл шаблона (он содержит и эту аннотацию → рекурсия).
         kacho.cloud/zot-config-checksum: {{ $cfg | toJson | sha256sum }}
+        # Файл учётных данных zot читает ТОЖЕ один раз, на старте, и приезжает он
+        # секретом-томом — правка секрета пода не перекатывает. Без этой аннотации
+        # ротация пароля оставила бы процесс с прежним (а реестр — с новым): тот же
+        # класс, что «гейт посадки проверял ConfigMap, а не живой процесс».
+        # existingSecret чарту не виден — там ротация делается перекатом StatefulSet.
+        kacho.cloud/zot-auth-checksum: {{ printf "%s|%s" $authSecret $htpasswd | sha256sum }}
     spec:
       securityContext:
         {{- toYaml .Values.zot.podSecurityContext | nindent 8 }}
@@ -107,19 +168,27 @@ spec:
             - name: config
               mountPath: /etc/zot
               readOnly: true
+            - name: auth
+              mountPath: {{ $htpasswdDir }}
+              readOnly: true
             - name: storage
               mountPath: {{ .Values.zot.storage.path }}
           resources:
             {{- toYaml .Values.zot.resources | nindent 12 }}
+          # Пробы БЕЗ учётных данных. Прежний httpGet /v2/ считал успехом 2xx, то
+          # есть требовал, чтобы хранилище отвечало НЕаутентифицированному запросу:
+          # работающий стенд сам доказывал, что оно открыто. С включённой
+          # аутентификацией /v2/ отвечает 401 и под никогда не стал бы Ready.
+          # Учётные данные в пробу не положить (это статический заголовок манифеста,
+          # а не переменная окружения), поэтому остаётся проверка сокета — она про
+          # живость процесса и ничего не утверждает про доступ.
           readinessProbe:
-            httpGet:
-              path: /v2/
+            tcpSocket:
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
-            httpGet:
-              path: /v2/
+            tcpSocket:
               port: http
             initialDelaySeconds: 10
             periodSeconds: 30
@@ -127,6 +196,12 @@ spec:
         - name: config
           configMap:
             name: {{ .Values.zot.serviceName }}-config
+        - name: auth
+          secret:
+            secretName: {{ $authSecret }}
+            items:
+              - key: htpasswd
+                path: htpasswd
         {{- if not .Values.zot.storage.persistence }}
         # No PVC: clusters without a dynamic StorageClass (e.g. fe3455) use an
         # ephemeral emptyDir for OCI blobs — mirrors the pg persistence.enabled=false

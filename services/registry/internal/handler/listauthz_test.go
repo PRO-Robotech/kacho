@@ -312,7 +312,7 @@ func registryLevelOpH(t *testing.T, id, registryID, desc string) operations.Oper
 
 func newTestHandlerOps(ops operations.Repo, az Authorizer) *RegistryHandler {
 	uc := registry.New(stubRepo{}, stubRepo{}, stubCfg{}, &fakeZotH{}, stubIAM{}, stubGeo{}, stubRepo{}, ops, "registry.kacho.local")
-	return NewRegistryHandler(uc, az)
+	return NewRegistryHandler(uc, az, 0)
 }
 
 // REG-r8 — существование-oracle закрыт: namespace-viewer БЕЗ per-repo v_list на
@@ -398,7 +398,7 @@ func TestHandler_ListOperations_Breakglass_NilAuthorizer_AllVisible(t *testing.T
 
 func newTestHandler(zot registry.ZotClient, az Authorizer) *RegistryHandler {
 	uc := registry.New(stubRepo{}, stubRepo{}, stubCfg{}, zot, stubIAM{}, stubGeo{}, stubRepo{}, newMemOpsH(), "registry.kacho.local")
-	return NewRegistryHandler(uc, az)
+	return NewRegistryHandler(uc, az, 0)
 }
 
 type stubRepo struct{}
@@ -470,9 +470,10 @@ func (f *fakeZotH) RepositoryProjection(context.Context, string, string) (*domai
 	return nil, nil
 }
 func (f *fakeZotH) RepositoryEmpty(context.Context, string, string) (bool, error) { return true, nil }
-func (f *fakeZotH) RenameRepository(context.Context, string, string, string) error {
+func (f *fakeZotH) CopyRepositoryTags(context.Context, string, string, string) error {
 	return nil
 }
+func (f *fakeZotH) PurgeRepositoryTags(context.Context, string, string) error { return nil }
 func (f *fakeZotH) ListReferrers(context.Context, string, string, string, string) ([]*domain.Referrer, error) {
 	return nil, nil
 }
@@ -485,6 +486,12 @@ func (stubCfg) GetConfig(context.Context, string, string) (*domain.RepositoryCon
 	return nil, regerrors.ErrNotFound
 }
 func (stubCfg) ListConfigs(context.Context, string) ([]*domain.RepositoryConfig, error) {
+	return nil, nil
+}
+func (stubCfg) ListConfigsExcludingNames(context.Context, string, []string, int, int) ([]*domain.RepositoryConfig, error) {
+	return nil, nil
+}
+func (stubCfg) ConfigsByNames(context.Context, string, []string) ([]*domain.RepositoryConfig, error) {
 	return nil, nil
 }
 func (stubCfg) InsertConfig(context.Context, *domain.RepositoryConfig, ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {

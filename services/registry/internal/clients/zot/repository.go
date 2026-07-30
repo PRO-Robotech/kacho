@@ -98,14 +98,16 @@ func (c *Client) ListReferrers(ctx context.Context, registryID, repository, subj
 	return out, nil
 }
 
-// RenameRepository re-home'ит теги/манифесты repo old→new в движке (многошаговая
-// НЕ-атомарная OCI-операция, D-5): для каждого тега — raw-manifest GET(old) → PUT(new)
-// (блобы шарятся по digest в storage zot — манифест PUT с существующими digest'ами
-// резолвится), затем DELETE(old). Копирование ВСЕХ тегов в new ПРЕДШЕСТВУЕТ удалению old
-// — на любом сбое движка возвращаем ErrUnavailable fail-closed, а старое имя по-прежнему
-// резолвится (A21: НЕ бывает состояния «не адресуем ни под старым, ни под новым»).
-// Целевое имя занято на уровне overlay/проекции — арбитрит use-case pre-check + DB PK.
-func (c *Client) RenameRepository(ctx context.Context, registryID, oldName, newName string) error {
+// CopyRepositoryTags — НЕРАЗРУШАЮЩАЯ фаза переноса repo old→new: для каждого тега
+// raw-manifest GET(old) → PUT(new) (блобы шарятся по digest в storage zot, поэтому
+// манифест PUT с существующими digest'ами резолвится). Старое имя остаётся целым:
+// на любом сбое движка возвращаем ErrUnavailable fail-closed, и содержимое
+// по-прежнему адресуемо под old.
+//
+// Идемпотентна: повторный вызов публикует те же манифесты под теми же тегами — тот
+// же контент по тому же digest'у. Поэтому прерванный перенос ДОПУСКАЕТ повтор, а
+// не блокирует его (кто именно вправе занять целевое имя, арбитрит use-case).
+func (c *Client) CopyRepositoryTags(ctx context.Context, registryID, oldName, newName string) error {
 	if err := c.ready(); err != nil {
 		return err
 	}
@@ -115,19 +117,32 @@ func (c *Client) RenameRepository(ctx context.Context, registryID, oldName, newN
 		return err
 	}
 	newRepo := registryID + "/" + newName
-	// Фаза 1: копируем все теги old→new (оба адресуемы во время копирования).
 	for _, tag := range tags {
 		raw, contentType, gerr := c.rawManifest(ctx, oldRepo, tag)
 		if gerr != nil {
-			return gerr // fail-closed: old ещё цел
+			return gerr // fail-closed: old цел
 		}
 		if perr := c.putManifest(ctx, newRepo, tag, raw, contentType); perr != nil {
-			return perr // fail-closed: old ещё цел, new частично — overlay НЕ rekey'ится
+			return perr // fail-closed: old цел, new частично — повтор сойдётся
 		}
 	}
-	// Фаза 2: снимаем old (последним) — теперь new полностью населён, old→404.
+	return nil
+}
+
+// PurgeRepositoryTags — РАЗРУШАЮЩАЯ фаза переноса: снимает ВСЕ теги repo в движке.
+// Вызывается ТОЛЬКО ПОСЛЕ того, как новое имя закреплено в наложении и правах
+// (обратный порядок на сбое посередине уносит теги из адресуемого имени). Снятие
+// отсутствующего тега движок трактует идемпотентно, поэтому повтор безопасен.
+func (c *Client) PurgeRepositoryTags(ctx context.Context, registryID, repository string) error {
+	if err := c.ready(); err != nil {
+		return err
+	}
+	tags, err := c.repoTags(ctx, registryID+"/"+repository)
+	if err != nil {
+		return err
+	}
 	for _, tag := range tags {
-		if derr := c.DeleteTag(ctx, registryID, oldName, tag); derr != nil {
+		if derr := c.DeleteTag(ctx, registryID, repository, tag); derr != nil {
 			return derr
 		}
 	}

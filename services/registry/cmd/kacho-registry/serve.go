@@ -60,6 +60,11 @@ func runServe(cfg config.Config) error {
 	if err := validateSecurityConfig(cfg); err != nil {
 		return err
 	}
+	// Хранилище слоёв аутентифицирует всех: без учётных данных сервис не смог бы в
+	// него ходить — а значит хранилище открыто любому в сети подов.
+	if err := requireZotCredentials(cfg.AuthMode, cfg.ZotAddr, cfg.ZotUsername, cfg.ZotPassword); err != nil {
+		return err
+	}
 	// Самоотчёт о security-posture: ПОСЛЕ boot-guard'ов (validateAuthMode +
 	// validateSecurityConfig — конфиг уже ПРИНЯТ процессом) и ДО подъёма
 	// листенеров. Production-posture гейт обязан утверждать на этом наблюдаемом
@@ -156,7 +161,7 @@ func runServe(cfg config.Config) error {
 	// (иначе собственный немедленный pull толкавшего упрётся в v_get-deny → 404). Ключ по
 	// subject → раскрывается только собственный только-что-запушенный repo (REG-37 сохранён).
 	pushGrantRepo := pg.NewPushGrantRepo(pool, cfg.PushGrantTTL)
-	zotAdapter := zotclient.New(cfg.ZotAddr)
+	zotAdapter := zotclient.New(cfg.ZotAddr, zotclient.WithBasicAuth(cfg.ZotUsername, cfg.ZotPassword))
 	iamAdapter := iamclient.New(projectIAMConn)
 	var geoIAMConn grpc.ClientConnInterface
 	if geoConn != nil {
@@ -326,7 +331,7 @@ func runServe(cfg config.Config) error {
 	}
 
 	// Публичный control-plane RegistryService на :9090.
-	registryv1.RegisterRegistryServiceServer(grpcSrv, handler.NewRegistryHandler(registryUC, listAuthz))
+	registryv1.RegisterRegistryServiceServer(grpcSrv, handler.NewRegistryHandler(registryUC, listAuthz, cfg.AuthZCacheTTL))
 	// Admin InternalRegistryService ТОЛЬКО на cluster-internal :9091.
 	registryv1.RegisterInternalRegistryServiceServer(internalSrv, handler.NewInternalRegistryHandler(registryUC))
 	// OperationService (LRO poll) на ОБОИХ листенерах: async-мутации идут на public
@@ -340,7 +345,11 @@ func runServe(cfg config.Config) error {
 	// InternalIAMService.Check + existence-hiding + stream-proxy. Отдельно от gRPC.
 	var dpServer *http.Server
 	if cfg.DataplaneAddr != "" {
-		dpHandler, dperr := buildDataplaneHandler(cfg, authzConn, registryRepo, zotAdapter, registryRepo, pendingBlobRepo, pushGrantRepo, logger)
+		// registryRepo подаётся трижды и в трёх разных ролях: RepoRegistrar (эмит
+		// интента + durable-признак существования), RepositoryPresence (чтение того же
+		// признака ⊔ строки наложения — по нему выбирается глагол записи) и
+		// RegistryLookup (owning-project реестра для containment scope интента).
+		dpHandler, dperr := buildDataplaneHandler(cfg, authzConn, registryRepo, zotAdapter, registryRepo, registryRepo, pendingBlobRepo, pushGrantRepo, logger)
 		if dperr != nil {
 			return fmt.Errorf("build data-plane proxy: %w", dperr)
 		}
@@ -428,7 +437,7 @@ func runServe(cfg config.Config) error {
 // JWKS-verify Hydra-issued identity-JWT (RS256/ES256) + per-request
 // InternalIAMService.Check + zot stream-proxy. breakglass → bypass AuthN+AuthZ
 // (аварийный режим, как gRPC-листенеры).
-func buildDataplaneHandler(cfg config.Config, authzConn *grpc.ClientConn, repoReg dataplane.RepoRegistrar, backend dataplane.Backend, regLookup dataplane.RegistryLookup, uploads dataplane.UploadRecorder, pushGrants dataplane.PushGrantRecorder, logger *slog.Logger) (http.Handler, error) {
+func buildDataplaneHandler(cfg config.Config, authzConn *grpc.ClientConn, repoReg dataplane.RepoRegistrar, backend dataplane.Backend, presence dataplane.RepositoryPresence, regLookup dataplane.RegistryLookup, uploads dataplane.UploadRecorder, pushGrants dataplane.PushGrantRecorder, logger *slog.Logger) (http.Handler, error) {
 	// Plaintext data-plane обязан стоять за внешней TLS-терминацией (bearer
 	// identity-JWT не должны транзитить открытым текстом). В проде — явный ack
 	// оператора; проверяется независимо от breakglass (риск открытого сокета
@@ -437,7 +446,8 @@ func buildDataplaneHandler(cfg config.Config, authzConn *grpc.ClientConn, repoRe
 		return nil, err
 	}
 
-	forwarder, err := dataplane.NewZotForwarder(cfg.ZotAddr, logger)
+	forwarder, err := dataplane.NewZotForwarder(cfg.ZotAddr, logger,
+		dataplane.WithZotBasicAuth(cfg.ZotUsername, cfg.ZotPassword))
 	if err != nil {
 		return nil, err
 	}
@@ -463,7 +473,7 @@ func buildDataplaneHandler(cfg config.Config, authzConn *grpc.ClientConn, repoRe
 		authorizer = check.NewIAMCheckClient(authzConn)
 	}
 
-	return dataplane.New(verifier, authorizer, backend, forwarder, repoReg, regLookup, uploads, pushGrants,
+	return dataplane.New(verifier, authorizer, backend, presence, forwarder, repoReg, regLookup, uploads, pushGrants,
 		cfg.TokenRealm, cfg.ServiceAud, logger).
 		// Anonymous public pull (RG-1 D-7): resolve the iam-issued anon principal id to
 		// the FGA wildcard user:*. Empty → anon disabled (secure-by-default).
@@ -538,6 +548,37 @@ func requireDataplaneTLSAck(authMode string, tlsTerminatedExternally bool) error
 			return fmt.Errorf("AuthMode=%s requires KACHO_REGISTRY_DATAPLANE_TLS_TERMINATED_EXTERNALLY=true "+
 				"(the data-plane serves plaintext HTTP and must sit behind external TLS termination; "+
 				"bearer identity-JWTs would otherwise transit cleartext)", authMode)
+		}
+	}
+	return nil
+}
+
+// requireZotCredentials — в production/production-strict сервис обязан
+// предъявляться своему хранилищу слоёв (zot) HTTP-Basic'ом.
+//
+// Смысл гейта не в «шифровании пароля», а в том, что учётные данные —
+// НАБЛЮДАЕМЫЙ признак включённой аутентификации хранилища. zot тенантов не
+// различает: если реестр ходит в него анонимно, значит хранилище обслуживает
+// анонимных, и тогда любой процесс, дозвонившийся до его порта, перечисляет
+// репозитории всех тенантов, выгружает чужие слои, подменяет образ под чужим
+// тегом и удаляет содержимое — минуя проверку подписи docker-Bearer'а, per-request
+// Check, сокрытие существования и запрет разрушительного DELETE. Один хоп в объезд
+// всей плоскости данных, поэтому молчаливый старт в такой посадке запрещён
+// (параллель requireDataplaneTLSAck / requireSecureJWKSURL / requireIssuerPinned).
+//
+// zotAddr пуст ⇒ хранилище не сконфигурировано, ходить некуда — гейт молчит.
+// В dev — no-op (in-process фикстуры поднимают zot без аутентификации).
+func requireZotCredentials(authMode, zotAddr, username, password string) error {
+	switch authMode {
+	case "production", "production-strict":
+		if strings.TrimSpace(zotAddr) == "" {
+			return nil
+		}
+		if strings.TrimSpace(username) == "" || strings.TrimSpace(password) == "" {
+			return fmt.Errorf("AuthMode=%s requires KACHO_REGISTRY_ZOT_USERNAME and "+
+				"KACHO_REGISTRY_ZOT_PASSWORD (the layer store at %q must authenticate its callers; "+
+				"without credentials it serves anyone that reaches its port, and the whole data-plane "+
+				"authorization is one hop away)", authMode, zotAddr)
 		}
 	}
 	return nil

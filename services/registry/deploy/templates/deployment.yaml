@@ -131,6 +131,23 @@ spec:
             # ─── zot OCI backend (cluster-internal, never public) ───
             - name: KACHO_REGISTRY_ZOT_ADDR
               value: "{{ include "registry.zotAddr" . }}"
+            {{- if .Values.zot.enabled }}
+            # Учётные данные хранилища слоёв: zot аутентифицирует ВСЕХ (иначе его
+            # порт — объезд всей плоскости данных), поэтому и адаптер плоскости
+            # управления, и форвардер плоскости данных предъявляются им. Приходят
+            # секретом, НЕ значением в pod-spec. В production/production-strict их
+            # отсутствие — отказ в старте (requireZotCredentials).
+            - name: KACHO_REGISTRY_ZOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.zot.auth.existingSecret | default (printf "%s-auth" .Values.zot.serviceName) }}
+                  key: username
+            - name: KACHO_REGISTRY_ZOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.zot.auth.existingSecret | default (printf "%s-auth" .Values.zot.serviceName) }}
+                  key: password
+            {{- end }}
             # ─── data-plane OCI auth-proxy (registry.kacho.local) ───
             # registry-iam-jwks-unify — the docker-Bearer verifier fetches its JWKS from
             # the cluster-INTERNAL kacho-iam JWKS proxy (:9097), a byte-for-byte mirror of
@@ -299,6 +316,13 @@ spec:
               readOnly: true
             - name: registry-dataplane-nginx
               mountPath: /etc/nginx/conf.d
+              readOnly: true
+            # Trust-anchor для проверки iam-леафа на хопе `/iam/token`: без него
+            # proxy_ssl_verify нечем удовлетворить, и следующий человек «починил бы»
+            # это выключением проверки. Тот же том, которым сам data-plane верифицирует
+            # JWKS-леаф iam (условие рендера тома совпадает с условием sidecar'а).
+            - name: internal-ca
+              mountPath: /etc/registry-ca
               readOnly: true
         {{- end }}
       volumes:

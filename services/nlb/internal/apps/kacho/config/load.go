@@ -76,7 +76,7 @@ func Load(path string) (*Config, error) {
 // pgx → connection fail → init-container CrashLoopBackOff.
 //
 // Подставляет значение env-переменной `cfg.Repository.Postgres.PasswordFromEnv`
-// вместо `$(<имя>)` в URL и SlaveURL. Env-var не задана → placeholder
+// вместо `$(<имя>)` в URL. Env-var не задана → placeholder
 // остаётся (failure surface на connect, не silent «постгрес с пустым
 // паролем»). `password-from-env: ""` → ничего не делаем.
 func expandPasswordFromEnv(cfg *Config) {
@@ -90,5 +90,4 @@ func expandPasswordFromEnv(cfg *Config) {
 	}
 	placeholder := "$(" + envName + ")"
 	cfg.Repository.Postgres.URL = strings.ReplaceAll(cfg.Repository.Postgres.URL, placeholder, pass)
-	cfg.Repository.Postgres.SlaveURL = strings.ReplaceAll(cfg.Repository.Postgres.SlaveURL, placeholder, pass)
 }

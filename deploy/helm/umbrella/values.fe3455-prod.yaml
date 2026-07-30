@@ -359,6 +359,21 @@ registry:
     iamGrpcAddr: kacho-iam-internal.kacho.svc.cluster.local:9091
     iamProjectGrpcAddr: kacho-iam.kacho.svc.cluster.local:9090
   zot:
+    # ─── Аутентификация хранилища слоёв ───────────────────────────────────────
+    # zot не различает тенантов: пока его порт отвечал любому в сети подов, весь
+    # per-request контроль плоскости данных обходился одним хопом (перечисление
+    # репозиториев всех тенантов, выгрузка чужих слоёв, подмена образа под чужим
+    # тегом, удаление содержимого). На этом стенде сетевые политики отключены
+    # целиком (см. шапку профиля), поэтому аутентификация — ЕДИНСТВЕННЫЙ контроль
+    # на этом хопе, и её отсутствие ничем не компенсировалось.
+    #
+    # ⚠ ШАГ ОПЕРАТОРА (до раската): Secret `zot-auth` в ns kacho с ключами
+    # username/password/htpasswd (htpasswd — bcrypt-строка `<user>:$2y$…` того же
+    # пароля), провизионится ВНЕ git — ровно как `zot-s3-creds` ниже. Без него поды
+    # zot и registry не поднимутся: чарт отказывается разворачивать открытое
+    # хранилище, а registry в production-режиме — стартовать без учётных данных.
+    auth:
+      existingSecret: zot-auth
     # v2.1.18 — carries http.compat + the s3 storageDriver + redirectBlobURL. The
     # fe3455 `:latest` tag already resolves to this sha (sha256:34f18f78…); pin it so a
     # future re-pull can't drift to a build without these config keys.

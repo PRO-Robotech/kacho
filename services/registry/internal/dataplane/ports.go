@@ -48,7 +48,11 @@ type Authorizer interface {
 }
 
 // Backend — read-side zot-интроспекция для authz-решений (не сам reverse-proxy):
-//   - RepoExists — repo зарегистрирован (push-new vs push-existing verb-map).
+//   - RepoExists — в движке есть ХОТЯ БЫ ОДИН тег этого repo. Это предикат
+//     СОДЕРЖИМОГО, а НЕ существования ресурса: заявленный и ещё пустой репозиторий
+//     ему не отвечает. Выбирать по нему глагол записи НЕЛЬЗЯ — это делает
+//     RepositoryPresence. Оставшийся потребитель — pushContextRevealsBlob, который
+//     спрашивает буквально «манифест ещё не запушен?» (см. его godoc).
 //   - BlobInRepo — <digest> входит в манифест(ы) авторизованного repo (blob-scope
 //     existence-hiding: чужой блоб недостижим через blob-HEAD/GET).
 //   - CatalogRepoNames — полный zot-каталог (per-repo listauthz-фильтр _catalog).
@@ -60,19 +64,54 @@ type Backend interface {
 	CatalogRepoNames(ctx context.Context) ([]string, error)
 }
 
+// RepositoryPresence — предикат существования репозитория как РЕСУРСА, по которому
+// выбирается глагол записи: существует ⇒ v_update@registry_repository («изменить ЭТОТ
+// репозиторий»), не существует ⇒ v_create@registry_registry («создать репозиторий в
+// реестре»).
+//
+// Источник — durable-состояние сервиса: строка наложения (repository_configs, заявлен
+// через control-plane) ЛИБО строка регистрации (registry_repository_registration,
+// заявлен первым push'ем; пишется одной tx с register-intent). Содержимое движка в
+// предикат не входит.
+//
+// Почему это отдельный порт, а не Backend.RepoExists. Пока право писать выбиралось по
+// наличию тегов, репозиторий, заявленный владельцем и ещё пустой, для решения не
+// существовал: запись в него гейтилась правом «создавать репозитории в реестре»
+// (которое есть у любого соседа по реестру), а ветка создания попутно выписывала
+// пишущему владение чужим объектом. Тот же предикат делал невозможным повтор первого
+// push'а: после потери регистрации теги в движке уже есть, глагол переключается на
+// v_update, tuple'ов нет — отказ.
+//
+// Реализуется pg.RegistryRepo. nil → fail-closed (503): без предиката решение о праве
+// принять нельзя, а «считать, что ресурса нет» вернуло бы ровно ту дыру, ради которой
+// порт заведён. Поэтому параметр New обязателен — забыть его нельзя по построению.
+type RepositoryPresence interface {
+	// RepositoryDeclared сообщает, существует ли <registryID>/<repo> как ресурс.
+	// Ошибка (БД недоступна) → fail-closed у вызывающего.
+	RepositoryDeclared(ctx context.Context, registryID, repo string) (bool, error)
+}
+
 // Forwarder — reverse-proxy запроса в zot (stream тела/заголовков/range, chunked
 // upload). Возвращает HTTP-статус, записанный клиенту (register-on-first-push
 // эмитится только на успешном manifest-PUT). Ошибка zot → 502/503 (fail-closed).
 //
 // ForwardCapture — тот же round-trip в zot, но ОТВЕТ (status+headers+body)
-// БУФЕРИЗУЕТСЯ в память, а не стримится клиенту напрямую. Нужен ровно для
-// blob PUT-finalize (REG-33 Defect A): даёт caller'у отреагировать на исход zot
-// (durable-запись факта аплоада блоба в этот repo) ДО того, как клиент увидит 2xx —
-// docker может сделать HEAD блоба сразу за 201, поэтому строка обязана закоммититься
-// первой. Ответ blob-finalize — только статус+заголовки, пустое тело → буфер тривиален
-// (тело запроса при этом по-прежнему стримится в zot, ReverseProxy не буферизует его).
-// Стриминговый Forward остаётся для всех прочих маршрутов (blob GET, chunk PATCH,
-// manifest PUT).
+// БУФЕРИЗУЕТСЯ в память, а не стримится клиенту напрямую. Нужен там, где caller обязан
+// отреагировать на исход zot durable-работой ДО того, как клиент увидит 2xx. Два таких
+// места, и оба — «движок уже принял, но обязательство ещё не закреплено»:
+//   - blob PUT-finalize (REG-33 Defect A) — durable-запись факта аплоада блоба в этот
+//     repo: docker может сделать HEAD блоба сразу за 201, поэтому строка обязана
+//     закоммититься первой;
+//   - manifest-PUT НОВОГО репозитория — регистрация репозитория (durable-признак
+//     существования + register-intent): отданный первым 2xx сделал бы её потерю
+//     безвозвратной, потому что строки в очереди при сбое нет вовсе и переигрывать
+//     нечего.
+//
+// Оба ответа — статус+заголовки с пустым/крошечным телом → буфер тривиален. Тело
+// ЗАПРОСА при этом по-прежнему стримится в zot (ReverseProxy его не накапливает),
+// поэтому размер слоя/образа на память не влияет. Стриминговый Forward остаётся для
+// всех прочих маршрутов (blob GET, chunk PATCH, upload-init, перезапись манифеста
+// существующего репозитория).
 type Forwarder interface {
 	Forward(w http.ResponseWriter, r *http.Request) int
 	ForwardCapture(r *http.Request) CapturedResponse
@@ -153,8 +192,15 @@ type PushGrantRecorder interface {
 }
 
 // RepoRegistrar — эмит register-intent нового repo (register-on-first-push):
-// registry_repository:<reg>/<repo> parent+owner tuple → registry_outbox →
-// fga-proxy drainer (идемпотентно). Реализуется pg.RegistryRepo. nil → no-op.
+// registry_repository:<reg>/<repo> parent+owner tuple → registry_outbox → fga-proxy
+// drainer (идемпотентно). ТА ЖЕ tx записывает durable-признак существования ресурса
+// (registry_repository_registration), который читает RepositoryPresence — поэтому
+// успех этого вызова и есть «репозиторий теперь существует».
+//
+// Реализуется pg.RegistryRepo. nil → первый push нового репозитория отвергается
+// fail-closed (503), а НЕ пропускается: раз регистрацию сделать durable нечем, принять
+// push значило бы отдать 2xx на репозиторий, который никогда не станет ресурсом и
+// которого пишущий потом не сможет ни изменить, ни вытянуть.
 type RepoRegistrar interface {
 	RegisterRepository(ctx context.Context, intent domain.RegisterIntent) error
 }
@@ -162,7 +208,12 @@ type RepoRegistrar interface {
 // RegistryLookup — резолв owning-project реестра по id (control-plane read). Нужен
 // register-on-first-push, чтобы intent репо нёс ParentProjectID (containment scope в
 // iam-mirror; без него reconciler не материализует per-object v_* → репо непуллим
-// даже владельцем). Реализуется pg.RegistryRepo. nil → интент без project (best-effort).
+// даже владельцем).
+//
+// Реализуется pg.RegistryRepo. Два исхода РАЗЛИЧАЮТСЯ и не должны схлопываться в одно
+// значение: nil-порт — резолвер не сконфигурирован (интент уезжает без project,
+// прежнее поведение); ОШИБКА резолва — состояние неизвестно, и деградированный интент
+// с пустым project НЕ эмитится (см. resolveRegistryProject).
 type RegistryLookup interface {
 	RegistryProjectID(ctx context.Context, registryID string) (string, error)
 }

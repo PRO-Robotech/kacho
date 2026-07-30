@@ -389,6 +389,11 @@ mtls:
   # client that presents NO client cert; RequireAndVerifyClientCert would reject the
   # handshake. Encryption + server-auth via the internal-CA leaf; internal-only surface.
   jwksProxyClientAuthMode: server-tls-only
+  # docker-token listener (:9096) — ONE-WAY server-TLS: аутентификация вызывающего
+  # на этом эндпоинте и ЕСТЬ предъявляемый им Basic (в этом его смысл); не хватало
+  # шифрования и аутентификации СЕРВЕРА. mutual потребовал бы client-cert у
+  # nginx-sidecar реестра, который его не носит.
+  registryTokenClientAuthMode: server-tls-only
   # ─── internal-CA leaf-cert issuance (this chart owns its Certificate, rule #1) ─
   # kacho-iam is the authz authority itself → SERVER cert only (no client cert,
   # no IAM grant needed — it does not dial peers in SEC-H scope). Server-cert SAN

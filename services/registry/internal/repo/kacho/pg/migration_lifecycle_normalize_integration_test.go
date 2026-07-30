@@ -22,6 +22,13 @@ import (
 // preLifecycleNormalizeVersion — последняя миграция ДО нормализации (0011).
 const preLifecycleNormalizeVersion int64 = 11
 
+// lifecycleNormalizeVersion — сама нормализация (0012). Тесты этого файла идут ДО НЕЁ
+// и ровно на неё, а не «до конца цепочки»: их предмет — Up и Down ИМЕННО 0012.
+// Голый goose.Up + один goose.Down выражал бы это, только пока 0012 остаётся последней
+// миграцией сервиса, — то есть закреплял бы «0012 — вершина», а не своё содержание, и
+// краснел бы на любой следующей миграции, ничего не сообщая о нормализации.
+const lifecycleNormalizeVersion int64 = 12
+
 // Апгрейд на стенде, где overlay-строка уже несёт EPHEMERAL: после Up значение
 // приведено к тому, чем строка является на деле — DURABLE. Строка обязана уцелеть
 // (нормализация — не удаление) со всеми своими полями.
@@ -81,7 +88,10 @@ func TestMigration0012_LifecycleNormalize_NoopOnEmptyCatalogue(t *testing.T) {
 		t.Skip("skipping integration test (testing.Short)")
 	}
 	db := openGoose(t, startPG(t))
-	require.NoError(t, goose.Up(db, "."))
+	// Поднимаемся РОВНО до 0012 — тогда единственный Down снимает именно её (см.
+	// lifecycleNormalizeVersion). До конца цепочки идти нельзя: Down снял бы последнюю
+	// миграцию сервиса, какой бы она ни была, и тест перестал бы говорить о нормализации.
+	require.NoError(t, goose.UpTo(db, ".", lifecycleNormalizeVersion))
 
 	var rows int
 	require.NoError(t, db.QueryRow(`SELECT count(*) FROM kacho_registry.repository_configs`).Scan(&rows))

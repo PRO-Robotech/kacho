@@ -85,6 +85,20 @@ func Encode(name string) string {
 }
 
 // encodeOffset кодирует позицию в опаковый base64-курсор (не несёт имён).
+// EncodeOffset/DecodeOffset — тот же опаковый offset-курсор для источников, которые
+// режут окно У СЕБЯ (движок с server-side пагинацией), а не отдают весь набор в
+// WindowByOffset. Форма курсора обязана совпадать: иначе один и тот же контракт
+// пагинации имел бы две несовместимые кодировки.
+func EncodeOffset(offset int) string { return encodeOffset(offset) }
+
+// DecodeOffset разбирает опаковый offset-курсор (пустой → 0).
+func DecodeOffset(token string) (int, error) {
+	if token == "" {
+		return 0, nil
+	}
+	return decodeOffset(token)
+}
+
 func encodeOffset(offset int) string {
 	return base64.StdEncoding.EncodeToString([]byte(strconv.Itoa(offset)))
 }

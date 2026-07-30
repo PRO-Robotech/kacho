@@ -97,6 +97,81 @@ func (r *RepositoryConfigRepo) ListConfigs(ctx context.Context, registryID strin
 	return out, nil
 }
 
+// ListConfigsExcludingNames возвращает ОКНО overlay-строк реестра в том же порядке
+// (created_at, name) ASC, исключая перечисленные имена — offset/limit.
+//
+// Отбор ведёт БД по индексу (registry_id, created_at, name), а не память сервиса:
+// перечисление репозиториев прежде тянуло ВЕСЬ каталог наложения вместе с метками на
+// КАЖДОЙ странице и фильтровало его у себя, поэтому обход реестра стоил O(N²/page_size)
+// прочитанных строк, а при page_size=1 страница читала весь реестр целиком. limit<=0 →
+// пусто (вырожденное окно не превращаем в «прочитать всё»).
+func (r *RepositoryConfigRepo) ListConfigsExcludingNames(ctx context.Context, registryID string, excluded []string, offset, limit int) ([]*domain.RepositoryConfig, error) {
+	if err := r.ready(); err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		return nil, nil
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if excluded == nil {
+		excluded = []string{}
+	}
+	// Анти-джойн через unnest, а НЕ `name <> ALL($2)`: форма с массивом сравнивает
+	// каждую строку с каждым элементом (O(строк×имён)) — это заменило бы память
+	// сервиса процессорным временем базы на том же большом реестре. unnest даёт
+	// планировщику хеш-анти-джойн и NULL-безопасен (в списке имён NULL быть не может).
+	q := fmt.Sprintf(`SELECT %s FROM %s.repository_configs c
+		WHERE c.registry_id = $1
+		  AND NOT EXISTS (SELECT 1 FROM unnest($2::text[]) AS x(n) WHERE x.n = c.name)
+		ORDER BY c.created_at ASC, c.name ASC OFFSET $3 LIMIT $4`, configColumns, schema)
+	rows, err := r.pool.Query(ctx, q, registryID, excluded, offset, limit)
+	if err != nil {
+		return nil, mapConfigErr(err)
+	}
+	defer rows.Close()
+	return scanConfigRows(rows)
+}
+
+// ConfigsByNames возвращает overlay-строки реестра ТОЛЬКО для перечисленных имён
+// (окно проекции движка). Пустой список — не запрос «все», а пустой ответ: иначе
+// вырожденный случай тихо вернул бы полный скан, ради устранения которого метод и
+// заведён.
+func (r *RepositoryConfigRepo) ConfigsByNames(ctx context.Context, registryID string, names []string) ([]*domain.RepositoryConfig, error) {
+	if err := r.ready(); err != nil {
+		return nil, err
+	}
+	if len(names) == 0 {
+		return nil, nil
+	}
+	q := fmt.Sprintf(`SELECT %s FROM %s.repository_configs
+		WHERE registry_id = $1 AND name = ANY($2)
+		ORDER BY created_at ASC, name ASC`, configColumns, schema)
+	rows, err := r.pool.Query(ctx, q, registryID, names)
+	if err != nil {
+		return nil, mapConfigErr(err)
+	}
+	defer rows.Close()
+	return scanConfigRows(rows)
+}
+
+// scanConfigRows вычитывает набор overlay-строк (общий хвост списочных запросов).
+func scanConfigRows(rows pgx.Rows) ([]*domain.RepositoryConfig, error) {
+	var out []*domain.RepositoryConfig
+	for rows.Next() {
+		cfg, serr := scanConfig(rows)
+		if serr != nil {
+			return nil, mapConfigErr(serr)
+		}
+		out = append(out, cfg)
+	}
+	if rerr := rows.Err(); rerr != nil {
+		return nil, mapConfigErr(rerr)
+	}
+	return out, nil
+}
+
 // InsertConfig вставляет overlay-строку под ACTIVE-guard + эмитит intents одной tx
 // (Create durable; adopt-additive поверх проекции — overlay ⟂ projection; ephemeral
 // rename auto-promote A23). PRIMARY KEY(registry_id,name)-конфликт → 23505 →

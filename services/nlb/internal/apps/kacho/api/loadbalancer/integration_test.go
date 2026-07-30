@@ -354,7 +354,14 @@ func TestIntegration_ListOperations_FilterByResourceID(t *testing.T) {
 	opsRepo := newOpsRepo(t, pool)
 	h := makeHandler(t, repo, opsRepo)
 
-	op, err := h.Create(context.Background(), internalAutoReq("prj-ops", "edge"))
+	// The operations page is creator-scoped, and an absent principal owns nothing —
+	// a bare context made this list legitimately empty, so the case measured an
+	// anonymous read rather than its own subject. Both calls now run as one named
+	// caller, which is what the case means: the creator lists its own operations.
+	ctx := operations.WithPrincipal(context.Background(),
+		operations.Principal{Type: "user", ID: "usr-ops-filter"})
+
+	op, err := h.Create(ctx, internalAutoReq("prj-ops", "edge"))
 	require.NoError(t, err)
 	final := pollOpDone(t, opsRepo, op.GetId())
 	require.Nilf(t, final.Error, "op err: %v", final.Error)
@@ -366,7 +373,7 @@ func TestIntegration_ListOperations_FilterByResourceID(t *testing.T) {
 	require.NoError(t, row.Scan(&lbID))
 	require.NotEmpty(t, lbID)
 
-	resp, err := h.ListOperations(context.Background(), &lbv1.ListNetworkLoadBalancerOperationsRequest{
+	resp, err := h.ListOperations(ctx, &lbv1.ListNetworkLoadBalancerOperationsRequest{
 		NetworkLoadBalancerId: lbID,
 	})
 	require.NoError(t, err)

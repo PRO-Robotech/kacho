@@ -265,13 +265,23 @@ func TestDataplane_REG14_PushNewRepo_CarriesRegistryProject(t *testing.T) {
 	require.Equal(t, 1, lk.calls, "project resolved exactly once on register-on-first-push")
 }
 
-// REG-14d — register-on-first-push, но RegistryProjectID-lookup упал (iam/registry
-// транзиентно недоступен на post-response пути). Контракт resolveRegistryProject
-// (handler.go:230): best-effort — интент ВСЁ РАВНО эмитится (хотя бы структурный
-// parent-tuple, не регрессируя ниже прежнего поведения), но с ПУСТЫМ ParentProjectID
-// (iam-reconciler тогда не материализует per-object v_*), а сбой наблюдаемо логируется.
-// Без теста эта деградирующая ветка меняла бы поведение (skip vs emit) незаметно.
-func TestDataplane_REG14d_PushNewRepo_ProjectLookupError_EmitsEmptyProject_Logged(t *testing.T) {
+// REG-14d — первый push нового репозитория, но резолв owning-проекта реестра УПАЛ.
+//
+// Утверждает: намерение с пустым проектом НЕ эмитируется, клиент получает не-2xx (и
+// потому повторит), а отказ наблюдаем в логе.
+//
+// ЧТО ЭТОТ ТЕСТ УТВЕРЖДАЛ РАНЬШЕ И ПОЧЕМУ ЭТО БЫЛО ЗАКРЕПЛЕНИЕМ ДЕФЕКТА. Прежняя
+// редакция требовала ровно обратного: 201 клиенту И намерение с ПУСТЫМ ParentProjectID.
+// Она закрепляла ФОРМУ тогдашней ветки («не регрессируем ниже прежнего поведения»), а не
+// её корректность. Пустой проект — не безобидная деградация: принимающая сторона его не
+// проверяет, поэтому намерение доставлялось УСПЕШНО и помечалось отправленным, а
+// сопоставление шло только по общему для кластера уровню — участники и администратор
+// проекта репозиторий не видели. Последствие было ПОСТОЯННЫМ: повтора не было (второй
+// push шёл полосой изменения), переигрывать в очереди было нечего, а единственным следом
+// оставалась строка в логе. Тест при этом был зелёным, потому что спрашивал «эмитировали
+// ли», а не «эмитировали ли то, что имеет смысл». Записи об осознанном отступлении в
+// docs/architecture не было — значит утверждение было ошибкой, а не решением.
+func TestDataplane_REG14d_PushNewRepo_ProjectLookupError_NoEmit_FailClosed(t *testing.T) {
 	az := &fakeAuthz{allow: map[string]bool{"v_create registry_registry:reg-A": true}}
 	fw := &fakeForwarder{status: 201}
 	be := &fakeBackend{exists: map[string]bool{}}
@@ -280,21 +290,20 @@ func TestDataplane_REG14d_PushNewRepo_ProjectLookupError_EmitsEmptyProject_Logge
 
 	var logbuf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logbuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	h := New(&fakeVerifier{subject: "sva-ci"}, az, be, fw, rr, lk, &fakeUploadRecorder{}, &fakePushGrantRecorder{},
+	h := New(&fakeVerifier{subject: "sva-ci"}, az, be, presenceFor(be), fw, rr, lk, &fakeUploadRecorder{}, &fakePushGrantRecorder{},
 		"https://api.kacho.local/iam/token", "registry.kacho.local", logger)
 
 	up := doReq(h, http.MethodPost, "/v2/reg-A/app/blobs/uploads/", true)
-	require.Equal(t, 201, up.Code)
+	require.Equal(t, 201, up.Code, "загрузка блоба резолва проекта не требует")
 	mf := doReq(h, http.MethodPut, "/v2/reg-A/app/manifests/v1", true)
-	require.Equal(t, 201, mf.Code, "push 2xx forwarded несмотря на сбой project-lookup")
+	require.Equal(t, http.StatusServiceUnavailable, mf.Code,
+		"проект неизвестен → 2xx не отдаём: клиент повторит и переэмитит с авторитетным проектом")
 
-	intents := rr.registered()
-	require.Len(t, intents, 1, "register-intent эмитится даже при сбое project-lookup (best-effort)")
-	require.Empty(t, intents[0].ParentProjectID,
-		"project-lookup failure → пустой ParentProjectID (не выдумываем project)")
-	require.Equal(t, 1, lk.calls, "project-lookup попытан ровно один раз")
-	require.Contains(t, logbuf.String(), "register-on-first-push project lookup failed",
-		"сбой project-lookup наблюдаемо залогирован (не проглочен)")
+	require.Empty(t, rr.registered(),
+		"намерение с пустым проектом НЕ эмитируется (иначе оно уедет успешным и станет постоянным)")
+	require.Equal(t, 1, lk.calls, "резолв попытан ровно один раз")
+	require.Contains(t, logbuf.String(), "repository registration project lookup failed",
+		"отказ наблюдаем (не проглочен)")
 }
 
 // REG-18 — push без прав → первый upload-запрос Check(registry_registry:reg-A, v_create)
@@ -314,12 +323,23 @@ func TestDataplane_REG18_PushNoRights_403Denied(t *testing.T) {
 	require.Empty(t, rr.registered())
 }
 
-// REG-14c — register-on-first-push emit-failure branch (handler.go:211): успешный
-// первый manifest-PUT нового repo, но RegisterRepository durable-emit падает (редкий
-// DB-сбой). Контракт log-and-continue: клиент всё равно получает свой 2xx (уже
-// отданный ответ не рвём), сбой наблюдаемо логируется, паники нет. Регресс-гейт
-// против «push стал рвать клиента» или «сбой проглочен молча».
-func TestDataplane_REG14c_RegisterEmitFailure_PushStill2xx_Logged(t *testing.T) {
+// REG-14c — первый push нового репозитория, но durable-emit регистрации падает (сбой
+// БД).
+//
+// Утверждает: 2xx НЕ отдаётся (ответ движка не релеится), отказ наблюдаем, попытка ровно
+// одна — повтор принадлежит клиенту, а не хендлеру.
+//
+// ЧТО ЭТОТ ТЕСТ УТВЕРЖДАЛ РАНЬШЕ И ПОЧЕМУ ЭТО БЫЛО ЗАКРЕПЛЕНИЕМ ДЕФЕКТА. Прежняя редакция
+// требовала «клиент всё равно получает свой 2xx», формулируя это как контракт
+// log-and-continue. Но отдать 2xx было НЕЧЕМ обеспечить: строки в очереди при сбое нет
+// вовсе, поэтому backstop-переигрывание переигрывать нечего (оно поднимает существующие
+// отравленные строки, а не отсутствующие), а повторный push шёл полосой изменения и
+// упирался в отказ — репозиторий оставался без прав навсегда, пул держался только мостом
+// push-ownership на минуту. Тест был зелёным, потому что проверял, что клиента «не рвут»,
+// — свойство, которое здесь противоречит сохранности. Соседняя запись блоба в этом же
+// файле тот же класс отказа всегда трактовала fail-closed'ом; расхождение и было дефектом.
+// «Попытка ровно одна» сохранено — оно про отсутствие внутреннего ретрая и осталось верным.
+func TestDataplane_REG14c_RegisterEmitFailure_FailClosed_Logged(t *testing.T) {
 	az := &fakeAuthz{allow: map[string]bool{"v_create registry_registry:reg-A": true}}
 	fw := &fakeForwarder{status: 201}
 	be := &fakeBackend{exists: map[string]bool{}} // новый repo
@@ -327,19 +347,21 @@ func TestDataplane_REG14c_RegisterEmitFailure_PushStill2xx_Logged(t *testing.T) 
 
 	var logbuf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logbuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	h := New(&fakeVerifier{subject: "sva-ci"}, az, be, fw, rr,
+	h := New(&fakeVerifier{subject: "sva-ci"}, az, be, presenceFor(be), fw, rr,
 		&fakeRegistryLookup{}, &fakeUploadRecorder{}, &fakePushGrantRecorder{}, "https://api.kacho.local/iam/token", "registry.kacho.local", logger)
 
 	up := doReq(h, http.MethodPost, "/v2/reg-A/app/blobs/uploads/", true)
 	require.Equal(t, 201, up.Code)
 
-	// manifest-PUT: forward успешен (201), register-emit падает — клиент НЕ страдает.
+	// manifest-PUT: движок манифест принял, но durable-emit регистрации падает — ответ
+	// движка НЕ релеится, клиент получает отказ и повторит.
 	mf := doReq(h, http.MethodPut, "/v2/reg-A/app/manifests/v1", true)
-	require.Equal(t, 201, mf.Code, "push 2xx forwarded несмотря на сбой register-emit")
+	require.Equal(t, http.StatusServiceUnavailable, mf.Code,
+		"регистрация не стала durable → 2xx не отдаём (иначе она теряется безвозвратно)")
 
-	require.Len(t, rr.registered(), 1, "register-intent попытан ровно один раз")
-	require.Contains(t, logbuf.String(), "register-on-first-push emit failed",
-		"сбой durable-emit наблюдаемо залогирован (не проглочен)")
+	require.Len(t, rr.registered(), 1, "попытка ровно одна — внутреннего ретрая нет, повтор за клиентом")
+	require.Contains(t, logbuf.String(), "repository registration emit failed",
+		"отказ наблюдаем (не проглочен)")
 }
 
 // REG-15 — push в СУЩЕСТВУЮЩИЙ repo: verb-map = v_update@registry_repository (НЕ
@@ -1271,7 +1293,7 @@ func TestDataplane_REG33IP_RecordPushGrantFailure_PushStill2xx_Logged(t *testing
 	pgr := &fakePushGrantRecorder{recErr: errors.New("pg down")}
 	var logbuf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&logbuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	h := New(&fakeVerifier{subject: "sva-ci"}, az, be, fw, &fakeRepoReg{}, &fakeRegistryLookup{}, &fakeUploadRecorder{}, pgr,
+	h := New(&fakeVerifier{subject: "sva-ci"}, az, be, presenceFor(be), fw, &fakeRepoReg{}, &fakeRegistryLookup{}, &fakeUploadRecorder{}, pgr,
 		"https://api.kacho.local/iam/token", "registry.kacho.local", logger)
 
 	mf := doReq(h, http.MethodPut, "/v2/reg-A/app/manifests/v1", true)
@@ -1479,7 +1501,7 @@ func TestDataplane_REG33IP_DeleteOnMaterializedFailure_PullStill2xx_Logged(t *te
 	}
 	logbuf := &syncBuffer{} // потокобезопасно: delete-on-materialized логирует из детач-goroutine
 	logger := slog.New(slog.NewTextHandler(logbuf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	h := New(&fakeVerifier{subject: "sva-ci"}, az, &fakeBackend{}, fw, &fakeRepoReg{}, &fakeRegistryLookup{}, &fakeUploadRecorder{}, pgr,
+	h := New(&fakeVerifier{subject: "sva-ci"}, az, &fakeBackend{}, &fakePresence{}, fw, &fakeRepoReg{}, &fakeRegistryLookup{}, &fakeUploadRecorder{}, pgr,
 		"https://api.kacho.local/iam/token", "registry.kacho.local", logger)
 
 	require.Equal(t, http.StatusOK, doReq(h, http.MethodGet, "/v2/reg-A/app/manifests/v1", true).Code,

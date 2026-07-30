@@ -39,9 +39,11 @@ data:
         # держать нельзя.
         url: {{ include "kacho-nlb.dbDSN" . | quote }}
         password-from-env: KACHO_NLB_DB_PASSWORD
-        max-conns: 0
-        conn-lifetime: 0s
-        slave-url: ""
+        # max-conns / conn-lifetime: 0 → дефолты pgxpool (max(4, NumCPU)).
+        # Доезжают до пула через config.DSN() (`pool_max_conns` /
+        # `pool_max_conn_lifetime`).
+        max-conns: {{ default 0 .Values.config.repository.postgres.maxConns }}
+        conn-lifetime: {{ default "0s" .Values.config.repository.postgres.connLifetime | quote }}
 
     authn:
       type: {{ .Values.config.authn.type | quote }}

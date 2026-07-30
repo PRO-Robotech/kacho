@@ -38,9 +38,8 @@ production — ещё и адреса peer-рёбер, в том числе `ext
   <tbody>
     <tr><td><code>repository.type</code></td><td><code>POSTGRES</code></td><td>Единственный поддерживаемый тип</td></tr>
     <tr><td><code>repository.postgres.url</code></td><td><em>(обязателен)</em></td><td>DSN до <code>kacho_nlb</code>. Сюда же смотрит <code>cmd/migrator</code></td></tr>
-    <tr><td><code>repository.postgres.max-conns</code></td><td><code>0</code></td><td>Лимит pgx-пула (0 → дефолт pgxpool)</td></tr>
-    <tr><td><code>repository.postgres.conn-lifetime</code></td><td><code>0s</code></td><td>Время жизни соединения (0 → дефолт)</td></tr>
-    <tr><td><code>repository.postgres.slave-url</code></td><td><em>(пусто)</em></td><td>Опциональный DSN read-replica для read-tx (CQRS Reader)</td></tr>
+    <tr><td><code>repository.postgres.max-conns</code></td><td><code>0</code></td><td>Ширина pgx-пула (0 → дефолт pgxpool, <code>max(4, NumCPU)</code>); доезжает как <code>pool_max_conns</code></td></tr>
+    <tr><td><code>repository.postgres.conn-lifetime</code></td><td><code>0s</code></td><td>Время жизни соединения (0 → дефолт); доезжает как <code>pool_max_conn_lifetime</code></td></tr>
   </tbody>
 </table>
 
