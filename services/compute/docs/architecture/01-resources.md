@@ -57,7 +57,7 @@ id `epd...`, внутри которого `response` = MachineType с id `mt-..
 `SubnetService.Create` → op `enp...`, внутри Subnet `e9b...`).
 
 **Не валидировать id-формат sync** на входе RPC (`(length) = "<=50"` из proto —
-max-длина, не format): verbatim YC — well-formed-но-несуществующий id даёт
+max-длина, не format): well-formed-но-несуществующий id даёт
 async `NotFound`, а malformed/wrong-prefix id → sync `InvalidArgument "invalid
 <res> id '<X>'"` (probe 2026-05-11), у нас пока ловится на DB-уровне → `NotFound`
 — расхождение, см. [`07-known-divergences.md`](07-known-divergences.md) §1.
@@ -84,7 +84,7 @@ state-машину статуса. Таблица `instances` + дочерние
 | `platform_id` | string | required (`standard-v1/v2/v3`, `highfreq-v3`, `gpu-*` — таблица в `internal/service/platforms.go`) |
 | `resources` | Resources{memory, cores, core_fraction, gpus} | в схеме: `cores`, `memory`, `core_fraction`, `gpus`. proto `ResourcesSpec`: `memory ≤ 274877906944`, `cores ∈ {2,4,...,80}`, `core_fraction ∈ {0,5,20,50,100}`, `gpus ∈ {0,1,2,4}` + per-platform валидация |
 | `status` | Instance.Status enum | `STATUS_UNSPECIFIED=0, PROVISIONING=1, RUNNING=2, STOPPING=3, STOPPED=4, STARTING=5, RESTARTING=6, UPDATING=7, ERROR=8, CRASHED=9, DELETING=10`. Подробно — [`03-instance-lifecycle.md`](03-instance-lifecycle.md) |
-| `metadata` | map<string,string> | суммарно ≤ 256 KiB (proto: "less than 512 KB" суммарно ключей+значений, каждое значение ≤ 256 KB); меняется только через `UpdateMetadata` RPC. **Омитится из ответа List** (verbatim YC) |
+| `metadata` | map<string,string> | суммарно ≤ 256 KiB (proto: "less than 512 KB" суммарно ключей+значений, каждое значение ≤ 256 KB); меняется только через `UpdateMetadata` RPC. **Омитится из ответа List** (часть контракта) |
 | `metadata_options` | MetadataOptions | nullable |
 | `boot_disk` | AttachedDisk{mode, device_name, auto_delete, disk_id} | derived: строка в `attached_disks` с `is_boot=true`; immutable |
 | `secondary_disks` | repeated AttachedDisk | derived из `attached_disks` `is_boot=false`; до 3 при Create (proto `(size) = "<=3"`) |
@@ -113,7 +113,7 @@ state-машину статуса. Таблица `instances` + дочерние
 | RPC | sync/async | статус | примечание |
 |---|---|---|---|
 | `Get` | sync | ✅ | `GET /compute/v1/instances/{instance_id}?view=` (BASIC/FULL — FULL включает metadata) |
-| `List` | sync | ✅ | `GET /compute/v1/instances?projectId=`. metadata всегда омитится (verbatim YC). filter: `id/name/created_at/status/zone_id/platform_id/host_id` (whitelist; текущая фаза — `name=`) |
+| `List` | sync | ✅ | `GET /compute/v1/instances?projectId=`. metadata всегда омитится (часть контракта). filter: `id/name/created_at/status/zone_id/platform_id/host_id` (whitelist; текущая фаза — `name=`) |
 | `Create` | async | ✅ | required `zone_id`/`platform_id`/`resources_spec`/`boot_disk_spec`. metadata `CreateInstanceMetadata{instance_id}`, response `Instance`. boot/secondary disk: `exactly_one` of {`disk_id`, `disk_spec`}. ⚠️ **без авто-NIC** — auto-NIC материализация `materializeNICs` удалена в `KAC-266`: инстанс создаётся **без сетевых интерфейсов** (`instance_network_interfaces` пуст), NIC не создаётся/привязывается на Create; правильная сетевая модель (явная привязка NIC) — будущая переделка. end status `RUNNING`. `filesystem_specs[]` / `local_disk_specs[]` — вместе с ещё четырьмя легаси-полями (`network_settings`, `maintenance_policy`, `maintenance_grace_period`, `serial_port_settings`) **отвергаются** синхронным `INVALID_ARGUMENT` первым стейтментом `Create`, см. `07-known-divergences.md` §7.1 |
 | `Update` | async | ✅ | metadata `UpdateInstanceMetadata`, response `Instance`. mutable: `name`/`description`/`labels`/`service_account_id`/`network_settings`/`placement_policy`/`scheduling_policy`/`maintenance_policy`/`maintenance_grace_period`/`serial_port_settings`. `resources_spec`/`platform_id` — только при `STOPPED` (`FailedPrecondition "Instance must be stopped"`). `metadata` — через `UpdateMetadata`. immutable: `zone_id`/`boot_disk` |
 | `Delete` | async | ✅ | metadata `DeleteInstanceMetadata`, response `Empty`. worker: обрабатывает attached disks по `auto_delete` (true → DELETE disk; false → строка `attached_disks` чистится CASCADE при DELETE instance), для каждого NIC с непустым `nic_id` — delete kacho-vpc `NetworkInterface` (release его Address-ресурсов; best-effort vpcClient), DELETE instance (CASCADE чистит NIC-строки + attached_disks), освобождает one_to_one_nat addresses (best-effort vpcClient) |
@@ -126,7 +126,7 @@ state-машину статуса. Таблица `instances` + дочерние
 | `DetachDisk` | async | ✅ | `POST :detachDisk` body `oneof {disk_id, device_name}` (`exactly_one`). precondition `status ∈ {RUNNING, STOPPED}`; disk attached & not boot. metadata `DetachInstanceDiskMetadata`, response `Instance` |
 | `AddOneToOneNat` | async | ✅ | `POST /addOneToOneNat` body `{network_interface_index, internal_address?, one_to_one_nat_spec?}`. precondition `status ∈ {RUNNING, STOPPED}`; NIC index valid. metadata `AddInstanceOneToOneNatMetadata`, response `Instance` |
 | `RemoveOneToOneNat` | async | ✅ | `POST /removeOneToOneNat` body `{network_interface_index, internal_address?}`. precondition как у Add. metadata `RemoveInstanceOneToOneNatMetadata`, response `Instance` |
-| `UpdateNetworkInterface` | async | ✅ | `PATCH /updateNetworkInterface` body `{network_interface_index, update_mask, subnet_id?, primary_v4_address_spec?, primary_v6_address_spec?, security_group_ids?}`. metadata `UpdateInstanceNetworkInterfaceMetadata`, response `Instance`. OCC через `xmin` (read-modify-write). Precondition-семантика probe YC |
+| `UpdateNetworkInterface` | async | ✅ | `PATCH /updateNetworkInterface` body `{network_interface_index, update_mask, subnet_id?, primary_v4_address_spec?, primary_v6_address_spec?, security_group_ids?}`. metadata `UpdateInstanceNetworkInterfaceMetadata`, response `Instance`. OCC через `xmin` (read-modify-write). Precondition-семантика ещё не закреплена |
 | `AttachNetworkInterface` | async | ✅ | `POST :attachNetworkInterface` body `{network_interface_index, subnet_id, primary_v4_address_spec?, security_group_ids[]}`. proto: instance должен быть `STOPPED`. metadata `AttachInstanceNetworkInterfaceMetadata`, response `Instance` |
 | `DetachNetworkInterface` | async | ✅ | `POST :detachNetworkInterface` body `{network_interface_index}`. proto: instance `STOPPED`. metadata `DetachInstanceNetworkInterfaceMetadata`, response `Instance` |
 | `ListOperations` | sync | ✅ | `GET /compute/v1/instances/{instance_id}/operations` |

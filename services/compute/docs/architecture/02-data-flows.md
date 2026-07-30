@@ -99,7 +99,7 @@ sequenceDiagram
     S->>DB: UPDATE operation error=NotFound "Project <X> not found"
   else project OK
     S->>ZR: zone existence (zones table)
-    Note over ZR: unknown zone → InvalidArgument (паритет с VPC; probe — YC может давать NotFound "Zone <X> not found")
+    Note over ZR: unknown zone → InvalidArgument (по конвенции by-lane split чужой id — peer-validate lane, FailedPrecondition; код ещё не выровнен)
     S->>DTR: type_id existence (default network-ssd if empty) → unknown → NotFound "Disk type <X> not found"
     alt source = image_id
       S->>DB: SELECT images WHERE id=$image_id → NotFound if absent;<br/>size >= image.min_disk_size else InvalidArgument
@@ -266,7 +266,7 @@ sequenceDiagram
   S->>DB: SELECT instances WHERE id=$instance_id → NotFound
   S->>S: assert status ∈ {RUNNING, STOPPED} else FailedPrecondition (text probe)
   S->>DB: SELECT disks WHERE id=$disk_id → NotFound; assert status=READY & zone_id=instance.zone_id else InvalidArgument/FailedPrecondition
-  S->>DB: SELECT attached_disks WHERE disk_id=$disk_id → если уже attached → FailedPrecondition (verbatim YC "The disk is being used")
+  S->>DB: SELECT attached_disks WHERE disk_id=$disk_id → если уже attached → FailedPrecondition (контрактный текст "The disk is being used")
   S->>DB: BEGIN; INSERT attached_disks (is_boot=false, mode, device_name, auto_delete); INSERT compute_outbox (Instance, UPDATED); COMMIT
   alt attached_disks_device_uniq violation
     DB-->>S: 23505 → InvalidArgument/AlreadyExists

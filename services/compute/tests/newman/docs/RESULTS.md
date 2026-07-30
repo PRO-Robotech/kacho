@@ -106,7 +106,7 @@ python3 tests/newman/scripts/gen.py
 # 4a. Прогнать всё одним махом
 tests/newman/scripts/run.sh                       # сводка → out/summary.txt
 tests/newman/scripts/run.sh --service disk        # один ресурс
-# 4b. Прогнать ПО ОДНОМУ кейсу за раз с зачисткой ресурсов (quota-safe — как для YC)
+# 4b. Прогнать ПО ОДНОМУ кейсу за раз с зачисткой ресурсов (quota-safe)
 tests/newman/scripts/run-incremental.sh           # все ~296 кейсов; сводка → out/incremental/summary.txt
 tests/newman/scripts/run-incremental.sh --resume                 # продолжить прерванный
 tests/newman/scripts/run-incremental.sh --service instance       # один ресурс
@@ -225,7 +225,7 @@ Attach-path уже конформен (`InstanceService.AttachDisk` вызыва
 
 ## Findings
 
-Найденные баги / расхождения с verbatim YC / observability-gaps — заводятся в GitHub Issues
+Найденные баги / отступления от контракта / observability-gaps — заводятся в GitHub Issues
 (`PRO-Robotech/kacho-compute`, метки `bug`/`tech-debt`/`enhancement`; `blocked:kacho-kms` /
 `blocked:kacho-marketplace` / `blocked:kacho-snapshot-schedule` / `blocked:kacho-filesystem` для
 заблокированного), см. `kacho-compute/CLAUDE.md` §14.4. By-design расхождения — `docs/architecture/07-known-divergences.md`.

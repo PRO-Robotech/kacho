@@ -12,13 +12,13 @@ existence-check в БД в worker'е (см. [`02-data-flows.md`](02-data-flows.m
   `deletion_timestamp` / `finalizers` / `spec` / `status` как JSONB). Только
   domain-specific колонки + `id` / `project_id` / `name` / `description` /
   `labels` / `created_at`. Зеркалит kacho-vpc 1.0.
-- **TEXT id columns** — YC-style `<prefix><17 base32>` (`epd...` / `fd8...`), не
+- **TEXT id columns** — `<prefix><17 base32>` (`epd...` / `fd8...`), не
   UUID. DiskType/Zone — литералы (`network-ssd`, `ru-central1-a`).
 - **Hard-delete, не soft-delete** — `DELETE FROM <table> WHERE id = $1`. Никаких
   tombstones.
 - **Partial UNIQUE** `(project_id, name) WHERE name <> ''` для всех 4 мутируемых
   ресурсов — дубль непустого `name` в проекте → `23505` → `ALREADY_EXISTS`;
-  пустой `name` допускает несколько ресурсов (verbatim YC permissive).
+  пустой `name` допускает несколько ресурсов (permissive by design).
 - **Optimistic concurrency** для read-modify-write (`UpdateNetworkInterface`-style)
   — Postgres system column `xmin::text` (txid версия row), без отдельной колонки
   (zero-overhead, миграция не нужна) — как `SecurityGroup.UpdateRules` в VPC.
@@ -288,7 +288,7 @@ INDEX instance_nic_subnet_idx (subnet_id) WHERE subnet_id <> ''
 M:N связь instance ↔ disk. FK на `instance_id` CASCADE (Instance.Delete worker
 сам решает судьбу дисков по `auto_delete`, потом DELETE instance → CASCADE чистит
 строки тут). FK на `disk_id` RESTRICT (нельзя удалить Disk пока attached →
-verbatim YC `"The disk is being used"`).
+контрактный текст `"The disk is being used"`).
 
 ```
 instance_id TEXT         NOT NULL REFERENCES instances(id) ON DELETE CASCADE

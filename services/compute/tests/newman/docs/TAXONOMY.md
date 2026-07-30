@@ -26,7 +26,7 @@
 | `BVA` | Boundary values: disk size [4 MiB, 26 TiB / 4 TiB], name len 63/64, page_size 0/1/1000/1001, labels 64/65, cores set, core_fraction set | §3.2 BVA |
 | `IDM` | Идемпотентность retry-safe операций | §3.10 Property-based |
 | `CONC` | Concurrency invariants (parallel Create same name → ALREADY_EXISTS) | Stress + invariant |
-| `CONF` | Verbatim YC parity: id-prefix (`epd`/`fd8`), created_at до секунд, error text, Operation.response shape, BASIC-view metadata omission | §4.3 Conformance / approval |
+| `CONF` | Соответствие контракту: id-prefix (`epd`/`fd8`), created_at до секунд, error text, Operation.response shape, BASIC-view metadata omission | §4.3 Conformance / approval |
 | `STATE` | State transition / immutable fields / Instance state-машина (Start/Stop/Restart preconditions, AttachDisk/DetachDisk/NAT) | §3.4 State transition testing |
 | `AUTHZ` | Cross-tenant / project isolation; sync-NF на mutate несуществующего | Permission matrix |
 | `PAGE` | Pagination boundary + token roundtrip | §3.2 BVA + §3.10 property |
@@ -62,7 +62,7 @@
 | Priority | Применение |
 |---|---|
 | P0 | Security (SEC), data-integrity (FK attached_disks RESTRICT), Instance state-machine preconditions, required-field validation, Disk.Delete-while-attached |
-| P1 | CRUD happy, validation P0-полей, conformance с YC, BVA-границы size/cores, NEG dup-name / NotFound |
+| P1 | CRUD happy, validation P0-полей, conformance с контрактом, BVA-границы size/cores, NEG dup-name / NotFound |
 | P2 | BVA pagination, ECP полей с низким impact, filter, Relocate, GetSerialPortOutput |
 | P3 | Cosmetic (labels, description over-max), редкие transitions, SimulateMaintenanceEvent, HTTP-method semantics |
 

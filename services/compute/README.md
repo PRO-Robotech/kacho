@@ -56,11 +56,11 @@ python3 tests/newman/scripts/gen.py && tests/newman/scripts/run.sh   # E2E (ну
 `internal/ports/portmock`), integration (`internal/repo/*integration_test.go`,
 testcontainers), e2e (`tests/newman/`, декларативные `cases/*.py` → `gen.py` →
 Postman-коллекции). Критерий приёмки: любой newman-кейс зеленеет и против
-реального YC Compute API.
+объявленный контракт Kachō.
 
 ## Полезное
 
 - Открытые задачи / баги: GitHub Issues (`TODO.md` упразднён).
-- By-design расхождения с YC: `docs/architecture/07-known-divergences.md`.
+- By-design отступления от конвенций: `docs/architecture/07-known-divergences.md`.
 - Proto: `../kacho-proto/proto/kacho/cloud/compute/v1/`.
 - Эталон-паттерны: `../kacho-vpc/` (compute написан на них).
