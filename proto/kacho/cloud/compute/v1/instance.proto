@@ -467,33 +467,29 @@ message GpuSettings {
   string gpu_cluster_id = 1;
 }
 
-message PlacementPolicy {
-  // Host affinity is WITHDRAWN from the contract — number and name reserved so the slot
-  // can never be reused with different semantics.
-  //
-  // Two independent reasons. It was never read: no handler, use-case or repository of
-  // kacho-compute referenced the field and no migration stored it, so a caller sending
-  // a fully formed rule that pins a machine to a host would get a success back with
-  // nothing applied anywhere. And it stood on the wrong surface: a rule naming hosts
-  // and host groups is placement physics, and that class of data lives ONLY in the
-  // `Internal*` API on the cluster-internal listener (security.md, "Инфра-чувствительные
-  // данные") — so implementing it where it stood was not an option either. If placement
-  // management is wanted, it is introduced on the internal contour with its own
-  // acceptance.
-  //
-  // The nested `HostAffinityRule` message went with the field: once no field references
-  // it, keeping it advertises a shape the service has no way to honour (the standard
-  // already applied to the withdrawn vpc DNS messages). Lock:
-  // pkg/api/kacho/cloud/compute/v1/placement_contract_test.go.
-  reserved 2;
-  reserved "host_affinity_rules";
-
-  // Placement group ID.
-  string placement_group_id = 1;
-
-  // Placement group partition
-  int64 placement_group_partition = 3;
-}
+// PlacementPolicy WAS DECLARED HERE AND IS WITHDRAWN WHOLE — it was an orphan.
+//
+// It carried three fields (`placement_group_id`, `host_affinity_rules`,
+// `placement_group_partition`) and NO field of any message in any package ever had this
+// type, so no request or response could contain one: nothing could construct it, nothing
+// could read it, and none of its three fields ever appeared on a wire.
+//
+// Host affinity was the reason to look: a rule naming hosts and host groups is placement
+// physics, and that class of data lives ONLY in the `Internal*` API on the
+// cluster-internal listener (security.md, "Инфра-чувствительные данные"), so it could not
+// be implemented where it stood either. If placement management is wanted, it is
+// introduced on the internal contour with its own acceptance.
+//
+// NOTHING IS RESERVED, and that is not an omission. Numbers are reserved in the message
+// that DECLARES the field, to stop a peer's bytes being reinterpreted; a message no field
+// points at was never on the wire, so there is no slot any peer could have populated.
+//
+// `placement_group_id` LIVES ELSEWHERE and is unaffected — it is a homonym, not the same
+// field: `Instance` (41), `CreateInstanceRequest` (38), `UpdateInstanceRequest` (22) —
+// all read by the service — and `DiskPlacementPolicy` (1), a different message reached
+// through Relocate. Locks (both directions): TestWithdrawnPlacementMessagesAreGone and
+// TestLivePlacementGroupIdSurvives in
+// pkg/api/kacho/cloud/compute/v1/placement_contract_test.go.
 
 // MetadataOptions — vendor-agnostic metadata-service options (F9, ban #2). The
 // brand-flavored gce_*/aws_* surface is retired (field numbers + names reserved so
