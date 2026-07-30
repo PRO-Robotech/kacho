@@ -11,14 +11,37 @@
   the clear, all of that is readable by anything on the path, and the admin API it
   opens authenticates nobody: reaching it IS the authorization.
 
-  WHY ONLY THE ADMIN LISTENER. The provider resolves TLS PER LISTENER — the
-  runtime reads `serve.admin.tls.*` and `serve.public.tls.*`, each overriding the
-  shared `serve.tls` field by field. So the admin listener moves to TLS while the
-  public OIDC listener — which the ingress, the gateway's JWKS fetch, iam and the
-  Kratos self-service UI all read over plain http — is left exactly as it was.
-  A note in deploy/tests/helm/admin-hop-transport-test.sh used to state the
-  opposite (one shared block, therefore untouchable); that note was wrong and is
-  corrected there.
+  ⚠ MEASURED FALSE 2026-07-30 — THE PROVIDER DOES NOT READ `serve.admin.tls`.
+  What stood here: "the provider resolves TLS PER LISTENER — the runtime reads
+  `serve.admin.tls.*` and `serve.public.tls.*`, each overriding the shared
+  `serve.tls` field by field", and it declared a previous note in
+  deploy/tests/helm/admin-hop-transport-test.sh (one shared block, therefore the
+  admin listener cannot be TLS'd alone) to be "wrong".
+
+  The previous note was RIGHT. Measured on kind, provider v26.2.0, with this
+  certificate issued and Ready, the secret mounted, `serve.admin.tls.cert/key`
+  present in the live config and the pod's `checksum/hydra-config` matching:
+    * `openssl s_client` to the admin ClusterIP:4445 → `wrong version number`
+      (i.e. it answered plaintext to a TLS handshake);
+    * the provider's OWN startup line: `Setting up http server on 0.0.0.0:4445`.
+  So the per-listener override is not a capability of this version, and the
+  "correction" was folklore that nobody re-measured.
+
+  CONSEQUENCE, STATED PLAINLY SO IT IS NOT REDISCOVERED. iam's production
+  boot-guard REQUIRES https for this hop (rightly — the administrative bearer
+  travels it and the API it opens authenticates nobody). The provider cannot give
+  https to this listener alone. Therefore production posture is unreachable on a
+  stand shaped like this until EITHER the shared `serve.tls` gets a certificate —
+  which also moves the PUBLIC listener off plain http, and the ingress, the JWKS
+  mirror and the token endpoint all read it there — OR a dedicated terminator is
+  placed in front of the admin listener. That is ≥6 coupled addresses plus the
+  ingress backend protocol, i.e. its own change with its own acceptance, not a
+  one-knob edit.
+
+  This Certificate is kept: it is the material either route needs, it is already
+  consumed by the Kratos self-service UI's trust bundle, and issuing it costs
+  nothing. What must NOT happen is another comment asserting the per-listener
+  capability without re-measuring it.
 
   The consumers verify against ca.crt of this same secret; a cert-manager
   Certificate secret carries ca.crt alongside tls.crt/tls.key, so no separate
