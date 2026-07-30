@@ -64,7 +64,7 @@ project-scoped выдачи реконсайлер материализует pe
 Go-тесты use-case-слоя (`internal/apps/kacho/api/*/list_filter_test.go`) и CI-гейт
 `tools/audit-list-filter.sh`. Оба остаются зелёными и обязательными.
 
-### Known failing — product bugs: нет
+### Known failing — product bugs: нет (обе прежние записи ЗАКРЫТЫ вместе со своими дефектами)
 
 Записей нет: **оба** прежних дефекта закрыты в дереве, и вместе с ними сняты
 `# verifies …/issues/N`-аннотации кейсов.

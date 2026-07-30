@@ -133,7 +133,7 @@ tests/newman/scripts/run-incremental.sh --cleanup-only           # стерет�
 - `# probe-needed:` кейсы фиксируют наше текущее поведение там, где точный контракт ещё не verified (список — `REQUIREMENTS.md` §A);
   они написаны с `allow [200,400]` / substr-assert, чтобы не краснеть на любом разумном поведении — заменяются точными assert'ами после probe.
 
-## Known failing — round-4 disposition (umbrella CI, gate `../../iam/tests/newman/scripts/assert-suites-green.sh`)
+## Round-4 disposition — CLOSED (was «known failing»; nothing is declared here any more)
 
 The umbrella gate is the shared `assert-suites-green.sh`. Compute residuals against the
 umbrella CI report (`ci-rep4`) resolve as follows — **fixed in the case where the product
@@ -142,7 +142,7 @@ masking a leak**:
 
 | Case / step | Signature | Disposition |
 |---|---|---|
-> **Three rows removed 2026-07-28.** They described `INST-CR-CRUD-BOOT-DISK-ID-OK`,
+> **REMOVED 2026-07-28 — three rows (record, not a declaration).** They described `INST-CR-CRUD-BOOT-DISK-ID-OK`,
 > `INST-CR-CRUD-OK::get` and `INST-DEL-CONF-RESPONSE-EMPTY::assert-empty`. None of those
 > case names exists anywhere in this service's `cases/` or `collections/` any more — the
 > instance suite was rewritten as `instance-redesign` (`INST-RD-*`) and the attach/boot

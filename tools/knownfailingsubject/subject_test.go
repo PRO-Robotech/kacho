@@ -484,3 +484,32 @@ func repoRoot(t *testing.T) string {
 	}
 	return dir
 }
+
+// TestBacktickSpanAcrossLinesDoesNotHideTheNextName is about pairing, not about names.
+// Markdown in these docs is hard-wrapped, so a backticked span — very often a quoted
+// error message — can straddle a line break. Matching backticks line by line then fails
+// to close that span, every following pair is offset by one, and the case id after it
+// becomes invisible: no subject, no finding, nothing said. Measured on the real tree: a
+// flagged IPAM record named three case ids and only the first was ever read.
+func TestBacktickSpanAcrossLinesDoesNotHideTheNextName(t *testing.T) {
+	root := t.TempDir()
+	suite(t, root, "svc", `# RESULTS
+
+## Known failing — product bugs
+
+> **Under investigation** — `+"`SVC-LST-CRUD-OK`"+` fails with `+"`no address pool resolved"+`
+> `+"for address … (family=0)`"+`, and `+"`SVC-GET-CRUD-OK`"+` is the same root cause.
+> Tracked in `+"`PRO-Robotech/kacho#4242`"+`.
+`, map[string][]string{
+		"SVC-GET-CRUD-OK — get own resource": {"get"},
+		"SVC-LST-CRUD-OK — lists things":     {"list"},
+	})
+
+	rep, err := Scan(Options{Root: root, IssueState: openTracker})
+	if err != nil {
+		t.Fatalf("unexpected findings: %v", rep.Findings)
+	}
+	if rep.Census.SubjectsResolved != 2 {
+		t.Fatalf("both named cases must be read as subjects, got %+v", rep.Census)
+	}
+}

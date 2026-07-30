@@ -57,14 +57,15 @@ Persistent-RED кейсы — тест корректен, но GREEN требу
 
 | Case | Suite | Verifies | Что доказывает | Причина RED |
 |---|---|---|---|---|
-| `SG-NET-08-RULE-SAME-NETWORK-OK` | security-group | flagged → rpc-implementer (issue pending) | Правило с SG-target (`securityGroupId`) обязано отдаваться в `Get/List`-ответе SG (`rule.securityGroupId` == целевой SG) | `dto/toproto/security_group.go::securityGroup.toPb` мапит в `SecurityGroupRule.Target` **только** ветку `CidrBlocks`; ветки `SecurityGroupId` и `PredefinedTarget` (домен несёт `r.SecurityGroupID`/`r.PredefinedTarget`) не сериализуются → `Target=nil` → `rule.securityGroupId=undefined`. Signature: `expected [ undefined ] to include '<sgId>'`. Фикс (не в test-only PR, ban #13): добавить обе ветки в `toPb` + regression. |
-| `SG-NET-09-RULE-SAME-NETWORK-UPDATERULES-OK` | security-group | flagged → rpc-implementer (issue pending) | То же через `UpdateRules` (PATCH `…/rules`): добавленное SG-target-правило видно в `Get` с `securityGroupId` | Та же прод-первопричина — `toPb` роняет `SecurityGroupId`/`PredefinedTarget` target. RED до прод-фикса `toPb`. |
+| `SG-NET-08-RULE-SAME-NETWORK-OK` | security-group | [`kacho#106`](https://github.com/PRO-Robotech/kacho/issues/106) (заведён 2026-07-30 — до этого запись стояла «issue pending», то есть истечь ей было нечем) | Правило с SG-target (`securityGroupId`) обязано отдаваться в `Get/List`-ответе SG (`rule.securityGroupId` == целевой SG) | `dto/toproto/security_group.go::securityGroup.toPb` мапит в `SecurityGroupRule.Target` **только** ветку `CidrBlocks`; ветки `SecurityGroupId` и `PredefinedTarget` (домен несёт `r.SecurityGroupID`/`r.PredefinedTarget`) не сериализуются → `Target=nil` → `rule.securityGroupId=undefined`. Signature: `expected [ undefined ] to include '<sgId>'`. Фикс (не в test-only PR, ban #13): добавить обе ветки в `toPb` + regression. |
+| `SG-NET-09-RULE-SAME-NETWORK-UPDATERULES-OK` | security-group | [`kacho#106`](https://github.com/PRO-Robotech/kacho/issues/106) | То же через `UpdateRules` (PATCH `…/rules`): добавленное SG-target-правило видно в `Get` с `securityGroupId` | Та же прод-первопричина — `toPb` роняет `SecurityGroupId`/`PredefinedTarget` target. RED до прод-фикса `toPb`. |
 | `SG-URL-VAL-PORT-NEG` | security-group | [#103](https://github.com/PRO-Robotech/kacho/issues/103) | Правило с портом ниже допустимой границы обязано отвергаться на входе | Диапазон портов не проверяется НИГДЕ: ни `validateSGRule` (она смотрит направление/описание/метки/CIDR), ни доменная модель, ни ограничение БД (правила — одно JSONB-поле). Правило сохраняется как есть, ответ 200. RED до продуктового решения (границы, «любой порт», соотношение имени и номера протокола). |
 | `SG-URL-VAL-PORT-OVER-65535` | security-group | [#103](https://github.com/PRO-Robotech/kacho/issues/103) | То же для верхней границы порта | Та же первопричина. |
 | `SG-URL-VAL-PROTOCOL-UNKNOWN` | security-group | [#103](https://github.com/PRO-Robotech/kacho/issues/103) | Правило с несуществующим именем протокола обязано отвергаться на входе | Имя протокола не проверяется; законный набор имён — продуктовое решение (регистр, протоколы без портов, связь с числовым номером). RED до фикса. |
 
 
-> **Три кейса выше стали красными 2026-07-29 — и это ожидаемо.** До этого все пять
+> **ИСПРАВЛЕНО 2026-07-29 (запись о правке утверждений, не объявление).** Три кейса выше
+> стали красными в этот день — и это ожидаемо. До этого все пять
 > кейсов набора `SG-URL-VAL-*` стояли под утверждением `oneOf([200, 400])` с меткой
 > «rejected sync or async»: оно принимало и приём правила, и отказ в нём, поэтому
 > ни один отрицательный кейс не мог упасть — независимо от того, что делает продукт.
@@ -88,11 +89,13 @@ Persistent-RED кейсы — тест корректен, но GREEN требу
 > (До 2026-07-05 он маскировался условным `pm.test.skip`; SEC-hardening r2 сделал его
 > безусловным persistent-RED + issue #27, что и держало давление на прод-фикс.)
 
-> **Под расследованием (flagged, НЕ замаскировано)** — кластер IPAM-resolve в `internal-pool`:
+> **Под расследованием — [`kacho#107`](https://github.com/PRO-Robotech/kacho/issues/107)** (заведён
+> 2026-07-30; до этого запись ссылалась только на «сигнатуры переданы исполнителю», то есть
+> истечь ей было нечем). Кластер IPAM-resolve в `internal-pool`:
 > `IPL-ALLOC-POOL-EXHAUSTED` (`alloc-1/alloc-2` → Operation error `no address pool resolved
 > for address … (network , family=0)`), `IPL-RESOLVE-DUALSTACK-OK` (`get-v4/get-v6` → 404:
-> `cr-addr` Operation не резолвит case-local isDefault pool в throwaway-зоне), `IPL-RMCIDR-
-> NEG-INUSE` (`remove-inuse` текст `CIDR blocks not found` вместо `has allocated addresses`
+> `cr-addr` Operation не резолвит case-local isDefault pool в throwaway-зоне),
+> `IPL-RMCIDR-NEG-INUSE` (`remove-inuse` текст `CIDR blocks not found` вместо `has allocated addresses`
 > — каскад от того же resolve-fail). Это НЕ read-your-writes / authz-ordering (детерминированная
 > Operation-ошибка резолва пула в throwaway-зонах zoneC/zoneD, вероятно зависит от количества
 > seeded geo-зон и/или порядка cleanup). Сигнатуры переданы rpc-implementer'у для доменного
@@ -106,11 +109,13 @@ Persistent-RED кейсы — тест корректен, но GREEN требу
 > zones / `default-zone-a` pool как readonly-фикстуры (не трогают),
 > остальное — runId-суффиксованные throwaway-ресурсы с self-cleanup.
 
-## Known failing — round-4 disposition (umbrella CI, gate `../../iam/tests/newman/scripts/assert-suites-green.sh`)
+## Round-4 disposition — ЗАКРЫТО (было «known failing»; все три строки исправлены)
 
-Резолюция vpc-residuals против umbrella-отчёта (`ci-rep4`) — **fixable чиним, реальный
-продукт-баг оставляем gate-blocking + флаг, ACB-fixture-gap whitelist'им с issue-ref**;
-ни одна маска не скрывает must-DENY-leak.
+Запись о разборе vpc-residuals против umbrella-отчёта (`ci-rep4`). Ни одного живого
+объявления здесь больше нет: все три строки ниже помечены исправленными, а вычитание
+«известного красного» из вердикта прогона снято целиком 2026-07-30 — маски, о которой
+говорил исходный заголовок («ACB-fixture-gap whitelist'им с issue-ref»), не существует.
+Ни одна из них никогда не скрывала must-DENY-leak.
 
 | Case / step | Signature | Disposition |
 |---|---|---|

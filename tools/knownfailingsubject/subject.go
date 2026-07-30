@@ -433,14 +433,14 @@ func parseRecords(doc, body string) (records []declaration, declaring []section,
 			}
 		}
 
-		if archivedRecordRe.MatchString(text) {
+		if archivedRecordRe.MatchString(unwrap(text)) {
 			archived++
 			i++
 			continue
 		}
 
 		rec := declaration{doc: doc, line: start + 1, section: current.line}
-		for _, m := range tickedRe.FindAllStringSubmatch(text, -1) {
+		for _, m := range tickedRe.FindAllStringSubmatch(unwrap(text), -1) {
 			for _, tok := range tokens(m[1]) {
 				switch {
 				case caseIDRe.MatchString(tok):
@@ -461,6 +461,22 @@ func parseRecords(doc, body string) (records []declaration, declaring []section,
 		i++
 	}
 	return records, declaring, archived
+}
+
+// unwrap folds a multi-line record into one line, dropping blockquote markers and
+// leading indentation. It is what makes backtick pairing reliable: these docs are
+// hard-wrapped, so a backticked span — usually a quoted error message — routinely
+// straddles a line break. Matched line by line, that span never closes, EVERY following
+// pair is offset by one, and the case id after it is read as prose. Measured here: a
+// flagged record named three cases and only the first was ever seen.
+func unwrap(text string) string {
+	lines := strings.Split(text, "\n")
+	for i, l := range lines {
+		l = strings.TrimSpace(l)
+		l = strings.TrimPrefix(l, ">")
+		lines[i] = strings.TrimSpace(l)
+	}
+	return strings.Join(lines, " ")
 }
 
 // tokens splits one backticked span into candidate names.
