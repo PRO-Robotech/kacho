@@ -33,7 +33,17 @@
 {{- if and $mtls.enabled $hydraTLS.enabled -}}
 {{- $ca := .Values.mtls.internalCA -}}
 {{- $rel := .Release.Name -}}
-{{- $ns := .Release.Namespace -}}
+{{- /* NOTE the closing `}}` WITHOUT a dash on the next line, and do not "tidy" it.
+       Every action above chomps the newline that precedes it (`{{-`), so the whole
+       preamble collapses onto the last literal text in the file — the SPDX comment.
+       A right-chomp here (`-}}`) then removes the newline that separates that comment
+       from the first body key, and the document renders as
+         `# SPDX-License-Identifier: BUSL-1.1apiVersion: cert-manager.io/v1`
+       i.e. with `apiVersion` swallowed by a comment. `helm template` reports nothing
+       (it does not validate), so this only surfaces at `helm upgrade`, as
+       `error validating data: apiVersion not set`. Locked by
+       deploy/tests/helm/rendered-documents-well-formed-test.sh. */ -}}
+{{- $ns := .Release.Namespace }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
