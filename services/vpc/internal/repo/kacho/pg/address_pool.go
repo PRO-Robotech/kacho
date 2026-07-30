@@ -419,6 +419,12 @@ func (w *addressPoolWriter) AddCidrToFreelist(ctx context.Context, poolID string
 
 // populateFreelistForCidrs — общая materialise-логика для списка v4-CIDR.
 // Идемпотентна (ON CONFLICT DO NOTHING). Не-v4 (`family <> 4`) фильтруется в SQL.
+//
+// Ключ пишется в host-форме (`host(ip)::inet`) — той же, что использует возврат
+// адреса при удалении. Иначе один адрес лежал бы в двух разных ключах inet
+// (с маской диапазона и без), первичный ключ их не схлопывал бы, и точечное
+// занятие адреса по значению не находило бы строку. Форма закреплена проверкой
+// address_pool_free_ips_host_form (миграция 0023).
 func (w *addressPoolWriter) populateFreelistForCidrs(ctx context.Context, poolID string, cidrs []string) error {
 	for _, cidr := range cidrs {
 		if _, err := w.tx.Exec(ctx, `
@@ -429,7 +435,7 @@ func (w *addressPoolWriter) populateFreelistForCidrs(ctx context.Context, poolID
 				SELECT (ip + 1)::inet, stop FROM ips WHERE ip + 1 < stop
 			)
 			INSERT INTO address_pool_free_ips (pool_id, ip)
-			SELECT $1, ip FROM ips
+			SELECT $1, host(ip)::inet FROM ips
 			ON CONFLICT (pool_id, ip) DO NOTHING
 		`, poolID, cidr); err != nil {
 			return fmt.Errorf("populate freelist for cidr %s: %w", cidr, err)
