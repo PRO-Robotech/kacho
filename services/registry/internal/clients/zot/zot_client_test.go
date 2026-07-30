@@ -307,9 +307,39 @@ func (f *fakeZot) writeGlobalSearch(w http.ResponseWriter, query string) {
 			"DownloadCount": fx.downloadCount,
 		})
 	}
+	// Движок режет окно У СЕБЯ (requestedPage: limit/offset, sortBy ALPHABETIC_ASC) —
+	// это проверено против настоящего zot v2.1.18: аргумент принимается, а заведомо
+	// неверные значения отвергаются с GRAPHQL_VALIDATION_FAILED. Двойник обязан вести
+	// себя так же, иначе он проверял бы поведение, которого у движка нет.
+	if lim := extractGqlInt(query, "limit"); lim > 0 {
+		off := extractGqlInt(query, "offset")
+		if off >= len(repos) {
+			repos = repos[:0]
+		} else {
+			repos = repos[off:min(off+lim, len(repos))]
+		}
+	}
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"data": map[string]any{"GlobalSearch": map[string]any{"Repos": repos}},
 	})
+}
+
+// extractGqlInt достаёт числовой аргумент GraphQL-запроса (`name:123`). Нет — 0.
+func extractGqlInt(query, name string) int {
+	i := strings.Index(query, name+":")
+	if i < 0 {
+		return 0
+	}
+	rest := query[i+len(name)+1:]
+	end := 0
+	for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
+		end++
+	}
+	v, err := strconv.Atoi(rest[:end])
+	if err != nil {
+		return 0
+	}
+	return v
 }
 
 func (f *fakeZot) writeImageList(w http.ResponseWriter, query string) {

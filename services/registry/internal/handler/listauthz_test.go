@@ -488,6 +488,12 @@ func (stubCfg) GetConfig(context.Context, string, string) (*domain.RepositoryCon
 func (stubCfg) ListConfigs(context.Context, string) ([]*domain.RepositoryConfig, error) {
 	return nil, nil
 }
+func (stubCfg) ListConfigsExcludingNames(context.Context, string, []string, int, int) ([]*domain.RepositoryConfig, error) {
+	return nil, nil
+}
+func (stubCfg) ConfigsByNames(context.Context, string, []string) ([]*domain.RepositoryConfig, error) {
+	return nil, nil
+}
 func (stubCfg) InsertConfig(context.Context, *domain.RepositoryConfig, ...registry.OutboxIntent) (*domain.RepositoryConfig, error) {
 	return nil, nil
 }

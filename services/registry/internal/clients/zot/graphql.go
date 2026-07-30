@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"sort"
@@ -20,9 +21,11 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 	registry "github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/api/registry"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/shared/namepage"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
+	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
 )
 
 // zotFanout — верхняя граница параллельных запросов к zot при построении проекций
@@ -63,28 +66,46 @@ func (c *Client) ListRepositories(ctx context.Context, q registry.RepoListQuery)
 		return nil, "", err
 	}
 	prefix := q.RegistryID + "/"
-	var gs gqlGlobalSearchData
-	if err := c.gqlQuery(ctx, globalSearchQuery(prefix), &gs); err != nil {
-		return nil, "", err
+	size, serr := corevalidate.PageSize("page_size", q.PageSize)
+	if serr != nil {
+		return nil, "", serr
+	}
+	off, oerr := namepage.DecodeOffset(q.PageToken)
+	if oerr != nil || off < 0 {
+		return nil, "", fmt.Errorf("%w: invalid page_token", regerrors.ErrInvalidArg)
 	}
 
-	// GlobalSearch — substring-поиск: оставляем только свой namespace (defence-in-depth),
-	// сортируем по имени ASC (стабильный ключ курсора).
-	kept := make([]gqlRepoSummary, 0, len(gs.GlobalSearch.Repos))
-	for _, rs := range gs.GlobalSearch.Repos {
+	// ОКНО РЕЖЕТ ДВИЖОК. Прежде на каждой странице приезжал ВЕСЬ перечень namespace, и
+	// окно нарезалось уже здесь: стоимость страницы не зависела от page_size, а на
+	// достаточно большом реестре ответ упирался в ограничитель размера (maxGraphQLBytes)
+	// → усечение → ошибка разбора → fail-closed. То есть перечисление переставало
+	// работать НАВСЕГДА при живом реестре и живых правах. Просим ровно окно (+1 —
+	// зонд «есть ли продолжение»), сортировку задаёт движок (ALPHABETIC_ASC), поэтому
+	// позиция курсора стабильна между вызовами.
+	var gs gqlGlobalSearchData
+	if err := c.gqlQuery(ctx, globalSearchPageQuery(prefix, off, int(size)+1), &gs); err != nil {
+		return nil, "", err
+	}
+	raw := gs.GlobalSearch.Repos
+	hasMore := len(raw) > int(size)
+	if hasMore {
+		raw = raw[:size]
+	}
+
+	// GlobalSearch — substring-поиск: оставляем только свой namespace (defence-in-depth).
+	// Отсев может укоротить страницу, но НЕ ломает курсор: он считает СЫРЫЕ позиции
+	// движка, поэтому ни одна строка не пропускается и не дублируется. Курсор —
+	// ОПАКОВЫЙ offset, НЕ имя репо: per-repo authz-фильтр handler'а применяется ПОСЛЕ
+	// окна, поэтому name-курсор раскрыл бы имя скрытого репо (existence-oracle).
+	window := make([]gqlRepoSummary, 0, len(raw))
+	for _, rs := range raw {
 		if strings.HasPrefix(rs.Name, prefix) {
-			kept = append(kept, rs)
+			window = append(window, rs)
 		}
 	}
-	sort.Slice(kept, func(i, j int) bool { return kept[i].Name < kept[j].Name })
-
-	// Окно по (page_size, page_token) ДО ImageList-fan-out — bound per-request нагрузки
-	// к zot. Курсор — ОПАКОВЫЙ offset (позиция в отсортированном срезе), НЕ имя репо:
-	// per-repo authz-фильтр handler'а применяется ПОСЛЕ окна, поэтому name-курсор
-	// раскрыл бы имя скрытого репо (existence-oracle).
-	window, next, err := namepage.WindowByOffset(kept, q.PageSize, q.PageToken)
-	if err != nil {
-		return nil, "", err
+	next := ""
+	if hasMore {
+		next = namepage.EncodeOffset(off + len(raw))
 	}
 
 	repos := make([]*domain.Repository, len(window)) // индексируем — порядок окна сохраняем
@@ -333,9 +354,24 @@ func imageListQuery(fullRepo string) string {
 }
 
 // globalSearchQuery строит GlobalSearch-запрос по namespace-префиксу (<registryID>/).
+// Без окна — движок отдаёт весь перечень. Остаётся у ListRepositoryNames, которому
+// нужен ПОЛНЫЙ набор имён (разность множеств overlay ⊔ projection); там приезжают
+// только имена, без проекций.
 func globalSearchQuery(query string) string {
 	return `{GlobalSearch(query:` + strconv.Quote(query) +
 		`){Repos{Name Size LastUpdated DownloadCount}}}`
+}
+
+// globalSearchPageQuery — тот же запрос с ОКНОМ на стороне движка (requestedPage:
+// limit/offset + сортировка по имени ASC). Проверено против движка v2.1.18: аргумент
+// и значение перечисления принимаются, а заведомо неверные — отвергаются с
+// GRAPHQL_VALIDATION_FAILED (то есть приём означает поддержку, а не молчаливую
+// терпимость).
+func globalSearchPageQuery(query string, offset, limit int) string {
+	return `{GlobalSearch(query:` + strconv.Quote(query) +
+		`, requestedPage:{limit:` + strconv.Itoa(limit) +
+		`, offset:` + strconv.Itoa(offset) +
+		`, sortBy:ALPHABETIC_ASC}){Repos{Name Size LastUpdated DownloadCount}}}`
 }
 
 // gqlQuery выполняет POST /v2/_zot/ext/search с телом {"query": query} и декодирует

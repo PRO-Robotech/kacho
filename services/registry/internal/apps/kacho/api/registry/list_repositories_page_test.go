@@ -124,6 +124,37 @@ func (c *orderedCfg) ListConfigs(context.Context, string) ([]*domain.RepositoryC
 	return append([]*domain.RepositoryConfig(nil), c.rows...), nil
 }
 
+func (c *orderedCfg) ListConfigsExcludingNames(_ context.Context, _ string, excluded []string, offset, limit int) ([]*domain.RepositoryConfig, error) {
+	skip := make(map[string]struct{}, len(excluded))
+	for _, n := range excluded {
+		skip[n] = struct{}{}
+	}
+	kept := make([]*domain.RepositoryConfig, 0, len(c.rows))
+	for _, r := range c.rows {
+		if _, ok := skip[r.Name]; !ok {
+			kept = append(kept, r)
+		}
+	}
+	if offset >= len(kept) || limit <= 0 {
+		return nil, nil
+	}
+	return append([]*domain.RepositoryConfig(nil), kept[offset:min(offset+limit, len(kept))]...), nil
+}
+
+func (c *orderedCfg) ConfigsByNames(_ context.Context, _ string, names []string) ([]*domain.RepositoryConfig, error) {
+	want := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		want[n] = struct{}{}
+	}
+	var out []*domain.RepositoryConfig
+	for _, r := range c.rows {
+		if _, ok := want[r.Name]; ok {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
 func (c *orderedCfg) GetConfig(_ context.Context, _, name string) (*domain.RepositoryConfig, error) {
 	for _, r := range c.rows {
 		if r.Name == name {

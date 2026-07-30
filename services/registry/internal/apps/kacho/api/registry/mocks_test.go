@@ -530,6 +530,39 @@ func (m *mockRepoConfig) GetConfig(ctx context.Context, registryID, name string)
 	return nil, regerrors.ErrNotFound
 }
 
+func (m *mockRepoConfig) ListConfigsExcludingNames(ctx context.Context, registryID string, excluded []string, offset, limit int) ([]*domain.RepositoryConfig, error) {
+	all, err := m.ListConfigs(ctx, registryID)
+	if err != nil {
+		return nil, err
+	}
+	skip := make(map[string]struct{}, len(excluded))
+	for _, n := range excluded {
+		skip[n] = struct{}{}
+	}
+	kept := make([]*domain.RepositoryConfig, 0, len(all))
+	for _, c := range all {
+		if _, ok := skip[c.Name]; !ok {
+			kept = append(kept, c)
+		}
+	}
+	if offset >= len(kept) || limit <= 0 {
+		return nil, nil
+	}
+	return kept[offset:min(offset+limit, len(kept))], nil
+}
+
+func (m *mockRepoConfig) ConfigsByNames(ctx context.Context, registryID string, names []string) ([]*domain.RepositoryConfig, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]*domain.RepositoryConfig, 0, len(names))
+	for _, n := range names {
+		if c, ok := m.byName[n]; ok {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
 func (m *mockRepoConfig) ListConfigs(ctx context.Context, registryID string) ([]*domain.RepositoryConfig, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
