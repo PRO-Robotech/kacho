@@ -18,7 +18,10 @@ import (
 //   - List/Create               → parent scope `project:<project_id>`, tier viewer/editor;
 //   - Get/Update/Delete/ListOps  → object-self `storage_<res>:<res_id>`, tier viewer/editor;
 //   - DiskType Get/List          → viewer на cluster singleton (глобальный read-only каталог);
-//   - InternalVolume Attach/Detach/GetInternal → object-self `storage_volume:<volume_id>`;
+//   - InternalVolume Attach/Detach → object-self `storage_volume:<volume_id>` ПЛЮС
+//     вопрос про ВТОРОЙ объект (машину) на уровне данных, в use-case: у этих RPC
+//     два адресата с разными владельцами, и per-RPC Check покрывает только один;
+//   - InternalVolume GetInternal → object-self `storage_volume:<volume_id>`;
 //   - InternalVolume ListAttachments → ScopeFiltered: единичного объекта нет (инстансы
 //     называет вызывающий), видимость решается per-object в use-case;
 //   - InternalImage GetInternal  → object-self `storage_image:<image_id>`, tier viewer;
@@ -129,6 +132,21 @@ func PermissionMap() authz.RPCMap {
 			func(req any) (string, error) { return req.(*storagev1.DeleteImageRequest).GetImageId(), nil }),
 
 		// ---- InternalVolumeService (:9091 attach-координация) ----
+		//
+		// Attach/Detach — ДВУХОБЪЕКТНЫЕ: запрос называет том И машину, у которых
+		// РАЗНЫЕ владельцы. Запись ниже покрывает ТОЛЬКО том (`editor` на
+		// `storage_volume`) — второго слота у authz.RPCEntry нет и быть не должно:
+		// это ответ на один вопрос, а вопросов два.
+		//
+		// Про машину спрашивает use-case (volume.requireInstanceControl) — тем же
+		// отношением, которым compute гейтит свои AttachDisk/DetachDisk (`v_update`
+		// на `compute_instance`; отвязка принимает ещё `v_delete`, потому что снос
+		// машины освобождает её тома под личностью инициатора). Пока этого вопроса
+		// не было, держатель `editor` на СВОЁМ томе вписывал строку привязки в набор
+		// ЧУЖОЙ машины и занимал её загрузочный слот. Замок класса —
+		// volume.TestEveryStorageRPCNamingAnInstanceAsksTheModelAboutIt (обход
+		// дескрипторов: RPC, чей запрос адресует машину, обязан иметь исполняемую
+		// пробу отказа).
 		"/kacho.cloud.storage.v1.InternalVolumeService/Attach": scoped(relationEditor, objectTypeVolume, "storage.volumes.attach",
 			func(req any) (string, error) { return req.(*storagev1.AttachVolumeRequest).GetVolumeId(), nil }),
 		"/kacho.cloud.storage.v1.InternalVolumeService/Detach": scoped(relationEditor, objectTypeVolume, "storage.volumes.detach",

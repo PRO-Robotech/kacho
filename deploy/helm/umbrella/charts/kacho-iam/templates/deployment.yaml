@@ -390,6 +390,14 @@ spec:
             - name: KACHO_IAM_HYDRA_TOKEN_URL
               value: {{ . | quote }}
             {{- end }}
+            {{- with .Values.kacho.iam.hydraTokenCaFile }}
+            # Trust anchor for the token-endpoint hop, which carries a signed client
+            # assertion out and the minted bearer back. Same discipline as the admin
+            # hop: empty → default transport; set → the only anchor; unreadable →
+            # refuse the start rather than fall back to the system roots.
+            - name: KACHO_IAM_HYDRA_TOKEN_CA_FILE
+              value: {{ . | quote }}
+            {{- end }}
             {{- with .Values.kacho.iam.hydraJwksUrl }}
             # registry-iam-jwks-unify — upstream Hydra PUBLIC JWKS URL that the
             # cluster-INTERNAL jwks-proxy listener (:9097) mirrors byte-for-byte.
@@ -398,6 +406,16 @@ spec:
             # Prod sets the in-cluster hydra-public base so the iam→Hydra fetch stays
             # inside the cluster. Hydra remains the signer/issuer — iam only proxies.
             - name: KACHO_IAM_HYDRA_JWKS_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.kacho.iam.hydraJwksCaFile }}
+            # Trust anchor for that upstream fetch. Empty → the default transport,
+            # which is what the provider's plaintext in-cluster listener needs. Set →
+            # that bundle becomes the ONLY anchor for the hop, and one that cannot be
+            # read refuses the start — the keyset fetched here is what the whole
+            # data-plane verifies tokens against, so an unverified peer on this hop
+            # chooses the platform's signing keys.
+            - name: KACHO_IAM_HYDRA_JWKS_CA_FILE
               value: {{ . | quote }}
             {{- end }}
             {{- with .Values.kacho.iam.hydraAdminUrl }}

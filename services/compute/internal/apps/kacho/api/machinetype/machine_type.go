@@ -18,6 +18,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/lro"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/ports"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/protoconv"
 )
 
@@ -138,12 +139,7 @@ func (s *MachineTypeService) Update(ctx context.Context, req UpdateMachineTypeRe
 	return lro.RunOp(ctx, s.opsRepo, fmt.Sprintf("Update machine type %s", req.ID),
 		&computev1.UpdateMachineTypeMetadata{MachineTypeId: req.ID},
 		func(ctx context.Context) (*anypb.Any, error) {
-			mt, err := s.repo.Get(ctx, req.ID)
-			if err != nil {
-				return nil, serviceerr.MapRepoErr(err)
-			}
-			applyMachineTypeUpdate(mt, req)
-			updated, err := s.repo.Update(ctx, mt)
+			updated, err := s.repo.Update(ctx, req.ID, machineTypeUpdateFrom(req))
 			if err != nil {
 				return nil, serviceerr.MapRepoErr(err)
 			}
@@ -232,25 +228,39 @@ func (s *MachineTypeService) validateUpdate(req UpdateMachineTypeReq) error {
 	return nil
 }
 
-// applyMachineTypeUpdate применяет замаскированные (или все mutable при пустой
-// маске — full-object PATCH) поля к загруженному mt. name/id immutable — не трогаются.
-func applyMachineTypeUpdate(mt *domain.MachineType, req UpdateMachineTypeReq) {
+// machineTypeUpdateFrom резолвит НАЗВАННЫЕ поля запроса в набор изменений для
+// репозитория (пустая маска — full-object PATCH, все изменяемые поля).
+//
+// Раньше здесь строился merged domain-объект поверх ПРОЧИТАННОЙ строки, и он
+// целиком уезжал в UPDATE — то есть правка записывала и те колонки, которых не
+// называла, значениями своего снимка. Две правки с непересекающимися масками
+// затирали друг друга молча. Теперь наружу отдаётся только то, что названо, а
+// чтения перед записью нет вовсе.
+func machineTypeUpdateFrom(req UpdateMachineTypeReq) ports.MachineTypeUpdate {
+	var u ports.MachineTypeUpdate
 	for _, f := range machineTypeUpdatedFields(req) {
 		switch f {
 		case "description":
-			mt.Description = req.Description
+			d := req.Description
+			u.Description = &d
 		case "family":
-			mt.Family = req.Family
+			fam := req.Family
+			u.Family = &fam
 		case "effective_resources":
-			mt.EffectiveResources = req.EffectiveResources
+			er := req.EffectiveResources
+			u.EffectiveResources = &er
 		case "available_zones":
-			mt.AvailableZones = req.AvailableZones
+			az := req.AvailableZones
+			u.AvailableZones = &az
 		case "status":
-			mt.Status = req.Status
+			st := req.Status
+			u.Status = &st
 		case "labels":
-			mt.Labels = req.Labels
+			u.Labels = req.Labels
+			u.LabelsSet = true
 		}
 	}
+	return u
 }
 
 // validateEffectiveResources — sizing обязателен и положителен: vCpu>0, memoryMiB>0

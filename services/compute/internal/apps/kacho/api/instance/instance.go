@@ -241,6 +241,13 @@ func ValidateCreateInstanceReq(req CreateInstanceReq) error {
 	if err := corevalidate.Labels("labels", req.Labels); err != nil {
 		return err
 	}
+	// Свободная карта данных машины несёт СВОЙ бюджет: правка сливается в уже
+	// накопленное, поэтому потолок размера сообщения хранимое не ограничивает —
+	// карта росла бы от вызова к вызову, и каждая правка навсегда клала бы весь
+	// выросший блоб ещё и в две неподчищаемые служебные таблицы.
+	if field, reason, ok := domain.ValidateInstanceMetadata(req.Metadata); !ok {
+		return serviceerr.InvalidArg(field, reason)
+	}
 	if !domain.ValidCPUGuaranteePercent(req.CPUGuaranteePercent) {
 		return serviceerr.InvalidArg("cpu_guarantee_percent", "cpuGuaranteePercent must be between 0 and 100")
 	}
@@ -263,12 +270,29 @@ func ValidateCreateInstanceReq(req CreateInstanceReq) error {
 			"needs an existing subnet+SG in zone %s; discover via SubnetService.List / SecurityGroupService.List, create via SubnetService.Create — or set useDefaultNetwork:true",
 			req.ZoneID)
 	}
+	// Кратность списка интерфейсов ограничена ЗДЕСЬ, до фазы обращений к соседу:
+	// каждый элемент стоит одного вызова к владельцу подсети, поэтому длина списка
+	// напрямую умножает внешние round-trip'ы и время удержания слота ОБЩЕГО пула
+	// исполнителей. Проверка сверх предела не должна стоить ни одного внешнего
+	// вызова — иначе предел защищает от роста строки, но не от нагрузки
+	// (см. domain.MaxNetworkInterfaceSpecsPerInstance).
+	if len(req.NetworkInterfaceSpecs) > domain.MaxNetworkInterfaceSpecsPerInstance {
+		return serviceerr.InvalidArg("network_interface_specs",
+			fmt.Sprintf("networkInterfaceSpecs must contain at most %d entries (got %d)",
+				domain.MaxNetworkInterfaceSpecsPerInstance, len(req.NetworkInterfaceSpecs)))
+	}
 	for i := range req.NetworkInterfaceSpecs {
 		if req.NetworkInterfaceSpecs[i].SubnetID == "" {
 			return serviceerr.InvalidArg("network_interface_specs.subnet_id", "networkInterfaceSpecs[].subnetId is required")
 		}
 	}
-	// F6 — secondaryVolumeSpecs structural: sizeGiB>0 (human-scale GiB, не байты).
+	// F6 — secondaryVolumeSpecs: кратность (предел объявлен контрактом) + structural
+	// sizeGiB>0 (human-scale GiB, не байты).
+	if len(req.SecondaryVolumeSpecs) > domain.MaxSecondaryVolumeSpecsPerInstance {
+		return serviceerr.InvalidArg("secondary_volume_specs",
+			fmt.Sprintf("secondaryVolumeSpecs must contain at most %d entries (got %d)",
+				domain.MaxSecondaryVolumeSpecsPerInstance, len(req.SecondaryVolumeSpecs)))
+	}
 	for i := range req.SecondaryVolumeSpecs {
 		if req.SecondaryVolumeSpecs[i].SizeGiB <= 0 {
 			return serviceerr.InvalidArg("secondary_volume_specs.size_gib", "secondaryVolumeSpecs[].sizeGiB must be > 0")
@@ -589,6 +613,13 @@ func maskIntersects(mask []string, set map[string]struct{}) bool {
 func (s *InstanceService) UpdateMetadata(ctx context.Context, instanceID string, del []string, upsert map[string]string) (*operations.Operation, error) {
 	if instanceID == "" {
 		return nil, status.Error(codes.InvalidArgument, "instance_id required")
+	}
+	// Бюджет ДЕЛЬТЫ — синхронно: отказ называет поле и не стоит строки операции.
+	// Бюджет ИТОГА СЛИЯНИЯ живёт в БД (CHECK), потому что «прочитать → сложить →
+	// проверить → записать» здесь оставляло бы окно между проверкой и записью: две
+	// одновременные правки прошли бы каждая по отдельности и превысили бюджет вместе.
+	if field, reason, ok := domain.ValidateInstanceMetadata(upsert); !ok {
+		return nil, serviceerr.InvalidArg(field, reason)
 	}
 	return lro.RunOp(ctx, s.opsRepo, fmt.Sprintf("Update instance %s metadata", instanceID),
 		&computev1.UpdateInstanceMetadataMetadata{InstanceId: instanceID},
@@ -1015,6 +1046,16 @@ func instanceStatusName(s domain.InstanceStatus) string {
 	return "STATUS_UNSPECIFIED"
 }
 
+// nicPlacementBudget — потолок ВСЕЙ фазы проверки размещения интерфейсов.
+//
+// Арифметика следует из контракта, а не выбрана «на глаз»: предел кратности
+// (domain.MaxNetworkInterfaceSpecsPerInstance = 8) × per-call дедлайн ребра
+// compute→vpc (3s) = 24s worst-case стены на здоровом, но медленном соседе.
+// Потолок обязан быть ЗАПАСОМ над ней, чтобы в здоровом режиме первым срабатывал
+// per-call дедлайн, а бюджет оставался ограничителем на деградацию. При изменении
+// предела кратности или per-call дедлайна это число пересчитывается.
+const nicPlacementBudget = 30 * time.Second
+
 // checkNicSpecPlacement — placement-coherence зоны инстанса и подсетей его
 // сетевых интерфейсов (data-integrity.md, placement-coherence). Подсеть — чужой
 // ресурс (владелец kacho-vpc), поэтому это peer-validate на request-path, а не
@@ -1035,10 +1076,33 @@ func (s *InstanceService) checkNicSpecPlacement(ctx context.Context, req CreateI
 	if s.subnets == nil {
 		return status.Error(codes.Unavailable, "subnet lookup unavailable")
 	}
+	// Бюджет ВСЕЙ фазы, а не отдельного вызова. Per-call дедлайн ограничивает ОДИН
+	// хоп; их последовательность он не ограничивает, а под деградировавшим соседом
+	// каждый элемент ещё и оплачивается повторами. С пределом кратности
+	// (domain.MaxNetworkInterfaceSpecsPerInstance) и склейкой повторов худший случай
+	// по-прежнему складывается из нескольких обращений подряд, и без потолка он
+	// доходит до предела исполнения операции — то есть слот ОБЩЕГО пула держится
+	// полные четыре минуты за работу, которая уже не удастся.
+	//
+	// Потолок обязан НЕ срабатывать в здоровом режиме: 8 разных подсетей × 3s
+	// per-call = 24s стены, поэтому 30s оставляет запас и первым срабатывает
+	// per-call дедлайн, а не бюджет.
+	ctx, cancel := context.WithTimeout(ctx, nicPlacementBudget)
+	defer cancel()
 	// Регион зоны инстанса резолвится лениво — он нужен только anycast-подсети.
 	instRegion := ""
+	// Одна и та же подсеть спрашивается у соседа ОДИН раз: ответ на «где лежит эта
+	// подсеть» от повторения вопроса не меняется, а каждый вопрос — это round-trip,
+	// который сосед ещё и авторизует у себя. Кратность запроса ограничена в
+	// ValidateCreateInstanceReq, склейка убирает оставшийся множитель: стоимость
+	// определяется числом РАЗНЫХ подсетей, а не длиной списка.
+	asked := make(map[string]struct{}, len(req.NetworkInterfaceSpecs))
 	for i := range req.NetworkInterfaceSpecs {
 		subnetID := req.NetworkInterfaceSpecs[i].SubnetID
+		if _, seen := asked[subnetID]; seen {
+			continue
+		}
+		asked[subnetID] = struct{}{}
 		sn, err := s.subnets.GetSubnet(ctx, subnetID)
 		if err != nil {
 			// Задокументированное dev-послабление KACHO_COMPUTE_SKIP_PEER_VALIDATION

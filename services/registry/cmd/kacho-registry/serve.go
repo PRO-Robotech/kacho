@@ -39,6 +39,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/registry/internal/dataplane"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/handler"
+	"github.com/PRO-Robotech/kacho/services/registry/internal/operationresolver"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/repo/kacho/pg"
 )
 
@@ -177,6 +178,18 @@ func runServe(cfg config.Config) error {
 	if iamConn != nil {
 		registryUC.WithSyncRegistrar(iamclient.NewSyncRegistrar(iamclient.NewRegisterResourceClient(iamConn)))
 	}
+
+	// ── разрешитель осиротевших операций (durable LRO recovery) ───────────────
+	// Дренаж на SIGTERM ниже закрывает только штатное завершение. Всё остальное —
+	// SIGKILL, OOM, вытеснение, исчерпание бюджета терминальной записи, переполнение
+	// очереди исполнителя — оставляло строку операции «в процессе» навсегда, и клиент
+	// не узнавал исхода ни разу. См. recovery.go.
+	lroReconciler := startLRORecovery(ctx, pool, operationresolver.Readers{
+		Registry:   registryRepo,
+		RepoConfig: repoConfigRepo,
+		Proto:      registryUC.ProtoRegistry,
+	}, logger)
+	go lroReconciler.Run(ctx)
 
 	// ── register-drainer: owner-tuple register/unregister intent из registry_outbox
 	// применяется через kacho-iam fga-proxy (:9091, mTLS, идемпотентно, at-least-once,

@@ -123,15 +123,45 @@ type MachineTypeFilter struct {
 	MinGPUs int32
 }
 
+// MachineTypeUpdate — резолвнутый набор изменений одной правки каталога.
+// nil-поле означает «колонку не трогать»; LabelsSet отличает «метки названы
+// маской» от «не названы» (пустая карта — законное значение).
+//
+// Тип существует, чтобы в БД уезжали ТОЛЬКО названные маской колонки. Раньше
+// правка читала строку, сливала маску в памяти и писала ВЕСЬ снимок обратно:
+// две правки с непересекающимися масками затирали друг друга, обе рапортовали
+// успех, и потеря была молчаливой.
+type MachineTypeUpdate struct {
+	Description        *string
+	Family             *domain.MachineTypeFamily
+	EffectiveResources *domain.EffectiveResources
+	AvailableZones     *[]string
+	Status             *domain.MachineTypeStatus
+	Labels             map[string]string
+	LabelsSet          bool
+}
+
+// Touched сообщает, называет ли правка хоть одну колонку. Правка, не называющая
+// ничего, — не ошибка вызывающего, но и записи не требует.
+func (u MachineTypeUpdate) Touched() bool {
+	return u.Description != nil || u.Family != nil || u.EffectiveResources != nil ||
+		u.AvailableZones != nil || u.Status != nil || u.LabelsSet
+}
+
 // MachineTypeRepo — port-интерфейс каталога machine-type (read + admin CRUD).
-// Ambient cluster-каталог: List не фильтруется per-object. Insert/Update/Delete — admin-only
-// (InternalMachineTypeService). Update принимает merged domain-объект (full-row
-// upsert, паритет с DiskType admin-каталогом — admin-only, low-concurrency).
+// Ambient cluster-каталог: List не фильтруется per-object. Insert/Update/Delete —
+// admin-only (InternalMachineTypeService).
+//
+// Update принимает id + НАБОР ИЗМЕНЕНИЙ, а не собранный domain-объект: инвариант
+// «правка не трогает то, чего не называла» выражается одним UPDATE по названным
+// колонкам, а не последовательностью «прочитал → слил → записал всё».
 type MachineTypeRepo interface {
 	Get(ctx context.Context, id string) (*domain.MachineType, error)
 	List(ctx context.Context, f MachineTypeFilter, p Pagination) ([]*domain.MachineType, string, error)
 	Insert(ctx context.Context, mt *domain.MachineType) (*domain.MachineType, error)
-	Update(ctx context.Context, mt *domain.MachineType) (*domain.MachineType, error)
+	// Update применяет названные маской колонки одним стейтментом и возвращает
+	// финальную строку. 0 строк → ErrNotFound.
+	Update(ctx context.Context, id string, u MachineTypeUpdate) (*domain.MachineType, error)
 	Delete(ctx context.Context, id string) error
 }
 

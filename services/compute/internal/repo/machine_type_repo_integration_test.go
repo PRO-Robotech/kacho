@@ -69,10 +69,11 @@ func TestIntegration_MachineTypeRepo_CRUD(t *testing.T) {
 	_, err = r.Insert(ctx, dup)
 	require.ErrorIs(t, err, serviceerr.ErrAlreadyExists)
 
-	// update: family + status (name immutable — not in SET).
-	got.Family = domain.MachineTypeFamilyCompute
-	got.Status = domain.MachineTypeStatusDeprecated
-	updated, err := r.Update(ctx, got)
+	// update: family + status (name immutable — not in SET). Правка называет
+	// колонки набором изменений: снимок строки в БД не уезжает.
+	fam := domain.MachineTypeFamilyCompute
+	st := domain.MachineTypeStatusDeprecated
+	updated, err := r.Update(ctx, got.ID, ports.MachineTypeUpdate{Family: &fam, Status: &st})
 	require.NoError(t, err)
 	assert.Equal(t, domain.MachineTypeFamilyCompute, updated.Family)
 	assert.Equal(t, domain.MachineTypeStatusDeprecated, updated.Status)

@@ -257,14 +257,37 @@ func (r *MachineTypeRepo) Insert(_ context.Context, mt *domain.MachineType) (*do
 }
 
 // Update обновляет machine-type (id отсутствует → ErrNotFound).
-func (r *MachineTypeRepo) Update(_ context.Context, mt *domain.MachineType) (*domain.MachineType, error) {
+func (r *MachineTypeRepo) Update(_ context.Context, id string, u ports.MachineTypeUpdate) (*domain.MachineType, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, ok := r.data[mt.ID]; !ok {
+	cur, ok := r.data[id]
+	if !ok {
 		return nil, ports.ErrNotFound
 	}
-	r.data[mt.ID] = mt
-	return mt, nil
+	// Мок обязан вести себя как настоящий репозиторий: применять ТОЛЬКО названные
+	// колонки. Мок, применяющий всё, скрыл бы ровно тот дефект, ради которого набор
+	// изменений и заведён.
+	next := *cur
+	if u.Description != nil {
+		next.Description = *u.Description
+	}
+	if u.Family != nil {
+		next.Family = *u.Family
+	}
+	if u.EffectiveResources != nil {
+		next.EffectiveResources = *u.EffectiveResources
+	}
+	if u.AvailableZones != nil {
+		next.AvailableZones = *u.AvailableZones
+	}
+	if u.Status != nil {
+		next.Status = *u.Status
+	}
+	if u.LabelsSet {
+		next.Labels = u.Labels
+	}
+	r.data[id] = &next
+	return &next, nil
 }
 
 // Delete удаляет machine-type (id отсутствует → ErrNotFound).
@@ -355,6 +378,17 @@ type SubnetRegistry struct {
 	data map[string]ports.SubnetPlacement
 	// Err — принудительная ошибка резолва (недоступность peer'а).
 	Err error
+	// calls — сколько раз спросили. Кратность повторяемого поля запроса напрямую
+	// умножает обращения к соседу, поэтому «сколько раз спросили» — предмет
+	// утверждения теста, а не диагностика.
+	calls int
+}
+
+// Calls — число обращений к реестру подсетей с момента создания.
+func (r *SubnetRegistry) Calls() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.calls
 }
 
 // NewSubnetRegistry создаёт SubnetRegistry. Без аргументов засевает подсети,
@@ -388,6 +422,7 @@ func (r *SubnetRegistry) Seed(p ports.SubnetPlacement) {
 func (r *SubnetRegistry) GetSubnet(_ context.Context, subnetID string) (*ports.SubnetPlacement, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.calls++
 	if r.Err != nil {
 		return nil, r.Err
 	}
