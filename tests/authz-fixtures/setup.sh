@@ -1354,15 +1354,31 @@ ensure_custom_role() {
     "$ACCOUNT_A" "$name" "$module" "$resources" "$verbs")
   op=$(api POST "/iam/v1/roles" "$JWT_AAA" "$body" 2>/dev/null || true)
   op_id=$(echo "$op" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("id",""))' 2>/dev/null || true)
-  [ -z "$op_id" ] && { echo ""; return; }
+  # ОТКАЗ СОЗДАНИЯ РОЛИ ОБЯЗАН БЫТЬ СЛЫШЕН.
+  #
+  # Здесь стоял молчаливый `echo ""`. Вызывающий на пустой ответ пропускает и выдачу
+  # (`[ -n "$ROLE_NLB_OP" ] && ensure_binding …`), поэтому кейсы «узкая роль РАЗРЕШАЕТ
+  # ровно это» шли с субъектом, у которого роли нет вовсе: положительная половина
+  # каждого такого кейса не проверялась ничем, и посев об этом не сообщал.
+  #
+  # Найдено 2026-07-31: имена этих ролей содержали дефис, а контракт имени роли —
+  # `^[a-z][a-z0-9_]{0,40}$`. Боевой путь на том же имени падал ГРОМКО и останавливал
+  # прогон; отладочный — проглатывал. Одна и та же ошибка, разная слышимость, и жила
+  # она ровно там, где её было не видно.
+  if [ -z "$op_id" ]; then
+    echo "[setup] ВНИМАНИЕ: роль '$name' НЕ создана — выдача под неё будет пропущена," >&2
+    echo "        и кейсы про эту роль пойдут с субъектом без неё. Ответ: $op" >&2
+    echo ""
+    return
+  fi
   poll_op "$op_id" "$JWT_AAA" | python3 -c 'import sys,json; d=json.load(sys.stdin); print((d.get("metadata") or {}).get("roleId",""))' 2>/dev/null || true
 }
 USER_NLB_CRO=$(upsert_user_grpc "authz-nlb-cr-operator@example.com" "authz-nlb-cr-operator@example.com" "AuthZ NLB CustomRoleOperator")
 USER_NLB_CRT=$(upsert_user_grpc "authz-nlb-cr-targetmgr@example.com" "authz-nlb-cr-targetmgr@example.com" "AuthZ NLB CustomRoleTargetMgr")
 JWT_NLB_CRO=$(mint_user_jwt "authz-nlb-cr-operator@example.com")
 JWT_NLB_CRT=$(mint_user_jwt "authz-nlb-cr-targetmgr@example.com")
-ROLE_NLB_OP=$(ensure_custom_role "authz-nlb-operator" "loadbalancer" '"networkLoadBalancers"' '"start","stop"')
-ROLE_NLB_TM=$(ensure_custom_role "authz-nlb-targetmgr" "loadbalancer" '"targetGroups"' '"addTargets","removeTargets"')
+ROLE_NLB_OP=$(ensure_custom_role "authz_nlb_operator" "loadbalancer" '"networkLoadBalancers"' '"start","stop"')
+ROLE_NLB_TM=$(ensure_custom_role "authz_nlb_targetmgr" "loadbalancer" '"targetGroups"' '"addTargets","removeTargets"')
 [ -n "$USER_NLB_CRO" ] && [ -n "$ROLE_NLB_OP" ] && ensure_binding "$USER_NLB_CRO" "$ROLE_NLB_OP" "project" "$NLB_PROJ" "$JWT_AAA"
 [ -n "$USER_NLB_CRT" ] && [ -n "$ROLE_NLB_TM" ] && ensure_binding "$USER_NLB_CRT" "$ROLE_NLB_TM" "project" "$NLB_PROJ" "$JWT_AAA"
 

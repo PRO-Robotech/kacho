@@ -491,9 +491,9 @@ def seed() -> dict:
     # Custom-role subjects. Their cases assert what a NARROW role does and does not
     # allow — "may addTargets, may not update the group's metadata" — which only means
     # something when the role exists and is bound. Mirrors the dev path (setup.sh §13d).
-    role_tm = custom_role(acctA, f"ps-nlb-targetmgr-{RID}", "loadbalancer",
+    role_tm = custom_role(acctA, f"ps_nlb_targetmgr_{RID}", "loadbalancer",
                           ["targetGroups"], ["addTargets", "removeTargets"])
-    role_op = custom_role(acctA, f"ps-nlb-operator-{RID}", "loadbalancer",
+    role_op = custom_role(acctA, f"ps_nlb_operator_{RID}", "loadbalancer",
                           ["networkLoadBalancers"], ["start", "stop"])
     _, tok_crTargetMgr = subject(acctA, f"ps-cr-tm-{RID}",
                                  [(role_tm, P, projA1)] if role_tm else [])
