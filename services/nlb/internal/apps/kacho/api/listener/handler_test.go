@@ -66,7 +66,7 @@ func TestHandler_RoutesEachRPC(t *testing.T) {
 	opsListener := seedListener("handler-ops", 8084)
 
 	ops := newFakeOpsRepo()
-	h := NewHandler(repo, ops, nil, slog.Default())
+	h := NewHandler(repo, ops, allowAll(), slog.Default())
 
 	t.Run("Get", func(t *testing.T) {
 		t.Parallel()

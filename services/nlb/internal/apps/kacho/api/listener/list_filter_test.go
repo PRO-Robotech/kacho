@@ -144,8 +144,16 @@ func TestListListenersFilter_FailClosed(t *testing.T) {
 	assert.Equal(t, codes.Unavailable, status.Code(err))
 }
 
-// nil-filter → passthrough.
-func TestListListenersFilter_NilFilterPassthrough(t *testing.T) {
+// Отсутствующий фильтр — НЕ passthrough. За списочными RPC nlb per-RPC Check не
+// задаётся вовсе (ScopeFiltered), поэтому «модели здесь нет» означает «авторизации
+// здесь нет», и страница не отдаётся. Тест раньше закреплял противоположное: он
+// утверждал как контракт ровно ту посадку, в которой RPC перечисляет чужой проект.
+// Формулировка отказа взята у эталона, который уже стоял в дереве, — storage
+// AllowedOnObject: «Это состояние посадки, а не ответ модели».
+//
+// Парный положительный к этому отказу — соседние тесты этого файла: при подключённой
+// модели страница действительно возвращается и действительно сужается.
+func TestListListenersFilter_AbsentModelRefuses(t *testing.T) {
 	repo := newFakeRepo()
 	seedListenerLF(t, repo, "prj-a", "nlb_lb1", "l-a1")
 	seedListenerLF(t, repo, "prj-a", "nlb_lb1", "l-a2")
@@ -153,6 +161,7 @@ func TestListListenersFilter_NilFilterPassthrough(t *testing.T) {
 	uc := NewListUseCase(repo, nil)
 	resp, err := uc.Run(ctxWithUser("usr_alice"),
 		&lbv1.ListListenersRequest{ProjectId: "prj-a"})
-	require.NoError(t, err)
-	require.Len(t, resp.GetListeners(), 2)
+	require.Error(t, err, "спросить негде — значит отказ, а не «да»")
+	assert.Equal(t, codes.PermissionDenied, status.Code(err))
+	assert.Empty(t, resp.GetListeners())
 }

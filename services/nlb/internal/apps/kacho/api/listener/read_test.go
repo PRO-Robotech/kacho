@@ -83,7 +83,7 @@ func TestListListeners_GWT_LST_017_FilterByLB(t *testing.T) {
 		UpdatedAt: time.Now().UTC(),
 	})
 
-	uc := NewListUseCase(suite.repo, nil)
+	uc := NewListUseCase(suite.repo, allowAll())
 	resp, err := uc.Run(ctxWithUser("usr_lister"), &lbv1.ListListenersRequest{
 		ProjectId:      string(suite.listener.ProjectID),
 		LoadBalancerId: string(suite.listener.LoadBalancerID),
@@ -116,7 +116,7 @@ func TestListListeners_ByProject_KAC229(t *testing.T) {
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	})
-	uc := NewListUseCase(suite.repo, nil)
+	uc := NewListUseCase(suite.repo, allowAll())
 	resp, err := uc.Run(ctxWithUser("usr_lister"), &lbv1.ListListenersRequest{
 		ProjectId: string(suite.listener.ProjectID),
 	})
@@ -128,7 +128,7 @@ func TestListListeners_ByProject_KAC229(t *testing.T) {
 func TestListListeners_EmptyProjectID(t *testing.T) {
 	t.Parallel()
 	suite := newReadSuite(t)
-	uc := NewListUseCase(suite.repo, nil)
+	uc := NewListUseCase(suite.repo, allowAll())
 	_, err := uc.Run(context.Background(), &lbv1.ListListenersRequest{ProjectId: ""})
 	require.Error(t, err)
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
@@ -154,7 +154,7 @@ func TestListListeners_FilterName(t *testing.T) {
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	})
-	uc := NewListUseCase(suite.repo, nil)
+	uc := NewListUseCase(suite.repo, allowAll())
 	resp, err := uc.Run(ctxWithUser("usr_lister"), &lbv1.ListListenersRequest{
 		ProjectId:      string(suite.listener.ProjectID),
 		LoadBalancerId: string(suite.listener.LoadBalancerID),
@@ -169,7 +169,7 @@ func TestListListeners_FilterName(t *testing.T) {
 func TestListListeners_InvalidFilter(t *testing.T) {
 	t.Parallel()
 	suite := newReadSuite(t)
-	uc := NewListUseCase(suite.repo, nil)
+	uc := NewListUseCase(suite.repo, allowAll())
 	_, err := uc.Run(context.Background(), &lbv1.ListListenersRequest{
 		ProjectId:      string(suite.listener.ProjectID),
 		LoadBalancerId: string(suite.listener.LoadBalancerID),

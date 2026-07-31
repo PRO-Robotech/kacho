@@ -47,7 +47,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/grpc"
@@ -222,10 +224,21 @@ type FGAFilter struct {
 	cli AuthorizeClient
 	cfg Config
 
+	// logger — sink записей о мягком проходе. Инъектируется (по умолчанию
+	// slog.Default(), который композиционный корень выставляет на старте).
+	logger *slog.Logger
+
 	// now — источник времени для TTL-логики кеша. Инъектируется (по умолчанию
 	// time.Now), чтобы TTL-тесты были детерминированными и не зависели от
 	// wall-clock/time.Sleep (flaky под -race/GC/CPU-throttle).
 	now func() time.Time
+
+	// openPassMisconfigured / openPassTransient — сколько раз страница ушла
+	// НЕотфильтрованной, раздельно по причине. Раздельно — потому что это разные
+	// вещи по смыслу: временный отказ соседа проходит сам, неверная настройка не
+	// пройдёт никогда. Читаются OpenPassCounts.
+	openPassMisconfigured atomic.Uint64
+	openPassTransient     atomic.Uint64
 
 	mu     sync.Mutex
 	cache  map[string]*list.Element
@@ -263,10 +276,34 @@ func NewFGAFilter(cli AuthorizeClient, cfg Config) *FGAFilter {
 	return &FGAFilter{
 		cli:    cli,
 		cfg:    cfg,
+		logger: slog.Default(),
 		now:    time.Now,
 		cache:  make(map[string]*list.Element, cfg.CacheMaxEntries),
 		lruLst: list.New(),
 	}
+}
+
+// WithLogger подменяет sink записей о мягком проходе (композиционный корень /
+// white-box тесты).
+func (f *FGAFilter) WithLogger(l *slog.Logger) *FGAFilter {
+	if l != nil {
+		f.logger = l
+	}
+	return f
+}
+
+// OpenPassCounts — сколько раз фильтр отдал страницу НЕотфильтрованной, раздельно
+// по причине: misconfigured — сосед ответил так, что это доказывает неверную
+// настройку (сама не пройдёт); transient — отказ, который может пройти сам.
+//
+// Значения читаются, а не выводятся из наличия записей в логе: «ноль проходов за всю
+// жизнь фильтра» обязано быть отличимо от «счётчика нет», а по отсутствию строк в
+// логе эти два состояния неразличимы.
+func (f *FGAFilter) OpenPassCounts() (misconfigured, transient uint64) {
+	if f == nil {
+		return 0, 0
+	}
+	return f.openPassMisconfigured.Load(), f.openPassTransient.Load()
 }
 
 // ceilDiv — целочисленное деление вверх (b > 0).
@@ -562,7 +599,7 @@ func (f *FGAFilter) batchCheckOnce(ctx context.Context, req *iamv1.BatchAuthoriz
 // handleErr — реакция по fail-open / fail-closed.
 func (f *FGAFilter) handleErr(ids []string, err error) ([]string, error) {
 	if f.cfg.FailOpen {
-		return ids, nil
+		return f.openPass(ids, err)
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
 		// Оба числа названы явно: сработать мог как per-call дедлайн, так и
@@ -576,6 +613,69 @@ func (f *FGAFilter) handleErr(ids []string, err error) ([]string, error) {
 		return nil, status.Errorf(codes.Unavailable, "list filter: AuthorizeService.BatchCheck %s: %s", s.Code(), s.Message())
 	}
 	return nil, status.Errorf(codes.Unavailable, "list filter: AuthorizeService.BatchCheck: %v", err)
+}
+
+// openPass — задокументированный мягкий проход: страница уходит вызывающему
+// НЕотфильтрованной. Он защитим ровно пока отказ действительно временный, поэтому
+// здесь он (а) классифицируется и (б) считается.
+//
+// Классификация решает, чем это НАЗВАНО. Ответ соседа, доказывающий, что мы
+// обращаемся не туда (нет такого метода, учётные данные не приняты, запрос не той
+// формы), — это НАСТРОЙКА: она не «пройдёт сама», и пока её не поправят, фильтр
+// исполняется на каждом запросе и не сужает ни одной страницы. Постоянное состояние
+// не может называться предупреждением о временном.
+//
+// Счётчик нужен ОТДЕЛЬНО от записи: по логу видно, что проход БЫЛ, и не видно, что
+// его НЕ БЫЛО. Прочитанный ноль (OpenPassCounts) эти два состояния различает.
+//
+// err — статус ответа соседа (без pgx/SQL-текста), пишется только на своей стороне,
+// вызывающему не возвращается.
+func (f *FGAFilter) openPass(ids []string, err error) ([]string, error) {
+	if provesMisconfiguration(err) {
+		total := f.openPassMisconfigured.Add(1)
+		f.logger.Error("list filter fail-open: iam.BatchCheck answered in a way that proves a MISCONFIGURED edge, not an outage — "+
+			"this will not clear on its own; the per-object filter decides nothing and the page is returned UNFILTERED",
+			"error", err, "misconfigured_open_passes_total", total)
+		return ids, nil
+	}
+	total := f.openPassTransient.Add(1)
+	f.logger.Warn("list filter fail-open: iam.BatchCheck unreachable, bypassing per-object authz (returning the UNFILTERED page)",
+		"error", err, "transient_open_passes_total", total)
+	return ids, nil
+}
+
+// provesMisconfiguration — доказывает ли ответ, что дело не в доступности соседа.
+//
+// Различие проводится по одному вопросу: может ли повтор ТОГО ЖЕ запроса когда-нибудь
+// пройти?
+//
+//   - истёкший срок / отменённый контекст — может (медленный, но живой сосед).
+//     Проверяется ПЕРВЫМ: голый context.DeadlineExceeded не является gRPC-статусом, и
+//     без этой ветки истёкший бюджет операции читался бы как доказательство неверной
+//     настройки — ложная тревога на здоровом, но нагруженном стенде;
+//   - ответ не gRPC-статусом означает, что до разбора мы дошли, а разобрать не смогли
+//     (например вердиктов пришло не столько, сколько задано вопросов): сосед отвечает
+//     по другому контракту — повтор не поможет;
+//   - метода нет, учётные данные не приняты, звать не разрешено, форма запроса
+//     отвергнута — повтор не поможет ни при какой доступности.
+//
+// Остальные коды оставлены временными намеренно: ошибиться в эту сторону значит
+// недосказать тревогу, ошибиться в другую — поднимать её на здоровом стенде и
+// приучить оператора её игнорировать.
+func provesMisconfiguration(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return false
+	}
+	s, ok := status.FromError(err)
+	if !ok {
+		return true
+	}
+	switch s.Code() {
+	case codes.Unimplemented, codes.Unauthenticated, codes.PermissionDenied, codes.InvalidArgument:
+		return true
+	default:
+		return false
+	}
 }
 
 // cacheKey — ключ положительного вердикта видимости. Отношение в ключ НЕ входит:

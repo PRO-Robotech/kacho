@@ -748,7 +748,7 @@ func buildListFilter(cfg config.Config, conn clients.Conn, logger *slog.Logger) 
 		CacheTTL:        cfg.AuthZ.ListFilter.CacheTTL,
 		CacheMaxEntries: cfg.AuthZ.ListFilter.MaxEntries,
 		FailOpen:        cfg.AuthZ.ListFilter.FailOpen,
-	})
+	}).WithLogger(logger)
 	logger.Info("per-object list-filter enabled",
 		// per_call_timeout_ms гейтит ОДИН BatchCheck; operation_budget — потолок
 		// всей фильтрации страницы (выводится из per-call и batch_parallelism).

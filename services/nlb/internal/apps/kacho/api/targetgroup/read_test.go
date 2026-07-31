@@ -66,7 +66,7 @@ func TestList_FilterByProject(t *testing.T) {
 	repo.seedTG(makeTG("prj-a", "tg-a2"))
 	repo.seedTG(makeTG("prj-b", "tg-b1"))
 
-	uc := NewListTargetGroupsUseCase(repo, nil)
+	uc := NewListTargetGroupsUseCase(repo, allowAll())
 	resp, err := uc.Execute(ctxWithUser("usr_lister"), &lbv1.ListTargetGroupsRequest{
 		ProjectId: "prj-a",
 	})

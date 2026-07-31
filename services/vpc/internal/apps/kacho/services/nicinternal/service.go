@@ -237,7 +237,20 @@ func (s *Service) ListByInstance(ctx context.Context, subject string, instanceID
 	if err != nil {
 		return nil, serviceerr.MapRepoErrLeakSafe(err, "list network interfaces by instance failed")
 	}
-	if s.filter == nil || len(att) == 0 {
+	if s.filter == nil {
+		// Порт есть, спросить негде. Это состояние ПОСАДКИ, а не ответ модели, —
+		// поэтому отказ, а не «да» (эталон существа и формулировки — storage
+		// AllowedOnObject, отказывающий на том же условии).
+		//
+		// Это ровно та конфигурация, о которой предупреждает godoc выше: инстансы
+		// называет ВЫЗЫВАЮЩИЙ, per-RPC Check за этим RPC не задаётся вовсе, поэтому
+		// проход означал выдачу привязок любых названных инстансов — из чужих
+		// проектов и аккаунтов. Отсечку безымянного вызывающего сделали безусловной
+		// по этой же причине; здесь рассуждение не было доведено до конца.
+		return nil, status.Error(codes.PermissionDenied,
+			"list by instance: the rights model is not configured for this deployment")
+	}
+	if len(att) == 0 {
 		return att, nil
 	}
 	return s.filterVisible(ctx, subject, att)

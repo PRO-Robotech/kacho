@@ -33,7 +33,7 @@ func TestHandler_DispatchesAll(t *testing.T) {
 			ID: id, ProjectID: "prj-a", NetworkID: "net-1",
 			PlacementType: vpcclient.SubnetPlacementRegional, RegionID: "ru-central1",
 		}, nil
-	}}, &fakeAddressReader{}, &fakeAddressClient{}, nil, slog.Default())
+	}}, &fakeAddressReader{}, &fakeAddressClient{}, allowAll(), slog.Default())
 
 	ctx := ctxWithUser("usr_lister")
 
@@ -91,13 +91,13 @@ func TestHandler_DispatchesAll(t *testing.T) {
 
 func TestHandler_NewHandler_NilLogger_OK(t *testing.T) {
 	t.Parallel()
-	h := NewHandler(newFakeRepo(), newFakeOpsRepo(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewHandler(newFakeRepo(), newFakeOpsRepo(), nil, nil, nil, nil, nil, nil, nil, nil, allowAll(), nil)
 	require.NotNil(t, h)
 }
 
 func TestHandler_Get_PropagatesErr(t *testing.T) {
 	t.Parallel()
-	h := NewHandler(newFakeRepo(), newFakeOpsRepo(), nil, nil, nil, nil, nil, nil, nil, nil, nil, slog.Default())
+	h := NewHandler(newFakeRepo(), newFakeOpsRepo(), nil, nil, nil, nil, nil, nil, nil, nil, allowAll(), slog.Default())
 	_, err := h.Get(context.Background(), &lbv1.GetNetworkLoadBalancerRequest{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }

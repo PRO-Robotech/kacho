@@ -760,7 +760,7 @@ func buildListFilter(cfg *config.Config, iamConn clients.Conn, logger *slog.Logg
 		CacheMaxEntries: lf.CacheMaxEntries,
 		FailOpen:        lf.FailOpen,
 	}
-	f := authzfilter.NewFGAFilter(authzfilter.NewIAMAuthorizeClient(iamConn), fcfg)
+	f := authzfilter.NewFGAFilter(authzfilter.NewIAMAuthorizeClient(iamConn), fcfg).WithLogger(logger)
 	logger.Info("list_filter_enabled",
 		// per_call_timeout гейтит ОДИН BatchCheck; operation_budget — потолок всей
 		// фильтрации страницы (выводится из per-call и batch_parallelism).

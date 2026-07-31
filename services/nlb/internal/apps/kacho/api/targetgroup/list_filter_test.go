@@ -123,8 +123,16 @@ func TestListTargetGroupsFilter_FailClosed(t *testing.T) {
 	assert.Equal(t, codes.Unavailable, status.Code(err))
 }
 
-// nil-filter → passthrough (dev / disabled).
-func TestListTargetGroupsFilter_NilFilterPassthrough(t *testing.T) {
+// Отсутствующий фильтр — НЕ passthrough. За списочными RPC nlb per-RPC Check не
+// задаётся вовсе (ScopeFiltered), поэтому «модели здесь нет» означает «авторизации
+// здесь нет», и страница не отдаётся. Тест раньше закреплял противоположное: он
+// утверждал как контракт ровно ту посадку, в которой RPC перечисляет чужой проект.
+// Формулировка отказа взята у эталона, который уже стоял в дереве, — storage
+// AllowedOnObject: «Это состояние посадки, а не ответ модели».
+//
+// Парный положительный к этому отказу — соседние тесты этого файла: при подключённой
+// модели страница действительно возвращается и действительно сужается.
+func TestListTargetGroupsFilter_AbsentModelRefuses(t *testing.T) {
 	repo := newFakeRepo()
 	repo.seedTG(makeTG("prj-a", "tg-a1"))
 	repo.seedTG(makeTG("prj-a", "tg-a2"))
@@ -132,8 +140,9 @@ func TestListTargetGroupsFilter_NilFilterPassthrough(t *testing.T) {
 	uc := NewListTargetGroupsUseCase(repo, nil)
 	resp, err := uc.Execute(ctxWithUser("usr_alice"),
 		&lbv1.ListTargetGroupsRequest{ProjectId: "prj-a"})
-	require.NoError(t, err)
-	require.Len(t, resp.GetTargetGroups(), 2)
+	require.Error(t, err, "спросить негде — значит отказ, а не «да»")
+	assert.Equal(t, codes.PermissionDenied, status.Code(err))
+	assert.Empty(t, resp.GetTargetGroups())
 }
 
 // bypass → all project-scoped.

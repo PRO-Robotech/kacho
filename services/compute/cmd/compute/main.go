@@ -962,7 +962,7 @@ func buildListFilter(cfg config.Config, authzConn *grpc.ClientConn, logger *slog
 		CacheMaxEntries: cacheMax,
 		FailOpen:        cfg.ListFilterFailOpen,
 	}
-	f := authzfilter.NewFGAFilter(cli, fcfg)
+	f := authzfilter.NewFGAFilter(cli, fcfg).WithLogger(logger)
 	logger.Info("list filter enabled",
 		// per_call_timeout_ms gates ONE BatchCheck; operation_budget caps the whole
 		// page filter (derived from per-call and batch_parallelism). All three are

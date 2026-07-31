@@ -60,7 +60,20 @@ func FilterPage(ctx context.Context, filter Filter, resourceType, action string,
 		return nil, status.Error(codes.Unauthenticated, "list filter: subject required")
 	}
 	if filter == nil {
-		return ids, nil
+		// Порт есть, спросить негде. Это состояние ПОСАДКИ, а не ответ модели, —
+		// поэтому отказ, а не «да» (существо и формулировка взяты у эталона, который
+		// уже стоит в дереве: storage AllowedOnObject отказывает на том же условии).
+		//
+		// Отдавать страницу здесь было не на каком основании: List'ы nlb помечены
+		// ScopeFiltered, per-RPC Check за них НЕ задаётся вовсе, а projectId запроса
+		// никем не проверен — то есть проход означал перечисление чужого проекта.
+		// Держалось это лишь на production boot-guard'е (config.Validate требует
+		// authz.list-filter.enabled=true), то есть контроль существовал ровно до
+		// первой конфигурации, которая его не включила. Тем же рассуждением выше
+		// сделана безусловной отсечка безымянного вызывающего — здесь оно просто не
+		// было доведено: закрыли шумный подслучай, тихий остался.
+		return nil, status.Error(codes.PermissionDenied,
+			"list filter: the rights model is not configured for this deployment")
 	}
 	if len(ids) == 0 {
 		return nil, nil
@@ -98,7 +111,14 @@ func FilterVisiblePage[T any](
 	if SubjectFromCtx(ctx) == "" {
 		return nil, status.Error(codes.Unauthenticated, "list filter: subject required")
 	}
-	if filter == nil || len(page) == 0 {
+	// И та же безусловная отсечка отсутствующей модели — по той же причине: два
+	// входа в один контракт обязаны отвечать одинаково, иначе дыра просто
+	// переезжает в тот из них, который забыли.
+	if filter == nil {
+		return nil, status.Error(codes.PermissionDenied,
+			"list filter: the rights model is not configured for this deployment")
+	}
+	if len(page) == 0 {
 		return page, nil
 	}
 	ids := make([]string, 0, len(page))

@@ -21,6 +21,7 @@ package handler
 
 import (
 	"context"
+	"log/slog"
 
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
@@ -72,9 +73,18 @@ func repositoryObjectRef(registryID, repository string) string {
 }
 
 // repoAuthz — handler-level per-repo authz. Пустой az (breakglass) → bypass.
-type repoAuthz struct{ az Authorizer }
+//
+// log — sink для строк, которые фильтр НЕ СУМЕЛ классифицировать и потому отбросил.
+// Выпадение обязано быть названо: молча исчезнувшая строка неотличима от строки,
+// которой не было, и разбираться в этом придётся уже по жалобе владельца ресурса.
+// Значение берётся из slog.Default(), который композиционный корень выставляет на
+// старте (serve.go).
+type repoAuthz struct {
+	az  Authorizer
+	log *slog.Logger
+}
 
-func newRepoAuthz(az Authorizer) repoAuthz { return repoAuthz{az: az} }
+func newRepoAuthz(az Authorizer) repoAuthz { return repoAuthz{az: az, log: slog.Default()} }
 
 // callerSubject — FGA subject-строка вызывающего. Ошибка, если запрос не назвал НИКОГО:
 // субъект не подставляется и не выводится, он либо есть, либо запроса нет.
@@ -269,8 +279,23 @@ func (a repoAuthz) filterRepos(ctx context.Context, registryID string, repos []*
 // обходящий per-repo isolation, которую держат ListTags/checkRepo. Поэтому repo-scoped
 // операция видна ТОЛЬКО при per-repo v_list на registry_repository:<reg>/<repo> (тот
 // же Check, что checkRepo/ListTags); иначе тихо выпадает (existence-hiding: без ошибки).
-// Registry-level операции (no repository в metadata) остаются видны — namespace v_list
-// (interceptor) достаточно.
+// Registry-level операции (metadata разобрана, непустого поля "repository" в ней нет)
+// остаются видны — namespace v_list (interceptor) достаточно.
+//
+// Строка, принадлежность которой УСТАНОВИТЬ НЕ УДАЛОСЬ (opScopeUnknown), отбрасывается.
+// Это не осторожность про запас: принадлежность добывается рефлексией, а рефлексия —
+// шаг, который может не дать ответа (тип метаданных не резолвится в этом бинаре, байты
+// не разбираются). «Не разобрал» и «разобрал, репозитория нет» — разные исходы, и
+// выдавать второй за первый значит отдавать строку вообще без вопроса о правах: у
+// такой строки остаётся описание вида "Delete tag <tag> of <reg>/<repo>", то есть ровно
+// то имя, ради сокрытия которого фильтр и существует. Полярность та же, что у сужения
+// потока изменений в compute (InternalWatchHandler.narrowToSubject): строка, чей вид не
+// имеет объекта в модели прав, выпадает, а не проезжает.
+//
+// Выпадение НАЗЫВАЕТСЯ (одна запись на страницу, с числом): молча исчезнувшая строка
+// неотличима от строки, которой не было, и различать их пришлось бы уже по жалобе
+// владельца ресурса. Запись пишется только когда есть что называть — на полностью
+// классифицированной странице её нет.
 //
 // registryID берётся из ЗАПРОСА (не из metadata) — операции уже отфильтрованы
 // use-case'ом по resource_id=registryID, а доверять registry_id из metadata для
@@ -286,13 +311,19 @@ func (a repoAuthz) filterOperations(ctx context.Context, registryID string, ops 
 		return ops, nil
 	}
 	keep := make([]bool, len(ops))
+	unclassified := 0
 	g, gctx := errgroup.WithContext(ctx)
 	g.SetLimit(repoAuthzConcurrency)
 	for i := range ops {
-		repository, scoped := repositoryOfOperation(&ops[i])
-		if !scoped {
+		repository, scope := repositoryOfOperation(&ops[i])
+		switch scope {
+		case opScopeRegistry:
 			keep[i] = true // registry-level op — namespace v_list (interceptor) достаточно
 			continue
+		case opScopeUnknown:
+			unclassified++ // принадлежность не установлена → строка не отдаётся
+			continue
+		case opScopeRepository:
 		}
 
 		g.Go(func() error {
@@ -307,6 +338,11 @@ func (a repoAuthz) filterOperations(ctx context.Context, registryID string, ops 
 	if err := g.Wait(); err != nil {
 		return nil, errAuthzUnavailable()
 	}
+	if unclassified > 0 {
+		a.logger().Warn(
+			"list authz: operations dropped — their repository scope could not be determined from metadata",
+			"dropped", unclassified, "page", len(ops), "registry_id", registryID)
+	}
 	out := make([]operations.Operation, 0, len(ops))
 	for i := range ops {
 		if keep[i] {
@@ -316,31 +352,63 @@ func (a repoAuthz) filterOperations(ctx context.Context, registryID string, ops 
 	return out, nil
 }
 
+// logger — sink выпадений. Нулевой repoAuthz (собранный не через newRepoAuthz —
+// например литералом в тесте) не должен ронять запрос разыменованием nil.
+func (a repoAuthz) logger() *slog.Logger {
+	if a.log == nil {
+		return slog.Default()
+	}
+	return a.log
+}
+
+// opScope — насколько установлена принадлежность операции к sub-репозиторию.
+// Три состояния, а не два: «не удалось установить» — самостоятельный исход, и
+// схлопывать его в «registry-level» нельзя (см. filterOperations).
+type opScope uint8
+
+const (
+	// opScopeUnknown — принадлежность НЕ установлена (метаданных нет, тип не
+	// резолвится, байты не разбираются). Строка не отдаётся.
+	opScopeUnknown opScope = iota
+	// opScopeRegistry — установлено: операция уровня реестра, sub-репозитория у неё нет.
+	opScopeRegistry
+	// opScopeRepository — установлено: операция принадлежит названному sub-репозиторию.
+	opScopeRepository
+)
+
 // repositoryOfOperation — sub-repository, к которому scoped операция (из её metadata),
-// и true если op — repo-scoped. Registry-level op (metadata без непустого поля
-// "repository", напр. Create/Update/Delete/GC) → ("", false). Metadata Any
-// интроспектится generic'ом (protoreflect-поле "repository") — любой новый
+// и НАСКОЛЬКО эта принадлежность установлена.
+//
+// Metadata Any интроспектится generic'ом (protoreflect-поле "repository") — любой новый
 // repo-scoped op-тип покрывается автоматически, без перечисления конкретных
-// *Metadata-типов. Неразбираемая metadata (не должно случаться: registry-op-типы
-// зарегистрированы в глобальном proto-registry) → registry-level (нет repository для
-// leak'а).
-func repositoryOfOperation(op *operations.Operation) (string, bool) {
+// *Metadata-типов. Именно поэтому шаг может не дать ответа, и ответ «не знаю» обязан
+// быть отличим от ответа «репозитория нет»:
+//
+//   - метаданных нет вовсе → opScopeUnknown. Ни один из путей создания операции в
+//     registry такую строку не производит (все зовут anypb.New), поэтому строка без
+//     метаданных — не «уровень реестра», а строка неизвестного происхождения;
+//   - тип метаданных не резолвится в этом бинаре либо байты не разбираются →
+//     opScopeUnknown. Достижимо при версионном перекосе: строку записал бинарь,
+//     знающий тип, читает — не знающий (например во время выкатки);
+//   - метаданные разобраны, поля "repository" нет либо оно пусто → opScopeRegistry.
+//     Это и есть настоящая операция уровня реестра (Create/Update/Delete/GC).
+func repositoryOfOperation(op *operations.Operation) (string, opScope) {
 	if op == nil || op.Metadata == nil {
-		return "", false
+		return "", opScopeUnknown
 	}
 	msg, err := op.Metadata.UnmarshalNew()
 	if err != nil {
-		return "", false
+		return "", opScopeUnknown
 	}
 	fd := msg.ProtoReflect().Descriptor().Fields().ByName("repository")
 	if fd == nil || fd.Kind() != protoreflect.StringKind {
-		return "", false
+		return "", opScopeRegistry
 	}
 	repository := msg.ProtoReflect().Get(fd).String()
 	if repository == "" {
-		return "", false
+		return "", opScopeRegistry
 	}
-	return repository, true
+	return repository, opScopeRepository
 }
 
 // errHideExistence — deny на объект, который caller не вправе видеть: NOT_FOUND

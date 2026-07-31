@@ -64,12 +64,15 @@ func (f *fakeFilter) FilterVisibleIDs(_ context.Context, subject, resourceType, 
 	return f.visible, nil
 }
 
-// nil filter → passthrough without resolving a subject (list-filter disabled / dev).
-func TestFilterPage_NilFilterPassthrough(t *testing.T) {
+// Отсутствующая модель прав — отказ, не passthrough. Полный разбор и парные
+// положительные — в model_absent_is_not_yes_test.go; здесь сохранено само место,
+// чтобы прежний контракт не выглядел просто удалённым.
+func TestFilterPage_NilFilterIsRefusedNotPassedThrough(t *testing.T) {
 	got, err := FilterPage(ctxWithPrincipal("user", "usr_alice"), nil,
 		ResourceTypeLoadBalancer, ActionLoadBalancerList, []string{"nlb-a", "nlb-b"})
-	require.NoError(t, err)
-	assert.Equal(t, []string{"nlb-a", "nlb-b"}, got)
+	require.Error(t, err)
+	assert.Equal(t, codes.PermissionDenied, status.Code(err))
+	assert.Empty(t, got)
 }
 
 // empty page → no authz round-trip.
@@ -173,13 +176,16 @@ func TestFilterVisiblePage_KeepsCursorOrder(t *testing.T) {
 	assert.Equal(t, "a", got[1].id)
 }
 
-// nil-filter → страница как есть; пустая страница → без обращения к iam.
-func TestFilterVisiblePage_PassthroughAndEmpty(t *testing.T) {
+// nil-filter → отказ (см. model_absent_is_not_yes_test.go); пустая страница при
+// ПОДКЛЮЧЁННОЙ модели → без обращения к iam. Оба утверждения оставлены рядом
+// намеренно: пустой ответ обязан остаться отличим от отказа.
+func TestFilterVisiblePage_RefusesWithoutModelAndSkipsIAMOnEmptyPage(t *testing.T) {
 	page := []*rec{{id: "a"}}
 	got, err := FilterVisiblePage(ctxWithPrincipal("user", "usr_alice"), nil,
 		ResourceTypeLoadBalancer, ActionLoadBalancerList, page, recID)
-	require.NoError(t, err)
-	assert.Equal(t, page, got)
+	require.Error(t, err)
+	assert.Equal(t, codes.PermissionDenied, status.Code(err))
+	assert.Empty(t, got)
 
 	flt := &fakeFilter{}
 	got, err = FilterVisiblePage(ctxWithPrincipal("user", "usr_alice"), flt,
@@ -232,18 +238,27 @@ func TestFilterPage_UnnamedCallerIsCutOffEvenWithoutAFilter(t *testing.T) {
 	}
 }
 
-// TestFilterPage_NamedCallerStillPassesThroughWithoutAFilter — обратная сторона:
-// сужение анонимности не должно ломать посадку без фильтра для НАЗВАННОГО
-// вызывающего (dev/in-process фикстуры), иначе это не отсечка анонимности, а
-// поломка списков.
-func TestFilterPage_NamedCallerStillPassesThroughWithoutAFilter(t *testing.T) {
+// TestFilterPage_NamedCallerIsAlsoRefusedWithoutAFilter — вторая половина того же
+// рассуждения, которая раньше не была проведена.
+//
+// Здесь стояло обратное утверждение: названный вызывающий «сохраняет
+// задокументированный passthrough без фильтра». Оно закрепляло ровно ту посадку, от
+// которой отсечка анонимности рядом и защищала: за списочными RPC nlb per-RPC Check
+// не задаётся вовсе, поэтому отсутствие модели — это отсутствие авторизации, а не
+// «сужение отключено», и имя вызывающего этого не меняет.
+//
+// Что при этом НЕ схлопнулось: коды ответов разные — безымянный получает
+// UNAUTHENTICATED, названный при отсутствующей модели PERMISSION_DENIED, — поэтому
+// один класс не прячет регрессию другого (см. model_absent_is_not_yes_test.go).
+func TestFilterPage_NamedCallerIsAlsoRefusedWithoutAFilter(t *testing.T) {
 	ids := []string{"nlb-1", "nlb-2"}
 	ctx := operations.WithPrincipal(context.Background(),
 		operations.Principal{Type: "user", ID: "usr_alice"})
 
 	got, err := FilterPage(ctx, nil, "nlb_load_balancer", "v_list", ids)
-	require.NoError(t, err)
-	assert.Equal(t, ids, got, "named caller keeps the documented no-filter passthrough")
+	require.Error(t, err)
+	assert.Equal(t, codes.PermissionDenied, status.Code(err))
+	assert.Empty(t, got)
 }
 
 // TestFGASubjectFromPrincipal_ReservedWordMirrorsOperations — доменное зеркало
