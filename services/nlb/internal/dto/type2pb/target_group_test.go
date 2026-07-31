@@ -28,16 +28,12 @@ func TestTargetGroup_Transfer_WithTargetsAndHC(t *testing.T) {
 	}
 	rec := kachorepo.TargetGroupRecord{
 		TargetGroup: domain.TargetGroup{
-			ID:          "tgr01ABCDEF1234567xx",
-			ProjectID:   "prj01ABCDEF1234567ll",
-			RegionID:    "ru-central1",
-			Name:        "my-tg",
-			Description: "test tg",
-			Labels:      domain.LabelsFromMap(map[string]string{"app": "web"}),
-			Targets: []domain.Target{
-				{InstanceID: option.MustNewOption(domain.InstanceID("epd0INST1")), Weight: 100},
-				{NicID: option.MustNewOption(domain.NicID("e9b0NIC1")), Weight: 50},
-			},
+			ID:                  "tgr01ABCDEF1234567xx",
+			ProjectID:           "prj01ABCDEF1234567ll",
+			RegionID:            "ru-central1",
+			Name:                "my-tg",
+			Description:         "test tg",
+			Labels:              domain.LabelsFromMap(map[string]string{"app": "web"}),
 			HealthCheck:         hc,
 			DeregistrationDelay: domain.LbDuration(60 * time.Second),
 			SlowStart:           domain.LbDuration(10 * time.Second),
@@ -45,6 +41,22 @@ func TestTargetGroup_Transfer_WithTargetsAndHC(t *testing.T) {
 			Port:                8080,
 		},
 		CreatedAt: time.Date(2026, 5, 24, 0, 0, 0, 0, time.UTC),
+		// Проекция целей строится из набора С состоянием — см.
+		// TargetGroupRecord.TargetStates и target_drain_state_test.go.
+		TargetStates: []kachorepo.TargetRecord{
+			{
+				Target: domain.Target{
+					InstanceID: option.MustNewOption(domain.InstanceID("epd0INST1")), Weight: 100,
+				},
+				ID: "t1", Status: kachorepo.TargetStatusActive,
+			},
+			{
+				Target: domain.Target{
+					NicID: option.MustNewOption(domain.NicID("e9b0NIC1")), Weight: 50,
+				},
+				ID: "t2", Status: kachorepo.TargetStatusActive,
+			},
+		},
 	}
 	var pb *lbv1.TargetGroup
 	require.NoError(t, dto.Transfer(dto.FromTo(rec, &pb)))

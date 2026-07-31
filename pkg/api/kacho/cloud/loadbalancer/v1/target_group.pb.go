@@ -78,6 +78,64 @@ func (TargetGroup_Status) EnumDescriptor() ([]byte, []int) {
 	return file_kacho_cloud_loadbalancer_v1_target_group_proto_rawDescGZIP(), []int{0, 0}
 }
 
+// Lifecycle state of one target inside the group. RemoveTargets is
+// two-phase (design §4.4): phase A marks the target DRAINING, phase B
+// deletes it once `TargetGroup.deregistration_delay` has elapsed. Between
+// the two the target is still listed, and without this field the caller
+// cannot tell a draining target from an ordinary one — the removal looks
+// like it did nothing.
+type Target_Status int32
+
+const (
+	Target_STATUS_UNSPECIFIED Target_Status = 0
+	// Serving.
+	Target_ACTIVE Target_Status = 1
+	// Removal requested; the target is draining and disappears once the
+	// group's deregistration delay has elapsed.
+	Target_DRAINING Target_Status = 2
+)
+
+// Enum value maps for Target_Status.
+var (
+	Target_Status_name = map[int32]string{
+		0: "STATUS_UNSPECIFIED",
+		1: "ACTIVE",
+		2: "DRAINING",
+	}
+	Target_Status_value = map[string]int32{
+		"STATUS_UNSPECIFIED": 0,
+		"ACTIVE":             1,
+		"DRAINING":           2,
+	}
+)
+
+func (x Target_Status) Enum() *Target_Status {
+	p := new(Target_Status)
+	*p = x
+	return p
+}
+
+func (x Target_Status) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Target_Status) Descriptor() protoreflect.EnumDescriptor {
+	return file_kacho_cloud_loadbalancer_v1_target_group_proto_enumTypes[1].Descriptor()
+}
+
+func (Target_Status) Type() protoreflect.EnumType {
+	return &file_kacho_cloud_loadbalancer_v1_target_group_proto_enumTypes[1]
+}
+
+func (x Target_Status) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Target_Status.Descriptor instead.
+func (Target_Status) EnumDescriptor() ([]byte, []int) {
+	return file_kacho_cloud_loadbalancer_v1_target_group_proto_rawDescGZIP(), []int{1, 0}
+}
+
 // TargetGroup — collection of L4 targets with a single embedded HealthCheck.
 // HealthCheck lives on the group (not per-attachment) to align with the
 // `target_groups.health_check JSONB` column (design §5.2). The
@@ -258,9 +316,16 @@ type Target struct {
 	Identity isTarget_Identity `protobuf_oneof:"identity"`
 	// Per-target weight inside the group. 0 disables traffic without removing
 	// the row (drain-with-keepalive use case). 0-1000.
-	Weight        int32 `protobuf:"varint,7,opt,name=weight,proto3" json:"weight,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Weight int32 `protobuf:"varint,7,opt,name=weight,proto3" json:"weight,omitempty"`
+	// Output-only. Never read from AddTargets/CreateTargetGroup — the state is
+	// decided by RemoveTargets and the drain runner, not by the caller.
+	Status Target_Status `protobuf:"varint,8,opt,name=status,proto3,enum=kacho.cloud.loadbalancer.v1.Target_Status" json:"status,omitempty"`
+	// Output-only. Moment phase A marked this target as draining; unset while
+	// the target is ACTIVE. Together with `TargetGroup.deregistration_delay` it
+	// tells the caller when the target actually goes away.
+	DrainStartedAt *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=drain_started_at,json=drainStartedAt,proto3" json:"drain_started_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Target) Reset() {
@@ -341,6 +406,20 @@ func (x *Target) GetWeight() int32 {
 		return x.Weight
 	}
 	return 0
+}
+
+func (x *Target) GetStatus() Target_Status {
+	if x != nil {
+		return x.Status
+	}
+	return Target_STATUS_UNSPECIFIED
+}
+
+func (x *Target) GetDrainStartedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.DrainStartedAt
+	}
+	return nil
 }
 
 type isTarget_Identity interface {
@@ -516,7 +595,7 @@ const file_kacho_cloud_loadbalancer_v1_target_group_proto_rawDesc = "" +
 	"\x12STATUS_UNSPECIFIED\x10\x00\x12\n" +
 	"\n" +
 	"\x06ACTIVE\x10\x01\x12\f\n" +
-	"\bDELETING\x10\x02J\x04\b\b\x10\tJ\x04\b2\x10<J\x04\b\v\x10\fJ\x04\b\f\x10\rR\x1cderegistration_delay_secondsR\x12slow_start_seconds\"\xce\x03\n" +
+	"\bDELETING\x10\x02J\x04\b\b\x10\tJ\x04\b2\x10<J\x04\b\v\x10\fJ\x04\b\f\x10\rR\x1cderegistration_delay_secondsR\x12slow_start_seconds\"\x94\x05\n" +
 	"\x06Target\x12!\n" +
 	"\vinstance_id\x18\x03 \x01(\tH\x00R\n" +
 	"instanceId\x12\x17\n" +
@@ -525,14 +604,21 @@ const file_kacho_cloud_loadbalancer_v1_target_group_proto_rawDesc = "" +
 	"\vexternal_ip\x18\x06 \x01(\v2..kacho.cloud.loadbalancer.v1.Target.ExternalIPH\x00R\n" +
 	"externalIp\x12\"\n" +
 	"\x06weight\x18\a \x01(\x05B\n" +
-	"\xfa\xc71\x060-1000R\x06weight\x1aL\n" +
+	"\xfa\xc71\x060-1000R\x06weight\x12B\n" +
+	"\x06status\x18\b \x01(\x0e2*.kacho.cloud.loadbalancer.v1.Target.StatusR\x06status\x12D\n" +
+	"\x10drain_started_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\x0edrainStartedAt\x1aL\n" +
 	"\tInCloudIP\x12%\n" +
 	"\tsubnet_id\x18\x01 \x01(\tB\b\x8a\xc81\x04<=50R\bsubnetId\x12\x18\n" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\x1aI\n" +
 	"\n" +
 	"ExternalIP\x12\x18\n" +
 	"\aaddress\x18\x01 \x01(\tR\aaddress\x12!\n" +
-	"\azone_id\x18\x02 \x01(\tB\b\x8a\xc81\x04<=50R\x06zoneIdB\n" +
+	"\azone_id\x18\x02 \x01(\tB\b\x8a\xc81\x04<=50R\x06zoneId\":\n" +
+	"\x06Status\x12\x16\n" +
+	"\x12STATUS_UNSPECIFIED\x10\x00\x12\n" +
+	"\n" +
+	"\x06ACTIVE\x10\x01\x12\f\n" +
+	"\bDRAINING\x10\x02B\n" +
 	"\n" +
 	"\bidentityJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03J\x04\b\n" +
 	"\x10\x14R\tsubnet_idR\aaddressBRZPgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1b\x06proto3"
@@ -549,34 +635,37 @@ func file_kacho_cloud_loadbalancer_v1_target_group_proto_rawDescGZIP() []byte {
 	return file_kacho_cloud_loadbalancer_v1_target_group_proto_rawDescData
 }
 
-var file_kacho_cloud_loadbalancer_v1_target_group_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_kacho_cloud_loadbalancer_v1_target_group_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_kacho_cloud_loadbalancer_v1_target_group_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_kacho_cloud_loadbalancer_v1_target_group_proto_goTypes = []any{
 	(TargetGroup_Status)(0),       // 0: kacho.cloud.loadbalancer.v1.TargetGroup.Status
-	(*TargetGroup)(nil),           // 1: kacho.cloud.loadbalancer.v1.TargetGroup
-	(*Target)(nil),                // 2: kacho.cloud.loadbalancer.v1.Target
-	nil,                           // 3: kacho.cloud.loadbalancer.v1.TargetGroup.LabelsEntry
-	(*Target_InCloudIP)(nil),      // 4: kacho.cloud.loadbalancer.v1.Target.InCloudIP
-	(*Target_ExternalIP)(nil),     // 5: kacho.cloud.loadbalancer.v1.Target.ExternalIP
-	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
-	(*HealthCheck)(nil),           // 7: kacho.cloud.loadbalancer.v1.HealthCheck
-	(*durationpb.Duration)(nil),   // 8: google.protobuf.Duration
+	(Target_Status)(0),            // 1: kacho.cloud.loadbalancer.v1.Target.Status
+	(*TargetGroup)(nil),           // 2: kacho.cloud.loadbalancer.v1.TargetGroup
+	(*Target)(nil),                // 3: kacho.cloud.loadbalancer.v1.Target
+	nil,                           // 4: kacho.cloud.loadbalancer.v1.TargetGroup.LabelsEntry
+	(*Target_InCloudIP)(nil),      // 5: kacho.cloud.loadbalancer.v1.Target.InCloudIP
+	(*Target_ExternalIP)(nil),     // 6: kacho.cloud.loadbalancer.v1.Target.ExternalIP
+	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
+	(*HealthCheck)(nil),           // 8: kacho.cloud.loadbalancer.v1.HealthCheck
+	(*durationpb.Duration)(nil),   // 9: google.protobuf.Duration
 }
 var file_kacho_cloud_loadbalancer_v1_target_group_proto_depIdxs = []int32{
-	6, // 0: kacho.cloud.loadbalancer.v1.TargetGroup.created_at:type_name -> google.protobuf.Timestamp
-	3, // 1: kacho.cloud.loadbalancer.v1.TargetGroup.labels:type_name -> kacho.cloud.loadbalancer.v1.TargetGroup.LabelsEntry
-	2, // 2: kacho.cloud.loadbalancer.v1.TargetGroup.targets:type_name -> kacho.cloud.loadbalancer.v1.Target
-	7, // 3: kacho.cloud.loadbalancer.v1.TargetGroup.health_check:type_name -> kacho.cloud.loadbalancer.v1.HealthCheck
-	0, // 4: kacho.cloud.loadbalancer.v1.TargetGroup.status:type_name -> kacho.cloud.loadbalancer.v1.TargetGroup.Status
-	8, // 5: kacho.cloud.loadbalancer.v1.TargetGroup.deregistration_delay:type_name -> google.protobuf.Duration
-	8, // 6: kacho.cloud.loadbalancer.v1.TargetGroup.slow_start:type_name -> google.protobuf.Duration
-	4, // 7: kacho.cloud.loadbalancer.v1.Target.ip_ref:type_name -> kacho.cloud.loadbalancer.v1.Target.InCloudIP
-	5, // 8: kacho.cloud.loadbalancer.v1.Target.external_ip:type_name -> kacho.cloud.loadbalancer.v1.Target.ExternalIP
-	9, // [9:9] is the sub-list for method output_type
-	9, // [9:9] is the sub-list for method input_type
-	9, // [9:9] is the sub-list for extension type_name
-	9, // [9:9] is the sub-list for extension extendee
-	0, // [0:9] is the sub-list for field type_name
+	7,  // 0: kacho.cloud.loadbalancer.v1.TargetGroup.created_at:type_name -> google.protobuf.Timestamp
+	4,  // 1: kacho.cloud.loadbalancer.v1.TargetGroup.labels:type_name -> kacho.cloud.loadbalancer.v1.TargetGroup.LabelsEntry
+	3,  // 2: kacho.cloud.loadbalancer.v1.TargetGroup.targets:type_name -> kacho.cloud.loadbalancer.v1.Target
+	8,  // 3: kacho.cloud.loadbalancer.v1.TargetGroup.health_check:type_name -> kacho.cloud.loadbalancer.v1.HealthCheck
+	0,  // 4: kacho.cloud.loadbalancer.v1.TargetGroup.status:type_name -> kacho.cloud.loadbalancer.v1.TargetGroup.Status
+	9,  // 5: kacho.cloud.loadbalancer.v1.TargetGroup.deregistration_delay:type_name -> google.protobuf.Duration
+	9,  // 6: kacho.cloud.loadbalancer.v1.TargetGroup.slow_start:type_name -> google.protobuf.Duration
+	5,  // 7: kacho.cloud.loadbalancer.v1.Target.ip_ref:type_name -> kacho.cloud.loadbalancer.v1.Target.InCloudIP
+	6,  // 8: kacho.cloud.loadbalancer.v1.Target.external_ip:type_name -> kacho.cloud.loadbalancer.v1.Target.ExternalIP
+	1,  // 9: kacho.cloud.loadbalancer.v1.Target.status:type_name -> kacho.cloud.loadbalancer.v1.Target.Status
+	7,  // 10: kacho.cloud.loadbalancer.v1.Target.drain_started_at:type_name -> google.protobuf.Timestamp
+	11, // [11:11] is the sub-list for method output_type
+	11, // [11:11] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_loadbalancer_v1_target_group_proto_init() }
@@ -596,7 +685,7 @@ func file_kacho_cloud_loadbalancer_v1_target_group_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_kacho_cloud_loadbalancer_v1_target_group_proto_rawDesc), len(file_kacho_cloud_loadbalancer_v1_target_group_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      2,
 			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,

@@ -18,6 +18,18 @@ type TargetGroupRecord struct {
 	UpdatedAt time.Time
 	// Xmin — `xmin::text` OCC snapshot; see LoadBalancerRecord.Xmin.
 	Xmin string
+
+	// TargetStates — проекция целей ВМЕСТЕ с их lifecycle-состоянием
+	// (Status / DrainStartedAt), которого встроенный доменный набор `Targets`
+	// не несёт by design (см. TargetRecord ниже).
+	//
+	// Контракт путей чтения: заполнять ОБА набора. `Targets` — доменный взгляд
+	// (идентичность + вес), `TargetStates` — он же плюс состояние. Публичная
+	// проекция (`dto/type2pb`) строится ТОЛЬКО из `TargetStates`, поэтому путь,
+	// заполнивший один лишь `Targets`, отдаст пустой набор целей — намеренно:
+	// пусть отсутствие бросается в глаза, чем сливающаяся цель молча покажется
+	// вызывающему обычной.
+	TargetStates []TargetRecord
 }
 
 // TargetGroupFilter — фильтр для List target_groups.

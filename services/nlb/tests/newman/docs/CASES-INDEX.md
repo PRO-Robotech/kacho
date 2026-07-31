@@ -247,6 +247,7 @@ Immutability + drain toggle + lean projection + delete-release:
 - `*-ADD-VAL-EMPTY-LIST` — VAL/P1 — targets=[] → InvalidArgument
 - `*-ADD-VAL-WEIGHT-NEGATIVE` — VAL,BVA/P1 — weight=-1 → InvalidArgument
 - `*-ADD-VAL-WEIGHT-OVER` — VAL,BVA/P1 — weight=1001 → InvalidArgument
+- `*-ADD-VAL-STATUS-OUTPUT-ONLY` — VAL,NEG/P1 — target.status на пути создания цели → InvalidArgument с именем поля (состояние решает RemoveTargets, не вызывающий)
 - `*-ADD-BVA-WEIGHT-MIN-0` — BVA/P2 — weight=0 → OK (drain semantics)
 - `*-ADD-BVA-WEIGHT-MAX-1000` — BVA/P2 — weight=1000 → OK
 - `*-ADD-VAL-BOGON-LOOPBACK` — VAL/P0 — external_ip=127.0.0.1 → bogon rejected
@@ -269,6 +270,7 @@ Immutability + drain toggle + lean projection + delete-release:
 
 ### RemoveTargets — 2-phase drain
 - `*-RM-STATE-PHASE-A-DRAINING` — STATE/P0 — Phase A DRAINING-mark + drain_started_at set (Verifies REQ-TGT-RM-PHASE-A)
+- `*-RM-STATE-SIBLING-STAYS-ACTIVE` — STATE/P1 — нетронутая цель той же группы продолжает сообщать ACTIVE и не несёт момента слива
 - `*-RM-IDEM-NOT-PRESENT` — IDEM/P1 — RemoveTargets for absent identity → no-op (Verifies REQ-TGT-RM-IDEM)
 - `*-RM-STATE-PHASE-B-RUNNER` — STATE/P1 — after dereg_delay, runner DELETEs row (Verifies REQ-TGT-RM-PHASE-B)
 

@@ -120,4 +120,28 @@ message Target {
   // Per-target weight inside the group. 0 disables traffic without removing
   // the row (drain-with-keepalive use case). 0-1000.
   int32 weight = 7 [(value) = "0-1000"];
+
+  // Lifecycle state of one target inside the group. RemoveTargets is
+  // two-phase (design §4.4): phase A marks the target DRAINING, phase B
+  // deletes it once `TargetGroup.deregistration_delay` has elapsed. Between
+  // the two the target is still listed, and without this field the caller
+  // cannot tell a draining target from an ordinary one — the removal looks
+  // like it did nothing.
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    // Serving.
+    ACTIVE = 1;
+    // Removal requested; the target is draining and disappears once the
+    // group's deregistration delay has elapsed.
+    DRAINING = 2;
+  }
+
+  // Output-only. Never read from AddTargets/CreateTargetGroup — the state is
+  // decided by RemoveTargets and the drain runner, not by the caller.
+  Status status = 8;
+
+  // Output-only. Moment phase A marked this target as draining; unset while
+  // the target is ACTIVE. Together with `TargetGroup.deregistration_delay` it
+  // tells the caller when the target actually goes away.
+  google.protobuf.Timestamp drain_started_at = 9;
 }

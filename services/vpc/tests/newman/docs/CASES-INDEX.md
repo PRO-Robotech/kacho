@@ -457,6 +457,10 @@ Move RPC у Network/Subnet/Address/RouteTable/SecurityGroup/Gateway удален
 | `*-URL-VAL-PORT-NEG` | NEG,STATE,VAL | P1 | 1 (sec) | UpdateRules rule field: SG-URL-VAL-PORT-NEG |
 | `*-URL-VAL-PORT-OVER-65535` | NEG,STATE,VAL | P1 | 1 (sec) | UpdateRules rule field: SG-URL-VAL-PORT-OVER-65535 |
 | `*-URL-VAL-PROTOCOL-UNKNOWN` | NEG,STATE,VAL | P1 | 1 (sec) | UpdateRules rule field: SG-URL-VAL-PROTOCOL-UNKNOWN |
+| `*-URL-VAL-PROTOCOL-NUMBER-ZERO` | NEG,STATE,VAL | P1 | 1 (sec) | UpdateRules rule field: выбранная ветка `protocol_number` со значением 0 отвергается (неотличима от незаданного протокола) |
+| `*-URL-VAL-PROTOCOL-NAME-EMPTY` | NEG,STATE,VAL | P1 | 1 (sec) | UpdateRules rule field: выбранная ветка `protocol_name` с пустой строкой отвергается |
+| `*-URL-VAL-PROTOCOL-NAME-HOPOPT` | STATE,VAL | P1 | 1 (sec) | UpdateRules rule field: IANA-протокол 0 выразим ИМЕНЕМ и принимается |
+| `*-URL-VAL-PROTOCOL-NUMBER-OK` | STATE,VAL | P1 | 1 (sec) | UpdateRules rule field: непустой номер протокола принимается |
 
 ---
 

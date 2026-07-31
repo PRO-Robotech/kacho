@@ -545,11 +545,30 @@ for case_id, rule, expect_ok, names_field in [
     ("SG-URL-VAL-PORT-ANY-MINUS-1", {"fromPort": -1, "toPort": -1}, True, None),
     ("SG-URL-VAL-DIRECTION-UNKNOWN", {"fromPort": 80, "toPort": 80, "direction": "DIAGONAL"}, False, None),
     ("SG-URL-VAL-PROTOCOL-UNKNOWN", {"fromPort": 80, "toPort": 80, "protocolName": "klingon"}, False, "protocol_name"),
+    # `protocol` — oneof из двух ветвей, и выбранная ветка с нулевым значением
+    # своего домена не то же самое, что невыбранная. Номер 0 занят в реестре
+    # IANA (HOPOPT), но «протокол не задан» лежит в хранилище тем же нулём,
+    # поэтому принять его значило бы сохранить правило как «любой протокол» —
+    # ШИРЕ, чем просил вызывающий. Отказ синхронный и называет поле; HOPOPT
+    # остаётся выразимым по имени.
+    ("SG-URL-VAL-PROTOCOL-NUMBER-ZERO", {"fromPort": 80, "toPort": 80, "protocolNumber": 0}, False, "protocol_number"),
+    ("SG-URL-VAL-PROTOCOL-NAME-EMPTY", {"fromPort": 80, "toPort": 80, "protocolName": ""}, False, "protocol_name"),
+    # Парная положительная половина: то же имя, выбранное непустым, проходит —
+    # иначе отрицательные кейсы выше зеленели бы и при полностью сломанной
+    # ветке протокола.
+    ("SG-URL-VAL-PROTOCOL-NAME-HOPOPT", {"fromPort": 80, "toPort": 80, "protocolName": "hopopt"}, True, None),
+    ("SG-URL-VAL-PROTOCOL-NUMBER-OK", {"fromPort": 80, "toPort": 80, "protocolNumber": 17}, True, None),
 ]:
     rule_full = {"description": "test", "direction": rule.pop("direction", "INGRESS"),
                  "ports": {"fromPort": rule["fromPort"], "toPort": rule["toPort"]},
-                 "protocolName": rule.pop("protocolName", "tcp"),
                  "cidrBlocks": {"v4CidrBlocks": ["0.0.0.0/0"]}}
+    # Ветка oneof выбирается ровно одна: положить рядом и имя, и номер значило
+    # бы отправить запрос, у которого выигрывает последний записанный ключ, —
+    # то есть кейс проверял бы не то, что называет.
+    if "protocolNumber" in rule:
+        rule_full["protocolNumber"] = rule.pop("protocolNumber")
+    else:
+        rule_full["protocolName"] = rule.pop("protocolName", "tcp")
     inner = Case(
         id=case_id, title=f"UpdateRules rule field: {case_id}",
         classes=["VAL", "STATE"] + (["NEG"] if not expect_ok else []),

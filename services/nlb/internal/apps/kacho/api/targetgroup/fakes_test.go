@@ -239,14 +239,19 @@ func (q *fakeTGReader) Get(_ context.Context, id string) (*kachorepo.TargetGroup
 		return nil, fmt.Errorf("%w: TargetGroup %s not found", kachorepo.ErrNotFound, id)
 	}
 	c := *rec
-	// inline targets
+	// inline targets — заполняются ОБА набора, как это делает настоящий путь
+	// чтения (см. kachorepo.TargetGroupRecord.TargetStates): публичная проекция
+	// строится из набора с состоянием.
 	if m, ok := q.r.targets[id]; ok && len(m) > 0 {
 		c.Targets = make([]domain.Target, 0, len(m))
+		c.TargetStates = make([]kachorepo.TargetRecord, 0, len(m))
 		for _, t := range m {
 			c.Targets = append(c.Targets, t.Target)
+			c.TargetStates = append(c.TargetStates, *t)
 		}
 	} else {
 		c.Targets = nil
+		c.TargetStates = nil
 	}
 	return &c, nil
 }

@@ -323,7 +323,7 @@
           ]
         },
         {
-          "name": "get-viewer-rya312",
+          "name": "get-viewer-rya316",
           "request": {
             "method": "GET",
             "header": [
@@ -3246,7 +3246,7 @@
           ]
         },
         {
-          "name": "add-as-tm-rya313",
+          "name": "add-as-tm-rya317",
           "request": {
             "method": "POST",
             "header": [
@@ -4017,7 +4017,7 @@
           ]
         },
         {
-          "name": "setup-cr-cr314",
+          "name": "setup-cr-cr318",
           "request": {
             "method": "POST",
             "header": [
@@ -4178,7 +4178,7 @@
           ]
         },
         {
-          "name": "del-rya315",
+          "name": "del-rya319",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4653,7 +4653,7 @@
           ]
         },
         {
-          "name": "del-by-creator-rya316",
+          "name": "del-by-creator-rya320",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5086,7 +5086,7 @@
       "description": "class:AZD | priority:P1",
       "item": [
         {
-          "name": "cr-as-group-member-rya317",
+          "name": "cr-as-group-member-rya321",
           "request": {
             "method": "POST",
             "header": [

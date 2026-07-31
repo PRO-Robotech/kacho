@@ -110,7 +110,11 @@ func (u *CreateTargetGroupUseCase) Execute(
 	}
 	tg.HealthCheck = hc
 	tg.Port = domain.LbPort(req.GetPort())
-	tg.Targets = targetsFromPb(req.GetTargets())
+	inlineTargets, err := targetsFromPbForWrite("targets", req.GetTargets())
+	if err != nil {
+		return nil, err
+	}
+	tg.Targets = inlineTargets
 	// Defaults via builder уже выставлены — override только если caller прислал
 	// значение (proto message-nil === «не задано»; NLB-1c B8 Duration).
 	if d := req.GetDeregistrationDelay(); d != nil {

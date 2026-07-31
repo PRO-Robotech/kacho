@@ -32,16 +32,17 @@ func (targetGroup) toPb(rec kachorepo.TargetGroupRecord) (*lbv1.TargetGroup, err
 	if err != nil {
 		return nil, err
 	}
+	// Проекция строится из TargetStates — набора, который несёт lifecycle-
+	// состояние цели. Прежде она собиралась из доменного `Targets`, у которого
+	// состояния нет вовсе: снятая цель оставалась в наборе до истечения
+	// задержки и выглядела обычной. Запасного пути на `Targets` намеренно нет —
+	// «состояние неизвестно» проецировалось бы как «активна», то есть ровно тем
+	// утверждением, которое и было неверным.
 	var targetsPb []*lbv1.Target
-	if len(rec.Targets) > 0 {
-		targetsPb = make([]*lbv1.Target, 0, len(rec.Targets))
-		for _, t := range rec.Targets {
-			// Wrap domain.Target в TargetRecord для прохода через target{}.toPb
-			// (он принимает TargetRecord, чтобы один transfer работал и для
-			// inline-targets в TG.Get, и для standalone Target-output из
-			// AddTargets-response).
-			tr := kachorepo.TargetRecord{Target: t}
-			tpb, err := target{}.toPb(tr)
+	if len(rec.TargetStates) > 0 {
+		targetsPb = make([]*lbv1.Target, 0, len(rec.TargetStates))
+		for _, t := range rec.TargetStates {
+			tpb, err := target{}.toPb(t)
 			if err != nil {
 				return nil, fmt.Errorf("convert target: %w", err)
 			}

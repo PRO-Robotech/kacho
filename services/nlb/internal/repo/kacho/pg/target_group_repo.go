@@ -134,13 +134,26 @@ func (r *targetGroupReader) Get(ctx context.Context, id string) (*kacho.TargetGr
 	if err != nil {
 		return nil, err
 	}
-	if len(targets) > 0 {
-		rec.Targets = make([]domain.Target, 0, len(targets))
-		for _, t := range targets {
-			rec.Targets = append(rec.Targets, t.Target)
-		}
-	}
+	fillTargets(rec, targets)
 	return rec, nil
+}
+
+// fillTargets — единственное место, где путь чтения раскладывает строки целей
+// по двум наборам записи. Оба заполняются вместе (контракт
+// `TargetGroupRecord.TargetStates`): `Targets` — доменный взгляд, `TargetStates`
+// — он же плюс lifecycle-состояние, из которого строится публичная проекция.
+// Разложение живёт функцией, а не повторяется по вызывающим: повтор — это ровно
+// то место, где один из двух наборов однажды забудут.
+func fillTargets(rec *kacho.TargetGroupRecord, targets []*kacho.TargetRecord) {
+	if len(targets) == 0 {
+		return
+	}
+	rec.Targets = make([]domain.Target, 0, len(targets))
+	rec.TargetStates = make([]kacho.TargetRecord, 0, len(targets))
+	for _, t := range targets {
+		rec.Targets = append(rec.Targets, t.Target)
+		rec.TargetStates = append(rec.TargetStates, *t)
+	}
 }
 
 func (r *targetGroupReader) List(ctx context.Context, f kacho.TargetGroupFilter, p kacho.Pagination) ([]*kacho.TargetGroupRecord, string, error) {
@@ -329,10 +342,7 @@ func (w *targetGroupWriter) Insert(ctx context.Context, tg *domain.TargetGroup) 
 		if err != nil {
 			return nil, err
 		}
-		rec.Targets = make([]domain.Target, 0, len(targets))
-		for _, t := range targets {
-			rec.Targets = append(rec.Targets, t.Target)
-		}
+		fillTargets(rec, targets)
 	}
 	return rec, nil
 }

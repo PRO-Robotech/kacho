@@ -147,7 +147,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya582",
+          "name": "setup-materialize-tg-rya586",
           "request": {
             "method": "GET",
             "header": [
@@ -196,7 +196,7 @@
           ]
         },
         {
-          "name": "add-inst-rya583",
+          "name": "add-inst-rya587",
           "request": {
             "method": "POST",
             "header": [
@@ -622,7 +622,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya584",
+          "name": "setup-materialize-tg-rya588",
           "request": {
             "method": "GET",
             "header": [
@@ -671,7 +671,7 @@
           ]
         },
         {
-          "name": "add-nic-rya585",
+          "name": "add-nic-rya589",
           "request": {
             "method": "POST",
             "header": [
@@ -1097,7 +1097,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya586",
+          "name": "setup-materialize-tg-rya590",
           "request": {
             "method": "GET",
             "header": [
@@ -1146,7 +1146,7 @@
           ]
         },
         {
-          "name": "add-ipref-rya587",
+          "name": "add-ipref-rya591",
           "request": {
             "method": "POST",
             "header": [
@@ -1572,7 +1572,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya588",
+          "name": "setup-materialize-tg-rya592",
           "request": {
             "method": "GET",
             "header": [
@@ -1621,7 +1621,7 @@
           ]
         },
         {
-          "name": "add-ext-rya589",
+          "name": "add-ext-rya593",
           "request": {
             "method": "POST",
             "header": [
@@ -2047,7 +2047,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya590",
+          "name": "setup-materialize-tg-rya594",
           "request": {
             "method": "GET",
             "header": [
@@ -2096,7 +2096,7 @@
           ]
         },
         {
-          "name": "add-mixed-rya591",
+          "name": "add-mixed-rya595",
           "request": {
             "method": "POST",
             "header": [
@@ -2522,7 +2522,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya592",
+          "name": "setup-materialize-tg-rya596",
           "request": {
             "method": "GET",
             "header": [
@@ -2821,7 +2821,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya593",
+          "name": "setup-materialize-tg-rya597",
           "request": {
             "method": "GET",
             "header": [
@@ -3120,7 +3120,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya594",
+          "name": "setup-materialize-tg-rya598",
           "request": {
             "method": "GET",
             "header": [
@@ -3419,7 +3419,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya595",
+          "name": "setup-materialize-tg-rya599",
           "request": {
             "method": "GET",
             "header": [
@@ -3468,7 +3468,7 @@
           ]
         },
         {
-          "name": "add-w-0-rya596",
+          "name": "add-w-0-rya600",
           "request": {
             "method": "POST",
             "header": [
@@ -3894,7 +3894,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya597",
+          "name": "setup-materialize-tg-rya601",
           "request": {
             "method": "GET",
             "header": [
@@ -3943,7 +3943,7 @@
           ]
         },
         {
-          "name": "add-w-1000-rya598",
+          "name": "add-w-1000-rya602",
           "request": {
             "method": "POST",
             "header": [
@@ -4369,7 +4369,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya599",
+          "name": "setup-materialize-tg-rya603",
           "request": {
             "method": "GET",
             "header": [
@@ -4672,7 +4672,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya600",
+          "name": "setup-materialize-tg-rya604",
           "request": {
             "method": "GET",
             "header": [
@@ -5032,7 +5032,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya601",
+          "name": "setup-materialize-tg-rya605",
           "request": {
             "method": "GET",
             "header": [
@@ -5392,7 +5392,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya602",
+          "name": "setup-materialize-tg-rya606",
           "request": {
             "method": "GET",
             "header": [
@@ -5441,7 +5441,7 @@
           ]
         },
         {
-          "name": "add-nic-nx-rya603",
+          "name": "add-nic-nx-rya607",
           "request": {
             "method": "POST",
             "header": [
@@ -5767,7 +5767,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya604",
+          "name": "setup-materialize-tg-rya608",
           "request": {
             "method": "GET",
             "header": [
@@ -6127,7 +6127,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya605",
+          "name": "setup-materialize-tg-rya609",
           "request": {
             "method": "GET",
             "header": [
@@ -6487,7 +6487,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya606",
+          "name": "setup-materialize-tg-rya610",
           "request": {
             "method": "GET",
             "header": [
@@ -6847,7 +6847,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya607",
+          "name": "setup-materialize-tg-rya611",
           "request": {
             "method": "GET",
             "header": [
@@ -7207,7 +7207,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya608",
+          "name": "setup-materialize-tg-rya612",
           "request": {
             "method": "GET",
             "header": [
@@ -7256,7 +7256,7 @@
           ]
         },
         {
-          "name": "add-1-rya609",
+          "name": "add-1-rya613",
           "request": {
             "method": "POST",
             "header": [
@@ -7785,7 +7785,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya610",
+          "name": "setup-materialize-tg-rya614",
           "request": {
             "method": "GET",
             "header": [
@@ -7834,7 +7834,7 @@
           ]
         },
         {
-          "name": "add-1-rya611",
+          "name": "add-1-rya615",
           "request": {
             "method": "POST",
             "header": [
@@ -8363,7 +8363,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya612",
+          "name": "setup-materialize-tg-rya616",
           "request": {
             "method": "GET",
             "header": [
@@ -8412,7 +8412,7 @@
           ]
         },
         {
-          "name": "add-1-rya613",
+          "name": "add-1-rya617",
           "request": {
             "method": "POST",
             "header": [
@@ -8941,7 +8941,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya614",
+          "name": "setup-materialize-tg-rya618",
           "request": {
             "method": "GET",
             "header": [
@@ -8990,7 +8990,7 @@
           ]
         },
         {
-          "name": "add-rya615",
+          "name": "add-rya619",
           "request": {
             "method": "POST",
             "header": [
@@ -9678,7 +9678,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya616",
+          "name": "setup-materialize-tg-rya620",
           "request": {
             "method": "GET",
             "header": [
@@ -9727,7 +9727,7 @@
           ]
         },
         {
-          "name": "add-rya617",
+          "name": "add-rya621",
           "request": {
             "method": "POST",
             "header": [
@@ -9979,7 +9979,9 @@
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const tgts = pm.response.json().targets || [];",
                   "const draining = tgts.find(t => t.externalIp && t.externalIp.address === '203.0.113.70');",
-                  "if (draining) pm.test('row still present (drain not yet done)', () =>   pm.expect(draining).to.be.an('object'));"
+                  "pm.test('removed target is still listed until the delay elapses', () =>   pm.expect(draining, JSON.stringify(tgts)).to.be.an('object'));",
+                  "pm.test('removed target reports DRAINING', () =>   pm.expect((draining || {}).status, JSON.stringify(tgts)).to.eql('DRAINING'));",
+                  "pm.test('removed target reports when draining started', () =>   pm.expect((draining || {}).drainStartedAt, JSON.stringify(tgts)).to.be.a('string'));"
                 ]
               }
             }
@@ -10026,6 +10028,845 @@
         },
         {
           "name": "poll-op-82",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TGT-RM-STATE-SIBLING-STAYS-ACTIVE — RemoveTargets Phase A: untouched sibling target keeps reporting ACTIVE",
+      "description": "class:STATE | priority:P1",
+      "item": [
+        {
+          "name": "setup-cr-tg",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"port\": 8080, \"healthCheck\": {\"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcp\": {\"port\": 80}}, \"deregistrationDelay\": \"300s\", \"slowStart\": \"30s\", \"name\": \"tgt-sibling-active-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.targetGroupId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('tgId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-83",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "setup-materialize-tg-rya622",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{tgId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups",
+                "{{tgId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "add-two-rya623",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{tgId}}:addTargets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups",
+                "{{tgId}}:addTargets"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"targets\": [{\"externalIp\": {\"address\": \"203.0.113.71\"}, \"weight\": 100}, {\"externalIp\": {\"address\": \"203.0.113.72\"}, \"weight\": 100}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-84",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "rm-one",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{tgId}}:removeTargets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups",
+                "{{tgId}}:removeTargets"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"targets\": [{\"externalIp\": {\"address\": \"203.0.113.71\"}}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-85",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "verify-sibling-active",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{tgId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups",
+                "{{tgId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const tgts = pm.response.json().targets || [];",
+                  "const kept = tgts.find(t => t.externalIp && t.externalIp.address === '203.0.113.72');",
+                  "pm.test('untouched target is still listed', () =>   pm.expect(kept, JSON.stringify(tgts)).to.be.an('object'));",
+                  "pm.test('untouched target reports ACTIVE', () =>   pm.expect((kept || {}).status, JSON.stringify(tgts)).to.eql('ACTIVE'));",
+                  "pm.test('untouched target has no drain moment', () =>   pm.expect((kept || {}).drainStartedAt, JSON.stringify(tgts)).to.be.undefined);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-tg-best-effort",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{tgId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups",
+                "{{tgId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-86",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "TGT-ADD-VAL-STATUS-OUTPUT-ONLY — AddTargets rejects output-only target.status, naming the field",
+      "description": "class:NEG | class:VAL | priority:P1",
+      "item": [
+        {
+          "name": "setup-cr-tg",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"port\": 8080, \"healthCheck\": {\"interval\": \"2s\", \"timeout\": \"1s\", \"unhealthyThreshold\": 3, \"healthyThreshold\": 2, \"tcp\": {\"port\": 80}}, \"deregistrationDelay\": \"300s\", \"slowStart\": \"30s\", \"name\": \"tgt-status-out-only-{{runId}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.targetGroupId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('tgId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-87",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "setup-materialize-tg-rya624",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{tgId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups",
+                "{{tgId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "add-with-status-rya625",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{tgId}}:addTargets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups",
+                "{{tgId}}:addTargets"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"targets\": [{\"externalIp\": {\"address\": \"203.0.113.73\"}, \"weight\": 100, \"status\": \"DRAINING\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('violation names targets[0].status', () => {",
+                  "  const d = (pm.response.json().details || []).find(x => (x.fieldViolations || []).length);",
+                  "  const fields = ((d || {}).fieldViolations || []).map(v => v.field);",
+                  "  pm.expect(fields, JSON.stringify(pm.response.json()))    .to.satisfy(fs => fs.some(f => String(f).endsWith('targets[0].status')));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-tg-best-effort",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{tgId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "targetGroups",
+                "{{tgId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-88",
           "request": {
             "method": "GET",
             "header": [
@@ -10138,7 +10979,7 @@
           ]
         },
         {
-          "name": "poll-op-83",
+          "name": "poll-op-89",
           "request": {
             "method": "GET",
             "header": [
@@ -10192,7 +11033,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya618",
+          "name": "setup-materialize-tg-rya626",
           "request": {
             "method": "GET",
             "header": [
@@ -10241,7 +11082,7 @@
           ]
         },
         {
-          "name": "rm-absent-rya619",
+          "name": "rm-absent-rya627",
           "request": {
             "method": "POST",
             "header": [
@@ -10305,7 +11146,7 @@
           ]
         },
         {
-          "name": "poll-op-84",
+          "name": "poll-op-90",
           "request": {
             "method": "GET",
             "header": [
@@ -10398,7 +11239,7 @@
           ]
         },
         {
-          "name": "poll-op-85",
+          "name": "poll-op-91",
           "request": {
             "method": "GET",
             "header": [
@@ -10511,7 +11352,7 @@
           ]
         },
         {
-          "name": "poll-op-86",
+          "name": "poll-op-92",
           "request": {
             "method": "GET",
             "header": [
@@ -10565,7 +11406,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya620",
+          "name": "setup-materialize-tg-rya628",
           "request": {
             "method": "GET",
             "header": [
@@ -10614,7 +11455,7 @@
           ]
         },
         {
-          "name": "add-rya621",
+          "name": "add-rya629",
           "request": {
             "method": "POST",
             "header": [
@@ -10678,7 +11519,7 @@
           ]
         },
         {
-          "name": "poll-op-87",
+          "name": "poll-op-93",
           "request": {
             "method": "GET",
             "header": [
@@ -10781,7 +11622,7 @@
           ]
         },
         {
-          "name": "poll-op-88",
+          "name": "poll-op-94",
           "request": {
             "method": "GET",
             "header": [
@@ -10921,7 +11762,7 @@
           ]
         },
         {
-          "name": "poll-op-89",
+          "name": "poll-op-95",
           "request": {
             "method": "GET",
             "header": [
@@ -11123,7 +11964,7 @@
           ]
         },
         {
-          "name": "poll-op-90",
+          "name": "poll-op-96",
           "request": {
             "method": "GET",
             "header": [
@@ -11177,7 +12018,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya622",
+          "name": "setup-materialize-tg-rya630",
           "request": {
             "method": "GET",
             "header": [
@@ -11315,7 +12156,7 @@
           ]
         },
         {
-          "name": "poll-op-91",
+          "name": "poll-op-97",
           "request": {
             "method": "GET",
             "header": [

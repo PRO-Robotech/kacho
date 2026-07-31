@@ -3,7 +3,10 @@
 
 package domain
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 // Протокол и диапазон портов SG-правила — закрытые множества, а не свободный текст.
 //
@@ -103,6 +106,29 @@ var protocolNameAliases = map[string]string{
 	"mobile":  "min-ipv4",  // 55: прежнее имя реестра, живо в /etc/protocols
 	"ipencap": "ipv4",      // 4:  имя из /etc/protocols
 	"all":     "any",       // распространённое написание «любой протокол»
+}
+
+// KnownProtocolNames возвращает ПОЛНЫЙ набор имён, которые принимает
+// `IsKnownProtocolName`, в нижнем регистре и отсортированным: собственное
+// «любой протокол», ключевые слова реестра IANA и принятые псевдонимы.
+//
+// Существует не ради прод-кода (там достаточно предиката), а чтобы паритет
+// набора можно было ДОКАЗАТЬ: тот же инвариант выражен ещё и ограничением базы
+// (`kacho_sg_protocol_name_valid`, миграция 0027), а два источника истины
+// расходятся молча. Гейт паритета перечисляет этот набор, требует того же
+// ответа от базы и заодно утверждает объём осмотренного — чтобы «ноль
+// расхождений» отличалось от «ноль прочитанного».
+func KnownProtocolNames() []string {
+	out := make([]string, 0, len(ianaProtocolNames)+len(protocolNameAliases)+1)
+	out = append(out, strings.ToLower(AnyProtocolName))
+	for n := range ianaProtocolNames {
+		out = append(out, n)
+	}
+	for a := range protocolNameAliases {
+		out = append(out, a)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // IsKnownProtocolName сообщает, входит ли имя в набор, который продукт умеет

@@ -557,13 +557,79 @@ CASES.append(Case(
              body={"targets": [{"externalIp": {"address": "203.0.113.70"}}]},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
+        # Утверждения БЕЗУСЛОВНЫ. Прежняя редакция обходилась `if (draining)`:
+        # при исчезнувшей цели она молча не утверждала ничего, а заголовок кейса
+        # при этом обещал проверить и пометку слива, и момент его начала.
+        # Проверить их было НЕЧЕМ — публичная проекция цели состояния не несла
+        # вовсе. Теперь несёт, и кейс спрашивает ровно то, что называет.
         Step(name="verify-still-present-as-draining", method="GET",
              path=f"{_TG_BASE}/{{{{tgId}}}}",
              test_script=[*assert_status(200),
                           "const tgts = pm.response.json().targets || [];",
                           "const draining = tgts.find(t => t.externalIp && t.externalIp.address === '203.0.113.70');",
-                          "if (draining) pm.test('row still present (drain not yet done)', () => "
-                          "  pm.expect(draining).to.be.an('object'));"]),
+                          "pm.test('removed target is still listed until the delay elapses', () => "
+                          "  pm.expect(draining, JSON.stringify(tgts)).to.be.an('object'));",
+                          "pm.test('removed target reports DRAINING', () => "
+                          "  pm.expect((draining || {}).status, JSON.stringify(tgts)).to.eql('DRAINING'));",
+                          "pm.test('removed target reports when draining started', () => "
+                          "  pm.expect((draining || {}).drainStartedAt, JSON.stringify(tgts)).to.be.a('string'));"]),
+        *_cleanup_tg(),
+    ],
+))
+
+# Парная половина к предыдущему кейсу: нетронутая цель остаётся ACTIVE и без
+# момента слива. Без неё утверждение «DRAINING» зеленело бы и в мире, где
+# состояние проставляется всем подряд.
+CASES.append(Case(
+    id="TGT-RM-STATE-SIBLING-STAYS-ACTIVE",
+    title="RemoveTargets Phase A: untouched sibling target keeps reporting ACTIVE",
+    classes=["STATE"], priority="P1",
+    steps=[
+        *_setup_tg("sibling-active", dereg_seconds=300),
+        retry_until_authorized(Step(name="add-two", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
+             body={"targets": [{"externalIp": {"address": "203.0.113.71"}, "weight": 100},
+                               {"externalIp": {"address": "203.0.113.72"}, "weight": 100}]},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(),
+        Step(name="rm-one", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
+             body={"targets": [{"externalIp": {"address": "203.0.113.71"}}]},
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(),
+        Step(name="verify-sibling-active", method="GET", path=f"{_TG_BASE}/{{{{tgId}}}}",
+             test_script=[*assert_status(200),
+                          "const tgts = pm.response.json().targets || [];",
+                          "const kept = tgts.find(t => t.externalIp && t.externalIp.address === '203.0.113.72');",
+                          "pm.test('untouched target is still listed', () => "
+                          "  pm.expect(kept, JSON.stringify(tgts)).to.be.an('object'));",
+                          "pm.test('untouched target reports ACTIVE', () => "
+                          "  pm.expect((kept || {}).status, JSON.stringify(tgts)).to.eql('ACTIVE'));",
+                          "pm.test('untouched target has no drain moment', () => "
+                          "  pm.expect((kept || {}).drainStartedAt, JSON.stringify(tgts)).to.be.undefined);"]),
+        *_cleanup_tg(),
+    ],
+))
+
+# Состояние слива — output-only: на пути, где цель СОЗДАЁТСЯ, оно отвергается с
+# именем поля. Принять его молча значило бы пообещать возможность добавить цель
+# уже сливающейся, которой нет.
+CASES.append(Case(
+    id="TGT-ADD-VAL-STATUS-OUTPUT-ONLY",
+    title="AddTargets rejects output-only target.status, naming the field",
+    classes=["NEG", "VAL"], priority="P1",
+    steps=[
+        *_setup_tg("status-out-only"),
+        retry_until_authorized(Step(name="add-with-status", method="POST",
+             path=f"{_TG_BASE}/{{{{tgId}}}}:addTargets",
+             body={"targets": [{"externalIp": {"address": "203.0.113.73"}, "weight": 100,
+                                "status": "DRAINING"}]},
+             test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                          "pm.test('violation names targets[0].status', () => {",
+                          "  const d = (pm.response.json().details || []).find(x => (x.fieldViolations || []).length);",
+                          "  const fields = ((d || {}).fieldViolations || []).map(v => v.field);",
+                          "  pm.expect(fields, JSON.stringify(pm.response.json()))"
+                          "    .to.satisfy(fs => fs.some(f => String(f).endsWith('targets[0].status')));",
+                          "});"]),
+             retry_on=(403,)),
         *_cleanup_tg(),
     ],
 ))

@@ -250,7 +250,13 @@ func marshalSecurityGroupRecord(rec *kacho.SecurityGroupRecord) (*anypb.Any, err
 // Description — newtype RcDescription, Direction — enum SecurityGroupRuleDirection.
 // Labels на rule-уровне остаются map[string]string (JSONB-friendly, см.
 // domain/security_group.go).
-func ruleSpecFromProto(rs *vpcv1.SecurityGroupRuleSpec) domain.SecurityGroupRule {
+//
+// `field` — имя поля запроса для отказа (`rule_specs[0]` /
+// `addition_rule_specs[0]`); конверсия возвращает ошибку, потому что ветка
+// `oneof protocol` видна ТОЛЬКО здесь: дальше по коду доменное правило несёт уже
+// нулевые значения, по которым выбранную ветку от невыбранной не отличить.
+// Отказ приходит синхронно, до создания операции.
+func ruleSpecFromProto(field string, rs *vpcv1.SecurityGroupRuleSpec) (domain.SecurityGroupRule, error) {
 	r := domain.SecurityGroupRule{
 		Description: domain.RcDescription(rs.Description),
 		Labels:      rs.Labels,
@@ -265,11 +271,30 @@ func ruleSpecFromProto(rs *vpcv1.SecurityGroupRuleSpec) domain.SecurityGroupRule
 		r.FromPort = rs.Ports.FromPort
 		r.ToPort = rs.Ports.ToPort
 	}
-	if name := rs.GetProtocolName(); name != "" {
-		r.ProtocolName = name
-	}
-	if num := rs.GetProtocolNumber(); num != 0 {
-		r.ProtocolNumber = num
+	// Ветка oneof читается ПО СЛУЧАЮ, а не по значению геттера: геттер отдаёт
+	// нулевое значение и для «ветка не выбрана», и для «выбрана со значением 0
+	// / пустой строкой». Сравнение с нулём сводило второе к первому, и правило
+	// сохранялось как «любой протокол» — шире, чем просил вызывающий.
+	switch p := rs.GetProtocol().(type) {
+	case nil:
+		// Протокол не задан — законное «любой протокол».
+	case *vpcv1.SecurityGroupRuleSpec_ProtocolName:
+		if p.ProtocolName == "" {
+			return domain.SecurityGroupRule{}, serviceerr.InvalidArg(field+".protocol_name",
+				"protocol_name must not be empty; omit the protocol field to mean any protocol")
+		}
+		r.ProtocolName = p.ProtocolName
+	case *vpcv1.SecurityGroupRuleSpec_ProtocolNumber:
+		// Номер 0 в реестре IANA занят (HOPOPT), но хранилище держит
+		// «протокол не задан» тем же нулём, поэтому принять его здесь значило
+		// бы сохранить правило, которое читается как «любой протокол».
+		// Выразимость сохранена именем — на него и указывает отказ.
+		if p.ProtocolNumber == 0 {
+			return domain.SecurityGroupRule{}, serviceerr.InvalidArg(field+".protocol_number",
+				"protocol_number 0 is indistinguishable from an unset protocol; "+
+					"use protocol_name \"hopopt\" for IANA protocol 0, or omit the protocol field to mean any protocol")
+		}
+		r.ProtocolNumber = p.ProtocolNumber
 	}
 	if cb := rs.GetCidrBlocks(); cb != nil {
 		r.V4CidrBlocks = cb.V4CidrBlocks
@@ -281,5 +306,22 @@ func ruleSpecFromProto(rs *vpcv1.SecurityGroupRuleSpec) domain.SecurityGroupRule
 	if pred := rs.GetPredefinedTarget(); pred != "" {
 		r.PredefinedTarget = pred
 	}
-	return r
+	return r, nil
+}
+
+// ruleSpecsFromProto конвертирует набор spec'ов, нумеруя поле отказа так же,
+// как его нумерует поэлементная валидация правил (`<field>[i]`).
+func ruleSpecsFromProto(field string, specs []*vpcv1.SecurityGroupRuleSpec) ([]domain.SecurityGroupRule, error) {
+	if len(specs) == 0 {
+		return nil, nil
+	}
+	out := make([]domain.SecurityGroupRule, 0, len(specs))
+	for i, rs := range specs {
+		r, err := ruleSpecFromProto(fmt.Sprintf("%s[%d]", field, i), rs)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, nil
 }

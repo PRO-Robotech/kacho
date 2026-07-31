@@ -4,6 +4,8 @@
 package targetgroup
 
 import (
+	"fmt"
+
 	"github.com/H-BF/corlib/pkg/option"
 	"google.golang.org/protobuf/types/known/anypb"
 
@@ -113,6 +115,11 @@ func targetFromPb(pb *lbv1.Target) domain.Target {
 }
 
 // targetsFromPb — конвертер repeated proto.Target → domain.Target.
+//
+// Читает ТОЛЬКО идентичность и вес: `status`/`drain_started_at` объявлены
+// output-only и решаются RemoveTargets с drain-runner'ом, а не вызывающим.
+// Пути, где цель СОЗДАЁТСЯ, обязаны идти через targetsFromPbForWrite — иначе
+// значение принималось бы и выбрасывалось молча.
 func targetsFromPb(pbs []*lbv1.Target) []domain.Target {
 	if len(pbs) == 0 {
 		return nil
@@ -122,6 +129,29 @@ func targetsFromPb(pbs []*lbv1.Target) []domain.Target {
 		out = append(out, targetFromPb(pb))
 	}
 	return out
+}
+
+// targetsFromPbForWrite — тот же конвертер для путей, СОЗДАЮЩИХ цель
+// (`CreateTargetGroup.targets`, `AddTargets.targets`): output-only поля там
+// отвергаются синхронно, с именем поля. Принять их значило бы пообещать, что
+// цель можно добавить уже сливающейся, — возможности, которой нет.
+//
+// Асимметрия названа намеренно: `RemoveTargets.targets` те же поля ИГНОРИРУЕТ,
+// потому что сопоставление там идёт по идентичности, и естественный поток
+// «прочитал группу → передал цель на снятие» обязан продолжать работать. Отказ
+// на снятии наказывал бы за круговой обмен собственным ответом сервиса.
+func targetsFromPbForWrite(field string, pbs []*lbv1.Target) ([]domain.Target, error) {
+	for i, pb := range pbs {
+		if pb.GetStatus() != lbv1.Target_STATUS_UNSPECIFIED {
+			return nil, errInvalidArg(fmt.Sprintf("%s[%d].status", field, i),
+				"status is output-only; it is set by RemoveTargets and the drain runner")
+		}
+		if pb.GetDrainStartedAt() != nil {
+			return nil, errInvalidArg(fmt.Sprintf("%s[%d].drain_started_at", field, i),
+				"drain_started_at is output-only; it is set by RemoveTargets and the drain runner")
+		}
+	}
+	return targetsFromPb(pbs), nil
 }
 
 // tgOutboxPayload — JSON-payload для outbox-emit. Минимальный snapshot (consumer

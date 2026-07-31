@@ -16,6 +16,22 @@ type target struct{}
 
 func (target) toPb(rec kachorepo.TargetRecord) (*lbv1.Target, error) {
 	out := &lbv1.Target{Weight: int32(rec.Weight)}
+	// Состояние слива — output-only. Снятая цель остаётся в наборе, пока не
+	// истечёт `deregistration_delay` группы; без этих двух полей вызывающий
+	// видит её обычной и не может понять, что снятие уже идёт.
+	switch rec.Status {
+	case kachorepo.TargetStatusActive:
+		out.Status = lbv1.Target_ACTIVE
+	case kachorepo.TargetStatusDraining:
+		out.Status = lbv1.Target_DRAINING
+		if rec.DrainStartedAt != nil {
+			ts, err := (timeObj{}).toPb(*rec.DrainStartedAt)
+			if err != nil {
+				return nil, err
+			}
+			out.DrainStartedAt = ts
+		}
+	}
 	switch {
 	case func() bool { _, ok := rec.InstanceID.Maybe(); return ok }():
 		v, _ := rec.InstanceID.Maybe()

@@ -116,9 +116,11 @@ func (h *Handler) Create(ctx context.Context, req *vpcv1.CreateSecurityGroupRequ
 		Description: domain.RcDescription(req.Description),
 		Labels:      domain.LabelsFromMap(req.Labels),
 	}
-	for _, rs := range req.RuleSpecs {
-		sg.Rules = append(sg.Rules, ruleSpecFromProto(rs))
+	rules, err := ruleSpecsFromProto("rule_specs", req.RuleSpecs)
+	if err != nil {
+		return nil, err
 	}
+	sg.Rules = rules
 	op, err := h.create.Execute(ctx, sg)
 	if err != nil {
 		return nil, err
@@ -146,9 +148,11 @@ func (h *Handler) Update(ctx context.Context, req *vpcv1.UpdateSecurityGroupRequ
 		Description: domain.RcDescription(req.Description),
 		Labels:      domain.LabelsFromMap(req.Labels),
 	}
-	for _, rs := range req.RuleSpecs {
-		dsg.Rules = append(dsg.Rules, ruleSpecFromProto(rs))
+	rules, err := ruleSpecsFromProto("rule_specs", req.RuleSpecs)
+	if err != nil {
+		return nil, err
 	}
+	dsg.Rules = rules
 	op, err := h.update.Execute(ctx, UpdateInput{
 		SecurityGroupID: req.SecurityGroupId,
 		SecurityGroup:   dsg,
@@ -173,9 +177,11 @@ func (h *Handler) UpdateRules(ctx context.Context, req *vpcv1.UpdateSecurityGrou
 		SecurityGroupID: req.SecurityGroupId,
 		DeletionRuleIDs: req.DeletionRuleIds,
 	}
-	for _, rs := range req.AdditionRuleSpecs {
-		in.AdditionRuleSpecs = append(in.AdditionRuleSpecs, ruleSpecFromProto(rs))
+	additions, err := ruleSpecsFromProto("addition_rule_specs", req.AdditionRuleSpecs)
+	if err != nil {
+		return nil, err
 	}
+	in.AdditionRuleSpecs = additions
 	op, err := h.updateRules.Execute(ctx, in)
 	if err != nil {
 		return nil, err

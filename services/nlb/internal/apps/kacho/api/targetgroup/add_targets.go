@@ -112,7 +112,10 @@ func (u *AddTargetsUseCase) Execute(
 			"too many targets in a single AddTargets call (max %d)", domain.MaxTargetsPerGroup)
 	}
 
-	targets := targetsFromPb(req.GetTargets())
+	targets, err := targetsFromPbForWrite("targets", req.GetTargets())
+	if err != nil {
+		return nil, err
+	}
 	for i := range targets {
 		if err := targets[i].Validate(); err != nil {
 			return nil, mapDomainErr(err)

@@ -466,7 +466,8 @@ func TestRuleSpecFromProto_Fields(t *testing.T) {
 			CidrBlocks: &vpcv1.CidrBlocks{V4CidrBlocks: []string{"0.0.0.0/0"}},
 		},
 	}
-	r := ruleSpecFromProto(rs)
+	r, err := ruleSpecFromProto("rule_specs[0]", rs)
+	require.NoError(t, err)
 	assert.Equal(t, domain.SecurityGroupRuleDirectionIngress, r.Direction)
 	assert.Equal(t, int64(80), r.FromPort)
 	assert.Equal(t, "tcp", r.ProtocolName)
@@ -479,7 +480,8 @@ func TestRuleSpecFromProto_ProtocolNumber(t *testing.T) {
 		Protocol:  &vpcv1.SecurityGroupRuleSpec_ProtocolNumber{ProtocolNumber: 17},
 		Target:    &vpcv1.SecurityGroupRuleSpec_SecurityGroupId{SecurityGroupId: "sg-2"},
 	}
-	r := ruleSpecFromProto(rs)
+	r, err := ruleSpecFromProto("rule_specs[0]", rs)
+	require.NoError(t, err)
 	assert.Equal(t, domain.SecurityGroupRuleDirectionEgress, r.Direction)
 	assert.Equal(t, int64(17), r.ProtocolNumber)
 	assert.Equal(t, "sg-2", r.SecurityGroupID)
@@ -490,7 +492,8 @@ func TestRuleSpecFromProto_Predefined(t *testing.T) {
 		Direction: vpcv1.SecurityGroupRule_INGRESS,
 		Target:    &vpcv1.SecurityGroupRuleSpec_PredefinedTarget{PredefinedTarget: "self_security_group"},
 	}
-	r := ruleSpecFromProto(rs)
+	r, err := ruleSpecFromProto("rule_specs[0]", rs)
+	require.NoError(t, err)
 	assert.Equal(t, "self_security_group", r.PredefinedTarget)
 }
 
