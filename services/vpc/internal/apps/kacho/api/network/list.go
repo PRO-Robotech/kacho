@@ -12,6 +12,7 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/listpage"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
@@ -49,6 +50,17 @@ func NewListNetworksUseCase(r Repo, filter ListFilter) *ListNetworksUseCase {
 //     fail-closed (no-leak). Сквозного пропуска фильтра нет ни для какого значения
 //     субъекта — см. authzfilter/actions.go.
 func (u *ListNetworksUseCase) Execute(ctx context.Context, subjectID string, f NetworkFilter, p Pagination) ([]*kachorepo.NetworkRecord, string, error) {
+	// Формат пагинации — ПЕРВЫМ стейтментом, до всего остального.
+	//
+	// Ниже стоит замыкание по личности вызывающего: при неизвлечённом принципале
+	// и включенном фильтре видимости страница не читается вовсе. Пока формат
+	// курсора проверял только репозиторий, один и тот же мусорный page_token
+	// получал разный ответ в зависимости от того, опознан ли вызывающий, — то
+	// есть проверка ввода зависела от прав. Проверка формата решением о доступе
+	// не является; репозиторий остаётся авторитетным на служимом пути.
+	if err := listpage.ValidatePagination(p.PageToken, p.PageSize); err != nil {
+		return nil, "", err
+	}
 	if f.ProjectID == "" {
 		return nil, "", status.Error(codes.InvalidArgument, "project_id required")
 	}
@@ -64,9 +76,8 @@ func (u *ListNetworksUseCase) Execute(ctx context.Context, subjectID string, f N
 		// passthrough: «не знаю, кто ты» ≠ «доверенный system-вызов» (no-leak).
 		return nil, "", nil
 	}
-	// repo.List валидирует page_token/page_size — вызывается ВСЕГДА и ДО любого
-	// authz-решения, поэтому malformed-token даёт InvalidArgument независимо от
-	// grant-state (api-conventions.md: валидация пагинации до authz-short-circuit).
+	// Формат page_token/page_size уже проверен выше — repo.List повторяет обе
+	// проверки как авторитетный backstop служимого пути.
 	nets, next, lerr := r.Networks().List(ctx, f, p)
 	if lerr != nil {
 		return nil, "", lerr

@@ -11,6 +11,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/listpage"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
@@ -42,6 +43,17 @@ func NewListNetworkInterfacesUseCase(r Repo, filter ListFilter) *ListNetworkInte
 // Execute — проверяет project_id, читает страницу и фильтрует её per-object.
 // iam недоступен → fail-closed Unavailable (страница НЕ отдается нефильтрованной).
 func (u *ListNetworkInterfacesUseCase) Execute(ctx context.Context, subjectID string, f NetworkInterfaceFilter, p Pagination) ([]*kachorepo.NetworkInterfaceRecord, string, error) {
+	// Формат пагинации — ПЕРВЫМ стейтментом, до всего остального.
+	//
+	// Ниже стоит замыкание по личности вызывающего: при неизвлечённом принципале
+	// и включенном фильтре видимости страница не читается вовсе. Пока формат
+	// курсора проверял только репозиторий, один и тот же мусорный page_token
+	// получал разный ответ в зависимости от того, опознан ли вызывающий, — то
+	// есть проверка ввода зависела от прав. Проверка формата решением о доступе
+	// не является; репозиторий остаётся авторитетным на служимом пути.
+	if err := listpage.ValidatePagination(p.PageToken, p.PageSize); err != nil {
+		return nil, "", err
+	}
 	if f.ProjectID == "" {
 		return nil, "", status.Error(codes.InvalidArgument, "project_id required")
 	}
@@ -55,9 +67,8 @@ func (u *ListNetworkInterfacesUseCase) Execute(ctx context.Context, subjectID st
 		// identity не извлечен (anon) при включенном фильтре → fail-closed (no-leak).
 		return nil, "", nil
 	}
-	// repo.List валидирует page_token/page_size — вызывается ВСЕГДА и ДО любого
-	// authz-решения, поэтому malformed-token даёт InvalidArgument независимо от
-	// grant-state (api-conventions.md: валидация пагинации до authz-short-circuit).
+	// Формат page_token/page_size уже проверен выше — repo.List повторяет обе
+	// проверки как авторитетный backstop служимого пути.
 	out, next, lerr := rd.NetworkInterfaces().List(ctx, f, p)
 	if lerr != nil {
 		return nil, "", serviceerr.MapRepoErr(lerr)

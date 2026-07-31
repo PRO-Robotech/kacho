@@ -76,7 +76,10 @@ func (r *subnetReader) Get(_ context.Context, id string) (*kacho.SubnetRecord, e
 	return &cp, nil
 }
 
-func (r *subnetReader) List(_ context.Context, f kacho.SubnetFilter, _ kacho.Pagination) ([]*kacho.SubnetRecord, string, error) {
+func (r *subnetReader) List(_ context.Context, f kacho.SubnetFilter, p kacho.Pagination) ([]*kacho.SubnetRecord, string, error) {
+	if err := checkPagination(p); err != nil {
+		return nil, "", err
+	}
 	var result []*kacho.SubnetRecord
 	for _, s := range r.snap {
 		if (f.ProjectID == "" || s.ProjectID == f.ProjectID) &&
@@ -156,7 +159,10 @@ func (sw *subnetWriter) GetForUpdate(ctx context.Context, id string) (*kacho.Sub
 	return sw.Get(ctx, id)
 }
 
-func (sw *subnetWriter) List(_ context.Context, f kacho.SubnetFilter, _ kacho.Pagination) ([]*kacho.SubnetRecord, string, error) {
+func (sw *subnetWriter) List(_ context.Context, f kacho.SubnetFilter, p kacho.Pagination) ([]*kacho.SubnetRecord, string, error) {
+	if err := checkPagination(p); err != nil {
+		return nil, "", err
+	}
 	var result []*kacho.SubnetRecord
 	for id, s := range sw.w.localSubs {
 		if _, deleted := sw.w.deletedSubIDs[id]; deleted {

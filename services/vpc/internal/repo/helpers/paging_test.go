@@ -12,10 +12,18 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// TestDecodePageToken locks the page_token contract that keeps vpc the reference for
-// the "garbage token → InvalidArgument" convention (compute+nlb were fixed to match it):
-// a malformed token must error so the List RPC maps it via InvalidPageTokenErr to 400,
-// and a valid round-trip must decode back to the same (created_at truncated to ns, id).
+// TestDecodePageToken locks the CODEC: a malformed token must error so the List RPC
+// maps it via InvalidPageTokenErr to 400, and a valid round-trip must decode back to
+// the same (created_at truncated to ns, id).
+//
+// What it does NOT lock — and never did, despite the wording it used to carry about
+// vpc being the reference for the convention — is WHEN the check runs relative to the
+// caller's identity. That ordering is the substance of the convention, and this case
+// has no caller in it at all. It is locked in two other places instead:
+// list_pagination_order_test.go in each List use-case package (behaviour: the same
+// garbage cursor is refused whether or not the caller was identified), and
+// internal/repohygiene TestEmptyPageNeverPrecedesPaginationValidation (the tree-wide
+// property, so the next such place reddens when it is written).
 func TestDecodePageToken(t *testing.T) {
 	t.Run("round-trip", func(t *testing.T) {
 		want := time.Unix(0, 1_700_000_000_123_456_789).UTC()

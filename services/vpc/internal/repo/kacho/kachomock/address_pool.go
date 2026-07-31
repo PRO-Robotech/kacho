@@ -34,7 +34,10 @@ func (r *addressPoolReader) Get(_ context.Context, id string) (*kacho.AddressPoo
 	return &cp, nil
 }
 
-func (r *addressPoolReader) List(_ context.Context, f kacho.AddressPoolFilter, _ kacho.Pagination) ([]*kacho.AddressPoolRecord, string, error) {
+func (r *addressPoolReader) List(_ context.Context, f kacho.AddressPoolFilter, p kacho.Pagination) ([]*kacho.AddressPoolRecord, string, error) {
+	if err := checkPagination(p); err != nil {
+		return nil, "", err
+	}
 	var result []*kacho.AddressPoolRecord
 	for _, p := range r.snap {
 		if f.Kind != domain.AddressPoolKindUnspecified && p.Kind != f.Kind {

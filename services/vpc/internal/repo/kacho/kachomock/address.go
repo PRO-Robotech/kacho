@@ -38,7 +38,10 @@ func (r *addressReader) Get(_ context.Context, id string) (*kacho.AddressRecord,
 	return &cp, nil
 }
 
-func (r *addressReader) List(_ context.Context, f kacho.AddressFilter, _ kacho.Pagination) ([]*kacho.AddressRecord, string, error) {
+func (r *addressReader) List(_ context.Context, f kacho.AddressFilter, p kacho.Pagination) ([]*kacho.AddressRecord, string, error) {
+	if err := checkPagination(p); err != nil {
+		return nil, "", err
+	}
 	var result []*kacho.AddressRecord
 	for _, a := range r.snap {
 		if (f.ProjectID == "" || a.ProjectID == f.ProjectID) &&
@@ -108,7 +111,10 @@ func (aw *addressWriter) GetForUpdate(ctx context.Context, id string) (*kacho.Ad
 	return aw.Get(ctx, id)
 }
 
-func (aw *addressWriter) List(_ context.Context, f kacho.AddressFilter, _ kacho.Pagination) ([]*kacho.AddressRecord, string, error) {
+func (aw *addressWriter) List(_ context.Context, f kacho.AddressFilter, p kacho.Pagination) ([]*kacho.AddressRecord, string, error) {
+	if err := checkPagination(p); err != nil {
+		return nil, "", err
+	}
 	var result []*kacho.AddressRecord
 	for id, a := range aw.w.localAddrs {
 		if _, deleted := aw.w.deletedAddrIDs[id]; deleted {

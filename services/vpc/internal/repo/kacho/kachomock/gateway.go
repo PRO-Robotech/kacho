@@ -37,7 +37,10 @@ func (r *gatewayReader) Get(_ context.Context, id string) (*kacho.GatewayRecord,
 	return &cp, nil
 }
 
-func (r *gatewayReader) List(_ context.Context, f kacho.GatewayFilter, _ kacho.Pagination) ([]*kacho.GatewayRecord, string, error) {
+func (r *gatewayReader) List(_ context.Context, f kacho.GatewayFilter, p kacho.Pagination) ([]*kacho.GatewayRecord, string, error) {
+	if err := checkPagination(p); err != nil {
+		return nil, "", err
+	}
 	var result []*kacho.GatewayRecord
 	for _, g := range r.snap {
 		if (f.ProjectID == "" || g.ProjectID == f.ProjectID) &&
@@ -75,7 +78,10 @@ func (gw *gatewayWriter) GetForUpdate(ctx context.Context, id string) (*kacho.Ga
 	return gw.Get(ctx, id)
 }
 
-func (gw *gatewayWriter) List(_ context.Context, f kacho.GatewayFilter, _ kacho.Pagination) ([]*kacho.GatewayRecord, string, error) {
+func (gw *gatewayWriter) List(_ context.Context, f kacho.GatewayFilter, p kacho.Pagination) ([]*kacho.GatewayRecord, string, error) {
+	if err := checkPagination(p); err != nil {
+		return nil, "", err
+	}
 	var result []*kacho.GatewayRecord
 	for id, g := range gw.w.localGWs {
 		if _, deleted := gw.w.deletedGWIDs[id]; deleted {

@@ -52,7 +52,10 @@ func (r *securityGroupReader) GetMany(ctx context.Context, ids []string) (map[st
 	return out, nil
 }
 
-func (r *securityGroupReader) List(_ context.Context, f kacho.SecurityGroupFilter, _ kacho.Pagination) ([]*kacho.SecurityGroupRecord, string, error) {
+func (r *securityGroupReader) List(_ context.Context, f kacho.SecurityGroupFilter, p kacho.Pagination) ([]*kacho.SecurityGroupRecord, string, error) {
+	if err := checkPagination(p); err != nil {
+		return nil, "", err
+	}
 	var result []*kacho.SecurityGroupRecord
 	for _, sg := range r.snap {
 		if (f.ProjectID == "" || sg.ProjectID == f.ProjectID) &&
@@ -104,7 +107,10 @@ func (sw *securityGroupWriter) GetMany(ctx context.Context, ids []string) (map[s
 	return out, nil
 }
 
-func (sw *securityGroupWriter) List(_ context.Context, f kacho.SecurityGroupFilter, _ kacho.Pagination) ([]*kacho.SecurityGroupRecord, string, error) {
+func (sw *securityGroupWriter) List(_ context.Context, f kacho.SecurityGroupFilter, p kacho.Pagination) ([]*kacho.SecurityGroupRecord, string, error) {
+	if err := checkPagination(p); err != nil {
+		return nil, "", err
+	}
 	var result []*kacho.SecurityGroupRecord
 	for id, sg := range sw.w.localSGs {
 		if _, deleted := sw.w.deletedSGIDs[id]; deleted {

@@ -31,7 +31,10 @@ func (r *routeTableReader) Get(_ context.Context, id string) (*kacho.RouteTableR
 	return &cp, nil
 }
 
-func (r *routeTableReader) List(_ context.Context, f kacho.RouteTableFilter, _ kacho.Pagination) ([]*kacho.RouteTableRecord, string, error) {
+func (r *routeTableReader) List(_ context.Context, f kacho.RouteTableFilter, p kacho.Pagination) ([]*kacho.RouteTableRecord, string, error) {
+	if err := checkPagination(p); err != nil {
+		return nil, "", err
+	}
 	var result []*kacho.RouteTableRecord
 	for _, rt := range r.snap {
 		if (f.ProjectID == "" || rt.ProjectID == f.ProjectID) &&
@@ -72,7 +75,10 @@ func (rw *routeTableWriter) GetForUpdate(ctx context.Context, id string) (*kacho
 	return rw.Get(ctx, id)
 }
 
-func (rw *routeTableWriter) List(_ context.Context, f kacho.RouteTableFilter, _ kacho.Pagination) ([]*kacho.RouteTableRecord, string, error) {
+func (rw *routeTableWriter) List(_ context.Context, f kacho.RouteTableFilter, p kacho.Pagination) ([]*kacho.RouteTableRecord, string, error) {
+	if err := checkPagination(p); err != nil {
+		return nil, "", err
+	}
 	var result []*kacho.RouteTableRecord
 	for id, rt := range rw.w.localRTs {
 		if _, deleted := rw.w.deletedRTIDs[id]; deleted {

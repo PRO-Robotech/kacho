@@ -42,7 +42,10 @@ func (r *networkInterfaceReader) Get(_ context.Context, id string) (*kacho.Netwo
 	return &cp, nil
 }
 
-func (r *networkInterfaceReader) List(_ context.Context, f kacho.NetworkInterfaceFilter, _ kacho.Pagination) ([]*kacho.NetworkInterfaceRecord, string, error) {
+func (r *networkInterfaceReader) List(_ context.Context, f kacho.NetworkInterfaceFilter, p kacho.Pagination) ([]*kacho.NetworkInterfaceRecord, string, error) {
+	if err := checkPagination(p); err != nil {
+		return nil, "", err
+	}
 	var result []*kacho.NetworkInterfaceRecord
 	for _, n := range r.snap {
 		if (f.ProjectID != "" && n.ProjectID != f.ProjectID) ||
@@ -124,7 +127,10 @@ func (nw *networkInterfaceWriter) GetForUpdate(ctx context.Context, id string) (
 	return nw.Get(ctx, id)
 }
 
-func (nw *networkInterfaceWriter) List(_ context.Context, f kacho.NetworkInterfaceFilter, _ kacho.Pagination) ([]*kacho.NetworkInterfaceRecord, string, error) {
+func (nw *networkInterfaceWriter) List(_ context.Context, f kacho.NetworkInterfaceFilter, p kacho.Pagination) ([]*kacho.NetworkInterfaceRecord, string, error) {
+	if err := checkPagination(p); err != nil {
+		return nil, "", err
+	}
 	var result []*kacho.NetworkInterfaceRecord
 	for id, n := range nw.w.localNIs {
 		if _, deleted := nw.w.deletedNIIDs[id]; deleted {
