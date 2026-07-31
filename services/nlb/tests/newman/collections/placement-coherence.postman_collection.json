@@ -29,7 +29,19 @@
           "const __missing = __needed.filter((k) => !(pm.environment.get(k) || pm.variables.get(k) || ''));",
           "if (__missing.length > 0) {",
           "  pm.test('FIXTURE REQUIRED: ' + __missing.join(', '), () => pm.expect.fail('the suite fixture seed did not run: ' + __missing.join(', ') + ' are empty. Seed via tests/authz-fixtures (prodrun.sh patches the suite env). Falling back to another subject would test a DIFFERENT principal and report green about a subject that was never exercised.'));",
-          "}"
+          "}",
+          "(function () {",
+          "  var _u = '';",
+          "  try { _u = pm.request.url.toString(); } catch (e) { return; }",
+          "  var _m = /\\{\\{([A-Za-z0-9_]+)\\}\\}/.exec(_u);",
+          "  if (!_m) { return; }",
+          "  var _n = _m[1];",
+          "  if (pm.variables.has(_n)) { return; }",
+          "  pm.test('предусловие: {{' + _n + '}} не было захвачено — запрос не отправлен', function () {",
+          "    pm.expect.fail(_n + ' не определена ни в одной области. Мутация, которая должна была её захватить, не вернула Operation (была отвергнута), либо захват не состоялся. Отправка ушла бы литералом и повтор не сошёлся бы никогда.');",
+          "  });",
+          "  pm.execution.skipRequest();",
+          "})();"
         ]
       }
     }
