@@ -605,7 +605,6 @@ def seed() -> dict:
         "zoneD": "ru-central1-d",
         "existingRegionId": "ru-central1",
         "existingRegionAltId": ALT_REGION,
-        "existingRegionAltId": "ru-central1",
         # статические API-токены (см. блок выше). `apiTokenExpired` НЕ выдаётся
         # намеренно — его условие посевом не создаётся, и подделка вернула бы ровно ту
         # ложь, ради ухода от которой боевая посадка и заводилась.
