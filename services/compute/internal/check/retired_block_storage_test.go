@@ -62,34 +62,30 @@ var retiredBlockStorage = []retiredResource{
 // retiredAuthzObjects — the authorization object types the retired resources used to
 // register owner-tuples for.
 //
-// The type declarations themselves still stand in the canonical FGA model: deleting
-// them is an iam-side change (it mints a new model id and touches
-// services/iam/internal plus the openfga-bootstrap chart), out of reach of the
-// compute retire.
-//
 // WHAT THIS GATE PROVES, EXACTLY: that COMPUTE cannot address them — it emits no
 // tuple, runs no check, filters no list on these types, and no catalog entry scopes
 // one of its RPCs to them. That is the whole of the claim, and it is deliberately
-// narrower than "unreachable".
+// narrower than "the types do not exist": whether they are declared at all is an
+// iam-side fact, and this gate reads only the compute tree.
 //
-// It is narrower because they are NOT unreachable. The retire moved the resource;
-// it did not retract the authorization type, and iam still names all three in four
-// separate vocabularies of its own — the grantable catalog it advertises to clients,
-// the per-verb emission guard, the label-selectable/materializable feed, and the
-// AccessBinding target whitelist — while nine `compute.{disk,image,snapshot}.*`
-// system roles remain seeded and bindable and the wildcard role selectors still list
-// the three dotted names. Measured on a running installation while this comment was
-// written: 34 rows survive in iam's resource mirror and 812 tuples on these three
-// types are in the store, the most recent written the previous day by an ordinary
-// binding reconcile. A reconcile that emits onto a type is not a dead declaration.
+// The iam side is now done too, and the order it went in is worth keeping, because
+// the obvious order is the broken one. Removing a declared type while a producer
+// still emits onto it turns every such write into a rejection the store never stops
+// returning — the failure mode recorded above `type storage_volume` in the model,
+// arrived at from the opposite direction. So the producers were retracted FIRST:
+// migration 0074 removed the nine `compute.{disk,image,snapshot}.*` system roles,
+// the selector rows that expanded onto the three dotted names, the mirror rows, the
+// members and the queued tuples; then iam's four vocabularies (grantable catalog,
+// per-verb emission guard, label-selectable/materializable feed, AccessBinding
+// target whitelist) dropped them; and only then did `type compute_disk` /
+// `compute_image` / `compute_snapshot` leave the model and the generated
+// openfga-bootstrap ConfigMap.
 //
-// So do not read this gate as permission to delete the three types from the model.
-// Removing a declared type while a producer still emits onto it turns each of those
-// emissions into a write the store refuses permanently — the failure mode already
-// recorded above `type storage_volume` in the model, arrived at from the opposite
-// direction. The order that works is the reverse: retract the roles, the selectors,
-// the mirror rows and iam's four vocabularies FIRST, and take the declaration out
-// last, when nothing is left to write.
+// That half is held by services/iam/internal/check/retired_block_storage_test.go
+// (artefacts in the tree) and
+// services/iam/internal/repo/kacho/pg/retired_block_storage_integration_test.go
+// (effective rows in a migrated schema). This gate stays as it is: it answers for
+// compute, and a future re-introduction here would be caught here.
 var retiredAuthzObjects = []string{"compute_disk", "compute_image", "compute_snapshot"}
 
 // retiredFQNs returns the fully-qualified gRPC service names taken off the contract.

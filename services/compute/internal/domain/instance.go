@@ -97,7 +97,7 @@ const (
 
 // AttachedDisk — output-only зеркало volume-привязки (COMP-2; пусто в COMP-1).
 type AttachedDisk struct {
-	DiskID     string
+	VolumeID   string
 	IsBoot     bool
 	Mode       AttachedDiskMode
 	DeviceName string

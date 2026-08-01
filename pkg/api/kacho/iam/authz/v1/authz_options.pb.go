@@ -32,7 +32,7 @@ type ScopeExtractor struct {
 	// OpenFGA object type the scope id resolves to. Either a hierarchy scope
 	// (`cluster` / `account` / `project`) or a per-resource
 	// object type registered in the authorization model (`vpc_network`,
-	// `compute_disk`, `iam_group`, `iam_role`, ...). The api-gateway authz
+	// `storage_volume`, `iam_group`, `iam_role`, ...). The api-gateway authz
 	// middleware builds the FGA Check object as `<object_type>:<id>` where the
 	// id is taken from `from_request_field`. Must be non-empty.
 	ObjectType string `protobuf:"bytes,1,opt,name=object_type,json=objectType,proto3" json:"object_type,omitempty"`

@@ -2,6 +2,21 @@
 # Deny: destructive ops on _prod-suffixed projects outside business hours
 #       unless principal has break_glass_active.
 #
+# THIS POLICY IS NOT EVALUATED BY ANYTHING TODAY. Read that before reading the
+# rest of the file, because everything below describes a control that does not
+# run: the OPA guardrail overlay was removed from the authorization pipeline
+# (services/iam/internal/service/authorize_service.go — "FGA is the sole policy
+# gate"), the bundle service it was fed from is gone
+# (services/iam/cmd/kacho-iam/grpc_register.go — "OpaBundleService ... removed"),
+# and `opaSidecar.enabled` is false in the chart default and in every umbrella
+# values file, with no profile overriding it. So there is no out-of-hours
+# restriction on destructive operations — not for block storage, and not for
+# instances, networks or subnets either.
+#
+# The set below is kept correct rather than left to rot, so that whoever re-wires
+# the overlay starts from a true list instead of one that quietly lost a domain.
+# It is NOT evidence that the domains named in it are protected.
+#
 # Rationale: ChangeRiskOps™ — destructive ops on prod projects are the highest-
 # risk class of action. Restricting to business hours forces "follow the sun"
 # operator presence during the change, reduces blast radius of mistakes when
@@ -17,13 +32,21 @@ package kacho.iam.guardrails
 
 import rego.v1
 
-# Currently scoped to destructive ops in vpc + compute domains. Extend with
+# Scoped to destructive ops in the vpc, compute and storage domains. Extend with
 # NLB delete + Address release etc. as those resources grow prod-only invariants.
+#
+# `compute.disks.delete` used to be here and is gone: compute no longer serves
+# block storage, and that permission has zero entries in the permission catalog.
+# Block storage is kacho-storage's, so the destructive block-storage permissions
+# are storage.volumes.delete / storage.snapshots.delete / storage.images.delete —
+# named here so the list matches the platform rather than its history.
 destructive_prod_ops := {
 	"vpc.networks.delete",
-	"compute.instances.delete",
-	"compute.disks.delete",
 	"vpc.subnets.delete",
+	"compute.instances.delete",
+	"storage.volumes.delete",
+	"storage.snapshots.delete",
+	"storage.images.delete",
 }
 
 deny contains msg if {

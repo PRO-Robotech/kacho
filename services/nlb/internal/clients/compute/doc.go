@@ -4,7 +4,8 @@
 // Package compute — typed adapter-клиент к kacho-compute (Clean Architecture
 // outbound adapter).
 //
-// kacho-compute — owner Instance/Disk/Image/Snapshot. Geography (Region/Zone)
+// kacho-compute — owner Instance/MachineType (блочное хранение — Volume/Snapshot/
+// Image/DiskType — принадлежит kacho-storage). Geography (Region/Zone)
 // вынесена в отдельный leaf-сервис kacho-geo (kacho-geo) — region-
 // валидация теперь живёт в `internal/clients/geo`. kacho-nlb зовёт у compute:
 //
