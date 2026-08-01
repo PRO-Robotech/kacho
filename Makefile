@@ -32,6 +32,16 @@
 # `make test-integration SVC=<имя>`.
 
 SHELL := bash
+
+# СТАТУС КОНВЕЙЕРА НЕ ТЕРЯЕТСЯ. Без этой строки `a | b` отдаёт make код возврата
+# ТОЛЬКО правой команды: `<проверка> | tee`, `<сборка> | grep` зеленеют при любом
+# провале левой стороны. Объявляется файлом, а не построчно, чтобы защита
+# распространялась и на конвейеры, которых тут ещё нет.
+# `SHELL := bash` выше — обязательная половина: умолчание make (`/bin/sh`, на
+# Debian dash) ручки `-o pipefail` не знает вовсе.
+# Гейт класса — internal/repohygiene/pipefailguard_test.go.
+.SHELLFLAGS := -o pipefail -c
+
 GO ?= go
 
 # Юнит-прогон: `-short` отсекает пакеты с testcontainers (их гоняет test-integration).

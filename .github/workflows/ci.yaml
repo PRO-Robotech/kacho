@@ -48,6 +48,17 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# СТАТУС КОНВЕЙЕРА НЕ ТЕРЯЕТСЯ. Умолчание GitHub для `run:` — `bash -e {0}`, то
+# есть БЕЗ pipefail: `<проверка> | tee`, `<сборка> | grep` отдают шагу код
+# возврата ПРАВОЙ команды и зеленеют при любом провале левой. `shell: bash` —
+# документированный синоним `bash --noprofile --norc -eo pipefail {0}`;
+# относительно умолчания это добавляет ровно pipefail.
+# Объявляется файлом, а не по шагам, чтобы защита распространялась и на шаги,
+# которых тут ещё нет. Гейт класса — internal/repohygiene/pipefailguard_test.go.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build-test:
     name: build · vet · gofmt · test -race
@@ -450,7 +461,7 @@ jobs:
             echo "::error::API вернул пустой список workflow — ответ бессмысленный, судить не о чем."
             exit 1
           fi
-          echo "зарегистрировано на ветке по умолчанию: $(printf '%s\n' "$registered" | grep -c .)"
+          echo "зарегистрировано на ветке по умолчанию: $(grep -c . <<<"$registered")"
 
           # ОБЪЯВЛЕННОЕ ОЖИДАНИЕ — не разрешение, а НАЗВАННОЕ УСЛОВИЕ.
           #
@@ -472,11 +483,16 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           for wf in "${only_default[@]}"; do
-            if printf '%s\n' "$registered" | grep -qxF "$wf"; then
+            # Сверка ПОДСТАНОВКОЙ, а не конвейером: `grep -q` закрывает вход по
+            # первому совпадению, отчего `printf` получает SIGPIPE, и с `pipefail`
+            # (объявлен файлом) условие становится ЛОЖНЫМ именно тогда, когда
+            # совпадение НАЙДЕНО. Проявляется от РАЗМЕРА списка: на коротком
+            # запись успевает уйти в буфер, на длинном — нет.
+            if grep -qxF "$wf" <<<"$registered"; then
               echo "  ✓ $wf зарегистрирован"
               echo "| \`$wf\` | да | может |" >> "$GITHUB_STEP_SUMMARY"
               # Самоистечение: предмета у записи больше нет.
-              if printf '%s\n' $AWAITING_DEFAULT_BRANCH | grep -qxF "$wf"; then
+              if grep -qxF "$wf" <<<"$AWAITING_DEFAULT_BRANCH"; then
                 echo "::error file=$wf::$wf ЗАРЕГИСТРИРОВАН, но всё ещё числится в"
                 echo "::error file=$wf::AWAITING_DEFAULT_BRANCH этого шага. Запись без предмета —"
                 echo "::error file=$wf::ложное утверждение о конвейере: убери её."
@@ -486,7 +502,7 @@ jobs:
             fi
 
             missing=$((missing + 1))
-            if printf '%s\n' $AWAITING_DEFAULT_BRANCH | grep -qxF "$wf"; then
+            if grep -qxF "$wf" <<<"$AWAITING_DEFAULT_BRANCH"; then
               # Названное условие: печатаем громко и в сводку, но не роняем сборку
               # всем остальным из-за того, что снять может только владелец.
               echo "::warning file=$wf::$wf НЕ ЗАРЕГИСТРИРОВАН: не запускался НИ РАЗУ и не может."

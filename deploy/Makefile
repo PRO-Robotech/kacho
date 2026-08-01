@@ -9,6 +9,17 @@
         report-reader-discipline alt-fixture-discipline \
         reload-svc-nlb psql-nlb logs-nlb seed-nlb e2e-newman stand-provenance
 
+SHELL := bash
+
+# СТАТУС КОНВЕЙЕРА НЕ ТЕРЯЕТСЯ. Без этой строки `helm template … | kubectl apply`
+# и `kubectl create … | kubectl apply` отдают make код возврата ТОЛЬКО правой
+# команды: сорванный рендер применяет ПУСТОЙ ввод и цель зеленеет. Объявляется
+# файлом, а не построчно, чтобы защита распространялась и на конвейеры, которых
+# тут ещё нет. `SHELL := bash` выше — обязательная половина: умолчание make
+# (`/bin/sh`, на Debian dash) ручки `-o pipefail` не знает вовсе.
+# Гейт класса — internal/repohygiene/pipefailguard_test.go.
+.SHELLFLAGS := -o pipefail -c
+
 CLUSTER_NAME := kacho
 
 # KAC-228: build + kind-load all backend service images. The dev deployments
@@ -278,7 +289,7 @@ check-mtls-off-complete:
 # `use-context` не прервал цепочку, и стенд поехал на ПРОД.
 dev-up: preflight
 	@set -e; start=$$(date +%s); \
-	kind get clusters | grep -q "^$(CLUSTER_NAME)$$" || ./kind/create-cluster.sh; \
+	grep -qx "$(CLUSTER_NAME)" <<<"$$(kind get clusters)" || ./kind/create-cluster.sh; \
 	kubectl config use-context kind-$(CLUSTER_NAME) || { \
 	  echo "ERROR: нет kubectl-контекста kind-$(CLUSTER_NAME)."; \
 	  echo "       Кластер kind может существовать, а контекст в kubeconfig — отсутствовать"; \
@@ -393,13 +404,26 @@ dev-prod-up: dev-up
 # красный CI был actionable, а не «timed out».
 assert-rollout-ready:
 	@set -e; \
-	fail=0; \
+	fail=0; seen=0; \
 	for kind in deployment statefulset; do \
-	  for w in $$(kubectl -n kacho get $$kind -o name 2>/dev/null); do \
+	  if ! list=$$(kubectl -n kacho get $$kind -o name 2>&1); then \
+	    echo "!!! СПИСОК $$kind НЕ ПРОЧИТАН — осматривать было нечего:"; \
+	    echo "$$list" | sed 's/^/    /'; \
+	    echo "    Пустой ответ здесь НЕ означает «всё выкатилось»: он означает,"; \
+	    echo "    что вопрос не задан (нет контекста/кластера/прав)."; \
+	    exit 1; \
+	  fi; \
+	  for w in $$list; do \
+	    seen=$$((seen+1)); \
 	    echo "--- rollout: $$w"; \
 	    kubectl -n kacho rollout status "$$w" --timeout=300s || fail=1; \
 	  done; \
 	done; \
+	if [ "$$seen" -eq 0 ]; then \
+	  echo "!!! В пространстве имён kacho НЕТ НИ ОДНОГО Deployment/StatefulSet."; \
+	  echo "    «Ноль незавершённых выкаток» из НУЛЯ осмотренных — это не готовность."; \
+	  exit 1; \
+	fi; \
 	if [ "$$fail" -ne 0 ]; then \
 	  echo; echo "!!! ROLLOUT INCOMPLETE — production posture did NOT come up"; \
 	  echo "=== pods ==="; kubectl -n kacho get pods -o wide; \
@@ -414,7 +438,7 @@ assert-rollout-ready:
 	  done; \
 	  exit 1; \
 	fi; \
-	echo "all workloads rollout-complete"; \
+	echo "all workloads rollout-complete (осмотрено workload'ов: $$seen)"; \
 	$(MAKE) --no-print-directory assert-jobs-healthy
 
 # assert-jobs-healthy — периодические/разовые задания тоже часть готовности стенда.
@@ -437,10 +461,18 @@ assert-rollout-ready:
 # `active`-джоб в полёте не считается провалом — у него нет condition Failed.
 assert-jobs-healthy:
 	@set -e; \
-	failed=$$(kubectl -n kacho get jobs -o json 2>/dev/null \
-	  | jq -r '.items[] | select((.status.conditions // []) | map(select(.type=="Failed" and .status=="True")) | length > 0) | .metadata.name'); \
-	stuck=$$(kubectl -n kacho get cronjobs -o json 2>/dev/null \
-	  | jq -r '.items[] | select(.status.lastScheduleTime != null and .status.lastSuccessfulTime == null and ((.status.active // []) | length) == 0) | .metadata.name'); \
+	if ! jobs_json=$$(kubectl -n kacho get jobs -o json 2>&1); then \
+	  echo "!!! СПИСОК Job'ов НЕ ПРОЧИТАН — «ноль сорванных» тут значило бы «ноль осмотренных»:"; \
+	  echo "$$jobs_json" | sed 's/^/    /'; exit 1; \
+	fi; \
+	if ! cron_json=$$(kubectl -n kacho get cronjobs -o json 2>&1); then \
+	  echo "!!! СПИСОК CronJob'ов НЕ ПРОЧИТАН — «ноль сорванных» тут значило бы «ноль осмотренных»:"; \
+	  echo "$$cron_json" | sed 's/^/    /'; exit 1; \
+	fi; \
+	failed=$$(jq -r '.items[] | select((.status.conditions // []) | map(select(.type=="Failed" and .status=="True")) | length > 0) | .metadata.name' <<<"$$jobs_json"); \
+	stuck=$$(jq -r '.items[] | select(.status.lastScheduleTime != null and .status.lastSuccessfulTime == null and ((.status.active // []) | length) == 0) | .metadata.name' <<<"$$cron_json"); \
+	seen=$$(jq -r '.items | length' <<<"$$jobs_json"); \
+	seen_cron=$$(jq -r '.items | length' <<<"$$cron_json"); \
 	if [ -n "$$failed" ] || [ -n "$$stuck" ]; then \
 	  echo; echo "!!! JOBS UNHEALTHY — периодические задания сорваны"; \
 	  for j in $$failed; do \
@@ -457,7 +489,7 @@ assert-jobs-healthy:
 	  done; \
 	  exit 1; \
 	fi; \
-	echo "all jobs/cronjobs healthy (ещё не запускавшиеся — не провал)"
+	echo "all jobs/cronjobs healthy (осмотрено Job'ов $$seen, CronJob'ов $$seen_cron; ещё не запускавшиеся — не провал)"
 
 # assert-production-posture — стенд обязан РАБОТАТЬ в production-режиме.
 #
@@ -642,7 +674,7 @@ helm-manifest-test: gate-self-test
 	  echo "ERROR: нужен yq (mikefarah v4) — фильтры проверок написаны под него."; \
 	  echo "       https://github.com/mikefarah/yq/releases"; exit 1; \
 	fi; \
-	if ! yq --version 2>&1 | grep -qE 'mikefarah|version v?4'; then \
+	if ! grep -qE 'mikefarah|version v?4' <<<"$$(yq --version 2>&1)"; then \
 	  echo "ERROR: в PATH не тот yq: $$(command -v yq) → $$(yq --version 2>&1)"; \
 	  echo "       Нужен mikefarah yq v4. python-yq (обёртка над jq) на этих"; \
 	  echo "       фильтрах молча отдаёт ПУСТО — утверждения пройдут, ничего не сверив."; \

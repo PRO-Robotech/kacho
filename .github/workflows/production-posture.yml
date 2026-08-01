@@ -59,6 +59,17 @@ concurrency:
   group: production-posture
   cancel-in-progress: false
 
+# СТАТУС КОНВЕЙЕРА НЕ ТЕРЯЕТСЯ. Умолчание GitHub для `run:` — `bash -e {0}`, то
+# есть БЕЗ pipefail: `<проверка> | tee`, `<сборка> | grep` отдают шагу код
+# возврата ПРАВОЙ команды и зеленеют при любом провале левой. `shell: bash` —
+# документированный синоним `bash --noprofile --norc -eo pipefail {0}`;
+# относительно умолчания это добавляет ровно pipefail.
+# Объявляется файлом, а не по шагам, чтобы защита распространялась и на шаги,
+# которых тут ещё нет. Гейт класса — internal/repohygiene/pipefailguard_test.go.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   stand:
     name: values.dev-prod boots (kind, production posture)
