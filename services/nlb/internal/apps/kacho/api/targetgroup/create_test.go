@@ -306,11 +306,11 @@ func TestCreate_PeerProject_NotFound(t *testing.T) {
 // Create writes a fga.register-intent (project-hierarchy) into the writer-tx
 // outbox. It carries ONLY that tuple even for an authenticated user: the former
 // creator (`admin`) tuple was refused by kacho-iam's least-privilege proxy policy
-// on every delivery (privilege relations belong to the AccessBinding flow), and
-// because the register-drainer classifies PermissionDenied as transient and
-// short-circuits, its presence kept the row un-sent for MaxAttempts (≈150s) —
-// head-of-line-blocking every later intent for the same target group under the
-// partition-head claim on resource_id, including a labels-refresh that revokes.
+// on every delivery (privilege relations belong to the AccessBinding flow), and a
+// refusal from the model owner is TERMINAL (drainer.ErrPermanent, both at the
+// applier and in the shared drainer) — the applier stops at the rejected tuple and
+// the row poisons on its first attempt, so this target group's mirror row, and
+// every verb materialised from it, waits for reconciler.RedrivePoisoned.
 func TestCreate_EmitsFGARegisterIntent(t *testing.T) {
 	repo := newFakeRepo()
 	opsRepo := newFakeOpsRepo()

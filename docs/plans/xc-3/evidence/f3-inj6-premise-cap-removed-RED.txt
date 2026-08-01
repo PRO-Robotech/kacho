@@ -1,0 +1,15 @@
+=== RUN   TestStaleClaimPremiseHolds
+=== RUN   TestStaleClaimPremiseHolds/отказ_в_правах_терминален_у_применителя_nlb
+=== RUN   TestStaleClaimPremiseHolds/отказ_в_правах_терминален_в_общей_библиотеке
+=== RUN   TestStaleClaimPremiseHolds/повторяемая_строка_удерживается_ниже_порога
+    staleclaimsweep_test.go:709: markTransientFailure больше не удерживает попытку ниже порога (выражения вида MaxAttempts - 1 в теле нет). Тогда строка, помеченная повторяемой, доходит до отравления, и КОНЕЧНЫЙ срок разблокировки партиции снова становится верным описанием — а маркер refuted-partition-unblock-deadline начинает запрещать правду.
+=== RUN   TestStaleClaimPremiseHolds/вычитание_из_вердикта_не_исполняется
+    staleclaimsweep_test.go:740: предпосылка: исполняемых упоминаний вычитания в общем гейте — 0 (прочитано строк: 270)
+--- FAIL: TestStaleClaimPremiseHolds (0.00s)
+    --- PASS: TestStaleClaimPremiseHolds/отказ_в_правах_терминален_у_применителя_nlb (0.00s)
+    --- PASS: TestStaleClaimPremiseHolds/отказ_в_правах_терминален_в_общей_библиотеке (0.00s)
+    --- FAIL: TestStaleClaimPremiseHolds/повторяемая_строка_удерживается_ниже_порога (0.00s)
+    --- PASS: TestStaleClaimPremiseHolds/вычитание_из_вердикта_не_исполняется (0.00s)
+FAIL
+FAIL	github.com/PRO-Robotech/kacho/internal/repohygiene	0.005s
+FAIL

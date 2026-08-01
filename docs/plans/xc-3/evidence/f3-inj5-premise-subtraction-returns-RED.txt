@@ -1,0 +1,17 @@
+=== RUN   TestStaleClaimPremiseHolds
+=== RUN   TestStaleClaimPremiseHolds/отказ_в_правах_терминален_у_применителя_nlb
+=== RUN   TestStaleClaimPremiseHolds/отказ_в_правах_терминален_в_общей_библиотеке
+=== RUN   TestStaleClaimPremiseHolds/повторяемая_строка_удерживается_ниже_порога
+=== RUN   TestStaleClaimPremiseHolds/вычитание_из_вердикта_не_исполняется
+    staleclaimsweep_test.go:735: вычитание вернулось в ИСПОЛНЯЕМУЮ часть общего гейта:
+          services/iam/tests/newman/scripts/assert-suites-green.sh:192: fails=$((fails - $(printf "%s" "$name" | grep -c known-RED)))  # INJ-5
+        
+        Тогда утверждения прогонщика о списке исключений снова верны, и маркер removed-subtraction-claimed-live запрещает правду. Сначала решается, что делает гейт, потом — что о нём написано.
+--- FAIL: TestStaleClaimPremiseHolds (0.00s)
+    --- PASS: TestStaleClaimPremiseHolds/отказ_в_правах_терминален_у_применителя_nlb (0.00s)
+    --- PASS: TestStaleClaimPremiseHolds/отказ_в_правах_терминален_в_общей_библиотеке (0.00s)
+    --- PASS: TestStaleClaimPremiseHolds/повторяемая_строка_удерживается_ниже_порога (0.00s)
+    --- FAIL: TestStaleClaimPremiseHolds/вычитание_из_вердикта_не_исполняется (0.00s)
+FAIL
+FAIL	github.com/PRO-Robotech/kacho/internal/repohygiene	0.005s
+FAIL

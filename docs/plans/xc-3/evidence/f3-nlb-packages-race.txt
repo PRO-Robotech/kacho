@@ -1,0 +1,3 @@
+ok  	github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/targetgroup	10.782s
+ok  	github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/listener	1.069s
+ok  	github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/loadbalancer	16.547s
