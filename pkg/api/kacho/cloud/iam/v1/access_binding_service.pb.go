@@ -1717,10 +1717,18 @@ func (x *ListAccessBindingsByRoleRequest) GetIncludeRevoked() bool {
 
 // ExpandAccessRequest asks "who can perform <relation> on <object_type>:<object_id>".
 // `object_type` is a closed `<module>.<resource>` key or an FGA
-// object type (e.g. "compute.instance", "iam_access_binding"); `relation` is the
-// FGA relation/verb-derived relation (e.g. "delete", "viewer"). The server
-// resolves the userset (direct grants + group memberships) into concrete
-// principals.
+// object type (e.g. "compute.instance", "iam_access_binding").
+//
+// `relation` is NOT any FGA relation and NOT a free verb: принимается ВЫВОДИМОЕ
+// множество — объединение наборов `v_*` всех типов каталога ∪ ярусные
+// (viewer/editor/admin) ∪ членство (member). Внутренняя машинерия модели
+// (переносчики охвата, подтягивающие резолверы, платформенные роли) отвергается:
+// пересылка произвольной строки дала бы возможность прощупывать внутренний граф
+// отношений. Множество ВЫВОДИТСЯ из наборов типов, а не перечисляется, поэтому
+// новое отношение у типа появляется здесь само и отставать не может.
+//
+// The server resolves the userset (direct grants + group memberships) into
+// concrete principals.
 type ExpandAccessRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Object type to expand access on — closed `<module>.<resource>` key or FGA
@@ -1728,8 +1736,8 @@ type ExpandAccessRequest struct {
 	ObjectType string `protobuf:"bytes,1,opt,name=object_type,json=objectType,proto3" json:"object_type,omitempty"`
 	// Object id to expand access on. Format-validated only (soft-ref).
 	ObjectId string `protobuf:"bytes,2,opt,name=object_id,json=objectId,proto3" json:"object_id,omitempty"`
-	// Relation/verb to expand (e.g. "delete", "viewer"). Unknown relation →
-	// INVALID_ARGUMENT.
+	// Relation to expand (e.g. "v_delete", "viewer"). Принимается выводимое
+	// множество (см. описание сообщения выше); всё остальное — INVALID_ARGUMENT.
 	Relation string `protobuf:"bytes,3,opt,name=relation,proto3" json:"relation,omitempty"`
 	// The maximum number of concrete principals to return. Default 1000, max
 	// 10000 (fan-out limit). Truncation sets `truncated=true`.

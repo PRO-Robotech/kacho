@@ -72,8 +72,15 @@ type ListPermissionCatalogResponse struct {
 	// keys of backend `objectTypes` (e.g. iam, vpc, compute, loadbalancer).
 	// Deterministic order.
 	Modules []*CatalogModule `protobuf:"bytes,1,rep,name=modules,proto3" json:"modules,omitempty"`
-	// The closed verb set: ["get","list","create","update","delete"] — a mirror
-	// of `domain.ClosedVerbs` (fixed order).
+	// Набор глаголов, ОБЩИЙ ДЛЯ ВСЕХ ресурсов: пересечение наборов всех типов,
+	// сегодня ["get","list","create","update","delete"]. Порядок канонический и
+	// фиксированный — он часть контракта поля.
+	//
+	// Набор глаголов — атрибут ТИПА, а не платформы. Поле показывает то, что даёт
+	// ЛЮБОЙ ресурс; ресурс вправе объявлять более широкий набор, и такой глагол сюда
+	// не попадёт — обещать его от имени всех ресурсов поле не может. Словарь ПО
+	// РЕСУРСУ — предмет отдельной под-фазы; имя поля сохранено, чтобы не ломать
+	// существующих клиентов.
 	ClosedVerbs []string `protobuf:"bytes,2,rep,name=closed_verbs,json=closedVerbs,proto3" json:"closed_verbs,omitempty"`
 	// Platform-wide wildcard policy flags.
 	WildcardPolicy *WildcardPolicy `protobuf:"bytes,3,opt,name=wildcard_policy,json=wildcardPolicy,proto3" json:"wildcard_policy,omitempty"`

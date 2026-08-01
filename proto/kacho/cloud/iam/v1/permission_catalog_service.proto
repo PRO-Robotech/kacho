@@ -23,10 +23,11 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;ia
 // Ground-truth (the catalog mirrors EXACTLY this — no more, no less):
 //   - kacho-iam `internal/authzmap` → `objectTypes` (the closed
 //     `(module,resource) → FGA object_type` table; extending it requires a
-//     lockstep edit of `fga_model.fga`) + `TypeHasVerbRelations(fgaType)`
-//     (verb-bearing leaf vs tier-only ancestor);
-//   - kacho-iam `internal/domain.ClosedVerbs` = {get,list,create,update,delete}
-//     (+ the verb-`*` bounded expansion).
+//     lockstep edit of `fga_model.fga`) + `VerbRelationsOfType(fgaType)`
+//     (набор отношений, объявленный ЭТИМ типом; пустой — ярусный предок);
+//   - kacho-iam `internal/authzmap.CommonVerbVocabulary()` — набор, ОБЩИЙ для всех
+//     ресурсов (пересечение наборов типов), сегодня {get,list,create,update,delete}
+//     (+ ограниченный разворот подстановки, теперь по набору СВОЕГО типа).
 // The rule compiler fail-closed-SKIPs any `(module,resource)` NOT in
 // `objectTypes` (the grant is a no-op), so such tokens never appear here.
 //
@@ -69,8 +70,15 @@ message ListPermissionCatalogResponse {
   // Deterministic order.
   repeated CatalogModule modules = 1;
 
-  // The closed verb set: ["get","list","create","update","delete"] — a mirror
-  // of `domain.ClosedVerbs` (fixed order).
+  // Набор глаголов, ОБЩИЙ ДЛЯ ВСЕХ ресурсов: пересечение наборов всех типов,
+  // сегодня ["get","list","create","update","delete"]. Порядок канонический и
+  // фиксированный — он часть контракта поля.
+  //
+  // Набор глаголов — атрибут ТИПА, а не платформы. Поле показывает то, что даёт
+  // ЛЮБОЙ ресурс; ресурс вправе объявлять более широкий набор, и такой глагол сюда
+  // не попадёт — обещать его от имени всех ресурсов поле не может. Словарь ПО
+  // РЕСУРСУ — предмет отдельной под-фазы; имя поля сохранено, чтобы не ломать
+  // существующих клиентов.
   repeated string closed_verbs = 2;
 
   // Platform-wide wildcard policy flags.

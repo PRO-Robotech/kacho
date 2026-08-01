@@ -42,10 +42,11 @@ const (
 // Ground-truth (the catalog mirrors EXACTLY this — no more, no less):
 //   - kacho-iam `internal/authzmap` → `objectTypes` (the closed
 //     `(module,resource) → FGA object_type` table; extending it requires a
-//     lockstep edit of `fga_model.fga`) + `TypeHasVerbRelations(fgaType)`
-//     (verb-bearing leaf vs tier-only ancestor);
-//   - kacho-iam `internal/domain.ClosedVerbs` = {get,list,create,update,delete}
-//     (+ the verb-`*` bounded expansion).
+//     lockstep edit of `fga_model.fga`) + `VerbRelationsOfType(fgaType)`
+//     (набор отношений, объявленный ЭТИМ типом; пустой — ярусный предок);
+//   - kacho-iam `internal/authzmap.CommonVerbVocabulary()` — набор, ОБЩИЙ для всех
+//     ресурсов (пересечение наборов типов), сегодня {get,list,create,update,delete}
+//     (+ ограниченный разворот подстановки, теперь по набору СВОЕГО типа).
 //
 // The rule compiler fail-closed-SKIPs any `(module,resource)` NOT in
 // `objectTypes` (the grant is a no-op), so such tokens never appear here.
@@ -104,10 +105,11 @@ func (c *permissionCatalogServiceClient) ListPermissionCatalog(ctx context.Conte
 // Ground-truth (the catalog mirrors EXACTLY this — no more, no less):
 //   - kacho-iam `internal/authzmap` → `objectTypes` (the closed
 //     `(module,resource) → FGA object_type` table; extending it requires a
-//     lockstep edit of `fga_model.fga`) + `TypeHasVerbRelations(fgaType)`
-//     (verb-bearing leaf vs tier-only ancestor);
-//   - kacho-iam `internal/domain.ClosedVerbs` = {get,list,create,update,delete}
-//     (+ the verb-`*` bounded expansion).
+//     lockstep edit of `fga_model.fga`) + `VerbRelationsOfType(fgaType)`
+//     (набор отношений, объявленный ЭТИМ типом; пустой — ярусный предок);
+//   - kacho-iam `internal/authzmap.CommonVerbVocabulary()` — набор, ОБЩИЙ для всех
+//     ресурсов (пересечение наборов типов), сегодня {get,list,create,update,delete}
+//     (+ ограниченный разворот подстановки, теперь по набору СВОЕГО типа).
 //
 // The rule compiler fail-closed-SKIPs any `(module,resource)` NOT in
 // `objectTypes` (the grant is a no-op), so such tokens never appear here.

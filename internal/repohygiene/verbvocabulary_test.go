@@ -2,26 +2,33 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // verbvocabulary_test.go — гейт: КАЖДЫЙ литеральный словарь глаголов в дереве
-// выводится из канонической модели прав, а не объявляется сам по себе.
+// обоснован моделью прав, и ни один не появляется незамеченным.
 //
 // Предмет. Ось ТИПОВ давно привязана к модели: гейт дрейфа требует точного
-// равенства таблицы типов и модели в обе стороны. Ось ГЛАГОЛОВ не сверялась ни с
-// чем: её сторожат литералы, каждый из которых объявляет ожидаемое и ни один — на
-// каком основании именно это. Литерал чинится дописыванием в себя, поэтому
-// СОГЛАСОВАННОЕ расширение всех литералов проходило молча. Этот гейт спрашивает
-// МОДЕЛЬ, поэтому такое расширение краснеет.
+// равенства в обе стороны. Ось ГЛАГОЛОВ не сверялась ни с чем: её сторожили
+// литералы, каждый из которых объявлял ожидаемое и ни один — на каком основании
+// именно это. Литерал чинится дописыванием в себя, поэтому СОГЛАСОВАННОЕ
+// расширение всех литералов проходило молча. Гейт спрашивает МОДЕЛЬ.
 //
-// Гейт НИЧЕГО не импортирует и читает обе стороны разбором исходного текста:
+// Почему предикат — ВХОЖДЕНИЕ, а не равенство. Пока набор глаголов был
+// платформенным, каждый литерал претендовал на «все глаголы», и равенство было
+// верным требованием. С набором У ТИПА претензия исчезла: набор типа, порядок
+// показа, общий для всех ресурсов словарь — все они ПОДМНОЖЕСТВА словаря модели и
+// равенству не обязаны. Равенство здесь краснело бы на законном расширении набора
+// ОДНОГО типа, то есть сторожило бы снятое допущение. Вхождение ловит ровно
+// исходный дефект — литерал, выросший за пределы модели, — и молчит на законном.
 //
-//	(а) он достаёт неэкспортируемую переменную пакета, до которой внешний тестовый
-//	    пакет символом не добирается;
-//	(б) он не делает ни одну из сторон источником истины для другой — каждая
-//	    сверяется С МОДЕЛЬЮ. Именно это сохраняет заявленную независимость гейта
-//	    дрейфа: его ожидаемое значение по-прежнему не выводится из словаря эмиттера.
+// Полнота реестра держится ОБНАРУЖЕНИЕМ: гейт сам находит объявления-кандидаты по
+// форме и требует, чтобы каждое было в реестре с указанием, ЧТО оно утверждает и
+// КТО его проверяет. Иначе реестр описывал бы вчерашнее дерево, а новый литерал
+// въезжал бы молча — тем самым способом, которым въехали нынешние.
+//
+// Гейт НИЧЕГО не импортирует и читает обе стороны разбором исходного текста: он
+// достаёт неэкспортируемые переменные, до которых символом не добраться, и не
+// делает ни одну из сторон источником истины для другой.
 //
 // Разбор идёт через go/ast, а не регуляркой: предмет — объявление переменной, и
-// текстовый поиск нашёл бы то же имя в комментарии, который эту переменную
-// объясняет.
+// текстовый поиск нашёл бы то же имя в комментарии, который её объясняет.
 package repohygiene
 
 import (
@@ -45,26 +52,68 @@ const canonicalVerbModelRelPath = "proto/kacho/cloud/iam/v1/fga_model.fga"
 // глагольное. Она же — форма, в которой глагол попадает в кортеж.
 const verbRelationPrefix = "v_"
 
-// verbLiteral — запись реестра. Реестр есть ДАННЫЕ, а не перечисление в коде:
-// запись, которой больше нечего сверять, — находка, а не «просто устарела»
-// (см. TestVerbVocabularyRosterEntriesStillHaveSubject).
+// verbLiteralScanRoots — ОБЛАСТЬ обнаружения. Расширение области — отдельная
+// работа, а не строчка сюда.
+var verbLiteralScanRoots = []string{"services", "internal", "gateway"}
+
+// verbLiteral — запись реестра.
+//
+// Запись обязана называть, ЧТО литерал утверждает и КТО его проверяет по существу.
+// «Проверяется где-то» не годится: реестр тогда сам становится описанием вчерашнего
+// дерева. Запись, которой больше нечего сверять, — находка, а не «просто устарела».
 type verbLiteral struct {
 	path       string // путь от корня репо
-	varName    string // имя переменной верхнего уровня
-	asRelation bool   // true → значения суть имена отношений "v_<глагол>", а не глаголы
-	why        string // ЗАЧЕМ эта запись здесь (причина, не факт)
+	varName    string // имя объявления верхнего уровня
+	claims     string // ЧТО литерал утверждает о себе
+	checkedBy  string // КТО проверяет это утверждение по существу
 	retireWhen string // условие снятия, привязанное к ВНЕШНЕМУ факту
 }
 
-// verbLiteralRoster — все литеральные словари глаголов дерева. Перепись снята по
-// имени механизма (объявление `[]string` из глаголов либо из имён `v_*`), а не по
-// диффу той правки, в которой словарь заметили.
+// verbLiteralRoster — все объявления-словари глаголов верхнего уровня. Полнота
+// держится обнаружением (TestVerbVocabularyRosterCoversEveryLiteral), а не
+// добросовестностью того, кто сюда дописывает.
 var verbLiteralRoster = []verbLiteral{
 	{
-		path: "services/iam/internal/domain/rule_verbs.go", varName: "ClosedVerbs",
-		asRelation: false,
-		why:        "словарь эмиттера: по нему решается, писать ли v_<глагол>",
-		retireWhen: "переменная удалена из дерева (набор читается у типа, XC-3 S1Ф2)",
+		path: "services/iam/internal/authzmap/fga_types.go", varName: "fullCrudVerbRelations",
+		claims:     "набор, который на сегодня СОВПАДАЮЩЕ объявляют 28 типов; НЕ «все глаголы платформы»",
+		checkedBy:  "authzmap: TestDrift_TypeVerbSetsMatchModelExactly — потиповое равенство набора и модели",
+		retireWhen: "объявление удалено (типы перечисляют наборы поштучно)",
+	},
+	{
+		path: "services/iam/internal/domain/role_effective_verbs.go", varName: "verbDisplayPrecedence",
+		claims:     "старшинство ПОКАЗА в превью роли; полноты НЕ утверждает — глагол вне списка идёт в хвост",
+		checkedBy:  "domain: TestEffectiveVerbs_UnchangedForEveryRuleShape — порядок вывода по каждой форме правила",
+		retireWhen: "объявление удалено (порядок берётся откуда-то ещё)",
+	},
+	{
+		path: "services/iam/internal/authzmap/account_owner_structural_test.go", varName: "aoVerbs",
+		claims:     "ожидаемые отношения владельца аккаунта в структурной проверке модели",
+		checkedBy:  "тот же файл: утверждение о выводимости каждого отношения из отношения владельца",
+		retireWhen: "объявление удалено",
+	},
+	{
+		path: "services/iam/internal/authzmap/super_admin_cascade_test.go", varName: "saVerbs",
+		claims:     "ожидаемые отношения каскада супер-администратора",
+		checkedBy:  "тот же файл: утверждение о каскаде по каждому отношению",
+		retireWhen: "объявление удалено",
+	},
+	{
+		path: "services/iam/internal/service/cascade_queue_independence_integration_test.go", varName: "ciVerbs",
+		claims:     "ожидаемые отношения в проверке независимости очереди каскада",
+		checkedBy:  "тот же файл: интеграционное утверждение по каждому отношению",
+		retireWhen: "объявление удалено",
+	},
+	{
+		path: "services/iam/internal/domain/rule_verbs_test.go", varName: "scopeTypeVerbs",
+		claims:     "набор глаголов ТИПА якоря привязки на этой стадии — фикстура домена, не словарь платформы",
+		checkedBy:  "тот же файл: разворот подстановки на якоре",
+		retireWhen: "объявление удалено",
+	},
+	{
+		path: "services/iam/internal/domain/scope_self_admin_cascade_source_test.go", varName: "anchorTypeVerbs",
+		claims:     "то же во внешнем тестовом пакете домена",
+		checkedBy:  "тот же файл: вывод яруса на якоре",
+		retireWhen: "объявление удалено",
 	},
 }
 
@@ -89,6 +138,12 @@ func TestVerbVocabularyLiteralsMatchModel(t *testing.T) {
 	}
 	t.Logf("перепись: литеральных словарей в реестре: %d", len(verbLiteralRoster))
 
+	allowed := map[string]bool{}
+	for _, v := range model {
+		allowed[v] = true
+		allowed[verbRelationPrefix+v] = true
+	}
+
 	// Каждый литерал — самостоятельный под-тест: расхождение сразу в НЕСКОЛЬКИХ
 	// словарях обязано назвать ВСЕ координаты, а не первую. Ровно этот случай —
 	// «правка плюс обновление зеркал» — и есть предмет гейта.
@@ -96,31 +151,78 @@ func TestVerbVocabularyLiteralsMatchModel(t *testing.T) {
 		t.Run(lit.path+":"+lit.varName, func(t *testing.T) {
 			got, ok := parseStringSliceVar(t, filepath.Join(root, lit.path), lit.varName)
 			if !ok {
-				t.Fatalf("%s: переменной %q в дереве нет. Если она удалена законно — снимите "+
+				t.Fatalf("%s: объявления %q в дереве нет. Если оно удалено законно — снимите "+
 					"запись реестра (условие снятия: %s), а не игнорируйте пропажу: следующий "+
 					"литерал того же имени унаследует слепую зону молча",
 					lit.path, lit.varName, lit.retireWhen)
 			}
-			want := model
-			if lit.asRelation {
-				want = withPrefix(model, verbRelationPrefix)
+			var stray []string
+			for _, v := range got {
+				if !allowed[normalizeVerbToken(v)] {
+					stray = append(stray, v)
+				}
 			}
-			if d := symmetricDiff(got, want); len(d) != 0 {
-				t.Fatalf("%s: %s разошёлся с канонической моделью %s: %v\nлитерал: %v\nмодель:  %v\n"+
-					"Словарь глаголов ВЫВОДИТСЯ из модели. Дописать имя в литерал и в его зеркала — "+
-					"не исход: эмиттер начнёт писать отношение, которого в модели нет, а владелец "+
-					"модели такую запись отвергает окончательно.\nЗачем эта запись: %s",
-					lit.path, lit.varName, canonicalVerbModelRelPath, d, got, want, lit.why)
+			if len(stray) != 0 {
+				sort.Strings(stray)
+				t.Fatalf("%s: %s содержит имена, которых каноническая модель %s не знает: %v\n"+
+					"литерал: %v\nсловарь модели: %v\n"+
+					"Словарь глаголов ОБОСНОВЫВАЕТСЯ моделью. Дописать имя в литерал и в его "+
+					"зеркала — не исход: эмиттер начнёт писать отношение, которого в модели нет, "+
+					"а владелец модели такую запись отвергает окончательно.\n"+
+					"Что этот литерал утверждает: %s\nКто проверяет это по существу: %s",
+					lit.path, lit.varName, canonicalVerbModelRelPath, stray, got, model,
+					lit.claims, lit.checkedBy)
 			}
 		})
 	}
 }
 
+// TestVerbVocabularyRosterCoversEveryLiteral — ПОЛНОТА реестра держится
+// обнаружением, а не добросовестностью.
+//
+// Гейт сам находит объявления-кандидаты по ФОРМЕ (список строк верхнего уровня,
+// все элементы которого — глаголы модели либо их отношения) и требует, чтобы каждое
+// было в реестре. Без этого реестр описывал бы вчерашнее дерево: новый литерал
+// въезжал бы молча — ровно тем способом, которым въехали нынешние.
+func TestVerbVocabularyRosterCoversEveryLiteral(t *testing.T) {
+	root := repoRoot(t)
+	model, _ := modelVerbVocabulary(t, root)
+	if len(model) == 0 {
+		t.Fatalf("модель не разобрана — обнаружению не с чем сверять форму")
+	}
+
+	found, files := discoverTopLevelVerbLiterals(t, root, model)
+	if files == 0 {
+		t.Fatalf("не прочитано ни одного файла в %v — предпосылка обнаружения сломана, "+
+			"молчание ничего не доказывает (корень=%s)", verbLiteralScanRoots, root)
+	}
+	t.Logf("перепись: файлов осмотрено: %d; объявлений-кандидатов найдено: %d; записей реестра: %d",
+		files, len(found), len(verbLiteralRoster))
+	if len(found) == 0 {
+		t.Fatalf("обнаружение не нашло ни одного объявления во всём дереве — предикат формы "+
+			"перестал что-либо находить; молчание при нуле кандидатов ничего не утверждает")
+	}
+
+	rostered := map[string]bool{}
+	for _, lit := range verbLiteralRoster {
+		rostered[lit.path+":"+lit.varName] = true
+	}
+	for _, key := range found {
+		if rostered[key] {
+			continue
+		}
+		t.Errorf("%s — объявление-словарь глаголов, которого НЕТ в реестре.\n"+
+			"Каждый такой литерал обязан объявить, ЧТО он утверждает и КТО проверяет это по "+
+			"существу: словарь, объявляющий ожидаемое сам по себе, чинится дописыванием в себя "+
+			"и потому останавливает случайное расширение, но пропускает намеренное.", key)
+	}
+}
+
 // TestVerbVocabularyRosterEntriesStillHaveSubject — самоистечение реестра.
 //
-// Запись, чья переменная исчезла из дерева, — НАХОДКА, а не «просто устарела»:
+// Запись, чьё объявление исчезло из дерева, — НАХОДКА, а не «просто устарела»:
 // следующий литерал того же имени унаследует слепую зону молча. Условие снятия у
-// каждой записи привязано к ВНЕШНЕМУ факту (переменной в дереве), а не к
+// каждой записи привязано к ВНЕШНЕМУ факту (объявлению в дереве), а не к
 // наблюдаемому рядом, — иначе предикат снятия отменяется тем же изменением,
 // которое его вызвало.
 func TestVerbVocabularyRosterEntriesStillHaveSubject(t *testing.T) {
@@ -131,36 +233,36 @@ func TestVerbVocabularyRosterEntriesStillHaveSubject(t *testing.T) {
 	alive := 0
 	for _, lit := range verbLiteralRoster {
 		if _, ok := parseStringSliceVar(t, filepath.Join(root, lit.path), lit.varName); !ok {
-			t.Fatalf("запись реестра %s:%s больше нечего исключать — переменной в дереве нет. "+
+			t.Errorf("запись реестра %s:%s больше нечего исключать — объявления в дереве нет. "+
 				"Это находка: снимите запись (условие снятия: %s). Оставленная запись описывает "+
 				"вчерашнее дерево и молча покроет собой следующий литерал того же имени",
 				lit.path, lit.varName, lit.retireWhen)
+			continue
 		}
 		alive++
 	}
 	t.Logf("перепись: записей реестра с живым предметом: %d из %d", alive, len(verbLiteralRoster))
 }
 
-// TestVerbVocabularyGateImportsNeitherSide — предпосылка НЕЗАВИСИМОСТИ, проверяемая
-// самим гейтом, а не командой в документе.
+// TestVerbVocabularyGateCannotImportEitherSide — предпосылка НЕЗАВИСИМОСТИ,
+// проверяемая самим гейтом, а не командой в документе.
 //
 // Формулировка обязана быть точной, иначе она ложна. Сохраняемое свойство — НЕ
 // «тестовый пакет не зависит от эмиттера» (у пакета гейта дрейфа такой
 // независимости нет и не было: соседние файлы того же тестового пакета импортируют
-// домен). Свойство таково: ОЖИДАЕМОЕ ЗНАЧЕНИЕ этого гейта не выводится ни из
-// словаря эмиттера, ни из таблицы каталога — оно выводится ТОЛЬКО из модели.
+// домен). Свойство таково: ОЖИДАЕМОЕ ЗНАЧЕНИЕ этого гейта не выводится ни из одной
+// сверяемой стороны — оно выводится ТОЛЬКО из модели.
 //
-// Первая редакция этой проверки утверждала «файл гейта не импортирует ни один
-// пакет сервиса» — и была ПУСТОЙ: компилятор Go отвергает такой импорт сам
-// (правило `internal`), поэтому проверка отвечала «да» на условие, которого не
-// бывает. Гейт без предмета — находка, а не защита.
+// Первая редакция этой проверки утверждала «файл гейта не импортирует ни один пакет
+// сервиса» — и была ПУСТОЙ: такой импорт отвергает сам компилятор (правило
+// `internal`), то есть проверка отвечала «да» на условие, которого не бывает. Гейт
+// без предмета — находка, а не защита.
 //
 // Проверяется поэтому ФАКТ, на котором структурная гарантия держится и который
-// может тихо исчезнуть: каждая сверяемая сторона обязана лежать под таким
-// `internal/`, что из каталога гейта её импорт компилятором ЗАПРЕЩЁН. Переезд
-// словаря в импортируемый пакет снимает гарантию бесшумно — с этого момента
-// следующий контрибьютор вправе «упростить» гейт, подставив символ вместо разбора,
-// и обе стороны снова станут источником истины друг для друга.
+// может тихо исчезнуть: каждая сверяемая сторона лежит там, откуда её импорт
+// компилятором ЗАПРЕЩЁН. Переезд словаря в импортируемый пакет снимает гарантию
+// бесшумно — с этого момента следующий контрибьютор вправе «упростить» гейт,
+// подставив символ вместо разбора.
 func TestVerbVocabularyGateCannotImportEitherSide(t *testing.T) {
 	const gateDir = "internal/repohygiene"
 	if len(verbLiteralRoster) == 0 {
@@ -170,7 +272,7 @@ func TestVerbVocabularyGateCannotImportEitherSide(t *testing.T) {
 		if importForbiddenFrom(lit.path, gateDir) {
 			continue
 		}
-		t.Fatalf("%s: %s лежит там, откуда пакет %s ВПРАВЕ его импортировать. "+
+		t.Errorf("%s: %s лежит там, откуда пакет %s ВПРАВЕ его импортировать. "+
 			"Ожидаемое значение гейта обязано выводиться только из модели; пока стороны "+
 			"недостижимы по правилу `internal`, это гарантировано устройством сборки. "+
 			"Переезд снимает гарантию бесшумно — верните словарь под internal/ своего "+
@@ -222,6 +324,131 @@ func TestImportForbiddenFrom_HasBothControls(t *testing.T) {
 		}
 	}
 	t.Logf("перепись: контрольных случаев предиката: %d (запрещающих: 2, пропускающих: 4)", len(cases))
+}
+
+// ---------------------------------------------------------------------------
+// обнаружение
+// ---------------------------------------------------------------------------
+
+// discoverTopLevelVerbLiterals находит объявления `var`/`const` ВЕРХНЕГО УРОВНЯ
+// вида `[]string{…}` (или массив), все элементы которых — глаголы модели либо их
+// `v_*`-отношения, и возвращает ключи `путь:имя` плюс число прочитанных файлов.
+//
+// Верхний уровень — намеренно: локальная переменная внутри проверки есть данные
+// одного случая, а не объявленный словарь. Элементов меньше двух — тоже не словарь
+// (одиночное имя глагола встречается как обычный аргумент).
+func discoverTopLevelVerbLiterals(t *testing.T, root string, model []string) (keys []string, files int) {
+	t.Helper()
+	allowed := map[string]bool{}
+	for _, v := range model {
+		allowed[v] = true
+		allowed[verbRelationPrefix+v] = true
+	}
+
+	for _, sub := range verbLiteralScanRoots {
+		base := filepath.Join(root, sub)
+		if _, err := os.Stat(base); err != nil {
+			continue
+		}
+		err := filepath.WalkDir(base, func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				if n := d.Name(); n == "vendor" || n == "node_modules" || n == ".git" {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, ".pb.go") {
+				return nil
+			}
+			files++
+			fset := token.NewFileSet()
+			f, perr := parser.ParseFile(fset, path, nil, 0)
+			if perr != nil {
+				t.Fatalf("%s: разбор не удался (%v) — обнаружение не вправе трактовать "+
+					"неразобранный файл как «объявлений нет»", path, perr)
+			}
+			rel, _ := filepath.Rel(root, path)
+			for _, decl := range f.Decls {
+				gd, ok := decl.(*ast.GenDecl)
+				if !ok || (gd.Tok != token.VAR && gd.Tok != token.CONST) {
+					continue
+				}
+				for _, spec := range gd.Specs {
+					vs, ok := spec.(*ast.ValueSpec)
+					if !ok {
+						continue
+					}
+					for i, ident := range vs.Names {
+						if i >= len(vs.Values) {
+							continue
+						}
+						elems, ok := stringLiteralElements(vs.Values[i])
+						if !ok || len(elems) < 2 {
+							continue
+						}
+						all := true
+						for _, e := range elems {
+							if !allowed[normalizeVerbToken(e)] {
+								all = false
+								break
+							}
+						}
+						if all {
+							keys = append(keys, filepath.ToSlash(rel)+":"+ident.Name)
+						}
+					}
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("обход %s: %v", base, err)
+		}
+	}
+	sort.Strings(keys)
+	return keys, files
+}
+
+// stringLiteralElements возвращает строковые элементы составного литерала
+// `[]string{…}` / `[N]string{…}`; ok=false для любой другой формы.
+func stringLiteralElements(expr ast.Expr) ([]string, bool) {
+	lit, ok := expr.(*ast.CompositeLit)
+	if !ok {
+		return nil, false
+	}
+	switch at := lit.Type.(type) {
+	case *ast.ArrayType:
+		id, ok := at.Elt.(*ast.Ident)
+		if !ok || id.Name != "string" {
+			return nil, false
+		}
+	default:
+		if at != nil {
+			return nil, false
+		}
+	}
+	out := make([]string, 0, len(lit.Elts))
+	for _, e := range lit.Elts {
+		bl, ok := e.(*ast.BasicLit)
+		if !ok || bl.Kind != token.STRING {
+			return nil, false
+		}
+		s, err := strconv.Unquote(bl.Value)
+		if err != nil {
+			return nil, false
+		}
+		out = append(out, s)
+	}
+	return out, true
+}
+
+// normalizeVerbToken — приведение имени к канонической форме, ТА ЖЕ, что на путях
+// эмиссии (нижний регистр + обрезка пробелов).
+func normalizeVerbToken(s string) string {
+	return strings.ToLower(strings.TrimSpace(s))
 }
 
 // ---------------------------------------------------------------------------
@@ -297,7 +524,7 @@ func parseStringSliceVar(t *testing.T, path, name string) ([]string, bool) {
 	}
 	for _, decl := range f.Decls {
 		gd, ok := decl.(*ast.GenDecl)
-		if !ok || gd.Tok != token.VAR {
+		if !ok || (gd.Tok != token.VAR && gd.Tok != token.CONST) {
 			continue
 		}
 		for _, spec := range gd.Specs {
@@ -309,68 +536,16 @@ func parseStringSliceVar(t *testing.T, path, name string) ([]string, bool) {
 				if ident.Name != name || i >= len(vs.Values) {
 					continue
 				}
-				lit, ok := vs.Values[i].(*ast.CompositeLit)
+				elems, ok := stringLiteralElements(vs.Values[i])
 				if !ok {
-					t.Fatalf("%s: %s объявлена не составным литералом — гейт читает только "+
-						"`var %s = []string{…}`; смена формы объявления обязана быть осознанной",
-						path, name, name)
+					t.Fatalf("%s: %s объявлена не списком строковых литералов — гейт читает "+
+						"только `var %s = []string{…}`; смена формы объявления обязана быть "+
+						"осознанной, а вычисляемый словарь этот гейт не сверяет и молчать о "+
+						"нём не вправе", path, name, name)
 				}
-				out := make([]string, 0, len(lit.Elts))
-				for _, e := range lit.Elts {
-					bl, ok := e.(*ast.BasicLit)
-					if !ok || bl.Kind != token.STRING {
-						t.Fatalf("%s: %s несёт элемент, который не является строковым литералом — "+
-							"вычисляемый словарь глаголов этот гейт не сверяет и молчать о нём не вправе",
-							path, name)
-					}
-					s, err := strconv.Unquote(bl.Value)
-					if err != nil {
-						t.Fatalf("%s: %s: элемент %s не разкавычен (%v)", path, name, bl.Value, err)
-					}
-					out = append(out, s)
-				}
-				return out, true
+				return elems, true
 			}
 		}
 	}
 	return nil, false
-}
-
-// ---------------------------------------------------------------------------
-// множества
-// ---------------------------------------------------------------------------
-
-// withPrefix возвращает копию списка с приставкой у каждого элемента.
-func withPrefix(in []string, prefix string) []string {
-	out := make([]string, 0, len(in))
-	for _, s := range in {
-		out = append(out, prefix+s)
-	}
-	return out
-}
-
-// symmetricDiff возвращает отсортированную симметрическую разность двух множеств
-// строк с пометкой стороны: `+x` есть только слева, `-x` — только справа.
-func symmetricDiff(got, want []string) []string {
-	l := map[string]bool{}
-	for _, s := range got {
-		l[s] = true
-	}
-	r := map[string]bool{}
-	for _, s := range want {
-		r[s] = true
-	}
-	var out []string
-	for s := range l {
-		if !r[s] {
-			out = append(out, "+"+s)
-		}
-	}
-	for s := range r {
-		if !l[s] {
-			out = append(out, "-"+s)
-		}
-	}
-	sort.Strings(out)
-	return out
 }
