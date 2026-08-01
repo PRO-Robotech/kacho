@@ -24,11 +24,14 @@
 // below, so their justification lives here and in
 // docs/architecture/known-divergences.md §10 rather than being left implicit.
 //
-// NOTE: OperationService.Get/List are deliberately NOT on this list. They are
+// NOTE: OperationService.Get/Cancel are deliberately NOT on this list. They are
 // frequently polled but still require authentication — handled via the catalog
 // "<exempt>" path (authenticate, skip the FGA Check), never a blanket bypass at
 // the edge. Its proto package is "kacho.cloud.operation" (no ".v1."), so a
 // "v1"-shaped entry here would never match and would only weaken the list.
+// (Get and Cancel are the whole service — earlier revisions of this note said
+// "Get/List"; there is no List, and naming an RPC that does not exist is the
+// very thing the paragraph above is about.)
 //
 // The interactive auth flow is NOT here and never was a gRPC surface in this
 // repository: login / callback / me / logout are HTTP routes under
@@ -81,18 +84,26 @@ func DefaultPublicAllowlist() []string {
 		// security note that contradicts the code invites the next reader to
 		// "fix" the code to match it.
 		//
-		// What it returns: descriptors for services registered NATIVELY on the
-		// gateway — OperationService, Health and ServerReflection itself.
-		// Backend services (iam/vpc/compute/…) are transparently proxied, not
-		// registered here, so they are not enumerable through this surface;
-		// and every descriptor it does return is already published in the
-		// public proto tree. No tenant data and no per-owner objects.
+		// What it returns — NOT LISTED is not the same as NOT RETRIEVABLE, and
+		// the difference is the whole point. ListServices answers from
+		// GetServiceInfo(), i.e. only services registered NATIVELY here
+		// (OperationService, Health, ServerReflection), so `grpcurl list` looks
+		// reassuringly short. But FileContainingSymbol / FileByFilename resolve
+		// against protoregistry.GlobalFiles (grpc-go reflection defaults its
+		// DescriptorResolver to it), and this binary links EVERY backend
+		// descriptor via restmux. So an unauthenticated caller who already knows
+		// or guesses a symbol name can retrieve the full file descriptor of any
+		// backend service — including Internal* services that are deliberately
+		// unrouted at the edge — together with its transitive dependencies,
+		// which carry the per-RPC authz permission annotations.
 		//
-		// This is the weakest justification of the four and is recorded as an
-		// open question in docs/architecture/known-divergences.md §10: unlike
-		// health, reflection is developer convenience rather than an
-		// operational necessity, and restricting it to the cluster-internal
-		// listener would cost only edge-side grpcurl.
+		// Nothing here is tenant data, and the proto tree is public, so this is
+		// schema and policy-shape disclosure rather than data disclosure. It is
+		// still by far the weakest justification of the four, and unlike health
+		// reflection is developer convenience rather than an operational
+		// necessity. Recorded as an open question for the owner in
+		// docs/architecture/known-divergences.md §10; confining it to the
+		// cluster-internal listener would cost only edge-side grpcurl.
 		"grpc.reflection.v1.ServerReflection/ServerReflectionInfo",
 		"grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo",
 

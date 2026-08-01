@@ -198,11 +198,20 @@ func TestAuthz_GRPC_ExemptEntry_Allows(t *testing.T) {
 // also sit on the public allowlist, or the case silently stops testing the
 // catalog path it names.
 func TestAuthz_GRPC_ExemptEntry_IsNotAdmittedByTheAllowlist(t *testing.T) {
-	const fqn = "kacho.cloud.geo.v1.ZoneService/List"
+	// The FQN is READ OUT OF the fixture rather than repeated here. A hard-coded
+	// copy is a lock whose input is not the thing it guards: change exemptEntry
+	// to another RPC and the lock goes on protecting the stale string, silently
+	// guarding nothing — the same shape of defect as the case it protects.
+	var fixture struct {
+		FQN string `json:"fqn"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(exemptEntry), &fixture))
+	require.NotEmpty(t, fixture.FQN, "exemptEntry must carry an fqn for this lock to have a subject")
+
 	for _, entry := range middleware.DefaultPublicAllowlist() {
-		require.NotEqual(t, fqn, entry,
+		require.NotEqual(t, fixture.FQN, entry,
 			"%s is on DefaultPublicAllowlist, so TestAuthz_GRPC_ExemptEntry_Allows would be admitted at "+
-				"decide() step 1 and would assert nothing about `<exempt>` — pick a different fixture FQN", fqn)
+				"decide() step 1 and would assert nothing about `<exempt>` — pick a different fixture FQN", fixture.FQN)
 	}
 }
 

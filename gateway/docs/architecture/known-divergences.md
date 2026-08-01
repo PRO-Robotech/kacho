@@ -395,7 +395,7 @@ down so that none of them is silent:
 |---|---|---|
 | `grpc.health.v1.Health/Check` | a SERVING/NOT_SERVING enum aggregated over backends | kubelet probes carry no bearer token; gating liveness on the authz path couples an IAM outage to a cluster-wide restart loop |
 | `grpc.health.v1.Health/Watch` | nothing — the gateway embeds `UnimplementedHealthServer` | listed with `Check` so a future implementation cannot arrive silently behind an existing bypass |
-| `grpc.reflection.v1.ServerReflection/ServerReflectionInfo` | descriptors of the services registered **natively** on the gateway: `OperationService`, `Health`, `ServerReflection` | developer tooling (`grpcurl`); see the open question below |
+| `grpc.reflection.v1.ServerReflection/ServerReflectionInfo` | `list` shows only the natively-registered `OperationService`/`Health`/`ServerReflection`, but `describe <symbol>` retrieves the file descriptor of **any linked backend service**, `Internal*` included, with transitive dependencies | developer tooling (`grpcurl`); see the open question below, which this makes sharper |
 | `grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo` | same as v1 | same |
 
 None of the four returns tenant data, resource identifiers, or anything scoped
@@ -412,14 +412,30 @@ unauthenticated from the edge. The comment has been corrected in place rather
 than deleted, because a security note that contradicts the code invites the next
 reader to "fix" the code to match the note.
 
-The disclosure is small — backend services (iam/vpc/compute/…) are transparently
-proxied rather than registered here, so they are not enumerable through this
-surface, and every descriptor it does return is already published in the public
-proto tree. It is nevertheless the weakest of the four justifications: unlike
-health, reflection is developer convenience rather than an operational
-necessity, and confining it to the cluster-internal listener would cost only
-edge-side `grpcurl`. Recorded as an open decision for the owner rather than
-changed unilaterally, since it alters operator tooling behaviour.
+An earlier revision of this section called the resulting disclosure "small", on
+the grounds that backend services are transparently proxied rather than
+registered here and therefore not enumerable. **That was wrong, and the
+correction matters more than the original claim.** `ListServices` does answer
+from `GetServiceInfo()` — so `grpcurl list` shows only `OperationService`,
+`Health` and `ServerReflection` — but `FileContainingSymbol` and
+`FileByFilename` resolve against `protoregistry.GlobalFiles` (grpc-go defaults
+the reflection server's `DescriptorResolver` to it), and this binary links every
+backend descriptor through `restmux`. **Not listed is not the same as not
+retrievable.** An unauthenticated caller at the edge who names a symbol gets its
+full file descriptor plus transitive dependencies — for any backend service,
+`Internal*` services included, and the dependency chain carries the per-RPC
+authz permission annotations.
+
+That is schema and policy-shape disclosure, not tenant-data disclosure: the
+proto tree is public and no request is served by answering a descriptor. But it
+is a materially larger surface than "three descriptors", and it makes reflection
+by some distance the weakest of the four justifications — unlike health,
+reflection is developer convenience, not an operational necessity, and confining
+it to the cluster-internal listener would cost only edge-side `grpcurl`.
+
+Left as an open decision for the owner rather than changed unilaterally, since
+it alters operator tooling behaviour. Recorded here with the corrected magnitude
+so the decision is taken against the real number rather than the flattering one.
 
 **Why the list now has a gate.** Six further entries were removed in the same
 change: they named a gRPC `AuthService` / `BackChannelLogoutService` that does
