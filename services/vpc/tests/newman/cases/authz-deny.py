@@ -26,10 +26,11 @@ projects, users, bindings, seed networks) и патчит env-файл:
     (setup.sh: ни ensure_binding, ни 4b-cleanup его не трогают). Раньше здесь стоял
     `jwtNoBindings`, который iam access-binding suites РЕАЛЬНО грантят `view@account-A/-B`
     на время своего прогона → под параллельным fan-out'ом account→project containment
-    транзитно авторизовывал NOB → AUTHZ-*-LS-{OWN,CROSS}-NOB ложно RED (known-RED,
-    whitelisted в assert-suites-green.sh). С pure-субъектом эти LIST-DENY leak-guard'ы
-    строгие и зелёные (whitelist-запись для *-NOB теперь избыточна-но-безвредна:
-    subtraction clamps to 0). verifies kacho-iam#276)
+    транзитно авторизовывал NOB → AUTHZ-*-LS-{OWN,CROSS}-NOB ложно краснели, и это
+    вычиталось из вердикта списком освобождений прогонщика. Список СНЯТ целиком
+    (`services/iam/tests/newman/scripts/assert-suites-green.sh`: вычитания больше нет),
+    а с pure-субъектом эти LIST-DENY leak-guard'ы строгие и зелёные без всяких
+    освобождений. verifies kacho-iam#276)
 
 Контракт ответов (api-gateway authz middleware, см. kacho-api-gateway):
   - Анонимный запрос (нет токена) → 401 UNAUTHENTICATED (grpc 16) ВЕЗДЕ.

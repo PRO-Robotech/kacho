@@ -27,9 +27,9 @@
 > репозитория вместе с доменом Geography; покрытие Region/Zone — в сервисе compute. Цифры
 > в таблице выше — без него.
 
-**100% PASS, кроме declared known-failing (rule #13)** — см. «Known failing tests —
-product bugs» ниже (2 persistent-RED SG-rule-target; `#27` — **FIXED**, product-side
-refcheck реализован). Плюс отдельный
+**100% PASS.** Объявленных known-failing в этой сюите нет — раздел «Known failing
+tests — product bugs» ниже пуст, и в нём же лежит история снятых с доказательством
+на каждую (SG-rule-target и `#27` сняты вместе со своими предметами). Плюс отдельный
 under-investigation кластер IPAM-resolve (см. ниже). Покрыты internal/admin-only IPAM RPC
 (`InternalAddressPoolService`) — kacho-only RPC проброшены через api-gateway
 cluster-internal mux, возвращают ресурсы напрямую (не Operation).

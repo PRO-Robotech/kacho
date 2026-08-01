@@ -883,24 +883,15 @@ CASES.append(Case(
     ],
 ))
 
-# KNOWN RED — the assertion below states the case's contract and the product does not
-# meet it. Measured on the live stand 2026-07-28 against the shipped build:
+# The declaration that stood here was REMOVED together with its subject: an unknown enum
+# value is now refused at the edge (gateway/internal/restmux/strict_enum.go, commit
+# d67d15fb), so this case passes by a PRODUCT change, not by an adjusted expectation.
+# The measurement that produced it (2026-07-28: an out-of-vocabulary sessionAffinity was
+# answered 200 and silently defaulted) is kept in docs/RESULTS.md, because it explains why
+# the assertion is written this way.
 #
-#   sessionAffinity:"DOES_NOT_EXIST" → HTTP 200, Operation minted, LB created with the
-#     default FIVE_TUPLE;
-#   sessionAffinity:"CLIENT_IP_ONLY" → HTTP 200, CLIENT_IP_ONLY persisted.
-#
-# So an unknown enum value is neither applied nor refused — it is dropped and the
-# caller is told 200 for a setting the server never made ("принято-и-проигнорировано",
-# api-conventions.md). The cause is the transcoder, not this service: the public
-# marshaller runs protojson with DiscardUnknown (gateway/internal/restmux/mux.go), which
-# also discards unrecognised enum VALUES, so nlb receives SESSION_AFFINITY_UNSPECIFIED
-# and cannot tell "bogus" from "absent". The fix therefore lives in the gateway, outside
-# this service; the same swallow already degraded NLB-GTS-STATE-LB-DISABLED once (see the
-# adminState note there), which is what an accepting assertion costs.
-#
-# The assertion is deliberately NOT relaxed back to "200 or 400": that spelling passed
-# in both worlds and is why the behaviour went unnoticed.
+# The assertion is deliberately NOT relaxed back to "200 or 400": that spelling passed in
+# both worlds and is exactly why the behaviour went unnoticed.
 CASES.append(Case(
     id="NLB-CR-VAL-INVALID-AFFINITY",
     title="Create with unknown sessionAffinity enum → InvalidArgument",
