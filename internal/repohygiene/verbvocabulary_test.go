@@ -66,12 +66,6 @@ var verbLiteralRoster = []verbLiteral{
 		why:        "словарь эмиттера: по нему решается, писать ли v_<глагол>",
 		retireWhen: "переменная удалена из дерева (набор читается у типа, XC-3 S1Ф2)",
 	},
-	{
-		path: "services/iam/internal/authzmap/fga_model_drift_test.go", varName: "closedVerbRelations",
-		asRelation: true,
-		why:        "словарь гейта дрейфа, намеренно продублированный ради независимости от эмиттера",
-		retireWhen: "переменная удалена либо гейт дрейфа выводит её из модели",
-	},
 }
 
 // TestVerbVocabularyLiteralsMatchModel — несущий гейт оси глаголов.
