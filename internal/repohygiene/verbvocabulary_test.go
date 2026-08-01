@@ -72,12 +72,6 @@ var verbLiteralRoster = []verbLiteral{
 		why:        "словарь гейта дрейфа, намеренно продублированный ради независимости от эмиттера",
 		retireWhen: "переменная удалена либо гейт дрейфа выводит её из модели",
 	},
-	{
-		path: "services/iam/internal/domain/role_effective_verbs.go", varName: "crudOrder",
-		asRelation: false,
-		why:        "разворот `*` и канонический порядок в ПУБЛИЧНОМ превью роли (Role.effective_verbs)",
-		retireWhen: "переменная удалена (порядок берётся из набора типа, XC-3 S1Ф2)",
-	},
 }
 
 // TestVerbVocabularyLiteralsMatchModel — несущий гейт оси глаголов.
