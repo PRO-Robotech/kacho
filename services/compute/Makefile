@@ -11,11 +11,15 @@ build:
 	CGO_ENABLED=0 go build -o bin/$(BINARY) $(CMD)
 	CGO_ENABLED=0 go build -o bin/kacho-migrator ./cmd/migrator
 
+# Каноничная команда живёт в КОРНЕВОМ Makefile — здесь только делегация: у флагов
+# и бюджета прогона должна быть ОДНА истина. Собственный `-timeout` в этом файле
+# ни с CI, ни с соседними сервисами не сверялся ничем и разъехался (300s/900s
+# вразнобой, и там где мало — молча недостижимо).
 test:
-	go test ./... -race -cover -timeout 300s
+	$(MAKE) -C ../.. test-service SVC=compute
 
 test-short:
-	go test ./... -race -cover -short -timeout 120s
+	$(MAKE) -C ../.. test-service-short SVC=compute
 
 vet:
 	go vet ./...

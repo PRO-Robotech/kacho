@@ -78,8 +78,12 @@ jobs:
       # postgres:16 через testcontainers на КАЖДОМ из 202 пакетов → джоба упиралась в
       # `panic: test timed out after 15m0s` (23 минуты wall-clock и красный CI).
       # Локально с -short — 5 секунд. Integration гоняет отдельная джоба ниже.
+      #
+      # Команда — В КОРНЕВОМ Makefile, а не здесь: она должна быть ОДНОЙ и той же у
+      # конвейера, у человека и у Makefile'ов сервисов. Инлайн её сюда — и следующий,
+      # набрав `go test ./...` без флагов, получит красное на «том же» прогоне.
       - name: test -race -short (unit)
-        run: go test ./... -race -short -count=1 -timeout 5m
+        run: make test-unit
 
   integration:
     name: integration (${{ matrix.svc }})
@@ -112,17 +116,20 @@ jobs:
       # -p 1 ВНУТРИ сервиса: пакеты сериализуются. Под -race + Docker-contention
       # параллельные testcontainers-пакеты голодают друг у друга ресурсы, и
       # concurrent-кейсы (CAS/EXCLUDE/SKIP-LOCKED) флакают. Дизайн — из polyrepo kacho-vpc/nlb.
+      # Отбор пакетов (`go list`, а НЕ шелл-глоб: `./services/*/internal/repo/...` не
+      # работает — bash глобит СЛОВО ЦЕЛИКОМ, а `...` не каталог, совпадений нет →
+      # паттерн уходит в go test литералом и job краснеет за 18с, не запустив НИ ОДНОГО
+      # теста) и бюджет пакета живут в КОРНЕВОМ Makefile — там же, где их видит человек.
+      #
+      # Сервис передаётся ОКРУЖЕНИЕМ, а не аргументом: `make test-integration
+      # SVC=${{ matrix.svc }}` разбирается гейтом ci_gate_wiring как три цели
+      # («test-integration», «matrix.svc», «}}»), и он прав — по командной строке
+      # цель от подстановки не отличить. Через env строка остаётся однозначной,
+      # а make всё равно видит SVC как переменную.
       - name: integration ${{ matrix.svc }} (-p 1, сериализовано)
-        run: |
-          # `go list`, а НЕ шелл-глоб: `./services/*/internal/repo/...` не работает —
-          # bash глобит СЛОВО ЦЕЛИКОМ, а `...` не каталог, совпадений нет → паттерн уходит
-          # в go test литералом («lstat …: no such file or directory»), и job краснеет за
-          # 18с не запустив НИ ОДНОГО теста. go list заодно сам разбирается с тем, что у
-          # geo нет internal/clients.
-          pkgs=$(go list ./services/${{ matrix.svc }}/... | grep -E '/internal/(repo|clients)(/|$)' || true)
-          if [ -z "$pkgs" ]; then echo "нет integration-пакетов у ${{ matrix.svc }} — пропуск"; exit 0; fi
-          echo "пакетов: $(echo "$pkgs" | wc -l)"
-          echo "$pkgs" | xargs go test -race -count=1 -timeout 25m -p 1
+        env:
+          SVC: ${{ matrix.svc }}
+        run: make test-integration
 
   proto:
     name: buf lint · breaking · generate-diff

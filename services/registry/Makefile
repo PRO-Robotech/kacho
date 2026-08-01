@@ -17,11 +17,15 @@ build-migrator:
 
 # test — unit + integration (testcontainers Postgres). При contention гнать с
 # -p 1 (локально DOCKER_HOST=colima).
+# Каноничная команда живёт в КОРНЕВОМ Makefile — здесь только делегация: у флагов
+# и бюджета прогона должна быть ОДНА истина. Собственный `-timeout` в этом файле
+# ни с CI, ни с соседними сервисами не сверялся ничем и разъехался (300s/900s
+# вразнобой, и там где мало — молча недостижимо).
 test:
-	go test ./... -race -cover -timeout 900s
+	$(MAKE) -C ../.. test-service SVC=registry
 
 test-short:
-	go test ./... -race -cover -short -timeout 120s
+	$(MAKE) -C ../.. test-service-short SVC=registry
 
 vet:
 	go vet ./...

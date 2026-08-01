@@ -28,8 +28,12 @@ REST_ROUTE_TABLE_BUILD  := build/rest_route_table_gen.go
 build:
 	CGO_ENABLED=0 go build -o bin/$(BINARY) $(CMD)
 
+# Каноничная команда живёт в КОРНЕВОМ Makefile — здесь только делегация: у флагов
+# и бюджета прогона должна быть ОДНА истина. Собственный `-timeout` в этом файле
+# ни с CI, ни с соседними сервисами не сверялся ничем и разъехался (300s/900s
+# вразнобой, и там где мало — молча недостижимо).
 test:
-	go test ./... -race -cover -timeout 300s
+	$(MAKE) -C .. test-service SVC=gateway
 
 vet:
 	go vet ./...
