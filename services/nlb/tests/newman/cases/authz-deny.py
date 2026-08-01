@@ -536,7 +536,21 @@ CASES.append(Case(
                  "pm.test('rejected (403 deny / 404 hide / already-done 400/409)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 409]));",
              ]),
-        poll_operation_until_done(auth="jwtProjectEditorB"),
+        # ОПРОС ИДЁТ ПОД СОЗДАТЕЛЕМ ОПЕРАЦИИ, А НЕ ПОД ТЕМ, КОМУ ТОЛЬКО ЧТО ОТКАЗАЛИ.
+        #
+        # Опрос стоял под B — под тем самым субъектом, про которого шаг выше
+        # УТВЕРЖДАЕТ, что операция A ему не видна. Видимость операции
+        # creator-principal-scoped by design (pkg/operations/owner.go: предикат —
+        # пара (PrincipalType, PrincipalID) создателя, чужой владелец → ErrNotFound
+        # без утечки), поэтому B законно получал 404, а кейс требовал от него 200 и
+        # краснел на ПРАВИЛЬНОМ поведении — в той же папке, где сам же его и
+        # утверждает. Ровно тот класс, который godoc `poll_operation_until_done`
+        # называет «mislaid identity».
+        #
+        # Предмет кейса — «не создатель не может отменить» — целиком утверждён на
+        # `cancel-as-B`. Опрос здесь нужен лишь затем, чтобы создание A завершилось
+        # до уборки, и потому принадлежит A.
+        poll_operation_until_done(auth="jwtProjectEditorA"),
         Step(name="cleanup", method="DELETE", path=f"{_NLB}/{{{{nlbId}}}}",
              auth="jwtProjectEditorA",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -679,6 +693,15 @@ CASES.append(Case(
              auth="jwtCustomRoleTargetManager",
              body={"targets": [{"externalIp": {"address": "203.0.113.32"}, "weight": 100}]},
              test_script=[
+                 # ОТВЕРГНУТАЯ МУТАЦИЯ НЕ ОСТАВЛЯЕТ ЧУЖОЙ ИДЕНТИФИКАТОР ЗА СОБОЙ.
+                 #
+                 # Без этого снятия отказ здесь оставлял `opId` от `tm-setup-tg` —
+                 # операции, созданной ДРУГИМ субъектом (editor A), — и следующий шаг
+                 # опрашивал её под targetManager'ом. Видимость операции
+                 # creator-principal-scoped, поэтому ответ был честный 404, а
+                 # утверждение «poll status 200» краснело так, будто операция пропала.
+                 # Одна находка превращалась в две, и вторая называла неверную причину.
+                 "pm.environment.unset('opId');",
                  "pm.test('targetManager may AddTargets (the verb its role grants)', () => "
                  "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                  *save_from_response("j.id", "opId"),

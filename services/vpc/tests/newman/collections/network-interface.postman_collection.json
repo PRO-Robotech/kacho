@@ -10013,63 +10013,19 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('400 sync OR 200 sync (Operation потом fails)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                  "if (pm.response.code === 400) {",
-                  "  pm.test('grpc INVALID_ARGUMENT', () => { const j = pm.response.json(); pm.expect(j.code, JSON.stringify(j)).to.eql(3); });",
-                  "  pm.environment.unset('opId');",
-                  "} else {",
-                  "  const j = pm.response.json(); pm.environment.set('opId', j.id || '');",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-and-assert-fail",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) return;",
-                  "// Worker должен failed'ить с InvalidArgument (cardinality CHECK).",
-                  "let _tries = 0; const _MAX = 8;",
-                  "const _step = () => {",
-                  "  pm.sendRequest({",
-                  "    url: pm.environment.get('baseUrl') + '/operations/' + pm.environment.get('opId'),",
-                  "    method: 'GET',",
-                  "    header: { 'Authorization': 'Bearer ' + pm.environment.get('jwtProjectAdminA1') },",
-                  "  }, (err, res) => {",
-                  "    let j = null; try { j = res.json(); } catch (e) {}",
-                  "    if (j && j.done) {",
-                  "      pm.test('Operation failed: cardinality v4≤1 violated', () => pm.expect(!!j.error, JSON.stringify(j)).to.eql(true));",
-                  "      pm.test('error code InvalidArgument (3) or FailedPrecondition (9)', () => pm.expect(j.error.code).to.be.oneOf([3, 9]));",
-                  "    } else if (++_tries < _MAX) { setTimeout(_step, 500); }",
-                  "    else { pm.test('op resolved in time', () => pm.expect.fail('op did not finish')); }",
-                  "  });",
-                  "};",
-                  "_step();"
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "});",
+                  "pm.test('отказ называет поле и потолок', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.message, pm.response.text())",
+                  "    .to.eql('at most one IPv4 address per network interface (use multiple NICs for multi-IP)');",
+                  "  const fv = ((j.details || []).find(d => (d.fieldViolations || []).length) || {}).fieldViolations || [];",
+                  "  pm.expect(fv.map(v => v.field), pm.response.text()).to.include('v4_address_ids');",
+                  "});",
+                  "pm.environment.unset('opId');"
                 ]
               }
             }
@@ -11049,56 +11005,19 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('400 sync OR 200 sync (Operation fails)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                  "if (pm.response.code === 400) { pm.environment.unset('opId'); }",
-                  "else { const j = pm.response.json(); pm.environment.set('opId', j.id || ''); }"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-fail",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) return;",
-                  "let _t = 0;",
-                  "const _s = () => pm.sendRequest({",
-                  "  url: pm.environment.get('baseUrl') + '/operations/' + pm.environment.get('opId'),",
-                  "  method: 'GET',",
-                  "  header: { 'Authorization': 'Bearer ' + pm.environment.get('jwtProjectAdminA1') },",
-                  "}, (err, res) => {",
-                  "  let j = null; try { j = res.json(); } catch (e) {}",
-                  "  if (j && j.done) {",
-                  "    pm.test('op failed cardinality v6≤1', () => pm.expect(!!j.error).to.eql(true));",
-                  "    pm.test('code 3 or 9', () => pm.expect(j.error.code).to.be.oneOf([3, 9]));",
-                  "  } else if (++_t < 8) { setTimeout(_s, 500); }",
-                  "  else { pm.test('op resolved', () => pm.expect.fail('timeout')); }",
+                  "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
+                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
-                  "_s();"
+                  "pm.test('отказ называет поле и потолок', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.message, pm.response.text())",
+                  "    .to.eql('at most one IPv6 address per network interface (use multiple NICs for multi-IP)');",
+                  "  const fv = ((j.details || []).find(d => (d.fieldViolations || []).length) || {}).fieldViolations || [];",
+                  "  pm.expect(fv.map(v => v.field), pm.response.text()).to.include('v6_address_ids');",
+                  "});",
+                  "pm.environment.unset('opId');"
                 ]
               }
             }

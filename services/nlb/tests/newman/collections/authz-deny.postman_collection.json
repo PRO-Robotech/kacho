@@ -2805,13 +2805,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// AZD per-step: bearer from env 'jwtProjectEditorB'",
-                  "const __t = pm.environment.get('jwtProjectEditorB') || pm.variables.get('jwtProjectEditorB') || '';",
+                  "// AZD per-step: bearer from env 'jwtProjectEditorA'",
+                  "const __t = pm.environment.get('jwtProjectEditorA') || pm.variables.get('jwtProjectEditorA') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
-                  "  pm.test('harness config: jwtProjectEditorB is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtProjectEditorB is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
                   "  pm.request.headers.remove('Authorization');",
                   "}"
@@ -3332,6 +3332,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
+                  "pm.environment.unset('opId');",
                   "pm.test('targetManager may AddTargets (the verb its role grants)', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",

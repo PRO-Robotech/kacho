@@ -662,14 +662,22 @@ CASES.append(Case(
              body={"targets": [{"externalIp": {"address": "203.0.113.52"}, "weight": 100}]},
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        # Two refusal lanes, and which fires depends on where the added target becomes
-        # visible: the sync precheck counts it and refuses before the Operation exists, or
-        # the worker's DELETE hits the child-row FK (23503) and the Operation ends in error.
-        # Both are FAILED_PRECONDITION and both are now checked; the delete SUCCEEDING is
-        # not a lane, and that is what was being accepted.
+        # ЛАНА ОДНА, И ЭТО СЛЕДУЕТ ИЗ ШАГА ВЫШЕ.
+        #
+        # Здесь было объявлено две полосы отказа — синхронная (предпроверка считает
+        # цель и отвергает до Operation) и асинхронная (DELETE воркера ловит FK 23503
+        # на дочерней строке). Вторая недостижима: добавление цели выше опрошено до
+        # `done`, то есть строка ЗАКОММИЧЕНА, а предпроверка читает ТУ ЖЕ базу того же
+        # сервиса — межсервисного окна видимости здесь нет вовсе. Гонки, вынесенной в
+        # заголовок, на этом пути не остаётся, и воркеру отвергать уже нечего.
+        #
+        # Пока асинхронная полоса была объявлена, парный опрос адресовал `{{opId}}`,
+        # который синхронный отказ снимает, — страж адреса назвал это на боевом
+        # прогоне 2026-07-31. FK-backstop (23503) от этого никуда не делся: он
+        # остаётся атомарной защитой от гонки, просто эта проба до него не достаёт.
         Step(name="del-race", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
-             test_script=assert_refused_sync_or_async("delete of a TG with a live target")),
-        poll_operation_until_done(must_fail=True),
+             test_script=assert_refused_sync_or_async("delete of a TG with a live target",
+                                                     async_lane=False)),
         Step(name="rm-cleanup", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
              body={"targets": [{"externalIp": {"address": "203.0.113.52"}}]},
              test_script=[*save_from_response("j.id", "opId")]),
