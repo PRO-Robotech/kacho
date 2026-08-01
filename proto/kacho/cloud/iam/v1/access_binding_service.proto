@@ -830,10 +830,18 @@ message ListAccessBindingsByRoleRequest {
 
 // ExpandAccessRequest asks "who can perform <relation> on <object_type>:<object_id>".
 // `object_type` is a closed `<module>.<resource>` key or an FGA
-// object type (e.g. "compute.instance", "iam_access_binding"); `relation` is the
-// FGA relation/verb-derived relation (e.g. "delete", "viewer"). The server
-// resolves the userset (direct grants + group memberships) into concrete
-// principals.
+// object type (e.g. "compute.instance", "iam_access_binding").
+//
+// `relation` is NOT any FGA relation and NOT a free verb: принимается ВЫВОДИМОЕ
+// множество — объединение наборов `v_*` всех типов каталога ∪ ярусные
+// (viewer/editor/admin) ∪ членство (member). Внутренняя машинерия модели
+// (переносчики охвата, подтягивающие резолверы, платформенные роли) отвергается:
+// пересылка произвольной строки дала бы возможность прощупывать внутренний граф
+// отношений. Множество ВЫВОДИТСЯ из наборов типов, а не перечисляется, поэтому
+// новое отношение у типа появляется здесь само и отставать не может.
+//
+// The server resolves the userset (direct grants + group memberships) into
+// concrete principals.
 message ExpandAccessRequest {
   // Object type to expand access on — closed `<module>.<resource>` key or FGA
   // object type. Unknown type → INVALID_ARGUMENT.
@@ -842,8 +850,8 @@ message ExpandAccessRequest {
   // Object id to expand access on. Format-validated only (soft-ref).
   string object_id = 2 [(required) = true, (length) = "1-64"];
 
-  // Relation/verb to expand (e.g. "delete", "viewer"). Unknown relation →
-  // INVALID_ARGUMENT.
+  // Relation to expand (e.g. "v_delete", "viewer"). Принимается выводимое
+  // множество (см. описание сообщения выше); всё остальное — INVALID_ARGUMENT.
   string relation = 3 [(required) = true, (length) = "1-64"];
 
   // The maximum number of concrete principals to return. Default 1000, max
