@@ -1,0 +1,14 @@
+--- FAIL: TestStaleClaimSweepIsTakenByName (1.09s)
+    staleclaimsweep_test.go:459: маркер "refuted-refusal-is-transient": вхождений 1, на момент посадки было 0.
+        Расхождение — НАХОДКА, а не повод обновить число: перепись ведётся по имени механизма, и «починил N из N» проверяемо только сверкой двух чисел.
+        Зачем эта запись: Утверждение опровергнуто деревом на двух уровнях: применитель nlb относит отказ в правах к терминальному классу, и то же делает общая библиотека дренажа для КАЖДОГО применителя. До правки — 7 строк в 6 файлах.
+        Условие снятия: TestStaleClaimPremiseHolds перестанет держаться, то есть отказ в правах снова начнёт классифицироваться как повторяемый. Тогда запрет станет вредным, и снимать его нужно вместе с ним, а не молча.
+        Координаты (1):
+          services/nlb/internal/apps/kacho/api/targetgroup/create.go:316: // INJ-1: the register-drainer treats PermissionDenied as transient and short-circuits.
+    staleclaimsweep_test.go:468: отрицательный результат объявлен: маркер "refuted-partition-unblock-deadline" — вхождений ноль (осмотрено файлов в области: 5806)
+    staleclaimsweep_test.go:468: отрицательный результат объявлен: маркер "removed-subtraction-claimed-live" — вхождений ноль (осмотрено файлов в области: 1)
+    staleclaimsweep_test.go:468: отрицательный результат объявлен: маркер "pre-whitelist" — вхождений ноль (осмотрено файлов в области: 5806)
+    staleclaimsweep_test.go:473: перепись: прочитано текстовых файлов 5806 (двоичных пропущено 6, самоцитирующих 13); маркеров в реестре 5; вхождений найдено 2
+FAIL
+FAIL	github.com/PRO-Robotech/kacho/internal/repohygiene	1.274s
+FAIL

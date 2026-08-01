@@ -1,0 +1,15 @@
+=== RUN   TestStaleClaimPremiseHolds
+=== RUN   TestStaleClaimPremiseHolds/отказ_в_правах_терминален_у_применителя_nlb
+    staleclaimsweep_test.go:697: в теле classifyRegisterErr больше нет codes.PermissionDenied — классификация отказа изменилась, и запрет на прежнюю прозу обязан пересматриваться вместе с ней
+=== RUN   TestStaleClaimPremiseHolds/отказ_в_правах_терминален_в_общей_библиотеке
+=== RUN   TestStaleClaimPremiseHolds/повторяемая_строка_удерживается_ниже_порога
+=== RUN   TestStaleClaimPremiseHolds/вычитание_из_вердикта_не_исполняется
+    staleclaimsweep_test.go:740: предпосылка: исполняемых упоминаний вычитания в общем гейте — 0 (прочитано строк: 270)
+--- FAIL: TestStaleClaimPremiseHolds (0.00s)
+    --- FAIL: TestStaleClaimPremiseHolds/отказ_в_правах_терминален_у_применителя_nlb (0.00s)
+    --- PASS: TestStaleClaimPremiseHolds/отказ_в_правах_терминален_в_общей_библиотеке (0.00s)
+    --- PASS: TestStaleClaimPremiseHolds/повторяемая_строка_удерживается_ниже_порога (0.00s)
+    --- PASS: TestStaleClaimPremiseHolds/вычитание_из_вердикта_не_исполняется (0.00s)
+FAIL
+FAIL	github.com/PRO-Robotech/kacho/internal/repohygiene	0.006s
+FAIL

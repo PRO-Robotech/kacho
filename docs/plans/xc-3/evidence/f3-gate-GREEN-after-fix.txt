@@ -1,0 +1,36 @@
+=== RUN   TestStaleClaimSweepIsTakenByName
+    staleclaimsweep_test.go:468: отрицательный результат объявлен: маркер "refuted-refusal-is-transient" — вхождений ноль (осмотрено файлов в области: 5806)
+    staleclaimsweep_test.go:468: отрицательный результат объявлен: маркер "refuted-partition-unblock-deadline" — вхождений ноль (осмотрено файлов в области: 5806)
+    staleclaimsweep_test.go:468: отрицательный результат объявлен: маркер "removed-subtraction-claimed-live" — вхождений ноль (осмотрено файлов в области: 1)
+    staleclaimsweep_test.go:468: отрицательный результат объявлен: маркер "pre-whitelist" — вхождений ноль (осмотрено файлов в области: 5806)
+    staleclaimsweep_test.go:473: перепись: прочитано текстовых файлов 5806 (двоичных пропущено 6, самоцитирующих 13); маркеров в реестре 5; вхождений найдено 1
+--- PASS: TestStaleClaimSweepIsTakenByName (1.37s)
+=== RUN   TestStaleClaimPrefilterIsDerivedNotAssumed
+    staleclaimsweep_test.go:519: маркер "refuted-refusal-is-transient": отсев по выведенному литералу "permissiondenied"
+    staleclaimsweep_test.go:519: маркер "refuted-partition-unblock-deadline": отсев по выведенному литералу "≈"
+    staleclaimsweep_test.go:519: маркер "removed-subtraction-claimed-live": отсев по выведенному литералу "whitelist"
+    staleclaimsweep_test.go:519: маркер "removed-subtraction-mentioned-historically": отсев по выведенному литералу "known-red"
+    staleclaimsweep_test.go:519: маркер "pre-whitelist": отсев по выведенному литералу "pre-whitelist"
+--- PASS: TestStaleClaimPrefilterIsDerivedNotAssumed (0.00s)
+=== RUN   TestStaleClaimRosterCoversKnownOccurrences
+    staleclaimsweep_test.go:575: предпосылка: совпадений НАДпредиката 3, из них законных перечислено 3, непокрытых 0
+--- PASS: TestStaleClaimRosterCoversKnownOccurrences (0.25s)
+=== RUN   TestStaleClaimLegitimateHitsStillHaveSubject
+--- PASS: TestStaleClaimLegitimateHitsStillHaveSubject (0.00s)
+=== RUN   TestStaleClaimSelfReferenceStillHasSubject
+    staleclaimsweep_test.go:673: самоцитирование "internal/repohygiene/staleclaimsweep_test.go": файлов под префиксом 1, из них цитирующих маркеры 1
+    staleclaimsweep_test.go:673: самоцитирование "docs/plans/xc-3/": файлов под префиксом 12, из них цитирующих маркеры 6
+--- PASS: TestStaleClaimSelfReferenceStillHasSubject (0.03s)
+=== RUN   TestStaleClaimPremiseHolds
+=== RUN   TestStaleClaimPremiseHolds/отказ_в_правах_терминален_у_применителя_nlb
+=== RUN   TestStaleClaimPremiseHolds/отказ_в_правах_терминален_в_общей_библиотеке
+=== RUN   TestStaleClaimPremiseHolds/повторяемая_строка_удерживается_ниже_порога
+=== RUN   TestStaleClaimPremiseHolds/вычитание_из_вердикта_не_исполняется
+    staleclaimsweep_test.go:740: предпосылка: исполняемых упоминаний вычитания в общем гейте — 0 (прочитано строк: 270)
+--- PASS: TestStaleClaimPremiseHolds (0.00s)
+    --- PASS: TestStaleClaimPremiseHolds/отказ_в_правах_терминален_у_применителя_nlb (0.00s)
+    --- PASS: TestStaleClaimPremiseHolds/отказ_в_правах_терминален_в_общей_библиотеке (0.00s)
+    --- PASS: TestStaleClaimPremiseHolds/повторяемая_строка_удерживается_ниже_порога (0.00s)
+    --- PASS: TestStaleClaimPremiseHolds/вычитание_из_вердикта_не_исполняется (0.00s)
+PASS
+ok  	github.com/PRO-Robotech/kacho/internal/repohygiene	1.701s

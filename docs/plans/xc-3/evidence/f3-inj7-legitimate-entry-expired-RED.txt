@@ -1,0 +1,6 @@
+=== RUN   TestStaleClaimLegitimateHitsStillHaveSubject
+    staleclaimsweep_test.go:618: перечень законного: в services/iam/internal/authzguard/scope.go больше нет строки с подстрокой "must not become a terminal PermissionDenied", попадающей под НАДпредикат — запись исключает пустоту и обязана уйти, иначе она станет слепой зоной для следующего вхождения
+--- FAIL: TestStaleClaimLegitimateHitsStillHaveSubject (0.60s)
+FAIL
+FAIL	github.com/PRO-Robotech/kacho/internal/repohygiene	0.621s
+FAIL

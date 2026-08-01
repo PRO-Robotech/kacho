@@ -1,0 +1,9 @@
+--- FAIL: TestStaleClaimRosterCoversKnownOccurrences (0.14s)
+    staleclaimsweep_test.go:555: реестр не покрывает 1 известных вхождений НАДпредиката (отказ и временность в одной строке):
+          services/nlb/internal/apps/kacho/api/targetgroup/create.go:316: // INJ-2: the register-drainer treats PermissionDenied as transient and short-circuits.
+        
+        Это отказ НА ПРЕДПОСЫЛКЕ, а не находка в дереве: либо строка законна и её место в legitimateCalibrationHits (с отличительной подстрокой, не с номером строки), либо она — предмет, и в реестре обязан быть маркер, который её ловит. Молчание при снятом маркере — ровно тот исход, ради которого эта проверка стоит рядом.
+    staleclaimsweep_test.go:563: предпосылка: совпадений НАДпредиката 4, из них законных перечислено 3, непокрытых 1
+FAIL
+FAIL	github.com/PRO-Robotech/kacho/internal/repohygiene	0.813s
+FAIL

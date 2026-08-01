@@ -1,0 +1,1 @@
+ok  	github.com/PRO-Robotech/kacho/internal/repohygiene	16.771s
