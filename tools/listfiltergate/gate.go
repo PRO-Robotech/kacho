@@ -169,6 +169,12 @@ type Profile struct {
 	// to Options.ProtoRoot. Read only to verify EdgeGate declarations; a profile
 	// with no EdgeGate listing does not need them.
 	ProtoFiles []string
+
+	// FGAModel is the authorization model, relative to Options.ProtoRoot. Read only
+	// to verify EdgeGate declarations that resolve their scope from "*": whether
+	// such a scope narrows anything depends entirely on whether a wildcard tuple
+	// satisfies the relation, and that is a fact about the model, not a guess.
+	FGAModel string
 }
 
 // Shape is how one listing method's visibility is decided.
@@ -197,17 +203,32 @@ const (
 	// RPC's proto options carry a required_relation AND a scope_extractor whose
 	// from_request_field is Listing.ParentField.
 	//
-	// The field must not be "*": an extractor resolving to `<type>:*` is satisfied by
-	// the wildcard tuple the cluster catalog is deliberately opened with, so it means
-	// "authenticated", not "authorized", and narrows nothing. Accepting a bare
-	// declaration here without reading the proto would make this shape a rubber
-	// stamp — the form of a check with no substance, which is the class the whole
-	// gate exists to catch.
+	// A scope resolved from "*" — the cluster singleton — is allowed ONLY when the
+	// relation is one no wildcard tuple satisfies. Whether it does is a fact about
+	// the authorization model, never a guess: `cluster#viewer` is deliberately
+	// declared `[user, user:*, service_account]` so that every authenticated tenant
+	// can read the global catalog, and a listing gated on it means "authenticated",
+	// not "authorized". `cluster#system_admin` is `[user, service_account]` and
+	// narrows properly. The gate reads the model and tells the two apart; a blunt
+	// "the field must not be *" rule would have failed ListAdmins, which is correct
+	// code, and taught the next reader to suppress the check.
+	//
+	// Accepting a bare declaration without reading proto and model would make this
+	// shape a rubber stamp — the form of a check with no substance, which is the
+	// class the whole gate exists to catch.
 	EdgeGate
 
 	// SubjectScoped — the query is narrowed by the authenticated caller taken from
 	// the context. Evidence: the call graph reaches one of Profile.SubjectScopers.
 	SubjectScoped
+
+	// StoreQuery — the response IS the authorization store's answer, not a page
+	// narrowed by it. iam's AuthorizeService.ListObjects is the only such RPC: asking
+	// the store to enumerate is what the caller came for, so the enumeration ban is
+	// inapplicable by construction rather than waived. The caller is instead gated on
+	// the subject or resource they named, so the evidence is ParentGate's: reach
+	// Listing.Gate and act on its verdict.
+	StoreQuery
 
 	// ClusterScoped — a cluster-wide catalog or an admin-only internal surface with
 	// no per-object grants to narrow to. The only shape with no code evidence, so it
@@ -230,6 +251,8 @@ func (s Shape) String() string {
 		return "EdgeGate"
 	case SubjectScoped:
 		return "SubjectScoped"
+	case StoreQuery:
+		return "StoreQuery"
 	case ClusterScoped:
 		return "ClusterScoped"
 	}
@@ -246,8 +269,19 @@ type Listing struct {
 	// on the bare method name would let the page read vouch for its own gate.
 	Gate string
 
+	// ProtoFile names which of Profile.ProtoFiles declares this RPC, for EdgeGate.
+	//
+	// Required, and the index is keyed per file, because an RPC NAME is not unique
+	// across a service's protos: iam declares `rpc List` in nine different service
+	// files. A name-keyed index would silently answer about whichever file was read
+	// last, and the gate would then be verifying a declaration against another
+	// resource's options — a check that runs, passes, and means nothing.
+	ProtoFile string
+
 	// ParentField is the request field naming the containing object, for EdgeGate.
-	// Must match the proto scope_extractor's from_request_field.
+	// Must match the proto scope_extractor's from_request_field. The literal "*"
+	// declares the cluster singleton, which is only accepted when the RPC's relation
+	// is not satisfiable by a wildcard tuple (see EdgeGate).
 	ParentField string
 
 	// Reason justifies a ClusterScoped listing. Required for that shape: an
@@ -381,6 +415,14 @@ func Audit(p Profile, o Options, out io.Writer) (Report, error) {
 				"this profile declares EdgeGate listings, whose evidence lives in the proto options, "+
 					"and those could not be read: %v\n  an EdgeGate declaration the gate cannot verify is "+
 					"a rubber stamp — it has the form of a check and no substance", perr))
+		} else if wc, werr := loadWildcardRelations(o.ProtoRoot, p.FGAModel); werr != nil {
+			rep.Findings = append(rep.Findings, fmt.Sprintf(
+				"this profile declares EdgeGate listings and the authorization model could not be "+
+					"read: %v\n  whether a scope resolved from \"*\" narrows anything is a fact about "+
+					"the model; without it the gate would be guessing", werr))
+			protos = nil
+		} else {
+			protos.wildcard = wc
 		}
 	}
 
@@ -450,7 +492,7 @@ func checkListing(p Profile, key string, l Listing, a anchorDecl, protos *protoO
 
 	// The enumerate-then-narrow ban applies to every shape that narrows at all: it
 	// is about HOW a page is narrowed, not about which shape does it.
-	if l.Shape != ClusterScoped {
+	if l.Shape != ClusterScoped && l.Shape != StoreQuery {
 		for _, b := range p.Banned {
 			if called[b] {
 				findings = append(findings, fmt.Sprintf(
@@ -472,7 +514,7 @@ func checkListing(p Profile, key string, l Listing, a anchorDecl, protos *protoO
 				key, orList(p.Filters), a.pos))
 		}
 
-	case ParentGate:
+	case ParentGate, StoreQuery:
 		if l.Gate == "" {
 			findings = append(findings, fmt.Sprintf(
 				"%s — declared ParentGate with no Gate call named, so the declaration asserts nothing"+
@@ -486,7 +528,7 @@ func checkListing(p Profile, key string, l Listing, a anchorDecl, protos *protoO
 					"\n  declared: %s", key, l.Gate, a.pos))
 			break
 		}
-		if !gateVerdictActedOn(a.fn, l.Gate) {
+		if !a.unit.gateActedOn(a.fn, l.Gate) {
 			findings = append(findings, fmt.Sprintf(
 				"%s — calls %s but never acts on its verdict: a denial or a miss on the containing "+
 					"object does not stop the page being returned\n  declared: %s",
@@ -528,12 +570,18 @@ func checkEdgeGate(key string, l Listing, a anchorDecl, protos *protoOptions) []
 			"%s — declared EdgeGate, but the proto options were not read, so the declaration was "+
 				"taken on trust\n  declared: %s", key, a.pos)}
 	}
-	opt, ok := protos.byMethod[a.method]
+	if l.ProtoFile == "" {
+		return []string{fmt.Sprintf(
+			"%s — declared EdgeGate with no ProtoFile named: an rpc name is not unique across a "+
+				"service's protos, so there is no way to know which declaration to verify against"+
+				"\n  declared: %s", key, a.pos)}
+	}
+	opt, ok := protos.byMethod[l.ProtoFile+"#"+a.method]
 	if !ok {
 		return []string{fmt.Sprintf(
-			"%s — declared EdgeGate, but no rpc %s carrying authorization options was found in the "+
-				"profile's proto files: the check it delegates to does not exist\n  declared: %s",
-			key, a.method, a.pos)}
+			"%s — declared EdgeGate, but %s declares no rpc %s carrying authorization options: the "+
+				"check it delegates to does not exist\n  declared: %s",
+			key, l.ProtoFile, a.method, a.pos)}
 	}
 	var out []string
 	if opt.requiredRelation == "" {
@@ -548,11 +596,20 @@ func checkEdgeGate(key string, l Listing, a anchorDecl, protos *protoOptions) []
 				"resolves the containing object, so the relation is checked against nothing"+
 				"\n  declared: %s", key, l.ParentField, a.method, a.pos))
 	case opt.fromRequestField == "*":
-		out = append(out, fmt.Sprintf(
-			"%s — declared EdgeGate, but rpc %s resolves its scope from \"*\", i.e. to %s:* — that "+
-				"object is deliberately opened to every authenticated subject, so the relation is "+
-				"satisfied by anyone and the check narrows NOTHING\n  declared: %s",
-			key, a.method, opt.objectType, a.pos))
+		// A scope on the singleton narrows exactly as much as its relation does.
+		if protos.wildcard[opt.objectType+"#"+opt.requiredRelation] {
+			out = append(out, fmt.Sprintf(
+				"%s — declared EdgeGate, but rpc %s resolves its scope from \"*\" and is gated on "+
+					"%s#%s, which the model opens to a wildcard subject: the relation is satisfied by "+
+					"every authenticated caller, so this check means \"authenticated\", not "+
+					"\"authorized\", and narrows NOTHING\n  declared: %s",
+				key, a.method, opt.objectType, opt.requiredRelation, a.pos))
+		} else if l.ParentField != "*" {
+			out = append(out, fmt.Sprintf(
+				"%s — declared EdgeGate on field %q, but rpc %s resolves its scope from \"*\" (the "+
+					"%s singleton): the declaration describes a check that is not the one being made"+
+					"\n  declared: %s", key, l.ParentField, a.method, opt.objectType, a.pos))
+		}
 	case opt.fromRequestField != l.ParentField:
 		out = append(out, fmt.Sprintf(
 			"%s — declared EdgeGate on field %q, but rpc %s resolves its scope from %q: the "+
@@ -888,6 +945,63 @@ func bareTypeName(e ast.Expr) string {
 // ParentGate: the verdict has to stop the response
 // ---------------------------------------------------------------------------
 
+// gateActedOn reports whether the gate's verdict is acted on in the declaring
+// method OR in any package-local function it reaches.
+//
+// The hop matters: vpc and compute call the gate straight from the handler, but iam
+// puts it in the use-case the handler delegates to. Judging only the declaring body
+// would have made every iam ParentGate a false finding, and the obvious repair — drop
+// the verdict check — would have thrown away the half of the shape that has teeth.
+func (u *unit) gateActedOn(fn *ast.FuncDecl, gate string) bool {
+	seen := map[*ast.FuncDecl]bool{}
+	var walk func(*ast.FuncDecl) bool
+	walk = func(f *ast.FuncDecl) bool {
+		if f == nil || f.Body == nil || seen[f] {
+			return false
+		}
+		seen[f] = true
+		if gateVerdictActedOn(f, gate) {
+			return true
+		}
+		recvVar, recvType := u.recv[f][0], u.recv[f][1]
+		found := false
+		ast.Inspect(f.Body, func(n ast.Node) bool {
+			if found {
+				return false
+			}
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			switch e := unwrapIndex(call.Fun).(type) {
+			case *ast.Ident:
+				if walk(u.funcs[e.Name]) {
+					found = true
+				}
+			case *ast.SelectorExpr:
+				switch x := e.X.(type) {
+				case *ast.Ident:
+					if recvVar != "" && x.Name == recvVar && walk(u.methods[recvType+"."+e.Sel.Name]) {
+						found = true
+					}
+				case *ast.SelectorExpr:
+					inner, ok := x.X.(*ast.Ident)
+					if !ok || recvVar == "" || inner.Name != recvVar {
+						return true
+					}
+					if ft := u.fields[recvType][x.Sel.Name]; ft != "" &&
+						walk(u.methods[ft+"."+e.Sel.Name]) {
+						found = true
+					}
+				}
+			}
+			return true
+		})
+		return found
+	}
+	return walk(fn)
+}
+
 // gateVerdictActedOn reports whether the gate call's result is tested in a branch
 // that leaves the method.
 //
@@ -917,7 +1031,25 @@ func gateVerdictActedOn(fn *ast.FuncDecl, gate string) bool {
 			found = true
 			return false
 		}
+		// Pattern 3: `if !<gate>(…) { … return … }` — a predicate gate whose answer
+		// is the condition itself. iam writes its self-check this way.
+		if ifs, ok := n.(*ast.IfStmt); ok && blockReturns(ifs.Body) && condCallsGate(ifs.Cond, gate) {
+			found = true
+			return false
+		}
 		return true
+	})
+	return found
+}
+
+// condCallsGate reports whether the gate is called anywhere in an if-condition.
+func condCallsGate(cond ast.Expr, gate string) bool {
+	found := false
+	ast.Inspect(cond, func(n ast.Node) bool {
+		if call, ok := n.(*ast.CallExpr); ok && qualifiedCallName(call) == gate {
+			found = true
+		}
+		return !found
 	})
 	return found
 }
@@ -1008,10 +1140,68 @@ type rpcOptions struct {
 	fromRequestField string
 }
 
-// protoOptions indexes rpcOptions by RPC name.
+// protoOptions indexes rpcOptions by RPC name, together with the set of
+// "<type>#<relation>" pairs a wildcard tuple satisfies.
 type protoOptions struct {
 	byMethod map[string]rpcOptions
+	wildcard map[string]bool
 	files    int
+}
+
+// loadWildcardRelations returns the "<type>#<relation>" pairs whose direct-assignable
+// list admits a wildcard subject (`user:*`), read from the authorization model.
+//
+// These are the relations that answer "yes" to every authenticated subject. There are
+// meant to be very few — the global reference catalog every tenant must read, and a
+// public repository's read verb — and each is a deliberate decision recorded in the
+// model. Deriving the set instead of hard-coding it is the point: the model is where
+// the decision lives, so a relation opened to a wildcard tomorrow is caught the same
+// day, and one closed again stops being flagged without anyone editing this gate.
+func loadWildcardRelations(root, rel string) (map[string]bool, error) {
+	if rel == "" {
+		return nil, fmt.Errorf("the profile names no FGAModel")
+	}
+	path := filepath.Join(root, rel)
+	raw, err := os.ReadFile(path) //nolint:gosec // path composed from the profile, not from input
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	out := map[string]bool{}
+	typ := ""
+	types := 0
+	for _, line := range strings.Split(string(raw), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			continue // a comment mentioning user:* is not a grant of it
+		}
+		if m := fgaTypeRe.FindStringSubmatch(trimmed); m != nil {
+			typ = m[1]
+			types++
+			continue
+		}
+		m := fgaDefineRe.FindStringSubmatch(trimmed)
+		if m == nil || typ == "" {
+			continue
+		}
+		// Only the DIRECT-assignable list — the bracketed part — can carry a
+		// wildcard subject; `or other_relation` merely delegates.
+		direct := m[2]
+		if i := strings.Index(direct, "["); i >= 0 {
+			if j := strings.Index(direct[i:], "]"); j > 0 {
+				direct = direct[i : i+j]
+			}
+		} else {
+			continue
+		}
+		if strings.Contains(direct, ":*") {
+			out[typ+"#"+m[1]] = true
+		}
+	}
+	if types == 0 {
+		return nil, fmt.Errorf("parsed %s and found no type declaration — the model was not read, "+
+			"so no EdgeGate scope could be judged against it", path)
+	}
+	return out, nil
 }
 
 var (
@@ -1019,6 +1209,8 @@ var (
 	relationRe     = regexp.MustCompile(`required_relation\)?\s*=\s*"([^"]*)"`)
 	objectTypeRe   = regexp.MustCompile(`object_type:\s*"([^"]*)"`)
 	fromReqFieldRe = regexp.MustCompile(`from_request_field:\s*"([^"]*)"`)
+	fgaTypeRe      = regexp.MustCompile(`^type\s+([a-z_][a-z0-9_]*)\s*$`)
+	fgaDefineRe    = regexp.MustCompile(`^define\s+([a-z_][a-z0-9_]*)\s*:\s*(.*)$`)
 )
 
 // loadProtoOptions reads the authorization options of every rpc declared in files.
@@ -1065,7 +1257,7 @@ func loadProtoOptions(root string, files []string) (*protoOptions, error) {
 			if m := fromReqFieldRe.FindStringSubmatch(body); m != nil {
 				opt.fromRequestField = m[1]
 			}
-			po.byMethod[name] = opt
+			po.byMethod[rel+"#"+name] = opt
 		}
 	}
 	if len(po.byMethod) == 0 {
@@ -1184,7 +1376,12 @@ Enumerating all allowed ids (ListAllowedIDs/ListObjects) is not a substitute: th
 answer is capped server-side with no continuation token, so a tenant's own rows
 fall outside the cap and become invisible.
 
-Whitelist a cluster-catalog resource with --allow=<resource> if the cluster-wide
-surface is intentional — and drop the entry once the resource is gone, since an
-exclusion with no subject only hides its successor.
+Every listing method — not only the one called List — declares how its page is
+narrowed, in the service's Profile.Listings. A method with no declaration is a
+finding, so a new one cannot ship unjudged; a declaration with no method is a
+finding, so an exclusion cannot outlive its subject.
+
+A cluster catalog or an admin-only internal surface is declared ClusterScoped
+with a reason. That reason lives in the profile, where this gate reads it — not
+in a reviewer's memory.
 `

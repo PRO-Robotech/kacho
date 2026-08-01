@@ -89,6 +89,7 @@ var Profile = listfiltergate.Profile{
 	Banned:         []string{"ListAllowedIDs", "ListObjects"},
 	SubjectScopers: []string{"ListForCaller"},
 	ProtoFiles:     []string{"kacho/cloud/vpc/v1/address_service.proto"},
+	FGAModel:       "kacho/cloud/iam/v1/fga_model.fga",
 
 	Listings: map[string]listfiltergate.Listing{
 		"address.List":          {Shape: listfiltergate.RowFilter},
@@ -113,6 +114,7 @@ var Profile = listfiltergate.Profile{
 
 		"address.ListBySubnet": {
 			Shape:       listfiltergate.EdgeGate,
+			ProtoFile:   "kacho/cloud/vpc/v1/address_service.proto",
 			ParentField: "subnet_id",
 		},
 

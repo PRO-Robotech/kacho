@@ -27,4 +27,4 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-exec go run ./tools/auditlistfilter/cmd/audit-list-filter --allow=disk_type "$@"
+exec go run ./tools/auditlistfilter/cmd/audit-list-filter "$@"
