@@ -270,8 +270,59 @@ func parseMakeTargets(path string) map[string]makeTarget {
 	return out
 }
 
-// anyMentions — упомянут ли скрипт в какой-либо достижимой команде: полным путём
-// от корня, путём от каталога своего сервиса, либо маской каталога.
+// outputCommands — команды, чей аргумент ПОКАЗЫВАЮТ, а не исполняют.
+//
+// Строка `note "Перемерить: bash $REMEASURE"` называет запуск и его не производит.
+// Для предиката по вхождению подстроки она неотличима от запуска — а разница
+// ровно в том, ради чего этот обход существует.
+var outputCommands = map[string]bool{
+	"echo": true, "printf": true, "print": true, "note": true, "warn": true,
+	"info": true, "say": true, "log": true, "msg": true, "ok": true, "fail": true,
+}
+
+// reAssignOf — присваивание ЭТОГО пути имени: `REMEASURE="deploy/scripts/x.sh"`.
+//
+// Строка проверяется целиком, а не по префиксу перед каждым вхождением: короткий
+// кандидат (одно имя файла) находится ВНУТРИ присвоенного полного пути, и
+// поштучный разбор объявил бы ту же строку вызовом.
+func reAssignOf(cand string) *regexp.Regexp {
+	return regexp.MustCompile(`(?:^|[\s;&|(])([A-Za-z_]\w*)=["']?` + regexp.QuoteMeta(cand))
+}
+
+// firstWord — командное слово строки, без префиксов рецепта make и кавычек.
+func firstWord(line string) string {
+	f := strings.Fields(strings.TrimLeft(line, " \t-@+"))
+	if len(f) == 0 {
+		return ""
+	}
+	return strings.Trim(f[0], "\"'`")
+}
+
+// execOfVarRe — исполнение значения переменной: `bash "$REMEASURE"`, `python3 $X`,
+// `exec "${X}"`, `./$X`.
+func execOfVarRe(name string) *regexp.Regexp {
+	return regexp.MustCompile(`(?:^|[\s;&|(]|\./)(?:bash|sh|zsh|python3?|exec|source|go run|\.)\s+["']?\$\{?` +
+		regexp.QuoteMeta(name) + `\}?\b`)
+}
+
+// anyMentions — ВЫЗЫВАЕТСЯ ли скрипт какой-либо достижимой командой: полным путём
+// от корня, путём от каталога своего сервиса, маской каталога, либо через имя,
+// которому этот путь присвоен.
+//
+// ПОЧЕМУ НЕ ПРОСТО «УПОМЯНУТ». Прежняя редакция спрашивала `strings.Contains` по
+// телу достижимого скрипта, и упоминание засчитывалось за вызов. На дереве это
+// не гипотеза: `deploy/scripts/assert-admin-hop-transport.sh` присваивает путь
+// перемерщика предпосылки переменной и НИГДЕ его не запускает — единственный
+// потребитель этой переменной печатает совет оператору. Обход читал присваивание
+// как вызов, гейт числился провязанным, а на дереве не исполнялся ни разу: жила
+// только его самопроверка, то есть доказательство «умею краснеть» без единого
+// измерения. Тот же файл уже нёс защиту от упоминания в КОММЕНТАРИИ
+// (`executableLines`) — она не распространялась на упоминание в СТРОКЕ, потому
+// что присваивание выглядит как код.
+//
+// Присваивание не отбрасывается, а запоминается: `X=path` вместе с `bash "$X"`
+// в достижимом тексте — законный вызов, и это ходовая идиома дерева. Отбрасывается
+// присваивание, у которого исполняющего потребителя нет.
 func anyMentions(reachable []string, guard string) bool {
 	dir := filepath.ToSlash(filepath.Dir(guard))
 	base := filepath.Base(guard)
@@ -280,15 +331,47 @@ func anyMentions(reachable []string, guard string) bool {
 	if i := strings.Index(dir, "/"); i >= 0 {
 		candidates = append(candidates, dir[i+1:]+"/"+base)
 	}
+	aliases := map[string]bool{}
 	for _, cmd := range reachable {
-		for _, c := range candidates {
-			if strings.Contains(cmd, c) {
-				return true
-			}
-		}
 		// Маска каталога: `for t in tests/helm/*-test.sh` и подобное.
 		if strings.Contains(cmd, dir+"/*") {
 			return true
+		}
+		for _, line := range strings.Split(cmd, "\n") {
+			// Печать — не запуск, и это решается по КОМАНДНОМУ СЛОВУ строки, а не
+			// по окружению пути: `note "… bash <путь> …"` называет запуск и не
+			// производит его.
+			if outputCommands[firstWord(line)] {
+				continue
+			}
+			assigned := false
+			for _, c := range candidates {
+				if m := reAssignOf(c).FindStringSubmatch(line); m != nil {
+					aliases[m[1]] = true
+					assigned = true
+				}
+			}
+			if assigned {
+				continue
+			}
+			for _, c := range candidates {
+				if strings.Contains(line, c) {
+					return true
+				}
+			}
+		}
+	}
+	for name := range aliases {
+		re := execOfVarRe(name)
+		for _, cmd := range reachable {
+			for _, line := range strings.Split(cmd, "\n") {
+				if outputCommands[firstWord(line)] {
+					continue
+				}
+				if re.MatchString(line) {
+					return true
+				}
+			}
 		}
 	}
 	return false
@@ -312,6 +395,26 @@ func TestRenderGuardReachabilityIsSymmetric(t *testing.T) {
 		{"не вызывается ничем", []string{"make build", "go test ./..."}, false},
 		{"упомянут ЧУЖОЙ страж того же имени", []string{"bash services/y/deploy/" + renderGuardName}, true},
 		{"пустое множество команд", nil, false},
+
+		// ── УПОМИНАНИЕ ≠ ВЫЗОВ ───────────────────────────────────────────────
+		// Присваивание пути имени — это НЕ запуск. Живой случай дерева: путь
+		// перемерщика предпосылки присвоен переменной, а единственный её
+		// потребитель печатает совет оператору. Предикат по вхождению подстроки
+		// читал такое как вызов, и гейт числился провязанным на скрипте, который
+		// не исполнялся ни разу.
+		{"путь только присвоен имени, исполняющего потребителя нет",
+			[]string{"GUARD=\"" + guard + "\"", "note \"Перемерить: bash $GUARD\""}, false},
+		// Законный близнец ТОЙ ЖЕ формы: присваивание + настоящий запуск через
+		// переменную — ходовая идиома, и молчать на ней предикат не вправе.
+		{"путь присвоен имени И запущен через него",
+			[]string{"GUARD=\"" + guard + "\"", "bash \"$GUARD\" --image x"}, true},
+		{"путь присвоен имени И запущен в фигурных скобках",
+			[]string{"G=" + guard, "python3 \"${G}\""}, true},
+		// Упоминание внутри печати — не вызов даже при полном пути в строке.
+		{"полный путь напечатан, а не исполнен",
+			[]string{"echo \"запусти: bash " + guard + "\""}, false},
+		{"совет оператору с полным путём внутри note",
+			[]string{"note \"Перемерить: bash " + guard + " --image $img\""}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
