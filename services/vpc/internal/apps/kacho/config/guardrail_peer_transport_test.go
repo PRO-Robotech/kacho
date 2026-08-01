@@ -313,7 +313,7 @@ func TestPeerTransport_GapDemonstration_ListFilterAuthorizeEdge(t *testing.T) {
 	// Прочие гарды довольны.
 	require.NoError(t, c.Validate(), "S1 does not look at the visibility-filter edge")
 	require.NoError(t, c.ValidateServerMTLS(m), "S2 guards listeners only")
-	require.NoError(t, c.ValidateListFilter([]string{"/svc/List"}),
+	require.NoError(t, c.validateListFilterAgainst([]string{"/svc/List"}),
 		"S3 requires the filter to be ON, not to be dialled over verified transport")
 
 	// Проводка при этом реально выбирает незащищённый путь.

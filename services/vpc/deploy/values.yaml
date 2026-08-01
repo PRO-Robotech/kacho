@@ -76,10 +76,22 @@ authz:
   # (api-gateway, compute, nlb, vpc-operator); сужение до одного шлюза сломало бы
   # привязку интерфейса и резолв подсети. Канонический список — values.prod.
   trustedForwarderSANs: []
-  # FGA-filtered List handlers. Production: enabled=true и authorizeEndpoint
-  # указан явно. Dev: enabled=false → use-case'ы возвращают unfiltered list.
+  # FGA-filtered List handlers. Включён ПО УМОЛЧАНИЮ.
+  #
+  # Здесь стояло `enabled: false` с пояснением «Dev: enabled=false → use-case'ы
+  # возвращают unfiltered list». Умолчание выключало сужение страницы, то есть
+  # stock-посадка отдавала каждому участнику проекта все его строки, а помеченные
+  # ScopeFiltered RPC — вообще без object-scope авторизации. Профили prod и dev
+  # значение переопределяли, поэтому дыра открывалась ровно на тех профилях,
+  # которые этого не сделали, и таких в umbrella большинство (перепись — в
+  # list_filter_default_test.go). Соседи по классу (nlb, storage) объявляют true;
+  # vpc был единственным исключением.
+  #
+  # Умолчание обязано быть безопасным: посадка, которая ручку не тронула, должна
+  # получать сужение, а не терять его молча. Страж старта (ValidateListFilter)
+  # отказывает в старте при выключенном фильтре на ЛЮБОЙ посадке, включая dev.
   listFilter:
-    enabled: false           # Toggle list-filter (production: true). Использует authz.iamEndpoint (:9091).
+    enabled: true            # Использует authz.iamEndpoint (:9091), если authorizeEndpoint пуст.
     # Адрес iam AuthorizeService (публичный :9090). Пусто → берётся authz.iamEndpoint.
     # Соединение поднимается ОТДЕЛЬНО от ребра per-RPC Check и требует проверяемого
     # транспорта: боевая посадка без authorizeTls.enable (или без общего с Check

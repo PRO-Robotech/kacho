@@ -83,7 +83,13 @@ data:
       cache-ttl: {{ default "5s" .Values.authz.cacheTtl | quote }}
       deny-rate-limit-per-sec: {{ default 100 .Values.authz.denyRateLimitPerSec }}
       list-filter:
-        enabled: {{ default false .Values.authz.listFilter.enabled }}
+        # Значение рендерится НАПРЯМУЮ, без `default false`. Прежняя запись
+        # объявляла небезопасное умолчание второй раз: удали ключ из values.yaml —
+        # и рендер всё равно дал бы выключенный фильтр, поэтому правка одного
+        # values.yaml не имела бы силы. Без `default` отсутствующий ключ даёт
+        # невалидный конфиг и падение на разборе, а не тихое сужение-которого-нет.
+        # Так же рендерят соседи по классу (nlb, storage).
+        enabled: {{ .Values.authz.listFilter.enabled }}
         authorize-endpoint: {{ default "" .Values.authz.listFilter.authorizeEndpoint | quote }}
         authorize-tls:
           enable: {{ default false .Values.authz.listFilter.authorizeTls.enable }}
