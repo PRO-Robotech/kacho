@@ -116,7 +116,11 @@ const (
 	createEntry = `{"fqn":"kacho.cloud.vpc.v1.NetworkService/Create","permission":"vpc.networks.create","required_relation":"editor","scope_extractor":{"object_type":"vpc_network","from_request_field":"project_id"},"required_acr_min":"2","risk_level":"MEDIUM"}`
 	getEntry    = `{"fqn":"kacho.cloud.vpc.v1.NetworkService/Get","permission":"vpc.networks.get","required_relation":"viewer","scope_extractor":{"object_type":"vpc_network","from_request_field":"network_id"},"required_acr_min":"2","risk_level":"LOW"}`
 	deleteEntry = `{"fqn":"kacho.cloud.vpc.v1.NetworkService/Delete","permission":"vpc.networks.delete","required_relation":"editor","scope_extractor":{"object_type":"vpc_network","from_request_field":"network_id"},"required_acr_min":"3","requires_mfa_fresh":true,"risk_level":"HIGH"}`
-	exemptEntry = `{"fqn":"kacho.cloud.iam.v1.AuthService/Login","permission":"<exempt>"}`
+	// A real `<exempt>` RPC that is NOT on DefaultPublicAllowlist, so a request
+	// for it reaches the catalog instead of being admitted at decide() step 1.
+	// It used to name kacho.cloud.iam.v1.AuthService/Login — see
+	// TestAuthz_GRPC_ExemptEntry_Allows for why that made the case vacuous.
+	exemptEntry = `{"fqn":"kacho.cloud.geo.v1.ZoneService/List","permission":"<exempt>"}`
 )
 
 func TestAuthz_GRPC_NoEnabled_PassThrough(t *testing.T) {
@@ -156,16 +160,50 @@ func TestAuthz_GRPC_CatalogMiss_Denies(t *testing.T) {
 	assert.Zero(t, checker.calls.Load())
 }
 
+// TestAuthz_GRPC_ExemptEntry_Allows — a catalog `<exempt>` entry admits an
+// AUTHENTICATED caller without asking the authorizer.
+//
+// WHY THIS CASE CHANGED SHAPE (it was not weakened — it previously asserted
+// nothing). It used to call /kacho.cloud.iam.v1.AuthService/Login with
+// context.Background(), i.e. with no credentials, and pass. It passed because
+// that FQN sat on DefaultPublicAllowlist, so the request was admitted at
+// decide() step 1 and the catalog was never consulted: the case named `<exempt>`
+// in its title and exercised the public-allowlist bypass instead. The two are
+// not interchangeable — the allowlist waives authN as well, `<exempt>` does not
+// — and this case was the only reason that distinction looked tested. The
+// allowlist entry has since been removed (it named an RPC that does not exist in
+// the contract), which is how the vacuity surfaced.
+//
+// The unauthenticated half of `<exempt>` is pinned next door in
+// anonymity_not_an_identity_test.go
+// (TestAuthz_GRPC_AnonymousMarker_ExemptRPC_Unauthenticated: no credentials →
+// Unauthenticated); it is referenced rather than copied so the pair cannot
+// drift. What this case adds beyond that pair is the authorizer count: `<exempt>`
+// must SKIP the FGA Check, not merely survive it.
 func TestAuthz_GRPC_ExemptEntry_Allows(t *testing.T) {
-	checker := &fakeChecker{allowed: false}
+	checker := &fakeChecker{allowed: false} // would DENY if it were ever consulted
 	mw := buildAuthzMiddleware(t, buildCatalog(t, exemptEntry), checker)
 	called := false
-	_, err := mw.Unary()(context.Background(), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.iam.v1.AuthService/Login"},
+	_, err := mw.Unary()(withTokenMD("usr_x", "user"), nil,
+		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.geo.v1.ZoneService/List"},
 		func(ctx context.Context, req any) (any, error) { called = true; return "ok", nil })
 	require.NoError(t, err)
 	assert.True(t, called)
-	assert.Zero(t, checker.calls.Load())
+	assert.Zero(t, checker.calls.Load(),
+		"`<exempt>` must skip the authorizer entirely — a Check that ran and happened to allow is a different contract")
+}
+
+// TestAuthz_GRPC_ExemptEntry_IsNotAdmittedByTheAllowlist — regression lock for
+// the vacuity described above: no `<exempt>` fixture FQN used by this suite may
+// also sit on the public allowlist, or the case silently stops testing the
+// catalog path it names.
+func TestAuthz_GRPC_ExemptEntry_IsNotAdmittedByTheAllowlist(t *testing.T) {
+	const fqn = "kacho.cloud.geo.v1.ZoneService/List"
+	for _, entry := range middleware.DefaultPublicAllowlist() {
+		require.NotEqual(t, fqn, entry,
+			"%s is on DefaultPublicAllowlist, so TestAuthz_GRPC_ExemptEntry_Allows would be admitted at "+
+				"decide() step 1 and would assert nothing about `<exempt>` — pick a different fixture FQN", fqn)
+	}
 }
 
 func TestAuthz_GRPC_NoSubject_Denies(t *testing.T) {

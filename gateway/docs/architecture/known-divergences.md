@@ -371,3 +371,68 @@ genuinely new concern rather than another phase of the existing pipeline.
 
 Rubric reference: project-rule #11; CWE-1121. Contract impact: none — no
 behavior/wire/API/DB change. (Confidence of the original finding: low.)
+
+## 10. Four gRPC FQNs bypass authN as well as authZ (`DefaultPublicAllowlist`)
+
+**Rule (`security.md` §"AuthN+AuthZ ВЕЗДЕ").** Every RPC on every listener runs
+authentication and a per-RPC authorization Check. The rule admits exactly two
+documented exemptions — the iam JWKS route and the geo public catalog reads.
+Anything else that skips a check and is not written down is a silent deviation,
+which the rule counts as a violation in its own right.
+
+**Gateway state.** `middleware.DefaultPublicAllowlist()` is consulted by
+`phaseAllowlist`, which is **step 1** of `decide()`. Subject extraction — the
+phase that answers 401 — is step 4. An entry on this list therefore returns
+ALLOW before any principal is resolved: it waives **authentication and
+authorization both**, on every listener including the advertised external TLS
+edge. This is strictly stronger than the catalog's `<exempt>`, which still
+requires authentication and only skips the FGA Check.
+
+Four entries remain, and this section is where their justification is written
+down so that none of them is silent:
+
+| Entry | What an unauthenticated caller obtains | Why it is accepted |
+|---|---|---|
+| `grpc.health.v1.Health/Check` | a SERVING/NOT_SERVING enum aggregated over backends | kubelet probes carry no bearer token; gating liveness on the authz path couples an IAM outage to a cluster-wide restart loop |
+| `grpc.health.v1.Health/Watch` | nothing — the gateway embeds `UnimplementedHealthServer` | listed with `Check` so a future implementation cannot arrive silently behind an existing bypass |
+| `grpc.reflection.v1.ServerReflection/ServerReflectionInfo` | descriptors of the services registered **natively** on the gateway: `OperationService`, `Health`, `ServerReflection` | developer tooling (`grpcurl`); see the open question below |
+| `grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo` | same as v1 | same |
+
+None of the four returns tenant data, resource identifiers, or anything scoped
+to an individual owner — the answer is identical for every caller. That property
+is what makes an unauthenticated answer defensible, and it is the property to
+re-check before any entry is added.
+
+**Open question — reflection at the external edge.** The comment on these
+entries used to assert that reflection was "only available cluster-internal
+anyway". That was not accurate: `reflection.Register(grpcSrv)` in
+`cmd/api-gateway/main.go` registers on the same `*grpc.Server` that is served on
+the advertised external TLS listener, so both reflection FQNs are answerable
+unauthenticated from the edge. The comment has been corrected in place rather
+than deleted, because a security note that contradicts the code invites the next
+reader to "fix" the code to match the note.
+
+The disclosure is small — backend services (iam/vpc/compute/…) are transparently
+proxied rather than registered here, so they are not enumerable through this
+surface, and every descriptor it does return is already published in the public
+proto tree. It is nevertheless the weakest of the four justifications: unlike
+health, reflection is developer convenience rather than an operational
+necessity, and confining it to the cluster-internal listener would cost only
+edge-side `grpcurl`. Recorded as an open decision for the owner rather than
+changed unilaterally, since it alters operator tooling behaviour.
+
+**Why the list now has a gate.** Six further entries were removed in the same
+change: they named a gRPC `AuthService` / `BackChannelLogoutService` that does
+not exist in the contract and never has in this repository. The interactive auth
+flow is HTTP (`/iam/v1/auth/…` in `middleware/oidc_auth.go`, `/oauth/logout` in
+`handler/logout_handler.go`) and its pre-auth exemption is `isPublicHTTPPath` in
+`authz_util.go` — a separate list, unaffected by the removal. An entry naming
+nothing is not inert: it reads like a reviewed decision, and the next person
+adding a bypass copies its shape. `authz_public_allowlist_resolves_test.go` now
+resolves every entry against the served contract and fails the build on one that
+does not exist, so this list expires on its own instead of inheriting the next
+blind spot.
+
+Rubric reference: `security.md` §"AuthN+AuthZ ВЕЗДЕ", §"Публичные артефакты".
+Contract impact: none — no wire/API/DB change; the removed entries could never
+match a routed method.
