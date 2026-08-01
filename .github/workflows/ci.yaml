@@ -277,11 +277,32 @@ jobs:
       # права живут на реестре и репозитории, а теги и референсы объектами прав не
       # являются. Что этот цикл действительно зовёт registry, залочено тестом
       # services/registry/tools/auditlistfilter/ci_wiring_test.go.
-      - name: listauthz — публичный List фильтрует по объекту (5 сервисов)
+      #
+      # iam добавлен ШЕСТЫМ, и это была самая крупная слепая зона класса: у него
+      # НАИБОЛЬШАЯ сужаемая List-поверхность на платформе (десять ресурсов
+      # объявляют List — против семи у vpc), и он единственный из таких сервисов
+      # оставался вне цикла. То есть отсутствие покрытия приходилось ровно на
+      # место максимальной плотности предмета.
+      #
+      # Первый же прогон дал три находки, и разбор развёл их на два исхода:
+      #   - conditions — НАСТОЯЩИЙ пропуск. `iam_condition` — полноценный объект
+      #     прав (весь набор глаголов прямыми usersets, допустимая цель привязки),
+      #     Get/Update/Delete гейтятся по нему per-object, а List спрашивал ОДИН
+      #     вопрос про проект и отдавал всю его страницу. Ровно та асимметрия,
+      #     которую этот же job уже назвал дефектом на storage. Починено, не
+      #     внесено в исключения;
+      #   - sa_keys, user_tokens — осознанные исключения: это под-коллекции, у
+      #     которых нет собственного типа в модели прав (`sa_key`/`user_token` не
+      #     объявлены), поэтому сужать не к чему; грант живёт на РОДИТЕЛЕ и край
+      #     гейтит именно его (v_list @ iam_service_account / @ iam_user).
+      #     Обоснование — services/iam/docs/architecture/list-filter-exclusions.md.
+      # Что этот цикл действительно зовёт iam, залочено тестом
+      # services/iam/tools/auditlistfilter/ci_wiring_test.go.
+      - name: listauthz — публичный List фильтрует по объекту (6 сервисов)
         run: |
           set -euo pipefail
           fail=0
-          for svc in compute nlb registry storage vpc; do
+          for svc in compute iam nlb registry storage vpc; do
             echo "::group::audit-list-filter ${svc}"
             make -C "services/${svc}" audit-list-filter || fail=1
             echo "::endgroup::"
