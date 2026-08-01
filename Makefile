@@ -61,11 +61,24 @@ test-unit:
 ## -p 1 ВНУТРИ сервиса: пакеты сериализуются. Под -race + Docker-contention
 ## параллельные testcontainers-пакеты голодают друг у друга ресурсы, и
 ## concurrent-кейсы (CAS/EXCLUDE/SKIP-LOCKED) флакают.
+##
+## «НЕЧЕГО ЗАПУСКАТЬ» И «НЕ СМОГ СПРОСИТЬ» — РАЗНЫЕ ИСХОДЫ. Здесь стояло
+## `go list … | grep … || true`, и `|| true` покрывал ОБА: сломанная сборка
+## роняет `go list`, конвейер получает пустой список, печатает «нет
+## integration-пакетов — пропуск» и выходит НУЛЁМ. Джоба зелёная, тестов
+## выполнено ноль. Код `go list` поэтому читается отдельно от `grep`, у
+## которого «ничего не нашлось» — законный исход (код 1).
 test-integration:
 ifdef SVC
-	@pkgs=$$($(GO) list ./services/$(SVC)/... | grep -E '/internal/(repo|clients)(/|$$)' || true); \
-	if [ -z "$$pkgs" ]; then echo "нет integration-пакетов у $(SVC) — пропуск"; exit 0; fi; \
-	echo "пакетов: $$(echo "$$pkgs" | wc -l)"; \
+	@set -o pipefail; \
+	all=$$($(GO) list ./services/$(SVC)/...) || { \
+	  echo "go list ./services/$(SVC)/... сорвался — состав пакетов НЕ ИЗМЕРЕН." >&2; \
+	  echo "Это отказ, а не «нечего запускать»: пустой список здесь означал бы" >&2; \
+	  echo "зелёную джобу с нулём выполненных тестов." >&2; exit 1; }; \
+	if [ -z "$$all" ]; then echo "у $(SVC) не найдено НИ ОДНОГО пакета — обход пуст, это отказ" >&2; exit 1; fi; \
+	pkgs=$$(printf '%s\n' "$$all" | grep -E '/internal/(repo|clients)(/|$$)'); \
+	if [ -z "$$pkgs" ]; then echo "нет integration-пакетов у $(SVC) — пропуск (осмотрено пакетов: $$(printf '%s\n' "$$all" | wc -l))"; exit 0; fi; \
+	echo "пакетов: $$(echo "$$pkgs" | wc -l) (из осмотренных $$(printf '%s\n' "$$all" | wc -l))"; \
 	echo "$$pkgs" | xargs $(GO) test -race -count=1 -timeout $(INTEGRATION_TIMEOUT) -p 1
 else
 	@set -e; for svc in $(SERVICES); do \

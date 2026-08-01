@@ -39,6 +39,39 @@ import (
 // toolsDir — дом инструментов уровня репозитория.
 const toolsDir = "tools"
 
+// gateGlobs — где ещё живут гейты уровня дерева, кроме tools/.
+//
+// Прежняя редакция смотрела ТОЛЬКО в tools/ — 2 файла из 43 гейт-скриптов
+// дерева, то есть 5% предмета. Остальные 41 лежат в deploy/scripts (по
+// конвенции имени — assert-*/remeasure-*) и в .github/scripts, и правило
+// «гейт обязан исполняться» относится к ним ровно так же: измерено — из них
+// один (`deploy/scripts/assert-alt-fixtures-are-another.py`) не запускался НИ
+// ОТКУДА, кроме собственной самопроверки, при том что комментарий в
+// `services/nlb/tests/newman/cases/listener.py:789` утверждал, что этот гейт
+// «keeps the pair distinct AND its value produced».
+//
+// В deploy/scripts предикат — ИМЯ, а не место, и это не отступление от
+// «место, а не имя»: каталог смешанный (там же живут прогонщики newman и
+// генераторы), а `assert-*`/`remeasure-*` — заведённая в нём конвенция, по
+// которой собран и состав самопроверок в run-gate-self-tests.sh.
+var gateGlobs = []string{
+	"deploy/scripts/assert-*",
+	"deploy/scripts/remeasure-*",
+	".github/scripts/*",
+}
+
+// selfTestOnlyRunner — прогонщик самопроверок НЕ считается вызывающим.
+//
+// Он находит гейты сам и запускает КАЖДЫЙ как `<гейт> --self-test`, то есть
+// против синтетических фикстур, а не против дерева. Засчитать его за вызов
+// значило бы объявить гейт исполняемым ровно в том случае, который здесь и
+// ловится: доказательство «умею краснеть» есть, а измерения дерева нет.
+//
+// Предпосылка проверяется отдельно (TestSelfTestRunnerStillOnlySelfTests):
+// если прогонщик когда-нибудь начнёт запускать гейты и по-настоящему, это
+// исключение станет ложью, и о нём нужно узнать.
+const selfTestOnlyRunner = "deploy/scripts/run-gate-self-tests.sh"
+
 // declaredDebtGates — гейты, чей вызов из конвейера объявлен ОТДЕЛЬНО и с числом.
 //
 // Запись здесь означает: гейт вызывается, но его находки — уже существующий долг
@@ -84,8 +117,113 @@ func findToolScriptGates(t *testing.T, root string) []string {
 	if err != nil {
 		t.Fatalf("обход %s сорвался: %v — предпосылка гейта не выполняется", toolsDir, err)
 	}
+	// Плюс гейты вне tools/ — по конвенции имени своего каталога.
+	tt := newTrackedTree(t, root)
+	for rel := range tt.files {
+		ext := strings.ToLower(filepath.Ext(rel))
+		if ext != ".py" && ext != ".sh" {
+			continue
+		}
+		if rel == selfTestOnlyRunner {
+			continue // он не гейт дерева, а прогонщик самопроверок
+		}
+		for _, g := range gateGlobs {
+			if ok, _ := filepath.Match(g, rel); ok {
+				out = append(out, rel)
+				break
+			}
+		}
+	}
 	sort.Strings(out)
 	return out
+}
+
+// reachableIncludingScripts — команды конвейера ПЛЮС тела скриптов, которые
+// конвейер запускает, транзитивно.
+//
+// Без этого шага гейт, вызванный из другого — уже вызванного — гейта, читался
+// бы как немой: обход достижимости идёт по workflow'ам и Makefile'ам и внутрь
+// шелла не заходит. Реальные пары в этом дереве:
+// `assert-production-posture.sh` → `assert-admin-hop-transport.sh` →
+// `remeasure-provider-listener-tls.sh`. Ложное срабатывание на них выключило бы
+// гейт при первой же встрече — поэтому расширение обязательно, а не удобно.
+//
+// Единственное исключение — selfTestOnlyRunner, см. его комментарий.
+func reachableIncludingScripts(t *testing.T, root string) []string {
+	t.Helper()
+	texts := reachableFromWorkflows(t, root)
+	tt := newTrackedTree(t, root)
+
+	var scripts []string
+	for rel := range tt.files {
+		ext := strings.ToLower(filepath.Ext(rel))
+		if (ext == ".py" || ext == ".sh") && rel != selfTestOnlyRunner {
+			scripts = append(scripts, rel)
+		}
+	}
+	sort.Strings(scripts)
+
+	pulled := map[string]bool{}
+	for changed := true; changed; {
+		changed = false
+		for _, s := range scripts {
+			if pulled[s] || !anyMentions(texts, s) {
+				continue
+			}
+			body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(s)))
+			if err != nil {
+				t.Fatalf("чтение достижимого скрипта %s: %v", s, err)
+			}
+			pulled[s] = true
+			texts = append(texts, executableLines(string(body)))
+			changed = true
+		}
+	}
+	return texts
+}
+
+// executableLines — тело скрипта БЕЗ комментариев.
+//
+// Без этого шага «вызывающим» становится любой упомянувший: комментарий в
+// `services/nlb/tests/newman/cases/listener.py:789` называет
+// `deploy/scripts/assert-alt-fixtures-are-another.py` и утверждает, что тот
+// «keeps the pair distinct» — а гейт не запускался ни разу нигде, кроме
+// собственной самопроверки. Ровно тот случай, ради которого этот файл написан:
+// объяснение защиты неотличимо от самой защиты, если читать текст, а не код.
+// Тот же приём и по той же причине — в `run-gate-self-tests.sh`.
+func executableLines(body string) string {
+	var b strings.Builder
+	for _, line := range strings.Split(body, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") && !strings.HasPrefix(trimmed, "#!") {
+			continue
+		}
+		if i := strings.Index(line, " # "); i >= 0 {
+			line = line[:i]
+		}
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// TestSelfTestRunnerStillOnlySelfTests — предпосылка исключения выше.
+//
+// Исключение обосновано ФАКТОМ: прогонщик запускает найденное только с
+// `--self-test`. Факт может измениться, и тогда исключение станет ложным
+// утверждением о дереве — ровно тот класс, который эти гейты и ловят. Поэтому
+// он проверяется, а не предполагается.
+func TestSelfTestRunnerStillOnlySelfTests(t *testing.T) {
+	root := repoRoot(t)
+	body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(selfTestOnlyRunner)))
+	if err != nil {
+		t.Fatalf("%s не читается: %v — исключение объявлено для того, чего нет", selfTestOnlyRunner, err)
+	}
+	if !strings.Contains(string(body), "--self-test") {
+		t.Errorf("%s больше не запускает гейты с --self-test: исключение «этот вызывающий не "+
+			"считается» перестало быть верным. Либо сними исключение, либо назови новую причину.",
+			selfTestOnlyRunner)
+	}
 }
 
 // TestEveryToolScriptGateIsInvoked — ни один гейт-скрипт tools/ не остаётся немым.
@@ -99,9 +237,9 @@ func TestEveryToolScriptGateIsInvoked(t *testing.T) {
 	if len(gates) == 0 {
 		t.Fatalf("в %s/ не найдено ни одного скрипта-гейта — обход сломан, а не дерево чисто", toolsDir)
 	}
-	t.Logf("осмотрено гейтов-скриптов в %s/: %d", toolsDir, len(gates))
+	t.Logf("осмотрено гейтов-скриптов: %d (%s/ и %s)", len(gates), toolsDir, strings.Join(gateGlobs, ", "))
 
-	reachable := reachableFromWorkflows(t, root)
+	reachable := reachableIncludingScripts(t, root)
 	if len(reachable) == 0 {
 		t.Fatal("из конвейера не извлечено ни одной команды — обход достижимости сломан")
 	}

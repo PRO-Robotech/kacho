@@ -96,6 +96,26 @@ RE_TEARDOWN = re.compile(
     re.I,
 )
 RE_ONEOF = re.compile(r"to\.be\.oneOf\(\s*\[([^\]]*)\]")
+# ВСЕ места вызова, а не только те, где список записан литералом прямо здесь.
+#
+# Прежняя редакция читала ТОЛЬКО литеральную форму `oneOf([400, 200])`. Форма,
+# в которой список приходит подстановкой — `oneOf({codes})` при
+# `codes = "[400, 200, 403, 404]"` — предикатом не виделась ВООБЩЕ, и он выходил
+# нулём. На дереве это не гипотеза: одна такая строка
+# (`services/vpc/tests/newman/scripts/gen.py`, матрица обязательных полей)
+# раскрывается в 16 сгенерированных кейсов, каждый из которых заголовком обещает
+# `400 InvalidArgument`, а утверждением принимает 200. Гейт печатал «чисто».
+#
+# Отсюда два изменения: сайты перечисляются ВСЕ, а список кодов, который не
+# удалось прочитать статически, идёт в отдельный счётчик и РОНЯЕТ прогон.
+# «Я этого не умею прочитать» не есть «здесь чисто» — это ровно то смешение,
+# которое гейт и ловит, только уровнем выше.
+RE_ONEOF_ANY = re.compile(r"to\.be\.oneOf\(")
+# Присваивание идентификатору строки/выражения, из которого можно вынуть
+# литеральные списки: `codes = "[400, 200]" if x else "[400, 404]"`.
+RE_ASSIGN = re.compile(r"(?m)^[ \t]*([A-Za-z_]\w*)[ \t]*=[ \t]*(.+)$")
+RE_BRACKETED = re.compile(r"\[([^\[\]]*)\]")
+RE_IDENT = re.compile(r"\b([A-Za-z_]\w*)\b")
 # f-string-подстановка внутри метки: статически не раскрывается, поэтому вырезается,
 # а не читается как текст. Иначе `{i:02d}` и `{prefix}` попадали бы в словарь
 # направления как обычные слова.
@@ -162,8 +182,14 @@ def classify(codes):
 
 # --- источник 1: исходники кейсов (там, где живут правки) --------------------
 def scan_case_sources(paths):
-    """Вернуть список находок по .py-исходникам кейсов и генератора."""
+    """Вернуть находки, перепись и список НЕПРОЧИТАННЫХ мест вызова.
+
+    Третье значение — не украшение отчёта. Место вызова `oneOf(...)`, чей список
+    кодов не раскрылся статически, предикатом не проверен, и молчание о нём
+    неотличимо от «здесь чисто».
+    """
     findings = []
+    unreadable = []
     scanned = 0
     for path in paths:
         try:
@@ -216,34 +242,73 @@ def scan_case_sources(paths):
                     break
             return best or ""
 
-        for m in RE_ONEOF.finditer(body):
-            codes = [int(x) for x in RE_NUM.findall(m.group(1))]
-            if not codes or not classify(codes):
-                continue
+        # Таблица «идентификатор → списки кодов, которые он может нести».
+        # Собирается один раз на файл: `codes = "[400, 200, 403]" if f else "[400, 200]"`
+        # даёт ДВА списка, и оба обязаны быть проверены — ветка, выбранная не для
+        # всех вызывающих, всё равно уезжает в сгенерированную коллекцию.
+        assigns = {}
+        for a in RE_ASSIGN.finditer(body):
+            lists = [[int(x) for x in RE_NUM.findall(g)]
+                     for g in RE_BRACKETED.findall(a.group(2))]
+            lists = [ls for ls in lists if ls]
+            if lists:
+                assigns.setdefault(a.group(1), []).extend(lists)
+
+        literal_at = {m.start(): m for m in RE_ONEOF.finditer(body)}
+
+        for site in RE_ONEOF_ANY.finditer(body):
+            pos = site.start()
+            # аргумент вызова: до закрывающей скобки того же уровня
+            arg = body[site.end():body.find(")", site.end()) + 1
+                       if body.find(")", site.end()) >= 0 else len(body)]
+            if pos in literal_at:
+                code_lists = [[int(x) for x in RE_NUM.findall(literal_at[pos].group(1))]]
+            else:
+                code_lists = []
+                for ident in RE_IDENT.findall(arg):
+                    code_lists.extend(assigns.get(ident, []))
+                if not code_lists:
+                    # Непрочитанным считается только то, что вообще является
+                    # предметом этой мерки — КОД ОТВЕТА HTTP. `oneOf` над
+                    # `j.error.code` (коды gRPC) и над `s.status` (строковые
+                    # состояния) сравнивает другие величины, и требовать от них
+                    # читаемости значило бы краснеть на законном: такой гейт
+                    # снимают при первом же ложном срабатывании.
+                    if "response.code" not in body[max(0, pos - 200):pos]:
+                        continue
+                    unreadable.append({
+                        "file": path,
+                        "line": body[:pos].count("\n") + 1,
+                        "arg": " ".join(arg.split())[:120],
+                    })
+                    continue
             # ближайший pm.test(' перед позицией
-            seg = body[:m.start()]
+            seg = body[:pos]
             tm = None
             for t in RE_PMTEST.finditer(seg):
                 tm = t
             pmlabel = tm.group(2) if tm else ""
-            cid = nearest_before(m.start(), cases)
-            ctitle = nearest_before(m.start(), titles)
-            sname = nearest_before(m.start(), steps)
+            cid = nearest_before(pos, cases)
+            ctitle = nearest_before(pos, titles)
+            sname = nearest_before(pos, steps)
             # Метка принадлежит находке только если её `id=` лежит в ТОЙ ЖЕ
             # функции (или оба на уровне модуля). Иначе метки нет — и это
             # отдельный исход, а не повод взять чужую.
-            last_def = max([d for d in defs if d < m.start()], default=-1)
-            cid_pos = max([p for p in id_positions if p <= m.start()], default=-1)
+            last_def = max([d for d in defs if d < pos], default=-1)
+            cid_pos = max([p for p in id_positions if p <= pos], default=-1)
             owned = cid_pos > last_def
-            line = body[:m.start()].count("\n") + 1
-            findings.append({
-                "file": path, "line": line, "codes": sorted(set(codes)),
-                "pmtest": pmlabel,
-                "case_id": cid if owned else "",
-                "case_title": ctitle if owned else "",
-                "step": sname, "owned": owned,
-            })
-    return findings, scanned
+            line = body[:pos].count("\n") + 1
+            for codes in code_lists:
+                if not codes or not classify(codes):
+                    continue
+                findings.append({
+                    "file": path, "line": line, "codes": sorted(set(codes)),
+                    "pmtest": pmlabel,
+                    "case_id": cid if owned else "",
+                    "case_title": ctitle if owned else "",
+                    "step": sname, "owned": owned,
+                })
+    return findings, scanned, unreadable
 
 
 def label_of(f, level):
@@ -255,12 +320,14 @@ def label_of(f, level):
 
 
 def main():
+    if "--self-test" in sys.argv:
+        return self_test()
     roots = sorted(glob.glob("services/*/tests/newman")) + ["gateway/tests/newman"]
     paths = []
     for r in roots:
         paths += sorted(glob.glob(os.path.join(r, "cases", "*.py")))
         paths += sorted(glob.glob(os.path.join(r, "scripts", "gen.py")))
-    findings, scanned = scan_case_sources(paths)
+    findings, scanned, unreadable = scan_case_sources(paths)
 
     if scanned == 0:
         print("НИЧЕГО НЕ ПРОЧИТАНО — предикат ничего не утверждает", file=sys.stderr)
@@ -329,6 +396,20 @@ def main():
     # молчать он не вправе — число печатается ниже отдельной строкой, потому что
     # смотреть такие находки надо глазами у каждого вызывающего.
     violations = len(buckets["REJECT"]) + len(buckets["SUCCESS"])
+    # НЕПРОЧИТАННОЕ — тоже вердикт. Место вызова, чей список кодов предикат не
+    # раскрыл, не проверен ничем; засчитать его в «чисто» значит повторить
+    # ловимый класс на уровень выше.
+    print(f"мест вызова oneOf, НЕ прочитанных статически: {len(unreadable)}")
+    if unreadable:
+        for u in sorted(unreadable, key=lambda x: (x["file"], x["line"]))[:40]:
+            print(f'  {u["file"]}:{u["line"]}  аргумент: {u["arg"]}', file=sys.stderr)
+        print(f"\nНЕ ПРОЧИТАНО: {len(unreadable)} мест вызова oneOf — их список кодов не "
+              f"раскрылся статически, значит они НЕ ПРОВЕРЕНЫ. Исходы: записать список "
+              f"литералом рядом с вызовом; присвоить его идентификатору в том же файле "
+              f"(предикат раскрывает такие присваивания); либо научить предикат этой "
+              f"форме. Промолчать нельзя: «не смог прочитать» неотличимо от «чисто».",
+              file=sys.stderr)
+        return 1
     if buckets["UNOWNED"]:
         print(f"\nВНИМАНИЕ: {len(buckets['UNOWNED'])} находок внутри параметризованных "
               f"помощников — статически ничьи, смотреть глазами у каждого вызывающего "
@@ -342,6 +423,84 @@ def main():
     print(f"\nчисто: ни одного утверждения, принимающего исход против обещания метки "
           f"(осмотрено файлов: {scanned})")
     return 0
+
+
+def self_test():
+    """Инъекция в ОБЕ стороны: предикат обязан краснеть на внесённом дефекте и
+    молчать на законной конструкции той же формы.
+
+    Гейт жил без этой ветки, и именно её отсутствие дало ему прожить со слепой
+    зоной: он читал только литеральный список кодов, печатал «чисто» и был
+    неотличим от работающего. Проверяются ровно те четыре формы, на которых
+    ошибка и была возможна.
+    """
+    import tempfile
+
+    def scan(src):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "cases.py")
+            open(p, "w", encoding="utf-8").write(src)
+            return scan_case_sources([p])
+
+    rc = 0
+
+    def check(name, ok, detail=""):
+        nonlocal rc
+        print(f"  {'ОК ' if ok else 'ПРОВАЛ'} {name}{'' if ok else ' — ' + detail}")
+        if not ok:
+            rc = 1
+
+    print("=== смешанный исход: инъекции ===")
+
+    # (1) КРАСНОЕ, форма-подстановка. Заголовок обещает ОТКАЗ, список кодов
+    #     приходит идентификатором и содержит 200. Ровно живая форма из
+    #     services/vpc/tests/newman/scripts/gen.py.
+    src = (
+        'codes = "[400, 200, 403]"\n'
+        'Case(id="X-CR-VAL-REQ-NAME", title="Create без required поля → 400 InvalidArgument",\n'
+        '     steps=[Step(name="cr-no-name", test=f"pm.test(\'rejected\', () => '
+        'pm.expect(pm.response.code).to.be.oneOf({codes}));")])\n'
+    )
+    f, _, u = scan(src)
+    bad = [x for x in f if direction(label_of(x, "case")) == "REJECT"]
+    check("подстановочный список кодов прочитан и признан нарушением",
+          len(bad) == 1 and not u, f"находок REJECT {len(bad)}, непрочитанных {len(u)}")
+
+    # (2) МОЛЧАНИЕ на законном той же формы: список кодов — только отказы
+    #     (документированная терпимость authz-first), подстановка та же.
+    src = (
+        'codes = "[400, 403, 404]"\n'
+        'Case(id="X-GET-NEG-ABSENT", title="Get несуществующего → отказ",\n'
+        '     steps=[Step(name="get-absent", test=f"pm.test(\'rejected\', () => '
+        'pm.expect(pm.response.code).to.be.oneOf({codes}));")])\n'
+    )
+    f, _, u = scan(src)
+    check("список только из отказов той же формы — не находка",
+          not f and not u, f"находок {len(f)}, непрочитанных {len(u)}")
+
+    # (3) КРАСНОЕ: список кодов вообще не раскрывается статически. Молчать о нём
+    #     нельзя — «не смог прочитать» неотличимо от «чисто».
+    src = (
+        'Case(id="X-CR-VAL", title="Create без поля → 400 InvalidArgument",\n'
+        '     steps=[Step(name="cr", test=f"pm.test(\'rejected\', () => '
+        'pm.expect(pm.response.code).to.be.oneOf({build_codes(fld)}));")])\n'
+    )
+    f, _, u = scan(src)
+    check("нераскрываемый список попадает в непрочитанное, а не в «чисто»",
+          len(u) == 1, f"непрочитанных {len(u)}")
+
+    # (4) МОЛЧАНИЕ: обычный литеральный список — прежнее поведение не сломано.
+    src = (
+        'Case(id="X-CR-OK", title="Create → 200",\n'
+        '     steps=[Step(name="cr", test="pm.test(\'ok\', () => '
+        'pm.expect(pm.response.code).to.be.oneOf([200, 201]));")])\n'
+    )
+    f, _, u = scan(src)
+    check("однородный литеральный список — не находка и не непрочитанное",
+          not f and not u, f"находок {len(f)}, непрочитанных {len(u)}")
+
+    print("\n" + ("PASS: смешанный исход" if rc == 0 else "FAIL: смешанный исход"))
+    return rc
 
 
 if __name__ == "__main__":

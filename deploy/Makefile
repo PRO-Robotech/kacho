@@ -6,7 +6,7 @@
         loadtest-address-allocate loadtest-address-allocate-clean \
         reload-svc-iam psql-iam logs-iam fga-bootstrap build-services openfga-model-json \
         guard-kind-context guard-destructive gate-self-test waiter-discipline \
-        report-reader-discipline \
+        report-reader-discipline alt-fixture-discipline \
         reload-svc-nlb psql-nlb logs-nlb seed-nlb e2e-newman stand-provenance
 
 CLUSTER_NAME := kacho
@@ -579,8 +579,27 @@ helm-lint:
 # Скрипт не ведёт список руками: он находит самопроверки по разбору аргумента и
 # требует совпадения найденного с объявленным в ОБЕ стороны — забытая новая
 # самопроверка и запись без предмета одинаково роняют прогон.
+#
+# --verify-discovery — ДОКАЗАТЕЛЬСТВО САМОГО ОБХОДА: что предикат читает разбор
+# аргумента, а не слово в прозе; что находит все три законные формы в любом
+# каталоге; что не находит сам себя; и что расхождение состава видно в ОБЕ
+# стороны. Он был написан и не вызывался ниоткуда — то есть гейт над гейтами
+# доказывал всё, кроме себя. Идёт ПЕРВЫМ: пустой или ослепший обход делает
+# зелёный основного прохода бессмысленным.
 gate-self-test:
+	@bash scripts/run-gate-self-tests.sh --verify-discovery
 	@bash scripts/run-gate-self-tests.sh
+
+# alt-fixture-discipline — «другая» фикстура обязана БЫТЬ другой и иметь
+# производителя.
+#
+# Значение, неотличимое от своей пары, превращает проверку «чужое отвергнуто» в
+# проверку «своё принято»: продукт о запрещённом сочетании не спрашивают вовсе,
+# а кейс зеленеет. Гейт лежал в дереве и запускался только собственной
+# самопроверкой, при этом кейс nlb в комментарии ссылался на него как на
+# действующую защиту.
+alt-fixture-discipline:
+	@python3 scripts/assert-alt-fixtures-are-another.py
 
 # waiter-discipline — ожидание и остановка идут по ЗАХВАЧЕННОМУ идентификатору
 # процесса, а не по шаблону командной строки.
@@ -798,9 +817,27 @@ fga-bootstrap: guard-kind-context
 	  --show-only charts/openfga-bootstrap/templates/openfga-bootstrap-rbac.yaml \
 	  --show-only charts/openfga-bootstrap/templates/openfga-bootstrap-job.yaml | kubectl -n kacho apply -f -
 	@echo "Ждём завершения…"
-	@kubectl -n kacho wait --for=condition=complete job/openfga-bootstrap --timeout=300s || \
-	 kubectl -n kacho wait --for=condition=failed job/openfga-bootstrap --timeout=10s
-	@kubectl -n kacho logs -l job-name=openfga-bootstrap --tail=-1
+	# ОТКАЗ НЕ КОНВЕРТИРУЕТСЯ В УСПЕХ. Здесь стояло
+	#   wait --for=condition=complete … || wait --for=condition=failed …
+	# и вторая команда возвращает НОЛЬ ровно тогда, когда Job упал: провал
+	# бутстрапа делал рецепт успешным. Дальше по цепочке `dev-up` шёл как ни в
+	# чём не бывало, а e2e-newman гонял суиты по стенду, где OpenFGA-стор не
+	# создан — то есть каждый Check отвечает «authz service unavailable». Ровно
+	# тот сценарий, который описан абзацем выше как уже случившийся; код при
+	# этом говорил «успех».
+	#
+	# Диагностика (логи Job'а) сохранена и печатается В ОБОИХ исходах — она и
+	# была единственной причиной держать здесь `||`. Но печать логов не есть
+	# вердикт: вердикт — код первого ожидания.
+	@set -e; \
+	if kubectl -n kacho wait --for=condition=complete job/openfga-bootstrap --timeout=300s; then \
+	  kubectl -n kacho logs -l job-name=openfga-bootstrap --tail=-1 || true; \
+	else \
+	  echo "!!! openfga-bootstrap НЕ дошёл до complete — ниже его логи, затем отказ."; \
+	  kubectl -n kacho logs -l job-name=openfga-bootstrap --tail=-1 || true; \
+	  kubectl -n kacho describe job/openfga-bootstrap || true; \
+	  exit 1; \
+	fi
 
 # KAC-127 (deploy#38): regenerate the openfga-model-stub ConfigMap from the
 # CANONICAL model. Run after any edit of $(OPENFGA_CANONICAL_FGA) — never edit the

@@ -103,7 +103,16 @@ func findRenderGuards(t *testing.T, root string) []string {
 	return out
 }
 
-var makeInvocation = regexp.MustCompile(`\bmake\b([^\n;&|]*)`)
+// makeInvocation — вызов make: и как команда в шаге workflow (`make X`), и как
+// рекурсивный вызов внутри рецепта (`$(MAKE) --no-print-directory X`).
+//
+// Форма `$(MAKE)` была пропущена, и это не мелочь оформления: `dev-prod-up`
+// зовёт `assert-rollout-ready`, `assert-production-posture` и
+// `assert-outbox-autovacuum` именно так, поэтому три живых гейта читались как
+// «не вызывается НИ ОТКУДА». Ложное срабатывание такого рода выключает гейт
+// целиком — его снимут при первой встрече, — так что предикат обязан узнавать
+// обе формы.
+var makeInvocation = regexp.MustCompile(`(?:\$\(MAKE\)|\bmake\b)([^\n;&|]*)`)
 
 // reachableFromWorkflows — текст всех команд, достижимых из конвейеров:
 // сами блоки `run:` плюс рецепты make-целей, которые эти блоки зовут, вместе с

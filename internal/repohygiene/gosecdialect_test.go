@@ -40,6 +40,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -178,39 +179,38 @@ func TestGosecDialectBanPremiseHolds(t *testing.T) {
 	}
 }
 
-// walkGoFiles — обход .go-файлов репозитория (без vendor/node_modules и
+// walkGoFiles — обход .go-файлов РЕПОЗИТОРИЯ (без vendor/node_modules и
 // сгенерённых стабов pkg/api, которые скан тоже исключает).
+//
+// Состав берётся из индекса git (`newTrackedTree`, см. trackedtree_test.go), а
+// не с диска. Обход диска от корня читал и рабочие копии дерева под
+// `.claude/worktrees/`: гейт сообщал находки о файлах, которых в репозитории
+// нет, и его вердикт становился свойством чужого рабочего каталога, а не
+// коммита. Померено на 8c2eba3e: чистая копия — зелено; она же плюс ОДИН
+// git-игнорируемый каталог с деревом внутри — 10 находок этого гейта, и каждая
+// координата начинается с `.claude/worktrees/`.
 func walkGoFiles(t *testing.T, root string, fn func(rel string, body []byte)) {
 	t.Helper()
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
+	tt := newTrackedTree(t, root)
+	rels := make([]string, 0, tt.count())
+	for rel := range tt.files {
+		rels = append(rels, rel)
+	}
+	sort.Strings(rels) // порядок находок не должен зависеть от обхода карты
+	for _, rel := range rels {
+		if !strings.HasSuffix(rel, ".go") {
+			continue
 		}
-		if info.IsDir() {
-			switch info.Name() {
-			case ".git", "node_modules", "vendor", "ui-future":
-				return filepath.SkipDir
-			}
-			return nil
+		if strings.HasPrefix(rel, "pkg/api/") ||
+			strings.HasPrefix(rel, "vendor/") ||
+			strings.HasPrefix(rel, "node_modules/") ||
+			strings.HasPrefix(rel, "ui-future/") {
+			continue
 		}
-		if !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-		rel, relErr := filepath.Rel(root, path)
-		if relErr != nil {
-			return relErr
-		}
-		if strings.HasPrefix(rel, "pkg/api/") {
-			return nil
-		}
-		body, readErr := os.ReadFile(path)
+		body, readErr := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
 		if readErr != nil {
-			return readErr
+			t.Fatalf("чтение %s: %v", rel, readErr)
 		}
 		fn(rel, body)
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("обход дерева: %v", err)
 	}
 }

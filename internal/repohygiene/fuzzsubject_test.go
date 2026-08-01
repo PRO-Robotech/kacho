@@ -63,7 +63,7 @@ import (
 // утверждает, что предмет проверяется.
 func TestEveryFuzzTargetDrivesProductionCode(t *testing.T) {
 	root := repoRoot(t)
-	targets := analyzeFuzzSubjects(t, root, moduleImportPath(t, root))
+	targets := analyzeFuzzSubjects(t, newTrackedTree(t, root), moduleImportPath(t, root))
 
 	var hollow []string
 	for _, tg := range targets {
@@ -97,7 +97,7 @@ func TestEveryFuzzTargetDrivesProductionCode(t *testing.T) {
 func TestFuzzSubjectAnalyzerSeesEveryScheduledTarget(t *testing.T) {
 	root := repoRoot(t)
 	seen := map[string]bool{}
-	for _, tg := range analyzeFuzzSubjects(t, root, moduleImportPath(t, root)) {
+	for _, tg := range analyzeFuzzSubjects(t, newTrackedTree(t, root), moduleImportPath(t, root)) {
 		seen[tg.name] = true
 	}
 	if len(seen) == 0 {
@@ -135,7 +135,7 @@ func TestScheduledMatrixCoversEveryFuzzTarget(t *testing.T) {
 	root := repoRoot(t)
 
 	var inCode []string
-	for _, tg := range analyzeFuzzSubjects(t, root, moduleImportPath(t, root)) {
+	for _, tg := range analyzeFuzzSubjects(t, newTrackedTree(t, root), moduleImportPath(t, root)) {
 		inCode = append(inCode, tg.name)
 	}
 	inMatrix := scheduledFuzzTargets(t, root)
@@ -455,7 +455,7 @@ import (
 `)
 
 	got := map[string]bool{}
-	for _, tg := range analyzeFuzzSubjects(t, root, mod) {
+	for _, tg := range analyzeFuzzSubjects(t, newSyntheticTree(t, root), mod) {
 		got[tg.name] = tg.hasSubject
 	}
 	want := map[string]bool{
@@ -498,29 +498,37 @@ func (t fuzzTarget) String() string {
 // из своего же файла-соседа: сначала по каждой функции пакета собирается, зовёт
 // ли она прод-пакет напрямую и каких локальных функций касается, затем предмет
 // распространяется по графу вызовов до неподвижной точки.
-func analyzeFuzzSubjects(t *testing.T, root, modulePath string) []fuzzTarget {
+//
+// СОСТАВ ДЕРЕВА БЕРЁТСЯ ИЗ ИНДЕКСА GIT, А НЕ С ДИСКА. Прежний обход диска от
+// корня читал `.claude/worktrees/` — рабочие копии дерева, которые git
+// игнорирует. Доказано инъекцией: ОДИН файл `func FuzzGhostTarget(f *testing.F)`
+// внутри игнорируемого каталога роняет `TestEveryFuzzTargetDrivesProductionCode`
+// и `TestScheduledMatrixCoversEveryFuzzTarget` требованием внести в матрицу
+// цель, которой в репозитории не существует. Строгое равенство «в дереве ==
+// в матрице» здесь и правильно, и хрупко: любой лишний файл сдвигает левую
+// часть, поэтому левая часть обязана означать РЕПОЗИТОРИЙ.
+func analyzeFuzzSubjects(t *testing.T, tt *trackedTree, modulePath string) []fuzzTarget {
 	t.Helper()
+	root := tt.root
 
 	byDir := map[string][]string{}
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
+	for rel := range tt.files {
+		if !strings.HasSuffix(rel, "_test.go") {
+			continue
 		}
-		if info.IsDir() {
-			switch info.Name() {
-			case ".git", "node_modules", "vendor", "ui-future", "testdata":
-				return filepath.SkipDir
-			}
-			return nil
+		if strings.HasPrefix(rel, "vendor/") ||
+			strings.HasPrefix(rel, "node_modules/") ||
+			strings.HasPrefix(rel, "ui-future/") ||
+			rel == "testdata" || strings.Contains(rel, "/testdata/") ||
+			strings.HasPrefix(rel, "testdata/") {
+			continue
 		}
-		if strings.HasSuffix(path, "_test.go") {
-			dir := filepath.Dir(path)
-			byDir[dir] = append(byDir[dir], path)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("обход дерева: %v", err)
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		dir := filepath.Dir(path)
+		byDir[dir] = append(byDir[dir], path)
+	}
+	for dir := range byDir {
+		sort.Strings(byDir[dir]) // разбор пакета не должен зависеть от порядка карты
 	}
 
 	var out []fuzzTarget

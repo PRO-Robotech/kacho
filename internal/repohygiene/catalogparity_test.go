@@ -442,38 +442,42 @@ func discoverAuthzMapPackages(t *testing.T, root string) []authzMapPackage {
 	byDir := map[string]*authzMapPackage{}
 	fset := token.NewFileSet()
 
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() {
-			switch info.Name() {
-			case ".git", ".claude", "node_modules", "vendor", "ui-future", "docs-site":
-				return filepath.SkipDir
+	// Состав дерева — из индекса git, а не с диска: под корнем лежат
+	// git-игнорируемые рабочие копии (`.claude/worktrees/`), и прочитанный
+	// оттуда PermissionMap приписал бы пакет, которого в репозитории нет.
+	// Отсев по ИМЕНИ каталога (`.claude`) здесь стоял, и он же был хрупок:
+	// он закрывал ровно одно известное имя, а не класс.
+	tt := newTrackedTree(t, root)
+	rels := make([]string, 0, tt.count())
+	for rel := range tt.files {
+		rels = append(rels, rel)
+	}
+	sort.Strings(rels)
+	err := func() error {
+		for _, rel := range rels {
+			if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
+				continue
 			}
-			return nil
+			if strings.HasPrefix(rel, "pkg/api/") || // сгенерированные стабы
+				strings.HasPrefix(rel, "vendor/") ||
+				strings.HasPrefix(rel, "node_modules/") ||
+				strings.HasPrefix(rel, "ui-future/") ||
+				strings.HasPrefix(rel, "docs-site/") {
+				continue
+			}
+			path := filepath.Join(root, filepath.FromSlash(rel))
+			f, perr := parser.ParseFile(fset, path, nil, 0)
+			if perr != nil {
+				continue // не компилируемый/шаблонный файл — не предмет этого гейта
+			}
+			if !declaresPermissionMap(f) {
+				continue
+			}
+			dir := filepath.Dir(rel)
+			byDir[dir] = &authzMapPackage{Dir: dir, MapFile: rel}
 		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		rel, relErr := filepath.Rel(root, path)
-		if relErr != nil {
-			return relErr
-		}
-		if strings.HasPrefix(rel, "pkg/api/") {
-			return nil // сгенерированные стабы
-		}
-		f, perr := parser.ParseFile(fset, path, nil, 0)
-		if perr != nil {
-			return nil // не компилируемый/шаблонный файл — не предмет этого гейта
-		}
-		if !declaresPermissionMap(f) {
-			return nil
-		}
-		dir := filepath.Dir(rel)
-		byDir[dir] = &authzMapPackage{Dir: dir, MapFile: rel}
 		return nil
-	})
+	}()
 	if err != nil {
 		t.Fatalf("обход дерева: %v", err)
 	}
