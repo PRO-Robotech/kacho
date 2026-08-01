@@ -5,7 +5,6 @@ package clients_test
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"sync"
 	"sync/atomic"
@@ -13,22 +12,19 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/clients"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/fgaintent"
-	"github.com/PRO-Robotech/kacho/services/compute/internal/migrations"
 )
 
 // ---- fake InternalIAMService client (recorder) ----------------------------
@@ -78,24 +74,11 @@ func (f *fakeIAMRegister) registeredCount() int {
 func setupDrainerDB(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	ctx := context.Background()
-	pgc, err := postgres.Run(ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("kacho_compute_test"),
-		postgres.WithUsername("compute"),
-		postgres.WithPassword("compute"),
-		postgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = pgc.Terminate(ctx) })
-	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
 
-	db, err := sql.Open("pgx", dsn)
-	require.NoError(t, err)
-	goose.SetBaseFS(migrations.FS)
-	require.NoError(t, goose.SetDialect("postgres"))
-	require.NoError(t, goose.Up(db, "."))
-	_ = db.Close()
+	// Собственная база этого теста на одном контейнере пакета: миграции уже
+	// применены в шаблоне, клон — отдельная база (свой каталог, свои строки,
+	// своё пространство advisory-lock и LISTEN/NOTIFY-канала).
+	dsn := pgtest.NewDB(t)
 
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)

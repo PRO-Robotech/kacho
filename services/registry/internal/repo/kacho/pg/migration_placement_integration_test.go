@@ -13,42 +13,33 @@
 package pg_test
 
 import (
-	"context"
 	"database/sql"
 	"testing"
-	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/migrations"
 )
 
 // prePlacementVersion — последняя миграция ДО ввода regional placement (0005).
 const prePlacementVersion int64 = 5
 
-// startPG поднимает изолированный Postgres 16 и возвращает DSN (без применённых
-// миграций — их накатывает сам тест по шагам).
+// startPG выдаёт тесту СОБСТВЕННУЮ пустую базу на одном Postgres пакета (см.
+// testmain_pgtest_test.go) — вместо контейнера на каждый вызов.
+//
+// Пустую — это предпосылка, а не деталь: тесты этого файла и соседнего
+// migration_lifecycle_normalize идут по цепочке САМИ, останавливаясь ниже её вершины,
+// чтобы посеять легаси-строку и только потом доиграть апгрейд. База, уже
+// мигрированная до head, не оставила бы им того, что они проверяют. Поэтому здесь
+// NewEmptyDB, а не NewDB (шаблон пакета мигрирован — им он не годится).
+//
+// Отсутствие базы — ОТКАЗ, никогда не пропуск: pgtest.NewEmptyDB роняет t сам.
 func startPG(t *testing.T) string {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-	defer cancel()
-
-	pgc, err := postgres.Run(ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("kacho_registry_upgrade"),
-		postgres.WithUsername("registry"),
-		postgres.WithPassword("registry"),
-		postgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = pgc.Terminate(context.Background()) })
-
-	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
-	return dsn
+	return pgtest.NewEmptyDB(t)
 }
 
 // openGoose открывает соединение с накатчиком goose на встроенных миграциях registry.
@@ -111,7 +102,14 @@ func TestMigration0006_RegionPlacement_BackfillRegionOverridable(t *testing.T) {
 	_, err := db.Exec(`INSERT INTO kacho_registry.registries (id, project_id, name)
 	                   VALUES ('regLEGACY0000000000B', 'prj-legacy', 'legacy-reg')`)
 	require.NoError(t, err)
-	_, err = db.Exec(`ALTER DATABASE kacho_registry_upgrade SET kacho.registry_backfill_region = 'eu-north-1'`)
+	// Имя базы больше не константа — её выдаёт пакету pgtest, по одной на тест, — а
+	// ALTER DATABASE принимает ИДЕНТИФИКАТОР, не выражение: current_database() на его
+	// место не подставить. Отсюда динамический SQL. Предмет утверждения не меняется:
+	// GUC уровня БД ставится ровно на ту базу, где идёт апгрейд, как и раньше.
+	_, err = db.Exec(`DO $$ BEGIN
+		EXECUTE format('ALTER DATABASE %I SET kacho.registry_backfill_region = %L',
+		               current_database(), 'eu-north-1');
+	END $$`)
 	require.NoError(t, err)
 	_ = db.Close() // GUC уровня БД подхватывают НОВЫЕ сессии
 

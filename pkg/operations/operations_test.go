@@ -13,11 +13,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"google.golang.org/genproto/googleapis/rpc/status"
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 )
 
@@ -49,7 +49,7 @@ CREATE INDEX IF NOT EXISTS operations_account_id_idx
   ON operations (account_id, created_at, id) WHERE account_id IS NOT NULL;
 `
 
-// startPostgres поднимает контейнер Postgres, применяет schema и возвращает DSN.
+// startPostgres выдаёт тесту собственную БД со схемой operations и возвращает DSN.
 // Разделено из setupPostgres, чтобы тесты, которым нужен пул со специальными
 // RuntimeParams (напр. idle_in_transaction_session_timeout), могли построить
 // собственный pgxpool поверх той же БД.
@@ -59,31 +59,12 @@ func startPostgres(t *testing.T) string {
 		t.Skip("integration tests skipped (SKIP_INTEGRATION=1)")
 	}
 
-	ctx := context.Background()
-
-	ctr, err := postgres.Run(ctx, "postgres:16-alpine",
-		postgres.WithDatabase("testdb"),
-		postgres.WithUsername("test"),
-		postgres.WithPassword("test"),
-		postgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = ctr.Terminate(ctx) })
-
-	dsn, err := ctr.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
-
-	// Применяем schema через временный пул.
-	schemaPool, err := pgxpool.New(ctx, dsn)
-	require.NoError(t, err)
-	_, err = schemaPool.Exec(ctx, createTable)
-	require.NoError(t, err, "ошибка создания таблицы operations")
-	schemaPool.Close()
-
-	return dsn
+	// createTable уже применён — один раз, в template пакета (см. TestMain); эта
+	// БД — его клон.
+	return pgtest.NewDB(t)
 }
 
-// setupPostgres поднимает контейнер Postgres и применяет schema.
+// setupPostgres выдаёт тесту собственную БД со схемой operations.
 func setupPostgres(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	dsn := startPostgres(t)

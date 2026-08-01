@@ -21,55 +21,29 @@ package jobs
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/migrations"
 )
 
-// setupTestDB поднимает postgres:16-alpine через testcontainers и применяет
-// embedded migrations FS из internal/migrations. Возвращает DSN с
+// setupTestDB выдаёт тесту СОБСТВЕННУЮ базу на одном контейнере пакета — клон
+// шаблона, в который embedded migrations FS из internal/migrations накатан один
+// раз (см. TestMain и internal/pgtest). Возвращает DSN с
 // search_path=kacho_nlb,public.
 func setupTestDB(t testing.TB) string {
 	t.Helper()
-	ctx := context.Background()
-
-	pgc, err := postgres.Run(ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("kacho_nlb_test"),
-		postgres.WithUsername("nlb"),
-		postgres.WithPassword("nlb"),
-		postgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = pgc.Terminate(ctx) })
-
-	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
-
-	db, err := sql.Open("pgx", dsn)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
-
-	goose.SetBaseFS(migrations.FS)
-	require.NoError(t, goose.SetDialect("postgres"))
-	require.NoError(t, goose.Up(db, "."))
-
-	return appendSearchPath(dsn)
+	return appendSearchPath(pgtest.NewDB(t))
 }
 
 func appendSearchPath(dsn string) string {

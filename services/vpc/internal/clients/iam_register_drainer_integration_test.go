@@ -21,7 +21,6 @@ package clients_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"strings"
 	"sync"
@@ -30,22 +29,19 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/clients"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/migrations"
 )
 
 func setupRegisterOutboxDB(t *testing.T) *pgxpool.Pool {
@@ -55,26 +51,10 @@ func setupRegisterOutboxDB(t *testing.T) *pgxpool.Pool {
 	}
 	ctx := context.Background()
 
-	pgc, err := postgres.Run(ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("kacho_vpc_test"),
-		postgres.WithUsername("vpc"),
-		postgres.WithPassword("vpc"),
-		postgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = pgc.Terminate(ctx) })
-
-	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
-
-	db, err := sql.Open("pgx", dsn)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
-
-	goose.SetBaseFS(migrations.FS)
-	require.NoError(t, goose.SetDialect("postgres"))
-	require.NoError(t, goose.Up(db, "."))
+	// Собственная база этого теста на одном контейнере пакета: миграции уже
+	// применены в шаблоне, клон — отдельная база (свой каталог, свои строки,
+	// своё пространство advisory-lock и LISTEN/NOTIFY-канала).
+	dsn := pgtest.NewDB(t)
 
 	const optionsParam = "options=-c%20search_path%3Dkacho_vpc%2Cpublic"
 	if !strings.Contains(dsn, "options=") && !strings.Contains(dsn, "options%3D") {

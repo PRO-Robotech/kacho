@@ -5,7 +5,6 @@ package pg_test
 
 import (
 	"context"
-	"database/sql"
 	stderrors "errors"
 	"fmt"
 	"sync"
@@ -14,17 +13,15 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
-	"github.com/PRO-Robotech/kacho/services/storage/internal/migrations"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/pg"
 )
 
@@ -39,9 +36,11 @@ const seededDiskType = "block-balanced"
 // Geography, а не выводится из строки зоны.
 const imageRegionFixture = "ru-central1"
 
-// newTestPool поднимает контейнер Postgres 16, прогоняет миграции kacho-storage
-// (включая seed disk_types) и возвращает pgxpool с search_path=kacho_storage.
-// Пропускается под -short. Каждый тест заводит данные сам.
+// newTestPool выдаёт тесту СОБСТВЕННУЮ базу на одном контейнере пакета — клон
+// шаблона, в который миграции kacho-storage (включая seed disk_types) накатаны
+// один раз (см. TestMain и internal/pgtest). Возвращает pgxpool с
+// search_path=kacho_storage. Пропускается под -short. Каждый тест заводит данные
+// сам.
 func newTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	if testing.Short() {
@@ -49,24 +48,7 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 	}
 	ctx := context.Background()
 
-	pgC, err := tcpostgres.Run(ctx, "postgres:16-alpine",
-		tcpostgres.WithDatabase("kacho_storage"),
-		tcpostgres.WithUsername("storage"),
-		tcpostgres.WithPassword("secret"),
-		tcpostgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = pgC.Terminate(ctx) })
-
-	baseDSN, err := pgC.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
-
-	sqlDB, err := sql.Open("pgx", baseDSN)
-	require.NoError(t, err)
-	defer sqlDB.Close()
-	goose.SetBaseFS(migrations.FS)
-	require.NoError(t, goose.SetDialect("postgres"))
-	require.NoError(t, goose.Up(sqlDB, "."))
+	baseDSN := pgtest.NewDB(t)
 
 	// pool_max_conns=16 — даём race-тестам достаточно соединений, чтобы горутины
 	// реально исполнялись параллельно (contended CAS / auto-device-name), а не

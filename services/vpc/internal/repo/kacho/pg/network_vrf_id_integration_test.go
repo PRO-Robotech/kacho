@@ -14,8 +14,8 @@ import (
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
@@ -26,23 +26,14 @@ import (
 func newNetID() string  { return ids.NewID(ids.PrefixNetwork) }
 func itoa(i int) string { return strconv.Itoa(i) }
 
-// setupTestDBUpTo поднимает testcontainers Postgres и применяет миграции ТОЛЬКО
-// до версии `version` (для backfill-теста: вставить строки до 0007, затем UpTo 7).
+// setupTestDBUpTo выдаёт тесту собственную ПУСТУЮ базу на контейнере пакета и
+// применяет миграции ТОЛЬКО до версии `version` (для backfill-теста: вставить
+// строки до 0007, затем UpTo 7). Именно поэтому здесь пустая база, а не клон
+// предмигрированного шаблона: тест обязан стартовать раньше текущей головы цепочки.
 func setupTestDBUpTo(t testing.TB, version int64) string {
 	t.Helper()
-	ctx := context.Background()
-	pgc, err := postgres.Run(ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("kacho_vpc_test"),
-		postgres.WithUsername("vpc"),
-		postgres.WithPassword("vpc"),
-		postgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = pgc.Terminate(ctx) })
+	dsn := pgtest.NewEmptyDB(t)
 
-	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
 	db, err := sql.Open("pgx", dsn)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })

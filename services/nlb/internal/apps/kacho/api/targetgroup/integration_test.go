@@ -5,24 +5,21 @@ package targetgroup_test
 
 import (
 	"context"
-	"database/sql"
 	"log/slog"
 	"os"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
@@ -31,48 +28,18 @@ import (
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/targetgroup"
 	// dto/type2pb init регистрирует TargetGroup transfer.
 	_ "github.com/PRO-Robotech/kacho/services/nlb/internal/dto/type2pb"
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/migrations"
 	kachopg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"
 )
 
-// gooseMu serialises goose's package-level globals (SetBaseFS / SetDialect / Up),
-// which are not goroutine-safe; parallel integration tests each apply migrations.
-var gooseMu sync.Mutex
-
-// setupDB поднимает изолированный Postgres + накатывает migrations.
+// setupDB выдаёт тесту СОБСТВЕННУЮ базу на одном контейнере пакета — клон
+// шаблона с уже накатанными migrations (см. TestMain и internal/pgtest).
 func setupDB(t *testing.T) (*pgxpool.Pool, *kachopg.Repository) {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("skipping integration test (testing.Short)")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
 
-	pgc, err := postgres.Run(ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("kacho_nlb_test"),
-		postgres.WithUsername("nlb"),
-		postgres.WithPassword("nlb"),
-		postgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = pgc.Terminate(context.Background()) })
-
-	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
-
-	db, err := sql.Open("pgx", dsn)
-	require.NoError(t, err)
-	defer func() { _ = db.Close() }()
-
-	gooseMu.Lock()
-	goose.SetBaseFS(migrations.FS)
-	err = goose.SetDialect("postgres")
-	if err == nil {
-		err = goose.Up(db, ".")
-	}
-	gooseMu.Unlock()
-	require.NoError(t, err)
+	dsn := pgtest.NewDB(t)
 
 	if !strings.Contains(dsn, "options=") {
 		sep := "?"

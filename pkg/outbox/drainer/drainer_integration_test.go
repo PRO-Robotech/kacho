@@ -8,8 +8,8 @@ package drainer_test
 // Each test maps 1:1 to a Given-When-Then delivery scenario for the drainer.
 //
 // Test design constraints:
-//   - testcontainers-go Postgres 16, one container per test (no shared state,
-//     parallel-safe).
+//   - testcontainers-go Postgres 16, one container per PACKAGE; each test gets
+//     its own database on it (no shared state, parallel-safe — see TestMain).
 //   - Inline schema copy of kacho-iam migration 0002_fga_outbox.sql (see
 //     drainer_testhelpers_test.go). kacho-corelib doesn't own iam migrations.
 //   - Fake-Applier (no real OpenFGA).

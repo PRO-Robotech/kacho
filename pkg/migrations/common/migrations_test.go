@@ -13,7 +13,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 //go:embed 0001_operations.sql
@@ -28,28 +29,16 @@ var migration0003SQL string
 //go:embed 0004_operations_orphan_scan_idx.sql
 var migration0004SQL string
 
-// setupPostgres поднимает контейнер Postgres с чистой схемой.
+// setupPostgres выдаёт тесту собственную пустую базу на одном контейнере пакета.
 func setupPostgres(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	if testing.Short() || os.Getenv("SKIP_INTEGRATION") == "1" {
 		t.Skip("integration tests skipped (SKIP_INTEGRATION=1)")
 	}
 
-	ctx := context.Background()
-
-	ctr, err := postgres.Run(ctx, "postgres:16-alpine",
-		postgres.WithDatabase("testdb"),
-		postgres.WithUsername("test"),
-		postgres.WithPassword("test"),
-		postgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = ctr.Terminate(ctx) })
-
-	dsn, err := ctr.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
-
-	pool, err := pgxpool.New(ctx, dsn)
+	// Эти тесты применяют миграцию САМИ, поэтому база нужна пустая — ровно та
+	// точка старта, которую раньше давал свежий контейнер.
+	pool, err := pgxpool.New(context.Background(), pgtest.NewEmptyDB(t))
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
 

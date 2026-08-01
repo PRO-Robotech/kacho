@@ -15,8 +15,8 @@ import (
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
@@ -363,14 +363,9 @@ func TestMigration0014_UsedByIndex_UpDownRoundtrip(t *testing.T) {
 		t.Skip("skipping integration test")
 	}
 	ctx := context.Background()
-	pgc, err := postgres.Run(ctx, "postgres:16-alpine",
-		postgres.WithDatabase("kacho_vpc_test"),
-		postgres.WithUsername("vpc"), postgres.WithPassword("vpc"),
-		postgres.BasicWaitStrategies())
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = pgc.Terminate(ctx) })
-	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
+	// EMPTY-база на контейнере пакета: тест сам идёт по цепочке миграций вверх и
+	// вниз, поэтому предмигрированный шаблон был бы неверной точкой старта.
+	dsn := pgtest.NewEmptyDB(t)
 	db, err := sql.Open("pgx", dsn)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
