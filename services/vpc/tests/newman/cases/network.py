@@ -1057,9 +1057,17 @@ CASES.append(Case(
 ))
 
 # === Required-field matrix + Immutable matrix для Network ===
+# `name` из списка снят: контракт vpc допускает ПУСТОЕ имя
+# (`services/vpc/internal/domain/types.go`, RcNameVPC — «empty allowed», залочено
+# `types_test.go` кейсом {"empty allowed", "", false}), а сгенерированный сосед
+# `NET-CR-VAL-NAME-NULL` прямо утверждает `name=null → 200` (protojson: null = поле
+# не задано, то есть ровно «поле убрали»). Две записи одной суиты обещали
+# взаимоисключающее, и «убери name → отказ» зеленел только потому, что принимал
+# успех. Снято как претензия без основания — тем же решением, каким снят
+# `v4CidrBlocks` у подсети.
 CASES.extend(required_fields_matrix("NET", "/vpc/v1/networks",
     {"projectId": "{{_suiteProjectId}}", "name": "net-req-{{runId}}"},
-    ["projectId", "name"]))
+    ["projectId"]))
 CASES.extend(immutable_fields_matrix("NET", "/vpc/v1/networks",
     ["project_id"]))
 

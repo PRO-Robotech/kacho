@@ -200,14 +200,13 @@
 | `*-CR-VAL-MISSING-TYPE` | NEG,VAL | P1 | 1 (gat) | Create Gateway без gateway type oneof → 400 |
 | `*-CR-VAL-NAME-DIGIT-START` | VAL | P1 | 6 (add,gat,net,rou,sec,sub) | Create с name начинающимся с цифры → 400 (контракт Kachō regex) |
 | `*-CR-VAL-NAME-HYPHEN-START` | VAL | P1 | 6 (add,gat,net,rou,sec,sub) | Create с name начинающимся с дефиса → 400 |
-| `*-CR-VAL-NAME-NULL` | NEG,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Create с name=null → 400 |
+| `*-CR-VAL-NAME-NULL` | NEG,VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Create с name=null → 200 (protojson: null = поле не задано; пустое имя разрешено контрактом) |
 | `*-CR-VAL-NAME-SPECIAL-CHARS` | VAL | P1 | 6 (add,gat,net,rou,sec,sub) | Create с спец-символами в name → 400 |
 | `*-CR-VAL-NAME-UPPERCASE` | VAL | P2 | 6 (add,gat,net,rou,sec,sub) | Create с UPPERCASE name → 200 у разрешительного контракта (add,net,rou,sec,sub); 400 с именем поля у строгого (gat) |
 | `*-CR-VAL-NETWORK-REQUIRED` | NEG,VAL | P0 | 2 (rou,sec) | Create без network_id → InvalidArgument |
-| `*-CR-VAL-REQ-PROJECTID` | VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Create без required поля 'projectId' → 400 InvalidArgument |
-| `*-CR-VAL-REQ-NAME` | VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Create без required поля 'name' → 400 InvalidArgument |
-| `*-CR-VAL-REQ-NETWORKID` | VAL | P0 | 3 (rou,sec,sub) | Create без required поля 'networkId' → 400 InvalidArgument |
-| `*-CR-VAL-REQ-ZONEID` | VAL | P0 | 1 (sub) | Create без required поля 'zoneId' → 400 InvalidArgument |
+| `*-CR-VAL-REQ-PROJECTID` | VAL | P0 | 6 (add,gat,net,rou,sec,sub) | Create без required поля 'projectId' → отказ синхронно (403 unscoped, authz-first); Operation не чеканится |
+| `*-CR-VAL-REQ-NETWORKID` | VAL | P0 | 3 (rou,sec,sub) | Create без required поля 'networkId' → отказ: sync 400 либо Operation с ошибкой |
+| `*-CR-VAL-REQ-ZONEID` | VAL | P0 | 1 (sub) | Create без required поля 'zoneId' → отказ: sync 400 либо Operation с ошибкой |
 | `*-CR-STATE-RESERVED-AT-BIRTH-CLEARED-BY-UPDATE` | STATE | P2 | 1 (add) | Свежий адрес читается `reserved=true`, `used=false` — тенант заказал сам адрес; `Update` с `updateMask=reserved,reserved=false` снимает резерв (REQ-IPAM-05) |
 | `*-CR-VAL-ROUTE-EMPTY-HOP` | NEG,VAL | P1 | 1 (rou) | static_routes validation: RT-CR-VAL-ROUTE-EMPTY-HOP |
 | `*-CR-VAL-ROUTE-EMPTY-PREFIX` | NEG,VAL | P1 | 1 (rou) | static_routes validation: RT-CR-VAL-ROUTE-EMPTY-PREFIX |

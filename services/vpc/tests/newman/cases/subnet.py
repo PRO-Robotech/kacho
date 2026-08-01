@@ -1247,7 +1247,13 @@ for c in required_fields_matrix("SUB", "/vpc/v1/subnets",
     # not have (retired VPC-1 F7) and never required. Omitting a key the edge already drops
     # changes nothing about the request, so the case could only ever pass. Dropped, along
     # with the matching literal in the body above.
-    ["projectId", "networkId", "name", "zoneId"]):
+    # `name` снят по тому же основанию, что и `v4CidrBlocks` выше, только основание
+    # другое: поле в сообщении ЕСТЬ, но контракт допускает его ПУСТЫМ
+    # (`services/vpc/internal/domain/types.go`, RcNameVPC — «empty allowed», залочено
+    # `types_test.go` кейсом {"empty allowed", "", false}), а сгенерированный сосед
+    # `SUB-CR-VAL-NAME-NULL` прямо утверждает `name=null → 200`. «Убери name → отказ»
+    # зеленел только потому, что принимал успех.
+    ["projectId", "networkId", "zoneId"]):
     CASES.append(_wrap_with_net("SUB", "req", c))
 CASES.extend(immutable_fields_matrix("SUB", "/vpc/v1/subnets",
     ["project_id", "network_id", "zone_id", "v4_cidr_blocks", "v6_cidr_blocks"]))

@@ -225,7 +225,7 @@
           ]
         },
         {
-          "name": "poll-op-922",
+          "name": "poll-op-923",
           "request": {
             "method": "GET",
             "header": [
@@ -333,7 +333,7 @@
           ]
         },
         {
-          "name": "poll-op-923",
+          "name": "poll-op-924",
           "request": {
             "method": "GET",
             "header": [
@@ -441,167 +441,6 @@
           ]
         },
         {
-          "name": "poll-op-924",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  // Postman async-friendly retry: re-invoke same request name",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "get-rya531",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/{{addrId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "addresses",
-                "{{addrId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('has internal ipv4', () => pm.expect(pm.response.json().internalIpv4Address).to.be.an('object'));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup-addr-rya532",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/{{addrId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "addresses",
-                "{{addrId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
           "name": "poll-op-925",
           "request": {
             "method": "GET",
@@ -657,9 +496,9 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya533",
+          "name": "get-rya528",
           "request": {
-            "method": "DELETE",
+            "method": "GET",
             "header": [
               {
                 "key": "Content-Type",
@@ -667,15 +506,15 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/{{subId}}",
+              "raw": "{{baseUrl}}/vpc/v1/addresses/{{addrId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "vpc",
                 "v1",
-                "subnets",
-                "{{subId}}"
+                "addresses",
+                "{{addrId}}"
               ]
             }
           },
@@ -692,7 +531,58 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('has internal ipv4', () => pm.expect(pm.response.json().internalIpv4Address).to.be.an('object'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-addr-rya529",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/addresses/{{addrId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "addresses",
+                "{{addrId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -767,7 +657,117 @@
           ]
         },
         {
-          "name": "cleanup-net-rya534",
+          "name": "cleanup-sub-rya530",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/subnets/{{subId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "subnets",
+                "{{subId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-927",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-net-rya531",
           "request": {
             "method": "DELETE",
             "header": [
@@ -881,7 +881,7 @@
           ]
         },
         {
-          "name": "poll-op-927",
+          "name": "poll-op-928",
           "request": {
             "method": "GET",
             "header": [
@@ -936,7 +936,7 @@
           ]
         },
         {
-          "name": "get-rya535",
+          "name": "get-rya532",
           "request": {
             "method": "GET",
             "header": [
@@ -1028,7 +1028,7 @@
           ]
         },
         {
-          "name": "poll-op-928",
+          "name": "poll-op-929",
           "request": {
             "method": "GET",
             "header": [
@@ -1195,7 +1195,7 @@
           ]
         },
         {
-          "name": "poll-op-929",
+          "name": "poll-op-930",
           "request": {
             "method": "GET",
             "header": [
@@ -1303,7 +1303,7 @@
           ]
         },
         {
-          "name": "poll-op-930",
+          "name": "poll-op-931",
           "request": {
             "method": "GET",
             "header": [
@@ -1407,7 +1407,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya536",
+          "name": "cleanup-sub-rya533",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1462,7 +1462,7 @@
           ]
         },
         {
-          "name": "poll-op-931",
+          "name": "poll-op-932",
           "request": {
             "method": "GET",
             "header": [
@@ -1517,7 +1517,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya537",
+          "name": "cleanup-net-rya534",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1967,7 +1967,7 @@
           ]
         },
         {
-          "name": "poll-op-932",
+          "name": "poll-op-933",
           "request": {
             "method": "GET",
             "header": [
@@ -2075,7 +2075,7 @@
           ]
         },
         {
-          "name": "poll-op-933",
+          "name": "poll-op-934",
           "request": {
             "method": "GET",
             "header": [
@@ -2165,7 +2165,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya538",
+          "name": "cleanup-sub-rya535",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2220,7 +2220,7 @@
           ]
         },
         {
-          "name": "poll-op-934",
+          "name": "poll-op-935",
           "request": {
             "method": "GET",
             "header": [
@@ -2275,7 +2275,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya539",
+          "name": "cleanup-net-rya536",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2389,7 +2389,7 @@
           ]
         },
         {
-          "name": "poll-op-935",
+          "name": "poll-op-936",
           "request": {
             "method": "GET",
             "header": [
@@ -2521,7 +2521,7 @@
           ]
         },
         {
-          "name": "poll-op-936",
+          "name": "poll-op-937",
           "request": {
             "method": "GET",
             "header": [
@@ -2865,7 +2865,7 @@
           ]
         },
         {
-          "name": "poll-op-937",
+          "name": "poll-op-938",
           "request": {
             "method": "GET",
             "header": [
@@ -2920,7 +2920,7 @@
           ]
         },
         {
-          "name": "patch-rya540",
+          "name": "patch-rya537",
           "request": {
             "method": "PATCH",
             "header": [
@@ -2984,7 +2984,7 @@
           ]
         },
         {
-          "name": "poll-op-938",
+          "name": "poll-op-939",
           "request": {
             "method": "GET",
             "header": [
@@ -3039,7 +3039,7 @@
           ]
         },
         {
-          "name": "verify-rya541",
+          "name": "verify-rya538",
           "request": {
             "method": "GET",
             "header": [
@@ -3130,7 +3130,7 @@
           ]
         },
         {
-          "name": "poll-op-939",
+          "name": "poll-op-940",
           "request": {
             "method": "GET",
             "header": [
@@ -3555,7 +3555,7 @@
           ]
         },
         {
-          "name": "poll-op-940",
+          "name": "poll-op-941",
           "request": {
             "method": "GET",
             "header": [
@@ -3610,7 +3610,7 @@
           ]
         },
         {
-          "name": "del-happy-rya542",
+          "name": "del-happy-rya539",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3665,7 +3665,7 @@
           ]
         },
         {
-          "name": "poll-op-941",
+          "name": "poll-op-942",
           "request": {
             "method": "GET",
             "header": [
@@ -3814,7 +3814,7 @@
           ]
         },
         {
-          "name": "poll-op-942",
+          "name": "poll-op-943",
           "request": {
             "method": "GET",
             "header": [
@@ -3922,7 +3922,7 @@
           ]
         },
         {
-          "name": "poll-op-943",
+          "name": "poll-op-944",
           "request": {
             "method": "GET",
             "header": [
@@ -4030,221 +4030,6 @@
           ]
         },
         {
-          "name": "poll-op-944",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  // Postman async-friendly retry: re-invoke same request name",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "get-addr-rya543",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/{{addrId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "addresses",
-                "{{addrId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.internalIpv4Address && j.internalIpv4Address.address);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('allocatedIp', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "gbv-rya544",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses:byValue?internalIpv4Address={{allocatedIp}}&subnetId={{subId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "addresses:byValue?internalIpv4Address={{allocatedIp}}&subnetId={{subId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "pm.test('возвращён именно тот адрес, о котором спросили', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('addrId')));",
-                  "pm.test('и это тот самый IP', () => pm.expect(pm.response.json().internalIpv4Address.address).to.eql(pm.environment.get('allocatedIp')));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup-addr-rya545",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses/{{addrId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "addresses",
-                "{{addrId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
           "name": "poll-op-945",
           "request": {
             "method": "GET",
@@ -4300,7 +4085,113 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya546",
+          "name": "get-addr-rya540",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/addresses/{{addrId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "addresses",
+                "{{addrId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.internalIpv4Address && j.internalIpv4Address.address);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('allocatedIp', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "gbv-rya541",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/addresses:byValue?internalIpv4Address={{allocatedIp}}&subnetId={{subId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "addresses:byValue?internalIpv4Address={{allocatedIp}}&subnetId={{subId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "pm.test('возвращён именно тот адрес, о котором спросили', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('addrId')));",
+                  "pm.test('и это тот самый IP', () => pm.expect(pm.response.json().internalIpv4Address.address).to.eql(pm.environment.get('allocatedIp')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-addr-rya542",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4310,15 +4201,15 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/{{subId}}",
+              "raw": "{{baseUrl}}/vpc/v1/addresses/{{addrId}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "vpc",
                 "v1",
-                "subnets",
-                "{{subId}}"
+                "addresses",
+                "{{addrId}}"
               ]
             }
           },
@@ -4343,7 +4234,6 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -4410,7 +4300,117 @@
           ]
         },
         {
-          "name": "cleanup-net-rya547",
+          "name": "cleanup-sub-rya543",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/subnets/{{subId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "subnets",
+                "{{subId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-947",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-net-rya544",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4524,7 +4524,7 @@
           ]
         },
         {
-          "name": "poll-op-947",
+          "name": "poll-op-948",
           "request": {
             "method": "GET",
             "header": [
@@ -4579,7 +4579,7 @@
           ]
         },
         {
-          "name": "get-addr-rya548",
+          "name": "get-addr-rya545",
           "request": {
             "method": "GET",
             "header": [
@@ -4677,7 +4677,7 @@
           ]
         },
         {
-          "name": "cleanup-rya549",
+          "name": "cleanup-rya546",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4731,7 +4731,7 @@
           ]
         },
         {
-          "name": "poll-op-948",
+          "name": "poll-op-949",
           "request": {
             "method": "GET",
             "header": [
@@ -5941,7 +5941,7 @@
           ]
         },
         {
-          "name": "poll-op-949",
+          "name": "poll-op-950",
           "request": {
             "method": "GET",
             "header": [
@@ -5996,7 +5996,7 @@
           ]
         },
         {
-          "name": "patch-rya550",
+          "name": "patch-rya547",
           "request": {
             "method": "PATCH",
             "header": [
@@ -6060,7 +6060,7 @@
           ]
         },
         {
-          "name": "poll-op-950",
+          "name": "poll-op-951",
           "request": {
             "method": "GET",
             "header": [
@@ -6115,7 +6115,7 @@
           ]
         },
         {
-          "name": "verify-rya551",
+          "name": "verify-rya548",
           "request": {
             "method": "GET",
             "header": [
@@ -6166,7 +6166,7 @@
           ]
         },
         {
-          "name": "cleanup-rya552",
+          "name": "cleanup-rya549",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6220,7 +6220,7 @@
           ]
         },
         {
-          "name": "poll-op-951",
+          "name": "poll-op-952",
           "request": {
             "method": "GET",
             "header": [
@@ -6334,7 +6334,7 @@
           ]
         },
         {
-          "name": "poll-op-952",
+          "name": "poll-op-953",
           "request": {
             "method": "GET",
             "header": [
@@ -6389,7 +6389,7 @@
           ]
         },
         {
-          "name": "patch-rya553",
+          "name": "patch-rya550",
           "request": {
             "method": "PATCH",
             "header": [
@@ -6453,7 +6453,7 @@
           ]
         },
         {
-          "name": "poll-op-953",
+          "name": "poll-op-954",
           "request": {
             "method": "GET",
             "header": [
@@ -6508,7 +6508,7 @@
           ]
         },
         {
-          "name": "verify-rya554",
+          "name": "verify-rya551",
           "request": {
             "method": "GET",
             "header": [
@@ -6559,7 +6559,7 @@
           ]
         },
         {
-          "name": "cleanup-rya555",
+          "name": "cleanup-rya552",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6613,7 +6613,7 @@
           ]
         },
         {
-          "name": "poll-op-954",
+          "name": "poll-op-955",
           "request": {
             "method": "GET",
             "header": [
@@ -6727,7 +6727,7 @@
           ]
         },
         {
-          "name": "poll-op-955",
+          "name": "poll-op-956",
           "request": {
             "method": "GET",
             "header": [
@@ -6782,7 +6782,7 @@
           ]
         },
         {
-          "name": "patch-rya556",
+          "name": "patch-rya553",
           "request": {
             "method": "PATCH",
             "header": [
@@ -6846,7 +6846,7 @@
           ]
         },
         {
-          "name": "poll-op-956",
+          "name": "poll-op-957",
           "request": {
             "method": "GET",
             "header": [
@@ -6901,7 +6901,7 @@
           ]
         },
         {
-          "name": "verify-rya557",
+          "name": "verify-rya554",
           "request": {
             "method": "GET",
             "header": [
@@ -6953,7 +6953,7 @@
           ]
         },
         {
-          "name": "cleanup-rya558",
+          "name": "cleanup-rya555",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7007,7 +7007,7 @@
           ]
         },
         {
-          "name": "poll-op-957",
+          "name": "poll-op-958",
           "request": {
             "method": "GET",
             "header": [
@@ -7361,7 +7361,7 @@
           ]
         },
         {
-          "name": "poll-op-958",
+          "name": "poll-op-959",
           "request": {
             "method": "GET",
             "header": [
@@ -7416,7 +7416,7 @@
           ]
         },
         {
-          "name": "patch-multi-rya559",
+          "name": "patch-multi-rya556",
           "request": {
             "method": "PATCH",
             "header": [
@@ -7480,7 +7480,7 @@
           ]
         },
         {
-          "name": "poll-op-959",
+          "name": "poll-op-960",
           "request": {
             "method": "GET",
             "header": [
@@ -7535,7 +7535,7 @@
           ]
         },
         {
-          "name": "verify-all-rya560",
+          "name": "verify-all-rya557",
           "request": {
             "method": "GET",
             "header": [
@@ -7590,7 +7590,7 @@
           ]
         },
         {
-          "name": "cleanup-rya561",
+          "name": "cleanup-rya558",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7644,7 +7644,7 @@
           ]
         },
         {
-          "name": "poll-op-960",
+          "name": "poll-op-961",
           "request": {
             "method": "GET",
             "header": [
@@ -7758,7 +7758,7 @@
           ]
         },
         {
-          "name": "poll-op-961",
+          "name": "poll-op-962",
           "request": {
             "method": "GET",
             "header": [
@@ -7888,7 +7888,7 @@
           ]
         },
         {
-          "name": "poll-op-962",
+          "name": "poll-op-963",
           "request": {
             "method": "GET",
             "header": [
@@ -8002,7 +8002,7 @@
           ]
         },
         {
-          "name": "poll-op-963",
+          "name": "poll-op-964",
           "request": {
             "method": "GET",
             "header": [
@@ -8057,7 +8057,7 @@
           ]
         },
         {
-          "name": "list-filtered-lst562",
+          "name": "list-filtered-lst559",
           "request": {
             "method": "GET",
             "header": [
@@ -8110,7 +8110,7 @@
           ]
         },
         {
-          "name": "cleanup-rya563",
+          "name": "cleanup-rya560",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8164,7 +8164,7 @@
           ]
         },
         {
-          "name": "poll-op-964",
+          "name": "poll-op-965",
           "request": {
             "method": "GET",
             "header": [
@@ -8636,7 +8636,7 @@
           ]
         },
         {
-          "name": "poll-op-965",
+          "name": "poll-op-966",
           "request": {
             "method": "GET",
             "header": [
@@ -8778,7 +8778,7 @@
           ]
         },
         {
-          "name": "poll-op-966",
+          "name": "poll-op-967",
           "request": {
             "method": "GET",
             "header": [
@@ -8892,7 +8892,7 @@
           ]
         },
         {
-          "name": "poll-op-967",
+          "name": "poll-op-968",
           "request": {
             "method": "GET",
             "header": [
@@ -8947,7 +8947,7 @@
           ]
         },
         {
-          "name": "patch-name-only-rya564",
+          "name": "patch-name-only-rya561",
           "request": {
             "method": "PATCH",
             "header": [
@@ -9011,7 +9011,7 @@
           ]
         },
         {
-          "name": "poll-op-968",
+          "name": "poll-op-969",
           "request": {
             "method": "GET",
             "header": [
@@ -9066,7 +9066,7 @@
           ]
         },
         {
-          "name": "verify-rya565",
+          "name": "verify-rya562",
           "request": {
             "method": "GET",
             "header": [
@@ -9120,7 +9120,7 @@
           ]
         },
         {
-          "name": "cleanup-rya566",
+          "name": "cleanup-rya563",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9174,7 +9174,7 @@
           ]
         },
         {
-          "name": "poll-op-969",
+          "name": "poll-op-970",
           "request": {
             "method": "GET",
             "header": [
@@ -9288,7 +9288,7 @@
           ]
         },
         {
-          "name": "poll-op-970",
+          "name": "poll-op-971",
           "request": {
             "method": "GET",
             "header": [
@@ -9343,7 +9343,7 @@
           ]
         },
         {
-          "name": "get-timed-rya567",
+          "name": "get-timed-rya564",
           "request": {
             "method": "GET",
             "header": [
@@ -9433,7 +9433,7 @@
           ]
         },
         {
-          "name": "poll-op-971",
+          "name": "poll-op-972",
           "request": {
             "method": "GET",
             "header": [
@@ -9704,7 +9704,7 @@
           ]
         },
         {
-          "name": "poll-op-972",
+          "name": "poll-op-973",
           "request": {
             "method": "GET",
             "header": [
@@ -9759,7 +9759,7 @@
           ]
         },
         {
-          "name": "get-reserved-at-birth-rya568",
+          "name": "get-reserved-at-birth-rya565",
           "request": {
             "method": "GET",
             "header": [
@@ -9811,7 +9811,7 @@
           ]
         },
         {
-          "name": "upd-unreserve-rya569",
+          "name": "upd-unreserve-rya566",
           "request": {
             "method": "PATCH",
             "header": [
@@ -9875,7 +9875,7 @@
           ]
         },
         {
-          "name": "poll-op-973",
+          "name": "poll-op-974",
           "request": {
             "method": "GET",
             "header": [
@@ -9930,7 +9930,7 @@
           ]
         },
         {
-          "name": "get-unreserved-rya570",
+          "name": "get-unreserved-rya567",
           "request": {
             "method": "GET",
             "header": [
@@ -9981,7 +9981,7 @@
           ]
         },
         {
-          "name": "cleanup-rya571",
+          "name": "cleanup-rya568",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10141,7 +10141,7 @@
           ]
         },
         {
-          "name": "poll-op-974",
+          "name": "poll-op-975",
           "request": {
             "method": "GET",
             "header": [
@@ -10249,7 +10249,7 @@
           ]
         },
         {
-          "name": "poll-op-975",
+          "name": "poll-op-976",
           "request": {
             "method": "GET",
             "header": [
@@ -10357,7 +10357,7 @@
           ]
         },
         {
-          "name": "poll-op-976",
+          "name": "poll-op-977",
           "request": {
             "method": "GET",
             "header": [
@@ -10412,7 +10412,7 @@
           ]
         },
         {
-          "name": "get-ip-rya572",
+          "name": "get-ip-rya569",
           "request": {
             "method": "GET",
             "header": [
@@ -10525,7 +10525,7 @@
           ]
         },
         {
-          "name": "poll-op-977",
+          "name": "poll-op-978",
           "request": {
             "method": "GET",
             "header": [
@@ -10633,7 +10633,7 @@
           ]
         },
         {
-          "name": "poll-op-978",
+          "name": "poll-op-979",
           "request": {
             "method": "GET",
             "header": [
@@ -10688,7 +10688,7 @@
           ]
         },
         {
-          "name": "gbv-own-scope-finds-rya573",
+          "name": "gbv-own-scope-finds-rya570",
           "request": {
             "method": "GET",
             "header": [
@@ -10781,7 +10781,7 @@
           ]
         },
         {
-          "name": "cleanup-addr-rya574",
+          "name": "cleanup-addr-rya571",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10800,115 +10800,6 @@
                 "v1",
                 "addresses",
                 "{{addrId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-979",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  // Postman async-friendly retry: re-invoke same request name",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup-sub2-rya575",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/{{subId2}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "subnets",
-                "{{subId2}}"
               ]
             }
           },
@@ -10999,7 +10890,7 @@
           ]
         },
         {
-          "name": "cleanup-net2-rya576",
+          "name": "cleanup-sub2-rya572",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11009,15 +10900,15 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks/{{netId2}}",
+              "raw": "{{baseUrl}}/vpc/v1/subnets/{{subId2}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "vpc",
                 "v1",
-                "networks",
-                "{{netId2}}"
+                "subnets",
+                "{{subId2}}"
               ]
             }
           },
@@ -11108,7 +10999,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya577",
+          "name": "cleanup-net2-rya573",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11118,15 +11009,15 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/{{subId}}",
+              "raw": "{{baseUrl}}/vpc/v1/networks/{{netId2}}",
               "host": [
                 "{{baseUrl}}"
               ],
               "path": [
                 "vpc",
                 "v1",
-                "subnets",
-                "{{subId}}"
+                "networks",
+                "{{netId2}}"
               ]
             }
           },
@@ -11151,7 +11042,6 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -11218,7 +11108,117 @@
           ]
         },
         {
-          "name": "cleanup-net-rya578",
+          "name": "cleanup-sub-rya574",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/subnets/{{subId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "subnets",
+                "{{subId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-983",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-net-rya575",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11332,7 +11332,7 @@
           ]
         },
         {
-          "name": "poll-op-983",
+          "name": "poll-op-984",
           "request": {
             "method": "GET",
             "header": [
@@ -11440,7 +11440,7 @@
           ]
         },
         {
-          "name": "poll-op-984",
+          "name": "poll-op-985",
           "request": {
             "method": "GET",
             "header": [
@@ -11548,7 +11548,7 @@
           ]
         },
         {
-          "name": "poll-op-985",
+          "name": "poll-op-986",
           "request": {
             "method": "GET",
             "header": [
@@ -11603,7 +11603,7 @@
           ]
         },
         {
-          "name": "get-ext-ip-rya579",
+          "name": "get-ext-ip-rya576",
           "request": {
             "method": "GET",
             "header": [
@@ -11698,7 +11698,7 @@
           ]
         },
         {
-          "name": "cleanup-addr-rya580",
+          "name": "cleanup-addr-rya577",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11741,116 +11741,6 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-986",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  // Postman async-friendly retry: re-invoke same request name",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup-sub-rya581",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/subnets/{{subId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "subnets",
-                "{{subId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
-                  "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -11917,7 +11807,117 @@
           ]
         },
         {
-          "name": "cleanup-net-rya582",
+          "name": "cleanup-sub-rya578",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/vpc/v1/subnets/{{subId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vpc",
+                "v1",
+                "subnets",
+                "{{subId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-988",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  // Postman async-friendly retry: re-invoke same request name",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-net-rya579",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12224,7 +12224,7 @@
       ]
     },
     {
-      "name": "ADR-CR-VAL-REQ-PROJECTID — Create без required поля 'projectId' → 400 InvalidArgument (unscoped → 403 authz-first)",
+      "name": "ADR-CR-VAL-REQ-PROJECTID — Create без required поля 'projectId' → отказ: sync 403 (unscoped, authz-first)",
       "description": "class:VAL | priority:P0",
       "item": [
         {
@@ -12264,56 +12264,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 200, 403, 404]));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "ADR-CR-VAL-REQ-NAME — Create без required поля 'name' → 400 InvalidArgument (unscoped → 403 authz-first)",
-      "description": "class:VAL | priority:P0",
-      "item": [
-        {
-          "name": "cr-no-name",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/addresses",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "addresses"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"externalIpv4AddressSpec\": {\"zoneId\": \"{{existingZoneId}}\"}}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 200, 404]));"
+                  "pm.environment.unset('opId');",
+                  "pm.test('create without required 'projectId' refused synchronously (400/403/404) — no Operation is minted', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 403, 404]));"
                 ]
               }
             }
@@ -12987,7 +12939,7 @@
           ]
         },
         {
-          "name": "poll-op-988",
+          "name": "poll-op-989",
           "request": {
             "method": "GET",
             "header": [
@@ -13042,7 +12994,7 @@
           ]
         },
         {
-          "name": "get-1-rya583",
+          "name": "get-1-rya580",
           "request": {
             "method": "GET",
             "header": [
@@ -13093,7 +13045,7 @@
           ]
         },
         {
-          "name": "lst-includes-lst584",
+          "name": "lst-includes-lst581",
           "request": {
             "method": "GET",
             "header": [
@@ -13195,7 +13147,7 @@
           ]
         },
         {
-          "name": "poll-op-989",
+          "name": "poll-op-990",
           "request": {
             "method": "GET",
             "header": [
@@ -13326,7 +13278,7 @@
           ]
         },
         {
-          "name": "poll-op-990",
+          "name": "poll-op-991",
           "request": {
             "method": "GET",
             "header": [
@@ -13581,7 +13533,7 @@
           ]
         },
         {
-          "name": "poll-op-991",
+          "name": "poll-op-992",
           "request": {
             "method": "GET",
             "header": [
@@ -13636,7 +13588,7 @@
           ]
         },
         {
-          "name": "get-rya585",
+          "name": "get-rya582",
           "request": {
             "method": "GET",
             "header": [
@@ -13689,7 +13641,7 @@
           ]
         },
         {
-          "name": "cleanup-addr-rya586",
+          "name": "cleanup-addr-rya583",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13744,7 +13696,7 @@
           ]
         },
         {
-          "name": "poll-op-992",
+          "name": "poll-op-993",
           "request": {
             "method": "GET",
             "header": [
@@ -13911,7 +13863,7 @@
           ]
         },
         {
-          "name": "poll-op-993",
+          "name": "poll-op-994",
           "request": {
             "method": "GET",
             "header": [
@@ -14127,7 +14079,7 @@
           ]
         },
         {
-          "name": "poll-op-994",
+          "name": "poll-op-995",
           "request": {
             "method": "GET",
             "header": [
@@ -14182,7 +14134,7 @@
           ]
         },
         {
-          "name": "get-1-rya587",
+          "name": "get-1-rya584",
           "request": {
             "method": "GET",
             "header": [
@@ -14237,7 +14189,7 @@
           ]
         },
         {
-          "name": "del-1-rya588",
+          "name": "del-1-rya585",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14292,7 +14244,7 @@
           ]
         },
         {
-          "name": "poll-op-995",
+          "name": "poll-op-996",
           "request": {
             "method": "GET",
             "header": [
@@ -14400,7 +14352,7 @@
           ]
         },
         {
-          "name": "poll-op-996",
+          "name": "poll-op-997",
           "request": {
             "method": "GET",
             "header": [
@@ -14455,7 +14407,7 @@
           ]
         },
         {
-          "name": "get-2-rya589",
+          "name": "get-2-rya586",
           "request": {
             "method": "GET",
             "header": [
@@ -14506,7 +14458,7 @@
           ]
         },
         {
-          "name": "cleanup-addr2-rya590",
+          "name": "cleanup-addr2-rya587",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14561,7 +14513,7 @@
           ]
         },
         {
-          "name": "poll-op-997",
+          "name": "poll-op-998",
           "request": {
             "method": "GET",
             "header": [
@@ -14728,7 +14680,7 @@
           ]
         },
         {
-          "name": "poll-op-998",
+          "name": "poll-op-999",
           "request": {
             "method": "GET",
             "header": [
@@ -14944,7 +14896,7 @@
           ]
         },
         {
-          "name": "poll-op-999",
+          "name": "poll-op-1000",
           "request": {
             "method": "GET",
             "header": [
@@ -15213,7 +15165,7 @@
           ]
         },
         {
-          "name": "poll-op-1000",
+          "name": "poll-op-1001",
           "request": {
             "method": "GET",
             "header": [
@@ -15416,7 +15368,7 @@
           ]
         },
         {
-          "name": "poll-op-1001",
+          "name": "poll-op-1002",
           "request": {
             "method": "GET",
             "header": [
@@ -15471,7 +15423,7 @@
           ]
         },
         {
-          "name": "get-first-ip-rya591",
+          "name": "get-first-ip-rya588",
           "request": {
             "method": "GET",
             "header": [
@@ -15565,7 +15517,7 @@
           ]
         },
         {
-          "name": "poll-op-1002",
+          "name": "poll-op-1003",
           "request": {
             "method": "GET",
             "header": [
@@ -15673,7 +15625,7 @@
           ]
         },
         {
-          "name": "poll-op-1003",
+          "name": "poll-op-1004",
           "request": {
             "method": "GET",
             "header": [
@@ -15728,7 +15680,7 @@
           ]
         },
         {
-          "name": "get-second-ip-rya592",
+          "name": "get-second-ip-rya589",
           "request": {
             "method": "GET",
             "header": [
@@ -15826,7 +15778,7 @@
           ]
         },
         {
-          "name": "poll-op-1004",
+          "name": "poll-op-1005",
           "request": {
             "method": "GET",
             "header": [
@@ -15940,7 +15892,7 @@
           ]
         },
         {
-          "name": "poll-op-1005",
+          "name": "poll-op-1006",
           "request": {
             "method": "GET",
             "header": [
@@ -15995,7 +15947,7 @@
           ]
         },
         {
-          "name": "del-first-rya593",
+          "name": "del-first-rya590",
           "request": {
             "method": "DELETE",
             "header": [
@@ -16050,7 +16002,7 @@
           ]
         },
         {
-          "name": "poll-op-1006",
+          "name": "poll-op-1007",
           "request": {
             "method": "GET",
             "header": [

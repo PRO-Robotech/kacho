@@ -186,7 +186,7 @@
           ]
         },
         {
-          "name": "poll-op-1173",
+          "name": "poll-op-1174",
           "request": {
             "method": "GET",
             "header": [
@@ -241,7 +241,7 @@
           ]
         },
         {
-          "name": "get-confirms-rya677",
+          "name": "get-confirms-rya674",
           "request": {
             "method": "GET",
             "header": [
@@ -389,7 +389,7 @@
           ]
         },
         {
-          "name": "poll-op-1174",
+          "name": "poll-op-1175",
           "request": {
             "method": "GET",
             "header": [
@@ -444,7 +444,7 @@
           ]
         },
         {
-          "name": "get-no-vpnid-rya678",
+          "name": "get-no-vpnid-rya675",
           "request": {
             "method": "GET",
             "header": [
@@ -703,7 +703,7 @@
           ]
         },
         {
-          "name": "poll-op-1175",
+          "name": "poll-op-1176",
           "request": {
             "method": "GET",
             "header": [
@@ -1211,7 +1211,7 @@
           ]
         },
         {
-          "name": "poll-op-1176",
+          "name": "poll-op-1177",
           "request": {
             "method": "GET",
             "header": [
@@ -1266,7 +1266,7 @@
           ]
         },
         {
-          "name": "update-desc-rya679",
+          "name": "update-desc-rya676",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1330,7 +1330,7 @@
           ]
         },
         {
-          "name": "poll-op-1177",
+          "name": "poll-op-1178",
           "request": {
             "method": "GET",
             "header": [
@@ -1385,7 +1385,7 @@
           ]
         },
         {
-          "name": "verify-rya680",
+          "name": "verify-rya677",
           "request": {
             "method": "GET",
             "header": [
@@ -1436,7 +1436,7 @@
           ]
         },
         {
-          "name": "cleanup-rya681",
+          "name": "cleanup-rya678",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1749,7 +1749,7 @@
           ]
         },
         {
-          "name": "poll-op-1178",
+          "name": "poll-op-1179",
           "request": {
             "method": "GET",
             "header": [
@@ -1935,7 +1935,7 @@
           ]
         },
         {
-          "name": "poll-op-1179",
+          "name": "poll-op-1180",
           "request": {
             "method": "GET",
             "header": [
@@ -2124,7 +2124,7 @@
           ]
         },
         {
-          "name": "poll-op-1180",
+          "name": "poll-op-1181",
           "request": {
             "method": "GET",
             "header": [
@@ -2315,7 +2315,7 @@
           ]
         },
         {
-          "name": "poll-op-1181",
+          "name": "poll-op-1182",
           "request": {
             "method": "GET",
             "header": [
@@ -2943,7 +2943,7 @@
           ]
         },
         {
-          "name": "poll-op-1182",
+          "name": "poll-op-1183",
           "request": {
             "method": "GET",
             "header": [
@@ -2998,7 +2998,7 @@
           ]
         },
         {
-          "name": "delete-happy-rya682",
+          "name": "delete-happy-rya679",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3053,7 +3053,7 @@
           ]
         },
         {
-          "name": "poll-op-1183",
+          "name": "poll-op-1184",
           "request": {
             "method": "GET",
             "header": [
@@ -4404,7 +4404,7 @@
           ]
         },
         {
-          "name": "cleanup-rya683",
+          "name": "cleanup-rya680",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4513,7 +4513,7 @@
           ]
         },
         {
-          "name": "poll-op-1184",
+          "name": "poll-op-1185",
           "request": {
             "method": "GET",
             "header": [
@@ -4568,7 +4568,7 @@
           ]
         },
         {
-          "name": "patch-rya684",
+          "name": "patch-rya681",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4632,7 +4632,7 @@
           ]
         },
         {
-          "name": "poll-op-1185",
+          "name": "poll-op-1186",
           "request": {
             "method": "GET",
             "header": [
@@ -4687,7 +4687,7 @@
           ]
         },
         {
-          "name": "verify-rya685",
+          "name": "verify-rya682",
           "request": {
             "method": "GET",
             "header": [
@@ -4738,7 +4738,7 @@
           ]
         },
         {
-          "name": "cleanup-rya686",
+          "name": "cleanup-rya683",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4792,7 +4792,7 @@
           ]
         },
         {
-          "name": "poll-op-1186",
+          "name": "poll-op-1187",
           "request": {
             "method": "GET",
             "header": [
@@ -4906,7 +4906,7 @@
           ]
         },
         {
-          "name": "poll-op-1187",
+          "name": "poll-op-1188",
           "request": {
             "method": "GET",
             "header": [
@@ -4961,7 +4961,7 @@
           ]
         },
         {
-          "name": "patch-rya687",
+          "name": "patch-rya684",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5025,7 +5025,7 @@
           ]
         },
         {
-          "name": "poll-op-1188",
+          "name": "poll-op-1189",
           "request": {
             "method": "GET",
             "header": [
@@ -5080,7 +5080,7 @@
           ]
         },
         {
-          "name": "verify-rya688",
+          "name": "verify-rya685",
           "request": {
             "method": "GET",
             "header": [
@@ -5131,7 +5131,7 @@
           ]
         },
         {
-          "name": "cleanup-rya689",
+          "name": "cleanup-rya686",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5185,7 +5185,7 @@
           ]
         },
         {
-          "name": "poll-op-1189",
+          "name": "poll-op-1190",
           "request": {
             "method": "GET",
             "header": [
@@ -5299,7 +5299,7 @@
           ]
         },
         {
-          "name": "poll-op-1190",
+          "name": "poll-op-1191",
           "request": {
             "method": "GET",
             "header": [
@@ -5354,7 +5354,7 @@
           ]
         },
         {
-          "name": "patch-rya690",
+          "name": "patch-rya687",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5418,7 +5418,7 @@
           ]
         },
         {
-          "name": "poll-op-1191",
+          "name": "poll-op-1192",
           "request": {
             "method": "GET",
             "header": [
@@ -5473,7 +5473,7 @@
           ]
         },
         {
-          "name": "verify-rya691",
+          "name": "verify-rya688",
           "request": {
             "method": "GET",
             "header": [
@@ -5525,7 +5525,7 @@
           ]
         },
         {
-          "name": "cleanup-rya692",
+          "name": "cleanup-rya689",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5579,7 +5579,7 @@
           ]
         },
         {
-          "name": "poll-op-1192",
+          "name": "poll-op-1193",
           "request": {
             "method": "GET",
             "header": [
@@ -5933,7 +5933,7 @@
           ]
         },
         {
-          "name": "poll-op-1193",
+          "name": "poll-op-1194",
           "request": {
             "method": "GET",
             "header": [
@@ -5988,7 +5988,7 @@
           ]
         },
         {
-          "name": "patch-multi-rya693",
+          "name": "patch-multi-rya690",
           "request": {
             "method": "PATCH",
             "header": [
@@ -6052,7 +6052,7 @@
           ]
         },
         {
-          "name": "poll-op-1194",
+          "name": "poll-op-1195",
           "request": {
             "method": "GET",
             "header": [
@@ -6107,7 +6107,7 @@
           ]
         },
         {
-          "name": "verify-all-rya694",
+          "name": "verify-all-rya691",
           "request": {
             "method": "GET",
             "header": [
@@ -6162,7 +6162,7 @@
           ]
         },
         {
-          "name": "cleanup-rya695",
+          "name": "cleanup-rya692",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6216,7 +6216,7 @@
           ]
         },
         {
-          "name": "poll-op-1195",
+          "name": "poll-op-1196",
           "request": {
             "method": "GET",
             "header": [
@@ -6330,7 +6330,7 @@
           ]
         },
         {
-          "name": "poll-op-1196",
+          "name": "poll-op-1197",
           "request": {
             "method": "GET",
             "header": [
@@ -6460,7 +6460,7 @@
           ]
         },
         {
-          "name": "poll-op-1197",
+          "name": "poll-op-1198",
           "request": {
             "method": "GET",
             "header": [
@@ -6574,7 +6574,7 @@
           ]
         },
         {
-          "name": "poll-op-1198",
+          "name": "poll-op-1199",
           "request": {
             "method": "GET",
             "header": [
@@ -6629,7 +6629,7 @@
           ]
         },
         {
-          "name": "list-filtered-lst696",
+          "name": "list-filtered-lst693",
           "request": {
             "method": "GET",
             "header": [
@@ -6682,7 +6682,7 @@
           ]
         },
         {
-          "name": "cleanup-rya697",
+          "name": "cleanup-rya694",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6736,7 +6736,7 @@
           ]
         },
         {
-          "name": "poll-op-1199",
+          "name": "poll-op-1200",
           "request": {
             "method": "GET",
             "header": [
@@ -7208,7 +7208,7 @@
           ]
         },
         {
-          "name": "poll-op-1200",
+          "name": "poll-op-1201",
           "request": {
             "method": "GET",
             "header": [
@@ -7350,7 +7350,7 @@
           ]
         },
         {
-          "name": "poll-op-1201",
+          "name": "poll-op-1202",
           "request": {
             "method": "GET",
             "header": [
@@ -7464,7 +7464,7 @@
           ]
         },
         {
-          "name": "poll-op-1202",
+          "name": "poll-op-1203",
           "request": {
             "method": "GET",
             "header": [
@@ -7519,7 +7519,7 @@
           ]
         },
         {
-          "name": "patch-name-only-rya698",
+          "name": "patch-name-only-rya695",
           "request": {
             "method": "PATCH",
             "header": [
@@ -7583,7 +7583,7 @@
           ]
         },
         {
-          "name": "poll-op-1203",
+          "name": "poll-op-1204",
           "request": {
             "method": "GET",
             "header": [
@@ -7638,7 +7638,7 @@
           ]
         },
         {
-          "name": "verify-rya699",
+          "name": "verify-rya696",
           "request": {
             "method": "GET",
             "header": [
@@ -7692,7 +7692,7 @@
           ]
         },
         {
-          "name": "cleanup-rya700",
+          "name": "cleanup-rya697",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7746,7 +7746,7 @@
           ]
         },
         {
-          "name": "poll-op-1204",
+          "name": "poll-op-1205",
           "request": {
             "method": "GET",
             "header": [
@@ -7860,7 +7860,7 @@
           ]
         },
         {
-          "name": "poll-op-1205",
+          "name": "poll-op-1206",
           "request": {
             "method": "GET",
             "header": [
@@ -7915,7 +7915,7 @@
           ]
         },
         {
-          "name": "get-timed-rya701",
+          "name": "get-timed-rya698",
           "request": {
             "method": "GET",
             "header": [
@@ -8005,7 +8005,7 @@
           ]
         },
         {
-          "name": "poll-op-1206",
+          "name": "poll-op-1207",
           "request": {
             "method": "GET",
             "header": [
@@ -8513,7 +8513,7 @@
           ]
         },
         {
-          "name": "poll-op-1207",
+          "name": "poll-op-1208",
           "request": {
             "method": "GET",
             "header": [
@@ -8621,7 +8621,7 @@
           ]
         },
         {
-          "name": "poll-op-1208",
+          "name": "poll-op-1209",
           "request": {
             "method": "GET",
             "header": [
@@ -8755,7 +8755,7 @@
           ]
         },
         {
-          "name": "poll-op-1209",
+          "name": "poll-op-1210",
           "request": {
             "method": "GET",
             "header": [
@@ -8849,7 +8849,7 @@
           ]
         },
         {
-          "name": "poll-op-1210",
+          "name": "poll-op-1211",
           "request": {
             "method": "GET",
             "header": [
@@ -8963,7 +8963,7 @@
           ]
         },
         {
-          "name": "poll-op-1211",
+          "name": "poll-op-1212",
           "request": {
             "method": "GET",
             "header": [
@@ -9071,7 +9071,7 @@
           ]
         },
         {
-          "name": "poll-op-1212",
+          "name": "poll-op-1213",
           "request": {
             "method": "GET",
             "header": [
@@ -9205,7 +9205,7 @@
           ]
         },
         {
-          "name": "poll-op-1213",
+          "name": "poll-op-1214",
           "request": {
             "method": "GET",
             "header": [
@@ -9299,7 +9299,7 @@
           ]
         },
         {
-          "name": "poll-op-1214",
+          "name": "poll-op-1215",
           "request": {
             "method": "GET",
             "header": [
@@ -9413,7 +9413,7 @@
           ]
         },
         {
-          "name": "poll-op-1215",
+          "name": "poll-op-1216",
           "request": {
             "method": "GET",
             "header": [
@@ -9521,7 +9521,7 @@
           ]
         },
         {
-          "name": "poll-op-1216",
+          "name": "poll-op-1217",
           "request": {
             "method": "GET",
             "header": [
@@ -9655,7 +9655,7 @@
           ]
         },
         {
-          "name": "poll-op-1217",
+          "name": "poll-op-1218",
           "request": {
             "method": "GET",
             "header": [
@@ -9749,7 +9749,7 @@
           ]
         },
         {
-          "name": "poll-op-1218",
+          "name": "poll-op-1219",
           "request": {
             "method": "GET",
             "header": [
@@ -9863,7 +9863,7 @@
           ]
         },
         {
-          "name": "poll-op-1219",
+          "name": "poll-op-1220",
           "request": {
             "method": "GET",
             "header": [
@@ -9996,7 +9996,7 @@
           ]
         },
         {
-          "name": "poll-op-1220",
+          "name": "poll-op-1221",
           "request": {
             "method": "GET",
             "header": [
@@ -10184,7 +10184,7 @@
           ]
         },
         {
-          "name": "poll-op-1221",
+          "name": "poll-op-1222",
           "request": {
             "method": "GET",
             "header": [
@@ -10239,7 +10239,7 @@
           ]
         },
         {
-          "name": "get-default-sg-id-rya702",
+          "name": "get-default-sg-id-rya699",
           "request": {
             "method": "GET",
             "header": [
@@ -10296,7 +10296,7 @@
           ]
         },
         {
-          "name": "get-default-sg-alive-rya703",
+          "name": "get-default-sg-alive-rya700",
           "request": {
             "method": "GET",
             "header": [
@@ -10387,7 +10387,7 @@
           ]
         },
         {
-          "name": "poll-op-1222",
+          "name": "poll-op-1223",
           "request": {
             "method": "GET",
             "header": [
@@ -10575,7 +10575,7 @@
           ]
         },
         {
-          "name": "poll-op-1223",
+          "name": "poll-op-1224",
           "request": {
             "method": "GET",
             "header": [
@@ -10683,7 +10683,7 @@
           ]
         },
         {
-          "name": "poll-op-1224",
+          "name": "poll-op-1225",
           "request": {
             "method": "GET",
             "header": [
@@ -10791,7 +10791,7 @@
           ]
         },
         {
-          "name": "poll-op-1225",
+          "name": "poll-op-1226",
           "request": {
             "method": "GET",
             "header": [
@@ -10926,7 +10926,7 @@
           ]
         },
         {
-          "name": "poll-op-1226",
+          "name": "poll-op-1227",
           "request": {
             "method": "GET",
             "header": [
@@ -11021,7 +11021,7 @@
           ]
         },
         {
-          "name": "poll-op-1227",
+          "name": "poll-op-1228",
           "request": {
             "method": "GET",
             "header": [
@@ -11116,7 +11116,7 @@
           ]
         },
         {
-          "name": "poll-op-1228",
+          "name": "poll-op-1229",
           "request": {
             "method": "GET",
             "header": [
@@ -11230,7 +11230,7 @@
           ]
         },
         {
-          "name": "poll-op-1229",
+          "name": "poll-op-1230",
           "request": {
             "method": "GET",
             "header": [
@@ -11363,7 +11363,7 @@
           ]
         },
         {
-          "name": "poll-op-1230",
+          "name": "poll-op-1231",
           "request": {
             "method": "GET",
             "header": [
@@ -11458,7 +11458,7 @@
       ]
     },
     {
-      "name": "NET-CR-VAL-REQ-PROJECTID — Create без required поля 'projectId' → 400 InvalidArgument (unscoped → 403 authz-first)",
+      "name": "NET-CR-VAL-REQ-PROJECTID — Create без required поля 'projectId' → отказ: sync 403 (unscoped, authz-first)",
       "description": "class:VAL | priority:P0",
       "item": [
         {
@@ -11498,56 +11498,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 200, 403, 404]));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "NET-CR-VAL-REQ-NAME — Create без required поля 'name' → 400 InvalidArgument (unscoped → 403 authz-first)",
-      "description": "class:VAL | priority:P0",
-      "item": [
-        {
-          "name": "cr-no-name",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/vpc/v1/networks",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "vpc",
-                "v1",
-                "networks"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([400, 200, 404]));"
+                  "pm.environment.unset('opId');",
+                  "pm.test('create without required 'projectId' refused synchronously (400/403/404) — no Operation is minted', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 403, 404]));"
                 ]
               }
             }
@@ -12109,7 +12061,7 @@
           ]
         },
         {
-          "name": "poll-op-1231",
+          "name": "poll-op-1232",
           "request": {
             "method": "GET",
             "header": [
@@ -12164,7 +12116,7 @@
           ]
         },
         {
-          "name": "get-1-rya704",
+          "name": "get-1-rya701",
           "request": {
             "method": "GET",
             "header": [
@@ -12215,7 +12167,7 @@
           ]
         },
         {
-          "name": "lst-includes-lst705",
+          "name": "lst-includes-lst702",
           "request": {
             "method": "GET",
             "header": [
@@ -12317,7 +12269,7 @@
           ]
         },
         {
-          "name": "poll-op-1232",
+          "name": "poll-op-1233",
           "request": {
             "method": "GET",
             "header": [
@@ -12448,7 +12400,7 @@
           ]
         },
         {
-          "name": "poll-op-1233",
+          "name": "poll-op-1234",
           "request": {
             "method": "GET",
             "header": [

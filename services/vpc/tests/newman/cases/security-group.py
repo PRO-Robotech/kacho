@@ -808,10 +808,12 @@ CASES.append(Case(
     ],
 ))
 
+# `name` снят из списка — см. разбор у NET (контракт допускает пустое имя,
+# `SG-CR-VAL-NAME-NULL` утверждает обратное тому, что обещал этот кейс).
 for c in required_fields_matrix("SG", "/vpc/v1/securityGroups",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
      "name": "sg-req-{{runId}}", "ruleSpecs": []},
-    ["projectId", "networkId", "name"]):
+    ["projectId", "networkId"]):
     CASES.append(_sg_wrap("SG", "req", c))
 CASES.extend(immutable_fields_matrix("SG", "/vpc/v1/securityGroups",
     ["project_id", "network_id"]))

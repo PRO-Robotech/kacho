@@ -378,10 +378,12 @@ CASES.append(Case(
                 test_script=["pm.test('non-2xx', () => pm.expect(pm.response.code).to.be.oneOf([400, 404]));"])],
 ))
 
+# `name` снят из списка — см. разбор у NET (контракт допускает пустое имя,
+# `GW-CR-VAL-NAME-NULL` утверждает обратное тому, что обещал этот кейс).
 CASES.extend(required_fields_matrix("GW", "/vpc/v1/gateways",
     {"projectId": "{{_suiteProjectId}}", "name": "gw-req-{{runId}}",
      "sharedEgressGatewaySpec": {}},
-    ["projectId", "name"]))
+    ["projectId"]))
 CASES.extend(immutable_fields_matrix("GW", "/vpc/v1/gateways",
     ["project_id"]))
 

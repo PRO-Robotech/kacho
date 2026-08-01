@@ -498,10 +498,12 @@ CASES.append(Case(
     ],
 ))
 
+# `name` снят из списка — см. разбор у NET (контракт допускает пустое имя,
+# `RT-CR-VAL-NAME-NULL` утверждает обратное тому, что обещал этот кейс).
 for c in required_fields_matrix("RT", "/vpc/v1/routeTables",
     {"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
      "name": "rt-req-{{runId}}", "staticRoutes": []},
-    ["projectId", "networkId", "name"]):
+    ["projectId", "networkId"]):
     CASES.append(_rt_wrap("RT", "req", c))
 CASES.extend(immutable_fields_matrix("RT", "/vpc/v1/routeTables",
     ["project_id", "network_id"]))

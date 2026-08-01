@@ -791,10 +791,12 @@ CASES.append(Case(
 ))
 
 # === Required + Immutable для Address ===
+# `name` снят из списка — см. разбор у NET (контракт допускает пустое имя,
+# `ADR-CR-VAL-NAME-NULL` утверждает обратное тому, что обещал этот кейс).
 CASES.extend(required_fields_matrix("ADR", "/vpc/v1/addresses",
     {"projectId": "{{_suiteProjectId}}", "name": "adr-req-{{runId}}",
      "externalIpv4AddressSpec": {"zoneId": "{{existingZoneId}}"}},
-    ["projectId", "name"]))  # ipv4 spec — oneof, не required
+    ["projectId"]))  # ipv4 spec — oneof, не required
 CASES.extend(immutable_fields_matrix("ADR", "/vpc/v1/addresses",
     ["project_id", "external_ipv4_address_spec", "internal_ipv4_address_spec"]))
 

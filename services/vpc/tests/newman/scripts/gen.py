@@ -252,6 +252,67 @@ def assert_absent_id_rejected() -> List[str]:
     ]
 
 
+def assert_refused_sync_or_async(what: str, sync_codes=(400,), async_lane: bool = True) -> List[str]:
+    """Запрос под проверкой ОТВЕРГНУТ — той из двух законных полос, которая решает.
+
+    Мутации Kachō отвечают Operation (ban #9), поэтому у отказа две формы, и кейс,
+    называющий вход незаконным, обязан принимать обе — И БОЛЬШЕ НИЧЕГО:
+
+      * синхронный валидатор отвергает до появления Operation → `400 INVALID_ARGUMENT`;
+      * отвергает воркер (нерезолвящийся peer, ограничение БД, страж состояния) →
+        `200` с Operation, которая завершается С ОШИБКОЙ.
+
+    Что это заменяет: `oneOf([200, 400])` и ничего после него. В такой записи вторая
+    полоса не проверяется вовсе — `200` проходит сам по себе, то есть кейс
+    удовлетворяется тем, что продукт ПРИНЯЛ ровно тот вход, ради доказательства отказа
+    на котором он написан, а регрессия, снявшая проверку, оставляет его зелёным. Это
+    не терпимость к порядку, это отсутствие утверждения.
+
+    Ставить в паре с `poll_operation_until_done(must_fail=True)` СЛЕДУЮЩИМ шагом — он и
+    заявляет вторую полосу. На синхронной полосе `opId` здесь снимается, поэтому у
+    поллера нет предмета и он ничего не утверждает; на асинхронной — держит Operation к
+    ответу. `what` называет вход в тексте утверждения, чтобы падение было адресным.
+
+    `sync_codes` расширяет ПЕРВУЮ полосу там, где порядок действительно допускает больше
+    одного отказа: край вправе отказать до того, как бэкенд посмотрит в тело (`403`), а
+    нерезолвящийся ресурс читается как отсутствующий (`404`). Каждая запись обязана быть
+    ОТКАЗОМ; `200` подставляет сам помощник как асинхронную полосу, и больше он не место
+    нигде.
+
+    `async_lane=False` — ВТОРОЙ ПОЛОСЫ ДЛЯ ЭТОГО ВХОДА НЕ СУЩЕСТВУЕТ, поэтому назвать её
+    значило бы пообещать то, чего продукт нарушить не может. Применять только там, где
+    Operation не может быть отчеканена вовсе, и говорить почему на месте вызова.
+    Замеренный случай — вход без `projectId`: это область, которую край резолвит для
+    anti-BOLA-проверки, поэтому запрос без неё отвергается ДО чтения тела бэкендом, и
+    полосы, на которой воркер отказал бы позже, просто нет. Если полосу объявить всё
+    равно, `opId` останется неустановленным, а парный поллер обратится к `{{opId}}` как
+    к литералу.
+
+    Заимствовано без изменения смысла из `services/nlb/tests/newman/scripts/gen.py`
+    (там же — разбор, из которого форма выведена)."""
+    codes = ", ".join(str(c) for c in ((*sync_codes, 200) if async_lane else sync_codes))
+    named = "/".join(str(c) for c in sync_codes)
+    if not async_lane:
+        return [
+            "pm.environment.unset('opId');",
+            f"pm.test('{what} refused synchronously ({named}) — no Operation is minted', () => "
+            f"  pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([{codes}]));",
+        ]
+    return [
+        "pm.environment.unset('opId');",
+        f"pm.test('{what} refused (sync {named}, or an Operation that fails)', () => "
+        f"  pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([{codes}]));",
+        "if (pm.response.code === 200) {",
+        "  const j = pm.response.json();",
+        # Принятая мутация, не вернувшая Operation, не оставляет предмета, который можно
+        # призвать к ответу: отказ утверждался бы о том, чего не существует.
+        "  pm.test('accepted response carries the Operation that must then fail', () => "
+        "    pm.expect(j.id, pm.response.text()).to.be.a('string'));",
+        "  if (j.id) pm.environment.set('opId', j.id);",
+        "}",
+    ]
+
+
 def save_from_response(jsonpath: str, env_var: str) -> List[str]:
     """Сохранить значение из response в env."""
     return [
@@ -1155,35 +1216,80 @@ def headers_content_type_block(prefix, create_path, body_create):
 
 
 def required_fields_matrix(prefix, create_path, body_full, required_field_names):
-    """Для каждого required-поля: убрать его из body → ожидать 400 InvalidArgument.
+    """Для каждого required-поля: убрать его из body → создание ОТВЕРГНУТО.
 
     body_full — полное valid body (с всеми required полями).
-    required_field_names — список имен required полей (как в proto).
+    required_field_names — список имен ДЕЙСТВИТЕЛЬНО обязательных полей.
+
+    # Что сюда класть нельзя
+
+    Поле, которое контракт допускает пустым, обязательным не является, и кейс
+    «убери его → отказ» утверждает о продукте неправду. Такой кейс мог зеленеть
+    только пока принимал успех (см. ниже); в паре с поллером он краснеет на
+    ПРАВИЛЬНОМ поведении, то есть требует вернуть терпимость. Не возвращать —
+    снимать претензию.
+
+    Мерка проста и не требует стенда: у поля есть проверка, отвергающая пустое
+    значение (`if x == "" → InvalidArgument`), либо её нет. Прецедент в этом же
+    файле: `v4CidrBlocks` уже снят из списка подсети как поле, которого в
+    сообщении запроса нет вовсе.
+
+    # Что здесь было и почему это не было утверждением
+
+    Прежняя запись — `oneOf([200, 400, 403, 404])` под именем `rejected`. Заголовок
+    кейса обещает отказ, а `200` в списке означает, что создание ПРИНЯТО: кейс
+    удовлетворялся ровно тем исходом, ради опровержения которого написан, и снятие
+    проверки required-поля оставило бы все шестнадцать его вхождений зелёными.
+    Оправдание в комментарии («поле проверяется async, ошибка придёт в op.error») само
+    по себе верно — но за шагом НЕ СЛЕДОВАЛО НИЧЕГО, что бы эту `op.error` прочло.
+    Названная полоса не проверялась; принималось голое «принято».
+
+    # Форма, к которой приведено
+
+    `assert_refused_sync_or_async` + ОБЯЗАТЕЛЬНЫЙ следующий шаг
+    `poll_operation_until_done(must_fail=True)` — образец взят из
+    `services/nlb/tests/newman/scripts/gen.py`. Теперь `200` законен ровно в одном
+    качестве: как расписка на Operation, которая обязана завершиться с ошибкой, и
+    поллер эту ошибку требует. Синхронный отказ снимает `opId`, и поллер молчит, не
+    имея предмета.
+
+    # Две полосы и почему у области их одна
+
+    `projectId` — область, которую край резолвит для anti-BOLA-проверки: запрос без неё
+    UNSCOPED, край отвечает fail-closed ДО того, как бэкенд посмотрит в тело
+    (authz-first, security.md; паритет с `assert_absent_id_rejected`). Значит Operation
+    не чеканится вовсе и асинхронной полосы для этого входа НЕТ — `async_lane=False`.
+    Объявить её значило бы пообещать то, чего продукт нарушить не может, а парный поллер
+    обратился бы к `{{opId}}` как к литералу.
+
+    Остальные поля: запрос ЗАСКОУПЛЕН, доходит до бэкенда — отказ либо синхронный `400`,
+    либо на Operation. Обе полосы реальны, поэтому обе и названы.
     """
     cases = []
     for fld in required_field_names:
         body_missing = {k: v for k, v in body_full.items() if k != fld}
-        # projectId is the authz SCOPE field: a create missing it is UNSCOPED, so the
-        # api-gateway scope_extractor yields `project:*` → fail-closed 403 BEFORE the
-        # backend's required-field validation ever runs (authz-first, security.md;
-        # parity with assert_absent_id_rejected / compute 32be094). Tolerate 403 for
-        # the scope field only — for non-scope fields projectId is present, the request
-        # IS scoped, and 403 would be a genuine unexpected deny.
-        codes = "[400, 200, 403, 404]" if fld == "projectId" else "[400, 200, 404]"
+        scope_field = fld == "projectId"
+        # 400 — sync InvalidArgument (нет required-поля);
+        # 403 — только для scope-поля: unscoped → authz-first fail-closed;
+        # 404 — нерезолвящийся родитель читается как отсутствующий.
+        # `200` в этот список НЕ входит: его подставляет помощник как асинхронную
+        # полосу, и только вместе с поллером, который требует ошибку.
+        sync_codes = (400, 403, 404) if scope_field else (400, 404)
+        steps = [Step(name=f"cr-no-{fld}", method="POST", path=create_path,
+                      body=body_missing,
+                      test_script=assert_refused_sync_or_async(
+                          f"create without required '{fld}'",
+                          sync_codes=sync_codes,
+                          async_lane=not scope_field))]
+        if not scope_field:
+            steps.append(poll_operation_until_done(must_fail=True))
         cases.append(Case(
             id=f"{prefix}-CR-VAL-REQ-{fld.upper().replace('_','-')}",
-            title=f"Create без required поля '{fld}' → 400 InvalidArgument (unscoped → 403 authz-first)",
+            title=(f"Create без required поля '{fld}' → отказ: sync 403 (unscoped, authz-first)"
+                   if scope_field else
+                   f"Create без required поля '{fld}' → отказ: sync 400 либо Operation с ошибкой"),
             classes=["VAL"], priority="P0",
-            steps=[Step(name=f"cr-no-{fld}", method="POST", path=create_path,
-                        body=body_missing,
-                        test_script=[
-                            # 400 — sync InvalidArgument (missing required field).
-                            # 200 — поле проверяется async (op.error code=3/5).
-                            # 403 — missing projectId → unscoped → authz-first fail-closed.
-                            # 404 — body использует garbage parent id (PE: networkId={{garbageVpcId}});
-                            #       sync existence-check parent'а отрабатывает раньше → NotFound.
-                            f"pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf({codes}));",
-                        ])],
+            steps=steps,
         ))
     return cases
 
@@ -1825,7 +1931,7 @@ def retry_until_absent(step: Step, still_present_expr: str, budget: int = 25,
                    test_script=guard + list(step.test_script))
 
 
-def poll_operation_until_done() -> Step:
+def poll_operation_until_done(must_fail: bool = False) -> Step:
     """Reusable poll step с retry-на-not-done через setNextRequest.
     До 30 попыток с ~500ms задержкой между ними (≈15s покрытия async-op tail, Koren #1),
     потом fail если done остался false.
@@ -1845,8 +1951,23 @@ def poll_operation_until_done() -> Step:
     `GET /operations/{id}` тихо засчитывался как пройденный шаг, а исход мутации, ради
     которой шаг существует, оставался НЕИЗВЕСТНЫМ. Неизвестный исход — не то же самое,
     что успешный.
+
+    `must_fail` — ЗЕРКАЛЬНОЕ утверждение для кейса, предмет которого — ОТКАЗ, решённый
+    воркером, а не синхронным валидатором. Там законные формы — `400` до появления
+    Operation либо `200` и Operation, завершившаяся С ОШИБКОЙ; `200` сам по себе не
+    является ни той, ни другой. Голый `poll_operation_until_done()` после такого шага
+    утверждает только `done`, чему УСПЕШНАЯ операция удовлетворяет ровно так же, поэтому
+    отказ, ради которого кейс назван, не проверяется вовсе. Ставится в паре с
+    `assert_refused_sync_or_async`. Никогда не применять там, где принятие законно — тогда
+    шаг падал бы на корректном поведении.
     """
     _POLL_SEQ[0] += 1
+    tail: List[str] = []
+    if must_fail:
+        tail = [
+            "pm.test('operation refused the request (carries an error)', () => "
+            "  pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
+        ]
     return Step(
         name=f"poll-op-{_POLL_SEQ[0]}",
         method="GET",
@@ -1898,6 +2019,7 @@ def poll_operation_until_done() -> Step:
             "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
             "else pm.environment.unset('lastOpError');",
             "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+            *tail,
         ],
     )
 
@@ -2157,6 +2279,7 @@ def load_cases_module(path: Path):
     mod.assert_field_violation = assert_field_violation
     mod.assert_unscoped_rejected = assert_unscoped_rejected
     mod.assert_absent_id_rejected = assert_absent_id_rejected
+    mod.assert_refused_sync_or_async = assert_refused_sync_or_async
     mod.save_from_response = save_from_response
     mod.assert_operation_envelope = assert_operation_envelope
     mod.SUBNET_V4_CIDRS = SUBNET_V4_CIDRS
