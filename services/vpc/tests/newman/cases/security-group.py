@@ -785,11 +785,12 @@ CASES.append(Case(
              test_script=[
                  "const j = pm.response.json();",
                  "pm.test('sg delete op completed', () => pm.expect(j.done).to.eql(true));",
-                 # Persistent-RED (rule #13): SG.Delete SG'а, прилинкованного к NIC через
-                 # security_group_ids[], ОБЯЗАНА отвергаться FAILED_PRECONDITION (code 9).
-                 # Пока within-service refcheck на уровне БД не реализован (issue #27),
-                 # SG.Delete проходит и оставляет dangling ref → этот assert КРАСНЫЙ.
-                 # НИКАКОГО pm.test.skip — безусловная проверка (rule #13 запрещает skip).
+                 # SG.Delete SG'а, прилинкованного к NIC через security_group_ids[],
+                 # обязана отвергаться FAILED_PRECONDITION (code 9). Объявление
+                 # known-failing СНЯТО вместе с предметом: within-service refcheck
+                 # реализован в writer-TX репозитория (SELECT … FOR UPDATE +
+                 # EXISTS(security_group_ids @> …)), покрыт integration-тестами.
+                 # Утверждение как было безусловным, так и остаётся: skip запрещён.
                  "pm.test('SG.Delete NIC-attached must fail FAILED_PRECONDITION (verifies #27)', () => {",
                  "    pm.expect(j.error, 'expected op error, got: ' + JSON.stringify(j)).to.be.an('object');",
                  "    pm.expect(j.error.code, 'expected FAILED_PRECONDITION(9)').to.eql(9);",
@@ -979,14 +980,12 @@ CASES.append(Case(
 
 
 # Create SG с SG-target rule на SG из той же сети → OK.
-# BUG(persistent-RED, flagged to rpc-implementer / go-style-reviewer): корректный тест
-# краснеет — GREEN требует прод-фикса. dto/toproto/security_group.go::securityGroup.toPb
-# мапит в SecurityGroupRule.Target ТОЛЬКО ветку CidrBlocks; ветки SecurityGroupId и
-# PredefinedTarget (домен несёт r.SecurityGroupID / r.PredefinedTarget) не сериализуются →
-# в Get/List-ответе SG-target-правило приходит с Target=nil → rule.securityGroupId=undefined.
-# Signature: `rule targets same-network SG :: expected [ undefined ] to include '<sgId>'`.
-# Fix (не в этом test-only PR, ban #13): добавить SecurityGroupRule_SecurityGroupId /
-# _PredefinedTarget ветки в toPb + regression на обе. Декларировано в docs/RESULTS.md.
+# Здесь стояло объявление known-failing: оно утверждало, что `toPb` сериализует
+# ТОЛЬКО ветку `CidrBlocks`, а `SecurityGroupId`/`PredefinedTarget` роняет в
+# `Target=nil`. На этой ревизии это неверно — сериализуются все три ветки
+# target-oneof (`internal/dto/toproto/security_group.go`), и цепочка «запрос →
+# хранение → чтение» замкнута целиком. Запись СНЯТА 2026-08-01 вместе с предметом
+# (разбор — в docs/RESULTS.md); кейс обычный, без освобождений.
 CASES.append(Case(
     # verifies SG-NET-08
     id="SG-NET-08-RULE-SAME-NETWORK-OK",
@@ -1069,10 +1068,8 @@ CASES.append(Case(
 
 
 # UpdateRules добавляет SG-rule same-network → OK.
-# BUG(persistent-RED, flagged to rpc-implementer): та же прод-первопричина, что и SG-NET-08 —
-# dto/toproto/security_group.go::toPb роняет SecurityGroupId/PredefinedTarget target →
-# rule.securityGroupId=undefined в Get-ответе. Тест корректен, RED до прод-фикса toPb.
-# Signature: `rule targets same-network SG :: expected [ undefined ] to include '<sgId>'`.
+# Объявление known-failing СНЯТО 2026-08-01 вместе с предметом — та же причина,
+# что и у SG-NET-08: `toPb` сериализует все три ветки target-oneof. Кейс обычный.
 CASES.append(Case(
     # verifies SG-NET-09
     # Positive per-endpoint через UpdateRules: same-network SG-target → done.
