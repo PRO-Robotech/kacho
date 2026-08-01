@@ -48,11 +48,15 @@ func TestSubnetOfTarget(t *testing.T) {
 // tuple could never land: kacho-iam's least-privilege proxy policy accepts only
 // ownership/parent relations ({project, account, parent, owner}) and reserves
 // privilege relations like `admin` for the AccessBinding flow, so every delivery
-// was refused. Worse, the register-drainer treats PermissionDenied as transient
-// and short-circuits, so the row was never marked sent — it retried to MaxAttempts
-// (≈150s) and, because the claim is partition-head-only on resource_id, blocked
-// every LATER intent for the same load balancer for that whole window, including a
-// labels-refresh that revokes an ARM_LABELS grant.
+// was refused. Worse, the refusal costs the whole registration: it is TERMINAL
+// (drainer.ErrPermanent, both at the applier and in the shared drainer), the
+// applier stops at the rejected tuple, and the row poisons on its first attempt —
+// so this load balancer's mirror row, and every verb materialised from it, waits
+// for reconciler.RedrivePoisoned. (While the refusal was still classified as
+// retryable it was worse in a different way: a retryable row is held below the
+// poison threshold by design, so it never left the partition-head blocking set and
+// blocked every LATER intent for the same load balancer — including a
+// labels-refresh that revokes an ARM_LABELS grant — with no end.)
 //
 // Creator access does not depend on it: it is materialised per-object by IAM's
 // reconciler (flat Contract-A), not by a module-written admin tuple. The intent is

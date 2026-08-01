@@ -136,7 +136,9 @@ DEV_SECRET="$DEV_SECRET" PATCH_ENV=true SETUP_NS="$NS" \
 # an explicit admin act, not part of bringing a stand up - so provision it here
 # (idempotent, best-effort) via the already-up internal-rest port-forward.
 # Only for nlb — no other suite needs the external pool. `|| true`: a failure degrades
-# to the pre-seed behaviour (external-create cases red → whitelist), never aborts the run.
+# to the pre-seed behaviour — the external-create cases go red and STAY red in the
+# verdict; nothing deducts them. It never aborts the run, so the rest of the suite
+# still reports.
 # In PRODUCTION posture setup.sh delegates to prodseed_all.py, which already drives
 # seed-nlb-fixtures.sh with the RS256 admin Bearer — a second pass here would make a
 # second author for the same cluster-wide default-pool slot.
@@ -186,11 +188,19 @@ else
 
   # ── same two-verdict discipline as newman-parallel.sh ──────────────────────
   # RAW = run.sh's own verdict (every failed assertion / non-zero newman rc).
-  # GATED = the gate CI actually grades with (known-RED whitelist + DNS-isolation
-  # filter). Without this, a local full-suite run called iam/vpc RED where CI passed
-  # (e.g. iam-internal-only-check: 0 failed assertions, non-zero exit from 8 requests
-  # that cannot resolve api.kacho.local — which the case counts as PASS and CI filters).
-  # RAW stays printed: the whitelist must never become a way of not seeing.
+  # GATED = the verdict CI grades with (services/iam/tests/newman/scripts/
+  # assert-suites-green.sh), per collection.
+  #
+  # These two used to differ BY CONSTRUCTION, because the gate deducted a set of
+  # cases before deciding and the gap between the blocks was the size of the
+  # deduction. That deduction was removed 2026-07-30 (see the gate's own note on
+  # why narrowing it could never work), so nothing is subtracted from the verdict
+  # any more and nothing is filtered out of the request count either: a request
+  # that got no answer is reported as UNANSWERED and fires the gate.
+  #
+  # RAW therefore stays printed for a different reason than before: it is the
+  # roll-up you can read at a glance, and if the two blocks ever disagree, THAT is
+  # the finding — something has started subtracting again.
   GATE="${GATE:-true}"
   GATE_SCRIPT="$REPO_ROOT/services/iam/tests/newman/scripts/assert-suites-green.sh"
   echo
@@ -202,7 +212,7 @@ else
     GATE_RC=$?
     set -e
     [ "$GATE_RC" -eq 0 ] && [ "$RAW_RC" -ne 0 ] && \
-      echo "[e2e] NOTE: raw failures are covered by the known-RED whitelist — read them, do not extend the list to keep this green."
+      echo "[e2e] INCONSISTENT: the gate is green while run.sh is red, and nothing is deducted from the verdict any more — read the raw failures, do not trust this GREEN."
     exit "$GATE_RC"
   fi
   echo "[e2e] CI gate skipped (GATE=$GATE) — grading on RAW"

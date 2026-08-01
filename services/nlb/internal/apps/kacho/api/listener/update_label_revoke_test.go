@@ -236,27 +236,35 @@ func requireEveryTupleProxyRegistrable(t *testing.T, intent domain.FGARegisterIn
 	for _, tu := range intent.Tuples {
 		if _, ok := proxyRegistrableRelations[tu.Relation]; !ok {
 			t.Fatalf("durable intent carries a tuple kacho-iam always rejects: relation=%q object=%q; "+
-				"the register-drainer classifies PermissionDenied as TRANSIENT and short-circuits, so the "+
-				"row is never marked sent — and with PartitionColumn=resource_id the partition-head claim "+
-				"then blocks every LATER intent for this same object (notably the labels-refresh that "+
-				"revokes access) until the row poisons after MaxAttempts", tu.Relation, tu.Object)
+				"a refusal from the model owner is TERMINAL (drainer.ErrPermanent), so the applier stops "+
+				"at that tuple and the row poisons on its first attempt — the registration this object "+
+				"depends on (its mirror row, and with it every materialised verb) never lands until "+
+				"reconciler.RedrivePoisoned comes back for it", tu.Relation, tu.Object)
 		}
 	}
 }
 
 // The durable Create intent must be drainable end-to-end.
 //
-// This is the second half of why revoke-by-label never took effect, and it is a
+// This is the second half of why revoke-by-label never took effect, and it was a
 // head-of-line wedge rather than a lag. nlb's creator (`admin`) and parent-link
 // (`load_balancer`) relations are refused by kacho-iam's least-privilege proxy
 // policy — privilege relations are writable only by the AccessBinding flow, never
-// by a module proxy. The register-drainer treats PermissionDenied as transient and
-// short-circuits the tuple loop, so a Create intent containing them can NEVER be
-// marked sent: it retries to MaxAttempts (10, backoff 1s→30s ≈ 150s) and only then
-// stops blocking. Because the drainer claims partition-head-only on resource_id,
-// that unsent Create row blocks the listener's own later labels-refresh intent for
-// the whole of that window — which is exactly why `lsn-post-revoke-deny` stayed
-// {"allowed":true} well past its 15s budget with no consistency race involved.
+// by a module proxy.
+//
+// AT THE TIME the refusal was classified as retryable, and that is what wedged the
+// partition: a row held in the retryable class is kept BELOW the poison threshold
+// by design (pkg/outbox/drainer/internal.go, markTransientFailure), so it never
+// left the partition-head blocking set at all and the block had no end — which is
+// why `lsn-post-revoke-deny` stayed {"allowed":true} well past its 15s budget with
+// no consistency race involved.
+//
+// TODAY the refusal is TERMINAL (drainer.ErrPermanent, both at the applier and in
+// the shared drainer), so such a row poisons on its first attempt and stops
+// blocking immediately. That removes the wedge, not the reason for this test: the
+// registration itself is still lost until reconciler.RedrivePoisoned comes back
+// for it, so an intent carrying an unregistrable tuple still costs the object its
+// mirror row and every verb materialised from it.
 //
 // The rejected tuples were never a loss to begin with: they are refused on every
 // delivery, so nothing that depended on them ever worked. Access to a new listener

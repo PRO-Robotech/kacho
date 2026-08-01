@@ -349,14 +349,17 @@ func (u *CreateUseCase) syncRegister(ctx context.Context, intent domain.FGARegis
 // comes from IAM's per-object materialisation (flat Contract-A), not from a
 // module-written admin tuple.
 //
-// Carrying them was not merely useless, it WEDGED the resource. The
-// register-drainer classifies PermissionDenied as transient and short-circuits the
-// tuple loop, so the row could never be marked sent: it retried to MaxAttempts
-// (10, backoff 1s→30s ≈ 150s). Since the drainer claims partition-head-only on
-// resource_id, that permanently-failing Create row blocked every LATER intent for
-// the same listener — including the labels-refresh that revokes an ARM_LABELS
-// grant. Ordering the project tuple first only ensured the mirror got written
-// before the rejection; it did not let the row complete.
+// Carrying them cost the registration itself. A refusal from the model owner is
+// TERMINAL: the applier maps it to drainer.ErrPermanent
+// (clients/iam/register_applier.go) and the shared drainer classifies it the same
+// way for every service (pkg/outbox/drainer/classify.go). Such a Create row
+// therefore poisons on its FIRST attempt and drops out of the partition-head
+// blocking set at once — it does not hold the listener's later intents (notably
+// the labels-refresh that revokes an ARM_LABELS grant) for any deadline. It does
+// stay undelivered until reconciler.RedrivePoisoned comes back for it, and the
+// applier stops at the first rejection, so nothing after the rejected tuple ships.
+// Ordering the project tuple first only ensured the mirror got written before the
+// rejection; it did not let the row complete.
 func listenerRegisterIntent(l *kachorepo.ListenerRecord) domain.FGARegisterIntent {
 	id := string(l.ID)
 	return domain.FGARegisterIntent{
