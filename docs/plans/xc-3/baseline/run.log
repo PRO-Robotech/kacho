@@ -1,0 +1,514 @@
+[parallel] port-forward api-gateway :18080/:18081/:18443 + iam-internal :19091 + hydra :14444
+[parallel] seeding auth fixtures (per-service isolated) + patching envs
+[setup] posture: production (api-gateway reports auth_mode=production-strict)
+[setup] delegating to prodseed_all.py — tokens issued BY iam, none minted here
+[prodseed] client certs ready: operator=/tmp/tmp.XE4vv3mQBY/client.crt gateway=/tmp/tmp.2wte2sLabC/client.crt
+[prodseed] hydra token endpoint answers on :14444 (reusing existing forward)
+[prodseed] minting the matrix (iam MintBootstrapToken → SAKeyService.Issue → OAuth2)
+[prodseed] matrix seeded: acctA=accb1g93tkvh28d9688f projA1=prj5skxja1evt7t5337g
+[prodseed]     развёрнуто из шаблона (свежее дерево): 8 окружений
+[patch-env] services/iam/tests/newman/environments/local.postman_environment.json: 40 keys
+[patch-env] services/vpc/tests/newman/environments/local.postman_environment.json: 40 keys
+[patch-env] services/compute/tests/newman/environments/local.postman_environment.json: 40 keys
+[patch-env] services/nlb/tests/newman/environments/local.postman_environment.json: 41 keys
+[patch-env] services/storage/tests/newman/environments/local.postman_environment.json: 40 keys
+[patch-env] services/registry/tests/newman/environments/local.postman_environment.json: 47 keys
+[patch-env] services/geo/tests/newman/environments/local.postman_environment.json: 40 keys
+[patch-env] gateway/tests/newman/environments/local.postman_environment.json: 48 keys
+[prodseed]     nlb fixture seeder (RS256 admin Bearer)
+[prodseed]     extension seeder: prodseed_vpc_ext.py
+[patch-env] services/vpc/tests/newman/environments/local.postman_environment.json: 5 keys
+[prodseed]     extension seeder: prodseed_compute_ext.py
+[patch-env] services/compute/tests/newman/environments/local.postman_environment.json: 3 keys
+[patch-env] services/nlb/tests/newman/environments/local.postman_environment.json: 6 keys
+[prodseed] env files written: 8  (ignored by git: 8, committable: 0, unknown: 0)
+[prodseed] DONE
+[parallel] regenerating collections for: iam vpc compute nlb storage registry geo api-gateway
+[phantom-drop] осмотрено: коллекций 30, папок 651, шагов 1657; регистрируют провизорный id — папок 90, их поллеров 365; снятие на уровне коллекции — 30
+[phantom-drop] OK
+[parallel] WAVE 1 concurrent (delay=3ms jobs=2/suite; nlb --jobs 1): vpc compute nlb storage registry geo api-gateway
+===== [vpc] GREEN =====
+COLLECTION                  REQUESTS  UNANSWERED     ASSERT   FAILED     RC  NOTE
+address                          333           0        531        0      0  
+address-zone-coherence            17           0         21        0      0  
+authz-deny                       326           0        740        0      0  
+concurrency                      135           0         49        0      0  
+gateway                          175           0        286        0      0  
+internal-network                  24           0         41        0      0  
+internal-pool                    147           0        228        0      0  
+list-filter-d                      7           0          9        0      0  
+network                          252           0        427        0      0  
+network-interface                249           0        372        0      0  
+observability                      3           0          2        0      0  
+operation                         22           0         37        0      0  
+route-table                      328           0        501        0      0  
+security-group                   536           0        778        0      0  
+subnet                           760           0       1166        0      0  
+vpc1                             237           0        455        0      0  
+TOTAL: 16/16 коллекций отчиталось — 3551 запрос(ов), 0 без ответа, 5643 утверждени(й), 0 упавших
+===== [compute] GREEN =====
+RESOURCE                   ASSERT     FAILED   REQUESTS   UNANSWERED       RC
+instance-redesign             556          0        309            0        0
+machine-type                   92          0         45            0        0
+operation                      64          0         34            0        0
+list-filter                    58          0         37            0        0
+authz-deny                    109          0         42            0        0
+sec-d                          29          0         15            0        0
+TOTAL: 6/6 коллекц. с отчётом, 482 запрос(ов), 908 утвержд., 0 упало, 0 без ответа, 0 немых отчёт(ов)
+===== [nlb] RED =====
+COLLECTION                    ASSERT     FAILED   REQUESTS   UNANSWERED       RC
+load-balancer                    980          0        673            0        0
+listener                         640          0        484            0        0
+target-group                     300          0        218            0        0
+targets                          322          2        265            0        1
+operation                         40          0         24            0        0
+authz-deny                       154          2        125            0        1
+cross-resource                   247          0        162            0        0
+list-filter                       35          0         21            0        0
+placement-coherence               50          1         41            0        1
+TOTAL: 9/9 collection(s) reported, 2013 request(s), 2768 assertion(s), 5 failed, 0 UNANSWERED, 0 mute report(s)
+===== [storage] GREEN =====
+RESOURCE                   ASSERT     FAILED   REQUESTS   UNANSWERED       RC
+volume                        327          0        186            0        0
+image                         462          0        289            0        0
+snapshot                      182          0        108            0        0
+disk-type                      23          0          8            0        0
+operation                      51          0         22            0        0
+internal-volume                12          0          4            0        0
+authz                          77          0         43            0        0
+authz-catalog                  41          0         18            0        0
+sec-d                         154          0        104            0        0
+TOTAL: 9/9 коллекц. с отчётом, 782 запрос(ов), 1329 утвержд., 0 упало, 0 без ответа, 0 немых отчёт(ов)
+===== [registry] GREEN =====
+COLLECTION                    ASSERT     FAILED   REQUESTS   UNANSWERED       RC
+registry                         175          0         73            0        0
+registry-redesign                156          0         71            0        0
+registry-repository              257          0        134            0        0
+registry-authz                    62          0         30            0        0
+TOTAL: 4/4 collection(s) reported, 308 request(s), 650 assertion(s), 0 failed, 0 UNANSWERED, 0 mute report(s)
+===== [geo] GREEN =====
+COLLECTION                    ASSERT     FAILED   REQUESTS   UNANSWERED       RC
+admin-not-on-public               29          0          9            0        0
+authz-deny                        50          0         21            0        0
+internal-region                   75          0         23            0        0
+internal-zone                    101          0         30            0        0
+operation                         15          0          3            0        0
+region                            42          0         17            0        0
+zone                              36          0         13            0        0
+TOTAL: 7/7 коллекц. с отчётом, 116 запрос(ов), 348 утвержд., 0 упало, 0 без ответа, 0 немых отчёт(ов)
+===== [api-gateway] GREEN =====
+COLLECTION                       ASSERT     FAILED   REQUESTS   UNANSWERED       RC
+cluster_admin                        49          0         19            0        0
+TOTAL: 1/1 collection(s) reported, 19 request(s), 49 assertion(s), 0 failed, 0 UNANSWERED, 0 mute report(s)
+[parallel] inter-wave drain-gate (settle WAVE 1 fga_outbox backlog before iam wave)…
+[drain-gate] healthy_pending=0 (t=0s/180s)
+[drain-gate] CLEAR — reconciler caught up
+[parallel] WAVE 2 isolated (no competing load): iam
+===== [iam] RED =====
+RESOURCE                                   ASSERT     FAILED   REQUESTS   UNANSWERED       RC  NOTE
+authz-deny                                    740          7        355            0        1  
+authz-sa-apitoken                              79          1         30            0        1  
+geo-read                                       14          0          4            0        0  
+iam-access-binding-redesign                   240          0        138            0        0  
+iam-account                                    98         27         41            0        1  
+iam-account-redesign                           70         19         79            0        1  
+iam-authz-grant-check-propagation              36         14         75            0        1  
+iam-condition                                  67          0         32            0        0  
+iam-flat-authz-vbc                             16          0         16            0        0  
+iam-group                                     114          0         55            0        0  
+iam-internal-only-check                        47          0         17            0        0  
+iam-invite-grant-fga                           49          0         41            0        0  
+iam-permission-catalog                         12          0          2            0        0  
+iam-project                                    99          0         49            0        0  
+iam-rbac-rules-labels                           6          0          6            0        0  
+iam-rbac-scope-grant                           30          0         22            0        0  
+iam-rbac-subjects                             112         28         65            0        1  
+iam-read-authz-vget                            19          2         62            0        1  
+iam-role                                      208          2        101            0        1  
+iam-role-redesign                              53          0         23            0        0  
+iam-service-account                           157         33         62            0        1  
+iam-user                                      152         97         69            0        1  
+iam-whoami                                     15          5          3            0        1  
+label-revoke-iam                               31          0         54            0        0  
+label-revoke-nlb                               23          0         50            0        0  
+label-revoke-storage                           87          0        162            0        0  
+label-revoke-vpc                              203          2        375            0        1  
+rbac-subject-channel-equivalence              129         12       1984            0        1  
+rbac-visibility-set                           342         51        509            0        1  
+TOTAL: 29/29 коллекций отчиталось — 4481 запрос(ов), 0 без ответа, 3248 утверждени(й), 300 упавших, 0 немых отчёт(ов)
+[parallel] WAVE 3 fail-closed (store прав сворачивается в ноль и поднимается обратно)
+[failclosed] хранилище прав: deploy/kacho-umbrella-openfga (реплик сейчас: 1)
+[failclosed] сворачиваю deploy/kacho-umbrella-openfga → replicas=0
+deployment.apps/kacho-umbrella-openfga scaled
+[failclosed] реплик не осталось; жду 12s (кэш решений шлюза)
+newman
+
+kacho-iam / newman / authz-failclosed
+
+❏ AUTHZ-FAILCLOSED-OPENFGA-DOWN — gateway returns 503 Unavailable when the authorization store is unreachable (fail-closed)
+↳ AUTHZ-FAILCLOSED-OPENFGA-DOWN :: any-authz-gated-rpc-during-openfga-outage
+  GET http://localhost:18080/iam/v1/accounts/accb1g93tkvh28d9688f [503 Service Unavailable, 226B, 422ms]
+  ✓  [FAIL-CLOSED] gateway 503 Unavailable
+  ✓  [FAIL-CLOSED] grpc code 14 (Unavailable)
+
+┌─────────────────────────┬────────────────────┬───────────────────┐
+│                         │           executed │            failed │
+├─────────────────────────┼────────────────────┼───────────────────┤
+│              iterations │                  1 │                 0 │
+├─────────────────────────┼────────────────────┼───────────────────┤
+│                requests │                  1 │                 0 │
+├─────────────────────────┼────────────────────┼───────────────────┤
+│            test-scripts │                  2 │                 0 │
+├─────────────────────────┼────────────────────┼───────────────────┤
+│      prerequest-scripts │                  2 │                 0 │
+├─────────────────────────┼────────────────────┼───────────────────┤
+│              assertions │                  2 │                 0 │
+├─────────────────────────┴────────────────────┴───────────────────┤
+│ total run duration: 472ms                                        │
+├──────────────────────────────────────────────────────────────────┤
+│ total data received: 49B (approx)                                │
+├──────────────────────────────────────────────────────────────────┤
+│ average response time: 422ms [min: 422ms, max: 422ms, s.d.: 0µs] │
+└──────────────────────────────────────────────────────────────────┘
+[failclosed] возвращаю deploy/kacho-umbrella-openfga → replicas=1
+Waiting for deployment "kacho-umbrella-openfga" rollout to finish: 0 out of 1 new replicas have been updated...
+Waiting for deployment "kacho-umbrella-openfga" rollout to finish: 0 of 1 updated replicas are available...
+deployment "kacho-umbrella-openfga" successfully rolled out
+[failclosed] стенд восстановлен
+===== [failclosed] GREEN =====
+
+===== PER-SUITE TOTALS (nothing is subtracted; the gate below agrees by construction) =====
+SUITE          ASSERT-F      REQ-F    REPORTS
+iam                 300          0         30
+vpc                   0          0         16
+compute               0          0          6
+nlb                   5          0          9
+storage               0          0          9
+registry              0          0          4
+geo                   0          0          7
+api-gateway           0          0          1
+TOTAL               305          0
+[parallel] runner verdict: one or more suites RED (see per-suite out/summary.txt + out/*.json)
+
+===== GATED (the exact gate CI runs: assert-suites-green.sh) =====
+--- iam
+===== execution coverage (did every request actually run?) =====
+authz-deny: executed 299/305 (98%), 6 ASSERTED-NOT-EXECUTED  [summary: 740 assertions, 7 failed, 7 listed; array walked 734]
+  6 step(s) ASSERTED but have no execution record — their script ran and the run summary counts their assertions, while the executions array does not contain them. A skip guard cannot explain a step that asserted: read the verdict from run.stats / run.failures, and fix the step so its check either runs or is not written:
+    [176] AUTHZ-AB-CR-A-AAA :: delete-ab-teardown
+    [177] AUTHZ-AB-CR-A-AAA :: poll-op-delete-AUTHZ-AB-CR-A-AAA
+    [184] AUTHZ-AB-CR-B-AAB :: delete-ab-teardown
+    [185] AUTHZ-AB-CR-B-AAB :: poll-op-delete-AUTHZ-AB-CR-B-AAB
+    [191] AUTHZ-AB-CR-B-INV :: delete-ab-teardown
+    [192] AUTHZ-AB-CR-B-INV :: poll-op-delete-AUTHZ-AB-CR-B-INV
+authz-failclosed: executed 1/1 (100%)  [summary: 2 assertions, 0 failed, 0 listed; array walked 2]
+authz-sa-apitoken: executed 30/30 (100%)  [summary: 79 assertions, 1 failed, 1 listed; array walked 79]
+geo-read: executed 4/4 (100%)  [summary: 14 assertions, 0 failed, 0 listed; array walked 14]
+iam-access-binding-redesign: executed 126/126 (100%)  [summary: 240 assertions, 0 failed, 0 listed; array walked 240]
+iam-account-redesign: executed 26/36 (72%), 10 ASSERTED-NOT-EXECUTED  [summary: 70 assertions, 19 failed, 19 listed; array walked 60]
+  10 step(s) ASSERTED but have no execution record — their script ran and the run summary counts their assertions, while the executions array does not contain them. A skip guard cannot explain a step that asserted: read the verdict from run.stats / run.failures, and fix the step so its check either runs or is not written:
+    [1] IAM-ACC-RD-CR-OWNER-DERIVE-OK :: poll-op
+    [2] IAM-ACC-RD-CR-OWNER-DERIVE-OK :: assert-op-success
+    [3] IAM-ACC-RD-CR-OWNER-DERIVE-OK :: get-owner-derived-rya8
+    [8] IAM-ACC-RD-CR-SAGA-TWO-ID-OK :: poll-op
+    [9] IAM-ACC-RD-CR-SAGA-TWO-ID-OK :: assert-op-success
+    [10] IAM-ACC-RD-CR-SAGA-TWO-ID-OK :: get-default-project-rya9
+    [13] IAM-ACC-RD-DL-NONEMPTY-RESTRICT-NEG :: poll-op
+    [14] IAM-ACC-RD-DL-NONEMPTY-RESTRICT-NEG :: assert-op-success
+    [15] IAM-ACC-RD-DL-NONEMPTY-RESTRICT-NEG :: delete-nonempty-rya10
+    [16] IAM-ACC-RD-DL-NONEMPTY-RESTRICT-NEG :: assert-op-error
+iam-account: executed 37/52 (71%), 15 ASSERTED-NOT-EXECUTED  [summary: 98 assertions, 27 failed, 27 listed; array walked 83]
+  15 step(s) ASSERTED but have no execution record — their script ran and the run summary counts their assertions, while the executions array does not contain them. A skip guard cannot explain a step that asserted: read the verdict from run.stats / run.failures, and fix the step so its check either runs or is not written:
+    [1] IAM-ACC-CR-CRUD-OK :: poll-op
+    [2] IAM-ACC-CR-CRUD-OK :: get-confirms-rya14
+    [5] IAM-ACC-CR-NEG-NAME-DUP :: assert-op-error
+    [10] IAM-ACC-CR-BVA-NAME-MIN :: poll-op
+    [12] IAM-ACC-CR-BVA-NAME-MAX :: poll-op
+    [29] IAM-ACC-UP-CRUD-OK :: update
+    [30] IAM-ACC-UP-CRUD-OK :: poll-op
+    [31] IAM-ACC-UP-CRUD-OK :: get-confirms-update
+    [37] IAM-ACC-DL-CRUD-OK :: delete-default-project
+    [38] IAM-ACC-DL-CRUD-OK :: poll-op
+    [39] IAM-ACC-DL-CRUD-OK :: delete
+    [40] IAM-ACC-DL-CRUD-OK :: poll-op #2
+    ... and 3 more
+iam-authz-grant-check-propagation: executed 25/30 (83%), 5 ASSERTED-NOT-EXECUTED  [summary: 36 assertions, 14 failed, 14 listed; array walked 31]
+  5 step(s) ASSERTED but have no execution record — their script ran and the run summary counts their assertions, while the executions array does not contain them. A skip guard cannot explain a step that asserted: read the verdict from run.stats / run.failures, and fix the step so its check either runs or is not written:
+    [5] AUTHZGCP-SAKEY-SECRET-NOT-LEAKED :: poll-op-plaintext
+    [6] AUTHZGCP-SAKEY-SECRET-NOT-LEAKED :: re-get-op-redacted
+    [7] AUTHZGCP-SAKEY-SECRET-NOT-LEAKED :: anon-cant-see-op
+    [18] AUTHZGCP-BIND-DELETE-BY-STRANGER-DENY :: stranger-inv-deletes
+    [28] AUTHZGCP-AB-DELETE-CHECK-INVISIBLE :: poll-delete-op
+iam-condition: executed 32/32 (100%)  [summary: 67 assertions, 0 failed, 0 listed; array walked 67]
+iam-flat-authz-vbc: executed 9/9 (100%)  [summary: 16 assertions, 0 failed, 0 listed; array walked 16]
+iam-group: executed 53/53 (100%)  [summary: 114 assertions, 0 failed, 0 listed; array walked 114]
+iam-internal-only-check: executed 16/16 (100%)  [summary: 47 assertions, 0 failed, 0 listed; array walked 47]
+iam-invite-grant-fga: executed 33/33 (100%)  [summary: 49 assertions, 0 failed, 0 listed; array walked 49]
+iam-permission-catalog: executed 2/2 (100%)  [summary: 12 assertions, 0 failed, 0 listed; array walked 12]
+iam-project: executed 44/44 (100%)  [summary: 99 assertions, 0 failed, 0 listed; array walked 99]
+iam-rbac-rules-labels: executed 4/4 (100%)  [summary: 6 assertions, 0 failed, 0 listed; array walked 6]
+iam-rbac-scope-grant: executed 19/19 (100%)  [summary: 30 assertions, 0 failed, 0 listed; array walked 30]
+iam-rbac-subjects: executed 48/63 (76%), 15 ASSERTED-NOT-EXECUTED  [summary: 112 assertions, 28 failed, 28 listed; array walked 97]
+  15 step(s) ASSERTED but have no execution record — their script ran and the run summary counts their assertions, while the executions array does not contain them. A skip guard cannot explain a step that asserted: read the verdict from run.stats / run.failures, and fix the step so its check either runs or is not written:
+    [1] RBACSUBJ-CR-MULTI-OK :: mint-poll-e30UserId
+    [6] RBACSUBJ-CR-MULTI-OK :: get-subjects-len-2
+    [7] RBACSUBJ-CR-MULTI-OK :: teardown-e30AcbId
+    [8] RBACSUBJ-CR-MULTI-OK :: teardown-await-e30AcbId
+    [13] RBACSUBJ-PROJ-NEWAUTHOR-LEGACY-FILLED :: mint-poll-e34NewUserId
+    [16] RBACSUBJ-PROJ-NEWAUTHOR-LEGACY-FILLED :: get-new-fills-legacy
+    [17] RBACSUBJ-PROJ-NEWAUTHOR-LEGACY-FILLED :: teardown-e34NewAcbId
+    [18] RBACSUBJ-PROJ-NEWAUTHOR-LEGACY-FILLED :: teardown-await-e34NewAcbId
+    [20] RBACSUBJ-PROJ-LEGACYAUTHOR-SUBJECTS-FILLED :: mint-poll-e34LegUserId
+    [23] RBACSUBJ-PROJ-LEGACYAUTHOR-SUBJECTS-FILLED :: get-legacy-fills-subjects
+    [24] RBACSUBJ-PROJ-LEGACYAUTHOR-SUBJECTS-FILLED :: teardown-e34LegAcbId
+    [25] RBACSUBJ-PROJ-LEGACYAUTHOR-SUBJECTS-FILLED :: teardown-await-e34LegAcbId
+    ... and 3 more
+iam-read-authz-vget: executed 9/11 (82%), 2 explained-skip  [summary: 19 assertions, 2 failed, 2 listed; array walked 19]
+iam-role-redesign: executed 21/21 (100%)  [summary: 53 assertions, 0 failed, 0 listed; array walked 53]
+iam-role: executed 89/90 (99%), 1 ASSERTED-NOT-EXECUTED  [summary: 208 assertions, 2 failed, 2 listed; array walked 207]
+  1 step(s) ASSERTED but have no execution record — their script ran and the run summary counts their assertions, while the executions array does not contain them. A skip guard cannot explain a step that asserted: read the verdict from run.stats / run.failures, and fix the step so its check either runs or is not written:
+    [64] IAM-ROL-CR-RULES-FEEDGATE-IAMPROJECT-OK :: get-label-only
+iam-service-account: executed 58/68 (85%), 10 ASSERTED-NOT-EXECUTED  [summary: 157 assertions, 33 failed, 33 listed; array walked 147]
+  10 step(s) ASSERTED but have no execution record — their script ran and the run summary counts their assertions, while the executions array does not contain them. A skip guard cannot explain a step that asserted: read the verdict from run.stats / run.failures, and fix the step so its check either runs or is not written:
+    [39] IAM-SVA-DIS-CRUD-OK :: poll-op #2
+    [40] IAM-SVA-DIS-CRUD-OK :: assert-op-success #2
+    [42] IAM-SVA-DIS-CRUD-OK :: poll-op #3
+    [43] IAM-SVA-DIS-CRUD-OK :: assert-op-success #3
+    [47] IAM-SVA-DIS-CRUD-OK :: poll-op #4
+    [48] IAM-SVA-DIS-CRUD-OK :: assert-op-success #4
+    [50] IAM-SVA-DIS-CRUD-OK :: poll-op #5
+    [51] IAM-SVA-DIS-CRUD-OK :: assert-op-success #5
+    [53] IAM-SVA-DIS-CRUD-OK :: poll-op #6
+    [54] IAM-SVA-DIS-CRUD-OK :: assert-op-success #6
+iam-user: executed 39/67 (58%), 28 ASSERTED-NOT-EXECUTED  [summary: 152 assertions, 97 failed, 97 listed; array walked 124]
+  28 step(s) ASSERTED but have no execution record — their script ran and the run summary counts their assertions, while the executions array does not contain them. A skip guard cannot explain a step that asserted: read the verdict from run.stats / run.failures, and fix the step so its check either runs or is not written:FAIL: execution-coverage gaps in: authz-deny iam-account-redesign iam-account iam-authz-grant-check-propagation iam-rbac-subjects iam-role iam-service-account iam-user label-revoke-vpc rbac-visibility-set
+
+    [8] IAM-USR-SETUP-INVITE-INV-TO-B :: poll-op
+    [15] IAM-USR-INV-CRUD-OK :: poll-op
+    [16] IAM-USR-INV-CRUD-OK :: get-invited-user
+    [21] IAM-USR-INV-IDEM-REINVITE :: poll-op
+    [22] IAM-USR-INV-IDEM-REINVITE :: capture-first-user
+    [24] IAM-USR-INV-IDEM-REINVITE :: poll-op #2
+    [25] IAM-USR-INV-IDEM-REINVITE :: reinvite-is-idempotent
+    [27] IAM-USR-INV-IDEM-REINVITE :: poll-op #3
+    [28] IAM-USR-INV-IDEM-REINVITE :: assert-op-success
+    [30] IAM-USR-INV-IDEM-REINVITE :: assert-op-error
+    [35] IAM-USR-DL-CRUD-OK :: poll-op
+    [36] IAM-USR-DL-CRUD-OK :: capture-deletable-user
+    ... and 16 more
+iam-whoami: executed 3/3 (100%)  [summary: 15 assertions, 5 failed, 5 listed; array walked 15]
+label-revoke-iam: executed 20/20 (100%)  [summary: 31 assertions, 0 failed, 0 listed; array walked 31]
+label-revoke-nlb: executed 16/16 (100%)  [summary: 23 assertions, 0 failed, 0 listed; array walked 23]
+label-revoke-storage: executed 58/58 (100%)  [summary: 87 assertions, 0 failed, 0 listed; array walked 87]
+label-revoke-vpc: executed 138/139 (99%), 1 ASSERTED-NOT-EXECUTED  [summary: 203 assertions, 2 failed, 2 listed; array walked 202]
+  1 step(s) ASSERTED but have no execution record — their script ran and the run summary counts their assertions, while the executions array does not contain them. A skip guard cannot explain a step that asserted: read the verdict from run.stats / run.failures, and fix the step so its check either runs or is not written:
+    [124] T31-LBLREVOKE-VPC-INVITE-GRANT-REVOKE :: poll-invite
+rbac-subject-channel-equivalence: executed 76/84 (90%), 8 explained-skip  [summary: 129 assertions, 12 failed, 12 listed; array walked 129]
+rbac-visibility-set: executed 176/221 (80%), 12 explained-skip, 33 ASSERTED-NOT-EXECUTED  [summary: 342 assertions, 51 failed, 51 listed; array walked 309]
+  33 step(s) ASSERTED but have no execution record — their script ran and the run summary counts their assertions, while the executions array does not contain them. A skip guard cannot explain a step that asserted: read the verdict from run.stats / run.failures, and fix the step so its check either runs or is not written:
+    [1] IAM-SET-PRJ-LABEL-EXACT-OK :: poll-visSetAcctOp
+    [3] IAM-SET-PRJ-LABEL-EXACT-OK :: poll-visPP1Op
+    [5] IAM-SET-PRJ-LABEL-EXACT-OK :: poll-visPP2Op
+    [7] IAM-SET-PRJ-LABEL-EXACT-OK :: poll-visPP3Op
+    [9] IAM-SET-PRJ-LABEL-EXACT-OK :: poll-visPM1Op
+    [11] IAM-SET-PRJ-LABEL-EXACT-OK :: poll-visPM2Op
+    [13] IAM-SET-PRJ-LABEL-EXACT-OK :: poll-visPM3Op
+    [15] IAM-SET-PRJ-LABEL-EXACT-OK :: poll-visBQ1Op
+    [17] IAM-SET-PRJ-LABEL-EXACT-OK :: poll-visBQ2Op
+    [19] IAM-SET-PRJ-LABEL-EXACT-OK :: poll-visSetRoleOp
+    [21] IAM-SET-PRJ-LABEL-EXACT-OK :: poll-visSetBindOp
+    [22] IAM-SET-PRJ-LABEL-EXACT-OK :: read-exact-set
+    ... and 21 more
+TOTAL executed 1511/1657 (91.2%)
+
+authz-deny: ran 355 request(s) / 740 assertion(s) — 7 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+authz-failclosed: ran 1 request(s) / 2 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+authz-sa-apitoken: ran 30 request(s) / 79 assertion(s) — 1 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+geo-read: ran 4 request(s) / 14 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+iam-access-binding-redesign: ran 138 request(s) / 240 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+iam-account: ran 41 request(s) / 98 assertion(s) — 27 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+iam-account-redesign: ran 79 request(s) / 70 assertion(s) — 19 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+iam-authz-grant-check-propagation: ran 75 request(s) / 36 assertion(s) — 14 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+iam-condition: ran 32 request(s) / 67 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+iam-flat-authz-vbc: ran 16 request(s) / 16 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+iam-group: ran 55 request(s) / 114 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+iam-internal-only-check: ran 17 request(s) / 47 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+iam-invite-grant-fga: ran 41 request(s) / 49 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+iam-permission-catalog: ran 2 request(s) / 12 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+iam-project: ran 49 request(s) / 99 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+iam-rbac-rules-labels: ran 6 request(s) / 6 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+iam-rbac-scope-grant: ran 22 request(s) / 30 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+iam-rbac-subjects: ran 65 request(s) / 112 assertion(s) — 28 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+iam-read-authz-vget: ran 62 request(s) / 19 assertion(s) — 2 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+iam-role: ran 101 request(s) / 208 assertion(s) — 2 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+iam-role-redesign: ran 23 request(s) / 53 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+iam-service-account: ran 62 request(s) / 157 assertion(s) — 33 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+iam-user: ran 69 request(s) / 152 assertion(s) — 97 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+iam-whoami: ran 3 request(s) / 15 assertion(s) — 5 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+label-revoke-iam: ran 54 request(s) / 31 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+label-revoke-nlb: ran 50 request(s) / 23 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+label-revoke-storage: ran 162 request(s) / 87 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+label-revoke-vpc: ran 375 request(s) / 203 assertion(s) — 2 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+rbac-subject-channel-equivalence: ran 1984 request(s) / 129 assertion(s) — 12 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+rbac-visibility-set: ran 509 request(s) / 342 assertion(s) — 51 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+TOTAL: 30/30 collection(s) reported, 4482 request(s), 3250 assertion(s), 300 failed, 0 SCRIPT FAILED, 0 UNANSWERED, 0 report(s) with no assertions
+FAIL: suites with failures: execution-coverage authz-deny authz-sa-apitoken iam-account iam-account-redesign iam-authz-grant-check-propagation iam-rbac-subjects iam-read-authz-vget iam-role iam-service-account iam-user iam-whoami label-revoke-vpc rbac-subject-channel-equivalence rbac-visibility-set
+--- vpc
+===== execution coverage (did every request actually run?) =====
+address-zone-coherence: executed 13/13 (100%)  [summary: 21 assertions, 0 failed, 0 listed; array walked 21]
+address: executed 305/305 (100%)  [summary: 531 assertions, 0 failed, 0 listed; array walked 531]
+authz-deny: executed 325/325 (100%)  [summary: 740 assertions, 0 failed, 0 listed; array walked 740]
+concurrency: executed 42/42 (100%)  [summary: 49 assertions, 0 failed, 0 listed; array walked 49]
+gateway: executed 154/154 (100%)  [summary: 286 assertions, 0 failed, 0 listed; array walked 286]
+internal-network: executed 23/23 (100%)  [summary: 41 assertions, 0 failed, 0 listed; array walked 41]
+internal-pool: executed 137/137 (100%)  [summary: 228 assertions, 0 failed, 0 listed; array walked 232]
+list-filter-d: executed 6/6 (100%)  [summary: 9 assertions, 0 failed, 0 listed; array walked 9]
+network-interface: executed 224/224 (100%)  [summary: 372 assertions, 0 failed, 0 listed; array walked 372]
+network: executed 247/247 (100%)  [summary: 427 assertions, 0 failed, 0 listed; array walked 427]
+observability: executed 2/2 (100%)  [summary: 2 assertions, 0 failed, 0 listed; array walked 2]
+operation: executed 20/20 (100%)  [summary: 37 assertions, 0 failed, 0 listed; array walked 42]
+route-table: executed 312/312 (100%)  [summary: 501 assertions, 0 failed, 0 listed; array walked 501]
+security-group: executed 492/492 (100%)  [summary: 778 assertions, 0 failed, 0 listed; array walked 778]
+subnet: executed 743/743 (100%)  [summary: 1166 assertions, 0 failed, 0 listed; array walked 1168]
+vpc1: executed 236/236 (100%)  [summary: 455 assertions, 0 failed, 0 listed; array walked 455]
+TOTAL executed 3281/3281 (100.0%)
+OK: every request either executed or is an explained skip.
+
+address: ran 333 request(s) / 531 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+address-zone-coherence: ran 17 request(s) / 21 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+authz-deny: ran 326 request(s) / 740 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+concurrency: ran 135 request(s) / 49 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+gateway: ran 175 request(s) / 286 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+internal-network: ran 24 request(s) / 41 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+internal-pool: ran 147 request(s) / 228 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+list-filter-d: ran 7 request(s) / 9 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+network-interface: ran 249 request(s) / 372 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+network: ran 252 request(s) / 427 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+observability: ran 3 request(s) / 2 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+operation: ran 22 request(s) / 37 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+route-table: ran 328 request(s) / 501 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+security-group: ran 536 request(s) / 778 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+subnet: ran 760 request(s) / 1166 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+vpc1: ran 237 request(s) / 455 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+TOTAL: 16/16 collection(s) reported, 3551 request(s), 5643 assertion(s), 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED, 0 report(s) with no assertions
+All 16 suites GREEN.
+--- compute
+===== execution coverage (did every request actually run?) =====
+authz-deny: executed 42/42 (100%)  [summary: 109 assertions, 0 failed, 0 listed; array walked 109]
+instance-redesign: executed 279/279 (100%)  [summary: 556 assertions, 0 failed, 0 listed; array walked 556]
+list-filter: executed 34/34 (100%)  [summary: 58 assertions, 0 failed, 0 listed; array walked 58]
+machine-type: executed 45/45 (100%)  [summary: 92 assertions, 0 failed, 0 listed; array walked 92]
+operation: executed 32/32 (100%)  [summary: 64 assertions, 0 failed, 0 listed; array walked 64]
+sec-d: executed 14/14 (100%)  [summary: 29 assertions, 0 failed, 0 listed; array walked 29]
+TOTAL executed 446/446 (100.0%)
+OK: every request either executed or is an explained skip.
+
+authz-deny: ran 42 request(s) / 109 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+instance-redesign: ran 309 request(s) / 556 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+list-filter: ran 37 request(s) / 58 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+machine-type: ran 45 request(s) / 92 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+operation: ran 34 request(s) / 64 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+sec-d: ran 15 request(s) / 29 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+TOTAL: 6/6 collection(s) reported, 482 request(s), 908 assertion(s), 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED, 0 report(s) with no assertions
+All 6 suites GREEN.
+--- nlb
+FAIL: execution-coverage gaps in: authz-deny placement-coherence
+===== execution coverage (did every request actually run?) =====
+authz-deny: executed 84/85 (99%), 1 ASSERTED-NOT-EXECUTED  [summary: 154 assertions, 2 failed, 2 listed; array walked 153]
+  1 step(s) ASSERTED but have no execution record — their script ran and the run summary counts their assertions, while the executions array does not contain them. A skip guard cannot explain a step that asserted: read the verdict from run.stats / run.failures, and fix the step so its check either runs or is not written:
+    [49] poll-op-10
+cross-resource: executed 131/131 (100%)  [summary: 247 assertions, 0 failed, 0 listed; array walked 247]
+list-filter: executed 16/16 (100%)  [summary: 35 assertions, 0 failed, 0 listed; array walked 35]
+listener: executed 393/393 (100%)  [summary: 640 assertions, 0 failed, 0 listed; array walked 640]
+load-balancer: executed 520/520 (100%)  [summary: 980 assertions, 0 failed, 0 listed; array walked 980]
+operation: executed 18/18 (100%)  [summary: 40 assertions, 0 failed, 0 listed; array walked 40]
+placement-coherence: executed 36/37 (97%), 1 ASSERTED-NOT-EXECUTED  [summary: 50 assertions, 1 failed, 1 listed; array walked 49]
+  1 step(s) ASSERTED but have no execution record — their script ran and the run summary counts their assertions, while the executions array does not contain them. A skip guard cannot explain a step that asserted: read the verdict from run.stats / run.failures, and fix the step so its check either runs or is not written:
+    [25] cleanup-zc-leak-lb
+target-group: executed 187/187 (100%)  [summary: 300 assertions, 0 failed, 0 listed; array walked 300]
+targets: executed 234/234 (100%)  [summary: 322 assertions, 2 failed, 2 listed; array walked 322]
+TOTAL executed 1619/1621 (99.9%)
+
+authz-deny: ran 125 request(s) / 154 assertion(s) — 2 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+cross-resource: ran 162 request(s) / 247 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+listener: ran 484 request(s) / 640 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+list-filter: ran 21 request(s) / 35 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+load-balancer: ran 673 request(s) / 980 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+operation: ran 24 request(s) / 40 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+placement-coherence: ran 41 request(s) / 50 assertion(s) — 1 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+target-group: ran 218 request(s) / 300 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+targets: ran 265 request(s) / 322 assertion(s) — 2 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+TOTAL: 9/9 collection(s) reported, 2013 request(s), 2768 assertion(s), 5 failed, 0 SCRIPT FAILED, 0 UNANSWERED, 0 report(s) with no assertions
+FAIL: suites with failures: execution-coverage authz-deny placement-coherence targets
+--- storage
+===== execution coverage (did every request actually run?) =====
+authz-catalog: executed 18/18 (100%)  [summary: 41 assertions, 0 failed, 0 listed; array walked 41]
+authz: executed 37/37 (100%)  [summary: 77 assertions, 0 failed, 0 listed; array walked 77]
+disk-type: executed 8/8 (100%)  [summary: 23 assertions, 0 failed, 0 listed; array walked 23]
+image: executed 242/242 (100%)  [summary: 462 assertions, 0 failed, 0 listed; array walked 462]
+internal-volume: executed 4/4 (100%)  [summary: 12 assertions, 0 failed, 0 listed; array walked 12]
+operation: executed 19/19 (100%)  [summary: 51 assertions, 0 failed, 0 listed; array walked 51]
+sec-d: executed 41/41 (100%)  [summary: 154 assertions, 0 failed, 0 listed; array walked 154]
+snapshot: executed 91/91 (100%)  [summary: 182 assertions, 0 failed, 0 listed; array walked 182]
+volume: executed 154/154 (100%)  [summary: 327 assertions, 0 failed, 0 listed; array walked 327]
+TOTAL executed 614/614 (100.0%)
+OK: every request either executed or is an explained skip.
+
+authz-catalog: ran 18 request(s) / 41 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+authz: ran 43 request(s) / 77 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+disk-type: ran 8 request(s) / 23 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+image: ran 289 request(s) / 462 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+internal-volume: ran 4 request(s) / 12 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+operation: ran 22 request(s) / 51 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+sec-d: ran 104 request(s) / 154 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+snapshot: ran 108 request(s) / 182 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+volume: ran 186 request(s) / 327 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+TOTAL: 9/9 collection(s) reported, 782 request(s), 1329 assertion(s), 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED, 0 report(s) with no assertions
+All 9 suites GREEN.
+--- registry
+===== execution coverage (did every request actually run?) =====
+registry-authz: executed 28/28 (100%)  [summary: 62 assertions, 0 failed, 0 listed; array walked 62]
+registry-redesign: executed 63/63 (100%)  [summary: 156 assertions, 0 failed, 0 listed; array walked 156]
+registry-repository: executed 109/109 (100%)  [summary: 257 assertions, 0 failed, 0 listed; array walked 257]
+registry: executed 69/69 (100%)  [summary: 175 assertions, 0 failed, 0 listed; array walked 175]
+TOTAL executed 269/269 (100.0%)
+OK: every request either executed or is an explained skip.
+
+registry-authz: ran 30 request(s) / 62 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+registry: ran 73 request(s) / 175 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+registry-redesign: ran 71 request(s) / 156 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+registry-repository: ran 134 request(s) / 257 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+TOTAL: 4/4 collection(s) reported, 308 request(s), 650 assertion(s), 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED, 0 report(s) with no assertions
+All 4 suites GREEN.
+--- geo
+===== execution coverage (did every request actually run?) =====
+admin-not-on-public: executed 9/9 (100%)  [summary: 29 assertions, 0 failed, 0 listed; array walked 29]
+authz-deny: executed 21/21 (100%)  [summary: 50 assertions, 0 failed, 0 listed; array walked 50]
+internal-region: executed 23/23 (100%)  [summary: 75 assertions, 0 failed, 0 listed; array walked 75]
+internal-zone: executed 30/30 (100%)  [summary: 101 assertions, 0 failed, 0 listed; array walked 101]
+operation: executed 3/3 (100%)  [summary: 15 assertions, 0 failed, 0 listed; array walked 15]
+region: executed 17/17 (100%)  [summary: 42 assertions, 0 failed, 0 listed; array walked 42]
+zone: executed 13/13 (100%)  [summary: 36 assertions, 0 failed, 0 listed; array walked 36]
+TOTAL executed 116/116 (100.0%)
+OK: every request either executed or is an explained skip.
+
+admin-not-on-public: ran 9 request(s) / 29 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+authz-deny: ran 21 request(s) / 50 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+internal-region: ran 23 request(s) / 75 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+internal-zone: ran 30 request(s) / 101 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+operation: ran 3 request(s) / 15 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+region: ran 17 request(s) / 42 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+zone: ran 13 request(s) / 36 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+TOTAL: 7/7 collection(s) reported, 116 request(s), 348 assertion(s), 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED, 0 report(s) with no assertions
+All 7 suites GREEN.
+--- api-gateway
+===== execution coverage (did every request actually run?) =====
+cluster_admin: executed 18/18 (100%)  [summary: 49 assertions, 0 failed, 0 listed; array walked 49]
+TOTAL executed 18/18 (100.0%)
+OK: every request either executed or is an explained skip.
+
+cluster_admin: ran 19 request(s) / 49 assertion(s) — 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED
+TOTAL: 1/1 collection(s) reported, 19 request(s), 49 assertion(s), 0 failed, 0 SCRIPT FAILED, 0 UNANSWERED, 0 report(s) with no assertions
+All 1 suites GREEN.
+
+[parallel] GATED verdict: RED (CI would fail) — see the per-collection lines above

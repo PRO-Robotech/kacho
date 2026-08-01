@@ -1,0 +1,28 @@
+# Инъекция B — как записана планом (5 литералов, включая closedVerbRelations)
+# ревизия: a15066eed988c1e7402bc29ab08ee052b81efc0d · КРАСНО (план ожидал ЗЕЛЁНОЕ)
+
+--- FAIL: TestDrift_VerbBearingTypesHaveFullSet (0.00s)
+    fga_model_drift_test.go:295: 
+        	Error Trace:	/tmp/xc3/inj/services/iam/internal/authzmap/fga_model_drift_test.go:295
+        	Error:      	Should be true
+        	Test:       	TestDrift_VerbBearingTypesHaveFullSet
+        	Messages:   	resource objectType "account" is missing one or more of [v_get v_list v_create v_update v_delete v_inject] in the model (a CRUD verb would emit an unsatisfiable tuple)
+--- FAIL: TestDrift_GuardMatchesModel (0.00s)
+    fga_model_drift_test.go:310: 
+        	Error Trace:	/tmp/xc3/inj/services/iam/internal/authzmap/fga_model_drift_test.go:310
+        	Error:      	Not equal: 
+        	            	expected: false
+        	            	actual  : true
+        	Test:       	TestDrift_GuardMatchesModel
+        	Messages:   	TypeHasVerbRelations("account")=true but model full-v_*-set=false — emission guard drifted from the canonical model
+--- FAIL: TestDrift_ExpandableRelationsMatchModel (0.00s)
+    fga_model_drift_test.go:395: 
+        	Error Trace:	/tmp/xc3/inj/services/iam/internal/authzmap/fga_model_drift_test.go:395
+        	Error:      	Should be true
+        	Test:       	TestDrift_ExpandableRelationsMatchModel
+        	Messages:   	relation "v_inject" is advertised as expandable but no model type defines it (phantom expand surface)
+FAIL
+FAIL	github.com/PRO-Robotech/kacho/services/iam/internal/authzmap	57.847s
+ok  	github.com/PRO-Robotech/kacho/services/iam/internal/domain	0.031s
+ok  	github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/role	0.215s
+FAIL

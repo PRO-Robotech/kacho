@@ -1,0 +1,6 @@
+# Инъекция C' — расхождение T1 (ClosedVerbs) и T5 (crudOrder)
+# ревизия: a15066eed988c1e7402bc29ab08ee052b81efc0d · ЗЕЛЕНО — сверяющего нет
+
+ok  	github.com/PRO-Robotech/kacho/services/iam/internal/authzmap	58.336s
+ok  	github.com/PRO-Robotech/kacho/services/iam/internal/domain	0.030s
+ok  	github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/role	(cached)

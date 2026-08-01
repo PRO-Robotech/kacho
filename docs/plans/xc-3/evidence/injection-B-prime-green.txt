@@ -1,0 +1,6 @@
+# Инъекция B' — несущая: то же без closedVerbRelations (4 литерала)
+# ревизия: a15066eed988c1e7402bc29ab08ee052b81efc0d · ЗЕЛЕНО — предмет под-фазы
+
+ok  	github.com/PRO-Robotech/kacho/services/iam/internal/authzmap	57.500s
+ok  	github.com/PRO-Robotech/kacho/services/iam/internal/domain	0.032s
+ok  	github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/role	(cached)
