@@ -13,7 +13,6 @@ import (
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -28,23 +27,16 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
 )
 
-// setupTestDBUpToVPC — testcontainers Postgres с миграциями ТОЛЬКО до version
-// (для backfill-теста: посеять legacy-состояние до 0017, затем догнать).
+// setupTestDBUpToVPC — база на общем Postgres пакета с миграциями ТОЛЬКО до
+// version (для backfill-теста: посеять legacy-состояние до 0017, затем догнать).
+//
+// Шаблон здесь НЕ подходит по построению: он мигрирован до головы, а этому тесту
+// нужна голова прошлого. Поэтому база создаётся ПУСТОЙ и цепочка проходится сама —
+// экономится подъём контейнера, но не проигрывание миграций.
 func setupTestDBUpToVPC(t testing.TB, version int64) string {
 	t.Helper()
-	ctx := context.Background()
-	pgc, err := postgres.Run(ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("kacho_vpc_test"),
-		postgres.WithUsername("vpc"),
-		postgres.WithPassword("vpc"),
-		postgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = pgc.Terminate(ctx) })
+	dsn := newSharedDatabase(t, false)
 
-	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
 	db, err := sql.Open("pgx", dsn)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })

@@ -5,58 +5,35 @@ package pg_test
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/migrations"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"
 )
 
-// setupTestDB поднимает изолированный Postgres контейнер с применённой
-// миграцией 0001_initial.sql. Возвращает DSN с search_path=kacho_nlb,public.
+// setupTestDB выдаёт вызывающему СВОЮ мигрированную базу на общем Postgres пакета
+// и возвращает DSN с search_path=kacho_nlb,public.
+//
+// Клонируется шаблон, который TestMain мигрировал один раз, вместо подъёма
+// контейнера и проигрывания всей цепочки на каждый вызов — почему именно так, см.
+// testmain_integration_test.go. База у вызывающего по-прежнему своя: общим между
+// тестами остаётся только процесс сервера, поэтому построчная конкуренция внутри
+// теста ведёт себя ровно как когда у каждого теста был свой контейнер.
 func setupTestDB(t testing.TB) string {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("skipping integration test (testing.Short)")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	defer cancel()
-
-	pgc, err := postgres.Run(ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("kacho_nlb_test"),
-		postgres.WithUsername("nlb"),
-		postgres.WithPassword("nlb"),
-		postgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = pgc.Terminate(context.Background()) })
-
-	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
-
-	db, err := sql.Open("pgx", dsn)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
-
-	goose.SetBaseFS(migrations.FS)
-	require.NoError(t, goose.SetDialect("postgres"))
-	require.NoError(t, goose.Up(db, "."))
-
-	return appendSearchPathOptions(dsn)
+	return appendSearchPathOptions(newSharedDatabase(t, true))
 }
 
 // appendSearchPathOptions добавляет libpq `options=-c search_path=kacho_nlb,public`

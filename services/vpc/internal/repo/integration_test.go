@@ -5,51 +5,31 @@ package repo_test
 
 import (
 	"context"
-	"database/sql"
 	"strings"
 	"testing"
 
-	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/migrations"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/helpers"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 )
 
+// setupTestDB hands the caller its own migrated database on the package's shared
+// Postgres, and returns the DSN for it.
+//
+// It clones the template TestMain migrated once, rather than starting a container
+// and replaying every migration per call — see testmain_integration_test.go for
+// why. The caller still gets a database of its own: nothing is shared between
+// tests but the server process, so row-level contention inside a test behaves
+// exactly as it did when each test owned a container.
 func setupTestDB(t testing.TB) string {
 	t.Helper()
-	ctx := context.Background()
-
-	pgc, err := postgres.Run(ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("kacho_vpc_test"),
-		postgres.WithUsername("vpc"),
-		postgres.WithPassword("vpc"),
-		postgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = pgc.Terminate(ctx) })
-
-	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
-
-	db, err := sql.Open("pgx", dsn)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
-
-	goose.SetBaseFS(migrations.FS)
-	require.NoError(t, goose.SetDialect("postgres"))
-	require.NoError(t, goose.Up(db, "."))
-
-	return appendSearchPathOptions(dsn)
+	return appendSearchPathOptions(newSharedDatabase(t, true))
 }
 
 func appendSearchPathOptions(dsn string) string {
