@@ -154,6 +154,13 @@ func (h *RegistryHandler) ListRepositories(ctx context.Context, req *registryv1.
 	if err := registry.ValidateRegistryID(registryID); err != nil {
 		return nil, mapErr(err)
 	}
+	// Формат страницы — ДО гейта доступа. Вопрос «правильно ли составлен запрос»
+	// имеет ОДИН ответ для всех вызывающих; за гейтом он становился ответом про
+	// права (api-conventions.md: формат → authz → repo). Use-case и zot-адаптер
+	// повторяют обе проверки и остаются авторитетными на служимом пути.
+	if err := registry.ValidateRepoListPagination(int64(req.GetPageSize()), req.GetPageToken()); err != nil {
+		return nil, mapErr(err)
+	}
 	if err := h.authz.namespaceGate(ctx, registryID); err != nil {
 		return nil, err
 	}
@@ -188,6 +195,11 @@ func (h *RegistryHandler) ListTags(ctx context.Context, req *registryv1.ListTags
 	}
 	if repository == "" {
 		return nil, status.Error(codes.InvalidArgument, "repository is required")
+	}
+	// Формат страницы — ДО гейта доступа (см. ListRepositories): за гейтом ответ на
+	// мусорный курсор становился ответом про права.
+	if err := registry.ValidateTagListPagination(int64(req.GetPageSize()), req.GetPageToken()); err != nil {
+		return nil, mapErr(err)
 	}
 	if err := h.authz.checkRepo(ctx, registryID, repository, relationVList); err != nil {
 		return nil, err
