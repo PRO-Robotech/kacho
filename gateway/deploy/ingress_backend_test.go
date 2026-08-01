@@ -230,7 +230,8 @@ func TestProfiles_SubchartIngressStaysDisabled(t *testing.T) {
 
 	baseDeclaresOff := false
 	for _, path := range matches {
-		raw, rerr := os.ReadFile(path) //nolint:gosec // путь из glob по дереву репозитория
+		// #nosec G304 -- путь приходит из glob по дереву самого репозитория, внешнего ввода на нём нет
+		raw, rerr := os.ReadFile(path)
 		if rerr != nil {
 			t.Fatalf("чтение %s: %v", path, rerr)
 		}
