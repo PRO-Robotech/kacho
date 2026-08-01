@@ -158,7 +158,11 @@ func (h *RegistryHandler) RenameRepository(ctx context.Context, req *registryv1.
 
 // ListReferrers возвращает referrer-проекцию subject_digest (sync, bounded full-set).
 // Malformed registry_id → InvalidArgument ПЕРВЫМ (A06). per-repo v_get Check (unauthorized|
-// absent → NOT_FOUND, C02). malformed subject_digest → InvalidArgument sync-first (C04).
+// absent → NOT_FOUND, C02) — и ЭТОТ Check стоит раньше проверки subject_digest, поэтому
+// у неуправомоченного вызывающего негодный digest тоже даёт «repository not found»
+// (C02 сильнее). «sync-first» у subject_digest (C04) означает «до обращения к движку»,
+// а не «до Check»: проверка живёт в use-case'е. Пагинации здесь нет вовсе — запрос
+// не несёт ни page_size, ни page_token (bounded full-set одного subject'а, D-8).
 // subject без referrer'ов → пустой список (C03). Инфра-полей НЕ несёт (X01).
 func (h *RegistryHandler) ListReferrers(ctx context.Context, req *registryv1.ListReferrersRequest) (*registryv1.ListReferrersResponse, error) {
 	registryID, repository := req.GetRegistryId(), req.GetRepository()
@@ -168,6 +172,13 @@ func (h *RegistryHandler) ListReferrers(ctx context.Context, req *registryv1.Lis
 	if repository == "" {
 		return nil, status.Error(codes.InvalidArgument, "repository is required")
 	}
+	// Порядок здесь ОБРАТНЫЙ страничному, и это решение приёмки, а не недосмотр:
+	// RG-1-C02 требует, чтобы неуправомоченный вызывающий получал «repository not
+	// found» и на негодном subject_digest тоже (скрытие существования байт-в-байт).
+	// Поэтому формат digest судит use-case — ДО обращения к движку (C04), но ПОСЛЕ
+	// этого Check. Пагинация к этому исключению не относится: у неё своя конвенция
+	// (формат → authz → repo), и у ListRepositories/ListTags она соблюдена.
+	// Пересмотр C02 — продуктовое решение своего домена, не побочный эффект правки.
 	if err := h.authz.checkRepository(ctx, registryID, repository, relationVGet); err != nil {
 		return nil, err
 	}

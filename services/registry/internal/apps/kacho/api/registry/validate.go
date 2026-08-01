@@ -4,10 +4,14 @@
 package registry
 
 import (
+	"fmt"
+
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
+	"github.com/PRO-Robotech/kacho/services/registry/internal/apps/kacho/shared/namepage"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
+	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
 )
 
 // ValidateRegistryID отсекает malformed registry-id синхронно первым стейтментом
@@ -23,6 +27,47 @@ func ValidateRegistryID(id string) error {
 // → InvalidArgument). Возвращает effective-значение для LIMIT.
 func validatePageSize(size int64) (int64, error) {
 	return corevalidate.PageSize("page_size", size)
+}
+
+// ValidateRepoListPagination — формат страницы ListRepositories, пригодный к вызову
+// ИЗ ХЕНДЛЕРА, до гейта доступа.
+//
+// Зачем экспортировано, а не оставлено внутри use-case'а. ListRepositories и
+// ListTags — ScopeFiltered: хендлер спрашивает права первой строкой (namespaceGate /
+// checkRepo) и только потом зовёт use-case, где формат и проверялся. Значит один и
+// тот же мусорный курсор отвечал по-разному в зависимости от того, что вызывающему
+// выдано: у кого грант есть — INVALID_ARGUMENT про page_token, у кого нет — отказ по
+// правам. Вопрос «правильно ли составлен запрос» имеет ОДИН ответ для всех
+// (api-conventions.md: формат → authz → repo), поэтому предикат обязан быть доступен
+// там, где стоит гейт.
+//
+// Предикатов ДВА, а не один: кодек курсора у перечислений разный — полоса+позиция у
+// репозиториев, имя граничного тега у тегов. Общий предикат делал бы вид, что курсоры
+// взаимозаменяемы. Use-case и zot-адаптер повторяют обе проверки и остаются
+// авторитетными на служимом пути.
+func ValidateRepoListPagination(pageSize int64, pageToken string) error {
+	if _, err := validatePageSize(pageSize); err != nil {
+		return err
+	}
+	if _, _, err := decodeRepoCursor(pageToken); err != nil {
+		return err
+	}
+	return nil
+}
+
+// ValidateTagListPagination — то же для ListTags; курсор тегов именует граничный тег
+// (namepage), а не полосу с позицией. См. godoc ValidateRepoListPagination.
+func ValidateTagListPagination(pageSize int64, pageToken string) error {
+	if _, err := validatePageSize(pageSize); err != nil {
+		return err
+	}
+	if pageToken == "" {
+		return nil
+	}
+	if _, err := namepage.Decode(pageToken); err != nil {
+		return fmt.Errorf("%w: invalid page_token", regerrors.ErrInvalidArg)
+	}
+	return nil
 }
 
 // knownUpdateFields — whitelist update_mask Registry. name/project_id/id/region_id/
