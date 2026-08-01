@@ -1,0 +1,41 @@
+# Объём ./services/iam/... — контроль и обе инъекции
+# ревизия: a15066eed988c1e7402bc29ab08ee052b81efc0d
+#
+# КОНТРОЛЬ на невозмущённом дереве (git status --porcelain = 0):
+=== дерево чистое? ===
+0
+=== КОНТРОЛЬ: тот же тест на НЕВОЗМУЩЁННОМ REV ===
+ok  	github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/access_binding	9.095s
+ok  	github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/access_binding/reconcile	0.004s [no tests to run]
+
+# B' и C' — тот же тест, изолированно, -count=1:
+############ B' (несущая) — тот же тест изолированно ############
+        	Test:       	TestSyncFGA_ReadAfterWrite_AccountCreate_OwnerCheckImmediately
+        	Messages:   	owner must resolve Check(user:usran772ex7b1c5f431x, editor, account:accaw4dp6jsshyw18bsb) once the create-path materialization pass completes — if false, the per-object tuple is only in fga_outbox (the async drainer is NOT running in this test), i.e. the synchronous direct-write never happened
+    syncfga_read_after_write_e2e_integration_test.go:99: 
+        	Error Trace:	/tmp/xc3/inj/services/iam/internal/apps/kacho/api/access_binding/syncfga_read_after_write_e2e_integration_test.go:405
+        	            				/tmp/xc3/inj/services/iam/internal/apps/kacho/api/access_binding/syncfga_read_after_write_e2e_integration_test.go:99
+        	Error:      	Should be true
+        	Test:       	TestSyncFGA_ReadAfterWrite_AccountCreate_OwnerCheckImmediately
+        	Messages:   	owner must resolve Check(user:usran772ex7b1c5f431x, admin, account:accaw4dp6jsshyw18bsb) once the create-path materialization pass completes — if false, the per-object tuple is only in fga_outbox (the async drainer is NOT running in this test), i.e. the synchronous direct-write never happened
+FAIL
+FAIL	github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/access_binding	97.803s
+ok  	github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/access_binding/reconcile	0.005s [no tests to run]
+FAIL
+
+############ C' (T1↔T5) — тот же тест ############
+        	Test:       	TestSyncFGA_ReadAfterWrite_AccountCreate_OwnerCheckImmediately
+        	Messages:   	owner must resolve Check(user:usrtxhxkqc2ghc2ng8xa, editor, account:accbqaaqpm4bt5xf1bpr) once the create-path materialization pass completes — if false, the per-object tuple is only in fga_outbox (the async drainer is NOT running in this test), i.e. the synchronous direct-write never happened
+    syncfga_read_after_write_e2e_integration_test.go:99: 
+        	Error Trace:	/tmp/xc3/inj/services/iam/internal/apps/kacho/api/access_binding/syncfga_read_after_write_e2e_integration_test.go:405
+        	            				/tmp/xc3/inj/services/iam/internal/apps/kacho/api/access_binding/syncfga_read_after_write_e2e_integration_test.go:99
+        	Error:      	Should be true
+        	Test:       	TestSyncFGA_ReadAfterWrite_AccountCreate_OwnerCheckImmediately
+        	Messages:   	owner must resolve Check(user:usrtxhxkqc2ghc2ng8xa, admin, account:accbqaaqpm4bt5xf1bpr) once the create-path materialization pass completes — if false, the per-object tuple is only in fga_outbox (the async drainer is NOT running in this test), i.e. the synchronous direct-write never happened
+FAIL
+FAIL	github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/access_binding	98.243s
+ok  	github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/access_binding/reconcile	0.005s [no tests to run]
+FAIL
+
+############ откат ############
+0

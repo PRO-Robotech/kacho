@@ -1,0 +1,36 @@
+# Инъекция A — правка мимо модели (ClosedVerbs += "inject", зеркала не тронуты)
+# ревизия: a15066eed988c1e7402bc29ab08ee052b81efc0d · КРАСНО
+
+--- FAIL: TestVerbBearing_AccountProjectVerbToRelation (0.00s)
+    --- FAIL: TestVerbBearing_AccountProjectVerbToRelation/account_wildcard_verb_→_full_closed_set (0.00s)
+        verb_bearing_account_project_test.go:98: 
+            	Error Trace:	/tmp/xc3/inj/services/iam/internal/authzmap/verb_bearing_account_project_test.go:98
+            	Error:      	elements differ
+            	            	extra elements in list B:
+            	            	([]interface {}) (len=1) {
+            	            	 (string) (len=8) "v_inject"
+            	            	}
+            	            	listA:
+            	            	([]string) (len=5) {
+            	            	 (string) (len=5) "v_get",
+            	            	 (string) (len=6) "v_list",
+            	            	 (string) (len=8) "v_create",
+            	            	 (string) (len=8) "v_update",
+            	            	 (string) (len=8) "v_delete"
+            	            	}
+            	            	listB:
+            	            	([]string) (len=6) {
+            	            	 (string) (len=5) "v_get",
+            	            	 (string) (len=6) "v_list",
+            	            	 (string) (len=8) "v_create",
+            	            	 (string) (len=8) "v_update",
+            	            	 (string) (len=8) "v_delete",
+            	            	 (string) (len=8) "v_inject"
+            	            	}
+            	Test:       	TestVerbBearing_AccountProjectVerbToRelation/account_wildcard_verb_→_full_closed_set
+            	Messages:   	account verbs [*] should resolve to [v_get v_list v_create v_update v_delete]
+FAIL
+FAIL	github.com/PRO-Robotech/kacho/services/iam/internal/authzmap	72.658s
+ok  	github.com/PRO-Robotech/kacho/services/iam/internal/domain	0.061s
+ok  	github.com/PRO-Robotech/kacho/services/iam/internal/apps/kacho/api/role	0.219s
+FAIL
