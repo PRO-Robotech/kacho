@@ -24,6 +24,7 @@ var flatProfile = Profile{
 	ReceiverSuffix: "Handler",
 	Filters:        []string{"filterVisible", "FilterVisibleIDs"},
 	Banned:         []string{"ListAllowedIDs", "ListObjects"},
+	SubjectScopers: []string{"ListForCaller"},
 }
 
 // pkgProfile mirrors vpc/nlb: one package per resource, one transport type name.
@@ -34,10 +35,11 @@ var pkgProfile = Profile{
 	ReceiverSuffix: "Handler",
 	Filters:        []string{"FilterVisibleIDs", "FilterVisiblePage"},
 	Banned:         []string{"ListAllowedIDs", "ListObjects"},
+	SubjectScopers: []string{"ListForCaller"},
 }
 
 // run materialises a throwaway tree and audits it.
-func run(t *testing.T, p Profile, files map[string]string, allow ...string) (string, error) {
+func run(t *testing.T, p Profile, files map[string]string, decls ...map[string]Listing) (string, error) {
 	t.Helper()
 	root := t.TempDir()
 	for rel, content := range files {
@@ -50,7 +52,10 @@ func run(t *testing.T, p Profile, files map[string]string, allow ...string) (str
 		}
 	}
 	var buf strings.Builder
-	_, err := Audit(p, Options{Root: root, Allow: allow}, &buf)
+	if len(decls) == 1 {
+		p.Listings = decls[0]
+	}
+	_, err := Audit(p, Options{Root: root}, &buf)
 	return buf.String(), err
 }
 
@@ -59,7 +64,7 @@ func TestAudit_DiscriminatesLeakFromLegitimateShape(t *testing.T) {
 		name    string
 		profile Profile
 		files   map[string]string
-		allow   []string
+		decls   map[string]Listing
 		wantErr bool
 	}{
 		{
@@ -301,7 +306,16 @@ func (h *Handler) Get(ctx context.Context) error { return nil }
 			},
 		},
 		{
-			name:    "not a resource: ListOperations is a different method",
+			// This case previously read "not a resource: ListOperations is a different
+			// method" and asserted the gate stays SILENT on the fixture below — an
+			// InstanceHandler.ListOperations that hands back a page with no narrowing
+			// whatsoever. It was not merely that the gate could not see such methods:
+			// its own suite asserted the blindness as correct behaviour, which is why
+			// the blind spot survived every review of this file.
+			//
+			// It now asserts the opposite. A listing method the service has not
+			// declared is a finding, so the page cannot go unjudged in silence.
+			name:    "undeclared: a listing method with no declared enforcement is a finding",
 			profile: flatProfile,
 			files: map[string]string{"internal/handler/instance_handler.go": `package handler
 
@@ -320,12 +334,69 @@ func (h *InstanceHandler) ListOperations(ctx context.Context) error {
 	return nil
 }
 `},
+			wantErr: true,
+		},
+		{
+			// The paired positive for the case above: the SAME fixture, with the
+			// method declared, must be silent. Without this, "undeclared is a finding"
+			// would be satisfied by a gate that simply rejects every ListSomething,
+			// and the declaration machinery would be doing no work.
+			name:    "declared: the same method, declared SubjectScoped, is silent",
+			profile: flatProfile,
+			files: map[string]string{"internal/handler/instance_handler.go": `package handler
+
+type InstanceHandler struct{}
+
+func (h *InstanceHandler) List(ctx context.Context) error {
+	rows, _ := h.svc.List(ctx)
+	visible, _ := filterVisible(ctx, h.listFilter, rows)
+	_ = visible
+	return nil
+}
+
+func (h *InstanceHandler) ListOperations(ctx context.Context) error {
+	rows, _, _ := operations.ListForCaller(ctx, h.ops, filter)
+	_ = rows
+	return nil
+}
+`},
+			decls: map[string]Listing{
+				"instance.ListOperations": {Shape: SubjectScoped},
+			},
+		},
+		{
+			// And the mirror of THAT: declaring SubjectScoped does not make it so.
+			// A declaration the code does not back must fail, or the declaration
+			// table becomes a place to write whatever makes the gate quiet.
+			name:    "declared SubjectScoped but nothing narrows by the caller",
+			profile: flatProfile,
+			files: map[string]string{"internal/handler/instance_handler.go": `package handler
+
+type InstanceHandler struct{}
+
+func (h *InstanceHandler) List(ctx context.Context) error {
+	rows, _ := h.svc.List(ctx)
+	visible, _ := filterVisible(ctx, h.listFilter, rows)
+	_ = visible
+	return nil
+}
+
+func (h *InstanceHandler) ListOperations(ctx context.Context) error {
+	rows, _ := h.svc.ListOperations(ctx)
+	_ = rows
+	return nil
+}
+`},
+			decls: map[string]Listing{
+				"instance.ListOperations": {Shape: SubjectScoped},
+			},
+			wantErr: true,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			out, err := run(t, tc.profile, tc.files, tc.allow...)
+			out, err := run(t, tc.profile, tc.files, tc.decls)
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("verdict: gotErr=%v wantErr=%v\n--- output ---\n%s", err != nil, tc.wantErr, out)
 			}
@@ -547,21 +618,36 @@ func (h *InstanceHandler) List(ctx context.Context) error {
 type MachineTypeHandler struct{}
 
 func (h *MachineTypeHandler) List(ctx context.Context) error { return nil }
-`}, "machine_type")
+`}, map[string]Listing{
+		"machine_type.List": {Shape: ClusterScoped, Reason: "cluster-wide sizing catalog"},
+	})
 	if err != nil {
 		t.Fatalf("compliant fixture must pass: %v\n--- output ---\n%s", err, out)
 	}
-	for _, want := range []string{"1 file(s)", "2 resource(s)", "checked instance", "whitelisted machine_type"} {
+	// The listing-method count is asserted alongside the resource count on purpose:
+	// the previous census reported resources only, so "8 resources" stood equally
+	// well for 8 listing methods and for 21, and the 13 it was not looking at were
+	// invisible in the very line meant to say what had been examined.
+	for _, want := range []string{
+		"1 file(s)", "2 resource(s)", "2 listing method(s)",
+		"instance.List", "cluster-scoped by declaration machine_type.List",
+	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the census must state what was examined (missing %q)\n--- output ---\n%s", want, out)
 		}
 	}
 }
 
-// TestAudit_ExpiredWhitelistEntryIsAFinding — an exclusion must expire by itself.
-// Once no such resource exists the entry suppresses nothing, and the next resource
-// to inherit that name inherits the blind spot in silence.
-func TestAudit_ExpiredWhitelistEntryIsAFinding(t *testing.T) {
+// TestAudit_ExpiredDeclarationIsAFinding — an exclusion must expire by itself.
+// Once no such method exists the entry describes nothing, and the next method to
+// inherit that name inherits an enforcement claim nobody checked.
+//
+// This replaces the whitelist test of the previous edition, and the subject moved
+// one level down with it: --allow excluded a whole RESOURCE, so excluding
+// addresspool as a cluster catalog also, silently, excluded its ListAddresses —
+// a method nobody had considered when the exclusion was written. A declaration is
+// per METHOD, so an exclusion can no longer take its neighbours with it.
+func TestAudit_ExpiredDeclarationIsAFinding(t *testing.T) {
 	files := map[string]string{"internal/handler/instance_handler.go": `package handler
 
 type InstanceHandler struct{}
@@ -574,23 +660,29 @@ func (h *InstanceHandler) List(ctx context.Context) error {
 }
 `}
 
-	out, err := run(t, flatProfile, files, "disk_type")
-	if err == nil {
-		t.Fatalf("a whitelist entry matching no resource must be reported\n--- output ---\n%s", out)
+	expired := map[string]Listing{
+		"disk_type.List": {Shape: ClusterScoped, Reason: "moved to kacho-storage long ago"},
 	}
-	if !strings.Contains(out, "disk_type") {
+	out, err := run(t, flatProfile, files, expired)
+	if err == nil {
+		t.Fatalf("a declaration matching no method must be reported\n--- output ---\n%s", out)
+	}
+	if !strings.Contains(out, "disk_type.List") {
 		t.Errorf("the finding must name the expired entry\n--- output ---\n%s", out)
 	}
 
 	// Converse: an entry that still has a subject must stay silent, so the rule is
-	// not merely "flag every whitelist".
+	// not merely "flag every declaration".
 	files["internal/handler/machine_type_handler.go"] = `package handler
 
 type MachineTypeHandler struct{}
 
 func (h *MachineTypeHandler) List(ctx context.Context) error { return nil }
 `
-	if out, err := run(t, flatProfile, files, "machine_type"); err != nil {
-		t.Fatalf("a whitelist entry that still matches a resource must not be a finding: %v\n--- output ---\n%s", err, out)
+	live := map[string]Listing{
+		"machine_type.List": {Shape: ClusterScoped, Reason: "cluster-wide sizing catalog"},
+	}
+	if out, err := run(t, flatProfile, files, live); err != nil {
+		t.Fatalf("a declaration that still matches a method must not be a finding: %v\n--- output ---\n%s", err, out)
 	}
 }

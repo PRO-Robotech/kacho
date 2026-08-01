@@ -2,17 +2,22 @@
 // SPDX-License-Identifier: BUSL-1.1
 
 // Package listfiltergate is the analyser behind `make -C services/<svc>
-// audit-list-filter` for the three services whose public List is a project-scoped
-// collection narrowed per object: kacho-compute, kacho-nlb and kacho-vpc.
+// audit-list-filter` for the services whose listing surface is a set of pages handed
+// to a caller: kacho-compute, kacho-nlb, kacho-vpc and kacho-geo.
 //
 // # What it asserts
 //
-// Every public `List<Resource>` RPC must hand back only the rows its caller may
-// see. The page is read from the service's own DB first (cursor, project-scoped)
-// and only then run through a batched per-object check against kacho-iam
-// (`AuthorizeService.BatchCheck`, relation viewer ∪ v_list). So for each resource
-// the gate requires that the call graph rooted at the List transport declaration
-// reaches one of that service's accepted filter calls.
+// Every LISTING method must hand back only the rows its caller may see, and must say
+// HOW that is achieved. "Listing method" means every method whose name begins with
+// List — not only the collection RPC called exactly `List`.
+//
+// Each one carries a declared Shape (Profile.Listings), and the gate verifies the
+// evidence that shape implies: a per-object filter reached from the call graph
+// (RowFilter), a containing object read and acted on before the page (ParentGate), a
+// per-RPC authorization with a non-wildcard scope extractor in the proto (EdgeGate),
+// a narrowing by the authenticated caller (SubjectScoped), or a stated reason why
+// none applies (ClusterScoped). A listing method with no declaration is a finding;
+// a declaration with no method is a finding.
 //
 // The inverse shape — "enumerate every id the subject may see, then narrow the SQL
 // to that set" — is refused explicitly. That enumeration is capped server-side with
@@ -29,9 +34,24 @@
 // a file — and the resource then left the gate's view entirely: whatever its List
 // did afterwards went unjudged while the gate printed OK.
 //
-// Identification here is by what the declaration IS: a method named exactly `List`
-// on the transport TYPE (Profile.ReceiverSuffix). Two further properties follow
-// from parsing rather than searching text, and both were live defects:
+// Identification here is by what the declaration IS: a method whose name begins with
+// `List`, on the transport TYPE (Profile.ReceiverSuffix).
+//
+// The PREFIX matters as much as the type. This package matched the name `List`
+// exactly until 2026-08, so it saw the collection RPC of each resource and nothing
+// else: twenty further listing methods across compute, nlb, vpc and storage — child
+// collections and operation histories, every one of them a page handed to a caller —
+// were outside its view while it printed OK. The census could not reveal the gap
+// either, because it counted RESOURCES: "8 resources" read the same whether those 8
+// resources held 8 listing methods or 21. Worse, this package's own suite contained
+// a case named "not a resource: ListOperations is a different method", asserting
+// that an entirely unnarrowed ListOperations must leave the gate SILENT — the blind
+// spot was pinned as correct behaviour, which is why it survived review. The correct
+// form was already in the tree, in services/registry/tools/auditlistfilter, which
+// has matched by prefix from the start.
+//
+// Two further properties follow from parsing rather than searching text, and both
+// were live defects:
 //
 //   - comments are not code. A comment naming the filter cannot satisfy the check,
 //     and a comment explaining why enumeration is banned cannot trip it. Deleting a
@@ -45,30 +65,40 @@
 //
 // # Census
 //
-// The gate reports what it examined — files parsed, packages, resources
-// discovered, checked and whitelisted — on every path, and treats "nothing
-// examined" as a finding. A gate pointed at the wrong tree, or at a tree whose
-// packages moved, must not be indistinguishable from a clean one: "zero findings"
-// has to be unreachable from "zero read".
+// The gate reports what it examined — files parsed, packages, resources, and the
+// LISTING METHODS it judged by name — on every path, and treats "nothing examined"
+// as a finding. The method count is there because the resource count was not enough
+// to notice the gap above.
 //
-// # Whitelist
+// # Exclusions
 //
-// A cluster-catalog resource — project scope and per-object grants inapplicable by
-// design, as with compute's machine_type and vpc's addresspool — is excluded with
-// --allow=<resource>. An entry matching no discovered resource is itself a finding:
-// an exclusion lives only while it has a subject, otherwise the next resource to
-// inherit that name inherits the blind spot in silence.
+// A cluster catalog or an admin-only internal surface — per-object grants
+// inapplicable by design, as with compute's machine_type and vpc's addresspool — is
+// declared ClusterScoped with a Reason.
 //
-// # Relationship to the other two gates of this class
+// This replaced --allow=<resource>, which excluded a whole RESOURCE. That is a wider
+// exclusion than anyone writing it intends: excluding addresspool as a cluster
+// catalog also excluded its ListAddresses, a method the exclusion was never written
+// about. Declarations are per method, so an exclusion can no longer take its
+// neighbours with it, and it is a finding once its method is gone.
 //
-// kacho-storage and kacho-registry own bespoke analysers of the same class
-// (services/{storage,registry}/tools/auditlistfilter) and are NOT driven from here.
+// # Relationship to the other gates of this class
+//
+// kacho-storage, kacho-registry and kacho-iam own bespoke analysers of the same class
+// (services/{storage,registry,iam}/tools/auditlistfilter) and are NOT driven from here.
 // Storage asserts more than this package does — its repo adapter must narrow by
 // project_id and its use-case must reject an empty projectId — because its layout
 // puts both within reach of one walk. Registry's List surface is not project-scoped
 // at all (grants live on the registry and the repository; tags are not grantable
-// objects), so it declares a per-RPC enforcement shape instead. What is shared
-// across all five is the discipline, not the code.
+// objects), so it declares a per-RPC enforcement shape instead. kacho-iam has the
+// widest listing surface in the repository (31 methods) and, until 2026-08, no
+// analyser of this class at all.
+//
+// That every service has one is not left to memory: tools/listfiltergate/
+// coverage_test.go derives the service list from the committed tree and reports a
+// service nobody analyses as a FINDING. The set used to be written by hand, in a CI
+// loop and in whoever remembered to create a directory, and iam and geo were in
+// neither list. What is shared across all of them is the discipline, not the code.
 package listfiltergate
 
 import (
@@ -79,6 +109,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"unicode"
@@ -118,23 +149,139 @@ type Profile struct {
 	// Banned are the call names that ask the authorization store to enumerate
 	// everything a subject may see.
 	Banned []string
+
+	// SubjectScopers are the call names that narrow a page by the AUTHENTICATED
+	// caller taken from the context — not by an id the request supplied. The
+	// canonical one is operations.ListForCaller, which every service's
+	// ListOperations reaches.
+	SubjectScopers []string
+
+	// Listings declares, per listing method, how its visibility is decided. The key
+	// is "<resource>.<Method>" — the same resource name the analyser derives, and
+	// the method exactly as declared (List, ListOperations, ListBySubnet…).
+	//
+	// It is deliberately explicit and total: a listing method with no entry is a
+	// finding, so a new List RPC cannot ship unjudged, and an entry with no method
+	// is a finding, so a declaration expires the moment its subject is gone.
+	Listings map[string]Listing
+
+	// ProtoFiles are the .proto files carrying this service's RPC options, relative
+	// to Options.ProtoRoot. Read only to verify EdgeGate declarations; a profile
+	// with no EdgeGate listing does not need them.
+	ProtoFiles []string
+}
+
+// Shape is how one listing method's visibility is decided.
+//
+// There are five because there are five genuinely different answers to "what stops
+// this caller seeing rows that are not theirs", each with its own evidence. The
+// previous edition knew one shape, asserted it on the methods named exactly `List`,
+// and was silent about every other listing method in the tree — 20 of them across
+// four services. Naming the shapes is what makes the silence impossible: every
+// listing method now has to say which one it is.
+type Shape int
+
+const (
+	// RowFilter — the page is read first, then narrowed per object: the call graph
+	// must reach one of Profile.Filters.
+	RowFilter Shape = iota
+
+	// ParentGate — the page belongs to ONE object named in the request, and the
+	// service reads that object first and acts on the verdict. Evidence: the call
+	// graph reaches Listing.Gate, and the gate's result is tested in a branch that
+	// leaves the method.
+	ParentGate
+
+	// EdgeGate — same containment as ParentGate, but the check is the per-RPC
+	// authorization at the edge rather than a read in the service. Evidence: the
+	// RPC's proto options carry a required_relation AND a scope_extractor whose
+	// from_request_field is Listing.ParentField.
+	//
+	// The field must not be "*": an extractor resolving to `<type>:*` is satisfied by
+	// the wildcard tuple the cluster catalog is deliberately opened with, so it means
+	// "authenticated", not "authorized", and narrows nothing. Accepting a bare
+	// declaration here without reading the proto would make this shape a rubber
+	// stamp — the form of a check with no substance, which is the class the whole
+	// gate exists to catch.
+	EdgeGate
+
+	// SubjectScoped — the query is narrowed by the authenticated caller taken from
+	// the context. Evidence: the call graph reaches one of Profile.SubjectScopers.
+	SubjectScoped
+
+	// ClusterScoped — a cluster-wide catalog or an admin-only internal surface with
+	// no per-object grants to narrow to. The only shape with no code evidence, so it
+	// carries its justification inline (Listing.Reason) and expires with its method.
+	//
+	// It replaces the --allow=<resource> flag, which excluded a whole RESOURCE —
+	// including listing methods nobody had considered, such as addresspool's
+	// ListAddresses — and recorded its reason nowhere the gate could read.
+	ClusterScoped
+)
+
+// String names a shape for messages.
+func (s Shape) String() string {
+	switch s {
+	case RowFilter:
+		return "RowFilter"
+	case ParentGate:
+		return "ParentGate"
+	case EdgeGate:
+		return "EdgeGate"
+	case SubjectScoped:
+		return "SubjectScoped"
+	case ClusterScoped:
+		return "ClusterScoped"
+	}
+	return "unknown"
+}
+
+// Listing is the enforcement declared for one listing method.
+type Listing struct {
+	Shape Shape
+
+	// Gate is the call that must precede the read, for ParentGate. Written as
+	// "<field>.<Method>" (h.get.Execute → "get.Execute") so the handler's parent
+	// read is told apart from its page read — both are called Execute, and matching
+	// on the bare method name would let the page read vouch for its own gate.
+	Gate string
+
+	// ParentField is the request field naming the containing object, for EdgeGate.
+	// Must match the proto scope_extractor's from_request_field.
+	ParentField string
+
+	// Reason justifies a ClusterScoped listing. Required for that shape: an
+	// exclusion whose reason lives only in a reviewer's memory is indistinguishable
+	// from one nobody thought about.
+	Reason string
 }
 
 // Options configures one audit run.
 type Options struct {
 	// Root is the service root (the directory holding internal/…).
 	Root string
-	// Allow lists resources excluded from the check (cluster catalogs).
-	Allow []string
+	// ProtoRoot is where Profile.ProtoFiles are resolved from. Needed only when the
+	// profile declares an EdgeGate listing; when it does and this is unset or
+	// unreadable, that is a finding, not a skip — a gate that cannot reach the
+	// evidence has not verified the declaration.
+	ProtoRoot string
 }
 
 // Report is the census plus the findings of one run.
 type Report struct {
-	Files       int      // non-test .go files parsed under AnchorRoot
-	Packages    int      // packages parsed (1 when Profile.PerPackage is false)
-	Resources   []string // resources discovered, sorted
-	Checked     []string // resources actually judged
-	Whitelisted []string // resources skipped because whitelisted
+	Files     int      // non-test .go files parsed under AnchorRoot
+	Packages  int      // packages parsed (1 when Profile.PerPackage is false)
+	Resources []string // resources discovered, sorted
+	Checked   []string // resources actually judged
+	// Listings are the listing methods discovered, "<resource>.<Method>", sorted.
+	// This is the number the previous edition could not report: it saw only the
+	// methods named exactly `List`, so its census of 8 resources stood for 21
+	// listing methods and said nothing about the other 13.
+	Listings []string
+	// ClusterScoped are the listing methods declared as needing no narrowing.
+	ClusterScoped []string
+	// Undeclared are listing methods with no Profile entry — each is also a finding.
+	Undeclared []string
 	// Unattributed are public List declarations that resolved to no resource —
 	// each one is also a finding. Kept in the census so a passing run can state
 	// that the number is zero, rather than leaving it unsaid.
@@ -199,63 +346,220 @@ func Audit(p Profile, o Options, out io.Writer) (Report, error) {
 		return finish(p, rep, out)
 	}
 
-	allowed := map[string]bool{}
-	for _, a := range o.Allow {
-		allowed[a] = true
+	// Every discovered listing method is named "<resource>.<Method>". This — not the
+	// resource — is the unit the gate judges and reports.
+	for _, res := range rep.Resources {
+		for _, a := range anchors[res] {
+			rep.Listings = append(rep.Listings, res+"."+a.method)
+		}
 	}
-	// An exclusion lives only while it has a subject.
-	for _, a := range sortedKeys(allowed) {
-		if !contains(rep.Resources, a) {
+	sort.Strings(rep.Listings)
+
+	// A declaration lives only while it has a subject. Checked before anything is
+	// judged so that a profile pointed at a tree whose methods moved says exactly
+	// that, instead of reporting a page of "undeclared" findings.
+	declaredKeys := make([]string, 0, len(p.Listings))
+	for k := range p.Listings {
+		declaredKeys = append(declaredKeys, k)
+	}
+	sort.Strings(declaredKeys)
+	for _, k := range declaredKeys {
+		if !contains(rep.Listings, k) {
 			rep.Findings = append(rep.Findings, fmt.Sprintf(
-				"whitelist entry %q matches no resource under %s — the exclusion has nothing left to "+
-					"exclude; drop it, or the next resource of that name inherits the blind spot silently",
-				a, anchor))
+				"declared listing %q matches no method under %s — the declaration has nothing left to "+
+					"describe; drop it, or the next method of that name inherits an enforcement claim "+
+					"nobody checked", k, anchor))
+		}
+	}
+
+	var protos *protoOptions
+	if profileNeedsProto(p) {
+		var perr error
+		protos, perr = loadProtoOptions(o.ProtoRoot, p.ProtoFiles)
+		if perr != nil {
+			rep.Findings = append(rep.Findings, fmt.Sprintf(
+				"this profile declares EdgeGate listings, whose evidence lives in the proto options, "+
+					"and those could not be read: %v\n  an EdgeGate declaration the gate cannot verify is "+
+					"a rubber stamp — it has the form of a check and no substance", perr))
 		}
 	}
 
 	for _, res := range rep.Resources {
-		if allowed[res] {
-			rep.Whitelisted = append(rep.Whitelisted, res)
-			continue
-		}
 		rep.Checked = append(rep.Checked, res)
 		for _, a := range anchors[res] {
-			rep.Findings = append(rep.Findings, checkAnchor(p, res, a)...)
+			key := res + "." + a.method
+			l, ok := p.Listings[key]
+			if !ok {
+				// `List` alone has a shape fixed by convention: it is the resource's
+				// project-scoped collection RPC in every service (api-conventions.md,
+				// "Get/List sync"), so its default is the STRICTEST shape. A default
+				// that only ever demands more can add findings, never hide them — and
+				// a List that is genuinely a cluster catalog says so explicitly, as
+				// machine_type and addresspool do.
+				//
+				// Every OTHER listing method is a child or derived listing whose shape
+				// really does vary — parent-gated, edge-gated, subject-scoped — so
+				// there is no defensible default and the gate fails closed until the
+				// service states one. This is what stops the next ListSomething from
+				// shipping unjudged, which is precisely how the previous twenty got in.
+				if a.method != "List" {
+					rep.Undeclared = append(rep.Undeclared, key)
+					rep.Findings = append(rep.Findings, fmt.Sprintf(
+						"%s — a listing method with no declared enforcement: nothing states how this page "+
+							"is narrowed, so nothing checks that it is\n  declared: %s\n  add an entry to "+
+							"the service's Profile.Listings naming the shape (RowFilter / ParentGate / "+
+							"EdgeGate / SubjectScoped / ClusterScoped) — until it is stated, the gate "+
+							"fails closed", key, a.pos))
+					continue
+				}
+				l = Listing{Shape: RowFilter}
+			}
+			if l.Shape == ClusterScoped {
+				rep.ClusterScoped = append(rep.ClusterScoped, key)
+			}
+			rep.Findings = append(rep.Findings, checkListing(p, key, l, a, protos)...)
 		}
 	}
 
 	return finish(p, rep, out)
 }
 
-// anchorDecl is one public List declaration together with the package it can reach.
-type anchorDecl struct {
-	pos  string // "<file>:<line>:<col>" of the declaration
-	fn   *ast.FuncDecl
-	unit *unit
+// profileNeedsProto reports whether any declaration in p needs the proto options.
+func profileNeedsProto(p Profile) bool {
+	for _, l := range p.Listings {
+		if l.Shape == EdgeGate {
+			return true
+		}
+	}
+	return false
 }
 
-// checkAnchor judges one List declaration: the call graph it roots must reach an
-// accepted per-object filter, and must not reach a banned enumeration.
-func checkAnchor(p Profile, res string, a anchorDecl) []string {
+// anchorDecl is one public listing declaration together with the package it can reach.
+type anchorDecl struct {
+	pos    string // "<file>:<line>:<col>" of the declaration
+	method string // the method name exactly as declared (List, ListOperations, …)
+	fn     *ast.FuncDecl
+	unit   *unit
+}
+
+// checkListing judges one listing declaration against the shape it declares.
+func checkListing(p Profile, key string, l Listing, a anchorDecl, protos *protoOptions) []string {
 	called := a.unit.reachableCalls(a.fn)
 
 	var findings []string
-	if !anyOf(called, p.Filters) {
-		findings = append(findings, fmt.Sprintf(
-			"%s — List hands back its page without a per-object visibility filter: nothing along the "+
-				"calls it makes reaches %s (kacho-iam BatchCheck, relation viewer ∪ v_list)\n  declared: %s",
-			res, orList(p.Filters), a.pos))
+
+	// The enumerate-then-narrow ban applies to every shape that narrows at all: it
+	// is about HOW a page is narrowed, not about which shape does it.
+	if l.Shape != ClusterScoped {
+		for _, b := range p.Banned {
+			if called[b] {
+				findings = append(findings, fmt.Sprintf(
+					"%s — reaches %s: enumerating every allowed id is capped server-side with no "+
+						"continuation token, so the caller's own rows fall outside the cap and disappear; "+
+						"check the page that was read instead\n  declared: %s",
+					key, b, a.pos))
+			}
+		}
 	}
-	for _, b := range p.Banned {
-		if called[b] {
+
+	switch l.Shape {
+	case RowFilter:
+		if !anyOf(called, p.Filters) {
 			findings = append(findings, fmt.Sprintf(
-				"%s — List reaches %s: enumerating every allowed id is capped server-side with no "+
-					"continuation token, so the caller's own rows fall outside the cap and disappear; "+
-					"check the page that was read instead\n  declared: %s",
-				res, b, a.pos))
+				"%s — declared RowFilter, but hands back its page without a per-object visibility "+
+					"filter: nothing along the calls it makes reaches %s (kacho-iam BatchCheck, relation "+
+					"viewer ∪ v_list)\n  declared: %s",
+				key, orList(p.Filters), a.pos))
+		}
+
+	case ParentGate:
+		if l.Gate == "" {
+			findings = append(findings, fmt.Sprintf(
+				"%s — declared ParentGate with no Gate call named, so the declaration asserts nothing"+
+					"\n  declared: %s", key, a.pos))
+			break
+		}
+		if !called[l.Gate] {
+			findings = append(findings, fmt.Sprintf(
+				"%s — declared ParentGate on %s, but nothing along the calls it makes reaches it: the "+
+					"page of a containing object is returned without reading that object first"+
+					"\n  declared: %s", key, l.Gate, a.pos))
+			break
+		}
+		if !gateVerdictActedOn(a.fn, l.Gate) {
+			findings = append(findings, fmt.Sprintf(
+				"%s — calls %s but never acts on its verdict: a denial or a miss on the containing "+
+					"object does not stop the page being returned\n  declared: %s",
+				key, l.Gate, a.pos))
+		}
+
+	case EdgeGate:
+		findings = append(findings, checkEdgeGate(key, l, a, protos)...)
+
+	case SubjectScoped:
+		if !anyOf(called, p.SubjectScopers) {
+			findings = append(findings, fmt.Sprintf(
+				"%s — declared SubjectScoped, but nothing along the calls it makes reaches %s: the "+
+					"query is not narrowed by the authenticated caller\n  declared: %s",
+				key, orList(p.SubjectScopers), a.pos))
+		}
+
+	case ClusterScoped:
+		if strings.TrimSpace(l.Reason) == "" {
+			findings = append(findings, fmt.Sprintf(
+				"%s — declared ClusterScoped with no Reason: this is the one shape with no code "+
+					"evidence, so an unstated reason makes it indistinguishable from a listing nobody "+
+					"thought about\n  declared: %s", key, a.pos))
 		}
 	}
 	return findings
+}
+
+// checkEdgeGate verifies that the per-RPC authorization the declaration points at
+// actually exists in the proto and actually narrows.
+func checkEdgeGate(key string, l Listing, a anchorDecl, protos *protoOptions) []string {
+	if l.ParentField == "" {
+		return []string{fmt.Sprintf(
+			"%s — declared EdgeGate with no ParentField named, so there is nothing to verify against "+
+				"the proto\n  declared: %s", key, a.pos)}
+	}
+	if protos == nil {
+		return []string{fmt.Sprintf(
+			"%s — declared EdgeGate, but the proto options were not read, so the declaration was "+
+				"taken on trust\n  declared: %s", key, a.pos)}
+	}
+	opt, ok := protos.byMethod[a.method]
+	if !ok {
+		return []string{fmt.Sprintf(
+			"%s — declared EdgeGate, but no rpc %s carrying authorization options was found in the "+
+				"profile's proto files: the check it delegates to does not exist\n  declared: %s",
+			key, a.method, a.pos)}
+	}
+	var out []string
+	if opt.requiredRelation == "" {
+		out = append(out, fmt.Sprintf(
+			"%s — declared EdgeGate, but rpc %s carries no required_relation: there is no per-RPC "+
+				"authorization for the page to be delegated to\n  declared: %s", key, a.method, a.pos))
+	}
+	switch {
+	case opt.fromRequestField == "":
+		out = append(out, fmt.Sprintf(
+			"%s — declared EdgeGate on field %q, but rpc %s carries no scope_extractor: nothing "+
+				"resolves the containing object, so the relation is checked against nothing"+
+				"\n  declared: %s", key, l.ParentField, a.method, a.pos))
+	case opt.fromRequestField == "*":
+		out = append(out, fmt.Sprintf(
+			"%s — declared EdgeGate, but rpc %s resolves its scope from \"*\", i.e. to %s:* — that "+
+				"object is deliberately opened to every authenticated subject, so the relation is "+
+				"satisfied by anyone and the check narrows NOTHING\n  declared: %s",
+			key, a.method, opt.objectType, a.pos))
+	case opt.fromRequestField != l.ParentField:
+		out = append(out, fmt.Sprintf(
+			"%s — declared EdgeGate on field %q, but rpc %s resolves its scope from %q: the "+
+				"declaration describes a check that is not the one being made\n  declared: %s",
+			key, l.ParentField, a.method, opt.fromRequestField, a.pos))
+	}
+	return out
 }
 
 // ---------------------------------------------------------------------------
@@ -408,7 +712,18 @@ func (u *unit) anchors(p Profile) (map[string][]anchorDecl, []string) {
 	for _, f := range u.files {
 		for _, decl := range f.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || fn.Name.Name != "List" || fn.Body == nil || fn.Recv == nil {
+			// Identification is by PREFIX, matching the form already proven in
+			// services/registry/tools/auditlistfilter.
+			//
+			// The exact-name predicate that stood here was the gate's own blind spot,
+			// and it was a large one: `List` is only the collection RPC. Everything
+			// that lists a CHILD collection — ListOperations, ListSubnets,
+			// ListSecurityGroups, ListRouteTables, ListUsedAddresses, ListBySubnet,
+			// ListAddresses, ListAttachments — is equally a page handed to a caller,
+			// and every one of them was outside the gate's view while it printed OK.
+			// Twenty such methods across four services; the census said "8 resources"
+			// and nothing said that those 8 resources held 21 listing methods.
+			if !ok || !strings.HasPrefix(fn.Name.Name, "List") || fn.Body == nil || fn.Recv == nil {
 				continue
 			}
 			_, typ := receiverOf(fn)
@@ -419,9 +734,10 @@ func (u *unit) anchors(p Profile) (map[string][]anchorDecl, []string) {
 				continue
 			}
 			out[res] = append(out[res], anchorDecl{
-				pos:  u.fset.Position(fn.Pos()).String(),
-				fn:   fn,
-				unit: u,
+				pos:    u.fset.Position(fn.Pos()).String(),
+				method: fn.Name.Name,
+				fn:     fn,
+				unit:   u,
 			})
 		}
 	}
@@ -511,6 +827,12 @@ func (u *unit) walk(fn *ast.FuncDecl, names map[string]bool, seen map[*ast.FuncD
 				if !ok || recvVar == "" || inner.Name != recvVar {
 					return true
 				}
+				// Also record the call QUALIFIED by the field it went through
+				// ("get.Execute", "svc.Get"). Without this, a handler's parent read
+				// and its page read are the same token — both are `Execute` — and a
+				// ParentGate declaration could be satisfied by the very call it is
+				// supposed to precede.
+				names[x.Sel.Name+"."+f.Sel.Name] = true
 				if ft := u.fields[recvType][x.Sel.Name]; ft != "" {
 					u.walk(u.methods[ft+"."+f.Sel.Name], names, seen)
 				}
@@ -560,6 +882,197 @@ func bareTypeName(e ast.Expr) string {
 			return ""
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// ParentGate: the verdict has to stop the response
+// ---------------------------------------------------------------------------
+
+// gateVerdictActedOn reports whether the gate call's result is tested in a branch
+// that leaves the method.
+//
+// Reaching the gate is not enough on its own: calling it and dropping the error
+// leaves the page exactly as unprotected as never calling it, and reads, in a diff,
+// like a check. The predicate is deliberately narrow — the gate call must sit in an
+// `if` that can return, or be assigned to a name that a later `if` tests and returns
+// on — because a broader one ("some error is tested somewhere in the body") is
+// satisfied by almost every Go method ever written, `err` being what it is. That
+// broader form was a real defect in the sibling analyser, fixed there for the same
+// reason.
+func gateVerdictActedOn(fn *ast.FuncDecl, gate string) bool {
+	found := false
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		if found {
+			return false
+		}
+		// Pattern 1: `if _, err := <gate>(…); err != nil { … return … }`.
+		if ifs, ok := n.(*ast.IfStmt); ok && ifs.Init != nil {
+			if as, ok := ifs.Init.(*ast.AssignStmt); ok && assignCallsGate(as, gate) && blockReturns(ifs.Body) {
+				found = true
+				return false
+			}
+		}
+		// Pattern 2: `x, err := <gate>(…)` followed by `if err != nil { return … }`.
+		if blk, ok := n.(*ast.BlockStmt); ok && blockGatesThenReturns(blk, gate) {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
+
+// assignCallsGate reports whether the assignment's right-hand side is the gate call.
+func assignCallsGate(as *ast.AssignStmt, gate string) bool {
+	if len(as.Rhs) != 1 {
+		return false
+	}
+	call, ok := unwrapIndex(as.Rhs[0]).(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	return qualifiedCallName(call) == gate
+}
+
+// blockGatesThenReturns handles the two-statement form: assign the gate's result to
+// a name, then test that name in a following `if` that returns.
+func blockGatesThenReturns(blk *ast.BlockStmt, gate string) bool {
+	for i, st := range blk.List {
+		as, ok := st.(*ast.AssignStmt)
+		if !ok || !assignCallsGate(as, gate) {
+			continue
+		}
+		names := map[string]bool{}
+		for _, lhs := range as.Lhs {
+			if id, ok := lhs.(*ast.Ident); ok && id.Name != "_" {
+				names[id.Name] = true
+			}
+		}
+		for _, later := range blk.List[i+1:] {
+			ifs, ok := later.(*ast.IfStmt)
+			if !ok || !blockReturns(ifs.Body) {
+				continue
+			}
+			referenced := false
+			ast.Inspect(ifs.Cond, func(n ast.Node) bool {
+				if id, ok := n.(*ast.Ident); ok && names[id.Name] {
+					referenced = true
+				}
+				return true
+			})
+			if referenced {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// blockReturns reports whether the block can leave the method.
+func blockReturns(blk *ast.BlockStmt) bool {
+	found := false
+	ast.Inspect(blk, func(n ast.Node) bool {
+		if _, ok := n.(*ast.ReturnStmt); ok {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
+
+// qualifiedCallName renders a call as the gate writes it: "field.Method" for
+// `h.field.Method(…)`, "Method" for `h.Method(…)` and plain `Method(…)`.
+func qualifiedCallName(call *ast.CallExpr) string {
+	sel, ok := unwrapIndex(call.Fun).(*ast.SelectorExpr)
+	if !ok {
+		if id, ok := unwrapIndex(call.Fun).(*ast.Ident); ok {
+			return id.Name
+		}
+		return ""
+	}
+	if inner, ok := sel.X.(*ast.SelectorExpr); ok {
+		return inner.Sel.Name + "." + sel.Sel.Name
+	}
+	return sel.Sel.Name
+}
+
+// ---------------------------------------------------------------------------
+// EdgeGate: the per-RPC authorization the declaration delegates to
+// ---------------------------------------------------------------------------
+
+// rpcOptions is the slice of an RPC's proto options this gate needs.
+type rpcOptions struct {
+	requiredRelation string
+	objectType       string
+	fromRequestField string
+}
+
+// protoOptions indexes rpcOptions by RPC name.
+type protoOptions struct {
+	byMethod map[string]rpcOptions
+	files    int
+}
+
+var (
+	rpcHeadRe      = regexp.MustCompile(`(?m)^\s*rpc\s+([A-Za-z0-9_]+)\s*\(`)
+	relationRe     = regexp.MustCompile(`required_relation\)?\s*=\s*"([^"]*)"`)
+	objectTypeRe   = regexp.MustCompile(`object_type:\s*"([^"]*)"`)
+	fromReqFieldRe = regexp.MustCompile(`from_request_field:\s*"([^"]*)"`)
+)
+
+// loadProtoOptions reads the authorization options of every rpc declared in files.
+//
+// The proto is the authority here rather than either generated copy: the gateway
+// middleware's catalog and the iam seed are both produced FROM it, and are held
+// byte-identical to it by a separate drift gate. Reading a generated copy would make
+// this gate agree with whichever copy it happened to read.
+//
+// An unreadable or empty proto set is an error, never an empty index: an EdgeGate
+// declaration verified against nothing is the rubber stamp this shape exists to
+// avoid.
+func loadProtoOptions(root string, files []string) (*protoOptions, error) {
+	if len(files) == 0 {
+		return nil, fmt.Errorf("the profile names no ProtoFiles")
+	}
+	if root == "" {
+		return nil, fmt.Errorf("no proto root was given (--proto-root)")
+	}
+	po := &protoOptions{byMethod: map[string]rpcOptions{}}
+	for _, rel := range files {
+		path := filepath.Join(root, rel)
+		raw, err := os.ReadFile(path) //nolint:gosec // path composed from the profile, not from input
+		if err != nil {
+			return nil, fmt.Errorf("read %s: %w", path, err)
+		}
+		po.files++
+		text := string(raw)
+		heads := rpcHeadRe.FindAllStringSubmatchIndex(text, -1)
+		for i, h := range heads {
+			name := text[h[2]:h[3]]
+			end := len(text)
+			if i+1 < len(heads) {
+				end = heads[i+1][0]
+			}
+			body := text[h[1]:end]
+			opt := rpcOptions{}
+			if m := relationRe.FindStringSubmatch(body); m != nil {
+				opt.requiredRelation = m[1]
+			}
+			if m := objectTypeRe.FindStringSubmatch(body); m != nil {
+				opt.objectType = m[1]
+			}
+			if m := fromReqFieldRe.FindStringSubmatch(body); m != nil {
+				opt.fromRequestField = m[1]
+			}
+			po.byMethod[name] = opt
+		}
+	}
+	if len(po.byMethod) == 0 {
+		return nil, fmt.Errorf("parsed %d proto file(s) and found no rpc declaration — the "+
+			"evidence for every EdgeGate declaration was absent, so none of them was verified", po.files)
+	}
+	return po, nil
 }
 
 // unwrapIndex strips generic instantiation from a call's function expression, so
@@ -636,15 +1149,17 @@ func sortedKeys(m map[string]bool) []string {
 // anything — then the findings, and turns findings into an error.
 func finish(p Profile, rep Report, out io.Writer) (Report, error) {
 	_, _ = fmt.Fprintf(out,
-		"audit-list-filter[%s]: examined %d file(s) in %d package(s), %d resource(s) "+
-			"(%d checked, %d whitelisted, %d List declaration(s) attributed to no resource)\n",
-		p.Service, rep.Files, rep.Packages, len(rep.Resources),
-		len(rep.Checked), len(rep.Whitelisted), len(rep.Unattributed))
-	if len(rep.Checked) > 0 {
-		_, _ = fmt.Fprintf(out, "audit-list-filter[%s]: checked %s\n", p.Service, strings.Join(rep.Checked, ", "))
+		"audit-list-filter[%s]: examined %d file(s) in %d package(s), %d resource(s), "+
+			"%d listing method(s) (%d undeclared, %d cluster-scoped, %d declaration(s) attributed "+
+			"to no resource)\n",
+		p.Service, rep.Files, rep.Packages, len(rep.Resources), len(rep.Listings),
+		len(rep.Undeclared), len(rep.ClusterScoped), len(rep.Unattributed))
+	if len(rep.Listings) > 0 {
+		_, _ = fmt.Fprintf(out, "audit-list-filter[%s]: judged %s\n", p.Service, strings.Join(rep.Listings, ", "))
 	}
-	if len(rep.Whitelisted) > 0 {
-		_, _ = fmt.Fprintf(out, "audit-list-filter[%s]: whitelisted %s\n", p.Service, strings.Join(rep.Whitelisted, ", "))
+	if len(rep.ClusterScoped) > 0 {
+		_, _ = fmt.Fprintf(out, "audit-list-filter[%s]: cluster-scoped by declaration %s\n",
+			p.Service, strings.Join(rep.ClusterScoped, ", "))
 	}
 	if len(rep.Findings) == 0 {
 		_, _ = fmt.Fprintf(out, "audit-list-filter[%s]: OK\n", p.Service)
