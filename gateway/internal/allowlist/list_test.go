@@ -9,23 +9,21 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/allowlist"
 )
 
-// TestGateway_E_Exists_canonical_AllowlistBlocksAllInternalServices проверяет матрицу Internal-методов:
-// ни один *InternalService-метод не должен проходить через allowlist.
+// TestGateway_E_Exists_canonical_AllowlistBlocksAllInternalServices — закреплённые
+// примеры Internal-методов, которые не проходят через allowlist.
+//
+// Это ПРИМЕРЫ, а не матрица: раньше заголовок обещал матрицу, и восемь из
+// одиннадцати её строк называли сервисы в форме «<Xxx>InternalService», которой
+// в дереве не носит НИ ОДИН сервис — то есть большая часть «матрицы» ни при каких
+// условиях упасть не могла. Матрицу по всей популяции Internal-методов держит
+// TestAllowlist_NoInternalRPCIsRoutable (parity_test.go): она перебирает те 79,
+// что реально объявлены в дескрипторах.
 func TestGateway_E_Exists_canonical_AllowlistBlocksAllInternalServices(t *testing.T) {
 	internalMethods := []string{
 		// iam
 		"/kacho.cloud.iam.v1.InternalUserService/UpsertFromIdentity",
 		"/kacho.cloud.iam.v1.InternalIAMService/LookupSubject",
 		"/kacho.cloud.iam.v1.InternalIAMService/Check",
-		// vpc
-		"/kacho.cloud.vpc.v1.NetworkInternalService/Exists",
-		"/kacho.cloud.vpc.v1.NetworkInternalService/HasDependents",
-		"/kacho.cloud.vpc.v1.SubnetInternalService/Exists",
-		"/kacho.cloud.vpc.v1.SubnetInternalService/HasDependents",
-		"/kacho.cloud.vpc.v1.RouteTableInternalService/Exists",
-		"/kacho.cloud.vpc.v1.RouteTableInternalService/HasDependents",
-		"/kacho.cloud.vpc.v1.AddressInternalService/Exists",
-		"/kacho.cloud.vpc.v1.AddressInternalService/HasDependents",
 	}
 
 	for _, m := range internalMethods {
@@ -111,31 +109,13 @@ func TestGateway_D6_OperationServiceAllowed(t *testing.T) {
 	}
 }
 
-// TestGateway_D6_OperationListNotAllowed проверяет, что List отсутствует у OperationService.
-func TestGateway_D6_OperationListNotAllowed(t *testing.T) {
-	const m = "/kacho.cloud.operation.OperationService/List"
-	if allowlist.IsAllowed(m) {
-		t.Errorf("метод %q НЕ должен быть в allowlist (OperationService не имеет List)", m)
-	}
-}
-
-// TestGateway_D7_OldUpsertWatchBlocked проверяет, что старые методы 0.x удалены из allowlist.
-func TestGateway_D7_OldUpsertWatchBlocked(t *testing.T) {
-	oldMethods := []string{
-		"/kacho.cloud.resourcemanager.v1.OrganizationService/Upsert",
-		"/kacho.cloud.resourcemanager.v1.OrganizationService/Watch",
-		"/kacho.cloud.vpc.v1.NetworkService/Upsert",
-		"/kacho.cloud.vpc.v1.NetworkService/Watch",
-	}
-	for _, m := range oldMethods {
-
-		t.Run(m, func(t *testing.T) {
-			if allowlist.IsAllowed(m) {
-				t.Errorf("устаревший метод %q НЕ должен быть в allowlist 1.0", m)
-			}
-		})
-	}
-}
+// Снятые с контракта пути (OperationService/List, 0.x-глаголы Upsert/Watch,
+// удалённый resourcemanager.v1, переехавший operation.v1) больше не
+// перечисляются здесь поимённо. Их запрет несёт
+// TestAllowlist_NoEntryWithoutAnRPC (parity_test.go): он краснеет на ЛЮБОЙ
+// записи списка, за которой нет RPC в дескрипторах, — включая те, которых никто
+// не предвидел. Перечисление же не могло упасть никогда: чтобы оно упало, надо
+// было вписать в список несуществующий метод.
 
 // TestGateway_D8_LoadbalancerActive проверяет, что kacho-nlb активирован —
 // публичные методы NetworkLoadBalancer / Listener / TargetGroup в allowlist, а
@@ -230,33 +210,11 @@ func TestGateway_D8b_ComputeActive(t *testing.T) {
 	}
 }
 
-// TestGateway_D9_OldOperationV1Blocked проверяет, что старые пути operation/v1 заблокированы.
-func TestGateway_D9_OldOperationV1Blocked(t *testing.T) {
-	oldMethods := []string{
-		"/kacho.cloud.operation.v1.OperationService/Get",
-		"/kacho.cloud.operation.v1.OperationService/List",
-		"/kacho.cloud.operation.v1.OperationService/Cancel",
-	}
-	for _, m := range oldMethods {
-
-		t.Run(m, func(t *testing.T) {
-			if allowlist.IsAllowed(m) {
-				t.Errorf("старый путь %q НЕ должен быть в allowlist", m)
-			}
-		})
-	}
-}
-
-// TestGateway_E1_FolderInternalExistsBlocked проверяет, что FolderInternalService/Exists заблокирован.
-func TestGateway_E1_FolderInternalExistsBlocked(t *testing.T) {
-	const method = "/kacho.cloud.resourcemanager.v1.FolderInternalService/Exists"
-	if allowlist.IsAllowed(method) {
-		t.Error("FolderInternalService/Exists не должен быть в allowlist")
-	}
-	if !allowlist.HasInternalSuffix(method) {
-		t.Error("FolderInternalService/Exists должен определяться как Internal")
-	}
-}
+// Опознание суффиксной конвенции «<Xxx>InternalService» проверяется на
+// синтетическом входе в TestHasInternalSuffix_BothNamingConventions
+// (named_surfaces_test.go), где он ЗАЯВЛЕН синтетическим и записан с причиной.
+// Здесь такая проверка была одета в имя удалённого сервиса, из-за чего читалась
+// как проба про живую поверхность.
 
 // TestGateway_KAC105_IamActive проверяет публичные iam.v1 RPC:
 //   - все 7 публичных сервисов (Account/Project/User/ServiceAccount/Group/Role/AccessBinding)
@@ -332,27 +290,18 @@ func TestGateway_KAC105_IamActive(t *testing.T) {
 		})
 	}
 
-	// UserService.Create — отсутствует by-design: Users создаются через
-	// InternalUserService.UpsertFromIdentity (OIDC-callback в api-gateway /
-	// admin via grpcurl). Никакого публичного REST POST /iam/v1/users.
-	// Update — наоборот, публичный (labels-only), см. publicMethods выше.
-	excludedUserMethods := []string{
-		"/kacho.cloud.iam.v1.UserService/Create",
-	}
-	for _, m := range excludedUserMethods {
-
-		t.Run("excluded/"+m, func(t *testing.T) {
-			if allowlist.IsAllowed(m) {
-				t.Errorf("метод %q НЕ должен быть в allowlist — Users создаются через InternalUserService.UpsertFromIdentity", m)
-			}
-		})
-	}
+	// UserService.Create в contract'е ОТСУТСТВУЕТ вовсе (Users появляются через
+	// InternalUserService.UpsertFromIdentity и публичный Invite), поэтому
+	// утверждение «его нет в списке» не могло упасть: чтобы упасть, кто-то должен
+	// был вписать в список несуществующий RPC — а это ловит
+	// TestAllowlist_NoEntryWithoutAnRPC (parity_test.go) для ЛЮБОГО такого пути.
 
 	// InternalIAMService / InternalUserService — internal-only (не на external).
 	// auth-interceptor api-gateway зовет kacho-iam:9091 напрямую через gRPC-client.
+	// ListPermissions из этого перечня убран: такого метода у InternalIAMService
+	// нет, то есть строка проверяла отсутствие того, чего не существует.
 	internalMethods := []string{
 		"/kacho.cloud.iam.v1.InternalIAMService/LookupSubject",
-		"/kacho.cloud.iam.v1.InternalIAMService/ListPermissions",
 		"/kacho.cloud.iam.v1.InternalUserService/UpsertFromIdentity",
 		"/kacho.cloud.iam.v1.InternalUserService/Get",
 	}
@@ -369,25 +318,10 @@ func TestGateway_KAC105_IamActive(t *testing.T) {
 	}
 }
 
-// TestGateway_D10_OldRMOrganizationServiceBlocked проверяет, что старый
-// resourcemanager.v1.OrganizationService заблокирован (перенесен в organizationmanager.v1).
-func TestGateway_D10_OldRMOrganizationServiceBlocked(t *testing.T) {
-	oldMethods := []string{
-		"/kacho.cloud.resourcemanager.v1.OrganizationService/Get",
-		"/kacho.cloud.resourcemanager.v1.OrganizationService/List",
-		"/kacho.cloud.resourcemanager.v1.OrganizationService/Create",
-		"/kacho.cloud.resourcemanager.v1.OrganizationService/Update",
-		"/kacho.cloud.resourcemanager.v1.OrganizationService/Delete",
-	}
-	for _, m := range oldMethods {
-
-		t.Run(m, func(t *testing.T) {
-			if allowlist.IsAllowed(m) {
-				t.Errorf("путь %q НЕ должен быть в allowlist — OrganizationService перенесен в organizationmanager.v1", m)
-			}
-		})
-	}
-}
+// Пакета resourcemanager.v1 в дереве нет ни одного файла, поэтому перечисление
+// его путей как «заблокированных» описывало не запрет, а собственное отсутствие.
+// Запрет на любой путь без RPC несёт TestAllowlist_NoEntryWithoutAnRPC
+// (parity_test.go), и он покрывает не пять имён, а все возможные.
 
 // TestAllowlist_UserBlockUnblock — административный запрет участию проходит
 // директора, и проходит СИММЕТРИЧНО.
