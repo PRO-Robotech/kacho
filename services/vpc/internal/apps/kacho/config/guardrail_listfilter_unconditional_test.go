@@ -116,3 +116,27 @@ func TestValidateListFilter_LegitimateConfiguration_IsAccepted(t *testing.T) {
 			"законная посадка (%s) обязана проходить, иначе страж ловит форму, а не существо", mode)
 	}
 }
+
+// Агрегатный валидатор старта несёт и этого стража.
+//
+// S3 стоял вне ValidateBoot с обоснованием «ему нужен список ScopeFiltered RPC из
+// пакета check, который config не импортирует». Обоснование исчезло вместе с
+// параметром: карту страж читает сам. Пока оно оставалось записанным, но неверным,
+// агрегатный валидатор был ловушкой — тот, кто перевёл бы композиционный корень на
+// него вместо явной пары, тихо остался бы без проверки фильтра.
+func TestValidateBoot_IncludesTheListFilterGuard(t *testing.T) {
+	c := prodCfg(ModeProduction, "kacho-iam:9091", false)
+	c.AuthZ.ListFilter.Enabled = false // ровно одно ослабленное измерение
+	var m MTLSConfig
+	m.PublicServerMTLS.Enable = true
+	m.InternalServerMTLS.Enable = true
+	m.IAMAuthzMTLS.Enable = true
+	m.IAMProjectMTLS.Enable = true
+	m.GeoMTLS.Enable = true
+
+	err := c.ValidateBoot(m)
+
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "authz.list-filter.enabled=true is required",
+		"агрегатный валидатор обязан нести S3, иначе он тихо слабее явной пары")
+}

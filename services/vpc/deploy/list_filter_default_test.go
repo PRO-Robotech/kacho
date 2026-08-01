@@ -44,16 +44,55 @@ const (
 // `enabled: false` под `listFilter:`.
 var listFilterEnabledDecl = regexp.MustCompile(`(?m)^(\s*)listFilter:\s*$`)
 
-// declaredListFilterEnabled возвращает объявленное значение ручки и признак того,
-// что объявление вообще найдено. Ненайденное объявление — НЕ «значение по
-// умолчанию»: это отдельный исход, и вызывающий обязан его различать.
-func declaredListFilterEnabled(t *testing.T, path string) (value string, found bool) {
+// topLevelKey ловит ключ верхнего уровня (нулевой отступ) — им ограничивается
+// секция подчарта в umbrella-профиле.
+var topLevelKey = regexp.MustCompile(`(?m)^([A-Za-z0-9_-]+):\s*$`)
+
+// sectionLines вырезает строки секции подчарта `section:` (ключ верхнего уровня)
+// либо весь файл, если section пуст (собственные values чарта, где обёртки нет).
+//
+// Без этого ограничения проба читала ЧУЖУЮ ручку: в umbrella-профиле блоков
+// `listFilter:` несколько (vpc, compute, storage), а поиск возвращался на первом
+// же, до которого дошёл. Сегодня первым оказывался vpc — по порядку ключей в
+// файле, то есть по везению, а не по построению. Достаточно было соседу
+// объявить свою ручку выше, и проба начала бы отчитываться о нём, продолжая
+// печатать перепись как ни в чём не бывало.
+func sectionLines(t *testing.T, path, section string) []string {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		t.Fatalf("не прочитан %s: %v", path, err)
 	}
 	lines := strings.Split(string(raw), "\n")
+	if section == "" {
+		return lines
+	}
+	start := -1
+	for i, ln := range lines {
+		m := topLevelKey.FindStringSubmatch(ln)
+		if m == nil {
+			continue
+		}
+		if m[1] == section {
+			start = i + 1
+			continue
+		}
+		if start >= 0 {
+			return lines[start:i] // следующий ключ верхнего уровня закрывает секцию
+		}
+	}
+	if start >= 0 {
+		return lines[start:]
+	}
+	return nil // секции нет — профиль подчарт не переопределяет
+}
+
+// declaredListFilterEnabled возвращает объявленное значение ручки и признак того,
+// что объявление вообще найдено. Ненайденное объявление — НЕ «значение по
+// умолчанию»: это отдельный исход, и вызывающий обязан его различать.
+func declaredListFilterEnabled(t *testing.T, path, section string) (value string, found bool) {
+	t.Helper()
+	lines := sectionLines(t, path, section)
 	for i, ln := range lines {
 		m := listFilterEnabledDecl.FindStringSubmatch(ln)
 		if m == nil {
@@ -88,7 +127,7 @@ func declaredListFilterEnabled(t *testing.T, path string) (value string, found b
 // Молчание базового профиля значит, что он отрендерится, — поэтому требуется
 // именно положительное объявление, а не отсутствие `false`.
 func TestChartDefault_ListFilterEnabled(t *testing.T) {
-	got, found := declaredListFilterEnabled(t, vpcValues)
+	got, found := declaredListFilterEnabled(t, vpcValues, "")
 	if !found {
 		t.Fatalf("%s не объявляет authz.listFilter.enabled — гейт смотрит не туда, "+
 			"его вердикт беспредметен", vpcValues)
@@ -142,7 +181,7 @@ func TestUmbrellaProfiles_NeverDisableTheListFilter(t *testing.T) {
 	var examined, declaring int
 	for _, p := range profiles {
 		examined++
-		got, found := declaredListFilterEnabled(t, p)
+		got, found := declaredListFilterEnabled(t, p, "vpc")
 		if !found {
 			continue // профиль наследует базовый чарт — а тот проверен выше
 		}

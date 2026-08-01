@@ -467,10 +467,19 @@ func TestValidateBoot_Production_IncludesPeerTransport(t *testing.T) {
 	require.Contains(t, err.Error(), "authz Check edge")
 }
 
-// vpc9-C-12: ValidateBoot зелёный, когда всё (листенеры + исходящие рёбра) защищено.
+// vpc9-C-12: ValidateBoot зелёный, когда всё (листенеры + исходящие рёбра +
+// сужение страницы) защищено.
+//
+// Фильтр видимости добавлен в фикстуру вместе с включением S3 в агрегатор: без
+// него посадка «всё защищено» больше не является таковой — публичные List отдавали
+// бы каждому участнику проекта все его строки. Это не ослабление положительного
+// контроля, а приведение его к тому, что он объявляет: ослаблено по-прежнему ноль
+// измерений, просто измерений стало на одно больше.
 func TestValidateBoot_Production_AllSecure_Passes(t *testing.T) {
 	c := prodCfg(ModeProduction, "kacho-iam:9091", false) // project edge server-TLS
 	c.Repository.Postgres.SSLMode = "verify-full"
+	c.AuthZ.ListFilter.Enabled = true
+	c.AuthZ.ListFilter.AuthorizeEndpoint = "kacho-iam:9090"
 	var m MTLSConfig
 	m.PublicServerMTLS.Enable = true
 	m.InternalServerMTLS.Enable = true

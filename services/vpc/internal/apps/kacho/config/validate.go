@@ -457,12 +457,18 @@ func (c Config) ValidatePeerTransport(m MTLSConfig) error {
 // чтобы оператор увидел полный список проблем за один прогон. Используется как
 // single-shot gate перед привязкой листенеров и cross-service dial'ами.
 //
-// S3 (ValidateListFilter) НЕ входит сюда: ему нужен список ScopeFiltered RPC из
-// permission-map (пакет check), который config не импортирует — его вызывает
-// composition root отдельно (см. cmd/vpc/main.go).
+// S3 (ValidateListFilter) ВХОДИТ сюда. Здесь стояло обратное — «ему нужен список
+// ScopeFiltered RPC из permission-map (пакет check), который config не
+// импортирует», — и это перестало быть правдой вместе со снятием параметра: карту
+// страж читает сам (scope_filtered_rpcs.go), цикла нет. Пока обоснование
+// оставалось записанным, но неверным, агрегатор был ЛОВУШКОЙ: он выглядит как
+// «полная проверка старта», и тот, кто перевёл бы на него композиционный корень
+// вместо явной пары вызовов, тихо остался бы без проверки фильтра.
 func (c Config) ValidateBoot(m MTLSConfig) error {
 	return multierr.Append(
-		multierr.Append(c.Validate(), c.ValidateServerMTLS(m)),
+		multierr.Append(
+			multierr.Append(c.Validate(), c.ValidateServerMTLS(m)),
+			c.ValidateListFilter()),
 		c.ValidatePeerTransport(m),
 	)
 }

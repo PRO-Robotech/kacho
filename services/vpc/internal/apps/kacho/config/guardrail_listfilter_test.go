@@ -26,7 +26,7 @@ func TestValidateListFilter_Production_ScopeFiltered_FilterDisabled_Fails(t *tes
 	err := c.validateListFilterAgainst([]string{"/kacho.cloud.vpc.v1.NetworkService/List"})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "authz.list-filter.enabled=true is required")
-	require.Contains(t, err.Error(), "mode production")
+	require.Contains(t, err.Error(), "mode production:")
 	require.Contains(t, err.Error(), "/kacho.cloud.vpc.v1.NetworkService/List")
 }
 
@@ -101,7 +101,7 @@ func TestValidateListFilter_Production_ScopeFiltered_FailOpen_Fails(t *testing.T
 	err := c.validateListFilterAgainst([]string{"/kacho.cloud.vpc.v1.InternalNetworkInterfaceService/ListByInstance"})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "authz.list-filter.fail-open")
-	require.Contains(t, err.Error(), "mode production")
+	require.Contains(t, err.Error(), "mode production:")
 	// Гард обязан назвать, ЧТО именно останется без авторизации.
 	require.Contains(t, err.Error(), "/kacho.cloud.vpc.v1.InternalNetworkInterfaceService/ListByInstance")
 }
