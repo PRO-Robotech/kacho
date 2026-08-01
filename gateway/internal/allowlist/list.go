@@ -8,6 +8,13 @@ import "strings"
 // AllowedMethods — публичные RPC-пути, маршрутизируемые через api-gateway.
 // Методы *InternalService.* НИКОГДА не включаются (запрет #6): их REST-проекция
 // доступна только на cluster-internal listener (см. restmux/mux.go).
+//
+// Состав этой карты — НЕ дело вкуса и не «что вспомнили»: он обязан совпадать с
+// публичной поверхностью дескрипторов ровно, и это проверяется вычислением, а не
+// перечислением (parity_test.go). Единственный критерий исключения — Internal*;
+// «забыли дописать» исключением не является и раньше выглядело снаружи так же,
+// как намеренное сокрытие, потому что резолвер отвечает на оба случая одним и тем
+// же NotFound.
 // Активны: iam, vpc, compute, storage, geo, loadbalancer, registry, operation.
 // loadbalancer (kacho-nlb) — NetworkLoadBalancer / Listener / TargetGroup
 // публичные методы добавлены ниже. registry (kacho-registry) — RegistryService
@@ -53,6 +60,19 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.vpc.v1.RouteTableService/Update":         {},
 	"/kacho.cloud.vpc.v1.RouteTableService/Delete":         {},
 	"/kacho.cloud.vpc.v1.RouteTableService/ListOperations": {},
+	// :verb-мутации маршрутов (REST POST /vpc/v1/routeTables/{id}:add-routes и т.д.).
+	"/kacho.cloud.vpc.v1.RouteTableService/AddRoutes":    {},
+	"/kacho.cloud.vpc.v1.RouteTableService/RemoveRoutes": {},
+	"/kacho.cloud.vpc.v1.RouteTableService/UpdateRoute":  {},
+	// vpc.v1 — NetworkInterfaceService (first-class ресурс домена, REST /vpc/v1/networkInterfaces).
+	// Проекция `/vpc/v1/networkInterfaces/{id}/internal` принадлежит
+	// InternalNetworkInterfaceService и здесь отсутствует — её несёт internal-листенер.
+	"/kacho.cloud.vpc.v1.NetworkInterfaceService/Get":            {},
+	"/kacho.cloud.vpc.v1.NetworkInterfaceService/List":           {},
+	"/kacho.cloud.vpc.v1.NetworkInterfaceService/Create":         {},
+	"/kacho.cloud.vpc.v1.NetworkInterfaceService/Update":         {},
+	"/kacho.cloud.vpc.v1.NetworkInterfaceService/Delete":         {},
+	"/kacho.cloud.vpc.v1.NetworkInterfaceService/ListOperations": {},
 	// vpc.v1 — SecurityGroupService
 	"/kacho.cloud.vpc.v1.SecurityGroupService/Get":            {},
 	"/kacho.cloud.vpc.v1.SecurityGroupService/List":           {},
@@ -173,6 +193,14 @@ var AllowedMethods = map[string]struct{}{
 	// заблокированного без пути снятия.
 	"/kacho.cloud.iam.v1.UserService/Block":   {}, // v_update on iam_user, acr 2
 	"/kacho.cloud.iam.v1.UserService/Unblock": {}, // v_update on iam_user, acr 2
+	// Приглашение по адресу почты (REST POST /iam/v1/users:invite) — единственный
+	// публичный путь появления пользователя; Create по-прежнему только internal.
+	"/kacho.cloud.iam.v1.UserService/Invite": {},
+	// iam.v1 — UserTokenService (REST .../users/{user_id}/tokens) —
+	// выдача, перечисление и отзыв неинтерактивных токенов пользователя.
+	"/kacho.cloud.iam.v1.UserTokenService/Issue":  {},
+	"/kacho.cloud.iam.v1.UserTokenService/List":   {},
+	"/kacho.cloud.iam.v1.UserTokenService/Revoke": {},
 	// iam.v1 — ServiceAccountService
 	"/kacho.cloud.iam.v1.ServiceAccountService/Get":    {},
 	"/kacho.cloud.iam.v1.ServiceAccountService/List":   {},
@@ -185,6 +213,20 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.iam.v1.ServiceAccountService/Disable":        {},
 	"/kacho.cloud.iam.v1.ServiceAccountService/Enable":         {},
 	"/kacho.cloud.iam.v1.ServiceAccountService/ListOperations": {},
+	// iam.v1 — SAKeyService (REST .../serviceAccounts/{service_account_id}/keys) —
+	// выдача, перечисление и отзыв ключей служебной учётки.
+	"/kacho.cloud.iam.v1.SAKeyService/Issue":  {},
+	"/kacho.cloud.iam.v1.SAKeyService/List":   {},
+	"/kacho.cloud.iam.v1.SAKeyService/Revoke": {},
+	// iam.v1 — AuthorizeService (REST /iam/v1/authorize:* и /iam/v1/me) —
+	// tenant-facing запросы к модели прав: предпросмотр разрешений в консоли и
+	// самоописание вызывающего. Публичный сервис, не Internal*.
+	"/kacho.cloud.iam.v1.AuthorizeService/Check":           {},
+	"/kacho.cloud.iam.v1.AuthorizeService/BatchCheck":      {},
+	"/kacho.cloud.iam.v1.AuthorizeService/ListObjects":     {},
+	"/kacho.cloud.iam.v1.AuthorizeService/ListSubjects":    {},
+	"/kacho.cloud.iam.v1.AuthorizeService/ExpandRelations": {},
+	"/kacho.cloud.iam.v1.AuthorizeService/WhoAmI":          {},
 	// iam.v1 — GroupService
 	"/kacho.cloud.iam.v1.GroupService/Get":            {},
 	"/kacho.cloud.iam.v1.GroupService/List":           {},
