@@ -638,7 +638,7 @@ func TestInstance_Legacy_Get_VolumeMirror(t *testing.T) {
 	got, err := k.svc.Get(context.Background(), seedID)
 	require.NoError(t, err)
 	require.Len(t, got.AttachedDisks, 1)
-	require.Equal(t, "voldata1", got.AttachedDisks[0].DiskID)
+	require.Equal(t, "voldata1", got.AttachedDisks[0].VolumeID)
 }
 
 // Пустая маска — full-object PATCH (api-conventions: «mask пустой → применяются все

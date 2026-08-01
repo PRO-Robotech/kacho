@@ -93,7 +93,8 @@ model
 #   - per-domain object types — `vpc_network`, `vpc_subnet`, `vpc_address`,
 #     `vpc_security_group`, `vpc_route_table`, `vpc_gateway`,
 #     `vpc_network_interface`, `vpc_address_pool`,
-#     `compute_instance`, `compute_disk`, `compute_image`, `compute_snapshot`,
+#     `compute_instance`,
+#     `storage_volume`, `storage_snapshot`, `storage_image`,
 #     `nlb_network_load_balancer`, `nlb_target_group`,
 #     `nlb_listener` (KAC-178 §4 — Listener as first-class FGA object),
 #     `iam_role`, `iam_access_binding`, `iam_service_account`, `iam_group`,
@@ -469,6 +470,19 @@ type vpc_address_pool
 
 # ---------------------------------------------------------------------------
 # Compute domain.
+#
+# `compute_disk` / `compute_image` / `compute_snapshot` were declared here and are
+# not any more. Block storage belongs to kacho-storage — see `storage_volume` /
+# `storage_snapshot` / `storage_image` below — and compute's duplicate of those
+# resources is retired: no tables, no services, no routes, no catalog entries.
+# Declaring an authorization type for a resource nothing serves is not harmless
+# housekeeping: it stays grantable, bindable and materializable, so a binding on
+# it writes per-object tuples for objects that will never exist.
+#
+# Do not re-add them without the resource. If some future compute-owned disk ever
+# arrives, it declares its own type together with its tables, its RPCs and its
+# catalog entries — and the roles/selectors that grant it, which migration 0074
+# withdrew.
 # ---------------------------------------------------------------------------
 
 type compute_instance
@@ -485,51 +499,6 @@ type compute_instance
     define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
-
-type compute_disk
-  relations
-    define project: [project]
-    define super_admin: super_admin from project
-    define admin: [user, service_account, group#member] or super_admin
-    define editor: [user, service_account, group#member] or admin
-    define viewer: [user, service_account, group#member] or editor
-    define use: [user, service_account] or editor
-    define v_get: [user, service_account, group#member] or super_admin
-    define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
-    define v_update: [user, service_account, group#member] or super_admin
-    define v_delete: [user, service_account, group#member] or super_admin
-
-type compute_image
-  relations
-    define project: [project]
-    define super_admin: super_admin from project
-    define admin: [user, service_account, group#member] or super_admin
-    define editor: [user, service_account, group#member] or admin
-    define viewer: [user, service_account, group#member] or editor
-    define use: [user, service_account] or editor
-    define v_get: [user, service_account, group#member] or super_admin
-    define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
-    define v_update: [user, service_account, group#member] or super_admin
-    define v_delete: [user, service_account, group#member] or super_admin
-
-type compute_snapshot
-  relations
-    define project: [project]
-    define super_admin: super_admin from project
-    define admin: [user, service_account, group#member] or super_admin
-    define editor: [user, service_account, group#member] or admin
-    define viewer: [user, service_account, group#member] or editor
-    define v_get: [user, service_account, group#member] or super_admin
-    define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
-    define v_update: [user, service_account, group#member] or super_admin
-    define v_delete: [user, service_account, group#member] or super_admin
-
-# ---------------------------------------------------------------------------
-# Load-balancer domain.
-# ---------------------------------------------------------------------------
 
 type nlb_network_load_balancer
   relations

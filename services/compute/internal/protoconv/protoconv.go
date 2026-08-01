@@ -161,11 +161,14 @@ func attachedDisk(ad *domain.AttachedDisk) *computev1.AttachedDisk {
 		Mode:       computev1.AttachedDisk_Mode(ad.Mode), // #nosec G115 -- domain AttachedDisk Mode зеркалит computev1.AttachedDisk_Mode
 		DeviceName: ad.DeviceName,
 		AutoDelete: ad.AutoDelete,
-		// disk_id was renamed to volume_id in the storage-split proto. During the
-		// strangler transition compute still owns the local disk row, so the local
-		// disk id is what is surfaced on the renamed wire field. The storage-volume
-		// attach saga (later cutover slice) replaces this with a real vol-id mirror.
-		VolumeId: ad.DiskID,
+		// A real kacho-storage volume id. It is read from that service's
+		// ListAttachments and mirrored read-only onto the instance (see
+		// api/instance.volumeMirror); compute has no disk row of its own to surface
+		// here, and has had none since the block-storage retire. The domain field
+		// was called DiskID while that was still an open question — it is VolumeID
+		// now, because a name that says "disk" over a volume id is the kind of
+		// detail the next reader trusts instead of checking.
+		VolumeId: ad.VolumeID,
 	}
 }
 

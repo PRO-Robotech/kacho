@@ -49,8 +49,8 @@ Peer-валидацию можно отключить в изолированн�
 
 | Порт | Listener | Назначение |
 |---|---|---|
-| `:9090` (env `KACHO_COMPUTE_GRPC_PORT`) | public gRPC | Tenant-API (Instance/Disk/Image/Snapshot + read DiskType) |
-| `:9091` (env `KACHO_COMPUTE_INTERNAL_PORT`) | internal gRPC | `InternalDiskTypeService`, `InternalWatchService` (mTLS) |
+| `:9090` (env `KACHO_COMPUTE_GRPC_PORT`) | public gRPC | Tenant-API (Instance / MachineType) |
+| `:9091` (env `KACHO_COMPUTE_INTERNAL_PORT`) | internal gRPC | `InternalWatchService` (mTLS) |
 | metrics (env `KACHO_COMPUTE_METRICS_ADDR`) | HTTP | Prometheus-метрики, health-пробы |
 
 ## Миграции

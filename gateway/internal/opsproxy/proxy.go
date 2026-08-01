@@ -11,8 +11,10 @@
 //
 //	"enp" → vpc               (операции по Network / RouteTable / SecurityGroup)
 //	"e9b" → vpc               (операции по Subnet / Address)
-//	"epd" → compute           (ВСЕ операции compute-домена: Instance/Disk/Image/Snapshot —
-//	                           PrefixOperationCompute == PrefixInstance, см. kacho-corelib/ids)
+//	"epd" → compute           (ВСЕ операции compute-домена: Instance/MachineType —
+//	                           PrefixOperationCompute == PrefixInstance, см. kacho-corelib/ids.
+//	                           Блочное хранение здесь БОЛЬШЕ НЕ значится: Volume/Snapshot/Image/
+//	                           DiskType принадлежат kacho-storage и несут собственный op-префикс)
 //	"iop" → iam               (ВСЕ операции iam-домена: Account/Project/User/SA/Group/Role/AccessBinding)
 //	"nlb" → loadbalancer      (ВСЕ операции kacho-nlb: NetworkLoadBalancer/Listener/TargetGroup)
 //	"rop" → registry          (ВСЕ операции kacho-registry: Registry/DeleteTag)
@@ -86,7 +88,7 @@ var prefixToBackend = map[string]string{
 	ids.PrefixOperationVPC:   "vpc", // enp: Network / RouteTable / SecurityGroup / vpc op-root
 	prefixOperationVPCSubnet: "vpc", // e9b: Subnet / Address
 	// compute domain
-	ids.PrefixOperationCompute: "compute", // epd: все операции compute (Instance/Disk/Image/Snapshot — общий op-prefix)
+	ids.PrefixOperationCompute: "compute", // epd: все операции compute (Instance/MachineType — общий op-prefix)
 	// iam domain
 	prefixOperationIAM: "iam", // iop: все операции iam (Account/Project/User/SA/Group/Role/AccessBinding — общий op-prefix)
 	// loadbalancer domain

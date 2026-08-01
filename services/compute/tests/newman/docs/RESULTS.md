@@ -191,20 +191,19 @@ Disk-эталонов на идентичном handler-паттерне; **фи
 `iam/tests/newman/scripts/assert-suites-green.sh`) с поднятым storage/vpc/iam. Требуют `existingZoneId`
 (pre-disk) — как остальные disk-sourced кейсы.
 
-## Known coverage-gap — malformed-id → InvalidArgument (НЕ покрыт; documented deferral)
+## Бывший coverage-gap — malformed-id → InvalidArgument (предмет исчез)
 
-Convention `api-conventions.md` требует «malformed id → sync `InvalidArgument "invalid <res> id"` первым
-стейтментом». Read/Delete-RPC compute (Disk/Image/Snapshot/DiskType.Get, *.Delete) **format-check id НЕ делают**
-(только empty-check → `repo.Get` → `NOT_FOUND`) — это **documented deferred divergence #1**
-(`docs/architecture/07-known-divergences.md` §1: «мы NotFound, контракт InvalidArgument», низкоприоритетно,
-план — prefix-check + Issue + newman-миграция). Suite намеренно использует **well-formed** garbage id
-(`epdnonexistent999999`) → корректно тестирует 404-линию; malformed→400 линия **не** покрыта.
+Запись описывала RPC блочного хранения (`Disk`/`Image`/`Snapshot`/`DiskType` — `Get`, `Delete`), которые
+**не делали** format-check id и отвечали `NOT_FOUND` на явный мусор (documented deferred divergence #1,
+`docs/architecture/07-known-divergences.md` §1). Этих RPC в compute больше нет: блочное хранение принадлежит
+kacho-storage, дубль ретайрен, и гейт `internal/check/retired_block_storage_test.go` держит его ретайренным.
+Оставшийся `InstanceService.Get` формат проверяет **первым стейтментом** (`corevalidate.ResourceID`,
+`instance.go`), а `Update`/`Delete` идут через него же — то есть на compute-поверхности предмета у этой
+записи не осталось.
 
-**Кейс НЕ добавлен** (осознанно, не упущение): (a) кейс, ждущий 400, был бы **RED** против уже-задокументированного
-deferral (не свежий баг → не завожу дубль-Issue); (b) кейс, локающий 404, **заблокировал бы** намеренный будущий
-фикс (COMP-1 F8/F13/F15 явно целят «malformed-id первым стейтментом» → 400). Решение — за owner: закрыть divergence
-#1 (Go-фикс prefix-check across Get/Delete) → тогда добавить `*-GET-VAL-MALFORMED-ID` (→400) как GREEN-lock.
-Attach-path уже конформен (`InstanceService.AttachDisk` вызывает `corevalidate.ResourceID` первым — sync 400).
+Запись сохранена как история, а не как открытый долг: исключение живёт, пока у него есть предмет. Общая
+формулировка §1 в `07-known-divergences.md` шире этой suite и проверяется отдельно; если она тоже осталась
+без предмета — это находка, а не опечатка.
 
 ## Эволюция
 

@@ -966,7 +966,7 @@ func volumeMirror(atts []VolumeAttachmentInfo) []domain.AttachedDisk {
 	for i := range sorted {
 		a := &sorted[i]
 		out = append(out, domain.AttachedDisk{
-			DiskID:     a.VolumeID,
+			VolumeID:   a.VolumeID,
 			IsBoot:     a.IsBoot,
 			Mode:       domain.AttachedDiskMode(a.Mode),
 			DeviceName: a.DeviceName,

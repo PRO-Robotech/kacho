@@ -37,8 +37,8 @@ type Config struct {
 
 	GrpcPort string `envconfig:"KACHO_COMPUTE_GRPC_PORT" default:"9090"`
 
-	// InternalGrpcPort — порт для cluster-internal RPC (InternalWatchService,
-	// InternalDiskTypeService). НЕ выставляется через api-gateway external endpoint.
+	// InternalGrpcPort — порт для cluster-internal RPC (InternalWatchService).
+	// НЕ выставляется через api-gateway external endpoint.
 	InternalGrpcPort string `envconfig:"KACHO_COMPUTE_INTERNAL_PORT" default:"9091"`
 
 	// WatchMaxStreams — максимум одновременных Watch streams (каждый держит
