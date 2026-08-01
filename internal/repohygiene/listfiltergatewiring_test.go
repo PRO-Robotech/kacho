@@ -59,7 +59,7 @@ func servicesDeclaringTheGate(t *testing.T, root string) []string {
 			continue
 		}
 		mk := filepath.Join(root, "services", e.Name(), "Makefile")
-		raw, rerr := os.ReadFile(mk) //nolint:gosec // путь собран из обхода дерева репозитория
+		raw, rerr := os.ReadFile(mk)
 		if rerr != nil {
 			continue
 		}
@@ -91,7 +91,7 @@ func servicesTheWorkflowRuns(t *testing.T, root string) []string {
 			continue
 		}
 		files++
-		raw, rerr := os.ReadFile(filepath.Join(wfDir, n)) //nolint:gosec // обход каталога workflow'ов репозитория
+		raw, rerr := os.ReadFile(filepath.Join(wfDir, n))
 		if rerr != nil {
 			t.Fatalf("не прочитан %s: %v", n, rerr)
 		}
