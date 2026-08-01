@@ -73,10 +73,11 @@ func runGate(t *testing.T, files map[string]string) (string, error) {
 	return runGateArgs(t, files)
 }
 
-// runGateArgs is runGate with an explicit whitelist. The whitelist is passed per
-// invocation rather than baked in, because an entry matching no resource in the
-// fixture tree is itself a finding — see TestAuditListFilter_ExpiredWhitelistEntryIsAFinding.
-func runGateArgs(t *testing.T, files map[string]string, allow ...string) (string, error) {
+// runGateArgs is runGate with an explicit declaration table. The table is passed per
+// invocation rather than baked in, because the REAL one describes the real tree: a
+// fixture holding one resource would otherwise report every other declaration as an
+// expired one — see TestAuditListFilter_ExpiredDeclarationIsAFinding.
+func runGateArgs(t *testing.T, files map[string]string, decls ...map[string]auditlistfilter.Listing) (string, error) {
 	t.Helper()
 	root := t.TempDir()
 	for rel, content := range files {
@@ -84,7 +85,11 @@ func runGateArgs(t *testing.T, files map[string]string, allow ...string) (string
 	}
 
 	var buf strings.Builder
-	_, err := auditlistfilter.Audit(auditlistfilter.Options{Root: root, Allow: allow}, &buf)
+	opts := auditlistfilter.Options{Root: root}
+	if len(decls) == 1 {
+		opts.Listings = decls[0]
+	}
+	_, err := auditlistfilter.Audit(opts, &buf)
 	return buf.String(), err
 }
 
@@ -216,7 +221,7 @@ func TestAuditListFilter(t *testing.T) {
 	cases := []struct {
 		name    string
 		files   map[string]string
-		allow   []string
+		decls   map[string]auditlistfilter.Listing
 		wantErr bool // true ⇒ gate must exit non-zero
 	}{
 		{
@@ -338,8 +343,11 @@ func TestAuditListFilter(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			// Whitelisted cluster-catalog resource: List need not narrow.
-			name: "whitelist: disk_type cluster-catalog List not project-scoped",
+			// A cluster-catalog listing: declared ClusterScoped, so it need not
+			// narrow. Note the declaration is per METHOD — the exclusion cannot
+			// silently cover another listing added to this use-case later, which is
+			// exactly what --allow=disk_type used to do.
+			name: "declared ClusterScoped: disk_type's List need not narrow",
 			files: map[string]string{
 				"internal/repo/pg/disk_type_repo.go": `package pg
 
@@ -347,15 +355,57 @@ func (r *DiskTypeRepo) List() {
 	_ = "SELECT ... FROM disk_types"
 }
 `,
+				"internal/apps/kacho/api/disktype/disktype.go": `package disktype
+
+type UseCase struct{}
+
+func (u *UseCase) List(ctx context.Context) error { return nil }
+`,
 			},
-			allow:   []string{"disk_type"},
+			decls: map[string]auditlistfilter.Listing{
+				"disk_type.List": {Shape: auditlistfilter.ClusterScoped, Reason: "cluster reference data"},
+			},
 			wantErr: false,
+		},
+		{
+			// The mirror of the case above: ClusterScoped with no reason is a
+			// finding. It is the one shape with no code evidence, so an unstated
+			// reason makes it indistinguishable from a listing nobody thought about.
+			name: "declared ClusterScoped with no reason is a finding",
+			files: map[string]string{
+				"internal/repo/pg/disk_type_repo.go": `package pg
+
+func (r *DiskTypeRepo) List() {
+	_ = "SELECT ... FROM disk_types"
+}
+`,
+				"internal/apps/kacho/api/disktype/disktype.go": `package disktype
+
+type UseCase struct{}
+
+func (u *UseCase) List(ctx context.Context) error { return nil }
+`,
+			},
+			decls: map[string]auditlistfilter.Listing{
+				"disk_type.List": {Shape: auditlistfilter.ClusterScoped},
+			},
+			wantErr: true,
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			out, err := runGateArgs(t, tc.files, tc.allow...)
+			decls := tc.decls
+			if decls == nil {
+				// Every fixture in this table models the `volume` resource, so a
+				// table naming just that is what the fixture tree actually holds.
+				// Falling back to the REAL table would report the other seven
+				// declarations as expired and drown the property under test.
+				decls = map[string]auditlistfilter.Listing{
+					"volume.List": {Shape: auditlistfilter.RowFilter},
+				}
+			}
+			out, err := runGateArgs(t, tc.files, decls)
 			gotErr := err != nil
 			if gotErr != tc.wantErr {
 				t.Fatalf("gate exit: gotErr=%v wantErr=%v\n--- output ---\n%s", gotErr, tc.wantErr, out)
@@ -400,46 +450,67 @@ func TestAuditListFilter_NothingExaminedIsNotOK(t *testing.T) {
 // TestAuditListFilter_ReportsWhatItExamined — the gate must state its census, so a
 // passing run can be read as "N resources judged" rather than "the word OK".
 func TestAuditListFilter_ReportsWhatItExamined(t *testing.T) {
-	out, err := runGate(t, map[string]string{
+	out, err := runGateArgs(t, map[string]string{
 		"internal/repo/pg/volume_repo.go":          repoNarrows,
 		"internal/apps/kacho/api/volume/volume.go": ucCompliant,
+	}, map[string]auditlistfilter.Listing{
+		"volume.List": {Shape: auditlistfilter.RowFilter},
 	})
 	if err != nil {
 		t.Fatalf("compliant fixture must pass: %v\n--- output ---\n%s", err, out)
 	}
-	for _, want := range []string{"1 adapter file", "1 resource", "checked volume"} {
+	for _, want := range []string{"1 adapter file", "1 resource", "1 listing method", "volume.List"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("gate output must state what it examined (missing %q)\n--- output ---\n%s", want, out)
 		}
 	}
 }
 
-// TestAuditListFilter_ExpiredWhitelistEntryIsAFinding — an exclusion must expire by
-// itself. `--allow=<resource>` suppresses a check; once no such resource exists the
-// entry suppresses nothing, and the next resource to inherit that name inherits the
-// blind spot silently. A whitelist entry with nothing left to exclude is a finding.
-func TestAuditListFilter_ExpiredWhitelistEntryIsAFinding(t *testing.T) {
+// TestAuditListFilter_ExpiredDeclarationIsAFinding — an exclusion must expire by
+// itself. Once no such method exists the entry describes nothing, and the next method
+// to inherit that name inherits an enforcement claim nobody checked.
+//
+// The subject moved one level down when --allow=<resource> was replaced: that flag
+// excluded a whole RESOURCE, so the exclusion written for disk_type would also have
+// covered any listing method later added to its use-case. Declarations are per
+// method, so an exclusion can no longer take its neighbours with it.
+func TestAuditListFilter_ExpiredDeclarationIsAFinding(t *testing.T) {
 	files := map[string]string{
 		"internal/repo/pg/volume_repo.go":          repoNarrows,
 		"internal/apps/kacho/api/volume/volume.go": ucCompliant,
 	}
-	out, err := runGateArgs(t, files, "--allow=retired_resource")
-	if err == nil {
-		t.Fatalf("a whitelist entry matching no resource must be reported\n--- output ---\n%s", out)
+	expired := map[string]auditlistfilter.Listing{
+		"volume.List":           {Shape: auditlistfilter.RowFilter},
+		"retired_resource.List": {Shape: auditlistfilter.ClusterScoped, Reason: "gone long ago"},
 	}
-	if !strings.Contains(out, "retired_resource") {
+	out, err := runGateArgs(t, files, expired)
+	if err == nil {
+		t.Fatalf("a declaration matching no method must be reported\n--- output ---\n%s", out)
+	}
+	if !strings.Contains(out, "retired_resource.List") {
 		t.Errorf("the finding must name the expired entry\n--- output ---\n%s", out)
 	}
 
-	// Converse: an entry that still has a subject must stay silent.
+	// Converse: an entry that still has a subject must stay silent, so the rule is
+	// not merely "flag every declaration".
 	files["internal/repo/pg/disk_type_repo.go"] = `package pg
 
 func (r *DiskTypeRepo) List() {
 	_ = "SELECT ... FROM disk_types"
 }
 `
-	if out, err := runGateArgs(t, files, "disk_type"); err != nil {
-		t.Fatalf("a whitelist entry that still matches a resource must not be a finding: %v\n--- output ---\n%s", err, out)
+	files["internal/apps/kacho/api/disktype/disktype.go"] = `package disktype
+
+type UseCase struct{}
+
+func (u *UseCase) List(ctx context.Context) error { return nil }
+`
+	live := map[string]auditlistfilter.Listing{
+		"volume.List":    {Shape: auditlistfilter.RowFilter},
+		"disk_type.List": {Shape: auditlistfilter.ClusterScoped, Reason: "cluster reference data"},
+	}
+	if out, err := runGateArgs(t, files, live); err != nil {
+		t.Fatalf("a declaration that still matches a method must not be a finding: %v\n--- output ---\n%s", err, out)
 	}
 }
 
@@ -473,7 +544,16 @@ func TestAuditListFilter_RealTreePasses(t *testing.T) {
 	if strings.Contains(out, "examined 0 ") || strings.Contains(out, ", 0 resource") {
 		t.Fatalf("the gate passed having examined nothing — that is not a pass\n--- output ---\n%s", out)
 	}
-	for _, want := range []string{"checked ", "whitelisted disk_type"} {
+	// The listing-method names are asserted, not just a count: the census used to
+	// report resources only, and "4 resources" read the same whether those resources
+	// held 4 listing methods or 7. The three it was not looking at — two operation
+	// histories and the attachment listing — were invisible in the very line meant
+	// to state what had been examined.
+	for _, want := range []string{
+		"listing method(s)",
+		"volume.ListOperations", "volume.ListAttachments", "image.ListOperations",
+		"cluster-scoped by declaration disk_type.List",
+	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("real-tree run must report its census (missing %q)\n--- output ---\n%s", want, out)
 		}

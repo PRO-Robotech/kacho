@@ -111,33 +111,33 @@ var enumerateThenNarrow = map[string]bool{
 var subjectScopers = map[string]bool{"ListForCaller": true}
 
 // shape is how one listing method's visibility is decided.
-type shape int
+type Shape int
 
 const (
-	// rowFilter — the page is read, then narrowed per object.
-	rowFilter shape = iota
-	// subjectScoped — the query is narrowed by the authenticated caller.
-	subjectScoped
-	// clusterScoped — reference data with no per-object grants to narrow to.
-	clusterScoped
+	// RowFilter — the page is read, then narrowed per object.
+	RowFilter Shape = iota
+	// SubjectScoped — the query is narrowed by the authenticated caller.
+	SubjectScoped
+	// ClusterScoped — reference data with no per-object grants to narrow to.
+	ClusterScoped
 )
 
-func (s shape) String() string {
+func (s Shape) String() string {
 	switch s {
-	case rowFilter:
-		return "rowFilter"
-	case subjectScoped:
-		return "subjectScoped"
-	case clusterScoped:
-		return "clusterScoped"
+	case RowFilter:
+		return "RowFilter"
+	case SubjectScoped:
+		return "SubjectScoped"
+	case ClusterScoped:
+		return "ClusterScoped"
 	}
 	return "unknown"
 }
 
-// listing is the enforcement declared for one listing method.
-type listing struct {
-	shape  shape
-	reason string // required for clusterScoped
+// Listing is the enforcement declared for one listing method.
+type Listing struct {
+	Shape  Shape
+	Reason string // required for ClusterScoped
 }
 
 // listings declares, per use-case listing method, how visibility is decided.
@@ -149,32 +149,38 @@ type listing struct {
 // it printed OK. And disk_type was excluded with --allow=disk_type, an exclusion on
 // the RESOURCE, which would silently have covered any further listing method added
 // to that use-case.
-var listings = map[string]listing{
-	"image.List":    {shape: rowFilter},
-	"snapshot.List": {shape: rowFilter},
-	"volume.List":   {shape: rowFilter},
+var listings = map[string]Listing{
+	"image.List":    {Shape: RowFilter},
+	"snapshot.List": {Shape: RowFilter},
+	"volume.List":   {Shape: RowFilter},
 	"disk_type.List": {
-		shape: clusterScoped,
-		reason: "DiskType is the `{cluster,*}` viewer reference data: every authenticated caller " +
+		Shape: ClusterScoped,
+		Reason: "DiskType is the `{cluster,*}` viewer reference data: every authenticated caller " +
 			"reads every row and there are no per-object grants to narrow to. The exclusion " +
 			"expires with its method — retire the RPC and this entry becomes a finding.",
 	},
 
 	// Operation histories are narrowed by the caller in the context, not by the
 	// resource id the request names.
-	"image.ListOperations":  {shape: subjectScoped},
-	"volume.ListOperations": {shape: subjectScoped},
+	"image.ListOperations":  {Shape: SubjectScoped},
+	"volume.ListOperations": {Shape: SubjectScoped},
 
 	// ListAttachments asks the rights model about the INSTANCES the caller named,
 	// not about the volumes, so the answer is all-or-nothing per instance. It is a
 	// row filter over that page.
-	"volume.ListAttachments": {shape: rowFilter},
+	"volume.ListAttachments": {Shape: RowFilter},
 }
 
 // Options configures one audit run.
 type Options struct {
 	// Root is the service root (the directory holding internal/…).
 	Root string
+	// Listings overrides the declaration table. Empty means the real one below.
+	//
+	// It exists for the gate's own fixture tests: a fixture tree holds one or two
+	// resources, so judging it against the real table would report every other
+	// declaration as expired. Production never sets it.
+	Listings map[string]Listing
 }
 
 // Report is the census of one audit run: what was examined, and what was found.
@@ -245,8 +251,13 @@ func Audit(o Options, out io.Writer) (Report, error) {
 	}
 	sort.Strings(rep.Listings)
 
+	table := o.Listings
+	if len(table) == 0 {
+		table = listings
+	}
+
 	// A declaration lives only while it has a subject.
-	for _, k := range sortedKeys(declaredKeys()) {
+	for _, k := range sortedKeys(declaredKeysOf(table)) {
 		if !contains(rep.Listings, k) {
 			rep.Findings = append(rep.Findings, fmt.Sprintf(
 				"declared listing %q matches no method under %s — the declaration has nothing left "+
@@ -260,17 +271,17 @@ func Audit(o Options, out io.Writer) (Report, error) {
 	}
 	for _, key := range rep.Listings {
 		m := found[key]
-		l, ok := listings[key]
+		l, ok := table[key]
 		if !ok {
 			rep.Undeclared = append(rep.Undeclared, key)
 			rep.Findings = append(rep.Findings, fmt.Sprintf(
 				"%s — a listing method with no declared enforcement: nothing states how this page is "+
 					"narrowed, so nothing checks that it is\n  service: %s\n  declare it in "+
-					"tools/auditlistfilter (rowFilter / subjectScoped / clusterScoped) — until it is "+
+					"tools/auditlistfilter (RowFilter / SubjectScoped / ClusterScoped) — until it is "+
 					"stated, the gate fails closed", key, m.file))
 			continue
 		}
-		if l.shape == clusterScoped {
+		if l.Shape == ClusterScoped {
 			rep.ClusterScoped = append(rep.ClusterScoped, key)
 		}
 		rep.Findings = append(rep.Findings, checkListing(root, key, l, m, adapters)...)
@@ -279,10 +290,10 @@ func Audit(o Options, out io.Writer) (Report, error) {
 	return finish(rep, out)
 }
 
-// declaredKeys returns the declaration table's keys as a set.
-func declaredKeys() map[string]bool {
+// declaredKeysOf returns a declaration table's keys as a set.
+func declaredKeysOf(table map[string]Listing) map[string]bool {
 	out := map[string]bool{}
-	for k := range listings {
+	for k := range table {
 		out[k] = true
 	}
 	return out
@@ -292,21 +303,21 @@ func declaredKeys() map[string]bool {
 //
 // The three original checks — the repo adapter narrows by project_id, the use-case
 // rejects an empty projectId, the use-case filters the page per object — are the
-// rowFilter shape of the resource's `List`, and stay exactly as they were. What is
+// RowFilter shape of the resource's `List`, and stay exactly as they were. What is
 // new is that the OTHER listing methods are judged at all.
-func checkListing(root, key string, l listing, m useCaseMethod, adapters map[string]listMethod) []string {
+func checkListing(root, key string, l Listing, m useCaseMethod, adapters map[string]listMethod) []string {
 	res, method, _ := strings.Cut(key, ".")
 
 	var findings []string
-	if l.shape != clusterScoped && callsAnyOf(m.fn, enumerateThenNarrow) {
+	if l.Shape != ClusterScoped && callsAnyOf(m.fn, enumerateThenNarrow) {
 		findings = append(findings, fmt.Sprintf(
 			"%s — enumerates allowed ids (ListAllowedIDs/ListObjects) instead of batch-checking the "+
 				"page: that answer is capped server-side with no continuation token, so the caller's "+
 				"own rows fall outside the cap and disappear\n  service: %s", key, m.file))
 	}
 
-	switch l.shape {
-	case rowFilter:
+	switch l.Shape {
+	case RowFilter:
 		// The resource's own collection RPC additionally owes the project-scope
 		// posture in the adapter and the in-service backstop.
 		if method == "List" {
@@ -315,19 +326,19 @@ func checkListing(root, key string, l listing, m useCaseMethod, adapters map[str
 		}
 		if !callsAnyOf(m.fn, perObjectFilters) {
 			findings = append(findings, fmt.Sprintf(
-				"%s — declared rowFilter, but does not filter the page per object "+
+				"%s — declared RowFilter, but does not filter the page per object "+
 					"(FilterVisiblePage/FilterVisibleIDs)\n  service: %s", key, m.file))
 		}
-	case subjectScoped:
+	case SubjectScoped:
 		if !callsAnyOf(m.fn, subjectScopers) {
 			findings = append(findings, fmt.Sprintf(
-				"%s — declared subjectScoped, but nothing it calls reaches ListForCaller: the query "+
+				"%s — declared SubjectScoped, but nothing it calls reaches ListForCaller: the query "+
 					"is not narrowed by the authenticated caller\n  service: %s", key, m.file))
 		}
-	case clusterScoped:
-		if strings.TrimSpace(l.reason) == "" {
+	case ClusterScoped:
+		if strings.TrimSpace(l.Reason) == "" {
 			findings = append(findings, fmt.Sprintf(
-				"%s — declared clusterScoped with no reason: this is the one shape with no code "+
+				"%s — declared ClusterScoped with no Reason: this is the one shape with no code "+
 					"evidence, so an unstated reason makes it indistinguishable from a listing nobody "+
 					"thought about\n  service: %s", key, m.file))
 		}

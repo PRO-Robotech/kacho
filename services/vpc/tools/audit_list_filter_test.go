@@ -67,6 +67,10 @@ func runGate(t *testing.T, root string, args ...string) (string, error) {
 func copyAnchor(t *testing.T) string {
 	t.Helper()
 	dst := t.TempDir()
+	// vpc has TWO transport packages and the gate audits both, so a copy holding
+	// only one of them would fail on the missing anchor rather than on whatever the
+	// test injected — and the failure would look like the injection working.
+	copyFlatPackage(t, dst, "internal/handler")
 	src := filepath.Join(serviceRoot(t), anchorDir)
 	pkgs, err := os.ReadDir(src)
 	if err != nil {
@@ -156,7 +160,7 @@ func TestAuditListFilter_RealTreePasses(t *testing.T) {
 	if strings.Contains(out, "examined 0 ") || strings.Contains(out, ", 0 resource") {
 		t.Fatalf("the gate passed having examined nothing — that is not a pass\n--- output ---\n%s", out)
 	}
-	for _, want := range []string{"checked ", "network", "subnet", "whitelisted addresspool"} {
+	for _, want := range []string{"network.List", "cluster-scoped by declaration addresspool.List"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("a passing run must report its census (missing %q)\n--- output ---\n%s", want, out)
 		}
@@ -231,16 +235,67 @@ func TestAuditListFilter_RefactorMustNotHideALeak(t *testing.T) {
 	}
 }
 
-// TestAuditListFilter_ExpiredWhitelistEntryIsAFinding — an exclusion must expire by
-// itself. `--allow=<resource>` suppresses a check; once no such resource exists the
-// entry suppresses nothing, and the next resource to inherit that name inherits the
-// blind spot in silence.
-func TestAuditListFilter_ExpiredWhitelistEntryIsAFinding(t *testing.T) {
-	out, err := runGate(t, serviceRoot(t), "--allow=retired_resource")
+// TestAuditListFilter_ExpiredDeclarationIsAFinding — an exclusion must expire by
+// itself. Once no such method exists the declaration describes nothing, and the next
+// method to inherit that name inherits an enforcement claim nobody checked.
+//
+// The subject moved one level down when --allow=<resource> was replaced: that flag
+// excluded a whole RESOURCE, so an exclusion written for a cluster catalog also
+// covered listing methods added to that handler afterwards — which is how
+// addresspool's ListAddresses went unjudged in vpc. Declarations are per method now.
+//
+// The orphan is produced by DELETING a declared method from a copy of the real tree,
+// rather than by passing a made-up name: the declaration under test is the service's
+// own, so this cannot pass against a profile whose entries no longer match anything.
+func TestAuditListFilter_ExpiredDeclarationIsAFinding(t *testing.T) {
+	root := copyAnchor(t)
+	removed := deleteADeclaredListing(t, root)
+
+	out, err := runGate(t, root)
 	if err == nil {
-		t.Fatalf("a whitelist entry matching no resource must be reported\n--- output ---\n%s", out)
+		t.Fatalf("a declaration matching no method must be reported\n--- output ---\n%s", out)
 	}
-	if !strings.Contains(out, "retired_resource") {
-		t.Errorf("the finding must name the expired entry\n--- output ---\n%s", out)
+	if !strings.Contains(out, removed) {
+		t.Errorf("the finding must name the expired entry %q\n--- output ---\n%s", removed, out)
+	}
+}
+
+// deleteADeclaredListing removes a DECLARED listing method from the copied tree by
+// renaming it out of the listing surface, and returns the declaration key that is
+// thereby orphaned.
+//
+// It deletes a real method rather than passing a made-up name, so the assertion is
+// about THIS service's own declarations: if the profile's entries stopped matching
+// the tree, this test could not pass by naming something imaginary.
+func deleteADeclaredListing(t *testing.T, root string) string {
+	t.Helper()
+	patch(t, root, "addresspool/handler.go", "func (h *Handler) ListAddresses(", "func (h *Handler) FetchAddresses(")
+	return "addresspool.ListAddresses"
+}
+
+// copyFlatPackage copies one flat (non-per-resource) package of the real tree into
+// the fixture root, so the second profile has its anchor to read.
+func copyFlatPackage(t *testing.T, dst, rel string) {
+	t.Helper()
+	src := filepath.Join(serviceRoot(t), rel)
+	files, err := os.ReadDir(src)
+	if err != nil {
+		t.Fatalf("read %s: %v", src, err)
+	}
+	out := filepath.Join(dst, rel)
+	if merr := os.MkdirAll(out, 0o755); merr != nil {
+		t.Fatalf("mkdir: %v", merr)
+	}
+	for _, f := range files {
+		if f.IsDir() || !strings.HasSuffix(f.Name(), ".go") {
+			continue
+		}
+		b, rerr := os.ReadFile(filepath.Join(src, f.Name()))
+		if rerr != nil {
+			t.Fatalf("read %s: %v", f.Name(), rerr)
+		}
+		if werr := os.WriteFile(filepath.Join(out, f.Name()), b, 0o644); werr != nil {
+			t.Fatalf("write %s: %v", f.Name(), werr)
+		}
 	}
 }

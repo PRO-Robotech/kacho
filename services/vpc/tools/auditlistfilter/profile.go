@@ -122,3 +122,41 @@ var Profile = listfiltergate.Profile{
 		"addresspool.ListAddresses": {Shape: listfiltergate.ClusterScoped, Reason: adminPool},
 	},
 }
+
+// InternalProfile describes kacho-vpc's OTHER transport package.
+//
+// vpc is the only service with two: the per-resource packages under
+// internal/apps/kacho/api, and a flat internal/handler holding the internal
+// listener's handlers. Profile above covers the first. This covers the second, and
+// until it existed the gate's census read "8 resources, 21 listing methods" while
+// the tree held 22 — the missing one being an RPC that returns NIC attachments for
+// instance ids THE CALLER NAMES, with no per-RPC check behind it at all
+// (scope_filtered), which makes it among the least suitable methods in the
+// repository to be going unjudged.
+//
+// This is the residual the widened predicate did NOT reach: the method was outside
+// the anchor root, not merely outside the name match. Worth stating plainly, because
+// "we widened the predicate" is the kind of sentence that gets read as "and therefore
+// everything is now seen". Coverage of the tree is a separate property from coverage
+// of the names, and it has its own check — census_test.go compares what each analyser
+// judged against every transport listing method in the service.
+var InternalProfile = listfiltergate.Profile{
+	Service:    "vpc-internal",
+	AnchorRoot: "internal/handler",
+	// A flat package with a handler type per resource — compute's layout.
+	PerPackage:     false,
+	ReceiverSuffix: "Handler",
+	// "svc.ListByInstance" is the delegation into nicinternal.Service, one package
+	// over, where the per-NIC narrowing lives; the analyser's walk does not leave the
+	// package it is judging. Named the same way as iam's listOp.Execute and safe for
+	// the same two reasons: renaming the field turns the gate RED rather than quiet,
+	// and the far side is asserted by internal_nic_test.go in this package instead of
+	// being assumed.
+	Filters:        []string{"FilterVisibleIDs", "FilterVisiblePage", "svc.ListByInstance"},
+	Banned:         []string{"ListAllowedIDs", "ListObjects"},
+	SubjectScopers: []string{"ListForCaller"},
+
+	Listings: map[string]listfiltergate.Listing{
+		"internal_network_interface.ListByInstance": {Shape: listfiltergate.RowFilter},
+	},
+}

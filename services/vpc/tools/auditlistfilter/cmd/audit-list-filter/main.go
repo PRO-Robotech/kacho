@@ -30,13 +30,18 @@ func main() {
 	// it, and are a finding once the method is gone.
 	flag.Parse()
 
-	_, err := listfiltergate.Audit(
-		auditlistfilter.Profile,
-		listfiltergate.Options{Root: *root, ProtoRoot: *protoRoot},
-		os.Stdout,
-	)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+	// vpc is the only service with TWO transport packages, and both are audited: a
+	// gate that covered one of them would report OK while a listing method it never
+	// opened handed back a page.
+	opts := listfiltergate.Options{Root: *root, ProtoRoot: *protoRoot}
+	failed := false
+	for _, p := range []listfiltergate.Profile{auditlistfilter.Profile, auditlistfilter.InternalProfile} {
+		if _, err := listfiltergate.Audit(p, opts, os.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			failed = true
+		}
+	}
+	if failed {
 		os.Exit(1)
 	}
 }
