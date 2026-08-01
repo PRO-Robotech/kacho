@@ -4,16 +4,14 @@
 package migrations_test
 
 import (
-	"context"
 	"database/sql"
 	"testing"
-	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/migrations"
 )
 
@@ -55,23 +53,9 @@ func TestMigration_RegionVIPUniq_HealsInvalidIndex(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test (testing.Short)")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-	defer cancel()
-
-	pgc, err := postgres.Run(ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("kacho_nlb_test"),
-		postgres.WithUsername("nlb"),
-		postgres.WithPassword("nlb"),
-		postgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = pgc.Terminate(context.Background()) })
-
-	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
-
-	db, err := sql.Open("pgx", dsn)
+	// Своя ПУСТАЯ база на одном контейнере пакета: тест сам ведёт цепочку миграций
+	// (UpTo 9 → инъекция → Up), поэтому мигрированный шаблон был бы не той точкой старта.
+	db, err := sql.Open("pgx", pgtest.NewEmptyDB(t))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = db.Close() })
 

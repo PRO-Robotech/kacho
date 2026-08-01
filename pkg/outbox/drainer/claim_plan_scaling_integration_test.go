@@ -63,11 +63,11 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // claimPlanTable is the canonical outbox table under test, created with EXACTLY
@@ -244,32 +244,17 @@ func Test_ClaimPlan_StaleStatistics_DoesNotCollapse(t *testing.T) {
 		"claim seq-scans the outbox under stale statistics.\nplan:\n%s", plan)
 }
 
-// setupClaimPlanPG spins a Postgres testcontainer with the canonical outbox
-// table. Own setup (not the drainer_test helper) because this file is an
-// internal test — it needs buildClaimQuery, which is unexported.
+// setupClaimPlanPG gives this test its own EMPTY database on the package's
+// container and creates the canonical outbox table in it. Own setup (not the
+// drainer_test helper) because this file is an internal test — it needs
+// buildClaimQuery, which is unexported — and because the table under test here is
+// claimPlanTable, not the package template's fga_outbox: these two tests seed the
+// backlog and control when it is ANALYZEd, which is itself the property they
+// measure.
 func setupClaimPlanPG(ctx context.Context, t *testing.T) *pgxpool.Pool {
 	t.Helper()
 
-	startCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-
-	ctr, err := postgres.Run(startCtx, "postgres:16-alpine",
-		postgres.WithDatabase("drainer_test"),
-		postgres.WithUsername("test"),
-		postgres.WithPassword("test"),
-		postgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		termCtx, termCancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer termCancel()
-		_ = ctr.Terminate(termCtx)
-	})
-
-	dsn, err := ctr.ConnectionString(startCtx, "sslmode=disable")
-	require.NoError(t, err)
-
-	pool, err := pgxpool.New(ctx, dsn)
+	pool, err := pgxpool.New(ctx, pgtest.NewEmptyDB(t))
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
 

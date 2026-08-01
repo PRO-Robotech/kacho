@@ -16,13 +16,12 @@ import (
 	"io/fs"
 	"os"
 	"testing"
-	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // database/sql driver for the harness
 	"github.com/pressly/goose/v3"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
 	"github.com/PRO-Robotech/kacho/internal/dropguard"
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // Options configures one measured run.
@@ -111,7 +110,7 @@ func Measure(t *testing.T, opts Options) dropguard.Report {
 		return rep
 	}
 
-	db := startPostgres(t, ctx, opts.Service)
+	db := openEmptyDatabase(t)
 
 	goose.SetBaseFS(opts.FS)
 	if serr := goose.SetDialect("postgres"); serr != nil {
@@ -149,32 +148,26 @@ func Measure(t *testing.T, opts Options) dropguard.Report {
 	return rep
 }
 
-func startPostgres(t *testing.T, ctx context.Context, service string) *sql.DB {
+// openEmptyDatabase takes this run's database from the one Postgres the test binary
+// owns, instead of starting a container per call.
+//
+// EMPTY is not incidental, it is the precondition: the harness replays the service's
+// chain itself and pauses before every drop to count, so it must start from before the
+// first migration. A consumer therefore wires pgtest with NO Migrate — a pre-migrated
+// template would leave nothing to walk and the census would count nothing.
+//
+// The posture on "no database" is unchanged and deliberate: pgtest.NewEmptyDB fails t
+// rather than skipping it, because a run that could not count must never be readable as
+// a run that counted and found nothing. That is the same reason -short above prints
+// every drop as unanswered instead of passing quietly.
+func openEmptyDatabase(t *testing.T) *sql.DB {
 	t.Helper()
-	pgc, err := postgres.Run(ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("kacho_"+service+"_dropguard"),
-		postgres.WithUsername(service),
-		postgres.WithPassword(service),
-		postgres.BasicWaitStrategies(),
-	)
-	if err != nil {
-		t.Fatalf("start postgres: %v", err)
-	}
-	t.Cleanup(func() {
-		tctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		_ = pgc.Terminate(tctx)
-	})
-
-	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("dsn: %v", err)
-	}
-	db, err := sql.Open("pgx", dsn)
+	db, err := sql.Open("pgx", pgtest.NewEmptyDB(t))
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
+	// Registered after pgtest's own drop, so it runs before it: LIFO cleanup closes the
+	// connection first, and the database goes with (FORCE) regardless.
 	t.Cleanup(func() { _ = db.Close() })
 	return db
 }

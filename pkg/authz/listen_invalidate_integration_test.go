@@ -11,7 +11,9 @@ package authz_test
 // Postgres testcontainer, seeds a positive Check-cache entry, issues the NOTIFY,
 // and asserts the entry disappears.
 //
-// testcontainers-go Postgres, one container per test (no shared state).
+// testcontainers-go Postgres, one container per PACKAGE; each test gets its own
+// database on it (see TestMain). NOTIFY does not cross databases, so the tests
+// still cannot hear each other's traffic.
 
 import (
 	"context"
@@ -22,8 +24,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 )
 
@@ -39,22 +41,9 @@ func startPG(t *testing.T) (pool *pgxpool.Pool, dsn string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	ctr, err := postgres.Run(ctx, "postgres:16-alpine",
-		postgres.WithDatabase("kacho_iam_test"),
-		postgres.WithUsername("test"),
-		postgres.WithPassword("test"),
-		postgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		termCtx, termCancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer termCancel()
-		_ = ctr.Terminate(termCtx)
-	})
+	dsn = pgtest.NewDB(t)
 
-	dsn, err = ctr.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
-
+	var err error
 	pool, err = pgxpool.New(ctx, dsn)
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)

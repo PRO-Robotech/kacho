@@ -5,26 +5,21 @@ package handler
 
 import (
 	"context"
-	"database/sql"
 	"io"
 	"log/slog"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
-	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
-
-	"github.com/PRO-Robotech/kacho/services/compute/internal/migrations"
 )
 
 // fakeWatchStream — минимальный computev1.InternalWatchService_WatchServer
@@ -43,32 +38,11 @@ func (s *fakeWatchStream) SetTrailer(metadata.MD)         {}
 func (s *fakeWatchStream) SendMsg(any) error              { return nil }
 func (s *fakeWatchStream) RecvMsg(any) error              { return io.EOF }
 
-// setupWatchDB — testcontainers Postgres 16 + goose-миграции (compute_outbox
-// живёт в 0001_initial). Возвращает dsn.
+// setupWatchDB — собственная база теста на одном контейнере пакета (миграции,
+// включая compute_outbox из 0001_initial, уже применены в шаблоне). Возвращает dsn.
 func setupWatchDB(t *testing.T) string {
 	t.Helper()
-	ctx := context.Background()
-	pgc, err := postgres.Run(ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("kacho_compute_test"),
-		postgres.WithUsername("compute"),
-		postgres.WithPassword("compute"),
-		postgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = pgc.Terminate(ctx) })
-
-	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
-
-	db, err := sql.Open("pgx", dsn)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = db.Close() })
-
-	goose.SetBaseFS(migrations.FS)
-	require.NoError(t, goose.SetDialect("postgres"))
-	require.NoError(t, goose.Up(db, "."))
-	return dsn
+	return pgtest.NewDB(t)
 }
 
 // TestIntegration_WatchStreamSince_BatchBoundary — cursor корректно продвигается

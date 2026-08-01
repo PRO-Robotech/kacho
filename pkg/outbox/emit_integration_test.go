@@ -27,8 +27,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	"github.com/PRO-Robotech/kacho/pkg/outbox"
 )
 
@@ -71,28 +71,15 @@ func setupOutboxPG(t *testing.T) *pgxpool.Pool {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	ctr, err := postgres.Run(ctx, "postgres:16-alpine",
-		postgres.WithDatabase("kacho_outbox_test"),
-		postgres.WithUsername("test"),
-		postgres.WithPassword("test"),
-		postgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		termCtx, termCancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer termCancel()
-		_ = ctr.Terminate(termCtx)
-	})
-
-	dsn, err := ctr.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
-
-	pool, err := pgxpool.New(ctx, dsn)
+	// outboxSchema is already in this database: it was applied once to the
+	// package's template (see TestMain) and this is a clone of it.
+	pool, err := pgxpool.New(ctx, pgtest.NewDB(t))
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
 
-	_, err = pool.Exec(ctx, outboxSchema)
-	require.NoError(t, err, "apply outboxSchema")
+	// Applying the schema through this pool used to leave it with a live
+	// connection; keep handing back a warm one.
+	require.NoError(t, pool.Ping(ctx))
 
 	return pool
 }

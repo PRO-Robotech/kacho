@@ -5,7 +5,8 @@ package drainer_test
 
 // Shared fixtures for drainer integration tests.
 //
-// Each test owns its own Postgres testcontainer (no shared state, parallel-safe).
+// Each test owns its own Postgres DATABASE on the package's single container
+// (no shared state, parallel-safe — see TestMain).
 // Schema is an inline copy of kacho-iam migration 0002_fga_outbox.sql —
 // kacho-corelib doesn't own kacho-iam migrations; copying the DDL here keeps
 // the drainer package self-contained for testing without a cross-repo dependency.
@@ -23,7 +24,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
+
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
 // fgaOutboxSchema — exact copy of kacho-iam/internal/migrations/0002_fga_outbox.sql
@@ -98,8 +100,8 @@ CREATE TRIGGER fga_outbox_notify_trigger
     FOR EACH ROW EXECUTE FUNCTION kacho_iam.fga_outbox_notify();
 `
 
-// setupDrainerPG спинит контейнер Postgres, накатывает fga_outbox-schema
-// и возвращает готовый pool + DSN (DSN нужен для тестов, которым важен
+// setupDrainerPG выдаёт тесту собственную БД с fga_outbox-schema на контейнере
+// пакета и возвращает готовый pool + DSN (DSN нужен для тестов, которым важен
 // LISTEN на отдельном connection / запуск второй реплики drainer-а).
 func setupDrainerPG(t *testing.T) (*pgxpool.Pool, string) {
 	t.Helper()
@@ -111,28 +113,20 @@ func setupDrainerPG(t *testing.T) (*pgxpool.Pool, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	ctr, err := postgres.Run(ctx, "postgres:16-alpine",
-		postgres.WithDatabase("kacho_iam_test"),
-		postgres.WithUsername("test"),
-		postgres.WithPassword("test"),
-		postgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		termCtx, termCancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer termCancel()
-		_ = ctr.Terminate(termCtx)
-	})
-
-	dsn, err := ctr.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
+	// fgaOutboxSchema is already in this database: it was applied once to the
+	// package's template (see TestMain) and this is a clone of it.
+	dsn := pgtest.NewDB(t)
 
 	pool, err := pgxpool.New(ctx, dsn)
 	require.NoError(t, err)
 	t.Cleanup(pool.Close)
 
-	_, err = pool.Exec(ctx, fgaOutboxSchema)
-	require.NoError(t, err, "apply fgaOutboxSchema (inline copy of kacho-iam 0002)")
+	// Hand back a WARM pool. Applying the schema through this pool used to do this
+	// as a side effect, and the drainer's startup depends on it: its LISTEN
+	// subscription starts with pool.Acquire, and a cold pool makes that a fresh
+	// connect+auth — which, with every parallel test connecting to the one server
+	// at once, arrives late enough to be mistaken for a poll.
+	require.NoError(t, pool.Ping(ctx))
 
 	return pool, dsn
 }

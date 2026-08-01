@@ -5,20 +5,17 @@ package pg_test
 
 import (
 	"context"
-	"database/sql"
 	"encoding/base64"
 	stderrors "errors"
 	"sync"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	_ "github.com/jackc/pgx/v5/stdlib"
-	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 
 	region "github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/api/region"
@@ -26,13 +23,13 @@ import (
 	"github.com/PRO-Robotech/kacho/services/geo/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/domain"
 	geoerrors "github.com/PRO-Robotech/kacho/services/geo/internal/errors"
-	"github.com/PRO-Robotech/kacho/services/geo/internal/migrations"
 	"github.com/PRO-Robotech/kacho/services/geo/internal/repo/kacho/pg"
 )
 
-// newTestPool поднимает контейнер Postgres 16, прогоняет миграции kacho-geo
-// и возвращает pgxpool с search_path=kacho_geo. Пропускается под -short.
-// Каталог стартует пустым (seed нет) — данные каждый тест заводит сам.
+// newTestPool выдаёт тесту собственную базу на одном контейнере пакета (миграции
+// kacho-geo уже применены в шаблоне) и возвращает pgxpool с search_path=kacho_geo.
+// Пропускается под -short. Каталог стартует пустым (seed нет) — данные каждый
+// тест заводит сам.
 func newTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	if testing.Short() {
@@ -40,25 +37,7 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 	}
 	ctx := context.Background()
 
-	pgC, err := tcpostgres.Run(ctx, "postgres:16-alpine",
-		tcpostgres.WithDatabase("kacho_geo"),
-		tcpostgres.WithUsername("geo"),
-		tcpostgres.WithPassword("secret"),
-		tcpostgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = pgC.Terminate(ctx) })
-
-	baseDSN, err := pgC.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
-
-	// Миграции через goose (database/sql).
-	sqlDB, err := sql.Open("pgx", baseDSN)
-	require.NoError(t, err)
-	defer sqlDB.Close()
-	goose.SetBaseFS(migrations.FS)
-	require.NoError(t, goose.SetDialect("postgres"))
-	require.NoError(t, goose.Up(sqlDB, "."))
+	baseDSN := pgtest.NewDB(t)
 
 	// pgxpool с search_path=kacho_geo, чтобы SQL репозитория видел таблицы без
 	// схемы-префикса. Форма libpq runtime-param (URL-query `search_path=` pgx не

@@ -107,6 +107,19 @@ var integrationSelectionRe = regexp.MustCompile(`^services/[^/]+/internal/(repo|
 // не осталось предмета (пакет исчез или перестал гейтиться), — находка: иначе
 // список переживает свой повод и достаётся следующему как слепая зона.
 var shortGatedOutsideSelection = []string{
+	// Два поставщика общего контейнера. Их тесты — ПОВОДНАЯ ЧАСТЬ другого гейта:
+	// containerperpackage_test.go не считает вызовы к ним стартом контейнера именно
+	// потому, что здесь доказано «сервер один, области разные, данные не ходят».
+	// Сейчас это доказательство не исполняется НИГДЕ: под кратким оно пропускается
+	// (ему нужен Docker), а отбор интеграционной джобы смотрит только внутрь
+	// services/<svc>/internal/(repo|clients), куда ни один из них не попадает —
+	// internal/pgtest лежит в корне и в тот обход не входит вовсе.
+	//
+	// То есть санкция стоит на утверждении, которое конвейер не проверяет. Это долг,
+	// и он назван, а не умолчан: закрывается расширением отбора (решение с ценой —
+	// за владельцем), после чего обе записи отсюда уходят, и гейт выше на этом
+	// покраснеет сам.
+	"internal/pgtest",
 	"pkg/authz",
 	"pkg/db",
 	"pkg/grpcsrv",
@@ -130,6 +143,8 @@ var shortGatedOutsideSelection = []string{
 	"services/iam/internal/authzmap",
 	"services/iam/internal/migrations",
 	"services/iam/internal/service",
+	// Второй поставщик общего контейнера — см. комментарий у internal/pgtest выше.
+	"services/iam/internal/testsupport/fgatest",
 	"services/nlb/internal/apps/kacho/api/internal_lifecycle",
 	"services/nlb/internal/apps/kacho/api/loadbalancer",
 	"services/nlb/internal/apps/kacho/api/operation",

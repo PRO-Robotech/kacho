@@ -11,8 +11,8 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	"github.com/PRO-Robotech/kacho/internal/pgtest"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/migrations"
 )
 
@@ -34,18 +34,9 @@ func TestIntegration_DropGeographyMigration(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	pgc, err := postgres.Run(ctx,
-		"postgres:16-alpine",
-		postgres.WithDatabase("kacho_compute_test"),
-		postgres.WithUsername("compute"),
-		postgres.WithPassword("compute"),
-		postgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = pgc.Terminate(ctx) })
-
-	dsn, err := pgc.ConnectionString(ctx, "sslmode=disable")
-	require.NoError(t, err)
+	// EMPTY-база на контейнере пакета: этот тест сам идёт по цепочке миграций
+	// вверх и вниз, поэтому предмигрированный шаблон был бы неверной точкой старта.
+	dsn := pgtest.NewEmptyDB(t)
 
 	db, err := sql.Open("pgx", dsn)
 	require.NoError(t, err)
