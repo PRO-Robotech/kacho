@@ -176,6 +176,12 @@ type Census struct {
 	// their own removal. Counted rather than assumed: a rule whose producers are all
 	// missing reads exactly like a rule everybody follows.
 	RetirementClauses int
+	// MarkerFiles / MarkerLines is the volume of the second half: files of a suite
+	// read for a declaration marker, and lines carrying one. Printed for the same
+	// reason as everything else here — "no unsupervised declaration" and "read no
+	// file of that suite" must never print the same thing.
+	MarkerFiles int
+	MarkerLines int
 }
 
 // Report is the census, the findings, and the dimensions that could not be resolved.
@@ -366,6 +372,16 @@ func Scan(o Options) (Report, error) {
 					"declaration that outlived its fix is a false statement about the product; delete it",
 				ir.repo, ir.num, strings.Join(issues[ir], ", ")))
 		}
+	}
+
+	// Вторая половина: объявление, написанное ВНЕ поднадзорного места, не
+	// подчиняется ни одному сроку. См. unsupervised.go — там же измерение, из
+	// которого эта проверка выведена.
+	for _, rel := range suites {
+		uf, files, markers := findUnsupervised(o.Root, rel)
+		rep.Census.MarkerFiles += files
+		rep.Census.MarkerLines += markers
+		rep.Findings = append(rep.Findings, uf...)
 	}
 
 	if rep.Census.Docs == 0 {
@@ -967,9 +983,11 @@ func Print(rep Report, out io.Writer) {
 	_, _ = fmt.Fprintf(out, "known-failing-subject: read %d suite(s), %d results doc(s), %d "+
 		"collection(s), %d run report(s); %d declaring section(s), %d resolution record(s) skipped, "+
 		"%d declaration(s), %d subject(s) resolved, %d issue(s) checked, "+
-		"%d defect-side retirement condition(s)\n",
+		"%d defect-side retirement condition(s); %d suite file(s) read for a declaration "+
+		"marker, %d line(s) carried one\n",
 		c.Suites, c.Docs, c.Collections, c.Reports, c.DeclaringSections, c.ArchivedSections,
-		c.Declarations, c.SubjectsResolved, c.IssuesChecked, c.RetirementClauses)
+		c.Declarations, c.SubjectsResolved, c.IssuesChecked, c.RetirementClauses,
+		c.MarkerFiles, c.MarkerLines)
 
 	if len(rep.Unverified) > 0 {
 		_, _ = fmt.Fprintf(out, "known-failing-subject: NOT VERIFIED for %d item(s) — printed so that "+
