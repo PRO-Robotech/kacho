@@ -290,41 +290,49 @@ stands) — applied uniformly across all `kacho-*` services so registry does not
 its siblings. Until then the deploy profile is the single enforcement point and this default
 matches every peer service.
 
-## 9. Register-on-first-push is a best-effort emit; a lost first-push intent is not reconciled
+## 9. ~~Register-on-first-push is a best-effort emit; a lost first-push intent is not reconciled~~ — CLOSED (2026-07-30)
+
+> [!note] This is no longer a divergence. Kept as a record of what was accepted and what
+> replaced it — not as a standing exemption.
+>
+> Re-checked against the tree on 2026-08-01: the shape described below does not exist any more.
+> Fixed by commit `5d599e64` («право на запись решается существованием РЕСУРСА, а регистрация
+> не теряется молча»), which landed **after** this section was last written — so until now the
+> document advertised as *accepted* a defect the repository had already closed. That is the
+> more dangerous half of a stale divergence list: the next auditor re-accepts it, or someone
+> reverts the fix on the document's authority.
 
 **Rule.** data-integrity.md: a state mutation and its outbox emit are atomic / no partial
 writes; a lost intent must be recoverable.
 
-**Divergence (cross-service, by rule's own exception).** On the first successful manifest-PUT
-of a *new* repo, `internal/dataplane/handler.go` (`servePush`) has already written content to
-zot and streamed the 2xx to the client; it *then* emits the repo register-intent
-(`RepoRegistrar.RegisterRepository` → `registry_outbox`) as a **post-response side-effect**. If
-that single DB emit fails it is logged and the client keeps its 2xx (contract pinned by
-`handler_test.go` REG-14c). Because the register branch is gated on `!exists`
-(`handler.go:207`), every later push sees `exists=true` and skips registration, so a first-push
-intent lost to a transient registry-DB error is never re-emitted, and there is **no
-registry-side reconciler/sweeper**.
+**What it was.** On the first successful manifest-PUT of a *new* repo, the data-plane had
+already written content to zot and relayed the 2xx before it emitted the repo register-intent
+into `registry_outbox`. A failed emit was logged and the client kept its success, and because
+the register branch keyed off «does this repo exist», later pushes skipped registration — so an
+intent lost to a transient registry-DB error was never re-emitted, and there is no
+registry-side reconciler. The contract test pinned *log-and-continue* as intended behaviour.
 
-**Why accepted.**
-- **The two writes straddle a service boundary** (zot's own store vs the registry Postgres
-  outbox) — they cannot be one transaction (database-per-service, ban #8), the same exemption
-  that governs divergence #3. Once the intent *is* in `registry_outbox`, delivery to iam is
-  durable at-least-once (`corelib outbox/drainer`, `FOR UPDATE SKIP LOCKED`); the only
-  unrecovered window is the emit *into* the outbox itself failing.
-- **Deliberate availability tradeoff, already tested.** REG-14c fixes the contract as
-  *log-and-continue*: a rare DB blip on the post-forward side-effect must not fail an
-  already-succeeded push. Flipping to emit-before-forward + fail-closed would invert that tested
-  contract (push → 5xx on emit error) and reorder the authz materialisation ahead of content —
-  a behavioural change to the push path, out of scope for a contracts-frozen hardening pass.
-- **Bounded, non-leaking failure mode.** The degraded state is an existence-hiding `NOT_FOUND`
-  on an un-materialised repo (owner cannot pull until re-registered) — never a cross-tenant leak
-  or loss of committed control-plane metadata.
+**Failure mode it had (why it was defensible at the time).** Fail-**closed**, never a leak: the
+intent carries exactly the containment and owner tuples, so losing it means the repo
+materialises **no** relations at all and the owner's own pull returns existence-hiding
+`NOT_FOUND`. The cost was denial of the pusher's own access, not cross-tenant reach. The two
+writes also straddle a service boundary (zot's store vs registry Postgres), so a single
+transaction was never available (database-per-service, ban #8) — the same exemption as
+divergence #3.
 
-**What would revisit this.** A registry-side reconciler (periodic sweep, or an idempotent
-re-emit keyed on «zot has the repo but no register-intent was durably recorded») that
-re-materialises the parent/owner tuples; the emit is already idempotent (advisory lock + iam
-dedup), so re-emit is safe. Tracked as a follow-up behavioural change rather than folded into
-this pass.
+**What replaced it.** Registration is now **synchronous and fail-closed** on the first push of
+a new repo: the data-plane no longer streams that response, it buffers zot's reply, resolves
+the project and makes the register-intent durable **before** relaying success. If the emit
+fails, the buffered 2xx is discarded and the client gets `503` — so the push is not reported as
+having succeeded, and the client's retry re-enters the create branch instead of being told the
+repo already exists. The existence predicate moved from «engine has tags» to durable service
+state, which is what makes that retry converge. The contract test now asserts the **opposite**
+of the old text and says so in its own header: the previous assertion was pinning the defect.
+
+**Residual, unchanged and still true.** There is still no registry-side reconciler or sweeper
+for register-intents. It is no longer load-bearing — an intent can no longer be silently lost,
+because a failed emit produces no success and no durable resource — but a general re-emit sweep
+remains a legitimate belt-and-braces follow-up rather than a gap.
 
 ## 10. `GetRegistryStats` walks the whole namespace live (bounded-concurrency, not paginated)
 
@@ -342,7 +350,7 @@ with no page-size bound or early cutoff.
   reachable by tenants or from the public endpoint.
 - **Instantaneous downstream load is already bounded.** Manifest fetches run under an
   `errgroup` capped at `blobScopeConcurrency` (8) — at most 8 concurrent zot round-trips at any
-  moment (comment at `distribution.go:148`), so a large namespace makes Stats *slow*, not a
+  moment (`blobScopeConcurrency` in the zot client), so a large namespace makes Stats *slow*, not a
   connection-budget spike on shared zot. Each manifest body is additionally read under
   `io.LimitReader(maxManifestBytes)` (`httpclient.go`, this pass) so no single body can OOM the
   decoder.
@@ -359,14 +367,26 @@ frozen-contract hardening change.
 
 **Rule.** CWE-561: no dead code — a field the runtime never reads should not be carried.
 
-**Divergence.** The four `ScopeFiltered` entries in `internal/check/permission_map.go`
-(`List` / `ListRepositories` / `ListTags` / `DeleteTag`) carry `Relation` + `Extract` +
-`Permission` like every interceptor-gated entry, yet for a `ScopeFiltered` entry the corelib
-interceptor returns `DecisionInternal` **before** it ever calls `entry.Extract`
-(`kacho-corelib/authz/interceptor.go:225-231`) — so `repositoryObject()` (the extractor used
-*only* by `ListTags`/`DeleteTag`) is never invoked at runtime, and the `Relation`/`Extract`
-fields on these entries are never read. Real per-repo enforcement for these RPCs lives in
-`internal/handler/listauthz.go`.
+**Divergence.** The `ScopeFiltered` entries in `internal/check/permission_map.go` carry
+`Relation` + `Extract` + `Permission` like every interceptor-gated entry, yet for a
+`ScopeFiltered` entry the authz interceptor (`pkg/authz`, absorbed into this monorepo — the
+former `kacho-corelib`) returns `DecisionInternal` **before** it ever calls `entry.Extract` — so
+those two fields are never read at runtime on these entries. Real per-repo enforcement for these
+RPCs lives in `internal/handler/listauthz.go`, bounded at `repoAuthzConcurrency`.
+
+> **Count re-checked 2026-08-01: ten, not four.** This section was written when the residual
+> covered `List` / `ListRepositories` / `ListTags` / `DeleteTag`. The six repository-overlay
+> entries added later (`GetRepository`, `CreateRepository`, `UpdateRepository`,
+> `DeleteRepository`, `RenameRepository`, `ListReferrers`) carry the same residual, each with
+> its own inline comment restating it. `repositoryObject()` is likewise no longer used «only by
+> `ListTags`/`DeleteTag`» — seven entries reference it. The class did not change; its extent
+> did, which is exactly what a divergence list is supposed to keep honest.
+
+> **What `ScopeFiltered` does *not* skip: identifying the caller.** The interceptor extracts the
+> subject **before** the `ScopeFiltered` branch and fail-closes on a missing principal, pinned by
+> its own test. `ScopeFiltered` redirects the *object* decision to the handler; it never makes an
+> RPC anonymous. Reading this section as «these RPCs bypass authorization» would be wrong in the
+> dangerous direction.
 
 **Why accepted.**
 - **Intentional, tested catalog documentation, not an accident.** The code comment states the
@@ -386,7 +406,8 @@ fields on these entries are never read. Real per-repo enforcement for these RPCs
   inline comments pointing at `handler/listauthz.go` as the enforcement site.
 
 **What would revisit this.** A decision to make the map carry *only* the fields the runtime reads
-(drop `Relation`/`Extract` on all ScopeFiltered entries and delete `repositoryObject()`), paired
+(drop `Relation`/`Extract` on all ten ScopeFiltered entries; `repositoryObject()` itself stays —
+seven entries reference it), paired
 with updating `TestPermissionMap_List_CatalogRetained` and adding a one-line comment per entry
 pointing at `handler/listauthz.go`. A pure catalog-shape change, deferred so the tested uniform
 descriptor is not reversed mid-hardening.

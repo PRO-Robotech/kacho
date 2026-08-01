@@ -217,7 +217,7 @@ adapter-пакета в любом случае. Осознанный trade-off 
 
 ## `statement_timeout=30s` энфорсится пулом (corelib), `cmd/migrator` освобождён
 
-**Что.** Пул приложения (`coredb.NewPool`, `cmd/kacho-loadbalancer/main.go:139`)
+**Что.** Пул приложения (`coredb.NewPool` в `cmd/kacho-loadbalancer/main.go`)
 ставит `statement_timeout=30000` (30 s) как `RuntimeParam` на КАЖДОМ соединении —
 это делает `kacho-corelib/db.NewPool` (`cfg.ConnConfig.RuntimeParams["statement_timeout"]
 = "30000"`). Server-side верхняя граница на любой request-path и фоновый

@@ -1,5 +1,22 @@
 # Within-service refs audit — DB-уровневое покрытие constraints (KAC-85)
 
+> [!warning] Исторический документ. Схема, которую он аудирует, с тех пор разобрана
+>
+> Аудит снят **2026-05-15** с схемы `kacho_compute` того времени. К **2026-08-01**
+> предмет большей части находок физически удалён из сервиса: блочное хранение
+> ретайрено в пользу `kacho-storage`, Geography вынесена в `kacho-geo`. Ни одна из
+> заявленных ниже «High»-находок сегодня не описывает живой код.
+>
+> Документ сохраняется как **trail метода и чисел** (какие рёбра проверялись, по
+> какому правилу, что было закрыто конструкцией базы, а что признано by-design), а
+> не как список задач. Перед тем как заводить работу по любому `G<n>` — сверься со
+> статусом в §3: он перепроверен по дереву.
+>
+> Пошаговые сценарии гонок и предлагавшиеся миграции из §2 **сняты**: они описывали
+> таблицы и функции, которых больше нет, то есть были одновременно неверны и
+> избыточно подробны для публичного репозитория (`security.md` — признак
+> восстановимости). Предмет находки, её класс и итог сохранены.
+
 > **Контекст**
 >
 > Этот документ — полный аудит ссылочных полей и инвариантов всех таблиц схемы
@@ -8,75 +25,70 @@
 > БД сервиса** и любой инвариант должны быть зафиксированы на уровне Postgres-
 > constraint (FK / partial UNIQUE / EXCLUDE / CHECK / atomic conditional UPDATE
 > с CAS / `FOR UPDATE SKIP LOCKED`). Software-side `Get → check → Update`
-> запрещён — это TOCTOU-prone (см. инцидент 2026-05-14, KAC-52: два конкурентных
-> `Compute.Instance.Create` с одним `existing_network_interface_id` оба прошли
-> software-guard, second writer wins → два инстанса на одной NIC).
+> запрещён — это TOCTOU-prone (см. инцидент 2026-05-14, KAC-52 в kacho-vpc).
 >
-> Источник истины:
-> - Миграции `internal/migrations/0001_initial.sql` (squashed baseline) +
->   `0002..0005_*.sql` (delta).
+> Источник истины **на момент аудита**:
+> - Миграции `internal/migrations/0001_initial.sql` (squashed baseline) + `0002..0005`.
 > - Service-слой `internal/service/*.go` (software-prechecks как UX-layer).
-> - Repo-слой `internal/repo/*.go` (DDL-маппинг ошибок в sentinel-errors,
->   `unique.go::wrapPgErr`).
+> - Repo-слой `internal/repo/*.go` (маппинг ошибок в sentinel-errors).
 >
-> Парный аудит для kacho-vpc — `kacho-vpc/docs/architecture/within-service-refs-audit.md`
+> Парный аудит для kacho-vpc — `services/vpc/docs/architecture/within-service-refs-audit.md`
 > (KAC-84).
 >
-> **Cross-service ссылки** (`project_id` = id владельца-проекта → kacho-iam;
+> **Cross-service ссылки** (`project_id` → kacho-iam;
 > `instance_network_interfaces.subnet_id` / `security_group_ids` /
-> `primary_v4_nat.address_id` → kacho-vpc; `Disk.kms_key.kms_key_id` → kacho-kms
-> когда появится) — **out of scope**: для них DB-уровневые FK невозможны
-> (`database-per-service` запрет #8), валидация делается в worker'е через peer-API
-> (`projectClient.Exists`, `vpcClient.GetSubnet/SecurityGroupExists/GetExternalAddress`)
-> + грациозный dangling-ref. Audit касается **только** рёбер графа в пределах
-> одной БД `kacho_compute`.
+> `primary_v4_nat.address_id` → kacho-vpc) — **out of scope**: для них DB-уровневые
+> FK невозможны (`database-per-service` запрет #8), валидация делается через
+> peer-API + грациозный dangling-ref.
 >
-> **Историческая правка (KAC-265)**: на момент аудита (2026-05-15) coverage
-> включал группу таблиц kube-ovn-эпохи (`0004_hypervisors.sql`) с пометкой
-> «pending drop». Эти таблицы и связанный software-слой удалены в KAC-36/79/80
-> (миграция `0006_drop_hypervisors.sql`); соответствующие строки coverage и gap'ы
-> сняты из этого аудита.
+> **Историческая правка (KAC-265)**: на момент аудита coverage включал таблицы
+> kube-ovn-эпохи (`0004_hypervisors.sql`) с пометкой «pending drop». Они удалены в
+> KAC-36/79/80 (`0006_drop_hypervisors.sql`); строки coverage и gap'ы сняты.
 
 ---
 
 ## Summary
 
+Состояние **на момент аудита (2026-05-15)**:
+
 - **Проверено**: 8 ресурсных/служебных таблиц схемы `kacho_compute`.
 - **Покрыто DB-уровнем** (FK / partial UNIQUE / EXCLUDE / CHECK / CAS / SKIP LOCKED): большинство рёбер.
-- **Gap'ы выявлены**: **12** (G1–G11, G14; G12/G13 относились к удалённым в KAC-36/79/80 таблицам и сняты).
-- **Рекомендуемых миграций**: G1/G3/G4/G5/G9 — DB-уровневые; G6/G7/G8 — by-design (Info, документируются); G2/G14 — code-only / doc-only.
+- **Gap'ов выявлено**: **12** (G1–G11, G14; G12/G13 относились к удалённым таблицам и сняты).
+- Из них: 5 предлагалось закрыть DB-уровнем (G1/G3/G4/G5/G9), 3 признаны by-design (G6/G7/G8),
+  2 — code-only / doc-only (G2/G14), 1 уже был закрыт (G11), 1 — cross-service N/A (G10).
 
-Большинство gap'ов — это **software-side TOCTOU / unenforced uniqueness / unenforced existence**
-по тому же шаблону, что вызвал инцидент NIC-attach race KAC-52 в kacho-vpc.
-Самый critical из них — **G1 disk-attach race** (точный аналог KAC-52, но в
-compute-домене): software-guard в `InstanceService.AttachDisk` / `resolveDiskSource`
-+ unconditional INSERT в `attached_disks`. На момент аудита инцидента в проде ещё не было,
-но он архитектурно идентичен KAC-52 и обязан быть исправлен.
+Состояние **на 2026-08-01** (перепроверено по дереву, см. §3):
 
-| #   | Gap | Severity | Тип нарушения |
-|-----|-----|----------|----------------|
-| G1  | Disk-attach race — `Instance.AttachDisk` / `resolveDiskSource`: `Get → IsAttached → INSERT attached_disks` без CAS; параллельный attach одного диска двум instances оба пройдут software-check и оба сделают INSERT (PK `(instance_id, disk_id)` спасёт *одного и того же* пользователя, но не разных instances) | **High** (parity c KAC-52) | TOCTOU + missing partial UNIQUE on `disk_id` |
-| G2  | Instance state-машина (`Start`/`Stop`/`Restart`/`AttachDisk`/`DetachDisk`/`AddOneToOneNat`/Update touchesCompute) — `Get → check status → SetStatus/mutate` без conditional clause; параллельный Start+Stop / Stop+Restart на одной row → second writer wins | **High** | TOCTOU + missing CAS on `status` |
-| G3  | `instances.zone_id` → `zones(id)` — within-service ref **без FK** (zone — kacho-compute собственный домен после KAC-15, та же БД) | **High** | Missing within-service FK |
-| G4  | `disks.zone_id` → `zones(id)` — within-service ref без FK | **High** | Missing within-service FK |
-| G5  | `disks.type_id` → `disk_types(id)` — within-service ref без FK; `Disk.Create` валидирует software'ом через `diskTypeRepo.Get` | Medium | Missing within-service FK |
-| G6  | `disks.source_image_id` / `disks.source_snapshot_id` — within-service ref без FK; **by-design** soft-ref (source image можно удалить, оставив disk; см. `kacho-compute/CLAUDE.md §2 FK contract`) | Info (by-design) | Documented divergence |
-| G7  | `images.source_image_id` / `images.source_snapshot_id` / `images.source_disk_id` — within-service ref без FK; **by-design** (источник можно удалить) | Info (by-design) | Documented divergence |
-| G8  | `snapshots.source_disk_id` — within-service ref без FK; **by-design** | Info (by-design) | Documented divergence |
-| G9  | Enum-like колонки (`disks.status`, `images.status`, `snapshots.status`, `instances.status`, `zones.status`, `instance_network_interfaces.mode` / `attached_disks.mode`) — нет CHECK | Low | Missing CHECK constraint |
-| G10 | `instance_network_interfaces.subnet_id` / `security_group_ids` — cross-service (kacho-vpc), FK невозможен; documented | N/A (cross-service) | N/A |
-| G11 | `instances.boot_disk` invariant («ровно один boot disk на instance») — DB-уровень есть (partial UNIQUE `attached_disks_boot_uniq`), software check тоже есть | OK | Closed |
-| ~~G14~~ | ~~`instances.project_id` Move через отдельный сеттер~~ — снято: RPC `Instance.Move` / `Disk.Move` удалены в KAC-266 (контракт-removal), Move-семантики больше нет | — | Closed (removed) |
+- **0** находок описывают живой дефект.
+- **1** закрыта кодом (G2 — переход состояния машины стал атомарным).
+- **4** утратили предмет вместе с таблицами (G1/G3/G4/G5).
+- **1** утратила предмет частично (G9 — enum-колонки удалённых таблиц).
+- **3** остаются by-design и по-прежнему верны как описание решения (G6/G7/G8).
 
-> G12/G13 (таблицы kube-ovn-эпохи `hypervisors` / `hypervisor_node_index_free`)
-> сняты: таблицы удалены в KAC-36/79/80.
-> G14 (Move name-conflict semantics) снято: `Move` RPC удалены в KAC-266.
+| #   | Gap (формулировка аудита) | Severity (тогда) | Тип нарушения | Статус 2026-08-01 |
+|-----|-----|----------|----------------|---|
+| G1  | Disk-attach: привязка диска к машине не была защищена уникальностью на уровне базы | **High** | Missing partial UNIQUE + TOCTOU | **Предмета нет** |
+| G2  | Переход состояния машины писался безусловно, а не сверкой с ожидаемым | **High** | TOCTOU lost-write | **Закрыт** |
+| G3  | `instances.zone_id` → `zones(id)` без FK | **High** | Missing within-service FK | **Предмета нет** |
+| G4  | `disks.zone_id` → `zones(id)` без FK | **High** | Missing within-service FK | **Предмета нет** |
+| G5  | `disks.type_id` → `disk_types(id)` без FK | Medium | Missing within-service FK | **Предмета нет** |
+| G6  | `disks.source_image_id` / `source_snapshot_id` без FK — **by-design** soft-ref | Info | Documented divergence | Верно как решение |
+| G7  | `images.source_*_id` без FK — **by-design** | Info | Documented divergence | Верно как решение |
+| G8  | `snapshots.source_disk_id` без FK — **by-design** | Info | Documented divergence | Верно как решение |
+| G9  | Enum-like колонки без CHECK | Low | Missing CHECK | Частично без предмета |
+| G10 | Cross-service refs NIC → kacho-vpc, FK невозможен | N/A | N/A | Верно как решение |
+| G11 | «Ровно один boot-диск на машину» — уже был enforced | OK | — | Closed (предмета нет) |
+| ~~G14~~ | ~~Move с conflict по `(project_id, name)`~~ | — | — | Снято (RPC удалены, KAC-266) |
 
-Полные таблицы coverage и детальные рекомендации миграций — ниже.
+> G12/G13 (таблицы kube-ovn-эпохи) сняты: удалены в KAC-36/79/80.
+
+Полная таблица coverage — ниже; она описывает схему **на момент аудита**.
 
 ---
-
 ## 1. Полная таблица coverage
+
+> Снимок схемы **на 2026-05-15**. Большинство перечисленных таблиц с тех пор
+> удалено (см. §3) — таблица сохраняется как запись о том, что проверялось.
 
 Колонки таблицы:
 - **Resource.field / invariant** — что проверяем.
@@ -205,565 +217,266 @@ compute-домене): software-guard в `InstanceService.AttachDisk` / `resolve
 
 ## 2. Детализация gap'ов
 
-### G1 — Disk-attach race: `attached_disks` без partial UNIQUE on `disk_id`
+> Ниже — предмет каждой находки и её судьба. Пошаговые сценарии гонок, листинги
+> тогдашнего кода и тексты предлагавшихся миграций **сняты намеренно**: описываемых
+> ими таблиц и функций в сервисе больше нет, поэтому текст был бы неверен, а его
+> форма (координата + условие + следствие в одной сборке) запрещена дисциплиной
+> публичного репозитория. Проверить любую строку ниже можно по миграциям, которые
+> названы поимённо.
 
-**Severity**: High — точный parity-case c инцидентом KAC-52 (NIC-attach race
-2026-05-14), но в compute-домене. На момент аудита инцидента в продe ещё не было,
-но архитектура та же.
+### G1 — привязка диска к машине без уникальности на уровне базы
 
-**Контекст**. `attached_disks(instance_id, disk_id)` PK гарантирует, что **тот же
-самый** `(instance, disk)` не будет в таблице дважды. Но **двое разных** instance
-могут параллельно вставить `(instA, diskX)` и `(instB, diskX)` — PK не сработает
-(составной ключ), и FK `disk_id REFERENCES disks(id)` тоже не сработает (disk
-существует один раз). Один disk прикреплён к двум instances одновременно — это
-нарушает доменный инвариант («один disk → 0 или 1 instance»).
+**Severity на момент аудита**: High.
 
-**Текущая реализация**:
+**Предмет.** Инвариант «один диск прикреплён максимум к одной машине» держался
+только software-прекчеком в сервисном слое, а вставка строки привязки шла
+безусловно. Составной первичный ключ таблицы привязок этот инвариант не выражал:
+он запрещал повтор пары «машина+диск», а не второй машине забрать тот же диск.
+Класс — точный аналог инцидента KAC-52 в kacho-vpc (NIC-attach race).
+Предлагавшееся закрытие — partial UNIQUE по диску + маппинг 23505 в контрактный
+`FailedPrecondition`.
 
-```go
-// InstanceService.AttachDisk (instance.go:893-925)
-operations.Run(ctx, s.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
-    in, _ := s.repo.Get(ctx, id)                                  // (1) SELECT instance
-    if in.Status != Running && in.Status != Stopped { ... }       // (2) status check
-    for _, ad := range in.AttachedDisks {                         // (3) same-instance check
-        if ad.DiskID == spec.DiskID { return ErrAlreadyExists }
-    }
-    d, _ := s.diskRepo.Get(ctx, spec.DiskID)                      // (4) SELECT disk
-    if d.Status != Ready { ... }
-    if d.ZoneID != in.ZoneID { ... }
-    attached, _ := s.diskRepo.IsAttached(ctx, spec.DiskID)         // (5) cross-instance check ← TOCTOU window
-    if attached { return ErrFailedPrecondition }
-    updated, _ := s.repo.AttachDisk(ctx, id, ...)                  // (6) INSERT attached_disks — unconditional
-})
+**Статус 2026-08-01: предмета нет.** Таблица привязок дропнута миграцией
+`0013_drop_attached_disks.sql` (drop зарегистрирован в `dropguard.json`); сам
+ресурс Disk ретайрен в `0021_drop_block_storage_duplicates.sql`. Привязка тома к
+машине живёт теперь у владельца — `volume_attachments` в `kacho-storage`, и
+инвариант там выражен CAS'ом на стороне владельца. Compute локальной строки
+привязки не пишет вовсе: `AttachDisk` пробрасывает вызов в storage.
 
-// DiskRepo.IsAttached (disk_repo.go:229)
-SELECT EXISTS(SELECT 1 FROM attached_disks WHERE disk_id = $1)
-
-// InstanceRepo.AttachDisk (instance_repo.go:223) → insertAttachedDiskTx (instance_repo.go:429)
-INSERT INTO attached_disks (instance_id, disk_id, is_boot, mode, device_name, auto_delete, attached_at)
-  VALUES ($1, $2, $3, $4, $5, $6, $7)  -- no CAS
-```
-
-**Race-сценарий**:
-1. Disk `diskX` существует и не attached.
-2. `T_A` (Instance.AttachDisk на instA): шаги (1)..(5) → guard `attached=false` пройден.
-3. `T_B` (Instance.AttachDisk на instB): шаги (1)..(5) → guard `attached=false` пройден.
-4. `T_A` `INSERT (instA, diskX)` — успех. Commit.
-5. `T_B` `INSERT (instB, diskX)` — успех (PK `(instance_id, disk_id)` не нарушен — другой instance). Commit.
-
-**Результат**: `diskX` attached к instA И instB. Compute-плейн думает, что disk
-доступен в двух VMs — реальный data-plane (когда появится) получит конфликт.
-Точный parity к KAC-52.
-
-То же относится к `InstanceService.resolveDiskSource` (Create-path) — там тот же
-`Get → IsAttached` паттерн без atomic CAS, плюс к `DiskService.Relocate`
-(precondition: not attached) — там точно та же race с возможностью «relocate уже
-не свободный disk». (Ссылка на `Instance.materializeNICs` снята — auto-NIC
-материализация удалена в KAC-266.)
-
-**Предлагаемая миграция** (новый файл с инкрементным номером):
-
-```sql
--- +goose Up
--- KAC-85 G1: один disk прикреплён максимум к одному instance — invariant
--- на DB-уровне. Workspace CLAUDE.md §«Within-service refs» partial UNIQUE.
--- Parity c kacho-vpc KAC-52 (NIC-attach race).
-CREATE UNIQUE INDEX attached_disks_disk_id_uniq
-  ON attached_disks (disk_id);
-
--- +goose Down
-DROP INDEX IF EXISTS attached_disks_disk_id_uniq;
-```
-
-> **Code-change в repo**: `insertAttachedDiskTx` уже использует unconditional
-> INSERT — partial UNIQUE сработает на 23505 → `wrapPgErr` смаппит в
-> `service.ErrAlreadyExists`. В service-слое `mapRepoErr` маппит `ErrAlreadyExists`
-> в gRPC `AlreadyExists`. **По контракту** точнее вернуть
-> `FailedPrecondition "Disk is already attached"` — нужно расширить
-> `mapRepoErr` или добавить отдельную ветку в `InstanceRepo.AttachDisk` /
-> `insertAttachedDiskTx` для маппинга 23505 на disk_id-UNIQUE в
-> `ErrFailedPrecondition` (по тексту constraint name).
->
-> **Integration test** обязателен (см. CLAUDE.md запрет #11): два goroutine
-> параллельно AttachDisk на один disk к разным instances — ровно один winner,
-> второй — `FailedPrecondition`. Зеркалит `network_interface_attach_race_integration_test.go`
-> в kacho-vpc.
->
-> Software-precheck `IsAttached` оставить — он даёт human-friendly error fast-path;
-> финальная защита — partial UNIQUE.
+**Что осталось открытым рядом и НЕ является G1.** Прекчек перед пробросом —
+read-only, он **сужает, а не закрывает** гонку «привязка против удаления»:
+между прекчеком и ответом владельца машина может уйти в удаление. Это признанный
+остаток, названный в godoc у самого прекчека (комментарий у гейта обязан называть,
+что он не закрывает, — иначе следующий снимет его как избыточный). Отдельная
+работа со своей приёмкой; направление и вход здесь намеренно не приводятся.
 
 ---
 
-### G2 — Instance state-машина: `Get → check status → SetStatus` без CAS
+### G2 — переход состояния машины без сверки с ожидаемым
 
-**Severity**: High — TOCTOU на state transitions, поражает все lifecycle RPC
-(Start / Stop / Restart / AttachDisk / DetachDisk / AddOneToOneNat /
-RemoveOneToOneNat / Update touchesCompute / Relocate disk).
+**Severity на момент аудита**: High.
 
-**Контекст**. Instance state-машина (CLAUDE.md §8) требует, чтобы каждый
-переход shл из ожидаемого `from`-state. Текущая реализация:
+**Предмет.** Lifecycle-RPC (Start / Stop / Restart и соседние) читали текущее
+состояние, сверяли его в Go и затем писали новое **безусловно**. Между чтением и
+записью состояние мог сменить конкурирующий вызов — классический lost-write:
+оба вызывающих проходили проверку, второй затирал результат первого. Правило
+запрета #10 требует выражать такой инвариант compare-and-swap'ом в самом
+операторе записи, а не проверкой перед ним.
 
-```go
-// InstanceService.lifecycle (instance.go:849-875) — Start / Stop / Restart
-operations.Run(ctx, s.opsRepo, op.ID, func(ctx context.Context) (*anypb.Any, error) {
-    in, _ := s.repo.Get(ctx, id)                          // (1) SELECT status
-    if in.Status != from {                                 // (2) check
-        return ErrFailedPrecondition
-    }
-    updated, _ := s.repo.SetStatus(ctx, id, to)            // (3) UPDATE status — unconditional!
-})
-
-// InstanceRepo.SetStatus (instance_repo.go:209)
-UPDATE instances SET status = $2 WHERE id = $1            -- no CAS!
-```
-
-**Race-сценарий** (Start + Stop одновременно на RUNNING ВМ):
-1. ВМ в RUNNING.
-2. `T_A` (Stop): Get → status=RUNNING → guard OK.
-3. `T_B` (Start): Get → status=RUNNING → guard `from=STOPPED` НЕ пройден → ErrFailedPrecondition. OK для этого случая.
-
-**Race-сценарий 2** (Stop + Restart одновременно):
-1. ВМ в RUNNING.
-2. `T_A` (Stop, `from=RUNNING, to=STOPPED`): Get→guard OK.
-3. `T_B` (Restart, `from=RUNNING, to=RUNNING`): Get→guard OK.
-4. `T_A` `UPDATE status=STOPPED` — успех. Commit.
-5. `T_B` `UPDATE status=RUNNING` — **перетирает STOPPED**, second writer wins. Commit.
-
-**Результат**: ВМ должна была быть STOPPED (T_A stop успешен с точки зрения
-API), но осталась RUNNING. Operations показывают, что обе операции done=true,
-но финальное состояние — RESTART'a, а не STOP'a. Это **классический lost-write
-TOCTOU**.
-
-Также поражается:
-- `InstanceService.AttachDisk` / `DetachDisk` — precondition `status ∈ {RUNNING, STOPPED}`, потом `repo.AttachDisk/DetachDisk` без статус-CAS.
-- `InstanceService.AddOneToOneNat` / `RemoveOneToOneNat` — то же.
-- `InstanceService.Update` с `touchesCompute=true` (cores/memory/platform_id) — precondition `status == STOPPED`, потом `repo.Update` без CAS.
-- `DiskService.Relocate` — precondition `!attached`, потом `repo.SetZoneID` без CAS (если параллельно AttachDisk прошёл → Relocate перетрёт zone уже-attached диска).
-
-**Предлагаемая миграция** (нет миграции — code-change в repo):
-
-Code-change `internal/repo/instance_repo.go::SetStatus`:
-
-```go
-// SetStatus с CAS: переход разрешён только из ожидаемого from-state.
-func (r *InstanceRepo) SetStatus(ctx context.Context, id string, from, to domain.InstanceStatus) (*domain.Instance, error) {
-    return r.mutateAndReload(ctx, id, "UPDATED", func(ctx context.Context, tx pgx.Tx) error {
-        tag, err := tx.Exec(ctx,
-            `UPDATE instances SET status = $3 WHERE id = $1 AND status = $2`,
-            id, instanceStatusName(from), instanceStatusName(to))
-        if err != nil {
-            return err
-        }
-        if tag.RowsAffected() == 0 {
-            return fmt.Errorf("%w: state transition not allowed", service.ErrFailedPrecondition)
-        }
-        return nil
-    })
-}
-```
-
-И обновить InstanceService.lifecycle:
-
-```go
-operations.Run(..., func(ctx) (*anypb.Any, error) {
-    updated, err := s.repo.SetStatus(ctx, id, from, to)
-    if err != nil {
-        if errors.Is(err, service.ErrFailedPrecondition) {
-            return nil, status.Error(codes.FailedPrecondition, precondMsg)
-        }
-        return nil, mapRepoErr(err)
-    }
-    return anypb.New(protoconv.Instance(updated))
-})
-```
-
-Аналогично для AttachDisk/DetachDisk/Update touchesCompute: `mutateAndReload`
-расширяется параметром `expectedStatus`, и в первом SELECT/UPDATE этой
-TX-операции делать atomic check.
-
-> **Integration test** обязателен: два goroutine параллельно Stop+Restart на
-> RUNNING ВМ — ровно один winner; второй — `FailedPrecondition`.
-> Для AttachDisk: параллельно AttachDisk + Stop → consistency либо «диск
-> прикрепился к работающей ВМ, потом она остановилась» либо «ВМ остановилась
-> до attach, attach получил FailedPrecondition».
->
-> **Альтернатива**: добавить CHECK на `status IN (...)` (закрывает G9 partially),
-> но не решает TOCTOU — для transitions нужен CAS, не CHECK.
+**Статус 2026-08-01: закрыт кодом.** Запись состояния выполняется единственным
+условным оператором, сверяющим ожидаемое состояние в самом `WHERE`; ноль
+затронутых строк разводится на «нет ресурса» и «состояние не то» отдельной
+пробой. Не-CAS вариант сеттера из портов и репозитория **удалён**, то есть
+обойти CAS нечем: интерфейс порта предлагает только его. Регрессия —
+`internal/repo/instance_state_race_integration_test.go` (конкурентные
+Stop-на-STOPPED, Restart-на-RUNNING, Stop-против-Restart, CAS-miss → NotFound),
+плюс `instance_update_status_race_integration_test.go` и
+`instance_resize_stopped_race_integration_test.go`.
 
 ---
 
-### G3 — `instances.zone_id` → `zones(id)` нет FK (within-service ref)
+### G3 — `instances.zone_id` → `zones(id)` без FK
 
-**Severity**: High — within-service ref без DB-уровневой защиты.
+**Severity на момент аудита**: High.
 
-**Контекст**. После KAC-15 Geography (Region/Zone) перенесена в kacho-compute,
-таблица `zones` живёт в той же БД, что `instances`. `instances.zone_id` — это
-within-service ref, обязан быть FK (workspace CLAUDE.md §«Within-service refs»).
+**Предмет.** После KAC-15 Geography (Region/Zone) жила **в самой БД compute**,
+поэтому `instances.zone_id` был within-service ref и обязан был нести FK. Его не
+было: индекс на колонке стоял, ограничения — нет. Следствие — админ мог удалить
+зону, на которую ссылаются машины, и получить dangling-ref.
 
-```sql
--- 0001_initial.sql:138
-zone_id TEXT NOT NULL,                                       -- ← НЕТ FK!
-CREATE INDEX instances_zone_idx ON instances (zone_id);      -- индекс есть, FK нет
-```
+**Статус 2026-08-01: предмета нет — предпосылка инвертирована.** Geography
+вынесена в `kacho-geo` (эпик kacho-workspace#82); миграция
+`0011_drop_geography.sql` дропнула `zones` и `regions` из БД compute. `zone_id`
+стал **cross-service** ссылкой, для которой DB-уровневый FK запрещён by
+construction (запрет #8, database-per-service). Существование зоны валидируется
+peer-вызовом `geo.v1.ZoneService.Get` через `internal/clients/geo_client.go`,
+fail-closed. Остаточный риск — обычный класс cross-service dangling-ref с
+грациозной деградацией, а не пропущенное ограничение.
 
-**Risk-сценарий**:
-1. Concurrent: `InstanceService.Create(zone_id='ru-central1-d')` worker делает `zones.GetZone(ru-central1-d)` → OK; параллельно admin `Zone.Delete('ru-central1-d')` — software-precheck в `ZoneService.Delete` НЕ проверяет `instances` (только `disks` / `disk_types` через handler-precheck'и, если они есть). 
-2. Worker: `INSERT instances (zone_id='ru-central1-d', ...)` — пройдёт, потому что FK нет → instance с dangling zone_id.
-
-**Дополнительный риск**: admin может удалить зону, не зная про существующие
-instances в ней — на чтение `Instance.Get` zone_id вернётся как есть, клиент
-получит null/inconsistent data.
-
-**Предлагаемая миграция** (`0007_instances_zone_fk.sql` — либо в составе с G4/G5):
-
-```sql
--- +goose Up
--- KAC-85 G3: enforce within-service FK instances.zone_id → zones(id).
--- Workspace CLAUDE.md §«Within-service refs — DB-уровень обязателен».
--- ON DELETE RESTRICT: нельзя удалить зону, в которой ещё есть instances
--- (admin должен сначала удалить/перенести instances).
-
--- Pre-flight: если есть rows с zone_id, отсутствующим в zones — это уже
--- невалидное состояние. Чинить вручную перед миграцией.
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM instances i WHERE NOT EXISTS (SELECT 1 FROM zones z WHERE z.id = i.zone_id)) THEN
-    RAISE EXCEPTION 'Cannot add FK: instances.zone_id contains dangling references';
-  END IF;
-END$$;
-
-ALTER TABLE instances
-  ADD CONSTRAINT instances_zone_id_fkey
-    FOREIGN KEY (zone_id) REFERENCES zones(id) ON DELETE RESTRICT NOT VALID;
-ALTER TABLE instances VALIDATE CONSTRAINT instances_zone_id_fkey;
-
--- +goose Down
-ALTER TABLE instances DROP CONSTRAINT IF EXISTS instances_zone_id_fkey;
-```
-
-> **Code-change**: `mapRepoErr` уже маппит 23503 в `ErrFailedPrecondition`
-> (через `wrapPgErr`). Сообщение получится «The instance ... is being used» —
-> для FK on zone это не очень точно; стоит расширить `wrapPgErr` или
-> service-слой для маппинга по constraint name → точный контрактный текст.
->
-> **Integration test**: try Zone.Delete пока есть instance в зоне → FailedPrecondition.
+> Формулировка предпосылки в исходном аудите («Geography перенесена **в**
+> kacho-compute, таблица `zones` живёт в той же БД») с тех пор обратна
+> действительности. Оставлена как есть в §1 — это снимок состояния 2026-05-15.
 
 ---
 
-### G4 — `disks.zone_id` → `zones(id)` нет FK (within-service ref)
+### G4 — `disks.zone_id` → `zones(id)` без FK
 
-**Severity**: High — точно тот же кейс, что G3, но для `disks`.
+**Severity на момент аудита**: High. Тот же случай, что G3, но для дисков.
 
-**Контекст**. `disks.zone_id TEXT NOT NULL` без FK. `DiskService.doCreate`
-делает `zones.GetZone(req.ZoneID)` software'но; admin может удалить зону, на
-которую ссылаются диски, без блокировки.
-
-**Предлагаемая миграция** (в составе с G3 / отдельная):
-
-```sql
--- +goose Up
--- KAC-85 G4: enforce within-service FK disks.zone_id → zones(id).
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM disks d WHERE NOT EXISTS (SELECT 1 FROM zones z WHERE z.id = d.zone_id)) THEN
-    RAISE EXCEPTION 'Cannot add FK: disks.zone_id contains dangling references';
-  END IF;
-END$$;
-
-ALTER TABLE disks
-  ADD CONSTRAINT disks_zone_id_fkey
-    FOREIGN KEY (zone_id) REFERENCES zones(id) ON DELETE RESTRICT NOT VALID;
-ALTER TABLE disks VALIDATE CONSTRAINT disks_zone_id_fkey;
-
--- +goose Down
-ALTER TABLE disks DROP CONSTRAINT IF EXISTS disks_zone_id_fkey;
-```
-
-> **Note**: `Disk.Relocate` (zone change через `SetZoneID`) тоже выиграет — FK
-> проверит существование destination zone на DB-уровне, дополнительно к
-> software check.
+**Статус 2026-08-01: предмета нет дважды.** Целевая таблица `zones` дропнута
+(`0011_drop_geography.sql`), и таблица-источник `disks` тоже —
+`0021_drop_block_storage_duplicates.sql`. Зональность тома живёт теперь в
+`kacho-storage` и проверяется на когерентность с регионом образа внутри
+insert-CAS (см. `services/storage/docs/architecture/compute-storage-parity.md` §4).
 
 ---
 
-### G5 — `disks.type_id` → `disk_types(id)` нет FK
+### G5 — `disks.type_id` → `disk_types(id)` без FK
 
-**Severity**: Medium — within-service ref без FK; software precheck в Create,
-но Update/Relocate теоретически могли бы повредить (хотя type_id immutable —
-см. CLAUDE.md §4.4, поэтому реальный risk низкий).
+**Severity на момент аудита**: Medium. Тип диска immutable после создания,
+поэтому реальная поверхность сводилась к админскому удалению типа под живыми
+дисками.
 
-**Контекст**. `disks.type_id TEXT NOT NULL DEFAULT 'network-ssd'` без FK.
-Admin может удалить DiskType, на который ссылаются диски, без блокировки.
-
-**Предлагаемая миграция** (`0008_disks_type_id_fk.sql`):
-
-```sql
--- +goose Up
--- KAC-85 G5: enforce within-service FK disks.type_id → disk_types(id).
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM disks d WHERE NOT EXISTS (SELECT 1 FROM disk_types t WHERE t.id = d.type_id)) THEN
-    RAISE EXCEPTION 'Cannot add FK: disks.type_id contains dangling references';
-  END IF;
-END$$;
-
-ALTER TABLE disks
-  ADD CONSTRAINT disks_type_id_fkey
-    FOREIGN KEY (type_id) REFERENCES disk_types(id) ON DELETE RESTRICT NOT VALID;
-ALTER TABLE disks VALIDATE CONSTRAINT disks_type_id_fkey;
-
--- +goose Down
-ALTER TABLE disks DROP CONSTRAINT IF EXISTS disks_type_id_fkey;
-```
-
-> **Note**: `type_id` immutable после Create (CLAUDE.md §4.4), поэтому attack
-> surface — только admin Delete DiskType. FK защищает от accident'а.
+**Статус 2026-08-01: предмета нет.** `disks` дропнута
+(`0021_drop_block_storage_duplicates.sql`), `disk_types` — следом
+(`0022_drop_disk_types.sql`, снят «последним из четырёх, потому что его читал
+только ретайренный Disk»). Каталог типов — нативный у storage.
 
 ---
 
 ### G6 — `disks.source_image_id` / `disks.source_snapshot_id` без FK (by-design)
 
-**Severity**: Info — by-design отступление от FK-правила, продиктованное
-семантикой soft-ref.
+**Severity**: Info — осознанное отступление от FK-правила.
 
-**Контекст**. Осознанная семантика: можно удалить Image / Snapshot, у которого есть
-Disk, созданный из этого источника — Disk просто хранит «откуда создан» в
-observability-целях. Соответственно FK нельзя (он бы заблокировал удаление).
+**Решение.** Источник (Image / Snapshot) разрешено удалить, оставив созданный из
+него диск: поле хранит «откуда создан» в observability-целях, а не живую
+зависимость. FK заблокировал бы удаление источника, то есть выразил бы инвариант,
+которого продукт не хочет. Формализовано в FK-контракте сервиса.
 
-**Решение**: НЕ добавлять FK. Документировать в
-`docs/architecture/07-known-divergences.md` как осознанный divergence от
-правила «within-service ref ⇒ FK».
-
-**Существующая запись** (CLAUDE.md §2 FK contract):
-> `disks.source_image_id` / `disks.source_snapshot_id` — **НЕ FK** (Image живёт
-> в этой же БД, но семантика soft-ref: можно удалить Image, у которого есть Disk;
-> Disk просто хранит «откуда создан»). При Create — existence-check в worker'е.
-
-Это уже задокументировано в CLAUDE.md, дублируется в audit для полноты.
-**Action**: добавить отметку в `07-known-divergences.md` со ссылкой на
-этот аудит (если ещё нет).
+**Статус 2026-08-01.** Как описание решения — верно и переиспользовано: та же
+семантика soft-ref действует у владельца-storage. Таблицы compute, на которых
+находка была снята, удалены.
 
 ---
 
 ### G7 — `images.source_*_id` без FK (by-design)
 
-**Severity**: Info — by-design, аналогично G6.
-
-`images.source_image_id` / `source_snapshot_id` / `source_disk_id` —
-observability-поля, не FK. Осознанно: source можно удалить.
-
-**Action**: same as G6.
+**Severity**: Info. То же решение, что G6, для происхождения образа
+(`source_image_id` / `source_snapshot_id` / `source_disk_id`): источник
+удаляем, ссылка — происхождение, не зависимость.
 
 ---
 
 ### G8 — `snapshots.source_disk_id` без FK (by-design)
 
-**Severity**: Info — by-design.
-
-`snapshots.source_disk_id` — observability. Осознанно: source disk можно
-удалить.
-
-**Action**: same as G6.
+**Severity**: Info. То же решение: снимок переживает удаление диска, из которого
+снят. FK сделал бы диск неудаляемым при живом снимке — не тот контракт.
 
 ---
 
-### G9 — Enum-like колонки без CHECK constraints
+### G9 — enum-like колонки без CHECK
 
-**Severity**: Low — surface area для прямых INSERT-ов «мусора»; в текущем
-service-flow не достижимо.
+**Severity**: Low — поверхность для прямых INSERT'ов «мусора»; в тогдашнем
+сервисном потоке недостижимо (значения писал маппинг из proto-enum).
 
-**Затрагивает поля**:
-- `disks.status TEXT` (CREATING/READY/ERROR/DELETING)
-- `images.status TEXT` (same enum)
-- `snapshots.status TEXT` (same enum)
-- `images.os_type TEXT` (LINUX/WINDOWS/TYPE_UNSPECIFIED)
-- `instances.status TEXT` (PROVISIONING/RUNNING/STOPPING/STOPPED/STARTING/RESTARTING/UPDATING/ERROR/CRASHED/DELETING)
-- `instances.network_settings_type TEXT` (STANDARD / SOFTWARE_ACCELERATED / HARDWARE_ACCELERATED)
-- `instances.serial_port_ssh_authorization TEXT` (SSH_AUTHORIZATION_UNSPECIFIED / INSTANCE_METADATA / OS_LOGIN)
-- `instances.maintenance_policy TEXT`
-- `zones.status TEXT` (UP / DOWN / STATUS_UNSPECIFIED)
-- `attached_disks.mode TEXT` (READ_ONLY / READ_WRITE / MODE_UNSPECIFIED)
+**Затрагивало** статусные и режимные текстовые колонки восьми таблиц: статусы
+дисков / образов / снимков / машин / зон, тип ОС образа, тип сетевых настроек
+машины, режим авторизации последовательного порта, политику обслуживания, режим
+привязки диска.
 
-**Предлагаемая миграция** (`0009_enum_checks.sql`):
-
-```sql
--- +goose Up
--- KAC-85 G9: добавить CHECK constraints на enum-like колонки. Workspace
--- CLAUDE.md §«Within-service refs» — инвариант «значение из enum» на DB-уровне.
-
-ALTER TABLE disks
-  ADD CONSTRAINT disks_status_check
-    CHECK (status IN ('STATUS_UNSPECIFIED','CREATING','READY','ERROR','DELETING'));
-
-ALTER TABLE images
-  ADD CONSTRAINT images_status_check
-    CHECK (status IN ('STATUS_UNSPECIFIED','CREATING','READY','ERROR','DELETING')),
-  ADD CONSTRAINT images_os_type_check
-    CHECK (os_type IN ('TYPE_UNSPECIFIED','LINUX','WINDOWS'));
-
-ALTER TABLE snapshots
-  ADD CONSTRAINT snapshots_status_check
-    CHECK (status IN ('STATUS_UNSPECIFIED','CREATING','READY','ERROR','DELETING'));
-
-ALTER TABLE instances
-  ADD CONSTRAINT instances_status_check
-    CHECK (status IN ('STATUS_UNSPECIFIED','PROVISIONING','RUNNING','STOPPING','STOPPED',
-                      'STARTING','RESTARTING','UPDATING','ERROR','CRASHED','DELETING'));
-
-ALTER TABLE zones
-  ADD CONSTRAINT zones_status_check
-    CHECK (status IN ('STATUS_UNSPECIFIED','UP','DOWN'));
-
-ALTER TABLE attached_disks
-  ADD CONSTRAINT attached_disks_mode_check
-    CHECK (mode IN ('MODE_UNSPECIFIED','READ_ONLY','READ_WRITE'));
-
--- +goose Down
-ALTER TABLE attached_disks DROP CONSTRAINT IF EXISTS attached_disks_mode_check;
-ALTER TABLE zones DROP CONSTRAINT IF EXISTS zones_status_check;
-ALTER TABLE instances DROP CONSTRAINT IF EXISTS instances_status_check;
-ALTER TABLE snapshots DROP CONSTRAINT IF EXISTS snapshots_status_check;
-ALTER TABLE images DROP CONSTRAINT IF EXISTS images_os_type_check;
-ALTER TABLE images DROP CONSTRAINT IF EXISTS images_status_check;
-ALTER TABLE disks DROP CONSTRAINT IF EXISTS disks_status_check;
-```
-
-> **Pre-flight**: каждый CHECK сначала проверяется через `SELECT … WHERE NOT (…)`
-> на live стенде; при существовании невалидных row'ов миграция нагнётся, и нужно
-> fill'ить значения вручную до повторного apply.
-> **Maintenance**: при добавлении нового enum value в proto — нужно расширить CHECK
-> миграцией; есть risk забыть.
-> **Note**: `network_settings_type` / `serial_port_ssh_authorization` /
-> `maintenance_policy` — оставлены без CHECK на этой итерации, т.к. их
-> допустимый set обширнее / возможны расширения; можно добавить позже отдельной
-> миграцией если стабилизируется.
+**Статус 2026-08-01: частично без предмета.** Колонки дисков, образов, снимков,
+зон и привязок ушли вместе с таблицами (`0011`, `0013`, `0021`, `0022`).
+Остались статусные и режимные колонки `instances` — по ним находка формально жива
+в классе Low и осознанно не закрывалась: предлагавшийся CHECK удорожает добавление
+нового значения enum (расширять ограничение миграцией на каждое пополнение), а
+писателя, кроме маппинга из proto, у колонок нет.
 
 ---
 
-### G10 — Cross-service refs `instance_network_interfaces.*` — N/A
+### G10 — cross-service refs `instance_network_interfaces.*` — N/A
 
-Все ссылки NIC на kacho-vpc ресурсы (subnet, security group, address, NIC-сам)
-— через границу сервиса. FK невозможны (запрет #8). Покрытие — software-validation
-+ грациозный dangling-ref. Race-protection — на vpc-стороне (atomic CAS на
-`used_by_id`, partial UNIQUE на `mac_address`, KAC-52, KAC-55).
-
-**Action**: ничего; documented как cross-service. Closed.
+Все ссылки NIC на ресурсы kacho-vpc (subnet, security group, address) — через
+границу сервиса. FK невозможны (запрет #8). Покрытие — peer-валидация +
+грациозный dangling-ref; защита от гонок живёт на стороне vpc (атомарный CAS
+владения, partial UNIQUE на MAC; KAC-52, KAC-55). **Action**: ничего.
 
 ---
 
-### G11 — `attached_disks_boot_uniq` partial UNIQUE — Closed
+### G11 — «ровно один boot-диск на машину» — уже был closed
 
-`CREATE UNIQUE INDEX attached_disks_boot_uniq ON attached_disks (instance_id)
-WHERE is_boot;` (0001:200) уже enforce'ит «ровно один boot disk на instance».
-Это **closed** — пример хорошего partial-UNIQUE применения. Включён в audit
-для полноты как доказательство того, что not all invariants are gaps.
+Инвариант был выражен partial UNIQUE по машине с предикатом «загрузочный» ещё в
+исходной миграции. Включён в аудит для полноты — как доказательство, что не всякий
+инвариант оказался gap'ом. Предмета сегодня нет (таблица привязок дропнута);
+эквивалент живёт у владельца-storage.
 
 ---
 
 ### G12 / G13 — сняты (таблицы kube-ovn-эпохи удалены)
 
-Эти gap'ы относились к таблицам `hypervisors` / `hypervisor_node_index_free`
-kube-ovn-эпохи. Таблицы и связанный software-слой удалены в KAC-36/79/80
-(миграция `0006_drop_hypervisors.sql`); gap'ы сняты из аудита.
+Относились к `hypervisors` / `hypervisor_node_index_free`. Таблицы и связанный
+software-слой удалены в KAC-36/79/80 (`0006_drop_hypervisors.sql`).
 
 ---
 
-### ~~G14 — Move с conflict по `(project_id, name)` — subtle semantics~~ (снято, KAC-266)
+### ~~G14 — Move с conflict по `(project_id, name)`~~ (снято, KAC-266)
 
-Снято: RPC `Instance.Move` / `Disk.Move` (и worker-сеттер владельца под ними)
-удалены в KAC-266 (контракт-removal). Move-семантики на conflict по
-`(project_id, name)` больше нет — finding закрыт.
+RPC `Instance.Move` / `Disk.Move` и worker-сеттер владельца под ними удалены в
+KAC-266 (контракт-removal). Move-семантики больше нет — finding закрыт.
 
 ---
+## 3. Сводная таблица «исправлено / open» (перепроверена 2026-08-01)
 
-## 3. Сводная таблица «исправлено / open»
+Перепроверка сделана **по дереву**, а не по тону исходного текста: для каждой
+находки установлено, существует ли ещё её предмет.
 
-| Категория | Field/invariant | Status |
+| Категория | Field/invariant | Статус |
 |---|---|---|
-| **Closed (DB-уровневое покрытие — OK)** | | |
+| **Было закрыто DB-уровнем уже на момент аудита** | | |
 | Все PK уникальности | 10 ресурсных таблиц | ✅ |
 | `(project_id, name)` partial UNIQUE по 4 ресурсам | disks/images/snapshots/instances | ✅ |
-| `attached_disks (instance_id, disk_id)` PK | один disk не дважды у одной ВМ | ✅ |
-| `(instance_id) WHERE is_boot` partial UNIQUE | один boot disk на instance | ✅ |
-| `(instance_id, device_name)` partial UNIQUE | device_name unique per instance | ✅ |
-| `attached_disks.disk_id → disks(id) ON DELETE RESTRICT` | Disk.Delete blocked when attached | ✅ |
-| `attached_disks.instance_id → instances(id) ON DELETE CASCADE` | NIC/disk-row cleanup at Instance.Delete | ✅ |
-| `instance_network_interfaces.instance_id → instances(id) ON DELETE CASCADE` | NIC cleanup | ✅ |
-| `zones.region_id → regions(id) ON DELETE RESTRICT` | Region.Delete blocked when zones exist | ✅ (0003) |
-| ~~`Move` consistency через UNIQUE 23505~~ | снято — `Move` RPC удалены в KAC-266 | ✅ (G14 closed/removed) |
-| `compute_outbox.sequence_no` PK + trigger notify | event sequence | ✅ |
-| **Open (gap'ы)** | | |
-| Disk-attach race (`attached_disks.disk_id` partial UNIQUE отсутствует) | TOCTOU + missing UNIQUE | **G1** (High) |
-| Instance state-машина без CAS | TOCTOU lost-write | **G2** (High) |
-| `instances.zone_id` no within-service FK | dangling ref на zones-delete | **G3** (High) |
-| `disks.zone_id` no within-service FK | dangling ref | **G4** (High) |
-| `disks.type_id` no within-service FK | dangling ref | **G5** (Medium) |
-| `disks.source_image_id` / `source_snapshot_id` no FK | by-design (soft-ref) | **G6** (Info) |
-| `images.source_*_id` no FK | by-design | **G7** (Info) |
-| `snapshots.source_disk_id` no FK | by-design | **G8** (Info) |
-| Enum CHECKs отсутствуют | мусор-INSERT поверхность | **G9** (Low) |
-| Cross-service refs N/A | NIC → vpc | **G10** (N/A) |
-| Boot disk uniq | already enforced | **G11** (Closed) |
-| ~~Move/name conflict semantics~~ | снято — `Move` RPC удалены в KAC-266 | ~~**G14**~~ (closed/removed) |
+| Пара «машина+диск» уникальна | PK таблицы привязок | ✅ |
+| Один загрузочный диск на машину | partial UNIQUE | ✅ (G11) |
+| `device_name` уникален в пределах машины | partial UNIQUE | ✅ |
+| Диск не удалить, пока привязан | FK ON DELETE RESTRICT | ✅ |
+| Строки привязок и NIC чистятся при удалении машины | FK ON DELETE CASCADE | ✅ |
+| Регион не удалить, пока есть зоны | FK ON DELETE RESTRICT | ✅ (0003) |
+| Порядок событий outbox | PK `sequence_no` + trigger notify | ✅ |
+| **Закрыто после аудита** | | |
+| Переход состояния машины | стал условным (CAS); не-CAS сеттер удалён из порта | ✅ **G2** |
+| **Предмет удалён вместе с таблицами** | | |
+| Уникальность привязки диска | таблица дропнута `0013`; владелец — storage | — **G1** |
+| `instances.zone_id` FK | `zones` дропнута `0011`; ссылка стала cross-service | — **G3** |
+| `disks.zone_id` FK | `zones` `0011` + `disks` `0021` | — **G4** |
+| `disks.type_id` FK | `disks` `0021` + `disk_types` `0022` | — **G5** |
+| Enum CHECK по дискам/образам/снимкам/зонам/привязкам | те же миграции | — **G9** (частично) |
+| ~~Move name-conflict~~ | RPC удалены в KAC-266 | — ~~**G14**~~ |
+| **By-design (остаются верны как решение)** | | |
+| `disks.source_*_id` без FK | soft-ref происхождения | **G6** (Info) |
+| `images.source_*_id` без FK | soft-ref происхождения | **G7** (Info) |
+| `snapshots.source_disk_id` без FK | soft-ref происхождения | **G8** (Info) |
+| Cross-service refs NIC → vpc | FK невозможен (запрет #8) | **G10** (N/A) |
+| **Остаётся открытым** | | |
+| Enum CHECK по статусным/режимным колонкам `instances` | осознанно не закрывается: удорожает пополнение enum, писателя кроме маппинга нет | **G9** (Low) |
 
 ---
 
-## 4. Рекомендация по follow-up
+## 4. Follow-up: что стало с планом
 
-- Создать **KAC-87 epic** «within-service refs DB-coverage closure (compute)» с subtask'ами:
-  - **KAC-87.compute.1** — G1 fix (disk-attach race): миграция
-    `attached_disks_disk_id_uniq` partial UNIQUE + adjust `mapRepoErr` / repo
-    error mapping → `FailedPrecondition "Disk is already attached"` (контрактный
-    текст). Integration-test зеркалит `network_interface_attach_race_integration_test.go`
-    из kacho-vpc. **Newman-кейс** `INST-ATTACH-DISK-RACE` обязателен (запрет #11).
-  - **KAC-87.compute.2** — G2 fix (Instance state-машина CAS): code-only change
-    в `InstanceRepo.SetStatus` + `mutateAndReload` с `expectedStatus`, без миграции.
-    Integration-test: concurrent Stop+Restart на RUNNING → один winner.
-    **Newman-кейс** `INST-STATE-RACE` обязателен.
-  - **KAC-87.compute.3** — G3+G4+G5 fix (within-service FKs): миграция
-    `0007_within_service_fks.sql` объединяющая `instances.zone_id`, `disks.zone_id`,
-    `disks.type_id` → `zones(id)/disk_types(id)` ON DELETE RESTRICT с pre-flight
-    DO-block. Integration-test: try Zone.Delete пока есть instance/disk в зоне →
-    FailedPrecondition; то же для DiskType.Delete. **Newman**: `ZONE-DEL-NEG-INUSE`,
-    `DT-DEL-NEG-INUSE`.
-  - **KAC-87.compute.4** (defer) — G9 fix (enum CHECKs): миграция
-    `0009_enum_checks.sql`. Maintenance burden: при добавлении новых enum
-    values нужно расширять CHECK. Low priority.
-  - ~~**KAC-87.compute.5** (doc-only) — G14 (Move name-conflict semantics)~~ —
-    снято: RPC `Move` удалены в KAC-266 (контракт-removal); finding G14 закрыт.
-  - **KAC-87.compute.6** (doc-only) — G6/G7/G8: расширить
-    `docs/architecture/07-known-divergences.md` со ссылкой на этот аудит.
-  - **KAC-87.compute.7** (closed) — G12/G13 сняты: таблицы kube-ovn-эпохи
-    удалены в KAC-36/79/80 (`0006_drop_hypervisors.sql`).
+Аудит предлагал эпик KAC-87 «within-service refs DB-coverage closure (compute)» из
+семи подзадач. Итог **не по плану, но по существу**: пять из семи закрылись не
+миграцией-ограничением, а **удалением предмета** — раскол блочного хранения
+(`kacho-storage` стал владельцем Volume/Snapshot/Image/DiskType) и вынос Geography
+(`kacho-geo` стал владельцем Region/Zone) убрали из БД compute сами таблицы, к
+которым предлагалось добавлять FK.
 
-- Каждый non-doc subtask: **integration-test обязателен** (запрет #11);
-  newman-кейс с тем же PR (запрет #11 — формулировка «follow-up» не
-  принимается). Шаблон integration-test для race-сценариев —
-  `kacho-vpc/internal/repo/network_interface_attach_race_integration_test.go`.
+| Подзадача плана | Предмет | Исход |
+|---|---|---|
+| KAC-87.compute.1 — G1 | partial UNIQUE на привязку диска | Не понадобилась: таблица дропнута, инвариант живёт у владельца-storage |
+| KAC-87.compute.2 — G2 | CAS на переход состояния | **Сделана** (code-only, как и планировалось) + гоночные integration-тесты |
+| KAC-87.compute.3 — G3+G4+G5 | within-service FK на зону и тип | Не понадобилась: ссылки стали cross-service, FK через границу запрещён |
+| KAC-87.compute.4 — G9 | enum CHECK | Отложена и остаётся отложенной (Low) |
+| ~~KAC-87.compute.5~~ — G14 | Move-семантика | Снята: RPC удалены (KAC-266) |
+| KAC-87.compute.6 — G6/G7/G8 | doc-only | Решения зафиксированы; переиспользованы владельцем-storage |
+| KAC-87.compute.7 — G12/G13 | таблицы kube-ovn-эпохи | Закрыта: `0006_drop_hypervisors.sql` |
 
-- Перед merge каждой миграции — pre-flight на dev-стенде: `SELECT … WHERE …`
-  запросом проверить, что existing rows не нарушают новый constraint; при
-  найденных нарушениях — backfill / cleanup до повторного apply.
-
-- Порядок применения миграций (новые файлы с инкрементными номерами):
-  - within-service FKs (G3+G4+G5)
-  - `attached_disks_disk_id_uniq` (G1; независим от G3-G5)
-  - enum CHECKs (G9 — defer)
+**Урок метода, ради которого документ и сохраняется.** Аудит был прав в классе
+(software-side `Get → check → write` через границу конкуренции — дефект) и прав в
+приоритете (G1/G2 — High). Но предложенное лекарство в четырёх случаях из пяти
+оказалось не нужно, потому что правильный ответ был не «добавить ограничение», а
+«вернуть ресурс владельцу». Аудит, меряющий только покрытие ограничениями, этого
+варианта не видит — он спрашивает «где не хватает FK», а не «должна ли эта строка
+вообще лежать здесь».
 
 ---
 
 ## 5. Ссылки
 
-- Workspace CLAUDE.md §«Within-service refs — DB-уровень обязателен» / запрет #10
-- kacho-compute CLAUDE.md §2 «FK contract» (формализация by-design без-FK по
-  source_*_id полям)
-- kacho-compute CLAUDE.md §8 «Instance state-машина»
-- kacho-vpc audit (parity): `kacho-vpc/docs/architecture/within-service-refs-audit.md` (KAC-84)
+- Workspace `.claude/rules/data-integrity.md` § «Within-service инварианты — только на DB-уровне» (запрет #10)
+- kacho-vpc parity-аудит: `services/vpc/docs/architecture/within-service-refs-audit.md` (KAC-84)
 - KAC-52 — NIC-attach race в kacho-vpc, инцидент 2026-05-14 (источник pattern'а для G1/G2)
-- KAC-15 — Geography перенесена в kacho-compute (G3/G4 появились как follow-up)
-- KAC-36/79/80 — таблицы kube-ovn-эпохи удалены (`0006_drop_hypervisors.sql`); G12/G13 сняты
-- `internal/migrations/0001_initial.sql..0005_instance_nic_id.sql`
-- `internal/service/instance.go::lifecycle/AttachDisk/AddOneToOneNat` — TOCTOU
-  patterns
-- `internal/service/disk.go::Relocate` — TOCTOU pattern
-- `internal/repo/instance_repo.go::SetStatus/mutateAndReload` — non-CAS UPDATEs
-- `internal/repo/unique.go::wrapPgErr` — SQLSTATE → sentinel mapping
+- KAC-15 — Geography переносилась в compute (породила G3/G4); эпик kacho-workspace#82 — вынесена в kacho-geo (сняла их)
+- KAC-36/79/80 — таблицы kube-ovn-эпохи удалены (`0006_drop_hypervisors.sql`)
+- KAC-266 — `Move` RPC удалены (снял G14)
+- Раскол блочного хранения: `services/storage/docs/architecture/compute-storage-parity.md`
+- Миграции, снявшие предмет находок: `0011_drop_geography.sql`, `0013_drop_attached_disks.sql`,
+  `0021_drop_block_storage_duplicates.sql`, `0022_drop_disk_types.sql`
