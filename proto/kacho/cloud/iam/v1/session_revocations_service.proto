@@ -63,10 +63,37 @@ service InternalSessionRevocationsService {
   // ListByUser — admin / audit endpoint: enumerate active revocations for a
   // user. Used by admin-UI to display "force-logged-out at" history and by
   // CAEP forwarder to bulk-emit events.
+  //
+  // The whole response is about ONE user the CALLER NAMES, so it is authorized
+  // per-object on that user, and kacho-iam enforces that itself
+  // (internal/apps/kacho/api/session_revocations). The record below states that
+  // lane, so any future route inherits it rather than a bypass.
+  //
+  // The relation is the READ TIER on the user, not a `v_*` verb: `v_*` is
+  // object-level access to the USER RECORD ITSELF, while a session history is that
+  // user's CONTENTS — the same distinction top-level list reads already follow.
+  // `iam_user.viewer` admits the user themselves structurally (`subject`), plus
+  // anyone holding editor/admin over them; no wildcard tuple satisfies it, so it
+  // narrows for real.
+  //
+  // It is deliberately NOT `<exempt>`, and the listener's own gates do not supply
+  // the decision: they narrow the CALLING MODULE — a verified certificate, plus
+  // `system_viewer@cluster` held by that module's own service account — and
+  // neither of them reads `user_id`.
   rpc ListByUser (ListByUserRequest) returns (ListByUserResponse) {
-    // Cluster-internal listener-protected; admin-UI authz gating happens at
-    // the api-gateway internal mux layer.
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.permission)        = "iam.session_revocations.listByUser";
+    option (kacho.iam.authz.v1.required_relation) = "viewer";
+    option (kacho.iam.authz.v1.scope_extractor)   = {
+      object_type:        "iam_user"
+      from_request_field: "user_id"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
+    // A refusal is the user's own miss, not "you may not". kacho-iam answers a
+    // denied caller that way already; the flag is what makes an edge that ever
+    // routes this RPC answer the same, instead of a 403 that tells an outsider
+    // the user exists. The edge heuristic does not cover this shape on its own —
+    // it hides only `/Get` on a `v_get` scope — so the flag has to be explicit.
+    option (kacho.iam.authz.v1.hide_existence) = true;
   }
 }
 

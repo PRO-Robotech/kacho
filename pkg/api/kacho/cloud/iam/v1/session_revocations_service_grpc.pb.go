@@ -65,6 +65,23 @@ type InternalSessionRevocationsServiceClient interface {
 	// ListByUser — admin / audit endpoint: enumerate active revocations for a
 	// user. Used by admin-UI to display "force-logged-out at" history and by
 	// CAEP forwarder to bulk-emit events.
+	//
+	// The whole response is about ONE user the CALLER NAMES, so it is authorized
+	// per-object on that user, and kacho-iam enforces that itself
+	// (internal/apps/kacho/api/session_revocations). The record below states that
+	// lane, so any future route inherits it rather than a bypass.
+	//
+	// The relation is the READ TIER on the user, not a `v_*` verb: `v_*` is
+	// object-level access to the USER RECORD ITSELF, while a session history is that
+	// user's CONTENTS — the same distinction top-level list reads already follow.
+	// `iam_user.viewer` admits the user themselves structurally (`subject`), plus
+	// anyone holding editor/admin over them; no wildcard tuple satisfies it, so it
+	// narrows for real.
+	//
+	// It is deliberately NOT `<exempt>`, and the listener's own gates do not supply
+	// the decision: they narrow the CALLING MODULE — a verified certificate, plus
+	// `system_viewer@cluster` held by that module's own service account — and
+	// neither of them reads `user_id`.
 	ListByUser(ctx context.Context, in *ListByUserRequest, opts ...grpc.CallOption) (*ListByUserResponse, error)
 }
 
@@ -143,6 +160,23 @@ type InternalSessionRevocationsServiceServer interface {
 	// ListByUser — admin / audit endpoint: enumerate active revocations for a
 	// user. Used by admin-UI to display "force-logged-out at" history and by
 	// CAEP forwarder to bulk-emit events.
+	//
+	// The whole response is about ONE user the CALLER NAMES, so it is authorized
+	// per-object on that user, and kacho-iam enforces that itself
+	// (internal/apps/kacho/api/session_revocations). The record below states that
+	// lane, so any future route inherits it rather than a bypass.
+	//
+	// The relation is the READ TIER on the user, not a `v_*` verb: `v_*` is
+	// object-level access to the USER RECORD ITSELF, while a session history is that
+	// user's CONTENTS — the same distinction top-level list reads already follow.
+	// `iam_user.viewer` admits the user themselves structurally (`subject`), plus
+	// anyone holding editor/admin over them; no wildcard tuple satisfies it, so it
+	// narrows for real.
+	//
+	// It is deliberately NOT `<exempt>`, and the listener's own gates do not supply
+	// the decision: they narrow the CALLING MODULE — a verified certificate, plus
+	// `system_viewer@cluster` held by that module's own service account — and
+	// neither of them reads `user_id`.
 	ListByUser(context.Context, *ListByUserRequest) (*ListByUserResponse, error)
 	mustEmbedUnimplementedInternalSessionRevocationsServiceServer()
 }

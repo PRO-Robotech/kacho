@@ -246,7 +246,7 @@ func TestPermissionCatalog_ACR_CreateNetStrengthening(t *testing.T) {
 }
 
 // TestPermissionCatalog_ACR_CountsAndByteIdentity — SEC-ACR-13 / I2: the whole
-// catalog splits 26×"2" / 210×"1" / 64×"" = 300, and both embedded copies
+// catalog splits 26×"2" / 211×"1" / 63×"" = 300, and both embedded copies
 // (gateway + iam) are byte-identical. (NLB CONTRACT removed the 4 routine
 // loadbalancer RPCs Start/Stop/AttachTargetGroup/DetachTargetGroup: 332→328;
 // the UserService/Invite grant-surface correction moved one more 1→2: 328→327.
@@ -293,9 +293,15 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// administrative suspension of a membership, previously reachable only by
 	// editing the database: 24→26 sensitive, 298→300 total. Routine and exempt
 	// untouched again, for the same reason.
+	// InternalSessionRevocationsService/ListByUser then moved exempt→routine
+	// (64→63 exempt, 210→211 routine, total untouched — nothing was added or
+	// removed). Its response is one named user's session history, so its record now
+	// states the per-object lane it is actually decided on (`v_get` on
+	// `iam_user:<user_id>`) instead of declaring that nothing decides it. Routine
+	// and not sensitive: it reads, it grants nothing and destroys nothing.
 	assert.Equal(t, 26, n2, "sensitive count")
-	assert.Equal(t, 210, n1, "routine count")
-	assert.Equal(t, 64, nEmpty, "no-requirement (exempt) count")
+	assert.Equal(t, 211, n1, "routine count")
+	assert.Equal(t, 63, nEmpty, "no-requirement (exempt) count")
 	assert.Equal(t, 300, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
