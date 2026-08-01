@@ -4734,94 +4734,6 @@
           ]
         },
         {
-          "name": "poll-op-34",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "check-fp",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "const j = pm.response.json();",
-                  "if (j.error) pm.test('move rejected (FailedPrecondition 9, or dst-fixture-absent InvalidArgument 3)', () =>   pm.expect(j.error.code).to.be.oneOf([3, 9]));"
-                ]
-              }
-            }
-          ]
-        },
-        {
           "name": "del-lst",
           "request": {
             "method": "DELETE",
@@ -4861,7 +4773,7 @@
           ]
         },
         {
-          "name": "poll-op-35",
+          "name": "poll-op-34",
           "request": {
             "method": "GET",
             "header": [
@@ -4954,7 +4866,7 @@
           ]
         },
         {
-          "name": "poll-op-36",
+          "name": "poll-op-35",
           "request": {
             "method": "GET",
             "header": [
@@ -5047,7 +4959,7 @@
           ]
         },
         {
-          "name": "poll-op-37",
+          "name": "poll-op-36",
           "request": {
             "method": "GET",
             "header": [
@@ -5285,7 +5197,7 @@
           ]
         },
         {
-          "name": "poll-op-38",
+          "name": "poll-op-37",
           "request": {
             "method": "GET",
             "header": [
@@ -5414,7 +5326,7 @@
           ]
         },
         {
-          "name": "poll-op-39",
+          "name": "poll-op-38",
           "request": {
             "method": "GET",
             "header": [
@@ -5610,7 +5522,7 @@
           ]
         },
         {
-          "name": "poll-op-40",
+          "name": "poll-op-39",
           "request": {
             "method": "GET",
             "header": [
@@ -5736,7 +5648,7 @@
           ]
         },
         {
-          "name": "poll-op-41",
+          "name": "poll-op-40",
           "request": {
             "method": "GET",
             "header": [
@@ -5865,7 +5777,7 @@
           ]
         },
         {
-          "name": "poll-op-42",
+          "name": "poll-op-41",
           "request": {
             "method": "GET",
             "header": [
@@ -6025,7 +5937,7 @@
           ]
         },
         {
-          "name": "poll-op-43",
+          "name": "poll-op-42",
           "request": {
             "method": "GET",
             "header": [
@@ -6220,7 +6132,7 @@
           ]
         },
         {
-          "name": "poll-op-44",
+          "name": "poll-op-43",
           "request": {
             "method": "GET",
             "header": [
@@ -6313,7 +6225,7 @@
           ]
         },
         {
-          "name": "poll-op-45",
+          "name": "poll-op-44",
           "request": {
             "method": "GET",
             "header": [
@@ -6439,7 +6351,7 @@
           ]
         },
         {
-          "name": "poll-op-46",
+          "name": "poll-op-45",
           "request": {
             "method": "GET",
             "header": [
@@ -6568,7 +6480,7 @@
           ]
         },
         {
-          "name": "poll-op-47",
+          "name": "poll-op-46",
           "request": {
             "method": "GET",
             "header": [
@@ -6728,7 +6640,7 @@
           ]
         },
         {
-          "name": "poll-op-48",
+          "name": "poll-op-47",
           "request": {
             "method": "GET",
             "header": [
@@ -6895,7 +6807,7 @@
           ]
         },
         {
-          "name": "poll-op-49",
+          "name": "poll-op-48",
           "request": {
             "method": "GET",
             "header": [
@@ -7013,7 +6925,7 @@
           ]
         },
         {
-          "name": "poll-op-50",
+          "name": "poll-op-49",
           "request": {
             "method": "GET",
             "header": [
@@ -7233,7 +7145,7 @@
           ]
         },
         {
-          "name": "poll-op-51",
+          "name": "poll-op-50",
           "request": {
             "method": "GET",
             "header": [
@@ -7326,7 +7238,7 @@
           ]
         },
         {
-          "name": "poll-op-52",
+          "name": "poll-op-51",
           "request": {
             "method": "GET",
             "header": [
@@ -7419,7 +7331,7 @@
           ]
         },
         {
-          "name": "poll-op-53",
+          "name": "poll-op-52",
           "request": {
             "method": "GET",
             "header": [
@@ -8379,7 +8291,7 @@
           ]
         },
         {
-          "name": "poll-op-54",
+          "name": "poll-op-53",
           "request": {
             "method": "GET",
             "header": [
@@ -8476,7 +8388,7 @@
           ]
         },
         {
-          "name": "poll-op-55",
+          "name": "poll-op-54",
           "request": {
             "method": "GET",
             "header": [
@@ -8589,7 +8501,7 @@
           ]
         },
         {
-          "name": "poll-op-56",
+          "name": "poll-op-55",
           "request": {
             "method": "GET",
             "header": [
@@ -8682,7 +8594,7 @@
           ]
         },
         {
-          "name": "poll-op-57",
+          "name": "poll-op-56",
           "request": {
             "method": "GET",
             "header": [
@@ -8848,7 +8760,7 @@
           ]
         },
         {
-          "name": "poll-op-58",
+          "name": "poll-op-57",
           "request": {
             "method": "GET",
             "header": [
@@ -8941,7 +8853,7 @@
           ]
         },
         {
-          "name": "poll-op-59",
+          "name": "poll-op-58",
           "request": {
             "method": "GET",
             "header": [
@@ -9354,7 +9266,7 @@
           ]
         },
         {
-          "name": "poll-op-60",
+          "name": "poll-op-59",
           "request": {
             "method": "GET",
             "header": [
@@ -9483,7 +9395,7 @@
           ]
         },
         {
-          "name": "poll-op-61",
+          "name": "poll-op-60",
           "request": {
             "method": "GET",
             "header": [
@@ -9683,7 +9595,7 @@
           ]
         },
         {
-          "name": "poll-op-62",
+          "name": "poll-op-61",
           "request": {
             "method": "GET",
             "header": [
@@ -9840,7 +9752,7 @@
           ]
         },
         {
-          "name": "poll-op-63",
+          "name": "poll-op-62",
           "request": {
             "method": "GET",
             "header": [
@@ -9973,67 +9885,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('opId');",
-                  "pm.test('unknown project_id refused (sync 400/403/404, or an Operation that fails)', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 403, 404, 200]));",
-                  "if (pm.response.code === 200) {",
-                  "  const j = pm.response.json();",
-                  "  pm.test('accepted response carries the Operation that must then fail', () =>     pm.expect(j.id, pm.response.text()).to.be.a('string'));",
-                  "  if (j.id) pm.environment.set('opId', j.id);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-64",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "pm.test('operation refused the request (carries an error)', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));"
+                  "pm.test('unknown project_id refused synchronously (400/403/404) — no Operation is minted', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 403, 404]));"
                 ]
               }
             }
@@ -10247,7 +10099,7 @@
           ]
         },
         {
-          "name": "poll-op-65",
+          "name": "poll-op-63",
           "request": {
             "method": "GET",
             "header": [
@@ -10390,7 +10242,7 @@
           ]
         },
         {
-          "name": "poll-op-66",
+          "name": "poll-op-64",
           "request": {
             "method": "GET",
             "header": [
@@ -10562,7 +10414,7 @@
           ]
         },
         {
-          "name": "poll-op-67",
+          "name": "poll-op-65",
           "request": {
             "method": "GET",
             "header": [
@@ -10691,7 +10543,7 @@
           ]
         },
         {
-          "name": "poll-op-68",
+          "name": "poll-op-66",
           "request": {
             "method": "GET",
             "header": [
@@ -10862,7 +10714,7 @@
           ]
         },
         {
-          "name": "poll-op-69",
+          "name": "poll-op-67",
           "request": {
             "method": "GET",
             "header": [
@@ -10980,7 +10832,7 @@
           ]
         },
         {
-          "name": "poll-op-70",
+          "name": "poll-op-68",
           "request": {
             "method": "GET",
             "header": [
@@ -11107,7 +10959,7 @@
           ]
         },
         {
-          "name": "poll-op-71",
+          "name": "poll-op-69",
           "request": {
             "method": "GET",
             "header": [
@@ -11233,7 +11085,7 @@
           ]
         },
         {
-          "name": "poll-op-72",
+          "name": "poll-op-70",
           "request": {
             "method": "GET",
             "header": [
@@ -11362,7 +11214,7 @@
           ]
         },
         {
-          "name": "poll-op-73",
+          "name": "poll-op-71",
           "request": {
             "method": "GET",
             "header": [
@@ -11557,7 +11409,7 @@
           ]
         },
         {
-          "name": "poll-op-74",
+          "name": "poll-op-72",
           "request": {
             "method": "GET",
             "header": [
@@ -11683,7 +11535,7 @@
           ]
         },
         {
-          "name": "poll-op-75",
+          "name": "poll-op-73",
           "request": {
             "method": "GET",
             "header": [
@@ -11812,7 +11664,7 @@
           ]
         },
         {
-          "name": "poll-op-76",
+          "name": "poll-op-74",
           "request": {
             "method": "GET",
             "header": [
@@ -12006,7 +11858,7 @@
           ]
         },
         {
-          "name": "poll-op-77",
+          "name": "poll-op-75",
           "request": {
             "method": "GET",
             "header": [
@@ -12132,7 +11984,7 @@
           ]
         },
         {
-          "name": "poll-op-78",
+          "name": "poll-op-76",
           "request": {
             "method": "GET",
             "header": [
@@ -12261,7 +12113,7 @@
           ]
         },
         {
-          "name": "poll-op-79",
+          "name": "poll-op-77",
           "request": {
             "method": "GET",
             "header": [
@@ -12455,7 +12307,7 @@
           ]
         },
         {
-          "name": "poll-op-80",
+          "name": "poll-op-78",
           "request": {
             "method": "GET",
             "header": [
@@ -12581,7 +12433,7 @@
           ]
         },
         {
-          "name": "poll-op-81",
+          "name": "poll-op-79",
           "request": {
             "method": "GET",
             "header": [
@@ -12710,7 +12562,7 @@
           ]
         },
         {
-          "name": "poll-op-82",
+          "name": "poll-op-80",
           "request": {
             "method": "GET",
             "header": [
@@ -12901,7 +12753,7 @@
           ]
         },
         {
-          "name": "poll-op-83",
+          "name": "poll-op-81",
           "request": {
             "method": "GET",
             "header": [
@@ -13027,7 +12879,7 @@
           ]
         },
         {
-          "name": "poll-op-84",
+          "name": "poll-op-82",
           "request": {
             "method": "GET",
             "header": [
@@ -13156,7 +13008,7 @@
           ]
         },
         {
-          "name": "poll-op-85",
+          "name": "poll-op-83",
           "request": {
             "method": "GET",
             "header": [
@@ -13327,7 +13179,7 @@
           ]
         },
         {
-          "name": "poll-op-86",
+          "name": "poll-op-84",
           "request": {
             "method": "GET",
             "header": [
@@ -13512,7 +13364,7 @@
           ]
         },
         {
-          "name": "poll-op-87",
+          "name": "poll-op-85",
           "request": {
             "method": "GET",
             "header": [
@@ -13638,7 +13490,7 @@
           ]
         },
         {
-          "name": "poll-op-88",
+          "name": "poll-op-86",
           "request": {
             "method": "GET",
             "header": [
@@ -13767,7 +13619,7 @@
           ]
         },
         {
-          "name": "poll-op-89",
+          "name": "poll-op-87",
           "request": {
             "method": "GET",
             "header": [
@@ -13976,7 +13828,7 @@
           ]
         },
         {
-          "name": "poll-op-90",
+          "name": "poll-op-88",
           "request": {
             "method": "GET",
             "header": [
@@ -14069,7 +13921,7 @@
           ]
         },
         {
-          "name": "poll-op-91",
+          "name": "poll-op-89",
           "request": {
             "method": "GET",
             "header": [
@@ -14195,7 +14047,7 @@
           ]
         },
         {
-          "name": "poll-op-92",
+          "name": "poll-op-90",
           "request": {
             "method": "GET",
             "header": [
@@ -14324,7 +14176,7 @@
           ]
         },
         {
-          "name": "poll-op-93",
+          "name": "poll-op-91",
           "request": {
             "method": "GET",
             "header": [
@@ -14483,7 +14335,7 @@
           ]
         },
         {
-          "name": "poll-op-94",
+          "name": "poll-op-92",
           "request": {
             "method": "GET",
             "header": [
@@ -14615,7 +14467,7 @@
           ]
         },
         {
-          "name": "poll-op-95",
+          "name": "poll-op-93",
           "request": {
             "method": "GET",
             "header": [
@@ -14708,7 +14560,7 @@
           ]
         },
         {
-          "name": "poll-op-96",
+          "name": "poll-op-94",
           "request": {
             "method": "GET",
             "header": [
@@ -14821,7 +14673,7 @@
           ]
         },
         {
-          "name": "poll-op-97",
+          "name": "poll-op-95",
           "request": {
             "method": "GET",
             "header": [
@@ -15020,7 +14872,7 @@
           ]
         },
         {
-          "name": "poll-op-98",
+          "name": "poll-op-96",
           "request": {
             "method": "GET",
             "header": [
@@ -15170,7 +15022,7 @@
           ]
         },
         {
-          "name": "poll-op-99",
+          "name": "poll-op-97",
           "request": {
             "method": "GET",
             "header": [
@@ -15628,7 +15480,7 @@
           ]
         },
         {
-          "name": "poll-op-100",
+          "name": "poll-op-98",
           "request": {
             "method": "GET",
             "header": [
@@ -15721,7 +15573,7 @@
           ]
         },
         {
-          "name": "poll-op-101",
+          "name": "poll-op-99",
           "request": {
             "method": "GET",
             "header": [
@@ -15990,7 +15842,7 @@
           ]
         },
         {
-          "name": "poll-op-102",
+          "name": "poll-op-100",
           "request": {
             "method": "GET",
             "header": [
@@ -16083,7 +15935,7 @@
           ]
         },
         {
-          "name": "poll-op-103",
+          "name": "poll-op-101",
           "request": {
             "method": "GET",
             "header": [
@@ -16205,7 +16057,7 @@
           ]
         },
         {
-          "name": "poll-op-104",
+          "name": "poll-op-102",
           "request": {
             "method": "GET",
             "header": [
@@ -16302,7 +16154,7 @@
           ]
         },
         {
-          "name": "poll-op-105",
+          "name": "poll-op-103",
           "request": {
             "method": "GET",
             "header": [
@@ -16768,7 +16620,7 @@
           ]
         },
         {
-          "name": "poll-op-106",
+          "name": "poll-op-104",
           "request": {
             "method": "GET",
             "header": [
@@ -16897,7 +16749,7 @@
           ]
         },
         {
-          "name": "poll-op-107",
+          "name": "poll-op-105",
           "request": {
             "method": "GET",
             "header": [
@@ -17068,7 +16920,7 @@
           ]
         },
         {
-          "name": "poll-op-108",
+          "name": "poll-op-106",
           "request": {
             "method": "GET",
             "header": [
@@ -17161,7 +17013,7 @@
           ]
         },
         {
-          "name": "poll-op-109",
+          "name": "poll-op-107",
           "request": {
             "method": "GET",
             "header": [
@@ -17369,6 +17221,212 @@
           ]
         },
         {
+          "name": "poll-op-108",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "networkLoadBalancers",
+                "{{nlbId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-109",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('opId')) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "if (pm.response.code !== 200) {",
+                  "  pm.environment.unset('_pollCount');",
+                  "  return;",
+                  "}",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "NLB-CR-CRUD-NO-OPTIONAL-FIELDS — Create with only required fields (no description/labels) → OK",
+      "description": "class:CRUD | priority:P2",
+      "item": [
+        {
+          "name": "cr-min",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "nlb",
+                "v1",
+                "networkLoadBalancers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"min-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.networkLoadBalancerId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('nlbId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "poll-op-110",
           "request": {
             "method": "GET",
@@ -17518,212 +17576,6 @@
       ]
     },
     {
-      "name": "NLB-CR-CRUD-NO-OPTIONAL-FIELDS — Create with only required fields (no description/labels) → OK",
-      "description": "class:CRUD | priority:P2",
-      "item": [
-        {
-          "name": "cr-min",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "networkLoadBalancers"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"regionId\": \"{{_suiteRegionId}}\", \"name\": \"min-{{runId}}\", \"placement\": \"EXTERNAL_REGIONAL\", \"v4Source\": {\"public\": {}}}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.metadata && j.metadata.networkLoadBalancerId);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('nlbId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-112",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "cleanup",
-          "request": {
-            "method": "DELETE",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/networkLoadBalancers/{{nlbId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "networkLoadBalancers",
-                "{{nlbId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.id);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-113",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
-                ]
-              }
-            }
-          ]
-        }
-      ]
-    },
-    {
       "name": "NLB-CR-CRUD-WITH-DESCRIPTION — Create with non-empty description → OK and persisted",
       "description": "class:CRUD | priority:P2",
       "item": [
@@ -17781,7 +17633,7 @@
           ]
         },
         {
-          "name": "poll-op-114",
+          "name": "poll-op-112",
           "request": {
             "method": "GET",
             "header": [
@@ -17925,7 +17777,7 @@
           ]
         },
         {
-          "name": "poll-op-115",
+          "name": "poll-op-113",
           "request": {
             "method": "GET",
             "header": [
@@ -18038,7 +17890,7 @@
           ]
         },
         {
-          "name": "poll-op-116",
+          "name": "poll-op-114",
           "request": {
             "method": "GET",
             "header": [
@@ -18182,7 +18034,7 @@
           ]
         },
         {
-          "name": "poll-op-117",
+          "name": "poll-op-115",
           "request": {
             "method": "GET",
             "header": [
@@ -18295,7 +18147,7 @@
           ]
         },
         {
-          "name": "poll-op-118",
+          "name": "poll-op-116",
           "request": {
             "method": "GET",
             "header": [
@@ -18442,7 +18294,7 @@
           ]
         },
         {
-          "name": "poll-op-119",
+          "name": "poll-op-117",
           "request": {
             "method": "GET",
             "header": [
@@ -18643,7 +18495,7 @@
           ]
         },
         {
-          "name": "poll-op-120",
+          "name": "poll-op-118",
           "request": {
             "method": "GET",
             "header": [
@@ -18800,7 +18652,7 @@
           ]
         },
         {
-          "name": "poll-op-121",
+          "name": "poll-op-119",
           "request": {
             "method": "GET",
             "header": [
@@ -18893,7 +18745,7 @@
           ]
         },
         {
-          "name": "poll-op-122",
+          "name": "poll-op-120",
           "request": {
             "method": "GET",
             "header": [
@@ -19019,7 +18871,7 @@
           ]
         },
         {
-          "name": "poll-op-123",
+          "name": "poll-op-121",
           "request": {
             "method": "GET",
             "header": [
@@ -19148,7 +19000,7 @@
           ]
         },
         {
-          "name": "poll-op-124",
+          "name": "poll-op-122",
           "request": {
             "method": "GET",
             "header": [
@@ -19319,7 +19171,7 @@
           ]
         },
         {
-          "name": "poll-op-125",
+          "name": "poll-op-123",
           "request": {
             "method": "GET",
             "header": [
@@ -19448,7 +19300,7 @@
           ]
         },
         {
-          "name": "poll-op-126",
+          "name": "poll-op-124",
           "request": {
             "method": "GET",
             "header": [
@@ -19627,7 +19479,7 @@
           ]
         },
         {
-          "name": "poll-op-127",
+          "name": "poll-op-125",
           "request": {
             "method": "GET",
             "header": [
@@ -19756,7 +19608,7 @@
           ]
         },
         {
-          "name": "poll-op-128",
+          "name": "poll-op-126",
           "request": {
             "method": "GET",
             "header": [
@@ -19916,7 +19768,7 @@
           ]
         },
         {
-          "name": "poll-op-129",
+          "name": "poll-op-127",
           "request": {
             "method": "GET",
             "header": [
@@ -20110,7 +19962,7 @@
           ]
         },
         {
-          "name": "poll-op-130",
+          "name": "poll-op-128",
           "request": {
             "method": "GET",
             "header": [
@@ -20203,7 +20055,7 @@
           ]
         },
         {
-          "name": "poll-op-131",
+          "name": "poll-op-129",
           "request": {
             "method": "GET",
             "header": [
@@ -20329,7 +20181,7 @@
           ]
         },
         {
-          "name": "poll-op-132",
+          "name": "poll-op-130",
           "request": {
             "method": "GET",
             "header": [
@@ -20458,7 +20310,7 @@
           ]
         },
         {
-          "name": "poll-op-133",
+          "name": "poll-op-131",
           "request": {
             "method": "GET",
             "header": [
@@ -20653,7 +20505,7 @@
           ]
         },
         {
-          "name": "poll-op-134",
+          "name": "poll-op-132",
           "request": {
             "method": "GET",
             "header": [
@@ -20779,7 +20631,7 @@
           ]
         },
         {
-          "name": "poll-op-135",
+          "name": "poll-op-133",
           "request": {
             "method": "GET",
             "header": [
@@ -20908,7 +20760,7 @@
           ]
         },
         {
-          "name": "poll-op-136",
+          "name": "poll-op-134",
           "request": {
             "method": "GET",
             "header": [
@@ -21053,67 +20905,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.environment.unset('opId');",
-                  "pm.test('unknown destination project refused (sync 400/403/404, or an Operation that fails)', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 403, 404, 200]));",
-                  "if (pm.response.code === 200) {",
-                  "  const j = pm.response.json();",
-                  "  pm.test('accepted response carries the Operation that must then fail', () =>     pm.expect(j.id, pm.response.text()).to.be.a('string'));",
-                  "  if (j.id) pm.environment.set('opId', j.id);",
-                  "}"
-                ]
-              }
-            }
-          ]
-        },
-        {
-          "name": "poll-op-137",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/operations/{{opId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "operations",
-                "{{opId}}"
-              ]
-            }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "if (!pm.environment.get('opId')) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "pm.test('poll status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
-                  "if (pm.response.code !== 200) {",
-                  "  pm.environment.unset('_pollCount');",
-                  "  return;",
-                  "}",
-                  "const j = pm.response.json();",
-                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
-                  "if (!j.done && pc < 30) {",
-                  "  pm.environment.set('_pollCount', String(pc + 1));",
-                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
-                  "  pm.execution.setNextRequest(pm.info.requestName);",
-                  "  return;",
-                  "}",
-                  "pm.environment.unset('_pollCount');",
-                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
-                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
-                  "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
-                  "pm.test('operation refused the request (carries an error)', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));"
+                  "pm.test('unknown destination project refused synchronously (400/403/404) — no Operation is minted', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 403, 404]));"
                 ]
               }
             }
@@ -21159,7 +20951,7 @@
           ]
         },
         {
-          "name": "poll-op-138",
+          "name": "poll-op-135",
           "request": {
             "method": "GET",
             "header": [
@@ -21501,7 +21293,7 @@
           ]
         },
         {
-          "name": "poll-op-139",
+          "name": "poll-op-136",
           "request": {
             "method": "GET",
             "header": [
@@ -21631,7 +21423,7 @@
           ]
         },
         {
-          "name": "poll-op-140",
+          "name": "poll-op-137",
           "request": {
             "method": "GET",
             "header": [
@@ -21724,7 +21516,7 @@
           ]
         },
         {
-          "name": "poll-op-141",
+          "name": "poll-op-138",
           "request": {
             "method": "GET",
             "header": [
@@ -21817,7 +21609,7 @@
           ]
         },
         {
-          "name": "poll-op-142",
+          "name": "poll-op-139",
           "request": {
             "method": "GET",
             "header": [
@@ -22069,7 +21861,7 @@
           ]
         },
         {
-          "name": "poll-op-143",
+          "name": "poll-op-140",
           "request": {
             "method": "GET",
             "header": [
@@ -22233,7 +22025,7 @@
           ]
         },
         {
-          "name": "poll-op-144",
+          "name": "poll-op-141",
           "request": {
             "method": "GET",
             "header": [
@@ -22347,7 +22139,7 @@
           ]
         },
         {
-          "name": "poll-op-145",
+          "name": "poll-op-142",
           "request": {
             "method": "GET",
             "header": [
@@ -22511,7 +22303,7 @@
           ]
         },
         {
-          "name": "poll-op-146",
+          "name": "poll-op-143",
           "request": {
             "method": "GET",
             "header": [
@@ -22907,7 +22699,7 @@
           ]
         },
         {
-          "name": "poll-op-147",
+          "name": "poll-op-144",
           "request": {
             "method": "GET",
             "header": [
@@ -23030,7 +22822,7 @@
           ]
         },
         {
-          "name": "poll-op-148",
+          "name": "poll-op-145",
           "request": {
             "method": "GET",
             "header": [
@@ -23183,7 +22975,7 @@
           ]
         },
         {
-          "name": "poll-op-149",
+          "name": "poll-op-146",
           "request": {
             "method": "GET",
             "header": [
@@ -23276,7 +23068,7 @@
           ]
         },
         {
-          "name": "poll-op-150",
+          "name": "poll-op-147",
           "request": {
             "method": "GET",
             "header": [
@@ -23402,7 +23194,7 @@
           ]
         },
         {
-          "name": "poll-op-151",
+          "name": "poll-op-148",
           "request": {
             "method": "GET",
             "header": [
@@ -23525,7 +23317,7 @@
           ]
         },
         {
-          "name": "poll-op-152",
+          "name": "poll-op-149",
           "request": {
             "method": "GET",
             "header": [
@@ -23675,7 +23467,7 @@
           ]
         },
         {
-          "name": "poll-op-153",
+          "name": "poll-op-150",
           "request": {
             "method": "GET",
             "header": [
@@ -23768,7 +23560,7 @@
           ]
         },
         {
-          "name": "poll-op-154",
+          "name": "poll-op-151",
           "request": {
             "method": "GET",
             "header": [
@@ -23894,7 +23686,7 @@
           ]
         },
         {
-          "name": "poll-op-155",
+          "name": "poll-op-152",
           "request": {
             "method": "GET",
             "header": [
@@ -24006,7 +23798,7 @@
           ]
         },
         {
-          "name": "poll-op-156",
+          "name": "poll-op-153",
           "request": {
             "method": "GET",
             "header": [
@@ -24129,7 +23921,7 @@
           ]
         },
         {
-          "name": "poll-op-157",
+          "name": "poll-op-154",
           "request": {
             "method": "GET",
             "header": [
@@ -24276,7 +24068,7 @@
           ]
         },
         {
-          "name": "poll-op-158",
+          "name": "poll-op-155",
           "request": {
             "method": "GET",
             "header": [
@@ -24369,7 +24161,7 @@
           ]
         },
         {
-          "name": "poll-op-159",
+          "name": "poll-op-156",
           "request": {
             "method": "GET",
             "header": [
@@ -24462,7 +24254,7 @@
           ]
         },
         {
-          "name": "poll-op-160",
+          "name": "poll-op-157",
           "request": {
             "method": "GET",
             "header": [
@@ -24576,7 +24368,7 @@
           ]
         },
         {
-          "name": "poll-op-161",
+          "name": "poll-op-158",
           "request": {
             "method": "GET",
             "header": [
@@ -24699,7 +24491,7 @@
           ]
         },
         {
-          "name": "poll-op-162",
+          "name": "poll-op-159",
           "request": {
             "method": "GET",
             "header": [
@@ -24848,7 +24640,7 @@
           ]
         },
         {
-          "name": "poll-op-163",
+          "name": "poll-op-160",
           "request": {
             "method": "GET",
             "header": [
@@ -24941,7 +24733,7 @@
           ]
         },
         {
-          "name": "poll-op-164",
+          "name": "poll-op-161",
           "request": {
             "method": "GET",
             "header": [
@@ -25067,7 +24859,7 @@
           ]
         },
         {
-          "name": "poll-op-165",
+          "name": "poll-op-162",
           "request": {
             "method": "GET",
             "header": [
@@ -25179,7 +24971,7 @@
           ]
         },
         {
-          "name": "poll-op-166",
+          "name": "poll-op-163",
           "request": {
             "method": "GET",
             "header": [
@@ -25302,7 +25094,7 @@
           ]
         },
         {
-          "name": "poll-op-167",
+          "name": "poll-op-164",
           "request": {
             "method": "GET",
             "header": [
@@ -25451,7 +25243,7 @@
           ]
         },
         {
-          "name": "poll-op-168",
+          "name": "poll-op-165",
           "request": {
             "method": "GET",
             "header": [
@@ -25544,7 +25336,7 @@
           ]
         },
         {
-          "name": "poll-op-169",
+          "name": "poll-op-166",
           "request": {
             "method": "GET",
             "header": [
@@ -25637,7 +25429,7 @@
           ]
         },
         {
-          "name": "poll-op-170",
+          "name": "poll-op-167",
           "request": {
             "method": "GET",
             "header": [
@@ -25763,7 +25555,7 @@
           ]
         },
         {
-          "name": "poll-op-171",
+          "name": "poll-op-168",
           "request": {
             "method": "GET",
             "header": [
@@ -25892,7 +25684,7 @@
           ]
         },
         {
-          "name": "poll-op-172",
+          "name": "poll-op-169",
           "request": {
             "method": "GET",
             "header": [
@@ -26086,7 +25878,7 @@
           ]
         },
         {
-          "name": "poll-op-173",
+          "name": "poll-op-170",
           "request": {
             "method": "GET",
             "header": [
@@ -26212,7 +26004,7 @@
           ]
         },
         {
-          "name": "poll-op-174",
+          "name": "poll-op-171",
           "request": {
             "method": "GET",
             "header": [
@@ -26341,7 +26133,7 @@
           ]
         },
         {
-          "name": "poll-op-175",
+          "name": "poll-op-172",
           "request": {
             "method": "GET",
             "header": [
@@ -26583,7 +26375,7 @@
           ]
         },
         {
-          "name": "poll-op-176",
+          "name": "poll-op-173",
           "request": {
             "method": "GET",
             "header": [
@@ -26709,7 +26501,7 @@
           ]
         },
         {
-          "name": "poll-op-177",
+          "name": "poll-op-174",
           "request": {
             "method": "GET",
             "header": [
@@ -26832,7 +26624,7 @@
           ]
         },
         {
-          "name": "poll-op-178",
+          "name": "poll-op-175",
           "request": {
             "method": "GET",
             "header": [
@@ -26950,7 +26742,7 @@
           ]
         },
         {
-          "name": "poll-op-179",
+          "name": "poll-op-176",
           "request": {
             "method": "GET",
             "header": [
@@ -27085,7 +26877,7 @@
           ]
         },
         {
-          "name": "poll-op-180",
+          "name": "poll-op-177",
           "request": {
             "method": "GET",
             "header": [
@@ -27179,7 +26971,7 @@
           ]
         },
         {
-          "name": "poll-op-181",
+          "name": "poll-op-178",
           "request": {
             "method": "GET",
             "header": [
@@ -27272,7 +27064,7 @@
           ]
         },
         {
-          "name": "poll-op-182",
+          "name": "poll-op-179",
           "request": {
             "method": "GET",
             "header": [
@@ -27398,7 +27190,7 @@
           ]
         },
         {
-          "name": "poll-op-183",
+          "name": "poll-op-180",
           "request": {
             "method": "GET",
             "header": [
@@ -27527,7 +27319,7 @@
           ]
         },
         {
-          "name": "poll-op-184",
+          "name": "poll-op-181",
           "request": {
             "method": "GET",
             "header": [
@@ -27741,7 +27533,7 @@
           ]
         },
         {
-          "name": "poll-op-185",
+          "name": "poll-op-182",
           "request": {
             "method": "GET",
             "header": [
@@ -27855,7 +27647,7 @@
           ]
         },
         {
-          "name": "poll-op-186",
+          "name": "poll-op-183",
           "request": {
             "method": "GET",
             "header": [
@@ -27979,7 +27771,7 @@
           ]
         },
         {
-          "name": "poll-op-187",
+          "name": "poll-op-184",
           "request": {
             "method": "GET",
             "header": [
@@ -28086,7 +27878,7 @@
           ]
         },
         {
-          "name": "poll-op-188",
+          "name": "poll-op-185",
           "request": {
             "method": "GET",
             "header": [
@@ -28253,7 +28045,7 @@
           ]
         },
         {
-          "name": "poll-op-189",
+          "name": "poll-op-186",
           "request": {
             "method": "GET",
             "header": [

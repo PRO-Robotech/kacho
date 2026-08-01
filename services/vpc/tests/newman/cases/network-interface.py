@@ -564,36 +564,27 @@ CASES.append(Case(
                    "name": "nic-m4-{{runId}}",
                    "v4AddressIds": ["{{addrIdA}}", "{{addrIdB}}"]},
              test_script=[
-                 # Может быть sync InvalidArgument (service validateNICAddressCardinality)
-                 # либо async через DB CHECK (миграция 0018) → Operation Failed.
-                 "pm.test('400 sync OR 200 sync (Operation потом fails)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                 "if (pm.response.code === 400) {",
-                 "  pm.test('grpc INVALID_ARGUMENT', () => { const j = pm.response.json(); pm.expect(j.code, JSON.stringify(j)).to.eql(3); });",
-                 "  pm.environment.unset('opId');",
-                 "} else {",
-                 "  const j = pm.response.json(); pm.environment.set('opId', j.id || '');",
-                 "}",
-             ]),
-        Step(name="poll-and-assert-fail", method="GET", path="/operations/{{opId}}",
-             test_script=[
-                 "if (!pm.environment.get('opId')) return;",
-                 "// Worker должен failed'ить с InvalidArgument (cardinality CHECK).",
-                 "let _tries = 0; const _MAX = 8;",
-                 "const _step = () => {",
-                 "  pm.sendRequest({",
-                 "    url: pm.environment.get('baseUrl') + '/operations/' + pm.environment.get('opId'),",
-                 "    method: 'GET',",
-                 "    header: { 'Authorization': 'Bearer ' + pm.environment.get('jwtProjectAdminA1') },",
-                 "  }, (err, res) => {",
-                 "    let j = null; try { j = res.json(); } catch (e) {}",
-                 "    if (j && j.done) {",
-                 "      pm.test('Operation failed: cardinality v4≤1 violated', () => pm.expect(!!j.error, JSON.stringify(j)).to.eql(true));",
-                 "      pm.test('error code InvalidArgument (3) or FailedPrecondition (9)', () => pm.expect(j.error.code).to.be.oneOf([3, 9]));",
-                 "    } else if (++_tries < _MAX) { setTimeout(_step, 500); }",
-                 "    else { pm.test('op resolved in time', () => pm.expect.fail('op did not finish')); }",
-                 "  });",
-                 "};",
-                 "_step();",
+                 # ИСХОД НАЗВАН ОДИН, ПОТОМУ ЧТО ОН ОДИН.
+                 #
+                 # Прежняя редакция принимала `oneOf([200, 400])` и объясняла это тем,
+                 # что отказ «может быть» синхронным либо асинхронным через DB-CHECK.
+                 # Выбора нет: `validateNICAddressCardinality` стоит в create.go:108
+                 # БЕЗУСЛОВНО и ДО того, как минтится Operation, поэтому 200 на этом
+                 # входе недостижим. Утверждение, принимающее и успех, и отказ, —
+                 # отсутствие утверждения: сними проверку кардинальности из сервиса,
+                 # и кейс останется зелёным (он примет 200 и уйдёт в мёртвую ветку).
+                 # DB-CHECK 0018 остаётся атомарным backstop'ом гонки, а не вторым
+                 # законным ответом на этот запрос.
+                 *assert_status(400),
+                 *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                 "pm.test('отказ называет поле и потолок', () => {",
+                 "  const j = pm.response.json();",
+                 "  pm.expect(j.message, pm.response.text())",
+                 "    .to.eql('at most one IPv4 address per network interface (use multiple NICs for multi-IP)');",
+                 "  const fv = ((j.details || []).find(d => (d.fieldViolations || []).length) || {}).fieldViolations || [];",
+                 "  pm.expect(fv.map(v => v.field), pm.response.text()).to.include('v4_address_ids');",
+                 "});",
+                 "pm.environment.unset('opId');",
              ]),
         # Cleanup addresses (NIC не создалось → не блокирует).
         Step(name="del-addrA", method="DELETE", path="/vpc/v1/addresses/{{addrIdA}}",
@@ -641,27 +632,20 @@ CASES.append(Case(
                    "name": "nic-m6-{{runId}}",
                    "v6AddressIds": ["{{addrIdA}}", "{{addrIdB}}"]},
              test_script=[
-                 "pm.test('400 sync OR 200 sync (Operation fails)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                 "if (pm.response.code === 400) { pm.environment.unset('opId'); }",
-                 "else { const j = pm.response.json(); pm.environment.set('opId', j.id || ''); }",
-             ]),
-        Step(name="poll-fail", method="GET", path="/operations/{{opId}}",
-             test_script=[
-                 "if (!pm.environment.get('opId')) return;",
-                 "let _t = 0;",
-                 "const _s = () => pm.sendRequest({",
-                 "  url: pm.environment.get('baseUrl') + '/operations/' + pm.environment.get('opId'),",
-                 "  method: 'GET',",
-                 "  header: { 'Authorization': 'Bearer ' + pm.environment.get('jwtProjectAdminA1') },",
-                 "}, (err, res) => {",
-                 "  let j = null; try { j = res.json(); } catch (e) {}",
-                 "  if (j && j.done) {",
-                 "    pm.test('op failed cardinality v6≤1', () => pm.expect(!!j.error).to.eql(true));",
-                 "    pm.test('code 3 or 9', () => pm.expect(j.error.code).to.be.oneOf([3, 9]));",
-                 "  } else if (++_t < 8) { setTimeout(_s, 500); }",
-                 "  else { pm.test('op resolved', () => pm.expect.fail('timeout')); }",
+                 # Тот же довод, что у v4-близнеца: проверка кардинальности стоит
+                 # безусловно и до Operation (helpers.go:50), поэтому 200 недостижим,
+                 # а ветка опроса за ним недостижима вместе с ним. Асинхронного
+                 # исхода у этого входа нет — есть только backstop на гонку.
+                 *assert_status(400),
+                 *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                 "pm.test('отказ называет поле и потолок', () => {",
+                 "  const j = pm.response.json();",
+                 "  pm.expect(j.message, pm.response.text())",
+                 "    .to.eql('at most one IPv6 address per network interface (use multiple NICs for multi-IP)');",
+                 "  const fv = ((j.details || []).find(d => (d.fieldViolations || []).length) || {}).fieldViolations || [];",
+                 "  pm.expect(fv.map(v => v.field), pm.response.text()).to.include('v6_address_ids');",
                  "});",
-                 "_s();",
+                 "pm.environment.unset('opId');",
              ]),
         Step(name="del-addrA-v6", method="DELETE", path="/vpc/v1/addresses/{{addrIdA}}",
              test_script=["pm.test('del 200|400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",

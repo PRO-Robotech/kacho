@@ -150,20 +150,36 @@ def _setup_lb(name_suffix: str, lb_type: str = "INTERNAL"):
     ]
 
 
-def _cleanup_lb():
-    return [
+def _cleanup_lb(reclaim_subnet: bool = True):
+    # `reclaim_subnet` ЗЕРКАЛИТ ТО, ЧТО ПОДГОТОВКА ДЕЙСТВИТЕЛЬНО ВЫДЕЛИЛА.
+    #
+    # Уборка подсети эмитилась всегда, включая случаи с EXTERNAL-родителем, который
+    # подсеть не выделяет вовсе (и `_setup_lb` явно снимает `lstSubnetId`). Прежняя
+    # редакция считала это безобидным: «DELETE попадёт в коллекционный путь и
+    # безвредно 4xx-нется». На деле неопределённое имя newman оставляет ЛИТЕРАЛОМ,
+    # то есть шаг отправлял `/vpc/v1/subnets/{{lstSubnetId}}` как есть — и это ровно
+    # то, что страж адреса обязан назвать. На боевом прогоне 2026-07-31 он и назвал:
+    # три срабатывания, ровно по числу папок с внешним родителем
+    # (LST-CR-CRUD-AUTO-VIP, LST-CR-CRUD-BYO, LST-DEL-CRUD-OK) — и ни одного больше.
+    #
+    # Условие тут структурное, а не рантаймовое: провизионила подсеть подготовка или
+    # нет, известно на генерации. Поэтому шаг не «терпит отсутствие предмета», а
+    # просто не появляется там, где предмета нет.
+    steps = [
         Step(name="cleanup-lb", method="DELETE", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
+    ]
+    if not reclaim_subnet:
+        return steps
+    return steps + [
         # Best-effort reclaim of the per-case INTERNAL subnet (lstSubnetId), now that its only
         # referrer — the parent LB whose VIP was allocated from it — is deleted (VIP recycled on
         # LB delete → subnet becomes empty → deletable). Leaking it accumulated subnets in the
         # shared network and exhausted the /24 space → 'Subnet CIDRs can not overlap' on later
-        # runs (the wandering flake this suite fixes). Guarded + fully tolerant: when no subnet
-        # was provisioned this case (EXTERNAL setup unset lstSubnetId), the DELETE hits the
-        # collection path and 4xx's harmlessly (opId cleared → the poll no-ops); a transient
-        # 'subnet not empty' during VIP free-lag is also tolerated (residual leak covered by the
-        # widened CIDR entropy). It NEVER fails the case.
+        # runs (the wandering flake this suite fixes). A transient 'subnet not empty' during
+        # VIP free-lag is tolerated (residual leak covered by the widened CIDR entropy);
+        # it NEVER fails the case. What it no longer does is run without a subject.
         Step(name="cleanup-lst-subnet", method="DELETE", path=f"{_VPC_SUBNETS}/{{{{lstSubnetId}}}}",
              test_script=[
                  "pm.test('subnet reclaim best-effort (never fails the case)', () => "
@@ -231,7 +247,7 @@ CASES.append(Case(
                           "  pm.expect(j.v4AddressId).to.match(/^adr[a-z0-9]+$/));"]),
              "/^adr[a-z0-9]+$/.test(pm.response.json().v4AddressId || '')"),
         *_cleanup_lst(),
-        *_cleanup_lb(),
+        *_cleanup_lb(reclaim_subnet=False),
     ],
 ))
 
@@ -280,7 +296,7 @@ CASES.append(Case(
                           "  pm.expect(j.v4AddressId).to.eql(pm.environment.get('existingAddressId')));"]),
              "!!pm.response.json().v4AddressId"),
         *_cleanup_lst(),
-        *_cleanup_lb(),
+        *_cleanup_lb(reclaim_subnet=False),
     ],
 ))
 
@@ -397,7 +413,7 @@ CASES.append(Case(
              test_script=[*assert_status(200),
                           "pm.test('parent LB VIP survives listener delete', () => "
                           "  pm.expect(pm.response.json().v4AddressId).to.eql(pm.environment.get('_lbVipBefore')));"]),
-        *_cleanup_lb(),
+        *_cleanup_lb(reclaim_subnet=False),
     ],
 ))
 

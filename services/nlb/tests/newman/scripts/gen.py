@@ -231,7 +231,7 @@ def assert_absent_id_rejected() -> List[str]:
     ]
 
 
-def assert_refused_sync_or_async(what: str, sync_codes=(400,)) -> List[str]:
+def assert_refused_sync_or_async(what: str, sync_codes=(400,), async_lane: bool = True) -> List[str]:
     """The request under test is REFUSED, by whichever of the two lawful lanes decides it.
 
     Kachō mutations answer with an Operation (ban #9), so a refusal has two shapes and a
@@ -256,9 +256,27 @@ def assert_refused_sync_or_async(what: str, sync_codes=(400,)) -> List[str]:
     refusal — the gateway can deny before the backend looks at the body (`403`), and a
     resource it cannot resolve reads as absent (`404`). Every entry must be a REFUSAL;
     `200` is supplied by this helper as the async lane and belongs nowhere else.
+
+    `async_lane=False` — THE SECOND LANE DOES NOT EXIST FOR THIS INPUT, so naming it
+    would be a promise the product cannot break. Use it only where no Operation can be
+    minted at all, and say why at the call site. Measured case: an input naming a project
+    that does not exist. `project_id` is the scope the edge resolves for the anti-BOLA
+    check, so an unresolvable one is denied BEFORE the backend reads the body — there is
+    no path on which a worker gets to refuse it later. With the lane declared anyway,
+    `opId` stays unset and the paired poll addresses `{{opId}}` as a literal; the address
+    guard names it, and rightly — the step had no subject. Two of nlb's fifteen red
+    assertions on the production-posture run of 2026-07-31 were exactly that, and the
+    other eleven users of this helper DO reach the async lane, which is why the lane is
+    parameterised rather than removed.
     """
-    codes = ", ".join(str(c) for c in (*sync_codes, 200))
+    codes = ", ".join(str(c) for c in ((*sync_codes, 200) if async_lane else sync_codes))
     named = "/".join(str(c) for c in sync_codes)
+    if not async_lane:
+        return [
+            "pm.environment.unset('opId');",
+            f"pm.test('{what} refused synchronously ({named}) — no Operation is minted', () => "
+            f"  pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([{codes}]));",
+        ]
     return [
         "pm.environment.unset('opId');",
         f"pm.test('{what} refused (sync {named}, or an Operation that fails)', () => "

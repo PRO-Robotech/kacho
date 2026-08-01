@@ -581,16 +581,16 @@ CASES.append(Case(
                  "  pm.expect((pm.response.json().message || '')).to.include("
                  "    'has a listener wired to a target group; repoint before Move'));",
              ]),
-        poll_operation_until_done(),
-        Step(name="check-fp", method="GET", path="/operations/{{opId}}",
-             test_script=[
-                 "const j = pm.response.json();",
-                 # 9 = listener-wired-TG blocks the move (invariant). On a lane where
-                 # _suiteProjectCrossId is unseeded the worker rejects on dst-project
-                 # existence FIRST (InvalidArgument 3, "Project not found") — also lawful.
-                 "if (j.error) pm.test('move rejected (FailedPrecondition 9, or dst-fixture-absent InvalidArgument 3)', () => "
-                 "  pm.expect(j.error.code).to.be.oneOf([3, 9]));",
-             ]),
+        # ЗДЕСЬ БЫЛИ ДВА ШАГА ОПРОСА ОПЕРАЦИИ, И ОПЕРАЦИИ У НИХ НЕ БЫЛО.
+        #
+        # Move отказывает СИНХРОННО, поэтому `move-rejected` выше сам снимает `opId`
+        # — и следом шли опрос и `check-fp`, адресованные `{{opId}}`, которого
+        # больше нет. До стража адреса они уходили литералом и молча 4xx-ились;
+        # страж их назвал (2 из 15 красных nlb боевого прогона 2026-07-31).
+        # Утверждение внутри `check-fp` вдобавок стояло под `if (j.error)`, то есть
+        # исчезало ровно в том случае, который обязано было ловить.
+        # Отказ утверждён полностью и синхронно на самом `move-rejected`:
+        # код, полоса grpc и дословный текст. Опрашивать нечего.
         # cleanup: delete listener (releases the TG ref) → delete TG → LB
         Step(name="del-lst", method="DELETE", path="/nlb/v1/listeners/{{lstId}}",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -1259,9 +1259,12 @@ CASES.append(Case(
              # answers that it does not exist (400/404). What must never happen is the LB
              # being created in a project that is not there — which is what accepting a
              # bare 200 permitted, with nothing polled afterwards to contradict it.
+             # Асинхронной полосы у этого входа нет: `project_id` — та самая область,
+             # которую край резолвит для анти-BOLA проверки, поэтому нерезолвимый
+             # проект отвергается ДО тела запроса, и Operation не минтится никогда.
              test_script=assert_refused_sync_or_async("unknown project_id",
-                                                     sync_codes=(400, 403, 404))),
-        poll_operation_until_done(must_fail=True),
+                                                     sync_codes=(400, 403, 404),
+                                                     async_lane=False)),
     ],
 ))
 
@@ -2214,9 +2217,12 @@ CASES.append(Case(
              # destination scope. All of those are refusals; the move SUCCEEDING into a
              # project that does not exist is not, and that is what a bare 200 was allowed
              # to be.
+             # ...и раз проверка синхронна ДО появления строки Operation — как этот же
+             # комментарий и говорит, — асинхронной полосы нет. Она была объявлена, и
+             # парный опрос адресовал `{{opId}}`, который никто не захватывал.
              test_script=assert_refused_sync_or_async("unknown destination project",
-                                                     sync_codes=(400, 403, 404))),
-        poll_operation_until_done(must_fail=True),
+                                                     sync_codes=(400, 403, 404),
+                                                     async_lane=False)),
         *_cleanup_lb(),
     ],
 ))
