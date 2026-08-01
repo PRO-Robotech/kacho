@@ -1,0 +1,57 @@
+=== RUN   TestStaleClaimSweepIsTakenByName
+    staleclaimsweep_test.go:308: маркер "refuted-refusal-is-transient": вхождений 7, на момент посадки было 0.
+        Расхождение — НАХОДКА, а не повод обновить число: перепись ведётся по имени механизма, и «починил N из N» проверяемо только сверкой двух чисел.
+        Зачем эта запись: Утверждение опровергнуто деревом на двух уровнях: применитель nlb относит отказ в правах к терминальному классу, и то же делает общая библиотека дренажа для КАЖДОГО применителя. До правки — 7 строк в 6 файлах.
+        Условие снятия: TestStaleClaimPremiseHolds перестанет держаться, то есть отказ в правах снова начнёт классифицироваться как повторяемый. Тогда запрет станет вредным, и снимать его нужно вместе с ним, а не молча.
+        Координаты (7):
+          services/nlb/internal/apps/kacho/api/listener/create.go:353: // register-drainer classifies PermissionDenied as transient and short-circuits the
+          services/nlb/internal/apps/kacho/api/listener/update_label_revoke_test.go:239: "the register-drainer classifies PermissionDenied as TRANSIENT and short-circuits, so the "+
+          services/nlb/internal/apps/kacho/api/listener/update_label_revoke_test.go:253: // by a module proxy. The register-drainer treats PermissionDenied as transient and
+          services/nlb/internal/apps/kacho/api/loadbalancer/helpers_test.go:51: // was refused. Worse, the register-drainer treats PermissionDenied as transient
+          services/nlb/internal/apps/kacho/api/loadbalancer/payloads.go:57: // register-drainer treats PermissionDenied as transient and short-circuits, its
+          services/nlb/internal/apps/kacho/api/targetgroup/create.go:262: // register-drainer treats PermissionDenied as transient and short-circuits, its
+          services/nlb/internal/apps/kacho/api/targetgroup/create_test.go:310: // because the register-drainer classifies PermissionDenied as transient and
+    staleclaimsweep_test.go:308: маркер "refuted-partition-unblock-deadline": вхождений 6, на момент посадки было 0.
+        Расхождение — НАХОДКА, а не повод обновить число: перепись ведётся по имени механизма, и «починил N из N» проверяемо только сверкой двух чисел.
+        Зачем эта запись: Конечный срок разблокировки партиции приписан состоянию, которое до него не доходит: строка, помеченная повторяемой, удерживается ниже порога отравления и блокирует свою партицию НЕОГРАНИЧЕННО, а строка, помеченная терминальной, исключается из блокирующего набора сразу. До правки — 6 строк в 6 файлах.
+        Условие снятия: TestStaleClaimPremiseHolds перестанет держаться: удержание ниже порога исчезнет из библиотеки дренажа, и конечный срок снова станет описанием исхода.
+        Координаты (6):
+          services/nlb/internal/apps/kacho/api/listener/create.go:355: // (10, backoff 1s→30s ≈ 150s). Since the drainer claims partition-head-only on
+          services/nlb/internal/apps/kacho/api/listener/update_label_revoke_test.go:255: // marked sent: it retries to MaxAttempts (10, backoff 1s→30s ≈ 150s) and only then
+          services/nlb/internal/apps/kacho/api/loadbalancer/helpers_test.go:53: // (≈150s) and, because the claim is partition-head-only on resource_id, blocked
+          services/nlb/internal/apps/kacho/api/loadbalancer/payloads.go:58: // presence kept the row un-sent to MaxAttempts (≈150s), head-of-line-blocking
+          services/nlb/internal/apps/kacho/api/targetgroup/create.go:263: // presence kept the row un-sent to MaxAttempts (≈150s), head-of-line-blocking
+          services/nlb/internal/apps/kacho/api/targetgroup/create_test.go:311: // short-circuits, its presence kept the row un-sent for MaxAttempts (≈150s) —
+    staleclaimsweep_test.go:308: маркер "removed-subtraction-claimed-live": вхождений 4, на момент посадки было 0.
+        Расхождение — НАХОДКА, а не повод обновить число: перепись ведётся по имени механизма, и «починил N из N» проверяемо только сверкой двух чисел.
+        Зачем эта запись: Третий потребитель снятого вычитания. Файл утверждал, что вердикт CI считается с поправкой на список исключений, и что сырые отказы этим списком покрыты. Списка нет с 06b8fc8d. Совет «читайте сырые числа» верен и сохранён — заменена ПРЕДПОСЫЛКА, а не рекомендация. До правки — 4 строки.
+        Условие снятия: вычитание вернётся в общий гейт как исполняемый код — это проверяет TestStaleClaimPremiseHolds; тогда утверждения снова станут верными.
+        Координаты (4):
+          deploy/scripts/newman-e2e.sh:139: # to the pre-seed behaviour (external-create cases red → whitelist), never aborts the run.
+          deploy/scripts/newman-e2e.sh:189: # GATED = the gate CI actually grades with (known-RED whitelist + DNS-isolation
+          deploy/scripts/newman-e2e.sh:193: # RAW stays printed: the whitelist must never become a way of not seeing.
+          deploy/scripts/newman-e2e.sh:205: echo "[e2e] NOTE: raw failures are covered by the known-RED whitelist — read them, do not extend the list to keep this green."
+    staleclaimsweep_test.go:317: отрицательный результат объявлен: маркер "pre-whitelist" — вхождений ноль (осмотрено файлов в области: 5806)
+    staleclaimsweep_test.go:322: перепись: прочитано текстовых файлов 5806 (двоичных пропущено 6, самоцитирующих 1); маркеров в реестре 5; вхождений найдено 18
+--- FAIL: TestStaleClaimSweepIsTakenByName (7.91s)
+=== RUN   TestStaleClaimRosterCoversKnownOccurrences
+    staleclaimsweep_test.go:379: предпосылка: совпадений НАДпредиката 10, из них законных перечислено 3, непокрытых 0
+--- PASS: TestStaleClaimRosterCoversKnownOccurrences (0.47s)
+=== RUN   TestStaleClaimLegitimateHitsStillHaveSubject
+--- PASS: TestStaleClaimLegitimateHitsStillHaveSubject (0.16s)
+=== RUN   TestStaleClaimSelfReferenceStillHasSubject
+--- PASS: TestStaleClaimSelfReferenceStillHasSubject (0.00s)
+=== RUN   TestStaleClaimPremiseHolds
+=== RUN   TestStaleClaimPremiseHolds/отказ_в_правах_терминален_у_применителя_nlb
+=== RUN   TestStaleClaimPremiseHolds/отказ_в_правах_терминален_в_общей_библиотеке
+=== RUN   TestStaleClaimPremiseHolds/повторяемая_строка_удерживается_ниже_порога
+=== RUN   TestStaleClaimPremiseHolds/вычитание_из_вердикта_не_исполняется
+    staleclaimsweep_test.go:524: предпосылка: исполняемых упоминаний вычитания в общем гейте — 0 (прочитано строк: 270)
+--- PASS: TestStaleClaimPremiseHolds (0.00s)
+    --- PASS: TestStaleClaimPremiseHolds/отказ_в_правах_терминален_у_применителя_nlb (0.00s)
+    --- PASS: TestStaleClaimPremiseHolds/отказ_в_правах_терминален_в_общей_библиотеке (0.00s)
+    --- PASS: TestStaleClaimPremiseHolds/повторяемая_строка_удерживается_ниже_порога (0.00s)
+    --- PASS: TestStaleClaimPremiseHolds/вычитание_из_вердикта_не_исполняется (0.00s)
+FAIL
+FAIL	github.com/PRO-Robotech/kacho/internal/repohygiene	8.573s
+FAIL
