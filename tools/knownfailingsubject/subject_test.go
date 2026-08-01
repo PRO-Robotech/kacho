@@ -105,9 +105,9 @@ const liveDeclaration = `# RESULTS
 
 ## Known failing — product bugs
 
-| Case | Diverges | Since | Noticed when fixed |
+| Case | Diverges | Since | Tracked |
 |---|---|---|---|
-| ` + "`SVC-GET-CRUD-OK`" + ` | Get of own resource answers 500 | 2026-07-30 | ` + "`PRO-Robotech/kacho#4242`" + ` closes, or this gate reports the case passing |
+| ` + "`SVC-GET-CRUD-OK`" + ` | Get of own resource answers 500 | 2026-07-30 | ` + "`PRO-Robotech/kacho#4242`" + `. Снимается-когда: a run of ` + "`SVC-GET-CRUD-OK`" + ` reports zero failed assertions. |
 `
 
 // ─── (а) a declaration whose case is not in the suite ────────────────────────
@@ -366,7 +366,8 @@ func TestLowercaseStepNameResolves(t *testing.T) {
 
 ## Known failing — product bugs
 
-- `+"`inv-get-account-allow-warm-cache`"+` — grant→check warm-cache window, `+"`PRO-Robotech/kacho#4242`"+`, since 2026-07-30; noticed when this gate reports it passing.
+- `+"`inv-get-account-allow-warm-cache`"+` — grant→check warm-cache window, `+"`PRO-Robotech/kacho#4242`"+`, since 2026-07-30.
+  Снимается-когда: a run of `+"`inv-get-account-allow-warm-cache`"+` reports zero failed assertions.
 `, map[string][]string{"SVC-GET-CRUD-OK — get own resource": {"inv-get-account-allow-warm-cache"}})
 
 	rep, err := Scan(Options{Root: root, IssueState: openTracker})
@@ -500,6 +501,7 @@ func TestBacktickSpanAcrossLinesDoesNotHideTheNextName(t *testing.T) {
 > **Under investigation** — `+"`SVC-LST-CRUD-OK`"+` fails with `+"`no address pool resolved"+`
 > `+"for address … (family=0)`"+`, and `+"`SVC-GET-CRUD-OK`"+` is the same root cause.
 > Tracked in `+"`PRO-Robotech/kacho#4242`"+`.
+> Снимается-когда: a run of `+"`SVC-LST-CRUD-OK`"+` reports zero failed assertions.
 `, map[string][]string{
 		"SVC-GET-CRUD-OK — get own resource": {"get"},
 		"SVC-LST-CRUD-OK — lists things":     {"list"},
@@ -511,5 +513,112 @@ func TestBacktickSpanAcrossLinesDoesNotHideTheNextName(t *testing.T) {
 	}
 	if rep.Census.SubjectsResolved != 2 {
 		t.Fatalf("both named cases must be read as subjects, got %+v", rep.Census)
+	}
+}
+
+// ─── the retirement condition: tied to the DEFECT, not to the tracker ────────
+//
+// The tests below are one injection proof of one rule. A declaration must say what
+// has to become TRUE ABOUT THE DEFECT for it to go, and that sentence must name
+// something this gate can look at.
+//
+// The dimension exists because both automatic expiries the gate already had are
+// reachable only from OUTSIDE the defect: check 3 asks the tracker, which answers
+// about an ISSUE, and check 2 asks a run report, which is usually absent — and then
+// "still red" degrades to UNPROVEN and the row stands forever. Measured on this tree
+// at ee0591b: eight declarations, twenty subjects, zero run reports, so the only
+// thing holding any of them up was an open ticket. One row — vpc SG-NET-08/09 — was
+// fixed in the product eleven days BEFORE its ticket was filed, so no state the
+// ticket could ever reach was evidence about the defect.
+
+// retirementFixture builds a declaration whose retirement clause is `clause`.
+func retirementFixture(clause string) string {
+	return "# RESULTS\n\n## Known failing — product bugs\n\n" +
+		"- `SVC-GET-CRUD-OK` diverges: Get of own resource answers 500. " +
+		"Tracked in `PRO-Robotech/kacho#4242`.\n" +
+		"  Снимается-когда: " + clause + "\n"
+}
+
+// TestFiresWhenTheRecordSaysNothingAboutItsOwnRetirement — a declaration that never
+// says how it ends. This is the shape every row on this tree wore.
+func TestFiresWhenTheRecordSaysNothingAboutItsOwnRetirement(t *testing.T) {
+	root := t.TempDir()
+	suite(t, root, "svc", "# RESULTS\n\n## Known failing — product bugs\n\n"+
+		"- `SVC-GET-CRUD-OK` diverges: Get of own resource answers 500. "+
+		"Tracked in `PRO-Robotech/kacho#4242`.\n",
+		map[string][]string{"SVC-GET-CRUD-OK — get own resource": {"get"}})
+
+	rep, err := Scan(Options{Root: root, IssueState: openTracker})
+	if err == nil {
+		t.Fatalf("a declaration that never says how it ends was accepted; census %+v", rep.Census)
+	}
+	if !containsAll(rep.Findings, "retirement condition") {
+		t.Fatalf("finding must name the missing dimension, got: %v", rep.Findings)
+	}
+}
+
+// TestFiresWhenRetirementIsOnlyTheTracker is the sharp half. "Delete this row when
+// the ticket closes" LOOKS like an expiry and is not one: a ticket is a note about a
+// defect, not the defect itself. Both rows this rule was written for cited open
+// tickets while the product had already been fixed.
+func TestFiresWhenRetirementIsOnlyTheTracker(t *testing.T) {
+	root := t.TempDir()
+	suite(t, root, "svc", retirementFixture("`PRO-Robotech/kacho#4242` is closed."),
+		map[string][]string{"SVC-GET-CRUD-OK — get own resource": {"get"}})
+
+	rep, err := Scan(Options{Root: root, IssueState: openTracker})
+	if err == nil {
+		t.Fatalf("a tracker-only retirement clause was accepted; census %+v", rep.Census)
+	}
+	if !containsAll(rep.Findings, "retirement condition", "tracker") {
+		t.Fatalf("finding must say the clause names only the tracker, got: %v", rep.Findings)
+	}
+}
+
+// TestSilentWhenRetirementNamesTheDefect is the other direction, and it is what keeps
+// the rule from being a word-count: the SAME shape, with a clause naming something the
+// gate can look at, must produce nothing. Two legitimate coordinates are covered — the
+// subject itself (a run of it going green retires the row) and a path in the tree.
+func TestSilentWhenRetirementNamesTheDefect(t *testing.T) {
+	const codePath = "services/svc/internal/dto/security_group.go"
+	for _, tc := range []struct{ name, clause string }{
+		{"names the subject", "a run of `SVC-GET-CRUD-OK` reports zero failed assertions."},
+		{"names a path", "`" + codePath + "` serialises every branch of the target oneof."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			// The path coordinate is checked against the tree, so the fixture must
+			// really contain it — naming a path that exists only in the developer's
+			// repository would make this control pass for the wrong reason.
+			mustWrite(t, filepath.Join(root, filepath.FromSlash(codePath)), "package dto\n")
+			suite(t, root, "svc", retirementFixture(tc.clause),
+				map[string][]string{"SVC-GET-CRUD-OK — get own resource": {"get"}})
+
+			rep, err := Scan(Options{Root: root, IssueState: openTracker})
+			if err != nil {
+				t.Fatalf("gate fires on a legitimate retirement clause: %v", rep.Findings)
+			}
+			if rep.Census.RetirementClauses != 1 {
+				t.Fatalf("census must count the clauses it read, got %+v", rep.Census)
+			}
+		})
+	}
+}
+
+// TestFiresWhenTheRetirementCoordinateHasRotted — the clause named a path, and the
+// path is gone. A condition pointing at nothing is the same unfalsifiable statement as
+// no condition, one indirection later, and it is what a condition decays into on its
+// own: the defect gets fixed, the file gets moved, the row stays.
+func TestFiresWhenTheRetirementCoordinateHasRotted(t *testing.T) {
+	root := t.TempDir()
+	suite(t, root, "svc", retirementFixture("`services/svc/internal/gone.go` stops doing it."),
+		map[string][]string{"SVC-GET-CRUD-OK — get own resource": {"get"}})
+
+	rep, err := Scan(Options{Root: root, IssueState: openTracker})
+	if err == nil {
+		t.Fatalf("a retirement clause pointing at nothing was accepted; census %+v", rep.Census)
+	}
+	if !containsAll(rep.Findings, "retirement condition") {
+		t.Fatalf("finding must name the dimension, got: %v", rep.Findings)
 	}
 }

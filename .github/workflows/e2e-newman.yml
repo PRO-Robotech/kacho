@@ -50,6 +50,17 @@ concurrency:
   group: e2e-newman-${{ github.ref }}
   cancel-in-progress: true
 
+# СТАТУС КОНВЕЙЕРА НЕ ТЕРЯЕТСЯ. Умолчание GitHub для `run:` — `bash -e {0}`, то
+# есть БЕЗ pipefail: `<проверка> | tee`, `<сборка> | grep` отдают шагу код
+# возврата ПРАВОЙ команды и зеленеют при любом провале левой. `shell: bash` —
+# документированный синоним `bash --noprofile --norc -eo pipefail {0}`;
+# относительно умолчания это добавляет ровно pipefail.
+# Объявляется файлом, а не по шагам, чтобы защита распространялась и на шаги,
+# которых тут ещё нет. Гейт класса — internal/repohygiene/pipefailguard_test.go.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   newman:
     name: newman e2e (kind-стенд)
@@ -410,7 +421,11 @@ jobs:
             echo "───────── $d"
             kubectl -n kacho logs "deploy/$d" --tail=60 2>/dev/null || echo "  (нет)"
           done
-          kubectl -n kacho get events --sort-by=.lastTimestamp | tail -25
+          # Диагностика, а не вердикт: шаг исполняется на УЖЕ упавшем прогоне
+          # (`if: failure()`), и недоступный кластер не должен подменять причину
+          # красноты своей. С `pipefail` (объявлен файлом) отказ kubectl иначе
+          # стал бы кодом возврата шага.
+          kubectl -n kacho get events --sort-by=.lastTimestamp | tail -25 || echo "  (события недоступны)"
 
       # if: always() — кластер надо снести и когда прогон упал. Иначе красный job
       # оставляет за собой ~5 ГБ на диске, где свободно 11, и следующая СБОРКА падает на

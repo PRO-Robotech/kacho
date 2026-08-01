@@ -52,6 +52,17 @@ concurrency:
   group: security-scan-${{ github.ref }}
   cancel-in-progress: true
 
+# СТАТУС КОНВЕЙЕРА НЕ ТЕРЯЕТСЯ. Умолчание GitHub для `run:` — `bash -e {0}`, то
+# есть БЕЗ pipefail: `<проверка> | tee`, `<сборка> | grep` отдают шагу код
+# возврата ПРАВОЙ команды и зеленеют при любом провале левой. `shell: bash` —
+# документированный синоним `bash --noprofile --norc -eo pipefail {0}`;
+# относительно умолчания это добавляет ровно pipefail.
+# Объявляется файлом, а не по шагам, чтобы защита распространялась и на шаги,
+# которых тут ещё нет. Гейт класса — internal/repohygiene/pipefailguard_test.go.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   gosec:
     name: gosec (Go static analysis)
@@ -111,8 +122,15 @@ jobs:
           # анализа выглядел ровно как чистота. Текстовая сводка на stdout отвечает на
           # оба вопроса, на которые SARIF не отвечает: строки `Golang errors in file:`
           # (дерево не загрузилось) и перепись `Files : N` (сколько файлов прочитано).
+          # Код возврата gosec НЕ является вердиктом ЭТОГО шага (вердикт — ниже,
+          # по SARIF и переписи; см. `exit 0` в конце блока). Он снимается ЯВНО и
+          # печатается: с `pipefail` (объявлен файлом) находки иначе оборвали бы
+          # шаг на этой строке, до дедупликации тегов и до выгрузки в Security-tab.
+          # «Ноль» и «не выполнилось» обязаны различаться и здесь.
+          gosec_rc=0
           "$(go env GOPATH)/bin/gosec" -exclude-dir=pkg/api -stdout -verbose text \
-            -fmt sarif -out gosec.sarif ./... | tee gosec-summary.txt
+            -fmt sarif -out gosec.sarif ./... | tee gosec-summary.txt || gosec_rc=$?
+          echo "gosec завершился с кодом $gosec_rc (находки роняют не этот шаг, а гейт ниже)"
 
           # gosec пишет ДУБЛИ в rule properties.tags, а codeql-валидатор SARIF их
           # отвергает ("contains duplicate item") → upload-sarif падает. Дедупим теги.
@@ -194,7 +212,12 @@ jobs:
           if grep -q 'Golang errors in file' gosec-summary.txt; then
             echo "::error::gosec не смог загрузить часть дерева — это отказ анализа, а не"
             echo "::error::чистота. Пустой отчёт здесь означает «не сканировали»:"
-            grep -A2 'Golang errors in file' gosec-summary.txt | head -20
+            # Печать диагностики, а не вердикт: вердикт — `exit 1` строкой ниже.
+            # `head` закрывает вход после двадцатой строки, отчего `grep` получает
+            # SIGPIPE, и с `pipefail` конвейер отдал бы 141 ровно на длинной
+            # сводке — то есть отказ читался бы тем сильнее, чем больше улик.
+            # И выборка, и обрезка делаются ОДНОЙ командой — конвейера здесь нет.
+            awk '/Golang errors in file/{c=3} c-->0 && n++<20' gosec-summary.txt
             exit 1
           fi
           files=$(sed -nE 's/^[[:space:]]*Files[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' gosec-summary.txt | tail -1)

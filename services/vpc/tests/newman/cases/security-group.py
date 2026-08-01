@@ -722,12 +722,26 @@ CASES.append(Case(
 ))
 
 # SG, привязанный к NIC через security_group_ids[], нельзя удалить. Within-service
-# refcheck реализован в repo `securityGroupWriter.Delete` (issue #27, fixed):
-# ВНУТРИ writer-TX `SELECT id … FOR UPDATE` + `EXISTS(security_group_ids @>
-# jsonb_build_array($id))` → FailedPrecondition (code 9) «security group is in use
-# by network interface(s)». Проверка+DELETE в одной TX (не TOCTOU). Раньше был
-# persistent-RED (rule #13) — теперь ожидаемо GREEN.
-# verifies https://github.com/PRO-Robotech/kacho-vpc/issues/27
+# refcheck реализован в repo `securityGroupWriter.Delete`: ВНУТРИ writer-TX
+# `SELECT id … FOR UPDATE` + `EXISTS(security_group_ids @> jsonb_build_array($id))`
+# → FailedPrecondition (code 9) «security group is in use by network interface(s)».
+# Проверка+DELETE в одной TX (не TOCTOU).
+#
+# ЗДЕСЬ СТОЯЛА ПОМЕТКА `# verifies …/kacho-vpc/issues/27`, И ОНА ПЕРЕЖИЛА СВОЙ
+# ПРЕДМЕТ. Пометка означает «кейс ожидаемо КРАСНЫЙ, пока дефект открыт» (rule #13),
+# то есть выкупает его из «всё обязано быть зелёным». Дефект закрыт: отказ
+# реализован (`internal/repo/kacho/pg/security_group.go`) и доказан тремя
+# интеграционными тестами против настоящей СУБД — `TestCQRS_SG_Delete_
+# BlockedByNICReference`, `…_Concurrent_Referenced_AllBlocked`,
+# `…_Concurrent_Unreferenced_ExactlyOne` (прогон 2026-08-01: 3/3 PASS, 61.8 с).
+# Соседняя строка этого же комментария и таблица в docs/RESULTS.md обе называли
+# дефект исправленным — то есть пометка противоречила тексту вокруг себя.
+#
+# Тикет при этом ОТКРЫТ (`PRO-Robotech/kacho-vpc#27`, state=OPEN на 2026-08-01), и
+# в этом суть: срок жизни пометки был привязан к СОСТОЯНИЮ ТИКЕТА, а тикет — не
+# дефект. Гейт `services/storage/tools/auditknownfailing` снимает запись по
+# ЗАКРЫТОМУ тикету и потому не снял бы эту НИКОГДА. Устаревшее «известно, что
+# красное» опаснее устаревшего красного: второе зовёт чинить, первое — не чинить.
 CASES.append(Case(
     id="SG-DEL-NEG-NIC-ATTACHED",
     title="Delete SG, прилинкованного к NIC через security_group_ids → FailedPrecondition (verifies #27, fixed)",

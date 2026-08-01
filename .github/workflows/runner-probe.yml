@@ -14,6 +14,17 @@ on:
 permissions:
   contents: read
 
+# СТАТУС КОНВЕЙЕРА НЕ ТЕРЯЕТСЯ. Умолчание GitHub для `run:` — `bash -e {0}`, то
+# есть БЕЗ pipefail: `<проверка> | tee`, `<сборка> | grep` отдают шагу код
+# возврата ПРАВОЙ команды и зеленеют при любом провале левой. `shell: bash` —
+# документированный синоним `bash --noprofile --norc -eo pipefail {0}`;
+# относительно умолчания это добавляет ровно pipefail.
+# Объявляется файлом, а не по шагам, чтобы защита распространялась и на шаги,
+# которых тут ещё нет. Гейт класса — internal/repohygiene/pipefailguard_test.go.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   probe:
     # ЦЕЛИМСЯ В МЕТКУ, а не в имя. `beget-runner` — ИМЯ ранера; метки у него дефолтные
@@ -29,7 +40,7 @@ jobs:
           uname -a; echo
           echo "=== CPU: $(nproc) ядер"
           free -h 2>/dev/null | sed 's/^/  /' || echo "  free нет"
-          echo "=== диск:"; df -h / "$HOME" 2>/dev/null | sed 's/^/  /'
+          echo "=== диск:"; df -h / "$HOME" 2>/dev/null | sed 's/^/  /' || echo "  df нет"
           echo "=== в контейнере? "; [ -f /.dockerenv ] && echo "  да (/.dockerenv)" || echo "  нет"
 
       - name: инструменты
@@ -52,7 +63,10 @@ jobs:
         continue-on-error: true
         run: |
           if command -v kubectl >/dev/null 2>&1; then
-            kubectl config current-context 2>&1 | sed 's/^/  контекст: /'
+            # Этот шаг — ОПИСЬ окружения, а не гейт: отсутствие контекста здесь
+            # законный ответ, и с `pipefail` (объявлен файлом) он иначе стал бы
+            # кодом возврата шага.
+            kubectl config current-context 2>&1 | sed 's/^/  контекст: /' || echo "  контекст: нет"
             kubectl get ns >/dev/null 2>&1 && echo "  ✓ кластер отвечает" || echo "  ✗ кластера нет (нужен kubeconfig-секрет)"
           else
             echo "  kubectl отсутствует"

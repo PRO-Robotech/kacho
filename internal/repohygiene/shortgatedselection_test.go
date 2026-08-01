@@ -1,0 +1,427 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+// shortgatedselection_test.go — пакет, чьи тесты пропускаются под кратким
+// режимом, обязан быть либо в отборе интеграционной джобы, либо в переписи
+// исключённых, с числом.
+//
+// # Предмет
+//
+// Быстрая джоба гоняет `go test ./... -race -short`. Всё, что под `-short`
+// пропускается, обязана подобрать интеграционная джоба — а она отбирает пакеты
+// ПО ПУТИ: `./services/<svc>/...`, сузив до `/internal/(repo|clients)`. Отбор
+// по пути и свойство «тест пропускается под кратким» — разные вещи, и там, где
+// они расходятся, тест не исполняется НИГДЕ. Ни одна джоба при этом не краснеет:
+// пропуск — не провал, а пакет, отдавший ноль исполненных тестов, печатает `ok`.
+//
+// Замер на ee0591b: 32 таких пакета, 368 пропущенных тестов. В девяти из них
+// под кратким исполняется РОВНО НОЛЬ тестов (63 пропуска, 0 проходов) — то есть
+// их вклад в сигнал CI пуст, а выглядит он как зелёный:
+//
+//	services/iam/internal/apps/kacho/api/audit      20 пропущено, 0 пройдено
+//	services/nlb/internal/apps/kacho/jobs           20 / 0
+//	pkg/migrations/common                           10 / 0
+//	services/iam/internal/apps/kacho/api/readauthz   6 / 0
+//	services/nlb/internal/migrations                 3 / 0
+//	services/{iam,storage,vpc}/internal/migrations   по 1 / 0
+//	services/registry/internal/dataplane/e2e         1 / 0
+//
+// Пять последних строк — стражи сноса колонок: под кратким каждый печатает
+// перепись «измерено 0 из N», помечает себя пропущенным и выходит нулём.
+// Написаны они правильно (пропуск честно объявлен), но объявление некому
+// прочитать — джоба зелёная, а колонки не считал никто.
+//
+// # Почему гейт, а не правка отбора — и чего правка стоит
+//
+// Расширение отбора меняет время прогона, то есть это решение с ценой, и
+// принимает его владелец. Гейт цену не платит и решения не принимает: он лишь
+// не даёт разрыву РАСТИ молча. Пакет, ушедший из-под наблюдения, обязан быть
+// назван здесь поимённо — исключение с предметом, а не умолчание.
+//
+// Цена измерена, а не оценена (прогон 2026-08-01, эта же машина, Docker 29.3.1,
+// `-race -count=1`, все 31 пакет ЗЕЛЁНЫЕ, ноль FAIL):
+//
+//   - под кратким режимом — 14 с;
+//   - без краткого, серийно (`-p 1`, как гоняет интеграционная джоба) —
+//     1988 с, то есть 33.1 мин. Отношение — 142x.
+//
+// Серия — верхняя граница, а не предложение. Существующая интеграционная джоба
+// идёт МАТРИЦЕЙ по сервисам, поэтому wall-clock — самый долгий шард, а не сумма.
+// Разложение этих же пакетов по такой матрице (замер того же прогона):
+//
+//	iam 19.8 мин · pkg/* 9.7 · nlb 2.2 · compute 0.9 · registry 0.1 · vpc 0.1 · storage 0.1
+//
+// То есть добавление стоит примерно +19.8 мин к самому долгому шарду (iam), и
+// внутри него 7.6 мин занимает ОДИН пакет — `api/access_binding`. Дешёвые
+// сервисы (registry/vpc/storage, суммарно 0.3 мин) можно внести хоть сейчас
+// почти даром; iam и pkg/* — отдельное решение владельца, возможно со своим
+// шардом. Здесь ничего из этого НЕ сделано намеренно: замер и предложение —
+// не то же самое, что правка.
+//
+// # Единица наблюдения обязана совпадать с единицей утверждения
+//
+// Наивный предикат «в файлах пакета есть `testing.Short()`» НЕДОСТАТОЧЕН, и это
+// измерено, а не предположено: он находит 27 пакетов из 32. Пять пропускают
+// тесты через ОБЩИЙ хелпер, в котором и стоит `testing.Short()`
+// (`internal/dropguard/dropguardtest`, `services/iam/internal/testsupport/fgatest`),
+// а в самих пакетах этого литерала нет ни разу. `services/iam/internal/authzmap`
+// — крайний случай: ноль вхождений литерала и девять пропущенных тестов.
+// Поэтому предикат замыкается на один уровень: пакет считается краткогейтящим,
+// если литерал есть у него ИЛИ у пакета, который импортируют его тесты.
+//
+// Радиус замыкания (один уровень) — это ограничение, и оно объявлено: хелпер,
+// зовущий другой хелпер, гейту не виден. Предпосылка проверяется тестом ниже —
+// список хелперов не захардкожен, он ВЫЧИСЛЯЕТСЯ обходом дерева, поэтому новый
+// хелпер подхватывается сам, а не ждёт, пока кто-то вспомнит про этот файл.
+//
+// # Перепись
+//
+// «Ноль находок» обязано отличаться от «ноль прочитанного»: гейт печатает,
+// сколько пакетов осмотрел и сколько признал краткогейтящими; пустой обход —
+// провал.
+package repohygiene
+
+import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strings"
+	"testing"
+)
+
+// integrationSelectionRe — отбор интеграционной джобы, скопированный из
+// корневого Makefile (цель test-integration). Тест ниже сверяет, что копия не
+// разошлась с оригиналом: гейт, судящий по устаревшему представлению об отборе,
+// врёт тем увереннее, чем дольше живёт.
+var integrationSelectionRe = regexp.MustCompile(`^services/[^/]+/internal/(repo|clients)(/|$)`)
+
+// shortGatedOutsideSelection — пакеты, которые пропускают тесты под кратким
+// режимом и НЕ попадают в отбор интеграционной джобы, то есть не исполняются
+// без краткого нигде.
+//
+// Это не whitelist «так и надо»: это ПЕРЕПИСЬ долга с числом. Запись, у которой
+// не осталось предмета (пакет исчез или перестал гейтиться), — находка: иначе
+// список переживает свой повод и достаётся следующему как слепая зона.
+var shortGatedOutsideSelection = []string{
+	"pkg/authz",
+	"pkg/db",
+	"pkg/grpcsrv",
+	"pkg/migrations/common",
+	"pkg/operations",
+	"pkg/outbox",
+	"pkg/outbox/drainer",
+	"pkg/outbox/metrics",
+	"pkg/outbox/reconciler",
+	"services/compute/internal/handler",
+	"services/compute/internal/migrations",
+	"services/iam/internal/apps/kacho/api/access_binding",
+	"services/iam/internal/apps/kacho/api/audit",
+	"services/iam/internal/apps/kacho/api/cluster",
+	"services/iam/internal/apps/kacho/api/internal_iam",
+	"services/iam/internal/apps/kacho/api/readauthz",
+	"services/iam/internal/apps/kacho/api/sa_keys",
+	"services/iam/internal/apps/kacho/api/session_revocations",
+	"services/iam/internal/apps/kacho/seed",
+	"services/iam/internal/authzcascade",
+	"services/iam/internal/authzmap",
+	"services/iam/internal/migrations",
+	"services/iam/internal/service",
+	"services/nlb/internal/apps/kacho/api/internal_lifecycle",
+	"services/nlb/internal/apps/kacho/api/loadbalancer",
+	"services/nlb/internal/apps/kacho/api/operation",
+	"services/nlb/internal/apps/kacho/api/targetgroup",
+	"services/nlb/internal/apps/kacho/jobs",
+	"services/nlb/internal/migrations",
+	"services/registry/internal/dataplane/e2e",
+	"services/storage/internal/migrations",
+	"services/vpc/internal/migrations",
+}
+
+// TestShortGatedPackagesAreEitherSelectedOrCounted — сам гейт против дерева.
+func TestShortGatedPackagesAreEitherSelectedOrCounted(t *testing.T) {
+	root := repoRoot(t)
+	gated, scanned := shortGatedPackages(t, root)
+	t.Logf("осмотрено пакетов с тестами: %d; краткогейтящих: %d", scanned, len(gated))
+
+	if scanned == 0 || len(gated) == 0 {
+		t.Fatalf("обход пуст (осмотрено %d, краткогейтящих %d) — гейт ничего не прочитал, "+
+			"а значит ничего и не доказал", scanned, len(gated))
+	}
+	for _, f := range judgeShortGateSelection(gated, shortGatedOutsideSelection) {
+		t.Errorf("%s", f)
+	}
+}
+
+// TestShortGateSelectionJudgeFiresAndStaysSilent — инъекция в обе стороны.
+//
+// Гейт выше на дереве зелёный, и зелёный сам по себе ничего не доказывает:
+// ровно так же он выглядел бы, если бы вердикт не умел краснеть. Поэтому
+// решающая часть вынесена в чистую функцию и проверяется подставными входами —
+// каждый случай, который она ОБЯЗАНА поймать, и каждый, который обязана
+// пропустить.
+func TestShortGateSelectionJudgeFiresAndStaysSilent(t *testing.T) {
+	const inSelection = "services/vpc/internal/repo/kacho/pg"
+	const outside = "services/iam/internal/authzmap"
+
+	t.Run("краснеет: краткогейтящий пакет вне отбора и вне переписи", func(t *testing.T) {
+		f := judgeShortGateSelection([]string{outside}, nil)
+		if len(f) != 1 || !strings.Contains(f[0], outside) {
+			t.Fatalf("гейт не назвал незаявленный пакет: %v", f)
+		}
+	})
+
+	t.Run("молчит: тот же пакет, названный в переписи", func(t *testing.T) {
+		if f := judgeShortGateSelection([]string{outside}, []string{outside}); len(f) != 0 {
+			t.Fatalf("гейт краснеет на объявленном долге: %v", f)
+		}
+	})
+
+	t.Run("молчит: краткогейтящий пакет ВНУТРИ отбора, в переписи не нужен", func(t *testing.T) {
+		if f := judgeShortGateSelection([]string{inSelection}, nil); len(f) != 0 {
+			t.Fatalf("гейт требует заявлять то, что интеграционная джоба и так гоняет: %v", f)
+		}
+	})
+
+	t.Run("краснеет: запись переписи без предмета", func(t *testing.T) {
+		f := judgeShortGateSelection(nil, []string{"pkg/gone"})
+		if len(f) != 1 || !strings.Contains(f[0], "pkg/gone") {
+			t.Fatalf("исключение без предмета не найдено: %v", f)
+		}
+	})
+
+	t.Run("краснеет: пакет из отбора попал в перепись — она не про него", func(t *testing.T) {
+		f := judgeShortGateSelection([]string{inSelection}, []string{inSelection})
+		if len(f) != 1 || !strings.Contains(f[0], inSelection) {
+			t.Fatalf("перепись приняла пакет, который и так в отборе: %v", f)
+		}
+	})
+}
+
+// judgeShortGateSelection — вердикт, отделённый от измерения. gated — пакеты,
+// пропускающие тесты под кратким режимом; declared — перепись исключённых.
+func judgeShortGateSelection(gated, declared []string) []string {
+	left := map[string]bool{}
+	for _, p := range declared {
+		left[p] = true
+	}
+	var findings []string
+
+	for _, pkg := range gated {
+		if integrationSelectionRe.MatchString(pkg) {
+			// Интеграционная джоба его подберёт. Заявлять его в переписи не
+			// просто лишнее — это ложь о долге, поэтому такая запись находка.
+			continue
+		}
+		if !left[pkg] {
+			findings = append(findings, "пакет "+pkg+" пропускает тесты под кратким режимом и "+
+				"НЕ входит в отбор интеграционной джобы (`/internal/(repo|clients)` внутри "+
+				"services/), то есть без краткого не исполняется нигде. Либо внеси его в отбор, "+
+				"либо назови в shortGatedOutsideSelection — долг с именем, а не умолчание")
+		}
+		delete(left, pkg)
+	}
+
+	rest := make([]string, 0, len(left))
+	for p := range left {
+		rest = append(rest, p)
+	}
+	sort.Strings(rest) // порядок находок не должен зависеть от обхода карты
+	for _, p := range rest {
+		if integrationSelectionRe.MatchString(p) {
+			findings = append(findings, "shortGatedOutsideSelection называет "+p+", но этот пакет "+
+				"ВХОДИТ в отбор интеграционной джобы — перепись описывает долг, которого нет, "+
+				"и завышает его на единицу")
+			continue
+		}
+		findings = append(findings, "shortGatedOutsideSelection называет "+p+", но этот пакет "+
+			"больше не пропускает тестов под кратким режимом (или исчез) — записи, которой "+
+			"нечего исключать, в списке не место: она достанется следующему как слепая зона")
+	}
+	return findings
+}
+
+// TestIntegrationSelectionCopyMatchesTheMakefile — предпосылка гейта. Отбор
+// живёт в корневом Makefile; здесь его КОПИЯ. Разойдутся — и гейт будет судить
+// по несуществующему отбору, оставаясь при этом зелёным.
+func TestIntegrationSelectionCopyMatchesTheMakefile(t *testing.T) {
+	root := repoRoot(t)
+	// #nosec G304 -- читается корневой Makefile этого же репозитория.
+	raw, err := os.ReadFile(filepath.Join(root, "Makefile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = `/internal/(repo|clients)(/|$$)`
+	if !strings.Contains(string(raw), want) {
+		t.Fatalf("в корневом Makefile больше нет отбора %q — копия в этом файле "+
+			"(integrationSelectionRe) описывает отбор, которого не существует", want)
+	}
+}
+
+// TestShortGateHelperClosureHasSubject — предпосылка замыкания. Утверждение
+// «литерала в пакете нет, но тесты пропускаются» держится на существовании
+// хелперов с `testing.Short()` в НЕ-тестовом коде. Не станет их — замыкание
+// превратится в мёртвый код, а комментарий выше — в ложь.
+func TestShortGateHelperClosureHasSubject(t *testing.T) {
+	root := repoRoot(t)
+	helpers := shortGateHelpers(t, root)
+	if len(helpers) == 0 {
+		t.Fatal("в дереве не осталось не-тестового хелпера с testing.Short() — замыкание " +
+			"на один уровень потеряло предмет; упростите предикат до прямого литерала")
+	}
+	t.Logf("хелперы, гейтящие за чужой пакет: %v", helpers)
+
+	// И положительный контроль: замыкание обязано ловить хотя бы один пакет,
+	// который прямым литералом не ловится. Без него «замыкание работает»
+	// неотличимо от «замыкание никогда не срабатывало».
+	direct := map[string]bool{}
+	for _, p := range packagesWithLiteralShort(t, root) {
+		direct[p] = true
+	}
+	gated, _ := shortGatedPackages(t, root)
+	var onlyViaHelper []string
+	for _, p := range gated {
+		if !direct[p] {
+			onlyViaHelper = append(onlyViaHelper, p)
+		}
+	}
+	if len(onlyViaHelper) == 0 {
+		t.Fatal("ни один пакет не признан краткогейтящим ТОЛЬКО через хелпер — замыкание " +
+			"ничего не добавляет к прямому литералу, и его нельзя считать проверенным")
+	}
+	t.Logf("пакетов, видимых только через хелпер: %d %v", len(onlyViaHelper), onlyViaHelper)
+}
+
+// ─── измерение ───────────────────────────────────────────────────────────────
+
+// shortGatedPackages возвращает repo-относительные пути пакетов, чьи тесты
+// пропускаются под `-short`: прямой литерал ИЛИ импорт хелпера с литералом.
+func shortGatedPackages(t *testing.T, root string) (pkgs []string, scanned int) {
+	t.Helper()
+	helpers := shortGateHelpers(t, root)
+	helperSet := map[string]bool{}
+	for _, h := range helpers {
+		helperSet[h] = true
+	}
+
+	seen := map[string]bool{}
+	withTests := map[string]bool{}
+	walkGoFiles(t, root, func(rel string, raw []byte) {
+		if !strings.HasSuffix(rel, "_test.go") {
+			return
+		}
+		dir := filepath.ToSlash(filepath.Dir(rel))
+		withTests[dir] = true
+		body := executablePart(rel, raw)
+		if strings.Contains(body, "testing.Short()") {
+			seen[dir] = true
+			return
+		}
+		for h := range helperSet {
+			if strings.Contains(body, `"github.com/PRO-Robotech/kacho/`+h+`"`) {
+				seen[dir] = true
+				return
+			}
+		}
+	})
+
+	for d := range seen {
+		pkgs = append(pkgs, d)
+	}
+	sort.Strings(pkgs)
+	return pkgs, len(withTests)
+}
+
+// packagesWithLiteralShort — только прямой литерал. Существует ради
+// положительного контроля замыкания, а не ради вердикта.
+func packagesWithLiteralShort(t *testing.T, root string) []string {
+	t.Helper()
+	seen := map[string]bool{}
+	walkGoFiles(t, root, func(rel string, raw []byte) {
+		if strings.HasSuffix(rel, "_test.go") &&
+			strings.Contains(executablePart(rel, raw), "testing.Short()") {
+			seen[filepath.ToSlash(filepath.Dir(rel))] = true
+		}
+	})
+	out := make([]string, 0, len(seen))
+	for d := range seen {
+		out = append(out, d)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// shortGateHelpers — пакеты НЕ-тестового кода, содержащие `testing.Short()`.
+// Вычисляются обходом, не захардкожены: новый хелпер подхватывается сам.
+func shortGateHelpers(t *testing.T, root string) []string {
+	t.Helper()
+	seen := map[string]bool{}
+	walkGoFiles(t, root, func(rel string, raw []byte) {
+		if strings.HasSuffix(rel, "_test.go") {
+			return
+		}
+		if strings.Contains(executablePart(rel, raw), "testing.Short()") {
+			seen[filepath.ToSlash(filepath.Dir(rel))] = true
+		}
+	})
+	out := make([]string, 0, len(seen))
+	for d := range seen {
+		out = append(out, d)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// executablePart возвращает объявления и импорты файла, отбросив комментарии и
+// ЗАТЕРЕВ содержимое строковых литералов (пути импортов сохраняются отдельно —
+// по ним и опознаётся хелпер).
+//
+// Обе зачистки оплачены: слово `testing.Short()` стоит и в объяснениях — в этом
+// файле в том числе, — и оно же стоит ЗДЕСЬ строковым литералом, потому что этот
+// файл его и ищет. Гейт по сырому тексту признал бы краткогейтящим любой пакет,
+// где про краткий режим просто написано, — и первым таким пакетом стал бы сам
+// `internal/repohygiene`. Это не гипотеза: до зачистки литералов гейт ровно так
+// и покраснел на собственном каталоге, стоило внести файл под контроль версий.
+//
+// Разбор не удался — возвращается сырой текст: тихо уменьшить обход хуже, чем
+// один ложный положительный, потому что первое невидимо.
+func executablePart(rel string, raw []byte) string {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, rel, raw, 0)
+	if err != nil {
+		return string(raw)
+	}
+	body := append([]byte(nil), raw...)
+	ast.Inspect(f, func(n ast.Node) bool {
+		lit, ok := n.(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			return true
+		}
+		start := fset.Position(lit.Pos()).Offset
+		end := fset.Position(lit.End()).Offset
+		for i := start; i >= 0 && i < end && i < len(body); i++ {
+			body[i] = ' '
+		}
+		return true
+	})
+
+	var b strings.Builder
+	for _, decl := range f.Decls {
+		start := fset.Position(decl.Pos()).Offset
+		end := fset.Position(decl.End()).Offset
+		if start >= 0 && end <= len(body) && start < end {
+			b.Write(body[start:end])
+			b.WriteByte('\n')
+		}
+	}
+	// Пути импортов возвращаются из РАЗОБРАННОГО дерева, а не из затёртого
+	// текста: по ним опознаётся импорт хелпера, и затирать их нельзя.
+	for _, imp := range f.Imports {
+		b.WriteString(imp.Path.Value)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}

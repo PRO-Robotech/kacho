@@ -55,10 +55,33 @@ Persistent-RED кейсы — тест корректен, но GREEN требу
 исключение из «100% pass» с явной декларацией (rule #13). Кейс краснеет до фикса
 прод-бага; в case-файле стоит `# verifies <issue-url>`, `pm.test.skip` запрещён.
 
-| Case | Suite | Verifies | Что доказывает | Причина RED |
-|---|---|---|---|---|
-| `SG-NET-08-RULE-SAME-NETWORK-OK` | security-group | [`kacho#106`](https://github.com/PRO-Robotech/kacho/issues/106) (заведён 2026-07-30 — до этого запись стояла «issue pending», то есть истечь ей было нечем) | Правило с SG-target (`securityGroupId`) обязано отдаваться в `Get/List`-ответе SG (`rule.securityGroupId` == целевой SG) | `dto/toproto/security_group.go::securityGroup.toPb` мапит в `SecurityGroupRule.Target` **только** ветку `CidrBlocks`; ветки `SecurityGroupId` и `PredefinedTarget` (домен несёт `r.SecurityGroupID`/`r.PredefinedTarget`) не сериализуются → `Target=nil` → `rule.securityGroupId=undefined`. Signature: `expected [ undefined ] to include '<sgId>'`. Фикс (не в test-only PR, ban #13): добавить обе ветки в `toPb` + regression. |
-| `SG-NET-09-RULE-SAME-NETWORK-UPDATERULES-OK` | security-group | [`kacho#106`](https://github.com/PRO-Robotech/kacho/issues/106) | То же через `UpdateRules` (PATCH `…/rules`): добавленное SG-target-правило видно в `Get` с `securityGroupId` | Та же прод-первопричина — `toPb` роняет `SecurityGroupId`/`PredefinedTarget` target. RED до прод-фикса `toPb`. |
+Записей здесь сейчас нет. Ниже — история снятых, с доказательством на каждую.
+
+> **СНЯТО 2026-08-01 — `SG-NET-08-RULE-SAME-NETWORK-OK` и
+> `SG-NET-09-RULE-SAME-NETWORK-UPDATERULES-OK` (`kacho#106`): предмет мёртв.**
+> Запись утверждала, что `toPb` сериализует **только** ветку `CidrBlocks`, а
+> `SecurityGroupId`/`PredefinedTarget` роняет в `Target=nil`, из-за чего
+> `rule.securityGroupId` приходит `undefined`. На этой ревизии это неверно: в
+> `services/vpc/internal/dto/toproto/security_group.go` сериализуются **все три**
+> взаимоисключающие ветки target-oneof, и рядом стоит комментарий, объясняющий, зачем.
+>
+> Проверено на трёх уровнях, а не перечитыванием кода:
+> `TestDTO_SecurityGroupRule_AllTargetOneofBranches` — PASS; против настоящей СУБД
+> (testcontainers) `TestIntegration_SGNet_CreateSameNetworkRule_OK`,
+> `TestIntegration_SGNet_UpdateRulesSameNetwork_OK` (утверждает round-trip
+> `rec.Rules[0].SecurityGroupID == sgA`) и `TestIntegration_SGNet_CidrAndPredefinedRulesUnaffected`
+> — 3/3 PASS за 4.0 с (прогон 2026-08-01). Разбор запроса на входе тоже на месте:
+> `services/vpc/internal/apps/kacho/api/securitygroup/helpers.go` читает
+> `rs.GetSecurityGroupId()`. Цепочка «запрос → хранение → чтение» замкнута целиком.
+>
+> **Почему запись пережила фикс.** Фикс приехал 2026-07-19 (`33cf29a`), а тикет
+> `kacho#106` заведён 2026-07-30 — **на одиннадцать дней позже**. Тикет завели именно
+> затем, чтобы записи было чем истечь (прежняя редакция строки это и признаёт: «до
+> этого запись стояла „issue pending“, то есть истечь ей было нечем»). Получилась
+> обратная зависимость: не строка ждала дефекта, а тикет ждал строку. Никакое
+> состояние тикета не было свидетельством о продукте — он открылся, когда чинить
+> было уже нечего. Отсюда правило «условие снятия называет дефект, а не тикет»
+> (гейт `tools/knownfailingsubject`).
 
 
 > **ЗАКРЫТО 2026-07-31 — записи снесены вместе с предметом.** Набор `SG-URL-VAL-*`
@@ -87,6 +110,15 @@ Persistent-RED кейсы — тест корректен, но GREEN требу
 > Кейс перестал быть persistent-RED — ожидаемо GREEN при следующем прогоне suite против стенда.
 > (До 2026-07-05 он маскировался условным `pm.test.skip`; SEC-hardening r2 сделал его
 > безусловным persistent-RED + issue #27, что и держало давление на прод-фикс.)
+>
+> **2026-08-01 — пометка снята с кейса.** Строка `# verifies …/kacho-vpc/issues/27` в
+> `cases/security-group.py` пережила свой предмет на месяц: она означает «кейс ожидаемо
+> КРАСНЫЙ» и выкупала его из «всё обязано быть зелёным», хотя абзац выше и её собственный
+> соседний комментарий оба называли дефект исправленным. Отказ доказан тремя
+> интеграционными тестами против настоящей СУБД (прогон 2026-08-01: 3/3 PASS, 61.8 с).
+> Тикет `PRO-Robotech/kacho-vpc#27` при этом **открыт** — и в этом суть: гейт
+> `auditknownfailing` снимает запись по ЗАКРЫТОМУ тикету, поэтому эту не снял бы никогда.
+> Тикет — не дефект. Закрыть его артефактом (коммит фикса) — отдельное действие наружу.
 
 > **Под расследованием — [`kacho#107`](https://github.com/PRO-Robotech/kacho/issues/107)** (заведён
 > 2026-07-30; до этого запись ссылалась только на «сигнатуры переданы исполнителю», то есть
@@ -100,6 +132,25 @@ Persistent-RED кейсы — тест корректен, но GREEN требу
 > seeded geo-зон и/или порядка cleanup). Сигнатуры переданы rpc-implementer'у для доменного
 > разбора; кейсы не форс-гринятся и не whitelist'ятся масками. `get-v6` обёрнут в
 > `retry_until_authorized` (parity с `get-v4`), но GREEN требует резолва пула.
+>
+> **`family=0` в сигнатуре — это IPv4, а не «семейство не задано».** В
+> `services/vpc/internal/apps/kacho/api/addresspool/helpers.go` объявлено
+> `FamilyV4 AddressFamily = iota`, то есть ноль — штатное значение первой ветки.
+> Записано, потому что цифра в сообщении читается как непроставленное поле и уводит
+> на несуществующий баг разбора; настоящий кандидат другой — пустой `network` в том
+> же тексте означает, что резолв пошёл **anycast**-веткой (зона не определилась), а
+> она упирается в **кластерный** zone-independent пул, которого кейс не сеет.
+>
+> **Снимается-когда:** прогон `internal-pool` даёт ноль упавших утверждений на
+> `IPL-ALLOC-POOL-EXHAUSTED`, `IPL-RESOLVE-DUALSTACK-OK` и `IPL-RMCIDR-NEG-INUSE`,
+> ЛИБО каскад в `services/vpc/internal/apps/kacho/api/addresspool/resolve.go`
+> перестаёт требовать кластерный zone-independent пул для адреса без зоны. Условие
+> намеренно НЕ привязано к состоянию `kacho#107`: тикет заведён 2026-07-30, уже
+> после того как запись существовала, и его закрытие или незакрытие ничего не
+> утверждает о продукте. Проверяемого в процессе фальсификатора у этой записи
+> **нет** — предмет живёт в посадке стенда, а не в коде; это единственная такая
+> запись в дереве на 2026-08-01, и она названа здесь, чтобы «не измеряется» не
+> читалось как «измерено и чисто».
 
 > Деплоймент-замечание: suite требует `KACHO_VPC_DEFAULT_SG_INLINE=true`
 > (default) — `*-LSG-CRUD-DEFAULT-SG` / `*-DEL-STATE-DEFAULT-SG` проверяют
