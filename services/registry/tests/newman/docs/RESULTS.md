@@ -12,30 +12,39 @@
 | Control-plane authz | `cases/registry-authz.py` | 9 | all executed | 0 | **GREEN on fe3455** (3 viewer-tier cases fixture-gated → console-only SKIP, no green assertion) |
 | Data-plane OCI proxy + token-exchange | `scripts/dataplane-e2e.sh` | full handshake→push→pull→delete flow | all hard assertions | 0 | **ALL hard assertions GREEN on fe3455** |
 
-## Known failing — product bugs (RG-1 repository-overlay, prod-mode umbrella 2026-07-22)
+## ЗАКРЫТО 2026-08-01 — was «known failing» (RG-1 repository-overlay, prod-mode umbrella 2026-07-22)
 
-Production-mode newman umbrella run (RS256 SA principals via `prodseed_matrix`). The RG-1
-Repository config-overlay control-plane surface is unusable for the registry **owner** →
-whole `registry-repository` suite + repo cases in `registry-redesign`/`registry-authz` RED.
-**Filed: PRO-Robotech/kacho#64 (`bug`, `verified-by:test`). Left RED — not masked.**
+**Обе названные первопричины на этой ревизии устранены в коде.** Ниже — исторический
+отчёт о прогоне 2026-07-22 и доказательство по каждому дефекту. Это **запись**, а не
+объявление: она больше ничего не выкупает из «всё обязано быть зелёным», и если
+какая-то из этих коллекций всё же покраснеет, краснота будет видна как новая, без
+строки, объясняющей её задним числом.
 
-| Collection | Failed (prod-mode) | Class |
-|---|---|---|
-| `registry-repository` | 128 | product bug [`kacho#64`](https://github.com/PRO-Robotech/kacho/issues/64) (repo-create/get/list 404) |
-| `registry-redesign` | 26 (repo cases only) | product bug [`kacho#64`](https://github.com/PRO-Robotech/kacho/issues/64) |
-| `registry-authz` | 4 (repo cases) + 1 | [`kacho#64`](https://github.com/PRO-Robotech/kacho/issues/64) + deny_reasons-detail leak (verify) |
-| `registry` | 2 (list-repos) | product bug [`kacho#64`](https://github.com/PRO-Robotech/kacho/issues/64) Defect B (route-shadow) |
+Тогдашний прогон (production-mode, RS256 SA-принципалы через `prodseed_matrix`):
+`registry-repository` — 128 упавших утверждений, `registry-redesign` — 26 (только
+repo-кейсы), `registry-authz` — 4 + 1, `registry` — 2 (list-repos). Заведено как
+[`kacho#64`](https://github.com/PRO-Robotech/kacho/issues/64).
 
-- **Defect A** — object-scoped owner-tuples for registries don't materialize on the deployed
-  stand (registry→iam owner-registration edge not observably active; startup `edges wired`
-  omits it). Handler per-object Checks (`CreateRepository→registryGate(v_create)`,
-  `GetRepository→checkRepository(v_get)`) deny→NOT_FOUND for the owner. `GET registry` passes
-  via gateway project-scope, so the registry exists & the owner has project access — the object
-  Check is the miss. Persists after 35s ⇒ not read-your-writes EC.
-- **Defect B** — `ListRepositories` (`GET …/repositories`) route-shadowed by `GetRepository`'s
-  `{repository=**}` catch-all → `InvalidArgument "repository is required"` instead of listing.
-- Control-plane only (OCI data-plane push/pull separate). Fix is rpc-implementer/proto work
-  (kacho-registry#43 / kacho-proto#8, RG-1 in-progress); these cases re-green after fix.
+- **Defect A** (owner-tuple реестра не материализуется; ребро регистрации выглядело
+  неактивным) — **закрыт**: `services/registry/cmd/kacho-registry/serve.go` поднимает
+  синхронный регистратор сразу после durable-commit, а рядом — дренаж очереди
+  регистраций с сохранением порядка по ресурсу. Тогдашний вывод «ребро неактивно»
+  делался из того, что стартовая строка `registry→iam edges wired` его не печатает;
+  вывод был неверен — регистрация идёт по **тому же** соединению `:9091`, что и
+  authz-Check, и покрыта полем `authz_addr` этой строки. Наблюдаемость тут
+  действительно слабая, но «не напечатано» не значило «не провязано».
+- **Defect B** (`ListRepositories` перехватывался catch-all'ом `{repository=**}` от
+  `GetRepository`) — **закрыт** порядком объявления в
+  `proto/kacho/cloud/registry/v1/registry_service.proto`: `ListRepositories` объявлен
+  ПОСЛЕ `GetRepository`. Проверено не по комментарию, а по механизму:
+  `runtime.ServeMux.Handle` grpc-gateway v2.29.0 делает **prepend**
+  (`s.handlers[meth] = append([]handler{…}, s.handlers[meth]...)`), поэтому
+  зарегистрированный позже пробуется первым; в сгенерированном
+  `pkg/api/kacho/cloud/registry/v1/registry_service.pb.gw.go` регистрация `GetRepository`
+  идёт раньше регистрации `ListRepositories`, то есть точный маршрут выигрывает.
+- Прогон сюит после этих правок **не выполнялся** (стенда у этой задачи нет), поэтому
+  утверждать «коллекции зелёные» нельзя — утверждается ровно то, что доказано:
+  оба названных дефекта в коде отсутствуют. Замер — за ближайшим прогоном на стенде.
 
 ## REG-1 redesign surface (`cases/registry-redesign.py`, 17 cases) — authored, pending CI
 

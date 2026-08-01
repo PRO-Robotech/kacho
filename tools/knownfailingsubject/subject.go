@@ -34,14 +34,32 @@
 //     suite's collections. A section that declares known-failing and names no
 //     checkable subject at all is itself a finding — otherwise the unreadable part of
 //     these files is exactly where declarations would go to hide.
+//
 //  2. SUBJECT IS STILL RED. Where a run left a report under out/, a declared case
 //     that EXECUTED and produced no failed assertion is a finding: the declaration
 //     outlived its subject. A case that did not run is NOT a pass — it is announced
 //     as unverified and never folded into the verdict.
+//
 //  3. THE RECORD CAN EXPIRE. Every declaration names at least one tracker issue WITH
 //     its repository (`kacho#11`, `kacho-iam#276`, or an issue URL). A bare `#11` is
 //     not accepted: it cannot be resolved, and prose in these files says things like
 //     "ban #6" which are not issues at all. A closed issue is a finding.
+//
+//  4. THE EXPIRY IS TIED TO THE DEFECT, NOT TO THE TRACKER. Every declaration carries
+//     `Снимается-когда:` / `Retired-when:` naming, in backticks, at least one coordinate
+//     this gate can look at: a SUBJECT of that suite (a run of it going green retires the
+//     row) or a PATH that exists in the tree. A clause naming only an issue is a finding,
+//     and so is one whose coordinate has rotted.
+//
+//     This is not a duplicate of (3). An issue is a note ABOUT a defect, and the two move
+//     independently — in BOTH directions. Measured here at ee0591b: eight declarations,
+//     twenty subjects, zero run reports, so check (2) was universally unproven and (3) was
+//     the only expiry standing. It could not have worked. `kacho#106` was filed on
+//     2026-07-30 for a defect fixed on 2026-07-19, eleven days earlier — the issue existed
+//     only to give the row something to expire by, which reverses the dependency: the row
+//     was not waiting on the defect, the ticket was waiting on the row. A stale "this is
+//     known" is worse than a stale "this is red": the second summons someone to fix it,
+//     the first tells them not to bother.
 //
 // # The gate's own premise, stated so it can be falsified
 //
@@ -92,8 +110,10 @@
 // # Census
 //
 // The gate states what it read: suites, docs, collections, reports, declarations,
-// resolved subjects, skipped resolution records. Reading nothing is a finding —
-// "zero findings" must never be reachable from "zero files".
+// resolved subjects, skipped resolution records, and defect-side retirement conditions.
+// Reading nothing is a finding — "zero findings" must never be reachable from "zero
+// files". The retirement count is printed for the same reason: a rule every producer
+// happens to be missing reads exactly like a rule everybody follows.
 //
 // # Relationship to the per-suite gate in services/storage
 //
@@ -152,6 +172,10 @@ type Census struct {
 	Declarations      int
 	SubjectsResolved  int
 	IssuesChecked     int
+	// RetirementClauses is how many declarations stated a defect-side condition for
+	// their own removal. Counted rather than assumed: a rule whose producers are all
+	// missing reads exactly like a rule everybody follows.
+	RetirementClauses int
 }
 
 // Report is the census, the findings, and the dimensions that could not be resolved.
@@ -172,6 +196,11 @@ var (
 	issueRe = regexp.MustCompile(`(?:PRO-Robotech/)?(kacho(?:-[a-z]+)?)(?:#|/issues/)(\d+)`)
 	// declaringRe matches a heading that declares known-failing cases.
 	declaringRe = regexp.MustCompile(`(?i)known[ -]?fail|known[ -]?red|известн\w*[ -]?красн`)
+	// retiredWhenRe marks the sentence stating what must become true ABOUT THE DEFECT
+	// for the record to go. It is a marker rather than free prose because the clause has
+	// to be separable from the rest of the row: the coordinates in it are checked, and
+	// the coordinates elsewhere in the row (the defect's own symptoms) are not.
+	retiredWhenRe = regexp.MustCompile(`(?i)(?:снимается[ -]когда|retired[ -]when)\s*:`)
 	// archivedHeadingRe matches a HEADING that turns its whole section into a record of
 	// something already closed. A heading is a title, so the word is read
 	// case-insensitively ("Closed — was known failing").
@@ -216,6 +245,13 @@ type declaration struct {
 	// these docs wears the same shape (`read-your-writes`, `PRO-Robotech`).
 	softCandidates []string
 	issues         []issueRef
+	// retirement is the text following the record's "Снимается-когда:" / "Retired-when:"
+	// marker — what must become true ABOUT THE DEFECT for the row to go. Empty when the
+	// record carries no marker at all.
+	retirement string
+	// hasRetirement separates "no marker" from "marker with an empty clause": the two
+	// are different mistakes and get different findings.
+	hasRetirement bool
 }
 
 // Scan runs the gate over Root.
@@ -264,6 +300,11 @@ func Scan(o Options) (Report, error) {
 					"%s:%d: known-failing declaration names no issue with its repository "+
 						"(expected `kacho#N` / `kacho-iam#N` / an issue URL) — a declaration nobody "+
 						"can check never expires", r.doc, r.line))
+			}
+			if f, counted := judgeRetirement(o.Root, r, idx); counted {
+				rep.Census.RetirementClauses++
+			} else {
+				rep.Findings = append(rep.Findings, f)
 			}
 			for _, ir := range r.issues {
 				issues[ir] = append(issues[ir], fmt.Sprintf("%s:%d", r.doc, r.line))
@@ -338,6 +379,79 @@ func Scan(o Options) (Report, error) {
 		return rep, nil
 	}
 	return rep, fmt.Errorf("known-failing-subject: %d finding(s)", len(rep.Findings))
+}
+
+// judgeRetirement answers whether a declaration says how it ends, in terms of its
+// own defect. It returns the finding to raise, and whether the clause counted.
+//
+// What is accepted is deliberately narrow: the clause must name, in backticks, at
+// least one coordinate this gate can look at — a SUBJECT of that suite (a run of it
+// going green retires the row) or a PATH that exists in the tree (the code whose
+// behaviour is the defect). Everything else is prose.
+//
+// What is rejected on purpose is the tracker. `kacho#4242 is closed` reads like an
+// expiry and is not one: an issue is a note ABOUT a defect, and the two move
+// independently in both directions. On this tree they had moved apart by eleven days
+// in one row and by a whole mechanism in another, and in a third the issue was filed
+// only to give the row something to expire by — which reversed the dependency: the
+// row was not waiting on the defect, the ticket was waiting on the row.
+//
+// The rejection is not "a clause may not mention its ticket" — it may, and should.
+// It is that a ticket must not be the ONLY thing it names.
+func judgeRetirement(root string, r declaration, idx suiteIndex) (finding string, counted bool) {
+	if !r.hasRetirement {
+		return fmt.Sprintf(
+			"%s:%d: known-failing declaration states no retirement condition — add "+
+				"`Снимается-когда:` naming what must become true ABOUT THE DEFECT (a subject of "+
+				"this suite running green, or a path in the tree). Without it the only expiry left "+
+				"is the tracker, which answers about an issue and not about the product",
+			r.doc, r.line), false
+	}
+
+	var sawTracker bool
+	for _, m := range tickedRe.FindAllStringSubmatch(r.retirement, -1) {
+		// A path is judged on the WHOLE backticked span: tokens() splits on "/", so
+		// `services/vpc/internal/x.go` never survives tokenisation as a path — it
+		// arrives as five unrelated words, none of which is on disk.
+		if pathExists(root, strings.TrimSpace(m[1])) {
+			return "", true
+		}
+		for _, tok := range tokens(m[1]) {
+			if issueRe.MatchString(tok) {
+				sawTracker = true
+				continue
+			}
+			if _, ok := idx.resolve(tok); ok {
+				return "", true
+			}
+		}
+	}
+
+	if sawTracker {
+		return fmt.Sprintf(
+			"%s:%d: the retirement condition names only the tracker — an issue is a note about a "+
+				"defect, not the defect, and the two move apart (one row here was fixed eleven days "+
+				"before its issue was even filed). Name a subject of this suite or a path in the tree",
+			r.doc, r.line), false
+	}
+	return fmt.Sprintf(
+		"%s:%d: the retirement condition names no coordinate this gate can resolve — a condition "+
+			"pointing at nothing is as unfalsifiable as no condition. Name, in backticks, a subject "+
+			"of this suite or a path that exists in the tree",
+		r.doc, r.line), false
+}
+
+// pathExists reports whether tok is a repo-relative path that is really there. It is
+// how a clause naming code is checked, and it is why a moved file retires the clause
+// instead of quietly outliving it.
+func pathExists(root, tok string) bool {
+	if root == "" || !strings.Contains(tok, "/") || strings.Contains(tok, "..") {
+		return false
+	}
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(tok))); err != nil {
+		return false
+	}
+	return true
 }
 
 // subjectsOf returns the subjects a record names: every UPPER-KEBAB case id, plus
@@ -460,6 +574,10 @@ func parseRecords(doc, body string) (records []declaration, declaring []section,
 			if n, err := strconv.Atoi(m[2]); err == nil {
 				rec.issues = append(rec.issues, issueRef{repo: "PRO-Robotech/" + m[1], num: n})
 			}
+		}
+		if loc := retiredWhenRe.FindStringIndex(unwrap(text)); loc != nil {
+			rec.hasRetirement = true
+			rec.retirement = strings.TrimSpace(unwrap(text)[loc[1]:])
 		}
 		rec.caseIDs = dedupe(rec.caseIDs)
 		rec.softCandidates = dedupe(rec.softCandidates)
@@ -848,9 +966,10 @@ func Print(rep Report, out io.Writer) {
 	c := rep.Census
 	_, _ = fmt.Fprintf(out, "known-failing-subject: read %d suite(s), %d results doc(s), %d "+
 		"collection(s), %d run report(s); %d declaring section(s), %d resolution record(s) skipped, "+
-		"%d declaration(s), %d subject(s) resolved, %d issue(s) checked\n",
+		"%d declaration(s), %d subject(s) resolved, %d issue(s) checked, "+
+		"%d defect-side retirement condition(s)\n",
 		c.Suites, c.Docs, c.Collections, c.Reports, c.DeclaringSections, c.ArchivedSections,
-		c.Declarations, c.SubjectsResolved, c.IssuesChecked)
+		c.Declarations, c.SubjectsResolved, c.IssuesChecked, c.RetirementClauses)
 
 	if len(rep.Unverified) > 0 {
 		_, _ = fmt.Fprintf(out, "known-failing-subject: NOT VERIFIED for %d item(s) — printed so that "+
