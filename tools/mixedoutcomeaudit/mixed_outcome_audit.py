@@ -122,6 +122,13 @@ RE_IDENT = re.compile(r"\b([A-Za-z_]\w*)\b")
 RE_FSUB = re.compile(r"\{[^{}]*\}")
 RE_NUM = re.compile(r"\b([1-5]\d\d)\b")
 RE_PMTEST = re.compile(r"pm\.test(?:\.skip)?\(\s*(['\"])(.*?)\1", re.S)
+# Кортеж/список ЦЕЛЫХ КОДОВ, привязанный к имени. Ловит обе формы одинаково:
+# обычное присваивание `sync_codes = (400, 403)` и — что здесь и важно —
+# УМОЛЧАНИЕ В СИГНАТУРЕ `def refuse(..., sync_codes=(400,), ...)`. Умолчание есть
+# та ветка, которая раскрывается у всякого вызывающего, её не указавшего, поэтому
+# читать её обязательно; `RE_ASSIGN` её не видит (он якорится на начало строки и
+# спотыкается о хвост аннотации возвращаемого типа).
+RE_INT_TUPLE = re.compile(r"\b([A-Za-z_]\w*)\s*=\s*[\(\[]\s*((?:[1-5]\d\d)(?:\s*,\s*[1-5]\d\d)*)\s*,?\s*[\)\]]")
 
 
 def strip_js_comments(s: str) -> str:
@@ -178,6 +185,56 @@ def classify(codes):
     has2 = any(200 <= c < 300 for c in codes)
     hasErr = any(c >= 400 for c in codes)
     return has2 and hasErr
+
+
+def resolve_ident(name, tuples, derived, seen=None):
+    """Коды, которые может нести идентификатор. `None` — прочитать не удалось.
+
+    Транзитивно: `codes` собирается из `sync_codes`, а `sync_codes` — умолчание
+    сигнатуры. Останавливаться на первом звене значило бы объявить непрочитанным
+    то, что прочитывается, и наоборот — прочитать половину и промолчать об
+    остатке, а половина списка кодов хуже, чем честное «не прочитал».
+    """
+    if seen is None:
+        seen = set()
+    if name in seen:
+        return None
+    seen.add(name)
+    if name in tuples:
+        return sorted(set(tuples[name]))
+    if name in derived:
+        rhs = derived[name]
+        out = {int(x) for x in RE_NUM.findall(rhs)}
+        for ident in RE_IDENT.findall(rhs):
+            if ident == name:
+                continue
+            sub = resolve_ident(ident, tuples, derived, seen)
+            if sub:
+                out.update(sub)
+        return sorted(out) if out else None
+    return None
+
+
+def resolve_bracket(inner, tuples, derived):
+    """Коды скобки `oneOf([...])`, часть которой — подстановка `{…}`.
+
+    Возвращает `(коды, прочитано)`. КАЖДАЯ подстановка обязана дать хотя бы один
+    код: подстановка, не давшая ничего, — непрочитанная часть списка, и списывать
+    её в «здесь ничего нет» значит повторять ловимый класс уровнем ниже. Именно
+    так предикат и слеп: скобка на месте ⇒ «список прочитан», а из `{codes}` не
+    извлекалось ни одного кода, и пустота уходила в тишину.
+    """
+    codes = {int(x) for x in RE_NUM.findall(RE_FSUB.sub(" ", inner))}
+    for sub in RE_FSUB.findall(inner):
+        got = {int(x) for x in RE_NUM.findall(sub)}
+        for ident in RE_IDENT.findall(sub):
+            r = resolve_ident(ident, tuples, derived)
+            if r:
+                got.update(r)
+        if not got:
+            return [], False
+        codes.update(got)
+    return sorted(codes), True
 
 
 # --- источник 1: исходники кейсов (там, где живут правки) --------------------
@@ -254,6 +311,22 @@ def scan_case_sources(paths):
             if lists:
                 assigns.setdefault(a.group(1), []).extend(lists)
 
+        # Вторая половина той же таблицы — для формы, где список приходит
+        # ПОДСТАНОВКОЙ ВНУТРЬ СКОБОК: `oneOf([{codes}])`.
+        #   tuples  — имя → целые коды, записанные кортежем/списком, включая
+        #             УМОЛЧАНИЕ СИГНАТУРЫ (`sync_codes=(400,)`): это та ветка,
+        #             которая раскрывается у всякого вызывающего, её не указавшего;
+        #   derived — имя → правая часть присваивания без литерального списка
+        #             (`codes = ", ".join(... sync_codes ... 200 ...)`), из которой
+        #             коды добираются транзитивно.
+        tuples, derived = {}, {}
+        for m in RE_INT_TUPLE.finditer(body):
+            tuples.setdefault(m.group(1), []).extend(
+                int(x) for x in RE_NUM.findall(m.group(2)))
+        for a in RE_ASSIGN.finditer(body):
+            if a.group(1) not in tuples and a.group(1) not in assigns:
+                derived.setdefault(a.group(1), a.group(2))
+
         literal_at = {m.start(): m for m in RE_ONEOF.finditer(body)}
 
         for site in RE_ONEOF_ANY.finditer(body):
@@ -261,8 +334,28 @@ def scan_case_sources(paths):
             # аргумент вызова: до закрывающей скобки того же уровня
             arg = body[site.end():body.find(")", site.end()) + 1
                        if body.find(")", site.end()) >= 0 else len(body)]
-            if pos in literal_at:
-                code_lists = [[int(x) for x in RE_NUM.findall(literal_at[pos].group(1))]]
+            inner = literal_at[pos].group(1) if pos in literal_at else None
+            if inner is not None and RE_FSUB.search(inner):
+                # СКОБКА ЕСТЬ, НО ЧАСТЬ ЕЁ — ПОДСТАНОВКА. До этой ветки такой сайт
+                # уходил в ветку литерала, отдавал ПУСТОЙ список кодов и молча
+                # пропадал: ни находкой, ни непрочитанным. Три исхода схлопывались
+                # в «чисто» — то самое смешение, которое гейт и ловит, только на
+                # уровень выше. Пять живых мест дерева записаны этой формой, и
+                # четыре из них — переписи прежней формы `oneOf({codes})`, которую
+                # предикат читать умел.
+                codes, ok = resolve_bracket(inner, tuples, derived)
+                if not ok:
+                    if "response.code" not in body[max(0, pos - 200):pos]:
+                        continue
+                    unreadable.append({
+                        "file": path,
+                        "line": body[:pos].count("\n") + 1,
+                        "arg": " ".join(inner.split())[:120],
+                    })
+                    continue
+                code_lists = [codes]
+            elif inner is not None:
+                code_lists = [[int(x) for x in RE_NUM.findall(inner)]]
             else:
                 code_lists = []
                 for ident in RE_IDENT.findall(arg):
@@ -497,6 +590,65 @@ def self_test():
     )
     f, _, u = scan(src)
     check("однородный литеральный список — не находка и не непрочитанное",
+          not f and not u, f"находок {len(f)}, непрочитанных {len(u)}")
+
+    # ── ФОРМА СО СКОБКАМИ, В КОТОРЫХ СТОИТ ПОДСТАНОВКА ───────────────────────
+    #
+    # Предыдущая редакция считала «скобка на месте» за «список прочитан»: сайт
+    # попадал в ветку литерала, из `{codes}` не извлекалось НИ ОДНОГО кода, пустой
+    # список молча пропускался — и в находки, и в непрочитанное. Три исхода
+    # схлопывались в «чисто». Ровно этой формой записаны пять живых мест дерева, и
+    # четыре из них появились ПЕРЕПИСЬЮ прежней формы `oneOf({codes})`, которую
+    # предикат читать умел: переписав кейсы, мы увели их из-под собственной мерки.
+
+    # (5) КРАСНОЕ: скобка с подстановкой, чей список раскрывается по умолчанию
+    #     сигнатуры и СМЕШИВАЕТ успех с отказом. Живая форма vpc/nlb.
+    src = (
+        'def refuse(what, sync_codes=(400,), async_lane=True):\n'
+        '    codes = ", ".join(str(c) for c in ((*sync_codes, 200) if async_lane else sync_codes))\n'
+        '    return [f"pm.test(\'{what} refused\', () => '
+        'pm.expect(pm.response.code).to.be.oneOf([{codes}]));"]\n'
+    )
+    f, _, u = scan(src)
+    got = sorted({c for x in f for c in x["codes"]})
+    check("скобка с подстановкой прочитана: смешанный список — находка, а не тишина",
+          len(f) == 1 and 200 in got and 400 in got and not u,
+          f"находок {len(f)} codes={got}, непрочитанных {len(u)}")
+
+    # (6) МОЛЧАНИЕ на законном близнеце ТОЙ ЖЕ формы: скобка с подстановкой, чей
+    #     список — только отказы. Без этой половины гейт ловил бы форму, а не
+    #     существо, и был бы снят при первом ложном срабатывании.
+    src = (
+        'def refuse(what, sync_codes=(400, 403, 404)):\n'
+        '    codes = ", ".join(str(c) for c in sync_codes)\n'
+        '    return [f"pm.test(\'{what} refused\', () => '
+        'pm.expect(pm.response.code).to.be.oneOf([{codes}]));"]\n'
+    )
+    f, _, u = scan(src)
+    check("скобка с подстановкой, раскрывшаяся в одни отказы — не находка",
+          not f and not u, f"находок {len(f)}, непрочитанных {len(u)}")
+
+    # (7) КРАСНОЕ: скобка с подстановкой, которая не раскрывается ничем. «Не смог
+    #     прочитать» обязано отличаться от «чисто» и в этой форме тоже.
+    src = (
+        'Case(id="X-CR-VAL", title="Create без поля → 400 InvalidArgument",\n'
+        '     steps=[Step(name="cr", test=f"pm.test(\'rejected\', () => '
+        'pm.expect(pm.response.code).to.be.oneOf([{build_codes(fld)}]));")])\n'
+    )
+    f, _, u = scan(src)
+    check("нераскрываемая подстановка в скобках → непрочитанное, а не «чисто»",
+          len(u) == 1 and not f, f"находок {len(f)}, непрочитанных {len(u)}")
+
+    # (8) МОЛЧАНИЕ: подстановка в скобках над величиной, которая КОДОМ ОТВЕТА не
+    #     является (строковые состояния Operation). Требовать от неё читаемости
+    #     значило бы краснеть на законном.
+    src = (
+        'Case(id="X-OP", title="Operation доходит до терминального состояния",\n'
+        '     steps=[Step(name="poll", test=f"pm.test(\'terminal\', () => '
+        'pm.expect(j.status).to.be.oneOf([{states}]));")])\n'
+    )
+    f, _, u = scan(src)
+    check("подстановка в скобках не над кодом ответа — не непрочитанное",
           not f and not u, f"находок {len(f)}, непрочитанных {len(u)}")
 
     print("\n" + ("PASS: смешанный исход" if rc == 0 else "FAIL: смешанный исход"))
