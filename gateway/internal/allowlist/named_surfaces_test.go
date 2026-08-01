@@ -72,7 +72,19 @@ type namedPath struct {
 	file string
 	line int
 	path string
+	// isRegistryDecl — литерал стоит ВНУТРИ объявления namedButNonexistent,
+	// то есть это сама запись реестра, а не её употребление пробой.
+	//
+	// Различать обязательно: ключ реестра — тоже строковый литерал в тестовом
+	// файле пакета, поэтому без этого признака каждая запись «употребляет» сама
+	// себя и проверка на неиспользуемую запись не может упасть НИКОГДА. Ровно
+	// тот класс, который этот файл и заведён ловить; поймано инъекцией.
+	isRegistryDecl bool
 }
+
+// registryDeclName — имя объявления, литералы внутри которого считаются
+// записями реестра, а не употреблениями.
+const registryDeclName = "namedButNonexistent"
 
 // collectNamedPaths разбирает тестовые файлы пакета и возвращает КАЖДОЕ
 // вхождение пути с координатой. Читается синтаксис, а не текст: строковый
@@ -86,6 +98,7 @@ func collectNamedPaths(t *testing.T) ([]namedPath, int) {
 	fset := token.NewFileSet()
 	var out []namedPath
 	files := 0
+	registryFound := false
 	for _, e := range entries {
 		name := e.Name()
 		if e.IsDir() || !strings.HasSuffix(name, "_test.go") {
@@ -96,6 +109,23 @@ func collectNamedPaths(t *testing.T) ([]namedPath, int) {
 			t.Fatalf("разбор %s: %v", name, perr)
 		}
 		files++
+
+		// Границы объявления реестра в этом файле (если оно здесь).
+		declFrom, declTo := token.NoPos, token.NoPos
+		ast.Inspect(f, func(n ast.Node) bool {
+			vs, ok := n.(*ast.ValueSpec)
+			if !ok {
+				return true
+			}
+			for _, id := range vs.Names {
+				if id.Name == registryDeclName {
+					declFrom, declTo = vs.Pos(), vs.End()
+					registryFound = true
+				}
+			}
+			return true
+		})
+
 		ast.Inspect(f, func(n ast.Node) bool {
 			lit, ok := n.(*ast.BasicLit)
 			if !ok || lit.Kind != token.STRING {
@@ -106,12 +136,18 @@ func collectNamedPaths(t *testing.T) ([]namedPath, int) {
 				return true
 			}
 			out = append(out, namedPath{
-				file: filepath.Base(name),
-				line: fset.Position(lit.Pos()).Line,
-				path: val,
+				file:           filepath.Base(name),
+				line:           fset.Position(lit.Pos()).Line,
+				path:           val,
+				isRegistryDecl: declFrom.IsValid() && lit.Pos() >= declFrom && lit.Pos() < declTo,
 			})
 			return true
 		})
+	}
+	if !registryFound {
+		t.Fatalf("объявление %s не найдено ни в одном разобранном файле — гейт не отличает "+
+			"запись реестра от её употребления, и проверка неиспользуемых записей беспредметна",
+			registryDeclName)
 	}
 	return out, files
 }
@@ -200,10 +236,17 @@ func TestNamedSurfaces_RegistryEntriesStillHaveNoSubject(t *testing.T) {
 
 // TestNamedSurfaces_RegistryIsUsed — обратная сторона: запись реестра, которую
 // НИКТО не называет, тоже беспредметна. Реестр не свалка разрешений.
+//
+// Употреблением считается литерал ВНЕ объявления реестра: сам ключ — тоже
+// строковый литерал в тестовом файле, поэтому без этого различения запись
+// «употребляет» сама себя и проверка не может упасть никогда.
 func TestNamedSurfaces_RegistryIsUsed(t *testing.T) {
 	named, _ := collectNamedPaths(t)
 	used := map[string]struct{}{}
 	for _, n := range named {
+		if n.isRegistryDecl {
+			continue
+		}
 		used[n.path] = struct{}{}
 	}
 	var unused []string
