@@ -104,6 +104,20 @@ func buildContractIndex() *contractIndex {
 // exists. The returned string is the human-readable reason and always names the
 // entry's own coordinates, so a red gate is actionable without reading code.
 func (ci *contractIndex) resolve(fqn string) (resolution, string) {
+	// Canonical form first. phaseAllowlist keys m.allow on the FQN with the
+	// leading slash of gRPC's FullMethod already stripped, so an entry carrying
+	// a slash or stray whitespace can never match a routed call — it is dead in
+	// production. Rejecting it up front matters because the package-linkage
+	// branch below would otherwise classify " grpc.health.v1.Health/Check" as
+	// "the gate cannot see this package", i.e. as a defect in the GATE rather
+	// than in the entry, and a blind-spot report does not get an entry fixed.
+	if fqn != strings.TrimSpace(fqn) {
+		return resolveMalformed, fmt.Sprintf("%q carries leading/trailing whitespace and can never match a routed call", fqn)
+	}
+	if strings.HasPrefix(fqn, "/") {
+		return resolveMalformed, fmt.Sprintf("%q keeps the leading slash of gRPC FullMethod; entries are keyed without it", fqn)
+	}
+
 	slash := strings.IndexByte(fqn, '/')
 	if slash <= 0 || slash == len(fqn)-1 {
 		return resolveMalformed, fmt.Sprintf("%q is not in <proto.package>.<Service>/<Method> form", fqn)
@@ -225,6 +239,29 @@ func TestAllowlistGate_Injection_DeadEntryIsCaughtAndNamed(t *testing.T) {
 		// Naming: the reason must contain enough of the entry to locate it.
 		if !strings.Contains(why, "UserService") && !strings.Contains(why, "GhostService") {
 			t.Errorf("the reason for %q must name the offending service, got %q", injected, why)
+		}
+	}
+
+	// Near-misses of a REAL entry. A minimal probe (a made-up service in a
+	// linked package) is not representative: the shapes actually produced by a
+	// copy-paste are a live FQN with the FullMethod slash still attached, stray
+	// whitespace, or the wrong case. Each is dead in production because
+	// phaseAllowlist compares strings, so each must be reported as a defect in
+	// the ENTRY — never as blindness of the gate, which is a report nobody acts
+	// on by fixing the list.
+	for _, nearMiss := range []string{
+		"/grpc.health.v1.Health/Check",       // FullMethod form, leading slash kept
+		" grpc.health.v1.Health/Check",       // leading whitespace
+		"grpc.health.v1.Health/Check ",       // trailing whitespace
+		"grpc.health.v1.Health/check",        // wrong method case
+		"kacho.cloud.iam.v1.userservice/Get", // wrong service case
+	} {
+		switch r, why := ci.resolve(nearMiss); r {
+		case resolveOK:
+			t.Errorf("near-miss %q must NOT pass — phaseAllowlist would never match it", nearMiss)
+		case resolveNotLinked:
+			t.Errorf("near-miss %q was reported as gate-blindness (%s); it is a dead entry, "+
+				"and reporting it as a gate defect gets the gate 'fixed' instead of the list", nearMiss, why)
 		}
 	}
 }
