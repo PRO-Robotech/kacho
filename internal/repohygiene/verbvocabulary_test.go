@@ -153,6 +153,89 @@ func TestVerbVocabularyRosterEntriesStillHaveSubject(t *testing.T) {
 	t.Logf("перепись: записей реестра с живым предметом: %d из %d", alive, len(verbLiteralRoster))
 }
 
+// TestVerbVocabularyGateImportsNeitherSide — предпосылка НЕЗАВИСИМОСТИ, проверяемая
+// самим гейтом, а не командой в документе.
+//
+// Формулировка обязана быть точной, иначе она ложна. Сохраняемое свойство — НЕ
+// «тестовый пакет не зависит от эмиттера» (у пакета гейта дрейфа такой
+// независимости нет и не было: соседние файлы того же тестового пакета импортируют
+// домен). Свойство таково: ОЖИДАЕМОЕ ЗНАЧЕНИЕ этого гейта не выводится ни из
+// словаря эмиттера, ни из таблицы каталога — оно выводится ТОЛЬКО из модели.
+//
+// Первая редакция этой проверки утверждала «файл гейта не импортирует ни один
+// пакет сервиса» — и была ПУСТОЙ: компилятор Go отвергает такой импорт сам
+// (правило `internal`), поэтому проверка отвечала «да» на условие, которого не
+// бывает. Гейт без предмета — находка, а не защита.
+//
+// Проверяется поэтому ФАКТ, на котором структурная гарантия держится и который
+// может тихо исчезнуть: каждая сверяемая сторона обязана лежать под таким
+// `internal/`, что из каталога гейта её импорт компилятором ЗАПРЕЩЁН. Переезд
+// словаря в импортируемый пакет снимает гарантию бесшумно — с этого момента
+// следующий контрибьютор вправе «упростить» гейт, подставив символ вместо разбора,
+// и обе стороны снова станут источником истины друг для друга.
+func TestVerbVocabularyGateCannotImportEitherSide(t *testing.T) {
+	const gateDir = "internal/repohygiene"
+	if len(verbLiteralRoster) == 0 {
+		t.Fatalf("реестр пуст — проверять недостижимость нечего")
+	}
+	for _, lit := range verbLiteralRoster {
+		if importForbiddenFrom(lit.path, gateDir) {
+			continue
+		}
+		t.Fatalf("%s: %s лежит там, откуда пакет %s ВПРАВЕ его импортировать. "+
+			"Ожидаемое значение гейта обязано выводиться только из модели; пока стороны "+
+			"недостижимы по правилу `internal`, это гарантировано устройством сборки. "+
+			"Переезд снимает гарантию бесшумно — верните словарь под internal/ своего "+
+			"сервиса либо предъявите другую гарантию", lit.path, lit.varName, gateDir)
+	}
+	t.Logf("перепись: сторон проверено на недостижимость из %s: %d", gateDir, len(verbLiteralRoster))
+}
+
+// importForbiddenFrom сообщает, запрещает ли правило `internal` импорт пакета,
+// лежащего по пути filePath, из каталога fromDir (оба — от корня модуля).
+//
+// Правило: пакет под `<x>/internal/…` импортируем только изнутри `<x>`. Берётся
+// ПЕРВЫЙ сегмент `internal` — он даёт самую широкую границу.
+func importForbiddenFrom(filePath, fromDir string) bool {
+	segs := strings.Split(filePath, "/")
+	for i, s := range segs {
+		if s != "internal" {
+			continue
+		}
+		enclosing := strings.Join(segs[:i], "/") // "" → корень модуля
+		if enclosing == "" {
+			return false // internal/ в корне: импортируем из любого места модуля
+		}
+		return !(fromDir == enclosing || strings.HasPrefix(fromDir, enclosing+"/"))
+	}
+	return false // не под internal/ вовсе → импортируем откуда угодно
+}
+
+// TestImportForbiddenFrom_HasBothControls — контроль предиката в обе стороны.
+// Без случая, который предикат обязан ПРОПУСТИТЬ, он ловил бы форму («в пути есть
+// слово internal»), а не существо («компилятор запретит импорт»).
+func TestImportForbiddenFrom_HasBothControls(t *testing.T) {
+	const gate = "internal/repohygiene"
+	cases := []struct {
+		path string
+		want bool
+		why  string
+	}{
+		{"services/iam/internal/domain/rule_verbs.go", true, "под internal чужого сервиса — запрещён"},
+		{"services/iam/internal/authzmap/fga_model_drift_test.go", true, "то же"},
+		{"internal/repohygiene/other_test.go", false, "internal в корне модуля — разрешён"},
+		{"internal/other/x.go", false, "internal в корне модуля — разрешён"},
+		{"pkg/verbs/dictionary.go", false, "не под internal вовсе — разрешён"},
+		{"services/iam/domain/rule_verbs.go", false, "переезд из-под internal — гарантия исчезла"},
+	}
+	for _, c := range cases {
+		if got := importForbiddenFrom(c.path, gate); got != c.want {
+			t.Errorf("importForbiddenFrom(%q, %q) = %v, ожидалось %v (%s)", c.path, gate, got, c.want, c.why)
+		}
+	}
+	t.Logf("перепись: контрольных случаев предиката: %d (запрещающих: 2, пропускающих: 4)", len(cases))
+}
+
 // ---------------------------------------------------------------------------
 // разбор модели
 // ---------------------------------------------------------------------------
@@ -163,7 +246,7 @@ func TestVerbVocabularyRosterEntriesStillHaveSubject(t *testing.T) {
 func modelVerbVocabulary(t *testing.T, root string) (verbs []string, defines int) {
 	t.Helper()
 	p := filepath.Join(root, canonicalVerbModelRelPath)
-	data, err := os.ReadFile(p) //nolint:gosec // путь выведен из корня репо
+	data, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatalf("каноническая модель %s не прочитана (%v) — у гейта нет источника истины; "+
 			"это ОТКАЗ, а не пропуск: отсутствие источника и есть тот дефект, который гейт ловит",
