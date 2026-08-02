@@ -91,7 +91,7 @@
 // puts both within reach of one walk. Registry's List surface is not project-scoped
 // at all (grants live on the registry and the repository; tags are not grantable
 // objects), so it declares a per-RPC enforcement shape instead. kacho-iam has the
-// widest listing surface in the repository (31 methods) and, until 2026-08, no
+// widest listing surface in the repository (30 methods) and, until 2026-08, no
 // analyser of this class at all.
 //
 // That every service has one is not left to memory: tools/listfiltergate/
