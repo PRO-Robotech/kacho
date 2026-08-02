@@ -22,31 +22,48 @@
 # объявляется беспредметным и падает. «Ноль находок» обязано быть отличимо от
 # «ноль прочитанного».
 #
+# Ветка-источник задаётся СПИСКОМ через запятую, и это не удобство. Когда в один
+# результат садятся несколько веток, файл, правленный СОСЕДНЕЙ веткой, для этой
+# выглядит «стволом изменён, веткой не тронут» — то есть ровно как откат. Гейт,
+# знающий одну ветку, на втором же переносе выдал бы пять ложных находок (и выдал:
+# .github/workflows/ci.yaml, services/iam/Makefile и три файла анализатора iam).
+# Ложная находка здесь дороже пропущенной: она учит снимать гейт. Поэтому
+# исключаемое множество — ОБЪЕДИНЕНИЕ правок всех перенесённых веток, каждая со
+# своей базой: у веток базы разные, и вычитать их по одной нельзя.
+#
 # Использование:
-#   drift.sh <база> <ветка-источник> <ревизия-ствола> <ревизия-результата>
+#   drift.sh <база> <ветка[,ветка...]> <ревизия-ствола> <ревизия-результата>
 
 set -euo pipefail
 
 if [ $# -ne 4 ]; then
-  echo "usage: drift.sh <base> <source-branch> <trunk-rev> <landed-rev>" >&2
+  echo "usage: drift.sh <base> <source-branch[,branch...]> <trunk-rev> <landed-rev>" >&2
   exit 2
 fi
 
 BASE=$1
-SRC=$2
+SRCS=$2
 TRUNK=$3
 LANDED=$4
 
-for rev in "$BASE" "$SRC" "$TRUNK" "$LANDED"; do
+IFS=',' read -r -a SRC_LIST <<< "$SRCS"
+
+for rev in "$BASE" "$TRUNK" "$LANDED" "${SRC_LIST[@]}"; do
   git rev-parse --verify --quiet "$rev^{commit}" >/dev/null || {
     echo "drift: ревизия '$rev' не разрешается в коммит — гейт смотрит не туда" >&2
     exit 2
   }
 done
 
-# Файлы, изменённые стволом с базы ветки, и файлы, которых касалась ветка.
+# Файлы, изменённые стволом с базы, и файлы, которых касалась ЛЮБАЯ из веток.
+# Каждая ветка сравнивается со СВОЕЙ точкой расхождения со стволом, а не с базой
+# аргумента: иначе правки соседней ветки, сделанные от другой базы, не вычтутся.
 mapfile -t TRUNK_TOUCHED < <(git diff --name-only "$BASE" "$TRUNK")
-mapfile -t BRANCH_TOUCHED < <(git diff --name-only "$BASE" "$SRC")
+BRANCH_TOUCHED=()
+for src in "${SRC_LIST[@]}"; do
+  mb=$(git merge-base "$TRUNK" "$src")
+  mapfile -t -O "${#BRANCH_TOUCHED[@]}" BRANCH_TOUCHED < <(git diff --name-only "$mb" "$src")
+done
 
 if [ "${#TRUNK_TOUCHED[@]}" -eq 0 ]; then
   echo "drift: ствол не изменил с базы $BASE ни одного файла — сравнивать нечего," >&2
@@ -77,7 +94,7 @@ for f in "${TRUNK_TOUCHED[@]}"; do
 done
 
 echo "drift: перепись — ствол изменил ${#TRUNK_TOUCHED[@]} файл(ов) с базы $BASE;"
-echo "       ветка отличается на $skipped из них (их судит не этот гейт);"
+echo "       ветки отличаются на $skipped из них (их судит не этот гейт);"
 echo "       сверено побайтово $examined; находок $findings"
 
 if [ "$examined" -eq 0 ]; then
