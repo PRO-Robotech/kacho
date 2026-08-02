@@ -27,7 +27,6 @@ set -euo pipefail
 SVC="${1:-${SVC:-vpc}}"
 COLLECTION="${2:-${COLLECTION:-}}"
 NS="${SETUP_NS:-kacho}"
-DEV_SECRET="${DEV_SECRET:-kacho-dev-jwt-secret-2026}"
 GW_PORT="${GW_PORT:-18080}"
 GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-18081}"   # api-gateway internal-rest :8081 (Internal*-RPC)
 # api-gateway EXTERNAL TLS listener :8443 (advertised as api.kacho.local:443). The ban-#6
@@ -126,7 +125,7 @@ fi
 echo "[e2e] seeding auth fixtures (idempotent) + patching newman envs"
 env BASE_URL="http://localhost:$GW_PORT" \
 IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" \
-DEV_SECRET="$DEV_SECRET" PATCH_ENV=true SETUP_NS="$NS" \
+PATCH_ENV=true SETUP_NS="$NS" \
 "${MTLS_ENV[@]}" \
   bash "$REPO_ROOT/tests/authz-fixtures/setup.sh"
 
@@ -150,7 +149,7 @@ if [ "$SVC" = "nlb" ] && [ "$SEED_POSTURE_RAN" != "production" ]; then
   # (empty devSecret) and this step would silently seed nothing.
   SEED_JWT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("jwtBootstrap",""))' \
     "$REPO_ROOT/tests/authz-fixtures/out/authz-fixtures.json" 2>/dev/null || true)
-  # NLB_ZONE_ID — the nlb-DEDICATED zone (tests/authz-fixtures/setup.sh block 5d owns the
+  # NLB_ZONE_ID — the nlb-DEDICATED zone (tests/authz-fixtures/prodseed_matrix.py owns the
   # zone table). Must be pinned here too: without it the seeder falls back to zone[0] =
   # ru-central1-a and plants a v6-carrying default EXTERNAL_PUBLIC pool there, which
   # deterministically breaks the vpc case ADR-CR-EXT-V6-FAMILY-FALLTHROUGH.

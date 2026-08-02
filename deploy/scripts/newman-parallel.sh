@@ -58,7 +58,6 @@ set -uo pipefail
 # that let it rot, so it is either wired or deleted — this is the wiring.
 SERVICES="${SERVICES:-iam vpc compute nlb storage registry geo api-gateway}"
 NS="${SETUP_NS:-kacho}"
-DEV_SECRET="${DEV_SECRET:-kacho-dev-jwt-secret-2026}"
 GW_PORT="${GW_PORT:-18080}"
 GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-18081}"
 # The api-gateway's EXTERNAL TLS listener (:8443, advertised as api.kacho.local:443).
@@ -138,7 +137,7 @@ if [ "$SEED" = "true" ]; then
   # Without it the greenfield geo catalog stays empty → every zone/region create fails.
   env BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="http://localhost:$GW_INTERNAL_PORT" \
       IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" HYDRA_PUBLIC_PORT="$HYDRA_PORT" \
-      DEV_SECRET="$DEV_SECRET" PATCH_ENV=true SETUP_NS="$NS" "${MTLS_ENV[@]}" \
+      PATCH_ENV=true SETUP_NS="$NS" "${MTLS_ENV[@]}" \
       bash "$REPO_ROOT/tests/authz-fixtures/setup.sh"
   SEED_RC=$?
 
@@ -183,7 +182,7 @@ if [ "$SEED" = "true" ]; then
     # whichever admin credential the posture called for.
     SEED_JWT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("jwtBootstrap",""))' \
       "$REPO_ROOT/tests/authz-fixtures/out/authz-fixtures.json" 2>/dev/null || true)
-    # NLB_ZONE_ID — the nlb-DEDICATED zone (tests/authz-fixtures/setup.sh block 5d owns the
+    # NLB_ZONE_ID — the nlb-DEDICATED zone (tests/authz-fixtures/prodseed_matrix.py owns the
     # zone table and seeds it). setup.sh already ran the seeder for the isolated nlb project
     # above; this second, project-agnostic pass must target the SAME zone. Unpinned it falls
     # back to zone[0] = ru-central1-a and plants a v6-carrying default EXTERNAL_PUBLIC pool

@@ -400,7 +400,7 @@ if [ -n "${NLB_ZONE_ID:-}" ]; then
     log "    using nlb-dedicated zone NLB_ZONE_ID=$ZONE_ID"
   else
     log "FATAL: NLB_ZONE_ID='$NLB_ZONE_ID' is not in the geo catalog."
-    log "       Seed it first (tests/authz-fixtures/setup.sh block 5d) — refusing to fall back to"
+    log "       Seed it first (tests/authz-fixtures/setup.sh → prodseed_matrix.py) — refusing to fall back to"
     log "       zone[0], which would plant this suite's default EXTERNAL_PUBLIC pool in a zone owned"
     log "       by another suite (vpc ADR-CR-EXT-V6-FAMILY-FALLTHROUGH / IPL-RESOLVE-NETWORK-DEFAULT-FAMILY-SKIP)."
     exit 1

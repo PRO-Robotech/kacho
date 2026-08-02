@@ -16,7 +16,7 @@ Operation вместо sync 400 → negative-кейсы красные до GREE
 
 Fixture-модель (умбрелла-стенд, environments/*.postman_environment.json):
   * existingZoneId (nlb-выделенная зона, ru-central1-e на умбрелла-стенде — суита
-    владеет её default EXTERNAL_PUBLIC пулом, см. tests/authz-fixtures/setup.sh блок 5d)
+    владеет её default EXTERNAL_PUBLIC пулом, см. tests/authz-fixtures/prodseed_matrix.py)
     и existingZoneAltId (ru-central1-b) — ДВЕ зоны
     ОДНОГО региона existingRegionId (ru-central1) → cross-zone same-region для GAP-1.
   * existingRegionAltId (ru-central2) — чужой регион для GAP-2.
