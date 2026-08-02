@@ -48,9 +48,25 @@ var internalRESTPaths = []struct{ method, path string }{
 	// the OAuth2 client a HUMAN signs in through. Whoever reaches it decides
 	// where authorization codes may be redirected, i.e. who receives a
 	// credential — so it MUST be 404 on the external listener and reachable on
-	// the internal one. POST is the pair's discriminator: the collection path is
-	// shared with the internal List (GET), and isInternalRoute is keyed on the
-	// (method, path) pair, not on the path alone.
+	// the internal one.
+	//
+	// WHAT ACTUALLY KEEPS IT OFF THE EXTERNAL LISTENER, measured rather than
+	// assumed, because two plausible-sounding accounts of this are wrong and
+	// both would send the next reader to edit the wrong place:
+	//   1. the path carries an `/internal/` segment, so isInternalPath already
+	//      classifies it — for EVERY method, on the path alone. The method is
+	//      NOT a discriminator here; matchesInternalRESTBinding is not reached
+	//      for this route at all. (Pair-keying matters for routes whose REST
+	//      path is shared with a PUBLIC binding and differs only by method —
+	//      this is not one of them.)
+	//   2. the handler is registered under `if mux == internalMux` (mux.go),
+	//      so it is never mounted on the public mux in the first place. That
+	//      holds for all 15 Internal* registrations — the "registered on BOTH
+	//      mux'es" comment near the top of mux.go is scoped to PUBLIC handlers.
+	// The two layers are independent: removing either leaves the other. This
+	// entry is load-bearing regardless — proved by injection: forcing
+	// isInternalRoute to return false for this exact path turns the internal
+	// half of this census red and names the pair.
 	{"POST", "/iam/v1/internal/interactiveClients"},
 	{"GET", "/vpc/v1/addressPools"},
 	// :internal verb-suffix (InternalNetworkService.GetNetwork REST path) — the
