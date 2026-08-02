@@ -44,7 +44,11 @@ func NewInterceptor(opts Options) (*authz.Interceptor, error) {
 		client = NewIAMCheckClient(opts.IAMConn)
 	}
 	// CheckTimeout / DenyRateLimitPerSec / AllowSystemPrincipal не прокидываются из
-	// конфига geo — corelib authz применяет свои дефолты (CheckTimeout→2s). Cache
+	// конфига geo. Сказать про все три «corelib применяет свои дефолты» нельзя:
+	// у CheckTimeout умолчание есть (→2s), у DenyRateLimitPerSec его НЕТ вовсе —
+	// незаполненное поле означает, что бюджет на шторм отказов ОТКЛЮЧЁН, а не
+	// «сотня, как у vpc/nlb». Разница в ту сторону, в которую ошибаться нельзя:
+	// прежняя формулировка описывала защиту, которой здесь не стоит. Cache
 	// передаём ЯВНО как authz.NewCache(0): corelib резолвит ttl≤0 в свой дефолтный
 	// 5s positive-result-кеш (см. corelib authz/cache.go — кешируются только
 	// allowed=true; miss всегда безопасен, fallback на авторитетный Check).

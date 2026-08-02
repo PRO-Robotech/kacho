@@ -101,6 +101,7 @@ func chainOutcome(t *testing.T, ctx context.Context, forwarders []string) (
 	info := &grpc.UnaryServerInfo{FullMethod: method}
 
 	authzIntr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:       authz.NewCache(0),
 		ServiceName: "kacho-vpc-test",
 		Map:         check.PermissionMap(),
 		Client: authz.CheckClientFunc(func(_ context.Context, subject, _, _ string) (bool, error) {

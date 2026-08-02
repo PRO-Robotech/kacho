@@ -78,6 +78,7 @@ func TestInterceptor_ScopeFilteredRPCStillRequiresASubject(t *testing.T) {
 		for _, tc := range cases {
 			t.Run(method+"/"+tc.name, func(t *testing.T) {
 				intr := authz.NewInterceptor(authz.InterceptorOptions{
+					Cache:       authz.NewCache(0),
 					ServiceName: "kacho-compute-test",
 					Map:         scopeFilteredMap(),
 					Client:      refuseToBeAsked(t),
@@ -119,6 +120,7 @@ func TestInterceptor_ScopeFilteredRPCStillRequiresASubject(t *testing.T) {
 // "satisfied" by refusing everyone.
 func TestInterceptor_ScopeFilteredRPCPassesAnIdentifiedCaller(t *testing.T) {
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:       authz.NewCache(0),
 		ServiceName: "kacho-compute-test",
 		Map:         scopeFilteredMap(),
 		Client:      refuseToBeAsked(t),

@@ -29,8 +29,21 @@ type InterceptorOptions struct {
 	// Client — implements CheckClient (gRPC client к InternalIAMService.Check).
 	Client CheckClient
 
-	// Cache — Cache instance (must be non-nil; используется shared с
-	// listen_invalidate.go).
+	// Cache — кеш положительных вердиктов. ОБЯЗАТЕЛЕН: nil → конструктор
+	// отказывает (см. NewInterceptor). Тот же экземпляр передаётся в
+	// listen_invalidate.go.
+	//
+	// Почему обязателен, а не «nil → заведём сами». Кешируется только
+	// «разрешено», поэтому срок жизни записи И ЕСТЬ окно отзыва — время, в
+	// течение которого субъект с уже отобранным правом продолжает проходить.
+	// Это параметр безопасности; `RevocationPolicy` объявляет, каким ему быть
+	// позволено, а перепись накрывает ровно те площадки, которые кеш НАЗЫВАЮТ.
+	// Пока конструктор заводил кеш за молчащего вызывающего, существовал второй
+	// путь получить окно — не попав ни в перепись, ни под потолок, и не оставив
+	// в composition root ни одной строки, которую кто-нибудь прочтёт.
+	//
+	// Своего числа не имеешь — передай `NewCache(0)`: это ЯВНОЕ «беру
+	// умолчание политики», и гейт учитывает такую площадку как унаследованную.
 	Cache *Cache
 
 	// Logger — slog logger.
@@ -41,7 +54,16 @@ type InterceptorOptions struct {
 	Breakglass bool
 
 	// DenyRateLimitPerSec — token-bucket per-Principal на denied storm.
-	// 0 / negative → disabled (default 100/s — см. KACHO_<SVC>_AUTHZ__DENY_RATE_LIMIT).
+	// 0 / negative → **disabled**.
+	//
+	// Умолчания у этого поля НЕТ — ни здесь, ни в конструкторе. Не заполнил
+	// вызывающий, значит бюджет выключен, и никакой темп проверок не
+	// ограничивается. Прежняя редакция этой строки писала «default 100/s»: сотня
+	// действительно стоит у vpc (`authz.deny-rate-limit-per-sec`) и у nlb
+	// (литерал в composition root), но это ИХ выбор, а не поведение corelib.
+	// Формулировка читалась как «не заполнишь — получишь сотню», то есть
+	// описывала защиту там, где её нет, и ровно в ту сторону, в которую ошибаться
+	// нельзя. Заполняй явно тот, кому бюджет нужен.
 	//
 	// Бюджет тратит РОВНО ОДИН класс исходов: те, которые кэш не поглощает, —
 	// отказ, отказ с сокрытием существования, промах «нет пути» и недоступность
@@ -107,8 +129,13 @@ func NewInterceptor(opts InterceptorOptions) *Interceptor {
 	if opts.Client == nil && !opts.Breakglass {
 		panic("authz: InterceptorOptions.Client is nil and Breakglass=false")
 	}
+	// Отказ, а не умолчание. Кеш положительных вердиктов задаёт окно отзыва
+	// (см. InterceptorOptions.Cache); заведённый за молчащего вызывающего, он
+	// дал бы окно, которого никто не выбирал и которое не попадает в перепись
+	// RevocationPolicy. Текст читает оператор при отказе в старте — он обязан
+	// называть и ручку, и выход.
 	if opts.Cache == nil {
-		opts.Cache = NewCache(0)
+		panic("authz: InterceptorOptions.Cache is nil: кеш положительных вердиктов задаёт окно отзыва доступа и обязан быть назван явно; передайте NewCache(ttl) со своим окном либо NewCache(0), чтобы взять умолчание pkg/authz.RevocationPolicy")
 	}
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
