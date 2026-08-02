@@ -96,7 +96,8 @@ RID = str(int(time.time()))[-6:]
 # a v6-carrying default EXTERNAL_PUBLIC pool); it must exist before
 # deploy/scripts/seed-nlb-fixtures.sh will seed that pool, and keeping it OUT of zone
 # `a` is what lets the vpc case ADR-CR-EXT-V6-FAMILY-FALLTHROUGH keep asserting that
-# zone `a` has no v6-capable pool. Mirrors the dev-path setup.sh block 5d ownership table.
+# zone `a` has no v6-capable pool. This module is now the SOLE owner of that table —
+# the dev-path block it used to mirror is gone along with the symmetric-minting branch.
 ZONE_SUFFIXES = tuple(os.environ.get("SEED_ZONES", "a,b,c,d,e").split(","))
 NLB_ZONE = os.environ.get("NLB_ZONE", "ru-central1-e")
 # The second region — the value `existingRegionAltId` carries. It is seeded below,

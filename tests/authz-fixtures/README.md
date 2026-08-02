@@ -36,6 +36,7 @@ security-ручки приезжают через `envFrom` и читаются 
 |---|---|
 | `production` / `production-strict` | делегирует `prodseed_all.py` — **ни один токен не чеканится харнессом** |
 | `dev` (`authn.mode=dev`) | **отказ с названной причиной** — такой посадки не производит ни один профиль развёртывания |
+| что-либо ещё (опечатка, неизвестное имя) | **отказ с названной причиной** — корзины «всё остальное» у гейта нет |
 
 Строка `dev` в таблице оставлена намеренно: это не «поддерживаемый вариант», а
 объявление того, что произойдёт. Прежде она означала «чеканим симметрично своим
@@ -107,10 +108,8 @@ SEED_POSTURE=production bash tests/authz-fixtures/setup.sh
 | Env-var | Default | Назначение |
 |---|---|---|
 | `BASE_URL` | `http://localhost:18080` | api-gateway dev-listener |
-| `SEED_POSTURE` | `auto` | `auto`\|`production` (значение `dev` отвергается — см. выше) |
+| `SEED_POSTURE` | `auto` | `auto`\|`production`\|`production-strict`; `dev` отвергается, **любое другое значение — тоже** (см. выше) |
 | `HYDRA_PUBLIC_PORT` | `14444` | порт-форвард Hydra public (OAuth2 обмен, только production) |
-| `DEV_SECRET` | `kacho-dev-jwt-secret-2026` | читается только кодом отвергнутой посадки (см. таблицу выше) — на посев влияния не имеет |
-| `EXP_HOURS` | `24` | exp claim в JWT |
 | `OUT_DIR` | `tests/authz-fixtures/out` | куда писать `authz-fixtures.json` + `jwts.json` |
 | `PATCH_ENV` | `true` | патчить ли `environments/local.postman_environment.json` всех 3 newman-suite'ов |
 | `VERBOSE` | `false` | echo каждый curl |
@@ -142,12 +141,15 @@ SEED_POSTURE=production bash tests/authz-fixtures/setup.sh
   - `apiTokenExpired` — `exp` в прошлом → 401
   - `apiTokenMalformed` — синтаксически битый JWS (2 сегмента) → 401
 
-> Этот абзац описывает **отвергнутую** посадку: токены такого вида чеканил
-> `setup-jwt.py` от `DEV_SECRET`, и посев по этой ветке больше не идёт (см. таблицу
-> posture выше). На поднятом стенде те же роли получают токены через iam
-> (`prodseed_matrix.py`). Ветка и её текст удаляются отдельным шагом — вместе, чтобы
-> описание и код не разъехались по частям. `out/` под gitignore — реальные значения
-> в репо не попадают.
+> Абзац выше описывает РОЛИ, а не способ их подписи. Способ теперь один: те же роли
+> получают токены через iam (`prodseed_matrix.py` → `SAKeyService.Issue` → OAuth2
+> `client_credentials`). Ветка, чеканившая их симметрично общим ключом, и сам ключ
+> **удалены** — это и есть тот «отдельный шаг вместе с текстом», который здесь
+> объявлялся. `out/` под gitignore — реальные значения в репо не попадают.
+>
+> Возврат ключа в дерево ловит `internal/repohygiene/sharedsigningliteral_test.go`;
+> отсутствие корзины «всё остальное» у посадочного гейта —
+> `internal/repohygiene/seedposturegate_test.go`.
 
 ## Идемпотентность
 

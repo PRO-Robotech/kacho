@@ -46,3 +46,9 @@ gateway/tests/newman/environments/local.postman_environment.json
 /kacho-iam
 /kacho-*
 !/kacho-*/
+
+# Скомпилированный python — производное от исходника; в дереве держать нечего,
+# а .pyc минтера успел утащить туда общий подписной ключ (греп по исходникам его
+# не видел — байты, не строки).
+__pycache__/
+*.pyc
