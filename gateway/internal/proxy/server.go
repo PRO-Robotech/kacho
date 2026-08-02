@@ -18,6 +18,36 @@ type Backends map[string]*grpc.ClientConn
 // MethodResolver — re-export of local proxy MethodResolver type signature.
 type MethodResolver = methodResolverInternal
 
+// RoutableDomain reports which Backends key a fullMethod needs in order to be
+// routed at all, i.e. the `<domain>` segment of
+// "/kacho.cloud.<domain>.<...>/<Method>". ok=false means the path is not shaped
+// like something this gateway routes, whatever the backend map contains.
+//
+// Exported because being IN the allowlist and being ROUTABLE are two different
+// facts, and until this existed only the first one was checkable from outside.
+// The allowlist is computed against the proto descriptors (allowlist/parity_test.go),
+// but the map of open backend connections is built by the composition root from a
+// hand-written key set, and nothing joined the two: a domain whose key is absent
+// resolves to nothing, and the caller is answered by exactly the error that hides
+// the admin surface. The wiring gate calls THIS function rather than re-deriving
+// the domain, so the gate and the resolver cannot come to disagree about what a
+// method needs.
+func RoutableDomain(fullMethod string) (string, bool) {
+	if !strings.HasPrefix(fullMethod, "/kacho.cloud.") {
+		return "", false
+	}
+	// fullMethod = "/kacho.cloud.<domain>.<...>/<Method>"
+	parts := strings.SplitN(fullMethod, "/", 3)
+	if len(parts) < 3 || parts[1] == "" {
+		return "", false
+	}
+	pkgParts := strings.Split(parts[1], ".")
+	if len(pkgParts) < 4 {
+		return "", false
+	}
+	return pkgParts[2], true
+}
+
 // Resolver builds a MethodResolver for the unknown-service handler installed
 // on the gRPC server. Behaviour:
 //
@@ -56,16 +86,11 @@ func Resolver(backends Backends) MethodResolver {
 		if allowlist.HasInternalSuffix(method) || !allowlist.IsAllowed(method) {
 			return "", nil, false
 		}
-		// Parse domain from "/kacho.cloud.<domain>.<...>/<Method>".
-		parts := strings.SplitN(method, "/", 3)
-		if len(parts) < 3 || parts[1] == "" {
+		domain, ok := RoutableDomain(method)
+		if !ok {
 			return "", nil, false
 		}
-		pkgParts := strings.Split(parts[1], ".")
-		if len(pkgParts) < 4 {
-			return "", nil, false
-		}
-		conn, ok := backends[pkgParts[2]]
+		conn, ok := backends[domain]
 		if !ok {
 			return "", nil, false
 		}
