@@ -75,7 +75,7 @@ type verbLiteral struct {
 var verbLiteralRoster = []verbLiteral{
 	{
 		path: "services/iam/internal/authzmap/fga_types.go", varName: "fullCrudVerbRelations",
-		claims:     "набор, который на сегодня СОВПАДАЮЩЕ объявляют 25 типов; НЕ «все глаголы платформы»",
+		claims:     "набор, который на сегодня СОВПАДАЮЩЕ объявляют 24 типа; НЕ «все глаголы платформы»",
 		checkedBy:  "authzmap: TestDrift_TypeVerbSetsMatchModelExactly — потиповое равенство набора и модели",
 		retireWhen: "объявление удалено (типы перечисляют наборы поштучно)",
 	},
