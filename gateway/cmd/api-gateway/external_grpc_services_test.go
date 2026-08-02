@@ -102,7 +102,7 @@ func TestExternalGRPCSurface_IsExactlyTheDocumentedSet(t *testing.T) {
 	_, info := externalSurface(t)
 
 	want := map[string]string{
-		"grpc.health.v1.Health": "gateway self-liveness; constant SERVING, ignores the requested service name",
+		"grpc.health.v1.Health":                  "gateway self-liveness; constant SERVING, ignores the requested service name",
 		"kacho.cloud.operation.OperationService": "async poll surface, fanned out across backends by the gateway",
 	}
 
