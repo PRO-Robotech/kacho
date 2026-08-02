@@ -306,9 +306,13 @@ internalListener:
     keyFile: /etc/api-gateway/tls/tls.key
   allowedSpiffe:
     - spiffe://kacho.cloud/ns/kacho/sa/kacho-iam
-  # gRPC server-reflection on the internal listener — debug/incident only (it
-  # enumerates the internal admin surface). Default off.
-  reflection: false
+  # NOTE — `internalListener.reflection` was removed, not renamed. gRPC
+  # server-reflection is now served on this listener whenever mtls.enable=true,
+  # and never otherwise: with mTLS off the listener mounts no authorising
+  # interceptors, so a switch that turned reflection on independently could only
+  # expose schema discovery on an unauthenticated port. It is no longer served on
+  # the external listener at all. A stale `reflection:` left in an overlay is
+  # inert (the template no longer reads it, and envconfig ignores unknown vars).
 
 # ─── mTLS — per-edge backend-dial (cert-manager internal-CA) ─────────────────
 # api-gateway is a backend-dial CLIENT (it terminates EXTERNAL TLS separately via

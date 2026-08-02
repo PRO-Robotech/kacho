@@ -361,10 +361,6 @@ spec:
             - name: KACHO_API_GATEWAY_INTERNAL_GRPC_ALLOWED_SPIFFE
               value: {{ join "," .Values.internalListener.allowedSpiffe | quote }}
             {{- end }}
-            {{- if .Values.internalListener.reflection }}
-            - name: KACHO_API_GATEWAY_INTERNAL_GRPC_REFLECTION
-              value: "true"
-            {{- end }}
             {{- range $k, $v := .Values.extraEnv }}
             - name: {{ $k }}
               value: {{ $v | quote }}

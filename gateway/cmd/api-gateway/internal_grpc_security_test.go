@@ -45,7 +45,7 @@ func TestInternalListenerSecurity_Enabled_EmptyAllowlist_FailFast(t *testing.T) 
 	require.Error(t, err, "enable=true with an empty SPIFFE allow-list must fail-fast")
 }
 
-// Disabled (default) → insecure posture, no error, reflection off by default.
+// Disabled (default) → insecure posture, no error.
 func TestInternalListenerSecurity_Disabled_Default(t *testing.T) {
 	cfg, err := config.Load()
 	require.NoError(t, err)
@@ -54,18 +54,29 @@ func TestInternalListenerSecurity_Disabled_Default(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, sec.mtlsEnabled, "default is insecure (dev/local opt-in)")
 	require.Nil(t, sec.serverCreds)
-	require.False(t, sec.reflection, "reflection must default OFF (debug gate)")
 }
 
-// The reflection debug-gate propagates from config.
-func TestInternalListenerSecurity_ReflectionGate(t *testing.T) {
+// TestInternalListenerSecurity_NoStandaloneReflectionKnob — the retired switch
+// must not come back.
+//
+// KACHO_API_GATEWAY_INTERNAL_GRPC_REFLECTION used to gate schema discovery
+// independently of the posture, which meant its dangerous setting (on, while the
+// listener runs insecure and mounts no interceptors) was reachable by one env
+// var. Reflection now follows mtlsEnabled. Setting the retired name must change
+// nothing — envconfig ignores unknown variables, so a stale value left in a
+// values file is inert rather than surprising, and this asserts that rather than
+// assuming it. Whether reflection is REGISTERED is asserted behaviourally in
+// internal_grpc_reflection_test.go; this only pins that no config path steers it.
+func TestInternalListenerSecurity_NoStandaloneReflectionKnob(t *testing.T) {
 	t.Setenv("KACHO_API_GATEWAY_INTERNAL_GRPC_REFLECTION", "true")
 	cfg, err := config.Load()
 	require.NoError(t, err)
 
 	sec, err := buildInternalListenerSecurity(cfg)
 	require.NoError(t, err)
-	require.True(t, sec.reflection, "reflection flag must propagate when enabled")
+	require.False(t, sec.mtlsEnabled,
+		"the retired reflection variable must not resurrect a posture: with no mTLS material configured "+
+			"the listener stays insecure, and reflection stays unregistered with it")
 }
 
 // The production guard: an insecure internal listener is refused in a

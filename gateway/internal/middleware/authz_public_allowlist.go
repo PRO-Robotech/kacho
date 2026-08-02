@@ -73,39 +73,21 @@ func DefaultPublicAllowlist() []string {
 		"grpc.health.v1.Health/Check",
 		"grpc.health.v1.Health/Watch",
 
-		// grpc.reflection — schema enumeration for grpcurl and similar CLIs.
+		// grpc.reflection is NOT here, and the server no longer registers it on
+		// the externally-reachable listener at all
+		// (cmd/api-gateway/external_grpc_services.go). Schema discovery for
+		// operator tooling lives on the cluster-internal listener, behind mTLS
+		// and the caller allow-list. Removing the entry alone would not have been
+		// enough — with the service still registered, an added catalog entry or
+		// override could have re-opened it — so both moved together.
 		//
-		// SCOPE, STATED ACCURATELY. An earlier comment here claimed reflection
-		// was "only available cluster-internal anyway". It is not:
-		// reflection.Register(grpcSrv) in cmd/api-gateway/main.go registers on
-		// the same *grpc.Server that is served on the advertised external TLS
-		// listener, so these two FQNs are answerable unauthenticated from the
-		// edge. The comment is corrected rather than deleted because a
-		// security note that contradicts the code invites the next reader to
-		// "fix" the code to match it.
-		//
-		// What it returns — NOT LISTED is not the same as NOT RETRIEVABLE, and
-		// the difference is the whole point. ListServices answers from
-		// GetServiceInfo(), i.e. only services registered NATIVELY here
-		// (OperationService, Health, ServerReflection), so `grpcurl list` looks
-		// reassuringly short. But FileContainingSymbol / FileByFilename resolve
-		// against protoregistry.GlobalFiles (grpc-go reflection defaults its
-		// DescriptorResolver to it), and this binary links EVERY backend
-		// descriptor via restmux. So an unauthenticated caller who already knows
-		// or guesses a symbol name can retrieve the full file descriptor of any
-		// backend service — including Internal* services that are deliberately
-		// unrouted at the edge — together with its transitive dependencies,
-		// which carry the per-RPC authz permission annotations.
-		//
-		// Nothing here is tenant data, and the proto tree is public, so this is
-		// schema and policy-shape disclosure rather than data disclosure. It is
-		// still by far the weakest justification of the four, and unlike health
-		// reflection is developer convenience rather than an operational
-		// necessity. Recorded as an open question for the owner in
-		// docs/architecture/known-divergences.md §10; confining it to the
-		// cluster-internal listener would cost only edge-side grpcurl.
-		"grpc.reflection.v1.ServerReflection/ServerReflectionInfo",
-		"grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo",
+		// The open question the previous revision recorded here is closed. What
+		// made the answer easy is that the disclosure was never the main cost:
+		// the proto tree is public, so schema retrieval added little that git did
+		// not already give. What it did add was an authN+authZ exemption on the
+		// advertised edge covered by neither exemption security.md documents, and
+		// a request that costs a caller nothing and the gateway a full descriptor
+		// walk. Neither is worth edge-side grpcurl.
 
 		// SECURITY: Internal* FQNs are deliberately NOT on this global allowlist.
 		//
