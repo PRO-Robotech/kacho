@@ -673,7 +673,6 @@ var debtFiles = map[string]string{
 	"services/iam/internal/apps/kacho/shared/errors.go":        "prose comment; services/iam/internal is owned by concurrent work",
 	"services/iam/internal/domain/project.go":                  "prose comment; services/iam/internal is owned by concurrent work",
 	"services/iam/internal/domain/status.go":                   "prose comment; services/iam/internal is owned by concurrent work",
-	"services/iam/internal/repo/kacho/condition/iface.go":      "prose comment; services/iam/internal is owned by concurrent work",
 }
 
 // Debt — сводка заявленного долга: сколько вхождений в скольких файлах.

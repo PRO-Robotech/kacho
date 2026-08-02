@@ -1162,7 +1162,7 @@ func loadWildcardRelations(root, rel string) (map[string]bool, error) {
 		return nil, fmt.Errorf("the profile names no FGAModel")
 	}
 	path := filepath.Join(root, rel)
-	raw, err := os.ReadFile(path) //nolint:gosec // path composed from the profile, not from input
+	raw, err := os.ReadFile(path) // #nosec G304 -- path is joined from --*-root and a relative name listed in the gate's own profile; this is a build-time tool, no request data reaches it
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
@@ -1233,7 +1233,7 @@ func loadProtoOptions(root string, files []string) (*protoOptions, error) {
 	po := &protoOptions{byMethod: map[string]rpcOptions{}}
 	for _, rel := range files {
 		path := filepath.Join(root, rel)
-		raw, err := os.ReadFile(path) //nolint:gosec // path composed from the profile, not from input
+		raw, err := os.ReadFile(path) // #nosec G304 -- path is joined from --*-root and a relative name listed in the gate's own profile; this is a build-time tool, no request data reaches it
 		if err != nil {
 			return nil, fmt.Errorf("read %s: %w", path, err)
 		}

@@ -195,15 +195,14 @@ var exemptFiles = map[string]string{
 	"services/compute/internal/migrations/0009_rename_folder_to_project.sql":      "applied migration: the record of the rename itself — it must keep naming what it renamed",
 	"services/iam/internal/migrations/0001_initial.sql":                           "applied migration: the baseline that created conditions.folder_id; applied migrations are never edited (ban #5)",
 	"services/iam/internal/migrations/0070_conditions_folder_to_project.sql":      "applied migration: the record of the last rename — it must keep naming what it renamed",
+	"services/iam/internal/migrations/0075_retire_tenant_condition_surface.sql":   "applied migration: its Down block cites 0070 by what that migration did, to say why the column it recreates is project_id; the SQL itself carries only the new name, and an applied migration is never edited (ban #5)",
 	"services/compute/internal/handler/tenant_interceptor_project_header_test.go": "conformance test: it sends the retired header to prove the server does not honour it; removing the name would remove the proof",
 
 	// Newman cases that ASSERT the retired word is absent from a response, and the
 	// collections generated from them. The literal IS the assertion: remove it and
 	// the proof that the rename reached the wire goes with it.
 	"services/iam/tests/newman/cases/iam-account-redesign.py":                            "conformance case: asserts no pre-redesign container key is served",
-	"services/iam/tests/newman/cases/iam-condition.py":                                   "conformance case: asserts the pre-redesign scope key is never served",
 	"services/iam/tests/newman/collections/iam-account-redesign.postman_collection.json": "generated from the conformance case above; regenerating it reproduces the literal",
-	"services/iam/tests/newman/collections/iam-condition.postman_collection.json":        "generated from the conformance case above; regenerating it reproduces the literal",
 }
 
 // awaitingPass is the price of splitting a sweep across two concurrent passes:

@@ -191,7 +191,7 @@ func TestCoverage_CIRunsEveryAnalyser(t *testing.T) {
 	svcs := servicesFromGit(t, root)
 
 	wf := filepath.Join(root, ".github", "workflows", "ci.yaml")
-	raw, err := os.ReadFile(wf) //nolint:gosec // fixed path inside the repository
+	raw, err := os.ReadFile(wf) // #nosec G304 -- fixed path (.github/workflows/ci.yaml) under this module's own repository root
 	if err != nil {
 		t.Fatalf("read %s: %v — the workflow was never opened, so this proves nothing", wf, err)
 	}
