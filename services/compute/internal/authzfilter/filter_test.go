@@ -116,7 +116,7 @@ func (f *fakeAuthorizeClient) BatchCheck(ctx context.Context, in *iamv1.BatchAut
 // Страница фильтруется per-object, порядок входа (курсора) сохраняется, а запрос
 // несёт явный required_relation и только id страницы.
 func TestFGAFilter_FiltersPageAndPreservesOrder(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "c", "a")
+	cli := newFakeAuthorizeClient().allow("v_get", "c", "a")
 	f := NewFGAFilter(cli, DefaultConfig())
 
 	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead,
@@ -129,38 +129,15 @@ func TestFGAFilter_FiltersPageAndPreservesOrder(t *testing.T) {
 	assert.Equal(t, "user:usr_x", cli.gotReqs[0].GetSubject())
 	assert.Equal(t, ResourceTypeInstance, cli.gotReqs[0].GetResource().GetType())
 	assert.Equal(t, ActionInstanceRead, cli.gotReqs[0].GetAction())
-	assert.Equal(t, "viewer", cli.gotReqs[0].GetRequiredRelation())
+	assert.Equal(t, "v_get", cli.gotReqs[0].GetRequiredRelation())
 }
 
-// Предикат видимости — тот же союз, что делал ListObjects: viewer ∪ v_list.
-// v_list-only грант («видеть в списке без содержимого») обязан оставаться видимым.
-func TestFGAFilter_ViewerUnionVList(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "a").allow("v_list", "b")
-	f := NewFGAFilter(cli, DefaultConfig())
-
-	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead,
-		[]string{"a", "b", "c"})
-	require.NoError(t, err)
-	assert.Equal(t, []string{"a", "b"}, got, "viewer ∪ v_list")
-}
-
-// v_list спрашивается ТОЛЬКО про тех, кому отказал viewer (стоимость).
-func TestFGAFilter_VListOnlyForViewerDenied(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "a", "b")
-	f := NewFGAFilter(cli, DefaultConfig())
-
-	_, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead,
-		[]string{"a", "b", "c"})
-	require.NoError(t, err)
-
-	var vlist int
-	for _, r := range cli.gotReqs {
-		if r.GetRequiredRelation() == "v_list" {
-			vlist++
-		}
-	}
-	assert.Equal(t, 1, vlist, "only the viewer-denied id should be re-asked on v_list")
-}
+// Предикат видимости — ОДНО отношение, то же, которым гейтится Get.
+// Прежде здесь стояли два теста, закреплявшие союз `viewer ∪ v_list` и
+// стоимость его второй фазы. Оба утверждали предикат, который расходился с
+// чтением, — их предмет снят вместе с союзом. Обе половины (v_list-only НЕ
+// впускает объект; спрашивается ровно одно отношение, второй фазы нет)
+// проверяются в read_parity_test.go.
 
 // Батчи режутся по контрактному пределу BatchCheck (≤100) — большая страница не
 // роняет запрос в InvalidArgument.
@@ -170,7 +147,7 @@ func TestFGAFilter_BatchesRespectHardCap(t *testing.T) {
 	for i := 0; i < 250; i++ {
 		id := fmt.Sprintf("epd_%03d", i)
 		ids = append(ids, id)
-		cli.allow("viewer", id)
+		cli.allow("v_get", id)
 	}
 	f := NewFGAFilter(cli, DefaultConfig())
 
@@ -186,7 +163,7 @@ func TestFGAFilter_BatchesRespectHardCap(t *testing.T) {
 // Стоимость пропорциональна СТРАНИЦЕ: сколько id пришло, столько и проверок
 // (никакого перечисления вселенной — источник cap-дефекта).
 func TestFGAFilter_CostProportionalToPage(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "a", "b", "c")
+	cli := newFakeAuthorizeClient().allow("v_get", "a", "b", "c")
 	f := NewFGAFilter(cli, DefaultConfig())
 
 	_, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead,
@@ -197,16 +174,16 @@ func TestFGAFilter_CostProportionalToPage(t *testing.T) {
 
 // Дубликаты во входе не оплачиваются дважды и не дублируются в выдаче.
 func TestFGAFilter_DeduplicatesInput(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "a")
+	cli := newFakeAuthorizeClient().allow("v_get", "a")
 	f := NewFGAFilter(cli, DefaultConfig())
 
 	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeInstance, ActionInstanceRead,
 		[]string{"a", "a", "b"})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"a"}, got, "a duplicated id appears once in the visible subset")
-	// viewer: {a,b} = 2 checks; v_list re-asks only the viewer-denied {b} = 1.
-	// The duplicated "a" is paid for ONCE (4 checks would mean it was not deduped).
-	assert.Equal(t, 3, cli.checked, "duplicate id must be checked once")
+	// Одна relation (предикат страницы = отношение чтения): {a,b} = 2 проверки.
+	// Дублированный "a" оплачивается ОДИН раз (3 означало бы, что дедупа нет).
+	assert.Equal(t, 2, cli.checked, "duplicate id must be checked once")
 }
 
 func TestFGAFilter_EmptyPageNoCall(t *testing.T) {
@@ -342,7 +319,7 @@ func TestFGAFilter_AnonymousFailClosed(t *testing.T) {
 // full 100ms and answer successfully — proving enforcement deterministically,
 // without a flaky wall-clock bound.
 func TestFGAFilter_TimeoutEnforced(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "a")
+	cli := newFakeAuthorizeClient().allow("v_get", "a")
 	cli.sleep = 100 * time.Millisecond
 	cfg := DefaultConfig()
 	cfg.Timeout = 10 * time.Millisecond
@@ -359,7 +336,7 @@ func TestFGAFilter_TimeoutEnforced(t *testing.T) {
 // (owner-tuple свежесозданного ресурса ещё не материализовался → ресурс был бы
 // невидим весь TTL).
 func TestFGAFilter_CachesPositiveOnly(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "a")
+	cli := newFakeAuthorizeClient().allow("v_get", "a")
 	f := NewFGAFilter(cli, DefaultConfig())
 	ctx := context.Background()
 
@@ -387,7 +364,7 @@ func TestFGAFilter_CachesPositiveOnly(t *testing.T) {
 // Кеш ключуется по (subject, resourceType, id): вердикт одного subject'а НЕ
 // подставляется другому (иначе — cross-tenant over-show).
 func TestFGAFilter_CacheKeyedBySubjectAndType(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "a")
+	cli := newFakeAuthorizeClient().allow("v_get", "a")
 	f := NewFGAFilter(cli, DefaultConfig())
 	ctx := context.Background()
 
@@ -417,7 +394,7 @@ func TestFGAFilter_CacheKeyedBySubjectAndType(t *testing.T) {
 // TTL-expiry: положительный вердикт живёт CacheTTL, затем перепроверяется (revoke
 // становится виден ≤ CacheTTL). Часы фейковые — детерминированно, без time.Sleep.
 func TestFGAFilter_CacheTTLExpiry(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "a")
+	cli := newFakeAuthorizeClient().allow("v_get", "a")
 	cfg := DefaultConfig()
 	cfg.CacheTTL = 25 * time.Millisecond
 	f := NewFGAFilter(cli, cfg)
@@ -436,13 +413,12 @@ func TestFGAFilter_CacheTTLExpiry(t *testing.T) {
 	require.Equal(t, 1, cli.calls, "within TTL the positive verdict is served from cache")
 
 	// За TTL — перепроверка. Грант к этому моменту отозван → id пропадает.
-	// Переспрос идёт по обеим ветвям союза (viewer отказал → добираем v_list),
-	// поэтому вызовов становится 3, а не 2.
+	// Relation одна, поэтому переспрос — ровно один вызов.
 	clk.advance(40 * time.Millisecond)
-	cli.visible["viewer"]["a"] = false
+	cli.visible["v_get"]["a"] = false
 	got, err := f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeInstance, ActionInstanceRead, []string{"a"})
 	require.NoError(t, err)
-	assert.Equal(t, 3, cli.calls, "past TTL the verdict must be re-asked (viewer, then v_list)")
+	assert.Equal(t, 2, cli.calls, "past TTL the verdict must be re-asked")
 	assert.Empty(t, got, "a revoked grant must stop being visible once the TTL elapses")
 }
 
@@ -450,7 +426,7 @@ func TestFGAFilter_CacheTTLExpiry(t *testing.T) {
 // (Go-map-randomized, возможно горячая) запись — иначе burst distinct-List
 // трэшил бы кеш и гнал лишний QPS в kacho-iam.
 func TestFGAFilter_LRUEvictsLeastRecentlyUsed(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "hot")
+	cli := newFakeAuthorizeClient().allow("v_get", "hot")
 	cfg := DefaultConfig()
 	cfg.CacheMaxEntries = 10
 	f := NewFGAFilter(cli, cfg)
@@ -458,7 +434,7 @@ func TestFGAFilter_LRUEvictsLeastRecentlyUsed(t *testing.T) {
 
 	for i := 0; i < 9; i++ {
 		id := fmt.Sprintf("cold_%d", i)
-		cli.allow("viewer", id)
+		cli.allow("v_get", id)
 		_, err := f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeInstance, ActionInstanceRead, []string{id})
 		require.NoError(t, err)
 	}
@@ -474,7 +450,7 @@ func TestFGAFilter_LRUEvictsLeastRecentlyUsed(t *testing.T) {
 			"recently-used hot entry must stay cached across overflow (LRU, not random eviction)")
 
 		id := fmt.Sprintf("cold_%d", i)
-		cli.allow("viewer", id)
+		cli.allow("v_get", id)
 		_, err = f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeInstance, ActionInstanceRead, []string{id})
 		require.NoError(t, err)
 	}
@@ -490,7 +466,7 @@ func TestFGAFilter_CacheSizeDoesNotTruncateVisibility(t *testing.T) {
 	for i := 0; i < 120; i++ {
 		id := fmt.Sprintf("epd_%03d", i)
 		ids = append(ids, id)
-		cli.allow("viewer", id)
+		cli.allow("v_get", id)
 	}
 	cfg := DefaultConfig()
 	cfg.CacheMaxEntries = 3 // operator tuned cache down for memory
@@ -523,7 +499,7 @@ func TestFGAFilter_DisabledOrNilClientPassthrough(t *testing.T) {
 
 // Конкурентные страницы одного subject'а не гоняют кеш в race (детект под -race).
 func TestFGAFilter_ConcurrentPagesRaceFree(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "a", "b", "c")
+	cli := newFakeAuthorizeClient().allow("v_get", "a", "b", "c")
 	f := NewFGAFilter(cli, DefaultConfig())
 
 	var wg sync.WaitGroup

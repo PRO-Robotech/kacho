@@ -290,12 +290,17 @@ func verbOf(action string) string {
 	return action[last+1:]
 }
 
-// read==enforce: the action each public List handler sends to iam MUST carry the
-// "list" verb (which kacho-iam validates and records), and the DECISION relation
-// pinned on the check must be "viewer" first — the SAME relation the per-RPC Check
-// gate uses for Get. `v_list` is only ever asked for ids `viewer` denied, so the
-// first relation observed on a fully-granted page is "viewer".
-func TestListHandlers_SendViewerResolvingAction(t *testing.T) {
+// read==enforce: действие, которое публичный List шлёт в iam, обязано нести verb
+// "list" (его kacho-iam валидирует и записывает в аудит), а РЕШАЮЩЕЕ отношение,
+// пинуемое на проверке, — быть тем же, которым per-RPC Check гейтит Get
+// (`InstanceService/Get` → `v_get`, permission_map.go).
+//
+// Прежняя редакция ждала здесь `viewer` и объясняла это словами «та же relation,
+// что per-RPC Check для Get». Утверждение было неверным: Get гейтится `v_get`, а
+// ярусные и глагольные отношения в модели развязаны. Тест закреплял расхождение,
+// из-за которого страница List оказывалась шире читаемого. Пиним значение, а не
+// пересказ.
+func TestListHandlers_PinTheReadRelationOnPerObjectCheck(t *testing.T) {
 	t.Run("instance", func(t *testing.T) {
 		cli := &mockAuthCli{allowedByKey: map[string][]string{}}
 		ops := portmock.NewOpsRepo()
@@ -311,8 +316,8 @@ func TestListHandlers_SendViewerResolvingAction(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "compute_instance", cli.lastResType)
 		require.Equal(t, "list", verbOf(cli.lastAction),
-			"instance List must send a viewer-resolving verb (read==enforce); got action %q", cli.lastAction)
-		require.Equal(t, "viewer", cli.lastRelation,
-			"the per-object check must pin the read-tier relation explicitly")
+			"instance List must send a list verb kacho-iam resolves (read==enforce); got action %q", cli.lastAction)
+		require.Equal(t, "v_get", cli.lastRelation,
+			"пообъектная проверка страницы обязана пинить ТО ЖЕ отношение, которым гейтится Get")
 	})
 }

@@ -14,16 +14,21 @@ const (
 //
 // The action is carried on every AuthorizeCheckRequest for audit/trace; the
 // DECISION is taken on the explicit `required_relation` the filter pins per batch
-// (`viewer`, then `v_list` — see authzfilter.visibilityRelations), not on a
-// server-side verb→relation derivation. The verb still MUST be one kacho-iam
-// maps (`resolveActionToRelation` maps only the canonical RPC verbs get/list;
-// "read" is UNMAPPED → "Illegal argument action"), because a request that fails
+// (`v_get` — see authzfilter.visibilityRelations), not on a server-side
+// verb→relation derivation. The verb still MUST be one kacho-iam maps
+// (`resolveActionToRelation` maps only the canonical RPC verbs get/list; "read" is
+// UNMAPPED → "Illegal argument action"), because a request that fails
 // action-validation never reaches the relation check.
 //
-// "viewer" is also the SAME relation the per-RPC Check gate uses for Get/List
-// (internal/check/permission_map.go) — so List visibility == Check-allow
-// (read==enforce), and "viewer" cascades from an account-tier scope_grant
-// (g_viewer_compute_<type>) so a rules-role list-grant stays visible per-object.
+// `v_get` is the SAME relation the per-RPC Check gate uses for Get
+// (internal/check/permission_map.go `InstanceService/Get`) — that is what makes
+// List visibility == Check-allow (read==enforce).
+//
+// Прежняя редакция этого абзаца называла таким отношением `viewer`. Это было
+// неверно: Get гейтится `v_get`, а ярусные (`viewer`/`editor`/`admin`) и
+// глагольные (`v_*`) отношения в модели РАЗВЯЗАНЫ — ни одно не выводится из
+// другого. Комментарий утверждал инвариант, которого код не держал, и переживал
+// обзоры именно поэтому.
 const (
 	ActionInstanceRead = "compute.instances.list"
 )

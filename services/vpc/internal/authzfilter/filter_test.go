@@ -114,7 +114,7 @@ func (f *fakeAuthorizeClient) snapshot() (calls, checked, maxInFlight int, batch
 }
 
 func TestFGAFilter_FiltersPageAndPreservesOrder(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "c", "a")
+	cli := newFakeAuthorizeClient().allow("v_get", "c", "a")
 	f := NewFGAFilter(cli, DefaultConfig())
 
 	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeSubnet, ActionSubnetList,
@@ -128,38 +128,15 @@ func TestFGAFilter_FiltersPageAndPreservesOrder(t *testing.T) {
 	assert.Equal(t, "user:usr_x", cli.gotReqs[0].GetSubject())
 	assert.Equal(t, ResourceTypeSubnet, cli.gotReqs[0].GetResource().GetType())
 	assert.Equal(t, ActionSubnetList, cli.gotReqs[0].GetAction())
-	assert.Equal(t, "viewer", cli.gotReqs[0].GetRequiredRelation())
+	assert.Equal(t, "v_get", cli.gotReqs[0].GetRequiredRelation())
 }
 
-// Предикат видимости — тот же союз, что делал ListObjects: viewer ∪ v_list.
-// v_list-only грант («видеть в списке без содержимого») обязан оставаться видимым.
-func TestFGAFilter_ViewerUnionVList(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "a").allow("v_list", "b")
-	f := NewFGAFilter(cli, DefaultConfig())
-
-	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeSubnet, ActionSubnetList,
-		[]string{"a", "b", "c"})
-	require.NoError(t, err)
-	assert.Equal(t, []string{"a", "b"}, got, "viewer ∪ v_list")
-}
-
-// v_list спрашивается ТОЛЬКО про тех, кому отказал viewer (стоимость).
-func TestFGAFilter_VListOnlyForViewerDenied(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "a", "b")
-	f := NewFGAFilter(cli, DefaultConfig())
-
-	_, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeSubnet, ActionSubnetList,
-		[]string{"a", "b", "c"})
-	require.NoError(t, err)
-
-	var vlist int
-	for _, r := range cli.gotReqs {
-		if r.GetRequiredRelation() == "v_list" {
-			vlist++
-		}
-	}
-	assert.Equal(t, 1, vlist, "only the viewer-denied id should be re-asked on v_list")
-}
+// Предикат видимости — ОДНО отношение, то же, которым гейтится Get.
+// Прежде здесь стояли два теста, закреплявшие союз `viewer ∪ v_list` и
+// стоимость его второй фазы. Оба утверждали предикат, который расходился с
+// чтением, — их предмет снят вместе с союзом. Обе половины (v_list-only НЕ
+// впускает объект; спрашивается ровно одно отношение, второй фазы нет)
+// проверяются в read_parity_test.go.
 
 // Батчи режутся по контрактному пределу BatchCheck (≤100) — большая страница не
 // роняет запрос в InvalidArgument.
@@ -169,7 +146,7 @@ func TestFGAFilter_BatchesRespectHardCap(t *testing.T) {
 	for i := 0; i < 250; i++ {
 		id := fmt.Sprintf("e9b_%03d", i)
 		ids = append(ids, id)
-		cli.allow("viewer", id)
+		cli.allow("v_get", id)
 	}
 	f := NewFGAFilter(cli, DefaultConfig())
 
@@ -185,7 +162,7 @@ func TestFGAFilter_BatchesRespectHardCap(t *testing.T) {
 // Стоимость пропорциональна СТРАНИЦЕ: сколько id пришло, столько и проверок
 // (никакого перечисления вселенной).
 func TestFGAFilter_CostProportionalToPage(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "a", "b", "c")
+	cli := newFakeAuthorizeClient().allow("v_get", "a", "b", "c")
 	f := NewFGAFilter(cli, DefaultConfig())
 
 	_, err := f.FilterVisibleIDs(context.Background(), "user:usr_x", ResourceTypeSubnet, ActionSubnetList,
@@ -275,7 +252,7 @@ func TestFGAFilter_AnonymousFailClosed(t *testing.T) {
 // стоит round-trip'а, а про невидимый — перепроверяется (иначе revoke залипал бы
 // на TTL).
 func TestFGAFilter_CachesPositiveOnly(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "a")
+	cli := newFakeAuthorizeClient().allow("v_get", "a")
 	f := NewFGAFilter(cli, DefaultConfig())
 	ctx := context.Background()
 
@@ -309,7 +286,7 @@ func TestFGAFilter_CachesPositiveOnly(t *testing.T) {
 // трэшил бы кеш и гнал лишний QPS в kacho-iam.
 func TestFGAFilter_LRUEvictsLeastRecentlyUsed(t *testing.T) {
 	cli := newFakeAuthorizeClient()
-	cli.allow("viewer", "hot")
+	cli.allow("v_get", "hot")
 	cfg := DefaultConfig()
 	cfg.CacheMaxEntries = 10
 	f := NewFGAFilter(cli, cfg)
@@ -317,7 +294,7 @@ func TestFGAFilter_LRUEvictsLeastRecentlyUsed(t *testing.T) {
 
 	for i := 0; i < 9; i++ {
 		id := fmt.Sprintf("cold_%d", i)
-		cli.allow("viewer", id)
+		cli.allow("v_get", id)
 		_, err := f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeSubnet, ActionSubnetList, []string{id})
 		require.NoError(t, err)
 	}
@@ -333,7 +310,7 @@ func TestFGAFilter_LRUEvictsLeastRecentlyUsed(t *testing.T) {
 			"recently-used hot entry must stay cached across overflow (LRU, not random eviction)")
 
 		id := fmt.Sprintf("cold_%d", i)
-		cli.allow("viewer", id)
+		cli.allow("v_get", id)
 		_, err = f.FilterVisibleIDs(ctx, "user:usr_x", ResourceTypeSubnet, ActionSubnetList, []string{id})
 		require.NoError(t, err)
 	}
@@ -367,7 +344,7 @@ func TestAsPort_NilFilterReturnsNil(t *testing.T) {
 }
 
 func TestAsPort_DelegatesToFilter(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "e9b_a")
+	cli := newFakeAuthorizeClient().allow("v_get", "e9b_a")
 	port := AsPort(NewFGAFilter(cli, DefaultConfig()))
 	require.NotNil(t, port)
 

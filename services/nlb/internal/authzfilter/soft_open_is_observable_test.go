@@ -170,7 +170,7 @@ func TestOpenPass_ContractSkew_IsLoudAndCounted(t *testing.T) {
 // здесь — прочитанное значение, а не отсутствие записи в логе, которое неотличимо
 // от отсутствия самого счётчика.
 func TestHealthyPage_LeavesOpenPassCountersAtZero(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "a")
+	cli := newFakeAuthorizeClient().allow("v_get", "a")
 	sink := newLogSink()
 	f := failOpenFilter(cli, sink)
 

@@ -17,11 +17,19 @@ const (
 )
 
 // kacho-nlb action-строки. Формат `<domain>.<resource>.<verb>` per IAM permission
-// catalog. Фильтр пинит relation явно (`required_relation` = viewer, затем v_list —
-// см. filter.go visibilityRelations), но action едет на каждом check'е (аудит/
-// трассировка; iam отвергает пустой) и остаётся read-tier: verb=list — то, что iam
-// резолвит в viewer, если override когда-нибудь снимут (read==enforce: та же
-// relation, что per-RPC Check для Get; см. internal/check/permission_map.go).
+// catalog. Фильтр пинит relation явно (`required_relation` = `v_get` — см. filter.go
+// visibilityRelations), но action едет на каждом check'е (аудит/трассировка; iam
+// отвергает пустой) и несёт verb=list, который iam умеет резолвить.
+//
+// `v_get` — ТО ЖЕ отношение, которым per-RPC Check гейтит Get
+// (internal/check/permission_map.go `NetworkLoadBalancerService/Get`): предикат
+// страницы равен отношению чтения (read==enforce).
+//
+// Прежняя редакция называла таким отношением `viewer` и добавляла, что снятие
+// override ничего не изменит. Оба утверждения были неверны: Get гейтится `v_get`,
+// ярусные и глагольные отношения в модели развязаны, а verb-деривация iam даёт
+// именно `viewer` — то есть снятие override закрепило бы расхождение, а не
+// устранило его.
 const (
 	ActionLoadBalancerList = "loadbalancer.networkLoadBalancers.list"
 	ActionListenerList     = "loadbalancer.listeners.list"

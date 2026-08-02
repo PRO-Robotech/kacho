@@ -31,10 +31,20 @@ const (
 	ResourceTypeNetworkInterface = "vpc_network_interface"
 )
 
-// Action-строки VPC-домена. На стороне kacho-iam последний `.`-сегмент (verb)
-// резолвится в FGA relation: `list` → `viewer` — та же tier-relation, что
-// энфорсит per-RPC Check для чтения (read==enforce). Формат —
-// `<domain>.<resource>.<verb>` из IAM permission catalog.
+// Action-строки VPC-домена. Формат `<domain>.<resource>.<verb>` из IAM permission
+// catalog; action едет на каждом check'е для аудита/трассировки.
+//
+// РЕШЕНИЕ принимается по явному `required_relation`, который фильтр пинит на батч
+// (`v_get` — см. filter.go visibilityRelations), а НЕ по server-side деривации
+// verb→relation. `v_get` — то же отношение, которым per-RPC Check гейтит Get
+// (`internal/apps/kacho/check/permission_map.go`), поэтому предикат страницы равен
+// отношению чтения (read==enforce).
+//
+// Прежняя редакция утверждала, что verb-деривация iam (`list` → `viewer`) даёт «ту
+// же tier-relation, что энфорсит per-RPC Check для чтения». Деривация описана верно,
+// а вывод из неё — нет: чтение гейтится `v_get`, а ярусные (`viewer`/`editor`/
+// `admin`) и глагольные (`v_*`) отношения в модели РАЗВЯЗАНЫ. Значит опора на
+// деривацию (снятие override) расхождение бы закрепила.
 const (
 	ActionNetworkList          = "vpc.networks.list"
 	ActionSubnetList           = "vpc.subnets.list"

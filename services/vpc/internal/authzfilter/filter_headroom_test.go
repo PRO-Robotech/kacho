@@ -31,11 +31,12 @@ const loadedPeerLatency = 600 * time.Millisecond
 // отфильтроваться БЕЗ 503, когда пир отвечает за loadedPeerLatency на батч, и
 // уложиться в бюджет операции с реальным запасом.
 //
-// Арифметика (см. filter.go): страница 1000 → ceil(1000/100)=10 батчей на
-// relation; relations две и они ПОСЛЕДОВАТЕЛЬНЫ по построению (v_list
-// спрашивается только у отказанных viewer'ом). До фикса батчи внутри relation
-// шли ПОСЛЕДОВАТЕЛЬНО, каждый под своим 500ms-дедлайном → 10..20 round-trip'ов
-// подряд, и ЛЮБОЙ из них дольше 500ms ронял весь List в Unavailable.
+// Арифметика (см. filter.go): страница 1000 → ceil(1000/100)=10 батчей.
+// Relation теперь ОДНА (предикат страницы равен отношению чтения), поэтому
+// последовательных фаз больше нет и worst-case глубина вдвое меньше прежней. До
+// фикса параллелизма батчи шли ПОСЛЕДОВАТЕЛЬНО, каждый под своим 500ms-дедлайном
+// → 10..20 round-trip'ов подряд, и ЛЮБОЙ из них дольше 500ms ронял весь List в
+// Unavailable. Бюджет обязан держаться и на этой, уменьшенной, глубине.
 func TestFGAFilter_MaxPageWithinBudget_UnderLoadedPeerLatency(t *testing.T) {
 	pageSize := int(validate.MaxPageSize)
 
@@ -46,13 +47,10 @@ func TestFGAFilter_MaxPageWithinBudget_UnderLoadedPeerLatency(t *testing.T) {
 		id := fmt.Sprintf("net%017d", i)
 		ids = append(ids, id)
 		switch i % 3 {
-		case 0: // viewer-видимый
-			cli.allow("viewer", id)
+		case 0, 1: // читаемый вызывающим → обязан быть в странице
+			cli.allow("v_get", id)
 			want = append(want, id)
-		case 1: // v_list-видимый (viewer отказал → уходит во вторую фазу)
-			cli.allow("v_list", id)
-			want = append(want, id)
-		default: // невидимый ни по одному отношению
+		default: // не читаемый → в страницу не попадает
 		}
 	}
 	cli.sleep = loadedPeerLatency
@@ -73,7 +71,7 @@ func TestFGAFilter_MaxPageWithinBudget_UnderLoadedPeerLatency(t *testing.T) {
 		pageSize, maxBatchCheckSize, loadedPeerLatency)
 
 	// (2) Разбиение allowed/denied НЕ портится параллельными батчами: тот же
-	//     предикат (viewer ∪ v_list), тот же порядок курсора.
+	//     предикат (отношение чтения), тот же порядок курсора.
 	assert.Equal(t, want, got,
 		"parallel batches must not corrupt the allowed/denied partitioning nor the cursor order")
 
@@ -150,7 +148,7 @@ func TestFGAFilter_SingleBatchStaysSerial(t *testing.T) {
 	for i := 0; i < maxBatchCheckSize; i++ {
 		id := fmt.Sprintf("net%017d", i)
 		ids = append(ids, id)
-		cli.allow("viewer", id)
+		cli.allow("v_get", id)
 	}
 	f := NewFGAFilter(cli, DefaultConfig())
 
