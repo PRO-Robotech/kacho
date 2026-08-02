@@ -372,7 +372,7 @@ genuinely new concern rather than another phase of the existing pipeline.
 Rubric reference: project-rule #11; CWE-1121. Contract impact: none — no
 behavior/wire/API/DB change. (Confidence of the original finding: low.)
 
-## 10. Two gRPC FQNs bypass authN as well as authZ (`DefaultPublicAllowlist`)
+## 10. One gRPC FQN bypasses authN as well as authZ (`DefaultPublicAllowlist`)
 
 **Rule (`security.md` §"AuthN+AuthZ ВЕЗДЕ").** Every RPC on every listener runs
 authentication and a per-RPC authorization Check. The rule admits exactly two
@@ -388,18 +388,44 @@ authorization both**, on every listener including the advertised external TLS
 edge. This is strictly stronger than the catalog's `<exempt>`, which still
 requires authentication and only skips the FGA Check.
 
-Two entries remain, and this section is where their justification is written
-down so that neither is silent:
+One entry remains, and this section is where its justification is written down
+so that it is not silent:
 
 | Entry | What an unauthenticated caller obtains | Why it is accepted |
 |---|---|---|
-| `grpc.health.v1.Health/Check` | a constant SERVING for the gateway itself; the request's service name is not read | kubelet probes carry no bearer token; gating liveness on the authz path couples an IAM outage to a cluster-wide restart loop |
-| `grpc.health.v1.Health/Watch` | nothing — the gateway embeds `UnimplementedHealthServer` | listed with `Check` so a future implementation cannot arrive silently behind an existing bypass |
+| `grpc.health.v1.Health/Check` | a constant SERVING for the gateway itself; the handler does not read the requested service name | probes carry no bearer token; gating liveness on the authz path couples an IAM outage to a cluster-wide restart loop |
 
-Neither returns tenant data, resource identifiers, or anything scoped to an
-individual owner — the answer is identical for every caller. That property is
+It returns no tenant data, no resource identifiers, nothing scoped to an
+individual owner — the answer is identical for every caller. That sameness is
 what makes an unauthenticated answer defensible, and it is the property to
 re-check before any entry is added.
+
+**Removed — `grpc.health.v1.Health/Watch`.** It was listed beside `Check` on the
+reasoning that listing it kept a future implementation from arriving silently
+behind a bypass. The reasoning runs backwards. The gateway embeds
+`UnimplementedHealthServer`, so `Watch` is answered `Unimplemented` and the entry
+waived authentication and authorization for an RPC no caller could reach; and had
+`Watch` later been implemented, the pre-placed entry is precisely what would have
+let it stream to unauthenticated callers with nobody deciding so. An exemption is
+added WITH the thing it exempts, never ahead of it.
+
+Removing it changes no capability: a `Watch` call from the edge previously
+reached the health server and got `Unimplemented`; it now gets an authorization
+decision (catalog miss ⇒ denied). Nothing could `Watch` before and nothing can
+now.
+
+**The gate this produced.** `cmd/api-gateway/public_allowlist_answered_test.go`
+stands the edge's native surface up on an in-memory listener, invokes every
+bypass entry that surface serves, and fails the build on one answered
+`Unimplemented`. It is deliberately a SECOND gate rather than a widening of
+`middleware/authz_public_allowlist_resolves_test.go`: that one asks whether the
+name exists in the served contract and says in its own comment that
+served-but-unimplemented is legitimate for its question. It is — for that
+question. Reachability is a different question and needed a different probe, with
+its own controls in both directions (the edge's own `Check` must not read as
+`Unimplemented`; a fabricated method, an unserved service, and the now-moved
+reflection FQN all must) and a census that distinguishes "nothing found" from
+"nothing invoked".
 
 **Closed — server-reflection moved to the cluster-internal listener.** Earlier
 revisions of this section carried two `grpc.reflection.*` entries and left the

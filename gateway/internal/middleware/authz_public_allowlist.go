@@ -16,13 +16,24 @@
 // EVERY ENTRY IS A DECISION AND CARRIES ITS OWN JUSTIFICATION BELOW. An entry
 // that names an RPC which does not exist is not harmless dead weight — it reads
 // like a reviewed decision, and the next person adding a bypass copies its
-// shape. authz_public_allowlist_resolves_test.go fails the build on one.
+// shape. Two gates hold that, and they ask different questions:
+// authz_public_allowlist_resolves_test.go asks whether the name exists in the
+// served contract; cmd/api-gateway/public_allowlist_answered_test.go invokes
+// each natively-served entry and asks whether the edge ANSWERS it. An entry can
+// pass the first and fail the second — a method that exists but is
+// Unimplemented exempts nothing, and pre-placing an exemption is how one arrives
+// silently the day the method is written.
 //
-// NOT DOCUMENTED AS A RULE EXCEPTION (state as of this revision). security.md
-// carries exactly two documented exemptions from "authN+authZ on every RPC" —
-// the iam JWKS route and geo public catalog reads. Neither covers the entries
-// below, so their justification lives here and in
-// docs/architecture/known-divergences.md §10 rather than being left implicit.
+// ONE ENTRY REMAINS (state as of this revision), and it is health. Server-
+// reflection moved to the cluster-internal listener; Health/Watch was removed as
+// unreachable; six entries naming services that never existed were removed
+// earlier.
+//
+// NOT DOCUMENTED AS A RULE EXCEPTION. security.md carries exactly two documented
+// exemptions from "authN+authZ on every RPC" — the iam JWKS route and geo public
+// catalog reads. Neither covers the entry below, so its justification lives here
+// and in docs/architecture/known-divergences.md §10 rather than being left
+// implicit.
 //
 // NOTE: OperationService.Get/Cancel are deliberately NOT on this list. They are
 // frequently polled but still require authentication — handled via the catalog
@@ -53,25 +64,32 @@ package middleware
 // rely on it.
 func DefaultPublicAllowlist() []string {
 	return []string{
-		// grpc.health — liveness/readiness probing.
+		// grpc.health.v1.Health/Check — liveness probing. THE ONLY ENTRY.
 		//
-		// What it returns: a SERVING/NOT_SERVING enum aggregated over the
-		// gateway's backends (internal/health/health.go). No tenant data, no
-		// resource identifiers, no per-owner objects — the same answer for
-		// every caller, which is what makes an unauthenticated answer
-		// defensible here.
+		// What it returns: a constant SERVING for the gateway itself
+		// (internal/health/health.go — the handler does not read the requested
+		// service name). No tenant data, no resource identifiers, no per-owner
+		// objects, and the same answer for every caller. That sameness is what
+		// makes an unauthenticated answer defensible, and it is the property to
+		// re-check before anything is added here.
 		//
-		// Why not `<exempt>`: kubelet probes carry no bearer token, so
-		// requiring authentication would fail every probe. Gating the probe on
-		// the authz path would also couple liveness to an IAM outage and turn
-		// one into a cluster-wide rolling-restart loop.
+		// Why not `<exempt>`: probes carry no bearer token, so requiring
+		// authentication would fail every one of them. Gating liveness on the
+		// authz path would also couple it to an IAM outage and turn one outage
+		// into a cluster-wide restart loop.
 		//
-		// Watch is listed alongside Check although the gateway embeds
-		// UnimplementedHealthServer and therefore answers Unimplemented: the
-		// method exists in the served contract, and listing it keeps a future
-		// implementation from silently arriving behind a bypass.
+		// Health/Watch USED to sit here, on the reasoning that listing it kept a
+		// future implementation from arriving silently behind a bypass. That
+		// reasoning runs backwards. The gateway embeds UnimplementedHealthServer
+		// and answers Watch Unimplemented, so the entry waived authN and authZ
+		// for an RPC nobody could reach — and had Watch later been implemented,
+		// the pre-placed entry is exactly what would have made it stream to
+		// unauthenticated callers without anyone deciding so. An exemption is
+		// added WITH the thing it exempts, never ahead of it.
+		// cmd/api-gateway/public_allowlist_answered_test.go now invokes every
+		// natively-served entry and fails the build on one the edge answers
+		// Unimplemented.
 		"grpc.health.v1.Health/Check",
-		"grpc.health.v1.Health/Watch",
 
 		// grpc.reflection is NOT here, and the server no longer registers it on
 		// the externally-reachable listener at all
