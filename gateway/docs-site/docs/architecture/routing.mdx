@@ -106,5 +106,11 @@ flowchart TD
 ## Endpoint discovery
 
 Внешним клиентам нужно знать advertised-адрес периметра (`api.kacho.local:443` по умолчанию,
-`KACHO_API_GATEWAY_ADVERTISED_ENDPOINT`). Через reflection на публичной gRPC-поверхности видны
-native-сервисы гейтвея (`OperationService`, health); остальные RPC — транслируемые в домены.
+`KACHO_API_GATEWAY_ADVERTISED_ENDPOINT`). Нативная поверхность внешне достижимого gRPC-сервера —
+`OperationService` и health; остальные RPC транслируются в домены.
+
+Server-reflection на этой поверхности **не подаётся**. Она освобождала бы и аутентификацию, и
+авторизацию на advertised-периметре, а разрешение символа идёт из глобального реестра
+дескрипторов — то есть короткий ответ `list` не ограничивает того, что вернёт `describe`.
+Схема остаётся доступной оператору на cluster-internal listener, где каждый вызов (включая
+стрим reflection) предъявляет проверенный клиентский сертификат из allow-list.

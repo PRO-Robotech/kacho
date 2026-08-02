@@ -20,7 +20,6 @@ import (
 	"github.com/soheilhy/cmux"
 	"golang.org/x/net/http2"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/reflection"
 
 	// Регистрация errdetails-типов в protoregistry — иначе protojson не
 	// разворачивает Any в BadRequest.FieldViolations / ResourceInfo при
@@ -28,7 +27,6 @@ import (
 	// "failed to marshal error message".
 	_ "google.golang.org/genproto/googleapis/rpc/errdetails"
 
-	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 
 	// Обслуживается только нативный API kacho.cloud.*.
@@ -558,20 +556,11 @@ func main() {
 		grpc.ChainUnaryInterceptor(grpcUnaryInterceptors...),
 		grpc.ChainStreamInterceptor(grpcStreamInterceptors...),
 	)
-	health.RegisterGRPCHealth(grpcSrv, backends)
-
-	// OpsProxy регистрируется как нативный gRPC-сервис в gateway-сервере.
-	// Запросы /kacho.cloud.operation.OperationService/* идут напрямую сюда,
-	// минуя transparent-proxy routing (server.go Resolver).
+	// Нативная поверхность внешне достижимого gRPC-сервера — один список,
+	// external_grpc_services.go. Запросы /kacho.cloud.operation.OperationService/*
+	// идут напрямую туда, минуя transparent-proxy routing (server.go Resolver).
 	opsProxy := opsproxy.New(backends)
-	operationpb.RegisterOperationServiceServer(grpcSrv, opsProxy)
-
-	// gRPC reflection — позволяет grpcurl и совместимым CLI получить список
-	// сервисов через ServerReflection. Видны только сервисы, нативно
-	// зарегистрированные на api-gateway (OperationService + Health). Сервисы
-	// vpc/iam доступны через transparent-proxy и видны в reflection их
-	// собственных backends (если включить там).
-	reflection.Register(grpcSrv)
+	registerExternalGRPCServices(grpcSrv, backends, opsProxy)
 
 	// --- REST mux (grpc-gateway) ---
 	// Регистрирует активные публичные сервисы + OperationService через OpsProxy

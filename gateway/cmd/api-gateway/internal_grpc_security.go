@@ -38,8 +38,14 @@ import (
 )
 
 // internalListenerSecurity carries the resolved security posture for the
-// cluster-internal gRPC listener: mTLS server credentials, the SPIFFE-SAN
-// allow-list authorising callers, and whether gRPC reflection is exposed.
+// cluster-internal gRPC listener: mTLS server credentials and the SPIFFE-SAN
+// allow-list authorising callers.
+//
+// Server-reflection is NOT a field here. It follows mtlsEnabled directly
+// (internal_grpc_listener.go) because a separate switch would let an operator
+// turn a schema surface on for a listener that authorises nobody — and a knob
+// whose safe setting is "the same as the posture" is a knob that only ever gets
+// set wrong.
 type internalListenerSecurity struct {
 	// mtlsEnabled gates transport security. false ⇒ insecure listener (dev/local
 	// backward-compat), interceptors NOT mounted. true ⇒ serverCreds + allow-list
@@ -51,8 +57,6 @@ type internalListenerSecurity struct {
 	// allowedSPIFFE is the set of verified client SANs authorised to invoke the
 	// listener's RPCs (the iam push-drainer identity). Enforced only under mTLS.
 	allowedSPIFFE map[string]struct{}
-	// reflection exposes gRPC server-reflection when true (debug/incident only).
-	reflection bool
 }
 
 // buildInternalListenerSecurity resolves the internal-listener security posture
@@ -62,7 +66,7 @@ type internalListenerSecurity struct {
 // production guard (validateProductionInternalListener) refuses that posture in a
 // production-class env.
 func buildInternalListenerSecurity(cfg config.Config) (internalListenerSecurity, error) {
-	sec := internalListenerSecurity{reflection: cfg.InternalGRPCReflection}
+	var sec internalListenerSecurity
 	if !cfg.InternalGRPCMTLSEnable {
 		// Insecure listener — dev/local only. cert material NOT consulted.
 		return sec, nil

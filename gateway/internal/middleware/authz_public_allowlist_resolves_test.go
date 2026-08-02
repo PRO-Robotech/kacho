@@ -372,8 +372,15 @@ func TestAllowlistGate_Injection_LegitimateTwinIsSilent(t *testing.T) {
 		// Twin of the injected kacho entries — same package, real methods.
 		"kacho.cloud.iam.v1.UserService/Get",
 		"kacho.cloud.iam.v1.ProjectService/List",
-		// Twin from the grpc-go family, and one that is served but unimplemented
-		// (Watch): "exists in the contract" is the property, not "returns OK".
+		// Twins from the grpc-go family. Two of these are deliberately NOT on
+		// the production list any more — Watch because the edge answers it
+		// Unimplemented, ServerReflection because it moved to the cluster-
+		// internal listener — and they stay here precisely because of that:
+		// this gate's property is "the name exists in the served contract", and
+		// a name it must accept is best represented by one that resolves while
+		// being disqualified on some OTHER ground. Whether an entry is actually
+		// ANSWERED is a different question with a different probe:
+		// cmd/api-gateway/public_allowlist_answered_test.go.
 		"grpc.health.v1.Health/Check",
 		"grpc.health.v1.Health/Watch",
 		"grpc.reflection.v1.ServerReflection/ServerReflectionInfo",

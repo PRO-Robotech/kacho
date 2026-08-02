@@ -37,8 +37,9 @@ import (
 // allow-list interceptor chain (authN+authZ), so only the allow-listed iam
 // push-drainer identity can flush the authz cache. When mTLS is disabled it is
 // the dev/local insecure listener (opt-in) — the production guard in main.go
-// refuses that posture in a production-class env. Reflection is gated behind the
-// debug flag (sec.reflection): it enumerates the internal admin surface.
+// refuses that posture in a production-class env. Server-reflection rides that
+// same condition (see below): this is the only listener that serves it, and only
+// where callers are authenticated and authorised.
 //
 // addr=":0" → kernel picks port; the caller can read it via lis.Addr() (used
 // by the unit test for ephemeral-port lifecycle).
@@ -94,10 +95,20 @@ func startInternalGRPCListener(
 
 	handler.RegisterInternalAuthzCacheService(srv, externalSrv, inv, logger)
 
-	// gRPC reflection — useful for `grpcurl` against the internal listener during
-	// incident response, but it enumerates the internal admin surface, so it is
-	// gated behind an explicit debug flag (default OFF).
-	if sec.reflection {
+	// gRPC reflection — schema discovery for `grpcurl` and friends during
+	// incident response. This is the ONLY listener that serves it: the
+	// externally-reachable server does not register it at all
+	// (external_grpc_services.go), because there it would answer callers that
+	// nothing authenticated.
+	//
+	// Registered only under the mTLS posture, and that condition is the whole
+	// safety argument. With mTLS on, every RPC here — reflection included, via
+	// the STREAM interceptor — must present a verified client cert whose SPIFFE
+	// SAN is on the caller allow-list. With mTLS off (the dev/local opt-in) the
+	// listener mounts no interceptors at all, so registering reflection there
+	// would put schema enumeration in front of an unauthenticated port; not
+	// registering it is the only refusal available in that posture.
+	if sec.mtlsEnabled {
 		reflection.Register(srv)
 	}
 
@@ -106,7 +117,7 @@ func startInternalGRPCListener(
 			slog.String("addr", lis.Addr().String()),
 			slog.String("services", "kacho.cloud.apigateway.v1.InternalAuthzCacheService"),
 			slog.Bool("mtls", sec.mtlsEnabled),
-			slog.Bool("reflection", sec.reflection),
+			slog.Bool("reflection", sec.mtlsEnabled),
 			slog.String("invariant", "internal-only — never on external TLS"))
 	}
 	return srv, lis, nil

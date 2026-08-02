@@ -372,7 +372,7 @@ genuinely new concern rather than another phase of the existing pipeline.
 Rubric reference: project-rule #11; CWE-1121. Contract impact: none — no
 behavior/wire/API/DB change. (Confidence of the original finding: low.)
 
-## 10. Four gRPC FQNs bypass authN as well as authZ (`DefaultPublicAllowlist`)
+## 10. One gRPC FQN bypasses authN as well as authZ (`DefaultPublicAllowlist`)
 
 **Rule (`security.md` §"AuthN+AuthZ ВЕЗДЕ").** Every RPC on every listener runs
 authentication and a per-RPC authorization Check. The rule admits exactly two
@@ -388,67 +388,104 @@ authorization both**, on every listener including the advertised external TLS
 edge. This is strictly stronger than the catalog's `<exempt>`, which still
 requires authentication and only skips the FGA Check.
 
-Four entries remain, and this section is where their justification is written
-down so that none of them is silent:
+One entry remains, and this section is where its justification is written down
+so that it is not silent:
 
 | Entry | What an unauthenticated caller obtains | Why it is accepted |
 |---|---|---|
-| `grpc.health.v1.Health/Check` | a SERVING/NOT_SERVING enum aggregated over backends | kubelet probes carry no bearer token; gating liveness on the authz path couples an IAM outage to a cluster-wide restart loop |
-| `grpc.health.v1.Health/Watch` | nothing — the gateway embeds `UnimplementedHealthServer` | listed with `Check` so a future implementation cannot arrive silently behind an existing bypass |
-| `grpc.reflection.v1.ServerReflection/ServerReflectionInfo` | `list` shows only the natively-registered `OperationService`/`Health`/`ServerReflection`, but `describe <symbol>` retrieves the file descriptor of **any linked backend service**, `Internal*` included, with transitive dependencies | developer tooling (`grpcurl`); see the open question below, which this makes sharper |
-| `grpc.reflection.v1alpha.ServerReflection/ServerReflectionInfo` | same as v1 | same |
+| `grpc.health.v1.Health/Check` | a constant SERVING for the gateway itself; the handler does not read the requested service name | probes carry no bearer token; gating liveness on the authz path couples an IAM outage to a cluster-wide restart loop |
 
-None of the four returns tenant data, resource identifiers, or anything scoped
-to an individual owner — the answer is identical for every caller. That property
-is what makes an unauthenticated answer defensible, and it is the property to
+It returns no tenant data, no resource identifiers, nothing scoped to an
+individual owner — the answer is identical for every caller. That sameness is
+what makes an unauthenticated answer defensible, and it is the property to
 re-check before any entry is added.
 
-**Open question — reflection at the external edge.** The comment on these
-entries used to assert that reflection was "only available cluster-internal
-anyway". That was not accurate: `reflection.Register(grpcSrv)` in
-`cmd/api-gateway/main.go` registers on the same `*grpc.Server` that is served on
-the advertised external TLS listener, so both reflection FQNs are answerable
-unauthenticated from the edge. The comment has been corrected in place rather
-than deleted, because a security note that contradicts the code invites the next
-reader to "fix" the code to match the note.
+**Removed — `grpc.health.v1.Health/Watch`.** It was listed beside `Check` on the
+reasoning that listing it kept a future implementation from arriving silently
+behind a bypass. The reasoning runs backwards. The gateway embeds
+`UnimplementedHealthServer`, so `Watch` is answered `Unimplemented` and the entry
+waived authentication and authorization for an RPC no caller could reach; and had
+`Watch` later been implemented, the pre-placed entry is precisely what would have
+let it stream to unauthenticated callers with nobody deciding so. An exemption is
+added WITH the thing it exempts, never ahead of it.
 
-An earlier revision of this section called the resulting disclosure "small", on
-the grounds that backend services are transparently proxied rather than
-registered here and therefore not enumerable. **That was wrong, and the
-correction matters more than the original claim.** `ListServices` does answer
-from `GetServiceInfo()` — so `grpcurl list` shows only `OperationService`,
-`Health` and `ServerReflection` — but `FileContainingSymbol` and
-`FileByFilename` resolve against `protoregistry.GlobalFiles` (grpc-go defaults
-the reflection server's `DescriptorResolver` to it), and this binary links every
-backend descriptor through `restmux`. **Not listed is not the same as not
-retrievable.** An unauthenticated caller at the edge who names a symbol gets its
-full file descriptor plus transitive dependencies — for any backend service,
-`Internal*` services included, and the dependency chain carries the per-RPC
-authz permission annotations.
+Removing it changes no capability: a `Watch` call from the edge previously
+reached the health server and got `Unimplemented`; it now gets an authorization
+decision (catalog miss ⇒ denied). Nothing could `Watch` before and nothing can
+now.
 
-That is schema and policy-shape disclosure, not tenant-data disclosure: the
-proto tree is public and no request is served by answering a descriptor. But it
-is a materially larger surface than "three descriptors", and it makes reflection
-by some distance the weakest of the four justifications — unlike health,
-reflection is developer convenience, not an operational necessity, and confining
-it to the cluster-internal listener would cost only edge-side `grpcurl`.
+**The gate this produced.** `cmd/api-gateway/public_allowlist_answered_test.go`
+stands the edge's native surface up on an in-memory listener, invokes every
+bypass entry that surface serves, and fails the build on one answered
+`Unimplemented`. It is deliberately a SECOND gate rather than a widening of
+`middleware/authz_public_allowlist_resolves_test.go`: that one asks whether the
+name exists in the served contract and says in its own comment that
+served-but-unimplemented is legitimate for its question. It is — for that
+question. Reachability is a different question and needed a different probe, with
+its own controls in both directions (the edge's own `Check` must not read as
+`Unimplemented`; a fabricated method, an unserved service, and the now-moved
+reflection FQN all must) and a census that distinguishes "nothing found" from
+"nothing invoked".
 
-Left as an open decision for the owner rather than changed unilaterally, since
-it alters operator tooling behaviour. Recorded here with the corrected magnitude
-so the decision is taken against the real number rather than the flattering one.
+**Closed — server-reflection moved to the cluster-internal listener.** Earlier
+revisions of this section carried two `grpc.reflection.*` entries and left the
+question open for the owner, on the grounds that changing it alters operator
+tooling behaviour. The owner decided: the advertised edge does not serve
+reflection; the cluster-internal listener does, behind mTLS.
 
-**Why the list now has a gate.** Six further entries were removed in the same
+What made the decision straightforward is that **disclosure was never the main
+cost**. The product repository is public and the proto tree with it, so schema
+retrieval added little that `git clone` does not already give. Two things were
+real, and neither was worth edge-side `grpcurl`:
+
+- an authN+authZ exemption sitting on the advertised external listener, matching
+  neither documented exemption, in direct tension with the rule above;
+- a request that costs an anonymous caller one line and the gateway a descriptor
+  walk over its whole linked set — free amplification, on the edge.
+
+The move is two changes that must stay together, and a third that removes the
+way back:
+
+- `cmd/api-gateway/external_grpc_services.go` — the edge's native gRPC surface is
+  now one named list (`Health`, `OperationService`), with no reflection in it.
+  `external_grpc_services_test.go` asserts the set exactly, so the next service
+  registered at the edge without a decision fails the build rather than shipping.
+- `cmd/api-gateway/internal_grpc_listener.go` — reflection is registered there,
+  and only when `sec.mtlsEnabled`. That condition is the safety argument: with
+  mTLS on, every call including the reflection **stream** must present a verified
+  client certificate whose SPIFFE SAN is on the caller allow-list; with mTLS off
+  the listener mounts no interceptors at all, so not registering it is the only
+  refusal available. `internal_grpc_reflection_test.go` proves all three: served
+  to an allow-listed identity, `PermissionDenied` for a verified-but-not-listed
+  one, absent entirely in the insecure posture.
+- the standalone knob (`internalListener.reflection` →
+  `KACHO_API_GATEWAY_INTERNAL_GRPC_REFLECTION`) is **removed, not defaulted off**.
+  Its only non-redundant setting was the dangerous one — reflection on, for a
+  listener that authorises nobody. `deploy/render_reflection_test.go` renders the
+  chart WITH the retired value set and requires that nothing reaches the PodSpec,
+  so a stale overlay value is demonstrably inert rather than assumed to be.
+
+**Was anything depending on it?** Checked before the change, not after: every
+`grpcurl` call site in the tree (`tests/authz-fixtures/setup.sh`,
+`services/iam/tests/newman/crud-fixture/setup.sh`, and the e2e runners that
+prepare them) targets a service's own `:9091` internal listener, never the
+gateway edge. The ban #6 probes — the cases that assert `Internal*` is
+unreachable from outside — are REST, and they assert an HTTP status; they resolve
+no symbols and are unaffected.
+
+**Why the list has a gate.** Six further entries were removed in an earlier
 change: they named a gRPC `AuthService` / `BackChannelLogoutService` that does
 not exist in the contract and never has in this repository. The interactive auth
 flow is HTTP (`/iam/v1/auth/…` in `middleware/oidc_auth.go`, `/oauth/logout` in
 `handler/logout_handler.go`) and its pre-auth exemption is `isPublicHTTPPath` in
 `authz_util.go` — a separate list, unaffected by the removal. An entry naming
 nothing is not inert: it reads like a reviewed decision, and the next person
-adding a bypass copies its shape. `authz_public_allowlist_resolves_test.go` now
+adding a bypass copies its shape. `authz_public_allowlist_resolves_test.go`
 resolves every entry against the served contract and fails the build on one that
 does not exist, so this list expires on its own instead of inheriting the next
 blind spot.
 
-Rubric reference: `security.md` §"AuthN+AuthZ ВЕЗДЕ", §"Публичные артефакты".
-Contract impact: none — no wire/API/DB change; the removed entries could never
-match a routed method.
+Rubric reference: `security.md` §"AuthN+AuthZ ВЕЗДЕ", §"Internal-vs-external",
+§"Публичные артефакты". Contract impact: no wire/API/DB change. Operator-visible
+change: `grpcurl` against the advertised endpoint no longer lists or describes;
+the same commands work against the internal listener with a client certificate.

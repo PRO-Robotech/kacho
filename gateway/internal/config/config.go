@@ -203,10 +203,11 @@ type Config struct {
 	// (spiffe://kacho.cloud/ns/kacho-iam/sa/kacho-iam). Enforced only under mTLS.
 	InternalGRPCAllowedSPIFFE []string `envconfig:"KACHO_API_GATEWAY_INTERNAL_GRPC_ALLOWED_SPIFFE" default:""`
 
-	// InternalGRPCReflection gates gRPC server-reflection on the internal listener.
-	// Default false (reflection OFF) — enable only for incident-response debugging
-	// (reflection enumerates the internal admin surface, so it is a debug-gate).
-	InternalGRPCReflection bool `envconfig:"KACHO_API_GATEWAY_INTERNAL_GRPC_REFLECTION" default:"false"`
+	// (No reflection knob. Server-reflection on the internal listener follows
+	// InternalGRPCMTLSEnable directly — see internal_grpc_listener.go. A separate
+	// switch could only ever be set two ways: identically to the posture, in which
+	// case it is redundant, or on for a listener that mounts no interceptors, in
+	// which case it publishes a schema surface to anyone who can reach the port.)
 
 	// --- OIDC login/callback flow (UI auth) ---
 	// OIDCIssuer empty ⇒ the OIDC handler is disabled (login → 503). A partial

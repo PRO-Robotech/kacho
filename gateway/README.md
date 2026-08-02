@@ -66,7 +66,12 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/operation/v1/operat
 ```
 
 gRPC-клиенты ходят на тот же порт (`cmux` различает по `Content-Type: application/grpc`);
-видимые через reflection нативные сервисы — `OperationService` и health.
+нативная поверхность внешне достижимого сервера — `OperationService` и health
+(один список — `cmd/api-gateway/external_grpc_services.go`).
+
+Server-reflection на внешней поверхности **не подаётся**: она отвечала бы вызывающему,
+которого никто не аутентифицировал. Схема доступна `grpcurl`-ом на cluster-internal
+listener — за mTLS и allow-list вызывающих (см. ниже).
 
 ## Public vs cluster-internal
 
