@@ -31,7 +31,9 @@
 package listfiltergate
 
 import (
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -172,6 +174,40 @@ func TestCensus_SweepFindsSomething(t *testing.T) {
 			t.Errorf("the sweep matched something that is not a method declaration (%q) — it "+
 				"over-counts, so an analyser that misses a method could still be scored equal",
 				notADecl)
+		}
+	}
+}
+
+// TestCIRunsThisCensus locks the wiring. A gate CI does not call is worth exactly as
+// much as no gate, and this one was in that state: it carries a `-short` skip, the fast
+// job runs `go test ./... -race -short` (so it skipped), and the integration job selects
+// only packages matching `/internal/(repo|clients)` under `services/<svc>/...` (so it
+// never reached this package at all). Both halves had to be measured to see it: the skip
+// alone looks harmless as long as something else is assumed to run the package.
+//
+// It was the ONLY test in this package that skipped under -short — the other ten run in
+// the fast job — so nothing about the package's own green said the census had happened.
+//
+// The pattern is the tree's own: four sibling tools (foreignclouds, legacyfolder,
+// paginationordergate, knownfailingsubject) each hold a TestCIRunsThisGate beside their
+// step. This is the fifth, and it names the invocation rather than the job so that moving
+// the step between jobs does not silently unwire it.
+func TestCIRunsThisCensus(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join(repoRootForCoverage(t), ".github", "workflows", "ci.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The invocation must run this test WITHOUT -short; naming the test explicitly is what
+	// makes the step's purpose checkable from here.
+	const invocation = "go test ./tools/listfiltergate/ -run TestCensus_EveryTransportListingIsSeenByItsAnalyser"
+	if !strings.Contains(string(b), invocation) {
+		t.Fatalf("ci.yaml does not run %q — this census skips under -short and no job "+
+			"reaches its package otherwise, so without that step it never executes", invocation)
+	}
+	// And the step must not re-introduce the skip it exists to escape.
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.Contains(line, invocation) && strings.Contains(line, "-short") {
+			t.Fatalf("ci.yaml runs the census with -short, which skips it: %s", strings.TrimSpace(line))
 		}
 	}
 }
