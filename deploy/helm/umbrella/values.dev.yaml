@@ -52,12 +52,15 @@ api-gateway:
   image: kacho-api-gateway:dev
   imagePullPolicy: IfNotPresent
   # sec-hardening (r8): the composition-root prod-guard (validateProductionAuthzConfig)
-  # treats an EMPTY KACHO_APP_ENV as production-class and fails closed when authn.mode=dev
-  # or the dev HMAC secret is set (CWE-347 symmetric-key principal forgery, CWE-1188). The
-  # dev profile runs authn.mode=dev + devSecret intentionally, so it MUST label the env as
-  # dev-class here — otherwise the gateway refuses to boot. This also labels the internal
-  # :9091 listener dev-class so validateProductionInternalListener tolerates the insecure
-  # dev listener (internalListener.mtls stays off — the first-class prod block, #57).
+  # treats an EMPTY KACHO_APP_ENV as production-class and fails closed on a relaxed
+  # posture (CWE-1188), so the label is never left to chance.
+  #
+  # WHAT THIS LABEL STILL BUYS, now that the bearer posture no longer depends on it:
+  # only that validateProductionInternalListener tolerates the internal :9091 listener
+  # running without mTLS on this stand (internalListener.mtls stays off here; the
+  # first-class production block flips it, #57). It does NOT buy an exemption for a
+  # shared signing key — that clause is checked under every label, precisely because a
+  # label is chosen by whoever writes the profile.
   #
   # First-class `appEnv` knob (chart values, KACHO_APP_ENV) — replaces the earlier generic
   # extraEnv.KACHO_APP_ENV passthrough. config.go binds it via `envconfig:"KACHO_APP_ENV"`
@@ -104,19 +107,27 @@ api-gateway:
     # would NXDOMAIN 503 every registry control-plane REST call. Override to the real name.
     registry: registry.kacho.svc.cluster.local:9090
     registryInternal: registry-internal.kacho.svc.cluster.local:9091
-  # KAC-127 (#40): dev-mode auth-interceptor HS256 secret. Without it every
-  # Bearer JWT is ignored and all principals collapse to system:bootstrap —
-  # anonymous / bootstrap / per-user tokens become indistinguishable, which
-  # makes the authz-deny matrix untestable.
+  # The local stand authenticates the same way every other stand does: a bearer the
+  # edge verifies by SIGNATURE against the identity facade's published JWKS.
   #
-  # Dev-ONLY secret. Production (values.prod.yaml) uses authn.mode=production
-  # with Hydra JWKS RS256 and never this value — committing it here is safe
-  # (this is the kind dev stand, not prod). MUST stay in sync with the secret
-  # the authz-fixtures JWT minter signs with
-  # (tests/authz-fixtures/setup.sh DEV_SECRET default).
+  # THIS BLOCK USED TO DECLARE THE OPPOSITE, and the replacement is the point of the
+  # change rather than a tidy-up. It named a relaxed mode plus a shared signing key
+  # committed in the clear, so anyone holding this file could mint a bearer this stand
+  # accepted, and the edge had no way to tell such a token from a provider-signed one.
+  # Rotating the string would have changed nothing: it is shared by construction and
+  # the file is public. `security.md` §"Production-mode — ОБЯЗАТЕЛЕН ВЕЗДЕ" settles it
+  # — the relaxed posture is allowed only inside in-process fixtures, never on a stand
+  # that is actually up, and "it is only the kind stand" is not an exemption, because
+  # a stand that authenticates differently from production proves nothing about
+  # production.
+  #
+  # The chart no longer offers a knob for a shared key at all, and the process refuses
+  # to start if one reaches it another way. The harness follows the stand rather than
+  # the other way round: tests/authz-fixtures/setup.sh reads the posture the live
+  # gateway reports and obtains every bearer THROUGH iam (bootstrap mint →
+  # SAKeyService.Issue → OAuth2 client_credentials), forging nothing.
   authn:
-    mode: dev
-    devSecret: kacho-dev-jwt-secret-2026
+    mode: production-strict
     # Apply the per-RPC authentication floor the catalog declares. Stated here
     # and not left to a default: absence is exactly the state in which the floor
     # was declared everywhere and applied nowhere. Machine principals are exempt

@@ -325,6 +325,14 @@ dev-up: preflight
 	echo "    NB: must run before any user signs up — else account/project FGA tuples"; \
 	echo "    are written best-effort against a missing store and lost (→ 503 on List)."; \
 	$(MAKE) fga-bootstrap; \
+	echo "=== prerequisite secrets (без них production-посадка не поднимается) ==="; \
+	./scripts/dev-prod-secrets.sh; \
+	echo "=== helm phase 3: PRODUCTION posture (values.dev-prod.yaml поверх dev) ==="; \
+	helm upgrade kacho-umbrella ./helm/umbrella -n kacho \
+	  -f ./helm/umbrella/values.dev.yaml \
+	  -f ./helm/umbrella/values.dev-prod.yaml \
+	  -f ./$(IMAGE_IDS_VALUES) \
+	  --wait --timeout 12m; \
 	kubectl -n kacho rollout status deploy/kacho-iam --timeout=180s || true; \
 	kubectl -n kacho rollout status deploy/api-gateway --timeout=180s || true; \
 	$(MAKE) --no-print-directory assert-forwarder-narrowing; \
@@ -358,19 +366,24 @@ dev-down:
 # ПОЧЕМУ ПОВЕРХ dev-up, а не отдельный fresh-install: bootstrap чистого кластера
 # двухфазный (cert-manager CRD появляются только после фазы 1, см. MTLS_OFF), плюс
 # fga-bootstrap. Дублировать этот рецепт значит завести вторую копию, которая
-# разъедется с оригиналом. Здесь мы переиспользуем проверенный bring-up и затем
-# ПЕРЕВОДИМ стенд в production-posture — каждый под перезапускается с production-
-# конфигом и обязан снова стать Ready. Именно это и есть boot-guard-тест.
+# разъедется с оригиналом. Здесь мы переиспользуем проверенный bring-up; сам перевод
+# в production-posture (секреты + фаза 3) теперь ЧАСТЬ `dev-up`, а эта цель осталась
+# ГЕЙТОМ поверх него — она утверждает, что каждый под перезапустился с production-
+# конфигом и снова стал Ready. Именно это и есть boot-guard-тест.
+#
+# ПОЧЕМУ ФАЗА 3 ПЕРЕЕХАЛА В `dev-up`. Пока она жила только здесь, `make dev-up`
+# оставлял стенд в отдельной, более слабой посадке — то есть у продукта было две
+# разные посадки, и «зелёный dev» ничего не говорил про ту, которую мы поставляем.
+# Норма (`security.md` §«Production-mode — ОБЯЗАТЕЛЕН ВЕЗДЕ») требует обратного:
+# ЛЮБОЙ поднятый стенд несёт боевую посадку. Порядок шагов при этом не менялся —
+# он ровно тот, который эта цель исполняла и раньше, просто на шаг раньше по файлу.
 #
 # ПРЕДУСЛОВИЕ — СЕКРЕТЫ, И ОНО ИСПОЛНЯЕТСЯ, А НЕ ОПИСЫВАЕТСЯ. Профиль
 # values.dev-prod.yaml ссылается на `kacho-iam-hook-token` ОБЯЗАТЕЛЬНОЙ ссылкой
-# (secretKeyRef без optional) из пода Hydra и её automigrate-Job'а. Ни один шаблон
-# чарта этот секрет не создаёт — его заводит только scripts/dev-prod-secrets.sh.
-# Раньше цель его НЕ звала, а требование жило одним комментарием в values: на
-# чистом кластере Hydra уходила в CreateContainerConfigError, и `helm --wait`
-# выстаивал 12 минут до таймаута. Профиль dev такой ссылки не содержит, поэтому
-# `dev-up` работал и предусловие не было заметно — оно проявлялось ровно на
-# production-профиле, то есть там, где его и проверяют.
+# (secretKeyRef без optional) из пода Hydra и её automigrate-Job'а; он же приносит
+# подписной ключ бутстрап-выдачи, без которого харнесс не получит НИ ОДНОГО токена
+# (форжить ему больше нечем). Ни один шаблон чарта эти секреты не создаёт — их
+# заводит только scripts/dev-prod-secrets.sh, и вызов стоит в рецепте `dev-up`.
 # ГДЕ СТОИТ СТРАЖ КОНТЕКСТА, И ПОЧЕМУ НЕ В ЗАВИСИМОСТЯХ. Страж обязан стоять
 # МЕЖДУ созданием кластера и действиями на нём. Записанный зависимостью рядом с
 # `dev-up`, он исполнялся РАНЬШЕ создания (make проходит зависимости до рецепта, а
@@ -382,14 +395,6 @@ dev-down:
 dev-prod-up: dev-up
 	@set -e; \
 	$(MAKE) --no-print-directory guard-kind-context; \
-	echo "=== prerequisite secrets (БЕЗ них production-профиль не поднимается) ==="; \
-	./scripts/dev-prod-secrets.sh; \
-	echo "=== helm phase 3: PRODUCTION posture (values.dev-prod.yaml поверх dev) ==="; \
-	helm upgrade kacho-umbrella ./helm/umbrella -n kacho \
-	  -f ./helm/umbrella/values.dev.yaml \
-	  -f ./helm/umbrella/values.dev-prod.yaml \
-	  -f ./$(IMAGE_IDS_VALUES) \
-	  --wait --timeout 12m; \
 	$(MAKE) --no-print-directory assert-rollout-ready; \
 	$(MAKE) --no-print-directory assert-production-posture; \
 	$(MAKE) --no-print-directory assert-outbox-autovacuum; \

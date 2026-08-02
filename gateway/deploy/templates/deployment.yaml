@@ -156,21 +156,18 @@ spec:
             {{- if .Values.authn }}
             - name: KACHO_API_GATEWAY_AUTHN_MODE
               value: {{ .Values.authn.mode | default "production" | quote }}
-            {{- if .Values.authn.devSecretSecretRef }}
-            # HMAC dev-signing secret (CWE-522): sourced from a k8s Secret, never a
-            # plaintext PodSpec `value:`. A leaked dev secret enables symmetric-key
-            # principal forgery (see validateProductionAuthzConfig), so it must not
-            # be embedded in the manifest even where the dev path is enabled.
-            - name: KACHO_API_GATEWAY_AUTHN_DEV_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.authn.devSecretSecretRef.name }}
-                  key: {{ .Values.authn.devSecretSecretRef.key }}
-                  optional: {{ default true .Values.authn.devSecretSecretRef.optional }}
-            {{- else if .Values.authn.devSecret }}
-            - name: KACHO_API_GATEWAY_AUTHN_DEV_SECRET
-              value: {{ .Values.authn.devSecret | quote }}
-            {{- end }}
+            # There is deliberately NO way here to hand the gateway a shared signing
+            # key. The chart used to offer one (inline and via a Secret reference) for
+            # the local stand; both are gone, and this comment stands in their place so
+            # the next author does not add a third. A symmetric key means the edge
+            # cannot tell a token it was handed from one the identity provider signed,
+            # so everyone who can read the profile can also issue — which is not a
+            # property a deployed stand may have, whatever it is labelled
+            # (security.md §"Production-mode — ОБЯЗАТЕЛЕН ВЕЗДЕ"). The process refuses
+            # to start if the variable reaches it by any other route, and
+            # gateway/deploy/symmetric_secret_absent_test.go fails if this template
+            # learns to emit it again. In-process fixtures are unaffected: they build
+            # the middleware directly and never read this chart.
             # Sender-constrained (RFC 7800 `cnf`) token handling.
             #
             # enableDpop mounts the DPoP/mTLS-bound validators (they verify the

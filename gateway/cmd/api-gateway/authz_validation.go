@@ -44,11 +44,30 @@ type AuthzMiddlewareConfig struct {
 // authz disabled / fail-open / anonymous authN in a deployed environment (the
 // middleware would otherwise mount as a silent pass-through).
 func validateProductionAuthzConfig(env string, cfg AuthzMiddlewareConfig) error {
+	// A shared signing key is refused under EVERY label, including the dev-class ones,
+	// and it is checked before they are consulted. Reason, stated here because a guard
+	// that does not say what it forbids gets removed by the next reader as an
+	// unexplained restriction: with a symmetric key the edge cannot distinguish a token
+	// it was handed from one the identity provider signed, so anybody able to read the
+	// key is also able to issue. The label that would grant the exemption is chosen by
+	// whoever writes the deployment profile, which makes an exemption keyed on it no
+	// barrier at all. The symmetric path remains legitimate in in-process fixtures —
+	// they construct the middleware directly and never reach this validator.
+	if cfg.DevSecretSet {
+		return fmt.Errorf(
+			"authz/authn config invalid in %q env: authn.devSecret set "+
+				"(KACHO_API_GATEWAY_AUTHN_DEV_SECRET must be empty on every deployed stand — "+
+				"a shared signing key makes every holder of it an issuer) (refuse to start)",
+			env,
+		)
+	}
+
 	switch strings.ToLower(strings.TrimSpace(env)) {
 	case "dev", "local", "test":
-		// Dev-class — tolerate any combination (warn-only path lives in main).
-		// NOTE: an empty/unset env is intentionally NOT here — it is production-
-		// class (fail-closed) so a forgotten KACHO_APP_ENV cannot skip the guard.
+		// Dev-class — tolerate the remaining relaxations (warn-only path lives in
+		// main). NOTE: an empty/unset env is intentionally NOT here — it is
+		// production-class (fail-closed) so a forgotten KACHO_APP_ENV cannot skip the
+		// guard.
 		return nil
 	}
 
@@ -66,14 +85,9 @@ func validateProductionAuthzConfig(env string, cfg AuthzMiddlewareConfig) error 
 		problems = append(problems, fmt.Sprintf(
 			"authn.mode=%q (must be production or production-strict in prod)", cfg.AuthNMode))
 	}
-	if cfg.DevSecretSet {
-		// SEC (sec-hardening-r8): the HMAC-dev symmetric token path is a dev/e2e
-		// affordance. A dev secret in a production-class env lets a validly-
-		// HS256-signed token forge a principal (a service_account with NO IAM
-		// lookup) — symmetric-key principal forgery (CWE-347). Refuse to boot.
-		problems = append(problems,
-			"authn.devSecret set (KACHO_API_GATEWAY_AUTHN_DEV_SECRET must be empty in prod — symmetric-key principal forgery)")
-	}
+	// NB: the shared-signing-key clause is NOT repeated here. It is checked above,
+	// unconditionally, and returns before this point — a second copy would be an
+	// unreachable branch that reads like the real rule.
 	if len(problems) == 0 {
 		return nil
 	}

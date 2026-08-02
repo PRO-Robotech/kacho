@@ -160,13 +160,47 @@ func TestEmptyEnvRefusesDevSecretSet(t *testing.T) {
 	}
 }
 
-// Dev-class envs tolerate a dev secret (the HMAC-dev path is a dev/e2e affordance
-// and the middleware only accepts it under mode==dev anyway).
-func TestDevEnvAllowsDevSecretSet(t *testing.T) {
+// No environment label tolerates a shared signing key — the dev-class labels included.
+//
+// THIS TEST REPLACES ITS OWN OPPOSITE, and the reason is written here so the next
+// reader does not restore it as "an assertion somebody weakened". The previous version
+// required the dev-class branch to ACCEPT the key, on the argument that the symmetric
+// path is a dev affordance. That argument holds for an in-process fixture, which never
+// reaches this validator; it does not hold for a deployed process, and this validator
+// runs only in one. `security.md` §"Production-mode — ОБЯЗАТЕЛЕН ВЕЗДЕ" says a
+// deployed stand carries the production posture whatever it is labelled, so the label
+// must not be able to buy an exemption from this particular clause: a label is chosen
+// by whoever writes the profile, which makes an escape hatch keyed on it no barrier at
+// all.
+//
+// The other relaxations stay keyed on the label — see the test below, which is the
+// positive half: dev-class still tolerates a relaxed authz posture. Only the shared
+// key is unconditional.
+func TestEveryEnvRefusesDevSecretSet(t *testing.T) {
+	for _, env := range []string{"dev", "local", "test", "", "prod", "production", "staging", "prd"} {
+		err := validateProductionAuthzConfig(env, AuthzMiddlewareConfig{
+			Enabled: true, FailOpen: false, AuthNMode: "dev", DevSecretSet: true,
+		})
+		if err == nil {
+			t.Errorf("env %q accepted a shared signing key — a label chosen by the profile "+
+				"author must not exempt a deployed process from this clause", env)
+			continue
+		}
+		if !strings.Contains(err.Error(), "devSecret") {
+			t.Errorf("env %q refused, but the operator is not told which knob: %v", env, err)
+		}
+	}
+}
+
+// The paired positive: the dev-class exemption still EXISTS for what it was meant for.
+// Without this, the test above would stay green if the exemption were deleted wholesale
+// — and "everything is refused" is a different product from "this one thing is refused".
+func TestDevEnvStillToleratesRelaxedAuthzWithoutADevSecret(t *testing.T) {
 	if err := validateProductionAuthzConfig("dev", AuthzMiddlewareConfig{
-		Enabled: true, FailOpen: false, AuthNMode: "dev", DevSecretSet: true,
+		Enabled: false, FailOpen: true, AuthNMode: "dev", DevSecretSet: false,
 	}); err != nil {
-		t.Fatalf("dev env must allow a dev secret, got: %v", err)
+		t.Fatalf("dev env must still tolerate a relaxed authz posture when no shared key is "+
+			"set, got: %v", err)
 	}
 }
 

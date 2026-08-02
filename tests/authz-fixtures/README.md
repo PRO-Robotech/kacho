@@ -34,8 +34,14 @@ security-ручки приезжают через `envFrom` и читаются 
 
 | posture | как харнесс получает токены |
 |---|---|
-| `dev` (`authn.mode=dev`) | как раньше: `setup-jwt.py` чеканит HS256 от `DEV_SECRET` |
 | `production` / `production-strict` | делегирует `prodseed_all.py` — **ни один токен не чеканится харнессом** |
+| `dev` (`authn.mode=dev`) | **отказ с названной причиной** — такой посадки не производит ни один профиль развёртывания |
+
+Строка `dev` в таблице оставлена намеренно: это не «поддерживаемый вариант», а
+объявление того, что произойдёт. Прежде она означала «чеканим симметрично своим
+ключом»; теперь такого стенда не существует — у чарта нет ручки для общего ключа,
+а процесс отказывается стартовать, если ключ доедет до него иначе. Стенд, который
+всё же о ней сообщает, отстал: его накатывают заново, а не обходят посевом.
 
 Production-путь (`prodseed_all.py` → `prodseed_matrix.py` → `mint_rs256.py`):
 
@@ -101,9 +107,9 @@ SEED_POSTURE=production bash tests/authz-fixtures/setup.sh
 | Env-var | Default | Назначение |
 |---|---|---|
 | `BASE_URL` | `http://localhost:18080` | api-gateway dev-listener |
-| `SEED_POSTURE` | `auto` | `auto`\|`dev`\|`production` — см. выше |
+| `SEED_POSTURE` | `auto` | `auto`\|`production` (значение `dev` отвергается — см. выше) |
 | `HYDRA_PUBLIC_PORT` | `14444` | порт-форвард Hydra public (OAuth2 обмен, только production) |
-| `DEV_SECRET` | `kacho-dev-jwt-secret-2026` | HMAC-secret HS256 (`KACHO_API_GATEWAY_AUTHN_DEV_SECRET` на стенде) — **только dev-посадка** |
+| `DEV_SECRET` | `kacho-dev-jwt-secret-2026` | читается только кодом отвергнутой посадки (см. таблицу выше) — на посев влияния не имеет |
 | `EXP_HOURS` | `24` | exp claim в JWT |
 | `OUT_DIR` | `tests/authz-fixtures/out` | куда писать `authz-fixtures.json` + `jwts.json` |
 | `PATCH_ENV` | `true` | патчить ли `environments/local.postman_environment.json` всех 3 newman-suite'ов |
@@ -136,8 +142,12 @@ SEED_POSTURE=production bash tests/authz-fixtures/setup.sh
   - `apiTokenExpired` — `exp` в прошлом → 401
   - `apiTokenMalformed` — синтаксически битый JWS (2 сегмента) → 401
 
-> Все токены — placeholder dev-credentials, генерируются `setup-jwt.py` от
-> `DEV_SECRET`. `out/` под gitignore — реальные значения в репо не попадают.
+> Этот абзац описывает **отвергнутую** посадку: токены такого вида чеканил
+> `setup-jwt.py` от `DEV_SECRET`, и посев по этой ветке больше не идёт (см. таблицу
+> posture выше). На поднятом стенде те же роли получают токены через iam
+> (`prodseed_matrix.py`). Ветка и её текст удаляются отдельным шагом — вместе, чтобы
+> описание и код не разъехались по частям. `out/` под gitignore — реальные значения
+> в репо не попадают.
 
 ## Идемпотентность
 

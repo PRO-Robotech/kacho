@@ -45,10 +45,15 @@ func readRepoFile(t *testing.T, parts ...string) string {
 	return string(raw)
 }
 
-// deployableStacks — the `-f` chains the stands are actually rolled with, in
-// order. Kept in step with deploy/Makefile (dev-up / dev-prod-up),
-// helm/umbrella/cutover-fe3455.sh and the identical table in
-// deploy/tests/helm/outbox-autovacuum-naptime-test.sh.
+// deployableStacks — the `-f` chains helm is actually invoked with, in order. Kept in
+// step with deploy/Makefile (dev-up / dev-prod-up), helm/umbrella/cutover-fe3455.sh and
+// the identical table in deploy/tests/helm/outbox-autovacuum-naptime-test.sh.
+//
+// "dev" is an INTERMEDIATE chain, not a stand anybody leaves running: `dev-up` rolls it
+// during the two-phase bootstrap and then upgrades onto "dev-prod", which is where the
+// local stand ends up. It is listed because helm really is invoked with it — a chain
+// that renders during bootstrap can still crash-loop a pod — and because every question
+// asked here is one the intermediate state must also answer.
 //
 // values.fe3455-ory.yaml is deliberately absent — it is gitignored (Ory secrets)
 // and carries no gateway configuration.
