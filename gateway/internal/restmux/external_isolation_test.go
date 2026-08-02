@@ -44,6 +44,14 @@ var internalRESTPaths = []struct{ method, path string }{
 	// dump, admin-only (:9091). MUST be 404 on the external listener and
 	// reachable on the internal listener.
 	{"GET", "/iam/v1/internal/operations"},
+	// InternalInteractiveClientService.Create (IAM-INT-1 scenario 11): registers
+	// the OAuth2 client a HUMAN signs in through. Whoever reaches it decides
+	// where authorization codes may be redirected, i.e. who receives a
+	// credential — so it MUST be 404 on the external listener and reachable on
+	// the internal one. POST is the pair's discriminator: the collection path is
+	// shared with the internal List (GET), and isInternalRoute is keyed on the
+	// (method, path) pair, not on the path alone.
+	{"POST", "/iam/v1/internal/interactiveClients"},
 	{"GET", "/vpc/v1/addressPools"},
 	// :internal verb-suffix (InternalNetworkService.GetNetwork REST path) — the
 	// real internal projection route. isInternalPath must match this too.
