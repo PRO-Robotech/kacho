@@ -47,9 +47,16 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;ia
 // sentence described a control that did not exist, over a surface that answers
 // "who can reach what" for the whole platform.
 //
-// **Latency budget** — `Check` ≤ 30ms p95;
-// `BatchCheck` linear in batch size, ≤ 5ms per tuple amortised after the
-// first.
+// **Latency budget** — `Check` ≤ 30ms p95; `BatchCheck` linear in batch size,
+// paying a full `Check` per item.
+//
+// The line for `BatchCheck` previously read "≤ 5ms per tuple amortised after the
+// first". Nothing amortises it: the implementation resolves a batch with a
+// sequential loop, one relation-store round-trip per item, and the only thing
+// shared across the pass is the cluster-administrator verdict on the deny path.
+// A number describing a cost model the code does not have is worse than no
+// number — a reader budgeting against it concludes this surface is already the
+// fast path and goes optimising something else.
 service AuthorizeService {
   // Check — single-tuple authorization check.
   //
@@ -76,8 +83,23 @@ service AuthorizeService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // BatchCheck — multiple checks bundled in one RPC. Server-side fans out
-  // to the FGA-engine concurrently (capped at server-side `max_parallel`).
+  // BatchCheck — multiple checks bundled in one RPC.
+  //
+  // What the server does with them, stated as it is rather than as it was
+  // described: it resolves them ONE AT A TIME, in request order, each a separate
+  // round-trip to the relation store. The previous sentence here claimed a
+  // concurrent server-side fan-out "capped at server-side `max_parallel`"; there
+  // is no fan-out, and no `max_parallel` — the identifier appears nowhere in this
+  // repository except in the sentence that named it.
+  //
+  // This matters to a caller and not only to a reviewer. A sibling service splits
+  // its page into batches of 100 precisely because bundling is supposed to be
+  // cheaper than asking 100 times, and at this boundary it is not: the saving is
+  // one gRPC hop, while the 100 relation-store round-trips are still paid, in
+  // sequence. The relation store itself does serve a batched question (that is
+  // what internal/authzfilter uses for iam's own pages); routing this RPC through
+  // it is open work, tracked as a number in
+  // services/iam/docs/architecture/known-divergences.md §11.
   //
   // Order of results matches the order of `checks` in the request. Per-item
   // failures (e.g. malformed subject) are surfaced as `allowed=false` with
