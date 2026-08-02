@@ -8,14 +8,25 @@ import (
 	"time"
 )
 
-// Cache хранит positive Check-results c TTL = 5s.
+// Cache хранит positive Check-results; срок жизни записи объявлен политикой
+// (RevocationPolicy, revocation_policy.go), умолчание — 5s.
 //
 // Семантика:
 //   - Кешируются ТОЛЬКО `allowed=true` (positive results).
 //   - Negative (deny) НЕ кешируются — иначе grant binding'а не проявится до
 //     истечения TTL → расходится с UX «дал права — почему не работает?».
-//   - На revoke binding'а → `pg_notify('kacho_iam_subjects', subject_id)` →
-//     `Cache.InvalidateBySubject(subject_id)` (см. listen_invalidate.go).
+//   - Отсюда асимметрия: ВЫДАЧА видна сразу, ОТЗЫВ ждёт истечения записи.
+//     Срок жизни записи и есть окно отзыва — см. RevocationPolicy, где оно
+//     объявлено числом с обоснованием, и гейт
+//     `internal/repohygiene.TestRevocationWindowIsDeclaredPolicy`, который
+//     держит объявление и дерево в согласии.
+//   - Проактивного снятия записи у backend-сервиса НЕТ. Здесь стояло
+//     утверждение, что отзыв прилетает по `pg_notify('kacho_iam_subjects')` в
+//     `InvalidateBySubject`; в этом репозитории у канала нет НИ ОДНОГО
+//     отправителя (при database-per-service его и не может быть — сигнал шёл бы
+//     из БД iam, к которой у backend-сервиса нет доступа). Механизм
+//     `ListenInvalidator` остаётся пригодным, но пока по каналу никто не пишет,
+//     единственный путь снятия записи — истечение срока.
 //
 // Thread-safe: используется из нескольких gRPC-handler goroutines одновременно.
 type Cache struct {
@@ -74,7 +85,12 @@ func NewCache(ttl time.Duration) *Cache {
 // на корректность авторизации — только на hit-rate.
 func NewCacheWithLimit(ttl time.Duration, maxEntries int) *Cache {
 	if ttl <= 0 {
-		ttl = 5 * time.Second
+		// Умолчание берётся из ОБЪЯВЛЕННОЙ политики, а не из литерала здесь:
+		// три сервиса (compute, geo, storage) строят кеш как NewCache(0) и
+		// своего числа не имеют вовсе, поэтому именно это значение и есть их
+		// окно отзыва. Пока оно было безымянной константой в этой строке, окно
+		// трёх сервисов не было записано нигде.
+		ttl = RevocationPolicy.Default
 	}
 	if maxEntries <= 0 {
 		maxEntries = defaultMaxEntries
@@ -257,3 +273,10 @@ func (c *Cache) SetNowFunc(now func() time.Time) {
 	defer c.mu.Unlock()
 	c.now = now
 }
+
+// TTL — срок жизни положительной записи, то есть окно отзыва этого кеша.
+//
+// Экспортирован ради гейта политики окна отзыва: без него «какое окно у кеша,
+// построенного вот так» нельзя ни спросить, ни утверждать — можно только
+// пересказать литерал из конструктора, а пересказ переживает правку.
+func (c *Cache) TTL() time.Duration { return c.ttl }
