@@ -35,4 +35,4 @@ SERVICE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$(dirname "$0")/../../.."
 
 exec go run ./services/compute/tools/auditlistfilter/cmd/audit-list-filter \
-  --allow=machine_type --root="$SERVICE_ROOT" "$@"
+  --root="$SERVICE_ROOT" "$@"

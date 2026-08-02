@@ -31,14 +31,24 @@
 // On top of both, a missing internal/handler exited 0 with a message on stderr, so
 // "the gate could not find the tree" and "the tree is clean" were the same verdict.
 //
-// # Whitelist
+// # Declarations
 //
 // machine_type is the cluster-wide sizing catalog (COMP-1 F7): every authenticated
 // caller is meant to read every row, there are no per-object grants to narrow to.
-// It is the ONLY exclusion left. The previous gate also excluded Region, Zone and
-// DiskType — all three had already moved to kacho-geo and kacho-storage, so those
-// entries excluded nothing and merely stood ready to hide a future resource of the
-// same name. The gate now reports an exclusion with no subject as a finding.
+// It used to be excluded with --allow=machine_type — an exclusion on the RESOURCE,
+// which would silently have covered any further listing method added to that
+// handler. It is now declared per METHOD, with its reason where the gate can read
+// it. (The previous gate also excluded Region, Zone and DiskType, all three long
+// since moved to kacho-geo and kacho-storage: entries excluding nothing and standing
+// ready to hide a future resource of the same name.)
+//
+// ListOperations was invisible to the previous gate, which matched the method name
+// `List` exactly. It is declared ParentGate: the handler reads the instance through
+// svc.Get and returns on its error BEFORE the operation page is read, so a caller
+// who cannot see the instance does not get its operation history. The further
+// narrowing inside the use-case (operations.ListForCaller, by the authenticated
+// caller) lives in another package and is therefore outside this analyser's walk —
+// the gate asserts what it can actually see, which is the gate preceding the read.
 package auditlistfilter
 
 import "github.com/PRO-Robotech/kacho/tools/listfiltergate"
@@ -53,6 +63,21 @@ var Profile = listfiltergate.Profile{
 	// filterVisible is the service's own generic helper (internal/handler/
 	// list_filter.go); FilterVisibleIDs is the port it calls, accepted so a handler
 	// that talks to the port directly still counts.
-	Filters: []string{"filterVisible", "FilterVisibleIDs"},
-	Banned:  []string{"ListAllowedIDs", "ListObjects"},
+	Filters:        []string{"filterVisible", "FilterVisibleIDs"},
+	Banned:         []string{"ListAllowedIDs", "ListObjects"},
+	SubjectScopers: []string{"ListForCaller"},
+
+	Listings: map[string]listfiltergate.Listing{
+		"instance.List": {Shape: listfiltergate.RowFilter},
+		"instance.ListOperations": {
+			Shape: listfiltergate.ParentGate,
+			Gate:  "svc.Get",
+		},
+		"machine_type.List": {
+			Shape: listfiltergate.ClusterScoped,
+			Reason: "cluster-wide sizing catalog (COMP-1 F7): every authenticated caller reads " +
+				"every row and there are no per-object grants to narrow to. The exclusion expires " +
+				"with its method — retire MachineTypeHandler.List and this entry becomes a finding.",
+		},
+	},
 }

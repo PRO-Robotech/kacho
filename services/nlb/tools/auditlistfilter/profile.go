@@ -30,13 +30,20 @@
 // stderr, so "the gate could not find the tree" and "the tree is clean" were the
 // same verdict.
 //
-// # Whitelist
+// # Declarations
 //
-// There is none, and the gate now says so out loud: the census names every resource
-// it checked, so a passing run reads as "these three were judged" rather than as
+// Nothing here is excluded, and the census says so out loud: it names every listing
+// method it judged, so a passing run reads as "these six were judged" rather than as
 // the word OK. `announce`, `internal_lifecycle` and `operation` are not excluded
-// either — they declare no public `List`, so they are not resources of this gate by
+// either — they declare no listing method at all, so they are outside the gate by
 // construction rather than by exception.
+//
+// The three ListOperations were invisible to the previous gate, which matched the
+// method name `List` exactly. They are SubjectScoped: the handler delegates to a
+// use-case in the same package, and that use-case narrows by operations.ListForCaller
+// — the owner comes from the request context, not from an id the caller supplied. The
+// analyser can see this one because the hop stays inside the package; where the
+// use-case lives elsewhere (compute) the shape has to be asserted differently.
 package auditlistfilter
 
 import "github.com/PRO-Robotech/kacho/tools/listfiltergate"
@@ -50,4 +57,15 @@ var Profile = listfiltergate.Profile{
 	ReceiverSuffix: "Handler",
 	Filters:        []string{"FilterVisiblePage", "FilterVisibleIDs"},
 	Banned:         []string{"ListAllowedIDs", "ListObjects"},
+	SubjectScopers: []string{"ListForCaller"},
+
+	Listings: map[string]listfiltergate.Listing{
+		"listener.List":     {Shape: listfiltergate.RowFilter},
+		"loadbalancer.List": {Shape: listfiltergate.RowFilter},
+		"targetgroup.List":  {Shape: listfiltergate.RowFilter},
+
+		"listener.ListOperations":     {Shape: listfiltergate.SubjectScoped},
+		"loadbalancer.ListOperations": {Shape: listfiltergate.SubjectScoped},
+		"targetgroup.ListOperations":  {Shape: listfiltergate.SubjectScoped},
+	},
 }

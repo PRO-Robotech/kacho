@@ -36,4 +36,4 @@ SERVICE_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$(dirname "$0")/../../.."
 
 exec go run ./services/vpc/tools/auditlistfilter/cmd/audit-list-filter \
-  --allow=addresspool --root="$SERVICE_ROOT" "$@"
+  --root="$SERVICE_ROOT" "$@"

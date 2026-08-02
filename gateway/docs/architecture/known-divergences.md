@@ -174,8 +174,9 @@ none — no behavior/wire/API/DB change.
 `X-Forwarded-For` / `X-Real-IP` by default (`KACHO_API_GATEWAY_AUTHZ_TRUSTED_XFF`
 default `true`, `…_TRUSTED_PROXY_COUNT` default `1`) is a "less-trusted source"
 if the gateway is ever reachable without a trusted L7 hop inserting the rightmost
-XFF entry — a client could then forge `client_ip` and satisfy CIDR-scoped FGA
-conditions (`source_ip_in_range`).
+XFF entry: a header the client controls would then feed a value that
+network-scoped authorization conditions are evaluated against — i.e. an input
+that must be derived would instead be asserted.
 
 **Gateway state.** The parser reads the forwarded chain **from the right** with
 `TRUSTED_PROXY_COUNT` hops, so a client-forged *leftmost* XFF cannot drive
@@ -212,17 +213,17 @@ forgets the mTLS overlay boots and dials every backend (incl. `iam:9091` /
 
 **Identity-trust corollary (sec-hardening-r8b).** A follow-up audit sharpened the
 concern: the gateway→backend hops carry the gateway-derived trusted identity
-headers `x-kacho-principal-*` and `x-kacho-token-acr`
-(`internal/restmux/mux.go buildPrincipalMetadata`), and iam trusts the forwarded
-`acr` floor *only because* it arrives on the verified gateway edge. If that hop
-runs plaintext, a workload on the pod network could sniff/inject those headers and
-impersonate an arbitrary principal or forge a satisfied ACR floor. This does not
-change the disposition: the trust assumption is discharged by the **transport
-security of the hop**, which in the shipped profile is provided by the service
-mesh (sidecar mTLS) — so header injection on the wire is not possible even with
-app-level `MTLS_IAM_ENABLE=false`. A mesh-less deployment MUST enable the per-edge
-flag (see Compensating controls) precisely so the identity headers are not
-forwarded over an unauthenticated hop.
+headers, and the receiving side trusts what they assert *only because* they arrive
+on a verified edge. **The trust assumption is therefore discharged by the transport
+security of the hop, and by nothing else** — an unauthenticated hop would leave
+those headers as assertions no one verified. This does not change the disposition:
+in the shipped profile that security is provided by the service mesh (sidecar
+mTLS), which covers the hop regardless of the app-level per-edge flag. **A
+mesh-less deployment MUST enable the per-edge flag** (see Compensating controls) —
+precisely so the identity headers are never forwarded over a hop whose peer was
+not authenticated. That is the operator-facing requirement; the consequence of
+ignoring it follows from the sentence above and is not spelled out further here,
+since this registry is published.
 
 **Gateway state.** Backend-dial transport is a per-edge overlay
 (`cmd/api-gateway/mtls_config.go`): each edge (vpc / compute / iam / nlb / geo /

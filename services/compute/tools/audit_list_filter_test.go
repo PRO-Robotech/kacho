@@ -152,7 +152,7 @@ func TestAuditListFilter_RealTreePasses(t *testing.T) {
 	if strings.Contains(out, "examined 0 ") || strings.Contains(out, ", 0 resource") {
 		t.Fatalf("the gate passed having examined nothing — that is not a pass\n--- output ---\n%s", out)
 	}
-	for _, want := range []string{"checked instance", "whitelisted machine_type"} {
+	for _, want := range []string{"instance.List", "cluster-scoped by declaration machine_type.List"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("a passing run must report its census (missing %q)\n--- output ---\n%s", want, out)
 		}
@@ -204,7 +204,7 @@ func TestAuditListFilter_LegitimateRefactorKeepsTheResourceVisible(t *testing.T)
 	if err != nil {
 		t.Fatalf("renaming a receiver variable must not fail the gate: %v\n--- output ---\n%s", err, out)
 	}
-	if !strings.Contains(out, "checked instance") {
+	if !strings.Contains(out, "instance.List") {
 		t.Fatalf("the renamed receiver must still be judged, not merely not-flagged\n--- output ---\n%s", out)
 	}
 }
@@ -227,17 +227,40 @@ func TestAuditListFilter_RefactorMustNotHideALeak(t *testing.T) {
 	}
 }
 
-// TestAuditListFilter_ExpiredWhitelistEntryIsAFinding — an exclusion must expire by
-// itself. `--allow=<resource>` suppresses a check; once no such resource exists the
-// entry suppresses nothing, and the next resource to inherit that name inherits the
-// blind spot in silence. disk_type is the concrete case: it left this service for
-// kacho-storage and its exclusion stayed behind.
-func TestAuditListFilter_ExpiredWhitelistEntryIsAFinding(t *testing.T) {
-	out, err := runGate(t, serviceRoot(t), "--allow=disk_type")
+// TestAuditListFilter_ExpiredDeclarationIsAFinding — an exclusion must expire by
+// itself. Once no such method exists the declaration describes nothing, and the next
+// method to inherit that name inherits an enforcement claim nobody checked.
+//
+// The subject moved one level down when --allow=<resource> was replaced: that flag
+// excluded a whole RESOURCE, so an exclusion written for a cluster catalog also
+// covered listing methods added to that handler afterwards — which is how
+// addresspool's ListAddresses went unjudged in vpc. Declarations are per method now.
+//
+// The orphan is produced by DELETING a declared method from a copy of the real tree,
+// rather than by passing a made-up name: the declaration under test is the service's
+// own, so this cannot pass against a profile whose entries no longer match anything.
+func TestAuditListFilter_ExpiredDeclarationIsAFinding(t *testing.T) {
+	root := copyAnchor(t)
+	removed := deleteADeclaredListing(t, root)
+
+	out, err := runGate(t, root)
 	if err == nil {
-		t.Fatalf("a whitelist entry matching no resource must be reported\n--- output ---\n%s", out)
+		t.Fatalf("a declaration matching no method must be reported\n--- output ---\n%s", out)
 	}
-	if !strings.Contains(out, "disk_type") {
-		t.Errorf("the finding must name the expired entry\n--- output ---\n%s", out)
+	if !strings.Contains(out, removed) {
+		t.Errorf("the finding must name the expired entry %q\n--- output ---\n%s", removed, out)
 	}
+}
+
+// deleteADeclaredListing removes a DECLARED listing method from the copied tree by
+// renaming it out of the listing surface, and returns the declaration key that is
+// thereby orphaned.
+//
+// It deletes a real method rather than passing a made-up name, so the assertion is
+// about THIS service's own declarations: if the profile's entries stopped matching
+// the tree, this test could not pass by naming something imaginary.
+func deleteADeclaredListing(t *testing.T, root string) string {
+	t.Helper()
+	patch(t, root, "machine_type_handler.go", "func (h *MachineTypeHandler) List(", "func (h *MachineTypeHandler) Fetch(")
+	return "machine_type.List"
 }

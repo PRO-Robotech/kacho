@@ -105,21 +105,93 @@ var enumerateThenNarrow = map[string]bool{
 	"ListObjects":    true,
 }
 
+// subjectScopers narrow a page by the AUTHENTICATED caller taken from the context,
+// rather than by an id the request supplied. operations.ListForCaller is the one
+// this service uses.
+var subjectScopers = map[string]bool{"ListForCaller": true}
+
+// shape is how one listing method's visibility is decided.
+type Shape int
+
+const (
+	// RowFilter — the page is read, then narrowed per object.
+	RowFilter Shape = iota
+	// SubjectScoped — the query is narrowed by the authenticated caller.
+	SubjectScoped
+	// ClusterScoped — reference data with no per-object grants to narrow to.
+	ClusterScoped
+)
+
+func (s Shape) String() string {
+	switch s {
+	case RowFilter:
+		return "RowFilter"
+	case SubjectScoped:
+		return "SubjectScoped"
+	case ClusterScoped:
+		return "ClusterScoped"
+	}
+	return "unknown"
+}
+
+// Listing is the enforcement declared for one listing method.
+type Listing struct {
+	Shape  Shape
+	Reason string // required for ClusterScoped
+}
+
+// listings declares, per use-case listing method, how visibility is decided.
+//
+// It is total: a listing method with no entry is a finding, and an entry with no
+// method is a finding. Both directions matter, and both were open here. The gate
+// matched the method name `List` EXACTLY, so ListOperations and ListAttachments —
+// three pages this service hands to callers — were outside its view entirely while
+// it printed OK. And disk_type was excluded with --allow=disk_type, an exclusion on
+// the RESOURCE, which would silently have covered any further listing method added
+// to that use-case.
+var listings = map[string]Listing{
+	"image.List":    {Shape: RowFilter},
+	"snapshot.List": {Shape: RowFilter},
+	"volume.List":   {Shape: RowFilter},
+	"disk_type.List": {
+		Shape: ClusterScoped,
+		Reason: "DiskType is the `{cluster,*}` viewer reference data: every authenticated caller " +
+			"reads every row and there are no per-object grants to narrow to. The exclusion " +
+			"expires with its method — retire the RPC and this entry becomes a finding.",
+	},
+
+	// Operation histories are narrowed by the caller in the context, not by the
+	// resource id the request names.
+	"image.ListOperations":  {Shape: SubjectScoped},
+	"volume.ListOperations": {Shape: SubjectScoped},
+
+	// ListAttachments asks the rights model about the INSTANCES the caller named,
+	// not about the volumes, so the answer is all-or-nothing per instance. It is a
+	// row filter over that page.
+	"volume.ListAttachments": {Shape: RowFilter},
+}
+
 // Options configures one audit run.
 type Options struct {
 	// Root is the service root (the directory holding internal/…).
 	Root string
-	// Allow lists resources excluded from the checks (cluster catalogs).
-	Allow []string
+	// Listings overrides the declaration table. Empty means the real one below.
+	//
+	// It exists for the gate's own fixture tests: a fixture tree holds one or two
+	// resources, so judging it against the real table would report every other
+	// declaration as expired. Production never sets it.
+	Listings map[string]Listing
 }
 
 // Report is the census of one audit run: what was examined, and what was found.
 type Report struct {
-	AdapterFiles int      // adapter files parsed under internal/repo/pg
-	Resources    []string // resources discovered (snake_case), sorted
-	Checked      []string // resources actually judged
-	Whitelisted  []string // resources skipped because they are whitelisted
-	Findings     []string // one line per finding; non-empty ⇒ the gate fails
+	AdapterFiles  int      // adapter files parsed under internal/repo/pg
+	Resources     []string // resources discovered (snake_case), sorted
+	Checked       []string // resources actually judged
+	Listings      []string // listing methods discovered, "<resource>.<Method>", sorted
+	ClusterScoped []string // listing methods declared as needing no narrowing
+	Undeclared    []string // listing methods with no declaration — each is also a finding
+	Findings      []string // one line per finding; non-empty ⇒ the gate fails
 }
 
 // listMethod is a public List declaration located by its receiver TYPE.
@@ -158,30 +230,165 @@ func Audit(o Options, out io.Writer) (Report, error) {
 		return finish(rep, out)
 	}
 
-	allowed := map[string]bool{}
-	for _, a := range o.Allow {
-		allowed[a] = true
-	}
-	// An exclusion lives only while it has a subject.
-	for _, a := range sortedKeys(allowed) {
-		if !contains(rep.Resources, a) {
+	// Every listing method of every resource's use-case, not only the one called
+	// List. This is the discovery the gate did not have: `List` is the collection
+	// RPC, and the child listings beside it are pages just the same.
+	found := map[string]useCaseMethod{}
+	for _, res := range rep.Resources {
+		ucDir := filepath.Join(root, useCaseRoot, packageDirFor(res))
+		ms, err := findUseCaseListings(ucDir)
+		if err != nil {
 			rep.Findings = append(rep.Findings, fmt.Sprintf(
-				"whitelist entry %q matches no resource under %s — the exclusion has nothing left to "+
-					"exclude; drop it, or the next resource of that name inherits the blind spot silently",
-				a, filepath.Join(root, adapterRoot)))
+				"%s — %v (cannot prove the projectId backstop; fail-closed)", res, err))
+			continue
+		}
+		for name, m := range ms {
+			found[res+"."+name] = m
+		}
+	}
+	for k := range found {
+		rep.Listings = append(rep.Listings, k)
+	}
+	sort.Strings(rep.Listings)
+
+	table := o.Listings
+	if len(table) == 0 {
+		table = listings
+	}
+
+	// A declaration lives only while it has a subject.
+	for _, k := range sortedKeys(declaredKeysOf(table)) {
+		if !contains(rep.Listings, k) {
+			rep.Findings = append(rep.Findings, fmt.Sprintf(
+				"declared listing %q matches no method under %s — the declaration has nothing left "+
+					"to describe; drop it, or the next method of that name inherits an enforcement "+
+					"claim nobody checked", k, filepath.Join(root, useCaseRoot)))
 		}
 	}
 
 	for _, res := range rep.Resources {
-		if allowed[res] {
-			rep.Whitelisted = append(rep.Whitelisted, res)
+		rep.Checked = append(rep.Checked, res)
+	}
+	for _, key := range rep.Listings {
+		m := found[key]
+		l, ok := table[key]
+		if !ok {
+			rep.Undeclared = append(rep.Undeclared, key)
+			rep.Findings = append(rep.Findings, fmt.Sprintf(
+				"%s — a listing method with no declared enforcement: nothing states how this page is "+
+					"narrowed, so nothing checks that it is\n  service: %s\n  declare it in "+
+					"tools/auditlistfilter (RowFilter / SubjectScoped / ClusterScoped) — until it is "+
+					"stated, the gate fails closed", key, m.file))
 			continue
 		}
-		rep.Checked = append(rep.Checked, res)
-		rep.Findings = append(rep.Findings, checkResource(root, res, adapters[res])...)
+		if l.Shape == ClusterScoped {
+			rep.ClusterScoped = append(rep.ClusterScoped, key)
+		}
+		rep.Findings = append(rep.Findings, checkListing(root, key, l, m, adapters)...)
 	}
 
 	return finish(rep, out)
+}
+
+// declaredKeysOf returns a declaration table's keys as a set.
+func declaredKeysOf(table map[string]Listing) map[string]bool {
+	out := map[string]bool{}
+	for k := range table {
+		out[k] = true
+	}
+	return out
+}
+
+// checkListing judges one listing method against the shape it declares.
+//
+// The three original checks — the repo adapter narrows by project_id, the use-case
+// rejects an empty projectId, the use-case filters the page per object — are the
+// RowFilter shape of the resource's `List`, and stay exactly as they were. What is
+// new is that the OTHER listing methods are judged at all.
+func checkListing(root, key string, l Listing, m useCaseMethod, adapters map[string]listMethod) []string {
+	res, method, _ := strings.Cut(key, ".")
+
+	var findings []string
+	if l.Shape != ClusterScoped && callsAnyOf(m.fn, enumerateThenNarrow) {
+		findings = append(findings, fmt.Sprintf(
+			"%s — enumerates allowed ids (ListAllowedIDs/ListObjects) instead of batch-checking the "+
+				"page: that answer is capped server-side with no continuation token, so the caller's "+
+				"own rows fall outside the cap and disappear\n  service: %s", key, m.file))
+	}
+
+	switch l.Shape {
+	case RowFilter:
+		// The resource's own collection RPC additionally owes the project-scope
+		// posture in the adapter and the in-service backstop.
+		if method == "List" {
+			findings = append(findings, checkResource(root, res, adapters[res])...)
+			return findings
+		}
+		if !callsAnyOf(m.fn, perObjectFilters) {
+			findings = append(findings, fmt.Sprintf(
+				"%s — declared RowFilter, but does not filter the page per object "+
+					"(FilterVisiblePage/FilterVisibleIDs)\n  service: %s", key, m.file))
+		}
+	case SubjectScoped:
+		if !callsAnyOf(m.fn, subjectScopers) {
+			findings = append(findings, fmt.Sprintf(
+				"%s — declared SubjectScoped, but nothing it calls reaches ListForCaller: the query "+
+					"is not narrowed by the authenticated caller\n  service: %s", key, m.file))
+		}
+	case ClusterScoped:
+		if strings.TrimSpace(l.Reason) == "" {
+			findings = append(findings, fmt.Sprintf(
+				"%s — declared ClusterScoped with no Reason: this is the one shape with no code "+
+					"evidence, so an unstated reason makes it indistinguishable from a listing nobody "+
+					"thought about\n  service: %s", key, m.file))
+		}
+	}
+	return findings
+}
+
+// useCaseMethod is one listing method of a use-case package.
+type useCaseMethod struct {
+	file string
+	fn   *ast.FuncDecl
+}
+
+// findUseCaseListings returns every `func (*UseCase) List…` in the package at dir,
+// keyed by method name.
+//
+// Identification is by PREFIX, matching the form already proven in
+// services/registry/tools/auditlistfilter. Its predecessor, findUseCaseList,
+// matched `List` exactly and so located one method per package — the other listing
+// methods beside it were never opened.
+func findUseCaseListings(dir string) (map[string]useCaseMethod, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("use-case package %s absent", dir)
+	}
+	fset := token.NewFileSet()
+	out := map[string]useCaseMethod{}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		f, perr := parser.ParseFile(fset, path, nil, 0)
+		if perr != nil {
+			return nil, fmt.Errorf("parse %s: %w", path, perr)
+		}
+		for _, decl := range f.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || !strings.HasPrefix(fn.Name.Name, "List") || fn.Body == nil {
+				continue
+			}
+			if receiverTypeName(fn) == "UseCase" {
+				out[fn.Name.Name] = useCaseMethod{file: path, fn: fn}
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("use-case package %s declares no (*UseCase).List…", dir)
+	}
+	return out, nil
 }
 
 // checkResource applies checks (1)…(3a) to one resource.
@@ -437,13 +644,21 @@ func sortedKeys(m map[string]bool) []string {
 
 // finish prints the census, then the findings, and turns findings into an error.
 func finish(rep Report, out io.Writer) (Report, error) {
-	_, _ = fmt.Fprintf(out, "audit-list-filter: examined %d adapter file(s), %d resource(s) (%d checked, %d whitelisted)\n",
-		rep.AdapterFiles, len(rep.Resources), len(rep.Checked), len(rep.Whitelisted))
-	if len(rep.Checked) > 0 {
-		_, _ = fmt.Fprintf(out, "audit-list-filter: checked %s\n", strings.Join(rep.Checked, ", "))
+	// The listing-method count sits beside the resource count on purpose: the census
+	// used to report resources only, so "4 resources" read the same whether those 4
+	// resources held 4 listing methods or 7, and the 3 it was not looking at were
+	// invisible in the very line meant to state what had been examined.
+	_, _ = fmt.Fprintf(out,
+		"audit-list-filter: examined %d adapter file(s), %d resource(s), %d listing method(s) "+
+			"(%d undeclared, %d cluster-scoped)\n",
+		rep.AdapterFiles, len(rep.Resources), len(rep.Listings),
+		len(rep.Undeclared), len(rep.ClusterScoped))
+	if len(rep.Listings) > 0 {
+		_, _ = fmt.Fprintf(out, "audit-list-filter: judged %s\n", strings.Join(rep.Listings, ", "))
 	}
-	if len(rep.Whitelisted) > 0 {
-		_, _ = fmt.Fprintf(out, "audit-list-filter: whitelisted %s\n", strings.Join(rep.Whitelisted, ", "))
+	if len(rep.ClusterScoped) > 0 {
+		_, _ = fmt.Fprintf(out, "audit-list-filter: cluster-scoped by declaration %s\n",
+			strings.Join(rep.ClusterScoped, ", "))
 	}
 	if len(rep.Findings) == 0 {
 		_, _ = fmt.Fprintln(out, "audit-list-filter: OK")
