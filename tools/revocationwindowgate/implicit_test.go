@@ -170,3 +170,154 @@ func TestScanImplicitSites_ReportsAParseFailure(t *testing.T) {
 		t.Errorf("ошибка разбора не называет файл: %v", err)
 	}
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// Площадка БЕЗ литерала вовсе
+// ────────────────────────────────────────────────────────────────────────────
+
+// srcNoLiteralAtAll — третья форма сборки опций: нулевое значение и присвоение
+// полей по одному. Литерала нет, поэтому предикат «каждый литерал называет
+// кеш» смотреть здесь не на что — он читает файл, засчитывает его в
+// «осмотрено» и объявляет чистым.
+//
+// Инъекцией на настоящем дереве проверено: седьмой сервис в этой форме прошёл
+// ВСЕ четыре проверки гейта зелёным, и число прочитанных файлов при этом
+// выросло на единицу.
+const srcNoLiteralAtAll = `package check
+
+import "github.com/PRO-Robotech/kacho/pkg/authz"
+
+func NewInterceptor(opts Options) *authz.Interceptor {
+	var o authz.InterceptorOptions
+	o.Map = PermissionMap()
+	o.Client = opts.Client
+	return authz.NewInterceptor(o)
+}
+`
+
+// srcNoLiteralCacheAssigned — законный близнец той же формы: кеш назван
+// присвоением. Гейт обязан молчать, иначе он запрещает форму, а не сужает
+// неявный путь.
+const srcNoLiteralCacheAssigned = `package check
+
+import "github.com/PRO-Robotech/kacho/pkg/authz"
+
+func NewInterceptor(opts Options) *authz.Interceptor {
+	var o authz.InterceptorOptions
+	o.Map = PermissionMap()
+	o.Cache = authz.NewCache(opts.CacheTTL)
+	return authz.NewInterceptor(o)
+}
+`
+
+// srcOpaqueArgument — опции приходят из чужой функции. Доказать, что кеш
+// назван, здесь нечем, поэтому исход — находка: гейт про доступ обязан быть
+// fail-closed, а «не смог посмотреть» это не «чисто».
+const srcOpaqueArgument = `package check
+
+import "github.com/PRO-Robotech/kacho/pkg/authz"
+
+func NewInterceptor(opts Options) *authz.Interceptor {
+	return authz.NewInterceptor(buildOptions(opts))
+}
+`
+
+// TestScanInterceptorCalls_FindsTheCallWithNoLiteralBehindIt — отрицательная
+// сторона на форме, которой в дереве не было, но которая возможна.
+func TestScanInterceptorCalls_FindsTheCallWithNoLiteralBehindIt(t *testing.T) {
+	for name, src := range map[string]string{
+		"переменная без кеша":   srcNoLiteralAtAll,
+		"непрозрачный аргумент": srcOpaqueArgument,
+	} {
+		got, err := revocationwindowgate.ScanInterceptorCalls("seventh", "services/seventh/internal/check/factory.go", src)
+		if err != nil {
+			t.Fatalf("%s: разбор: %v", name, err)
+		}
+		if got.CallsSeen != 1 {
+			t.Errorf("%s: вызовов конструктора осмотрено %d, ожидался 1 — молчание значит «не читал», а не «чисто»",
+				name, got.CallsSeen)
+		}
+		if len(got.Sites) != 1 {
+			t.Fatalf("%s: кеш не назван ничем, а гейт нашёл %d площадок; ожидалась 1", name, len(got.Sites))
+		}
+		if got.Sites[0].Service != "seventh" {
+			t.Errorf("%s: сервис в находке = %q", name, got.Sites[0].Service)
+		}
+		if got.Sites[0].Line == 0 {
+			t.Errorf("%s: находка без координаты не показывает, ГДЕ чинить", name)
+		}
+	}
+}
+
+// TestScanInterceptorCalls_SilentOnTheLegitimateTwins — положительная сторона.
+// Все три формы, которыми дерево пользуется законно, обязаны молчать: иначе
+// проверка запрещает форму вместо того, чтобы сужать неявный путь.
+func TestScanInterceptorCalls_SilentOnTheLegitimateTwins(t *testing.T) {
+	for name, src := range map[string]string{
+		"прямой литерал с кешем":       srcExplicit,
+		"литерал в переменной с кешем": srcIndirect,
+		"присвоение поля кеша":         srcNoLiteralCacheAssigned,
+	} {
+		got, err := revocationwindowgate.ScanInterceptorCalls("nlb", "services/nlb/internal/check/factory.go", src)
+		if err != nil {
+			t.Fatalf("%s: разбор: %v", name, err)
+		}
+		if got.CallsSeen != 1 {
+			t.Errorf("%s: вызовов осмотрено %d, ожидался 1", name, got.CallsSeen)
+		}
+		if len(got.Sites) != 0 {
+			t.Errorf("%s: кеш назван, а гейт нашёл %d площадок — он ловит форму, а не существо: %+v",
+				name, len(got.Sites), got.Sites)
+		}
+	}
+}
+
+// TestScanInterceptorCalls_LeavesTheLiteralPredicateItsSubject — литерал прямо
+// в вызове БЕЗ кеша остаётся предметом переписи литералов и здесь НЕ
+// удваивается: одна находка на одну площадку, иначе цена дефекта в отчёте
+// растёт вдвое и вердикт перестаёт быть числом.
+func TestScanInterceptorCalls_LeavesTheLiteralPredicateItsSubject(t *testing.T) {
+	for name, src := range map[string]string{
+		"литерал в вызове":     srcImplicit,
+		"литерал в переменной": srcIndirectImplicit,
+	} {
+		got, err := revocationwindowgate.ScanInterceptorCalls("seventh", "services/seventh/internal/check/factory.go", src)
+		if err != nil {
+			t.Fatalf("%s: разбор: %v", name, err)
+		}
+		if got.CallsSeen != 1 {
+			t.Errorf("%s: вызовов осмотрено %d, ожидался 1", name, got.CallsSeen)
+		}
+		if len(got.Sites) != 0 {
+			t.Errorf("%s: площадка с литералом принадлежит переписи литералов; здесь она даёт %d находок — двойной счёт",
+				name, len(got.Sites))
+		}
+	}
+}
+
+// TestScanInterceptorCalls_IgnoresTheCommentedExample — тот же контроль на
+// разбор вместо текста: godoc конструктора содержит ровно эту форму вызова.
+func TestScanInterceptorCalls_IgnoresTheCommentedExample(t *testing.T) {
+	got, err := revocationwindowgate.ScanInterceptorCalls("authz", "pkg/authz/interceptor.go", srcCommentOnly)
+	if err != nil {
+		t.Fatalf("разбор: %v", err)
+	}
+	if got.CallsSeen != 0 {
+		t.Errorf("в комментарии вызовов нет, а осмотрено %d", got.CallsSeen)
+	}
+	if len(got.Sites) != 0 {
+		t.Errorf("гейт принял пример из godoc за площадку: %+v", got.Sites)
+	}
+}
+
+// TestScanInterceptorCalls_ReportsAParseFailure — нечитаемый файл обязан быть
+// ошибкой, а не пустым результатом.
+func TestScanInterceptorCalls_ReportsAParseFailure(t *testing.T) {
+	_, err := revocationwindowgate.ScanInterceptorCalls("x", "x.go", "package check\nfunc (")
+	if err == nil {
+		t.Fatalf("испорченный исходник разобрался без ошибки — нечитаемый файл неотличим от чистого")
+	}
+	if !strings.Contains(err.Error(), "x.go") {
+		t.Errorf("ошибка разбора не называет файл: %v", err)
+	}
+}

@@ -433,3 +433,99 @@ func TestNoServiceTakesTheWindowImplicitly(t *testing.T) {
 			s.File, s.Line, s.Service)
 	}
 }
+
+// TestNoCallSiteTakesTheWindowUnprovably — ни один вызов конструктора не
+// получает окно отзыва так, чтобы имя кеша нельзя было предъявить.
+//
+// Зачем вторая проверка рядом с предыдущей. Предыдущая берёт предметом ЛИТЕРАЛ
+// `InterceptorOptions`, и берёт его по верному доводу: дерево пользуется двумя
+// формами, и предикат по аргументу вызова пропускал бы ту, где литерал вынесен
+// в переменную. Неверным было следствие — «формы без литерала в дереве нет,
+// значит литерала достаточно». Предпосылка эта у предыдущей проверки записана
+// (`literalsSeen == 0` — нарушенная предпосылка), но записана СУММАРНО по
+// дереву: пока хоть одна площадка собирает опции литералом, а их восемь, она не
+// сработает никогда. Предпосылка объявлена про каждую площадку, а проверяется
+// про дерево целиком.
+//
+// Проверено инъекцией на настоящем дереве: седьмой сервис, строящий интерсептор
+// из `var o authz.InterceptorOptions` с присвоением полей, проходил ВСЕ четыре
+// проверки зелёным, и число прочитанных файлов при этом росло на единицу — файл
+// был прочитан и объявлен чистым.
+//
+// Здесь предмет — ВЫЗОВ. Вопрос к каждому: доказуемо ли, что кеш назван? Форма,
+// в которой это доказать нечем, — находка, потому что «не смог посмотреть» не
+// есть «чисто».
+func TestNoCallSiteTakesTheWindowUnprovably(t *testing.T) {
+	root := repoRoot(t)
+
+	filesRead := 0
+	callsSeen := 0
+	var sites []revocationwindowgate.ImplicitSite
+
+	for _, rel := range implicitScanRoots {
+		base := filepath.Join(root, rel)
+		if _, err := os.Stat(base); err != nil {
+			t.Fatalf("предпосылка гейта нарушена: дерево %s не читается: %v", rel, err)
+		}
+		err := filepath.WalkDir(base, func(p string, d os.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err //nolint:wrapcheck // walk error propagates as-is
+			}
+			if !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+				return nil
+			}
+			src, rerr := os.ReadFile(p)
+			if rerr != nil {
+				return rerr //nolint:wrapcheck // read error propagates as-is
+			}
+			filesRead++
+			relPath, rerr := filepath.Rel(root, p)
+			if rerr != nil {
+				relPath = p
+			}
+			rep, perr := revocationwindowgate.ScanInterceptorCalls(serviceOfPath(relPath), relPath, string(src))
+			if perr != nil {
+				return perr //nolint:wrapcheck // parse error propagates as-is
+			}
+			callsSeen += rep.CallsSeen
+			sites = append(sites, rep.Sites...)
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("обход %s: %v", rel, err)
+		}
+	}
+
+	// Перепись — до вердикта и на каждом пути.
+	t.Logf("осмотрено: файлов прочитано=%d, вызовов authz.NewInterceptor=%d, площадок без доказуемого имени кеша=%d",
+		filesRead, callsSeen, len(sites))
+
+	if filesRead == 0 {
+		t.Fatalf("предпосылка гейта нарушена: не прочитано ни одного файла")
+	}
+	// Предпосылка ЭТОГО предиката — про сам предмет, а не про одну из его форм:
+	// ноль вызовов конструктора означает, что интерсептор собирают иначе либо
+	// конструктор переименован, и тогда молчание проверки не значит «чисто».
+	if callsSeen == 0 {
+		t.Fatalf("предпосылка гейта нарушена: прочитано %d файлов, но ни одного вызова "+
+			"authz.NewInterceptor не встретилось; конструктор переименован либо интерсептор "+
+			"собирают иначе — предикат «вызов доказуемо называет кеш» больше ничего не проверяет",
+			filesRead)
+	}
+
+	sort.Slice(sites, func(i, j int) bool {
+		if sites[i].File != sites[j].File {
+			return sites[i].File < sites[j].File
+		}
+		return sites[i].Line < sites[j].Line
+	})
+	for _, s := range sites {
+		t.Errorf("окно отзыва получено недоказуемо: %s:%d (сервис «%s») строит интерсептор, "+
+			"и назван ли кеш вердиктов — по этому файлу установить нельзя.\n"+
+			"Кешируется положительный вердикт ⇒ у площадки ЕСТЬ окно отзыва, но ни перепись "+
+			"литералов, ни перепись pkg/authz.RevocationPolicy его не видят.\n"+
+			"Назови кеш там, где видно: литералом опций (Cache: …) либо присвоением "+
+			"(opts.Cache = authz.NewCache(…)) в той же функции.",
+			s.File, s.Line, s.Service)
+	}
+}
