@@ -4,6 +4,11 @@
 package ids
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -48,14 +53,69 @@ func TestNewHyphenID_PanicsOnBadPrefix(t *testing.T) {
 	require.Panics(t, func() { NewHyphenID("") })
 }
 
-// TestHyphenPrefixConstants_InCanon — the exported hyphen constants must be part
-// of the KnownHyphenPrefixes router set (else validate.ResourceID would reject the
-// well-formed hyphen id NewHyphenID produces).
+// TestHyphenPrefixConstants_InCanon — every exported hyphen-prefix constant must
+// be part of the KnownHyphenPrefixes router set (else validate.ResourceID would
+// reject the well-formed hyphen id NewHyphenID produces).
+//
+// The population is READ FROM THE SOURCE, not restated here. A hand-written list
+// guards only the constants somebody remembered to add to it: the next
+// `Prefix<X>Hyphen` would be introduced unguarded, and the gate would stay green
+// while the router rejected every id of the new resource. Enumerating the
+// declarations makes the guard cover the CLASS.
+//
+// The gate carries its own premise-check: if the census finds nothing, the
+// declaration shape changed (constants renamed or moved out of ids.go) and this
+// gate is inspecting an empty set — that is a finding, not a pass.
 func TestHyphenPrefixConstants_InCanon(t *testing.T) {
+	const src = "ids.go"
+
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, src, nil, 0)
+	require.NoError(t, err, "parse %s — the gate cannot read its own population", src)
+
+	namePat := regexp.MustCompile(`^Prefix.*Hyphen$`)
+	found := map[string]string{} // const name -> literal value
+
+	ast.Inspect(f, func(n ast.Node) bool {
+		vs, ok := n.(*ast.ValueSpec)
+		if !ok {
+			return true
+		}
+		for i, id := range vs.Names {
+			if !namePat.MatchString(id.Name) || i >= len(vs.Values) {
+				continue
+			}
+			lit, ok := vs.Values[i].(*ast.BasicLit)
+			if !ok || lit.Kind != token.STRING {
+				continue
+			}
+			val, err := strconv.Unquote(lit.Value)
+			if err != nil {
+				t.Errorf("const %s: value %s is not a quoted string", id.Name, lit.Value)
+				continue
+			}
+			found[id.Name] = val
+		}
+		return true
+	})
+
+	// Premise: the census must have read something. Zero declarations means the
+	// shape this gate keys on no longer exists — indistinguishable from "all
+	// constants are in the canon" unless asserted separately.
+	require.NotEmpty(t, found,
+		"census read 0 constants matching %s from %s — the declaration shape changed "+
+			"and this gate is now inspecting nothing", namePat, src)
+
 	canon := KnownHyphenPrefixes()
-	for _, p := range []string{PrefixMachineTypeHyphen, PrefixInstanceHyphen} {
+	for name, p := range found {
 		if _, ok := canon[p]; !ok {
-			t.Errorf("hyphen prefix %q missing from KnownHyphenPrefixes — validate.ResourceID would reject %q- ids", p, p)
+			t.Errorf("hyphen prefix %q (const %s) missing from KnownHyphenPrefixes — "+
+				"validate.ResourceID would reject %q- ids", p, name, p)
 		}
 	}
+
+	// Objem osmotrennogo — "zero findings" must be distinguishable from
+	// "zero inspected".
+	t.Logf("census: %d exported hyphen-prefix constants inspected against a canon of %d entries",
+		len(found), len(canon))
 }
