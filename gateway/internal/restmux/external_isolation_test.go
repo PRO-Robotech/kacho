@@ -7,6 +7,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/listenerorigin"
@@ -49,15 +50,55 @@ var internalRESTPaths = []struct{ method, path string }{
 	{"GET", "/vpc/v1/networks/net-1:internal"},
 }
 
-// TestExternalListener_RejectsInternalPaths_404 — an Internal* REST path
-// arriving on the EXTERNAL TLS listener must return 404 (existence-hiding):
-// the dispatcher must not route it to the internal sub-mux regardless of the
+// TestExternalListener_RejectsInternalPaths — an Internal* REST path arriving on
+// the EXTERNAL TLS listener must never reach the administrative backend: the
+// dispatcher must not route it to the internal sub-mux regardless of the
 // requested path.
-func TestExternalListener_RejectsInternalPaths_404(t *testing.T) {
-	h, err := NewMux(context.Background(), muxAddrs(), nil, nil)
+//
+// WHY THIS NO LONGER PINS A LITERAL 404. A 404 written here BY THIS PACKAGE was a
+// second producer, and its answer (text/plain, «404 page not found», plus
+// X-Content-Type-Options) differed from the one grpc-gateway gives for a route
+// the listener does not have (application/json, {"code":5,…}). The shape of the
+// answer therefore told an outside caller whether an administrative path lives at
+// that address — the very reconnaissance the hiding exists to deny. The refusal is
+// now produced by serving the request on the public mux, which carries no
+// administrative route, so grpc-gateway answers exactly as it would if the admin
+// surface had never been registered. What must hold is «the admin backend is not
+// reached», and that is what is asserted — by ADDRESS, which no shape can fake:
+// public and administrative backends are put on two distinct dead literals.
+//
+// One path shows why the literal was wrong. `/vpc/v1/networks/{id}:internal`
+// matches the PUBLIC pattern `/vpc/v1/networks/{network_id}` with the verb
+// suffix as part of the id value, so a listener without the admin surface answers
+// it from the public Network read (an invalid-id refusal). Pinning 404 there
+// pinned the difference between «:internal is special» and every other id.
+func TestExternalListener_RejectsInternalPaths(t *testing.T) {
+	addrs, adminLiteral := splitAddrs(t)
+	h, err := NewMux(context.Background(), addrs, nil, nil)
 	if err != nil {
 		t.Fatalf("NewMux: %v", err)
 	}
+
+	// Premise: the discriminator works at all — the administrative literal DOES
+	// appear on the internal listener for these very paths. Otherwise «never seen
+	// outside» would be an artefact, not a property.
+	seen := 0
+	for _, tc := range internalRESTPaths {
+		req := httptest.NewRequest(tc.method, tc.path, nil)
+		req = req.WithContext(listenerorigin.WithInternal(req.Context()))
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if strings.Contains(rec.Body.String(), adminLiteral) {
+			seen++
+		}
+	}
+	if seen == 0 {
+		t.Fatalf("administrative literal %q never appeared even on the INTERNAL listener — the "+
+			"discriminator is dead and «never outside» would be free", adminLiteral)
+	}
+	t.Logf("census: administrative literal reached on the internal listener for %d of %d paths",
+		seen, len(internalRESTPaths))
+
 	for _, tc := range internalRESTPaths {
 
 		t.Run("EXT "+tc.method+" "+tc.path, func(t *testing.T) {
@@ -67,9 +108,15 @@ func TestExternalListener_RejectsInternalPaths_404(t *testing.T) {
 			// listener, or the external TLS listener) is treated as external.
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, req)
-			if rec.Code != http.StatusNotFound {
-				t.Errorf("Internal* path %s %s on EXTERNAL listener: got %d, want 404 (CRITICAL: internal path exposed on external endpoint)",
-					tc.method, tc.path, rec.Code)
+			if strings.Contains(rec.Body.String(), adminLiteral) {
+				t.Errorf("Internal* path %s %s on EXTERNAL listener reached the ADMINISTRATIVE backend "+
+					"(CRITICAL: internal path exposed on external endpoint): %s",
+					tc.method, tc.path, rec.Body.String())
+			}
+			if ct := rec.Header().Get("X-Content-Type-Options"); ct != "" {
+				t.Errorf("Internal* path %s %s answered by a SECOND producer (X-Content-Type-Options=%q) — "+
+					"the shape of the answer distinguishes an administrative path from one that does not "+
+					"exist, which is an existence-oracle", tc.method, tc.path, ct)
 			}
 		})
 	}

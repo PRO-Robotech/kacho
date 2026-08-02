@@ -59,7 +59,6 @@ var servedInternalServiceDescs = []grpc.ServiceDesc{
 // которую этот файл закрывает.
 var notServedServiceNames = map[string]struct{}{
 	"kacho.cloud.compute.v1.InternalResourceLifecycleService": {},
-	"kacho.cloud.compute.v1.MaintenanceService":               {},
 }
 
 func servedServiceDescs() []grpc.ServiceDesc {
@@ -224,11 +223,13 @@ func TestPermissionMap_EveryComputeServiceClassified(t *testing.T) {
 
 	var unclassified []string
 	var declared int
+	declaredNames := make(map[string]struct{})
 	protoregistry.GlobalFiles.RangeFilesByPackage(computeProtoPackage, func(fd protoreflect.FileDescriptor) bool {
 		svcs := fd.Services()
 		for i := 0; i < svcs.Len(); i++ {
 			name := string(svcs.Get(i).FullName())
 			declared++
+			declaredNames[name] = struct{}{}
 			_, isServed := served[name]
 			_, isNotServed := notServedServiceNames[name]
 			if isServed && isNotServed {
@@ -249,4 +250,20 @@ func TestPermissionMap_EveryComputeServiceClassified(t *testing.T) {
 			"Add each to servedPublicServiceDescs/servedInternalServiceDescs (if cmd/compute/main.go "+
 			"registers it — then every RPC needs a PermissionMap entry) or to notServedServiceNames.",
 		unclassified)
+
+	// Вторая половина исчерпывающей классификации: запись, которой больше нечего
+	// исключать, — тоже находка. `MaintenanceService` пережил снятие своего
+	// сервиса с контракта и лежал здесь мёртвым: перечень, не истекающий сам,
+	// передаёт слепое пятно следующему сервису, которому достанется это имя.
+	var orphanNotServed []string
+	for name := range notServedServiceNames {
+		if _, ok := declaredNames[name]; !ok {
+			orphanNotServed = append(orphanNotServed, name)
+		}
+	}
+	sort.Strings(orphanNotServed)
+	require.Emptyf(t, orphanNotServed,
+		"notServedServiceNames names %d service(s) that compute/v1 no longer declares: %v\n"+
+			"An exclusion lives only while it has a subject — drop the entry.",
+		len(orphanNotServed), orphanNotServed)
 }

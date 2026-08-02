@@ -22,8 +22,13 @@
 //     публичных ресурсов отдают много zero-полей. На внутренней admin/UI
 //     поверхности этот шум вреден и сбивает админов.
 //
-// Все RPC handlers регистрируются на ОБА mux'а — разница только в JSON
-// маршалинге. Диспетчер выбирает нужный mux по ПАРЕ (HTTP-метод, путь) —
+// ПУБЛИЧНЫЕ RPC handlers регистрируются на ОБА mux'а — разница только в JSON
+// маршалинге. АДМИНИСТРАТИВНЫЕ (Internal*) — ТОЛЬКО на internal mux: на public
+// они были недостижимы by construction, а их отсутствие там делает public mux
+// точной моделью «листенера, у которого административной поверхности нет».
+// На эту модель опирается укрытие (ниже).
+//
+// Диспетчер выбирает нужный mux по ПАРЕ (HTTP-метод, путь) —
 // `isInternalRoute`, см. также internal_routes.go:
 //
 //   - Любой REST-биндинг любого Internal*-сервиса (собирается из
@@ -40,8 +45,15 @@
 //     `/vpc/v1/networks/{id}/addressPoolBinding`.
 //   - Все остальное → public mux.
 //
-// Запрос, классифицированный как internal, но пришедший на ВНЕШНИЙ листенер,
-// получает 404 (existence-hiding) и до обработчика не доходит.
+// Запрос, классифицированный как internal, но пришедший на ВНЕШНИЙ листенер, до
+// административного обработчика не доходит: он отдаётся public mux'у и получает
+// ровно тот ответ, который этот листенер даёт на маршрут, которого у него нет
+// (404, а на пути с публичным маршрутом под другим методом — 501). Ответ
+// производит grpc-gateway, тот же, что и на любой обычный промах. Раньше здесь
+// стоял отдельный `http.NotFound`, и его ответ отличался типом содержимого,
+// телом и заголовком `X-Content-Type-Options` — то есть форма 404 отвечала на
+// вопрос «есть ли здесь административный путь». Это existence-hiding без
+// содержания; см. external_refusal_shape_test.go.
 //
 // Корневой `http.Handler` (диспетчер) экспонируется как `http.Handler`
 // и передается в `httpMux.Handle("/", restHandler)` в `cmd/api-gateway/main.go`.
@@ -421,11 +433,25 @@ func NewMux(
 		storageInternalAddr = addrs["storageInternal"]
 	}
 
-	// Регистрируем КАЖДЫЙ handler на ОБА mux'а (public + internal). Диспетчер по
-	// паре (метод, путь) — isInternalRoute — ниже выбирает, какой из них фактически обработает
-	// конкретный запрос — разница только в JSON-маршалинге. Так нам не нужно
-	// заранее знать, какой RPC попадет на какой путь: grpc-gateway сам разрулит,
-	// а мы лишь подсовываем правильный JSONPb.
+	// ПУБЛИЧНЫЙ handler регистрируется на ОБА mux'а (public + internal): диспетчер
+	// по паре (метод, путь) — isInternalRoute — ниже выбирает, какой из них
+	// фактически обработает конкретный запрос, и разница только в JSON-маршалинге.
+	// Так нам не нужно заранее знать, какой RPC попадет на какой путь: grpc-gateway
+	// сам разрулит, а мы лишь подсовываем правильный JSONPb.
+	//
+	// АДМИНИСТРАТИВНЫЙ handler регистрируется ТОЛЬКО на internalMux
+	// (`if mux == internalMux && <домен>InternalAddr != ""`). Причин две, и вторая
+	// несущая:
+	//
+	//  1. На publicMux эти маршруты недостижимы by construction: каждый
+	//     REST-биндинг Internal*-сервиса классифицируется как внутренний той же
+	//     таблицей дескрипторов (`matchesInternalRESTBinding`), поэтому диспетчер
+	//     никогда не отдаёт его publicMux'у. Регистрация там была мёртвой.
+	//  2. Именно это делает publicMux ТОЧНОЙ моделью «листенера, у которого
+	//     административной поверхности нет». На неё опирается укрытие ниже: чтобы
+	//     отказ внешнему вызывающему был неотличим от промаха, его обязан
+	//     произвести ТОТ ЖЕ производитель, что и обычный промах, — а не вторая
+	//     функция с похожим смыслом.
 	muxes := []*runtime.ServeMux{publicMux, internalMux}
 
 	for _, mux := range muxes {
@@ -455,7 +481,7 @@ func NewMux(
 		// --- vpc admin (AddressPool) — kacho-only, internal-port (9091) ---
 		// Эти сервисы экспонируются через apiGW REST для UI/админ-tooling;
 		// путь /vpc/v1/addressPools.
-		if vpcInternalAddr != "" {
+		if mux == internalMux && vpcInternalAddr != "" {
 			if err := vpcpb.RegisterInternalAddressPoolServiceHandlerFromEndpoint(ctx, mux, vpcInternalAddr, optsFor("vpcInternal")); err != nil {
 				return nil, fmt.Errorf("register InternalAddressPoolService: %w", err)
 			}
@@ -487,7 +513,7 @@ func NewMux(
 		// InternalWatchService — gRPC server-streaming (outbox), через
 		// grpc-gateway REST не проксируется; consumer'ы ходят в compute.kacho.svc:9091
 		// напрямую gRPC. Admin Region/Zone обслуживает geo.v1.
-		if computeInternalAddr != "" {
+		if mux == internalMux && computeInternalAddr != "" {
 			// InternalMachineTypeService — admin CRUD над каталогом MachineType
 			// (POST/PATCH/DELETE на /compute/v1/internal/machineTypes; async Operation,
 			// system_admin). Путь несет сегмент `/internal/` → isInternalRoute 404-ит его
@@ -534,7 +560,7 @@ func NewMux(
 		// InternalDiskTypeService (admin CRUD справочника DiskType) — POST/PATCH/DELETE
 		// на /storage/v1/diskTypes (тот же collection-путь, что public read); гейтится
 		// authz-каталогом (required_relation system_admin), как compute InternalDiskType.
-		if storageInternalAddr != "" {
+		if mux == internalMux && storageInternalAddr != "" {
 			if err := storagepb.RegisterInternalVolumeServiceHandlerFromEndpoint(ctx, mux, storageInternalAddr, optsFor("storageInternal")); err != nil {
 				return nil, fmt.Errorf("register storage InternalVolumeService: %w", err)
 			}
@@ -575,7 +601,7 @@ func NewMux(
 		// HasInternalSuffix, а authz-каталог гейтит эти RPC relation `system_admin`
 		// на cluster-singleton. Мутации Region/Zone — это catalog-паттерн (sync-ответ
 		// ресурсом, НЕ Operation; как InternalDiskType).
-		if geoInternalAddr != "" {
+		if mux == internalMux && geoInternalAddr != "" {
 			if err := geopb.RegisterInternalRegionServiceHandlerFromEndpoint(ctx, mux, geoInternalAddr, optsFor("geoInternal")); err != nil {
 				return nil, fmt.Errorf("register geo InternalRegionService: %w", err)
 			}
@@ -652,7 +678,7 @@ func NewMux(
 		// interceptor whitelist). External TLS listener never serves these
 		// paths — the gRPC router's HasInternalSuffix blocks Internal* services
 		// on the public listener.
-		if iamInternalAddr != "" {
+		if mux == internalMux && iamInternalAddr != "" {
 			if err := iampb.RegisterInternalUserServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
 				return nil, fmt.Errorf("register iam InternalUserService: %w", err)
 			}
@@ -732,7 +758,7 @@ func NewMux(
 		// HasInternalSuffix в gRPC-роутере (server.go Resolver / shimproxy.go)
 		// блокирует попадание InternalResourceLifecycleService.* на external/TLS
 		// endpoint.
-		if lbInternalAddr != "" {
+		if mux == internalMux && lbInternalAddr != "" {
 			if err := lbpb.RegisterInternalResourceLifecycleServiceHandlerFromEndpoint(ctx, mux, lbInternalAddr, optsFor("loadbalancerInternal")); err != nil {
 				return nil, fmt.Errorf("register loadbalancer InternalResourceLifecycleService: %w", err)
 			}
@@ -759,7 +785,7 @@ func NewMux(
 		// dispatcher (isInternalRoute → HasInternalSuffix) 404-ит эти пути на external
 		// TLS listener, а gRPC-роутер блокирует Internal* через HasInternalSuffix.
 		// Admin-tooling может ходить и напрямую gRPC до kacho-registry:9091.
-		if registryInternalAddr != "" {
+		if mux == internalMux && registryInternalAddr != "" {
 			if err := registrypb.RegisterInternalRegistryServiceHandlerFromEndpoint(ctx, mux, registryInternalAddr, optsFor("registryInternal")); err != nil {
 				return nil, fmt.Errorf("register registry InternalRegistryService: %w", err)
 			}
@@ -788,12 +814,29 @@ func NewMux(
 		if isInternalRoute(r.Method, r.URL.Path) {
 			// SECURITY: Internal* REST paths are cluster-internal-only.
 			// When the request arrived on the advertised external TLS listener
-			// (listenerorigin.IsExternal), reject with 404 — existence-hiding,
-			// mirroring the gRPC router's HasInternalSuffix block. Internal-listener
-			// callers (UI / admin-tooling / port-forward / service self-calls) are
-			// unmarked → served as before.
+			// (listenerorigin.IsExternal), the caller must get exactly what this
+			// listener answers for a route it does not have — mirroring the gRPC
+			// router, where the hidden method and a method that does not exist are
+			// produced by one function (proxy.refuseRoute) and are therefore
+			// byte-identical.
+			//
+			// The answer is produced by SERVING THE REQUEST ON publicMux, which
+			// carries the public routes and nothing else. So grpc-gateway itself
+			// decides the shape, exactly as it would if the admin surface had never
+			// been registered: 404 where the path is unknown, 501 Method Not Allowed
+			// where the path exists publicly under other methods (admin CRUD of the
+			// DiskType catalogue shares its collection path with the public read).
+			//
+			// It must NOT be an http.NotFound written here. That was a SECOND
+			// producer, and the two answers differed in Content-Type, in body and in
+			// X-Content-Type-Options — so the shape of a 404 answered the question
+			// «is there an admin path here», and the whole admin surface was
+			// enumerable from outside without any credential.
+			//
+			// Internal-listener callers (UI / admin-tooling / port-forward / service
+			// self-calls) are unmarked → served by internalMux as before.
 			if listenerorigin.IsExternal(r.Context()) {
-				http.NotFound(w, r)
+				publicMux.ServeHTTP(w, r)
 				return
 			}
 			internalMux.ServeHTTP(w, r)

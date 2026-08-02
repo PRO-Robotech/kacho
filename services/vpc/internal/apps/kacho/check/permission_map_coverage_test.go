@@ -149,11 +149,13 @@ func TestPermissionMap_EveryVPCServiceClassified(t *testing.T) {
 
 	var unclassified []string
 	var declared int
+	declaredNames := make(map[string]struct{})
 	protoregistry.GlobalFiles.RangeFilesByPackage(vpcProtoPackage, func(fd protoreflect.FileDescriptor) bool {
 		svcs := fd.Services()
 		for i := 0; i < svcs.Len(); i++ {
 			name := string(svcs.Get(i).FullName())
 			declared++
+			declaredNames[name] = struct{}{}
 			_, isServed := served[name]
 			_, isNotServed := notServedServiceNames[name]
 			if isServed && isNotServed {
@@ -174,4 +176,20 @@ func TestPermissionMap_EveryVPCServiceClassified(t *testing.T) {
 			"Add each to servedPublicServiceDescs/servedInternalServiceDescs (if cmd/vpc/main.go "+
 			"registers it — then every RPC needs a PermissionMap entry) or to notServedServiceNames.",
 		unclassified)
+
+	// Вторая половина исчерпывающей классификации: запись, которой больше нечего
+	// исключать, — тоже находка. Перечень, не истекающий сам, передаёт слепое
+	// пятно следующему сервису, которому достанется это имя (у compute такая
+	// запись пережила снятие своего сервиса с контракта).
+	var orphanNotServed []string
+	for name := range notServedServiceNames {
+		if _, ok := declaredNames[name]; !ok {
+			orphanNotServed = append(orphanNotServed, name)
+		}
+	}
+	sort.Strings(orphanNotServed)
+	require.Emptyf(t, orphanNotServed,
+		"notServedServiceNames names %d service(s) that vpc/v1 no longer declares: %v\n"+
+			"An exclusion lives only while it has a subject — drop the entry.",
+		len(orphanNotServed), orphanNotServed)
 }
