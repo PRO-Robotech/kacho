@@ -6,7 +6,7 @@
         loadtest-address-allocate loadtest-address-allocate-clean \
         reload-svc-iam psql-iam logs-iam fga-bootstrap build-services openfga-model-json \
         guard-kind-context guard-destructive gate-self-test waiter-discipline \
-        report-reader-discipline alt-fixture-discipline \
+        report-reader-discipline alt-fixture-discipline posture-branch-discipline \
         reload-svc-nlb psql-nlb logs-nlb seed-nlb e2e-newman stand-provenance
 
 SHELL := bash
@@ -668,6 +668,23 @@ waiter-discipline:
 # не чистота: у запрета должен остаться предмет.
 report-reader-discipline:
 	@python3 scripts/assert-report-readers-use-the-summary.py
+
+# posture-branch-discipline — ветвь на посадке посева обязана быть способной уйти
+# в обе стороны.
+#
+# `tests/authz-fixtures/setup.sh` оставляет стоять РОВНО ОДНО значение посадки
+# (`production`); `dev` отвергается, прочее не опознано, обе ветви завершают
+# процесс. Два прогонщика newman тем не менее ветвились на прочитанном значении и
+# падали в запасное `dev` — посадку, которую сам классификатор отвергает. Условие
+# было ложно ВСЕГДА, обоими путями сразу (посев прошёл ⇒ в файле `production`;
+# посев сорвался ⇒ прогон прекращён раньше чтения), и оба блока досева были
+# недостижимы. Ровно тот класс, который осуждало сообщение коммита, их принёсшего.
+#
+# Гейт сам ИСТЕКАЕТ: появится второе производимое значение — запрет на сравнение
+# замолкает, потому что ветвление станет осмысленным. Предпосылка проверяется:
+# разбор, не нашедший ни одного производимого значения, — отказ, а не «чисто».
+posture-branch-discipline:
+	@python3 scripts/assert-posture-branches-can-be-taken.py
 
 # Локально: `make helm-manifest-test`; одну проверку — `bash tests/helm/<имя>.sh`.
 #

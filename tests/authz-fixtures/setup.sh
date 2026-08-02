@@ -186,9 +186,15 @@ else
   log "posture: $SEED_POSTURE (forced via SEED_POSTURE)"
 fi
 
-# Record the posture this seed ran in. Drivers branch on it (deploy/scripts/
-# newman-parallel.sh) instead of re-deriving it, so there is ONE detector and the fixture
-# set can never be interpreted under the wrong posture.
+# Record the posture this seed ran in — a PROVENANCE note for whoever later reads this
+# out/ directory and needs to know what the fixture set beside it means.
+#
+# NOT a switch, and no longer described as one. Two drivers used to branch on it, and
+# both branches were dead for the same reason the delegation below is unconditional:
+# `production` is the only value that reaches this line, so a comparison against it is a
+# constant. The comment here claimed drivers branch on it, which made the dead guards
+# read as load-bearing. deploy/scripts/assert-posture-branches-can-be-taken.py now fails
+# on any branch taken on this value while the classifier leaves one value standing.
 echo "$SEED_POSTURE" > "$OUT_DIR/seed-posture"
 
 # Unconditional: `production` is the only value classify_posture leaves standing, so a

@@ -168,30 +168,23 @@ if [ "$SEED" = "true" ]; then
     exit 2
   fi
 
-  # Posture the seed actually ran in (written by setup.sh — ONE detector, no re-derivation).
-  SEED_POSTURE_RAN="$(cat "$REPO_ROOT/tests/authz-fixtures/out/seed-posture" 2>/dev/null || echo dev)"
-
-  # In PRODUCTION posture setup.sh delegates to prodseed_all.py, which already drives
-  # seed-nlb-fixtures.sh with the RS256 admin Bearer. Re-running it here would make a
-  # second author for the same cluster-wide default-pool slot.
-  if [[ " $SERVICES " == *" nlb "* ]] && [ "$SEED_POSTURE_RAN" != "production" ]; then
-    echo "[parallel] seeding nlb external-VIP AddressPool (best-effort)"
-    # Take the admin Bearer the seed ACTUALLY produced instead of re-forging an HS256 one:
-    # on a production-posture stand a locally-minted HS256 token is rejected (empty
-    # devSecret) and this step silently seeded nothing. authz-fixtures.json carries
-    # whichever admin credential the posture called for.
-    SEED_JWT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("jwtBootstrap",""))' \
-      "$REPO_ROOT/tests/authz-fixtures/out/authz-fixtures.json" 2>/dev/null || true)
-    # NLB_ZONE_ID — the nlb-DEDICATED zone (tests/authz-fixtures/prodseed_matrix.py owns the
-    # zone table and seeds it). setup.sh already ran the seeder for the isolated nlb project
-    # above; this second, project-agnostic pass must target the SAME zone. Unpinned it falls
-    # back to zone[0] = ru-central1-a and plants a v6-carrying default EXTERNAL_PUBLIC pool
-    # there, deterministically breaking the vpc case ADR-CR-EXT-V6-FAMILY-FALLTHROUGH (which
-    # asserts zone a has no v6-capable pool) — a cross-suite fixture collision, not a flake.
-    env BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="http://localhost:$GW_INTERNAL_PORT" JWT="$SEED_JWT" \
-      NLB_ZONE_ID="${NLB_ZONE:-ru-central1-e}" \
-      bash "$REPO_ROOT/deploy/scripts/seed-nlb-fixtures.sh" || true
-  fi
+  # nlb's external-VIP AddressPool is seeded by setup.sh, and ONLY there.
+  #
+  # A second pass used to stand here, guarded by "unless the seed ran in production
+  # posture". That guard could never be false: classify_posture leaves `production` as
+  # the only value standing, and a seed that does not reach that point exits this script
+  # above (rc≠0 ⇒ "ПРОГОН НЕДЕЙСТВИТЕЛЕН") before the read. So the block was unreachable
+  # from the day the classifier was narrowed — and its fallback named `dev`, the one
+  # posture the classifier REFUSES.
+  #
+  # Nothing is lost by removing it: setup.sh delegates to prodseed_all.py, which drives
+  # deploy/scripts/seed-nlb-fixtures.sh itself and is the sole author of that
+  # cluster-wide default-pool slot, pinned to the nlb-dedicated zone. A second author is
+  # what the guard was trying to prevent — unconditionally now, by not existing.
+  #
+  # deploy/scripts/assert-posture-branches-can-be-taken.py keeps this shape from coming
+  # back: a branch on the seed posture must be able to go both ways.
+  :
 fi
 
 echo "[parallel] regenerating collections for: $SERVICES"
