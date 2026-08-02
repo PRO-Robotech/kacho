@@ -145,10 +145,14 @@ func TestPermissionCatalog_RegistryV1Present_EntryFloor(t *testing.T) {
 	// Floor lowered 330 → 296 when compute's duplicate block storage was retired
 	// (34 entries: Disk 10 + Image 10 + Snapshot 9 + DiskType 2 + InternalDiskType 3),
 	// then 296 → 290 when the tenant-facing condition surface went (6 entries:
-	// ConditionsService Get/List/Create/Update/Delete/Evaluate).
+	// ConditionsService Get/List/Create/Update/Delete/Evaluate),
+	// then 290 → 285 when four services declared without a single implementation were
+	// retired (5 entries: compute.v1 + vpc.v1 InternalResourceLifecycleService/Subscribe,
+	// vpc.v1 InternalWatchService/Watch, iam.v1 InternalIamHooksService/{TokenHook,
+	// RefreshTokenHook}) — none of the four was mounted on any listener.
 	// A floor is a guard against a SILENT shrink; a deliberate retire moves it, and
 	// only by the number of entries the retire actually removed.
-	assert.GreaterOrEqual(t, c.Size(), 290,
+	assert.GreaterOrEqual(t, c.Size(), 285,
 		"embedded catalog shrank below the known floor — stale `make sync-permission-catalog`?")
 
 	// registry.v1 methods MUST be present (the regressed surface).

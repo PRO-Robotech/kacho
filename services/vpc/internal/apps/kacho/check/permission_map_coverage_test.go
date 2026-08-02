@@ -60,10 +60,11 @@ var servedInternalServiceDescs = []grpc.ServiceDesc{
 // Список — вторая половина исчерпывающей классификации: без него сервис, поднятый в
 // main.go, но не добавленный в served-списки выше, прошёл бы coverage-тест мимо, и
 // дыра «RPC выставлен, но не в карте» вернулась бы бесшумно.
-var notServedServiceNames = map[string]struct{}{
-	"kacho.cloud.vpc.v1.InternalResourceLifecycleService": {},
-	"kacho.cloud.vpc.v1.InternalWatchService":             {},
-}
+// СЕЙЧАС ПУСТ: обе записи сняты с контракта целиком — это были объявления без
+// единой реализации (живой фид жизненного цикла остался только в loadbalancer.v1,
+// живой поток событий — только в compute.v1). Пустая карта означает, что каждый
+// объявленный vpc/v1 сервис обслуживается и потому обязан быть в PermissionMap.
+var notServedServiceNames = map[string]struct{}{}
 
 func servedServiceDescs() []grpc.ServiceDesc {
 	out := make([]grpc.ServiceDesc, 0, len(servedPublicServiceDescs)+len(servedInternalServiceDescs))
