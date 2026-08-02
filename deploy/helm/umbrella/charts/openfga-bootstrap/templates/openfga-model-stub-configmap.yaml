@@ -14,14 +14,15 @@ KAC-127 reconciliation: `model.fga` / `model.json` ниже — сгенерир
   - account / project tiers (B2B Organization tier fully removed — RBAC-2026
     Contract-B). account.admin = direct subjects `or owner`; flat per-object
     materialization, no access cascade (Contract-A).
-  - per-service resource-types: vpc_network / vpc_subnet / vpc_security_group /
-    vpc_route_table / vpc_address / vpc_gateway /
-    vpc_network_interface / vpc_address_pool / compute_instance /
-    storage_volume / storage_snapshot / storage_image /
-    nlb_network_load_balancer / nlb_target_group.
-  - IAM resource-types (per-resource scope в permission catalog scope_extractor):
-    iam_user / iam_service_account / iam_group / iam_role / iam_access_binding /
-    iam_condition.
+  - per-service and IAM resource-types. ПЕРЕЧЕНЬ ЗДЕСЬ НЕ ДУБЛИРУЕТСЯ: он лежит
+    ниже, в `data.model.fga` этого же файла, и в каноническом источнике. Прежняя
+    редакция несла свою копию списка — и та разошлась с предметом в обе стороны
+    сразу: называла тип, снятый задолго до того (его надгробие видно ниже), и
+    молчала про три живых. Копия, которую никто не сверяет, расходится всегда;
+    независимости она тут не давала — оба текста лежат в одном файле в трёх
+    экранах друг от друга. Преамбулу генератор не переписывает (правит от `data:`
+    и ниже), поэтому копия пережила снятие типа молча. Сверка обоих направлений —
+    authzmap/fga_model_header_census_test.go.
   - 6 предустановленных Conditions (mfa_fresh / non_expired / source_ip_in_range /
     jit_window / business_hours / device_compliant). break_glass_window removed
     in KAC-214 (RBAC v2).
@@ -177,12 +178,22 @@ data:
     #     `storage_volume`, `storage_snapshot`, `storage_image`,
     #     `nlb_network_load_balancer`, `nlb_target_group`,
     #     `nlb_listener` (KAC-178 §4 — Listener as first-class FGA object),
+    #     `registry_registry`, `registry_repository`,
     #     `iam_role`, `iam_access_binding`, `iam_service_account`, `iam_group`,
-    #     `iam_user`, `iam_condition`.
+    #     `iam_user`.
     #   - relations: `viewer` / `editor` / `admin` / `owner` / `member` per the
     #     Kachō roles vocabulary (KAC-121).
     #   - conditional relations: `with` clause names a Condition (built-in or
     #     custom) — FGA pre-compiles CEL on `WriteAuthorizationModel`.
+    #
+    # The per-domain enumeration above is DERIVED from the type declarations below,
+    # not a hand-kept summary, and it is pinned in BOTH directions by
+    # authzmap/fga_model_header_census_test.go. That bullet must stay a bare list:
+    # the gate reads every backticked identifier in it, so prose belongs here, in a
+    # paragraph of its own. Before the gate existed the list had drifted both ways at
+    # once — it named a type retired long ago (its tombstone is further down) and
+    # omitted an entire domain the body declares. A list nobody verifies drifts from
+    # its subject; this one now expires with it.
 
     # ---------------------------------------------------------------------------
     # Generic principal / subject types.

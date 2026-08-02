@@ -63,7 +63,22 @@ import (
 // утверждает, что предмет проверяется.
 func TestEveryFuzzTargetDrivesProductionCode(t *testing.T) {
 	root := repoRoot(t)
-	targets := analyzeFuzzSubjects(t, newTrackedTree(t, root), moduleImportPath(t, root))
+	targets, census := analyzeFuzzSubjects(t, newTrackedTree(t, root), moduleImportPath(t, root))
+
+	// ПЕРЕПИСЬ печатается ВСЕГДА, включая зелёный прогон: «ноль целей без
+	// предмета» обязано отличаться от «ноль прочитанных файлов».
+	t.Logf("%s; фаз-целей найдено %d", census, len(targets))
+	if len(census.unparsed) > 0 {
+		t.Errorf("не разобрано %d файлов — по ним у гейта НЕТ ответа, и молчание про них "+
+			"неотличимо от «предмет есть»:\n  %s\n\nНеразобранный файл не «чистый»: его цели "+
+			"выпадают из множества, а сверка с матрицей потом объявляет их отсутствующими в "+
+			"коде — верный красный с неверной причиной.",
+			len(census.unparsed), strings.Join(census.unparsed, "\n  "))
+	}
+	if census.testFiles == 0 {
+		t.Fatal("из индекса не отобрано НИ ОДНОГО *_test.go — это слепой обход, а не «чисто». " +
+			"Гейт на пустом множестве зелен всегда: почини отбор файлов.")
+	}
 
 	var hollow []string
 	for _, tg := range targets {
@@ -96,8 +111,10 @@ func TestEveryFuzzTargetDrivesProductionCode(t *testing.T) {
 // TestScheduledMatrixCoversEveryFuzzTarget ниже, на том же разборе.
 func TestFuzzSubjectAnalyzerSeesEveryScheduledTarget(t *testing.T) {
 	root := repoRoot(t)
+	targets, census := analyzeFuzzSubjects(t, newTrackedTree(t, root), moduleImportPath(t, root))
+	t.Logf("%s; фаз-целей найдено %d", census, len(targets))
 	seen := map[string]bool{}
-	for _, tg := range analyzeFuzzSubjects(t, newTrackedTree(t, root), moduleImportPath(t, root)) {
+	for _, tg := range targets {
 		seen[tg.name] = true
 	}
 	if len(seen) == 0 {
@@ -134,8 +151,9 @@ func TestFuzzSubjectAnalyzerSeesEveryScheduledTarget(t *testing.T) {
 func TestScheduledMatrixCoversEveryFuzzTarget(t *testing.T) {
 	root := repoRoot(t)
 
+	targets, census := analyzeFuzzSubjects(t, newTrackedTree(t, root), moduleImportPath(t, root))
 	var inCode []string
-	for _, tg := range analyzeFuzzSubjects(t, newTrackedTree(t, root), moduleImportPath(t, root)) {
+	for _, tg := range targets {
 		inCode = append(inCode, tg.name)
 	}
 	inMatrix := scheduledFuzzTargets(t, root)
@@ -161,7 +179,7 @@ func TestScheduledMatrixCoversEveryFuzzTarget(t *testing.T) {
 			"дереве нет — ночной прогон каждую ночь запускает пустоту и зеленеет. Убери строку из "+
 			"матрицы либо напиши цель.", name)
 	}
-	t.Logf("сверено целей: в дереве %d, в матрице %d", len(inCode), len(inMatrix))
+	t.Logf("%s; сверено целей: в дереве %d, в матрице %d", census, len(inCode), len(inMatrix))
 }
 
 // TestMatrixDivergenceIsSymmetric — гейт выше проверен инъекцией в ОБЕ стороны,
@@ -454,9 +472,20 @@ import (
 }
 `)
 
+	targets, census := analyzeFuzzSubjects(t, newSyntheticTree(t, root), mod)
 	got := map[string]bool{}
-	for _, tg := range analyzeFuzzSubjects(t, newSyntheticTree(t, root), mod) {
+	for _, tg := range targets {
 		got[tg.name] = tg.hasSubject
+	}
+
+	// Перепись обязана НАЗЫВАТЬ прочитанное, а не украшать вывод: на дереве из
+	// пяти файлов она обязана сказать «пять». Число, которое никто не проверил,
+	// со временем начинает лгать так же уверенно, как отсутствующее.
+	if census.testFiles != 5 || census.packages != 1 {
+		t.Errorf("перепись: %s — ожидалось 5 *_test.go в 1 пакете", census)
+	}
+	if len(census.unparsed) != 0 {
+		t.Errorf("перепись объявила неразобранные файлы там, где все пять разбираемы: %v", census.unparsed)
 	}
 	want := map[string]bool{
 		"FuzzStub":          false,
@@ -474,6 +503,55 @@ import (
 		if gotSubject != wantSubject {
 			t.Errorf("%s: предмет=%v, ожидалось %v", name, gotSubject, wantSubject)
 		}
+	}
+}
+
+// TestFuzzCensusNamesUnparsedFiles — обнаружение неразобранного проверено
+// НАСТОЯЩИМ битым входом, а не только отсутствием находок на здоровом дереве.
+//
+// Утверждение «не разобрано 0» без парного положительного неотличимо от
+// предиката, который неразобранное видеть не умеет, — и зеленеет тем увереннее,
+// чем сильнее всё сломано. Здесь рядом лежат оба файла: битый обязан быть
+// НАЗВАН, здоровый из того же каталога — по-прежнему разобран (иначе отсев
+// грубее своего предмета и роняет весь пакет из-за одного соседа).
+func TestFuzzCensusNamesUnparsedFiles(t *testing.T) {
+	const mod = "example.com/m"
+	root := t.TempDir()
+
+	mustWriteFile(t, root, "svc/internal/fuzz/broken_test.go", `package fuzz_test
+this is not go(((
+`)
+	mustWriteFile(t, root, "svc/internal/fuzz/healthy_test.go", `package fuzz_test
+import (
+	"testing"
+	"example.com/m/svc/internal/domain"
+)
+func FuzzHealthy(f *testing.F) { f.Fuzz(func(t *testing.T, s string) { _ = domain.Parse(s) }) }
+`)
+
+	targets, census := analyzeFuzzSubjects(t, newSyntheticTree(t, root), mod)
+
+	// (а) ПОЛОЖИТЕЛЬНОЕ НАПРАВЛЕНИЕ: битый файл назван, с координатой.
+	if len(census.unparsed) != 1 {
+		t.Fatalf("неразобранных: %d, ожидался ровно один (битый файл) — %v", len(census.unparsed), census.unparsed)
+	}
+	if !strings.Contains(census.unparsed[0], "svc/internal/fuzz/broken_test.go") {
+		t.Errorf("находка не называет координату битого файла: %q", census.unparsed[0])
+	}
+	if !strings.Contains(census.String(), "НЕ РАЗОБРАНО") {
+		t.Errorf("перепись молчит про неразобранное: %q", census.String())
+	}
+
+	// (б) ОТРИЦАТЕЛЬНОЕ НАПРАВЛЕНИЕ: здоровый сосед по каталогу не пострадал —
+	// его цель найдена и предмет у неё есть.
+	if len(targets) != 1 || targets[0].name != "FuzzHealthy" {
+		t.Fatalf("здоровый сосед потерян вместе с битым: %v", targets)
+	}
+	if !targets[0].hasSubject {
+		t.Error("у здоровой цели пропал предмет — разбор пакета сорвался из-за соседа")
+	}
+	if census.testFiles != 2 {
+		t.Errorf("перепись: %s — ожидалось 2 отобранных файла (битый тоже ОТОБРАН, просто не разобран)", census)
 	}
 }
 
@@ -507,9 +585,37 @@ func (t fuzzTarget) String() string {
 // цель, которой в репозитории не существует. Строгое равенство «в дереве ==
 // в матрице» здесь и правильно, и хрупко: любой лишний файл сдвигает левую
 // часть, поэтому левая часть обязана означать РЕПОЗИТОРИЙ.
-func analyzeFuzzSubjects(t *testing.T, tt *trackedTree, modulePath string) []fuzzTarget {
+// fuzzCensus — ОБЪЁМ ОСМОТРЕННОГО. Печатается каждым вызывающим, потому что
+// «ноль целей без предмета» и «ноль прочитанных файлов» — разные утверждения, а
+// выглядят они одинаково: зелёной строкой.
+//
+// Предпосылки этого гейта живут в дереве, а не в его коде: список читается из
+// индекса git, файлы отбираются по суффиксу `_test.go`, каталоги-исключения
+// заданы префиксами. Любая из этих опор может уехать (переименовали каталог,
+// сменили раскладку, сломали индекс) — и тогда обход честно вернёт пустоту, а
+// гейт честно скажет «нарушений нет». Число прочитанного — единственное, что
+// отличает одно от другого без запуска отладчика.
+type fuzzCensus struct {
+	indexFiles int      // файлов в индексе git — сколько всего предъявило дерево
+	testFiles  int      // из них отобрано `_test.go` (за вычетом исключённых префиксов)
+	packages   int      // каталогов, разобранных как пакет
+	unparsed   []string // файлы, которые разобрать не удалось: ответа по ним НЕТ
+}
+
+// String — одна строка переписи для t.Logf.
+func (c fuzzCensus) String() string {
+	s := "осмотрено: индекс " + strconv.Itoa(c.indexFiles) + " файлов -> " +
+		strconv.Itoa(c.testFiles) + " *_test.go в " + strconv.Itoa(c.packages) + " пакетах"
+	if len(c.unparsed) > 0 {
+		s += "; НЕ РАЗОБРАНО " + strconv.Itoa(len(c.unparsed))
+	}
+	return s
+}
+
+func analyzeFuzzSubjects(t *testing.T, tt *trackedTree, modulePath string) ([]fuzzTarget, fuzzCensus) {
 	t.Helper()
 	root := tt.root
+	census := fuzzCensus{indexFiles: tt.count()}
 
 	byDir := map[string][]string{}
 	for rel := range tt.files {
@@ -526,14 +632,18 @@ func analyzeFuzzSubjects(t *testing.T, tt *trackedTree, modulePath string) []fuz
 		path := filepath.Join(root, filepath.FromSlash(rel))
 		dir := filepath.Dir(path)
 		byDir[dir] = append(byDir[dir], path)
+		census.testFiles++
 	}
 	for dir := range byDir {
 		sort.Strings(byDir[dir]) // разбор пакета не должен зависеть от порядка карты
 	}
+	census.packages = len(byDir)
 
 	var out []fuzzTarget
 	for dir, files := range byDir {
-		out = append(out, analyzePackage(t, root, modulePath, dir, files)...)
+		targets, unparsed := analyzePackage(t, root, modulePath, dir, files)
+		out = append(out, targets...)
+		census.unparsed = append(census.unparsed, unparsed...)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].file != out[j].file {
@@ -541,7 +651,8 @@ func analyzeFuzzSubjects(t *testing.T, tt *trackedTree, modulePath string) []fuz
 		}
 		return out[i].line < out[j].line
 	})
-	return out
+	sort.Strings(census.unparsed)
+	return out, census
 }
 
 // funcFacts — что известно про одну функцию пакета.
@@ -550,7 +661,7 @@ type funcFacts struct {
 	callsLocal []string // зовёт функции своего же пакета (по имени)
 }
 
-func analyzePackage(t *testing.T, root, modulePath, dir string, files []string) []fuzzTarget {
+func analyzePackage(t *testing.T, root, modulePath, dir string, files []string) ([]fuzzTarget, []string) {
 	t.Helper()
 
 	fset := token.NewFileSet()
@@ -561,11 +672,23 @@ func analyzePackage(t *testing.T, root, modulePath, dir string, files []string) 
 		line int
 	}
 	var fuzzDecls []declRef
+	var unparsed []string
 
 	for _, path := range files {
 		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
 		if err != nil {
-			// Синтаксически битый файл — не предмет этого гейта; его поймает сборка.
+			// Неразобранный файл — НЕ «чистый»: ответа про его цели у гейта нет.
+			// Прежняя редакция молча его пропускала, ссылаясь на сборку. Но этот
+			// пакет собирается сам по себе (`go test ./internal/repohygiene/`) и
+			// чужие `_test.go` не компилирует, поэтому «поймает сборка» здесь
+			// никого не ловит: цель из такого файла просто исчезала из множества,
+			// а сверка с матрицей объявляла её ОТСУТСТВУЮЩЕЙ В КОДЕ и советовала
+			// «напиши цель» — верный красный с неверной причиной.
+			rel, relErr := filepath.Rel(root, path)
+			if relErr != nil {
+				rel = path
+			}
+			unparsed = append(unparsed, filepath.ToSlash(rel)+": "+err.Error())
 			continue
 		}
 		prodPkgs := prodImportNames(f, modulePath)
@@ -645,7 +768,7 @@ func analyzePackage(t *testing.T, root, modulePath, dir string, files []string) 
 			hasSubject: facts[d.name] != nil && facts[d.name].callsProd,
 		})
 	}
-	return out
+	return out, unparsed
 }
 
 // isFuzzTargetDecl — `func Fuzz…(f *testing.F)`: имя и подпись, как их требует
