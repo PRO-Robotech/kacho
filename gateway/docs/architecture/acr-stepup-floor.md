@@ -67,9 +67,18 @@ Each point carries a verdict-parity guard pinning its REAL entrypoint to the sha
 **Fail-safe is layered, and scoped to non-exempt RPC:**
 - The generator injects an explicit `required_acr_min="2"` for every **non-exempt** un-annotated RPC at gen-time (so a new non-exempt privileged RPC fails closed by default). Downgrade to routine is an **explicit `"1"`**, never deletion of the entry.
 - Catalog **completeness** (`"no entry for method" → AUTHZ_DENIED`) is the backstop for genuinely un-cataloged methods.
-- The step-up layer itself **fails open** on an empty `RequiredACRMin` (`grpcsrv.ACRSatisfies` treats `""`/`"0"` as no floor) — this is intentional; the two layers above provide net fail-closed for non-exempt RPC.
-- **Exempt carve-out:** an exempt un-annotated RPC gets an EMPTY acr (the generator's exempt short-circuit returns before default-injection), so neither backstop fires for it — it relies on authN + in-handler ReBAC + the deliberate FGA-exempt posture. **Adding a new exempt RPC is a high-scrutiny action** (see AccessBindingService/Create for the explicit-acr pattern).
+- The step-up layer itself treats an absent floor as "no floor" — intentional, because the two layers above are what make the net posture fail-closed for non-exempt RPC. The floor layer is not a second gate; it is the gate for RPCs that declare one.
+- **Exempt carve-out.** An exempt RPC is outside both backstops **by construction**, not by oversight: it declares no floor, and it relies instead on authN plus the in-handler ReBAC decision plus the deliberate FGA-exempt posture. The consequence is what matters for practice: **adding a new exempt RPC is a high-scrutiny action**, because exempting an RPC removes it from the layers that would otherwise carry it, and nothing downstream re-adds it. Where an exempt RPC still needs a floor, set one explicitly — `AccessBindingService/Create` is the pattern.
 
 ## Out of scope (unchanged)
 
-FGA relation-authz / `required_relation` / `scope_extractor` / `permission` values; SA acr-exemption (O-1, `kacho_principal_type=="service_account"`); ACR-minting / IdP config; `mfa_max_age`; the acr-floor mechanism (5.4). This refinement changes only `required_acr_min` values + three doc-truthfulness godoc fixes + a verdict-parity lock test.
+FGA relation-authz / `required_relation` / `scope_extractor` / `permission` values; the machine-principal exemption (O-1) and its predicate; ACR-minting / IdP config; `mfa_max_age`; the acr-floor mechanism (5.4). This refinement changes only `required_acr_min` values + three doc-truthfulness godoc fixes + a verdict-parity lock test.
+
+> [!note] Why the exemption predicate is not printed here
+> `security.md` §"Публичные артефакты" uses **this exact mechanism** as its worked example of
+> what must not be published — a consolidated statement of which claim value causes a
+> step-up floor to be skipped is a bypass recipe regardless of the code being open. The
+> exemption itself is deliberate and documented (machine principals cannot perform an
+> interactive step-up, so gating them on one would make automation impossible, not safer);
+> what is withheld is only the key/value shape. The parity guard below is what keeps both
+> enforcement points agreeing about it.
