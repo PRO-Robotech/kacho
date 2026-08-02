@@ -51,7 +51,7 @@ func hideMap() authz.RPCMap {
 // The handler stands in for the owning service: it reports its genuine miss.
 func answer(t *testing.T, check authz.CheckClientFunc, id string) (codes.Code, string) {
 	t.Helper()
-	intr := authz.NewInterceptor(authz.InterceptorOptions{Map: hideMap(), Client: check})
+	intr := authz.NewInterceptor(authz.InterceptorOptions{Cache: authz.NewCache(0), Map: hideMap(), Client: check})
 	_, err := intr.Unary()(ctxWithPrincipal(t, "usr_bob", "user"), &fakeReq{id: id},
 		&grpc.UnaryServerInfo{FullMethod: hideMethod},
 		func(context.Context, any) (any, error) {
@@ -111,7 +111,8 @@ func TestHideExistence_UnmappedType_StaysLeastInformative(t *testing.T) {
 		},
 	}
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
-		Map: m,
+		Cache: authz.NewCache(0),
+		Map:   m,
 		Client: authz.CheckClientFunc(func(context.Context, string, string, string) (bool, error) {
 			return false, authz.ErrHideExistence
 		}),

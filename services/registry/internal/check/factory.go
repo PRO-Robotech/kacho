@@ -63,9 +63,13 @@ func NewInterceptor(opts Options) (*authz.Interceptor, error) {
 	// Breakglass → Client=nil (authz bypass); иначе IAM обязателен (fail-closed:
 	// nil conn без breakglass = misconfig). Резолвим только Client; остальные поля
 	// InterceptorOptions идентичны в обеих ветвях. Тюнинг-кнобы (CheckTimeout /
-	// DenyRateLimitPerSec / AllowSystemPrincipal) оставлены на corelib-дефолтах —
-	// registry их не конфигурирует, поэтому в литерал не вносятся (иначе — мёртвые
-	// pass-through). Cache строится через authzCache(opts.CacheTTL): короткий TTL
+	// DenyRateLimitPerSec / AllowSystemPrincipal) registry не конфигурирует и в
+	// литерал не вносит. «Оставлены на corelib-дефолтах» — так было написано
+	// раньше, и про DenyRateLimitPerSec это неверно: умолчания у него нет ни
+	// здесь, ни в corelib, поэтому незаполненное поле означает, что бюджет на
+	// шторм отказов ОТКЛЮЧЁН, а не «сотня, как у vpc/nlb». Ошибка была в ту
+	// сторону, в которую ошибаться нельзя, — она описывала защиту, которой тут
+	// не стоит. Cache строится через authzCache(opts.CacheTTL): короткий TTL
 	// (или 0 → выкл) ограничивает revoke-окно, т.к. registry не подписан на IAM
 	// cache-invalidation (см. authzCache / #33).
 	var client authz.CheckClient

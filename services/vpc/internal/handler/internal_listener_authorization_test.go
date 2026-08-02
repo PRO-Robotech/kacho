@@ -78,6 +78,7 @@ func chainOutcome(
 	ctx := forwarderPeerCtx(t, metadata.NewIncomingContext(context.Background(), md))
 
 	authzIntr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:       authz.NewCache(0),
 		ServiceName: "kacho-vpc-test",
 		Map:         check.PermissionMap(),
 		Client: authz.CheckClientFunc(func(context.Context, string, string, string) (bool, error) {

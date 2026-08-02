@@ -112,6 +112,7 @@ func TestInterceptor_AllowedOnPositiveCheck(t *testing.T) {
 		return false, nil
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:       authz.NewCache(0),
 		ServiceName: "kacho-vpc-test",
 		Map:         makeMap(),
 		Client:      stub,
@@ -134,6 +135,7 @@ func TestInterceptor_DeniedOnNegativeCheck(t *testing.T) {
 		return false, nil
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:  authz.NewCache(0),
 		Map:    makeMap(),
 		Client: stub,
 	})
@@ -155,6 +157,7 @@ func TestInterceptor_HideExistenceMapsToNotFound(t *testing.T) {
 		return false, authz.ErrHideExistence
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:  authz.NewCache(0),
 		Map:    makeMap(),
 		Client: stub,
 	})
@@ -178,6 +181,7 @@ func TestInterceptor_FailClosedOnCheckError(t *testing.T) {
 		return false, errors.New("connection refused")
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:  authz.NewCache(0),
 		Map:    makeMap(),
 		Client: stub,
 	})
@@ -197,6 +201,7 @@ func TestInterceptor_BreakglassBypass(t *testing.T) {
 		return false, nil
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:      authz.NewCache(0),
 		Map:        makeMap(),
 		Client:     stub,
 		Breakglass: true,
@@ -220,6 +225,7 @@ func TestInterceptor_UnmappedRPCDeniedByDefault(t *testing.T) {
 		return true, nil
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:  authz.NewCache(0),
 		Map:    makeMap(),
 		Client: stub,
 	})
@@ -243,6 +249,7 @@ func TestInterceptor_UnmappedInternalRPCFailClosed(t *testing.T) {
 		return false, nil
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:  authz.NewCache(0),
 		Map:    makeMap(),
 		Client: stub,
 	})
@@ -264,7 +271,7 @@ func TestInterceptor_MappedPublicRPCExempt(t *testing.T) {
 	})
 	m := makeMap()
 	m["/kacho.cloud.iam.v1.InternalIAMService/Check"] = authz.RPCEntry{Public: true}
-	intr := authz.NewInterceptor(authz.InterceptorOptions{Map: m, Client: stub})
+	intr := authz.NewInterceptor(authz.InterceptorOptions{Cache: authz.NewCache(0), Map: m, Client: stub})
 	ctx := ctxWithPrincipal(t, "usr_alice", "user")
 	resp, err := runUnary(intr, ctx, "/kacho.cloud.iam.v1.InternalIAMService/Check", &fakeReq{id: "x"})
 	if err != nil {
@@ -283,6 +290,7 @@ func TestInterceptor_BreakglassAnonymousDenied(t *testing.T) {
 		return false, nil
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:      authz.NewCache(0),
 		Map:        makeMap(),
 		Client:     stub,
 		Breakglass: true,
@@ -314,6 +322,7 @@ func TestInterceptor_BreakglassInjectedAnonymousDenied(t *testing.T) {
 				return false, nil
 			})
 			intr := authz.NewInterceptor(authz.InterceptorOptions{
+				Cache:      authz.NewCache(0),
 				Map:        makeMap(),
 				Client:     stub,
 				Breakglass: true,
@@ -348,6 +357,7 @@ func TestInterceptor_AllowSystemPrincipalAnonymousDenied(t *testing.T) {
 		return false, nil
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:                authz.NewCache(0),
 		Map:                  makeMap(),
 		Client:               stub,
 		AllowSystemPrincipal: true,
@@ -372,6 +382,7 @@ func TestInterceptor_ScopeFilteredRPCBypassesCheck(t *testing.T) {
 		return false, nil
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:  authz.NewCache(0),
 		Map:    makeMap(),
 		Client: stub,
 	})
@@ -398,6 +409,7 @@ func TestInterceptor_NoPrincipalDenied(t *testing.T) {
 	// for system; but Check stub fails the test. To assert no-principal explicitly,
 	// override SubjectExtractor.
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:  authz.NewCache(0),
 		Map:    makeMap(),
 		Client: stub,
 		SubjectExtractor: func(ctx context.Context) (string, string, bool) {
@@ -420,6 +432,7 @@ func TestInterceptor_CacheHitSkipsCheck(t *testing.T) {
 		return true, nil
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:  authz.NewCache(0),
 		Map:    makeMap(),
 		Client: stub,
 	})
@@ -446,6 +459,7 @@ func TestInterceptor_NegativeNotCached(t *testing.T) {
 		return false, nil
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:  authz.NewCache(0),
 		Map:    makeMap(),
 		Client: stub,
 	})
@@ -466,6 +480,7 @@ func TestInterceptor_RateLimitDeniedStorm(t *testing.T) {
 		return false, nil
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:               authz.NewCache(0),
 		Map:                 makeMap(),
 		Client:              stub,
 		DenyRateLimitPerSec: 5, // burst = 10
@@ -493,6 +508,7 @@ func TestInterceptor_AllowSystemPrincipal(t *testing.T) {
 		return false, nil
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:                authz.NewCache(0),
 		Map:                  makeMap(),
 		Client:               stub,
 		AllowSystemPrincipal: true,
@@ -520,6 +536,7 @@ func TestInterceptor_AllowSystemPrincipal_RejectsForgedBootstrapType(t *testing.
 		return false, nil // deny — the forged principal has no access
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:                authz.NewCache(0),
 		Map:                  makeMap(),
 		Client:               stub,
 		AllowSystemPrincipal: true,
@@ -547,7 +564,7 @@ func TestInterceptorStream_DeniedOnNegativeCheck(t *testing.T) {
 	stub := authz.CheckClientFunc(func(ctx context.Context, s, r, o string) (bool, error) {
 		return false, nil
 	})
-	intr := authz.NewInterceptor(authz.InterceptorOptions{Map: makeMap(), Client: stub})
+	intr := authz.NewInterceptor(authz.InterceptorOptions{Cache: authz.NewCache(0), Map: makeMap(), Client: stub})
 	ctx := ctxWithPrincipal(t, "usr_bob", "user")
 	called, err := runStream(intr, ctx, "/kacho.cloud.vpc.v1.NetworkService/Watch")
 	if called {
@@ -564,7 +581,7 @@ func TestInterceptorStream_UnavailableFailClosed(t *testing.T) {
 	stub := authz.CheckClientFunc(func(ctx context.Context, s, r, o string) (bool, error) {
 		return false, errors.New("connection refused")
 	})
-	intr := authz.NewInterceptor(authz.InterceptorOptions{Map: makeMap(), Client: stub})
+	intr := authz.NewInterceptor(authz.InterceptorOptions{Cache: authz.NewCache(0), Map: makeMap(), Client: stub})
 	ctx := ctxWithPrincipal(t, "usr_alice", "user")
 	called, err := runStream(intr, ctx, "/kacho.cloud.vpc.v1.NetworkService/Watch")
 	if called {
@@ -582,7 +599,7 @@ func TestInterceptorStream_UnmappedFailClosed(t *testing.T) {
 		t.Fatalf("Check must NOT be called on an unmapped stream RPC")
 		return false, nil
 	})
-	intr := authz.NewInterceptor(authz.InterceptorOptions{Map: makeMap(), Client: stub})
+	intr := authz.NewInterceptor(authz.InterceptorOptions{Cache: authz.NewCache(0), Map: makeMap(), Client: stub})
 	ctx := ctxWithPrincipal(t, "usr_alice", "user")
 	called, err := runStream(intr, ctx, "/kacho.cloud.vpc.v1.UnknownService/Subscribe")
 	if called {
@@ -603,7 +620,7 @@ func TestInterceptorStream_PublicAllowsHandler(t *testing.T) {
 	})
 	m := makeMap()
 	m["/kacho.cloud.vpc.v1.InternalResourceLifecycleService/Subscribe"] = authz.RPCEntry{Public: true}
-	intr := authz.NewInterceptor(authz.InterceptorOptions{Map: m, Client: stub})
+	intr := authz.NewInterceptor(authz.InterceptorOptions{Cache: authz.NewCache(0), Map: m, Client: stub})
 	ctx := ctxWithPrincipal(t, "usr_alice", "user")
 	called, err := runStream(intr, ctx, "/kacho.cloud.vpc.v1.InternalResourceLifecycleService/Subscribe")
 	if err != nil {
@@ -620,7 +637,7 @@ func TestInterceptorStream_NoPathAllowsHandler(t *testing.T) {
 	stub := authz.CheckClientFunc(func(ctx context.Context, s, r, o string) (bool, error) {
 		return false, authz.ErrNoPath
 	})
-	intr := authz.NewInterceptor(authz.InterceptorOptions{Map: makeMap(), Client: stub})
+	intr := authz.NewInterceptor(authz.InterceptorOptions{Cache: authz.NewCache(0), Map: makeMap(), Client: stub})
 	ctx := ctxWithPrincipal(t, "usr_alice", "user")
 	called, err := runStream(intr, ctx, "/kacho.cloud.vpc.v1.NetworkService/Watch")
 	if err != nil {
@@ -640,7 +657,7 @@ func TestInterceptor_NoPathPassthroughRunsHandler(t *testing.T) {
 	stub := authz.CheckClientFunc(func(ctx context.Context, s, r, o string) (bool, error) {
 		return false, authz.ErrNoPath
 	})
-	intr := authz.NewInterceptor(authz.InterceptorOptions{Map: makeMap(), Client: stub})
+	intr := authz.NewInterceptor(authz.InterceptorOptions{Cache: authz.NewCache(0), Map: makeMap(), Client: stub})
 	ctx := ctxWithPrincipal(t, "usr_alice", "user")
 	resp, err := runUnary(intr, ctx, "/kacho.cloud.vpc.v1.NetworkService/Get", &fakeReq{id: "enp_x"})
 	if err != nil {
@@ -661,7 +678,7 @@ func TestInterceptor_NoPathBoundary_GenericErrorStillDenies(t *testing.T) {
 	stub := authz.CheckClientFunc(func(ctx context.Context, s, r, o string) (bool, error) {
 		return false, fmt.Errorf("wrapped: %w", errors.New("dial timeout"))
 	})
-	intr := authz.NewInterceptor(authz.InterceptorOptions{Map: makeMap(), Client: stub})
+	intr := authz.NewInterceptor(authz.InterceptorOptions{Cache: authz.NewCache(0), Map: makeMap(), Client: stub})
 	ctx := ctxWithPrincipal(t, "usr_alice", "user")
 	resp, err := runUnary(intr, ctx, "/kacho.cloud.vpc.v1.NetworkService/Get", &fakeReq{id: "enp_x"})
 	if err == nil {
@@ -682,7 +699,7 @@ func TestInterceptor_ObjectExtractErrorDenies(t *testing.T) {
 		t.Fatalf("Check must NOT be called when object extract fails")
 		return false, nil
 	})
-	intr := authz.NewInterceptor(authz.InterceptorOptions{Map: makeMap(), Client: stub})
+	intr := authz.NewInterceptor(authz.InterceptorOptions{Cache: authz.NewCache(0), Map: makeMap(), Client: stub})
 	ctx := ctxWithPrincipal(t, "usr_alice", "user")
 	// networkExtractor возвращает error для req НЕ-*fakeReq типа.
 	_, err := intr.Unary()(ctx, "not-a-fakeReq",
@@ -710,7 +727,7 @@ func TestInterceptor_FormatObjectErrorDenies(t *testing.T) {
 		Relation: "viewer",
 		Extract:  authz.StaticExtractor("vpc_network", func(req any) (string, error) { return "", nil }),
 	}
-	intr := authz.NewInterceptor(authz.InterceptorOptions{Map: m, Client: stub})
+	intr := authz.NewInterceptor(authz.InterceptorOptions{Cache: authz.NewCache(0), Map: m, Client: stub})
 	ctx := ctxWithPrincipal(t, "usr_alice", "user")
 	_, err := intr.Unary()(ctx, &fakeReq{id: "x"},
 		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.vpc.v1.NetworkService/Get"},
@@ -730,6 +747,7 @@ func TestInterceptor_CheckTimeoutHonored(t *testing.T) {
 		return false, ctx.Err()
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:        authz.NewCache(0),
 		Map:          makeMap(),
 		Client:       stub,
 		CheckTimeout: 50 * time.Millisecond,

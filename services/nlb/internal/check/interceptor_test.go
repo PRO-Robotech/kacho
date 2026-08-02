@@ -70,6 +70,7 @@ func newTestInterceptor(
 		return fn(ctx, subject, relation, object)
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:       authz.NewCache(0),
 		ServiceName: "kacho-nlb-test",
 		Map:         check.PermissionMap(),
 		Client:      wrapped,
@@ -321,6 +322,7 @@ func TestAZD012_FGAUnavailable_FailClosed(t *testing.T) {
 
 func TestAZD013_Breakglass_AllowsAuthenticated(t *testing.T) {
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:       authz.NewCache(0),
 		ServiceName: "kacho-nlb-test",
 		Map:         check.PermissionMap(),
 		Breakglass:  true,
@@ -339,6 +341,7 @@ func TestAZD013_Breakglass_DeniesAnonymous(t *testing.T) {
 	// Breakglass НЕ должен пускать anonymous'а — иначе CRIT-6/7 повторно
 	// (root cause). Anonymous = пустой principal_id.
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:       authz.NewCache(0),
 		ServiceName: "kacho-nlb-test",
 		Map:         check.PermissionMap(),
 		Breakglass:  true,

@@ -39,6 +39,7 @@ func newTestInterceptor(t *testing.T, allow bool) (*authz.Interceptor, *int) {
 		return allow, nil
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:       authz.NewCache(0),
 		ServiceName: "kacho-storage-test",
 		Map:         check.PermissionMap(),
 		Client:      cli,

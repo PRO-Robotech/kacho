@@ -40,6 +40,7 @@ func newTestInterceptor(t *testing.T, fn func(ctx context.Context, subject, rela
 		return fn(ctx, subject, relation, object)
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:       authz.NewCache(0),
 		ServiceName: "kacho-vpc-test",
 		Map:         check.PermissionMap(),
 		Client:      wrapped,
@@ -290,6 +291,7 @@ func TestInterceptor_Unary_CacheHit(t *testing.T) {
 // без Check.
 func TestInterceptor_Unary_Breakglass_AllowsAll(t *testing.T) {
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:       authz.NewCache(0),
 		ServiceName: "kacho-vpc-test",
 		Map:         check.PermissionMap(),
 		Breakglass:  true,

@@ -21,11 +21,15 @@
 //
 // # What it refuses
 //
-// Three separable failures, because they have different fixes:
+// Four separable failures, because they have different fixes:
 //
 //   - a construction site whose window is NOT declared in the policy census. A
 //     seventh service caching verdicts would otherwise inherit a window by
 //     accident and be measured by nothing;
+//   - a site that holds a window WITHOUT NAMING a cache at all — see
+//     implicit.go. Everything else in this package measures services that build
+//     a cache, which is a strictly narrower question than "which services have a
+//     window", and the difference was a way to hold one silently;
 //   - a declared window that EXCEEDS the policy ceiling. The ceiling is the
 //     promise; a service quietly widening its own window breaks it;
 //   - a census entry whose declared value no longer matches what the service's
@@ -364,8 +368,30 @@ func ScanInherit(service, path, src string) ([]InheritSite, int, error) {
 // This is the census that does not depend on knowing the knob's name. The
 // knob-name list is a closed vocabulary and therefore cannot see a service that
 // arrives with a new one; asking instead "does this service build a verdict
-// cache" needs no vocabulary, so a seventh service is caught the day it lands
-// rather than the day someone remembers to extend a list.
+// cache" needs no vocabulary, so a service that BUILDS one is caught without
+// anybody extending a list.
+//
+// # What this question cannot see, and where that is answered
+//
+// This doc used to claim more than the question can deliver: that a seventh
+// service is caught "the day it lands". It is caught the day it BUILDS a cache.
+// A service could hold a window without building anything — the interceptor
+// took its cache as a field, and an unset field was filled in by the
+// constructor itself. Such a service named no cache anywhere, so no walk over
+// its sources could find one: this census read the file, counted it as
+// examined, and pronounced it clean.
+//
+// The gap is now closed on two levels, neither of them here:
+//
+//   - ScanImplicitSites (implicit.go) requires every InterceptorOptions literal
+//     to NAME the cache field, so the coordinate is reported at test time;
+//   - authz.NewInterceptor refuses to start on an unnamed cache, whatever shape
+//     the options were assembled in.
+//
+// The correction is recorded rather than quietly rewritten, because the part
+// worth remembering is not the missing check. It is that a check PROMISED to
+// catch what it could not see — and a promise like that is worse than silence,
+// being exactly what one relies on when deciding no further guard is needed.
 func ScanConstructors(path, src string) (bool, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, path, src, parser.ParseComments)

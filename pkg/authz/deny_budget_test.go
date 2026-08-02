@@ -36,6 +36,7 @@ func TestInterceptor_AuthorizedTrafficDoesNotSpendTheDenyBudget(t *testing.T) {
 		return true, nil
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:               authz.NewCache(0),
 		Map:                 makeMap(),
 		Client:              stub,
 		DenyRateLimitPerSec: 2, // burst = 4 — deliberately far below the traffic below
@@ -82,6 +83,7 @@ func TestInterceptor_RefusalStormIsStillCutOff(t *testing.T) {
 				return tc.outcome()
 			})
 			intr := authz.NewInterceptor(authz.InterceptorOptions{
+				Cache:               authz.NewCache(0),
 				Map:                 makeMap(),
 				Client:              stub,
 				DenyRateLimitPerSec: 5, // burst = 10
@@ -113,6 +115,7 @@ func TestInterceptor_BudgetSpentByRefusalsDoesNotBlockAnotherPrincipal(t *testin
 		return subject == "user:usr_alice", nil
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:               authz.NewCache(0),
 		Map:                 makeMap(),
 		Client:              stub,
 		DenyRateLimitPerSec: 2, // burst = 4
@@ -144,6 +147,7 @@ func TestInterceptor_DenyBudgetErrorSaysWhatWasSpent(t *testing.T) {
 		return false, nil
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:               authz.NewCache(0),
 		Map:                 makeMap(),
 		Client:              stub,
 		DenyRateLimitPerSec: 1, // burst = 2
@@ -174,6 +178,7 @@ func TestInterceptor_UnavailableModelSpendsTheBudget(t *testing.T) {
 		return false, errors.New("permission model unreachable")
 	})
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:               authz.NewCache(0),
 		Map:                 makeMap(),
 		Client:              stub,
 		DenyRateLimitPerSec: 5, // burst = 10

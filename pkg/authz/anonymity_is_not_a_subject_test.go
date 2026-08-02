@@ -76,6 +76,7 @@ func TestInterceptor_AnonymousMarkerNeverReachesTheWildcard(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			w := &wildcardCheck{}
 			intr := authz.NewInterceptor(authz.InterceptorOptions{
+				Cache:       authz.NewCache(0),
 				ServiceName: "kacho-geo-test",
 				Map:         catalogueMap(),
 				Client:      w.client(),
@@ -108,6 +109,7 @@ func TestInterceptor_AuthenticatedSubjectStillReadsTheCatalogue(t *testing.T) {
 	} {
 		w := &wildcardCheck{}
 		intr := authz.NewInterceptor(authz.InterceptorOptions{
+			Cache:       authz.NewCache(0),
 			ServiceName: "kacho-geo-test",
 			Map:         catalogueMap(),
 			Client:      w.client(),
@@ -134,6 +136,7 @@ func TestInterceptor_AuthenticatedSubjectStillReadsTheCatalogue(t *testing.T) {
 func TestInterceptor_AnonymousMarkerDeniedUnderAllowSystemPrincipal(t *testing.T) {
 	w := &wildcardCheck{}
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:                authz.NewCache(0),
 		Map:                  catalogueMap(),
 		Client:               w.client(),
 		AllowSystemPrincipal: true,
@@ -155,6 +158,7 @@ func TestInterceptor_AnonymousMarkerDeniedUnderAllowSystemPrincipal(t *testing.T
 func TestInterceptorStream_AnonymousMarkerDenied(t *testing.T) {
 	w := &wildcardCheck{}
 	intr := authz.NewInterceptor(authz.InterceptorOptions{
+		Cache:  authz.NewCache(0),
 		Map:    catalogueMap(),
 		Client: w.client(),
 	})
