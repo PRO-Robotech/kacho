@@ -97,12 +97,22 @@ model
 #     `storage_volume`, `storage_snapshot`, `storage_image`,
 #     `nlb_network_load_balancer`, `nlb_target_group`,
 #     `nlb_listener` (KAC-178 §4 — Listener as first-class FGA object),
+#     `registry_registry`, `registry_repository`,
 #     `iam_role`, `iam_access_binding`, `iam_service_account`, `iam_group`,
-#     `iam_user`, `iam_condition`.
+#     `iam_user`.
 #   - relations: `viewer` / `editor` / `admin` / `owner` / `member` per the
 #     Kachō roles vocabulary (KAC-121).
 #   - conditional relations: `with` clause names a Condition (built-in or
 #     custom) — FGA pre-compiles CEL on `WriteAuthorizationModel`.
+#
+# The per-domain enumeration above is DERIVED from the type declarations below,
+# not a hand-kept summary, and it is pinned in BOTH directions by
+# authzmap/fga_model_header_census_test.go. That bullet must stay a bare list:
+# the gate reads every backticked identifier in it, so prose belongs here, in a
+# paragraph of its own. Before the gate existed the list had drifted both ways at
+# once — it named a type retired long ago (its tombstone is further down) and
+# omitted an entire domain the body declares. A list nobody verifies drifts from
+# its subject; this one now expires with it.
 
 # ---------------------------------------------------------------------------
 # Generic principal / subject types.
