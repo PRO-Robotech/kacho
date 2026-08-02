@@ -29,16 +29,22 @@ const (
 		"client-asserted x-kacho-* metadata; internal is service→service, so mTLS is mandatory in any " +
 		"production mode (no trusted-forwarder escape hatch — that applies to the public user→edge listener only)"
 
-	// S3-гардрейлы (list-filter обязателен для ScopeFiltered RPC в production).
-	// %s = Mode.String(); %d = число ScopeFiltered RPC; %s = их имена через ", ".
-	errListFilterRequiredForScopeFiltered = "production mode (%s): authz.list-filter.enabled=true is required " +
-		"— %d RPC(s) are ScopeFiltered (%s) and rely on the data-level list-filter for object-scope " +
-		"authorization; with the filter off their authz degrades to header-trusted ownership " +
-		"(cross-project enumeration). Enable authz.list-filter or drop ScopeFiltered from the permission map"
-	errListFilterEndpointRequired = "production mode (%s): authz.list-filter.enabled=true but no resolvable " +
+	// S3-гардрейлы (list-filter обязателен на ЛЮБОЙ развёрнутой посадке, включая dev).
+	//
+	// Тексты читает оператор, которому стенд отказал в старте, поэтому они обязаны
+	// называть ручку и причину: без этого стенд не поднять. Это рантайм-диагностика,
+	// а не публичный артефакт, и требование сдержанности к ней не относится.
+	//
+	// Формулировка «production mode (%s)» снята намеренно: страж больше не освобождает
+	// dev, и заголовок, называющий режим условием, снова сделал бы вид, что он им
+	// является. %s = Mode.String(); %s = clause про ScopeFiltered-набор.
+	errListFilterRequired = "mode %s: authz.list-filter.enabled=true is required on every deployed stand " +
+		"(core rule #16 does not exempt dev) — with the filter off a project-tier viewer sees every row of " +
+		"the project, and %s. Enable authz.list-filter"
+	errListFilterEndpointRequired = "mode %s: authz.list-filter.enabled=true but no resolvable " +
 		"authorize/iam endpoint (authz.list-filter.authorize-endpoint and authz.iam-endpoint both empty) " +
-		"— the filter degrades to passthrough (unfiltered), leaving %d ScopeFiltered RPC(s) fail-open; " +
-		"set authz.list-filter.authorize-endpoint (or authz.iam-endpoint)"
+		"— the filter degrades to passthrough, which returns the same unfiltered page as having it off, and " +
+		"%s. Set authz.list-filter.authorize-endpoint (or authz.iam-endpoint)"
 	// errListFilterFailOpenForbidden — «включён» ещё не значит «решает». Для
 	// ScopeFiltered RPC фильтр — ЕДИНСТВЕННОЕ место, где вызывающего сверяют с
 	// объектами: per-RPC Check для них не задаётся (интерцептор отдаёт
@@ -47,7 +53,7 @@ const (
 	// эту единственную авторизацию целиком и молча. Требование к такому фильтру не
 	// «включён», а «включён И отказывает при сбое».
 	// %s = Mode.String(); %d = число ScopeFiltered RPC; %s = их имена через ", ".
-	errListFilterFailOpenForbidden = "production mode (%s): authz.list-filter.fail-open must be false " +
+	errListFilterFailOpenForbidden = "mode %s: authz.list-filter.fail-open must be false " +
 		"— %d RPC(s) are ScopeFiltered (%s) and the data-level list-filter is their ONLY object-scope " +
 		"authorization (no per-RPC Check is configured for them); with fail-open any filter error returns " +
 		"the unfiltered page, so a single peer timeout or refusal silently removes that authorization. " +
@@ -279,53 +285,88 @@ func (c Config) ValidateServerMTLS(m MTLSConfig) error {
 // резолвимый authorize/iam эндпоинт — иначе такой RPC остаётся вообще без
 // object-scope авторизации (cross-project enumeration).
 //
-// scopeFilteredRPCs — имена ScopeFiltered методов из permission-map. Передаются
-// composition root'ом (check.ScopeFilteredRPCs()), чтобы config НЕ импортировал
-// пакет check — Validate остаётся чистой и без import-цикла. Пустой список →
-// guard no-op.
+// Карта ScopeFiltered-методов читается ВНУТРИ (scopeFilteredRPCs, соседний файл),
+// а не принимается аргументом. Прежняя сигнатура принимала список от композиционного
+// корня «чтобы config не импортировал check», и первым же дизъюнктом выходила на
+// пустом списке — то есть «вызывающий не передал» было неотличимо от «защищать
+// нечего». Ту же поправку storage у себя уже сделал и записал довод; здесь она
+// применена дословно. Цикла нет: check на config не зависит.
 //
-// СПИСОК БОЛЬШЕ НЕ ПУСТ, и это меняет вес этого гарда. Здесь стояло «пустой список
-// (текущее состояние карты после SEC-фикса 2026-07-05) → guard no-op» — с 2026-07-28
-// (c282881b) карта несёт `InternalNetworkInterfaceService/ListByInstance` как
-// ScopeFiltered, потому что его прежнее cluster-scoped отношение выполнялось
-// wildcard-tuple'ом и отвечало «да» любому аутентифицированному субъекту. За этот
-// метод per-RPC Check НЕ выполняется вовсе — его object-scope авторизация целиком в
-// data-level фильтре. Значит гард из no-op стал ЕДИНСТВЕННЫМ, что стоит на этой
-// полосе: если он не откажет в старте, метод поедет без object-scope авторизации.
-// Комментарий, объявляющий гард недействующим, — приглашение его упростить.
+// # Что теперь НЕ является условием
 //
-// Три требования, и все три — про ОДНО: чтобы у ScopeFiltered RPC вообще была
-// авторизация. Фильтр обязан быть (а) включён, (б) с резолвимым адресом и
-// (в) fail-closed. Мягкий проход отдельно оговорён, потому что он проходит первые
-// два: фильтр включён, адрес есть, — а решение всё равно снимается любой ошибкой
-// соседа. «Включён» не равно «решает».
+// Ни наличие ScopeFiltered-меток, ни режим посадки.
 //
-// Fail-closed: закрывает "helm default fail-open" residual — stock production
-// install с values.yaml default (list-filter.enabled=false) при наличии
-// ScopeFiltered RPC теперь ОТКАЗЫВАЕТ старт, а не логирует WARN и тихо запускается
-// в degraded state. dev-режим гардом не затронут (может гонять unfiltered).
-func (c Config) ValidateListFilter(scopeFilteredRPCs []string) error {
-	if len(scopeFilteredRPCs) == 0 || !c.AuthN.Mode.IsProduction() {
-		return nil
-	}
+//   - Метки. Метка означает «за этим RPC per-RPC Check не задаётся вовсе», а не
+//     «сужение нужно только здесь». Семь публичных List сужаются этим же фильтром
+//     ПОВЕРХ project-tier Check: без фильтра любой участник проекта видит каждую
+//     его строку (over-show внутри проекта), а у помеченных RPC пропадает вообще
+//     единственная object-scope авторизация (межтенантно). Совпадение «меток нет»
+//     и «фильтр не нужен» никем не обеспечено, и стражу, который на него опёрся,
+//     достаточно снятия метки, чтобы замолчать.
+//   - Режим. Здесь стояло «dev-режим гардом не затронут (может гонять unfiltered)».
+//     Директива (core rule #16) стенды не делит: dev-посадка допустима ТОЛЬКО в
+//     in-process фикстурах, а этот страж исполняется в композиционном корне
+//     (cmd/vpc/main.go), то есть исключительно на РАЗВЁРНУТОМ процессе. Фикстуры
+//     его не зовут вовсе — покрытие dev в них ничего не ломает и закрывает
+//     развёрнутый dev-стенд, который до сих пор был вправе отдавать нефильтрованные
+//     страницы.
+//
+// Довод, по которому оба дизъюнкта сняты, взят у соседа, а не выведен здесь: nlb
+// (internal/authzfilter/subject.go) записал, что привязка контроля к тому, что он
+// же и защищает, означает «контроль существует ровно до первой конфигурации,
+// которая его не включила».
+//
+// # Что осталось условным — и намеренно
+//
+// Мягкий проход (fail-open). Он запрещён, лишь пока карта несёт хоть одну
+// ScopeFiltered-метку: за такими RPC per-RPC Check не стоит, поэтому первая же
+// ошибка соседа снимает их ЕДИНСТВЕННУЮ авторизацию. За публичными List Check
+// остаётся, там мягкий проход — over-show внутри проекта, а не межтенантный.
+// Клауза сама снимется, когда метки уйдут из карты, и не требует помнить о себе
+// при этом (та же конструкция и тот же довод у storage).
+//
+// «Включён» не равно «решает»: фильтр обязан быть (а) включён, (б) с резолвимым
+// адресом и (в) fail-closed. Первые два — безусловны, третье — по карте.
+func (c Config) ValidateListFilter() error {
+	return c.validateListFilterAgainst(scopeFilteredRPCs())
+}
+
+// validateListFilterAgainst — та же проверка над ЯВНО переданной картой.
+// Неэкспортируемая намеренно: снаружи страж вызывается только как
+// ValidateListFilter(), который карту читает сам, поэтому «передать пустой список
+// и тем снять проверку» из композиционного корня по-прежнему нельзя. Внутри
+// пакета список нужен, чтобы прогнать ОБЕ ветви условной клаузы (мягкий проход
+// запрещён при непустой карте и допустим при пустой) — без этого одна из ветвей
+// не проверялась бы вовсе.
+func (c Config) validateListFilterAgainst(scopeFiltered []string) error {
 	if !c.AuthZ.ListFilter.Enabled {
-		return fmt.Errorf(errListFilterRequiredForScopeFiltered,
-			c.AuthN.Mode, len(scopeFilteredRPCs), strings.Join(scopeFilteredRPCs, ", "))
+		return fmt.Errorf(errListFilterRequired, c.AuthN.Mode, scopeFilteredClause(scopeFiltered))
 	}
 	// Enabled, но без резолвимого endpoint'а → buildListFilter даёт passthrough
 	// (conn==nil, WARN + nil-фильтр) — тот же fail-open. Отказываем. Адрес резолвим
 	// ТЕМ ЖЕ методом, что и проводка (своё поле → запасной authz.iam-endpoint).
 	if c.ListFilterAuthorizeEndpoint() == "" {
-		return fmt.Errorf(errListFilterEndpointRequired, c.AuthN.Mode, len(scopeFilteredRPCs))
+		return fmt.Errorf(errListFilterEndpointRequired, c.AuthN.Mode, scopeFilteredClause(scopeFiltered))
 	}
-	// Enabled + резолвим, но мягкий проход → любая ошибка фильтра отдаёт
-	// нефильтрованную страницу. Для ScopeFiltered RPC это ЕДИНСТВЕННАЯ авторизация,
-	// откатываться не на что — отказываем.
-	if c.AuthZ.ListFilter.FailOpen {
+	// Enabled + резолвим, но мягкий проход. См. выше: условен по карте намеренно.
+	if c.AuthZ.ListFilter.FailOpen && len(scopeFiltered) > 0 {
 		return fmt.Errorf(errListFilterFailOpenForbidden,
-			c.AuthN.Mode, len(scopeFilteredRPCs), strings.Join(scopeFilteredRPCs, ", "))
+			c.AuthN.Mode, len(scopeFiltered), strings.Join(scopeFiltered, ", "))
 	}
 	return nil
+}
+
+// scopeFilteredClause — часть текста отказа, описывающая, что именно останется без
+// авторизации. Пустая карта — не «нечего защищать», поэтому и на ней у отказа есть
+// предмет: семь публичных List. Текст отказа читает оператор, поднимающий стенд,
+// и он обязан называть ручку и причину — иначе стенд не поднять.
+func scopeFilteredClause(scopeFiltered []string) string {
+	if len(scopeFiltered) == 0 {
+		return "no RPC currently carries the ScopeFiltered mark, and the requirement does not depend on that: " +
+			"the public List RPCs narrow their page through this filter on top of the project-tier check"
+	}
+	return fmt.Sprintf("%d RPC(s) carry no per-RPC Check at all and rely on this filter as their only "+
+		"object-scope authorization: %s", len(scopeFiltered), strings.Join(scopeFiltered, ", "))
 }
 
 // ValidatePeerTransport — boot-гардрейл S4: транспортная аутентификация ИСХОДЯЩИХ
@@ -416,12 +457,18 @@ func (c Config) ValidatePeerTransport(m MTLSConfig) error {
 // чтобы оператор увидел полный список проблем за один прогон. Используется как
 // single-shot gate перед привязкой листенеров и cross-service dial'ами.
 //
-// S3 (ValidateListFilter) НЕ входит сюда: ему нужен список ScopeFiltered RPC из
-// permission-map (пакет check), который config не импортирует — его вызывает
-// composition root отдельно (см. cmd/vpc/main.go).
+// S3 (ValidateListFilter) ВХОДИТ сюда. Здесь стояло обратное — «ему нужен список
+// ScopeFiltered RPC из permission-map (пакет check), который config не
+// импортирует», — и это перестало быть правдой вместе со снятием параметра: карту
+// страж читает сам (scope_filtered_rpcs.go), цикла нет. Пока обоснование
+// оставалось записанным, но неверным, агрегатор был ЛОВУШКОЙ: он выглядит как
+// «полная проверка старта», и тот, кто перевёл бы на него композиционный корень
+// вместо явной пары вызовов, тихо остался бы без проверки фильтра.
 func (c Config) ValidateBoot(m MTLSConfig) error {
 	return multierr.Append(
-		multierr.Append(c.Validate(), c.ValidateServerMTLS(m)),
+		multierr.Append(
+			multierr.Append(c.Validate(), c.ValidateServerMTLS(m)),
+			c.ValidateListFilter()),
 		c.ValidatePeerTransport(m),
 	)
 }

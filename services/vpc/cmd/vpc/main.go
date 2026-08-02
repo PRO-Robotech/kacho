@@ -79,11 +79,12 @@ func main() {
 	if err := cfg.Validate(); err != nil {
 		log.Fatalf("config validate: %v", err)
 	}
-	// S3 boot-guard: если permission-map несёт ScopeFiltered RPC, в production
-	// data-level list-filter обязан быть включён и резолвим (иначе object-scope
-	// авторизация деградирует до header-trusted ownership). Список ScopeFiltered
-	// методов извлекаем из карты (пакет check), чтобы config не импортировал check.
-	if err := cfg.ValidateListFilter(check.ScopeFilteredRPCs()); err != nil {
+	// S3 boot-guard: data-level list-filter обязан быть включён и резолвим на ЛЮБОЙ
+	// развёрнутой посадке, включая dev (core rule #16 стенды не делит). Список
+	// ScopeFiltered-методов страж читает из карты САМ: пока его передавали отсюда,
+	// пустой аргумент снимал все проверки, и «забыли передать» было неотличимо от
+	// «защищать нечего».
+	if err := cfg.ValidateListFilter(); err != nil {
 		log.Fatalf("config validate (list-filter): %v", err)
 	}
 
