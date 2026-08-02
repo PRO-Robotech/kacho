@@ -300,6 +300,11 @@ const (
 	// замещает legacy слитный PrefixInstance (`epd`, делит с Disk) для новых
 	// инстансов монорепо project/kacho. NewHyphenID("ins") → "ins-<17-base32>".
 	PrefixInstanceHyphen = "ins"
+	// PrefixInteractiveClientHyphen — iam InteractiveClient (IAM-INT-1): клиент
+	// интерактивного входа человека, admin-only ресурс Internal*-сервиса.
+	// NewHyphenID("ic") → "ic-<17-base32>" (20 символов). Двухсимвольный prefix
+	// — в пределах 2..3 инварианта NewHyphenID (как `mt`).
+	PrefixInteractiveClientHyphen = "ic"
 )
 
 // hyphenFormPrefixes — going-forward hyphen-form id prefixes (B3, redesign-2026
@@ -318,6 +323,9 @@ const (
 var hyphenFormPrefixes = []string{
 	// iam: Account/Project/User/ServiceAccount/Group/Role/AccessBinding/UserInvitation
 	"acc", "prj", "usr", "sva", "grp", "rol", "acb", "inv",
+	// iam: InteractiveClient (IAM-INT-1) — именованная константа: единый источник
+	// истины с NewHyphenID-генерацией.
+	PrefixInteractiveClientHyphen,
 	// compute: Instance/MachineType/PlacementGroup/VolumeType (ins/mt — именованные
 	// константы: единый источник истины с NewHyphenID-генерацией).
 	PrefixInstanceHyphen, PrefixMachineTypeHyphen, "plg", "vt",
