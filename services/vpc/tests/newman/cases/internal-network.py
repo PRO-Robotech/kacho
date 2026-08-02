@@ -11,7 +11,8 @@ vrf_id присутствует ТОЛЬКО на internal-пути, НЕ на p
 Каждый `:internal`-шаг обязан нести `internal=True` → gen.py маршрутизирует его на
 `{{internalBaseUrl}}` (cluster-internal REST listener), где InternalNetworkService
 зарегистрирован. На публичном `{{baseUrl}}` этого маршрута НЕТ by design (ban #6) —
-без флага шаг получает «404 page not found» (паттерн internal-pool.py). CRUD/public
+без флага шаг получает маршрутную ошибку края — `{"code":5,"message":"Not Found"}`,
+байт-в-байт ту же, что даёт несуществующий путь (паттерн internal-pool.py). CRUD/public
 шаги (create/get-public/list/update/delete) остаются на `{{baseUrl}}`.
 
 ⚠️ REST gateway body — camelCase JSON.
