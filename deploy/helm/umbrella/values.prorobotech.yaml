@@ -7,8 +7,17 @@
 # Usage (e.g. on a managed cluster with its own cert-manager — see values.fe3455.yaml):
 #   helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho \
 #     -f ./helm/umbrella/values.dev.yaml \
+#     -f ./helm/umbrella/values.dev-prod.yaml \
 #     -f ./helm/umbrella/values.prorobotech.yaml \
 #     --wait --timeout 15m
+#
+# THE MIDDLE LINE IS NOT OPTIONAL, and it is worth saying why it appeared. This file
+# declares images and nothing about security, so it inherits whatever the layer beneath
+# it declares — which made a command written for a laptop the recommended way to stand
+# the product up on a managed cluster. That is the shape of the problem: an overlay
+# reads as safe on its own while the stand it produces is not. The middle line is the
+# posture every stand runs; the secrets it requires are provisioned by
+# deploy/scripts/dev-prod-secrets.sh (or out-of-band on a real cluster).
 #
 # Tags pinned to the main-branch commit SHA that CI built (multi-arch manifest):
 #   kacho-vpc          main-d752de57   (PR #145 — mTLS leaf cert + cross-compile)

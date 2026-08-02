@@ -203,14 +203,26 @@ grep -iqE "password:[[:space:]]*[\"']?[A-Za-z0-9]" "$PROD" \
 grep -iqE "devSecret:" "$PROD" \
   && violation "values.prod.yaml sets a dev HS256 devSecret — forbidden in the production profile" || true; ok
 
-# ── 9. REGRESSION GUARD — the DEV profile still renders mode:dev (untouched) ──
-# Proves hardening the prod profile did NOT change the dev/CI stand.
+# ── 9. REGRESSION GUARD — what the DEV base layer still renders ──────────────
+# Purpose unchanged: prove that hardening the production profile did not silently
+# reshape the local stand. What is EXPECTED of the edge changed, and the assertion
+# changed with it rather than being loosened.
+#
+# The edge line used to require the relaxed mode here, which made this a test that
+# PINNED the thing it was protecting: a fix removing the relaxed posture from the base
+# layer would have shown up as a red gate, and the obvious reading of that red is
+# "somebody broke the dev stand". It is written out so the next reader does not restore
+# the old expectation. The two backend lines are unchanged and still require the
+# relaxed mode: the production overlay is what lifts them, and that is a separate
+# posture question from how a bearer is verified.
 DEV_IAM="$(render_only "$DEV" charts/kacho-iam/templates/configmap.yaml | yq '.data."config.yaml"' - | yq '.authn.mode' -)"
 DEV_VPC="$(render_only "$DEV" charts/vpc/templates/configmap.yaml | yq '.data."config.yaml"' - | yq '.authn.mode' -)"
 DEV_AGW="$(env_val KACHO_API_GATEWAY_AUTHN_MODE "$(render_only "$DEV" charts/api-gateway/templates/deployment.yaml)")"
+DEV_AGW_SECRET="$(env_val KACHO_API_GATEWAY_AUTHN_DEV_SECRET "$(render_only "$DEV" charts/api-gateway/templates/deployment.yaml)")"
 [ "$DEV_IAM" = "dev" ] || violation "values.dev.yaml kacho-iam authn.mode=$DEV_IAM (expected dev — dev stand changed!)"
 [ "$DEV_VPC" = "dev" ] || violation "values.dev.yaml kacho-vpc authn.mode=$DEV_VPC (expected dev — dev stand changed!)"
-[ "$DEV_AGW" = "dev" ] || violation "values.dev.yaml api-gateway AUTHN_MODE=$DEV_AGW (expected dev — dev stand changed!)"; ok
+case "$DEV_AGW" in production|production-strict) ;; *) violation "values.dev.yaml api-gateway AUTHN_MODE=$DEV_AGW (expected production* — a stand that is up verifies bearers by signature, whatever it is called)";; esac
+[ -z "$DEV_AGW_SECRET" ] || violation "values.dev.yaml renders a shared signing key into the api-gateway (KACHO_API_GATEWAY_AUTHN_DEV_SECRET) — every holder of the profile would be an issuer"; ok
 
 # ── 10. Per-datastore Postgres NetworkPolicy — ENABLED in production ───────────
 # The credential-bearing pg-<svc>:5432 listeners must be ingress-restricted to

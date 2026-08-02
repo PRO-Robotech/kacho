@@ -81,8 +81,12 @@ api-gateway:
     KACHO_API_GATEWAY_INTERNAL_GRPC_TLS_KEY_FILE: /etc/api-gateway/tls/tls.key
     KACHO_API_GATEWAY_INTERNAL_GRPC_ALLOWED_SPIFFE: spiffe://kacho.cloud/ns/kacho-iam/sa/kacho-iam
   authn:
-    mode: production-strict     # Bearer REQUIRED + Hydra RS256; missing token → 401
-    devSecret: ""               # HS256 dev path OFF (guard fails if non-empty in prod)
+    # Bearer REQUIRED, verified by signature against published public material;
+    # missing token → 401. The line that used to sit under this one blanked a
+    # shared-signing-key knob — it is gone because the chart no longer has such a knob
+    # to blank, and a value naming a setting that does not exist reads as a decision
+    # while doing nothing.
+    mode: production-strict
   # UNIFICATION: verify RS256 tokens through the iam :9097 JWKS mirror, NOT Hydra :4444
   # directly (iam is the single JWKS facade; a direct-provider dial is forbidden). The
   # mirror is byte-identical and short-TTL; Hydra stays issuer/signer. `issuer` (iss-pin)

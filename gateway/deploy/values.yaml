@@ -93,31 +93,24 @@ oidc:
 
 # AuthN — auth-interceptor configuration.
 #   mode:
-#     - "dev"               : Bearer optional. Valid HS256 Bearer signed with
-#                             `devSecret` → real Principal; missing/invalid →
-#                             anonymous.
-#     - "production"        : Bearer required, Hydra JWKS RS256 validation.
+#     - "production"        : Bearer required, verified by signature against the
+#                             identity facade's published JWKS (asymmetric).
 #     - "production-strict" : production + reject missing Bearer.
-#   devSecret: HS256 signing secret for dev-mode JWT validation. Empty → all
-#     Bearer tokens are ignored in dev-mode (every principal collapses to
-#     anonymous / system:bootstrap). MUST be set on the dev stand so per-user
-#     JWTs are distinguishable. Dev-only — production uses RS256 / Hydra JWKS,
-#     never this secret.
 #
-# Default {} → no KACHO_API_GATEWAY_AUTHN_* env emitted; the api-gateway Go
-# config default (mode=dev, empty devSecret) applies — identical to the
-# behaviour before this block existed, so prod overlays that omit `authn`
-# are unaffected. The dev overlay (values.dev.yaml) sets this explicitly.
+# THE RELAXED MODE IS NOT A DEPLOYMENT OPTION. It answers an unauthenticated
+# request as somebody, and the symmetric-key path it used to pair with let anyone
+# holding the shared key issue tokens the edge could not distinguish from
+# provider-signed ones. Neither belongs on a deployed stand, whatever the stand is
+# called (security.md §"Production-mode — ОБЯЗАТЕЛЕН ВЕЗДЕ"). Accordingly this
+# chart offers NO key for it: there is no `devSecret`, no `devSecretSecretRef`, and
+# the process refuses to start if the variable reaches it by another route. The
+# symmetric path survives only inside in-process fixtures, which never read this
+# chart. Guard: gateway/deploy/symmetric_secret_absent_test.go.
 #
-# Prefer devSecretSecretRef (k8s Secret) over the inline devSecret so the HMAC
-# signing key is never rendered into the PodSpec / Helm release (CWE-522). When
-# set it overrides devSecret. Example:
-#   authn:
-#     mode: dev
-#     devSecretSecretRef:
-#       name: kacho-api-gateway-authn
-#       key: dev_secret
-#       optional: true
+# Default {} → no KACHO_API_GATEWAY_AUTHN_* env emitted; the api-gateway Go config
+# default (mode=production) applies, so a profile that forgets this block gets the
+# safe posture rather than the relaxed one. Every deployable profile states it
+# anyway — an omission that happens to be safe today is not a decision.
 #
 # Per-RPC authentication floor:
 #

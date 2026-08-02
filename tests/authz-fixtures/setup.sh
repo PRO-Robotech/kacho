@@ -122,10 +122,36 @@ vrun() { if [ "$VERBOSE" = "true" ]; then echo "+ $*" >&2; fi; "$@"; }
 # 2026-07-25 storage incident). A pod that never rolled reports its OLD posture — which
 # is exactly the truth we want to seed against.
 #
-# SEED_POSTURE=dev|production forces it (CI without cluster read access, or a deliberate
+# SEED_POSTURE=production forces it (CI without cluster read access, or a deliberate
 # rehearsal). `auto` (default) asks the stand.
+#
+# SEED_POSTURE=dev IS REFUSED, and the refusal is the point rather than a nicety. No
+# deployment profile puts the edge on the relaxed posture any more — the chart offers no
+# knob for a shared signing key and the process refuses to start if one reaches it — so
+# the value selects a stand that cannot exist. Left accepted, it would forge bearers the
+# edge is guaranteed to reject and the run would fail several steps later, in a place
+# that reads like a product bug. This is an exception whose subject is gone; it says so
+# out loud instead of waiting to mislead somebody.
 SETUP_NS="${SETUP_NS:-kacho}"
 SEED_POSTURE="${SEED_POSTURE:-auto}"
+
+# refuse_relaxed_posture <how-it-was-selected>
+#
+# One refusal for both routes — the forced value and the value read off the stand — so
+# the two cannot drift into meaning different things.
+refuse_relaxed_posture() {
+  echo "[setup] FATAL: the relaxed api-gateway posture is not a stand this harness seeds ($1)." >&2
+  echo "[setup]        No deployment profile produces it: the chart offers no shared signing" >&2
+  echo "[setup]        key and the gateway refuses to start if one reaches it, so a bearer" >&2
+  echo "[setup]        signed here is rejected at the edge by construction." >&2
+  echo "[setup]        If a stand really reports it, that stand is behind — roll it forward" >&2
+  echo "[setup]        (deploy/Makefile 'dev-up') rather than seeding around it." >&2
+  exit 1
+}
+
+if [ "$SEED_POSTURE" = "dev" ]; then
+  refuse_relaxed_posture "forced via SEED_POSTURE"
+fi
 
 gateway_boot_auth_mode() {
   command -v kubectl >/dev/null 2>&1 || return 1
@@ -152,14 +178,15 @@ if [ "$SEED_POSTURE" = "auto" ]; then
   GW_AUTH_MODE="$(gateway_boot_auth_mode || true)"
   case "$GW_AUTH_MODE" in
     production|production-strict) SEED_POSTURE="production" ;;
-    dev)                          SEED_POSTURE="dev" ;;
+    dev)                          refuse_relaxed_posture "the live api-gateway reports auth_mode=dev" ;;
     *)
-      # Fail-closed on ambiguity would block dev; fail-DEV would silently forge tokens
-      # against a production stand and report the 401 as a product bug. Neither is
-      # acceptable silently, so say exactly what is unknown and stop.
+      # Unreadable is its own outcome, distinct from both of the above: guessing either
+      # way produces a run whose failure lands somewhere else entirely and reads like a
+      # product bug. So say exactly what is unknown and stop.
       echo "[setup] FATAL: cannot read the api-gateway boot posture (auth_mode='${GW_AUTH_MODE:-<none>}')." >&2
-      echo "[setup]        The seed must know whether to mint HS256 (dev) or go through iam (production)." >&2
-      echo "[setup]        Check kubectl access to ns/$SETUP_NS, or set SEED_POSTURE=dev|production." >&2
+      echo "[setup]        The seed obtains every bearer through iam and needs to know it is" >&2
+      echo "[setup]        talking to a stand that issues them." >&2
+      echo "[setup]        Check kubectl access to ns/$SETUP_NS, or set SEED_POSTURE=production." >&2
       exit 1
       ;;
   esac
