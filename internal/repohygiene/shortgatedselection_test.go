@@ -156,6 +156,23 @@ var shortGatedOutsideSelection = []string{
 	"services/vpc/internal/migrations",
 }
 
+// shortGatedRunByOwnCIStep — пакеты, чьи краткогейтящие тесты гоняет СОБСТВЕННЫЙ
+// названный шаг конвейера. Значение — точная строка запуска, по которой гейт
+// сверяется с ci.yaml.
+//
+// Это НЕ долг и не послабление: такой пакет исполняется, просто не той джобой,
+// которая отбирает по пути. Запись здесь освобождает от переписи долга ровно
+// потому, что она проверяема — строки нет в конвейере, и запись становится
+// находкой.
+var shortGatedRunByOwnCIStep = map[string]string{
+	// Перепись «анализатор видит КАЖДЫЙ списочный метод дерева» — единственный
+	// краткогейтящий тест пакета (остальные десять идут в быстрой джобе). Пропуск
+	// под кратким у неё осмысленный: она запускает анализатор каждого сервиса.
+	// Свой шаг + tools/listfiltergate (TestCIRunsThisCensus), как у четырёх
+	// соседних гейтов tools/.
+	"tools/listfiltergate": "go test ./tools/listfiltergate/ -run TestCensus_EveryTransportListingIsSeenByItsAnalyser",
+}
+
 // TestShortGatedPackagesAreEitherSelectedOrCounted — сам гейт против дерева.
 func TestShortGatedPackagesAreEitherSelectedOrCounted(t *testing.T) {
 	root := repoRoot(t)
@@ -166,7 +183,12 @@ func TestShortGatedPackagesAreEitherSelectedOrCounted(t *testing.T) {
 		t.Fatalf("обход пуст (осмотрено %d, краткогейтящих %d) — гейт ничего не прочитал, "+
 			"а значит ничего и не доказал", scanned, len(gated))
 	}
-	for _, f := range judgeShortGateSelection(gated, shortGatedOutsideSelection) {
+	ci, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci.yaml"))
+	if err != nil {
+		t.Fatalf("не прочитан ci.yaml — третий исход нечем проверить: %v", err)
+	}
+	for _, f := range judgeShortGateSelection(gated, shortGatedOutsideSelection,
+		shortGatedRunByOwnCIStep, string(ci)) {
 		t.Errorf("%s", f)
 	}
 }
@@ -183,45 +205,104 @@ func TestShortGateSelectionJudgeFiresAndStaysSilent(t *testing.T) {
 	const outside = "services/iam/internal/authzmap"
 
 	t.Run("краснеет: краткогейтящий пакет вне отбора и вне переписи", func(t *testing.T) {
-		f := judgeShortGateSelection([]string{outside}, nil)
+		f := judgeShortGateSelection([]string{outside}, nil, nil, "")
 		if len(f) != 1 || !strings.Contains(f[0], outside) {
 			t.Fatalf("гейт не назвал незаявленный пакет: %v", f)
 		}
 	})
 
 	t.Run("молчит: тот же пакет, названный в переписи", func(t *testing.T) {
-		if f := judgeShortGateSelection([]string{outside}, []string{outside}); len(f) != 0 {
+		if f := judgeShortGateSelection([]string{outside}, []string{outside}, nil, ""); len(f) != 0 {
 			t.Fatalf("гейт краснеет на объявленном долге: %v", f)
 		}
 	})
 
 	t.Run("молчит: краткогейтящий пакет ВНУТРИ отбора, в переписи не нужен", func(t *testing.T) {
-		if f := judgeShortGateSelection([]string{inSelection}, nil); len(f) != 0 {
+		if f := judgeShortGateSelection([]string{inSelection}, nil, nil, ""); len(f) != 0 {
 			t.Fatalf("гейт требует заявлять то, что интеграционная джоба и так гоняет: %v", f)
 		}
 	})
 
 	t.Run("краснеет: запись переписи без предмета", func(t *testing.T) {
-		f := judgeShortGateSelection(nil, []string{"pkg/gone"})
+		f := judgeShortGateSelection(nil, []string{"pkg/gone"}, nil, "")
 		if len(f) != 1 || !strings.Contains(f[0], "pkg/gone") {
 			t.Fatalf("исключение без предмета не найдено: %v", f)
 		}
 	})
 
 	t.Run("краснеет: пакет из отбора попал в перепись — она не про него", func(t *testing.T) {
-		f := judgeShortGateSelection([]string{inSelection}, []string{inSelection})
+		f := judgeShortGateSelection([]string{inSelection}, []string{inSelection}, nil, "")
 		if len(f) != 1 || !strings.Contains(f[0], inSelection) {
 			t.Fatalf("перепись приняла пакет, который и так в отборе: %v", f)
+		}
+	})
+
+	// ── ТРЕТИЙ ИСХОД: свой шаг конвейера ─────────────────────────────────────
+	// Обе стороны, и вторая — та, ради которой исход вообще проверяем: объявление,
+	// за которым шага НЕТ, обязано краснеть. Без этой половины третий исход стал бы
+	// строкой в списке, освобождающей от гейта и ничего не запускающей.
+	const step = "go run ./tools/probe/cmd/probe ."
+
+	t.Run("молчит: пакет со своим шагом, и шаг в конвейере ЕСТЬ", func(t *testing.T) {
+		f := judgeShortGateSelection([]string{outside}, nil,
+			map[string]string{outside: step}, "steps:\n  - run: "+step+"\n")
+		if len(f) != 0 {
+			t.Fatalf("гейт краснеет на пакете, который исполняется своим шагом: %v", f)
+		}
+	})
+
+	t.Run("краснеет: шаг объявлен, но в конвейере его НЕТ", func(t *testing.T) {
+		f := judgeShortGateSelection([]string{outside}, nil,
+			map[string]string{outside: step}, "steps:\n  - run: echo nothing\n")
+		if len(f) != 1 || !strings.Contains(f[0], "НЕТ") {
+			t.Fatalf("объявление без шага принято за исполнение: %v", f)
+		}
+	})
+
+	t.Run("краснеет: запись о своём шаге без предмета", func(t *testing.T) {
+		f := judgeShortGateSelection(nil, nil,
+			map[string]string{"tools/gone": step}, "steps:\n  - run: "+step+"\n")
+		if len(f) != 1 || !strings.Contains(f[0], "tools/gone") {
+			t.Fatalf("освобождение без предмета не найдено: %v", f)
+		}
+	})
+
+	t.Run("краснеет: пакет назван и долгом, и исполняемым — два ответа на один вопрос", func(t *testing.T) {
+		f := judgeShortGateSelection([]string{outside}, []string{outside},
+			map[string]string{outside: step}, "steps:\n  - run: "+step+"\n")
+		if len(f) != 1 || !strings.Contains(f[0], "два ответа") {
+			t.Fatalf("двойное объявление не найдено: %v", f)
 		}
 	})
 }
 
 // judgeShortGateSelection — вердикт, отделённый от измерения. gated — пакеты,
-// пропускающие тесты под кратким режимом; declared — перепись исключённых.
-func judgeShortGateSelection(gated, declared []string) []string {
+// пропускающие тесты под кратким режимом; declared — перепись исключённых;
+// ownStep — пакеты, чьи краткогейтящие тесты гоняет СВОЙ шаг конвейера (значение
+// — точная строка запуска); ciYAML — содержимое workflow, по которому эта строка
+// ПРОВЕРЯЕТСЯ, а не принимается на слово.
+//
+// Третий исход добавлен потому, что двух не хватало, и нехватка была не
+// теоретической. tools/listfiltergate держит перепись «анализатор видит каждый
+// списочный метод» — единственный краткогейтящий тест пакета. Ни отбор его не
+// брал, ни в переписи долга его не было, и гейт краснел, предлагая ровно два
+// выхода: расширить отбор (цена — за владельцем) или записать долг. Но у
+// гейтов tools/ в этом дереве есть готовый третий образец — собственный
+// НАЗВАННЫЙ шаг плюс тест «конвейер меня зовёт» (foreignclouds, legacyfolder,
+// paginationordergate, knownfailingsubject). Пакет с таким шагом ИСПОЛНЯЕТСЯ, и
+// звать это долгом было бы ложью в другую сторону.
+//
+// Объявление ПРОВЕРЯЕТСЯ по ci.yaml: запись, чьей строки запуска в конвейере нет,
+// — находка, а не освобождение. Иначе третий исход стал бы способом выйти из-под
+// гейта одной строкой в списке — ровно тем, от чего гейт и стоит.
+func judgeShortGateSelection(gated, declared []string, ownStep map[string]string, ciYAML string) []string {
 	left := map[string]bool{}
 	for _, p := range declared {
 		left[p] = true
+	}
+	stepLeft := map[string]bool{}
+	for p := range ownStep {
+		stepLeft[p] = true
 	}
 	var findings []string
 
@@ -231,13 +312,42 @@ func judgeShortGateSelection(gated, declared []string) []string {
 			// просто лишнее — это ложь о долге, поэтому такая запись находка.
 			continue
 		}
+		if inv, ok := ownStep[pkg]; ok {
+			delete(stepLeft, pkg)
+			if !strings.Contains(ciYAML, inv) {
+				findings = append(findings, "shortGatedRunByOwnCIStep обещает для "+pkg+
+					" шаг конвейера "+inv+", но такой строки в ci.yaml НЕТ — объявление "+
+					"освобождает пакет от переписи, ничего при этом не запуская")
+			}
+			if left[pkg] {
+				findings = append(findings, pkg+" назван И в shortGatedOutsideSelection, И в "+
+					"shortGatedRunByOwnCIStep — он либо долг, либо исполняется; два ответа "+
+					"на один вопрос означают, что один из них никто не перечитывал")
+			}
+			delete(left, pkg)
+			continue
+		}
 		if !left[pkg] {
 			findings = append(findings, "пакет "+pkg+" пропускает тесты под кратким режимом и "+
 				"НЕ входит в отбор интеграционной джобы (`/internal/(repo|clients)` внутри "+
-				"services/), то есть без краткого не исполняется нигде. Либо внеси его в отбор, "+
-				"либо назови в shortGatedOutsideSelection — долг с именем, а не умолчание")
+				"services/), то есть без краткого не исполняется нигде. Три исхода: внеси его "+
+				"в отбор; дай ему СВОЙ шаг конвейера и назови в shortGatedRunByOwnCIStep; либо "+
+				"назови в shortGatedOutsideSelection — долг с именем, а не умолчание")
 		}
 		delete(left, pkg)
+	}
+
+	// Запись о своём шаге тоже обязана иметь предмет: пакет, переставший гейтиться
+	// под кратким, освобождать не от чего.
+	stepRest := make([]string, 0, len(stepLeft))
+	for p := range stepLeft {
+		stepRest = append(stepRest, p)
+	}
+	sort.Strings(stepRest)
+	for _, p := range stepRest {
+		findings = append(findings, "shortGatedRunByOwnCIStep называет "+p+", но этот пакет "+
+			"больше не пропускает тестов под кратким режимом (или исчез) — освобождать "+
+			"нечего, и запись достанется следующему как слепая зона")
 	}
 
 	rest := make([]string, 0, len(left))

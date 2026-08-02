@@ -129,35 +129,21 @@ PATCH_ENV=true SETUP_NS="$NS" \
 "${MTLS_ENV[@]}" \
   bash "$REPO_ROOT/tests/authz-fixtures/setup.sh"
 
-# nlb EXTERNAL suites auto-allocate a public VIP + self-provision a zonal external
-# vpc Address; both resolve GetDefaultForZone(zone, EXTERNAL_PUBLIC) → need a DEFAULT
-# EXTERNAL_PUBLIC AddressPool in the zone. Nothing seeds it earlier - pool creation is
-# an explicit admin act, not part of bringing a stand up - so provision it here
-# (idempotent, best-effort) via the already-up internal-rest port-forward.
-# Only for nlb — no other suite needs the external pool. `|| true`: a failure degrades
-# to the pre-seed behaviour — the external-create cases go red and STAY red in the
-# verdict; nothing deducts them. It never aborts the run, so the rest of the suite
-# still reports.
-# In PRODUCTION posture setup.sh delegates to prodseed_all.py, which already drives
-# seed-nlb-fixtures.sh with the RS256 admin Bearer — a second pass here would make a
-# second author for the same cluster-wide default-pool slot.
-SEED_POSTURE_RAN="$(cat "$REPO_ROOT/tests/authz-fixtures/out/seed-posture" 2>/dev/null || echo dev)"
-if [ "$SVC" = "nlb" ] && [ "$SEED_POSTURE_RAN" != "production" ]; then
-  echo "[e2e] seeding nlb external-VIP AddressPool (idempotent, best-effort)"
-  # Use the admin Bearer the seed ACTUALLY produced rather than re-forging an HS256 one:
-  # on a production-posture stand a locally-minted HS256 token is rejected outright
-  # (empty devSecret) and this step would silently seed nothing.
-  SEED_JWT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("jwtBootstrap",""))' \
-    "$REPO_ROOT/tests/authz-fixtures/out/authz-fixtures.json" 2>/dev/null || true)
-  # NLB_ZONE_ID — the nlb-DEDICATED zone (tests/authz-fixtures/prodseed_matrix.py owns the
-  # zone table). Must be pinned here too: without it the seeder falls back to zone[0] =
-  # ru-central1-a and plants a v6-carrying default EXTERNAL_PUBLIC pool there, which
-  # deterministically breaks the vpc case ADR-CR-EXT-V6-FAMILY-FALLTHROUGH.
-  env BASE_URL="http://localhost:$GW_PORT" \
-      INTERNAL_BASE_URL="http://localhost:$GW_INTERNAL_PORT" \
-      JWT="$SEED_JWT" NLB_ZONE_ID="${NLB_ZONE:-ru-central1-e}" \
-    bash "$REPO_ROOT/deploy/scripts/seed-nlb-fixtures.sh" || true
-fi
+# nlb's external-VIP AddressPool is seeded by setup.sh, and ONLY there.
+#
+# A second pass used to stand here, guarded by "unless the seed ran in production
+# posture". That guard could never be false: classify_posture leaves `production` as the
+# only value standing, and a seed that does not reach that point aborts this script
+# (`set -e`) before the read. So the block was unreachable from the day the classifier
+# was narrowed — and its fallback named `dev`, the one posture the classifier REFUSES.
+#
+# Nothing is lost by removing it: setup.sh delegates to prodseed_all.py, which drives
+# deploy/scripts/seed-nlb-fixtures.sh itself and is the sole author of that
+# cluster-wide default-pool slot. A second author is what the guard was trying to
+# prevent — unconditionally now, by not existing.
+#
+# deploy/scripts/assert-posture-branches-can-be-taken.py keeps this shape from coming
+# back: a branch on the seed posture must be able to go both ways.
 
 echo "[e2e] regenerating newman collections"
 ( cd "$NEWMAN_DIR" && python3 scripts/gen.py >/dev/null )

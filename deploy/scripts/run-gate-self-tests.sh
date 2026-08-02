@@ -75,6 +75,7 @@ deploy/scripts/assert-admin-hop-transport.sh
 deploy/scripts/assert-alt-fixtures-are-another.py
 deploy/scripts/assert-ban6-external-isolation.py
 deploy/scripts/assert-outbox-autovacuum.sh
+deploy/scripts/assert-posture-branches-can-be-taken.py
 deploy/scripts/assert-report-readers-use-the-summary.py
 deploy/scripts/assert-waiters-name-their-target.sh
 deploy/scripts/remeasure-provider-listener-tls.sh
