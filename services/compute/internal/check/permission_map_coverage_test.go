@@ -57,9 +57,11 @@ var servedInternalServiceDescs = []grpc.ServiceDesc{
 // proto появился сервис, не попавший ни сюда, ни в served-списки, — иначе
 // «забыли зарегистрировать сервис в тесте» бесшумно вернуло бы ту самую дыру,
 // которую этот файл закрывает.
-var notServedServiceNames = map[string]struct{}{
-	"kacho.cloud.compute.v1.InternalResourceLifecycleService": {},
-}
+// СЕЙЧАС ПУСТ: единственная запись — InternalResourceLifecycleService — снята с
+// контракта целиком (объявление без единой реализации; живой фид остался только в
+// loadbalancer.v1). Пустая карта означает, что каждый объявленный compute/v1
+// сервис обслуживается и потому обязан быть в PermissionMap.
+var notServedServiceNames = map[string]struct{}{}
 
 func servedServiceDescs() []grpc.ServiceDesc {
 	out := make([]grpc.ServiceDesc, 0, len(servedPublicServiceDescs)+len(servedInternalServiceDescs))

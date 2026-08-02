@@ -611,18 +611,22 @@ func TestInterceptorStream_UnmappedFailClosed(t *testing.T) {
 }
 
 // TestInterceptorStream_PublicAllowsHandler — Public=true stream-RPC (e.g.
-// InternalResourceLifecycleService.Subscribe) → handler запускается без Check
-// (DecisionInternal arm).
+// loadbalancer.v1.InternalResourceLifecycleService.Subscribe — единственный живой
+// фид жизненного цикла) → handler запускается без Check (DecisionInternal arm).
+//
+// Имя здесь — фикстура, а не предмет: предмет теста — ветка Public на стриме.
+// Но фикстура обязана называть ЖИВОЙ метод, иначе тест переживает снятие того,
+// на что ссылается, и начинает описывать поверхность, которой нет.
 func TestInterceptorStream_PublicAllowsHandler(t *testing.T) {
 	stub := authz.CheckClientFunc(func(ctx context.Context, s, r, o string) (bool, error) {
 		t.Fatalf("Check must NOT be called on a Public stream RPC")
 		return false, nil
 	})
 	m := makeMap()
-	m["/kacho.cloud.vpc.v1.InternalResourceLifecycleService/Subscribe"] = authz.RPCEntry{Public: true}
+	m["/kacho.cloud.loadbalancer.v1.InternalResourceLifecycleService/Subscribe"] = authz.RPCEntry{Public: true}
 	intr := authz.NewInterceptor(authz.InterceptorOptions{Cache: authz.NewCache(0), Map: m, Client: stub})
 	ctx := ctxWithPrincipal(t, "usr_alice", "user")
-	called, err := runStream(intr, ctx, "/kacho.cloud.vpc.v1.InternalResourceLifecycleService/Subscribe")
+	called, err := runStream(intr, ctx, "/kacho.cloud.loadbalancer.v1.InternalResourceLifecycleService/Subscribe")
 	if err != nil {
 		t.Fatalf("expected Public stream to pass, got %v", err)
 	}

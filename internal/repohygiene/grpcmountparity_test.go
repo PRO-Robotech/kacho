@@ -29,21 +29,21 @@ import (
 // mountAllow — сервисы, намеренно не поднимаемые по gRPC. Каждая запись обязана
 // иметь предмет: анализатор сам краснеет на записи, которой больше нечего
 // исключать (сервис смонтирован либо исчез из контракта).
-var mountAllow = []string{
-	// Обслуживается не по gRPC: Hydra зовёт хуки iam по HTTP
-	// (services/iam/internal/handler/iamhooks). Регистрации ServiceServer нет ни на
-	// одном листенере, и это осознанно.
-	"kacho.cloud.iam.v1.InternalIamHooksService",
-	// Не реализован: фид жизненного цикла ресурсов существует только у nlb
-	// (loadbalancer.v1), а объявления в compute.v1 и vpc.v1 остались без единой
-	// реализации. Оба сервиса уже классифицированы «не поднято» собственными
-	// пробами этих сервисов.
-	"kacho.cloud.compute.v1.InternalResourceLifecycleService",
-	"kacho.cloud.vpc.v1.InternalResourceLifecycleService",
-	// Не реализован: поток событий из outbox поднят у compute
-	// (InternalWatchService), объявление в vpc.v1 осталось без реализации.
-	"kacho.cloud.vpc.v1.InternalWatchService",
-}
+// СЕЙЧАС ПУСТ, и это исход, а не упущение. Здесь стояли четыре сервиса, ни один
+// из которых не был смонтирован ни в одном композиционном корне: хуки Hydra
+// (обслуживаются по HTTP СВОИМИ структурами тела запроса — типы этого proto не
+// читала ни одна строка неgenerated-кода), фид жизненного цикла в compute.v1 и
+// vpc.v1 (живой — только в loadbalancer.v1) и поток событий в vpc.v1 (живой —
+// только в compute.v1). Ни у одного не было ни сервера, ни клиента, ни
+// неgenerated-ссылки — включая типы сообщений. Это были объявления без единой
+// реализации, и они сняты с контракта целиком; надгробие — retiredRPCSurface в
+// retiredrpcsurface_test.go.
+//
+// Пустой список означает: каждый объявленный контрактом gRPC-сервис смонтирован.
+// Способность анализатора видеть несмонтированный сервис от этой пустоты не
+// зависит — она доказана инъекцией, см.
+// TestGRPCMountParity_SeesAnUnmountedServiceAsUnmounted.
+var mountAllow = []string{}
 
 func mountOptions(t *testing.T) MountOptions {
 	t.Helper()

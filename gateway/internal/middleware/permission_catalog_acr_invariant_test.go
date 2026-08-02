@@ -308,10 +308,19 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// entries: Update/Delete were sensitive (category F, which no longer has a
 	// subject), Get/List/Create/Evaluate were routine. 26→24 sensitive, 211→207
 	// routine, 300→294 total. Exempt untouched — none of the six was exempt.
+	// Retiring four services declared without a single implementation removed five
+	// entries, ALL of them exempt: 63→58 exempt, 294→289 total. Sensitive and routine
+	// are untouched — every one of the five carried `<exempt>`, which is what a lane
+	// declared for a method that no listener serves looks like. The four:
+	// compute.v1 + vpc.v1 InternalResourceLifecycleService/Subscribe (the live
+	// lifecycle feed is loadbalancer.v1's), vpc.v1 InternalWatchService/Watch (the live
+	// event stream is compute.v1's), and iam.v1 InternalIamHooksService/{TokenHook,
+	// RefreshTokenHook} (Hydra's hooks are served over HTTP with their own
+	// request-body structs — these proto types were read by no non-generated line).
 	assert.Equal(t, 24, n2, "sensitive count")
 	assert.Equal(t, 207, n1, "routine count")
-	assert.Equal(t, 63, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 294, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 58, nEmpty, "no-requirement (exempt) count")
+	assert.Equal(t, 289, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

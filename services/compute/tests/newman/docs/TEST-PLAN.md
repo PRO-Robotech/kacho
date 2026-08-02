@@ -110,8 +110,10 @@
 `Register*ServiceServer` в composition-root. **Newman НЕ пишется** для этого — RPC вернёт `Unimplemented`
 (impl-gap для `rpc-implementer`, НЕ test-gap):
 
-- **Unwired services** (не в `Register*ServiceServer` → gateway `unknown service`): `MaintenanceService`,
-  `InternalResourceLifecycleService` (proto-only vendored stubs).
+- **Unwired services** (не в `Register*ServiceServer` → gateway `unknown service`): `MaintenanceService`.
+  `InternalResourceLifecycleService` **удалён** тем же критерием: объявление без единой реализации — ни
+  сервера, ни клиента, ни одной неgenerated-ссылки, включая типы сообщений (живой фид жизненного цикла
+  есть только в `loadbalancer.v1`). Вместе с объявлением снята и его запись каталога прав.
   `DiskPlacementGroupService` / `FilesystemService` / `SnapshotScheduleService` **удалены** — mёртворождённые
   контракты без реализации, регистрации и модели прав. Тем же критерием и той же процедурой удалены
   `GpuClusterService` / `HostGroupService` / `HostTypeService` / `PlacementGroupService` /
