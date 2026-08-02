@@ -6,7 +6,7 @@
 //
 // # Why this exists
 //
-// geo had no analyser of this class. Unlike iam, whose absence hid 31 unjudged
+// geo had no analyser of this class. Unlike iam, whose absence hid 30 unjudged
 // listing methods, geo's absence hid something subtler and worth writing down: geo's
 // two listings are SUPPOSED to be unnarrowed, and nothing recorded that as a
 // decision anywhere a check could read it.
