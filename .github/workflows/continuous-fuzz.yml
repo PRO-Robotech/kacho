@@ -42,7 +42,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { target: FuzzCELExpression,           pkg: ./services/iam/internal/fuzz }
           - { target: FuzzPermissionCatalogLookup, pkg: ./services/iam/internal/fuzz }
           - { target: FuzzCIDRParse,               pkg: ./services/vpc/internal/fuzz }
           - { target: FuzzInstanceSpecValidate,    pkg: ./services/compute/internal/fuzz }

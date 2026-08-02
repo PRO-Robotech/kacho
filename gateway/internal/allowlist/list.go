@@ -246,16 +246,6 @@ var AllowedMethods = map[string]struct{}{
 	"/kacho.cloud.iam.v1.RoleService/Update":         {},
 	"/kacho.cloud.iam.v1.RoleService/Delete":         {},
 	"/kacho.cloud.iam.v1.RoleService/ListOperations": {},
-	// iam.v1 — ConditionsService
-	// Reusable project-scoped Condition resources (/iam/v1/conditions). Public
-	// CRUD + the admin-diagnostic Evaluate; the whole service is project-scoped
-	// and carries no Internal* method.
-	"/kacho.cloud.iam.v1.ConditionsService/Get":      {},
-	"/kacho.cloud.iam.v1.ConditionsService/List":     {},
-	"/kacho.cloud.iam.v1.ConditionsService/Create":   {},
-	"/kacho.cloud.iam.v1.ConditionsService/Update":   {},
-	"/kacho.cloud.iam.v1.ConditionsService/Delete":   {},
-	"/kacho.cloud.iam.v1.ConditionsService/Evaluate": {},
 	// iam.v1 — AccessBindingService
 	"/kacho.cloud.iam.v1.AccessBindingService/Get":    {},
 	"/kacho.cloud.iam.v1.AccessBindingService/List":   {}, // unified paginated read (REST GET /iam/v1/accessBindings), F11

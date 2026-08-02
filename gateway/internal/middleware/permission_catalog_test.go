@@ -143,10 +143,12 @@ func TestPermissionCatalog_RegistryV1Present_EntryFloor(t *testing.T) {
 	require.NoError(t, err)
 
 	// Floor lowered 330 → 296 when compute's duplicate block storage was retired
-	// (34 entries: Disk 10 + Image 10 + Snapshot 9 + DiskType 2 + InternalDiskType 3).
+	// (34 entries: Disk 10 + Image 10 + Snapshot 9 + DiskType 2 + InternalDiskType 3),
+	// then 296 → 290 when the tenant-facing condition surface went (6 entries:
+	// ConditionsService Get/List/Create/Update/Delete/Evaluate).
 	// A floor is a guard against a SILENT shrink; a deliberate retire moves it, and
 	// only by the number of entries the retire actually removed.
-	assert.GreaterOrEqual(t, c.Size(), 296,
+	assert.GreaterOrEqual(t, c.Size(), 290,
 		"embedded catalog shrank below the known floor — stale `make sync-permission-catalog`?")
 
 	// registry.v1 methods MUST be present (the regressed surface).
@@ -266,12 +268,6 @@ func TestPermissionCatalog_LookupKnownEntries_FromEmbed(t *testing.T) {
 		// `subject` (the query target, not the reader), which would re-derive the
 		// FGA check from tenant-controlled input.
 		{"kacho.cloud.iam.v1.AuthorizeService/BatchCheck", "iam.authorize.batchCheck", "scope_id", "project"},
-		{"kacho.cloud.iam.v1.ConditionsService/Create", "iam.conditions.create", "project_id", "project"},
-		// Condition-item RPCs scope on the condition object itself (`iam_condition:<id>`).
-		{"kacho.cloud.iam.v1.ConditionsService/Get", "iam.conditions.get", "condition_id", "iam_condition"},
-		{"kacho.cloud.iam.v1.ConditionsService/Update", "iam.conditions.update", "condition_id", "iam_condition"},
-		{"kacho.cloud.iam.v1.ConditionsService/Delete", "iam.conditions.delete", "condition_id", "iam_condition"},
-		{"kacho.cloud.iam.v1.ConditionsService/Evaluate", "iam.conditions.evaluate", "condition_id", "iam_condition"},
 	} {
 		t.Run(want.fqn, func(t *testing.T) {
 			entry, ok := c.Lookup(want.fqn)

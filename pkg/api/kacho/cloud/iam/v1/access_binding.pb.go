@@ -203,8 +203,7 @@ func (AccessBinding_Scope) EnumDescriptor() ([]byte, []int) {
 // Runtime-Check грантов выполняется через OpenFGA ReBAC
 // (InternalIAMService.Check); tuple-sync — через fga_outbox drainer.
 //
-// Ресурс несет lifecycle (`status`), Conditions overlay
-// (`condition_id`), TTL (`expires_at`) и audit-метаданные
+// Ресурс несет lifecycle (`status`), TTL (`expires_at`) и audit-метаданные
 // (`granted_by_user_id` / `revoked_at` / `revoked_by_user_id`). State machine
 // (PENDING → ACTIVE → REVOKED, REVOKED terminal); transitions
 // only via conditional CAS UPDATE.
@@ -237,14 +236,6 @@ type AccessBinding struct {
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	// Lifecycle status. Backfill DEFAULT 'ACTIVE' for legacy rows.
 	Status AccessBinding_Status `protobuf:"varint,8,opt,name=status,proto3,enum=kacho.cloud.iam.v1.AccessBinding_Status" json:"status,omitempty"`
-	// Optional FK to AccessBindingCondition (1:1) for ABAC overlay. Empty when
-	// no conditions apply.
-	//
-	// Logical-oneof with `builtin_condition` (field 14): at most one
-	// of the two MAY be set; setting both is InvalidArgument at the service
-	// layer (the wire schema cannot express this as a proto3 oneof without
-	// breaking existing field 9 callers).
-	ConditionId string `protobuf:"bytes,9,opt,name=condition_id,json=conditionId,proto3" json:"condition_id,omitempty"`
 	// Optional hard-expiry timestamp. Unset = no TTL. When set, OPA
 	// gates evaluation by `now() < expires_at`.
 	ExpiresAt *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
@@ -256,13 +247,6 @@ type AccessBinding struct {
 	RevokedAt *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=revoked_at,json=revokedAt,proto3" json:"revoked_at,omitempty"`
 	// ID of the User who revoked the binding (audit). Unset until revoked.
 	RevokedByUserId string `protobuf:"bytes,13,opt,name=revoked_by_user_id,json=revokedByUserId,proto3" json:"revoked_by_user_id,omitempty"`
-	// Optional reference to a `BuiltinCondition` catalog entry. Logical-oneof
-	// with `condition_id` (field 9) — at most one MAY
-	// be set; setting both is InvalidArgument at the service layer.
-	// `BUILTIN_CONDITION_UNSPECIFIED` means "no built-in condition is bound"
-	// (the binding may still carry a `condition_id` instead, or be
-	// unconditional).
-	BuiltinCondition BuiltinCondition `protobuf:"varint,14,opt,name=builtin_condition,json=builtinCondition,proto3,enum=kacho.cloud.iam.v1.BuiltinCondition" json:"builtin_condition,omitempty"`
 	// Multi-subject set. A binding may
 	// grant the same role+scope to 1..32 subjects at once. Each subject yields an
 	// INDEPENDENT FGA tuple-set and an independent emitted-tuple ledger lineage,
@@ -425,13 +409,6 @@ func (x *AccessBinding) GetStatus() AccessBinding_Status {
 	return AccessBinding_STATUS_UNSPECIFIED
 }
 
-func (x *AccessBinding) GetConditionId() string {
-	if x != nil {
-		return x.ConditionId
-	}
-	return ""
-}
-
 func (x *AccessBinding) GetExpiresAt() *timestamppb.Timestamp {
 	if x != nil {
 		return x.ExpiresAt
@@ -458,13 +435,6 @@ func (x *AccessBinding) GetRevokedByUserId() string {
 		return x.RevokedByUserId
 	}
 	return ""
-}
-
-func (x *AccessBinding) GetBuiltinCondition() BuiltinCondition {
-	if x != nil {
-		return x.BuiltinCondition
-	}
-	return BuiltinCondition_BUILTIN_CONDITION_UNSPECIFIED
 }
 
 func (x *AccessBinding) GetSubjects() []*Subject {
@@ -963,7 +933,7 @@ var File_kacho_cloud_iam_v1_access_binding_proto protoreflect.FileDescriptor
 
 const file_kacho_cloud_iam_v1_access_binding_proto_rawDesc = "" +
 	"\n" +
-	"'kacho/cloud/iam/v1/access_binding.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a*kacho/cloud/iam/v1/authorize_service.proto\x1a*kacho/cloud/iam/v1/builtin_condition.proto\"\xb1\t\n" +
+	"'kacho/cloud/iam/v1/access_binding.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a*kacho/cloud/iam/v1/authorize_service.proto\"\xe8\b\n" +
 	"\rAccessBinding\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12!\n" +
 	"\fsubject_type\x18\x02 \x01(\tR\vsubjectType\x12\x1d\n" +
@@ -975,16 +945,14 @@ const file_kacho_cloud_iam_v1_access_binding_proto_rawDesc = "" +
 	"\bscope_id\x18\x06 \x01(\tR\ascopeId\x129\n" +
 	"\n" +
 	"created_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12@\n" +
-	"\x06status\x18\b \x01(\x0e2(.kacho.cloud.iam.v1.AccessBinding.StatusR\x06status\x12!\n" +
-	"\fcondition_id\x18\t \x01(\tR\vconditionId\x129\n" +
+	"\x06status\x18\b \x01(\x0e2(.kacho.cloud.iam.v1.AccessBinding.StatusR\x06status\x129\n" +
 	"\n" +
 	"expires_at\x18\n" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12+\n" +
 	"\x12granted_by_user_id\x18\v \x01(\tR\x0fgrantedByUserId\x129\n" +
 	"\n" +
 	"revoked_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\trevokedAt\x12+\n" +
-	"\x12revoked_by_user_id\x18\r \x01(\tR\x0frevokedByUserId\x12Q\n" +
-	"\x11builtin_condition\x18\x0e \x01(\x0e2$.kacho.cloud.iam.v1.BuiltinConditionR\x10builtinCondition\x127\n" +
+	"\x12revoked_by_user_id\x18\r \x01(\tR\x0frevokedByUserId\x127\n" +
 	"\bsubjects\x18\x13 \x03(\v2\x1b.kacho.cloud.iam.v1.SubjectR\bsubjects\x12/\n" +
 	"\x13deletion_protection\x18\x14 \x01(\bR\x12deletionProtection\x12E\n" +
 	"\x06labels\x18\x15 \x03(\v2-.kacho.cloud.iam.v1.AccessBinding.LabelsEntryR\x06labels\x128\n" +
@@ -1003,7 +971,8 @@ const file_kacho_cloud_iam_v1_access_binding_proto_rawDesc = "" +
 	"\x11SCOPE_UNSPECIFIED\x10\x00\x12\v\n" +
 	"\aCLUSTER\x10\x01\x12\v\n" +
 	"\aACCOUNT\x10\x02\x12\v\n" +
-	"\aPROJECT\x10\x03J\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11J\x04\b\x11\x10\x12J\x04\b\x12\x10\x13R\x05scopeR\tscope_refR\n" +
+	"\aPROJECT\x10\x03J\x04\b\t\x10\n" +
+	"J\x04\b\x0e\x10\x0fJ\x04\b\x0f\x10\x10J\x04\b\x10\x10\x11J\x04\b\x11\x10\x12J\x04\b\x12\x10\x13R\fcondition_idR\x11builtin_conditionR\x05scopeR\tscope_refR\n" +
 	"target_refR\bselector\"\xb3\x01\n" +
 	"\fAccessTarget\x12I\n" +
 	"\tresources\x18\x01 \x01(\v2).kacho.cloud.iam.v1.AccessTargetResourcesH\x00R\tresources\x12N\n" +
@@ -1067,28 +1036,26 @@ var file_kacho_cloud_iam_v1_access_binding_proto_goTypes = []any{
 	(*RevokeAccessBindingMetadata)(nil), // 11: kacho.cloud.iam.v1.RevokeAccessBindingMetadata
 	nil,                                 // 12: kacho.cloud.iam.v1.AccessBinding.LabelsEntry
 	(*timestamppb.Timestamp)(nil),       // 13: google.protobuf.Timestamp
-	(BuiltinCondition)(0),               // 14: kacho.cloud.iam.v1.BuiltinCondition
-	(*ResourceRef)(nil),                 // 15: kacho.cloud.iam.v1.ResourceRef
+	(*ResourceRef)(nil),                 // 14: kacho.cloud.iam.v1.ResourceRef
 }
 var file_kacho_cloud_iam_v1_access_binding_proto_depIdxs = []int32{
 	13, // 0: kacho.cloud.iam.v1.AccessBinding.created_at:type_name -> google.protobuf.Timestamp
 	1,  // 1: kacho.cloud.iam.v1.AccessBinding.status:type_name -> kacho.cloud.iam.v1.AccessBinding.Status
 	13, // 2: kacho.cloud.iam.v1.AccessBinding.expires_at:type_name -> google.protobuf.Timestamp
 	13, // 3: kacho.cloud.iam.v1.AccessBinding.revoked_at:type_name -> google.protobuf.Timestamp
-	14, // 4: kacho.cloud.iam.v1.AccessBinding.builtin_condition:type_name -> kacho.cloud.iam.v1.BuiltinCondition
-	7,  // 5: kacho.cloud.iam.v1.AccessBinding.subjects:type_name -> kacho.cloud.iam.v1.Subject
-	12, // 6: kacho.cloud.iam.v1.AccessBinding.labels:type_name -> kacho.cloud.iam.v1.AccessBinding.LabelsEntry
-	4,  // 7: kacho.cloud.iam.v1.AccessBinding.target:type_name -> kacho.cloud.iam.v1.AccessTarget
-	13, // 8: kacho.cloud.iam.v1.AccessBinding.materialized_at:type_name -> google.protobuf.Timestamp
-	5,  // 9: kacho.cloud.iam.v1.AccessTarget.resources:type_name -> kacho.cloud.iam.v1.AccessTargetResources
-	6,  // 10: kacho.cloud.iam.v1.AccessTarget.all_in_scope:type_name -> kacho.cloud.iam.v1.AccessTargetAllInScope
-	15, // 11: kacho.cloud.iam.v1.AccessTargetResources.resources:type_name -> kacho.cloud.iam.v1.ResourceRef
-	0,  // 12: kacho.cloud.iam.v1.Subject.type:type_name -> kacho.cloud.iam.v1.SubjectType
-	13, // [13:13] is the sub-list for method output_type
-	13, // [13:13] is the sub-list for method input_type
-	13, // [13:13] is the sub-list for extension type_name
-	13, // [13:13] is the sub-list for extension extendee
-	0,  // [0:13] is the sub-list for field type_name
+	7,  // 4: kacho.cloud.iam.v1.AccessBinding.subjects:type_name -> kacho.cloud.iam.v1.Subject
+	12, // 5: kacho.cloud.iam.v1.AccessBinding.labels:type_name -> kacho.cloud.iam.v1.AccessBinding.LabelsEntry
+	4,  // 6: kacho.cloud.iam.v1.AccessBinding.target:type_name -> kacho.cloud.iam.v1.AccessTarget
+	13, // 7: kacho.cloud.iam.v1.AccessBinding.materialized_at:type_name -> google.protobuf.Timestamp
+	5,  // 8: kacho.cloud.iam.v1.AccessTarget.resources:type_name -> kacho.cloud.iam.v1.AccessTargetResources
+	6,  // 9: kacho.cloud.iam.v1.AccessTarget.all_in_scope:type_name -> kacho.cloud.iam.v1.AccessTargetAllInScope
+	14, // 10: kacho.cloud.iam.v1.AccessTargetResources.resources:type_name -> kacho.cloud.iam.v1.ResourceRef
+	0,  // 11: kacho.cloud.iam.v1.Subject.type:type_name -> kacho.cloud.iam.v1.SubjectType
+	12, // [12:12] is the sub-list for method output_type
+	12, // [12:12] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_kacho_cloud_iam_v1_access_binding_proto_init() }
@@ -1097,7 +1064,6 @@ func file_kacho_cloud_iam_v1_access_binding_proto_init() {
 		return
 	}
 	file_kacho_cloud_iam_v1_authorize_service_proto_init()
-	file_kacho_cloud_iam_v1_builtin_condition_proto_init()
 	file_kacho_cloud_iam_v1_access_binding_proto_msgTypes[1].OneofWrappers = []any{
 		(*AccessTarget_Resources)(nil),
 		(*AccessTarget_AllInScope)(nil),

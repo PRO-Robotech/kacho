@@ -21,8 +21,10 @@ import (
 //
 // That reading was wrong, and the platform's own convention settles it: the write
 // tier `editor` — not `v_create` — already gated Create on the very same project
-// scope in BOTH artefacts, and storage's three project-scoped List RPCs plus iam's
-// ConditionsService/List already named `viewer` there with no divergence at all.
+// scope in BOTH artefacts, and storage's three project-scoped List RPCs already
+// named `viewer` there with no divergence at all. (A fourth witness, iam's
+// ConditionsService/List, stood here until that surface was retired; the argument
+// never rested on it alone.)
 // `v_list` on a project is object-level access to the PROJECT ITSELF (the model says
 // of that verb set: "never to its contents"), so it was answering a different
 // question than "may this subject list what is inside". The annotations were

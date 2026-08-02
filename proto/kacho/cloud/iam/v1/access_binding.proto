@@ -7,7 +7,6 @@ package kacho.cloud.iam.v1;
 
 import "google/protobuf/timestamp.proto";
 import "kacho/cloud/iam/v1/authorize_service.proto";
-import "kacho/cloud/iam/v1/builtin_condition.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
 
@@ -21,8 +20,7 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;ia
 // Runtime-Check грантов выполняется через OpenFGA ReBAC
 // (InternalIAMService.Check); tuple-sync — через fga_outbox drainer.
 //
-// Ресурс несет lifecycle (`status`), Conditions overlay
-// (`condition_id`), TTL (`expires_at`) и audit-метаданные
+// Ресурс несет lifecycle (`status`), TTL (`expires_at`) и audit-метаданные
 // (`granted_by_user_id` / `revoked_at` / `revoked_by_user_id`). State machine
 // (PENDING → ACTIVE → REVOKED, REVOKED terminal); transitions
 // only via conditional CAS UPDATE.
@@ -71,14 +69,20 @@ message AccessBinding {
   // Lifecycle status. Backfill DEFAULT 'ACTIVE' for legacy rows.
   Status status = 8;
 
-  // Optional FK to AccessBindingCondition (1:1) for ABAC overlay. Empty when
-  // no conditions apply.
+  // TOMBSTONE. Tags 9/14 held the tenant-facing condition overlay of the binding
+  // (`condition_id` / `builtin_condition`). The matching request fields were taken
+  // off Create earlier; what stayed here was their projection, and it projected
+  // nothing: no decision path read either field, tag 9 pointed at a table in a
+  // different id space from the Condition resource, and that table never received
+  // a single production row. A field a caller can read but nothing can ever fill
+  // is a promise about a capability that does not exist. Tags 9/14 and the names
+  // `condition_id` / `builtin_condition` are RESERVED so a future design starts
+  // from a clean number instead of inheriting a meaning nobody implemented.
   //
-  // Logical-oneof with `builtin_condition` (field 14): at most one
-  // of the two MAY be set; setting both is InvalidArgument at the service
-  // layer (the wire schema cannot express this as a proto3 oneof without
-  // breaking existing field 9 callers).
-  string condition_id = 9;
+  // Conditions on a tuple remain first-class and untouched: the model declares
+  // them, and the internal listener carries them on `Tuple.condition`.
+  reserved 9, 14;
+  reserved "condition_id", "builtin_condition";
 
   // Optional hard-expiry timestamp. Unset = no TTL. When set, OPA
   // gates evaluation by `now() < expires_at`.
@@ -94,14 +98,6 @@ message AccessBinding {
 
   // ID of the User who revoked the binding (audit). Unset until revoked.
   string revoked_by_user_id = 13;
-
-  // Optional reference to a `BuiltinCondition` catalog entry. Logical-oneof
-  // with `condition_id` (field 9) — at most one MAY
-  // be set; setting both is InvalidArgument at the service layer.
-  // `BUILTIN_CONDITION_UNSPECIFIED` means "no built-in condition is bound"
-  // (the binding may still carry a `condition_id` instead, or be
-  // unconditional).
-  BuiltinCondition builtin_condition = 14;
 
   // Scope tier enum — the level of the cluster ▶ account ▶ project hierarchy at
   // which a binding anchors. Retained as the projection type of

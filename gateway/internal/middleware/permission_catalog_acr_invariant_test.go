@@ -37,6 +37,11 @@ package middleware_test
 // also stops the next mint. The set literals below moved to 24; the prose
 // counts in the paragraphs above are the historical trail, the assertions are
 // the contract.
+//
+// Set revision (tenant condition surface retired): category F
+// (ConditionsService Update/Delete) is GONE — not downgraded, removed. The
+// resource those two mutated no longer exists, so there is no policy artifact of
+// that kind left to step up for. 26 → 24.
 
 import (
 	"os"
@@ -50,7 +55,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// sensitiveACR2Set — the 26 FQNs that MUST carry required_acr_min="2" after the
+// sensitiveACR2Set — the 24 FQNs that MUST carry required_acr_min="2" after the
 // refinement (grant-surface + credential + tenancy-root, domain-agnostic). Any
 // drift (an RPC added or dropped) fails this test. Categories A–H per the
 // APPROVED acceptance doc.
@@ -120,9 +125,6 @@ func sensitiveACR2Set() map[string]struct{} {
 		// E — role policy mutation (2)
 		"kacho.cloud.iam.v1.RoleService/Update",
 		"kacho.cloud.iam.v1.RoleService/Delete",
-		// F — condition policy mutation (2)
-		"kacho.cloud.iam.v1.ConditionsService/Update",
-		"kacho.cloud.iam.v1.ConditionsService/Delete",
 		// G — cluster-admin grant (2)
 		"kacho.cloud.iam.v1.InternalClusterService/GrantAdmin",
 		"kacho.cloud.iam.v1.InternalClusterService/RevokeAdmin",
@@ -144,7 +146,11 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	require.NoError(t, err)
 
 	sensitive := sensitiveACR2Set()
-	require.Len(t, sensitive, 26, "the acceptance-doc sensitive set must contain exactly 26 FQNs")
+	// 24, down from 26: category F (ConditionsService Update/Delete) had its
+	// subject retired together with the tenant-facing condition surface. The
+	// number is asserted rather than derived from the list on purpose — a silent
+	// shrink is exactly what would happen if an entry were dropped by accident.
+	require.Len(t, sensitive, 24, "the acceptance-doc sensitive set must contain exactly 24 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -165,7 +171,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 26, "exactly 26 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 24, "exactly 24 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -177,7 +183,6 @@ func TestPermissionCatalog_ACR_ComplementNotTwo(t *testing.T) {
 	routine := []string{
 		// B6 author-inert create → routine
 		"kacho.cloud.iam.v1.RoleService/Create",
-		"kacho.cloud.iam.v1.ConditionsService/Create",
 		"kacho.cloud.iam.v1.GroupService/Create",
 		// per-resource ListAccessBindings — reads → routine
 		"kacho.cloud.compute.v1.InstanceService/ListAccessBindings",
@@ -299,10 +304,14 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// states the per-object lane it is actually decided on (`v_get` on
 	// `iam_user:<user_id>`) instead of declaring that nothing decides it. Routine
 	// and not sensitive: it reads, it grants nothing and destroys nothing.
-	assert.Equal(t, 26, n2, "sensitive count")
-	assert.Equal(t, 211, n1, "routine count")
+	// Retiring the tenant-facing condition surface removed the six ConditionsService
+	// entries: Update/Delete were sensitive (category F, which no longer has a
+	// subject), Get/List/Create/Evaluate were routine. 26→24 sensitive, 211→207
+	// routine, 300→294 total. Exempt untouched — none of the six was exempt.
+	assert.Equal(t, 24, n2, "sensitive count")
+	assert.Equal(t, 207, n1, "routine count")
 	assert.Equal(t, 63, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 300, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 294, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

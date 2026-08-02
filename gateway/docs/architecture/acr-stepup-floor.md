@@ -16,9 +16,35 @@ Before this refinement the generator default `"2"` was inherited by ~372/438 RPC
 
 ## End-state
 
-`41 × "2"` + `332 × "1"` + `65 × ""` = 438. Both embedded catalog copies (gateway `internal/middleware/embed/` + iam `services/iam/.../seed/embedded/`) are byte-identical (CI gate `make permission-catalog-check`).
+> **The counts below are a MEASUREMENT of the embedded catalog, with its revision.**
+> They are re-read from the file, not carried forward from the previous edit —
+> the numbers this section used to state (`41 × "2"` + `332 × "1"` + `65 × ""` =
+> 438) had drifted away from the artifact well before the change that touched it
+> last: on `27cc2c4e`, before any of this edit, the catalog held **300** entries,
+> not 438. The discrepancy is recorded rather than quietly overwritten, because a
+> stale number in a security document is read as a fact about the tree.
 
-The sensitive-41 (categories A–H): 4 credential (UserToken/SAKey Issue+Revoke) · 4 iam AccessBinding Create/Update/Delete/Revoke · 22 compute `Set/UpdateAccessBindings` (non-iam grant surface — refutes any "no non-iam acr=2" assumption) · 3 Group AddMember/RemoveMember/**Delete** · 2 Role Update/Delete · 2 Conditions Update/Delete · 2 InternalCluster Grant/RevokeAdmin · 2 Account/Project Delete.
+Measured on the retirement of the tenant condition surface:
+
+| | entries | `"2"` | `"1"` | `""` |
+|---|---|---|---|---|
+| before (`27cc2c4e`) | 300 | 26 | 211 | 63 |
+| after | 294 | 24 | 207 | 63 |
+
+The six removed entries are exactly `ConditionsService/{Get,List,Create,Update,Delete,Evaluate}`;
+nothing was added. Both embedded catalog copies (gateway `internal/middleware/embed/` + iam `services/iam/.../seed/embedded/`) are byte-identical (CI gate `make permission-catalog-check`).
+
+The sensitive set, enumerated from the file rather than recalled (24 entries): 4 credential
+(UserToken Issue/Revoke, SAKey Issue/Revoke) · 4 AccessBinding Create/Update/Delete/Revoke ·
+3 Group AddMember/RemoveMember/**Delete** · 2 Role Update/Delete · 2 InternalCluster
+Grant/RevokeAdmin · 2 Account/Project Delete · 2 ServiceAccount Disable/Enable · 2 User
+Block/Unblock · 1 User Invite · 2 compute InstanceService Set/UpdateAccessBindings.
+
+Two corrections this enumeration forces, both about the PREVIOUS text rather than about this
+change: the compute grant surface is **2** entries, not the 22 that section claimed, and
+`UserService/Invite` was in the set without being named at all. Category F (Conditions
+Update/Delete) is now **gone** — the tenant-facing condition resource was retired, so there is
+no policy artifact of that kind left to step up for.
 
 ## Boundary decisions (ratified)
 
@@ -26,7 +52,7 @@ The sensitive-41 (categories A–H): 4 credential (UserToken/SAKey Issue+Revoke)
 - **B2 — Group membership + Group/Delete = sensitive.** A non-empty group's membership materializes/revokes its bindings' privileges. `GroupService/Delete` is **revoke-by-all** (cascade `group_members` + cleanup of group-targeted `AccessBinding.subject_id`) — strictly more impactful than `RemoveMember`, same destructive-revoke class as `RoleService/Delete`.
 - **B3 — subject-delete = routine.** `ServiceAccountService/Delete`, `UserService/Delete` are neither grant, credential-destroy, nor tenancy-root cascade. Lockout symmetry is preserved by keeping `UserTokenService/Revoke` + `SAKeyService/Revoke` sensitive (A).
 - **B5 — non-iam `Internal*`-admin (42) = routine.** Admin-curated platform-catalog / data-plane-wiring mutations are posture-neutral; still gated by `system_admin`/`system_viewer` ReBAC + mTLS + (for module-SA callers) the O-1 acr-exemption.
-- **B6 — author-inert create = routine.** `RoleService/Create`, `ConditionsService/Create`, `GroupService/Create` produce an inert artifact (no holders / no referencing bindings / empty group) — access is conferred only through a now-sensitive grant verb.
+- **B6 — author-inert create = routine.** `RoleService/Create`, `GroupService/Create` produce an inert artifact (no holders / no referencing bindings / empty group) — access is conferred only through a now-sensitive grant verb.
 
 ## Enforcement & fail-safe
 
