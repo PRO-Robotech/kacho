@@ -252,43 +252,52 @@ Per-repo `ci.yaml` по-прежнему гоняет только сборку/
 шага нет, перечисленные инварианты плоскости данных **не проверяются автоматически** —
 и это записано здесь как число, а не как принятое решение.
 
-## 8. `AuthMode` Go-config default is `dev` (production posture set by the deploy profile)
+## 8. `AuthMode` — секюрное значение по умолчанию в коде; `dev` включается явным opt-in
 
 **Rule.** security.md: «Любой деплой — production-mode (anonymous fail-closed) + mTLS/JWT»
 — every deployment must run in production posture; the dev anonymous-fallback is for local
 fixtures only, never a deployed stand.
 
-**Divergence.** `internal/apps/kacho/config/config.go` defaults `AuthMode` to `"dev"` (and,
-consistently, `HydraJWKSURL` to a plaintext `http://` in-cluster URL, `HydraIssuer` to `""`,
-`DBSSLMode` to `disable`). When `KACHO_REGISTRY_AUTH_MODE` is unset the service falls back to
-`dev`, in which the data-plane guards `requireSecureJWKSURL` / `requireIssuerPinned`
-(serve.go) are skipped — so the identity-JWT trust anchor may be fetched over http:// with
-issuer-pinning off.
+> **Эта запись описывала обратное и переписана (сверено с деревом 2026-08-02).**
+> Здесь стояло, что Go-дефолт `AuthMode` — `dev`, что незаданная переменная роняет сервис
+> в dev-посадку и что боевую посадку обеспечивает **только** профиль развёртывания. В коде
+> сейчас противоположное: `internal/apps/kacho/config/config.go` объявляет `AuthMode` со
+> значением по умолчанию **`production`**, и рядом сказано, почему — core rule #16:
+> незаданная переменная не должна поднимать сервис в ослабленной посадке. `dev` стал
+> **явным opt-in** локальных фикстур и dev-профиля стенда.
+>
+> Разница не косметическая, и ради неё запись стоит читать. В прежней форме безопасная
+> посадка держалась на том, что профиль что-то **выставит** — то есть на действии, которого
+> может не быть; а пропуск был бы **молчаливым**, потому что сервис при этом поднимается и
+> выглядит здоровым. В нынешней она держится на том, что послабление надо **потребовать**.
+> Это и есть содержание «secure by default»: цена неполной настройки платится отказом в
+> старте, а не тихой работой в ослабленном режиме.
+>
+> Запись оставлена, а не удалена, потому что перевёрнутая запись опаснее отсутствующей:
+> реестр расхождений читают как источник **решений**, поэтому следующий аудитор
+> перепринимает уже закрытое — либо кто-то откатывает фикс на авторитете документа. Ровно
+> тот же исход разобран в §9 ниже; то, что он повторился в этом же файле, и есть довод за
+> сверку реестра с деревом, а не за доверие его дате.
 
-**Why accepted.**
-- **Platform-wide convention, not a registry-local choice.** Every `kacho-*` service
-  defaults its `<SVC>_AUTH_MODE` to `dev` in Go config (e.g. `kacho-geo`
-  `KACHO_GEO_AUTH_MODE default:"dev"`) and hardens via the deploy layer: the umbrella
-  prod profile (`kacho-deploy/helm/umbrella/values.prod.yaml`, per-subchart `values.yaml`)
-  sets `AUTH_MODE=production` + DB `sslmode=require`. security.md's «любой деплой —
-  production-mode» is satisfied by that deploy-profile override, not by the Go default —
-  the `dev` default exists purely for local `make dev-up` ergonomics.
-- **Blast radius is bounded independently of `AuthMode`.** `validateSecurityConfig`
-  (serve.go) fail-closes the *control-plane* regardless of mode: without breakglass, per-RPC
-  authz `Check` (IAM addr) **and** mTLS on **both** gRPC listeners (:9090/:9091) are
-  mandatory or the process refuses to boot. `AuthMode` toggles only the *data-plane* JWKS
-  transport/issuer-pinning strictness and a DB-SSL warning — it never relaxes gRPC authN/authZ.
-- **Fail-closed in production.** Under `AUTH_MODE=production[-strict]` the data-plane rejects
-  a non-https JWKS URL, an empty issuer, or an unacknowledged plaintext listener at startup
-  (`requireSecureJWKSURL` / `requireIssuerPinned` / `requireDataplaneTLSAck`, regression-tested
-  in `serve_test.go`), so a real deployment cannot silently run the weak trust anchor or expose
-  bearer tokens on cleartext.
+**Что осталось расхождением.** Часть умолчаний того же файла (DB `sslmode`, issuer) —
+по-прежнему нестрогие значения, рассчитанные на то, что боевой профиль их задаст. Отличие
+от прежнего состояния в том, что применить их молча теперь некому: под дефолтным
+`production` работают те самые boot-guard'ы data-plane (`requireSecureJWKSURL` /
+`requireIssuerPinned` / `requireDataplaneTLSAck`, регрессия в `serve_test.go`) и
+`validateSecurityConfig`, которые прежняя редакция называла пропускаемыми. Небезопасное
+умолчание перестало быть **достижимым** по умолчанию — оно осталось лишь недоделанным
+по форме.
 
-**What would revisit this.** A platform decision to flip the corelib/service convention to a
-secure-by-Go-default (`AuthMode` default `production`, with an explicit `dev` opt-in for local
-stands) — applied uniformly across all `kacho-*` services so registry does not diverge from
-its siblings. Until then the deploy profile is the single enforcement point and this default
-matches every peer service.
+**Blast radius, не зависящий от `AuthMode` (осталось верным).** `validateSecurityConfig`
+(serve.go) fail-closes *control-plane* в любом режиме: без breakglass per-RPC authz `Check`
+и mTLS на **обоих** gRPC-листенерах обязательны, иначе процесс не стартует. `AuthMode`
+управляет строгостью *data-plane*, но authN/authZ на gRPC не ослабляет ни в каком значении.
+
+**What would revisit this.** Довести остальные поля до той же формы — безопасное значение
+в коде, послабление явным opt-in, — чтобы посадка не зависела от полноты профиля **ни в
+одной** точке. Тогда запись закрывается целиком. Стоит проверить и соседей: обоснование
+прежней редакции ссылалось на «так у всех сервисов», и если это было верно, то у части из
+них дефолт мог остаться прежним.
 
 ## 9. ~~Register-on-first-push is a best-effort emit; a lost first-push intent is not reconciled~~ — CLOSED (2026-07-30)
 
