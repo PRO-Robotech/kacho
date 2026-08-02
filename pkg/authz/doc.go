@@ -32,13 +32,23 @@
 //	                                       │  OpenFGA                 │
 //	                                       └──────────────────────────┘
 //
-// # Cache invalidation (≤10s revoke propagation; NFR-5)
+// # Окно отзыва (объявлено политикой — см. revocation_policy.go)
 //
-//   - Cache TTL = 5s positive-only (negative not cached).
-//   - Push-invalidation через `pg_notify('kacho_iam_subjects', subject_id)`:
-//     dedicated pgx-conn в каждом backend (LISTEN-loop), на NOTIFY вызывает
-//     `Cache.InvalidateBySubject(subject_id)`.
-//   - Worst-case revoke: TTL=5s + NOTIFY≤1s + outbox-drain≤2s = ≤10s.
+//   - Кешируются только положительные вердикты, отрицательные — никогда.
+//     Поэтому ВЫДАЧА видна сразу, а ОТЗЫВ ждёт истечения записи.
+//   - Срок жизни записи И ЕСТЬ окно отзыва: иного пути снять её у
+//     backend-сервиса нет. Число и его обоснование — в `RevocationPolicy`
+//     (умолчание 5s, потолок 10s), перепись по сервисам — там же.
+//   - Здесь стояло «push-invalidation через pg_notify('kacho_iam_subjects') в
+//     каждом backend» и складывался бюджет «TTL=5s + NOTIFY≤1s +
+//     outbox-drain≤2s = ≤10s». Слагаемого NOTIFY не существует: у канала нет
+//     отправителя, а при database-per-service backend-сервис к БД iam и не
+//     подключён. Итог ≤10s остался верным, но по другой причине — он теперь
+//     объявленный ПОТОЛОК, а не сумма с несуществующим членом.
+//   - Отзыв УЧЁТНЫХ ДАННЫХ (токен, ключ, уволенный сотрудник) по этому окну НЕ
+//     ездит и остаётся немедленным: он снимается на краю
+//     (`InternalAuthzCacheService.InvalidateSubject` из `subject_change_outbox`,
+//     дренаж ≤1s), и запрос с отозванным токеном до backend-сервиса не доходит.
 //
 // # Fail modes
 //

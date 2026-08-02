@@ -49,8 +49,15 @@ var ErrIAMCheckNotConfigured = errors.New("check: IAM CheckClient not configured
 //   - (nil, nil, ErrIAMCheckNotConfigured) — peer не задан и breakglass=false.
 //
 // Cache отдаётся **отдельно** (а не только через interceptor) чтобы caller
-// мог передать тот же экземпляр в `authz.ListenInvalidator.Cache` (общий
-// pg_notify-driven invalidation). См. cmd/kacho-loadbalancer/main.go wiring.
+// мог передать тот же экземпляр в `authz.ListenInvalidator.Cache`. См.
+// cmd/kacho-loadbalancer/main.go wiring.
+//
+// Оговорка, без которой предыдущая фраза вводит в заблуждение: инвалидатор
+// провязан, но по каналу `kacho_iam_subjects` в этом репозитории НИКТО не
+// пишет (отправителя нет ни в одной миграции и ни в одном сервисе), а чарт
+// поставляет его выключенным. Поэтому фактическое окно отзыва здесь — срок
+// жизни записи, и оно объявлено в `pkg/authz.RevocationPolicy` вместе с
+// остальными. «Провязан» и «снимает право» — разные утверждения.
 func NewInterceptor(opts Options) (*authz.Interceptor, *authz.Cache, error) {
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
