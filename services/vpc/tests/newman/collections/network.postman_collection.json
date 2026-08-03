@@ -11498,8 +11498,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.environment.unset('opId');",
-                  "pm.test('create without required 'projectId' refused synchronously (400/403/404) — no Operation is minted', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 403, 404]));"
+                  "pm.environment.set('opId', '');",
+                  "pm.test(\"create without required 'projectId' refused synchronously (400/403/404) \\u2014 no Operation is minted\", () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 403, 404]));"
                 ]
               }
             }

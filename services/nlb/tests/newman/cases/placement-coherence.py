@@ -217,7 +217,12 @@ CASES.append(Case(
                  # e2e below fires as soon as a 2nd geo region is seeded.
                  "var _altR = pm.environment.get('existingRegionAltId') || '';",
                  "var _r = pm.environment.get('existingRegionId') || '';",
-                 "pm.environment.unset('zcLeakLbId');",
+                 # Пустое значение, а не снятие: страж неразрешённых подстановок (уровень
+                 # КОЛЛЕКЦИИ, поэтому он выполняется РАНЬШЕ pre_script шага и
+                 # перекрыть его шагом нельзя) срабатывает только на имени, не
+                 # определённом ни в одной области. Заданное пустым — законный
+                 # негативный случай по его собственному предикату.
+                 "pm.environment.set('zcLeakLbId', '');",
                  "if (pm.environment.get('zcSubR2Id') && _altR && _r && _altR !== _r) {",
                  "  pm.test('cross-region subnet rejected sync 400', () => pm.expect(pm.response.code).to.eql(400));",
                  "  const j = pm.response.json();",
@@ -241,7 +246,14 @@ CASES.append(Case(
         # drain the op + clean up any LB the single-region branch lawfully created
         # (no-op tolerant DELETE on the strict-400 path where zcLeakLbId is unset).
         poll_operation_until_done(),
+        # Условная уборка: `zcLeakLbId` ставит ТОЛЬКО ветка одно-регионального стенда.
+        # На стенде с двумя регионами срабатывает строгая ветка (sync 400), балансировщик
+        # не создаётся, и убирать нечего — а шаг всё равно уходил с неразрешённым
+        # `{{zcLeakLbId}}`, что харнесс справедливо считает находкой (запрос по литералу
+        # шаблона). Пропуск здесь — не маскировка: пропускается уборка того, чего не
+        # создали, а не проверка. Строгая ветка выше при этом обязана отработать.
         Step(name="cleanup-zc-leak-lb", method="DELETE", path=f"{_LB}/{{{{zcLeakLbId}}}}",
+             pre_script=["if (!pm.environment.get('zcLeakLbId')) { pm.execution.skipRequest(); }"],
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         *_cleanup_vpc("zcSubR2Id"),

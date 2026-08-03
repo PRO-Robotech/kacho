@@ -1362,7 +1362,7 @@
                   "pm.environment.unset('_crRetryStarted');",
                   "var _altR = pm.environment.get('existingRegionAltId') || '';",
                   "var _r = pm.environment.get('existingRegionId') || '';",
-                  "pm.environment.unset('zcLeakLbId');",
+                  "pm.environment.set('zcLeakLbId', '');",
                   "if (pm.environment.get('zcSubR2Id') && _altR && _r && _altR !== _r) {",
                   "  pm.test('cross-region subnet rejected sync 400', () => pm.expect(pm.response.code).to.eql(400));",
                   "  const j = pm.response.json();",
@@ -1463,6 +1463,15 @@
             }
           },
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('zcLeakLbId')) { pm.execution.skipRequest(); }"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {

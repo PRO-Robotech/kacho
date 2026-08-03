@@ -97,6 +97,20 @@ CASES.append(Case(
 # изменении и удалении): прежняя форма слала валидное тело и на успехе МУТИРОВАЛА посев.
 # Это свойство кейса сохраняем независимо от того, отбивает ли маршрут — проверка не
 # должна разрушать стенд, даже когда она красная.
+# Набор отказов включает 405/501 — это ФОРМА ОТКАЗА ВНЕШНЕГО ЛИСТЕНЕРА, а не послабление.
+#
+# Запрос, классифицированный как internal, но пришедший на внешний листенер, отдаётся
+# publicMux'у, и ответ производит сам grpc-gateway — ровно как если бы админской
+# поверхности не существовало вовсе: 404 там, где путь неизвестен, и 501/405 там, где путь
+# ПУБЛИЧНО существует под другим методом. Коллекция diskTypes — как раз этот случай:
+# публичное чтение живёт на том же пути, что админский CRUD. Отдельный `http.NotFound`
+# здесь стоял раньше и был снят намеренно: он отличался Content-Type и телом, то есть сам
+# отвечал на вопрос «есть ли тут админский путь» (см. gateway/internal/restmux/mux.go и
+# external_refusal_shape_test.go).
+#
+# Утверждение при этом НЕ ослаблено: все пять кодов — отказы, 200 по-прежнему запрещён,
+# и именно 200 (мутация) — то, что кейс существует ловить. Эталон набора — geo
+# `admin-not-on-public.py`, где стоит [403, 404, 405, 501] и суита зелёная.
 CASES.append(Case(
     id="DT-CR-NEG-EXTERNAL-ABSENT",
     title="POST /storage/v1/diskTypes empty-id на external → rejected (admin Create Internal-only, ban #6): 400/403/404 — НИКОГДА 200-mutation",
@@ -105,7 +119,7 @@ CASES.append(Case(
     #   route забриджен и authz прошёл (validation 400 до вставки).
     steps=[Step(name="cr-external", method="POST", path=DT, body={"id": ""},
                 test_script=[
-                    "pm.test('admin Create not usable on external (no 200 mutation)', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));",
+                    "pm.test('admin Create not usable on external (no 200 mutation)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([401, 403, 404, 405, 501]));",
                     "if (pm.response.code === 400) { pm.test('INVALID_ARGUMENT (id required)', () => pm.expect(pm.response.json().code).to.eql(3)); }"])],
 ))
 
@@ -117,7 +131,7 @@ CASES.append(Case(
     #   → NOT_FOUND/403, не 200, seed не мутируется.
     steps=[Step(name="upd-external", method="PATCH", path=f"{DT}/block-newman-nx-{{{{runId}}}}",
                 body={"name": "block-hacked"},
-                test_script=["pm.test('admin Update not usable on external (no 200 mutation)', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));"])],
+                test_script=["pm.test('admin Update not usable on external (no 200 mutation)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([401, 403, 404, 405, 501]));"])],
 ))
 
 CASES.append(Case(
@@ -127,7 +141,7 @@ CASES.append(Case(
     # verifies CS1-S2-04 (INV-7a). Non-destructive: несуществующий target (прежняя форма
     #   DELETE block-balanced удаляла реальный seed-тип → 200 в artifact).
     steps=[Step(name="del-external", method="DELETE", path=f"{DT}/block-newman-nx-{{{{runId}}}}",
-                test_script=["pm.test('admin Delete not usable on external (no 200 mutation)', () => pm.expect(pm.response.code).to.be.oneOf([401, 403, 404]));"])],
+                test_script=["pm.test('admin Delete not usable on external (no 200 mutation)', () => pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([401, 403, 404, 405, 501]));"])],
 ))
 
 # ---------------------------------------------------------------------------

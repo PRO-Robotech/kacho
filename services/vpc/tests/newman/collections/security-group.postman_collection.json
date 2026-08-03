@@ -19966,8 +19966,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.environment.unset('opId');",
-                  "pm.test('create without required 'projectId' refused synchronously (400/403/404) — no Operation is minted', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 403, 404]));"
+                  "pm.environment.set('opId', '');",
+                  "pm.test(\"create without required 'projectId' refused synchronously (400/403/404) \\u2014 no Operation is minted\", () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 403, 404]));"
                 ]
               }
             }
@@ -20179,8 +20179,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.environment.unset('opId');",
-                  "pm.test('create without required 'networkId' refused (sync 400/404, or an Operation that fails)', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 404, 200]));",
+                  "pm.environment.set('opId', '');",
+                  "pm.test(\"create without required 'networkId' refused (sync 400/404, or an Operation that fails)\", () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 404, 200]));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  pm.test('accepted response carries the Operation that must then fail', () =>     pm.expect(j.id, pm.response.text()).to.be.a('string'));",
