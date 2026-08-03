@@ -100,7 +100,7 @@
                   "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -161,7 +161,7 @@
                   "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -238,7 +238,7 @@
                   "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -312,7 +312,7 @@
                   "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -383,7 +383,7 @@
                   "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -471,7 +471,7 @@
                   "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -532,7 +532,7 @@
                   "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -605,7 +605,7 @@
                   "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -679,7 +679,7 @@
                   "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -750,7 +750,7 @@
                   "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -830,7 +830,7 @@
                   "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -902,7 +902,7 @@
                   "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -963,7 +963,7 @@
                   "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -1040,7 +1040,7 @@
                   "  pm.test('harness config: jwtStranger is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtStranger is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -1100,7 +1100,7 @@
                   "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -1171,7 +1171,7 @@
                   "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
