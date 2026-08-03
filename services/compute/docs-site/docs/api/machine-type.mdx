@@ -1,0 +1,158 @@
+---
+id: machine-type
+sidebar_position: 3
+title: MachineType
+---
+
+import { DICTIONARY } from '@site/src/constants/dictionary'
+import { TYPES } from '@site/src/constants/types'
+import { Codes } from '@site/src/components/commonBlocks/Codes'
+import { StatusTable } from '@site/src/components/commonBlocks/StatusTable'
+import { ApiOperation } from '@site/src/components/commonBlocks/ApiOperation'
+import CodeBlock from '@theme/CodeBlock'
+import dedent from 'ts-dedent'
+
+# MachineType
+
+**MachineType** — каталог типов машин: единственный канал, которым задаётся размер инстанса.
+Вместо того чтобы называть ядра и память по отдельности, вызывающий выбирает запись каталога,
+а её действующие ресурсы сервер выводит сам.
+
+Каталог **курируется администратором**: на публичной поверхности он доступен только на чтение
+(`Get` / `List`), а создание и изменение записей живут в `InternalMachineTypeService` на
+internal-порту (`:9091`) и на внешний endpoint не публикуются.
+
+:::info Идентификатор и ссылка с инстанса
+ID типа машины — `mt-` + 17 символов crockford-base32 (например, `mt-k3xe746h019hnz182`),
+неизменяемый на всю жизнь записи. В `Instance.machineTypeId` принимается **и** этот слаг, **и**
+устойчивое имя типа (`std-v3-2`), но в ответе всегда возвращается канонический `mt-`-слаг.
+
+Тип машины нельзя удалить, пока на нём есть инстансы: связь выражена внешним ключом
+`ON DELETE RESTRICT` в БД сервиса, а не проверкой в коде.
+:::
+
+## Поля ресурса
+
+<table>
+  <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>id</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.id.short}</td></tr>
+    <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>Устойчивое человекочитаемое имя, уникальное в каталоге (например, <code>std-v3-2</code>)</td></tr>
+    <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
+    <tr><td><code>family</code></td><td><code>Family</code></td><td>{DICTIONARY.machineTypeFamily.short}</td></tr>
+    <tr><td><code>effectiveResources</code></td><td><code>EffectiveResources</code></td><td>{DICTIONARY.effectiveResources.short}</td></tr>
+    <tr><td><code>availableZones</code></td><td><code>repeated {TYPES.string}</code></td><td>Зоны, в которых тип бронируется (output-only)</td></tr>
+    <tr><td><code>status</code></td><td><code>{TYPES.status}</code></td><td>{DICTIONARY.machineTypeStatus.short}</td></tr>
+    <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
+    <tr><td><code>createdAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.createdAt.short}</td></tr>
+  </tbody>
+</table>
+
+:::note Память — в мебибайтах, не в байтах
+`effectiveResources` несёт `vCpu`, `memoryMib`, `gpus` и `gpuType`. Единица памяти —
+**MiB**, и это же значение зеркалится на инстанс. Поле output-only: оно выводится из записи
+каталога, а не задаётся вызывающим.
+:::
+
+### Семейства
+
+<StatusTable values={[
+  { code: 'STANDARD', desc: 'Сбалансированное соотношение vCPU и памяти' },
+  { code: 'COMPUTE', desc: 'Уклон в вычисления — больше vCPU на единицу памяти' },
+  { code: 'MEMORY', desc: 'Уклон в память — больше памяти на vCPU' },
+  { code: 'GPU', desc: 'С графическими ускорителями; gpus / gpuType авторитетны' },
+]} />
+
+Гарантированная доля vCPU (`Instance.cpuGuaranteePercent`) применяется к семействам
+`STANDARD`, `COMPUTE` и `MEMORY`. Для `GPU` авторитетны поля ускорителей.
+
+### Статусы
+
+<StatusTable values={[
+  { code: 'AVAILABLE', desc: 'Бронируется свободно' },
+  { code: 'DEPRECATED', desc: 'Ещё запускается, но не рекомендуется (окно совместимости)' },
+  { code: 'RETIRED', desc: 'Снят с каталога — отвергается на Instance.Create' },
+]} />
+
+:::warning Снятый тип отвергается на создании
+Попытка создать инстанс на типе в статусе `RETIRED` даёт `FAILED_PRECONDITION` с текстом
+`"machine type %s is retired and cannot be used on Create"`. Уже существующие инстансы при этом
+продолжают работать — снятие типа с каталога не трогает того, что на нём уже запущено.
+:::
+
+---
+
+## Get
+
+<ApiOperation method="GET" endpoint="/compute/v1/machineTypes/{machineTypeId}">
+
+Возвращает тип машины по идентификатору.
+
+#### Пример запроса
+
+<CodeBlock language="bash">
+  {dedent`
+    curl http://localhost:18080/compute/v1/machineTypes/{machineTypeId} \\
+      -H 'Authorization: Bearer <JWT>'
+  `}
+</CodeBlock>
+
+#### Пример ответа
+
+<CodeBlock language="json">
+  {dedent`
+    {
+      "id": "mt-k3xe746h019hnz182",
+      "name": "std-v3-2",
+      "description": "Сбалансированный тип: 2 vCPU, 2 GiB",
+      "family": "STANDARD",
+      "effectiveResources": { "vCpu": 2, "memoryMib": "2048" },
+      "availableZones": ["region-1-a", "region-1-b"],
+      "status": "AVAILABLE",
+      "createdAt": "2026-06-06T14:27:00Z"
+    }
+  `}
+</CodeBlock>
+
+<Codes codes={['invalidArgument', 'notFound', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## List
+
+<ApiOperation method="GET" endpoint="/compute/v1/machineTypes">
+
+Возвращает каталог типов машин с cursor-пагинацией.
+
+#### Параметры запроса
+
+<table>
+  <thead><tr><th>Параметр</th><th>Тип</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>pageSize</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.pageSize.short}</td></tr>
+    <tr><td><code>pageToken</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.pageToken.short}</td></tr>
+    <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>Точное имя типа (<code>std-v3-2</code>); пусто — без фильтра</td></tr>
+    <tr><td><code>family</code></td><td><code>{TYPES.string}</code></td><td>Семейство (<code>GPU</code>); пусто — без фильтра</td></tr>
+    <tr><td><code>minGpus</code></td><td><code>{TYPES.string}</code></td><td>Минимальное число ускорителей; <code>0</code> — без фильтра</td></tr>
+  </tbody>
+</table>
+
+:::note Фильтры — закрытый список
+Каталог принимает только три фильтра: `name`, `family`, `minGpus`. Поле, которого нет в этом
+списке, не принимается молча — оно отвергается.
+:::
+
+#### Пример запроса
+
+<CodeBlock language="bash">
+  {dedent`
+    curl "http://localhost:18080/compute/v1/machineTypes?family=GPU&minGpus=4" \\
+      -H 'Authorization: Bearer <JWT>'
+  `}
+</CodeBlock>
+
+<Codes codes={['invalidArgument', 'permissionDenied', 'internal']} />
+
+</ApiOperation>

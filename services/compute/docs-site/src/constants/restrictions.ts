@@ -23,17 +23,12 @@ export const RESTRICTIONS = {
     'значение: regex [-_./\\@0-9a-z]*, длина 0..63',
   ],
   description: ['длина 0..256'],
-  diskSize: [
-    'размер в байтах',
-    'Create: 4194304 (4 MiB) .. 28587302322176 (~26 TiB)',
-    'Update: только увеличение и в меньшем верхнем пределе — 4194304 .. 4398046511104 (4 TiB)',
-    'уменьшение размера → INVALID_ARGUMENT «Disk size can only be increased»',
-  ],
-  blockSize: ['размер блока в байтах; по умолчанию 4096', 'immutable после Create'],
   instanceResources: [
-    'cores / memory / core_fraction / gpus — валидируются по таблице платформы (platformId)',
-    'core_fraction ∈ {0, 5, 20, 50, 100}',
-    'изменение cores/memory/platformId — только когда Instance в статусе STOPPED',
+    'размер задаётся ссылкой на каталог: machineTypeId — слаг «mt-…» либо устойчивое имя типа',
+    'effectiveResources (vCpu / memoryMib / gpus / gpuType) выводится сервером и на вход не принимается',
+    'cpuGuaranteePercent ∈ 0..100 (0 — burstable); применяется к семействам STANDARD / COMPUTE / MEMORY',
+    'изменение machineTypeId / cpuGuaranteePercent / placementGroupId — только когда Instance в статусе STOPPED',
+    'тип в статусе RETIRED отвергается на Create',
   ],
   metadata: [
     'карта key:value; суммарный размер всех ключей и значений < 512 KB, каждое значение ≤ 256 KB',

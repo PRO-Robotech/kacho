@@ -87,7 +87,7 @@ production — ещё и адреса peer-рёбер, в том числе `ext
     <tr><td><code>extapi.iam.internal-addr</code></td><td><em>(обязателен в production)</em></td><td>Адрес iam INTERNAL listener'а — по этому соединению идёт per-RPC Check. Отдельного адреса в секции <code>authz</code> нет</td></tr>
     <tr><td><code>authz.iam.request-timeout</code></td><td><code>500ms</code></td><td>Per-request deadline к Check</td></tr>
     <tr><td><code>authz.cache.enable</code> / <code>ttl</code> / <code>size</code></td><td><code>true</code> / <code>5s</code> / <code>10000</code></td><td>Positive-only LRU-кэш над Check</td></tr>
-    <tr><td><code>authz.list-filter.enabled</code></td><td><code>true</code></td><td>Per-object фильтрация List через ListObjects (read == enforce)</td></tr>
+    <tr><td><code>authz.list-filter.enabled</code></td><td><code>true</code></td><td>Пообъектная фильтрация страницы List через <code>BatchCheck</code> по отношению <code>v_get</code>: членство в странице равно праву на чтение</td></tr>
     <tr><td><code>authz.list-filter.fail-open</code></td><td><code>false</code></td><td>iam недоступен → List → <code>UNAVAILABLE</code> (не нефильтрованный)</td></tr>
     <tr><td><code>authz.trusted-forwarder-sans</code></td><td><code>[]</code></td><td>Allow-list cert-SAN, которым разрешено форвардить end-user principal. Обязан быть непустым при production + mTLS (обычно SAN api-gateway)</td></tr>
     <tr><td><code>authz.breakglass</code></td><td><code>false</code></td><td>Dev-only аварийный обход; в production отвергается валидацией</td></tr>

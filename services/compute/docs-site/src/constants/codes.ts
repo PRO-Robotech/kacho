@@ -10,7 +10,7 @@ export const CODES = {
   notFound: {
     grpc: 'NOT_FOUND',
     http: '404',
-    when: 'Ресурс с указанным id не существует (well-formed id, но строки нет): Instance / Disk / Image / Snapshot / Disk type',
+    when: 'Ресурс с указанным id не существует (well-formed id, но строки нет): Instance / MachineType',
   },
   alreadyExists: {
     grpc: 'ALREADY_EXISTS',
@@ -20,7 +20,7 @@ export const CODES = {
   failedPrecondition: {
     grpc: 'FAILED_PRECONDITION',
     http: '400',
-    when: 'Состояние не позволяет операцию: «Instance must be stopped», «Instance is not running», «The disk is being used», disk не READY при attach',
+    when: 'Состояние не позволяет операцию: «instance must be STOPPED to change sizing or placement», «Instance is not running», «Instance is not running or stopped», «machine type … is retired and cannot be used on Create»',
   },
   unavailable: {
     grpc: 'UNAVAILABLE',
