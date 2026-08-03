@@ -15,9 +15,6 @@ FGA relation resolved.
 WHAT IS NOT MINTED HERE, AND WHY — stated per credential, because the previous blanket
 sentence was WRONG for half of them and that error cost nine assertions that never ran:
 
-  - `jwtAccountAdminAStepUp` — genuinely needs a human User principal carrying an `acr`
-    step-up claim, which only an interactive Kratos->Hydra login produces. Not mintable
-    by any machine path. Left unset so its cases fail loudly rather than being faked.
   - `apiTokenValid` / `apiTokenRevoked` / `apiTokenMalformed` — minted (see the block in
     `seed()`). These are SERVICE-ACCOUNT KEYS, not human credentials; the case-file says
     so itself. Lumping them with the step-up token was the mistake.
@@ -574,6 +571,32 @@ def seed() -> dict:
         # account-admin A / B
         "jwtAccountAdminA": tok_adminA,
         "jwtAccountAdminB": tok_adminB,
+        # Повышенный вход (`required_acr_min=2`, RFC 9470) — тот же предъявитель
+        # account-admin, и это НЕ подделка. Правило повышения одно на платформу
+        # (`grpcsrv.EvaluateStepUp`, к нему приходят ОБА энфорсера — StepUpGate края и
+        # внутренний acr-floor iam), и его ПЕРВАЯ ветка снимает порог интерактивности с
+        # машинного принципала целиком: `PrincipalType == "service_account"` → allow, до
+        # всякого сравнения acr. Предъявителю здесь не нужен acr=2 — ему нужно БЫТЬ
+        # служебной учёткой, а он ею и является (client_credentials + claim от
+        # token-hook). Проверено вызовом, а не прочтением: `SAKeyService.Issue` — та самая
+        # ручка с порогом 2 — отвечает 200 на этот токен.
+        #
+        # ЧТО ЗДЕСЬ БЫЛО. Слот стоял пустым, потому что запись посева объявляла его
+        # «требующим настоящего интерактивного входа, не куемым никаким машинным путём».
+        # Это фольклор: соседний абзац выше уже снимал ровно такую формулировку с трёх
+        # ключей служебной учётки, но четвёртый оставил — предположение про acr никто не
+        # перепроверил по коду правила. Ценой был не только сам слот: пустой предъявитель
+        # даёт 401, мутация не возвращает Operation, и дальше сыплется каскад захватов.
+        #
+        # ПОЧЕМУ ЭТО НЕ ОСЛАБЛЕНИЕ. Ни один кейс не проверяет САМ порог повышения — это
+        # объявленный долг с числом (1 инвариант, 2 ручки; см. врезку «NOT COVERED HERE»
+        # в cases/iam-service-account.py), а объявление порога держит Go-гейт над
+        # каталогом прав. Во всех кейсах, читающих этот слот, повышенный вход — СРЕДСТВО
+        # ДОСТУПА к ручке, а не предмет утверждения (редактирование секрета ключа,
+        # disable/enable учётки, block/unblock пользователя). Появится волна, умеющая
+        # предъявить человеческую сессию с acr и без — порог получит собственную пробу, и
+        # ей понадобится СВОЙ слот, а не этот.
+        "jwtAccountAdminAStepUp": tok_adminA,
         # invitee (admin@acctB + editor@projA1)
         "jwtInvitee": tok_invitee,
         # editor @ B / cross project A2
