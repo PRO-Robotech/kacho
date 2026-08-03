@@ -21,15 +21,16 @@ Subjects (jwt* environment variables):
       the only one expressible here: "may addTargets but may not Update" is not, since
       both verbs resolve to the same relation.
 
-  jwtCustomRoleOperator   — SEEDED BUT UNUSED, and its verbs no longer exist.
-      The fixture builds it from loadbalancer.networkLoadBalancers.{start,stop}, which
-      migration 0059 removed from the permission catalog when administrative
-      enable/disable moved to NetworkLoadBalancer.admin_state. A role built from verbs
-      outside its type's vocabulary materializes nothing, silently — so this subject
-      would hold no access at all if any step used it. No step does: the token is
-      referenced nowhere but this list, which is why nothing goes red. Left as a
-      finding rather than repaired here, because choosing what the operator role SHOULD
-      grant post-0059 is a product decision, not a rename.
+  (jwtCustomRoleOperator was REMOVED — the product decision the note here deferred.)
+      It was built from loadbalancer.networkLoadBalancers.{start,stop}, verbs migration
+      0059 dropped when administrative enable/disable moved to
+      NetworkLoadBalancer.admin_state. Post-0059 the only way to express an operator is
+      `update` — editing admin_state is an ordinary mutation — and `update` is already
+      what jwtCustomRoleTargetManager carries, so a second custom role on the same verb
+      would distinguish nothing: the slot lost its subject rather than its wording.
+      No step referenced the token, so removing it silences no assertion. The class it
+      belonged to — a fixture role authored from a verb the catalog does not publish —
+      is now held tree-wide by deploy/scripts/assert-fixture-role-verbs-exist.py.
 """
 
 CASES = []
