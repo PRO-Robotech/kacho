@@ -1,6 +1,6 @@
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
-.PHONY: dev-up dev-down dev-prod-up assert-rollout-ready assert-jobs-healthy assert-production-posture \
+.PHONY: dev-up dev-down dev-prod-up generated-scripts-parse assert-rollout-ready assert-jobs-healthy assert-production-posture \
         assert-forwarder-narrowing assert-outbox-autovacuum helm-manifest-test \
         reload-svc logs-svc psql preflight e2e-test helm-lint \
         loadtest-address-allocate loadtest-address-allocate-clean \
@@ -637,6 +637,24 @@ gate-self-test:
 # действующую защиту.
 alt-fixture-discipline:
 	@python3 scripts/assert-alt-fixtures-are-another.py
+
+# generated-scripts-parse — каждый скрипт сгенерированной коллекции обязан РАЗБИРАТЬСЯ.
+#
+# Шаг, чей скрипт не разбирается, не падает — он НЕ ИСПОЛНЯЕТСЯ, и newman считает это
+# в канале, отдельном от `assertions.failed`. Поэтому сводка суиты может показывать
+# «0 упавших» ровно там, где проверки не выполнялись вовсе. Замерено 2026-08-03: 10
+# скриптов vpc не разбирались (заголовок с апострофом вклеивался в одинарные кавычки),
+# и вдобавок 4 утверждения краснели на ЧУЖОЙ операции — снятый вместе со скриптом
+# `pm.environment.unset('opId')` оставлял поллеру идентификатор от предыдущего шага.
+#
+# Гейт разбирает НАСТОЯЩИМ парсером, а не выражением. Первая перепись этого дефекта
+# бралась регулярным выражением и дала ~100 задетых коллекций в семи сервисах; верное
+# число — 10 в одном. Выражение не отличает сломанный литерал от корректно
+# экранированного и не имеет контроля ни в одну сторону.
+generated-scripts-parse:
+	@node scripts/assert-generated-scripts-parse.js \
+	  ../services/*/tests/newman/collections/*.json \
+	  ../gateway/tests/newman/collections/*.json
 
 # waiter-discipline — ожидание и остановка идут по ЗАХВАЧЕННОМУ идентификатору
 # процесса, а не по шаблону командной строки.
