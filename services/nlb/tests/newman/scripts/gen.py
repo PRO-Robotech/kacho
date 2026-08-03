@@ -149,6 +149,14 @@ PRE_GLOBAL = [
     "seed did not run: ' + __missing.join(', ') + ' are empty. Seed via tests/authz-fixtures "
     "(prodrun.sh patches the suite env). Falling back to another subject would test a DIFFERENT "
     "principal and report green about a subject that was never exercised.'));",
+    # ...ЗАТЕМ ПРОПУСТИТЬ. Санкционированная форма — утвердить (назвав переменную) и
+    # НЕ отправлять; она объявлена в exec-coverage.py (раздел STATIC BANS), эталон —
+    # iam gen.py::require_env_url. Этот скрипт — pre-request КОРНЯ коллекции, то есть
+    # исполняется перед КАЖДЫМ запросом: без пропуска весь набор уезжал бы без
+    # предъявителя, о котором сказано прямо в тексте отказа выше, и каждый шаг
+    # засчитывался бы против ДРУГОГО принципала. Утверждение уже отработало, поэтому
+    # пропуск остаётся ЗАПИСАННЫМ падением с именем переменной, а не немым.
+    "  pm.execution.skipRequest();",
     "}",
     *_URL_VAR_GUARD,
 ]

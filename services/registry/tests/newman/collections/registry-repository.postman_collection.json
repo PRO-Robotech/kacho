@@ -29,6 +29,7 @@
           "const __missing = __needed.filter((k) => !(pm.environment.get(k) || pm.variables.get(k) || ''));",
           "if (__missing.length > 0) {",
           "  pm.test('FIXTURE REQUIRED: ' + __missing.join(', '), () => pm.expect.fail('the suite fixture seed did not run: ' + __missing.join(', ') + ' are empty. Seed via tests/authz-fixtures (prodrun.sh patches the suite env). An empty id is not a skip — it is sent as-is and the request is refused on authorization, so every later failure names the wrong cause.'));",
+          "  pm.execution.skipRequest();",
           "}",
           "(function () {",
           "  var _u = '';",

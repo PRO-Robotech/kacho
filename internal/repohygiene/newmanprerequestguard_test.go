@@ -86,19 +86,33 @@ func (a preAssertion) String() string {
 
 // guardCensus — ОБЪЁМ ОСМОТРЕННОГО. Без него «ноль находок» и «ноль прочитанного»
 // читаются одинаково, а обход, переставший доходить до коллекций, выходит зелёным.
+//
+// Скрипты считаются ПО ЯРУСАМ, и это не украшение переписи. Пока ярус не назван
+// отдельным числом, слепая зона по целому ярусу читается как «чисто»: первая
+// редакция этого гейта обходила только шаги, а pre-request КОРНЯ коллекции —
+// скрипт, который newman исполняет перед КАЖДЫМ запросом — не читала вовсе.
+// Гейт печатал «утверждений 4139, из них в санкционированной форме 4139», то
+// есть ноль находок, тогда как в корнях лежало 13 утверждений ровно того класса,
+// который он запрещает. Число по ярусу делает такую зону видимой: ярус, у
+// которого скриптов ноль, теперь виден как ноль.
 type guardCensus struct {
-	collections int
-	items       int
-	scripts     int // шагов, несущих непустой pre-request скрипт
-	assertions  int
-	sanctioned  int
-	unparsed    []string
+	collections  int
+	items        int
+	scripts      int // ВСЕГО узлов с непустым pre-request скриптом
+	rootScripts  int // из них — корень коллекции (исполняется перед КАЖДЫМ запросом)
+	folderScript int // из них — папка (исполняется перед каждым запросом папки)
+	itemScripts  int // из них — сам шаг
+	assertions   int
+	sanctioned   int
+	unparsed     []string
 }
 
 func (c guardCensus) String() string {
-	return fmt.Sprintf("осмотрено коллекций %d, шагов %d, pre-request скриптов %d; "+
-		"утверждений в них %d, из них в санкционированной форме %d",
-		c.collections, c.items, c.scripts, c.assertions, c.sanctioned)
+	return fmt.Sprintf("осмотрено коллекций %d, шагов %d, pre-request скриптов %d "+
+		"(корень коллекции %d, папка %d, шаг %d); утверждений в них %d, "+
+		"из них в санкционированной форме %d",
+		c.collections, c.items, c.scripts, c.rootScripts, c.folderScript, c.itemScripts,
+		c.assertions, c.sanctioned)
 }
 
 var (
@@ -131,28 +145,28 @@ func analyzeNewmanPrerequestGuards(t *testing.T, tt *trackedTree) ([]preAssertio
 			continue
 		}
 		var col struct {
-			Item json.RawMessage `json:"item"`
+			Item  json.RawMessage `json:"item"`
+			Event newmanEvents    `json:"event"`
 		}
 		if err := json.Unmarshal(b, &col); err != nil {
 			census.unparsed = append(census.unparsed, rel+": "+err.Error())
 			continue
 		}
 		census.collections++
-		items, err := flattenNewmanItems(col.Item)
-		if err != nil {
-			census.unparsed = append(census.unparsed, rel+": "+err.Error())
-			continue
-		}
-		for _, it := range items {
-			census.items++
-			src := it.preRequest()
+
+		// scan — один и тот же предикат на любом ярусе. Ярус влияет ТОЛЬКО на
+		// координату и на счётчик переписи, но не на то, что считается
+		// отступлением: newman исполняет pre-request корня и папки перед каждым
+		// запросом в их области, поэтому утверждение без пропуска отправляет шаг
+		// ровно так же — только сразу во многих шагах, а не в одном.
+		scan := func(src, site string) {
 			if strings.TrimSpace(src) == "" {
-				continue
+				return
 			}
 			census.scripts++
 			for _, a := range scanPreRequestAssertions(src) {
 				a.collection = rel
-				a.item = it.Name
+				a.item = site
 				census.assertions++
 				if a.hasSkip && a.depth > 0 {
 					census.sanctioned++
@@ -160,41 +174,88 @@ func analyzeNewmanPrerequestGuards(t *testing.T, tt *trackedTree) ([]preAssertio
 				all = append(all, a)
 			}
 		}
+
+		// ЯРУС 1 — корень коллекции. Читается ПЕРВЫМ намеренно: именно этот ярус
+		// был слепой зоной, и именно он самый широкий по радиусу.
+		if src := col.Event.preRequest(); strings.TrimSpace(src) != "" {
+			census.rootScripts++
+			scan(src, "<корень коллекции — исполняется перед КАЖДЫМ запросом>")
+		}
+
+		nodes, err := flattenNewmanItems(col.Item)
+		if err != nil {
+			census.unparsed = append(census.unparsed, rel+": "+err.Error())
+			continue
+		}
+		for _, n := range nodes {
+			src := n.Event.preRequest()
+			if n.isFolder {
+				// ЯРУС 2 — папка.
+				if strings.TrimSpace(src) != "" {
+					census.folderScript++
+					scan(src, "<папка "+n.Name+" — перед каждым запросом папки>")
+				}
+				continue
+			}
+			// ЯРУС 3 — шаг.
+			census.items++
+			if strings.TrimSpace(src) != "" {
+				census.itemScripts++
+			}
+			scan(src, n.Name)
+		}
 	}
 	return all, census
 }
 
-// newmanItem — лист коллекции: шаг со своими скриптами.
-type newmanItem struct {
-	Name  string `json:"name"`
-	Item  json.RawMessage
-	Event []struct {
-		Listen string `json:"listen"`
-		Script struct {
-			// newman допускает и массив строк, и одну строку.
-			Exec json.RawMessage `json:"exec"`
-		} `json:"script"`
-	} `json:"event"`
+// newmanEvents — события узла коллекции. ОДИН тип на все три яруса (корень,
+// папка, шаг): в схеме Postman они описаны одинаково, и разбирать их разными
+// путями значило бы завести ярус, умеющий отстать от остальных.
+type newmanEvents []struct {
+	Listen string `json:"listen"`
+	Script struct {
+		// newman допускает и массив строк, и одну строку.
+		Exec json.RawMessage `json:"exec"`
+	} `json:"script"`
 }
 
-func (it newmanItem) preRequest() string {
-	for _, e := range it.Event {
+// preRequest — СКЛЕЙКА всех pre-request скриптов узла, а не первый из них.
+//
+// Прежняя редакция возвращала первый и молча роняла остальные. newman исполняет
+// ВСЕ события `prerequest` узла, поэтому отступление во втором было бы невидимо.
+// Узлов с двумя такими событиями в дереве сегодня нет — но «сегодня нет» есть
+// свойство дерева, а не свойство разбора, и разбор, опирающийся на то, чего пока
+// не написали, воспроизводит форму дерева вместо формы запрета.
+func (ev newmanEvents) preRequest() string {
+	var parts []string
+	for _, e := range ev {
 		if e.Listen != "prerequest" || len(e.Script.Exec) == 0 {
 			continue
 		}
 		var lines []string
 		if err := json.Unmarshal(e.Script.Exec, &lines); err == nil {
-			return strings.Join(lines, "\n")
+			parts = append(parts, strings.Join(lines, "\n"))
+			continue
 		}
 		var one string
 		if err := json.Unmarshal(e.Script.Exec, &one); err == nil {
-			return one
+			parts = append(parts, one)
 		}
 	}
-	return ""
+	return strings.Join(parts, "\n")
 }
 
-// flattenNewmanItems — рекурсивный обход папок коллекции до листьев.
+// newmanItem — узел коллекции: шаг ЛИБО папка, со своими скриптами.
+type newmanItem struct {
+	Name     string `json:"name"`
+	Item     json.RawMessage
+	Event    newmanEvents `json:"event"`
+	isFolder bool
+}
+
+// flattenNewmanItems — рекурсивный обход коллекции. Возвращает и листья (шаги),
+// и ПАПКИ: у папки бывает собственный pre-request скрипт, исполняемый перед
+// каждым запросом внутри неё, и пропуск папки завёл бы слепой ярус.
 func flattenNewmanItems(raw json.RawMessage) ([]newmanItem, error) {
 	if len(raw) == 0 {
 		return nil, nil
@@ -206,6 +267,8 @@ func flattenNewmanItems(raw json.RawMessage) ([]newmanItem, error) {
 	var out []newmanItem
 	for _, n := range nodes {
 		if len(n.Item) > 0 {
+			n.isFolder = true
+			out = append(out, n)
 			kids, err := flattenNewmanItems(n.Item)
 			if err != nil {
 				return nil, err
@@ -686,5 +749,123 @@ func TestPreRequestGuardAnalyzerSeesEveryCollection(t *testing.T) {
 	if census.collections != want {
 		t.Errorf("прочитано %d коллекций из %d, лежащих в индексе — разница есть слепая зона "+
 			"гейта, а не «чисто»", census.collections, want)
+	}
+
+	// СЧЁТА ФАЙЛОВ НЕДОСТАТОЧНО, и это не теория.
+	//
+	// Первая редакция этой самопроверки сверяла ровно одно число — сколько файлов
+	// открыто, — и была зелёной, пока обход не читал ЦЕЛЫЙ ЯРУС: pre-request корня
+	// коллекции (скрипт, исполняемый newman перед КАЖДЫМ запросом) не разбирался
+	// вовсе. Все 82 файла «прочитаны», перепись объявляла ноль находок, а в корнях
+	// лежало 13 утверждений ровно того класса, который гейт запрещает. Проверка
+	// формы без содержания: открыть файл и осмотреть его — разные утверждения.
+	//
+	// Поэтому ярус подтверждается СВОИМ числом. Ярус, переставший разбираться,
+	// обнуляет его, и это видно, а не читается как «чисто».
+	if census.rootScripts == 0 {
+		t.Error("НИ ОДИН pre-request корня коллекции не прочитан. Либо разбор перестал " +
+			"доходить до поля event самой коллекции, либо корневые скрипты исчезли из дерева. " +
+			"В первом случае гейт слеп к ярусу, который исполняется перед КАЖДЫМ запросом, " +
+			"и его зелёный ничего не значит; во втором — предпосылка изменилась и эту проверку " +
+			"надо пересмотреть осознанно, а не снять.")
+	}
+	if census.itemScripts == 0 {
+		t.Error("НИ ОДИН pre-request шага не прочитан — обход перестал доходить до листьев " +
+			"коллекции, и «ноль находок» здесь означает «ноль прочитанного»")
+	}
+	if census.rootScripts+census.folderScript+census.itemScripts != census.scripts {
+		t.Errorf("ярусы не сходятся с общим счётом (%d+%d+%d != %d) — значит есть скрипты, "+
+			"попавшие в общий счёт мимо ярусов, и перепись перестала быть переписью",
+			census.rootScripts, census.folderScript, census.itemScripts, census.scripts)
+	}
+}
+
+// TestPreRequestGuardCoversEveryTier — предикат ОДИН на все три яруса.
+//
+// Ярус корня и ярус папки исполняются перед КАЖДЫМ запросом своей области,
+// поэтому отступление там шире по радиусу, чем в отдельном шаге, — а разбор их
+// когда-то не читал вовсе. Здесь синтетическая коллекция несёт один и тот же
+// дефект на каждом ярусе, и гейт обязан найти ВСЕ три: ярус, выпавший из обхода,
+// уменьшит это число, и тест назовёт, какой именно.
+func TestPreRequestGuardCoversEveryTier(t *testing.T) {
+	const deviant = `if (!pm.environment.get('jwtStranger')) {
+  pm.test('harness config: jwtStranger is set', () => pm.expect.fail('нет'));
+}`
+	const lawful = `if (!pm.environment.get('opId')) {
+  pm.test('operation id opId was captured', () => pm.expect.fail('opId is empty'));
+  pm.execution.skipRequest();
+}`
+	ev := func(src string) json.RawMessage {
+		b, err := json.Marshal([]map[string]any{{
+			"listen": "prerequest",
+			"script": map[string]any{"exec": strings.Split(src, "\n")},
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+
+	for _, tier := range []string{"корень коллекции", "папка", "шаг"} {
+		t.Run(tier, func(t *testing.T) {
+			var col struct {
+				Item  json.RawMessage `json:"item"`
+				Event newmanEvents    `json:"event"`
+			}
+			leafSrc, folderSrc, rootSrc := lawful, lawful, lawful
+			switch tier {
+			case "корень коллекции":
+				rootSrc = deviant
+			case "папка":
+				folderSrc = deviant
+			case "шаг":
+				leafSrc = deviant
+			}
+			leaf, _ := json.Marshal([]map[string]any{{"name": "шаг", "event": json.RawMessage(ev(leafSrc))}})
+			folder, _ := json.Marshal([]map[string]any{{
+				"name": "папка", "item": json.RawMessage(leaf), "event": json.RawMessage(ev(folderSrc)),
+			}})
+			if err := json.Unmarshal(ev(rootSrc), &col.Event); err != nil {
+				t.Fatal(err)
+			}
+			col.Item = folder
+
+			// тот же разбор, что и у гейта, но на синтетическом дереве
+			var found int
+			var where string
+			check := func(src, site string) {
+				for _, a := range scanPreRequestAssertions(src) {
+					if a.depth == 0 || !a.hasSkip {
+						found++
+						where = site
+					}
+				}
+			}
+			check(col.Event.preRequest(), "корень коллекции")
+			nodes, err := flattenNewmanItems(col.Item)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var sawFolder bool
+			for _, n := range nodes {
+				if n.isFolder {
+					sawFolder = true
+					check(n.Event.preRequest(), "папка")
+					continue
+				}
+				check(n.Event.preRequest(), "шаг")
+			}
+			if !sawFolder {
+				t.Fatal("обход не вернул ни одной ПАПКИ — ярус папки выпал из разбора, " +
+					"и дефект в скрипте папки был бы невидим")
+			}
+			if found != 1 {
+				t.Fatalf("на ярусе %q дефект не найден (находок %d) — этот ярус гейт не читает",
+					tier, found)
+			}
+			if where != tier {
+				t.Fatalf("дефект внесён на ярус %q, а найден на %q — координата неверна", tier, where)
+			}
+		})
 	}
 }
