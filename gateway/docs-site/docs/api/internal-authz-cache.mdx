@@ -31,9 +31,13 @@ push-drainer'а таблицы `subject_change_outbox`). Клиенты плат
 <ApiOperation method="gRPC" endpoint="kacho.cloud.apigateway.v1.InternalAuthzCacheService/InvalidateSubject">
 
 Сбрасывает записи authz-decision-кэша, привязанные к указанному subject (FGA-prefix). Возвращает
-`google.protobuf.Empty`. Освобождён от per-request authz (`permission = "<exempt>"`): сервис живёт
-только на internal mTLS-listener, единственный caller — iam по mutual-TLS, поэтому subject-level
-authz неприменим.
+`google.protobuf.Empty`.
+
+Записи в каталоге прав у метода нет (`permission = "<exempt>"`), и это не значит «без
+авторизации»: у сброса кэша нет tenant-объекта, против которого имел бы смысл subject-level Check.
+Вызывающий авторизуется **на транспортном уровне** — mTLS против внутреннего CA плюс per-RPC
+сверка SPIFFE-SAN проверенного сертификата с allow-list законных отправителей. Проверенный, но не
+входящий в список модуль отвергается.
 
 **Идемпотентность.** Subject без закэшированных записей возвращает `NotFound`, который drainer в
 iam маппит в «уже применено» (`ErrAlreadyApplied`) — строка outbox помечается `sent_at` и не
@@ -102,5 +106,5 @@ subject. Это безопасная верхняя граница — пере�
   </tbody>
 </table>
 
-Полная модель доверия listener'а (`:9091`), сетевая митигация и путь усиления (mTLS) — на странице
+Полная модель доверия listener'а (`:9091`) — mTLS, allow-list вызывающих и boot-guard — на странице
 [Internal Authz Cache (архитектура)](/architecture/internal-cache).
