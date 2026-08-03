@@ -4,11 +4,16 @@ import type * as Preset from '@docusaurus/preset-classic'
 
 const config: Config = {
   title: 'Kachō Compute',
-  tagline: 'Облачные вычислительные ресурсы — Instance, Disk, Image, Snapshot, DiskType',
+  tagline: 'Вычислительные ресурсы — Instance и MachineType; блочное хранение обслуживает Kachō Storage',
 
   url: 'https://compute.kacho.cloud',
   baseUrl: '/',
   onBrokenLinks: 'throw',
+  // Якорь, который никуда не ведёт, — такая же битая ссылка, как несуществующий
+  // путь: читатель приходит на страницу и не находит раздела. По умолчанию
+  // Docusaurus лишь предупреждает, из-за чего переименование заголовка проезжает
+  // сборку молча — гейт обязан на этом падать.
+  onBrokenAnchors: 'throw',
 
   i18n: {
     defaultLocale: 'ru',

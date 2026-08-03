@@ -16,41 +16,83 @@
 # только в kacho-iam, а там нет ни одного k8s-манифеста — чарты жили в kacho-deploy,
 # где security-scan не было вовсе; гейт зеленел, не проверяя ничего). Находки не новые —
 # новый сканер.
+#
+# ── ПУТИ ПЕРЕЧИСЛЕНЫ, А НЕ ЗАДАНЫ ШАБЛОНОМ (правка 2026-08-03) ───────────────────────
+# Прежняя редакция закрывала сайты документации шаблонами `*/docs-site/Dockerfile` и
+# `services/*/docs-site/deploy/templates/*.yaml`. Шаблон подхватывает новое молча — и
+# ровно это произошло: iam свой сайт УЖЕ вычистил (образ на базе nginx-unprivileged с
+# `USER 101`, деплоймент с securityContext и readOnlyRootFilesystem), а исключение
+# продолжало накрывать его по всем трём правилам. Исключению, которому больше нечего
+# исключать, верить нельзя ни в одну сторону: оно ничего не защищает и при этом выдаёт
+# закрытый долг за открытый.
+#
+# Замер, по которому составлен перечень (`trivy config` 0.64.1, ignorefile отключён, —
+# то есть ниже стоят реальные FAIL, а не предположение о них):
+#   AVD-DS-0002  — 16 FAIL:  9 ui-future + 7 сайтов документации  (iam НЕ входит)
+#   AVD-KSV-0014 — 22 FAIL:  9 ui-future + 7 сайтов + 6 нагрузочных (iam НЕ входит)
+#   AVD-KSV-0118 — те же 22
+# Тем же замером снята вторая избыточность: `templates/*.yaml` накрывал ingress/service/
+# hpa/configmap, которые не дают находок ни по одному правилу. Под исключением остаётся
+# только `deployment*.yaml`.
+#
+# Отсюда пофайловое перечисление. Цена — строка на файл; выгода в том, что оба события
+# становятся видимы правкой этого файла, а не молчанием: сайт вычистили — его строка тут
+# лишняя; появился новый сайт — он НЕ накрыт, скан краснеет и требует решения, вместо
+# того чтобы унаследовать чужое послабление по совпадению пути.
 
 misconfigurations:
-  # ── nginx-образы: ui-future (9 remotes) + docs-site (5) ───────────────────────────
+  # ── nginx-образы: 9 remotes ui-future + 7 сайтов документации ─────────────────────
   # nginx по умолчанию требует root: биндит :80 и пишет в /var/cache/nginx,
   # /var/run/nginx.pid. Перевод на non-root — не однострочник: база
   # nginx-unprivileged ЛИБО правка nginx.conf (listen 8080, pid /tmp), перенос
   # Service/Ingress/containerPort 80→8080 и emptyDir под cache/tmp. Риск — сломать
   # консоль на проде (uif держит kacho.in-cloud.io), поэтому нужен отдельный прогон с
   # проверкой в браузере.
+  # Эталон перевода лежит в дереве и не гипотетичен: services/iam/docs-site прошёл его
+  # целиком — по нему и делаются остальные семь.
   # Отслеживается: PRO-Robotech/kacho#4
   - id: AVD-DS-0002
     paths:
       - "ui-future/*/Dockerfile"
-      - "*/docs-site/Dockerfile"
-      - "services/*/docs-site/Dockerfile"
-    statement: "nginx требует root (:80 + /var/cache/nginx) — kacho#4"
+      - "gateway/docs-site/Dockerfile"
+      - "services/compute/docs-site/Dockerfile"
+      - "services/geo/docs-site/Dockerfile"
+      - "services/nlb/docs-site/Dockerfile"
+      - "services/registry/docs-site/Dockerfile"
+      - "services/storage/docs-site/Dockerfile"
+      - "services/vpc/docs-site/Dockerfile"
+    statement: "nginx требует root (:80 + /var/cache/nginx); iam уже переведён и здесь не значится — kacho#4"
 
   - id: AVD-KSV-0118
     paths:
-      - "ui-future/deploy/templates/*.yaml"
-      - "gateway/docs-site/deploy/templates/*.yaml"
-      - "services/*/docs-site/deploy/templates/*.yaml"
-    statement: "securityContext для nginx-деплойментов — kacho#4"
+      - "ui-future/deploy/templates/deployment-*.yaml"
+      - "gateway/docs-site/deploy/templates/deployment.yaml"
+      - "services/compute/docs-site/deploy/templates/deployment.yaml"
+      - "services/geo/docs-site/deploy/templates/deployment.yaml"
+      - "services/nlb/docs-site/deploy/templates/deployment.yaml"
+      - "services/registry/docs-site/deploy/templates/deployment.yaml"
+      - "services/storage/docs-site/deploy/templates/deployment.yaml"
+      - "services/vpc/docs-site/deploy/templates/deployment.yaml"
+    statement: "securityContext для nginx-деплойментов; iam уже вычищен и здесь не значится — kacho#4"
 
   - id: AVD-KSV-0014
     paths:
-      - "ui-future/deploy/templates/*.yaml"
-      - "gateway/docs-site/deploy/templates/*.yaml"
-      - "services/*/docs-site/deploy/templates/*.yaml"
-    statement: "read-only rootfs для nginx требует emptyDir под cache/tmp — kacho#4"
+      - "ui-future/deploy/templates/deployment-*.yaml"
+      - "gateway/docs-site/deploy/templates/deployment.yaml"
+      - "services/compute/docs-site/deploy/templates/deployment.yaml"
+      - "services/geo/docs-site/deploy/templates/deployment.yaml"
+      - "services/nlb/docs-site/deploy/templates/deployment.yaml"
+      - "services/registry/docs-site/deploy/templates/deployment.yaml"
+      - "services/storage/docs-site/deploy/templates/deployment.yaml"
+      - "services/vpc/docs-site/deploy/templates/deployment.yaml"
+    statement: "read-only rootfs требует emptyDir под cache/tmp; iam уже вычищен — kacho#4"
 
   # ── k6 / ghz — НАГРУЗОЧНЫЕ джобы, не прод ────────────────────────────────────────
   # Эфемерные Job'ы, которые запускают вручную под нагрузочный прогон. В кластере не
   # живут, tenant-данных не касаются, снаружи не доступны. Хардить их полезно, но
   # приоритет ниже прод-нагрузки.
+  # Предмет проверен тем же замером: 6 файлов дают FAIL по обоим правилам
+  # (deploy/load-tests/k6-address-allocate.yaml, четыре ghz-job'а nlb, in-cluster-job vpc).
   # Отслеживается: PRO-Robotech/kacho#4
   - id: AVD-KSV-0118
     paths:
@@ -67,8 +109,20 @@ misconfigurations:
   # ── zot (registry data-plane) ────────────────────────────────────────────────────
   # Сторонний образ zot пишет в свой data-dir; read-only rootfs требует проверки на
   # живом реестре (kacho.in-cloud.io обслуживает docker push/pull).
+  #
+  # ЗАМЕРЕНО 2026-08-03 и оставлено ОСОЗНАННО. Этой строке сейчас нечего исключать, но
+  # причина НЕ в том, что файл вычищен: чарт services/registry/deploy целиком отсутствует
+  # среди 86 целей `trivy config` — сканер не отдал по нему ни одной цели, тогда как чарты
+  # сайтов документации он разбирает по шаблонам поимённо. То есть здесь не «устаревшее
+  # исключение», а «нечего исключать, потому что не осматривается».
+  #
+  # Снимать строку на этом основании нельзя: отсутствие находки означает отсутствие
+  # осмотра, а не отсутствие дефекта, и на другой версии сканера чарт может разбираться —
+  # тогда строка снова несёт работу. Почему чарт registry выпадает из IaC-скана — предмет
+  # отдельной задачи; до тех пор строка стоит, а причина записана здесь, чтобы следующий
+  # читатель её не додумывал.
   # Отслеживается: PRO-Robotech/kacho#4
   - id: AVD-KSV-0014
     paths:
       - "services/registry/deploy/templates/statefulset-zot.yaml"
-    statement: "zot пишет в data-dir; нужен прогон на живом реестре — kacho#4"
+    statement: "zot пишет в data-dir; чарт registry сейчас вне целей IaC-скана — kacho#4"

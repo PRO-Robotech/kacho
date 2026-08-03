@@ -57,7 +57,7 @@ INTEGRATION_TIMEOUT ?= 25m
 # Сервисы, у которых есть интеграционные пакеты. Совпадает с матрицей CI.
 SERVICES ?= iam vpc compute geo nlb storage registry
 
-.PHONY: test test-unit test-integration test-service test-service-short help
+.PHONY: test test-unit test-integration test-service test-service-short docs-sites help
 
 ## test — всё, что проверяет CI: юниты + интеграция по всем сервисам.
 test: test-unit test-integration
@@ -107,6 +107,13 @@ test-service:
 test-service-short:
 	@test -n "$(SVC)" || { echo "нужен SVC=<сервис>"; exit 2; }
 	$(GO) test ./$(SVC_PATH)/... -race -cover -short -count=1 -timeout $(UNIT_TIMEOUT)
+
+## docs-sites — собрать ВСЕ сайты документации (gateway + services/*).
+## Каждая сборка судится кодом возврата: провалившаяся сборка Docusaurus
+## оставляет каталог build/ целиком, поэтому его наличие вердиктом не является.
+## Тот же скрипт зовёт job `docs-sites` в CI — гейт и человек запускают одно и то же.
+docs-sites:
+	python3 .github/scripts/build-docs-sites.py
 
 # SVC_PATH — где лежит сервис. gateway лежит в корне, остальные под services/.
 SVC_PATH = $(if $(filter gateway,$(SVC)),gateway,services/$(SVC))
