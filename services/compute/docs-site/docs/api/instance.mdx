@@ -257,7 +257,7 @@ Instance](/architecture/instance-lifecycle).
   { label: 'projectId', rules: RESTRICTIONS.projectId },
   { label: 'zoneId', rules: RESTRICTIONS.zoneId },
   { label: 'name', rules: RESTRICTIONS.name },
-  { label: 'resourcesSpec', rules: RESTRICTIONS.instanceResources },
+  { label: 'machineTypeId', rules: RESTRICTIONS.instanceResources },
   { label: 'metadata', rules: RESTRICTIONS.metadata },
 ]} />
 <Codes codes={['invalidArgument', 'alreadyExists', 'notFound', 'unavailable', 'permissionDenied', 'internal']} />
@@ -277,10 +277,14 @@ Instance](/architecture/instance-lifecycle).
 
 <ApiOperation method="PATCH" endpoint="/compute/v1/instances/{instanceId}" async>
 
-Изменяет mutable-поля инстанса. `name`, `description`, `labels`, `serviceAccountId`,
-`networkSettings`, `placementPolicy`, `schedulingPolicy` — меняются в любом статусе.
-`resourcesSpec` (cores/memory) и `platformId` — **только когда инстанс STOPPED**. `zoneId` и
-`bootDisk` — immutable. `metadata` меняется отдельным RPC `UpdateMetadata`.
+Изменяет mutable-поля инстанса. `name`, `description`, `labels`, `serviceAccountId` —
+меняются в любом статусе. `machineTypeId`, `cpuGuaranteePercent` и `placementGroupId` —
+**только когда инстанс STOPPED**. `vmSpec` применяется со следующей загрузки. `instanceKind`,
+`zoneId` и `bootSource` — **immutable**. `metadata` меняется отдельным RPC `UpdateMetadata`.
+
+Поле `sshPublicKeys` **не принимается вовсе** и отвергается синхронно: сервис ничего не кладёт
+внутрь гостя, поэтому принять ключи и не применить их значило бы обещать возможность, которой
+нет.
 
 #### Пример запроса
 
@@ -293,14 +297,15 @@ Instance](/architecture/instance-lifecycle).
   `}
 </CodeBlock>
 
-:::note Изменение ресурсов — только у остановленного инстанса
-Изменение `resourcesSpec` / `platformId` у работающего инстанса → `FAILED_PRECONDITION
-"Instance must be stopped"`. Сначала `Stop`, затем `Update`, затем `Start`.
+:::note Изменение размера — только у остановленного инстанса
+Изменение `machineTypeId` / `cpuGuaranteePercent` / `placementGroupId` у не остановленного
+инстанса → `FAILED_PRECONDITION "instance must be STOPPED to change sizing or placement"`.
+Сначала `Stop`, затем `Update`, затем `Start`.
 :::
 
 <Restrictions items={[
   { label: 'updateMask', rules: RESTRICTIONS.updateMask },
-  { label: 'resourcesSpec', rules: RESTRICTIONS.instanceResources },
+  { label: 'machineTypeId', rules: RESTRICTIONS.instanceResources },
 ]} />
 <Codes codes={['invalidArgument', 'notFound', 'failedPrecondition', 'permissionDenied', 'internal']} />
 
@@ -552,11 +557,11 @@ kacho-vpc; поле `nicId` связывает зеркало с оригина�
 
 ## Сценарии использования
 
-- **Веб-нагрузка.** Инстанс `standard-v3` c загрузочным диском из образа — стандартная
+- **Веб-нагрузка.** Инстанс на типе семейства `STANDARD` с загрузкой из образа — стандартная
   раскладка stateless-сервиса; горизонтальное масштабирование — несколько инстансов.
-- **Смена размера.** Нужны другие cores/memory — `Stop` → `Update(resourcesSpec)` → `Start`.
-- **Постоянные данные.** Диск данных (`autoDelete=false`), присоединённый через `AttachDisk`,
-  переживает пересоздание инстанса.
+- **Смена размера.** Нужен другой размер — `Stop` → `Update(machineTypeId)` → `Start`.
+- **Постоянные данные.** Том данных (`autoDelete=false`), присоединённый через `AttachDisk`,
+  переживает пересоздание инстанса: он принадлежит kacho-storage и живёт независимо.
 - **Обслуживание.** `Restart` для мягкого перезапуска; `GetSerialPortOutput` — для диагностики
   загрузки.
 
@@ -564,9 +569,11 @@ kacho-vpc; поле `nicId` связывает зеркало с оригина�
 
 :::caution Предусловия переходов — стабильные ошибки
 Нарушение предусловия возвращает стабильный `FAILED_PRECONDITION` с фиксированным текстом:
-`"Instance must be stopped"` (изменение ресурсов / attach NIC у работающего),
-`"Instance is not running"` (`Stop`/`Restart` не работающего), `"The disk is being used"`
-(удаление присоединённого диска). Тексты — часть контракта.
+`"instance must be STOPPED to change sizing or placement"` (изменение размера/размещения у
+не остановленного), `"Instance is not running"` (`Stop`/`Restart` не работающего),
+`"Instance is not running or stopped"` (операция над интерфейсом). Тексты — часть контракта.
+Отказы, относящиеся к тому, приходят от kacho-storage с его формулировками
+(`"Volume <id> is in use"`).
 :::
 
 :::note Загрузочный диск и autoDelete

@@ -174,18 +174,27 @@ sequenceDiagram
   `}
 </CodeBlock>
 
-:::note Размер диска
-Размер задаётся в байтах: от `4194304` (4 MiB) до `28587302322176` (~26 TiB) при Create.
-`Update` умеет только **увеличивать** размер (и в меньшем верхнем пределе — до 4 TiB);
-попытка уменьшить → `INVALID_ARGUMENT "Disk size can only be increased"`. Диск создаётся
-сразу в статусе `READY` (control-plane — реальных данных нет).
+:::note Размер тома
+Размер задаётся в байтах. Уменьшить размер нельзя: `Update` умеет только **увеличивать** его,
+попытка уменьшить → `INVALID_ARGUMENT "Volume size can only be increased"`. Точные границы и
+контракт тома — документация владельца, **kacho-storage**: том создаётся и изменяется там, а
+не здесь.
 :::
 
 ## Шаг 3. Создать Instance
 
-`Instance` — виртуальная машина. При создании обязательны `platformId`, `resourcesSpec`
-(cores/memory) и `bootDiskSpec` (загрузочный диск — здесь inline, из `diskSpec`). Инстанс
-принадлежит зоне (`zoneId`, immutable) и проекту.
+`Instance` — виртуальная машина. При создании обязательны `instanceKind` (`VM` или
+`CONTAINER`), `machineTypeId` (тип машины из каталога) и `bootSource` (источник загрузки).
+Инстанс принадлежит зоне (`zoneId`, immutable) и проекту.
+
+Тип машины возьмём из каталога:
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -s "$CMP/compute/v1/machineTypes?family=STANDARD" "\${auth[@]}"
+    export MT=mt-k3xe746h019hnz182   # id подходящего типа
+  `}
+</CodeBlock>
 
 <CodeBlock language="bash">
   {dedent`
@@ -194,12 +203,9 @@ sequenceDiagram
         "projectId": "'"$PROJECT"'",
         "name": "web-1",
         "zoneId": "'"$ZONE"'",
-        "platformId": "standard-v3",
-        "resourcesSpec": { "cores": 2, "memory": 2147483648, "coreFraction": 100 },
-        "bootDiskSpec": {
-          "autoDelete": true,
-          "diskSpec": { "typeId": "'"$DTYPE"'", "size": 10737418240 }
-        }
+        "instanceKind": "VM",
+        "machineTypeId": "'"$MT"'",
+        "bootSource": { "type": "storage.image", "id": "'"$IMAGE"'" }
       }'
   `}
 </CodeBlock>
@@ -207,18 +213,19 @@ sequenceDiagram
 <CodeBlock language="bash">
   {dedent`
     poll <operationId>
-    export INST=epd7t4w9e2x5h8mz0c3v   # из metadata.instanceId
+    export INST=ins-7t4w9e2x5h8mz0c3v   # из metadata.instanceId
   `}
 </CodeBlock>
 
-После завершения операции инстанс сразу в статусе `RUNNING` (control-plane переводит статус
-детерминированно, без гипервизора).
+После завершения операции инстанс закреплён в статусе `PROVISIONING`: операция создания
+отвечает за то, что ресурс записан, а запуск — отдельный переход (`Start`).
 
-:::note Ресурсы и платформа
-`cores`, `memory`, `coreFraction` и `gpus` валидируются по таблице платформы (`platformId`):
-`coreFraction ∈ {0, 5, 20, 50, 100}`, `memory ≤ 256 GiB`. Изменить `resourcesSpec` или
-`platformId` можно только когда инстанс **STOPPED** — иначе `FAILED_PRECONDITION "Instance
-must be stopped"`.
+:::note Размер приходит из каталога, а не из сырых чисел
+Ядра и память по отдельности не задаются: их выводит сервер из выбранного `machineTypeId` и
+возвращает в `effectiveResources` (память — в MiB). Свободная пара «платформа + ресурсы»
+снята с контракта. Изменить `machineTypeId`, `cpuGuaranteePercent` или `placementGroupId`
+можно только когда инстанс **STOPPED** — иначе `FAILED_PRECONDITION "instance must be STOPPED
+to change sizing or placement"`.
 :::
 
 :::caution Сетевые интерфейсы — отдельным действием
@@ -268,8 +275,9 @@ NIC автоматически. Сетевые интерфейсы (из дом
 
 :::note Preconditions переходов
 `Stop` требует `RUNNING`, `Start` — `STOPPED`, `Restart` — `RUNNING`. Нарушение → стабильный
-`FAILED_PRECONDITION` (`"Instance is not running"` / `"Instance must be stopped"`). Полная
-таблица переходов — [Жизненный цикл Instance](/architecture/instance-lifecycle).
+`FAILED_PRECONDITION` (`"Instance is not running"`). Изменение размера или размещения требует
+`STOPPED` → `"instance must be STOPPED to change sizing or placement"`. Полная таблица
+переходов — [Жизненный цикл Instance](/architecture/instance-lifecycle).
 :::
 
 ## Шаг 6. Сделать снимок тома
@@ -337,10 +345,10 @@ NIC автоматически. Сетевые интерфейсы (из дом
 </CodeBlock>
 
 :::caution Порядок и preconditions
-Удаление — тоже async; дождитесь `done: true` каждой операции. Диск, числящийся в инстансе,
-удалить нельзя — `FAILED_PRECONDITION "The disk is being used"`. `Instance.Delete` сам решает
-судьбу присоединённых дисков: диски с `autoDelete=true` удаляются, остальные просто
-отвязываются.
+Удаление — тоже async; дождитесь `done: true` каждой операции. Том, числящийся в инстансе,
+удалить нельзя — kacho-storage отвечает `FAILED_PRECONDITION "Volume <id> is in use"`. Сначала
+отсоедините том (или удалите инстанс), затем удаляйте сам том. `Instance.Delete` снимает
+привязку у владельца: тома, присоединённые с `autoDelete=true`, удаляются, остальные остаются.
 :::
 
 ## Что дальше
