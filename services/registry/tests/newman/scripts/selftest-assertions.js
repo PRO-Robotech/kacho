@@ -176,7 +176,7 @@ const RESPONSES = [
 const SUBJECT_VARS = [
   'jwtProjectEditorA', 'jwtProjectEditorB', 'jwtProjectViewerA', 'jwtProjectOwnerA',
   'jwtStranger', 'jwtServiceAccountEditor', 'jwtGroupMemberEditor',
-  'jwtCustomRoleOperator', 'jwtCustomRoleTargetManager', 'jwtBootstrap',
+  'jwtCustomRoleTargetManager', 'jwtBootstrap',
   'jwtNoBindings', 'jwtPureNoBindings',
 ];
 

@@ -220,8 +220,7 @@ function foreignAwareMap(seed) {
 function baseEnv() {
   const e = new Map();
   for (const k of ['jwtProjectEditorA', 'jwtProjectEditorB', 'jwtProjectViewerA', 'jwtProjectOwnerA',
-    'jwtStranger', 'jwtServiceAccountEditor', 'jwtGroupMemberEditor', 'jwtCustomRoleOperator',
-    'jwtCustomRoleTargetManager', 'jwtBootstrap', 'jwtNoBindings', 'jwtPureNoBindings']) e.set(k, 'tok-' + k);
+    'jwtStranger', 'jwtServiceAccountEditor', 'jwtGroupMemberEditor', 'jwtCustomRoleTargetManager', 'jwtBootstrap', 'jwtNoBindings', 'jwtPureNoBindings']) e.set(k, 'tok-' + k);
   for (const [k, v] of Object.entries({
     runId: 'selftest', baseUrl: 'http://127.0.0.1:1', existingProjectId: 'prj00000000selftest0',
     existingProjectCrossId: 'prj00000001selftest0', existingRegionId: 'ru-central1',
