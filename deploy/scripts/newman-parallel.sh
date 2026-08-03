@@ -299,6 +299,55 @@ if [ "$FAILCLOSED_WAVE" = "true" ] && [[ " $SERVICES " == *" iam "* ]] && [ -f "
   fi
 fi
 
+# ─── WAVE 4: волна, у которой вызывающий — ЧЕЛОВЕК ───────────────────────────
+# Часть набора описывает поведение, у которого вызывающий человек: аккаунт
+# принадлежит пользователю by construction, а уровень аутентификации поднимается
+# только церемонией входа. Машинный посев такого предъявителя не производит, и
+# отходных путей ровно два — волна, создающая условие, либо ОТКРЫТЫЙ ДОЛГ С
+# ЧИСЛОМ. Маска, список известных красных и «пока пропустим» в этот перечень не
+# входят (testing.md).
+#
+# Набор волны НЕ выписан: он выводится из дерева единственным объявлением
+# (tests/authz-fixtures/ceremony_credentials.py) на каждом запуске.
+#
+# ВКЛЮЧАЕТСЯ ВНЕШНИМ ФАКТОМ, а не ручкой: волна идёт ровно тогда, когда посев
+# церемонии существует в дереве (артефакт стадии S2). Обе ветки достижимы и обе
+# проверены: без посева печатается долг с числами, с посевом волна обязана
+# отработать. Ручное `CEREMONY_WAVE=true` при отсутствии посева намеренно НЕ даёт
+# зелёного — прогонщик волны в этом случае падает и отчётов не оставляет, поэтому
+# гейт докладывает по её коллекциям `(no-report)`.
+CEREMONY_WAVE="${CEREMONY_WAVE:-auto}"
+CEREMONY_SH="$REPO_ROOT/services/iam/tests/newman/scripts/run-ceremony.sh"
+CEREMONY_DECL="$REPO_ROOT/tests/authz-fixtures/ceremony_credentials.py"
+if [[ " $SERVICES " == *" iam "* ]] && [ -f "$CEREMONY_SH" ] && [ -f "$CEREMONY_DECL" ]; then
+  if [ "$CEREMONY_WAVE" = "auto" ]; then
+    if python3 "$CEREMONY_DECL" --root "$REPO_ROOT" --seed-exists 2>/dev/null; then
+      CEREMONY_WAVE=true
+    else
+      CEREMONY_WAVE=false
+    fi
+  fi
+  if [ "$CEREMONY_WAVE" = "true" ]; then
+    echo
+    echo "[parallel] WAVE 4 церемония (условие создаётся посевом церемонии, затем её коллекции)"
+    if ( cd "$REPO_ROOT/services/iam/tests/newman" \
+          && env SETUP_NS="$NS" DELAY="$DELAY" \
+             EXTRA_NEWMAN_ARGS="--env-var baseUrl=http://localhost:$GW_PORT --env-var internalBaseUrl=http://localhost:$GW_INTERNAL_PORT --env-var externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
+             bash "$CEREMONY_SH" ); then
+      echo "===== [ceremony] GREEN ====="
+    else
+      echo "===== [ceremony] RED ====="
+      RC=1
+    fi
+  else
+    echo
+    echo "[parallel] WAVE 4 церемония НЕ ИДЁТ — условие создать нечем:"
+    python3 "$CEREMONY_DECL" --root "$REPO_ROOT" --debt
+    echo "[parallel] Это НЕ зачёт и не вычет: перечисленные шаги сейчас исполняются машинным"
+    echo "           принципалом, то есть отвечают не на тот вопрос, который кейс задаёт."
+  fi
+fi
+
 echo
 # ─── Verdict: RAW (what newman reported) + GATED (what CI grades) ────────────
 # Local runners used to grade on RAW only, while CI graded through

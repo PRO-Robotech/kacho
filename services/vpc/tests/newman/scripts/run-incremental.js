@@ -153,8 +153,16 @@ function runProject(tc) {
       const rq = (summary && summary.run && summary.run.stats && summary.run.stats.requests) || { total: 0 };
       const runErrs = (summary && summary.run && summary.run.failures) || [];
       const failed = a.failed + (err ? 1 : 0);
-      const status = (err || a.failed > 0 || runErrs.length > 0) ? 'FAIL' : 'PASS';
-      resolve({ status, assertions: a.total, failed, requests: rq.total, ms, err: err && err.message, failures: runErrs.map(f => ({ name: f.source && f.source.name, err: f.error && f.error.message })) });
+      // НЕМОЙ ПРОГОН — ноль утверждений. Он приходит сюда неотличимым от
+      // безупречного: провалов ноль, потому что спрашивать было нечего. Без этой
+      // строки папка, не задавшая ни одного вопроса, читалась PASS и попадала в
+      // progress.tsv как пройденная — то есть «не выполнилось» засчитывалось
+      // «прошло». Соседний прогонщик того же назначения
+      // (services/compute/tests/newman/scripts/run-incremental.js) эту проверку
+      // несёт; здесь её не было, и разошлись они молча.
+      const mute = !err && a.total === 0;
+      const status = (err || a.failed > 0 || runErrs.length > 0 || mute) ? 'FAIL' : 'PASS';
+      resolve({ status, assertions: a.total, failed, requests: rq.total, ms, mute, err: err && err.message, failures: runErrs.map(f => ({ name: f.source && f.source.name, err: f.error && f.error.message })) });
     });
   });
 }

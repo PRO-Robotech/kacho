@@ -154,6 +154,15 @@ PRE_GLOBAL = [
     "seed did not run: ' + __missing.join(', ') + ' are empty. Seed via tests/authz-fixtures "
     "(prodrun.sh patches the suite env). An empty id is not a skip — it is sent as-is and the "
     "request is refused on authorization, so every later failure names the wrong cause.'));",
+    # ...ЗАТЕМ ПРОПУСТИТЬ. Санкционированная форма — утвердить (назвав переменную) и
+    # НЕ отправлять; она объявлена в exec-coverage.py (раздел STATIC BANS), эталон —
+    # iam gen.py::require_env_url. Этот скрипт — pre-request КОРНЯ коллекции, то есть
+    # исполняется перед КАЖДЫМ запросом: без пропуска весь набор уезжал бы с пустым
+    # идентификатором, о котором в тексте отказа выше сказано прямо — «отправляется
+    # как есть, и каждая последующая ошибка называет неверную причину». Утверждение
+    # уже отработало, поэтому пропуск остаётся ЗАПИСАННЫМ падением с именем
+    # переменной, а не немым.
+    "  pm.execution.skipRequest();",
     "}",
     *_URL_VAR_GUARD,
 ]
@@ -420,15 +429,24 @@ def _auth_pre_script(auth: str) -> List[str]:
         # against a different subject entirely. The typical expectation (401/403)
         # then still holds, so the case passes FOR THE WRONG REASON and the subject
         # under test is never exercised. Missing subject = misconfigured harness:
-        # FAIL naming the variable. The header is still removed afterwards so the
-        # request stays deterministic. (`auth="anonymous"` is the DELIBERATE
-        # anonymous case and takes the branch above — it is never affected.)
+        # FAIL naming the variable, THEN SKIP — the sanctioned shape, declared by
+        # services/iam/tests/newman/scripts/exec-coverage.py (section STATIC BANS) and
+        # implemented there as gen.py::require_env_url; this generator carries no such
+        # helper, so the shape is written out here. Dropping the header and sending
+        # anyway is NOT the
+        # sanctioned shape: the step still travels, and every OTHER assertion it
+        # carries is then scored against a principal the case never named.
+        # `pm.execution.skipRequest()` skips exactly one request — its test script
+        # does not run either — so nothing of this step is scored, while the
+        # pre-request assertion above has ALREADY run and keeps the skip RECORDED as
+        # a failure naming the variable, never a mute one. (`auth="anonymous"` is the
+        # DELIBERATE anonymous case and takes the branch above — never affected.)
         f"  pm.test('harness config: {auth} is set (subject under test)', () => {{",
         f"    pm.expect.fail('{auth} is not set — the authz-fixture seed "
         "(tests/authz-fixtures/setup.sh) did not provide this subject. Running the step "
         "anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
         "  });",
-        "  pm.request.headers.remove('Authorization');",
+        "  pm.execution.skipRequest();",
         "}",
     ]
 

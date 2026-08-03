@@ -68,13 +68,27 @@ def _internal_check_url():
     кейса. Пустой {{internalBaseUrl}} — ошибка конфигурации харнесса, и она обязана
     быть громкой: молчаливый пропуск здесь означал бы, что вся прямая проба tuple
     исчезла, а набор остался зелёным.
+
+    ФОРМА — САНКЦИОНИРОВАННАЯ: утвердить (назвав переменную), затем ПРОПУСТИТЬ
+    (`gen.py::require_env_url`). Прежняя редакция утверждала — и всё равно
+    ОТПРАВЛЯЛА шаг: без переадресации он уезжал на публичный листенер, где
+    Internal*-маршрута нет, и остальные утверждения шага оценивались по ответу,
+    к предмету кейса отношения не имеющему. `pm.execution.skipRequest()`
+    пропускает ровно один запрос (его test-script тоже не исполняется), поэтому
+    ни одно утверждение шага не засчитывается; утверждение выше уже отработало,
+    значит пропуск остаётся ЗАПИСАННЫМ падением с именем переменной, а не немым.
     """
     return [
         "const intBase = pm.environment.get('internalBaseUrl') || pm.variables.get('internalBaseUrl') || '';",
-        "pm.test('harness config: internalBaseUrl is set (internal Check probe target)', "
-        "() => pm.expect(intBase, 'internalBaseUrl is empty — the internal iam:check probe has no target; "
-        "inject it (deploy/scripts/newman-e2e.sh) instead of running without the probe').to.not.equal(''));",
-        "if (intBase) { pm.request.url = intBase + '/iam/v1/internal/iam:check'; }",
+        "if (intBase) {",
+        "  pm.request.url = intBase + '/iam/v1/internal/iam:check';",
+        "} else {",
+        "  pm.test('harness config: internalBaseUrl is set (internal Check probe target)', () => {",
+        "    pm.expect.fail('internalBaseUrl is empty — the internal iam:check probe has no target; "
+        "inject it (deploy/scripts/newman-e2e.sh) instead of running without the probe');",
+        "  });",
+        "  pm.execution.skipRequest();",
+        "}",
     ]
 
 
