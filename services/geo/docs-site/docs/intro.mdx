@@ -169,8 +169,8 @@ flowchart LR
   </div>
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>🔑</span>
-    <span className={hero.featureTitle}>Авторизация на обоих портах</span>
-    <span className={hero.featureBody}>Per-RPC authz Check через kacho-iam — и на public (:9090), и на internal (:9091).</span>
+    <span className={hero.featureTitle}>Аутентификация на обоих портах</span>
+    <span className={hero.featureBody}>AuthN обязательна везде; per-RPC authz Check через kacho-iam — на всех RPC, кроме публичного чтения справочника (задокументированное исключение).</span>
   </div>
   <div className={hero.featureCard}>
     <span className={hero.featureIcon}>📓</span>
