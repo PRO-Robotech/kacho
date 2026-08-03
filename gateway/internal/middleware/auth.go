@@ -749,8 +749,11 @@ func extractBearer(ctx context.Context) string {
 // и прокидывает его как metadata в gRPC ctx (стандартный grpc-gateway-форвард
 // в `incomingHeaderMatcher`).
 //
-// Также: если есть cookie `kacho_session=...` (UI), переписываем ее в
-// Authorization Bearer.
+// Носителей личности на этом пути ДВА: сессия развёрнутого провайдера
+// (`ory_kratos_session`) и подписанный предъявитель в `Authorization`. Третьего —
+// переписывания cookie в Bearer — здесь больше нет: его единственным
+// производителем был обработчик церемонии снятого провайдера, и он снят вместе
+// с ним. Читатель, чей вход никто не может произвести, не остаётся.
 func (a *AuthInterceptor) HTTP(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Strip client-forgeable identity headers before any auth path runs, then
@@ -761,7 +764,6 @@ func (a *AuthInterceptor) HTTP(next http.Handler) http.Handler {
 		a.stripForgeableIdentityHeaders(r)
 
 		injected := a.tryKratosSession(r)
-		a.rewriteCookieToBearer(r)
 
 		if !injected {
 			if a.tryHydraJWT(w, r, next) {
@@ -826,17 +828,6 @@ func (a *AuthInterceptor) tryKratosSession(r *http.Request) bool {
 	a.logger.Info("auth.HTTP: Principal injected (Kratos)",
 		"type", subj.Type, "id", subj.ID, "identity_id", res.IdentityID)
 	return true
-}
-
-// rewriteCookieToBearer rewrites the UI `kacho_session` cookie into an
-// Authorization: Bearer header when no Authorization header is present.
-func (a *AuthInterceptor) rewriteCookieToBearer(r *http.Request) {
-	if r.Header.Get("Authorization") != "" {
-		return
-	}
-	if c, err := r.Cookie("kacho_session"); err == nil && c.Value != "" {
-		r.Header.Set("Authorization", "Bearer "+c.Value)
-	}
 }
 
 // tryHydraJWT validates a Hydra-issued asymmetric (RS256/ES256/EdDSA) access JWT

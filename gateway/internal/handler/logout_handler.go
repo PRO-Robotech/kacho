@@ -73,7 +73,7 @@ type CallerVerifier interface {
 //  4. Call Hydra admin `DELETE /admin/oauth2/auth/sessions/login?subject=...`
 //     with the caller's own subject to invalidate the upstream SSO session —
 //     Hydra then fans out back-channel logout notifications (RFC 8254).
-//  5. Clear client cookies (kacho_session, ory_kratos_session).
+//  5. Clear the client session cookie (ory_kratos_session).
 //  6. Respond `200 {}`.
 //
 // All Hydra/IAM calls are best-effort relative to clearing the user cookie —
@@ -202,9 +202,12 @@ func (h *LogoutHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		cancel()
 	}
 
-	// 6. Clear cookies — both legacy kacho_session and Ory Kratos. Always done,
+	// 6. Clear the session cookie of the deployed identity provider. Always done,
 	//    even for a token-less request, so a user can drop their browser session.
-	for _, c := range []string{"kacho_session", "ory_kratos_session"} {
+	//    Прежде здесь чистился и второй, «legacy», cookie. Его единственный
+	//    производитель — обработчик церемонии снятого провайдера — снят, и
+	//    читателя на пути аутентификации у него больше нет: чистить стало нечего.
+	for _, c := range []string{"ory_kratos_session"} {
 		http.SetCookie(w, &http.Cookie{
 			Name:     c,
 			Value:    "",

@@ -594,30 +594,15 @@ func main() {
 	httpMux.HandleFunc("/healthz", health.HTTPHealthz)
 	httpMux.Handle("/readyz", health.HTTPReadyz(backends, criticalBackends, logger))
 
-	// OIDC login/callback/me/logout.
+	// GET /iam/v1/auth/me — личность за сессией развёрнутого провайдера.
 	// Регистрируется ДО `/` чтобы перебить grpc-gateway catch-all.
-	if cfg.OIDCPartial() {
-		logger.Warn("OIDC config partial: issuer set but client-id/redirect missing",
-			"issuer", cfg.OIDCIssuer,
-			"client_id_set", cfg.OIDCClientID != "",
-			"redirect_set", cfg.OIDCRedirectURI != "",
-			"hint", "login returns 503 until the OIDC client secret is bootstrapped (zitadel-oidc-bootstrap Job)",
-		)
-	}
-	oidcHandler := middleware.NewOIDCHandler(middleware.OIDCConfig{
-		Issuer:         cfg.OIDCIssuer,
-		ExternalIssuer: cfg.OIDCExternalIssuer,
-		ClientID:       cfg.OIDCClientID,
-		ClientSecret:   cfg.OIDCClientSecret,
-		RedirectURI:    cfg.OIDCRedirectURI,
-		Disabled:       cfg.OIDCDisabled(),
-	}, logger)
+	sessionIdentity := middleware.NewSessionIdentityHandler(logger)
 	// /me читает Kratos session если есть cookie ory_kratos_session.
 	if kratosURL != "disabled" {
-		oidcHandler = oidcHandler.WithKratos(middleware.NewKratosClient(kratosURL), iamSubjectClient).
+		sessionIdentity = sessionIdentity.WithKratos(middleware.NewKratosClient(kratosURL), iamSubjectClient).
 			WithAdminChecker(iamSubjectClient) // permissions = ["*","admin"] для system-admin
 	}
-	oidcHandler.Register(httpMux)
+	sessionIdentity.Register(httpMux)
 
 	// POST /oauth/logout — RFC 7009 token revocation +
 	// best-effort Hydra session-kill (triggers RFC 8254 back-channel logout

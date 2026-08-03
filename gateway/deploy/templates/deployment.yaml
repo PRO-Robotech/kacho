@@ -120,39 +120,6 @@ spec:
             {{- end }}
             - name: KACHO_API_GATEWAY_ADVERTISED_ENDPOINT
               value: "{{ .Values.advertisedEndpoint }}"
-            {{- if .Values.oidc.enabled }}
-            - name: KACHO_API_GATEWAY_OIDC_ISSUER
-              value: {{ .Values.oidc.issuer | quote }}
-            - name: KACHO_API_GATEWAY_OIDC_EXTERNAL_ISSUER
-              value: {{ .Values.oidc.externalIssuer | quote }}
-            {{- if .Values.oidc.clientIdSecretRef }}
-            - name: KACHO_API_GATEWAY_OIDC_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.oidc.clientIdSecretRef.name }}
-                  key: {{ .Values.oidc.clientIdSecretRef.key }}
-                  optional: {{ default true .Values.oidc.clientIdSecretRef.optional }}
-            {{- else }}
-            - name: KACHO_API_GATEWAY_OIDC_CLIENT_ID
-              value: {{ .Values.oidc.clientId | quote }}
-            {{- end }}
-            - name: KACHO_API_GATEWAY_OIDC_REDIRECT_URI
-              value: {{ .Values.oidc.redirectUri | quote }}
-            {{- if .Values.oidc.clientSecretSecretRef }}
-            # Confidential OIDC client secret (CWE-522): sourced from a k8s Secret,
-            # never rendered as a plaintext PodSpec `value:`. secretKeyRef keeps the
-            # secret out of `kubectl get deploy -o yaml` and the Helm release object.
-            - name: KACHO_API_GATEWAY_OIDC_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.oidc.clientSecretSecretRef.name }}
-                  key: {{ .Values.oidc.clientSecretSecretRef.key }}
-                  optional: {{ default true .Values.oidc.clientSecretSecretRef.optional }}
-            {{- else if .Values.oidc.clientSecret }}
-            - name: KACHO_API_GATEWAY_OIDC_CLIENT_SECRET
-              value: {{ .Values.oidc.clientSecret | quote }}
-            {{- end }}
-            {{- end }}
             {{- if .Values.authn }}
             - name: KACHO_API_GATEWAY_AUTHN_MODE
               value: {{ .Values.authn.mode | default "production" | quote }}

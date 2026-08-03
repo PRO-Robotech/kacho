@@ -1,24 +1,27 @@
 // SignupPage — welcome / registration entry-point (KAC-109 DoD #1).
 //
-// Поведение:
-// - Если backend `/iam/v1/auth/login` отвечает 503 (OIDC не настроен) → показываем
-//   readiness banner: «Регистрация будет доступна после деплоя Zitadel».
-// - Иначе — кнопка «Зарегистрироваться через Zitadel» делает full-page redirect
-//   на `/iam/v1/auth/login?signup=1`, и api-gateway проксирует на Zitadel signup
-//   form (Zitadel сам различает signup vs login через user choice на их UI).
+// Поведение: обе кнопки ведут в self-service поток развёрнутого провайдера
+// личности — `authApi.register()` и `authApi.login()`, ровно те же вызовы, что
+// делает AuthContext. Своей церемонии у края нет.
+//
+// Прежде страница уходила на маршрут края, который проводил церемонию у ДРУГОГО
+// провайдера. Тот маршрут снят вместе с ним (его не включал ни один профиль, и
+// отработать он не мог ни разу), поэтому ссылка отсюда стала бы потребителем без
+// производителя — тем же дефектом, только со стороны консоли.
 
 import { Button, Card, Space, Typography, Alert } from "antd";
 import { LoginOutlined, UserAddOutlined } from "@ant-design/icons";
 import { Link } from "react-router";
+import { authApi } from "@shared/api/auth";
 
 const { Title, Paragraph, Text } = Typography;
 
 export function SignupPage() {
   const onSignup = () => {
-    window.location.assign("/iam/v1/auth/login?signup=1");
+    authApi.register();
   };
   const onLogin = () => {
-    window.location.assign("/iam/v1/auth/login");
+    authApi.login();
   };
   return (
     <div
@@ -49,7 +52,7 @@ export function SignupPage() {
           <Alert
             type="info"
             showIcon
-            message="Регистрация через Zitadel"
+            message="Регистрация"
             description={
               <>
                 При первом входе автоматически создаётся <b>Account</b> (ваш tenant) и стартовый <b>Project</b>. Вы

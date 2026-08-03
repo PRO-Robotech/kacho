@@ -39,7 +39,6 @@ import (
 //	KACHO_APP_ENV                            — deployment-env label (keys the prod authz guard)
 //	KACHO_API_GATEWAY_KRATOS_PUBLIC_URL      — Ory Kratos public API base ("disabled" turns it off)
 //	KACHO_API_GATEWAY_INTERNAL_GRPC_ADDR     — cluster-internal gRPC listener (default :9091)
-//	KACHO_API_GATEWAY_OIDC_ISSUER / _EXTERNAL_ISSUER / _CLIENT_ID / _CLIENT_SECRET / _REDIRECT_URI — OIDC UI flow
 //
 // TLS требуется для совместимости с CLI-клиентами, жестко ожидающими TLS-endpoint.
 // Когда TLS_LISTEN_ADDR пустой — TLS не запускается; plain-cmux на ListenAddr.
@@ -209,16 +208,17 @@ type Config struct {
 	// case it is redundant, or on for a listener that mounts no interceptors, in
 	// which case it publishes a schema surface to anyone who can reach the port.)
 
-	// --- OIDC login/callback flow (UI auth) ---
-	// OIDCIssuer empty ⇒ the OIDC handler is disabled (login → 503). A partial
-	// config (issuer set, client-id/redirect missing) is TOLERATED at startup —
-	// the bootstrap Job populates the client-id secret post-install and Login
-	// returns a descriptive 503 until then — but surfaced via a startup WARN.
-	OIDCIssuer         string `envconfig:"KACHO_API_GATEWAY_OIDC_ISSUER"          default:""`
-	OIDCExternalIssuer string `envconfig:"KACHO_API_GATEWAY_OIDC_EXTERNAL_ISSUER" default:""`
-	OIDCClientID       string `envconfig:"KACHO_API_GATEWAY_OIDC_CLIENT_ID"       default:""`
-	OIDCClientSecret   string `envconfig:"KACHO_API_GATEWAY_OIDC_CLIENT_SECRET"   default:""`
-	OIDCRedirectURI    string `envconfig:"KACHO_API_GATEWAY_OIDC_REDIRECT_URI"    default:""`
+	// --- RESERVED: KACHO_API_GATEWAY_OIDC_* (снято с контракта) ---
+	// Пять ключей — _ISSUER, _EXTERNAL_ISSUER, _CLIENT_ID, _CLIENT_SECRET,
+	// _REDIRECT_URI — питали обработчик интерактивного входа края, снятый вместе
+	// с провайдером, чьи пути он адресовал. Их не объявлял НИ ОДИН профиль
+	// развёртывания, а секрет наполнял Job, удалённый тикетом KAC-127.
+	//
+	// Имена ЗАРЕЗЕРВИРОВАНЫ и не переиспользуются: оператор, у которого они
+	// остались в своём окружении, обязан получить «ключ ничего не делает»
+	// молчанием, а не другое поведение под прежним именем. Церемонию проводит
+	// консоль входа развёрнутого провайдера; заводить её заново — отдельная
+	// работа со своей приёмкой, и тогда ключи объявляются НОВЫМИ именами.
 
 	// --- AuthN core (DPoP / JWT / mTLS-bound / step-up / BCL) ---
 
@@ -532,18 +532,6 @@ func (c Config) ExternalListenerClientAuth(base *tls.Config) (*tls.Config, error
 	base.ClientAuth = tls.VerifyClientCertIfGiven
 	base.ClientCAs = pool
 	return base, nil
-}
-
-// OIDCDisabled reports whether the OIDC login/callback flow is off (no issuer).
-func (c Config) OIDCDisabled() bool { return c.OIDCIssuer == "" }
-
-// OIDCPartial reports whether OIDC is enabled (issuer set) but missing a field
-// required to complete the flow (client-id or redirect-uri). This is TOLERATED
-// at startup (the bootstrap Job fills the client-id secret post-install; Login
-// returns a descriptive 503 until then) but the caller surfaces it as a WARN so
-// a stuck bootstrap is visible in pod logs rather than only at runtime.
-func (c Config) OIDCPartial() bool {
-	return c.OIDCIssuer != "" && (c.OIDCClientID == "" || c.OIDCRedirectURI == "")
 }
 
 // ResolvedHydraIssuer returns the Hydra issuer URL, deriving it from APIDomain

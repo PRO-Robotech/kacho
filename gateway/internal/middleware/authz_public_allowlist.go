@@ -44,10 +44,13 @@
 // "Get/List"; there is no List, and naming an RPC that does not exist is the
 // very thing the paragraph above is about.)
 //
-// The interactive auth flow is NOT here and never was a gRPC surface in this
-// repository: login / callback / me / logout are HTTP routes under
-// /iam/v1/auth/ (middleware/oidc_auth.go) and OAuth logout is /oauth/logout
-// (handler/logout_handler.go). Their pre-auth exemption is isPublicHTTPPath in
+// The session-identity route is NOT here and never was a gRPC surface in this
+// repository: /iam/v1/auth/me is an HTTP route
+// (middleware/session_identity_handler.go) and OAuth logout is /oauth/logout
+// (handler/logout_handler.go). The interactive-login ceremony routes that used to
+// sit beside /me were retired with the provider they addressed, so that path
+// segment no longer holds a family — one route, listed exactly, not by prefix.
+// Its pre-auth exemption is isPublicHTTPPath in
 // authz_util.go — a separate, live list. Six entries naming a gRPC
 // "AuthService"/"BackChannelLogoutService" were removed from here because no
 // such service exists in the contract; the exemption they appeared to grant was

@@ -70,19 +70,24 @@ func TestLogout_ClearsCookies(t *testing.T) {
 	h.ServeHTTP(rec, req)
 	assert.Equal(t, http.StatusOK, rec.Code)
 	cookies := rec.Result().Cookies()
-	var saw_kacho, saw_kratos bool
+	var saw_retired, saw_kratos bool
 	for _, c := range cookies {
 		if c.Name == "kacho_session" {
-			saw_kacho = true
-			assert.True(t, c.MaxAge < 0)
+			saw_retired = true
 		}
 		if c.Name == "ory_kratos_session" {
 			saw_kratos = true
 			assert.True(t, c.MaxAge < 0)
 		}
 	}
-	assert.True(t, saw_kacho)
-	assert.True(t, saw_kratos)
+	// Положительная половина: сессия развёрнутого провайдера действительно гасится.
+	// Без неё отрицание ниже зеленело бы и на мёртвом обработчике.
+	assert.True(t, saw_kratos, "logout must expire the deployed provider's session cookie")
+	// Отрицательная половина: cookie снятой церемонии больше не упоминается.
+	// Её единственный производитель снят вместе с обработчиком, а читателя на пути
+	// аутентификации у неё нет — чистить стало нечего, и возврат этой строки
+	// означал бы возврат носителя, которого никто не может произвести.
+	assert.False(t, saw_retired, "logout must not emit a cookie no producer can set")
 }
 
 // TestLogout_RevokesOwnSubjectFromToken_IgnoresClientSubject — with a validated

@@ -188,16 +188,26 @@ func (m *AuthzMiddleware) resolveRestFQN(r *http.Request) string {
 // Note what membership now means for the third consumer: a listed path is also
 // exempt from the "is this token revoked?" question (auth_revocation.go). That is
 // required for sign-out — a user whose session was revoked elsewhere must still be
-// able to complete it — but it makes the last branch a PREFIX worth watching: any
-// route added under /iam/v1/auth/ inherits the exemption. Today the routes there
-// are the interactive login flow, none of which acts on a bearer's authority; a
-// route that did would need to be placed elsewhere or listed exactly.
+// able to complete it.
+//
+// The last branch used to be a PREFIX over /iam/v1/auth/, and its own note called
+// that out as worth watching: any route added there would INHERIT the exemption
+// without anyone deciding so. It covered the interactive-login ceremony routes.
+// Those were retired together with the identity provider they addressed, which
+// left the prefix guarding exactly one route — so the hazard was all that was
+// left of it. The branch is now an EXACT match on that one route: a new route
+// under the same path segment gets no exemption unless someone adds it here on
+// purpose.
+//
+// /iam/v1/auth/me is listed because it must answer an anonymous caller (with
+// `{"user":null}`) and because it acts on a provider SESSION, never on a
+// bearer's authority — so there is no revocation question to ask of it.
 func isPublicHTTPPath(path string) bool {
 	switch path {
-	case "/healthz", "/readyz", "/oauth/logout":
+	case "/healthz", "/readyz", "/oauth/logout", "/iam/v1/auth/me":
 		return true
 	}
-	return strings.HasPrefix(path, "/iam/v1/auth/")
+	return false
 }
 
 // traceFromContext extracts the request-id for correlation, prioritising

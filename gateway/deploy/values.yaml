@@ -62,34 +62,14 @@ ingress:
 # Dev (kind + port-forward): override to localhost:18443.
 advertisedEndpoint: api.kacho.local:443
 
-# OIDC — Zitadel auth-flow handlers /iam/v1/auth/{login,callback,me,logout}.
-# Server-side (token exchange + userinfo) ходит на `issuer` (cluster-internal),
-# browser-redirect — на `externalIssuer` (publicly reachable host).
-# Off-by-default. Включается в per-cluster overrides.
-oidc:
-  enabled: false
-  issuer: ""           # cluster-internal Zitadel URL (token exchange / userinfo)
-  externalIssuer: ""   # public-facing Zitadel URL (browser redirect)
-  clientId: ""
-  # ClientId через k8s Secret (заполняется zitadel-oidc-bootstrap Job из umbrella).
-  # Если задан — перебивает clientId. Optional=true → pod стартует даже если secret
-  # еще не создан (post-install Job его apply'ит).
-  # clientIdSecretRef:
-  #   name: kacho-iam-oidc-client
-  #   key: client_id
-  #   optional: true
-  clientIdSecretRef: {}
-  redirectUri: ""
-  # Confidential client secret. Prefer clientSecretSecretRef (k8s Secret) over the
-  # inline clientSecret so the secret is never rendered into the PodSpec / Helm
-  # release (CWE-522). When set it overrides clientSecret. Optional=true → pod
-  # starts even if the Secret is not yet created (post-install Job applies it).
-  # clientSecretSecretRef:
-  #   name: kacho-iam-oidc-client
-  #   key: client_secret
-  #   optional: true
-  clientSecretSecretRef: {}
-  clientSecret: ""
+# RESERVED — блок `oidc:` снят вместе с обработчиком церемонии.
+# Он питал маршруты интерактивного входа края, адресовавшие снятого провайдера
+# личности. Ни один профиль его не включал (`enabled: false` здесь был
+# единственным объявлением во всём дереве), а секрет клиента наполнял Job,
+# удалённый тикетом KAC-127, — то есть маршруты не могли отработать ни разу.
+# Церемонию проводит консоль входа развёрнутого провайдера.
+# Ключ `oidc` не переиспользовать: вернуть церемонию — отдельная работа со своей
+# приёмкой и НОВЫМИ именами, иначе профиль со старым ключом молча сменит смысл.
 
 # AuthN — auth-interceptor configuration.
 #   mode:

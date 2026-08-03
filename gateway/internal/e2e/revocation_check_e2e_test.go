@@ -380,7 +380,13 @@ func TestE2E_Revocation_LiveToken_Served(t *testing.T) {
 // Signing out must work with a credential that is already dead — otherwise the
 // one action left to a user whose session was revoked elsewhere is the action
 // the gateway refuses. The exemption is the shared pre-auth allow-list, so the
-// health probes and the interactive login flow are covered by the same decision.
+// health probes and the session-identity route are covered by the same decision.
+//
+// The list below used to name an interactive-login route. That route was retired
+// with the identity provider it addressed, and the allow-list branch that covered
+// it stopped being a prefix — so the case moved to /iam/v1/auth/me, which is the
+// route that actually remains exempt. Probing the retired path would have proven
+// nothing about the exemption: it would have measured the catch-all.
 func TestE2E_Revocation_ExemptPaths_StillServedWithRevokedToken(t *testing.T) {
 	hydra := newHydra(t)
 	defer hydra.close()
@@ -392,7 +398,7 @@ func TestE2E_Revocation_ExemptPaths_StillServedWithRevokedToken(t *testing.T) {
 	}))
 	defer revoked.Close()
 
-	for _, path := range []string{"/oauth/logout", "/healthz", "/readyz", "/iam/v1/auth/login"} {
+	for _, path := range []string{"/oauth/logout", "/healthz", "/readyz", "/iam/v1/auth/me"} {
 		h := newRevocationHarness(t, hydra, revoked.URL, 0)
 		rec := h.callPath(t, hydra, "jti-exempt", path)
 		assert.True(t, h.reached.Load(), "%s must stay reachable with a revoked credential", path)
