@@ -292,15 +292,35 @@ def assert_refused_sync_or_async(what: str, sync_codes=(400,), async_lane: bool 
     (там же — разбор, из которого форма выведена)."""
     codes = ", ".join(str(c) for c in ((*sync_codes, 200) if async_lane else sync_codes))
     named = "/".join(str(c) for c in sync_codes)
+    # Заголовок КОДИРУЕТСЯ, а не вклеивается. `what` приходит от вызывающего и
+    # законно содержит апостроф (`create without required 'projectId'`); вклеенный
+    # в одинарные кавычки, он рвёт литерал, и весь скрипт шага перестаёт
+    # разбираться. Тогда шаг не падает — он НЕ ИСПОЛНЯЕТСЯ: `pm.test` до вызова не
+    # доходит, `pm.environment.unset('opId')` тоже, и парный поллер уезжает на
+    # `opId`, оставшийся от предыдущего шага. Замерено 2026-08-03: 10 скриптов vpc
+    # не разбирались, из них 4 давали ещё и ложное утверждение на чужой операции.
+    # `json.dumps` даёт JS-безопасный литерал для любого текста.
     if not async_lane:
         return [
-            "pm.environment.unset('opId');",
-            f"pm.test('{what} refused synchronously ({named}) — no Operation is minted', () => "
+            # `opId` СБРАСЫВАЕТСЯ В ПУСТОЕ, а не снимается.
+            #
+            # Снятое имя не определено ни в одной области, и страж неразрешённых
+            # подстановок (см. _URL_VAR_GUARD) справедливо считает такой шаг находкой:
+            # запрос ушёл бы литералом `{{opId}}`. Но здесь отсутствия Operation —
+            # ОБЪЯВЛЕННЫЙ и уже проверенный исход синхронного отказа, а не промах
+            # захвата. Пустое значение решает обе задачи разом: устаревший
+            # идентификатор предыдущего шага не переживает шаг (ради чего снятие и
+            # вводилось), имя остаётся определённым, поэтому страж до него не
+            # доберётся by construction — ровно тот законный негативный случай,
+            # который его собственный комментарий оговаривает, — а парный поллер
+            # видит пустую строку, она ложна, и он выходит не утверждая ничего.
+            "pm.environment.set('opId', '');",
+            f"pm.test({json.dumps(f'{what} refused synchronously ({named}) — no Operation is minted')}, () => "
             f"  pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([{codes}]));",
         ]
     return [
-        "pm.environment.unset('opId');",
-        f"pm.test('{what} refused (sync {named}, or an Operation that fails)', () => "
+        "pm.environment.set('opId', '');",
+        f"pm.test({json.dumps(f'{what} refused (sync {named}, or an Operation that fails)')}, () => "
         f"  pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([{codes}]));",
         "if (pm.response.code === 200) {",
         "  const j = pm.response.json();",

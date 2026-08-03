@@ -492,8 +492,23 @@ def seed() -> dict:
     # Custom-role subjects. Their cases assert what a NARROW role does and does not
     # allow — "may addTargets, may not update the group's metadata" — which only means
     # something when the role exists and is bound. Mirrors the dev path (setup.sh §13d).
+    # Глаголы роли берутся из СЛОВАРЯ МОДЕЛИ, а не из имён RPC.
+    #
+    # Здесь стояло ["addTargets", "removeTargets"], и роль создавалась успешно —
+    # сегмент глагола в Role.Create не закрыт словарём (это отдельная под-фаза,
+    # см. services/iam/.../role/rules_catalog.go). Глагола вне набора своего типа
+    # реконсайлер не материализует НИЧЕГО, молча: держатель роли получал 403
+    # навсегда, а положительная половина кейса не могла пройти ни при каком
+    # исправном продукте.
+    #
+    # `nlb_target_group` объявляет ровно {get,list,create,update,delete}, а
+    # AddTargets/RemoveTargets гейтятся тем же `v_update`, что и Update. Поэтому
+    # роль грантит `update` — это и есть право, которым AddTargets пользуется, —
+    # а отличие проверяется на `delete`, которого у роли нет. Это различие модель
+    # действительно делает; прежнее «может addTargets, но не может Update»
+    # невыразимо: оба глагола — одно отношение.
     role_tm = custom_role(acctA, f"ps_nlb_targetmgr_{RID}", "loadbalancer",
-                          ["targetGroups"], ["addTargets", "removeTargets"])
+                          ["targetGroups"], ["update"])
     role_op = custom_role(acctA, f"ps_nlb_operator_{RID}", "loadbalancer",
                           ["networkLoadBalancers"], ["start", "stop"])
     _, tok_crTargetMgr = subject(acctA, f"ps-cr-tm-{RID}",

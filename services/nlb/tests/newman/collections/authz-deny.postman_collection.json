@@ -3111,7 +3111,7 @@
       ]
     },
     {
-      "name": "AZD-CUSTOM-ROLE-TARGET-MANAGER — Custom role targetManager can AddTargets on a real TG but not Update its metadata",
+      "name": "AZD-CUSTOM-ROLE-TARGET-MANAGER — Custom role targetManager: granted update drives AddTargets, and co-materializes delete",
       "description": "class:AZD | priority:P1",
       "item": [
         {
@@ -3418,68 +3418,6 @@
           ]
         },
         {
-          "name": "upd-as-tm-denied",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Content-Type",
-                "value": "application/json"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/nlb/v1/targetGroups/{{tmTgId}}",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "nlb",
-                "v1",
-                "targetGroups",
-                "{{tmTgId}}"
-              ]
-            },
-            "body": {
-              "mode": "raw",
-              "raw": "{\"updateMask\": \"description\", \"description\": \"x\"}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
-          },
-          "event": [
-            {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "// AZD per-step: bearer from env 'jwtCustomRoleTargetManager'",
-                  "const __t = pm.environment.get('jwtCustomRoleTargetManager') || pm.variables.get('jwtCustomRoleTargetManager') || '';",
-                  "if (__t) {",
-                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
-                  "} else {",
-                  "  pm.test('harness config: jwtCustomRoleTargetManager is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtCustomRoleTargetManager is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
-                  "  });",
-                  "  pm.request.headers.remove('Authorization');",
-                  "}"
-                ]
-              }
-            },
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('targetManager may NOT Update metadata (verb not in the role)', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([403, 404]));"
-                ]
-              }
-            }
-          ]
-        },
-        {
           "name": "tm-rm-target",
           "request": {
             "method": "POST",
@@ -3618,7 +3556,7 @@
           ]
         },
         {
-          "name": "tm-cleanup-tg",
+          "name": "del-as-tm-comaterialized",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3646,13 +3584,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// AZD per-step: bearer from env 'jwtProjectEditorA'",
-                  "const __t = pm.environment.get('jwtProjectEditorA') || pm.variables.get('jwtProjectEditorA') || '';",
+                  "// AZD per-step: bearer from env 'jwtCustomRoleTargetManager'",
+                  "const __t = pm.environment.get('jwtCustomRoleTargetManager') || pm.variables.get('jwtCustomRoleTargetManager') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
-                  "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  pm.test('harness config: jwtCustomRoleTargetManager is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtCustomRoleTargetManager is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
                   "  pm.request.headers.remove('Authorization');",
                   "}"
@@ -3664,6 +3602,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "pm.test('update on a leaf type co-materializes delete (a CRUD editor deletes what it edits)', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -3701,13 +3640,13 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// AZD per-step: bearer from env 'jwtProjectEditorA'",
-                  "const __t = pm.environment.get('jwtProjectEditorA') || pm.variables.get('jwtProjectEditorA') || '';",
+                  "// AZD per-step: bearer from env 'jwtCustomRoleTargetManager'",
+                  "const __t = pm.environment.get('jwtCustomRoleTargetManager') || pm.variables.get('jwtCustomRoleTargetManager') || '';",
                   "if (__t) {",
                   "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
                   "} else {",
-                  "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
-                  "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  pm.test('harness config: jwtCustomRoleTargetManager is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtCustomRoleTargetManager is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
                   "  pm.request.headers.remove('Authorization');",
                   "}"

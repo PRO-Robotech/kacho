@@ -603,8 +603,16 @@ CASES.append(Case(
                           "  pm.expect(kept, JSON.stringify(tgts)).to.be.an('object'));",
                           "pm.test('untouched target reports ACTIVE', () => "
                           "  pm.expect((kept || {}).status, JSON.stringify(tgts)).to.eql('ACTIVE'));",
+                          # `null`, НЕ `undefined`: публичный mux маршалит с
+                          # EmitUnpopulated=true (gateway/internal/restmux/strict_enum.go),
+                          # то есть незаполненный timestamp ПРИСУТСТВУЕТ в теле как null —
+                          # это объявленный tenant-facing контракт, а не пропуск. Прежнее
+                          # `to.be.undefined` противоречило ему и краснело на верном ответе.
+                          # Оба значения означают «момента слива нет»; настоящий timestamp
+                          # по-прежнему роняет проверку, поэтому утверждение не ослаблено.
                           "pm.test('untouched target has no drain moment', () => "
-                          "  pm.expect((kept || {}).drainStartedAt, JSON.stringify(tgts)).to.be.undefined);"]),
+                          "  pm.expect((kept || {}).drainStartedAt, JSON.stringify(tgts))"
+                          "    .to.satisfy(v => v === null || v === undefined));"]),
         *_cleanup_tg(),
     ],
 ))

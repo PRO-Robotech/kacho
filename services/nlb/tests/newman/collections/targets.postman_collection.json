@@ -4774,8 +4774,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.environment.unset('opId');",
-                  "pm.test('ip_ref.address outside the subnet CIDR refused (sync 400, or an Operation that fails)', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 200]));",
+                  "pm.environment.set('opId', '');",
+                  "pm.test(\"ip_ref.address outside the subnet CIDR refused (sync 400, or an Operation that fails)\", () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 200]));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  pm.test('accepted response carries the Operation that must then fail', () =>     pm.expect(j.id, pm.response.text()).to.be.a('string'));",
@@ -5134,8 +5134,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.environment.unset('opId');",
-                  "pm.test('unknown instance_id refused (sync 400, or an Operation that fails)', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 200]));",
+                  "pm.environment.set('opId', '');",
+                  "pm.test(\"unknown instance_id refused (sync 400, or an Operation that fails)\", () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 200]));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  pm.test('accepted response carries the Operation that must then fail', () =>     pm.expect(j.id, pm.response.text()).to.be.a('string'));",
@@ -5509,8 +5509,8 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.environment.unset('opId');",
-                  "pm.test('unknown nic_id refused (sync 400, or an Operation that fails)', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 200]));",
+                  "pm.environment.set('opId', '');",
+                  "pm.test(\"unknown nic_id refused (sync 400, or an Operation that fails)\", () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 200]));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  pm.test('accepted response carries the Operation that must then fail', () =>     pm.expect(j.id, pm.response.text()).to.be.a('string'));",
@@ -5869,8 +5869,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.environment.unset('opId');",
-                  "pm.test('unknown ip_ref.subnet_id refused (sync 400, or an Operation that fails)', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 200]));",
+                  "pm.environment.set('opId', '');",
+                  "pm.test(\"unknown ip_ref.subnet_id refused (sync 400, or an Operation that fails)\", () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 200]));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  pm.test('accepted response carries the Operation that must then fail', () =>     pm.expect(j.id, pm.response.text()).to.be.a('string'));",
@@ -6229,8 +6229,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.environment.unset('opId');",
-                  "pm.test('instance_id that does not resolve in the region refused (sync 400, or an Operation that fails)', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 200]));",
+                  "pm.environment.set('opId', '');",
+                  "pm.test(\"instance_id that does not resolve in the region refused (sync 400, or an Operation that fails)\", () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 200]));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  pm.test('accepted response carries the Operation that must then fail', () =>     pm.expect(j.id, pm.response.text()).to.be.a('string'));",
@@ -6589,8 +6589,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.environment.unset('opId');",
-                  "pm.test('nic_id that does not resolve in the region refused (sync 400, or an Operation that fails)', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 200]));",
+                  "pm.environment.set('opId', '');",
+                  "pm.test(\"nic_id that does not resolve in the region refused (sync 400, or an Operation that fails)\", () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 200]));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  pm.test('accepted response carries the Operation that must then fail', () =>     pm.expect(j.id, pm.response.text()).to.be.a('string'));",
@@ -6949,8 +6949,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.environment.unset('opId');",
-                  "pm.test('ip_ref.subnet_id in another region refused (sync 400, or an Operation that fails)', () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 200]));",
+                  "pm.environment.set('opId', '');",
+                  "pm.test(\"ip_ref.subnet_id in another region refused (sync 400, or an Operation that fails)\", () =>   pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([400, 200]));",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
                   "  pm.test('accepted response carries the Operation that must then fail', () =>     pm.expect(j.id, pm.response.text()).to.be.a('string'));",
@@ -10513,7 +10513,7 @@
                   "const kept = tgts.find(t => t.externalIp && t.externalIp.address === '203.0.113.72');",
                   "pm.test('untouched target is still listed', () =>   pm.expect(kept, JSON.stringify(tgts)).to.be.an('object'));",
                   "pm.test('untouched target reports ACTIVE', () =>   pm.expect((kept || {}).status, JSON.stringify(tgts)).to.eql('ACTIVE'));",
-                  "pm.test('untouched target has no drain moment', () =>   pm.expect((kept || {}).drainStartedAt, JSON.stringify(tgts)).to.be.undefined);"
+                  "pm.test('untouched target has no drain moment', () =>   pm.expect((kept || {}).drainStartedAt, JSON.stringify(tgts))    .to.satisfy(v => v === null || v === undefined));"
                 ]
               }
             }

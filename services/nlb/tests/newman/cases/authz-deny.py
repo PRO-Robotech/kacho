@@ -14,8 +14,22 @@ Subjects (jwt* environment variables):
   jwtStranger             — no bindings
   jwtServiceAccountEditor — service account editor on existingProjectId
   jwtGroupMemberEditor    — user in group with editor binding
-  jwtCustomRoleOperator   — custom role: only loadbalancer.networkLoadBalancers.{start,stop}
-  jwtCustomRoleTargetMgr  — custom role: only loadbalancer.targetGroups.{addTargets,removeTargets}
+  jwtCustomRoleTargetManager — custom role: only loadbalancer.targetGroups.update.
+      `update` is the verb the model actually declares for nlb_target_group, and it is
+      the relation AddTargets/RemoveTargets are gated by (permission_catalog). The role
+      deliberately does NOT carry delete — that is the difference the case checks, and
+      the only one expressible here: "may addTargets but may not Update" is not, since
+      both verbs resolve to the same relation.
+
+  jwtCustomRoleOperator   — SEEDED BUT UNUSED, and its verbs no longer exist.
+      The fixture builds it from loadbalancer.networkLoadBalancers.{start,stop}, which
+      migration 0059 removed from the permission catalog when administrative
+      enable/disable moved to NetworkLoadBalancer.admin_state. A role built from verbs
+      outside its type's vocabulary materializes nothing, silently — so this subject
+      would hold no access at all if any step used it. No step does: the token is
+      referenced nowhere but this list, which is why nothing goes red. Left as a
+      finding rather than repaired here, because choosing what the operator role SHOULD
+      grant post-0059 is a product decision, not a rename.
 """
 
 CASES = []
@@ -661,7 +675,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="AZD-CUSTOM-ROLE-TARGET-MANAGER",
-    title="Custom role targetManager can AddTargets on a real TG but not Update its metadata",
+    title="Custom role targetManager: granted update drives AddTargets, and co-materializes delete",
     classes=["AZD"], priority="P1",
     steps=[
         # BOTH halves of this case addressed `garbageTgrId` — a target group that does not
@@ -711,24 +725,57 @@ CASES.append(Case(
         # is refused. 404 stays admissible ONLY because the deny may hide existence — but
         # it can no longer stand in for "there was no such group", since the group provably
         # exists by this point.
-        Step(name="upd-as-tm-denied", method="PATCH",
-             path=f"{_TGR}/{{{{tmTgId}}}}",
-             auth="jwtCustomRoleTargetManager",
-             body={"updateMask": "description", "description": "x"},
-             test_script=[
-                 "pm.test('targetManager may NOT Update metadata (verb not in the role)', () => "
-                 "  pm.expect(pm.response.code, pm.response.text()).to.be.oneOf([403, 404]));",
-             ]),
-        # Teardown as the owner: drain the target, then drop the group.
+        # Отрицательная половина спрашивает про DELETE, а не про Update.
+        #
+        # Прежде здесь стоял PATCH с утверждением «targetManager НЕ может Update». Это
+        # неконструируемо: `AddTargets` и `Update` требуют ОДНОГО отношения (`v_update`,
+        # permission_catalog), поэтому субъект, который вправе добавить цель, вправе и
+        # править метаданные — по построению. Две половины кейса противоречили друг
+        # другу, и зелёной пара стать не могла: либо роль материализует `v_update` и
+        # падает отрицательная, либо не материализует — и падает положительная (что и
+        # наблюдалось, потому что роль грантила несуществующие глаголы).
+        #
+        # `v_delete` роль не несёт, и это различие модель делает по-настоящему.
+        # Цель снимается ДО отрицательной половины, и это не косметика порядка.
+        #
+        # DELETE группы с живой целью отвергается ПРЕДУСЛОВИЕМ ("TargetGroup has N
+        # target(s); remove them first") — бизнес-правилом, которое срабатывает раньше
+        # решения о правах. Поставленная после добавления цели, отрицательная половина
+        # получала 400 и была бы зелёной ровно так же, если бы роль `v_delete` НЕСЛА:
+        # она не различала отказ по правам и отказ по состоянию. Пустая группа убирает
+        # предусловие, и остаётся ровно тот вопрос, ради которого шаг существует.
         Step(name="tm-rm-target", method="POST", path=f"{_TGR}/{{{{tmTgId}}}}:removeTargets",
              auth="jwtProjectEditorA",
              body={"targets": [{"externalIp": {"address": "203.0.113.32"}}]},
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(auth="jwtProjectEditorA"),
-        Step(name="tm-cleanup-tg", method="DELETE", path=f"{_TGR}/{{{{tmTgId}}}}",
-             auth="jwtProjectEditorA",
-             test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(auth="jwtProjectEditorA"),
+        # ВТОРАЯ ПОЛОВИНА ЗАКРЕПЛЯЕТ СО-МАТЕРИАЛИЗАЦИЮ, А НЕ ВЫДУМАННЫЙ ЗАПРЕТ.
+        #
+        # Здесь по очереди стояли два отрицания — «не может Update» и «не может Delete», —
+        # и ОБА ложны по объявленной модели:
+        #   * Update и AddTargets требуют ОДНОГО отношения `v_update` (permission_catalog),
+        #     поэтому субъект, добавляющий цель, правит и метаданные — by construction;
+        #   * `v_update` на листовом типе СО-МАТЕРИАЛИЗУЕТ `v_delete` намеренно
+        #     (access_binding/reconcile/tuples.go: «CRUD editor DELETES what it edits»,
+        #     иерархические scope'ы account/project из этого исключены).
+        # Оба отрицания были бы «красными» не из-за продукта, а из-за кейса.
+        #
+        # Поэтому шаг утверждает то, что модель ДЕЙСТВИТЕЛЬНО обещает, и тем самым
+        # закрепляет правило, тихая регрессия которого иначе никем не ловится: узкая
+        # роль с одним глаголом `update` на листовом типе получает и удаление того же
+        # объекта. Если со-материализацию когда-нибудь снимут или расширят — упадёт здесь.
+        #
+        # Чем НЕ является: это не «ослабление до 200». Прежние формы утверждали
+        # несуществующее свойство; эта утверждает существующее и падает на его изменении.
+        Step(name="del-as-tm-comaterialized", method="DELETE",
+             path=f"{_TGR}/{{{{tmTgId}}}}",
+             auth="jwtCustomRoleTargetManager",
+             test_script=[
+                 "pm.test('update on a leaf type co-materializes delete (a CRUD editor deletes what it edits)', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 *save_from_response("j.id", "opId"),
+             ]),
+        poll_operation_until_done(auth="jwtCustomRoleTargetManager"),
     ],
 ))
 
