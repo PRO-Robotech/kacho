@@ -62,6 +62,10 @@ import time
 
 sys.path.insert(0, __file__.rsplit("/", 1)[0])
 import mint_rs256 as m  # noqa: E402
+# Declared id↔token pairings + their check. Own module because THIS one mints the
+# bootstrap Bearer at import time — a checker that cannot be imported without a
+# cluster cannot be self-tested, and this is the part that must be provable offline.
+from principal_pairings import unpaired_principals  # noqa: E402
 
 # Endpoints. Defaults match the port-forwards the newman drivers establish
 # (deploy/scripts/newman-{e2e,parallel}.sh); every one is env-overridable so the
@@ -529,7 +533,14 @@ def seed() -> dict:
                                  [(role_tm, P, projA1)] if role_tm else [])
     _, tok_adminA = subject(acctA, f"ps-adm-a-{RID}", [(ROLE_ADMIN, A, acctA)])
     _, tok_adminB = subject(acctB, f"ps-adm-b-{RID}", [(ROLE_ADMIN, A, acctB)])
-    _, tok_invitee = subject(acctA, f"ps-inv-{RID}", [(ROLE_ADMIN, A, acctB), (ROLE_EDIT, P, projA1)])
+    # The id is KEPT, not discarded. A suite that binds a role to a subject and then
+    # reads with a token needs the id OF THAT TOKEN'S PRINCIPAL; an underscore here
+    # published a token whose principal nothing named, and the nearest-looking id in the
+    # env (`userINVId`, an unrelated user row) got bound instead. The tuple then names a
+    # user while every request authenticates as a service account, so the relation cannot
+    # resolve — ever. See PRINCIPAL_PAIRINGS below, which now asserts the property the
+    # comment on `svaAId` had been stating for one channel only.
+    sva_invitee, tok_invitee = subject(acctA, f"ps-inv-{RID}", [(ROLE_ADMIN, A, acctB), (ROLE_EDIT, P, projA1)])
     # editor on cross project A2 ONLY (nlb cross-tenant move tier)
     _, tok_editorCrossA2 = subject(acctA, f"ps-ed-a2-{RID}", [(ROLE_EDIT, P, projA2)])
     _, tok_ownerA = subject(acctA, f"ps-own-a-{RID}", [(ROLE_ADMIN, P, projA1)])
@@ -639,7 +650,17 @@ def seed() -> dict:
         "svaAId": sva_saA,
         "svaNoGrantId": sva_nogrant,
         "svaPureNoGrantId": sva_purenob,
+        # Принципал, стоящий за `jwtInvitee`. Публикуется затем, чтобы кейс, который
+        # ЧИТАЕТ этим токеном, имел чем связать привязку. См. PRINCIPAL_PAIRINGS.
+        "svaInviteeId": sva_invitee,
         # AccessBinding-subject / ownerUserId users (must EXIST — migration 0049).
+        #
+        # ЭТИ ИДЕНТИФИКАТОРЫ — ТОЛЬКО ЦЕЛИ ПРИВЯЗКИ, НЕ ПРИНЦИПАЛЫ. Ни одному из них
+        # посев не выдаёт токена и выдать не может: машинный харнесс получает только
+        # `client_credentials`, то есть служебную учётку (см. шапку mint_rs256 —
+        # пользовательский токен требует интерактивного входа и без него не несёт acr).
+        # Связывать любой из них с каким-либо `jwt*` — значит записать отношение на
+        # субъект, которым ни один запрос не аутентифицируется.
         "userAAAId": usr_owner_a,
         "userAABId": usr_owner_b,
         "userNOBId": usr_nob,
@@ -669,6 +690,17 @@ def seed() -> dict:
         "baseUrl": PUBLIC,
         "internalBaseUrl": INTERNAL,
     }
+    broken = unpaired_principals(fixtures)
+    if broken:
+        raise RuntimeError(
+            "seed contract breach — declared principal pairings do not hold:\n  "
+            + "\n  ".join(broken)
+            + "\nA case that binds a role to <id> and then reads with <token> can never "
+              "resolve if the token authenticates as a different subject: the relation "
+              "names one principal and every request carries another. Fix the seed, not "
+              "the case — the case has no way to see this and fails as a materialisation "
+              "timeout six steps later."
+        )
     return fixtures
 
 

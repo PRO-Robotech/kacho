@@ -420,6 +420,61 @@ def _self_test() -> int:
             print("SELF-TEST FAIL: an ignored path was reported as committable", file=sys.stderr)
             ok = False
 
+    # ── principal pairings: injection in both directions ─────────────────────
+    #
+    # The seed refuses to emit a fixture set whose declared `<id> ↔ <token>` pairings do
+    # not hold. That refusal is only worth anything if it can fire — and only SAFE if it
+    # stays quiet on a sound set, since it aborts the whole run. Both directions are
+    # asserted here, on synthetic tokens, with no stand involved.
+    #
+    # `principal_pairings` is imported directly (not through `prodseed_matrix`, which
+    # mints the bootstrap Bearer at import time and would need a cluster to load).
+    import principal_pairings as pp
+
+    sound = {
+        "svaAId": "sva_a", "jwtSAA": pp.make_token("sva_a"),
+        # nested `ext.ext_claims` — the shape the provider's token hook actually emits;
+        # both nestings must resolve, or the check condemns a sound channel.
+        "svaInviteeId": "sva_inv", "jwtInvitee": pp.make_token("sva_inv", nest=True),
+    }
+    if pp.unpaired_principals(sound, {"svaAId": "jwtSAA", "svaInviteeId": "jwtInvitee"}):
+        print("SELF-TEST FAIL: a SOUND pairing set was reported broken — this check "
+              "aborts the seed, so a false positive stops every suite", file=sys.stderr)
+        ok = False
+
+    # The defect itself: the token authenticates as somebody else than the bound subject.
+    # This is the shape that produced six cases' worth of "not found" after a full poll
+    # budget, six steps away from its cause.
+    mismatched = dict(sound, svaInviteeId="usr_someone_else")
+    got = pp.unpaired_principals(mismatched, {"svaAId": "jwtSAA", "svaInviteeId": "jwtInvitee"})
+    if len(got) != 1 or "usr_someone_else" not in got[0] or "sva_inv" not in got[0]:
+        print(f"SELF-TEST FAIL: mismatch not caught, or the finding does not NAME both "
+              f"the bound subject and the token's principal: {got}", file=sys.stderr)
+        ok = False
+
+    # Half a channel — one key emitted, the other not. This is how the original defect
+    # looked from outside, so it must not read as "channel absent".
+    if len(pp.unpaired_principals({"svaAId": "sva_a"}, {"svaAId": "jwtSAA"})) != 1:
+        print("SELF-TEST FAIL: a half-emitted pairing was not reported", file=sys.stderr)
+        ok = False
+    # A channel this profile did not emit at all is NOT a finding — otherwise the check
+    # fires on every partial seed and gets removed as noise.
+    if pp.unpaired_principals({}, {"svaAId": "jwtSAA"}):
+        print("SELF-TEST FAIL: an unemitted channel was reported as a breach", file=sys.stderr)
+        ok = False
+
+    # The claim-name half. Reading `sub` instead of `kacho_principal_id` reports EVERY
+    # pairing broken, sound ones included — measured, not imagined: the first version of
+    # this check did exactly that. A token whose principal claim is absent must be
+    # reported as carrying none, never silently accepted.
+    if pp.token_principal_id(pp.make_token("sva_a")) != "sva_a":
+        print("SELF-TEST FAIL: the principal claim is not read from ext_claims", file=sys.stderr)
+        ok = False
+    for junk in ("", "not.a.token", "a.b", "eyJhbGciOiJub25lIn0.e30.x"):
+        if pp.token_principal_id(junk) != "":
+            print(f"SELF-TEST FAIL: {junk!r} yielded a principal id", file=sys.stderr)
+            ok = False
+
     # And the live tree: whatever the answer, it must be MEASURED, not assumed. This
     # prints it, so a change of disposition is visible in the self-test output too.
     live = env_disposition([env_path(s) for s in ALL_SERVICES])
