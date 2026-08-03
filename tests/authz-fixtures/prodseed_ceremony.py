@@ -452,6 +452,21 @@ def stage_write_env(values: dict) -> None:
     print(f"[ceremony] 9-окружение: обновлено файлов {written}, ключей {len(values)}")
 
 
+def _expired_debt() -> str:
+    """Долг по `apiTokenExpired`, посчитанный ТЕМ ЖЕ предикатом, что и волна."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import ceremony_credentials as cc
+        res = cc.scan(_ROOT)
+        steps = res["by_var"].get("apiTokenExpired", 0)
+        asserts = sum(e["asserts"] for rel, e in res["collections"].items()
+                      if "env:apiTokenExpired" in e["reasons"])
+        return f"apiTokenExpired — {steps} шаг / {asserts} утверждени(й)."
+    except Exception as e:  # noqa: BLE001
+        # Молчать нельзя: непосчитанный долг неотличим от закрытого.
+        return f"apiTokenExpired — число НЕ ПОСЧИТАНО ({e})."
+
+
 def main() -> int:
     print(f"[ceremony] посев церемонии, прогон {RID}")
     try:
@@ -481,9 +496,13 @@ def main() -> int:
             "ceremonyEmail": email,
         })
         print(f"[ceremony] ГОТОВО: предъявитель принадлежит человеку {user_id}")
-        print("[ceremony] ОТКРЫТЫЙ ДОЛГ С ЧИСЛОМ (не заполнено, не замаскировано): "
-              "apiTokenExpired — 1 шаг / 3 утверждения. Срок назначает выдающий, "
-              "укоротить его на один выпуск нельзя; нужна волна «выпустить и переждать».")
+        # Число долга берётся у ОБЪЯВЛЕНИЯ, а не пишется здесь литералом: иначе у
+        # одного факта появляется второе место, и оно разъезжается с первым. Свой
+        # литерал уже разошёлся — приёмка считала утверждения другим предикатом,
+        # чем перепись по дереву, и цифры не совпали.
+        print(f"[ceremony] ОТКРЫТЫЙ ДОЛГ (не заполнено, не замаскировано): "
+              f"{_expired_debt()} Срок назначает выдающий, укоротить его на один "
+              f"выпуск нельзя; нужна волна «выпустить и переждать».")
         return 0
     except StageError as e:
         print(f"===== ПОСЕВ ЦЕРЕМОНИИ ВСТАЛ =====\n{e}", file=sys.stderr)
