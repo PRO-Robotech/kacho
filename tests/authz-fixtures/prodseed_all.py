@@ -3,12 +3,19 @@
 # SPDX-License-Identifier: BUSL-1.1
 """Production-posture seed for EVERY newman suite — the counterpart of setup.sh.
 
-`setup.sh` seeds a stand whose api-gateway runs `authn.mode=dev`: it forges HS256
-Bearers from the shared dev secret and hands one to each matrix subject. On a stand in
-PRODUCTION posture that is inert by design — `authn.devSecret` is empty, the gateway
-accepts only Hydra-signed RS256, and iam's internal listener demands a verified client
-certificate. setup.sh therefore dies on its third step (Account.Create → 401) and the
-whole regression suite proves nothing about the posture we actually ship.
+HISTORY, in the past tense on purpose. `setup.sh` USED TO seed a stand whose api-gateway
+ran `authn.mode=dev`: it forged HS256 Bearers from a signing literal shared with the tree
+and handed one to each matrix subject. Against PRODUCTION posture that was inert by
+design — the gateway accepts only Hydra-signed RS256, and iam's internal listener demands
+a verified client certificate — so it died on its third step (Account.Create → 401) and
+the whole regression suite proved nothing about the posture we actually ship.
+
+That region no longer exists. `setup.sh` is now a posture classifier that refuses `dev`
+outright and ends in an unconditional `exec` of THIS module; the symmetric-minting path
+and its script were deleted, and the deletion is held by
+`internal/repohygiene/sharedsigningliteral_test.go` (with a paired injection proof).
+The paragraph above is kept because it names what the delegation below is FOR — not
+because any of it is still reachable. Do not read it as a description of the harness.
 
 This module is the production path setup.sh delegates to. Nothing is forged here:
 
@@ -27,8 +34,10 @@ verified in the tree rather than assumed:
   1. `IssueUserTokenUseCase.resolveAudience` takes NO caller audience — it always emits
      the kacho-internal `<prefix>/user/<id>`, which can never equal the gateway's
      ExpectedAudience (`https://<APIDomain>`);
-  2. a client_credentials token carries no `acr`, and 292 of the 357 catalogued RPCs
-     declare `required_acr_min` ≥ 1. `StepUpGate.Check` exempts principals whose
+  2. a client_credentials token carries no `acr`, and 236 of the 294 catalogued RPCs
+     declare `required_acr_min` ≥ 1 (remeasured; this line read "292 of the 357"
+     against a catalog two retirements ago — recheck it rather than quoting it, the
+     command is in prodseed_matrix.py). `StepUpGate.Check` exempts principals whose
      `kacho_principal_type` is exactly `service_account` and NEVER a user.
 A human User principal with an `acr` requires the interactive Kratos→Hydra login, which
 a machine harness cannot drive. So each matrix slot is backed by a ServiceAccount

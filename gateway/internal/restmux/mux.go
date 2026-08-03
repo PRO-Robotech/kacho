@@ -694,6 +694,19 @@ func NewMux(
 			if err := iampb.RegisterInternalClusterServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
 				return nil, fmt.Errorf("register iam InternalClusterService: %w", err)
 			}
+			// InternalInteractiveClientService — lifecycle of the OAuth2 client
+			// through which a HUMAN completes an interactive sign-in ceremony
+			// (Get / List / Create / Update / Delete) under
+			// /iam/v1/internal/interactiveClients.  Internal-only;
+			// isInternalRoute sends these paths to the internal sub-mux and the
+			// dispatcher 404s them on the external TLS listener, hiding
+			// existence. Registering a client at the identity provider decides
+			// where an authorization code may be delivered, so the catalog gate
+			// requires `system_admin` on `cluster:cluster_kacho_root` and the
+			// three mutations additionally carry the step-up floor acr=2.
+			if err := iampb.RegisterInternalInteractiveClientServiceHandlerFromEndpoint(ctx, mux, iamInternalAddr, optsFor("iamInternal")); err != nil {
+				return nil, fmt.Errorf("register iam InternalInteractiveClientService: %w", err)
+			}
 			// InternalOperationsService.ListIamOperations — cluster-wide IAM
 			// operations dump for admin-UI under GET /iam/v1/internal/operations.
 			// Internal-only; isInternalRoute routes /iam/v1/internal/* to

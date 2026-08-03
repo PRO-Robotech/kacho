@@ -1,0 +1,158 @@
+---
+id: internal
+sidebar_position: 6
+title: Внутренний API
+---
+
+import { Codes } from '@site/src/components/commonBlocks/Codes'
+import { ApiOperation } from '@site/src/components/commonBlocks/ApiOperation'
+
+# Внутренний API
+
+Три сервиса живут **только на внутреннем листенере** (порт 9091) и на внешнюю поверхность
+не публикуются: `InternalVolumeService`, `InternalImageService`, `InternalDiskTypeService`.
+
+Разделение проходит по тому, что метод раскрывает или кому он адресован: администрирование
+каталога, инфраструктурная проекция ресурса и служебные вызовы между сервисами не
+предназначены внешним клиентам.
+
+:::caution «Внутреннее» не означает «доверенное»
+Правила на внутреннем листенере **те же**, что на публичном: mTLS на транспорте и проверка
+прав на каждом запросе. Ни один метод здесь не освобождён от аутентификации, и ни один не
+проходит без проверки прав. Внутренний периметр доверенным не считается.
+:::
+
+## InternalVolumeService
+
+### Attach
+
+<ApiOperation method="gRPC" endpoint="InternalVolumeService/Attach">
+
+Привязывает том к машине. Атомарная вставка с условием; повтор безопасен — уже наша
+привязка отвечает успехом.
+
+Полезная нагрузка **самоописывающаяся**: она несёт зону машины, проект и имя машины,
+поэтому storage проверяет свою строку и обратно вычислительный сервис не зовёт. Разбор —
+[Привязка тома к машине](/architecture/attachments).
+
+Авторизуется по **двум** объектам: отношение `editor` на самом томе (извлекается из
+`volume_id`) плюс отдельный вопрос модели прав про названную машину. Права на том без
+прав на машину привязку не дают, и наоборот.
+
+<Codes codes={['invalidArgument', 'notFound', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'unavailable', 'internal']} />
+
+</ApiOperation>
+
+### Detach
+
+<ApiOperation method="gRPC" endpoint="InternalVolumeService/Detach">
+
+Отвязывает том. Идемпотентно: ноль удалённых строк означает, что том уже отвязан, — это
+успех.
+
+Авторизуется отношением `editor` на томе.
+
+<Codes codes={['invalidArgument', 'notFound', 'unauthenticated', 'permissionDenied', 'unavailable', 'internal']} />
+
+</ApiOperation>
+
+### ListAttachments
+
+<ApiOperation method="gRPC" endpoint="InternalVolumeService/ListAttachments">
+
+Возвращает привязки для перечисленных машин — одним запросом, чтобы потребитель строил
+своё зеркало пакетно, а не по запросу на машину.
+
+**Авторизуется на уровне данных.** Единого объекта для проверки заранее у этого метода
+нет: машины называет вызывающий, а тома в ответе принадлежат разным владельцам. Поэтому
+прочитанная страница сужается по каждому тому тем же отношением, на котором гейтится
+`Volume.Get`, партиями не более 100. В каталоге метод помечен как `scope_filtered`, и
+проверка конфигурации при загрузке не даёт сервису стартовать с выключенным фильтром.
+
+<Codes codes={['invalidArgument', 'unauthenticated', 'permissionDenied', 'unavailable', 'internal']} />
+
+</ApiOperation>
+
+### GetInternal
+
+<ApiOperation method="gRPC" endpoint="InternalVolumeService/GetInternal">
+
+Полная инфраструктурная проекция тома — раскладка по железу.
+
+**Отвечает `UNIMPLEMENTED`.** Предмет метода — сведения data plane, которого в этой фазе
+нет. Метод объявлен контрактом, но возвращать ему нечего.
+
+Это осознанный вынос за рамки, а не незакрытый долг: заглушка не притворяется работающей
+и не отдаёт пустую структуру, которую можно было бы принять за ответ.
+
+<Codes codes={['unimplemented', 'unauthenticated', 'permissionDenied']} />
+
+</ApiOperation>
+
+:::info Почему инфраструктурные поля вообще не на публичной поверхности
+Сведения о том, на каком железе лежит ресурс — узел, пул, идентификаторы внутренних
+устройств, — помогают картировать физику платформы. Такие данные живут исключительно во
+внутреннем API. Публичная поверхность ресурса показывает намерение и результат: кто
+владелец, где размещён, какого размера, в каком состоянии — но не то, как это разложено по
+оборудованию.
+
+Отсюда две проекции одного ресурса: публичная и внутренняя.
+:::
+
+## InternalImageService
+
+### GetInternal
+
+<ApiOperation method="gRPC" endpoint="InternalImageService/GetInternal">
+
+Внутренняя проекция образа. Реализована и отвечает: сейчас она содержит публичную
+проекцию образа, место под инфраструктурные поля зарезервировано под будущий data plane.
+
+<Codes codes={['invalidArgument', 'notFound', 'unauthenticated', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+## InternalDiskTypeService
+
+Администрирование каталога типов диска. Публичного создания типов не существует — каталог
+курируется через этот сервис.
+
+:::note Эти методы синхронны
+`Create`, `Update` и `Delete` каталога возвращают **сам ресурс**, а не `Operation`. Это
+осознанное отступление от общего правила «мутации асинхронны»: за правкой позиции
+справочника не стоит долгой работы, и заворачивать её в операцию значило бы заставить
+администратора поллить то, что уже готово.
+:::
+
+### Create
+
+<ApiOperation method="gRPC" endpoint="InternalDiskTypeService/Create">
+
+Заводит позицию каталога. Возвращает `DiskType`.
+
+<Codes codes={['invalidArgument', 'alreadyExists', 'unauthenticated', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+### Update
+
+<ApiOperation method="gRPC" endpoint="InternalDiskTypeService/Update">
+
+Изменяет позицию каталога. Возвращает `DiskType`.
+
+<Codes codes={['invalidArgument', 'notFound', 'unauthenticated', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+### Delete
+
+<ApiOperation method="gRPC" endpoint="InternalDiskTypeService/Delete">
+
+Удаляет позицию каталога.
+
+Тип, на который ссылается хотя бы один том, удалить нельзя — это держит внешний ключ с
+поведением `RESTRICT`, а не проверка в коде.
+
+<Codes codes={['invalidArgument', 'notFound', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'internal']} />
+
+</ApiOperation>

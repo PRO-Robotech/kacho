@@ -28,6 +28,7 @@ flowchart LR
     iam["kacho-iam"]
     vpc["kacho-vpc"]
     geo["kacho-geo"]
+    stg["kacho-storage"]
   end
   pg[("PostgreSQL<br/>kacho_compute + outbox")]
 
@@ -36,16 +37,25 @@ flowchart LR
   cmp -->|"Check · ProjectService.Get · RegisterResource"| iam
   cmp -->|"Subnet / SG / Address validate"| vpc
   cmp -->|"ZoneService.Get"| geo
+  cmp -->|"boot source · attach / detach"| stg
 ```
 
 | Ребро | Зачем | Тип |
 |---|---|---|
 | compute → kacho-iam | authz-Check на каждом RPC; `ProjectService.Get` (существование проекта); регистрация owner-tuple в OpenFGA | sync, request-path |
-| compute → kacho-vpc | валидация NIC-spec (Subnet / SecurityGroup / Address) при работе с сетевыми интерфейсами | sync, request-path |
-| compute → kacho-geo | валидация `zoneId` (`ZoneService.Get`) при Create Instance / Disk | sync, request-path |
+| compute → kacho-vpc | валидация NIC-spec (Subnet / SecurityGroup / Address); зона подсети обязана совпадать с зоной инстанса | sync, request-path |
+| compute → kacho-geo | валидация `zoneId` (`ZoneService.Get`) при Create Instance | sync, request-path |
+| compute → kacho-storage | резолв источника загрузки (образ / снимок / том) и attach / detach тома | sync, request-path |
 
-Все три ребра **однонаправленные** — compute никого из них не заставляет звать себя обратно
+Все четыре ребра **однонаправленные** — compute никого из них не заставляет звать себя обратно
 (циклов нет). Peer недоступен на мутации → `UNAVAILABLE` (fail-closed).
+
+:::note Attach инициирует compute, а связь хранит storage
+Запрос на присоединение тома несёт **самоописывающийся** payload (инстанс, его зона, проект),
+поэтому storage проверяет свою строку одним атомарным CAS и **никогда не зовёт compute
+обратно** — ацикличность держится по построению. Связующая таблица живёт у владельца-storage;
+на инстансе остаётся read-only зеркало.
+:::
 
 ## Слои (Clean Architecture)
 
@@ -55,16 +65,16 @@ flowchart LR
 flowchart TD
   h["handler<br/>(transport: parse → format)"] --> s["service / use-case<br/>(бизнес-логика)"]
   r["repo<br/>(pgx adapter)"] --> s
-  c["clients<br/>(gRPC adapter: iam/vpc/geo)"] --> s
+  c["clients<br/>(gRPC adapter: iam/vpc/geo/storage)"] --> s
   s --> d["domain<br/>(чистые сущности)"]
 ```
 
 | Слой | Каталог | Ответственность |
 |---|---|---|
-| `domain` | `internal/domain/` | Сущности (чистый Go): Instance / Disk / Image / Snapshot / DiskType. Без pgx/grpc |
-| use-case | `internal/service/` | Бизнес-логика, порты (`internal/ports/`), state-машина, валидация |
+| `domain` | `internal/domain/` | Сущности (чистый Go): Instance / MachineType. Без pgx/grpc |
+| use-case | `internal/apps/kacho/api/<resource>/` | Бизнес-логика по ресурсам (`instance`, `machinetype`), порты (`internal/ports/`), state-машина, валидация |
 | `repo` | `internal/repo/` | Реализация портов через pgx: CRUD, CAS, outbox |
-| `clients` | `internal/clients/` | Реализация peer-портов: iam / vpc / geo gRPC-клиенты |
+| `clients` | `internal/clients/` | Реализация peer-портов: iam / vpc / geo / storage gRPC-клиенты |
 | `handler` | `internal/handler/` | Тонкий transport: proto ↔ use-case, tenant-интерсептор |
 | composition | `cmd/compute/` | Единственное место wiring (два listener'а, интерсепторы, пул, worker) |
 
@@ -103,12 +113,16 @@ sequenceDiagram
 
 Инварианты внутри БД выражены **DB-конструкциями**, а не software-проверками (защита от гонок):
 
-- **FK**: `attached_disks.disk_id → disks` `ON DELETE RESTRICT` (нельзя удалить присоединённый
-  диск); `attached_disks.instance_id → instances` и `instance_network_interfaces.instance_id →
-  instances` — `ON DELETE CASCADE`.
+- **FK**: `instances.machine_type_id → machine_types` `ON DELETE RESTRICT` (тип машины нельзя
+  удалить, пока на нём есть инстансы); `instance_network_interfaces.instance_id → instances` —
+  `ON DELETE CASCADE`.
 - **partial UNIQUE** `(project_id, name) WHERE name <> ''` — уникальность имени в проекте.
-- **Атомарный attach** дисков — через single-statement UPDATE/INSERT (не read-then-write).
+- **Атомарный CAS** на переходах состояния — single-statement `UPDATE … WHERE <ожидаемое
+  состояние>` с проверкой кардинальности, не read-then-write.
 - **OCC** через `xmin::text` — для read-modify-write сетевого интерфейса.
+
+Привязка тома под этот список **не подпадает**: она живёт в БД kacho-storage, и её
+атомарность — инвариант владельца, а не этой схемы.
 
 Сервисный слой только маппит SQLSTATE в gRPC-код (`23503`→FailedPrecondition,
 `23505`→AlreadyExists и т.д.); текст pgx/SQL наружу не утекает — вместо него фиксированный

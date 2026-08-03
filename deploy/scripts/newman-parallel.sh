@@ -309,7 +309,7 @@ GATE_SCRIPT="$REPO_ROOT/services/iam/tests/newman/scripts/assert-suites-green.sh
 
 echo "===== PER-SUITE TOTALS (nothing is subtracted; the gate below agrees by construction) ====="
 printf "%-12s %10s %10s %10s\n" "SUITE" "ASSERT-F" "REQ-F" "REPORTS"
-raw_total_a=0; raw_total_r=0
+raw_total_a=0; raw_total_r=0; zero_report_suites=""
 for svc in $SERVICES; do
   d="$(suite_dir "$svc")"
   a=0; r=0; n=0
@@ -321,8 +321,20 @@ for svc in $SERVICES; do
   done
   printf "%-12s %10s %10s %10s\n" "$svc" "$a" "$r" "$n"
   raw_total_a=$((raw_total_a + a)); raw_total_r=$((raw_total_r + r))
+  # A suite that produced NO report contributes a row of zeros — and a row of zeros
+  # is exactly what a clean suite looks like. The REPORTS column already carried the
+  # count, but a number sitting in a column is not a signal; it has to be said. This
+  # is the same distinction the coverage gate now makes one level down: "nothing
+  # examined" must not read as "nothing found".
+  if [ "$n" -eq 0 ]; then
+    zero_report_suites="$zero_report_suites $svc"
+  fi
 done
 printf "%-12s %10s %10s\n" "TOTAL" "$raw_total_a" "$raw_total_r"
+if [ -n "$zero_report_suites" ]; then
+  echo "[parallel] DID NOT RUN:${zero_report_suites} — zero reports on disk. The rows above say" >&2
+  echo "           nothing about these suites; they are absent from the roll-up, not passing it." >&2
+fi
 if [ "$RC" -eq 0 ]; then echo "[parallel] runner verdict: ALL SUITES GREEN"; else echo "[parallel] runner verdict: one or more suites RED (see per-suite out/summary.txt + out/*.json)"; fi
 
 if [ "$GATE" != "true" ] || [ ! -f "$GATE_SCRIPT" ]; then

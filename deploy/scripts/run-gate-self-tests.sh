@@ -74,6 +74,8 @@ DECLARED="
 deploy/scripts/assert-admin-hop-transport.sh
 deploy/scripts/assert-alt-fixtures-are-another.py
 deploy/scripts/assert-ban6-external-isolation.py
+deploy/scripts/assert-fixture-role-verbs-exist.py
+deploy/scripts/assert-generated-scripts-parse.js
 deploy/scripts/assert-outbox-autovacuum.sh
 deploy/scripts/assert-posture-branches-can-be-taken.py
 deploy/scripts/assert-report-readers-use-the-summary.py
@@ -95,17 +97,33 @@ tests/authz-fixtures/prodseed_all.py
 tools/mixedoutcomeaudit/mixed_outcome_audit.py
 "
 
-# Три законные формы разбора аргумента --self-test. Все три — КОД: bash-тест,
-# проверка членства в argv, объявление флага в argparse. Слово в прозе, внутри
-# регулярного выражения или в строке запуска ни одной из них не является.
-SELFTEST_PARSE='= *"--self-test" *\]|"--self-test" +in +sys\.argv|add_argument\( *"--self-test"'
+# Четыре законные формы разбора аргумента --self-test. Все четыре — КОД: bash-тест,
+# проверка членства в argv, объявление флага в argparse, проверка членства в argv у
+# node. Слово в прозе, внутри регулярного выражения или в строке запуска ни одной из
+# них не является.
+#
+# Четвёртая форма добавлена вместе с расширением обхода на `*.js`: до этого гейт на
+# JS не мог попасть в состав ВООБЩЕ, каким бы образом он ни разбирал аргумент, и его
+# доказательство инъекцией существовало где угодно, только не в конвейере.
+SELFTEST_PARSE='= *"--self-test" *\]|"--self-test" +in +sys\.argv|add_argument\( *"--self-test"|argv\.includes\([^)]*--self-test'
 
 # ЧИТАЕТСЯ ИСПОЛНЯЕМАЯ ЧАСТЬ, А НЕ ТЕКСТ — и это не предосторожность впрок.
 # Первая же редакция обхода по всему дереву нашла САМ ЭТОТ ФАЙЛ: в шапке выше
 # перечислены узнаваемые формы, и перечисление неотличимо от объявления. Гейт,
 # который красят его собственные объяснения, снимут при первом же ложном
 # срабатывании — поэтому строки-комментарии отбрасываются до сравнения.
-executable_lines() { sed -e 's/[[:space:]]#[[:space:]].*$//' -e '/^[[:space:]]*#/d' "$1"; }
+#
+# У JS комментарий начинается ИНАЧЕ, и это не косметика: отбрасывание `#` не трогает
+# `// …`, поэтому первый же гейт на JS читался бы вместе со своими объяснениями —
+# ровно та слепота, из-за которой сюда добавлена проверка comment-only ниже.
+# Правило выбирается по расширению, а не применяется ко всем сразу: срезать `//` в
+# shell и python значило бы рубить строки на любом URL и получить ложные пропуски.
+executable_lines() {
+  case "$1" in
+    *.js) sed -e 's|[[:space:]]//.*$||' -e '/^[[:space:]]*\/\//d' "$1" ;;
+    *)    sed -e 's/[[:space:]]#[[:space:]].*$//' -e '/^[[:space:]]*#/d' "$1" ;;
+  esac
+}
 
 # Поиск: файл дерева, несущий РАЗБОР аргумента --self-test.
 #
@@ -117,17 +135,37 @@ executable_lines() { sed -e 's/[[:space:]]#[[:space:]].*$//' -e '/^[[:space:]]*#
 # Сортировка — байтовая (LC_ALL=C). В локали по умолчанию точка в начале имени
 # при сличении игнорируется, поэтому `.github/…` уезжал ПОСЛЕ `deploy/…`, а
 # объявленный список сортировался иначе — состав «расходился» на одном порядке.
+#
+# Языки состава — `*.sh`, `*.py`, `*.js`. Перечень не «на всякий случай»: `.js`
+# добавлен потому, что первый гейт на нём (assert-generated-scripts-parse.js) оказался
+# вне инварианта ПО ПОСТРОЕНИЮ — обход его не видел, поэтому вопрос «а исполняется ли
+# его самопроверка» даже не задавался. Зеркальная перепись по остальным домам гейтов
+# (tools/, .github/scripts, deploy/tests/helm) показала ещё 26 файлов на Go: они СЮДА
+# НЕ ОТНОСЯТСЯ и это не пропуск — каждый пакет tools/ несёт companion `_test.go`, то
+# есть доказывает себя обычным `go test`, а не флагом `--self-test`. Другого языка
+# гейтов в дереве нет.
+list_candidates() {
+  local root="$1"
+  if [ "$root" = "$REPO_ROOT" ] && git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
+    git -C "$root" ls-files -z '*.sh' '*.py' '*.js'
+  else
+    ( cd "$root" && find . -type f \( -name '*.sh' -o -name '*.py' -o -name '*.js' \) \
+        -not -path './.git/*' -not -path '*/node_modules/*' -not -path '*/vendor/*' \
+        -printf '%P\0' )
+  fi
+}
+
+# count_candidates — ОБЪЁМ ОСМОТРЕННОГО. «Ноль находок» обязано быть отличимо от
+# «ноль прочитанного», и это относится к самому обходу тоже: без этого числа
+# сообщение «состав совпадает» было бы одинаковым и когда обход прочёл всё дерево,
+# и когда он не дошёл ни до одного файла.
+count_candidates() {
+  list_candidates "${1:-$REPO_ROOT}" | tr -dc '\0' | wc -c | tr -d ' '
+}
+
 discover() {
   local root="${1:-$REPO_ROOT}" f
-  {
-    if [ "$root" = "$REPO_ROOT" ] && git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
-      git -C "$root" ls-files -z '*.sh' '*.py'
-    else
-      ( cd "$root" && find . -type f \( -name '*.sh' -o -name '*.py' \) \
-          -not -path './.git/*' -not -path '*/node_modules/*' -not -path '*/vendor/*' \
-          -printf '%P\0' )
-    fi
-  } | while IFS= read -r -d '' f; do
+  list_candidates "$root" | while IFS= read -r -d '' f; do
     [ -f "$root/$f" ] || continue
     # Исполняемая часть берётся ПОДСТАНОВКОЙ, а не конвейером в grep. С
     # `pipefail` конвейер `sed … | grep -q` возвращает ОТКАЗ на совпадении:
@@ -166,6 +204,11 @@ if [ "${1:-}" = "--verify-discovery" ]; then
   { echo 'import argparse'; echo 'ap = argparse.ArgumentParser()'
     printf 'ap.add_argument("%s", action="store_true")\n' "$sfx"; } \
     >"$tmp/services/x/tools/argparse-form.py"
+  # Четвёртая форма — node. Одиночные кавычки здесь не случайность: в JS так пишут
+  # чаще, и предикат обязан узнавать форму, а не полюбившийся ему сорт кавычек.
+  { echo "'use strict';"
+    printf "if (process.argv.includes('%s')) { process.exit(0); }\n" "$sfx"; } \
+    >"$tmp/deploy/scripts/node-form.js"
 
   # НЕ САМОПРОВЕРКИ — слово есть, разбора нет. Обязаны НЕ найтись, иначе прогон
   # потребует запускать несуществующую ветку.
@@ -176,6 +219,13 @@ if [ "${1:-}" = "--verify-discovery" ]; then
   { echo '#!/usr/bin/env bash'
     printf '# узнаётся форма: [ "$1" = "%s" ] и "%s" in sys.argv\n' "$sfx" "$sfx"
     echo 'echo ничего'; } >"$tmp/deploy/scripts/comment-only.sh"
+  # То же самое ДЛЯ JS, и это не симметрия ради симметрии: комментарий в JS
+  # начинается с `//`, а отбрасывание `#` его не трогает. Без этой фикстуры первый
+  # же гейт на JS красил бы состав своими собственными объяснениями — и «прогонщик
+  # себя не находит» держалось бы только на том, что таких файлов ещё не было.
+  { echo "'use strict';"
+    printf "// узнаётся форма: process.argv.includes('%s') — здесь её нет\n" "$sfx"
+    echo 'console.log("ничего");'; } >"$tmp/deploy/scripts/js-comment-only.js"
 
   # ДЛИННЫЙ ФАЙЛ, СОВПАДЕНИЕ В НАЧАЛЕ — размерная половина предиката. Короткие
   # фикстуры выше не различают «нашлось» и «нашлось, но пропало по SIGPIPE»:
@@ -189,14 +239,16 @@ if [ "${1:-}" = "--verify-discovery" ]; then
   want=".github/scripts/argv-form.py
 deploy/scripts/assert-bash-form.sh
 deploy/scripts/long-form.sh
+deploy/scripts/node-form.js
 services/x/tools/argparse-form.py"
   if [ "$found" = "$want" ]; then
-    echo "  ОК  все формы разбора найдены, в трёх каталогах, включая длинный файл"
+    echo "  ОК  все ЧЕТЫРЕ формы разбора найдены, в трёх каталогах, включая длинный файл"
   else
     echo "  ПРОВАЛ состав не тот"; echo "--- найдено:"; printf '%s\n' "$found" | sed 's/^/      /'
     echo "--- ожидалось:"; printf '%s\n' "$want" | sed 's/^/      /'; rc=1
   fi
-  for f in deploy/scripts/prose-only.sh deploy/scripts/comment-only.sh; do
+  for f in deploy/scripts/prose-only.sh deploy/scripts/comment-only.sh \
+           deploy/scripts/js-comment-only.js; do
     if printf '%s\n' "$found" | grep -qx "$f"; then
       echo "  ПРОВАЛ $f принят за самопроверку — предикат читает текст, а не разбор"; rc=1
     else
@@ -284,7 +336,17 @@ if [ "$FOUND" != "$WANT" ]; then
 fi
 
 count="$(printf '%s\n' "$FOUND" | grep -c . )"
-echo "=== самопроверки гейтов: найдено и объявлено $count, состав совпадает ==="
+scanned="$(count_candidates)"
+# Объём осмотренного печатается ВМЕСТЕ с составом: «найдено и объявлено N» без него
+# одинаково читается и когда обход прочёл всё дерево, и когда он не дошёл ни до
+# одного файла.
+echo "=== самопроверки гейтов: осмотрено файлов (*.sh/*.py/*.js): $scanned; "\
+"найдено и объявлено $count, состав совпадает ==="
+if [ "$scanned" -eq 0 ]; then
+  echo "FAIL: обход не прочитал НИ ОДНОГО файла — совпадение пустого состава с пустым"
+  echo "      списком не является доказательством чего-либо."
+  exit 1
+fi
 
 failed=""
 ran=0
@@ -293,6 +355,7 @@ for f in $FOUND; do
   echo "=== $f --self-test ==="
   case "$f" in
     *.py) cmd=(python3 "$f" --self-test) ;;
+    *.js) cmd=(node "$f" --self-test) ;;
     *)    cmd=(bash "$f" --self-test) ;;
   esac
   if "${cmd[@]}"; then

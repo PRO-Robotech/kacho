@@ -1,0 +1,112 @@
+---
+id: disk-type
+sidebar_position: 5
+title: DiskType
+---
+
+import { DICTIONARY } from '@site/src/constants/dictionary'
+import { TYPES } from '@site/src/constants/types'
+import { Codes } from '@site/src/components/commonBlocks/Codes'
+import { ApiOperation } from '@site/src/components/commonBlocks/ApiOperation'
+import CodeBlock from '@theme/CodeBlock'
+import dedent from 'ts-dedent'
+
+# DiskType
+
+**DiskType** — позиция каталога типов диска: класс надёжности и производительности, из
+которого выбирают при создании тома. Каталог глобальный и курируется администратором
+платформы; тенант его только читает.
+
+:::info Идентификатор — slug, а не сгенерированный ключ
+`DiskType` — единственный ресурс сервиса, чей идентификатор **не генерируется**: это
+читаемый slug (`block-balanced`), назначаемый администратором. Причина в том, что это
+позиция справочника, а не созданный тенантом ресурс: на неё ссылаются в запросах руками,
+и осмысленное имя здесь полезнее непрозрачного ключа.
+
+Это не отступление от правила «адресация по неизменяемому идентификатору»: slug и
+**есть** первичный ключ, он неизменен и не переименовывается.
+:::
+
+## Поля ресурса
+
+<table>
+  <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>id</code></td><td><code>{TYPES.string}</code></td><td>Читаемый slug каталога, напр. <code>block-balanced</code></td></tr>
+    <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>Отображаемое имя типа</td></tr>
+    <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
+    <tr><td><code>zoneIds</code></td><td><code>{TYPES.stringArray}</code></td><td>{DICTIONARY.zoneIds.short}</td></tr>
+    <tr><td><code>performanceTier</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.performanceTier.short}</td></tr>
+    <tr><td><code>createdAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.createdAt.short}</td></tr>
+  </tbody>
+</table>
+
+## Состав каталога
+
+| id | `performanceTier` | Назначение |
+|---|---|---|
+| `block-standard` | `standard` | Экономичный надёжный том |
+| `block-balanced` | `balanced` | Сбалансированный, общего назначения |
+| `block-fast` | `fast` | Высокий IOPS, низкая задержка |
+| `block-single` | `single` | Однорепличный, без резервирования |
+| `block-io-max` | `io-max` | Максимальные IOPS и пропускная способность |
+
+Названия описывают класс надёжности и производительности. Обратите внимание на
+`block-single`: он **не реплицирован**, и это единственная ступень каталога без
+резервирования — выбирать её осознанно.
+
+---
+
+## Get
+
+<ApiOperation method="GET" endpoint="/storage/v1/diskTypes/{diskTypeId}">
+
+Возвращает тип диска по идентификатору.
+
+#### Пример запроса
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -H "Authorization: Bearer $TOKEN" \\
+      https://api.kacho.local/storage/v1/diskTypes/block-balanced
+  `}
+</CodeBlock>
+
+<Codes codes={['invalidArgument', 'notFound', 'unauthenticated', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## List
+
+<ApiOperation method="GET" endpoint="/storage/v1/diskTypes">
+
+Возвращает страницу типов диска.
+
+<Codes codes={['invalidArgument', 'unauthenticated', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## Кто это читает
+
+Каталог — глобальный справочник: чтобы завести хоть один том, тенант обязан знать
+доступные типы. Поэтому чтение доступно **каждому аутентифицированному** субъекту и через
+фильтр видимости не проходит — у позиций каталога нет индивидуальных владельцев.
+
+Аутентификация при этом обязательна: анонимный запрос отвергается.
+
+## Администрирование
+
+Создание, изменение и удаление позиций каталога живут в `InternalDiskTypeService` на
+**внутреннем листенере** и на публичную поверхность не выведены. В отличие от остальных
+ресурсов, эти методы **синхронны** — возвращают сам ресурс, а не операцию.
+
+Подробнее — [Внутренний API](/api/internal).
+
+## Что блокирует удаление типа
+
+Тип, на который ссылается хотя бы один том, удалить нельзя: это держит внешний ключ
+`volumes.disk_type_id → disk_types` с поведением `RESTRICT`.

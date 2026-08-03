@@ -67,23 +67,43 @@ flowchart LR
 
 ### Relation — что делается
 
-Relation выводится из gRPC-метода (verb-taxonomy). Для VPC это, как правило, `viewer` для
-чтения и `editor` для мутаций:
+Relation выводится из gRPC-метода. Действие над **существующим** ресурсом гейтится **точным
+глагольным отношением** (`v_*`), а не грубым ярусным:
 
 <table>
-  <thead><tr><th>RPC</th><th>Relation</th><th>Семантика</th></tr></thead>
+  <thead><tr><th>RPC</th><th>Relation</th><th>Объект проверки</th></tr></thead>
   <tbody>
-    <tr><td><code>Get</code> / <code>List</code></td><td><code>viewer</code></td><td>Чтение ресурса / списка</td></tr>
-    <tr><td><code>Create</code></td><td><code>editor</code></td><td>Проверяется на <strong>родителе</strong> (project / network)</td></tr>
-    <tr><td><code>Update</code> / <code>Delete</code></td><td><code>editor</code></td><td>Изменение / удаление</td></tr>
-    <tr><td><code>AddCidrBlocks</code> / <code>UpdateRules</code> / …</td><td><code>editor</code></td><td>Ресурс-специфичные мутации</td></tr>
+    <tr><td><code>Get</code> / <code>GetByValue</code></td><td><code>v&#95;get</code></td><td>Сам ресурс</td></tr>
+    <tr><td><code>Update</code>, <code>AddCidrBlocks</code>, <code>UpdateRules</code> и прочие <code>:verb</code>-мутации</td><td><code>v&#95;update</code></td><td>Сам ресурс</td></tr>
+    <tr><td><code>Delete</code></td><td><code>v&#95;delete</code></td><td>Сам ресурс</td></tr>
+    <tr><td>Вложенный список (<code>ListBySubnet</code>, <code>ListOperations</code>, …)</td><td><code>v&#95;list</code></td><td>Объект-контейнер</td></tr>
+    <tr><td><code>Create</code></td><td><code>editor</code></td><td><strong>Родитель</strong> (project / network) — ресурса ещё нет</td></tr>
+    <tr><td>Top-level <code>List</code></td><td><code>viewer</code></td><td>Проект; выдача дополнительно фильтруется построчно</td></tr>
   </tbody>
 </table>
 
-:::note `editor` ⊇ `viewer`
-В FGA-модели отношение `editor` наследует `viewer`: тот, кто может править ресурс, может его и
-читать. Поэтому отдельную проверку «editor → также viewer» делать не нужно.
+:::warning Ярусные и глагольные отношения РАЗВЯЗАНЫ
+`editor` наследует `viewer` (`viewer: […] or editor`), и это по-прежнему так. Но глагольные
+отношения `v_get`/`v_list`/`v_update`/`v_delete` **не выводятся из ярусных**: они объявлены
+прямыми usersets (`[user, service_account, group#member] or super_admin`). Наличие `editor` на
+ресурсе **не** даёт `v_update`, а `viewer` **не** даёт `v_get` — глагольный грант выдаётся явно
+правилом роли. Это исключает завышение прав, когда широкая ярусная роль «протекает» в мелкие
+действия.
 :::
+
+### Фильтр страницы — по тому же отношению, что и чтение
+
+Top-level `List` возвращает `200` и только доступные вызывающему объекты. Строка попадает в
+страницу **ровно тогда, когда вызывающий вправе прочитать её одиночным `Get`**, — предикат
+страницы и есть `v_get`. Список и чтение по id задают один вопрос и разойтись не могут.
+
+Видимость резолвится **прямым вопросом про объекты страницы** (батчами), а не перечислением всего
+доступного субъекту: перечисление в хранилище отношений ограничено серверным потолком и не имеет
+продолжения, поэтому на долгоживущем сторе объект сверх потолка стал бы невидим владельцу при
+живых правах. Ошибка проверки — fail-closed; частично отфильтрованная страница не отдаётся.
+
+`v_list` при этом остаётся живым отношением: им гейтятся списки, вложенные **в** объект
+(`NetworkService/ListSubnets` → `v_list` на `vpc_network`) — там у вопроса есть единый объект.
 
 ### Object — на чем проверяется
 
@@ -102,8 +122,7 @@ Relation выводится из gRPC-метода (verb-taxonomy). Для VPC �
 
 ## Hierarchy-tuples — как ресурс становится «авторизуемым»
 
-OpenFGA вычисляет `viewer`/`editor` на ресурсе через **наследование от проекта**. Чтобы это
-сработало, у каждого ресурса должен быть **hierarchy-tuple**, связывающий его с проектом:
+У каждого ресурса должен быть **hierarchy-tuple**, связывающий его с проектом:
 
 ```text
 vpc_network:{networkId}#project@project:{projectId}
@@ -111,8 +130,22 @@ vpc_network:{networkId}#project@project:{projectId}
 ```
 
 Читается как: «у объекта `vpc_network:net…` отношение `project` указывает на `project:prj…`».
-Дальше FGA-модель разворачивает: `viewer` на network = `viewer` на его project ∪ прямые
-binding'и.
+
+Этот указатель нужен для двух вещей:
+
+- **Каскад супер-доступа.** `super_admin` на ресурсе выводится как `super_admin from project` —
+  так администратор облака, бутстрап-учётка и администратор аккаунта достают ресурс, не имея
+  на нём персональной выдачи. Только эти три верхних уровня каскадят.
+- **Резолв области на краю.** Gateway по id ресурса определяет его проект, чтобы выполнить
+  per-RPC проверку в правильной области (защита от обращения к чужому объекту по угаданному id).
+
+:::note Каскада обычных прав вниз НЕТ
+Модель **плоская**: `viewer`/`editor`/`admin` и глагольные `v_*` на ресурсе — прямые usersets, а
+не производные от одноимённых отношений проекта. `viewer` на проекте **не** делает вызывающего
+`viewer` на каждой сети этого проекта. Доступ уровня проекта и ниже материализуется реконсайлером
+**на каждый объект** из привязок — это осознанное решение против завышения прав, а каскад оставлен
+ровно трём верхним уровням.
+:::
 
 **kacho-vpc в OpenFGA напрямую не ходит.** Намерение «зарегистрировать owner-tuple» worker на
 Create пишет строкой в transactional-outbox `fga_register_outbox` — **в той же writer-TX**, что

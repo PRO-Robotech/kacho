@@ -31,10 +31,20 @@ the use-case's `AudiencePrefix` is never set by the composition root, so the iss
 client carries an EMPTY audience whitelist. Measured end-to-end on the production-posture
 stand: requesting the api audience at the exchange is refused ("Requested audience ... has
 not been whitelisted"); exchanging without one yields `aud: []`, which the edge rejects
-401. Separately, a client_credentials token carries no `acr`, and 236 of the 300 catalog
+401. Separately, a client_credentials token carries no `acr`, and 236 of the 294 catalog
 entries require acr >= 1. Account.Create itself is `<exempt>` so acr is not its blocker —
 the audience is. Every case asserting "the caller is user X" therefore stays RED under
 this seed, and that is a counted debt, not something to paper over here.
+
+  The denominator moves whenever the catalog does, so recheck it rather than trusting
+  this line; it has already been stale twice. Command:
+      python3 -c "import json;d=json.load(open('gateway/internal/middleware/embed/permission_catalog.json'));\
+  print(sum(1 for e in d if str(e.get('required_acr_min','')) in ('1','2')),'of',len(d))"
+  History of this sentence: it read "292 of the 357", then "236 of the 300"; both were
+  true of the catalog they were written against and false by the time they were read.
+  The twin sentence in prodseed_all.py carried the "292 of the 357" reading and was
+  corrected to match in the same change that added this note — so neither file still
+  states it, and a reader sent looking for it there would find nothing.
 
 Usage:
     prodseed_matrix.py [--deps vpc,compute,storage,registry,nlb,iam] > fixtures.json
@@ -504,14 +514,19 @@ def seed() -> dict:
     # а отличие проверяется на `delete`, которого у роли нет. Это различие модель
     # действительно делает; прежнее «может addTargets, но не может Update»
     # невыразимо: оба глагола — одно отношение.
+    #
+    # Операторской роли здесь БОЛЬШЕ НЕТ, и это решение, а не переименование.
+    # Она строилась из `networkLoadBalancers.{start,stop}` — глаголов, снятых
+    # миграцией 0059, когда административное включение/выключение переехало в поле
+    # `NetworkLoadBalancer.admin_state`. Выразить её пост-0059 можно было бы только
+    # через `update` (правка admin_state — обычная мутация), но `update` уже несёт
+    # роль выше, и вторая роль с тем же глаголом ничего не различает: у набора
+    # пропадает предмет. Роль не использовал ни один шаг — её предъявитель
+    # упоминался только в перечне субъектов, поэтому снятие ничего не гасит.
     role_tm = custom_role(acctA, f"ps_nlb_targetmgr_{RID}", "loadbalancer",
                           ["targetGroups"], ["update"])
-    role_op = custom_role(acctA, f"ps_nlb_operator_{RID}", "loadbalancer",
-                          ["networkLoadBalancers"], ["start", "stop"])
     _, tok_crTargetMgr = subject(acctA, f"ps-cr-tm-{RID}",
                                  [(role_tm, P, projA1)] if role_tm else [])
-    _, tok_crOperator = subject(acctA, f"ps-cr-op-{RID}",
-                                [(role_op, P, projA1)] if role_op else [])
     _, tok_adminA = subject(acctA, f"ps-adm-a-{RID}", [(ROLE_ADMIN, A, acctA)])
     _, tok_adminB = subject(acctB, f"ps-adm-b-{RID}", [(ROLE_ADMIN, A, acctB)])
     _, tok_invitee = subject(acctA, f"ps-inv-{RID}", [(ROLE_ADMIN, A, acctB), (ROLE_EDIT, P, projA1)])
@@ -611,7 +626,6 @@ def seed() -> dict:
         # true of the negative halves and fatal to the positive ones: the case saying
         # "targetManager may addTargets" could only ever see 403, so the verb its role
         # exists to grant was never once exercised.
-        "jwtCustomRoleOperator": tok_crOperator,
         "jwtCustomRoleTargetManager": tok_crTargetMgr,
         # ids
         "accountAId": acctA,

@@ -1,0 +1,135 @@
+---
+id: overview
+sidebar_position: 1
+title: Обзор API
+---
+
+import { RESTRICTIONS } from '@site/src/constants/restrictions'
+import { Restrictions } from '@site/src/components/commonBlocks/Restrictions'
+import { Codes } from '@site/src/components/commonBlocks/Codes'
+
+# Обзор API
+
+Публичный API доступен по REST через шлюз платформы и по gRPC. Базовый префикс путей —
+`/storage/v1`.
+
+## Поверхность
+
+| Ресурс | Публичные методы | Страница |
+|---|---|---|
+| `Volume` | `Get`, `List`, `Create`, `Update`, `Delete`, `ListOperations` | [Volume](/api/volume) |
+| `Snapshot` | `Get`, `List`, `Create`, `Update`, `Delete` | [Snapshot](/api/snapshot) |
+| `Image` | `Get`, `List`, `Create`, `Update`, `Delete`, `ListOperations` | [Image](/api/image) |
+| `DiskType` | `Get`, `List` | [DiskType](/api/disk-type) |
+
+Администрирование каталога, инфраструктурные проекции и служебные вызовы между сервисами
+живут на внутреннем листенере — [Внутренний API](/api/internal).
+
+## Пути
+
+| Метод | Путь |
+|---|---|
+| `GET` | `/storage/v1/volumes` · `/storage/v1/volumes/{volumeId}` · `/storage/v1/volumes/{volumeId}/operations` |
+| `POST` | `/storage/v1/volumes` |
+| `PATCH` | `/storage/v1/volumes/{volumeId}` |
+| `DELETE` | `/storage/v1/volumes/{volumeId}` |
+| `GET` | `/storage/v1/snapshots` · `/storage/v1/snapshots/{snapshotId}` |
+| `POST` | `/storage/v1/snapshots` |
+| `PATCH` | `/storage/v1/snapshots/{snapshotId}` |
+| `DELETE` | `/storage/v1/snapshots/{snapshotId}` |
+| `GET` | `/storage/v1/images` · `/storage/v1/images/{imageId}` · `/storage/v1/images/{imageId}/operations` |
+| `POST` | `/storage/v1/images` |
+| `PATCH` | `/storage/v1/images/{imageId}` |
+| `DELETE` | `/storage/v1/images/{imageId}` |
+| `GET` | `/storage/v1/diskTypes` · `/storage/v1/diskTypes/{diskTypeId}` |
+
+## Форма ресурса
+
+Ресурс — **плоское** сообщение: доменные поля лежат на верхнем уровне, без обёрток вида
+`spec` / `status` / `metadata`. Статус — перечисление, а не вложенная структура.
+
+Имена полей в JSON — camelCase: `projectId`, `zoneId`, `diskTypeId`, `sizeBytes`,
+`createdAt`.
+
+Отметки времени в ответе **усекаются до секунд** — включая вложенные записи
+(`attachedAt` внутри привязки усекается так же, как `createdAt` самого тома).
+
+## Синхронное и асинхронное
+
+`Get` и `List` отвечают синхронно. `Create`, `Update`, `Delete` возвращают `Operation` —
+клиент поллит `OperationService.Get(id)` до `done`. Метода подписки на изменения не
+существует.
+
+Единственное исключение — администрирование каталога типов диска: оно синхронно и
+возвращает ресурс. Обоснование — в разделе [Операции](/architecture/operations).
+
+## Ошибки
+
+Формат — `google.rpc.Status`: `{code, message, details:[]}`.
+
+<Codes codes={['invalidArgument', 'notFound', 'alreadyExists', 'failedPrecondition', 'unavailable', 'unauthenticated', 'permissionDenied', 'unimplemented', 'internal']} />
+
+Тексты сообщений — часть контракта и стабильны: `"<Resource> <id> not found"`,
+`"<field> is immutable after <Resource>.Create"`, `"Volume size can only be increased"`.
+Внутренняя ошибка отвечает **фиксированным** текстом: сведения о базе данных наружу не
+попадают ни при каких обстоятельствах.
+
+### Какой код когда
+
+Различие проходит по тому, **чей** ресурс не сошёлся:
+
+| Ситуация | Код |
+|---|---|
+| Идентификатор испорчен по форме | `INVALID_ARGUMENT`, синхронно, первым действием |
+| Свой ресурс корректен по форме, но его нет | `NOT_FOUND` |
+| Чужой ресурс (проект, зона, регион) не существует или не в том состоянии | `FAILED_PRECONDITION` |
+| Владелец чужого ресурса недоступен | `UNAVAILABLE` — мутация не выполняется |
+
+Смысл разделения: `NOT_FOUND` означает «я не нашёл **своё**», а не «предусловие на чужой
+ресурс не выполнено». Отсутствующий проект или зона отвечают
+`FAILED_PRECONDITION` (`Project <id> not found`), а не `NOT_FOUND`: вызывающий не «не
+нашёл своё», у него не выполнено предусловие на чужой ресурс. Недоступность владельца —
+`UNAVAILABLE`, и мутация при этом **не выполняется**.
+
+## Пагинация
+
+Курсорная, по паре `(created_at, id)` по возрастанию.
+
+<Restrictions items={[
+  { label: 'pageSize / pageToken', rules: RESTRICTIONS.pagination },
+  { label: 'projectId', rules: RESTRICTIONS.projectId },
+]} />
+
+## Видимость списков
+
+Список отдаёт только то, что вызывающему **разрешено читать**: прочитанная страница
+сужается по правам на каждый объект тем же отношением, на котором гейтится `Get`.
+«Видно в списке» и «`Get` разрешён» — один и тот же вопрос, заданный один раз.
+
+Каталог типов диска через фильтр не проходит — это глобальный справочник без
+индивидуальных владельцев.
+
+Подробнее — [Права и полосы доступа](/architecture/authz).
+
+## Идентификаторы
+
+| Ресурс | Форма |
+|---|---|
+| `Volume` | `vol` + 17 символов crockford-base32 |
+| `Snapshot` | `snp` + 17 символов |
+| `Image` | `img` + 17 символов |
+| `Operation` | `sop` + 17 символов |
+| `DiskType` | читаемый slug |
+
+Идентификатор неизменен всю жизнь ресурса: операции смены не существует. Именно он
+участвует в ссылках и в области выдачи прав. Имя (`name`) — косметическая метка проекта,
+её можно менять свободно, и в адресации она не участвует.
+
+## Поля, снятые с контракта
+
+Поле запроса, на которое сервис не смотрит, здесь не принимается молча. Параметр
+сортировки (`order_by`) был **снят** со всех списочных запросов с резервированием номера
+и имени — а не оставлен принимаемым и игнорируемым.
+
+Причина: принять параметр и не применить его хуже, чем отказать. Отказ виден сразу, а
+несделанное — только по последствиям.
