@@ -17,28 +17,41 @@ import dedent from 'ts-dedent'
 # Instance
 
 **Instance** — виртуальная машина: основная вычислительная единица платформы. Вы заводите
-`Instance`, когда приложению нужны процессорные ядра, память и диски, работающие как единый
+`Instance`, когда приложению нужны процессорные ядра, память и тома, работающие как единый
 управляемый ресурс с понятным жизненным циклом (создан → запущен → остановлен → удалён).
 
-Инстанс собирается из нескольких частей: **платформы** (`platformId`) и **ресурсов**
-(`resourcesSpec`: cores/memory/coreFraction/gpus), **загрузочного диска** (`bootDiskSpec` —
-inline-спека или ссылка на существующий диск), дополнительных дисков и сетевых интерфейсов.
-Инстанс привязан к зоне (`zoneId`) и проекту (`projectId`), а его состояние управляется
-детерминированной **state-машиной** с явными предусловиями переходов.
+Инстанс задаётся тремя обязательными решениями: **род** (`instanceKind` — `VM` или
+`CONTAINER`), **тип машины** (`machineTypeId` — единственный канал размера) и **источник
+загрузки** (`bootSource` — образ, снимок или том домена kacho-storage). Дальше — сетевые
+интерфейсы и конфигурация рода (`vmSpec` / `containerSpec`). Инстанс привязан к зоне
+(`zoneId`) и проекту (`projectId`), а его состояние управляется детерминированной
+**state-машиной** с явными предусловиями переходов.
 
 ```mermaid
 graph TD
-  P[Project · kacho-iam] --> I[Instance · epd-…]
-  I -->|boot / secondary| D[Disk · epd-…]
+  P[Project · kacho-iam] --> I[Instance · ins-…]
+  MT[MachineType · mt-…] -->|machine_type_id| I
+  I -->|boot_source| S[Образ / снимок / том · kacho-storage]
   I -->|network_interfaces| NIC[NIC · kacho-vpc]
   I -->|zone_id| Z[Zone · kacho-geo]
-  I -->|platform_id + resources| HW[cores / memory / gpus]
 ```
 
 :::info Идентификатор и владелец
-ID инстанса — префикс `epd` + 17 символов crockford-base32 (например, `epd7t4w9e2x5h8mz0c3v`;
-префикс общий с Disk). Инстанс принадлежит проекту `kacho-iam` (`projectId`, immutable) и зоне
-`kacho-geo` (`zoneId`, immutable — меняется только через Relocate).
+ID инстанса — `ins-` + 17 символов crockford-base32 (например, `ins-7t4w9e2x5h8mz0c3v`).
+Инстанс принадлежит проекту `kacho-iam` (`projectId`, immutable) и зоне `kacho-geo` (`zoneId`,
+immutable — меняется только через Relocate).
+:::
+
+:::warning Размер задаётся типом машины, а не сырыми числами
+Прежняя пара «платформа + ресурсы» (`platformId`, `resourcesSpec`) и inline-спека
+загрузочного диска (`bootDiskSpec`, `secondaryDiskSpecs`) **сняты с контракта**: их номера и
+имена зарезервированы и переиспользованы быть не могут. Размер приходит из каталога
+(`machineTypeId`), загрузка — из `bootSource`, том создаётся в kacho-storage и присоединяется
+по `volumeId`.
+
+Это важно практически: REST-проекция **молча отбрасывает** незнакомые ключи JSON, поэтому
+запрос со старыми полями получит не ошибку, а успех — и инстанс не того размера либо отказ по
+отсутствию обязательного поля. Сверьтесь с таблицами ниже.
 :::
 
 ## Поля ресурса
@@ -53,12 +66,18 @@ ID инстанса — префикс `epd` + 17 символов crockford-bas
     <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
     <tr><td><code>createdAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.createdAt.short}</td></tr>
     <tr><td><code>zoneId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.zoneId.short}</td></tr>
-    <tr><td><code>platformId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.platformId.short}</td></tr>
-    <tr><td><code>resources</code></td><td><code>Resources</code></td><td>{DICTIONARY.resources.short}</td></tr>
+    <tr><td><code>instanceKind</code></td><td><code>InstanceKind</code></td><td>{DICTIONARY.instanceKind.short}</td></tr>
+    <tr><td><code>machineTypeId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.machineTypeId.short}</td></tr>
+    <tr><td><code>effectiveResources</code></td><td><code>EffectiveResources</code></td><td>{DICTIONARY.effectiveResources.short}</td></tr>
+    <tr><td><code>bootSource</code></td><td><code>BootSource</code></td><td>{DICTIONARY.bootSource.short}</td></tr>
+    <tr><td><code>cpuGuaranteePercent</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.cpuGuaranteePercent.short}</td></tr>
+    <tr><td><code>vmSpec</code> / <code>containerSpec</code></td><td><code>oneof</code></td><td>{DICTIONARY.vmSpec.short} · {DICTIONARY.containerSpec.short}</td></tr>
     <tr><td><code>status</code></td><td><code>{TYPES.status}</code></td><td>{DICTIONARY.status.short}</td></tr>
+    <tr><td><code>statusReason</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.statusReason.short}</td></tr>
     <tr><td><code>metadata</code></td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.metadata.short}</td></tr>
     <tr><td><code>bootDisk</code></td><td><code>AttachedDisk</code></td><td>{DICTIONARY.bootDisk.short}</td></tr>
     <tr><td><code>secondaryDisks</code></td><td><code>repeated AttachedDisk</code></td><td>{DICTIONARY.secondaryDisks.short}</td></tr>
+    <tr><td><code>placementGroupId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.placementGroupId.short}</td></tr>
     <tr><td><code>networkInterfaces</code></td><td><code>repeated NetworkInterface</code></td><td>{DICTIONARY.networkInterfaces.short}</td></tr>
     <tr><td><code>serviceAccountId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.serviceAccountId.short}</td></tr>
     <tr><td><code>fqdn</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.fqdn.short}</td></tr>
@@ -109,10 +128,12 @@ Instance](/architecture/instance-lifecycle).
       "projectId": "{projectId}",
       "name": "web-1",
       "zoneId": "region-1-a",
-      "platformId": "standard-v3",
-      "resources": { "cores": "2", "memory": "2147483648", "coreFraction": "100" },
+      "instanceKind": "VM",
+      "machineTypeId": "mt-k3xe746h019hnz182",
+      "effectiveResources": { "vCpu": 2, "memoryMib": "2048" },
+      "bootSource": { "type": "storage.image", "id": "img-9b1d4f6h8j0k2m4n6:stable" },
       "status": "RUNNING",
-      "bootDisk": { "diskId": "{bootDiskId}", "autoDelete": true, "mode": "READ_WRITE" },
+      "bootDisk": { "volumeId": "{bootVolumeId}", "autoDelete": true, "mode": "READ_WRITE" },
       "secondaryDisks": [],
       "networkInterfaces": [],
       "fqdn": "{instanceId}.auto.internal",
@@ -165,9 +186,9 @@ Instance](/architecture/instance-lifecycle).
 
 <ApiOperation method="POST" endpoint="/compute/v1/instances" async>
 
-Создаёт инстанс. Возвращает `Operation` (async). Обязательны `platformId`, `resourcesSpec`,
-`bootDiskSpec` (inline-спека диска или `diskId`) и `zoneId`. После завершения операции инстанс
-в статусе `RUNNING`.
+Создаёт инстанс. Возвращает `Operation` (async). Обязательны `projectId`, `zoneId`,
+`instanceKind`, `machineTypeId` и `bootSource`. Инстанс закрепляется в статусе
+`PROVISIONING`; дальнейшие переходы — через lifecycle-действия.
 
 #### Тело запроса
 
@@ -176,17 +197,27 @@ Instance](/architecture/instance-lifecycle).
   <tbody>
     <tr><td><code>projectId</code></td><td><strong>да</strong></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.projectId.short}</td></tr>
     <tr><td><code>zoneId</code></td><td><strong>да</strong></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.zoneId.short}</td></tr>
-    <tr><td><code>platformId</code></td><td><strong>да</strong></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.platformId.short}</td></tr>
-    <tr><td><code>resourcesSpec</code></td><td><strong>да</strong></td><td><code>ResourcesSpec</code></td><td>cores / memory / coreFraction / gpus</td></tr>
-    <tr><td><code>bootDiskSpec</code></td><td><strong>да</strong></td><td><code>AttachedDiskSpec</code></td><td>Загрузочный диск (<code>diskSpec</code> или <code>diskId</code> — ровно один)</td></tr>
+    <tr><td><code>instanceKind</code></td><td><strong>да</strong></td><td><code>InstanceKind</code></td><td>{DICTIONARY.instanceKind.short}</td></tr>
+    <tr><td><code>machineTypeId</code></td><td><strong>да</strong></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.machineTypeId.short}</td></tr>
+    <tr><td><code>bootSource</code></td><td><strong>да</strong></td><td><code>BootSource</code></td><td>{DICTIONARY.bootSource.short}</td></tr>
+    <tr><td><code>vmSpec</code> / <code>containerSpec</code></td><td>по роду</td><td><code>oneof</code></td><td>Конфигурация выбранного рода инстанса</td></tr>
     <tr><td><code>name</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.name.short}</td></tr>
     <tr><td><code>description</code> / <code>labels</code></td><td>нет</td><td>—</td><td>Описание и метки</td></tr>
     <tr><td><code>metadata</code></td><td>нет</td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.metadata.short}</td></tr>
-    <tr><td><code>secondaryDiskSpecs</code></td><td>нет</td><td><code>repeated AttachedDiskSpec</code></td><td>Дополнительные диски (≤3)</td></tr>
+    <tr><td><code>networkInterfaceSpecs</code></td><td>нет</td><td><code>repeated NetworkInterfaceSpec</code></td><td>Сетевые интерфейсы; зона подсети обязана совпадать с зоной инстанса</td></tr>
+    <tr><td><code>cpuGuaranteePercent</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.cpuGuaranteePercent.short}</td></tr>
     <tr><td><code>serviceAccountId</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.serviceAccountId.short}</td></tr>
     <tr><td><code>hostname</code></td><td>нет</td><td><code>{TYPES.string}</code></td><td>Имя хоста для FQDN</td></tr>
   </tbody>
 </table>
+
+:::note `bootSource` — это `{type, id}`, и только они
+`type` выбирает владельца, к которому уходит резолв: `storage.image` (образ диска — для `VM`)
+или `registry.image` (OCI-образ — для `CONTAINER`). `id` несёт тег или дайджест внутри себя
+(`img-<base32>:<tag>`, `img-<base32>@sha256:<hex>`, `repo/name:tag`). Остальные поля
+`bootSource` — **output-only**: имя и закреплённый дайджест заполняет резолв; передача их на
+вход отвергается.
+:::
 
 #### Пример запроса
 
@@ -199,12 +230,9 @@ Instance](/architecture/instance-lifecycle).
         "projectId": "{projectId}",
         "name": "web-1",
         "zoneId": "region-1-a",
-        "platformId": "standard-v3",
-        "resourcesSpec": { "cores": 2, "memory": 2147483648, "coreFraction": 100 },
-        "bootDiskSpec": {
-          "autoDelete": true,
-          "diskSpec": { "typeId": "network-ssd", "size": 10737418240, "imageId": "{imageId}" }
-        }
+        "instanceKind": "VM",
+        "machineTypeId": "mt-k3xe746h019hnz182",
+        "bootSource": { "type": "storage.image", "id": "{imageId}:stable" }
       }'
   `}
 </CodeBlock>
@@ -405,13 +433,25 @@ running"`). Конечный статус — `STOPPED`; `response` — `google.
 
 ## AttachDisk / DetachDisk
 
-Присоединение и отсоединение дисков. Оба — async.
+Присоединение и отсоединение **томов kacho-storage**. Оба — async.
+
+:::info Том создаётся у владельца, а присоединяется здесь
+Инстанс не создаёт томов: том заводится через `storage.v1.VolumeService` и присоединяется сюда
+**по `volumeId`**. Сама связь «инстанс ↔ том» хранится у владельца-storage, поэтому запрос
+несёт самоописывающийся набор (инстанс, его зона, проект), а storage проверяет свою строку
+одним атомарным сравнением-и-записью.
+
+Прежняя форма «создать диск прямо в момент присоединения» (`diskSpec`) **снята с контракта**:
+её номер и имя зарезервированы. Она и до снятия ничего не делала — обработчик читал только
+идентификатор тома и молча отбрасывал спеку, то есть вызывающему сообщали об успехе, не
+применив ничего из того, о чём он просил.
+:::
 
 <ApiOperation method="POST" endpoint="/compute/v1/instances/{instanceId}:attachDisk" async>
 
-Присоединяет диск к инстансу. Предусловия: инстанс в `RUNNING` или `STOPPED`; диск `READY`, в
-той же зоне и не присоединён к другому инстансу. Тело — `attachedDiskSpec` (`diskId` для
-существующего диска или `diskSpec` для нового).
+Присоединяет том к инстансу. Предусловия: инстанс в `RUNNING` или `STOPPED`; том готов, в той
+же зоне и не присоединён к другому инстансу. Тело — `attachedDiskSpec` с обязательным
+`volumeId`.
 
 #### Пример запроса
 
@@ -420,7 +460,7 @@ running"`). Конечный статус — `STOPPED`; `response` — `google.
     curl -X POST http://localhost:18080/compute/v1/instances/{instanceId}:attachDisk \\
       -H 'Authorization: Bearer <JWT>' \\
       -H 'Content-Type: application/json' \\
-      -d '{ "attachedDiskSpec": { "diskId": "{diskId}", "autoDelete": false } }'
+      -d '{ "attachedDiskSpec": { "volumeId": "{volumeId}", "autoDelete": false } }'
   `}
 </CodeBlock>
 
@@ -428,9 +468,9 @@ running"`). Конечный статус — `STOPPED`; `response` — `google.
 
 <ApiOperation method="POST" endpoint="/compute/v1/instances/{instanceId}:detachDisk" async>
 
-Отсоединяет диск. Тело несёт **ровно один** из `diskId` / `deviceName`. Нельзя отсоединить
-загрузочный диск. После отсоединения диск снова свободен для attach к другому инстансу или для
-удаления.
+Отсоединяет том. Тело несёт **ровно один** из `volumeId` / `deviceName`. Нельзя отсоединить
+загрузочный том. После отсоединения том снова свободен для присоединения к другому инстансу
+или для удаления в kacho-storage.
 
 #### Пример запроса
 
@@ -439,7 +479,7 @@ running"`). Конечный статус — `STOPPED`; `response` — `google.
     curl -X POST http://localhost:18080/compute/v1/instances/{instanceId}:detachDisk \\
       -H 'Authorization: Bearer <JWT>' \\
       -H 'Content-Type: application/json' \\
-      -d '{ "diskId": "{diskId}" }'
+      -d '{ "volumeId": "{volumeId}" }'
   `}
 </CodeBlock>
 

@@ -13,32 +13,25 @@ export const DICTIONARY = {
   filter: { short: 'Фильтр списка (name="<value>")' },
   pageSize: { short: 'Размер страницы (0 → 50, максимум 1000)' },
   pageToken: { short: 'Курсор следующей страницы (opaque base64)' },
-  // Disk
-  typeId: { short: 'Идентификатор типа диска (DiskType)' },
-  diskSize: { short: 'Размер диска в байтах' },
-  blockSize: { short: 'Размер блока в байтах (по умолчанию 4096); immutable' },
-  diskSource: { short: 'Источник диска: imageId или snapshotId (oneof, immutable)' },
-  instanceIds: { short: 'Инстансы, к которым присоединён диск (output-only)' },
-  // Image
-  family: { short: 'Семейство образа — для GetLatestByFamily (immutable)' },
-  minDiskSize: { short: 'Минимальный размер диска, создаваемого из образа, в байтах (immutable)' },
-  storageSize: { short: 'Занимаемый размер в байтах (output-only)' },
-  os: { short: 'Операционная система образа (LINUX | WINDOWS)' },
-  imageSource: { short: 'Источник образа: imageId | diskId | snapshotId | uri (oneof, ровно один)' },
-  // Snapshot
-  sourceDiskId: { short: 'Идентификатор исходного диска (immutable)' },
-  diskSizeAtSnapshot: { short: 'Размер диска на момент снимка в байтах (immutable, output-only)' },
   // Instance
-  platformId: { short: 'Идентификатор платформы (конфигурации аппаратных ресурсов)' },
-  resources: { short: 'Вычислительные ресурсы: cores, memory, coreFraction, gpus' },
+  instanceKind: { short: 'Род инстанса: VM либо CONTAINER (required, immutable после Create)' },
+  machineTypeId: { short: 'Тип машины — единственный канал размера (слаг "mt-…" либо устойчивое имя типа)' },
+  effectiveResources: { short: 'Действующие ресурсы, выведенные из типа машины: vCPU, память, GPU (output-only)' },
+  bootSource: { short: 'Источник загрузки: {type, id} — образ, снимок или том домена kacho-storage' },
+  cpuGuaranteePercent: { short: 'Гарантированная доля vCPU в процентах (0 — burstable); применяется к семействам STANDARD / COMPUTE / MEMORY' },
+  vmSpec: { short: 'Конфигурация виртуальной машины (при instanceKind = VM)' },
+  containerSpec: { short: 'Конфигурация контейнера (при instanceKind = CONTAINER)' },
+  statusReason: { short: 'Человекочитаемая причина текущего статуса или отложенного изменения (output-only)' },
+  placementGroupId: { short: 'Группа размещения инстанса' },
   metadata: { short: 'Пользовательская метадата key:value (≤256 KiB); меняется через UpdateMetadata' },
-  bootDisk: { short: 'Загрузочный диск инстанса (AttachedDisk)' },
-  secondaryDisks: { short: 'Дополнительные присоединённые диски (output-only)' },
+  bootDisk: { short: 'Зеркало загрузочного тома (output-only; том принадлежит kacho-storage)' },
+  secondaryDisks: { short: 'Зеркало дополнительных присоединённых томов (output-only; тома принадлежат kacho-storage)' },
   networkInterfaces: { short: 'Сетевые интерфейсы инстанса (denormalised-зеркало NIC из kacho-vpc)' },
   serviceAccountId: { short: 'Сервисный аккаунт для аутентификации внутри инстанса (kacho-iam)' },
   fqdn: { short: 'Доменное имя инстанса (output-only, назначается сервером)' },
-  // DiskType
-  diskTypeZoneIds: { short: 'Зоны, в которых доступен тип диска' },
+  // MachineType
+  machineTypeFamily: { short: 'Семейство типа машины: STANDARD | COMPUTE | MEMORY | GPU' },
+  machineTypeStatus: { short: 'Доступность в каталоге: AVAILABLE | DEPRECATED | RETIRED' },
 } as const
 
 export type DictionaryKey = keyof typeof DICTIONARY

@@ -18,54 +18,53 @@ title: Модель данных
 | Таблица | Роль |
 |---|---|
 | `instances` | Инстансы (виртуальные машины) |
-| `disks` | Диски |
-| `images` | Образы |
-| `snapshots` | Снимки |
-| `disk_types` | Справочник типов дисков (read-only на публичном API) |
-| `attached_disks` | Связь инстанс ↔ диск (M:N, флаги `auto_delete`, `is_boot`) |
 | `instance_network_interfaces` | Сетевые интерфейсы инстанса (зеркало NIC из kacho-vpc) |
+| `machine_types` | Каталог типов машин (публично read-only, admin-CRUD на internal-порту) |
 | `operations` | Записи асинхронных операций (LRO; общая модель corelib) |
 | `compute_outbox` | Transactional outbox событий |
+| `compute_fga_register_outbox` | Очередь регистрации authz-объектов (owner-tuple) |
+| `compute_watch_cursors` | Курсоры подписчиков потока изменений |
+
+:::info Блочного хранения здесь нет
+Таблиц `disks` / `images` / `snapshots` / `disk_types` / `attached_disks` в схеме **больше
+нет** — они удалены миграциями `0013`, `0021`, `0022`. Владелец блочного хранения —
+**kacho-storage**, и связь «инстанс ↔ том» живёт **у него**, а не здесь. На инстансе остаётся
+только read-only зеркало присоединённого тома, которое мягко деградирует при исчезновении
+источника.
+:::
 
 ## Связи (ER)
 
 ```mermaid
 erDiagram
-  instances ||--o{ attached_disks : "has"
-  disks ||--o{ attached_disks : "attached via"
   instances ||--o{ instance_network_interfaces : "has"
-  disk_types ||--o{ disks : "type_id"
-  images ||..o{ disks : "source (no FK)"
-  snapshots ||..o{ disks : "source (no FK)"
-  disks ||..o{ snapshots : "source_disk (no FK)"
+  machine_types ||--o{ instances : "machine_type_id"
 ```
 
 ### Внешние ключи (same-DB only)
 
 | Связь | FK | ON DELETE | Смысл |
 |---|---|---|---|
-| `attached_disks.disk_id → disks` | да | **RESTRICT** | Присоединённый диск нельзя удалить (`"The disk is being used"`) |
-| `attached_disks.instance_id → instances` | да | **CASCADE** | При удалении инстанса строки связи чистятся |
+| `instances.machine_type_id → machine_types` | да | **RESTRICT** | Тип машины нельзя удалить, пока на нём есть инстансы |
 | `instance_network_interfaces.instance_id → instances` | да | **CASCADE** | NIC-строки — same-table children инстанса |
 
 ### Ссылки без FK
 
 Через границу сервиса FK невозможен (database-per-service). Эти ссылки — просто `TEXT`,
-валидируются на request-path вызовом owner-сервиса либо не валидируются вовсе:
+валидируются на request-path вызовом сервиса-владельца:
 
 | Ссылка | Owner | Валидация |
 |---|---|---|
-| `instances.project_id` / `disks.project_id` / … | kacho-iam | `ProjectService.Get` на Create |
-| `instances.zone_id` / `disks.zone_id` | kacho-geo | `ZoneService.Get` на Create |
-| `disks.type_id` | локальный `disk_types` | existence-check в БД compute |
-| `disks.source_image_id` / `source_snapshot_id` | локальные `images`/`snapshots` | existence-check только на Create; **не FK** (источник можно удалить) |
-| `snapshots.source_disk_id` | локальный `disks` | existence-check только на Create; **не FK** |
-| `instance_network_interfaces.nic_id` | kacho-vpc `NetworkInterface` | denormalised-зеркало; source of truth — kacho-vpc |
+| `instances.project_id` | kacho-iam | `ProjectService.Get` на Create |
+| `instances.zone_id` | kacho-geo | `ZoneService.Get` на Create |
+| `instances.service_account_id` | kacho-iam | резолв на Create |
+| источник загрузки (`boot_source`) и присоединённые тома | kacho-storage | резолв на Create / attach; связь хранится у владельца-storage |
+| `instance_network_interfaces.subnet_id` / `security_group_ids` | kacho-vpc | валидация NIC-spec на Create; зона подсети обязана совпадать с зоной инстанса |
 
-:::note Источник — не FK намеренно
-`Disk` хранит id образа/снимка, из которого создан, но образ/снимок можно удалить — диск при
-этом продолжает существовать. Так снимки и образы остаются самостоятельными, а не «заложниками»
-созданных из них дисков. Consumer обязан переживать dangling-ref.
+:::note Зеркало — не источник истины
+Поля чужих доменов на инстансе (имя тома, адрес NIC) — **output-only зеркало**, обновляемое на
+чтении. Источник истины — сервис-владелец. Consumer обязан переживать dangling-ref: исчезнувшая
+ссылка даёт деградированный статус, а не отказ.
 :::
 
 ## Статусы ресурсов
@@ -73,31 +72,31 @@ erDiagram
 | Ресурс | Значения `status` |
 |---|---|
 | **Instance** | `PROVISIONING`, `RUNNING`, `STOPPING`, `STOPPED`, `STARTING`, `RESTARTING`, `UPDATING`, `ERROR`, `CRASHED`, `DELETING` |
-| **Disk** | `CREATING`, `READY`, `ERROR`, `DELETING` |
-| **Image** | `CREATING`, `READY`, `ERROR`, `DELETING` |
-| **Snapshot** | `CREATING`, `READY`, `ERROR`, `DELETING` |
+| **MachineType** | `AVAILABLE`, `DEPRECATED`, `RETIRED` |
 
-В control-plane переходы детерминированы: Disk / Image / Snapshot создаются сразу в `READY`,
-Instance проходит state-машину (см. [Жизненный цикл Instance](/architecture/instance-lifecycle)).
+Instance проходит детерминированную state-машину (см.
+[Жизненный цикл Instance](/architecture/instance-lifecycle)). Статус типа машины — про
+доступность каталога: `AVAILABLE` бронируется свободно, `DEPRECATED` ещё запускается, но не
+рекомендуется, `RETIRED` отвергается на `Instance.Create`.
 
 ## ID-префиксы
 
-Идентификатор — `TEXT`: 3-символьный префикс + 17 символов crockford-base32
-(`kacho-corelib/ids`).
+Идентификаторы обоих ресурсов — **дефисной формы**: префикс, дефис и 17 символов
+crockford-base32 (`kacho-corelib/ids`).
 
 | Ресурс | Префикс | Пример |
 |---|---|---|
-| Instance | `epd` | `epd7t4w9e2x5h8mz0c3v` |
-| Disk | `epd` | `epd0am5d8q1w4e7r2t6y` |
-| Image | `fd8` | `fd83v5x7z9b1d4f6h8j0` |
-| Snapshot | `fd8` | `fd8k3xe746h019hnz182` |
-| Operation (Compute) | `epd` | `epdk3xe746h019hnz182` |
-| DiskType | — (литерал) | `network-ssd` |
+| Instance | `ins-` | `ins-7t4w9e2x5h8mz0c3v` |
+| MachineType | `mt-` | `mt-k3xe746h019hnz182` |
+| Operation (Compute) | `epd` (слитно) | `epdk3xe746h019hnz182` |
 
-:::note Общие префиксы
-Instance и Disk делят `epd`; Image и Snapshot — `fd8` (группировка по домену внутри сервиса).
-Тип ресурса различается контекстом RPC, а не только префиксом. Все Compute-операции получают
-`epd` — по нему api-gateway маршрутизирует `OperationService.Get` в этот backend.
+:::note Почему у операций префикс другой
+Id ресурсов мигрировали на дефисную форму, а compute-`Operation` сохраняют legacy-форму `epd` —
+по ней api-gateway маршрутизирует `OperationService.Get` в этот backend. Обе формы валидны:
+крокфордово тело дефиса не содержит, поэтому дефис однозначно различает их.
+
+Id **неизменяем на всю жизнь ресурса** — операции смены id не существует. В URL и ссылки
+попадает только он; `name` остаётся косметическим project-scoped ярлыком и может меняться.
 :::
 
 ## Ошибки и маппинг SQLSTATE
@@ -109,14 +108,20 @@ Instance и Disk делят `epd`; Image и Snapshot — `fd8` (группиро
 |---|---|---|---|
 | Не найдено | — | `NOT_FOUND` | `"<Resource> <id> not found"` |
 | Дубль `(project_id, name)` | `23505` | `ALREADY_EXISTS` | — |
-| FK RESTRICT (attached disk) | `23503` | `FAILED_PRECONDITION` | `"The disk is being used"` |
-| Precondition state-машины | — | `FAILED_PRECONDITION` | `"Instance must be stopped"` / `"Instance is not running"` |
-| Валидация (размер, cores, zone) | `23514` | `INVALID_ARGUMENT` | `"Disk size can only be increased"` |
+| Тип машины не существует | — | `FAILED_PRECONDITION` | `"machine type %s not found"` |
+| Тип машины снят с каталога | — | `FAILED_PRECONDITION` | `"machine type %s is retired and cannot be used on Create"` |
+| Precondition state-машины | — | `FAILED_PRECONDITION` | `"Instance is not running"` / `"Instance is not running or stopped"` |
 | Внутренняя ошибка БД | — | `INTERNAL` | `"internal database error"` (без leak pgx/SQL) |
 
 ## Миграции
 
 Схема версионируется goose (`internal/migrations/*.sql`, embed.FS). `0001_initial.sql` —
-squashed baseline: `operations`, `disk_types`, `disks`, `images`, `snapshots`, `instances`,
-`instance_network_interfaces`, `attached_disks`, `compute_outbox` + индексы, partial UNIQUE, FK,
-outbox-trigger, seed `disk_types`. Применённые миграции не редактируются — только новые.
+squashed baseline; дальше схема **сужалась**, а не только росла: Geography ушла в kacho-geo
+(`0011`), блочное хранение — в kacho-storage (`0013`, `0021`, `0022`), на смену свободной
+паре «платформа + ресурсы» пришёл каталог типов машин (`0015`–`0017`).
+
+Применённые миграции **не редактируются** — только новые. Поэтому `CREATE TABLE` удалённой
+таблицы остаётся в истории рядом со своим `DROP TABLE`: это и есть запись о том, что ресурс
+был и снят, а не след недоделанной работы. Каждое удаление проходит через манифест
+(`internal/migrations/dropguard.json`), который называет таблицу, причину и ожидаемое число
+строк — удаление, не совпавшее с заявленным, не проходит.

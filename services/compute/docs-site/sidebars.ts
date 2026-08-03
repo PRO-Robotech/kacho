@@ -29,6 +29,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'api/overview',
         'api/instance',
+        'api/machine-type',
         'api/operations',
       ],
     },
