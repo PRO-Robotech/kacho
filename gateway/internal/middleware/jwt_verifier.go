@@ -12,7 +12,9 @@
 //  4. Validate `iss` (exact match), `aud` (contains expected), `exp`/`nbf`/`iat`
 //     with configurable clock-skew (default ±30s).
 //  5. Extract custom claims: `acr`, `amr`, `auth_time`, `cnf` (jkt | x5t#S256),
-//     `scope`, `ext_claims` (kacho_*).
+//     `scope`, `ext_claims` (kacho_*). The enrichment map and the assurance
+//     level are resolved across BOTH placements the provider produces — see
+//     extClaimsMap / extractACR for why one placement is not enough.
 //
 // JWKS cache: in-memory, TTL configurable. Refresh is LAZY, on the request path
 // (no background ticker / prewarm exists — do not read the word "background"
@@ -57,7 +59,11 @@ type VerifiedToken struct {
 	JTI       string
 
 	// Authentication context — drives step-up gating.
-	ACR      string // "0" | "1" | "2" | "3"
+	// ACR: "0" | "1" | "2" | "3"; "" when the token asserts no level, which the
+	// gate ranks 0 and denies. Sourced by extractACR from the standard top-level
+	// `acr` claim, falling back to `kacho_acr` in ExtClaims — always from inside
+	// the signed token, never from a header.
+	ACR      string
 	AMR      []string
 	AuthTime time.Time
 
@@ -67,7 +73,10 @@ type VerifiedToken struct {
 
 	Scope string
 
-	// ExtClaims — Kachō custom claims emitted by Hydra token_hook (kacho_*).
+	// ExtClaims — Kachō custom claims emitted by the iam token hook (kacho_*).
+	// Resolved by extClaimsMap from either placement the provider uses (promoted
+	// to the top level, or nested under its `ext` wrapper), so consumers never
+	// have to know which deployment profile minted the token.
 	ExtClaims map[string]any
 
 	// Raw claims for callers that need fields we did not explicitly extract.
@@ -391,15 +400,11 @@ func (v *JWTVerifier) Verify(ctx context.Context, token string) (*VerifiedToken,
 	if at, ok := numericTime(claims["auth_time"]); ok {
 		out.AuthTime = at
 	}
-	if acr, ok := claims["acr"].(string); ok {
-		out.ACR = acr
-	}
+	out.ExtClaims = extClaimsMap(claims)
+	out.ACR = extractACR(claims, out.ExtClaims)
 	out.AMR = stringSlice(claims["amr"])
 	if scope, ok := claims["scope"].(string); ok {
 		out.Scope = scope
-	}
-	if ext, ok := claims["ext_claims"].(map[string]any); ok {
-		out.ExtClaims = ext
 	}
 
 	// Cnf extraction.
@@ -441,6 +446,76 @@ func splitJWT(token string) (header []byte, err error) {
 		return nil, fmt.Errorf("decode signature: %w", err)
 	}
 	return header, nil
+}
+
+// extClaimsMap resolves the Kachō enrichment map (the `kacho_*` claims stamped
+// by the iam token hook) from a verified claim set, accepting BOTH placements
+// the provider produces. There is exactly one resolution point on purpose:
+// every reader of these claims — principal type/id, the subject extractor, the
+// FGA context extractor, the step-up level below — must see the same map, or a
+// claim becomes visible to some consumers and invisible to others depending on
+// the deployment profile.
+//
+// The two placements are not alternatives we chose; they are what
+// `oauth2.allowed_top_level_claims` does:
+//
+//   - listed  → the provider mirrors the map to the TOP level (`ext_claims`),
+//     which is the dev profile (deploy/helm/umbrella/values.dev.yaml);
+//   - not listed → the map stays inside the provider's own `ext` wrapper
+//     (`ext.ext_claims`). That is the prod profile, which lists nothing at all,
+//     and it is the same nested shape the registry data-plane verifier decodes.
+//
+// Same signed map either way. Reading only one placement means being blind on
+// one of the two profiles — and the blind one is production.
+func extClaimsMap(claims jwt.MapClaims) map[string]any {
+	if m, ok := claims["ext_claims"].(map[string]any); ok {
+		return m
+	}
+	if ext, ok := claims["ext"].(map[string]any); ok {
+		if m, ok := ext["ext_claims"].(map[string]any); ok {
+			return m
+		}
+	}
+	return nil
+}
+
+// extractACR resolves the authentication assurance level that the step-up gate
+// ranks (grpcsrv.ACRRank / EvaluateStepUp).
+//
+// PRECEDENCE — standard claim first, enrichment map second:
+//
+//  1. top-level `acr`, the standard OIDC claim. When the provider states the
+//     level itself, that statement is authoritative and nothing overrides it.
+//  2. `kacho_acr` in the enrichment map — where OUR OWN token hook puts the
+//     level (services/iam token enrichment, carried in
+//     `session.access_token.ext_claims`).
+//
+// Step 2 is not a nicety. The provider promotes to the top level only the claim
+// names whitelisted in `oauth2.allowed_top_level_claims`, and neither `acr` nor
+// `kacho_acr` is on that list on any deployed profile — so without this fallback
+// the level a human actually authenticated with is present in the signed token,
+// arrives at the edge, and is discarded before the gate sees it. The gate then
+// ranks every human at 0 and refuses every RPC that declares a floor. Machine
+// principals never surfaced it: they are exempted from the floor before any
+// comparison happens.
+//
+// FAIL-CLOSED, and it must stay that way: the value is read ONLY from the
+// verified, signed claim set. No header, no metadata, no request-supplied input
+// may ever feed it — a caller who could name their own assurance level would
+// satisfy any floor by asking. A token asserting no level anywhere yields "",
+// which ranks 0 and is denied.
+//
+// An empty top-level `acr` is treated as ABSENT rather than as an assertion of
+// level 0: an empty string states nothing, and letting it shadow the enrichment
+// map would resurrect exactly the drop this function exists to prevent.
+func extractACR(claims jwt.MapClaims, ext map[string]any) string {
+	if acr, ok := claims["acr"].(string); ok && acr != "" {
+		return acr
+	}
+	if acr, ok := ext["kacho_acr"].(string); ok {
+		return acr
+	}
+	return ""
 }
 
 func extractAudience(claims jwt.MapClaims) ([]string, error) {
