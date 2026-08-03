@@ -1,0 +1,207 @@
+---
+id: getting-started
+sidebar_position: 2
+title: Быстрый старт
+---
+
+import CodeBlock from '@theme/CodeBlock'
+import dedent from 'ts-dedent'
+
+# Быстрый старт
+
+Пройдём путь целиком: выбрать тип диска, создать том, снять с него снимок и привязать том
+к машине. Все примеры — REST через шлюз платформы.
+
+## Что понадобится
+
+- токен доступа (`$TOKEN`);
+- идентификатор проекта (`projectId`) — домен `kacho-iam`;
+- идентификатор зоны (`zoneId`) — домен `kacho-geo`.
+
+## 1. Посмотреть доступные типы диска
+
+Каталог глобальный: его читает любой аутентифицированный субъект.
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -H "Authorization: Bearer $TOKEN" \\
+      https://api.kacho.local/storage/v1/diskTypes
+  `}
+</CodeBlock>
+
+Для тома общего назначения берите `block-balanced`. Обратите внимание: `block-single` —
+**однорепличный**, без резервирования.
+
+## 2. Создать том
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -X POST -H "Authorization: Bearer $TOKEN" \\
+      -H "Content-Type: application/json" \\
+      https://api.kacho.local/storage/v1/volumes \\
+      -d '{
+        "projectId": "prj-…",
+        "zoneId": "zone-1-a",
+        "diskTypeId": "block-balanced",
+        "sizeBytes": 21474836480,
+        "name": "data-01"
+      }'
+  `}
+</CodeBlock>
+
+Ответ — не том, а **операция**:
+
+<CodeBlock language="json">
+  {dedent`
+    {
+      "id": "sop-a1b2c3d4e5f6g7h8j",
+      "description": "Create volume",
+      "done": false,
+      "metadata": { "volumeId": "vol-k9m2n4p6q8r1s3t5v" }
+    }
+  `}
+</CodeBlock>
+
+## 3. Дождаться завершения — и проверить ошибку
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -H "Authorization: Bearer $TOKEN" \\
+      https://api.kacho.local/operations/sop-a1b2c3d4e5f6g7h8j
+  `}
+</CodeBlock>
+
+Опрашивайте с паузой в несколько секунд, пока `done` не станет `true`.
+
+:::danger Проверьте `error`, прежде чем брать идентификатор
+Идентификатор тома лежит в `metadata` **и в том случае, если операция завершилась
+ошибкой**: он выделяется до начала работы. Взять его, не проверив `error`, — значит
+получить идентификатор несуществующего тома и потащить его в следующие запросы.
+
+Порядок: `done` → `error` пуст → только тогда `metadata`.
+:::
+
+## 4. Прочитать том
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -H "Authorization: Bearer $TOKEN" \\
+      https://api.kacho.local/storage/v1/volumes/vol-k9m2n4p6q8r1s3t5v
+  `}
+</CodeBlock>
+
+Свежесозданный том должен показать `"status": "AVAILABLE"` — готов и ни к чему не
+привязан.
+
+:::note Первое обращение может кратко ответить 403 или 404
+Право владельца на новый ресурс материализуется в ограниченном окне после фиксации
+ресурса, отдельной очередью. Это нормальный режим платформы: повторите запрос через
+секунду-другую. Ограниченный повтор на первом обращении к **своему** свежему ресурсу —
+правильный приём; на чужие отказы его накладывать не нужно.
+:::
+
+## 5. Снять снимок
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -X POST -H "Authorization: Bearer $TOKEN" \\
+      -H "Content-Type: application/json" \\
+      https://api.kacho.local/storage/v1/snapshots \\
+      -d '{
+        "projectId": "prj-…",
+        "sourceVolumeId": "vol-k9m2n4p6q8r1s3t5v",
+        "name": "data-01-nightly"
+      }'
+  `}
+</CodeBlock>
+
+Том должен быть `READY`. Снимок переживёт исходный том: удаление тома снимок не удалит.
+
+## 6. Засеять новый том из снимка
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -X POST -H "Authorization: Bearer $TOKEN" \\
+      -H "Content-Type: application/json" \\
+      https://api.kacho.local/storage/v1/volumes \\
+      -d '{
+        "projectId": "prj-…",
+        "zoneId": "zone-1-a",
+        "diskTypeId": "block-balanced",
+        "sizeBytes": 21474836480,
+        "sourceSnapshotId": "snp-…",
+        "name": "data-01-restored"
+      }'
+  `}
+</CodeBlock>
+
+Новый том обязан быть **в той же зоне**, что и снимок. Иначе —
+`Volume and Snapshot must be in the same zone`.
+
+## 7. Привязать том к машине
+
+Привязку инициирует вычислительный сервис при запуске машины или по вашему запросу на
+монтирование — напрямую этот метод внешним клиентам не выставлен.
+
+Результат виден на самом томе: статус становится `IN_USE`, а поле `attachments`
+показывает машину, имя устройства и режим доступа.
+
+<CodeBlock language="json">
+  {dedent`
+    {
+      "id": "vol-k9m2n4p6q8r1s3t5v",
+      "status": "IN_USE",
+      "attachments": [
+        {
+          "instanceId": "ins-…",
+          "instanceName": "app-01",
+          "deviceName": "sdb",
+          "isBoot": false,
+          "mode": "READ_WRITE",
+          "autoDelete": false,
+          "attachedAt": "2026-08-03T09:12:44Z"
+        }
+      ]
+    }
+  `}
+</CodeBlock>
+
+Том и машина обязаны быть **в одной зоне и в одном проекте** — иначе привязка
+отклоняется с прямым указанием, что именно разошлось.
+
+## 8. Увеличить том
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -X PATCH -H "Authorization: Bearer $TOKEN" \\
+      -H "Content-Type: application/json" \\
+      https://api.kacho.local/storage/v1/volumes/vol-k9m2n4p6q8r1s3t5v \\
+      -d '{
+        "updateMask": "sizeBytes",
+        "sizeBytes": 42949672960
+      }'
+  `}
+</CodeBlock>
+
+Размер **только растёт**. Попытка уменьшить — `Volume size can only be increased`.
+
+## 9. Удалить
+
+Порядок обратный созданию: сначала отвязать том, затем удалить. Привязанный том удалить
+нельзя — это держит внешний ключ, а не проверка в коде.
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -X DELETE -H "Authorization: Bearer $TOKEN" \\
+      https://api.kacho.local/storage/v1/volumes/vol-k9m2n4p6q8r1s3t5v
+  `}
+</CodeBlock>
+
+Снимки и образы, снятые с этого тома, удалению не мешают и не пропадают: у них обнуляется
+ссылка на источник.
+
+## Дальше
+
+- [Обзор API](/api/overview) — полная поверхность и коды ошибок.
+- [Привязка тома к машине](/architecture/attachments) — как устроена привязка.
+- [Когерентность размещения](/architecture/placement-coherence) — зоны и регионы.
