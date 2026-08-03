@@ -161,6 +161,16 @@ if [ "$SEED" = "true" ]; then
   if [ "$SEED_RC" -ne 0 ]; then
     echo
     echo "===== ПРОГОН НЕДЕЙСТВИТЕЛЕН: посев фикстур упал (rc=$SEED_RC) ====="
+    # rc=3 у посева — отдельный исход: посадку края НЕ УДАЛОСЬ УСТАНОВИТЬ. Он назван
+    # здесь, а не свёрнут в общий отказ, потому что чинить в этих двух случаях надо
+    # разное: «край расслаблен» — перекатить стенд, «свидетельства нет» — вернуть
+    # достижимость края (порт-форвард/адрес). Прежний классификатор эти два случая
+    # как раз и путал, и оператор шёл не туда.
+    if [ "$SEED_RC" -eq 3 ]; then
+      echo "Посадка края НЕ УСТАНОВЛЕНА — про стенд не утверждается ничего; это не"
+      echo "«стенд расслаблен», а «свидетельства не получено» (проверь достижимость"
+      echo "края по BASE_URL — порт-форвард живёт ровно столько, сколько этот скрипт)."
+    fi
     echo "Суиты НЕ запускались. Это НЕ красный прогон и НЕ зелёный — результата нет."
     echo "Причина — выше, в выводе tests/authz-fixtures/setup.sh (в боевой посадке он"
     echo "делегирует prodseed_all.py). Починить посев и ПОВТОРИТЬ; разбирать суиты"
@@ -171,8 +181,8 @@ if [ "$SEED" = "true" ]; then
   # nlb's external-VIP AddressPool is seeded by setup.sh, and ONLY there.
   #
   # A second pass used to stand here, guarded by "unless the seed ran in production
-  # posture". That guard could never be false: classify_posture leaves `production` as
-  # the only value standing, and a seed that does not reach that point exits this script
+  # posture". That guard could never be false: the seed's classifier leaves `production`
+  # as the only value standing, and a seed that does not reach that point exits this script
   # above (rc≠0 ⇒ "ПРОГОН НЕДЕЙСТВИТЕЛЕН") before the read. So the block was unreachable
   # from the day the classifier was narrowed — and its fallback named `dev`, the one
   # posture the classifier REFUSES.

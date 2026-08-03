@@ -7,10 +7,12 @@
 -------------------------------
 `tests/authz-fixtures/setup.sh` классифицирует посадку и пишет её в
 `out/seed-posture`. Классификатор оставляет стоять РОВНО ОДНО значение —
-`production`; `dev` отвергается отдельной ветвью, всё прочее не опознано, и обе
-ветви завершают процесс. Сам setup.sh это и говорит у безусловной делегации:
-«production is the only value classify_posture leaves standing, so a guarded
-delegation here would be a branch that cannot be false».
+`production`; расслабленный край отвергается отдельной ветвью, а невозможность
+получить свидетельство — третьей, и обе завершают процесс. Сам setup.sh это и
+говорит у безусловной делегации: «production is the only value classify_posture
+leaves standing, so a guarded delegation here would be a branch that cannot be
+false» — имя функции с тех пор сменилось (посадку теперь опознаёт проба края, а
+не разбор журнала), утверждение о единственном производимом значении — нет.
 
 Два его потребителя несли ровно такую ветвь:
 

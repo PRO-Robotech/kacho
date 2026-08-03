@@ -132,8 +132,8 @@ PATCH_ENV=true SETUP_NS="$NS" \
 # nlb's external-VIP AddressPool is seeded by setup.sh, and ONLY there.
 #
 # A second pass used to stand here, guarded by "unless the seed ran in production
-# posture". That guard could never be false: classify_posture leaves `production` as the
-# only value standing, and a seed that does not reach that point aborts this script
+# posture". That guard could never be false: the seed's classifier leaves `production` as
+# the only value standing, and a seed that does not reach that point aborts this script
 # (`set -e`) before the read. So the block was unreachable from the day the classifier
 # was narrowed — and its fallback named `dev`, the one posture the classifier REFUSES.
 #
