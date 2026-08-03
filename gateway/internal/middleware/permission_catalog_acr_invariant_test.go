@@ -55,7 +55,7 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/middleware"
 )
 
-// sensitiveACR2Set — the 24 FQNs that MUST carry required_acr_min="2" after the
+// sensitiveACR2Set — the 27 FQNs that MUST carry required_acr_min="2" after the
 // refinement (grant-surface + credential + tenancy-root, domain-agnostic). Any
 // drift (an RPC added or dropped) fails this test. Categories A–H per the
 // APPROVED acceptance doc.
@@ -131,6 +131,18 @@ func sensitiveACR2Set() map[string]struct{} {
 		// H — tenancy-root destroy (2)
 		"kacho.cloud.iam.v1.AccountService/Delete",
 		"kacho.cloud.iam.v1.ProjectService/Delete",
+		// I — interactive-login client lifecycle (3). IAM-INT-1 scenario 23.
+		// Sensitive for the same reason category A is: a redirect target is
+		// WHERE AN AUTHORIZATION CODE IS DELIVERED, so creating a client,
+		// editing its target list, or removing it decides who may receive a
+		// credential. Get/List are deliberately NOT here — reading a client
+		// mints nothing — and their exclusion is asserted by the complement
+		// test below, because the generator's default floor is "2" and an
+		// unstated floor would have put them here by accident rather than by
+		// decision.
+		"kacho.cloud.iam.v1.InternalInteractiveClientService/Create",
+		"kacho.cloud.iam.v1.InternalInteractiveClientService/Update",
+		"kacho.cloud.iam.v1.InternalInteractiveClientService/Delete",
 	}
 	set := make(map[string]struct{}, len(fqns))
 	for _, f := range fqns {
@@ -146,11 +158,13 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 	require.NoError(t, err)
 
 	sensitive := sensitiveACR2Set()
-	// 24, down from 26: category F (ConditionsService Update/Delete) had its
-	// subject retired together with the tenant-facing condition surface. The
-	// number is asserted rather than derived from the list on purpose — a silent
-	// shrink is exactly what would happen if an entry were dropped by accident.
-	require.Len(t, sensitive, 24, "the acceptance-doc sensitive set must contain exactly 24 FQNs")
+	// 27, up from 24: category F (ConditionsService Update/Delete) had its
+	// subject retired together with the tenant-facing condition surface (26→24),
+	// and category I (InternalInteractiveClientService Create/Update/Delete)
+	// then joined with IAM-INT-1 (24→27). The number is asserted rather than
+	// derived from the list on purpose — a silent shrink is exactly what would
+	// happen if an entry were dropped by accident.
+	require.Len(t, sensitive, 27, "the acceptance-doc sensitive set must contain exactly 27 FQNs")
 
 	got2 := map[string]struct{}{}
 	for _, fqn := range c.FQNs() {
@@ -171,7 +185,7 @@ func TestPermissionCatalog_ACR_SetInvariant(t *testing.T) {
 		_, want := sensitive[fqn]
 		assert.True(t, want, "FQN carries acr=2 but is NOT in the sensitive allowlist (over-inclusion): %s", fqn)
 	}
-	assert.Len(t, got2, 24, "exactly 24 FQNs must carry required_acr_min=2")
+	assert.Len(t, got2, 27, "exactly 27 FQNs must carry required_acr_min=2")
 }
 
 // TestPermissionCatalog_ACR_ComplementNotTwo — SEC-ACR-13 / I1: explicit
@@ -199,6 +213,14 @@ func TestPermissionCatalog_ACR_ComplementNotTwo(t *testing.T) {
 		// B4 cluster reads → routine
 		"kacho.cloud.iam.v1.InternalClusterService/Get",
 		"kacho.cloud.iam.v1.InternalClusterService/ListAdmins",
+		// interactive-login client READS (IAM-INT-1 scenario 23, negative pair).
+		// These two exist in this list precisely because the generator stamps
+		// "2" when proto omits required_acr_min: if the declaration were ever
+		// dropped from the .proto, the default would silently promote a read to
+		// the sensitive band and BOTH this assertion and the over-inclusion
+		// guard would fire. Reading a client issues no credential.
+		"kacho.cloud.iam.v1.InternalInteractiveClientService/Get",
+		"kacho.cloud.iam.v1.InternalInteractiveClientService/List",
 		// routine resource lifecycle
 		"kacho.cloud.vpc.v1.NetworkService/Create",
 		"kacho.cloud.compute.v1.InstanceService/Create",
@@ -317,10 +339,25 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// event stream is compute.v1's), and iam.v1 InternalIamHooksService/{TokenHook,
 	// RefreshTokenHook} (Hydra's hooks are served over HTTP with their own
 	// request-body structs — these proto types were read by no non-generated line).
-	assert.Equal(t, 24, n2, "sensitive count")
-	assert.Equal(t, 207, n1, "routine count")
+	// IAM-INT-1 then ADDED the five InternalInteractiveClientService entries:
+	// Create/Update/Delete are sensitive (category I — they decide where an
+	// authorization code may be delivered), Get/List are routine. 24→27
+	// sensitive, 207→209 routine, 289→294 total. Exempt untouched at 58 — none of
+	// the five is exempt.
+	//
+	// NOTE for the next reader, because THREE different totals for this same +5
+	// are in circulation and only one of them describes this tree. The APPROVED
+	// acceptance doc states the delta as 26→29 sensitive / 300→305 total, which
+	// was correct on ITS base (bb26d905, 114 commits behind this one). The
+	// carried branch stated 24→27 / 294→299, correct on ITS base (4bfe367c).
+	// Between those bases the catalog lost six ConditionsService entries and
+	// then five more `<exempt>` phantom-service entries, so the same +5 lands on
+	// 289 here. The numbers below are measured on THIS tree; the prose above is
+	// the historical trail, the assertions are the contract.
+	assert.Equal(t, 27, n2, "sensitive count")
+	assert.Equal(t, 209, n1, "routine count")
 	assert.Equal(t, 58, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 289, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 294, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()

@@ -27,8 +27,10 @@ verified in the tree rather than assumed:
   1. `IssueUserTokenUseCase.resolveAudience` takes NO caller audience — it always emits
      the kacho-internal `<prefix>/user/<id>`, which can never equal the gateway's
      ExpectedAudience (`https://<APIDomain>`);
-  2. a client_credentials token carries no `acr`, and 292 of the 357 catalogued RPCs
-     declare `required_acr_min` ≥ 1. `StepUpGate.Check` exempts principals whose
+  2. a client_credentials token carries no `acr`, and 236 of the 294 catalogued RPCs
+     declare `required_acr_min` ≥ 1 (remeasured; this line read "292 of the 357"
+     against a catalog two retirements ago — recheck it rather than quoting it, the
+     command is in prodseed_matrix.py). `StepUpGate.Check` exempts principals whose
      `kacho_principal_type` is exactly `service_account` and NEVER a user.
 A human User principal with an `acr` requires the interactive Kratos→Hydra login, which
 a machine harness cannot drive. So each matrix slot is backed by a ServiceAccount
