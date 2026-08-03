@@ -266,9 +266,7 @@ func Audit(o Options, out io.Writer) (Report, error) {
 		}
 	}
 
-	for _, res := range rep.Resources {
-		rep.Checked = append(rep.Checked, res)
-	}
+	rep.Checked = append(rep.Checked, rep.Resources...)
 	for _, key := range rep.Listings {
 		m := found[key]
 		l, ok := table[key]

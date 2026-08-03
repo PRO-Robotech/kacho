@@ -248,7 +248,7 @@ api-gateway:
 				t.Fatalf("fixture does not parse: %v", err)
 			}
 			if found := findSymmetricSecret(tree); len(found) == 0 {
-				t.Fatalf("predicate found nothing in a tree that declares one — every silence "+
+				t.Fatalf("predicate found nothing in a tree that declares one — every silence " +
 					"it produces elsewhere is then meaningless")
 			}
 		})

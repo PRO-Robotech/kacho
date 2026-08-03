@@ -1328,15 +1328,6 @@ func contains(hay []string, needle string) bool {
 	return false
 }
 
-func sortedKeys(m map[string]bool) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	sort.Strings(out)
-	return out
-}
-
 // finish prints the census — on every path, including the ones that could not read
 // anything — then the findings, and turns findings into an error.
 func finish(p Profile, rep Report, out io.Writer) (Report, error) {

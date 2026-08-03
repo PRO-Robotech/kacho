@@ -174,7 +174,6 @@ func TestSeedPostureDelegatesOrRefuses(t *testing.T) {
 			"регистр не узнан разбором; продолжать по неузнанному значению — тот же дефект"},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.posture, func(t *testing.T) {
 			calls, stderr, code := runSeedWithPosture(t, tc.posture)
 			switch tc.want {
