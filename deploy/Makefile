@@ -7,6 +7,7 @@
         reload-svc-iam psql-iam logs-iam fga-bootstrap build-services openfga-model-json \
         guard-kind-context guard-destructive gate-self-test waiter-discipline \
         report-reader-discipline alt-fixture-discipline posture-branch-discipline \
+        verdict-aggregator-discipline ceremony-declaration-discipline \
         reload-svc-nlb psql-nlb logs-nlb seed-nlb e2e-newman stand-provenance
 
 SHELL := bash
@@ -715,6 +716,31 @@ report-reader-discipline:
 # разбор, не нашедший ни одного производимого значения, — отказ, а не «чисто».
 posture-branch-discipline:
 	@python3 scripts/assert-posture-branches-can-be-taken.py
+
+# verdict-aggregator-discipline — вердикт каждой суиты берётся из ЧИСЕЛ отчёта.
+#
+# Класс «прогонщик печатает GREEN при упавших проверках» в этом дереве уже ловили
+# и чинили, но доказан фикс был у ОДНОГО агрегатора из восьми: инъекционная
+# самопроверка есть только у vpc, а подгрузить функцию можно было у трёх — у
+# остальных нет guard'а `BASH_SOURCE[0] == $0`. Семь копий держались на прочтении
+# диффа. Гейт извлекает функцию из КАЖДОГО прогонщика и ИСПОЛНЯЕТ её на
+# синтетических отчётах: чистый обязан дать нулевой вердикт, а упавшее
+# утверждение / запрос без ответа / немой отчёт / отсутствующий отчёт /
+# ненулевой код newman — ненулевой. Первый же прогон нашёл живой экземпляр в
+# services/nlb/.../run-incremental.sh (не читались UNANSWERED и немой отчёт).
+verdict-aggregator-discipline:
+	@bash scripts/assert-verdict-aggregators-honest.sh
+
+# ceremony-declaration-discipline — у каждой записи объявления церемонии есть предмет.
+#
+# Набор коллекций, которым нужен ЧЕЛОВЕЧЕСКИЙ вызывающий, выводится из дерева
+# единственным объявлением (tests/authz-fixtures/ceremony_credentials.py), а не
+# выписывается: рукописный перечень в этом репозитории уже расходился с деревом.
+# Гейт требует, чтобы каждая запись объявления что-то отбирала, — запись, которой
+# больше нечего отбирать, наследуется следующим читателем как действующее
+# ограничение. Ноль прочитанных коллекций — отказ, а не «чисто».
+ceremony-declaration-discipline:
+	@python3 ../tests/authz-fixtures/ceremony_credentials.py --root .. --verify
 
 # Локально: `make helm-manifest-test`; одну проверку — `bash tests/helm/<имя>.sh`.
 #
