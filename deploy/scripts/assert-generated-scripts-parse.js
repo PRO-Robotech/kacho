@@ -24,10 +24,161 @@
 // silence, not a pass — so an empty file set is itself a failure.
 //
 // Usage:  node deploy/scripts/assert-generated-scripts-parse.js <glob-expanded files...>
+//         node deploy/scripts/assert-generated-scripts-parse.js --self-test
 //         make -C deploy generated-scripts-parse
 
 'use strict';
 const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+// scanCollections — the whole measurement, factored out so the self-test drives the
+// SAME code the pipeline drives. A self-test that re-implements the check proves
+// something about the copy, not about the gate.
+function scanCollections(files) {
+  let scanned = 0;   // scripts actually parsed
+  let filesRead = 0; // collections actually opened
+  const findings = [];
+
+  for (const file of files) {
+    let doc;
+    try {
+      doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch (e) {
+      findings.push(`${file}: collection is not readable JSON — ${e.message}`);
+      continue;
+    }
+    filesRead++;
+
+    const walk = (node, owner) => {
+      if (Array.isArray(node)) {
+        for (const v of node) walk(v, owner);
+        return;
+      }
+      if (!node || typeof node !== 'object') return;
+
+      const name = node.name || owner;
+      for (const ev of node.event || []) {
+        let src = ev.script && ev.script.exec;
+        if (Array.isArray(src)) src = src.join('\n');
+        if (typeof src !== 'string' || src.trim() === '') continue;
+        scanned++;
+        try {
+          // eslint-disable-next-line no-new-func
+          new Function(src);
+        } catch (e) {
+          findings.push(`${file}\n    step "${name}" [${ev.listen}] — ${e.message}`);
+        }
+      }
+      for (const key of Object.keys(node)) {
+        if (key !== 'event') walk(node[key], name);
+      }
+    };
+    walk(doc, 'root');
+  }
+  return { scanned, filesRead, findings };
+}
+
+// ── SELF-TEST: proof by injection, in both directions ────────────────────────
+//
+// Proves not "the gate runs" but "the gate goes red on an injected defect and stays
+// silent on a LEGITIMATE construct of the same shape". Without the second half a gate
+// catches shape rather than substance, and the first false positive retires it.
+//
+// The injected defect is the real historical one: a step title carrying an apostrophe
+// pasted into a single-quoted JS literal. The legitimate twin is the same title with
+// the apostrophe correctly escaped — identical in every respect a pattern could see,
+// which is exactly why this gate parses instead of matching.
+function selfTest() {
+  let rc = 0;
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gsp-selftest-'));
+  const write = (name, doc) => {
+    const p = path.join(tmp, name);
+    fs.writeFileSync(p, JSON.stringify(doc, null, 2));
+    return p;
+  };
+  const collection = (stepName, source) => ({
+    info: { name: 'synthetic' },
+    item: [{ name: stepName, event: [{ listen: 'test', script: { exec: source.split('\n') } }] }],
+  });
+
+  console.log('=== assert-generated-scripts-parse --self-test: инъекции ===');
+
+  const broken = write('broken.json',
+    collection("delete a user's key", "pm.test('delete a user's key ok', () => {});"));
+  const legit = write('legit.json',
+    collection("delete a user's key", "pm.test('delete a user\\'s key ok', () => {});"));
+  const notJson = path.join(tmp, 'notjson.json');
+  fs.writeFileSync(notJson, '{ this is not json');
+  const noScripts = write('noscripts.json', { info: { name: 'empty' }, item: [{ name: 'x' }] });
+
+  // 1. DEFECT — must be found, and must name the step, not just the file.
+  {
+    const r = scanCollections([broken]);
+    const named = r.findings.length === 1 && /step "delete a user's key"/.test(r.findings[0]);
+    if (named) {
+      console.log('  ОК  сломанный скрипт найден, и находка называет ШАГ');
+    } else {
+      console.error(`  ПРОВАЛ сломанный скрипт не найден или без координаты: ${JSON.stringify(r.findings)}`);
+      rc = 1;
+    }
+  }
+
+  // 2. LEGITIMATE TWIN — same title, correctly escaped. Must stay silent.
+  {
+    const r = scanCollections([legit]);
+    if (r.findings.length === 0 && r.scanned === 1) {
+      console.log('  ОК  корректно экранированный близнец промолчал (разобран, но не находка)');
+    } else {
+      console.error(`  ПРОВАЛ законная конструкция той же формы принята за дефект: ${JSON.stringify(r.findings)}`);
+      rc = 1;
+    }
+  }
+
+  // 3. UNREADABLE collection is a finding, not a silent skip.
+  {
+    const r = scanCollections([notJson]);
+    if (r.findings.length === 1 && r.filesRead === 0) {
+      console.log('  ОК  нечитаемая коллекция — находка, а не тихий пропуск');
+    } else {
+      console.error('  ПРОВАЛ нечитаемая коллекция не стала находкой');
+      rc = 1;
+    }
+  }
+
+  // 4. The census must count what was READ, so "0 findings" differs from "0 read".
+  {
+    const r = scanCollections([broken, legit, noScripts]);
+    if (r.filesRead === 3 && r.scanned === 2) {
+      console.log('  ОК  перепись считает прочитанное отдельно от находок (3 файла, 2 скрипта)');
+    } else {
+      console.error(`  ПРОВАЛ перепись врёт: прочитано ${r.filesRead}, разобрано ${r.scanned}`);
+      rc = 1;
+    }
+  }
+
+  // 5. A generator emitting no scripts at all must NOT pass silently — the premise
+  //    check that keeps this gate from being green over nothing.
+  {
+    const r = scanCollections([noScripts]);
+    if (r.findings.length === 0 && r.scanned === 0) {
+      console.log('  ОК  коллекция без скриптов даёт scanned=0 — основной проход это проваливает');
+    } else {
+      console.error('  ПРОВАЛ предпосылка «ноль скриптов» перестала быть различимой');
+      rc = 1;
+    }
+  }
+
+  fs.rmSync(tmp, { recursive: true, force: true });
+  console.log('');
+  console.log(rc === 0 ? 'PASS: самопроверка assert-generated-scripts-parse'
+    : 'FAIL: самопроверка assert-generated-scripts-parse');
+  return rc;
+}
+
+if (process.argv.includes('--self-test')) {
+  process.exit(selfTest());
+}
 
 const files = process.argv.slice(2);
 if (files.length === 0) {
@@ -37,46 +188,7 @@ if (files.length === 0) {
   process.exit(2);
 }
 
-let scanned = 0;   // scripts actually parsed
-let filesRead = 0; // collections actually opened
-const findings = [];
-
-for (const file of files) {
-  let doc;
-  try {
-    doc = JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch (e) {
-    findings.push(`${file}: collection is not readable JSON — ${e.message}`);
-    continue;
-  }
-  filesRead++;
-
-  const walk = (node, owner) => {
-    if (Array.isArray(node)) {
-      for (const v of node) walk(v, owner);
-      return;
-    }
-    if (!node || typeof node !== 'object') return;
-
-    const name = node.name || owner;
-    for (const ev of node.event || []) {
-      let src = ev.script && ev.script.exec;
-      if (Array.isArray(src)) src = src.join('\n');
-      if (typeof src !== 'string' || src.trim() === '') continue;
-      scanned++;
-      try {
-        // eslint-disable-next-line no-new-func
-        new Function(src);
-      } catch (e) {
-        findings.push(`${file}\n    step "${name}" [${ev.listen}] — ${e.message}`);
-      }
-    }
-    for (const key of Object.keys(node)) {
-      if (key !== 'event') walk(node[key], name);
-    }
-  };
-  walk(doc, 'root');
-}
+const { scanned, filesRead, findings } = scanCollections(files);
 
 // The census is a separate assertion from the verdict: "0 findings" must be
 // distinguishable from "0 scripts looked at".
