@@ -38,11 +38,13 @@
 Использование (машинно, из shell и из Python):
     python3 ceremony_credentials.py --stems  --suite services/iam/tests/newman
     python3 ceremony_credentials.py --report --root .
-    python3 ceremony_credentials.py --verify --root .     # гейт: у записи есть предмет
+    python3 ceremony_credentials.py --verify --root .     # гейт: предмет И основание
+    python3 ceremony_credentials.py --self-test           # доказательство инъекцией
 """
 from __future__ import annotations
 
 import argparse
+import ast
 import glob
 import json
 import os
@@ -59,18 +61,188 @@ import sys
 # Каждая запись обязана иметь ПРЕДМЕТ — хотя бы один шаг в дереве, который её
 # называет. Запись, которой больше нечего отбирать, — находка (`--verify`), а не
 # безобидный остаток: её унаследует следующий читатель как действующее ограничение.
+#
+# И каждая запись обязана иметь живое ОСНОВАНИЕ — посев действительно не должен уметь
+# её выковать. Это проверяется отдельно и разбором посева (§1b): предмет и основание
+# устаревают независимо, и запись про повышенный вход это уже показала. Она стояла
+# здесь и утверждала, что машинный принципал уровня аутентификации не несёт вовсе, —
+# при том что посев её ВЫДАЁТ, а комментарий у самой выдачи объясняет, почему это
+# законно: правило повышения снимает порог с машинного принципала целиком, до всякого
+# сравнения уровня, и проверено это было вызовом ручки, а не прочтением. Запись сняли
+# не потому, что она стала не нужна, а потому, что её утверждение о мире было ложным.
+# Возвращать её можно ровно тогда, когда посев перестанет класть значение в набор, —
+# и тогда гейт замолчит сам, без правки этого комментария.
 CEREMONY_ONLY_ENV: dict[str, str] = {
-    "jwtAccountAdminAStepUp": (
-        "предъявитель человека, поднявшего уровень аутентификации вторым фактором. "
-        "Машинный принципал уровня не несёт вовсе (у client_credentials-токена нет "
-        "соответствующего утверждения), а поднять его можно только церемонией входа."
-    ),
     "apiTokenExpired": (
         "предъявитель с ИСТЁКШИМ сроком. Срок назначает и подписывает провайдер, "
         "поэтому «уже истёкший» на момент посева не производится в принципе: нужна "
         "волна, которая условие СОЗДАЁТ — выпустить и переждать срок."
     ),
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1b. ЧЕМ ПРОВЕРЯЕТСЯ ОСНОВАНИЕ ЗАПИСИ, А НЕ ТОЛЬКО ЕЁ ПРЕДМЕТ
+# ─────────────────────────────────────────────────────────────────────────────
+# Запись выше утверждает про мир ровно одно: «машинный посев этого значения выковать
+# НЕ МОЖЕТ». Гейт долгое время проверял совсем другое — что переменную ещё кто-то
+# НАЗЫВАЕТ в дереве. Это разные утверждения, и второе не может опровергнуть первое:
+# пока хоть один шаг переменную называет, предмет у записи есть, и запись остаётся
+# зелёной ДАЖЕ ЕСЛИ посев научился её ковать вчера. То есть самоистечение было
+# привязано не к тому факту — истекала «нужность», а устареть могло «основание».
+#
+# Цена такой привязки уже уплачена: запись про повышенный вход пережила собственное
+# опровержение. Посев её выдаёт — и в комментарии у самой выдачи написано, почему это
+# законно и что проверено вызовом, а не прочтением. Два места дерева утверждали
+# противоположное об одном предикате, и ни одно из них не могло покраснеть.
+#
+# ПОЭТОМУ ЗДЕСЬ ВТОРОЙ ПРЕДИКАТ, И ОН БЕРЁТСЯ ИЗ ТОГО ЖЕ ФАКТА, ЧТО И ЗАПИСЬ:
+# переменная, которую посев кладёт в свой набор, — не «церемониальная». Читается
+# РАЗБОРОМ исходника, а не поиском слова: имя переменной встречается в этом дереве и
+# в прозе, и в объяснениях, и в шаблонах окружения, поэтому текстовый поиск ответил
+# бы «куётся» на любой упоминающий её комментарий.
+#
+# ЯКОРЬ — набор `fixtures` матричного посева: его импортирует `prodseed_all.py`, а
+# `patch-env.py` вливает в окружение любой суиты, то есть это и есть надмножество
+# машинно-выдаваемого. Если якорь не читается — это ОТКАЗ, а не «находок нет»:
+# ответить «не куётся» становится не на чем.
+SEED_ANCHOR = "tests/authz-fixtures/prodseed_matrix.py"
+SEED_ANCHOR_DICT = "fixtures"
+
+# Расширения посева кладут в окружение СВОИ переменные, и среди них есть предъявители
+# (замерено разбором: `prodseed_vpc_ext.py` выдаёт два). Ограничить перепись одним
+# якорем значило бы получить молчание гейта на записи, которую опровергает соседний
+# модуль, — та же слепота, что чинится, только этажом ниже. Поэтому перепись идёт по
+# всем модулям посева.
+SEED_GLOB = "tests/authz-fixtures/prodseed_*.py"
+
+# ИСКЛЮЧЕНИЕ РОВНО ОДНО, И ОНО СМЫСЛОВОЕ, А НЕ СПИСОК УДОБСТВА: посев церемонии
+# (`CEREMONY_SEED`) — это и есть тот, кто условие СОЗДАЁТ. Он по определению выдаёт
+# именно эти значения, и, попади он в перепись, гейт объявил бы каждую запись
+# опровергнутой ровно в тот момент, когда её основание наконец начало выполняться.
+# Предикат перевернулся бы: «условие научились создавать» читалось бы как «записи
+# больше не нужны». Исключение выводится из объявления ниже, а не выписывается
+# отдельно, поэтому разойтись с ним не может.
+
+
+class SeedCensusError(RuntimeError):
+    """Перепись посева не состоялась — утверждать «не куётся» не на чем."""
+
+
+def _emission_sites(tree: ast.AST):
+    """Аргументы `print(json.dumps(X))` — то, чем модуль посева ОТДАЁТ свой набор.
+
+    Форма выдачи в этом дереве ровно одна, и это замерено, а не предположено: все
+    шесть модулей посева печатают набор строкой JSON на стандартный вывод, откуда его
+    забирает `patch-env.py`. Именно поэтому предикат опознаёт выдачу по `print`, а не
+    по одному `json.dumps`: тем же вызовом сериализуются тела HTTP-запросов, и
+    считать их «набором переменных, состав которого не виден» значило бы получить
+    аккуратное число, измеряющее не тот предмет.
+    """
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "print":
+            for a in n.args:
+                if (isinstance(a, ast.Call) and isinstance(a.func, ast.Attribute)
+                        and a.func.attr == "dumps" and a.args):
+                    yield a.args[0]
+
+
+def _named_fixture_dicts(tree: ast.AST):
+    """`fixtures = {…}` — именованный набор модуля.
+
+    Отделён от выдачи намеренно: матричный посев собирает набор внутри функции и
+    печатает её результат, поэтому по одной лишь выдаче его состав не читается,
+    а по имени — читается целиком.
+    """
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Assign) and isinstance(n.value, ast.Dict):
+            if any(isinstance(t, ast.Name) and t.id == SEED_ANCHOR_DICT for t in n.targets):
+                yield n.value
+
+
+def _literal_keys(d: ast.Dict) -> tuple[list[str], int]:
+    """Строковые ключи-литералы словаря и число ключей, переписи НЕ поддавшихся.
+
+    `**unpacking` приходит ключом `None`; вычисляемый ключ — не `ast.Constant`.
+    И то и другое означает, что состав словаря из исходника не виден целиком.
+    """
+    names, opaque = [], 0
+    for k in d.keys:
+        if isinstance(k, ast.Constant) and isinstance(k.value, str):
+            names.append(k.value)
+        else:
+            opaque += 1
+    return names, opaque
+
+
+def seed_minted_vars(root: str = ".") -> tuple[set[str], dict]:
+    """Переменные, которые машинный посев КЛАДЁТ в окружение, + объём осмотренного.
+
+    Поднимает `SeedCensusError`, если якорь не читается: отсутствует, не разбирается,
+    не несёт своего набора, несёт его дважды (какой из двух авторитетный — вопрос без
+    ответа) либо несёт ключи, состав которых из исходника не виден. Во всех этих
+    случаях гейт обязан отказать ГРОМКО: «переменной в переписи нет» и «переписи не
+    было» — разные вещи, и молчаливо смешивать их значит вернуть ровно тот дефект,
+    ради которого перепись и заводится.
+    """
+    anchor = os.path.join(root, SEED_ANCHOR)
+    if not os.path.exists(anchor):
+        raise SeedCensusError(f"якоря переписи нет по пути {SEED_ANCHOR}")
+
+    minted: set[str] = set()
+    scope = {"modules": 0, "emissions": 0, "readable": 0, "blind": 0, "anchor_keys": 0}
+    ceremony_seed = os.path.normpath(os.path.join(root, CEREMONY_SEED))
+    anchor_seen = False
+
+    for path in sorted(glob.glob(os.path.join(root, SEED_GLOB))):
+        if os.path.normpath(path) == ceremony_seed:
+            continue
+        is_anchor = os.path.normpath(path) == os.path.normpath(anchor)
+        try:
+            tree = ast.parse(open(path, encoding="utf-8").read())
+        except (OSError, SyntaxError) as exc:
+            if is_anchor:
+                raise SeedCensusError(f"якорь переписи {SEED_ANCHOR} не разбирается: {exc}")
+            scope["blind"] += 1
+            continue
+        scope["modules"] += 1
+
+        named = list(_named_fixture_dicts(tree))
+        sites = list(_emission_sites(tree))
+        scope["emissions"] += len(sites)
+        readable = named + [x for x in sites if isinstance(x, ast.Dict)]
+
+        if is_anchor:
+            anchor_seen = True
+            if len(named) != 1:
+                raise SeedCensusError(
+                    f"в {SEED_ANCHOR} найдено {len(named)} набор(ов) `{SEED_ANCHOR_DICT}` "
+                    f"вместо одного — перепись не знает, какой из них авторитетный"
+                )
+            names, opaque = _literal_keys(named[0])
+            if opaque:
+                raise SeedCensusError(
+                    f"набор `{SEED_ANCHOR_DICT}` в {SEED_ANCHOR} несёт {opaque} ключ(ей), "
+                    f"состав которых из исходника не виден (распаковка или вычисляемый "
+                    f"ключ) — перепись неполна, и ответ «не куётся» был бы догадкой"
+                )
+            scope["anchor_keys"] = len(names)
+
+        for d in readable:
+            names, _ = _literal_keys(d)
+            minted.update(names)
+        scope["readable"] += len(readable)
+        # Модуль, который набор ОТДАЁТ, но состав его из исходника не виден (собран
+        # присваиваниями по ключу либо слит на ходу), — слепое пятно переписи. Оно
+        # считается и печатается: «переменной в переписи нет» и «этот модуль не
+        # прочитан» суть разные ответы, и выдавать второй за первый значило бы
+        # построить ровно ту проверку, которую этот гейт и заменяет.
+        if sites and not readable:
+            scope["blind"] += 1
+
+    if not anchor_seen:
+        raise SeedCensusError(f"якорь переписи {SEED_ANCHOR} не попал в обход")
+    return minted, scope
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. Формы запроса, которым человеческий вызывающий нужен СТРУКТУРНО
@@ -229,11 +401,14 @@ def stems_for_suite(suite_dir: str, root: str = ".") -> list[str]:
 
 
 def verify(root: str = ".") -> tuple[int, list[str]]:
-    """Гейт: у каждой записи объявления обязан быть ПРЕДМЕТ в дереве.
+    """Гейт: у каждой записи есть ПРЕДМЕТ в дереве и живое ОСНОВАНИЕ.
 
-    Проверяется в обе стороны:
-      * запись, не отобравшая ни одного шага, — находка (истекла сама);
-      * ноль прочитанных файлов — ОТКАЗ, а не «чисто».
+    Два разных вопроса, и одним предикатом они не закрываются:
+      * ПРЕДМЕТ — запись, не отобравшая ни одного шага, истекла сама;
+      * ОСНОВАНИЕ — запись утверждает «посев этого не куёт»; если куёт, утверждение
+        ложно, и никакое количество отобранных шагов этого не покажет.
+    Оба — в обе стороны: ноль прочитанных коллекций и несостоявшаяся перепись посева
+    суть ОТКАЗ, а не «чисто».
     """
     problems: list[str] = []
     res = scan(root)
@@ -243,6 +418,30 @@ def verify(root: str = ".") -> tuple[int, list[str]]:
             "Это отказ, а не 'предмет у всех записей есть'."
         )
         return 2, problems
+
+    # ОСНОВАНИЕ. Идёт ДО проверки предмета намеренно: запись с мёртвым основанием
+    # надо снимать, а не искать ей шаги. Обратный порядок сначала потребовал бы
+    # объяснить, почему у ложной записи нет предмета.
+    try:
+        minted, _ = seed_minted_vars(root)
+    except SeedCensusError as exc:
+        problems.append(
+            f"перепись машинного посева не состоялась: {exc}. Пока она не состоялась, "
+            f"утверждение «посев этого выковать не может» не проверено НИ ДЛЯ ОДНОЙ "
+            f"записи. Это отказ, а не 'основание у всех записей живо'."
+        )
+        return 2, problems
+    for var in sorted(CEREMONY_ONLY_ENV):
+        if var in minted:
+            problems.append(
+                f"CEREMONY_ONLY_ENV['{var}'] объявляет, что машинный посев этого "
+                f"значения выковать НЕ МОЖЕТ, — а он его кладёт в набор "
+                f"({SEED_ANCHOR} и соседние модули посева). Основание записи мертво: "
+                f"её унаследуют как действующее ограничение, и волна церемонии будет "
+                f"уносить шаги, которым человеческий вызывающий уже не нужен. Снять "
+                f"запись — либо, если посев неправ, снять выдачу у посева."
+            )
+
     for var, n in res["by_var"].items():
         if n == 0:
             problems.append(
@@ -260,6 +459,139 @@ def verify(root: str = ".") -> tuple[int, list[str]]:
     return (1 if problems else 0), problems
 
 
+def _self_test() -> int:
+    """Доказательство инъекцией: гейт УМЕЕТ краснеть на мёртвом основании.
+
+    Проверяется в ОБЕ стороны и на СИНТЕТИЧЕСКОМ дереве, а не на репозитории: иначе
+    доказательство зависело бы от того, что сегодня лежит в посеве, и умирало бы
+    вместе с первой же законной правкой.
+
+    Инъекция настоящим входом: в переписи посева стоит переменная, которую посев
+    ВЫДАЁТ, и она же объявлена «церемониальной» — гейт обязан покраснеть И НАЗВАТЬ
+    ЕЁ. Законный близнец той же формы: переменная, которую посев не выдаёт, — гейт
+    обязан промолчать. Без второй половины проверка ловила бы форму записи, а не её
+    существо, и первое же ложное срабатывание её бы отключило.
+    """
+    import shutil
+    import tempfile
+
+    ok = True
+    root = tempfile.mkdtemp(prefix="ceremony-selftest-")
+    try:
+        seed_dir = os.path.join(root, "tests", "authz-fixtures")
+        coll_dir = os.path.join(root, "services", "iam", "tests", "newman", "collections")
+        os.makedirs(seed_dir)
+        os.makedirs(coll_dir)
+
+        # Посев-якорь синтетического дерева. Собирается ПОДСТАНОВКОЙ, а не пишется
+        # литералом: литерал сделал бы этот файл своей же находкой при обходе посевов
+        # из репозитория, и «прогон себя не переписывает» держалось бы на везении.
+        minted_name = "jwt" + "MintedByMachine"
+        absent_name = "api" + "TokenNeverMinted"
+        with open(os.path.join(seed_dir, "prodseed_matrix.py"), "w", encoding="utf-8") as fh:
+            fh.write("import json\n\n\ndef run():\n    fixtures = {\n")
+            fh.write(f'        "{minted_name}": "t",\n')
+            fh.write('        "baseUrl": "u",\n')
+            fh.write("    }\n    return fixtures\n\n\nprint(json.dumps(run()))\n")
+
+        # Один шаг, называющий ОБЕ переменные предъявителем, — чтобы предикат
+        # предмета был удовлетворён у обеих и не мешал читать предикат основания.
+        def _step(var):
+            return {
+                "name": f"step-{var}",
+                "request": {"method": "GET", "url": ["x"]},
+                "event": [{"listen": "prerequest",
+                           "script": {"exec": [f"// bearer from env '{var}'", "pm.test('a', ()=>{});"]}}],
+            }
+
+        with open(os.path.join(coll_dir, "synthetic.postman_collection.json"), "w",
+                  encoding="utf-8") as fh:
+            json.dump({"item": [{"name": "CASE", "item": [_step(minted_name), _step(absent_name)]}]}, fh)
+
+        saved_env = dict(CEREMONY_ONLY_ENV)
+        saved_shapes = list(HUMAN_CALLER_REQUESTS)
+        try:
+            # Формы запроса в синтетическом дереве нет — её предикат здесь не предмет
+            # проверки, и оставленная запись дала бы находку не про то.
+            HUMAN_CALLER_REQUESTS.clear()
+
+            # ── КОНТРОЛЬ: основание живо → молчание ─────────────────────────────
+            CEREMONY_ONLY_ENV.clear()
+            CEREMONY_ONLY_ENV[absent_name] = "посев этого не выдаёт"
+            rc, problems = verify(root)
+            if rc == 0 and not problems:
+                print(f"  ОК  запись про невыдаваемое ({absent_name}) — гейт молчит")
+            else:
+                print(f"  ПРОВАЛ законная запись объявлена находкой: {problems}")
+                ok = False
+
+            # ── ИНЪЕКЦИЯ: основание мертво → красное И С КООРДИНАТОЙ ────────────
+            CEREMONY_ONLY_ENV.clear()
+            CEREMONY_ONLY_ENV[minted_name] = "посев это выдаёт — утверждение ложно"
+            rc, problems = verify(root)
+            if rc == 0:
+                print("  ПРОВАЛ посев ВЫДАЁТ объявленную переменную, а гейт зелёный —"
+                      " предикат не читает основание записи")
+                ok = False
+            elif not any(minted_name in p for p in problems):
+                print(f"  ПРОВАЛ гейт красный, но координату не назвал: {problems}")
+                ok = False
+            else:
+                print(f"  ОК  запись про выдаваемое ({minted_name}) — красное, координата названа")
+
+            # ── ПРЕДПОСЫЛКА: якорь нечитаем → ГРОМКИЙ отказ, а не «чисто» ───────
+            # Три разные поломки якоря, и каждая обязана давать ОТКАЗ. Иначе «ноль
+            # находок» стало бы неотличимо от «ноль прочитанного» — тот самый класс,
+            # ради которого предикат и переписан.
+            CEREMONY_ONLY_ENV.clear()
+            CEREMONY_ONLY_ENV[absent_name] = "посев этого не выдаёт"
+            anchor = os.path.join(seed_dir, "prodseed_matrix.py")
+            good = open(anchor, encoding="utf-8").read()
+            for label, broken in (
+                ("якоря нет вовсе", None),
+                ("якорь не разбирается", "def run(:\n"),
+                ("набора `fixtures` в якоре нет", "import json\nprint(json.dumps({}))\n"),
+                ("наборов `fixtures` два", good + "\ndef run2():\n    fixtures = {'a': 'b'}\n    return fixtures\n"),
+                ("состав ключей не виден", "def run():\n    extra = {}\n    fixtures = {**extra, 'a': 'b'}\n    return fixtures\n"),
+            ):
+                if broken is None:
+                    os.remove(anchor)
+                else:
+                    with open(anchor, "w", encoding="utf-8") as fh:
+                        fh.write(broken)
+                rc, problems = verify(root)
+                if rc == 2 and problems:
+                    print(f"  ОК  предпосылка ({label}) — громкий отказ, не тишина")
+                else:
+                    print(f"  ПРОВАЛ предпосылка ({label}) не дала отказа: rc={rc} {problems}")
+                    ok = False
+            with open(anchor, "w", encoding="utf-8") as fh:
+                fh.write(good)
+
+            # ── ПОСЕВ ЦЕРЕМОНИИ НЕ СЧИТАЕТСЯ МАШИННЫМ ──────────────────────────
+            # Тот, кто условие СОЗДАЁТ, попав в перепись, перевернул бы предикат:
+            # запись объявлялась бы опровергнутой ровно тогда, когда её основание
+            # наконец начало выполняться.
+            with open(os.path.join(root, CEREMONY_SEED), "w", encoding="utf-8") as fh:
+                fh.write(f"import json\nfixtures = {{'{absent_name}': 'x'}}\nprint(json.dumps(fixtures))\n")
+            rc, problems = verify(root)
+            if rc == 0 and not problems:
+                print("  ОК  посев церемонии в перепись машинного не входит")
+            else:
+                print(f"  ПРОВАЛ посев церемонии засчитан машинным: {problems}")
+                ok = False
+        finally:
+            CEREMONY_ONLY_ENV.clear()
+            CEREMONY_ONLY_ENV.update(saved_env)
+            HUMAN_CALLER_REQUESTS[:] = saved_shapes
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    print()
+    print("PASS: объявление церемонии" if ok else "FAIL: объявление церемонии")
+    return 0 if ok else 1
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--root", default=".", help="корень монорепо")
@@ -267,13 +599,18 @@ def main(argv=None) -> int:
     ap.add_argument("--stems", action="store_true", help="печатать stem'ы по одному в строке")
     ap.add_argument("--report", action="store_true", help="печатать разбор с числами")
     ap.add_argument("--json", action="store_true", help="печатать разбор как JSON")
-    ap.add_argument("--verify", action="store_true", help="гейт: у каждой записи есть предмет")
+    ap.add_argument("--verify", action="store_true", help="гейт: у записи есть предмет и основание")
+    ap.add_argument("--self-test", action="store_true",
+                    help="доказательство инъекцией: гейт умеет краснеть на мёртвом основании")
     ap.add_argument("--seed-path", action="store_true", help="печатать объявленный путь посева церемонии")
     ap.add_argument("--seed-exists", action="store_true",
                     help="код 0, если посев церемонии есть в дереве; 1 — если нет")
     ap.add_argument("--debt", action="store_true",
                     help="печатать ОТКРЫТЫЙ ДОЛГ с числами (условие волны создать нечем)")
     a = ap.parse_args(argv)
+
+    if a.self_test:
+        return _self_test()
 
     if a.seed_path:
         print(os.path.join(a.root, CEREMONY_SEED))
@@ -305,10 +642,22 @@ def main(argv=None) -> int:
         print(f"объявление церемонии: {len(CEREMONY_ONLY_ENV)} переменн(ых) + "
               f"{len(HUMAN_CALLER_REQUESTS)} форм(а) запроса")
         print(f"осмотрено: {res['files_read']} коллекц(ий), {res['leaves_read']} шаг(ов)")
+        # Объём переписи печатается ОТДЕЛЬНО от объёма обхода коллекций: это два
+        # разных предиката, и молчание каждого из них должно быть отличимо от того,
+        # что он ничего не прочёл. Число словарей, состав которых из исходника не
+        # виден, печатается тоже — по ним перепись ответить не может, и скрывать это
+        # значило бы выдавать неполноту за чистоту.
+        try:
+            minted, sc = seed_minted_vars(a.root)
+            print(f"перепись посева: {len(minted)} переменн(ых) из {sc['readable']} набор(ов) "
+                  f"в {sc['modules']} модул(ях), якорь несёт {sc['anchor_keys']}; "
+                  f"выдач посева {sc['emissions']}, из них состав не виден: {sc['blind']}")
+        except SeedCensusError as exc:
+            print(f"перепись посева: НЕ СОСТОЯЛАСЬ — {exc}")
         for p in problems:
             print(f"  НАХОДКА: {p}", file=sys.stderr)
         if rc == 0:
-            print("у каждой записи объявления есть предмет в дереве.")
+            print("у каждой записи есть предмет в дереве И живое основание в посеве.")
         return rc
 
     if a.stems:
