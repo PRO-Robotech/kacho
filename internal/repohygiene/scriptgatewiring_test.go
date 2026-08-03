@@ -86,6 +86,27 @@ var declaredDebtGates = map[string]string{
 		"долг трёх сервисов (compute/iam/vpc), порог в шаге конвейера сужается, расти не может",
 }
 
+// isGateScriptExt — языки, на которых в дереве пишут скрипты-гейты.
+//
+// `.js` здесь не впрок: гейт assert-generated-scripts-parse.js подпадал под
+// gateGlobs по ИМЕНИ и всё равно выпадал из обхода — по расширению, — поэтому
+// вопрос «а зовёт ли его кто-нибудь» об этом гейте не задавался ВООБЩЕ. Ровно
+// та же слепота была у прогонщика самопроверок (deploy/scripts/run-gate-self-tests.sh),
+// и закрывать её надо в обоих местах: два обхода, одна пропущенная сторона.
+//
+// Go сюда НЕ входит, и это решение, а не пропуск: 26 файлов на Go в домах гейтов —
+// это пакеты tools/, у каждого есть companion `_test.go`, то есть они доказываются
+// обычным `go test`, а не вызовом скрипта из конвейера. Предикат «скрипт» и предикат
+// «пакет с тестом» — разные, и смешивать их значило бы требовать от Go-гейта вызова,
+// которого его форма не предполагает.
+func isGateScriptExt(p string) bool {
+	switch strings.ToLower(filepath.Ext(p)) {
+	case ".py", ".sh", ".js":
+		return true
+	}
+	return false
+}
+
 // findToolScriptGates — все скрипты-гейты в tools/<имя>/.
 //
 // Предикат — МЕСТО, а не имя и не содержимое: `tools/` заведён под инструменты
@@ -103,8 +124,7 @@ func findToolScriptGates(t *testing.T, root string) []string {
 		if info.IsDir() {
 			return nil
 		}
-		ext := strings.ToLower(filepath.Ext(p))
-		if ext != ".py" && ext != ".sh" {
+		if !isGateScriptExt(p) {
 			return nil
 		}
 		rel, rerr := filepath.Rel(root, p)
@@ -120,8 +140,7 @@ func findToolScriptGates(t *testing.T, root string) []string {
 	// Плюс гейты вне tools/ — по конвенции имени своего каталога.
 	tt := newTrackedTree(t, root)
 	for rel := range tt.files {
-		ext := strings.ToLower(filepath.Ext(rel))
-		if ext != ".py" && ext != ".sh" {
+		if !isGateScriptExt(rel) {
 			continue
 		}
 		if rel == selfTestOnlyRunner {
