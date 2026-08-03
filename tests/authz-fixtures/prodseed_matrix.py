@@ -43,9 +43,11 @@ this seed, and that is a counted debt, not something to paper over here.
   this line; it has already been stale twice. Command:
       python3 -c "import json;d=json.load(open('gateway/internal/middleware/embed/permission_catalog.json'));\
   print(sum(1 for e in d if str(e.get('required_acr_min','')) in ('1','2')),'of',len(d))"
-  History of this sentence: it read "292 of the 357" (the number still standing in
-  prodseed_all.py), then "236 of the 300"; both were true of the catalog they were
-  written against and false by the time they were read.
+  History of this sentence: it read "292 of the 357", then "236 of the 300"; both were
+  true of the catalog they were written against and false by the time they were read.
+  The twin sentence in prodseed_all.py carried the "292 of the 357" reading and was
+  corrected to match in the same change that added this note — so neither file still
+  states it, and a reader sent looking for it there would find nothing.
 
 Usage:
     prodseed_matrix.py [--deps vpc,compute,storage,registry,nlb,iam] > fixtures.json
