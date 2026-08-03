@@ -1,0 +1,256 @@
+---
+id: volume
+sidebar_position: 2
+title: Volume
+---
+
+import { DICTIONARY } from '@site/src/constants/dictionary'
+import { TYPES } from '@site/src/constants/types'
+import { RESTRICTIONS } from '@site/src/constants/restrictions'
+import { Restrictions } from '@site/src/components/commonBlocks/Restrictions'
+import { Codes } from '@site/src/components/commonBlocks/Codes'
+import { StatusTable } from '@site/src/components/commonBlocks/StatusTable'
+import { ApiOperation } from '@site/src/components/commonBlocks/ApiOperation'
+import CodeBlock from '@theme/CodeBlock'
+import dedent from 'ts-dedent'
+
+# Volume
+
+**Volume** — постоянный блочный том в конкретной зоне. Это самостоятельный ресурс: он
+создаётся отдельно от машин, может сколь угодно долго оставаться непривязанным и
+переживает машину, к которой был примонтирован.
+
+Том создаётся пустым либо засевается ровно из одного источника — снимка или образа.
+Гостевая операционная система на нём не хранится: она доставляется образом при загрузке
+машины, а том несёт постоянное блочное состояние.
+
+:::info Идентификатор и владелец
+Идентификатор — префикс `vol` плюс 17 символов crockford-base32, например
+`vol-a1b2c3d4e5f6g7h8j`. Он неизменен всю жизнь тома. Том принадлежит проекту
+(`projectId`, immutable) и зоне (`zoneId`, immutable); зоны — домен `kacho-geo`.
+:::
+
+## Поля ресурса
+
+<table>
+  <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>id</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.id.short}</td></tr>
+    <tr><td><code>projectId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.projectId.short}</td></tr>
+    <tr><td><code>createdAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.createdAt.short}</td></tr>
+    <tr><td><code>updatedAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.updatedAt.short}</td></tr>
+    <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.name.short}</td></tr>
+    <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
+    <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
+    <tr><td><code>zoneId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.zoneId.short}</td></tr>
+    <tr><td><code>diskTypeId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.diskTypeId.short}</td></tr>
+    <tr><td><code>sizeBytes</code></td><td><code>{TYPES.int64}</code></td><td>{DICTIONARY.sizeBytes.short}</td></tr>
+    <tr><td><code>blockSize</code></td><td><code>{TYPES.int64}</code></td><td>{DICTIONARY.blockSize.short}</td></tr>
+    <tr><td><code>sourceSnapshotId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.sourceSnapshotId.short}</td></tr>
+    <tr><td><code>sourceImageId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.sourceImageId.short}</td></tr>
+    <tr><td><code>status</code></td><td><code>{TYPES.volumeStatus}</code></td><td>{DICTIONARY.status.short}</td></tr>
+    <tr><td><code>attachments</code></td><td><code>{TYPES.attachments}</code></td><td>{DICTIONARY.attachments.short}</td></tr>
+    <tr><td><code>usedBy</code></td><td><code>{TYPES.reference}</code></td><td>{DICTIONARY.usedBy.short}</td></tr>
+  </tbody>
+</table>
+
+### Статусы
+
+<StatusTable values={[
+  { code: 'CREATING', desc: 'Том создаётся' },
+  { code: 'AVAILABLE', desc: 'Том готов и не привязан ни к одной машине. Выводится из отсутствия привязки' },
+  { code: 'IN_USE', desc: 'Том готов и привязан к машине. Выводится из наличия привязки' },
+  { code: 'DELETING', desc: 'Том удаляется' },
+  { code: 'ERROR', desc: 'Том столкнулся с проблемой и не работает' },
+]} />
+
+`AVAILABLE` и `IN_USE` не хранятся в базе — они выводятся из наличия строки привязки,
+поэтому разойтись с фактическим состоянием привязки не могут.
+
+---
+
+## Get
+
+<ApiOperation method="GET" endpoint="/storage/v1/volumes/{volumeId}">
+
+Возвращает том по идентификатору.
+
+#### Пример запроса
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -H "Authorization: Bearer $TOKEN" \\
+      https://api.kacho.local/storage/v1/volumes/vol-a1b2c3d4e5f6g7h8j
+  `}
+</CodeBlock>
+
+<Codes codes={['invalidArgument', 'notFound', 'unauthenticated', 'permissionDenied', 'internal']} />
+
+Некорректный по форме идентификатор отвергается синхронно, первым же действием
+(`invalid volume id '<X>'`). Корректный по форме, но отсутствующий — `NOT_FOUND`.
+
+</ApiOperation>
+
+---
+
+## List
+
+<ApiOperation method="GET" endpoint="/storage/v1/volumes">
+
+Возвращает страницу томов проекта. `projectId` обязателен.
+
+<table>
+  <thead><tr><th>Параметр</th><th>Тип</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>projectId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.projectId.short}</td></tr>
+    <tr><td><code>pageSize</code></td><td><code>{TYPES.int64}</code></td><td>{DICTIONARY.pageSize.short}</td></tr>
+    <tr><td><code>pageToken</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.pageToken.short}</td></tr>
+    <tr><td><code>filter</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.filter.short}</td></tr>
+  </tbody>
+</table>
+
+#### Пример запроса
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -H "Authorization: Bearer $TOKEN" \\
+      "https://api.kacho.local/storage/v1/volumes?projectId=prj-…&pageSize=50"
+  `}
+</CodeBlock>
+
+Страница отдаёт только те тома, которые вызывающему **разрешено читать**: прочитанная
+курсором страница сужается по каждому идентификатору тем же отношением, на котором
+гейтится `Get`. «Видно в списке» и «`Get` разрешён» — один и тот же вопрос. Подробнее —
+[Права и полосы доступа](/architecture/authz).
+
+<Codes codes={['invalidArgument', 'unauthenticated', 'permissionDenied', 'unavailable', 'internal']} />
+
+Пустой `projectId` отвергается синхронно (`projectId is required`). Недоступность модели
+прав — `UNAVAILABLE`: страница не отдаётся нефильтрованной.
+
+</ApiOperation>
+
+---
+
+## Create
+
+<ApiOperation method="POST" endpoint="/storage/v1/volumes" async>
+
+Создаёт том. Возвращает `Operation`.
+
+<table>
+  <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>projectId</code></td><td><code>{TYPES.string}</code></td><td>обязателен</td></tr>
+    <tr><td><code>zoneId</code></td><td><code>{TYPES.string}</code></td><td>обязателен; проверяется через kacho-geo</td></tr>
+    <tr><td><code>diskTypeId</code></td><td><code>{TYPES.string}</code></td><td>обязателен; позиция каталога типов</td></tr>
+    <tr><td><code>sizeBytes</code></td><td><code>{TYPES.int64}</code></td><td>&gt; 0</td></tr>
+    <tr><td><code>blockSize</code></td><td><code>{TYPES.int64}</code></td><td>по умолчанию 4096</td></tr>
+    <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>необязательно</td></tr>
+    <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>необязательно</td></tr>
+    <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>необязательно</td></tr>
+    <tr><td><code>sourceSnapshotId</code></td><td><code>{TYPES.string}</code></td><td>засев из снимка</td></tr>
+    <tr><td><code>sourceImageId</code></td><td><code>{TYPES.string}</code></td><td>засев из образа</td></tr>
+  </tbody>
+</table>
+
+Источник — снимок **либо** образ, не оба сразу. Без источника создаётся пустой том.
+
+#### Пример запроса
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -X POST -H "Authorization: Bearer $TOKEN" \\
+      -H "Content-Type: application/json" \\
+      https://api.kacho.local/storage/v1/volumes \\
+      -d '{
+        "projectId": "prj-…",
+        "zoneId": "zone-1-a",
+        "diskTypeId": "block-balanced",
+        "sizeBytes": 21474836480,
+        "name": "data-01"
+      }'
+  `}
+</CodeBlock>
+
+<Codes codes={['invalidArgument', 'alreadyExists', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'unavailable', 'internal']} />
+
+Источник обязан принадлежать тому же проекту и быть размещён когерентно — см.
+[Когерентность размещения](/architecture/placement-coherence). Чужой источник отвечает
+дословно тем же текстом, что и несуществующий.
+
+</ApiOperation>
+
+---
+
+## Update
+
+<ApiOperation method="PATCH" endpoint="/storage/v1/volumes/{volumeId}" async>
+
+Изменяет том. Возвращает `Operation`.
+
+Изменяемые поля: `name`, `description`, `labels`, `sizeBytes`.
+
+Неизменяемые: `projectId`, `zoneId`, `diskTypeId`, `blockSize`, `sourceSnapshotId`,
+`sourceImageId`. Попытка изменить их через `updateMask` → `INVALID_ARGUMENT`
+(`<field> is immutable after Volume.Create`).
+
+**Размер только растёт.** Попытка уменьшить — `Volume size can only be increased`.
+
+<Codes codes={['invalidArgument', 'notFound', 'alreadyExists', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## Delete
+
+<ApiOperation method="DELETE" endpoint="/storage/v1/volumes/{volumeId}" async>
+
+Удаляет том. Возвращает `Operation`.
+
+**Привязанный том удалить нельзя** — это держит внешний ключ таблицы привязок с
+поведением `RESTRICT`, а не проверка в коде. Сначала отвязать, затем удалить.
+
+<Codes codes={['invalidArgument', 'notFound', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## ListOperations
+
+<ApiOperation method="GET" endpoint="/storage/v1/volumes/{volumeId}/operations">
+
+Возвращает страницу операций по тому.
+
+<Codes codes={['invalidArgument', 'notFound', 'unauthenticated', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## Ограничения
+
+<Restrictions items={[
+  { label: 'name', rules: RESTRICTIONS.name },
+  { label: 'description', rules: RESTRICTIONS.description },
+  { label: 'labels', rules: RESTRICTIONS.labels },
+  { label: 'projectId', rules: RESTRICTIONS.projectId },
+  { label: 'zoneId', rules: RESTRICTIONS.zoneId },
+  { label: 'diskTypeId', rules: RESTRICTIONS.diskTypeId },
+  { label: 'sizeBytes', rules: RESTRICTIONS.sizeBytes },
+  { label: 'blockSize', rules: RESTRICTIONS.blockSize },
+  { label: 'sourceSnapshotId / sourceImageId', rules: RESTRICTIONS.volumeSource },
+  { label: 'updateMask', rules: RESTRICTIONS.updateMask },
+  { label: 'pageSize / pageToken', rules: RESTRICTIONS.pagination },
+]} />
+
+## Что блокирует удаление
+
+| Причина | Механизм |
+|---|---|
+| Том привязан к машине | `FK volume_attachments.volume_id → volumes ON DELETE RESTRICT` |
+
+Снимки и образы, снятые с тома, удалению **не мешают**: их ссылка на источник обнуляется
+(`SET NULL`), потому что это происхождение, а не использование.

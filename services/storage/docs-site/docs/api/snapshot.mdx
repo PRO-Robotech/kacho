@@ -1,0 +1,170 @@
+---
+id: snapshot
+sidebar_position: 3
+title: Snapshot
+---
+
+import { DICTIONARY } from '@site/src/constants/dictionary'
+import { TYPES } from '@site/src/constants/types'
+import { RESTRICTIONS } from '@site/src/constants/restrictions'
+import { Restrictions } from '@site/src/components/commonBlocks/Restrictions'
+import { Codes } from '@site/src/components/commonBlocks/Codes'
+import { StatusTable } from '@site/src/components/commonBlocks/StatusTable'
+import { ApiOperation } from '@site/src/components/commonBlocks/ApiOperation'
+import CodeBlock from '@theme/CodeBlock'
+import dedent from 'ts-dedent'
+
+# Snapshot
+
+**Snapshot** — снимок состояния тома на момент времени. Из него можно засеять новый том
+или снять образ.
+
+Снимок **переживает исходный том**: удаление тома не удаляет снимок, ссылка на источник
+просто обнуляется. Это следствие того, что происхождение — не живая зависимость.
+
+:::info Идентификатор и размещение
+Идентификатор — префикс `snp` плюс 17 символов crockford-base32. Собственного поля
+размещения у снимка **нет**: он наследует зону от тома, с которого снят. Если исходный
+том удалён, свидетельства о размещении не остаётся — и проверки когерентности этот случай
+пропускают, а не подставляют выдуманную зону.
+:::
+
+## Поля ресурса
+
+<table>
+  <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>id</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.id.short}</td></tr>
+    <tr><td><code>projectId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.projectId.short}</td></tr>
+    <tr><td><code>createdAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.createdAt.short}</td></tr>
+    <tr><td><code>updatedAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.updatedAt.short}</td></tr>
+    <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.name.short}</td></tr>
+    <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
+    <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
+    <tr><td><code>sourceVolumeId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.sourceVolumeId.short}</td></tr>
+    <tr><td><code>sizeBytes</code></td><td><code>{TYPES.int64}</code></td><td>Размер снимка в байтах (output-only)</td></tr>
+    <tr><td><code>status</code></td><td><code>{TYPES.snapshotStatus}</code></td><td>{DICTIONARY.status.short}</td></tr>
+  </tbody>
+</table>
+
+### Статусы
+
+<StatusTable values={[
+  { code: 'CREATING', desc: 'Снимок создаётся' },
+  { code: 'READY', desc: 'Снимок готов — можно засеять том или снять образ' },
+  { code: 'DELETING', desc: 'Снимок удаляется' },
+  { code: 'ERROR', desc: 'Снимок столкнулся с проблемой' },
+]} />
+
+---
+
+## Get
+
+<ApiOperation method="GET" endpoint="/storage/v1/snapshots/{snapshotId}">
+
+Возвращает снимок по идентификатору.
+
+<Codes codes={['invalidArgument', 'notFound', 'unauthenticated', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## List
+
+<ApiOperation method="GET" endpoint="/storage/v1/snapshots">
+
+Возвращает страницу снимков проекта. `projectId` обязателен; страница сужается по правам
+на каждый снимок.
+
+<Codes codes={['invalidArgument', 'unauthenticated', 'permissionDenied', 'unavailable', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## Create
+
+<ApiOperation method="POST" endpoint="/storage/v1/snapshots" async>
+
+Снимает снимок с тома. Возвращает `Operation`.
+
+<table>
+  <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>projectId</code></td><td><code>{TYPES.string}</code></td><td>обязателен</td></tr>
+    <tr><td><code>sourceVolumeId</code></td><td><code>{TYPES.string}</code></td><td>обязателен — том, с которого снимается</td></tr>
+    <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>необязательно</td></tr>
+    <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>необязательно</td></tr>
+    <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>необязательно</td></tr>
+  </tbody>
+</table>
+
+#### Пример запроса
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -X POST -H "Authorization: Bearer $TOKEN" \\
+      -H "Content-Type: application/json" \\
+      https://api.kacho.local/storage/v1/snapshots \\
+      -d '{
+        "projectId": "prj-…",
+        "sourceVolumeId": "vol-a1b2c3d4e5f6g7h8j",
+        "name": "data-01-nightly"
+      }'
+  `}
+</CodeBlock>
+
+Исходный том обязан принадлежать **тому же проекту**. Том чужого проекта отвечает
+дословно так же, как несуществующий, — иначе состояние чужого тома стало бы подсказкой о
+его существовании.
+
+<Codes codes={['invalidArgument', 'alreadyExists', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'unavailable', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## Update
+
+<ApiOperation method="PATCH" endpoint="/storage/v1/snapshots/{snapshotId}" async>
+
+Изменяет снимок. Возвращает `Operation`.
+
+Изменяемые поля: `name`, `description`, `labels`.
+
+Неизменяемые: `projectId`, `sourceVolumeId`. Попытка изменить их через `updateMask` →
+`INVALID_ARGUMENT` (`<field> is immutable after Snapshot.Create`).
+
+<Codes codes={['invalidArgument', 'notFound', 'alreadyExists', 'unauthenticated', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## Delete
+
+<ApiOperation method="DELETE" endpoint="/storage/v1/snapshots/{snapshotId}" async>
+
+Удаляет снимок. Возвращает `Operation`.
+
+Тома и образы, засеянные из этого снимка, удалению **не мешают**: их ссылка на источник
+обнуляется.
+
+<Codes codes={['invalidArgument', 'notFound', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## Ограничения
+
+<Restrictions items={[
+  { label: 'name', rules: RESTRICTIONS.name },
+  { label: 'description', rules: RESTRICTIONS.description },
+  { label: 'labels', rules: RESTRICTIONS.labels },
+  { label: 'projectId', rules: RESTRICTIONS.projectId },
+  { label: 'sourceVolumeId', rules: ['обязателен при Create; immutable после Create', 'обязан принадлежать тому же проекту', 'том обязан быть READY'] },
+  { label: 'updateMask', rules: RESTRICTIONS.updateMask },
+  { label: 'pageSize / pageToken', rules: RESTRICTIONS.pagination },
+]} />

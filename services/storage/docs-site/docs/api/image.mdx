@@ -1,0 +1,212 @@
+---
+id: image
+sidebar_position: 4
+title: Image
+---
+
+import { DICTIONARY } from '@site/src/constants/dictionary'
+import { TYPES } from '@site/src/constants/types'
+import { RESTRICTIONS } from '@site/src/constants/restrictions'
+import { Restrictions } from '@site/src/components/commonBlocks/Restrictions'
+import { Codes } from '@site/src/components/commonBlocks/Codes'
+import { StatusTable } from '@site/src/components/commonBlocks/StatusTable'
+import { ApiOperation } from '@site/src/components/commonBlocks/ApiOperation'
+import CodeBlock from '@theme/CodeBlock'
+import dedent from 'ts-dedent'
+
+# Image
+
+**Image** — загрузочный образ, из которого засевается том. В отличие от тома, образ
+**региональный**: он доступен во всех зонах своего региона и собственной зоны не имеет.
+
+:::info Идентификатор и размещение
+Идентификатор — префикс `img` плюс 17 символов crockford-base32. Образ привязан к региону
+(`regionId`, обязателен при создании, immutable); поля зоны у него нет вовсе. Поэтому из
+зональных проверок он исключён по построению, а с зональным томом сверяется по правилу
+«зона тома входит в регион образа».
+:::
+
+## Поля ресурса
+
+<table>
+  <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>id</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.id.short}</td></tr>
+    <tr><td><code>projectId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.projectId.short}</td></tr>
+    <tr><td><code>createdAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.createdAt.short}</td></tr>
+    <tr><td><code>updatedAt</code></td><td><code>{TYPES.timestamp}</code></td><td>{DICTIONARY.updatedAt.short}</td></tr>
+    <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.name.short}</td></tr>
+    <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.description.short}</td></tr>
+    <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>{DICTIONARY.labels.short}</td></tr>
+    <tr><td><code>regionId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.regionId.short}</td></tr>
+    <tr><td><code>sourceSnapshotId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.sourceSnapshotId.short}</td></tr>
+    <tr><td><code>sourceVolumeId</code></td><td><code>{TYPES.string}</code></td><td>{DICTIONARY.sourceVolumeId.short}</td></tr>
+    <tr><td><code>sizeBytes</code></td><td><code>{TYPES.int64}</code></td><td>Размер образа в байтах (output-only)</td></tr>
+    <tr><td><code>minDiskBytes</code></td><td><code>{TYPES.int64}</code></td><td>{DICTIONARY.minDiskBytes.short}</td></tr>
+    <tr><td><code>format</code></td><td><code>{TYPES.imageFormat}</code></td><td>{DICTIONARY.format.short}</td></tr>
+    <tr><td><code>status</code></td><td><code>{TYPES.imageStatus}</code></td><td>{DICTIONARY.status.short}</td></tr>
+  </tbody>
+</table>
+
+### Статусы
+
+<StatusTable values={[
+  { code: 'CREATING', desc: 'Образ создаётся' },
+  { code: 'READY', desc: 'Образ готов — из него можно засеять том' },
+  { code: 'DELETING', desc: 'Образ удаляется' },
+  { code: 'ERROR', desc: 'Образ столкнулся с проблемой' },
+]} />
+
+## Минимальный размер тома
+
+`minDiskBytes` — минимальный размер тома, в который образ помещается. Он выводится из
+размера источника при создании образа и **энфорсится**: попытка засеять том меньшего
+размера отвергается.
+
+Проверка выполняется **внутри вставки тома**, отдельной полосой рядом с проверками
+проекта и региона. Граница включающая: том **ровно** в `minDiskBytes` проходит.
+
+```
+InvalidArgument: Volume size %d is less than image min_disk_bytes %d
+```
+
+:::note Почему отказ по размеру не выдаёт чужой образ
+Минимальный размер чужого образа мог бы стать подсказкой о его существовании и величине.
+Поэтому проверка проекта решает **первой**: образ чужого проекта отвечает дословно как
+несуществующий (`Image <id> not found`), и до размерной полосы дело не доходит. Свой образ
+вызывающему уже виден через `Get`, поэтому по нему причина называется прямо.
+:::
+
+---
+
+## Get
+
+<ApiOperation method="GET" endpoint="/storage/v1/images/{imageId}">
+
+Возвращает образ по идентификатору.
+
+<Codes codes={['invalidArgument', 'notFound', 'unauthenticated', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## List
+
+<ApiOperation method="GET" endpoint="/storage/v1/images">
+
+Возвращает страницу образов проекта. `projectId` обязателен; страница сужается по правам
+на каждый образ.
+
+<Codes codes={['invalidArgument', 'unauthenticated', 'permissionDenied', 'unavailable', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## Create
+
+<ApiOperation method="POST" endpoint="/storage/v1/images" async>
+
+Снимает образ с тома или со снимка. Возвращает `Operation`.
+
+<table>
+  <thead><tr><th>Поле</th><th>Тип</th><th>Описание</th></tr></thead>
+  <tbody>
+    <tr><td><code>projectId</code></td><td><code>{TYPES.string}</code></td><td>обязателен</td></tr>
+    <tr><td><code>regionId</code></td><td><code>{TYPES.string}</code></td><td>обязателен; проверяется через kacho-geo</td></tr>
+    <tr><td><code>sourceSnapshotId</code></td><td><code>{TYPES.string}</code></td><td>источник — снимок</td></tr>
+    <tr><td><code>sourceVolumeId</code></td><td><code>{TYPES.string}</code></td><td>источник — том</td></tr>
+    <tr><td><code>name</code></td><td><code>{TYPES.string}</code></td><td>необязательно</td></tr>
+    <tr><td><code>description</code></td><td><code>{TYPES.string}</code></td><td>необязательно</td></tr>
+    <tr><td><code>labels</code></td><td><code>{TYPES.mapStringString}</code></td><td>необязательно</td></tr>
+  </tbody>
+</table>
+
+Источник обязателен и ровно один. Оба сразу →
+`an image source must be either a snapshot or a volume, not both`; ни одного →
+`Image source is required`.
+
+#### Пример запроса
+
+<CodeBlock language="bash">
+  {dedent`
+    curl -X POST -H "Authorization: Bearer $TOKEN" \\
+      -H "Content-Type: application/json" \\
+      https://api.kacho.local/storage/v1/images \\
+      -d '{
+        "projectId": "prj-…",
+        "regionId": "region-1",
+        "sourceSnapshotId": "snp-a1b2c3d4e5f6g7h8j",
+        "name": "base-image"
+      }'
+  `}
+</CodeBlock>
+
+Зона источника обязана входить в регион образа, а сам источник — принадлежать тому же
+проекту. См. [Когерентность размещения](/architecture/placement-coherence).
+
+<Codes codes={['invalidArgument', 'alreadyExists', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'unavailable', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## Update
+
+<ApiOperation method="PATCH" endpoint="/storage/v1/images/{imageId}" async>
+
+Изменяет образ. Возвращает `Operation`.
+
+Изменяемые поля: `name`, `description`, `labels`.
+
+Неизменяемые: `projectId`, `regionId`, `sourceSnapshotId`, `sourceVolumeId`. Попытка
+изменить их через `updateMask` → `INVALID_ARGUMENT`
+(`<field> is immutable after Image.Create`).
+
+<Codes codes={['invalidArgument', 'notFound', 'alreadyExists', 'unauthenticated', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## Delete
+
+<ApiOperation method="DELETE" endpoint="/storage/v1/images/{imageId}" async>
+
+Удаляет образ. Возвращает `Operation`.
+
+Тома, засеянные из этого образа, удалению **не мешают** и не страдают: ссылка
+`sourceImageId` обнуляется, блочные данные тома остаются нетронутыми. Это происхождение,
+а не живая зависимость.
+
+<Codes codes={['invalidArgument', 'notFound', 'failedPrecondition', 'unauthenticated', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## ListOperations
+
+<ApiOperation method="GET" endpoint="/storage/v1/images/{imageId}/operations">
+
+Возвращает страницу операций по образу.
+
+<Codes codes={['invalidArgument', 'notFound', 'unauthenticated', 'permissionDenied', 'internal']} />
+
+</ApiOperation>
+
+---
+
+## Ограничения
+
+<Restrictions items={[
+  { label: 'name', rules: RESTRICTIONS.name },
+  { label: 'description', rules: RESTRICTIONS.description },
+  { label: 'labels', rules: RESTRICTIONS.labels },
+  { label: 'projectId', rules: RESTRICTIONS.projectId },
+  { label: 'regionId', rules: RESTRICTIONS.regionId },
+  { label: 'sourceSnapshotId / sourceVolumeId', rules: RESTRICTIONS.imageSource },
+  { label: 'updateMask', rules: RESTRICTIONS.updateMask },
+  { label: 'pageSize / pageToken', rules: RESTRICTIONS.pagination },
+]} />
