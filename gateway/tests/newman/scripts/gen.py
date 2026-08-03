@@ -316,13 +316,20 @@ def _auth_pre_script(auth: str) -> List[str]:
         # (401/403) usually still holds, so the case passes FOR THE WRONG REASON and the
         # subject under test is never exercised. That is precisely how this suite could
         # issue 54 header-less requests and still call one of them a 403 test.
+        #
+        # So the step is NOT SENT. FAIL naming the variable, THEN SKIP — the sanctioned
+        # shape, identical to `require_env_url`. `pm.execution.skipRequest()` skips
+        # exactly one request (its test script does not run either), so no other
+        # assertion of this step is scored against a principal the case never named;
+        # the pre-request assertion above has already run, so the skip stays RECORDED
+        # as a failure naming the variable, never a mute one.
         f"  pm.test('harness config: {auth} is set (subject under test)', () => {{",
         f"    pm.expect.fail('{auth} is not set — the authz-fixture seed "
         "(tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did "
         "not provide this subject. Running the step anonymously would test a DIFFERENT "
         "principal and pass for the wrong reason.');",
         "  });",
-        "  pm.request.headers.remove('Authorization');",
+        "  pm.execution.skipRequest();",
         "}",
     ]
 

@@ -188,7 +188,7 @@
                   "  pm.test('harness config: jwtNoBindings is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -258,7 +258,7 @@
                   "  pm.test('harness config: jwtNoBindings is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -330,7 +330,7 @@
                   "  pm.test('harness config: jwtNoBindings is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -504,7 +504,7 @@
                   "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -564,7 +564,7 @@
                   "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -623,7 +623,7 @@
                   "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -683,7 +683,7 @@
                   "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -742,7 +742,7 @@
                   "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -877,7 +877,7 @@
                   "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -941,7 +941,7 @@
                   "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -1014,7 +1014,7 @@
                   "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -1078,7 +1078,7 @@
                   "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -1140,7 +1140,7 @@
                   "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -1200,7 +1200,7 @@
                   "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -1263,7 +1263,7 @@
                   "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
@@ -1323,7 +1323,7 @@
                   "  pm.test('harness config: jwtPureNoBindings is set (subject under test)', () => {",
                   "    pm.expect.fail('jwtPureNoBindings is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
                   "  });",
-                  "  pm.request.headers.remove('Authorization');",
+                  "  pm.execution.skipRequest();",
                   "}"
                 ]
               }
