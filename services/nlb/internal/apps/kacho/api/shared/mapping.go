@@ -6,6 +6,8 @@ package shared
 import (
 	"errors"
 
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -49,8 +51,31 @@ func OperationToProto(op *operations.Operation) *operationpb.Operation {
 // ErrInvalidArg — InvalidArgument с указанием поля + ошибки. Единый источник
 // истины (раньше идентично продублирован в loadbalancer/targetgroup/announce);
 // handler'ы используют его для sync-проверок required-полей.
+//
+// Поле называется ДВАЖДЫ: в тексте сообщения (тон контракта, `<field>: <msg>`,
+// байт-в-байт как раньше) и в `google.rpc.BadRequest` — машиночитаемо.
+//
+// Зачем деталь. В nlb две полосы, обе дают «INVALID_ARGUMENT с именем поля»:
+// доменная (`coreerrors.InvalidArgument().AddFieldViolation`) уже эмитит
+// BadRequest, а эта — только прозу. Одно и то же сообщение запроса отвечало
+// вызывающему то структурой, то текстом: неверный адрес цели давал нарушения
+// полей, а output-only `status` в том же теле — голую строку. Клиент, которому
+// `api-conventions.md` прямо запрещает разбирать прозу, не имел на этой полосе
+// ничего, на что можно ключеваться.
+//
+// Сообщение НЕ меняется: это добавление детали, а не переформулировка. Если
+// прикрепить деталь не удалось, возвращается исходный статус — диагностика не
+// может стоить вызывающему самого отказа.
 func ErrInvalidArg(field, msg string) error {
-	return status.Errorf(codes.InvalidArgument, "%s: %s", field, msg)
+	st := status.New(codes.InvalidArgument, field+": "+msg)
+	if next, derr := st.WithDetails(&errdetails.BadRequest{
+		FieldViolations: []*errdetails.BadRequest_FieldViolation{
+			{Field: field, Description: msg},
+		},
+	}); derr == nil {
+		st = next
+	}
+	return st.Err()
 }
 
 // PeerErrToStatus — peer-client error (sentinel-wrapped) → gRPC-status. Единый
