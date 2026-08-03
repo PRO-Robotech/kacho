@@ -144,13 +144,30 @@ for svc in "${services_to_run[@]}"; do
 done
 
 # aggregate_verdict — pure verdict over the reports this run is accountable for.
-# Returns 1 on any missing report, any failed assertion, or any non-zero newman rc.
+# Returns 1 on any missing report, any failed assertion, any request that got NO
+# ANSWER, any report with zero assertions, or any non-zero newman rc.
+#
+# THE LAST TWO WERE MISSING, and both read as a clean case. A request ends one of
+# four ways and this verdict had names for two:
+#   * UNANSWERED (`.run.stats.requests.failed`) — attempted, nothing came back
+#     (DNS / refused / TLS / timeout). It is not an assertion failure (nothing was
+#     asserted) and not a passing check: the check did not happen. The jq below
+#     did not even read the field, so an entire folder that could not be reached
+#     scored `0 failed` and passed.
+#   * MUTE (`assertions.total == 0`) — the value was read and then never consulted.
+#     A folder that asked nothing is indistinguishable from a folder that asked
+#     everything and agreed, if the only number you look at is "failed".
+# The sibling runner in this very suite (scripts/run.sh) carries both, and its
+# header says why. These two drifted apart in silence.
+# Held by deploy/scripts/assert-verdict-aggregators-honest.sh, which executes this
+# function against synthetic reports (a clean one must return 0; each of the five
+# non-clean shapes must return non-zero).
 aggregate_verdict() {
-  local bad=0 stem json rc total failed requests name
-  printf "%-62s %8s %8s %9s %8s\n" "CASE" "ASSERT" "FAILED" "REQUESTS" "RC"
+  local bad=0 stem json rc total failed requests unanswered name note
+  printf "%-62s %8s %8s %9s %12s %8s  %s\n" "CASE" "ASSERT" "FAILED" "REQUESTS" "UNANSWERED" "RC" "NOTE"
   for stem in "$@"; do
     if [[ "$stem" == MISSING-COLLECTION:* ]]; then
-      printf "%-62s %8s %8s %9s %8s\n" "${stem#MISSING-COLLECTION:} (whole collection)" "-" "-" "-" "MISSING"
+      printf "%-62s %8s %8s %9s %12s %8s  %s\n" "${stem#MISSING-COLLECTION:} (whole collection)" "-" "-" "-" "-" "MISSING" ""
       bad=1
       continue
     fi
@@ -159,19 +176,34 @@ aggregate_verdict() {
     rc="n/a"
     [[ -f "${json%.json}.rc" ]] && rc="$(cat "${json%.json}.rc")"
     if [[ ! -f "$json" ]]; then
-      printf "%-62s %8s %8s %9s %8s\n" "$name" "-" "-" "-" "MISSING"
+      printf "%-62s %8s %8s %9s %12s %8s  %s\n" "$name" "-" "-" "-" "-" "MISSING" ""
       bad=1
       continue
     fi
-    total=0; failed=0; requests=0
-    read -r total failed requests < <(
-      jq -r '"\(.run.stats.assertions.total) \(.run.stats.assertions.failed) \(.run.stats.requests.total)"' \
-        "$json" 2>/dev/null || echo "0 0 0"
+    total=0; failed=0; requests=0; unanswered=0
+    read -r total failed requests unanswered < <(
+      jq -r '"\(.run.stats.assertions.total) \(.run.stats.assertions.failed) \(.run.stats.requests.total) \(.run.stats.requests.failed // 0)"' \
+        "$json" 2>/dev/null || echo "0 0 0 0"
     )
-    [[ "$total" =~ ^[0-9]+$ ]]    || total=0
-    [[ "$failed" =~ ^[0-9]+$ ]]   || failed=0
-    [[ "$requests" =~ ^[0-9]+$ ]] || requests=0
-    printf "%-62s %8s %8s %9s %8s\n" "$name" "$total" "$failed" "$requests" "$rc"
+    [[ "$total" =~ ^[0-9]+$ ]]      || total=0
+    [[ "$failed" =~ ^[0-9]+$ ]]     || failed=0
+    [[ "$requests" =~ ^[0-9]+$ ]]   || requests=0
+    [[ "$unanswered" =~ ^[0-9]+$ ]] || unanswered=0
+    note=""
+    if [[ "$total" -eq 0 ]]; then
+      note="NOTHING RAN — 0 assertions; a case that asked nothing does not pass"
+      bad=1
+    fi
+    if [[ "$unanswered" -gt 0 ]]; then
+      note="${note:+$note; }UNANSWERED — never subtracted, never explained away"
+      bad=1
+    fi
+    printf "%-62s %8s %8s %9s %12s %8s  %s\n" "$name" "$total" "$failed" "$requests" "$unanswered" "$rc" "$note"
+    if [[ "$unanswered" -gt 0 ]]; then
+      jq -r '[.run.failures[]? | select((.error.name? // "") != "AssertionError")
+              | "    NOT EXECUTED: \(.source.name? // "?") <- \(.error.message? // "no response")"]
+             | unique | .[]' "$json" 2>/dev/null || true
+    fi
     if [[ "$failed" -gt 0 ]]; then bad=1; fi
     # --resume carries over a case from an earlier run and leaves no fresh .rc; its
     # report still decides. Any other non-zero rc is red.

@@ -79,6 +79,7 @@ deploy/scripts/assert-generated-scripts-parse.js
 deploy/scripts/assert-outbox-autovacuum.sh
 deploy/scripts/assert-posture-branches-can-be-taken.py
 deploy/scripts/assert-report-readers-use-the-summary.py
+deploy/scripts/assert-verdict-aggregators-honest.sh
 deploy/scripts/assert-waiters-name-their-target.sh
 deploy/scripts/remeasure-provider-listener-tls.sh
 deploy/tests/helm/admin-hop-address-census-test.sh
@@ -93,6 +94,7 @@ deploy/tests/helm/networkpolicy-egress-test.sh
 deploy/tests/helm/outbox-autovacuum-naptime-test.sh
 deploy/tests/helm/prerequisite-secrets-test.sh
 deploy/tests/helm/trusted-forwarder-profiles-test.sh
+services/iam/tests/newman/scripts/exec-coverage.py
 tests/authz-fixtures/prodseed_all.py
 tools/mixedoutcomeaudit/mixed_outcome_audit.py
 "
