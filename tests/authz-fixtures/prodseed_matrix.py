@@ -507,14 +507,19 @@ def seed() -> dict:
     # а отличие проверяется на `delete`, которого у роли нет. Это различие модель
     # действительно делает; прежнее «может addTargets, но не может Update»
     # невыразимо: оба глагола — одно отношение.
+    #
+    # Операторской роли здесь БОЛЬШЕ НЕТ, и это решение, а не переименование.
+    # Она строилась из `networkLoadBalancers.{start,stop}` — глаголов, снятых
+    # миграцией 0059, когда административное включение/выключение переехало в поле
+    # `NetworkLoadBalancer.admin_state`. Выразить её пост-0059 можно было бы только
+    # через `update` (правка admin_state — обычная мутация), но `update` уже несёт
+    # роль выше, и вторая роль с тем же глаголом ничего не различает: у набора
+    # пропадает предмет. Роль не использовал ни один шаг — её предъявитель
+    # упоминался только в перечне субъектов, поэтому снятие ничего не гасит.
     role_tm = custom_role(acctA, f"ps_nlb_targetmgr_{RID}", "loadbalancer",
                           ["targetGroups"], ["update"])
-    role_op = custom_role(acctA, f"ps_nlb_operator_{RID}", "loadbalancer",
-                          ["networkLoadBalancers"], ["start", "stop"])
     _, tok_crTargetMgr = subject(acctA, f"ps-cr-tm-{RID}",
                                  [(role_tm, P, projA1)] if role_tm else [])
-    _, tok_crOperator = subject(acctA, f"ps-cr-op-{RID}",
-                                [(role_op, P, projA1)] if role_op else [])
     _, tok_adminA = subject(acctA, f"ps-adm-a-{RID}", [(ROLE_ADMIN, A, acctA)])
     _, tok_adminB = subject(acctB, f"ps-adm-b-{RID}", [(ROLE_ADMIN, A, acctB)])
     _, tok_invitee = subject(acctA, f"ps-inv-{RID}", [(ROLE_ADMIN, A, acctB), (ROLE_EDIT, P, projA1)])
@@ -588,7 +593,6 @@ def seed() -> dict:
         # true of the negative halves and fatal to the positive ones: the case saying
         # "targetManager may addTargets" could only ever see 403, so the verb its role
         # exists to grant was never once exercised.
-        "jwtCustomRoleOperator": tok_crOperator,
         "jwtCustomRoleTargetManager": tok_crTargetMgr,
         # ids
         "accountAId": acctA,
