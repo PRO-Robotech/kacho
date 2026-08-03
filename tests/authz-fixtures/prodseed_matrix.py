@@ -34,10 +34,18 @@ the use-case's `AudiencePrefix` is never set by the composition root, so the iss
 client carries an EMPTY audience whitelist. Measured end-to-end on the production-posture
 stand: requesting the api audience at the exchange is refused ("Requested audience ... has
 not been whitelisted"); exchanging without one yields `aud: []`, which the edge rejects
-401. Separately, a client_credentials token carries no `acr`, and 236 of the 300 catalog
+401. Separately, a client_credentials token carries no `acr`, and 236 of the 294 catalog
 entries require acr >= 1. Account.Create itself is `<exempt>` so acr is not its blocker —
 the audience is. Every case asserting "the caller is user X" therefore stays RED under
 this seed, and that is a counted debt, not something to paper over here.
+
+  The denominator moves whenever the catalog does, so recheck it rather than trusting
+  this line; it has already been stale twice. Command:
+      python3 -c "import json;d=json.load(open('gateway/internal/middleware/embed/permission_catalog.json'));\
+  print(sum(1 for e in d if str(e.get('required_acr_min','')) in ('1','2')),'of',len(d))"
+  History of this sentence: it read "292 of the 357" (the number still standing in
+  prodseed_all.py), then "236 of the 300"; both were true of the catalog they were
+  written against and false by the time they were read.
 
 Usage:
     prodseed_matrix.py [--deps vpc,compute,storage,registry,nlb,iam] > fixtures.json
