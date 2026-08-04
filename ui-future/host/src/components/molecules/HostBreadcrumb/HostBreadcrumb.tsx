@@ -62,6 +62,12 @@ const RESOURCE_LABELS: Record<string, string> = {
   // geo (админ-раздел)
   regions: "Регионы",
   zones: "Зоны",
+  // administration — первый сегмент после /system/, а не последний сегмент
+  // адреса: `/system/cluster/admins` и `/system/tokens/user-tokens` подписывает
+  // их РАЗДЕЛ, потому что крошка строится по первому сегменту.
+  search: "Поиск",
+  cluster: "Cluster admins",
+  tokens: "Токены и ключи",
   // nlb
   "load-balancers": "Балансировщики",
   listeners: "Слушатели",

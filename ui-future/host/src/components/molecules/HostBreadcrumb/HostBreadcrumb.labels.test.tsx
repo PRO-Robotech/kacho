@@ -63,10 +63,9 @@ describe("HostBreadcrumb — метки против поверхности ст
   });
 });
 
-describe("HostBreadcrumb — крошка тома", () => {
+describe("HostBreadcrumb — крошка на живых адресах", () => {
   beforeEach(() => {
     jest.spyOn(global, "fetch").mockImplementation(() => jsonResponse({ accounts: [] }));
-    window.history.pushState(null, "", "/projects/prj-1/storage/volumes");
   });
 
   afterEach(() => {
@@ -74,10 +73,30 @@ describe("HostBreadcrumb — крошка тома", () => {
     window.history.pushState(null, "", "/");
   });
 
+  const at = (pathname: string) => {
+    window.history.pushState(null, "", pathname);
+    return render(<HostBreadcrumb context={emptyContext} onChange={jest.fn()} />);
+  };
+
   it("на странице томов показывает «Хранилище / Тома», а не «STORAGE / Раздел»", () => {
-    render(<HostBreadcrumb context={emptyContext} onChange={jest.fn()} />);
+    at("/projects/prj-1/storage/volumes");
     expect(screen.getByText("Хранилище")).toBeInTheDocument();
     expect(screen.getByText("Тома")).toBeInTheDocument();
     expect(screen.queryByText("Раздел")).not.toBeInTheDocument();
+  });
+
+  it("на адресах администрирования подписывает раздел, а не отдаёт «Раздел»", () => {
+    // Каждый из трёх адресов рекламируется оболочкой: «Поиск» — рейлом,
+    // остальные два — навигацией system-remote'а.
+    for (const [pathname, label] of [
+      ["/system/search", "Поиск"],
+      ["/system/cluster/admins", "Cluster admins"],
+      ["/system/tokens/user-tokens", "Токены и ключи"],
+    ] as const) {
+      const view = at(pathname);
+      expect(screen.getByText(label)).toBeInTheDocument();
+      expect(screen.queryByText("Раздел")).not.toBeInTheDocument();
+      view.unmount();
+    }
   });
 });
