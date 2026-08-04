@@ -13,6 +13,7 @@ package ports
 
 import (
 	"context"
+	"time"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 )
@@ -108,6 +109,18 @@ type InstanceRepo interface {
 	// attach-state больше нет; ПОРЯДОК — строка инстанса удаляется ПОСЛЕДНЕЙ, чтобы
 	// crash не осиротил привязки). Отсутствует → ErrNotFound.
 	Delete(ctx context.Context, id string) error
+	// ListStuckDeleting возвращает id машин, вошедших в удаление раньше чем
+	// olderThan назад и там оставшихся.
+	//
+	// Порядок delete-саги делает крах безопасным, но повторить её было некому:
+	// разрешитель осиротевших операций по контракту рабочую функцию не
+	// перезапускает. Без этой выборки машина остаётся в DELETING навсегда, а её
+	// интерфейсы и тома — занятыми у владельцев, которые снятия не запрашивают.
+	//
+	// olderThan — отсрочка: свежее удаление прямо сейчас доделывает законный
+	// исполнитель, и подхватывать его нельзя, иначе оба снимают одни и те же
+	// привязки наперегонки.
+	ListStuckDeleting(ctx context.Context, olderThan time.Duration) ([]string, error)
 }
 
 // MachineTypeFilter — фильтр для списка machine-type (COMP-1 F7/F19). Ambient

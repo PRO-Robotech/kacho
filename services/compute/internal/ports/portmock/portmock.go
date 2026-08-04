@@ -34,6 +34,10 @@ import (
 type InstanceRepo struct {
 	mu   sync.Mutex
 	data map[string]*domain.Instance
+	// deletingSince — момент входа строки в DELETING. Держится отдельной картой,
+	// а не полем domain-сущности: это координата саги, а не свойство машины, и в
+	// публичной проекции ресурса ей делать нечего.
+	deletingSince map[string]time.Time
 	// LastUpdateEmitLabels — последнее значение emitLabelsRegister, переданное в
 	// Update (epic RSAB β, D-β6). nil — Update ещё не вызывался. Позволяет
 	// use-case-тесту проверить решение «labels ∈ mask → эмитить register-intent».
@@ -41,7 +45,12 @@ type InstanceRepo struct {
 }
 
 // NewInstanceRepo создаёт пустой InstanceRepo.
-func NewInstanceRepo() *InstanceRepo { return &InstanceRepo{data: make(map[string]*domain.Instance)} }
+func NewInstanceRepo() *InstanceRepo {
+	return &InstanceRepo{
+		data:          make(map[string]*domain.Instance),
+		deletingSince: make(map[string]time.Time),
+	}
+}
 
 // Seed добавляет ВМ напрямую.
 func (r *InstanceRepo) Seed(in *domain.Instance) {
@@ -149,9 +158,34 @@ func (r *InstanceRepo) MarkDeleting(_ context.Context, id string) (*domain.Insta
 	if !ok {
 		return nil, fmt.Errorf("%w: Instance %s not found", ports.ErrNotFound, id)
 	}
-	in.Status = domain.InstanceStatusDeleting
+	if in.Status != domain.InstanceStatusDeleting {
+		in.Status = domain.InstanceStatusDeleting
+		// Отметка ставится ТОЛЬКО на фактическом переходе: повторный вызов не
+		// вправе омолодить строку, иначе застрявшая машина вечно моложе отсрочки.
+		r.deletingSince[id] = time.Now()
+	}
 	cp := *in
 	return &cp, nil
+}
+
+// ListStuckDeleting — машины в DELETING, вошедшие туда раньше чем olderThan назад.
+func (r *InstanceRepo) ListStuckDeleting(_ context.Context, olderThan time.Duration) ([]string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cutoff := time.Now().Add(-olderThan)
+	var out []string
+	for id, in := range r.data {
+		if in.Status != domain.InstanceStatusDeleting {
+			continue
+		}
+		since, ok := r.deletingSince[id]
+		if !ok || since.After(cutoff) {
+			continue
+		}
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // MergeMetadata атомарно применяет delete+upsert дельту (под r.mu — зеркалит

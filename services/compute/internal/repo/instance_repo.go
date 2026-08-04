@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -361,7 +362,11 @@ func (r *InstanceRepo) MarkDeleting(ctx context.Context, id string) (*domain.Ins
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	tag, err := tx.Exec(ctx, `UPDATE instances SET status = 'DELETING' WHERE id = $1 AND status <> 'DELETING'`, id)
+	// deleting_since штампуется ТОЛЬКО на фактическом переходе (предикат
+	// `status <> 'DELETING'` уже это обеспечивает): повторный вызов не вправе
+	// омолодить строку, иначе застрявшая машина вечно моложе отсрочки добивателя
+	// и он не возьмёт её никогда.
+	tag, err := tx.Exec(ctx, `UPDATE instances SET status = 'DELETING', deleting_since = now() WHERE id = $1 AND status <> 'DELETING'`, id)
 	if err != nil {
 		return nil, wrapPgErr(err, "Instance", id)
 	}
@@ -410,6 +415,46 @@ func (r *InstanceRepo) MergeMetadata(ctx context.Context, id string, del []strin
 // writer-tx. ФИНАЛЬНЫЙ шаг delete-саги — том/NIC-привязки уже сняты в use-case
 // (storage.Detach/vpc.Detach) ДО этого вызова; строка инстанса удаляется ПОСЛЕДНЕЙ,
 // чтобы crash не осиротил привязки. Никакого attached_disks-sweep (таблицы нет).
+// ListStuckDeleting возвращает id машин, вошедших в удаление раньше чем olderThan
+// назад и там оставшихся.
+//
+// Строки без отметки (deleting_since IS NULL) НЕ возвращаются: NULL означает «в
+// удаление не входила». Значение по умолчанию вместо NULL сделало бы каждую
+// строку вечно просроченной — защита выглядела бы исполненной и пропускала всё.
+//
+// Выборка ложится на частичный индекс миграции 0027 (только строки в удалении),
+// поэтому на живой базе она почти всегда читает пустой индекс.
+func (r *InstanceRepo) ListStuckDeleting(ctx context.Context, olderThan time.Duration) ([]string, error) {
+	rows, err := r.pool.Query(ctx, `
+		SELECT id FROM instances
+		 WHERE status = 'DELETING'
+		   AND deleting_since IS NOT NULL
+		   AND deleting_since < now() - make_interval(secs => $1::double precision)
+		 ORDER BY deleting_since
+		 LIMIT $2`, olderThan.Seconds(), stuckDeleteBatch)
+	if err != nil {
+		return nil, wrapPgErr(err, "Instance", "stuck-delete-sweep")
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, wrapPgErr(err, "Instance", "stuck-delete-sweep")
+		}
+		out = append(out, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, wrapPgErr(err, "Instance", "stuck-delete-sweep")
+	}
+	return out, nil
+}
+
+// stuckDeleteBatch — сколько застрявших удалений разбирается за один проход.
+// Каждое несёт вызовы к двум соседям, поэтому проход ограничен: остаток разберёт
+// следующий, а соседи не получат разом сотни снятий.
+const stuckDeleteBatch = 50
+
 func (r *InstanceRepo) Delete(ctx context.Context, id string) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {

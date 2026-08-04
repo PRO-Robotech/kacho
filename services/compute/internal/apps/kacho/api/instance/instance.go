@@ -821,39 +821,109 @@ func (s *InstanceService) Delete(ctx context.Context, id string) (*operations.Op
 				}
 				return nil, serviceerr.MapRepoErr(err)
 			}
-			// (2) release NICs (fail-closed).
-			if s.nicClient != nil {
-				nics, err := s.nicClient.ListByInstance(ctx, []string{id})
-				if err != nil {
-					return nil, mapNicErr(err)
-				}
-				for i := range nics {
-					if err := s.nicClient.Detach(ctx, nics[i].NICID, id); err != nil {
-						return nil, mapNicErr(err)
-					}
-				}
-			}
-			// (3) release volumes (fail-closed).
-			if s.storageClient != nil {
-				vols, err := s.storageClient.ListAttachments(ctx, []string{id})
-				if err != nil {
-					return nil, err
-				}
-				for i := range vols {
-					if err := s.storageClient.Detach(ctx, vols[i].VolumeID, id); err != nil {
-						return nil, err
-					}
-				}
-			}
-			// (4) delete instance row LAST.
-			if err := s.repo.Delete(ctx, id); err != nil {
-				if errors.Is(err, ports.ErrNotFound) {
-					return anypb.New(&emptypb.Empty{})
-				}
-				return nil, serviceerr.MapRepoErr(err)
+			// (2)-(4) — общая часть с добивателем (releaseAndDelete): одна
+			// реализация на два вызывающих. Две копии шагов саги разъехались бы
+			// ровно там, где расхождение не наблюдаемо — на пути после краха.
+			if err := s.releaseAndDelete(ctx, id); err != nil {
+				return nil, err
 			}
 			return anypb.New(&emptypb.Empty{})
 		})
+}
+
+// releaseAndDelete — шаги (2)-(4) delete-саги: снять привязки интерфейсов, снять
+// привязки томов, удалить строку ПОСЛЕДНЕЙ.
+//
+// Списки привязок пересчитываются у владельцев на каждом прогоне (self-describing),
+// поэтому повтор идемпотентен: уже снятая привязка возвращается пустым списком.
+// Именно это делает шаги пригодными и для штатного пути, и для добивателя — их
+// не нужно писать дважды.
+//
+// Порядок «строка последней» — не стиль: списки привязок резолвятся ПО машине, и
+// без её строки не останется ничего, по чему их можно найти. Отказ владельца
+// поэтому обязан оставить строку на месте, а не проглотиться.
+func (s *InstanceService) releaseAndDelete(ctx context.Context, id string) error {
+	if s.nicClient != nil {
+		nics, err := s.nicClient.ListByInstance(ctx, []string{id})
+		if err != nil {
+			return mapNicErr(err)
+		}
+		for i := range nics {
+			if err := s.nicClient.Detach(ctx, nics[i].NICID, id); err != nil {
+				return mapNicErr(err)
+			}
+		}
+	}
+	if s.storageClient != nil {
+		vols, err := s.storageClient.ListAttachments(ctx, []string{id})
+		if err != nil {
+			return err
+		}
+		for i := range vols {
+			if err := s.storageClient.Detach(ctx, vols[i].VolumeID, id); err != nil {
+				return err
+			}
+		}
+	}
+	if err := s.repo.Delete(ctx, id); err != nil {
+		if errors.Is(err, ports.ErrNotFound) {
+			return nil
+		}
+		return serviceerr.MapRepoErr(err)
+	}
+	return nil
+}
+
+// FinishStuckDeletes доводит до конца удаления, которые начал умерший процесс, и
+// возвращает id доделанных машин.
+//
+// # Почему это обязано существовать
+//
+// Порядок delete-саги crash-safe: строка живёт до последнего шага, привязки
+// резолвятся у владельцев на каждом прогоне, повтор идемпотентен. Повторять,
+// однако, было НЕКОМУ. Разрешитель осиротевших операций по своему контракту
+// рабочую функцию не перезапускает — он приводит статус операции в соответствие
+// закоммиченной реальности: видит строку на месте и помечает операцию
+// прерванной. Машина остаётся в DELETING навсегда, а её интерфейсы и тома —
+// занятыми у владельцев, которые о случившемся не узнают: снятие привязки
+// инициирует потребитель, владелец его не запрашивает.
+//
+// Наблюдаемое следствие — занятый том не присоединить к другой машине, занятый
+// интерфейс удерживает адрес из ограниченного пула. Ошибок при этом нет ни у
+// кого: удаление «прошло», просто не до конца.
+//
+// # Отсрочка
+//
+// grace отсекает удаления, которые прямо сейчас доделывает законный исполнитель:
+// иначе он и добиватель снимали бы одни и те же привязки наперегонки.
+//
+// # Многорепличность
+//
+// Отдельной блокировки нет и не нужно: каждый шаг идемпотентен (повторное снятие
+// привязки — no-op у владельца, отсутствующая строка — успех), поэтому две
+// реплики, взявшиеся за одну машину, приходят к тому же исходу. Это свойство
+// самих шагов, а не удача расписания.
+//
+// # Отказ соседа
+//
+// Отказ владельца привязки ВОЗВРАЩАЕТСЯ вызывающему и прерывает проход: строка
+// обязана уцелеть до успешного снятия. Следующий проход начнёт заново —
+// самоисцеление при возвращении соседа.
+func (s *InstanceService) FinishStuckDeletes(ctx context.Context, grace time.Duration) ([]string, error) {
+	stuck, err := s.repo.ListStuckDeleting(ctx, grace)
+	if err != nil {
+		return nil, err
+	}
+	finished := make([]string, 0, len(stuck))
+	for _, id := range stuck {
+		if err := s.releaseAndDelete(ctx, id); err != nil {
+			// Уже доделанное возвращаем вместе с ошибкой: вызывающий обязан видеть
+			// и то, что сделано, и то, на чём проход встал.
+			return finished, err
+		}
+		finished = append(finished, id)
+	}
+	return finished, nil
 }
 
 // GetSerialPortOutput — sync RPC: синтетический текст (control-plane).

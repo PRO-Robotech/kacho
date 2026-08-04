@@ -43,6 +43,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // outboxDirectionSplitExempt — очереди, у которых разложение по направлению не
@@ -252,20 +254,27 @@ func serviceConstStrings(t *testing.T, svcRoot string) map[string]string {
 	return out
 }
 
-// goFilesUnder — не-тестовые .go файлы поддерева.
+// goFilesUnder — не-тестовые .go файлы поддерева, взятые из ИНДЕКСА git, а не
+// обходом диска.
+//
+// Разница не косметическая: под services/ на любой машине, где поднимали стенд
+// или гоняли прогоны, лежат игнорируемые каталоги (распаковки чартов, рабочие
+// копии, отчёты). Обход диска сделал бы вердикт гейта свойством рабочего
+// каталога, а не коммита. Пустой корпус treecorpus считает отказом — «ноль
+// находок» на «ноль прочитанного» здесь неотличимо от чистого дерева.
 func goFilesUnder(t *testing.T, dir string) []string {
 	t.Helper()
-	var out []string
-	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return nil
-		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
+	tracked, err := treecorpus.UnderWithSuffix(dir, ".go")
+	if err != nil {
+		t.Fatalf("состав дерева под %s взять неоткуда: %v", dir, err)
+	}
+	out := make([]string, 0, len(tracked))
+	for _, path := range tracked {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
 		}
 		out = append(out, path)
-		return nil
-	})
+	}
 	sort.Strings(out)
 	return out
 }

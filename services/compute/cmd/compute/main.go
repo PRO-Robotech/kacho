@@ -164,6 +164,16 @@ func runServe(cfg config.Config) error {
 		return nil
 	}})
 
+	// Добиватель начатых удалений. Разрешитель выше по контракту рабочую функцию
+	// НЕ перезапускает — он лишь приводит статус операции к закоммиченной
+	// реальности. Значит удаление, прерванное крахом, доводить было некому:
+	// машина оставалась в DELETING навсегда, удерживая интерфейсы и тома у
+	// владельцев, которые снятия не запрашивают. См. stuck_delete_finisher.go.
+	background = append(background, bgWorker{"stuck-delete-finisher", func(c context.Context) error {
+		runStuckDeleteFinisher(c, svcs.instance, logger)
+		return nil
+	}})
+
 	// register-drainer — applies FGA owner-tuple register/unregister intents
 	// (compute_fga_register_outbox, written transactionally by repo.Insert/Delete)
 	// via kacho-iam InternalIAMService.RegisterResource/UnregisterResource over the
