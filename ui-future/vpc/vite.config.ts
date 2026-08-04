@@ -37,6 +37,18 @@ export default defineConfig({
         target: apiGateway,
         changeOrigin: true,
       },
+      // Region/Zone принадлежат домену geo: /system/regions и /system/zones этого
+      // приложения читают /geo/v1/*, а RefSelect зоны — оттуда же.
+      "/geo": {
+        target: apiGateway,
+        changeOrigin: true,
+      },
+      // Блочное хранение — домен storage: том, показанный на странице инстанса,
+      // и disk-type в формах приезжают с /storage/v1/*.
+      "/storage": {
+        target: apiGateway,
+        changeOrigin: true,
+      },
       "/nlb": {
         target: apiGateway,
         changeOrigin: true,
