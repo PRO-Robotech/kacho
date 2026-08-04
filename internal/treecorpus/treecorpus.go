@@ -56,7 +56,13 @@ func Under(dir string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("treecorpus: абсолютный путь для %s: %w", dir, err)
 	}
-	cmd := exec.Command("git", "-C", abs, "ls-files", "-z")
+	// Каталог задаётся рабочей директорией процесса, а НЕ аргументом `-C <путь>`:
+	// так в командной строке не остаётся ни одного операнда, кроме литералов.
+	// `git -C <dir> ls-files` и запуск git с рабочим каталогом <dir> дают здесь
+	// одно и то же — обе формы велят git считать <dir> текущим каталогом, а
+	// `ls-files` перечисляет относительно него.
+	cmd := exec.Command("git", "ls-files", "-z")
+	cmd.Dir = abs
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("treecorpus: git ls-files в %s: %w — состав дерева "+

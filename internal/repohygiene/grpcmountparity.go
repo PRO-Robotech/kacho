@@ -225,17 +225,9 @@ func declaredSomewhere(declared map[string][]string, fqn string) bool {
 func declaredServices(apiRoot string, c *MountCensus) (map[string][]string, map[string]string, error) {
 	declared := map[string][]string{}
 	dirToProto := map[string]string{}
-	err := filepath.Walk(apiRoot, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.IsDir() || !strings.HasSuffix(path, "_grpc.pb.go") {
-			return nil
-		}
-		b, err := os.ReadFile(path) // #nosec G304 — путь из обхода дерева репозитория
-		if err != nil {
-			return err
-		}
+	err := rootedWalk(apiRoot, func(rel string) bool {
+		return strings.HasSuffix(rel, "_grpc.pb.go")
+	}, func(path string, b []byte) error {
 		c.StubFiles++
 		for _, m := range serviceNameRe.FindAllStringSubmatch(string(b), -1) {
 			full := m[1]
