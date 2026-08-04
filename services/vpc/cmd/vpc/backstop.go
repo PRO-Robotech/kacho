@@ -52,7 +52,14 @@ func startBackstop(ctx context.Context, pool *pgxpool.Pool, rec metrics.Recorder
 
 	go runReconciler(ctx, rc, logger)
 
-	col := metrics.NewCollector(pool, rec, metrics.CollectorConfig{Table: fgaRegisterOutboxTable})
+	// Directions splits the same series by direction of the queue. Without it the
+	// table-wide numbers stay healthy while withdrawals never arrive: grants drain
+	// continuously, so the depth is small and the head is young no matter what the
+	// other half is doing, and "it works" reads exactly like "it was never revoked".
+	col := metrics.NewCollector(pool, rec, metrics.CollectorConfig{
+		Table:      fgaRegisterOutboxTable,
+		Directions: metrics.RegisterOutboxDirections(),
+	})
 	go col.Run(ctx, func(err error) {
 		logger.Warn("outbox metrics scan failed", "err", err)
 	})

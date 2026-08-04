@@ -27,6 +27,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -50,6 +51,35 @@ type Recorder interface {
 	IncPoisoned(table string)
 }
 
+// DirectionRecorder is the OPTIONAL half of the sink: the same three questions asked per
+// DIRECTION of the queue, plus the one the table-wide series cannot express at all — how
+// many rows of a direction have EVER been delivered.
+//
+// WHY IT IS A SEPARATE INTERFACE. A recorder that predates the split still satisfies
+// Recorder, and the Collector asserts this capability at run time — so wiring that has
+// not adopted the split keeps working and simply publishes no per-direction series.
+// Absence of the series is the honest signal there; a zero would read as "no withdrawals
+// happened", which is exactly the state the split exists to distinguish from "withdrawals
+// do not arrive".
+//
+// WHY THE SPLIT IS NEEDED AT ALL. One queue carries both directions and all three
+// table-wide series aggregate them. Grants flow continuously — resources are created all
+// the time — so the aggregate looks healthy no matter whether a single withdrawal ever
+// lands: the depth is small because grants drain, the head is young for the same reason,
+// and nothing is poisoned because nothing refused. "It works" and "it was never revoked"
+// therefore produce an IDENTICAL picture. Measured 2026-08-04: 479 repository
+// registrations against 60 withdrawals, and no aggregate series said so.
+type DirectionRecorder interface {
+	// SetBacklogDepthByDirection — pending rows of one direction.
+	SetBacklogDepthByDirection(table, direction string, depth float64)
+	// SetOldestPendingAgeByDirection — age of the OLDEST pending row of one direction:
+	// the value that answers "how long ago did this direction stop arriving".
+	SetOldestPendingAgeByDirection(table, direction string, age float64)
+	// SetDeliveredTotal — rows of one direction that have been delivered. The only one
+	// of the four that distinguishes "there were none" from "none get through".
+	SetDeliveredTotal(table, direction string, count float64)
+}
+
 // MemRecorder is an in-memory Recorder for tests and as a safe default. It is
 // concurrency-safe.
 type MemRecorder struct {
@@ -58,6 +88,11 @@ type MemRecorder struct {
 	oldest        map[string]float64
 	poisonedCount map[string]float64 // current count gauge (Collector)
 	poisonedTotal map[string]float64 // monotonic counter (drainer)
+	// Per-direction series, keyed by table then direction. Absent until a Collector
+	// configured with Directions records them — absence is the signal, not a zero.
+	dirBacklog   map[string]map[string]float64
+	dirOldest    map[string]map[string]float64
+	dirDelivered map[string]map[string]float64
 }
 
 // NewMemRecorder constructs an empty in-memory recorder.
@@ -67,6 +102,9 @@ func NewMemRecorder() *MemRecorder {
 		oldest:        map[string]float64{},
 		poisonedCount: map[string]float64{},
 		poisonedTotal: map[string]float64{},
+		dirBacklog:    map[string]map[string]float64{},
+		dirOldest:     map[string]map[string]float64{},
+		dirDelivered:  map[string]map[string]float64{},
 	}
 }
 
@@ -116,7 +154,71 @@ func (m *MemRecorder) read(src map[string]float64, table string) float64 {
 	return src[table]
 }
 
-var _ Recorder = (*MemRecorder)(nil)
+// SetBacklogDepthByDirection / SetOldestPendingAgeByDirection / SetDeliveredTotal —
+// DirectionRecorder for tests.
+func (m *MemRecorder) SetBacklogDepthByDirection(table, direction string, depth float64) {
+	m.write(m.dirBacklog, table, direction, depth)
+}
+
+func (m *MemRecorder) SetOldestPendingAgeByDirection(table, direction string, age float64) {
+	m.write(m.dirOldest, table, direction, age)
+}
+
+func (m *MemRecorder) SetDeliveredTotal(table, direction string, count float64) {
+	m.write(m.dirDelivered, table, direction, count)
+}
+
+// BacklogDepthByDirection / OldestPendingAgeByDirection / DeliveredTotal — test accessors.
+func (m *MemRecorder) BacklogDepthByDirection(table, direction string) float64 {
+	return m.readDir(m.dirBacklog, table, direction)
+}
+
+func (m *MemRecorder) OldestPendingAgeByDirection(table, direction string) float64 {
+	return m.readDir(m.dirOldest, table, direction)
+}
+
+func (m *MemRecorder) DeliveredTotal(table, direction string) float64 {
+	return m.readDir(m.dirDelivered, table, direction)
+}
+
+// Directions returns the direction names this recorder has ANY series for, so a test can
+// assert that an unconfigured Collector publishes none at all rather than zeroes.
+func (m *MemRecorder) Directions(table string) []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	seen := map[string]struct{}{}
+	for _, src := range []map[string]map[string]float64{m.dirBacklog, m.dirOldest, m.dirDelivered} {
+		for dir := range src[table] {
+			seen[dir] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for dir := range seen {
+		out = append(out, dir)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func (m *MemRecorder) write(dst map[string]map[string]float64, table, direction string, v float64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if dst[table] == nil {
+		dst[table] = map[string]float64{}
+	}
+	dst[table][direction] = v
+}
+
+func (m *MemRecorder) readDir(src map[string]map[string]float64, table, direction string) float64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return src[table][direction]
+}
+
+var (
+	_ Recorder          = (*MemRecorder)(nil)
+	_ DirectionRecorder = (*MemRecorder)(nil)
+)
 
 // CollectorConfig parameterises a Collector.
 type CollectorConfig struct {
@@ -129,6 +231,18 @@ type CollectorConfig struct {
 	// Interval — how often Run scans (default 15s). Scan can also be called
 	// directly (tests / on-demand).
 	Interval time.Duration
+	// Directions — OPTIONAL per-direction breakdown: direction name → the event_type
+	// values that belong to it (e.g. {"grant": {"fga.register"}, "withdrawal":
+	// {"fga.unregister"}}). Empty ⇒ no per-direction series at all.
+	//
+	// The names are supplied by the composition root and never by request data, so the
+	// label set stays closed and cardinality cannot grow with traffic. The event_type
+	// VALUES are matched as parameters, not interpolated.
+	//
+	// A direction is published even when it currently has no rows — that is the point:
+	// `delivered_total{direction="withdrawal"} == 0` is the statement "not one withdrawal
+	// has ever been delivered", and it can only be made by a series that exists.
+	Directions map[string][]string
 }
 
 func (c CollectorConfig) withDefaults() CollectorConfig {
@@ -183,6 +297,52 @@ func (c *Collector) Scan(ctx context.Context) error {
 	c.rec.SetBacklogDepth(c.cfg.Table, float64(backlog))
 	c.rec.SetOldestPendingAgeSeconds(c.cfg.Table, oldestAge)
 	c.rec.SetPoisonedCount(c.cfg.Table, float64(poisoned))
+
+	return c.scanDirections(ctx)
+}
+
+// scanDirections adds the per-direction series when the Collector is configured with a
+// breakdown AND the recorder can accept one. Both conditions are checked rather than
+// assumed: a recorder written before the split still satisfies Recorder, and the honest
+// behaviour then is to publish nothing extra instead of failing the whole scan.
+//
+// The table-wide series above are untouched, so every threshold already written against
+// them keeps meaning what it meant.
+func (c *Collector) scanDirections(ctx context.Context) error {
+	if len(c.cfg.Directions) == 0 {
+		return nil
+	}
+	dirRec, ok := c.rec.(DirectionRecorder)
+	if !ok {
+		return nil
+	}
+	q := fmt.Sprintf(`
+		SELECT
+		    count(*) FILTER (WHERE sent_at IS NULL)                                              AS backlog,
+		    COALESCE(EXTRACT(EPOCH FROM (now() - min(created_at) FILTER (WHERE sent_at IS NULL))), 0) AS oldest_age,
+		    count(*) FILTER (WHERE sent_at IS NOT NULL)                                          AS delivered
+		FROM %s
+		WHERE event_type = ANY($1)
+	`, outbox.SanitizeTable(c.cfg.Table))
+
+	// Deterministic order so a scan reports its directions the same way every time.
+	names := make([]string, 0, len(c.cfg.Directions))
+	for name := range c.cfg.Directions {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		var backlog, delivered int64
+		var oldestAge float64
+		if err := c.pool.QueryRow(ctx, q, c.cfg.Directions[name]).
+			Scan(&backlog, &oldestAge, &delivered); err != nil {
+			return fmt.Errorf("metrics.Collector.Scan %s direction %s: %w", c.cfg.Table, name, err)
+		}
+		dirRec.SetBacklogDepthByDirection(c.cfg.Table, name, float64(backlog))
+		dirRec.SetOldestPendingAgeByDirection(c.cfg.Table, name, oldestAge)
+		dirRec.SetDeliveredTotal(c.cfg.Table, name, float64(delivered))
+	}
 	return nil
 }
 
@@ -205,5 +365,38 @@ func (c *Collector) Run(ctx context.Context, onErr func(error)) {
 				onErr(err)
 			}
 		}
+	}
+}
+
+// Direction names published by RegisterOutboxDirections. Constants so a dashboard, an
+// alert and the wiring all spell them the same way.
+const (
+	DirectionGrant      = "grant"
+	DirectionWithdrawal = "withdrawal"
+)
+
+// Event types of the owner-registration outboxes. Every module that registers its
+// resources through iam writes these two, so the breakdown below is one artefact rather
+// than four hand-written copies — a list kept in four places has already been observed in
+// this tree to diverge from itself.
+const (
+	EventFGARegister   = "fga.register"
+	EventFGAUnregister = "fga.unregister"
+)
+
+// RegisterOutboxDirections is the CollectorConfig.Directions value for an owner-
+// registration outbox: grants and withdrawals reported apart.
+//
+// Withdrawal is the half that goes wrong quietly. A grant that fails to arrive is
+// reported by the resource itself — the creator cannot see what they just made, and
+// somebody opens a ticket within the hour. A withdrawal that fails to arrive produces no
+// symptom at all: the access simply stays, and "it works" is indistinguishable from "it
+// was never revoked" until someone asks the store directly.
+//
+// Returns a fresh map per call so a caller cannot mutate the shared answer.
+func RegisterOutboxDirections() map[string][]string {
+	return map[string][]string{
+		DirectionGrant:      {EventFGARegister},
+		DirectionWithdrawal: {EventFGAUnregister},
 	}
 }

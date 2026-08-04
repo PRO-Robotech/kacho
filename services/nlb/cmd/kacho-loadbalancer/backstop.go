@@ -51,7 +51,12 @@ func startBackstop(_ context.Context, pool *pgxpool.Pool, rec metrics.Recorder, 
 		return nil, nil, rerr
 	}
 
-	col := metrics.NewCollector(pool, rec, metrics.CollectorConfig{Table: nlbFGAOutboxTable})
+	// Per-direction breakdown: see metrics.RegisterOutboxDirections — the withdrawal
+	// half of this queue has no symptom of its own when it stops arriving.
+	col := metrics.NewCollector(pool, rec, metrics.CollectorConfig{
+		Table:      nlbFGAOutboxTable,
+		Directions: metrics.RegisterOutboxDirections(),
+	})
 
 	logger.Info("fga_register_backstop_started", "table", nlbFGAOutboxTable)
 

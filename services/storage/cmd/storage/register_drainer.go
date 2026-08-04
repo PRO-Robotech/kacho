@@ -89,8 +89,13 @@ func startRegisterDrainer(ctx context.Context, pool *pgxpool.Pool, iamConn *grpc
 	// СОБЫТИЯХ; «в очереди лежит N строк, старейшей M секунд» — состояние, и без
 	// него застрявшая очередь неотличима от пустой (data-integrity.md требует
 	// table-wide oldest-pending gauge именно поэтому).
+	// Directions раскладывает те же величины по направлению очереди. Сводные числа
+	// остаются здоровыми при полностью мёртвом снятии: выдачи дренятся непрерывно,
+	// поэтому и глубина мала, и голова молода — что бы ни происходило со второй
+	// половиной (см. outboxmetrics.RegisterOutboxDirections).
 	collector := outboxmetrics.NewCollector(pool, m, outboxmetrics.CollectorConfig{
-		Table: fgaRegisterOutboxTable,
+		Table:      fgaRegisterOutboxTable,
+		Directions: outboxmetrics.RegisterOutboxDirections(),
 	})
 	go collector.Run(ctx, func(cerr error) {
 		logger.Warn("outbox metrics scan failed", "table", fgaRegisterOutboxTable, "err", cerr)

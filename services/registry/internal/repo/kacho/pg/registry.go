@@ -288,10 +288,22 @@ func (r *RegistryRepo) MarkDeleting(ctx context.Context, id string) (*domain.Reg
 	return reg, nil
 }
 
-// Delete физически удаляет строку реестра + unregister-intent в той же writer-tx.
-// unregister-intent эмитится ТОЛЬКО когда строка реально удалена (DELETE RETURNING
-// 1 row) — конкурентный/повторный Delete видит 0 rows → ErrNotFound без второго
-// destructive unregister-дубля.
+// Delete физически удаляет строку реестра + unregister-intent'ы (самого реестра И каждого
+// зарегистрированного под ним репозитория) в той же writer-tx. Намерения эмитятся ТОЛЬКО
+// когда строка реально удалена (DELETE RETURNING 1 row) — конкурентный/повторный Delete
+// видит 0 rows → ErrNotFound без второго destructive-дубля.
+//
+// ПОЧЕМУ ДЕТИ ПЕРЕЧИСЛЯЮТСЯ ЗДЕСЬ, А НЕ ОСТАЮТСЯ КАСКАДУ. Признак существования
+// репозитория висит на реестре через FK `ON DELETE CASCADE` (миграция 0014). Каскад
+// снимает признак — и НИЧЕГО не эмитирует: та же миграция объявляет, что признак и
+// намерение не могут разъехаться, и ровно в этом направлении FK её и опровергал. Со
+// стороны это неотличимо от исправной работы: ресурса нет, ошибок нет, очередь пуста, —
+// а объект репозитория остаётся в хранилище прав со всем, что на нём было. Замер на
+// стенде 2026-08-04: 479 регистраций против 60 снятий при нуле живых репозиториев.
+//
+// Перечисление идёт ДО DELETE — после него строк уже нет by construction. Обе операции в
+// одной транзакции, поэтому «реестр удалён» и «за детей отчитались» либо оба верны, либо
+// оба нет.
 func (r *RegistryRepo) Delete(ctx context.Context, id string, intent domain.RegisterIntent) error {
 	if err := r.ready(); err != nil {
 		return err
@@ -302,6 +314,11 @@ func (r *RegistryRepo) Delete(ctx context.Context, id string, intent domain.Regi
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	children, err := childRepoRegistrations(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+
 	var deletedID string
 	q := fmt.Sprintf(`DELETE FROM %s.registries WHERE id = $1 RETURNING id`, schema)
 	if err := tx.QueryRow(ctx, q, id).Scan(&deletedID); err != nil {
@@ -310,6 +327,12 @@ func (r *RegistryRepo) Delete(ctx context.Context, id string, intent domain.Regi
 
 	if err := emitFGAIntent(ctx, tx, domain.FGAEventUnregister, intent); err != nil {
 		return err
+	}
+	for _, child := range children {
+		if err := emitFGAIntent(ctx, tx, domain.FGAEventUnregister,
+			domain.UnregisterIntentForRepo(id, child)); err != nil {
+			return err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return wrapPgErr(err, "Registry", id)
@@ -436,6 +459,36 @@ func scanRegistry(row pgx.Row) (*domain.Registry, error) {
 // с версией, которую синхронный registrar штампует после commit'а (у него нет
 // outbox-id), и потому что iam хранит его как timestamptz. Значение SourceVersion,
 // приехавшее из Go, триггер ПЕРЕЗАПИСЫВАЕТ. Пустой набор tuple → no-op.
+// childRepoRegistrations перечисляет репозитории, зарегистрированные под реестром, внутри
+// уже открытой транзакции удаления. Порядок задан, чтобы намерения ложились в очередь
+// детерминированно (у очереди дренаж по голове партиции — воспроизводимый порядок дешевле
+// разбирать).
+//
+// Читается ТОЛЬКО таблица признака: наложение (repository_configs) описывает заявленную
+// конфигурацию и снимается своим путём, а предмет здесь — существование объекта прав.
+func childRepoRegistrations(ctx context.Context, tx pgx.Tx, registryID string) ([]string, error) {
+	q := fmt.Sprintf(
+		`SELECT repo FROM %s.registry_repository_registration WHERE registry_id = $1 ORDER BY repo`,
+		schema)
+	rows, err := tx.Query(ctx, q, registryID)
+	if err != nil {
+		return nil, wrapPgErr(err, "Registry", registryID)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var repo string
+		if err := rows.Scan(&repo); err != nil {
+			return nil, wrapPgErr(err, "Registry", registryID)
+		}
+		out = append(out, repo)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, wrapPgErr(err, "Registry", registryID)
+	}
+	return out, nil
+}
+
 func emitFGAIntent(ctx context.Context, tx pgx.Tx, eventType string, intent domain.RegisterIntent) error {
 	if len(intent.Tuples) == 0 {
 		return nil
