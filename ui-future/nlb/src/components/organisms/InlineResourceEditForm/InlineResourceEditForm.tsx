@@ -41,7 +41,7 @@ export function InlineResourceEditForm({ spec, data, projectId, onCancel, onSucc
   useEffect(() => {
     if (hydrated || !fields) return;
     // wire → form: если spec определил hydrate (см. resource-registry для
-    // NIC v4/v6_address_ids/security_group_ids и Subnet v4/v6_cidr_blocks),
+    // NIC v4/v6_address_ids/security_group_ids и Subnet ipv4/ipv6_cidr_blocks),
     // оборачиваем array-of-string поля в {value:"..."}-объекты, чтобы
     // RefSelect/array-form их корректно отображал в edit-режиме. Иначе
     // RefSelect получает массив строк и не показывает имена.

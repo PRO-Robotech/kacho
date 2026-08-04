@@ -53,7 +53,11 @@ export interface DetailExtension {
    *  субъектом). ResourceShell зовёт это в child-create branch, когда REGISTRY-spec
    *  для childRoute не найден. Форма сама навигирует через onSuccess/onCancel. */
   childCreate?: (childRoute: string, ctx: DetailExtCtx) => ReactNode;
-  hideOperations?: boolean;
+  // Здесь была ручка `hideOperations`. Её не выставляло ни одно расширение, а
+  // вкладка операций тем временем показывалась у ресурсов, у которых подмаршрута
+  // `<apiPath>/{id}/operations` в стволе нет вовсе. Решает не ручка, а контракт:
+  // `lib/operations-subroute` — единственное место, где консоль утверждает, у
+  // кого этот подмаршрут есть, и оно сверяется с деревом proto в обе стороны.
   title?: (data: Record<string, unknown>) => string | undefined;
 }
 

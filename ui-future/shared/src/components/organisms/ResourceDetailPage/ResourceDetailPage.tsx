@@ -33,6 +33,7 @@ import { DetailShell, type DetailTab } from "@shared/components/organisms/Detail
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { api, ApiError } from "@shared/api/client";
 import { useProjectStore } from "@shared/lib/context-store";
+import { operationsListPath } from "@shared/lib/operations-subroute";
 import { getByPath, mutationBasePath, resourceProjectPath, type ResourceSpec } from "@shared/lib/resource-registry";
 import { ReferrerLink } from "@shared/lib/spec-columns";
 import { useInvalidateResourceList } from "@shared/lib/use-operation";
@@ -45,10 +46,6 @@ interface Props {
   secondaryActions?: (data: Record<string, unknown>) => React.ReactNode;
   /** По умолчанию показывается JSON-tab последним. Установить true чтобы скрыть. */
   hideJsonTab?: boolean;
-  /** По умолчанию для VPC-ресурсов добавляется tab "Операции" с per-resource
-   *  ListOperations. Установить true чтобы скрыть (например, для admin-ресурсов
-   *  без LRO — Region/Zone/AddressPool). */
-  hideOperationsTab?: boolean;
   /** Per-tab override header-right slot. Возвращает null/undefined → fallback на default
    *  (Создать <singular> + Редактировать + kebab Move/Delete). */
   headerActionsByTab?: (tabId: string, data: Record<string, unknown>) => React.ReactNode | null | undefined;
@@ -90,7 +87,6 @@ export function ResourceDetailPage({
   extraTabs,
   secondaryActions,
   hideJsonTab,
-  hideOperationsTab,
   headerActionsByTab,
   overviewCreateOverride,
   overviewExtras,
@@ -189,6 +185,8 @@ export function ResourceDetailPage({
   // Мутации адресуют admin-плоскость ресурса, если она у него есть (см.
   // mutationBasePath); чтение выше по-прежнему идёт с публичного пути.
   const editPath = `${mutationBasePath(spec)}/${resourceId}`;
+  // Путь списка операций — из перечня подмаршрутов ствола; `null` = вкладки нет.
+  const operationsPath = operationsListPath(spec.apiPath, resourceId);
 
   const backHref = useMemo(() => {
     if (backHrefOverride) return backHrefOverride;
@@ -613,15 +611,19 @@ export function ResourceDetailPage({
         ),
     },
     ...(extraTabs ? extraTabs(data) : []),
-    ...(hideOperationsTab
-      ? []
-      : [
+    // Операции — только там, где ствол несёт подмаршрут `<apiPath>/{id}/operations`.
+    // Прежде решала ручка `hideOperationsTab`, которую не выставлял ни один
+    // вызывающий: её описание прямо называло Region/Zone/AddressPool как повод
+    // скрыть вкладку, и ровно у них она и показывалась. Теперь решает контракт.
+    ...(operationsPath
+      ? [
           {
             id: "operations",
             label: "Операции",
-            render: () => <OperationsTab spec={spec} resourceId={resourceId} />,
+            render: () => <OperationsTab spec={spec} resourceId={resourceId} listPath={operationsPath} />,
           },
-        ]),
+        ]
+      : []),
     ...(spec.internalGetPath
       ? [
           {

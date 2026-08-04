@@ -15,6 +15,7 @@ import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/Page
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
 import { OperationsTable, type Op, statusOf, type OperationStatus } from "@shared/components/molecules/OperationsTable";
 import { useProjectStore } from "@shared/lib/context-store";
+import { operationsListPath } from "@shared/lib/operations-subroute";
 import { REGISTRY } from "@shared/lib/resource-registry";
 
 // Список VPC-ресурсов, у которых есть per-resource ListOperations.
@@ -103,16 +104,23 @@ export function OperationsPage() {
     }),
   });
 
-  // 2) собираем плоский список (resourceId, kind, apiPath).
+  // 2) собираем плоский список (resourceId, kind, путь операций).
+  // Путь берётся из перечня подмаршрутов ствола, а не склеивается из apiPath:
+  // ресурс, у которого подмаршрута нет, в агрегатор не попадает вовсе — вместо
+  // фан-аута запросов в несуществующий адрес. Перечень VPC_RESOURCES при этом
+  // остаётся рукописным, поэтому проба ниже утверждает, что сегодня отсеивать
+  // нечего: у всех семи подмаршрут есть.
   const targets = useMemo(() => {
     if (!projectId) return [];
-    const out: { id: string; kind: string; apiPath: string }[] = [];
+    const out: { id: string; kind: string; opsPath: string }[] = [];
     VPC_RESOURCES.forEach((r, i) => {
       const spec = REGISTRY[r.id];
       const resp = listQueries[i].data;
       const list = (resp?.[spec.payloadKey] as Array<{ id: string }> | undefined) ?? [];
       list.forEach((item) => {
-        if (item?.id) out.push({ id: item.id, kind: r.id, apiPath: spec.apiPath });
+        if (!item?.id) return;
+        const opsPath = operationsListPath(spec.apiPath, item.id);
+        if (opsPath) out.push({ id: item.id, kind: r.id, opsPath });
       });
     });
     return out;
@@ -124,7 +132,7 @@ export function OperationsPage() {
     queries: targets.map((t) => ({
       queryKey: [t.kind, "operations", t.id],
       queryFn: () =>
-        api.list<{ operations: Op[] }>(`${t.apiPath}/${t.id}/operations`, {
+        api.list<{ operations: Op[] }>(t.opsPath, {
           pageSize: "50",
         }),
       enabled: true,

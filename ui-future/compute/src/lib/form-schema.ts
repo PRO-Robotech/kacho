@@ -22,13 +22,16 @@ interface BaseField {
   // Hidden — поле формы не показывается, но входит в payload (например metadata.projectId fills из контекста)
   hidden?: boolean;
   // Immutable after Create — в Edit-режиме поле рендерится disabled и
-  // не попадает в update_mask. Backend всё равно бы отказал (см.
-  // applySubnetMask `v4_cidr_blocks is immutable after Subnet.Create`),
-  // но UI ловит это раньше + сразу подсказывает пользователю.
+  // не попадает в update_mask. Backend всё равно бы отказал: immutable-switch
+  // в UpdateSubnetUseCase.Execute (services/vpc) отвергает такое поле в маске
+  // тоном `<field> is immutable after Subnet.Create` — например ipv4_cidr_primary.
+  // Отказ выдаёт именно switch: applySubnetMask, применяющая маску ниже по
+  // потоку, immutable-поля просто не применяет и сообщений не порождает.
+  // Но UI ловит это раньше + сразу подсказывает пользователю.
   immutable?: boolean;
   // Edit-only-hidden — поле есть в Create, но в Edit вообще не рендерится.
   // Используется когда поле управляется отдельным action'ом на DetailPage
-  // (например, Subnet.v4_cidr_blocks → :add-cidr-blocks/:remove-cidr-blocks).
+  // (например, Subnet.ipv4_cidr_blocks → :add-cidr-blocks/:remove-cidr-blocks).
   editHidden?: boolean;
   // Create-only — поле только для Create (напр. create_default_security_group):
   // в Edit не рендерится (ресурс такого поля не имеет). KAC-239. Семантически

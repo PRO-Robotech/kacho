@@ -1,12 +1,33 @@
 // AccessBindingCreateForm — тело SCOPE-FIRST формы создания/актуализации привязок
 // доступа (AccessBinding) под explicit-RBAC модель.
 //
-// Модель: грант = subjects[] + role + scope{GLOBAL|ACCOUNT|PROJECT} + scopeRef.
-// Scope — first-class измерение (явный селектор «Область действия»), НЕ скрытый
-// «тип ресурса». Wire: GLOBAL ≡ tier CLUSTER (anchor cluster_kacho_root);
-// ACCOUNT/PROJECT → tier + id. Payload: {subjects[], role_id, scope_ref{tier,id}},
-// один POST на роль. Селекторы (all/names/labels) живут в rules РОЛИ (единый
-// источник истины) — форма биндинга их НЕ собирает.
+// Модель: грант = subjects[] + role + АНКЕР области + цель под этим анкером.
+// Область — first-class измерение (явный селектор «Область действия»), НЕ скрытый
+// «тип ресурса»; в форме её тир называется GLOBAL/ACCOUNT/PROJECT, на wire это
+// dotted `iam.cluster|iam.account|iam.project` (GLOBAL ≡ анкер cluster_kacho_root).
+//
+// Тело запроса (buildCreateAccessBindingBody): {subjects[], role_id, scope_type,
+// scope_id, target}, один POST на роль. Все три координаты — обязательные поля
+// Create: `scope_type`/`scope_id` помечены required в proto, а `target` отвергается
+// синхронно, если не задан ни один арм (INVALID_ARGUMENT «target is required…»,
+// least-privilege spine F8). Прежнее имя пары анкера в CreateAccessBindingRequest
+// ОТСУТСТВУЕТ — координата переименована в `scope_type`/`scope_id` (теги 4/5), а не
+// выведена в reserved (там перечислены другие имена). Разница видна только в
+// стволе: край распаковывает тело с DiscardUnknown, то есть неизвестное имя
+// выбрасывает МОЛЧА и отвечает успехом, — поэтому форма собирает ровно каноничные
+// имена, а здесь прежние не называются: мёртвая координата в шапке читается
+// следующим как рабочая.
+//
+// Умолчание есть — но у ФОРМЫ, не у сервера, и это разные вещи. Сервер широкого
+// гранта по умолчанию не выдаёт: без явного арма Create падает. Форма же
+// преднабирает дискриминатор `_target_kind` в allInScope (см. setFieldsValue при
+// монтировании), поэтому тело всегда уходит с явным армом, и «Точечно» —
+// осознанное сужение, а не включение проверки. Если преднабор когда-нибудь снимут,
+// это утверждение обязано поменяться вместе с ним: замок —
+// src/access-binding-field-names.test.ts, он читает преднабор из этого же файла.
+//
+// Селекторы (all/names/labels) живут в rules РОЛИ (единый источник истины) —
+// форма биндинга их НЕ собирает.
 //
 // Переиспользуется в двух контекстах:
 //   1. standalone full-page (AccessBindingCreatePage) — additive-only: N-create по
@@ -220,7 +241,8 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
       role_ids: reconcile ? [] : preset?.role_id ? [preset.role_id] : [],
       scope: initialScope,
       scope_ref_id: initialAnchorId,
-      // IAM-1 F8: target REQUIRED — по умолчанию широкий opt-in allInScope{}.
+      // IAM-1 F8: у сервера target REQUIRED и умолчания не имеет; преднабор здесь —
+      // умолчание ФОРМЫ, чтобы тело всегда несло явный арм (см. шапку файла).
       _target_kind: "allInScope",
       target_resources: [],
     });

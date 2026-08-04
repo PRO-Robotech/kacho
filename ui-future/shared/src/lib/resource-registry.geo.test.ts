@@ -50,12 +50,37 @@ describe("geo registry — admin surface routing", () => {
 });
 
 describe("geo registry — two-projection", () => {
-  it.each(["regions", "zones"])("%s never puts infra° or the raw status on a public column", (id) => {
+  // The sweep is taken from the API PATH, not from a list of spec ids. Naming the
+  // ids is how this lock was lost once: `regions`/`zones` were migrated and
+  // stayed green while `compute-regions`/`compute-zones` — different ids, same
+  // `/geo/v1/…` reads — kept a "Статус" column bound to a field the public
+  // projection does not carry. Two specs of one resource, and the assertion only
+  // ever looked at one of them.
+  const geoPublicSpecs = Object.entries(REGISTRY)
+    .filter(([, spec]) => spec.apiPath === "/geo/v1/regions" || spec.apiPath === "/geo/v1/zones")
+    .map(([id]) => id);
+
+  it("sweeps every spec that reads the public geo catalogue", () => {
+    // Guards the sweep against silently measuring nothing, and states its size:
+    // four specs address the two public paths (regions/zones + the two Compute-
+    // labelled mirrors the pickers reference).
+    expect(geoPublicSpecs.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it.each(geoPublicSpecs)("%s never puts infra° or the raw status on a public column", (id) => {
     const paths = columnPaths(REGISTRY[id]);
     expect(paths.filter((p) => p.startsWith("infra"))).toEqual([]);
-    // The public projection has no `status` field at all — a column bound to it
-    // would render an empty cell forever.
+    // The public projection has no `status` field at all — Zone reserves the name
+    // outright (`reserved 3; reserved "status"` in geo/v1/zone.proto) and Region
+    // never had one, so a column bound to it renders an empty cell forever.
     expect(paths).not.toContain("status");
+  });
+
+  it.each(geoPublicSpecs)("%s surfaces the placement signal that replaced the status", (id) => {
+    // Not the mirror image of the assertion above: dropping the dead column is
+    // only half the fix. What the operator needs is the field the trunk actually
+    // answers with — `open_for_placement` on both Region and Zone.
+    expect(columnPaths(REGISTRY[id])).toContain("open_for_placement");
   });
 });
 

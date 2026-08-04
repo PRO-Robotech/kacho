@@ -14,9 +14,11 @@
 // The table is exhaustive by construction: a create-capable spec with no entry
 // fails, so adding one to the registry forces its contract to be stated here.
 //
-// This remote carries its own copy of the registry (there is no @shared alias
-// here), so the lock lives here too — a fix landing in one copy and not the
-// other is the very class this sweep exists to catch.
+// This remote carries its own registry — a compute-domain one, not a copy of the
+// shared registry — so the lock lives here too: a fix landing in one registry and
+// not the other is the very class this sweep exists to catch. (The @shared alias
+// does resolve here, in the bundle and in jest alike; it is a shared *registry*
+// that this remote does not use, not a missing alias.)
 
 import { REGISTRY } from "./resource-registry";
 

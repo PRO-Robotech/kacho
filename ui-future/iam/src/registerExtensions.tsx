@@ -863,12 +863,25 @@ registerDetailExtension("access-bindings", {
     return <RevokeBindingButton id={id} status={status} detailBase={detailBase} />;
   },
   overviewExtra: ({ data }) => {
+    // Анкер гранта — ТОЛЬКО пара scope_type (dotted) + scope_id: у сообщения
+    // AccessBinding (access_binding.proto) других имён этой координаты нет вовсе,
+    // поэтому запасная ветка на них была бы мертва по построению и при этом
+    // выглядела бы страховкой. Снято, но по двум РАЗНЫМ причинам, и путать их
+    // нельзя:
+    //   `scope` (тег 15) захоронено вместе с именем — выведено из оборота навсегда;
+    //   пара `resource_type`/`resource_id` в reserved НЕ выводилась, она
+    //   ПЕРЕИМЕНОВАНА в `scope_type` (тег 5) / `scope_id` (тег 6) — redesign-2026 F7,
+    //   слово «resource» отдано полю `target`.
+    // Переименованные имена остаются ЖИВЫМИ и несущими на соседних RPC того же
+    // домена: у ListAccessBindingsByScope это поля 1/2 — DEPRECATED, но принимаются,
+    // и наш же клиент (shared/api/iam.listAccessBindingsByResource) шлёт РОВНО их,
+    // потому что scope_extractor края пока выводит область запроса из легаси-пары;
+    // у SubjectPrivilege это поля 4/5/6 — заполняются на каждом чтении и читаются в
+    // таблицах привилегий выше. Совпадение имён, разные референты: запрет касается
+    // ровно этого блока, а не файла.
+    // Замок обоих классов — src/access-binding-field-names.test.ts.
     const scopeTypeDotted = String(getByPath<string>(data, "scope_type") ?? getByPath<string>(data, "scopeType") ?? "");
-    const scopeIdVal =
-      getByPath<string>(data, "scope_id") ??
-      getByPath<string>(data, "scopeId") ??
-      getByPath<string>(data, "resource_id") ??
-      "";
+    const scopeIdVal = getByPath<string>(data, "scope_id") ?? getByPath<string>(data, "scopeId") ?? "";
     const anchorType =
       scopeTypeDotted === "iam.account"
         ? "account"
@@ -876,9 +889,8 @@ registerDetailExtension("access-bindings", {
           ? "project"
           : scopeTypeDotted === "iam.cluster"
             ? "cluster"
-            : String(getByPath<string>(data, "resource_type") ?? "");
+            : "";
     const anchorSpec = anchorType === "account" ? "accounts" : anchorType === "project" ? "projects" : undefined;
-    const legacyScope = String(getByPath<string>(data, "scope") ?? "");
     const target = getByPath<AccessBindingTarget>(data, "target");
     const revokedAt = getByPath<string>(data, "revoked_at") ?? getByPath<string>(data, "revokedAt");
     const grantedBy = getByPath<string>(data, "granted_by_user_id") ?? getByPath<string>(data, "grantedByUserId");
@@ -887,13 +899,7 @@ registerDetailExtension("access-bindings", {
       { label: "Роль", value: <IamRefLink specId="roles" refId={getByPath<string>(data, "role_id")} /> },
       {
         label: "Область (scopeType)",
-        value: scopeTypeDotted ? (
-          <Tag color={iamTierColor(scopeTypeDotted)}>{scopeTypeDotted}</Tag>
-        ) : legacyScope && legacyScope !== "SCOPE_UNSPECIFIED" ? (
-          <Tag color={scopeColor(legacyScope)}>{legacyScope}</Tag>
-        ) : (
-          dash
-        ),
+        value: scopeTypeDotted ? <Tag color={iamTierColor(scopeTypeDotted)}>{scopeTypeDotted}</Tag> : dash,
       },
       {
         label: "Anchor (scopeId)",

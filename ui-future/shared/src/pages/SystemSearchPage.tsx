@@ -42,8 +42,12 @@ const DOMAINS = [
     linkBase: "/projects/:project_id/vpc/network-interfaces/:id",
   },
   { resource: "address-pools", path: "/vpc/v1/addressPools", key: "pools", linkBase: "/system/address-pools/:id" },
-  { resource: "regions", path: "/compute/v1/regions", key: "regions", linkBase: "/system/regions/:id" },
-  { resource: "zones", path: "/compute/v1/zones", key: "zones", linkBase: "/system/zones/:id" },
+  // Каталог размещения принадлежит geo и всегда принадлежал ему: маршрутов
+  // /compute/v1/{regions,zones} в продукте нет и не было — compute не несёт ни
+  // одного сообщения Region/Zone. Реестр в этом же пакете читает /geo/v1/…, так
+  // что здесь был не устаревший адрес, а второе место об одном предмете.
+  { resource: "regions", path: "/geo/v1/regions", key: "regions", linkBase: "/system/regions/:id" },
+  { resource: "zones", path: "/geo/v1/zones", key: "zones", linkBase: "/system/zones/:id" },
 ];
 
 // ВАЖНО: VPC list endpoints (networks/subnets/addresses) обычно требуют projectId,
@@ -160,7 +164,9 @@ export function SystemSearchPage() {
   );
 }
 
-function extractExtras(resource: string, r: Record<string, unknown>): Record<string, string> {
+/** Экспортируется ради пробы: приписка читает имена полей ответа напрямую, и
+ *  снятое имя молча пустеет — проверять это можно только вызовом. */
+export function extractExtras(resource: string, r: Record<string, unknown>): Record<string, string> {
   const e: Record<string, string> = {};
   switch (resource) {
     case "addresses": {
@@ -185,11 +191,20 @@ function extractExtras(resource: string, r: Record<string, unknown>): Record<str
       if (cidrs.length > 0) e.cidrs = cidrs.join(",");
       break;
     }
-    case "address-pools":
+    case "address-pools": {
       if (r.zone_id) e.zone = String(r.zone_id);
       if (r.kind) e.kind = String(r.kind);
-      if (Array.isArray(r.cidr_blocks)) e.cidrs = (r.cidr_blocks as string[]).join(",");
+      // Слитное `cidr_blocks` (тег 7) у AddressPool зарезервировано и расщеплено
+      // на v4 (13) + v6 (14). Чтение снятого имени возвращало undefined молча —
+      // строка находилась, приписка диапазонов не появлялась никогда. Второй
+      // экземпляр того же класса, что чинился в подписи RefSelect.
+      const cidrs = [
+        ...(Array.isArray(r.v4_cidr_blocks) ? (r.v4_cidr_blocks as string[]) : []),
+        ...(Array.isArray(r.v6_cidr_blocks) ? (r.v6_cidr_blocks as string[]) : []),
+      ].filter(Boolean);
+      if (cidrs.length > 0) e.cidrs = cidrs.join(",");
       break;
+    }
     case "zones":
       if (r.region_id) e.region = String(r.region_id);
       break;

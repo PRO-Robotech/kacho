@@ -19,6 +19,7 @@ import { useProjectStore } from "@/lib/context-store";
 import { ErrorResult } from "@/components/molecules/ErrorResult";
 import { InlineResourceCreateForm } from "@/components/organisms/InlineResourceCreateForm";
 import { FormBareProvider } from "@/components/organisms/form/FormShell";
+import { extraInfoFor, headLabelFor } from "./refOptionLabel";
 
 interface Props {
   refResource: string;
@@ -136,7 +137,6 @@ export function RefSelect({
         <p className="text-xs text-amber-600">ID не найден в списке (возможно ресурс удалён или вне фильтра).</p>
       )}
 
-      {/* helper closure доступен ниже — функция объявлена в file scope */}
       {creating && createSpec && (
         <Modal
           open
@@ -179,84 +179,3 @@ export function RefSelect({
   );
 }
 
-// headLabelFor — основная подпись option. У большинства ресурсов это `name`,
-// но у User поля name нет — берём display_name / email.
-function headLabelFor(refResource: string, row: Record<string, unknown>): string {
-  if (refResource === "users") {
-    return (row.display_name as string) || (row.email as string) || (row.id as string) || "";
-  }
-  return (row.name as string) ?? "";
-}
-
-// extraInfoFor — формирует короткую полезную подпись для option в дропдауне.
-// Для каждого ресурса показываем «адресную» информацию: CIDR / IP / ID-пула /
-// статус — чтобы пользователь различал «безымянные» ресурсы.
-function extraInfoFor(refResource: string, row: Record<string, unknown>): string {
-  switch (refResource) {
-    case "subnets": {
-      const v4 = (row.v4_cidr_blocks as string[] | undefined) ?? [];
-      const v6 = (row.v6_cidr_blocks as string[] | undefined) ?? [];
-      const cidrs = [...v4, ...v6];
-      return cidrs.length > 0 ? cidrs.join(", ") : "";
-    }
-    case "addresses": {
-      const ext4 = (row.external_ipv4_address as { address?: string } | undefined)?.address;
-      const int4 = (row.internal_ipv4_address as { address?: string } | undefined)?.address;
-      const ext6 = (row.external_ipv6_address as { address?: string } | undefined)?.address;
-      const int6 = (row.internal_ipv6_address as { address?: string } | undefined)?.address;
-      return ext4 || int4 || ext6 || int6 || "";
-    }
-    case "gateways": {
-      // Gateway proto: shared_egress_gateway oneof + ip / used_by; показываем
-      // тип шлюза если name пустое.
-      const sg = row.shared_egress_gateway as Record<string, unknown> | undefined;
-      if (sg) return "shared-egress";
-      return "";
-    }
-    case "networks": {
-      const ipv4 = (row.ipv4_cidr_blocks as string[] | undefined) ?? [];
-      return ipv4.length > 0 ? ipv4.join(", ") : "";
-    }
-    case "address-pools": {
-      const cidrs = (row.cidr_blocks as string[] | undefined) ?? [];
-      const isDefault = row.is_default === true ? " · default" : "";
-      return (cidrs.length > 0 ? cidrs.join(", ") : "") + isDefault;
-    }
-    case "zones": {
-      const r = (row.region_id as string | undefined) ?? "";
-      return r;
-    }
-    // MachineType: показываем размер (vCPU · память) + семейство, чтобы различать
-    // безымянно-похожие типы в дропдауне machineTypeId.
-    case "machine-types": {
-      const er = (row.effective_resources as Record<string, unknown> | undefined) ?? {};
-      const vcpu = er.v_cpu != null ? `${er.v_cpu} vCPU` : "";
-      const memMib = typeof er.memory_mib === "string" ? Number.parseInt(er.memory_mib, 10) : Number(er.memory_mib);
-      const mem = Number.isFinite(memMib) && memMib > 0 ? `${Math.round(memMib / 1024)} ГиБ` : "";
-      const fam = (row.family as string | undefined) ?? "";
-      return [vcpu, mem, fam].filter(Boolean).join(" · ");
-    }
-    case "route-tables":
-    case "security-groups": {
-      const net = (row.network_id as string | undefined) ?? "";
-      return net ? `net:${net.slice(0, 8)}` : "";
-    }
-    // NLB-типы: показываем регион (+ схему) — как «адресную» инфу vpc-ресурсов.
-    case "load-balancers":
-    case "network-load-balancers": {
-      const region = (row.region_id as string | undefined) ?? "";
-      const scheme = (row.type as string | undefined) ?? "";
-      return [region, scheme].filter(Boolean).join(" · ");
-    }
-    case "target-groups": {
-      return (row.region_id as string | undefined) ?? "";
-    }
-    // Geo Region: name — head-label, id (ru-central1) — полезный extra.
-    case "regions":
-    case "compute-regions": {
-      return (row.id as string | undefined) ?? "";
-    }
-    default:
-      return "";
-  }
-}

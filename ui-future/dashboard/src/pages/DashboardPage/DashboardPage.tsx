@@ -135,13 +135,23 @@ export const DashboardPage: FC<DashboardPageProps> = ({ context, navigate = defa
     return { treeData: data, searchExpanded: autoExpand };
   }, [accounts, projectsByAccount, q]);
 
+  // Загрузчик заводится КАЖДОЙ плитке витрины: без своей записи в
+  // countsByModule плитка рисуется целиком, но на месте каждого числа стоит
+  // прочерк — навсегда и при любом состоянии облака, неотличимо от «ресурсов
+  // нет». Список поимённый, потому что это хуки: их нельзя звать циклом по
+  // витрине. Полноту держит проба DashboardPage.counts.test.tsx — она проходит
+  // по SERVICE_MODULES и требует числа в каждой плитке.
   const vpcCounts = useModuleCounts(findModule("vpc"), projectId);
   const computeCounts = useModuleCounts(findModule("compute"), projectId);
+  const storageCounts = useModuleCounts(findModule("storage"), projectId);
+  const registryCounts = useModuleCounts(findModule("registry"), projectId);
   const nlbCounts = useModuleCounts(findModule("nlb"), projectId);
   const iamCounts = useModuleCounts(findModule("iam"), accountId ?? "all", "");
   const countsByModule: Record<string, Record<string, number | null>> = {
     vpc: vpcCounts,
     compute: computeCounts,
+    storage: storageCounts,
+    registry: registryCounts,
     nlb: nlbCounts,
     iam: iamCounts,
   };

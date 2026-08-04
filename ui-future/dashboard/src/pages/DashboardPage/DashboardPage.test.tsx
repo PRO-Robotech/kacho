@@ -13,6 +13,12 @@ const projectContext: HostContext = {
   project: { id: "project-1", name: "Project 1", accountId: "account-1" },
 };
 
+function pathOf(input: unknown): string {
+  if (typeof input === "string") return input;
+  const url = (input as { url?: unknown })?.url;
+  return typeof url === "string" ? url : String(input);
+}
+
 function jsonResponse(body: unknown) {
   return Promise.resolve({
     ok: true,
@@ -26,7 +32,13 @@ describe("DashboardPage", () => {
     jest.useFakeTimers();
     global.fetch = jest.fn<typeof fetch>();
     jest.spyOn(global, "fetch").mockImplementation((input) => {
-      const path = input instanceof Request ? input.url : input.toString();
+      // Адрес берётся без `instanceof Request`: в этом окружении `Request` не
+      // объявлен (`typeof Request === "undefined"`), и такая проверка бросала бы
+      // прямо здесь. Клиент ловит это как сетевой отказ, поэтому ВСЕ ответы ниже
+      // до кода не доезжали, а счётчики оставались пустыми — расписанные
+      // по путям тела были формой без содержания. Кейсы этой суиты утверждают
+      // только вызовы, поэтому дефект фикстуры их не ронял и был невидим.
+      const path = pathOf(input);
       if (path.startsWith("/vpc/v1/networks")) return jsonResponse({ networks: [{ id: "net-1" }] });
       if (path.startsWith("/vpc/v1/subnets")) return jsonResponse({ subnets: [] });
       if (path.startsWith("/vpc/v1/securityGroups")) return jsonResponse({ security_groups: [] });

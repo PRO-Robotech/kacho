@@ -14,6 +14,7 @@ import { ResourceCreatePage } from "@/components/organisms/ResourceCreatePage";
 import { ResourceEditPage } from "@/components/organisms/ResourceEditPage";
 import { Toaster } from "@/components/molecules/Toaster";
 import { REGISTRY } from "@shared/lib/resource-registry";
+import { COMPUTE_SCOPED_IDS, NLB_SCOPED_IDS, VPC_SCOPED_IDS } from "@/lib/scoped-resources";
 import { AddressPoolDetailPage } from "@/pages/AddressPoolDetailPage";
 import { ResourceShell } from "@shared/components/organisms/ResourceShell";
 // KAC-231: SubnetDetailPage/SecurityGroupDetailPage/RouteTableDetailPage/
@@ -50,26 +51,11 @@ const queryClient = new QueryClient({
   },
 });
 
-// Project-scoped VPC ресурсы — берём имена из registry без захардкоженного списка.
-const PROJECT_SCOPED = [
-  "networks",
-  "subnets",
-  "addresses",
-  "route-tables",
-  "security-groups",
-  "network-interfaces",
-  "gateways",
-]
-  .map((id) => REGISTRY[id])
-  .filter(Boolean);
-
-// Project-scoped Compute ресурсы (Disk/Image/Snapshot/Instance). URL-сегмент — `compute`.
-const COMPUTE_SCOPED = ["compute-disks", "compute-images", "compute-snapshots", "compute-instances"]
-  .map((id) => REGISTRY[id])
-  .filter(Boolean);
-
-// Project-scoped NLB ресурсы (KAC-141 / KAC-171). URL-сегмент — `nlb`.
-const NLB_SCOPED = ["load-balancers", "listeners", "target-groups"].map((id) => REGISTRY[id]).filter(Boolean);
+// Разделы приложения — по списку id из scoped-resources.ts (там же сказано,
+// почему список вынесен отдельным модулем и чем он проверяется).
+const PROJECT_SCOPED = VPC_SCOPED_IDS.map((id) => REGISTRY[id]).filter(Boolean);
+const COMPUTE_SCOPED = COMPUTE_SCOPED_IDS.map((id) => REGISTRY[id]).filter(Boolean);
+const NLB_SCOPED = NLB_SCOPED_IDS.map((id) => REGISTRY[id]).filter(Boolean);
 
 export default function App() {
   return (
@@ -209,7 +195,7 @@ export function AppRoutes() {
           ))}
 
           {/* === Project-scoped Compute ресурсы === */}
-          {/* /projects/:projectId/compute/{disks|images|snapshots|instances} */}
+          {/* /projects/:projectId/compute/instances */}
           {COMPUTE_SCOPED.map((spec) => (
             <Route key={spec.id}>
               <Route

@@ -64,11 +64,22 @@ export function refOptionExtra(refResource: string, row: Record<string, unknown>
       return ipv4.length > 0 ? ipv4.join(", ") : "";
     }
     case "address-pools": {
-      const cidrs = (row.cidr_blocks as string[] | undefined) ?? [];
+      // AddressPool несёт v4_cidr_blocks (13) + v6_cidr_blocks (14); слитное
+      // `cidr_blocks` ЗАРЕЗЕРВИРОВАНО (tag 7) и с сервера не приходит — чтение
+      // старого имени возвращало undefined молча, и подпись пула оставалась без
+      // диапазонов. Список пулов в этом же пакете читает уже разделённую пару.
+      const v4 = (row.v4_cidr_blocks as string[] | undefined) ?? [];
+      const v6 = (row.v6_cidr_blocks as string[] | undefined) ?? [];
+      const cidrs = [...v4, ...v6];
       const isDefault = row.is_default === true ? " · default" : "";
       return (cidrs.length > 0 ? cidrs.join(", ") : "") + isDefault;
     }
-    case "zones": {
+    // Зона: и запись `zones` (админ-каталог), и запись `compute-zones` — одна и
+    // та же публичная выдача geo. Подборщик Instance.zone_id ссылается на вторую,
+    // поэтому подпись, заведённая только для первой, до оператора не доезжала —
+    // то есть ровно тот случай, ради которого написана шапка этого файла.
+    case "zones":
+    case "compute-zones": {
       // Регион зоны — авторитетное поле ответа geo, не разбор её идентификатора.
       const region = (row.region_id as string | undefined) ?? "";
       return join([region, placementSuffix(row, "закрыта для размещения")]);
