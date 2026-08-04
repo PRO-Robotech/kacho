@@ -11,7 +11,15 @@
 #   prodrun.sh geo
 #   prodrun.sh vpc --service authz-deny
 set -euo pipefail
-export KUBECONFIG=${KUBECONFIG:-/tmp/kacho.kubeconfig}
+# Тот же класс, что в drain_fga_outbox.sh (разбор — там): подстановка НЕсуществующего
+# `/tmp/kacho.kubeconfig` ломала рабочую настройку `~/.kube/config`, уводя kubectl на
+# legacy-умолчание localhost:8080. Файла не создаёт ни CI, ни один скрипт дерева.
+# Берём путь, только если он задан явно либо существует.
+if [ -n "${KUBECONFIG:-}" ]; then
+  export KUBECONFIG
+elif [ -f /tmp/kacho.kubeconfig ]; then
+  export KUBECONFIG=/tmp/kacho.kubeconfig
+fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FIX="$ROOT/tests/authz-fixtures"
