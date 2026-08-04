@@ -99,6 +99,7 @@ suite_dir() { # <svc>
 }
 
 PF_PIDS=()
+PF_WHAT=()   # «порт|назначение» в том же порядке, что PF_PIDS — для проверки ниже
 TMP_DIRS=()
 cleanup() {
   for p in "${PF_PIDS[@]:-}"; do kill "$p" 2>/dev/null || true; done
@@ -107,16 +108,16 @@ cleanup() {
 trap cleanup EXIT
 
 echo "[parallel] port-forward api-gateway :$GW_PORT/:$GW_INTERNAL_PORT/:$GW_TLS_PORT + iam-internal :$IAM_INTERNAL_PORT + hydra :$HYDRA_PORT + ceremony (kratos :$KRATOS_PUBLIC_PORT/:$KRATOS_ADMIN_PORT, hydra-admin :$HYDRA_ADMIN_PORT)"
-kubectl -n "$NS" port-forward svc/api-gateway "$GW_PORT:8080" >/tmp/e2e-pp-gw.log 2>&1 &            PF_PIDS+=($!)
-kubectl -n "$NS" port-forward svc/api-gateway "$GW_INTERNAL_PORT:8081" >/tmp/e2e-pp-gwint.log 2>&1 & PF_PIDS+=($!)
-kubectl -n "$NS" port-forward svc/api-gateway "$GW_TLS_PORT:8443" >/tmp/e2e-pp-gwtls.log 2>&1 &     PF_PIDS+=($!)
-kubectl -n "$NS" port-forward svc/kacho-iam-internal "$IAM_INTERNAL_PORT:9091" >/tmp/e2e-pp-iam.log 2>&1 & PF_PIDS+=($!)
+kubectl -n "$NS" port-forward svc/api-gateway "$GW_PORT:8080" >/tmp/e2e-pp-gw.log 2>&1 &            PF_PIDS+=($!); PF_WHAT+=("$GW_PORT|api-gateway public (:8080)|/tmp/e2e-pp-gw.log")
+kubectl -n "$NS" port-forward svc/api-gateway "$GW_INTERNAL_PORT:8081" >/tmp/e2e-pp-gwint.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$GW_INTERNAL_PORT|api-gateway internal (:8081)|/tmp/e2e-pp-gwint.log")
+kubectl -n "$NS" port-forward svc/api-gateway "$GW_TLS_PORT:8443" >/tmp/e2e-pp-gwtls.log 2>&1 &     PF_PIDS+=($!); PF_WHAT+=("$GW_TLS_PORT|api-gateway external TLS (:8443)|/tmp/e2e-pp-gwtls.log")
+kubectl -n "$NS" port-forward svc/kacho-iam-internal "$IAM_INTERNAL_PORT:9091" >/tmp/e2e-pp-iam.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$IAM_INTERNAL_PORT|iam internal gRPC (:9091)|/tmp/e2e-pp-iam.log")
 # Hydra public — the POST target of the OAuth2 client_credentials exchange that turns an
 # iam-issued SA key into the RS256 Bearer a production-posture stand accepts. ClusterIP
 # with no ingress route here, so the exchange needs this forward. Harmless in dev (the
 # seed never dials it); required in production, and setting it HERE means the seed does
 # not have to open one per invocation.
-kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-public "$HYDRA_PORT:4444" >/tmp/e2e-pp-hydra.log 2>&1 & PF_PIDS+=($!)
+kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-public "$HYDRA_PORT:4444" >/tmp/e2e-pp-hydra.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$HYDRA_PORT|hydra public token endpoint (:4444)|/tmp/e2e-pp-hydra.log")
 # Ceremony transports (WAVE 4). Opened unconditionally, next to the other five, and torn
 # down by the same trap. Deliberately NOT guarded by "skip the wave if the service is
 # absent": a missing transport must surface as the ceremony refusing to seed — which
@@ -124,10 +125,58 @@ kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-public "$HYDRA_PORT:4444"
 # (no-report) and the run is RED. "Could not reach it" is a finding, not a pass.
 # hydra-public is not re-forwarded: the exchange forward above already serves that
 # address, and one service reachable at two ports is two facts that can disagree.
-kubectl -n "$NS" port-forward svc/kacho-umbrella-kratos-public "$KRATOS_PUBLIC_PORT:80" >/tmp/e2e-pp-kratos-pub.log 2>&1 &  PF_PIDS+=($!)
-kubectl -n "$NS" port-forward svc/kacho-umbrella-kratos-admin "$KRATOS_ADMIN_PORT:80" >/tmp/e2e-pp-kratos-adm.log 2>&1 &    PF_PIDS+=($!)
-kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-admin-tls "$HYDRA_ADMIN_PORT:4445" >/tmp/e2e-pp-hydra-adm.log 2>&1 & PF_PIDS+=($!)
+kubectl -n "$NS" port-forward svc/kacho-umbrella-kratos-public "$KRATOS_PUBLIC_PORT:80" >/tmp/e2e-pp-kratos-pub.log 2>&1 &  PF_PIDS+=($!); PF_WHAT+=("$KRATOS_PUBLIC_PORT|kratos public (:80)|/tmp/e2e-pp-kratos-pub.log")
+kubectl -n "$NS" port-forward svc/kacho-umbrella-kratos-admin "$KRATOS_ADMIN_PORT:80" >/tmp/e2e-pp-kratos-adm.log 2>&1 &    PF_PIDS+=($!); PF_WHAT+=("$KRATOS_ADMIN_PORT|kratos admin (:80)|/tmp/e2e-pp-kratos-adm.log")
+kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-admin-tls "$HYDRA_ADMIN_PORT:4445" >/tmp/e2e-pp-hydra-adm.log 2>&1 & PF_PIDS+=($!); PF_WHAT+=("$HYDRA_ADMIN_PORT|hydra admin TLS (:4445)|/tmp/e2e-pp-hydra-adm.log")
 sleep 4
+
+# ПРОБРОС, КОТОРЫЙ НЕ ВСТАЛ, ОСТАНАВЛИВАЕТ ПРОГОН ЗДЕСЬ.
+#
+# Восемь пробросов открывались, и НИ ОДИН не проверялся. `kubectl port-forward` на
+# занятом порту печатает отказ в свой лог-файл, который никто не читает, и ВЫХОДИТ;
+# скрипт спал четыре секунды и шёл дальше. Дальше — два исхода, и худший из них тихий:
+#
+#   • порт свободен у всех — посев умирает внутри, за сотни строк отсюда, сообщением
+#     про чужой предмет («Failed to dial … EOF», «Connection refused»), и читатель
+#     идёт чинить продукт вместо порта;
+#   • порт занят ЧУЖИМ пробросом — а на общей машине это норма (параллельные волны,
+#     забытая сессия), — и тогда весь прогон молча идёт через сокет, которым мы не
+#     управляем. Проверка посадки края при этом ПРОХОДИТ: чужой проброс отвечает.
+#     Это не «стенд не готов», это вердикт о чужом стенде, выданный за свой.
+#
+# Оба наблюдались на этой машине 2026-08-05 (см. /tmp/e2e-pp-*.log первого прогона:
+# «bind: address already in use» на :19091, а :18080/:18081/:18443 в тот же момент
+# держала чужая сессия восемнадцатичасовой давности).
+#
+# Предикат — ЖИВ ЛИ НАШ ПРОЦЕСС, а не «занят ли порт»: занятость порта как раз и не
+# отличает наш проброс от чужого, а `kubectl` при отказе привязки завершается. Значит
+# живой процесс — это ровно «producer, которого мы завели, существует».
+pf_dead=()
+for _i in "${!PF_PIDS[@]}"; do
+  kill -0 "${PF_PIDS[$_i]}" 2>/dev/null || pf_dead+=("${PF_WHAT[$_i]}")
+done
+if [ "${#pf_dead[@]}" -gt 0 ]; then
+  echo
+  echo "===== ПРОГОН НЕДЕЙСТВИТЕЛЕН: проброс не встал (${#pf_dead[@]} из ${#PF_PIDS[@]}) ====="
+  # Причина берётся из ЖУРНАЛА ЭТОГО проброса, а не поиском по всем сразу: общий
+  # поиск приписывал одному порту сообщение другого, то есть сам врал ровно тем
+  # способом, против которого этот блок и написан.
+  for _d in "${pf_dead[@]}"; do
+    _port="${_d%%|*}"; _rest="${_d#*|}"; _why="${_rest%%|*}"; _log="${_rest#*|}"
+    echo "  :$_port — $_why"
+    # -a: журнал предыдущего прогона мог остаться с двоичным мусором, и без него
+    # grep отвечает «binary file matches» ВМЕСТО причины — диагностика, потерянная
+    # ровно там, где она нужна.
+    echo "      $(tr -d '\r' <"$_log" 2>/dev/null | grep -a -m1 . || echo "журнал пуст: $_log")"
+  done
+  echo
+  echo "Суиты НЕ запускались. Это НЕ красный прогон и НЕ зелёный — результата нет."
+  echo "Чаще всего порт занят другим прогоном или забытой сессией (\`ss -ltnp\`)."
+  echo "Порты переносятся ручками: GW_PORT / GW_INTERNAL_PORT / GW_TLS_PORT /"
+  echo "IAM_INTERNAL_PORT / HYDRA_PUBLIC_PORT / KRATOS_PUBLIC_PORT / KRATOS_ADMIN_PORT /"
+  echo "HYDRA_ADMIN_PORT — набираемые адреса следуют за ними (см. передачу в посев ниже)."
+  exit 2
+fi
 
 # Client certificates for the cluster-internal listeners. iam :9091 demands a verified
 # client cert in EVERY posture (security.md — internal is not exempt), and the two
@@ -158,8 +207,18 @@ if [ "$SEED" = "true" ]; then
   # INTERNAL_BASE_URL (:8081 internal mux, already port-forwarded above) lets setup.sh
   # seed the geo baseline (region/zones) + any Internal admin catalog via the :18081 mux.
   # Without it the greenfield geo catalog stays empty → every zone/region create fails.
+  # HYDRA_TOKEN_URL передаётся ЯВНО, а не оставляется на умолчание посева. Посев
+  # состоит из двух половин, читающих РАЗНЫЕ переменные об одном предмете:
+  # prodseed_all.py пробрасывает и проверяет ответ на HYDRA_PUBLIC_PORT, а обмен в
+  # prodseed_matrix.py набирает HYDRA_TOKEN_URL. Их умолчания совпадали, поэтому пара
+  # выглядела согласованной — и разъезжалась ровно тогда, когда ручку двигали (а она
+  # для того и есть: на занятом :14444 иначе не запуститься). Симптом при этом лгал:
+  # «hydra token endpoint answers on :<новый>» печаталось за миг до отказа обмена по
+  # старому адресу, то есть проверка достижимости подтверждала НЕ ТОТ сокет, который
+  # набирают. Здесь открывающий порт и набираемый адрес сведены в один факт.
   env BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="http://localhost:$GW_INTERNAL_PORT" \
       IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" HYDRA_PUBLIC_PORT="$HYDRA_PORT" \
+      HYDRA_TOKEN_URL="http://localhost:$HYDRA_PORT/oauth2/token" \
       PATCH_ENV=true SETUP_NS="$NS" "${MTLS_ENV[@]}" \
       bash "$REPO_ROOT/tests/authz-fixtures/setup.sh"
   SEED_RC=$?
@@ -356,14 +415,39 @@ if [[ " $SERVICES " == *" iam "* ]] && [ -f "$CEREMONY_SH" ] && [ -f "$CEREMONY_
     # The seed's four addresses come from the ports opened above, not from its own
     # defaults: the opener and the dialler must be one fact. BASE_URL/INTERNAL_BASE_URL
     # are passed for the same reason.
+    #
+    # PUBLIC_BASE is the SAME address as BASE_URL under a second name: the expired-bearer
+    # stage this wave delegates to (tests/authz-fixtures/prodseed_expired_bearer.py) reads
+    # that name and no other. Passing only BASE_URL left it on its own default, so moving
+    # the gateway forward sent that stage to :18080 — whatever happens to be listening
+    # there, which on a shared machine is somebody else's forward rather than nothing.
+    # That failure mode is worse than a refusal: it answers. The duplicate name is carried
+    # here rather than renamed at the reader, because the reader is also driven standalone
+    # (services/iam/tests/newman/scripts/run-expired-bearer.sh) and renaming its knob from
+    # here would move the drift instead of removing it.
+    #
+    # IAM_INTERNAL_GRPC — ПЯТЫЙ адрес церемонии, и его отсутствие здесь стоило волне
+    # всех её коллекций. Стадия «2-администратор» чеканит предъявителя на внутреннем
+    # порту iam, а этот блок передавал только четыре адреса, поэтому набиралось
+    # умолчание `localhost:19091`. На стенде с перенесённым портом это отказ, и волна
+    # не заводила условие → девять коллекций iam остались без отчёта.
+    # Особенно наглядно то, что печатала при этом сама церемония: «1-преполёт: 4 из 4
+    # адресов отвечают» — преполёт проверяет ровно те адреса, которые ему ДАЛИ, и
+    # молчит про тот, которого не дали. Проверка достижимости не может обнаружить
+    # транспорт, о котором её не спросили.
+    # MTLS_ENV идёт следом по той же причине: внутренний порт требует клиентский
+    # сертификат в любой посадке, и чеканка — единственный SAN, который iam для неё
+    # допускает (см. сбор сертификатов выше).
     if ( cd "$REPO_ROOT/services/iam/tests/newman" \
           && env SETUP_NS="$NS" DELAY="$DELAY" \
              BASE_URL="http://localhost:$GW_PORT" \
              INTERNAL_BASE_URL="http://localhost:$GW_INTERNAL_PORT" \
+             PUBLIC_BASE="http://localhost:$GW_PORT" \
              KRATOS_PUBLIC_URL="http://localhost:$KRATOS_PUBLIC_PORT" \
              KRATOS_ADMIN_URL="http://localhost:$KRATOS_ADMIN_PORT" \
              HYDRA_PUBLIC_URL="http://localhost:$HYDRA_PORT" \
              HYDRA_ADMIN_URL="https://localhost:$HYDRA_ADMIN_PORT" \
+             IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" "${MTLS_ENV[@]}" \
              EXTRA_NEWMAN_ARGS="--env-var baseUrl=http://localhost:$GW_PORT --env-var internalBaseUrl=http://localhost:$GW_INTERNAL_PORT --env-var externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
              bash "$CEREMONY_SH" ); then
       echo "===== [ceremony] GREEN ====="
