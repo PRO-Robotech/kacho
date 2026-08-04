@@ -64,13 +64,28 @@ rendered_list() {
 # соседа «по образцу», не совпала бы с предъявляемым сертификатом. Промах здесь
 # молчаливый: пир остаётся собой, переданная им личность снимается, и его чтение
 # отвечает как неаутентифицированному.
+#
+# ВЫЗЫВАЕТСЯ ТОЛЬКО ЧЕРЕЗ peer_san_or_empty (ниже): под `set -e` присваивание из
+# подстановки, чей конвейер отказал, ОБРЫВАЕТ скрипт — и страж «чарт не отрендерил
+# сертификат» ниже становился недостижимым. Наблюдалось живьём: чарт реестра
+# перестал рендериться без учётных данных хранилища слоёв, конвейер отдал отказ, и
+# весь тест вышел кодом 1 БЕЗ ЕДИНОЙ СТРОКИ вывода — «не выполнилось», неотличимое
+# от «упало по существу».
 peer_san() {
-  # db.password — обязательное значение у части чартов (иначе рендер падает ещё до
-  # сертификата); подставляем заглушку, к предмету проверки она отношения не имеет.
+  # Заглушки обязательных значений: без них рендер падает ещё до сертификата.
+  #   db.password       — у части чартов;
+  #   zot.auth.*        — чарт реестра ОТКАЗЫВАЕТ в рендере без учётных данных
+  #                       хранилища слоёв (развернуть открытое он не умеет).
+  # К предмету проверки (кто вправе передавать чужую личность) отношения не имеют.
   helm template x "$1" --namespace kacho --set mtls.enable=true --set db.password=x \
+    --set zot.auth.username=selftest --set zot.auth.password=selftest \
     --show-only templates/certificate.yaml 2>/dev/null \
     | grep -oE 'spiffe://[^"]+' | head -1
 }
+
+# peer_san_or_empty <chart-path> — то же, но отказ рендера возвращает ПУСТО вместо
+# обрыва скрипта, чтобы страж ниже мог назвать чарт по имени.
+peer_san_or_empty() { peer_san "$1" || true; }
 
 # ── 1. Дефолт чарта непуст и совпадает с сертификатами, которые выдают соседи ─
 # Круг установлен по рёбрам (кто зовёт ProjectService.Get / Check под личностью
@@ -84,7 +99,7 @@ for chart in "$REPO_ROOT/gateway/deploy" "$REPO_ROOT/services/vpc/deploy" \
              "$REPO_ROOT/services/compute/deploy" "$REPO_ROOT/services/nlb/deploy" \
              "$REPO_ROOT/services/storage/deploy" "$REPO_ROOT/services/registry/deploy" \
              "$DEPLOY_ROOT/helm/umbrella/charts/kacho-geo"; do
-  san="$(peer_san "$chart")"
+  san="$(peer_san_or_empty "$chart")"
   [ -n "$san" ] || fail "чарт $chart не отрендерил сертификат — тест разошёлся с деревом, обнови его"
   printf '%s\n' "$def_list" | grep -qxF "$san" \
     || fail "дефолт iam не содержит $san (чарт $chart) — этот пир перестал бы говорить за пользователя, и его путь под личностью тенанта молча отвечал бы как неаутентифицированный"
@@ -136,7 +151,7 @@ for chart in "$REPO_ROOT/gateway/deploy" "$REPO_ROOT/services/vpc/deploy" \
              "$REPO_ROOT/services/compute/deploy" "$REPO_ROOT/services/nlb/deploy" \
              "$REPO_ROOT/services/storage/deploy" "$REPO_ROOT/services/registry/deploy" \
              "$DEPLOY_ROOT/helm/umbrella/charts/kacho-geo"; do
-  san="$(peer_san "$chart")"
+  san="$(peer_san_or_empty "$chart")"
   printf '%s\n' "$prod_list" | grep -qxF "$san" \
     || fail "боевой профиль потерял отправителя $san (чарт $chart) — его путь под личностью пользователя встанет"
 done

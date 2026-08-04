@@ -15,14 +15,25 @@
 # (release `kacho-umbrella`), port 4444, JWKS path `/.well-known/jwks.json`
 # (verified: `helm template ... charts/hydra/templates/service-public.yaml`).
 #
+# ── ЦЕЛЬ ХОПА ЗАВИСИТ ОТ ПРОФИЛЯ, И ЭТО НЕ ПОСЛАБЛЕНИЕ ───────────────────────
+# core-правило #16: iam — ЕДИНСТВЕННЫЙ фасад к провайдеру, ключи верификации
+# раздаёт его зеркало (:9097, https, якорь доверия — внутренний CA). Боевой
+# профиль на этот маршрут уже переведён; прямой хоп к провайдеру там — обход
+# фасада, однажды уже найденный и починенный. Утверждение о боевом профиле
+# поэтому не ослаблено, а ПЕРЕНАЦЕЛЕНО и усилено: теперь оно требует зеркало
+# ИМЕННО по защищённому транспорту и ОТДЕЛЬНО запрещает адрес провайдера в любом
+# написании. Профиль dev остаётся на прямом внутрикластерном адресе провайдера —
+# это его текущее состояние, и утверждение о нём не тронуто.
+#
 # This renders BOTH:
 #   (1) the api-gateway chart standalone (the source the umbrella vendors via
 #       `repository: file://../../../gateway/deploy` in helm/umbrella/Chart.yaml)
 #       with values that set hydra.jwksUrl, and
 #   (2) the umbrella with values.dev.yaml (the actual dev stand) restricted to
 #       the api-gateway Deployment.
-# It asserts the rendered KACHO_HYDRA_JWKS_URL is the cluster-internal hydra-public
-# endpoint — never localhost, never the public `hydra.<domain>` issuer.
+# It asserts the rendered KACHO_HYDRA_JWKS_URL is the cluster-internal endpoint the
+# profile is supposed to use — never localhost, never the public `hydra.<domain>`
+# issuer, and in production never the provider's own address.
 #
 # Offline manifest-assertion harness (no kind cluster). Mirrors tests/helm/*.
 set -euo pipefail
@@ -39,6 +50,13 @@ AGW="$(sed -nE 's#^[[:space:]]*repository:[[:space:]]*file://\.\./\.\./\.\./(.*)
         "$UMBRELLA/Chart.yaml" | grep -m1 'gateway')"
 AGW="$MONOREPO/$AGW"
 WANT="http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/.well-known/jwks.json"
+# Боевой профиль забирает ключи через зеркало iam — единственный фасад к
+# провайдеру (core #16), по защищённому транспорту с якорем доверия. Адрес пинится
+# здесь ЛИТЕРАЛОМ: вычитывать ожидание из того же профиля, который и рендерится,
+# значило бы сверять файл сам с собой.
+WANT_PROD="https://kacho-iam-internal.kacho.svc.cluster.local:9097/.well-known/jwks.json"
+# Написания адреса ПРОВАЙДЕРА: любое из них в боевом профиле — обход фасада.
+PROVIDER_SPELLING='hydra-public|hydra\.api\.'
 N=0
 fail() { echo "FAIL: $1"; exit 1; }
 ok() { N=$((N + 1)); }
@@ -91,16 +109,27 @@ dis="$(env_val KACHO_HYDRA_ISSUER "$DEV")"
 [ "$dis" = "$DEV_ISSUER" ] || fail "dev KACHO_HYDRA_ISSUER=$dis (want $DEV_ISSUER matching Hydra dev self.issuer)"; ok
 
 # ── (3) umbrella + values.prod.yaml — production-strict makes the verifier
-#        mandatory, so the JWKS URL must STILL be the in-cluster Service (not the
-#        public ingress hairpin). The expected `iss` is the public issuer.
+#        mandatory, so the JWKS URL must be the in-cluster address of the iam
+#        MIRROR (core #16: iam is the only facade to the provider), over TLS —
+#        not the public ingress hairpin and not the provider's own Service.
+#        The expected `iss` stays the public issuer: the provider remains the
+#        SIGNER, only key distribution goes through iam.
 PROD="$(helm template kacho-umbrella "$UMBRELLA" -f "$UMBRELLA/values.prod.yaml" \
          --show-only charts/api-gateway/templates/deployment.yaml 2>/dev/null)"
 [ -n "$PROD" ] || fail "umbrella render of api-gateway deployment (prod) is empty"
 pjw="$(env_val KACHO_HYDRA_JWKS_URL "$PROD")"
-[ "$pjw" = "$WANT" ] || fail "prod KACHO_HYDRA_JWKS_URL=$pjw (want cluster-internal $WANT)"
+[ "$pjw" = "$WANT_PROD" ] || fail "prod KACHO_HYDRA_JWKS_URL=$pjw (want the iam mirror $WANT_PROD)"
 case "$pjw" in
-  https://hydra.*) fail "prod JWKS URL is the public ingress ($pjw) — must hit the in-cluster Service" ;;
+  https://*) ;;
+  *) fail "prod JWKS URL is not TLS ($pjw) — the material that verifies every bearer's signature travels this hop" ;;
 esac
+if printf '%s' "$pjw" | grep -qE "$PROVIDER_SPELLING"; then
+  fail "prod JWKS URL addresses the provider directly ($pjw) — that bypasses the iam facade (core #16), a hop already found and closed once"
+fi
+# Якорь доверия обязан быть смонтирован: TLS без проверки сертификата на этом хопе
+# читается как настроенная защита, ничего не проверяя.
+printf '%s\n' "$PROD" | grep -q 'hydra-jwks-ca' \
+  || fail "prod api-gateway pod carries no trust anchor for the JWKS hop — TLS whose certificate nobody checks leaves substitution open"
 pis="$(env_val KACHO_HYDRA_ISSUER "$PROD")"
 [ "$pis" = "https://hydra.api.kacho.cloud" ] || fail "prod KACHO_HYDRA_ISSUER=$pis (want public issuer https://hydra.api.kacho.cloud)"; ok
 

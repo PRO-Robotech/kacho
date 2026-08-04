@@ -59,11 +59,21 @@ yaml_block_value() {
   ' "$1"
 }
 
+# ЗАГЛУШКА УЧЁТНЫХ ДАННЫХ ХРАНИЛИЩА СЛОЁВ — предусловие рендера, а не послабление.
+# Чарт ОТКАЗЫВАЕТ в рендере, если у zot нет ни секрета оператора, ни пары
+# логин/пароль: развернуть открытое хранилище слоёв он не умеет (см. fail в
+# templates/statefulset-zot.yaml). Оба профиля эту пару задают; standalone-рендер —
+# нет, поэтому здесь она подставляется тем же способом, каким соседний тест
+# подставляет db.password. К предмету проверки (кто вправе передавать чужую
+# личность) значения отношения не имеют, и НИ ОДНО утверждение о них не смягчено:
+# без них проверка вообще не выполнялась бы.
+ZOT_STUB=(--set zot.auth.username=selftest --set zot.auth.password=selftest)
+
 # ── 1. Дефолт чарта непуст и пинит именно gateway ────────────────────────────
 # Единственный законный отправитель установлен по графу импортов: заглушки
 # pkg/api/kacho/cloud/registry/v1 вне самого сервиса импортирует только
 # gateway/internal/restmux, и он же держит адреса ОБОИХ листенеров.
-DEFAULT_RENDER="$(helm template registry "$CHART" --show-only templates/deployment.yaml 2>/dev/null)" \
+DEFAULT_RENDER="$(helm template registry "$CHART" "${ZOT_STUB[@]}" --show-only templates/deployment.yaml 2>/dev/null)" \
   || fail "registry chart does not render"
 def_val="$(env_val "$DEFAULT_RENDER")"
 [ -n "$def_val" ] && [ "$def_val" != "null" ] \
@@ -76,7 +86,7 @@ ok
 # Чарт не решает за стражу: пусто он отрендерит, а откажет в старте боевой режим
 # (validateSecurityConfig → requireTrustedForwarders). Так «пусто» остаётся
 # наблюдаемым, а не подменяется чартом на дефолт втихую.
-EMPTY_RENDER="$(helm template registry "$CHART" --set authz.trustedForwarderSANs="" \
+EMPTY_RENDER="$(helm template registry "$CHART" "${ZOT_STUB[@]}" --set authz.trustedForwarderSANs="" \
   --show-only templates/deployment.yaml 2>/dev/null)" || fail "render with an empty override failed"
 empty_val="$(env_val "$EMPTY_RENDER")"
 [ -z "$empty_val" ] || [ "$empty_val" = "null" ] \

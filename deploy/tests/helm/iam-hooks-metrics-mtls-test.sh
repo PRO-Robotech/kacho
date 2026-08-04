@@ -18,10 +18,11 @@
 # httpListeners-gated env block is present/absent across repeated renders; this
 # PRE-DATES #137 and is why the prior guard asserted prod-OFF via env-ABSENCE and
 # capability via the TEMPLATE SOURCE). So the prod-ON DECISION is asserted from
-# values.prod.yaml directly (yq — deterministic), and CAPABILITY (env names incl.
-# the new CLIENTAUTHMODE) from the template source (deterministic). The Hydra
-# subchart renders ARE deterministic, so its https-URL + CA-mount are asserted by
-# render.
+# values.prod.yaml directly (yq — deterministic). CAPABILITY is asserted from the
+# STANDALONE sub-chart render (deterministic, unlike the umbrella): the gate itself
+# by an on/off pair, the per-edge env names + their derivation from the template
+# source. The Hydra subchart renders ARE deterministic, so its https-URL + CA-mount
+# are asserted by render.
 #
 # This guard asserts:
 #   - PROD values DECISION → kacho-iam.mtls.httpListeners=true with both
@@ -119,8 +120,28 @@ echo "$HYDRA_CM_DEV" | grep -Eq 'http://[^"]*:9092/iam/v1/hooks/token' \
 ok
 
 # ── 5. CAPABILITY INTACT — the chart emits the gated block + every env (CLIENTAUTHMODE) ─
-grep -q '{{- if .Values.mtls.httpListeners }}' "$TPL" \
-  || fail "capability: the '{{- if .Values.mtls.httpListeners }}' gate block was removed from the template"
+#
+# ГЕЙТ УТВЕРЖДАЕТСЯ ИСХОДОМ РЕНДЕРА, А НЕ ТЕКСТОМ ШАБЛОНА. Прежняя редакция искала
+# в шаблоне буквальную строку `{{- if .Values.mtls.httpListeners }}`. Ручка с тех пор
+# разветвилась на рёбра (hooks+metrics / jwks-proxy / docker-token читаются из неё же
+# как из умолчания), буквы разошлись — и проверка утверждала отсутствие СТРОКИ, тогда
+# как способность была на месте: утверждение про текст пережило свой предмет.
+#
+# Теперь спрашивается то, что и требовалось: ручка ВКЛЮЧАЕТ блок и, снятая, ВЫКЛЮЧАЕТ
+# его. Пара обязательна: одно положительное не отличило бы гейт от безусловного блока.
+# Рендерится ПОД-ЧАРТ отдельно — в отличие от умбреллы (см. DETERMINISM NOTE выше) он
+# детерминирован: пять подряд рендеров дают один и тот же состав ручек.
+gate_render() { helm template iam "$UMBRELLA/charts/kacho-iam" --set mtls.enable=true "$@" \
+                  --show-only templates/deployment.yaml 2>/dev/null; }
+GATE_ON="$(gate_render --set mtls.httpListeners=true)"
+GATE_OFF="$(gate_render)"
+for name in KACHO_IAM_HOOKS_SERVER_MTLS_ENABLE KACHO_IAM_METRICS_SERVER_MTLS_ENABLE; do
+  printf '%s\n' "$GATE_ON" | grep -q "name: $name" \
+    || fail "capability: mtls.httpListeners=true НЕ включает $name — способность потеряна, боевой профиль отгрузил бы открытый листенер"
+  if printf '%s\n' "$GATE_OFF" | grep -q "name: $name"; then
+    fail "capability: $name эмитируется и БЕЗ mtls.httpListeners — гейта нет, значение ручки исхода не меняет"
+  fi
+done
 for name in "${HOOKS_METRICS_ENV[@]}"; do
   grep -q "name: $name" "$TPL" \
     || fail "capability: env $name missing from template — server-side TLS support / CLIENTAUTHMODE not emitted"
