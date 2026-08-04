@@ -863,12 +863,23 @@ registerDetailExtension("access-bindings", {
     return <RevokeBindingButton id={id} status={status} detailBase={detailBase} />;
   },
   overviewExtra: ({ data }) => {
-    // Анкер гранта — ТОЛЬКО пара scope_type (dotted) + scope_id. Прежние
-    // `resource_type`/`resource_id`/`scope` у AccessBinding захоронены
-    // (access_binding.proto: reserved 9,14,15-18 вместе с именами), сервер их не
-    // заполняет никогда — запасная ветка на них была бы мертва по построению и
-    // при этом выглядела бы страховкой. У SubjectPrivilege те же имена живы и
-    // читаются в таблицах привилегий выше: совпадение имён, разные референты.
+    // Анкер гранта — ТОЛЬКО пара scope_type (dotted) + scope_id: у сообщения
+    // AccessBinding (access_binding.proto) других имён этой координаты нет вовсе,
+    // поэтому запасная ветка на них была бы мертва по построению и при этом
+    // выглядела бы страховкой. Снято, но по двум РАЗНЫМ причинам, и путать их
+    // нельзя:
+    //   `scope` (тег 15) захоронено вместе с именем — выведено из оборота навсегда;
+    //   пара `resource_type`/`resource_id` в reserved НЕ выводилась, она
+    //   ПЕРЕИМЕНОВАНА в `scope_type` (тег 5) / `scope_id` (тег 6) — redesign-2026 F7,
+    //   слово «resource» отдано полю `target`.
+    // Переименованные имена остаются ЖИВЫМИ и несущими на соседних RPC того же
+    // домена: у ListAccessBindingsByScope это поля 1/2 — DEPRECATED, но принимаются,
+    // и наш же клиент (shared/api/iam.listAccessBindingsByResource) шлёт РОВНО их,
+    // потому что scope_extractor края пока выводит область запроса из легаси-пары;
+    // у SubjectPrivilege это поля 4/5/6 — заполняются на каждом чтении и читаются в
+    // таблицах привилегий выше. Совпадение имён, разные референты: запрет касается
+    // ровно этого блока, а не файла.
+    // Замок обоих классов — src/access-binding-field-names.test.ts.
     const scopeTypeDotted = String(getByPath<string>(data, "scope_type") ?? getByPath<string>(data, "scopeType") ?? "");
     const scopeIdVal = getByPath<string>(data, "scope_id") ?? getByPath<string>(data, "scopeId") ?? "";
     const anchorType =

@@ -10,8 +10,9 @@
 //
 // Почему адрес принадлежит именно system-remote'у: страница поиска строит ссылки
 // на `/system/regions/:id`, `/system/zones/:id`, `/system/address-pools/:id`, то
-// есть на маршруты ЭТОГО remote'а, а его dev-прокси уже несёт /geo, /vpc и
-// /compute — домены, которые она опрашивает.
+// есть на маршруты ЭТОГО remote'а, а его dev-прокси покрывает каждый домен, к
+// которому она обращается (/iam, /vpc, /compute). Обе половины этого довода —
+// названные домены и покрытие — держит SystemPage.search-domains.test.ts.
 //
 // Предикат читает ОБА исходника с диска (рейл хоста и таблицу маршрутов), поэтому
 // расхождение между двумя приложениями видно в одном месте. Рендер здесь не
@@ -29,10 +30,7 @@ const uiRoot = path.resolve(systemRoot, "..");
 
 const pageSource = readFileSync(path.join(here, "SystemPage.tsx"), "utf8");
 const navSource = readFileSync(path.join(systemRoot, "src/navigation.ts"), "utf8");
-const railSource = readFileSync(
-  path.join(uiRoot, "host/src/components/organisms/HostRail/HostRail.tsx"),
-  "utf8",
-);
+const railSource = readFileSync(path.join(uiRoot, "host/src/components/organisms/HostRail/HostRail.tsx"), "utf8");
 
 /** Адреса под /system/…, рекламируемые рейлом хоста и навигацией remote'а. */
 function advertised(): string[] {

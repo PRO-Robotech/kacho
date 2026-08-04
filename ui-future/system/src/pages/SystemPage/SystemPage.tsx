@@ -13,10 +13,12 @@
 //   Cluster admins— /iam/v1/internal/cluster    (кастомная ClusterAdminsPage)
 // Все мутации async → Operation (poll /operations/{id}).
 //
-// Плюс /system/search — общая admin-страница поиска по id/имени. Адрес держит
-// рейл хоста («Поиск»), а хост маршрутизирует весь /system/* сюда; страница
-// строит ссылки на /system/regions|zones|address-pools, то есть на маршруты
-// ЭТОГО модуля, и её домены (/geo, /vpc, /compute) уже есть в dev-прокси system.
+// Плюс /system/search — общая admin-страница поиска по id/имени (живёт в shared).
+// Адрес держит рейл хоста («Поиск»), а хост маршрутизирует весь /system/* сюда;
+// страница строит ссылки на /system/regions|zones|address-pools, то есть на
+// маршруты ЭТОГО модуля, и каждый домен, который она опрашивает (/iam, /vpc,
+// /compute), уже есть в dev-прокси system. Перечень держит не память, а
+// SystemPage.search-domains.test.ts — он читает домены из самой страницы поиска.
 
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router";

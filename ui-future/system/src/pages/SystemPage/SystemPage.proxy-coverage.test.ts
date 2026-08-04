@@ -34,8 +34,7 @@ function addressesOf(ids: string[]): string[] {
   const out = new Set<string>();
   for (const id of ids) {
     const spec = REGISTRY[id] as
-      | { apiPath?: string; admin?: { basePath?: string }; internalGetPath?: string }
-      | undefined;
+      { apiPath?: string; admin?: { basePath?: string }; internalGetPath?: string } | undefined;
     if (!spec) continue;
     for (const p of [spec.apiPath, spec.admin?.basePath, spec.internalGetPath]) {
       if (p) out.add(p);

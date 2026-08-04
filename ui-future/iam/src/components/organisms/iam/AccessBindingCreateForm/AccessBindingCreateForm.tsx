@@ -7,13 +7,24 @@
 // dotted `iam.cluster|iam.account|iam.project` (GLOBAL ≡ анкер cluster_kacho_root).
 //
 // Тело запроса (buildCreateAccessBindingBody): {subjects[], role_id, scope_type,
-// scope_id, target}, один POST на роль. `scope_type`/`scope_id` — обязательные
-// поля Create (в proto помечены required); `target` обязателен по контракту
-// least-privilege: либо явный allInScope{}, либо непустой resources[]{type,id},
-// умолчания-часового нет. Прежние имена этой координаты ствол ЗАХОРОНИЛ вместе с
-// тегами (перечень — `reserved` в access_binding.proto); край их выбрасывает
-// молча, поэтому форма их не собирает, а здесь они не называются: мёртвая
-// координата в шапке читается следующим как рабочая.
+// scope_id, target}, один POST на роль. Все три координаты — обязательные поля
+// Create: `scope_type`/`scope_id` помечены required в proto, а `target` отвергается
+// синхронно, если не задан ни один арм (INVALID_ARGUMENT «target is required…»,
+// least-privilege spine F8). Прежнее имя пары анкера в CreateAccessBindingRequest
+// ОТСУТСТВУЕТ — координата переименована в `scope_type`/`scope_id` (теги 4/5), а не
+// выведена в reserved (там перечислены другие имена). Разница видна только в
+// стволе: край распаковывает тело с DiscardUnknown, то есть неизвестное имя
+// выбрасывает МОЛЧА и отвечает успехом, — поэтому форма собирает ровно каноничные
+// имена, а здесь прежние не называются: мёртвая координата в шапке читается
+// следующим как рабочая.
+//
+// Умолчание есть — но у ФОРМЫ, не у сервера, и это разные вещи. Сервер широкого
+// гранта по умолчанию не выдаёт: без явного арма Create падает. Форма же
+// преднабирает дискриминатор `_target_kind` в allInScope (см. setFieldsValue при
+// монтировании), поэтому тело всегда уходит с явным армом, и «Точечно» —
+// осознанное сужение, а не включение проверки. Если преднабор когда-нибудь снимут,
+// это утверждение обязано поменяться вместе с ним: замок —
+// src/access-binding-field-names.test.ts, он читает преднабор из этого же файла.
 //
 // Селекторы (all/names/labels) живут в rules РОЛИ (единый источник истины) —
 // форма биндинга их НЕ собирает.
@@ -230,7 +241,8 @@ export function AccessBindingCreateForm({ lockedSubject, subjectAccountId, prese
       role_ids: reconcile ? [] : preset?.role_id ? [preset.role_id] : [],
       scope: initialScope,
       scope_ref_id: initialAnchorId,
-      // IAM-1 F8: target REQUIRED — по умолчанию широкий opt-in allInScope{}.
+      // IAM-1 F8: у сервера target REQUIRED и умолчания не имеет; преднабор здесь —
+      // умолчание ФОРМЫ, чтобы тело всегда несло явный арм (см. шапку файла).
       _target_kind: "allInScope",
       target_resources: [],
     });
