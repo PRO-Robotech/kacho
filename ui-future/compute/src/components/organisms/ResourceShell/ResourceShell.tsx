@@ -32,6 +32,7 @@ import { formatDateTime } from "@/lib/datetime";
 import { RowActionsMenu, resourceHasRowActions } from "@/components/molecules/RowActionsMenu";
 import { JsonMonacoView } from "@/components/molecules/JsonMonacoView";
 import { OperationsTab } from "@/components/organisms/OperationsTab";
+import { operationsListPath } from "@shared/lib/operations-subroute";
 import { InlineResourceForm } from "@/components/organisms/InlineResourceForm";
 import { TableSearch, ColumnSettings, useHiddenColumns, type ToggleCol } from "@/components/molecules/TableToolbar";
 import { useBreadcrumb, useHeaderRight } from "@/components/molecules/PageHeaderSlot";
@@ -399,13 +400,19 @@ export function ResourceShell({
   // Доменные табы расширения (SG rules, RT routes, Instance NIC, ...).
   (ext?.extraTabs?.(extCtx) ?? []).forEach((t) => tabs.push(t));
 
-  // Операции (если не sync-ресурс).
-  if (!ext?.hideOperations) {
+  // Операции — только у ресурсов, чей подмаршрут ствол действительно несёт.
+  // Прежде решала ручка `hideOperations` расширения, которую не выставлял никто,
+  // — то есть вкладка появлялась у всех, включая каталожные ресурсы без
+  // подмаршрута. Здесь решает контракт: нет пути — нет вкладки.
+  const operationsPath = operationsListPath(spec.apiPath, getByPath<string>(data, "id") ?? uid ?? "");
+  if (operationsPath) {
     tabs.push({
       id: "operations",
       label: "Операции",
       fill: true,
-      render: () => <OperationsTab spec={spec} resourceId={getByPath<string>(data, "id") ?? uid ?? ""} />,
+      render: () => (
+        <OperationsTab spec={spec} resourceId={getByPath<string>(data, "id") ?? uid ?? ""} listPath={operationsPath} />
+      ),
     });
   }
   tabs.push({
