@@ -1,12 +1,22 @@
 // AccessBindingCreateForm — тело SCOPE-FIRST формы создания/актуализации привязок
 // доступа (AccessBinding) под explicit-RBAC модель.
 //
-// Модель: грант = subjects[] + role + scope{GLOBAL|ACCOUNT|PROJECT} + scopeRef.
-// Scope — first-class измерение (явный селектор «Область действия»), НЕ скрытый
-// «тип ресурса». Wire: GLOBAL ≡ tier CLUSTER (anchor cluster_kacho_root);
-// ACCOUNT/PROJECT → tier + id. Payload: {subjects[], role_id, scope_ref{tier,id}},
-// один POST на роль. Селекторы (all/names/labels) живут в rules РОЛИ (единый
-// источник истины) — форма биндинга их НЕ собирает.
+// Модель: грант = subjects[] + role + АНКЕР области + цель под этим анкером.
+// Область — first-class измерение (явный селектор «Область действия»), НЕ скрытый
+// «тип ресурса»; в форме её тир называется GLOBAL/ACCOUNT/PROJECT, на wire это
+// dotted `iam.cluster|iam.account|iam.project` (GLOBAL ≡ анкер cluster_kacho_root).
+//
+// Тело запроса (buildCreateAccessBindingBody): {subjects[], role_id, scope_type,
+// scope_id, target}, один POST на роль. `scope_type`/`scope_id` — обязательные
+// поля Create (в proto помечены required); `target` обязателен по контракту
+// least-privilege: либо явный allInScope{}, либо непустой resources[]{type,id},
+// умолчания-часового нет. Прежние имена этой координаты ствол ЗАХОРОНИЛ вместе с
+// тегами (перечень — `reserved` в access_binding.proto); край их выбрасывает
+// молча, поэтому форма их не собирает, а здесь они не называются: мёртвая
+// координата в шапке читается следующим как рабочая.
+//
+// Селекторы (all/names/labels) живут в rules РОЛИ (единый источник истины) —
+// форма биндинга их НЕ собирает.
 //
 // Переиспользуется в двух контекстах:
 //   1. standalone full-page (AccessBindingCreatePage) — additive-only: N-create по

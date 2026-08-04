@@ -12,6 +12,11 @@
 //   AddressPools  — /vpc/v1/addressPools        (kacho-vpc admin; CIDR через :addCidrBlocks/:removeCidrBlocks)
 //   Cluster admins— /iam/v1/internal/cluster    (кастомная ClusterAdminsPage)
 // Все мутации async → Operation (poll /operations/{id}).
+//
+// Плюс /system/search — общая admin-страница поиска по id/имени. Адрес держит
+// рейл хоста («Поиск»), а хост маршрутизирует весь /system/* сюда; страница
+// строит ссылки на /system/regions|zones|address-pools, то есть на маршруты
+// ЭТОГО модуля, и её домены (/geo, /vpc, /compute) уже есть в dev-прокси system.
 
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router";
@@ -23,6 +28,7 @@ import { ResourceCreatePage } from "@shared/components/organisms/ResourceCreateP
 import { ResourceDetailPage } from "@shared/components/organisms/ResourceDetailPage";
 import { ResourceEditPage } from "@shared/components/organisms/ResourceEditPage";
 import { AddressPoolDetailPage } from "@shared/pages/AddressPoolDetailPage";
+import { SystemSearchPage } from "@shared/pages/SystemSearchPage";
 import { RemoteShell } from "@/pages/RemoteShell";
 import { TokensRoutes } from "@/pages/TokensPage";
 
@@ -62,6 +68,10 @@ export function SystemRoutes() {
       <Route path="zones/create" element={<ResourceCreatePage spec={REGISTRY.zones} />} />
       <Route path="zones/:uid" element={<ResourceDetailPage spec={REGISTRY.zones} />} />
       <Route path="zones/:uid/edit" element={<ResourceEditPage spec={REGISTRY.zones} />} />
+
+      {/* Поиск — адрес, который рекламирует рейл хоста; без этого маршрута
+          «Поиск» молча уводил на список регионов через catch-all ниже. */}
+      <Route path="search" element={<SystemSearchPage />} />
 
       <Route path="address-pools/create" element={<ResourceCreatePage spec={REGISTRY["address-pools"]} />} />
       <Route path="address-pools/:uid" element={<AddressPoolDetailPage />} />

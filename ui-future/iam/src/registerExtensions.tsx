@@ -863,12 +863,14 @@ registerDetailExtension("access-bindings", {
     return <RevokeBindingButton id={id} status={status} detailBase={detailBase} />;
   },
   overviewExtra: ({ data }) => {
+    // Анкер гранта — ТОЛЬКО пара scope_type (dotted) + scope_id. Прежние
+    // `resource_type`/`resource_id`/`scope` у AccessBinding захоронены
+    // (access_binding.proto: reserved 9,14,15-18 вместе с именами), сервер их не
+    // заполняет никогда — запасная ветка на них была бы мертва по построению и
+    // при этом выглядела бы страховкой. У SubjectPrivilege те же имена живы и
+    // читаются в таблицах привилегий выше: совпадение имён, разные референты.
     const scopeTypeDotted = String(getByPath<string>(data, "scope_type") ?? getByPath<string>(data, "scopeType") ?? "");
-    const scopeIdVal =
-      getByPath<string>(data, "scope_id") ??
-      getByPath<string>(data, "scopeId") ??
-      getByPath<string>(data, "resource_id") ??
-      "";
+    const scopeIdVal = getByPath<string>(data, "scope_id") ?? getByPath<string>(data, "scopeId") ?? "";
     const anchorType =
       scopeTypeDotted === "iam.account"
         ? "account"
@@ -876,9 +878,8 @@ registerDetailExtension("access-bindings", {
           ? "project"
           : scopeTypeDotted === "iam.cluster"
             ? "cluster"
-            : String(getByPath<string>(data, "resource_type") ?? "");
+            : "";
     const anchorSpec = anchorType === "account" ? "accounts" : anchorType === "project" ? "projects" : undefined;
-    const legacyScope = String(getByPath<string>(data, "scope") ?? "");
     const target = getByPath<AccessBindingTarget>(data, "target");
     const revokedAt = getByPath<string>(data, "revoked_at") ?? getByPath<string>(data, "revokedAt");
     const grantedBy = getByPath<string>(data, "granted_by_user_id") ?? getByPath<string>(data, "grantedByUserId");
@@ -887,13 +888,7 @@ registerDetailExtension("access-bindings", {
       { label: "Роль", value: <IamRefLink specId="roles" refId={getByPath<string>(data, "role_id")} /> },
       {
         label: "Область (scopeType)",
-        value: scopeTypeDotted ? (
-          <Tag color={iamTierColor(scopeTypeDotted)}>{scopeTypeDotted}</Tag>
-        ) : legacyScope && legacyScope !== "SCOPE_UNSPECIFIED" ? (
-          <Tag color={scopeColor(legacyScope)}>{legacyScope}</Tag>
-        ) : (
-          dash
-        ),
+        value: scopeTypeDotted ? <Tag color={iamTierColor(scopeTypeDotted)}>{scopeTypeDotted}</Tag> : dash,
       },
       {
         label: "Anchor (scopeId)",

@@ -22,6 +22,8 @@ const MODULE_LABELS: Record<string, string> = {
   iam: "IAM",
   vpc: "VPC",
   compute: "Compute",
+  storage: "Хранилище",
+  registry: "Реестр",
   nlb: "NLB",
   system: "Администрирование",
 };
@@ -46,13 +48,18 @@ const RESOURCE_LABELS: Record<string, string> = {
   gateways: "Шлюзы",
   "network-interfaces": "Сетевые интерфейсы",
   "address-pools": "Пулы адресов",
-  "anycast-address-pools": "Anycast-пулы",
   // compute
   instances: "Инстансы",
-  disks: "Диски",
+  "machine-types": "Типы машин",
+  // storage — блочное хранение принадлежит storage-remote'у: Volume заменил
+  // прежний диск compute, Image/Snapshot/DiskType переехали туда же.
+  volumes: "Тома",
   images: "Образы",
   snapshots: "Снимки",
   "disk-types": "Типы дисков",
+  // registry
+  registries: "Реестры",
+  // geo (админ-раздел)
   regions: "Регионы",
   zones: "Зоны",
   // nlb

@@ -33,6 +33,24 @@ export default defineConfig({
         target: apiGateway,
         changeOrigin: true,
       },
+      // Редактор правил роли рендерит picker реальных инстансов и для НЕ-iam
+      // типов (перечень токенов — shared/src/lib/resourceInstanceFetchers.ts:
+      // vpc-, compute- и nlb-ресурсы), поэтому их List обязан резолвиться и в
+      // standalone-dev. Без прокси запрос гасится catch'ем в RulesEditor и
+      // picker молча деградирует до свободного ввода id — отказ, который ничего
+      // не печатает.
+      "/vpc": {
+        target: apiGateway,
+        changeOrigin: true,
+      },
+      "/compute": {
+        target: apiGateway,
+        changeOrigin: true,
+      },
+      "/nlb": {
+        target: apiGateway,
+        changeOrigin: true,
+      },
       "/operations": {
         target: apiGateway,
         changeOrigin: true,
