@@ -36,6 +36,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
@@ -189,6 +190,55 @@ type CheckResult struct {
 	CheckedAt            time.Time
 }
 
+// batchCheckParallelism bounds how many items of ONE BatchCheck pass are resolved
+// against the relation store at the same time.
+//
+// # Why a bound is needed at all, and why it is not "as many as the batch"
+//
+// BatchCheck is the door every sibling service's List filter walks through:
+// vpc/compute/nlb/storage each read a page from their own database, cut it into
+// slices of at most 100 ids (the published cap enforced below) and hand each slice
+// to this method.
+//
+// The predicate is per-object, so there is one store QUESTION per item. The number
+// of store ROUND-TRIPS is a different quantity and is NOT inherent: the store
+// answers one relation about many objects in a single request (cap
+// MaxBatchChecksPerRequest), and authzfilter already uses that to turn a
+// contract-sized page into tens of requests instead of a thousand. A sibling's
+// slice is uniform by construction — same subject, resource type, action and
+// relation, only the id varies — so a 100-item slice is answerable here in a
+// couple of round-trips rather than a hundred. That it still costs a hundred is an
+// OPEN REMAINDER, not physics; whoever closes it starts from
+// authzcascade.Client.BatchCheckWithContext, which already carries the cascade.
+// This bound does not close that remainder and is not meant to: the bound is about
+// WAITING, the remainder is about round-trips.
+//
+// What the bound is about is that the caller's deadline is per REQUEST: a sibling gives
+// one slice one second (their authzfilter.DefaultConfig().Timeout). Resolving the
+// slice one item after another makes its wall time 100 × the store's answer time,
+// so a store answering in 10ms consumes that entire budget and anything slower
+// fails the caller's whole POSITIVE List closed with UNAVAILABLE. Each sibling
+// already bounds ITS fan-out over slices for exactly this reason; that bound
+// cannot see inside this hop, which is where the waiting actually was.
+//
+// 8 rather than "one goroutine per item": in-flight questions multiply against the
+// store's own internal concurrency and against concurrent Lists from other
+// callers, so an unbounded burst trades one caller's latency for everyone's. At 8
+// a full 100-item slice is 13 waves instead of 100, which is the difference between
+// "fits in the caller's budget with room" and "is the caller's budget".
+//
+// The numeral 8 is also authzfilter.BatchParallelism, and the two are NOT the same
+// quantity — do not "unify" them on the strength of the digit. There, 8 bounds
+// in-flight PARTITIONS, each already carrying MaxBatchChecksPerRequest questions,
+// which its own godoc counts as hundreds of questions the store may be resolving
+// at once. Here, 8 bounds in-flight single questions. Same numeral, units apart by
+// the batch cap; an earlier revision of this comment claimed the two "bound the
+// same pressure", which was wrong by that factor.
+//
+// Locked, with both directions, by TestBatchCheck_ResolvesItsItemsConcurrently and
+// TestBatchCheck_ConcurrencyIsBounded.
+const batchCheckParallelism = 8
+
 // clusterAdminMemo memoizes the cluster-admin short-circuit verdict for a single
 // subject across a Check/BatchCheck pass, so a batch from one subject (or a single
 // request) issues the cluster:…#system_admin FGA Check AT MOST ONCE. The
@@ -196,24 +246,61 @@ type CheckResult struct {
 // system_admin tuple), so the verdict is identical for every object in the pass —
 // caching it is correct and preserves fail-closed (the Check is still performed,
 // just deduped).
+//
+// The single-flight is not decoration. A BatchCheck pass resolves its items
+// concurrently (batchCheckParallelism), so this memo is read and written from
+// several goroutines at once; and the resolution itself must be inside the guard,
+// not merely the field writes. Guarding only the fields would let every worker that
+// arrives before the first one finishes miss the memo and ask again — the batch
+// would be race-free and would still issue one super-gate question per item, which
+// is the very cost this type exists to remove.
+//
+// The guard is PER SUBJECT, and that is the whole point of the map. An earlier
+// revision held one mutex across the resolution and claimed serialising "costs
+// nothing that matters: at most one question per subject". The first half was
+// false whenever the second half's premise did not hold: on a slice whose items
+// name different subjects — a shape this method explicitly supports — the single
+// lock was held across a network call for every item in turn, so the pool was
+// defeated entirely and the pass ran at parallelism one. Keyed per subject, the
+// claim is now true as written: same-subject workers wait for the one question
+// that is being asked on their behalf, different subjects never wait for each
+// other, and the per-object checks are never serialised.
 type clusterAdminMemo struct {
-	subject string
-	done    bool
+	mu sync.Mutex
+	by map[string]*clusterAdminVerdict
+}
+
+// clusterAdminVerdict — the single-flight slot for ONE subject.
+type clusterAdminVerdict struct {
+	once    sync.Once
 	allowed bool
 }
 
 // isClusterAdmin returns the (memoized) cluster-admin verdict for subject. The
-// first call performs the flat super-gate Check; subsequent calls for the SAME
-// subject reuse it. A different subject re-resolves (and overwrites the memo).
+// first call for a subject performs the flat super-gate Check; concurrent and
+// subsequent calls for the SAME subject reuse it. Different subjects resolve
+// independently and in parallel.
 func (s *AuthorizeService) isClusterAdmin(ctx context.Context, m *clusterAdminMemo, subject string) bool {
-	if m != nil && m.done && m.subject == subject {
-		return m.allowed
+	if m == nil {
+		return authzguard.SubjectIsClusterAdmin(ctx, s.clusterAdmin, subject)
 	}
-	allowed := authzguard.SubjectIsClusterAdmin(ctx, s.clusterAdmin, subject)
-	if m != nil {
-		m.subject, m.done, m.allowed = subject, true, allowed
+	m.mu.Lock()
+	if m.by == nil {
+		m.by = make(map[string]*clusterAdminVerdict, 1)
 	}
-	return allowed
+	slot := m.by[subject]
+	if slot == nil {
+		slot = &clusterAdminVerdict{}
+		m.by[subject] = slot
+	}
+	m.mu.Unlock()
+
+	// Only the map lookup is under the shared lock; the question itself is under
+	// this subject's own slot, so subjects do not block one another.
+	slot.once.Do(func() {
+		slot.allowed = authzguard.SubjectIsClusterAdmin(ctx, s.clusterAdmin, subject)
+	})
+	return slot.allowed
 }
 
 // Check — single-tuple authorization check (with Conditions + OPA overlay).
@@ -587,41 +674,131 @@ func (s *AuthorizeService) checkRelationWire(ctx context.Context, req CheckRelat
 	return s.relations.CheckWithContext(ctx, req.Subject, req.Relation, req.Object, condCtx)
 }
 
-// BatchCheck — fan-out, results in request-order.
+// BatchCheck — fan-out over a bounded worker pool, results in request-order.
+//
+// # Why the items do not wait on each other
+//
+// This is the door every sibling service's List filter walks through: vpc, compute,
+// nlb and storage each read a page from their OWN database, cut it into slices of at
+// most 100 ids (the cap enforced below) and hand each slice here. The predicate is
+// per-object, so one store question per item is inherent and is NOT what changed.
+//
+// What changed is that the items are no longer a queue. The caller's deadline is per
+// REQUEST — a sibling gives one slice one second — while a sequential pass costs
+// items × the store's answer time, so an optimistic 5ms store already spent half that
+// budget and a 10ms one spent all of it. The result was not a slow page but a failed
+// one: the caller's whole POSITIVE List returning UNAVAILABLE, on the path that
+// exists to make Lists correct. Each sibling already bounds its fan-out over slices
+// for exactly this reason; that bound stops at this hop, and the waiting was inside
+// it. Measured, with both counts, in TestBatchCheck_ResolvesItsItemsConcurrently.
+//
+// # What must not change, and is asserted
+//
+//   - REQUEST ORDER. Results are written to their own index, never appended: a
+//     batched answer that is right but shuffled filters a page by another row's
+//     verdict, and no caller can detect it.
+//   - FAIL-CLOSED, WHOLE-BATCH, on ErrUnavailable — a transient backend outage is not
+//     a per-item deny (it would leak the raw transport error onto a user-facing
+//     surface AND turn an outage into a permanent 403). The first such error wins and
+//     cancels the rest; per-item validation failures still degrade to a deny reason
+//     without failing the batch.
+//   - The cluster-admin super-gate stays deduped to one question per subject; the memo
+//     is single-flight for that reason (see clusterAdminMemo).
 func (s *AuthorizeService) BatchCheck(ctx context.Context, reqs []CheckRequest) ([]*CheckResult, error) {
 	if len(reqs) > 100 {
 		return nil, fmt.Errorf("Illegal argument checks: batch size %d > 100", len(reqs))
+	}
+	out := make([]*CheckResult, len(reqs))
+	if len(reqs) == 0 {
+		return out, nil
 	}
 	// Share ONE cluster-admin memo across the batch: a same-subject batch (the
 	// common shape) resolves the cluster:…#system_admin Check at most once on the
 	// deny path instead of once per item. The memo re-resolves when the subject
 	// changes, so a mixed-subject batch stays correct.
 	caMemo := &clusterAdminMemo{}
-	out := make([]*CheckResult, len(reqs))
+
+	// The first unavailable-class error aborts the pass; cancelling stops the
+	// workers that have not asked yet rather than paying for answers already known
+	// to be discarded.
+	cctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	workers := batchCheckParallelism
+	if len(reqs) < workers {
+		workers = len(reqs)
+	}
+
+	type item struct {
+		idx int
+		req CheckRequest
+	}
+	queue := make(chan item)
+
+	var (
+		mu      sync.Mutex
+		firstEr error
+		wg      sync.WaitGroup
+	)
+	wg.Add(workers)
+	for w := 0; w < workers; w++ {
+		go func() {
+			defer wg.Done()
+			for it := range queue {
+				res, err := s.check(cctx, it.req, caMemo)
+				if err != nil {
+					// An FGA-backend-unavailable failure is NOT a per-item deny:
+					// mirror the standalone Check sibling and fail the WHOLE batch
+					// with the ErrUnavailable sentinel (handler → retryable gRPC
+					// Unavailable with a fixed redacted message). Collapsing it into
+					// a deny_reason would leak the raw OpenFGA transport error
+					// (endpoint host:port + store id) onto a user-facing surface AND
+					// mis-signal a transient outage as a permanent 403
+					// (security.md hardening-invariant #1).
+					if errors.Is(err, iamerr.ErrUnavailable) {
+						mu.Lock()
+						if firstEr == nil {
+							firstEr = err
+							cancel()
+						}
+						mu.Unlock()
+						return
+					}
+					// Genuine per-item validation failure (e.g. "Illegal argument …",
+					// deterministic + leak-free) surfaces as allowed=false +
+					// deny=[err]; the whole batch does NOT fail.
+					out[it.idx] = &CheckResult{
+						Allowed:     false,
+						DenyReasons: []string{err.Error()},
+						CheckedAt:   time.Now().UTC().Truncate(time.Second),
+					}
+					continue
+				}
+				// Written to its OWN index, so workers touch disjoint slots and the
+				// answer keeps the caller's order without a lock.
+				out[it.idx] = res
+			}
+		}()
+	}
+feed:
 	for i, r := range reqs {
-		res, err := s.check(ctx, r, caMemo)
-		if err != nil {
-			// An FGA-backend-unavailable failure is NOT a per-item deny: mirror
-			// the standalone Check sibling and fail the WHOLE batch with the
-			// ErrUnavailable sentinel (handler → retryable gRPC Unavailable with a
-			// fixed redacted message). Collapsing it into a deny_reason would leak
-			// the raw OpenFGA transport error (endpoint host:port + store id) onto
-			// a user-facing surface AND mis-signal a transient outage as a
-			// permanent 403 (security.md hardening-invariant #1).
-			if errors.Is(err, iamerr.ErrUnavailable) {
-				return nil, err
-			}
-			// Genuine per-item validation failure (e.g. "Illegal argument …",
-			// deterministic + leak-free) surfaces as allowed=false + deny=[err];
-			// the whole batch does NOT fail.
-			out[i] = &CheckResult{
-				Allowed:     false,
-				DenyReasons: []string{err.Error()},
-				CheckedAt:   time.Now().UTC().Truncate(time.Second),
-			}
-			continue
+		select {
+		case queue <- item{idx: i, req: r}:
+		case <-cctx.Done():
+			break feed // a worker already failed the batch closed; stop feeding
 		}
-		out[i] = res
+	}
+	close(queue)
+	wg.Wait()
+
+	if firstEr != nil {
+		return nil, firstEr
+	}
+	// cancel() is called only after firstEr is set, so a done cctx with no recorded
+	// error means the CALLER's context expired mid-batch. Report it rather than
+	// handing back a partially-filled slice whose unresolved slots are nil.
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

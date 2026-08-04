@@ -19,6 +19,47 @@
 // why. A number nobody chose cannot be reviewed, cannot be argued with, and
 // cannot be noticed when it changes.
 //
+// # A seventh holder, invisible to both of this package's questions
+//
+// The census as first written measured SERVICES, by two predicates that both
+// described how a cache is MADE rather than what it HOLDS: the walk started at
+// the `services/` directory, and the constructor was looked for by the name
+// `authz.NewCache`. The edge (`gateway/`) satisfies neither — it lives outside
+// `services/` and builds its decision cache with its own constructor over a
+// local LRU. So the process through which every external request passes held a
+// full window while contributing zero files to every walk, and its number was
+// written down nowhere.
+//
+// This was not an oversight in the walks. The edge lay outside what they could
+// express, and a question that cannot reach its subject reports silence — which
+// reads exactly like "clean". Both predicates are now sets: the scan roots
+// include the edge, and verdictCacheCtorNames names constructors beyond
+// corelib's, matched whether the call is qualified or not.
+//
+// # Two things that fix did not buy, stated rather than promised away
+//
+// The first draft of the correction claimed the question "does this process
+// build a verdict cache" needed no vocabulary. It does. It is a vocabulary of
+// CONSTRUCTOR names instead of knob names, and a cache built under a brand-new
+// name is outside it exactly as the edge once was. Saying otherwise would be
+// the same failure the section above records — a check PROMISING to catch what
+// it cannot see — one iteration later. What the fix does buy is that moving a
+// known constructor into a package of its own no longer retires it, because the
+// package qualifier is no longer read.
+//
+// The second: the process is the wrong UNIT for the size question. A process
+// already present in the census could add a second window of any magnitude and
+// stay green, since "does it build a cache" is answered once per process and
+// never again. Size is therefore asked separately, of the WINDOW rather than
+// the process, and by SHAPE rather than by list — see KnobSizesAuthzWindow,
+// whose controls run in both directions.
+//
+// The edge differs from the services in one further respect worth keeping
+// straight: it is the only holder with a PROACTIVE drop (InvalidateSubject,
+// driven by the iam subject_change_outbox drainer, whose sender is real). Its
+// TTL is therefore a backstop rather than the primary path — and a backstop is
+// still a window, still owned by nobody until it is written down.
+//
 // # What it refuses
 //
 // Four separable failures, because they have different fixes:
@@ -42,9 +83,16 @@
 // A cache that is not an authorization-verdict cache — the project-existence
 // cache, the zone/region projection cache — is not this subject. Those cache
 // FACTS about peer resources, not DECISIONS about access, and withdrawing a
-// grant does not make a zone stop existing. Recognition is therefore by the
-// declared knob name, and the gate reports what it matched so a rename is
-// visible as a premise failure rather than as silence.
+// grant does not make a zone stop existing. The same line separates the edge's
+// credential caches — token introspection, Kratos session, DPoP replay — from
+// its decision cache: revoking a CREDENTIAL is a different lane with its own
+// immediate mechanism, and folding the two together would push someone to shrink
+// the grant window hoping to fix a problem it never governed.
+//
+// Recognition is therefore by what the cache HOLDS, expressed as two named sets
+// — the declared knob names and the verdict-cache constructors — and the gate
+// reports what it matched, so a rename shows up as a premise failure rather than
+// as silence.
 //
 // # Why this parses instead of grepping
 //
@@ -67,6 +115,11 @@
 // the knob that sizes it. If files parse and not one site matches, the knobs
 // were renamed or the caches moved, and the gate reports that instead of
 // success over a walk that judged nothing.
+//
+// The shape predicate carries its own premise separately: it must find every
+// knob the policy already names and stay silent on knobs that size something
+// else. Both halves are asserted, because a discriminator proven in one
+// direction only measures nothing.
 package revocationwindowgate
 
 import (
@@ -75,6 +128,7 @@ import (
 	"go/parser"
 	"go/token"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -123,6 +177,119 @@ var knobNames = map[string]string{
 	"authz.list-filter.cache-ttl":            "list-filter",
 	"KACHO_COMPUTE_LIST_FILTER_CACHE_TTL_MS": "list-filter",
 	"KACHO_STORAGE_LIST_FILTER_CACHE_TTL_MS": "list-filter",
+	// per-request decision cache at the EDGE (gateway/internal/middleware).
+	// The edge is the only site with a proactive drop (InvalidateSubject, driven
+	// by the iam subject_change_outbox drainer), so its TTL is the BACKSTOP
+	// window — what remains when that drain is behind or down. A backstop is
+	// still a window, and an undeclared backstop is still an unowned security
+	// parameter, which is why it belongs in the same census as the rest.
+	"KACHO_API_GATEWAY_AUTHZ_CACHE_TTL_SECONDS": "edge-decision",
+}
+
+// verdictCacheCtorNames — constructor names whose product stores an
+// authorization verdict, and which therefore open a revocation window.
+//
+// Membership is by what the cache HOLDS, not by where it lives and not by how
+// it is called: the same name counts qualified (`pkg.NewCache`) and unqualified
+// (`newDecisionCache`), because which of the two a call site uses is a fact
+// about package layout, not about security posture.
+//
+// A cache of CREDENTIALS — token introspection, Kratos session, DPoP replay —
+// is not a member: revoking a credential is a different lane with its own
+// immediate mechanism, and folding the two together pushes people to shrink
+// this window hoping to fix a problem it never governed.
+//
+// This IS a vocabulary, and calling it anything else would repeat the mistake
+// this file already records once. A cache built under a brand-new constructor
+// name is not seen here — that bound is real, it is stated rather than
+// promised away, and it is the reason the size question is asked separately by
+// KnobSizesAuthzWindow, which needs no vocabulary at all.
+var verdictCacheCtorNames = map[string]bool{
+	"NewCache":          true, // pkg/authz (corelib)
+	"NewCacheWithLimit": true, // pkg/authz (corelib)
+	"newDecisionCache":  true, // gateway/internal/middleware/authz_cache.go
+}
+
+// VerdictCacheCtorNames returns the recognised constructor names, sorted — so a
+// caller can state the premise it relies on.
+func VerdictCacheCtorNames() []string {
+	out := make([]string, 0, len(verdictCacheCtorNames))
+	for k := range verdictCacheCtorNames {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// authzWindowKnobMarker / ttlKnobMarker — the two halves of the SHAPE by which
+// a configuration knob is recognised as sizing an authorization-verdict window,
+// without consulting any list of knob names.
+//
+// This exists because the size question was asked through a closed dictionary:
+// a process already present in the census could add a second window of any
+// magnitude under a knob nobody had listed, and nothing went red. The unit of
+// the census has to be the WINDOW, not the process.
+//
+// The shape is checked in both directions by
+// TestKnobShapePredicateHasControlsBothWays: it must find every knob the policy
+// already names, and must stay silent on knobs that size something else
+// (session TTL, DPoP replay, HTTP timeouts).
+var (
+	authzWindowKnobMarker = regexp.MustCompile(`AUTHZ|LIST_FILTER|authz\.|list-filter`)
+	ttlKnobMarker         = regexp.MustCompile(`TTL|ttl`)
+)
+
+// KnobSizesAuthzWindow reports whether a knob NAME says it sizes an
+// authorization-verdict cache window. Name shape only — no list of knobs.
+func KnobSizesAuthzWindow(knob string) bool {
+	return authzWindowKnobMarker.MatchString(knob) && ttlKnobMarker.MatchString(knob)
+}
+
+// ScanWindowKnobNames returns every configuration knob declared in one file
+// whose NAME says it sizes an authorization-verdict window — whether or not the
+// knob is one the policy already knows about. Both declaration shapes the tree
+// uses are read: the viper default and the envconfig struct tag.
+func ScanWindowKnobNames(path, src string) ([]string, error) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, path, src, parser.ParseComments)
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	seen := map[string]bool{}
+	var out []string
+	note := func(k string) {
+		if k == "" || seen[k] || !KnobSizesAuthzWindow(k) {
+			return
+		}
+		seen[k] = true
+		out = append(out, k)
+	}
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch node := n.(type) {
+		case *ast.CallExpr:
+			sel, ok := node.Fun.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != "SetDefault" || len(node.Args) == 0 {
+				return true
+			}
+			if key, kok := stringLit(node.Args[0]); kok {
+				note(key)
+			}
+		case *ast.StructType:
+			for _, fld := range node.Fields.List {
+				if fld.Tag == nil {
+					continue
+				}
+				raw, uerr := strconv.Unquote(fld.Tag.Value)
+				if uerr != nil {
+					continue
+				}
+				note(reflect.StructTag(raw).Get("envconfig"))
+			}
+		}
+		return true
+	})
+	sort.Strings(out)
+	return out, nil
 }
 
 // KnobNames returns the recognised knob names, sorted — so a caller can state
@@ -288,9 +455,16 @@ func timeUnit(e ast.Expr) (time.Duration, bool) {
 }
 
 // parseWindow reads a struct-tag default. A knob whose name ends in _MS states
-// a count of milliseconds; anything else states a Go duration. The unit is
-// taken from the KNOB NAME rather than guessed from the digits, so "5000" is
-// never silently read as five thousand seconds.
+// a count of milliseconds, one ending in _SECONDS a count of seconds; anything
+// else states a Go duration. The unit is taken from the KNOB NAME rather than
+// guessed from the digits, so "5000" is never silently read as five thousand
+// seconds — and, symmetrically, the edge's bare "5" is never read as 5ns.
+//
+// That second half is not hypothetical. Before _SECONDS was recognised, the
+// edge knob's default parsed as neither a duration nor a millisecond count, so
+// parseWindow returned false and the site was skipped — silently. A census
+// whose parser declines to read a declaration does not report a gap; it reports
+// nothing at all, which is indistinguishable from the site not existing.
 func parseWindow(knob, def string) (time.Duration, bool) {
 	if strings.HasSuffix(knob, "_MS") {
 		n, err := strconv.ParseInt(def, 10, 64)
@@ -298,6 +472,13 @@ func parseWindow(knob, def string) (time.Duration, bool) {
 			return 0, false
 		}
 		return time.Duration(n) * time.Millisecond, true
+	}
+	if strings.HasSuffix(knob, "_SECONDS") {
+		n, err := strconv.ParseInt(def, 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		return time.Duration(n) * time.Second, true
 	}
 	d, err := time.ParseDuration(def)
 	if err != nil {
@@ -392,6 +573,23 @@ func ScanInherit(service, path, src string) ([]InheritSite, int, error) {
 // worth remembering is not the missing check. It is that a check PROMISED to
 // catch what it could not see — and a promise like that is worse than silence,
 // being exactly what one relies on when deciding no further guard is needed.
+//
+// # The second thing this question could not see: another implementation
+//
+// "Does this process build a verdict cache" needs no knob vocabulary, which is
+// what makes it strong. But it was asked as "does it call `authz.NewCache`" —
+// and that is a vocabulary too, just of constructors instead of knob names. The
+// edge (gateway/internal/middleware) caches decisions over its own LRU
+// primitive and never calls the corelib constructor, so it answered "no" while
+// holding a full window. It was not overlooked by the walk; it was outside what
+// the walk could express.
+//
+// Hence the recognised set below is a SET, named and extensible, rather than
+// one hard-coded name — and each member is a constructor whose product stores a
+// positive authorization verdict. Caches of credentials (token introspection,
+// session, DPoP replay) are deliberately absent: those ride the credential
+// revocation lane, which is immediate by a different mechanism entirely. See
+// authz.RevocationPolicy, section "Что НЕ ездит по этому окну".
 func ScanConstructors(path, src string) (bool, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, path, src, parser.ParseComments)
@@ -404,16 +602,19 @@ func ScanConstructors(path, src string) (bool, error) {
 		if !ok {
 			return true
 		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok {
-			return true
-		}
-		pkg, ok := sel.X.(*ast.Ident)
-		if !ok || pkg.Name != "authz" {
-			return true
-		}
-		if sel.Sel.Name == "NewCache" || sel.Sel.Name == "NewCacheWithLimit" {
-			found = true
+		switch fn := call.Fun.(type) {
+		case *ast.SelectorExpr:
+			// A QUALIFIED call. The package qualifier is deliberately NOT
+			// examined. Pinning it to "authz" made the answer depend on where
+			// the constructor lives rather than on what it builds: moving the
+			// very same cache into a package of its own took the process out
+			// of the census, silently. Extraction into a package is ordinary
+			// refactoring — the tree already does it twice next door — and it
+			// must not be able to retire a security parameter.
+			found = found || verdictCacheCtorNames[fn.Sel.Name]
+		case *ast.Ident:
+			// The same name, called unqualified from inside its own package.
+			found = found || verdictCacheCtorNames[fn.Name]
 		}
 		return true
 	})

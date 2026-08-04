@@ -55,6 +55,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/kacho/pkg/authz"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/gateway/internal/allowlist"
@@ -134,7 +135,10 @@ type AuthzMiddlewareConfig struct {
 	// Now — clock injection for tests. Defaults to time.Now.
 	Now func() time.Time
 
-	// CacheTTL — decision-cache TTL. Default 5s (spec).
+	// CacheTTL — decision-cache TTL, i.e. the edge's revocation window. Left at
+	// or below zero it takes authz.RevocationPolicy.Default, which is the ONE
+	// place that number is chosen; see RevocationPolicy for what the window
+	// means and why it is a security parameter rather than a tuning constant.
 	CacheTTL time.Duration
 
 	// CacheMaxEntries — LRU cap. Default 10000 (spec).
@@ -198,7 +202,13 @@ func NewAuthzMiddleware(cfg AuthzMiddlewareConfig) (*AuthzMiddleware, error) {
 		cfg.Now = time.Now
 	}
 	if cfg.CacheTTL <= 0 {
-		cfg.CacheTTL = 5 * time.Second
+		// Read the declared policy, never a literal here. A positive verdict is
+		// cached, so this number IS the edge's revocation window — how long a
+		// grant that was taken away keeps working when the proactive drop has
+		// not arrived. While it was an anonymous literal on this line, the edge
+		// had a second, undeclared source for the same security parameter, and
+		// changing it would have moved the window with nothing going red.
+		cfg.CacheTTL = authz.RevocationPolicy.Default
 	}
 	if cfg.CacheMaxEntries <= 0 {
 		cfg.CacheMaxEntries = 10000

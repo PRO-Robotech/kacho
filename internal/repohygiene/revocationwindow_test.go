@@ -28,6 +28,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/tools/revocationwindowgate"
 )
@@ -41,6 +42,11 @@ var revocationScanRoots = []string{
 	"services/registry/internal/apps/kacho/config",
 	"services/compute/internal/config",
 	"services/storage/internal/config",
+	// Край. Он не лежит под services/, и именно поэтому его окно не попало в
+	// перепись: все корни обхода начинались с services/, так что процесс, через
+	// который проходит КАЖДЫЙ внешний запрос, не был прочитан ни одной из
+	// проверок — ни разу, ни одним файлом.
+	"gateway/internal/config",
 }
 
 // TestRevocationWindowIsDeclaredPolicy — окно отзыва объявлено в одном месте, и
@@ -162,8 +168,17 @@ func serviceOfPath(rel string) string {
 	if len(parts) >= 2 && parts[0] == "services" {
 		return parts[1]
 	}
+	// Край живёт вне services/ и зовётся по имени своего бинаря
+	// (gateway/cmd/api-gateway), а не по имени каталога: ключ переписи держит
+	// то имя, которое оператор станет искать.
+	if len(parts) >= 1 && parts[0] == "gateway" {
+		return gatewayProcess
+	}
 	return rel
 }
+
+// gatewayProcess — имя края в переписи политики.
+const gatewayProcess = "api-gateway"
 
 // checkFactoryFiles — композиционные площадки, где строится кеш вердиктов
 // пообъектной проверки. Сервис, у которого своего числа нет, строит его как
@@ -256,12 +271,26 @@ func TestInheritedWindowsAreDeclared(t *testing.T) {
 // старте на него даёт сам конструктор.
 func TestEveryVerdictCacheServiceIsDeclared(t *testing.T) {
 	root := repoRoot(t)
-	servicesDir := filepath.Join(root, "services")
 
+	// Процессы, а не каталоги под services/. Край — такой же процесс с таким же
+	// кешем вердиктов, но лежит вне services/, и обход, начинавшийся с одного
+	// этого каталога, не мог его увидеть в принципе.
+	processes := map[string]string{}
+	servicesDir := filepath.Join(root, "services")
 	svcEntries, err := os.ReadDir(servicesDir)
 	if err != nil {
 		t.Fatalf("предпосылка гейта нарушена: каталог services/ не читается: %v", err)
 	}
+	for _, svc := range svcEntries {
+		if svc.IsDir() {
+			processes[svc.Name()] = filepath.Join(servicesDir, svc.Name())
+		}
+	}
+	gatewayDir := filepath.Join(root, "gateway")
+	if _, serr := os.Stat(gatewayDir); serr != nil {
+		t.Fatalf("предпосылка гейта нарушена: дерево края gateway/ не читается: %v", serr)
+	}
+	processes[gatewayProcess] = gatewayDir
 
 	declared := map[string]bool{}
 	for key := range authz.RevocationPolicy.Windows {
@@ -273,11 +302,8 @@ func TestEveryVerdictCacheServiceIsDeclared(t *testing.T) {
 
 	filesRead := 0
 	building := map[string]bool{}
-	for _, svc := range svcEntries {
-		if !svc.IsDir() {
-			continue
-		}
-		err := filepath.WalkDir(filepath.Join(servicesDir, svc.Name()),
+	for name, dir := range processes {
+		err := filepath.WalkDir(dir,
 			func(p string, d os.DirEntry, err error) error {
 				if err != nil || d.IsDir() {
 					return err //nolint:wrapcheck // walk error propagates as-is
@@ -295,17 +321,18 @@ func TestEveryVerdictCacheServiceIsDeclared(t *testing.T) {
 					return perr //nolint:wrapcheck // parse error propagates as-is
 				}
 				if found {
-					building[svc.Name()] = true
+					building[name] = true
 				}
 				return nil
 			})
 		if err != nil {
-			t.Fatalf("обход services/%s: %v", svc.Name(), err)
+			t.Fatalf("обход %s: %v", dir, err)
 		}
 	}
 
-	t.Logf("осмотрено: файлов сервисов прочитано=%d, сервисов строит кеш вердиктов=%d, "+
-		"сервисов объявлено политикой=%d", filesRead, len(building), len(declared))
+	t.Logf("осмотрено: файлов процессов прочитано=%d, процессов строит кеш вердиктов=%d, "+
+		"процессов объявлено политикой=%d, распознаваемых локальных конструкторов=%v",
+		filesRead, len(building), len(declared), revocationwindowgate.VerdictCacheCtorNames())
 
 	if filesRead == 0 {
 		t.Fatalf("предпосылка гейта нарушена: не прочитано ни одного файла сервисов")
@@ -323,10 +350,128 @@ func TestEveryVerdictCacheServiceIsDeclared(t *testing.T) {
 	}
 	sort.Strings(undeclared)
 	for _, svc := range undeclared {
-		t.Errorf("сервис строит кеш вердиктов, но политикой не объявлен: «%s».\n"+
-			"Кешируется положительный вердикт ⇒ у сервиса есть окно отзыва. "+
+		t.Errorf("процесс строит кеш вердиктов, но политикой не объявлен: «%s».\n"+
+			"Кешируется положительный вердикт ⇒ у процесса есть окно отзыва. "+
 			"Внеси его в pkg/authz.RevocationPolicy (Windows — если у него своя ручка, "+
 			"Inherited — если он берёт умолчание).", svc)
+	}
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Второе окно у процесса, который уже переписан
+// ────────────────────────────────────────────────────────────────────────────
+
+// TestEveryAuthzWindowKnobIsDeclared — единица переписи здесь ОКНО, а не процесс.
+//
+// Проверка выше спрашивает «строит ли этот процесс кеш вердиктов» и отвечает
+// один раз на процесс. Поэтому процесс, единожды в перепись попавший, мог
+// завести ВТОРОЕ окно любой величины под ручкой, которой никто не перечислял, —
+// и красного не было бы ни от чего: ни от конструктора (он уже засчитан), ни от
+// сверки значений (она ходит по закрытому словарю имён).
+//
+// Здесь вопрос задан без словаря имён — по ФОРМЕ ручки — и по всему дереву, а
+// не по перечню каталогов конфигурации: перечень каталогов был бы третьим
+// местом того же класса, где ручка, объявленная не там, невидима.
+func TestEveryAuthzWindowKnobIsDeclared(t *testing.T) {
+	root := repoRoot(t)
+	files, err := treecorpus.UnderWithSuffix(root, ".go")
+	if err != nil {
+		t.Fatalf("предпосылка гейта нарушена: состав дерева не читается: %v", err)
+	}
+
+	declared := map[string]bool{}
+	for _, k := range revocationwindowgate.KnobNames() {
+		declared[k] = true
+	}
+
+	read := 0
+	type hit struct{ knob, file string }
+	var undeclared []hit
+	seenDeclared := map[string]bool{}
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		src, rerr := os.ReadFile(f)
+		if rerr != nil {
+			t.Fatalf("прочитать %s: %v", f, rerr)
+		}
+		read++
+		knobs, serr := revocationwindowgate.ScanWindowKnobNames(f, string(src))
+		if serr != nil {
+			continue // неразбираемый файл ловит собственный страж дерева
+		}
+		rel, _ := filepath.Rel(root, f)
+		for _, k := range knobs {
+			if declared[k] {
+				seenDeclared[k] = true
+				continue
+			}
+			undeclared = append(undeclared, hit{k, filepath.ToSlash(rel)})
+		}
+	}
+
+	t.Logf("осмотрено: отслеживаемых .go прочитано=%d; ручек формы «размеряет окно вердикта»: "+
+		"объявленных найдено=%d из %d, необъявленных=%d",
+		read, len(seenDeclared), len(declared), len(undeclared))
+
+	if read == 0 {
+		t.Fatalf("предпосылка гейта нарушена: не прочитано ни одного файла")
+	}
+	if len(seenDeclared) == 0 {
+		t.Fatalf("предпосылка гейта нарушена: прочитано %d файлов, но ни одна из %d объявленных "+
+			"ручек не найдена формой. Либо ручки переименованы, либо форма перестала их описывать — "+
+			"в обоих случаях эта проверка молчала бы и на настоящей находке", read, len(declared))
+	}
+	for _, h := range undeclared {
+		t.Errorf("%s: ручка %q по форме размеряет окно кеша вердиктов авторизации, но политикой "+
+			"НЕ объявлена.\n"+
+			"  Процесс, единожды попавший в перепись конструкторов, добавляет такое окно молча: "+
+			"«строит ли кеш» отвечено один раз, а величина сверяется по закрытому словарю имён, "+
+			"в котором этой ручки нет.\n"+
+			"  ЧТО ДЕЛАТЬ: внести окно в pkg/authz.RevocationPolicy (Windows) и имя ручки — в "+
+			"knobNames пакета гейта, чтобы её значение сверялось с политикой; либо, если ручка "+
+			"размеряет НЕ вердикт авторизации, переименовать её так, чтобы она этого не заявляла",
+			h.file, h.knob)
+	}
+}
+
+// TestKnobShapePredicateHasControlsBothWays — предикат формы измеряет свойство,
+// а не собственную удобную половину.
+//
+// Предикат, проверенный в одну сторону, не измеряет ничего: он либо находит всё
+// подряд, либо молчит на всём. Здесь обе половины утверждаются явно — каждая
+// объявленная ручка обязана находиться, и каждая ручка соседних семей (сессия,
+// повтор DPoP, кеш чужих фактов, сетевые сроки, размер кеша) обязана НЕ
+// находиться.
+func TestKnobShapePredicateHasControlsBothWays(t *testing.T) {
+	declared := revocationwindowgate.KnobNames()
+	if len(declared) == 0 {
+		t.Fatal("предпосылка пробы нарушена: политика не объявляет ни одной ручки")
+	}
+	for _, k := range declared {
+		if !revocationwindowgate.KnobSizesAuthzWindow(k) {
+			t.Errorf("объявленная ручка %q формой НЕ распознаётся — предикат пропустил бы и её "+
+				"необъявленного близнеца", k)
+		}
+	}
+
+	// Отрицательный контроль. Каждая строка — из соседней семьи: их окна тоже
+	// реальны, но ездят по другому пути отзыва (см. authz.RevocationPolicy,
+	// «Что НЕ ездит по этому окну»), и путать их — та самая ошибка, которая
+	// толкает уменьшать окно гранта вместо снятия учётных данных.
+	for _, k := range []string{
+		"KACHO_API_GATEWAY_SESSION_CACHE_TTL_SECONDS",
+		"KACHO_API_GATEWAY_DPOP_REPLAY_TTL_SECONDS",
+		"KACHO_IAM_INTROSPECTION_CACHE_TTL",
+		"KACHO_VPC_PEER_PROJECT_CACHE_TTL",
+		"http.client.timeout",
+		"authz.cache-size",
+	} {
+		if revocationwindowgate.KnobSizesAuthzWindow(k) {
+			t.Errorf("ручка %q признана размеряющей окно вердикта, хотя размеряет другое. "+
+				"Предикат, красный на законной конструкции, отключают первым", k)
+		}
 	}
 }
 
@@ -337,7 +482,12 @@ func TestEveryVerdictCacheServiceIsDeclared(t *testing.T) {
 // implicitScanRoots — деревья, в которых строится интерсептор. Оба, а не одно:
 // composition root'ы живут в services/, но литерал опций в самом corelib
 // подпадает под то же правило и молчаливого исключения не заслуживает.
-var implicitScanRoots = []string{"services", "pkg"}
+// Край добавлен третьим по той же причине, по которой он был добавлен в
+// revocationScanRoots: список корней, начинавшийся с services/, не мог увидеть
+// процесс, который лежит не там. Сегодня край корневой интерсептор не строит,
+// поэтому находок здесь от него не прибавится — но перечень корней не должен
+// оставаться тем местом, где край снова окажется невидим.
+var implicitScanRoots = []string{"services", "pkg", "gateway"}
 
 // TestNoServiceTakesTheWindowImplicitly — ни одна площадка не получает окно
 // отзыва, не назвав кеш.
