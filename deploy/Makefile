@@ -8,6 +8,7 @@
         guard-kind-context guard-destructive gate-self-test waiter-discipline \
         report-reader-discipline alt-fixture-discipline posture-branch-discipline \
         verdict-aggregator-discipline ceremony-declaration-discipline \
+        dialled-transport-discipline \
         reload-svc-nlb psql-nlb logs-nlb seed-nlb e2e-newman stand-provenance
 
 SHELL := bash
@@ -741,6 +742,25 @@ verdict-aggregator-discipline:
 # ограничение. Ноль прочитанных коллекций — отказ, а не «чисто».
 ceremony-declaration-discipline:
 	@python3 ../tests/authz-fixtures/ceremony_credentials.py --root .. --verify
+
+# dialled-transport-discipline — у каждого адреса, который набирает волна, есть
+# ПРОИЗВОДИТЕЛЬ в прогонщике.
+#
+# Волна церемонии включалась фактом о дереве, печатала свою строку и выводила
+# набор коллекций — а её посев набирал четыре адреса, которых прогонщик не
+# создавал. Проходило это ровно пока пробросы держал человек руками; на чистой
+# машине волна не могла пройти НИ РАЗУ, и при этом всё в ней читалось как
+# работающее. Тот же класс, что «гейт, у входа которого нет производителя», —
+# только предметом здесь транспорт, а не поле запроса.
+#
+# Гейт идёт по модулям, ДОСТИЖИМЫМ из прогонщика, и требует, чтобы порт каждого
+# адреса-умолчания либо пробрасывался, либо передавался прогонщиком явно. Адрес,
+# который не набирают, а СРАВНИВАЮТ (объявленная издателем идентичность),
+# объявлен отдельно и с причиной; запись, которой больше нечего исключать, — сама
+# находка. Ноль прочитанных модулей и ноль вычитанных пробросов — отказ, а не
+# «чисто».
+dialled-transport-discipline:
+	@python3 scripts/assert-dialled-transports-have-a-producer.py --root ..
 
 # Локально: `make helm-manifest-test`; одну проверку — `bash tests/helm/<имя>.sh`.
 #

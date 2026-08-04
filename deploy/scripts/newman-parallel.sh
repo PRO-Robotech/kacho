@@ -70,6 +70,19 @@ GW_INTERNAL_PORT="${GW_INTERNAL_PORT:-18081}"
 GW_TLS_PORT="${GW_TLS_PORT:-18443}"
 IAM_INTERNAL_PORT="${IAM_INTERNAL_PORT:-19091}"
 HYDRA_PORT="${HYDRA_PUBLIC_PORT:-14444}"   # OAuth2 token endpoint (production-posture seed)
+# Transports of WAVE 4 (the ceremony). The wave turns itself on from a fact about the
+# tree — the ceremony seed exists — and the seed dials the identity provider and the
+# token issuer directly, because neither is routed through the gateway. Those dials had
+# no producer here: the runner opened five forwards and the seed needed four addresses
+# that were not among them. It worked only while a human held the forwards by hand, so
+# on a clean machine the wave could not pass ONCE, while everything about it — the
+# auto-enable, the log line, the derived collection set — read as working. Same class as
+# GW_TLS_PORT above: a probe whose transport nobody creates is a probe that never ran.
+# The addresses are passed to the wave explicitly (below) rather than left to the seed's
+# defaults, so the port that is opened and the port that is dialled cannot drift apart.
+KRATOS_PUBLIC_PORT="${KRATOS_PUBLIC_PORT:-24433}"  # native login flow (password is checked HERE)
+KRATOS_ADMIN_PORT="${KRATOS_ADMIN_PORT:-24434}"    # identity create/lookup for the ceremony human
+HYDRA_ADMIN_PORT="${HYDRA_ADMIN_PORT:-24445}"      # login-request accept (TLS listener)
 DELAY="${DELAY:-3}"          # per-request delay (ms) inside each collection
 JOBS="${JOBS:-2}"            # per-suite collection concurrency (× len(SERVICES) total)
 SEED="${SEED:-true}"         # set false to reuse an already-seeded stand
@@ -93,7 +106,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "[parallel] port-forward api-gateway :$GW_PORT/:$GW_INTERNAL_PORT/:$GW_TLS_PORT + iam-internal :$IAM_INTERNAL_PORT + hydra :$HYDRA_PORT"
+echo "[parallel] port-forward api-gateway :$GW_PORT/:$GW_INTERNAL_PORT/:$GW_TLS_PORT + iam-internal :$IAM_INTERNAL_PORT + hydra :$HYDRA_PORT + ceremony (kratos :$KRATOS_PUBLIC_PORT/:$KRATOS_ADMIN_PORT, hydra-admin :$HYDRA_ADMIN_PORT)"
 kubectl -n "$NS" port-forward svc/api-gateway "$GW_PORT:8080" >/tmp/e2e-pp-gw.log 2>&1 &            PF_PIDS+=($!)
 kubectl -n "$NS" port-forward svc/api-gateway "$GW_INTERNAL_PORT:8081" >/tmp/e2e-pp-gwint.log 2>&1 & PF_PIDS+=($!)
 kubectl -n "$NS" port-forward svc/api-gateway "$GW_TLS_PORT:8443" >/tmp/e2e-pp-gwtls.log 2>&1 &     PF_PIDS+=($!)
@@ -104,6 +117,16 @@ kubectl -n "$NS" port-forward svc/kacho-iam-internal "$IAM_INTERNAL_PORT:9091" >
 # seed never dials it); required in production, and setting it HERE means the seed does
 # not have to open one per invocation.
 kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-public "$HYDRA_PORT:4444" >/tmp/e2e-pp-hydra.log 2>&1 & PF_PIDS+=($!)
+# Ceremony transports (WAVE 4). Opened unconditionally, next to the other five, and torn
+# down by the same trap. Deliberately NOT guarded by "skip the wave if the service is
+# absent": a missing transport must surface as the ceremony refusing to seed — which
+# leaves no reports, so assert-suites-green.sh reports every collection of the wave as
+# (no-report) and the run is RED. "Could not reach it" is a finding, not a pass.
+# hydra-public is not re-forwarded: the exchange forward above already serves that
+# address, and one service reachable at two ports is two facts that can disagree.
+kubectl -n "$NS" port-forward svc/kacho-umbrella-kratos-public "$KRATOS_PUBLIC_PORT:80" >/tmp/e2e-pp-kratos-pub.log 2>&1 &  PF_PIDS+=($!)
+kubectl -n "$NS" port-forward svc/kacho-umbrella-kratos-admin "$KRATOS_ADMIN_PORT:80" >/tmp/e2e-pp-kratos-adm.log 2>&1 &    PF_PIDS+=($!)
+kubectl -n "$NS" port-forward svc/kacho-umbrella-hydra-admin-tls "$HYDRA_ADMIN_PORT:4445" >/tmp/e2e-pp-hydra-adm.log 2>&1 & PF_PIDS+=($!)
 sleep 4
 
 # Client certificates for the cluster-internal listeners. iam :9091 demands a verified
@@ -330,8 +353,17 @@ if [[ " $SERVICES " == *" iam "* ]] && [ -f "$CEREMONY_SH" ] && [ -f "$CEREMONY_
   if [ "$CEREMONY_WAVE" = "true" ]; then
     echo
     echo "[parallel] WAVE 4 церемония (условие создаётся посевом церемонии, затем её коллекции)"
+    # The seed's four addresses come from the ports opened above, not from its own
+    # defaults: the opener and the dialler must be one fact. BASE_URL/INTERNAL_BASE_URL
+    # are passed for the same reason.
     if ( cd "$REPO_ROOT/services/iam/tests/newman" \
           && env SETUP_NS="$NS" DELAY="$DELAY" \
+             BASE_URL="http://localhost:$GW_PORT" \
+             INTERNAL_BASE_URL="http://localhost:$GW_INTERNAL_PORT" \
+             KRATOS_PUBLIC_URL="http://localhost:$KRATOS_PUBLIC_PORT" \
+             KRATOS_ADMIN_URL="http://localhost:$KRATOS_ADMIN_PORT" \
+             HYDRA_PUBLIC_URL="http://localhost:$HYDRA_PORT" \
+             HYDRA_ADMIN_URL="https://localhost:$HYDRA_ADMIN_PORT" \
              EXTRA_NEWMAN_ARGS="--env-var baseUrl=http://localhost:$GW_PORT --env-var internalBaseUrl=http://localhost:$GW_INTERNAL_PORT --env-var externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
              bash "$CEREMONY_SH" ); then
       echo "===== [ceremony] GREEN ====="
