@@ -1,0 +1,182 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+// Package metrics — Prometheus observability adapter kacho-registry.
+//
+// Живёт на adapter-границе (Clean Architecture): prometheus-клиент импортируется
+// ТОЛЬКО здесь и в composition root (cmd/kacho-registry) — никогда в domain/ или
+// в use-case. Метрики снимаются с отдельного cluster-internal diagnostic-порта:
+// ни на публичной gRPC-поверхности, ни на data-plane они не публикуются —
+// внутренняя кардинальность не tenant-facing (security.md, инфра-чувствительные
+// данные только на internal-поверхности). Реестр ПРИВАТНЫЙ (prometheus.NewRegistry,
+// не global default): тесты герметичны и нет duplicate-register panic при
+// рестартах composition root в одном процессе.
+//
+// # Почему этот пакет появился и почему именно с этими сериями
+//
+// У kacho-registry не было НИ ОДНОЙ метрики — ни этого пакета, ни эндпоинта.
+// Между тем его очередь регистраций (`kacho_registry.registry_outbox`) — та
+// самая, на которой класс «очередь, не доставившая ни одной строки за всю свою
+// жизнь» был найден вживую: все её строки отвергались владельцем прав, дренаж
+// классифицировал отказ как временный, партиция заклинивала — и всё это выглядело
+// исправно, потому что заметить было нечем. Синхронный регистратор при этом
+// работал, поэтому наблюдаемое поведение сервиса ошибку скрывало.
+//
+// Сводные серии по таблице:
+//
+//	kacho_registry_outbox_backlog_depth{table}              — недоставленных строк
+//	kacho_registry_outbox_oldest_pending_age_seconds{table} — возраст головы очереди
+//	kacho_registry_outbox_poisoned_rows{table}              — отравленных сейчас
+//	kacho_registry_outbox_poisoned_total{table}             — монотонный счётчик отравлений
+//
+// Разложение той же очереди по направлению:
+//
+//	kacho_registry_outbox_backlog_depth_by_direction{table,direction}
+//	kacho_registry_outbox_oldest_pending_age_by_direction_seconds{table,direction}
+//	kacho_registry_outbox_delivered_total{table,direction}
+//
+// Разложение обязательно, потому что эта очередь несёт ОБЕ половины — постановку
+// и снятие регистрации, — а сводные серии на ней остаются здоровыми при полностью
+// мёртвом снятии: реестры и репозитории создаются непрерывно, поэтому глубина
+// мала и голова молода независимо от того, доехал ли хоть один отзыв.
+// `delivered_total{direction="withdrawal"} == 0` — единственная величина,
+// отличающая «снимать было нечего» от «снятие не доезжает».
+//
+// `poisoned_total` — счётчик, а не gauge: отравление это СОБЫТИЕ, и после
+// ужесточения классификации отказа в правах до терминального оно реально
+// достижимо, поэтому обязано быть alertable, а не выводимым из разницы gauge'ей
+// между скрейпами.
+//
+// Плюс стандартные Go/process runtime-коллекторы — они бесплатны и превращают
+// утечку горутин/дескрипторов в график вместо догадки.
+package metrics
+
+import (
+	"net/http"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	outboxmetrics "github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
+)
+
+// Metrics владеет приватным prometheus-реестром kacho-registry. Создаётся один
+// раз в composition root и шарится diagnostic HTTP-listener'ом, outbox-коллектором
+// и poison-observer'ом дренажа.
+type Metrics struct {
+	reg *prometheus.Registry
+
+	outboxBacklog   *prometheus.GaugeVec
+	outboxOldest    *prometheus.GaugeVec
+	outboxPoisonCur *prometheus.GaugeVec
+	outboxPoisonTot *prometheus.CounterVec
+
+	outboxDirBacklog   *prometheus.GaugeVec
+	outboxDirOldest    *prometheus.GaugeVec
+	outboxDirDelivered *prometheus.GaugeVec
+}
+
+// New конструирует адаптер и регистрирует Go + process runtime-коллекторы и
+// outbox-серии kacho-registry.
+func New() *Metrics {
+	reg := prometheus.NewRegistry()
+	reg.MustRegister(
+		collectors.NewGoCollector(),
+		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+	)
+
+	m := &Metrics{
+		reg: reg,
+		outboxBacklog: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "kacho_registry_outbox_backlog_depth",
+			Help: "Недоставленные строки outbox-таблицы.",
+		}, []string{"table"}),
+		outboxOldest: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "kacho_registry_outbox_oldest_pending_age_seconds",
+			Help: "Возраст самой старой недоставленной строки outbox-таблицы. " +
+				"Отвечает на «висит ли строка дольше N».",
+		}, []string{"table"}),
+		outboxPoisonCur: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "kacho_registry_outbox_poisoned_rows",
+			Help: "Отравленные (исчерпавшие попытки) строки outbox-таблицы сейчас.",
+		}, []string{"table"}),
+		outboxPoisonTot: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "kacho_registry_outbox_poisoned_total",
+			Help: "Монотонный счётчик отравлений: отравление — событие, а не состояние.",
+		}, []string{"table"}),
+		outboxDirBacklog: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "kacho_registry_outbox_backlog_depth_by_direction",
+			Help: "Недоставленные строки очереди по направлению (постановка / снятие регистрации).",
+		}, []string{"table", "direction"}),
+		outboxDirOldest: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "kacho_registry_outbox_oldest_pending_age_by_direction_seconds",
+			Help: "Возраст самой старой недоставленной строки одного направления — " +
+				"отвечает на «как давно это направление перестало доезжать».",
+		}, []string{"table", "direction"}),
+		outboxDirDelivered: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "kacho_registry_outbox_delivered_total",
+			Help: "Доставленные строки очереди по направлению. Единственная величина, " +
+				"отличающая «их не было» от «они не доезжают».",
+		}, []string{"table", "direction"}),
+	}
+	reg.MustRegister(
+		m.outboxBacklog, m.outboxOldest, m.outboxPoisonCur, m.outboxPoisonTot,
+		m.outboxDirBacklog, m.outboxDirOldest, m.outboxDirDelivered,
+	)
+	return m
+}
+
+// Handler возвращает promhttp-handler приватного реестра. Монтируется ТОЛЬКО на
+// выделенном cluster-internal diagnostic-listener'е.
+func (m *Metrics) Handler() http.Handler {
+	return promhttp.HandlerFor(m.reg, promhttp.HandlerOpts{})
+}
+
+// ---- outbox/metrics.Recorder ----
+
+// SetBacklogDepth выставляет глубину pending-очереди по таблице.
+func (m *Metrics) SetBacklogDepth(table string, depth float64) {
+	m.outboxBacklog.WithLabelValues(table).Set(depth)
+}
+
+// SetOldestPendingAgeSeconds выставляет возраст старейшей pending-строки.
+func (m *Metrics) SetOldestPendingAgeSeconds(table string, age float64) {
+	m.outboxOldest.WithLabelValues(table).Set(age)
+}
+
+// SetPoisonedCount выставляет текущее число отравленных строк (Collector scan).
+func (m *Metrics) SetPoisonedCount(table string, count float64) {
+	m.outboxPoisonCur.WithLabelValues(table).Set(count)
+}
+
+// IncPoisoned инкрементит монотонный poison-счётчик (drainer poison-observer).
+func (m *Metrics) IncPoisoned(table string) { m.outboxPoisonTot.WithLabelValues(table).Inc() }
+
+// ---- outbox/metrics.DirectionRecorder ----
+//
+// Разложение по направлению Collector спрашивает у получателя ПРИВЕДЕНИЕМ ТИПА в
+// рантайме: потеря этих трёх методов в рефакторинге сборку бы не сломала, а молча
+// прекратила бы публиковать единственную серию, отвечающую на «доезжает ли снятие
+// вообще». Утверждение ниже — то, что не даёт этому случиться тихо.
+
+// SetBacklogDepthByDirection — pending-строки одного направления очереди.
+func (m *Metrics) SetBacklogDepthByDirection(table, direction string, depth float64) {
+	m.outboxDirBacklog.WithLabelValues(table, direction).Set(depth)
+}
+
+// SetOldestPendingAgeByDirection — возраст старейшей pending-строки направления.
+func (m *Metrics) SetOldestPendingAgeByDirection(table, direction string, age float64) {
+	m.outboxDirOldest.WithLabelValues(table, direction).Set(age)
+}
+
+// SetDeliveredTotal — доставленные строки направления.
+func (m *Metrics) SetDeliveredTotal(table, direction string, count float64) {
+	m.outboxDirDelivered.WithLabelValues(table, direction).Set(count)
+}
+
+// Compile-time: адаптер удовлетворяет оба corelib-порта.
+var (
+	_ outboxmetrics.Recorder          = (*Metrics)(nil)
+	_ outboxmetrics.DirectionRecorder = (*Metrics)(nil)
+)

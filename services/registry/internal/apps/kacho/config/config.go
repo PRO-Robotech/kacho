@@ -162,6 +162,17 @@ type Config struct {
 	// задавать в проде — REG-33 immediate-pull не закрыт).
 	PushGrantTTL time.Duration `envconfig:"KACHO_REGISTRY_PUSH_GRANT_TTL" default:"60s"`
 
+	// MetricsAddr — адрес cluster-internal diagnostic-листенера (/healthz,
+	// /metrics). Отдельный порт и от gRPC, и от data-plane НАМЕРЕННО: внутренняя
+	// кардинальность не публикуется ни на tenant-facing поверхности, ни на
+	// docker-эндпоинте (security.md, инфра-чувствительные данные — только
+	// internal). Пусто → листенер не поднимается.
+	//
+	// Наблюдаемости у сервиса не было вовсе — ни этого адреса, ни серий; при том
+	// что именно на его очереди регистраций класс «очередь не доставила ни одной
+	// строки за всю жизнь и это было неоткуда узнать» и наблюдался вживую.
+	MetricsAddr string `envconfig:"KACHO_REGISTRY_METRICS_ADDR" default:":9095"`
+
 	// ===== data-plane OCI auth-proxy (registry.kacho.local) =====
 
 	// DataplaneAddr — адрес data-plane HTTP-листенера (Docker Registry v2 / OCI).

@@ -39,6 +39,7 @@ import (
 	"github.com/PRO-Robotech/kacho/services/registry/internal/dataplane"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/handler"
+	"github.com/PRO-Robotech/kacho/services/registry/internal/observability/metrics"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/operationresolver"
 	"github.com/PRO-Robotech/kacho/services/registry/internal/repo/kacho/pg"
 )
@@ -76,6 +77,25 @@ func runServe(cfg config.Config) error {
 		return err
 	}
 	defer pool.Close()
+
+	// ── наблюдаемость: приватный prometheus-реестр + diagnostic-листенер. У
+	// сервиса не было ни одной метрики, при том что именно его очередь
+	// регистраций — та, на которой класс «очередь не доставила ни одной строки за
+	// всю жизнь, и узнать это было неоткуда» наблюдался вживую. Ошибка привязки
+	// порта фатальна для старта: молча поднятый сервис без наблюдаемости — ровно
+	// та форма без содержания, которую мы ловим в коде.
+	svcMetrics := metrics.New()
+	diagTask, diagShutdown, derr := startDiagnosticListener(cfg.MetricsAddr, svcMetrics, logger)
+	if derr != nil {
+		return fmt.Errorf("start diagnostic listener: %w", derr)
+	}
+	if diagTask != nil {
+		go func() {
+			if serr := diagTask(); serr != nil {
+				logger.Error("diagnostic listener stopped", "err", serr)
+			}
+		}()
+	}
 
 	// ── LRO-стек: общая operations-таблица (corelib) каталога kacho_registry.
 	opsRepo := operations.NewRepo(pool, "kacho_registry")
@@ -240,6 +260,13 @@ func runServe(cfg config.Config) error {
 		iamclient.DecodeRegisterIntent,
 		iamclient.NewRegisterApplier(iamclient.NewRegisterResourceClient(iamConn)),
 		logger,
+		// Отравление — СОБЫТИЕ, и после ужесточения классификации отказа в правах
+		// до терминального оно реально достижимо: строка, которую владелец прав
+		// отверг, больше не ретраится вечно, а выбывает. Считаем её монотонным
+		// счётчиком, иначе единственный след — WARN в логе.
+		drainer.WithPoisonObserver[domain.RegisterIntent](func() {
+			svcMetrics.IncPoisoned(registerOutboxTable)
+		}),
 	)
 	if derr != nil {
 		return fmt.Errorf("build register-drainer: %w", derr)
@@ -256,6 +283,10 @@ func runServe(cfg config.Config) error {
 	if rerr := startRedriveBackstop(ctx, pool, logger); rerr != nil {
 		return fmt.Errorf("start redrive backstop: %w", rerr)
 	}
+	// Скан СОСТОЯНИЯ той же очереди. Дренаж выше сообщает о событиях и делает это
+	// в лог; «в очереди лежит N строк, старейшей M секунд» не производил никто, и
+	// застрявшая очередь молчала ровно так же, как пустая (см. diagnostics.go).
+	go runRegisterOutboxMetrics(ctx, pool, svcMetrics, logger)
 
 	// ── authz: per-RPC OpenFGA Check на ОБОИХ листенерах (AuthN+AuthZ везде —
 	// internal :9091 НЕ освобождён, security.md). Check обязателен —
@@ -402,6 +433,11 @@ func runServe(cfg config.Config) error {
 			}
 			cancelDP()
 		}
+		// Diagnostic-листенер закрывается вместе с остальными: скрейп в момент
+		// остановки не должен висеть на полузакрытом соединении.
+		diagCtx, cancelDiag := context.WithTimeout(context.Background(), 5*time.Second)
+		diagShutdown(diagCtx)
+		cancelDiag()
 		// Дренируем in-flight LRO-worker'ы: SIGTERM не должен оставить async-мутацию
 		// done=false навсегда (клиент завис бы в polling). Свежий ctx — request-ctx
 		// уже отменён возвратом Operation клиенту.

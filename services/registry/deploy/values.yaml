@@ -57,6 +57,11 @@ service:
   grpcPort: 9090
   internalGrpcPort: 9091
   dataplanePort: 8080
+  # Cluster-internal diagnostic-порт (/healthz, /metrics). ОТДЕЛЬНЫЙ и от gRPC,
+  # и от data-plane намеренно: внутренняя кардинальность не публикуется ни на
+  # tenant-facing поверхности, ни на docker-эндпоинте. Публикуется только на
+  # Service `<name>-internal`.
+  metricsPort: 9095
   # Dedicated external VIP for the data-plane (type=LoadBalancer). Cloud LB
   # (fe3455 Beget/Cilium) assigns a separate external IP for the OCI endpoint.
   dataplaneLB:

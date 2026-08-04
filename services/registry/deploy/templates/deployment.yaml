@@ -77,6 +77,8 @@ spec:
               containerPort: {{ .Values.service.internalGrpcPort }}
             - name: dataplane
               containerPort: {{ .Values.service.dataplanePort }}
+            - name: metrics
+              containerPort: {{ .Values.service.metricsPort }}
           env:
             # ─── Postgres (schema kacho_registry) ───
             - name: KACHO_REGISTRY_DB_HOST
@@ -105,6 +107,12 @@ spec:
               value: "{{ .Values.service.internalGrpcPort }}"
             - name: KACHO_REGISTRY_DATAPLANE_ADDR
               value: ":{{ .Values.service.dataplanePort }}"
+            # Diagnostic-листенер: /healthz + /metrics. Единственное место, где
+            # состояние очереди регистраций (глубина, возраст головы, доставленное
+            # по направлению) вообще наблюдаемо — без него застрявшая очередь
+            # молчит ровно так же, как пустая.
+            - name: KACHO_REGISTRY_METRICS_ADDR
+              value: ":{{ .Values.service.metricsPort }}"
             # AuthN fail-closed gate (dev | production | production-strict).
             - name: KACHO_REGISTRY_AUTH_MODE
               value: "{{ .Values.authMode }}"

@@ -384,6 +384,15 @@ const (
 	EventFGAUnregister = "fga.unregister"
 )
 
+// Event types of the iam tuple outbox. Same two directions, different vocabulary: the
+// modules ask iam to REGISTER a resource, iam itself writes and deletes the individual
+// tuples. The direction NAMES are deliberately the same in both, so one dashboard panel
+// and one alert cover every queue on the platform.
+const (
+	EventFGATupleWrite  = "fga.tuple.write"
+	EventFGATupleDelete = "fga.tuple.delete"
+)
+
 // RegisterOutboxDirections is the CollectorConfig.Directions value for an owner-
 // registration outbox: grants and withdrawals reported apart.
 //
@@ -398,5 +407,25 @@ func RegisterOutboxDirections() map[string][]string {
 	return map[string][]string{
 		DirectionGrant:      {EventFGARegister},
 		DirectionWithdrawal: {EventFGAUnregister},
+	}
+}
+
+// TupleOutboxDirections is the CollectorConfig.Directions value for the iam tuple outbox
+// (`kacho_iam.fga_outbox`): tuple writes and tuple deletes reported apart.
+//
+// This queue is the one where the asymmetry bites hardest, because it is where revocation
+// physically happens: every AccessBinding removal, every group-member removal and every
+// delete-stale of the reconciler leaves through it. Its own drainer configuration already
+// spells out that writes and deletes of the SAME tuple are not commutative and that a
+// delete overtaking its predecessor write makes the tuple survive the revoke. That is a
+// statement about ORDER; this is the statement about ARRIVAL, and no aggregate series can
+// make it: grants flow continuously, so depth stays small and the head stays young no
+// matter whether a single delete ever lands.
+//
+// Returns a fresh map per call so a caller cannot mutate the shared answer.
+func TupleOutboxDirections() map[string][]string {
+	return map[string][]string{
+		DirectionGrant:      {EventFGATupleWrite},
+		DirectionWithdrawal: {EventFGATupleDelete},
 	}
 }
