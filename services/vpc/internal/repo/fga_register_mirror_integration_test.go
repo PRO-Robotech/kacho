@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
@@ -53,11 +54,11 @@ func Test_T3_01_FGARegisterEmit_PayloadCarriesLabelsParentAndSourceVersion(t *te
 
 	labels := map[string]string{"env": "prod", "team": "core"}
 	err = legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
-		return w.FGARegister().EmitRegister(ctx, fgaregister.Intent{Items: []fgaregister.Item{{
+		return emitRegisterErr(w.FGARegister().EmitRegister(ctx, fgaregister.Intent{Items: []fgaregister.Item{{
 			Tuple:           fgaregister.ProjectHierarchy("prj-mir", "vpc_subnet", "sub-mir"),
 			Labels:          labels,
 			ParentProjectID: "prj-mir",
-		}}})
+		}}}))
 	})
 	require.NoError(t, err)
 
@@ -84,11 +85,11 @@ func Test_T3_01_FGARegisterEmit_SourceVersionMonotonic(t *testing.T) {
 
 	emit := func(labels map[string]string) {
 		require.NoError(t, legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
-			return w.FGARegister().EmitRegister(ctx, fgaregister.Intent{Items: []fgaregister.Item{{
+			return emitRegisterErr(w.FGARegister().EmitRegister(ctx, fgaregister.Intent{Items: []fgaregister.Item{{
 				Tuple:           fgaregister.ProjectHierarchy("prj-mon", "vpc_subnet", "sub-mon"),
 				Labels:          labels,
 				ParentProjectID: "prj-mon",
-			}}})
+			}}}))
 		}))
 	}
 	emit(map[string]string{"env": "prod"})
@@ -111,3 +112,7 @@ func Test_T3_01_FGARegisterEmit_SourceVersionMonotonic(t *testing.T) {
 	require.NotEmpty(t, versions[1])
 	assert.LessOrEqual(t, versions[0], versions[1], "source_version monotonic per object")
 }
+
+// emitRegisterErr — адаптер под новую двузначную сигнатуру EmitRegister: тесту
+// этого файла нужен только исход, db-штамп проверяется отдельным тестом.
+func emitRegisterErr(_ time.Time, err error) error { return err }

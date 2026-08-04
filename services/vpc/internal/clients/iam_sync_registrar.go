@@ -36,12 +36,22 @@ func NewSyncRegistrar(cli IAMRegisterRPC) *SyncRegistrar {
 	return &SyncRegistrar{cli: cli, timeout: 5 * time.Second}
 }
 
-// Register синхронно регистрирует owner-tuple для каждого Item. Stamp'ит
-// source_version текущим временем (монотонно >= source_version intent'а, который
-// стампится `now()` внутри writer-TX до commit) — last-source-state-wins. Первая
-// ошибка прекращает регистрацию и возвращается (fail-closed).
-func (s *SyncRegistrar) Register(ctx context.Context, items []fgaregister.Item) error {
-	sv := timestamppb.New(time.Now())
+// Register синхронно регистрирует owner-tuple для каждого Item, неся ТУ ЖЕ
+// монотонную версию, которой БД проштамповала durable-intent внутри writer-TX
+// (`sourceVersion`, возвращён FGARegisterEmitter.EmitRegister).
+//
+// Почему не свежие часы. Каждая регистрация доезжает до iam ДВАЖДЫ — этим
+// вызовом и дренажом того же intent'а, — и приёмная сторона гасит повторную
+// доставку строгим монотонным сравнением версий. При одинаковой версии вторая
+// доставка не меняет зеркала, КАКАЯ БЫ ни пришла первой, и повторная
+// материализация не запускается. Штамп `time.Now()` после коммита был строго
+// новее db-штампа, поэтому гашение работало только в одном порядке: когда дренаж
+// успевал первым, синхронный вызов выглядел новее состоянием и заставлял iam
+// пересчитывать материализацию заново — на самом горячем пути создания ресурса.
+//
+// Первая ошибка прекращает регистрацию и возвращается (fail-closed).
+func (s *SyncRegistrar) Register(ctx context.Context, items []fgaregister.Item, sourceVersion time.Time) error {
+	sv := timestamppb.New(sourceVersion)
 	for _, it := range items {
 		cctx := ctx
 		var cancel context.CancelFunc

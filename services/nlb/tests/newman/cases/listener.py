@@ -34,10 +34,22 @@ _VPC_SUBNETS = "/vpc/v1/subnets"
 # subnets leaked by prior/concurrent runs is improbable rather than guaranteed. Paired
 # with best-effort subnet reclaim in _cleanup_lb() (bounds accumulation). Java-style
 # 31-bit string hash (`(h<<5)-h` kept 32-bit via `|0`) — no Math.imul, newman-sandbox-safe.
+#
+# SECOND HALF of the same root cause, fixed only later: seeding the hash with `runId`
+# ALONE separates RUNS but NOT the four collections INSIDE one run. `_cidrSeq` restarts
+# at 1 in every newman process (stated three paragraphs up) while `__oct2`/`__oct3`-base
+# are pinned by the shared runId — so listener / load-balancer / cross-resource /
+# authz-deny walked the IDENTICAL /24 sequence, and the only thing standing between them
+# was whether the earlier collection's best-effort subnet reclaim had already landed.
+# That is a race, not a separation: observed live on the third consecutive stand run
+# (`setup-subnet` → `Subnet CIDRs can not overlap`, 10 cascaded assertions in listener).
+# The seed is therefore salted with a per-collection literal, so each collection walks
+# its own band deterministically. The literal is baked at generation time on purpose —
+# newman exposes no collection identity to a sandbox script.
 _CIDR_ALLOC_PRE = [
     "var __seq = parseInt(pm.environment.get('_cidrSeq') || '0', 10) + 1;",
     "pm.environment.set('_cidrSeq', String(__seq));",
-    "var __run = (pm.environment.get('runId') || 'x0');",
+    "var __run = (pm.environment.get('runId') || 'x0') + '/listener';",
     "var __h = 0; for (var i = 0; i < __run.length; i++) { __h = ((__h << 5) - __h + __run.charCodeAt(i)) | 0; }",
     "__h = __h & 0x7fffffff;",
     # oct2 ∈ [16,235] (220 run-scoped values); oct3 = run-random base (high bits) + seq

@@ -610,7 +610,11 @@ func (u *CreateAddressUseCase) doCreate(ctx context.Context, addrID string, in C
 		fgaregister.ProjectHierarchyItem(in.ProjectID, "vpc_address", created.ID,
 			domain.LabelsToMap(created.Labels)),
 	}
-	if err := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(items...)); err != nil {
+	// Версия, которой БД проштамповала intent ВНУТРИ writer-TX: её же понесёт
+	// синхронная регистрация ниже, чтобы повторную доставку гасило монотонное
+	// сравнение у принимающей стороны независимо от того, кто пришёл первым.
+	intentVersion, err := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(items...))
+	if err != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: fga register intent: %v", repo.ErrInternal, err))
 	}
 	if err := w.Commit(); err != nil {
@@ -624,7 +628,7 @@ func (u *CreateAddressUseCase) doCreate(ctx context.Context, addrID string, in C
 	// и подменяет сообщение всей цепочкой) на уже созданный адрес — фантом.
 	// Поэтому предупреждение, а не ошибка.
 	if u.registrar != nil {
-		if err := u.registrar.Register(ctx, items); err != nil {
+		if err := u.registrar.Register(ctx, items, intentVersion); err != nil {
 			slog.WarnContext(ctx, "sync owner-tuple register failed; register-drainer will apply the durable intent",
 				"resource", "Address", "id", created.ID, "err", err)
 		}

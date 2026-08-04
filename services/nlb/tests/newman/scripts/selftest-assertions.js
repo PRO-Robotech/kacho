@@ -9,7 +9,7 @@
 // Вердикт — из ИСПОЛНЕНИЯ, не из наличия слова в тексте: grep находит слово и в
 // комментарии, объясняющем эту же защиту.
 //
-// Три предиката:
+// Четыре предиката:
 //
 //   A (взаимоисключающие исходы) — кейс, у которого шаг молча принимает И успех, И
 //       отказ, и НИ ОДНО утверждение кейса не падает в «мире успеха». Такой кейс не
@@ -22,11 +22,19 @@
 //       заявлено, и отчитывается зелёным. Отсутствие фикстуры обязано быть отказом, а
 //       не тихой подменой.                                            → ОТКАЗ
 //
-//   C (опрос ведёт не тот субъект) — шаг выполнен под явным субъектом, а следующий
-//       за ним опрос операции оставлен на умолчании коллекции. Чтение операции
+//   C (опрос ведёт не тот субъект) — операцию завёл шаг под явным субъектом, а её
+//       опрос ведёт другой субъект (или умолчание коллекции). Чтение операции
 //       owner-scoped, поэтому чужой опрос получает 404, неотличимый от «нет такой»:
 //       исход мутации остаётся НЕизвестен, а кейс выглядит продуктовым дефектом.
+//       Референт опроса — шаг, ЗАХВАТИВШИЙ opId, а не сосед по списку.
 //                                                                     → ОТКАЗ
+//
+//   D (ретрай peer-полосы) — шаг, обёрнутый bounded-ретраем над окном видимости
+//       чужой ссылки, обязан ПОВТОРЯТЬСЯ на переходном отказе
+//       (`ErrorInfo.reason = PEER_RESOURCE_MISSING`) и НЕ повторяться на
+//       терминальном (та же генерическая проза, код 3, без token'а). Первое без
+//       второго маскирует негативы; второе без первого сжигает шаг с первой
+//       попытки на здоровом продукте.                                 → ОТКАЗ
 //
 // Плюс перепись осмотренного: «ноль находок» обязано быть отличимо от «ноль
 // прочитанного». И проверка собственной предпосылки: инъекция дефекта ловится,
@@ -359,30 +367,56 @@ function prove() {
   if (checkCollectionB(legitB, 'injected')) problems.push('предикат B ошибочно поймал законную форму (отказ вместо подмены)');
 
   // --- предикат C: инъекция в обе стороны ---
-  const stepWith = (name, subj) => ({
+  // `captures` — шаг КЛАДЁТ opId в окружение; именно это делает его референтом
+  // последующего опроса (см. checkCaseC).
+  const stepWith = (name, subj, captures) => ({
     name,
     request: { method: 'GET', url: { raw: 'x' } },
-    event: subj ? [{ listen: 'prerequest', script: { exec: [
-      `// AZD per-step: bearer from env '${subj}'`,
-      `const __t = pm.environment.get('${subj}') || '';`,
-    ] } }] : [],
+    event: [
+      ...(subj ? [{ listen: 'prerequest', script: { exec: [
+        `// AZD per-step: bearer from env '${subj}'`,
+        `const __t = pm.environment.get('${subj}') || '';`,
+      ] } }] : []),
+      ...(captures ? [{ listen: 'test', script: { exec: [
+        "pm.environment.set('opId', String(pm.response.json().id));",
+      ] } }] : []),
+    ],
   });
   // ДЕФЕКТ: мутация под явным субъектом, опрос — на умолчании.
-  if (checkCaseC([stepWith('cr-as-sa', 'jwtServiceAccountEditor'), stepWith('poll-op-1', null)]).length !== 1) {
+  if (checkCaseC([stepWith('cr-as-sa', 'jwtServiceAccountEditor', true), stepWith('poll-op-1', null)]).length !== 1) {
     problems.push('предикат C не поймал опрос, оставленный на умолчании после явного субъекта');
   }
   // ЗАКОННО: тот же субъект у обоих — молчит.
-  if (checkCaseC([stepWith('cr-as-sa', 'jwtServiceAccountEditor'),
+  if (checkCaseC([stepWith('cr-as-sa', 'jwtServiceAccountEditor', true),
     stepWith('poll-op-1', 'jwtServiceAccountEditor')]).length !== 0) {
     problems.push('предикат C покраснел на согласованном субъекте');
   }
   // ЗАКОННО: шаг без явного субъекта — заявки нет, сверять нечего.
-  if (checkCaseC([stepWith('cr', null), stepWith('poll-op-1', null)]).length !== 0) {
+  if (checkCaseC([stepWith('cr', null, true), stepWith('poll-op-1', null)]).length !== 0) {
     problems.push('предикат C потребовал субъекта там, где его никто не заявлял');
   }
   // ЗАКОННО: за шагом идёт не опрос — правило о нём ничего не говорит.
-  if (checkCaseC([stepWith('cr-as-sa', 'jwtServiceAccountEditor'), stepWith('get-after', null)]).length !== 0) {
+  if (checkCaseC([stepWith('cr-as-sa', 'jwtServiceAccountEditor', true), stepWith('get-after', null)]).length !== 0) {
     problems.push('предикат C сработал на шаге, который операцию не опрашивает');
+  }
+  // ЗАКОННО и ровно та форма, на которой прежняя редакция давала ложный срабат:
+  // между захватом операции и её опросом стоит ОТВЕРГНУТЫЙ шаг ДРУГОГО субъекта
+  // (негатив «не создатель не может отменить»). Он операции не заводит, поэтому
+  // референт опроса — по-прежнему захвативший её создатель.
+  if (checkCaseC([
+    stepWith('cr-as-A', 'jwtProjectEditorA', true),
+    stepWith('cancel-as-B', 'jwtProjectEditorB'),
+    stepWith('poll-op-1', 'jwtProjectEditorA'),
+  ]).length !== 0) {
+    problems.push('предикат C покраснел на отвергнутом шаге другого субъекта, который операции не заводит');
+  }
+  // И зеркально: если опрос ведёт тот, кому только что отказали, — это дефект.
+  if (checkCaseC([
+    stepWith('cr-as-A', 'jwtProjectEditorA', true),
+    stepWith('cancel-as-B', 'jwtProjectEditorB'),
+    stepWith('poll-op-1', 'jwtProjectEditorB'),
+  ]).length !== 1) {
+    problems.push('предикат C не поймал опрос под субъектом, которому операция не видна');
   }
 
   return problems;
@@ -413,22 +447,98 @@ function stepSubject(step) {
   return null;   // наследует умолчание коллекции
 }
 
+// CAPTURES_OP — шаг КЛАДЁТ идентификатор операции в окружение. Это и есть признак
+// владения: опрос читает `{{opId}}`, поэтому его референт — не сосед по списку, а
+// последний шаг, ПОЛОЖИВШИЙ туда значение.
+const CAPTURES_OP = /pm\.environment\.set\('opId'/;
+
+function stepCapturesOp(step) {
+  for (const ev of step.event || []) {
+    if (ev.listen !== 'test') continue;
+    if (CAPTURES_OP.test(((ev.script || {}).exec || []).join('\n'))) return true;
+  }
+  return false;
+}
+
 // Возвращает список расхождений внутри одного кейса.
+//
+// Референт опроса — последний шаг, ЗАХВАТИВШИЙ opId, а не предыдущий по списку.
+// Прежняя редакция сравнивала с соседом и краснела на законной конструкции: между
+// созданием и опросом законно стоит ОТВЕРГНУТЫЙ шаг другого субъекта (негатив
+// «не создатель не может отменить»). Такой шаг операции не заводит — сравнивать
+// опрос с ним значит требовать, чтобы операцию A опрашивал B, то есть ровно то,
+// что кейс этажом выше объявляет невозможным. Гейт, красный на законной форме,
+// снимают целиком — поэтому признак привязан к владению значением, а не к
+// соседству.
 function checkCaseC(steps) {
   const out = [];
-  for (let i = 0; i < steps.length - 1; i += 1) {
-    const subj = stepSubject(steps[i]);
-    if (!subj) continue;                                  // умолчание — не заявка
-    const next = steps[i + 1];
-    if (!/^poll-op/.test(next.name || '')) continue;      // опрос идёт СРАЗУ за шагом
-    const pollSubj = stepSubject(next);
-    if (pollSubj !== subj) {
-      out.push(`шаг ${steps[i].name} выполнен субъектом ${subj}, а опрос ${next.name} — `
-        + `${pollSubj || 'умолчанием коллекции'}: операция читается по владельцу, `
-        + 'и чужой опрос получит 404, неотличимый от «нет такой»');
+  let owner = null;        // субъект последнего шага, захватившего opId
+  let ownerName = null;
+  for (const step of steps) {
+    if (/^poll-op/.test(step.name || '')) {
+      if (!owner) continue;                               // захват был умолчанием — не заявка
+      const pollSubj = stepSubject(step);
+      if (pollSubj !== owner) {
+        out.push(`операцию завёл шаг ${ownerName} под субъектом ${owner}, а опрос ${step.name} ведёт `
+          + `${pollSubj || 'умолчание коллекции'}: операция читается по владельцу, `
+          + 'и чужой опрос получит 404, неотличимый от «нет такой»');
+      }
+      continue;
     }
+    if (stepCapturesOp(step)) { owner = stepSubject(step); ownerName = step.name; }
   }
   return out;
+}
+
+// --- предикат D: ретрай peer-полосы ловит ПЕРЕХОДНОЕ и не глотает ТЕРМИНАЛЬНОЕ ---
+//
+// `retry_create_until_present` перекрывает окно, в котором чужая ссылка (vpc-шная
+// подсеть/адрес, заведённая тем же вызывающим шагом раньше) ещё не видна
+// пообъектному authz. У окна два предъявления, и они выглядят ПО-РАЗНОМУ:
+//
+//   - подсеть → проза `"subnet <id> not found"` (её и ловил прежний признак);
+//   - адрес   → `FAILED_PRECONDITION` с намеренно ГЕНЕРИЧЕСКОЙ прозой
+//     `"Illegal argument addressId"` (анти-oracle) и машинным
+//     `ErrorInfo.reason = PEER_RESOURCE_MISSING` в деталях.
+//
+// Разбором прозы вторая полоса неотличима от ТЕРМИНАЛЬНОГО mismatch'а, у которого
+// текст ровно тот же, — поэтому шаг сжигал свою единственную попытку и падал
+// (CI 30919903252: cr-link / cr-ext-link / cr-linked, по одному исполнению каждый).
+//
+// Здесь проверяется ровно то, что делает признак ИСПОЛНЕНИЕМ, в обе стороны:
+// на переходном ответе шаг обязан повториться, на терминальном — НЕТ. Второе не
+// менее важно: ретрай, срабатывающий на терминальном отказе, маскировал бы
+// негативы, ради которых генерическая проза и заводилась.
+const PEER_MISS_BODY = {
+  code: 9,
+  message: 'Illegal argument addressId',
+  details: [{ '@type': 'type.googleapis.com/google.rpc.ErrorInfo', reason: 'PEER_RESOURCE_MISSING', domain: 'nlb.kacho.cloud' }],
+};
+const TERMINAL_BODY = { code: 3, message: 'Illegal argument addressId', details: [] };
+
+// Шаг, обёрнутый retry_create_until_present, помечен суффиксом `-cr<N>` (гарантия
+// уникальности имени для setNextRequest). Признак — на ИМЕНИ, а не на тексте
+// скрипта, иначе он ловил бы и комментарий, объясняющий эту же защиту.
+const WRAPPED_CREATE = /-cr\d+$/;
+
+function retriesOn(step, body) {
+  const exec = scriptOf(step, 'test');
+  if (!exec) return null;
+  const env = baseEnv();
+  return runScript(exec, { response: { code: 400, body }, env, name: step.name }).retried;
+}
+
+function checkStepD(step) {
+  if (!WRAPPED_CREATE.test(step.name || '')) return null;
+  if (retriesOn(step, PEER_MISS_BODY) !== true) {
+    return `${step.name}: на переходной полосе (ErrorInfo.reason=PEER_RESOURCE_MISSING) шаг НЕ повторяется `
+      + '— окно видимости чужой ссылки не перекрыто, и шаг сгорает с первой попытки';
+  }
+  if (retriesOn(step, TERMINAL_BODY) !== false) {
+    return `${step.name}: терминальный отказ (code 3, та же проза, без token'а) ПОВТОРЯЕТСЯ `
+      + '— ретрай маскирует негатив, ради которого генерическая проза и заводилась';
+  }
+  return null;
 }
 
 const proveProblems = prove();
@@ -461,9 +571,11 @@ if (collections.length === 0) {
 const problemsA = [];
 const problemsB = [];
 const problemsC = [];
+const problemsD = [];
 let nCases = 0;
 let nSteps = 0;
 let nAuthedSteps = 0;   // перепись предмета предиката C: «ноль находок» != «ноль осмотренного»
+let nWrappedCreates = 0; // перепись предмета предиката D (то же требование)
 
 for (const file of collections) {
   const label = file.replace('.postman_collection.json', '');
@@ -478,6 +590,12 @@ for (const file of collections) {
     const a = checkCaseA(caseItem, steps);
     if (a) problemsA.push(`${trail.join(' :: ')}: ${a}`);
     for (const st of steps) if (stepSubject(st)) nAuthedSteps += 1;
+    for (const st of steps) {
+      if (!WRAPPED_CREATE.test(st.name || '')) continue;
+      nWrappedCreates += 1;
+      const d = checkStepD(st);
+      if (d) problemsD.push(`${trail.join(' :: ')}: ${d}`);
+    }
     for (const c of checkCaseC(steps)) problemsC.push(`${trail.join(' :: ')}: ${c}`);
   }
 }
@@ -488,8 +606,10 @@ console.log(`  предикат B (умолчание подменяет суб�
 console.log(`  заявленная терпимость уборки (исключено):        ${declaredTeardown.length}`);
 console.log(`  предикат C (опрос ведёт не тот субъект):          ${problemsC.length}`
   + `   [шагов с явным субъектом осмотрено: ${nAuthedSteps}]`);
+console.log(`  предикат D (ретрай peer-полосы: ловит переходное / не глотает терминальное): ${problemsD.length}`
+  + `   [обёрнутых create-шагов осмотрено: ${nWrappedCreates}]`);
 
-const fatal = problemsA.concat(problemsB).concat(problemsC);
+const fatal = problemsA.concat(problemsB).concat(problemsC).concat(problemsD);
 if (fatal.length > 0) {
   console.error(`SELFTEST FAIL: ${fatal.length} находка(ок):`);
   for (const p of fatal) console.error('  - ' + p);
@@ -497,6 +617,13 @@ if (fatal.length > 0) {
 }
 if (nCases === 0) {
   console.error('SELFTEST FAIL: ни одного кейса не осмотрено — гейт ничего не проверил');
+  process.exit(1);
+}
+if (nWrappedCreates === 0) {
+  // Предпосылка предиката D: обёрнутые create-шаги в дереве ЕСТЬ. Их исчезновение —
+  // либо снятая защита от окна видимости, либо сменившийся суффикс обёртки; и то и
+  // другое обязано быть отказом, а не тихим «ноль находок».
+  console.error('SELFTEST FAIL: ни одного обёрнутого create-шага — предикату D нечего проверять');
   process.exit(1);
 }
 if (nAuthedSteps === 0) {

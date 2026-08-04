@@ -16,6 +16,7 @@ package kacho
 
 import (
 	"context"
+	"time"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/fgaregister"
 )
@@ -109,8 +110,16 @@ type OutboxEmitter interface {
 // чтобы register-drainer клеймил/применял их независимо (poison/transient одного
 // tuple не блокирует остальные). Пустой Intent (Tuples == nil) — no-op.
 type FGARegisterEmitter interface {
-	// EmitRegister пишет event_type='fga.register' строку на каждый tuple.
-	EmitRegister(ctx context.Context, intent fgaregister.Intent) error
+	// EmitRegister пишет event_type='fga.register' строку на каждый tuple и
+	// возвращает монотонную версию, которой БД проштамповала эти строки.
+	//
+	// Версия одна на весь вызов: `now()` в PostgreSQL — время НАЧАЛА транзакции,
+	// поэтому все строки одной writer-TX получают идентичный source_version.
+	// Она нужна синхронному регистратору (fgaregister.Registrar): обе доставки
+	// одной регистрации обязаны нести одну версию, иначе гашение повторной
+	// доставки на приёмной стороне зависит от того, кто выиграл гонку.
+	// Пустой Intent → нулевое время (штамповать было нечего).
+	EmitRegister(ctx context.Context, intent fgaregister.Intent) (time.Time, error)
 	// EmitUnregister пишет event_type='fga.unregister' строку на каждый tuple.
 	EmitUnregister(ctx context.Context, intent fgaregister.Intent) error
 }

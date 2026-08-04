@@ -217,9 +217,10 @@ func TestNetworkInterfaceRepo_T32Atom01_RollbackNoIntent(t *testing.T) {
 	rec.NetworkInterface.Labels = domain.LabelsFromMap(nil) // очищаем labels
 	_, err = w.NetworkInterfaces().UpdateMeta(ctx, &rec.NetworkInterface)
 	require.NoError(t, err)
-	require.NoError(t, w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(
+	_, emitErr := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(
 		fgaregister.ProjectHierarchyItem("prj-A", "vpc_network_interface", nicID, nil),
-	)))
+	))
+	require.NoError(t, emitErr)
 	w.Abort() // имитируем сбой до commit
 
 	// Ни UPDATE, ни register intent не пережили abort.

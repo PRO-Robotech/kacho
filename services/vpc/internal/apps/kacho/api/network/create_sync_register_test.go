@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,18 +22,30 @@ import (
 
 // recordingRegistrar — фейковый синхронный owner-tuple registrar (Decision 2).
 type recordingRegistrar struct {
-	mu    sync.Mutex
-	calls [][]fgaregister.Item
-	err   error
+	mu       sync.Mutex
+	calls    [][]fgaregister.Item
+	versions []time.Time
+	err      error
 }
 
-func (r *recordingRegistrar) Register(_ context.Context, items []fgaregister.Item) error {
+func (r *recordingRegistrar) Register(_ context.Context, items []fgaregister.Item, sourceVersion time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	cp := make([]fgaregister.Item, len(items))
 	copy(cp, items)
 	r.calls = append(r.calls, cp)
+	r.versions = append(r.versions, sourceVersion)
 	return r.err
+}
+
+// lastVersion — версия последнего вызова (для сверки с версией intent'а).
+func (r *recordingRegistrar) lastVersion() time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.versions) == 0 {
+		return time.Time{}
+	}
+	return r.versions[len(r.versions)-1]
 }
 
 func (r *recordingRegistrar) snapshot() [][]fgaregister.Item {
@@ -76,6 +89,19 @@ func TestCreateUseCase_SyncRegister_OwnerTuple(t *testing.T) {
 	// Тот же набор Item'ов должен быть и в outbox-intent (backstop): sync + async
 	// несут одинаковую регистрацию (идемпотентно).
 	require.GreaterOrEqual(t, len(kr.FGARegisterEvents()), 1, "outbox-intent остается backstop'ом")
+
+	// …и ОДНУ И ТУ ЖЕ версию. Синхронная доставка обязана нести штамп, который
+	// вернул emitter (он же лежит в durable-intent'е), а не свежие часы: приёмная
+	// сторона гасит повторную доставку строгим монотонным сравнением, и при
+	// расхождении версий гашение зависит от того, кто выиграл гонку.
+	//
+	// Различающее утверждение: mock-emitter штампует детерминированной датой
+	// (2026-01-01 + N мс), поэтому «версия из emitter'а» и «версия из time.Now()»
+	// отличимы по построению — прежняя проверка `NotNil` их не различала.
+	sv := reg.lastVersion()
+	require.False(t, sv.IsZero(), "версия обязана быть проставлена")
+	assert.True(t, sv.Before(time.Now().Add(-24*time.Hour)),
+		"версия пришла из часов вызывающего (%s), а не из штампа intent'а", sv)
 }
 
 // Отказ синхронной регистрации НЕ проваливает мутацию. Это заменяет прежний

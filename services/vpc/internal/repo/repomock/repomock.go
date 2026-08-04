@@ -961,15 +961,17 @@ func (r *OpsRepo) Cancel(_ context.Context, id string) error {
 // тот же tuple лежит в fga_register_outbox той же writer-TX (at-least-once
 // backstop) — поэтому её отказ не имеет права проваливать мутацию.
 type DenyingRegistrar struct {
-	mu    sync.Mutex
-	calls int
+	mu          sync.Mutex
+	calls       int
+	lastVersion time.Time
 }
 
 // Register всегда отказывает. Счётчик вызовов позволяет тесту убедиться, что он
 // реально прошёл по спорной ветке, а не мимо неё (иначе проверка вакуумна).
-func (r *DenyingRegistrar) Register(_ context.Context, items []fgaregister.Item) error {
+func (r *DenyingRegistrar) Register(_ context.Context, items []fgaregister.Item, sourceVersion time.Time) error {
 	r.mu.Lock()
 	r.calls++
+	r.lastVersion = sourceVersion
 	r.mu.Unlock()
 
 	object := "<no-items>"
@@ -978,6 +980,14 @@ func (r *DenyingRegistrar) Register(_ context.Context, items []fgaregister.Item)
 	}
 	return fmt.Errorf("sync register owner-tuple %s: %w", object,
 		grpcstatus.Error(codes.PermissionDenied, "fga write denied"))
+}
+
+// LastVersion — source_version последнего вызова: тест сверяет, что синхронная
+// доставка несёт версию intent'а, а не свежие часы.
+func (r *DenyingRegistrar) LastVersion() time.Time {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.lastVersion
 }
 
 // Calls — сколько раз registrar был позван.

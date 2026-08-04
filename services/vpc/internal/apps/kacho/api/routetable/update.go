@@ -105,7 +105,7 @@ func (u *UpdateRouteTableUseCase) doUpdate(ctx context.Context, in UpdateInput) 
 	// mirror-row остается, просто перестает матчиться селектором). Эталон —
 	// network/subnet/securitygroup update.
 	if labelsInMask(in.UpdateMask) {
-		if err := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(
+		if _, err := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(
 			fgaregister.ProjectHierarchyItem(string(updated.ProjectID), "vpc_route_table", updated.ID,
 				domain.LabelsToMap(updated.Labels)),
 		)); err != nil {

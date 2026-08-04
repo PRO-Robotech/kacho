@@ -141,7 +141,7 @@ func (u *UpdateSubnetUseCase) doUpdate(ctx context.Context, in UpdateInput) (*an
 	// держал resource_mirror актуальным для label-селектора (reconcile при смене
 	// label'ов). Update без labels → re-emit не делаем.
 	if labelsInMask(in.UpdateMask) {
-		if err := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(
+		if _, err := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(
 			fgaregister.ProjectHierarchyItem(string(updated.ProjectID), "vpc_subnet", updated.ID,
 				domain.LabelsToMap(updated.Labels)),
 		)); err != nil {

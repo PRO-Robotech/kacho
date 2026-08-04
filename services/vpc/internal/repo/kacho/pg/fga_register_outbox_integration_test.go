@@ -81,7 +81,9 @@ func TestVPC_SEC_D_01_RegisterIntentInWriterTx(t *testing.T) {
 	require.NoError(t, w.Outbox().Emit(ctx, "Network", created.ID, "CREATED", map[string]any{"id": created.ID}))
 
 	// FGA-register-intent — в той же writer-TX (no dual-write).
-	require.NoError(t, w.FGARegister().EmitRegister(ctx, fgaregister.RegisterIntent(fgaregister.ProjectHierarchy(string(n.ProjectID), "vpc_network", created.ID))))
+	stamped, rerr := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterIntent(fgaregister.ProjectHierarchy(string(n.ProjectID), "vpc_network", created.ID)))
+	require.NoError(t, rerr)
+	require.False(t, stamped.IsZero(), "EmitRegister обязан вернуть db-штамп intent'а — его несёт синхронная доставка")
 	require.NoError(t, w.Commit())
 
 	got := readRegisterOutbox(t, ctx, pool)
@@ -120,7 +122,8 @@ func TestVPC_SEC_D_02_AbortRollsBackRegisterIntent(t *testing.T) {
 	require.NoError(t, err)
 	created, err := w.Networks().Insert(ctx, n)
 	require.NoError(t, err)
-	require.NoError(t, w.FGARegister().EmitRegister(ctx, fgaregister.RegisterIntent(fgaregister.ProjectHierarchy(string(n.ProjectID), "vpc_network", created.ID))))
+	_, rerr2 := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterIntent(fgaregister.ProjectHierarchy(string(n.ProjectID), "vpc_network", created.ID)))
+	require.NoError(t, rerr2)
 	// Abort вместо Commit — атомарность: intent и Insert откатываются вместе.
 	w.Abort()
 

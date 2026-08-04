@@ -313,9 +313,10 @@ func TestNetworkRepo_T31Atom01_RollbackNoIntent(t *testing.T) {
 	rec.Network.Labels = domain.LabelsFromMap(nil) // очищаем labels
 	_, err = w.Networks().Update(ctx, &rec.Network)
 	require.NoError(t, err)
-	require.NoError(t, w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(
+	_, emitErr := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(
 		fgaregister.ProjectHierarchyItem("prj-A", "vpc_network", netID, nil),
-	)))
+	))
+	require.NoError(t, emitErr)
 	w.Abort() // имитируем сбой до commit
 
 	// Ни UPDATE, ни register intent не пережили abort.

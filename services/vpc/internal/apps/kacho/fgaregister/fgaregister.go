@@ -39,8 +39,16 @@ import (
 // InternalIAMService.RegisterResource (idempotent); drainer остается
 // at-least-once backstop'ом. nil-registrar (dev/no-iam) → sync-путь
 // пропускается, остается только async.
+//
+// `sourceVersion` — версия, которой БД проштамповала durable-intent ВНУТРИ
+// writer-TX (её возвращает FGARegisterEmitter.EmitRegister). Обе доставки одной
+// регистрации — синхронная и дренажная — обязаны нести ОДНУ И ТУ ЖЕ версию:
+// приёмная сторона гасит повторную доставку строгим монотонным сравнением, и при
+// равных версиях вторая доставка не меняет зеркала независимо от того, какая
+// пришла первой. Свежие часы на синхронной стороне это гашение снимали ровно
+// тогда, когда дренаж выигрывал гонку.
 type Registrar interface {
-	Register(ctx context.Context, items []Item) error
+	Register(ctx context.Context, items []Item, sourceVersion time.Time) error
 }
 
 // Типы событий в колонке `event_type` таблицы fga_register_outbox; передаются

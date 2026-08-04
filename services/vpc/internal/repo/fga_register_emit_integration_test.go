@@ -35,9 +35,10 @@ func TestIntegration_FGARegisterEmit_PopulatesResourceColumns(t *testing.T) {
 
 	// Эмитим register-intent для vpc_network через реальный writer-путь.
 	err = legacyWithTx(t, ctx, r, func(w kacho.RepositoryWriter) error {
-		return w.FGARegister().EmitRegister(ctx, fgaregister.RegisterIntent(
+		_, eerr := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterIntent(
 			fgaregister.ProjectHierarchy("prj-emit", "vpc_network", "net-emit"),
 		))
+		return eerr
 	})
 	require.NoError(t, err)
 

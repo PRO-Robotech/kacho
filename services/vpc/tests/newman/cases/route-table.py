@@ -17,8 +17,8 @@ def _net_steps(suffix="rt"):
 
 
 def _cleanup_net():
-    return Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
-                test_script=[*assert_status(200), *save_from_response("j.id", "opId")])
+    return retry_until_authorized(Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
+                test_script=[*assert_status(200), *save_from_response("j.id", "opId")]))
 
 
 def _cleanup_net_lenient():
@@ -52,8 +52,8 @@ CASES.append(Case(
         retry_until_authorized(Step(name="get", method="GET", path="/vpc/v1/routeTables/{{rtId}}",
              test_script=[*assert_status(200),
                           "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('rtId')));"])),
-        Step(name="del-rt", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(name="del-rt", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         _cleanup_net(),
     ],
@@ -161,11 +161,11 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.routeTableId", "rtId")]),
         poll_operation_until_done(),
-        Step(name="list-ops", method="GET", path="/vpc/v1/routeTables/{{rtId}}/operations",
+        retry_until_authorized(Step(name="list-ops", method="GET", path="/vpc/v1/routeTables/{{rtId}}/operations",
              test_script=[*assert_status(200),
-                          "pm.test('at least 1 op', () => pm.expect((pm.response.json().operations || []).length).to.be.at.least(1));"]),
-        Step(name="cleanup-rt", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+                          "pm.test('at least 1 op', () => pm.expect((pm.response.json().operations || []).length).to.be.at.least(1));"])),
+        retry_until_authorized(Step(name="cleanup-rt", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         _cleanup_net(),
     ],
@@ -192,8 +192,8 @@ CASES.append(Case(
              body={"updateMask": "description", "description": "upd-newman"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        Step(name="cleanup-rt", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(name="cleanup-rt", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         _cleanup_net(),
     ],
@@ -355,8 +355,8 @@ for case_id, route, expect_ok in [
                       "pm.test('names the offending static route field', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('static_routes[0]'));"]
                  )),
         ] + ([poll_operation_until_done(),
-              Step(name="cleanup-rt", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
-                   test_script=[*save_from_response("j.id", "opId")]),
+              retry_until_authorized(Step(name="cleanup-rt", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
+                   test_script=[*save_from_response("j.id", "opId")])),
               poll_operation_until_done()] if expect_ok else []),
     )
     CASES.append(_rt_wrap("RT", "v10r" + case_id[-5:].lower(), inner))
@@ -483,17 +483,17 @@ CASES.append(Case(
                  "pm.test('second RouteTable does NOT re-bind existing subnets', () => pm.expect(j.routeTableId).to.not.eql(pm.environment.get('rtId')));",
              ]),
         # Cleanup снизу вверх: RT → Subnet → Network.
-        Step(name="cleanup-rt", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
+        retry_until_authorized(Step(name="cleanup-rt", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
              test_script=["pm.test('cleanup rt (200/400/404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
-                          *save_from_response("j.id", "opId")]),
+                          *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="cleanup-sub", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
              test_script=["pm.test('cleanup sub (200/400/404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
                           *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
-        Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
+        retry_until_authorized(Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
              test_script=["pm.test('cleanup net (200/400/404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
-                          *save_from_response("j.id", "opId")]),
+                          *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
     ],
 ))
@@ -560,8 +560,8 @@ CASES.append(Case(
                  "  pm.expect(j.routeTableId).to.not.eql(pm.environment.get('defRtId'));",
                  "});",
              ])),
-        Step(name="del-rt", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(name="del-rt", method="DELETE", path="/vpc/v1/routeTables/{{rtId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="verify-subnet-rt-null", method="GET", path="/vpc/v1/subnets/{{subId}}",
              test_script=[

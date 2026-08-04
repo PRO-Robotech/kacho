@@ -496,6 +496,40 @@ def list_pagesize_1_bva(prefix, list_path):
     )
 
 
+def confirm_created_and_cleanup(create_path: str, id_var: str = "ecpId") -> List[Step]:
+    """Хвост ПОЛОЖИТЕЛЬНОГО create-кейса: дождаться операции, убедиться, что она
+    завершилась БЕЗ ошибки, и снять созданный ресурс.
+
+    Две причины, и обе измерены на живом стенде 2026-08-04.
+
+    1. Кейс с заголовком «→ ok» без этого хвоста утверждает только, что запрос
+       ПРИНЯТ (200 + Operation). Приём и успех — разные исходы: мутация Kachō
+       асинхронна, поэтому операция, завершившаяся с ошибкой, оставляет кейс
+       зелёным. То есть «ok» в заголовке не проверялось ничем.
+
+    2. Ресурс, созданный и не снятый, остаётся навсегда. Для большинства VPC-ресурсов
+       это лишняя строка, а для Address — израсходованный адрес из ОГРАНИЧЕННОГО пула:
+       ECP/BVA-блоки съедали по несколько внешних адресов за прогон, и на девятые сутки
+       жизни стенда пул `100.64.0.0/24` (254 адреса) оказался исчерпан целиком —
+       254 живых адреса от прошлых прогонов, ноль свободных. После этого КАЖДЫЙ create
+       адреса падал асинхронно, а кейсы уходили работать с ФАНТОМОМ (см.
+       `poll_operation_until_done` §capture_id_to): 63 упавших утверждения, ни одно из
+       которых не называло причину. `testing.md` требует уборки прямо: «Cleanup своих
+       ресурсов обязателен (leak → пул растёт, list-контракты плывут)».
+
+    Уборка обёрнута `retry_until_authorized` — это ПЕРВОЕ обращение к собственному
+    свежесозданному ресурсу, то есть ровно тот случай, для которого обёртка и введена.
+    """
+    return [
+        poll_operation_until_done(capture_id_to=id_var),
+        retry_until_authorized(Step(name="ecp-cleanup", method="DELETE",
+                                    path=f"{create_path}/{{{{{id_var}}}}}",
+                                    test_script=[*assert_status(200),
+                                                 *save_from_response("j.id", "opId")])),
+        poll_operation_until_done(),
+    ]
+
+
 def ecp_name_block(prefix, create_path, body_extra=None, strict_name=False):
     """ECP/BVA по полю name: пустое, max, over-max, invalid regex.
 
@@ -515,17 +549,29 @@ def ecp_name_block(prefix, create_path, body_extra=None, strict_name=False):
     cases = []
     # BVA name length: 0, 63 (max), 64 (over)
     # Имя у VPC-ресурса — разрешительный контракт: пустая строка допустима
-    # (domain.RcNameVPC.Validate; частичный UNIQUE-индекс исключает `name <> ''`).
-    # Исход ровно один, поэтому и утверждение одно: прежнее `oneOf([200, 400])`
-    # под именем «accepted or rejected» проходило и при приёме, и при отказе — то
-    # есть не отделяло соблюдение контракта от его нарушения.
+    # (domain.RcNameVPC.Validate). Исход ровно один, поэтому и утверждение одно:
+    # прежнее `oneOf([200, 400])` под именем «accepted or rejected» проходило и при
+    # приёме, и при отказе — то есть не отделяло соблюдение контракта от его нарушения.
+    #
+    # ОГОВОРКА ПРО УНИКАЛЬНОСТЬ ПУСТОГО ИМЕНИ — она НЕ общая для семи ресурсов.
+    # Здесь стояло «частичный UNIQUE-индекс исключает `name <> ''`» как утверждение
+    # обо всех. Перепись индексов живой схемы (2026-08-04, `pg_indexes` по
+    # `kacho_vpc`): частичный индекс `WHERE name <> ''` есть у ШЕСТИ ресурсов —
+    # addresses, gateways, network_interfaces, route_tables, security_groups,
+    # subnets; у `networks` индекс `(project_id, name)` ПОЛНЫЙ, поэтому ВТОРАЯ сеть
+    # с пустым именем в одном проекте получает ALREADY_EXISTS (асинхронно, в
+    # операции). Кейсы это переживают только потому, что убирают за собой (см.
+    # confirm_created_and_cleanup); незакрытая сеть от прошлого прогона роняет
+    # следующий. Расхождение с шестью соседями — предмет отдельного разбора со
+    # стороны продукта, а не повод ослабить утверждение.
     cases.append(Case(
         id=f"{prefix}-CR-BVA-NAME-EMPTY",
         title="Create с empty name → 200 (пустое имя разрешено контрактом)",
         classes=["BVA", "VAL"], priority="P2",
         steps=[Step(name="cr-empty", method="POST", path=create_path,
                     body=base(""),
-                    test_script=[*assert_status(200), *save_from_response("j.id", "opId")])],
+                    test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+               *confirm_created_and_cleanup(create_path)],
     ))
     cases.append(Case(
         id=f"{prefix}-CR-BVA-NAME-MAX-63",
@@ -535,7 +581,8 @@ def ecp_name_block(prefix, create_path, body_extra=None, strict_name=False):
         # = 63 at runtime. Fixed literal collided across re-runs (UNIQUE name) → 409.
         steps=[Step(name="cr-max63", method="POST", path=create_path,
                     body=base("n63-{{runId}}-" + "a"*48),
-                    test_script=[*assert_status(200), *save_from_response("j.id", "opId")])],
+                    test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+               *confirm_created_and_cleanup(create_path)],
     ))
     cases.append(Case(
         id=f"{prefix}-CR-BVA-NAME-OVER-64",
@@ -563,7 +610,9 @@ def ecp_name_block(prefix, create_path, body_extra=None, strict_name=False):
                          "pm.test('refusal names the field', () => pm.expect(JSON.stringify(pm.response.json())).to.contain('name'));"]
                         if strict_name else
                         [*assert_status(200), *save_from_response("j.id", "opId")]
-                    ))],
+                    ))]
+              # Строгий контракт отвергает синхронно — ресурса нет, снимать нечего.
+              + ([] if strict_name else confirm_created_and_cleanup(create_path)),
     ))
     cases.append(Case(
         id=f"{prefix}-CR-VAL-NAME-DIGIT-START",
@@ -603,7 +652,8 @@ def ecp_description_block(prefix, create_path, body_extra=None):
             classes=["BVA"], priority="P2",
             steps=[Step(name="cr-desc-max", method="POST", path=create_path,
                         body=base(f"{prefix.lower()}-desc-{{{{runId}}}}", "x" * 256),
-                        test_script=[*assert_status(200), *save_from_response("j.id", "opId")])],
+                        test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+                   *confirm_created_and_cleanup(create_path)],
         ),
         Case(
             id=f"{prefix}-CR-BVA-DESC-OVER-257",
@@ -644,7 +694,8 @@ def ecp_labels_block(prefix, create_path, body_extra=None):
             steps=[Step(name="cr-lbl-max", method="POST", path=create_path,
                         body=base(f"{prefix.lower()}-lblm-{{{{runId}}}}",
                                   {f"key{i}": f"v{i}" for i in range(64)}),
-                        test_script=[*assert_status(200), *save_from_response("j.id", "opId")])],
+                        test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+                   *confirm_created_and_cleanup(create_path)],
         ),
         Case(
             id=f"{prefix}-CR-BVA-LABELS-OVER-65",
@@ -809,9 +860,8 @@ def update_happy_per_field(prefix, create_path, update_base_path, body_create):
             steps=[
                 Step(name="create", method="POST", path=create_path,
                      body={**body_create, "name": f"{prefix.lower()}-upd-{field.lower()}-{{{{runId}}}}"},
-                     test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                                  *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "createdId")]),
-                poll_operation_until_done(),
+                     test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+                poll_operation_until_done(capture_id_to="createdId"),
                 retry_until_authorized(Step(name="patch", method="PATCH",
                      path=f"{update_base_path}/{{{{createdId}}}}",
                      body=patch_body,
@@ -867,9 +917,8 @@ def move_same_project(prefix, resource_base_path, body_create):
         steps=[
             Step(name="create", method="POST", path=resource_base_path,
                  body={**body_create, "name": f"{prefix.lower()}-mv-self-{{{{runId}}}}"},
-                 test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                              *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "createdId")]),
-            poll_operation_until_done(),
+                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+            poll_operation_until_done(capture_id_to="createdId"),
             Step(name="move-self", method="POST",
                  path=f"{resource_base_path}/{{{{createdId}}}}:move",
                  body={"destinationProjectId": "{{_suiteProjectId}}"},
@@ -945,9 +994,8 @@ def update_happy_multi_field(prefix, create_path, update_base_path, body_create)
         steps=[
             Step(name="create", method="POST", path=create_path,
                  body={**body_create, "name": f"{prefix.lower()}-multi-{{{{runId}}}}"},
-                 test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                              *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "createdId")]),
-            poll_operation_until_done(),
+                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+            poll_operation_until_done(capture_id_to="createdId"),
             retry_until_authorized(Step(name="patch-multi", method="PATCH",
                  path=f"{update_base_path}/{{{{createdId}}}}",
                  body={"updateMask": "name,description,labels",
@@ -982,9 +1030,8 @@ def cross_project_resource_block(prefix, create_path, body_create, name_field="n
             Step(name="create-in-A", method="POST", path=create_path,
                  body={**body_create, "projectId": "{{_suiteProjectId}}",
                        name_field: f"{prefix.lower()}-iso-{{{{runId}}}}"},
-                 test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                              *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "isoId")]),
-            poll_operation_until_done(),
+                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+            poll_operation_until_done(capture_id_to="isoId"),
             Step(name="list-in-B", method="GET",
                  path=f"{create_path}?projectId={{{{_suiteProjectCrossId}}}}&pageSize=100",
                  test_script=[*assert_status(200),
@@ -1006,9 +1053,8 @@ def list_filter_match_block(prefix, create_path, body_create):
         steps=[
             Step(name="create", method="POST", path=create_path,
                  body={**body_create, "name": f"{prefix.lower()}-flt-{{{{runId}}}}"},
-                 test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                              *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "fltId")]),
-            poll_operation_until_done(),
+                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+            poll_operation_until_done(capture_id_to="fltId"),
             retry_until_present(Step(name="list-filtered", method="GET",
                  path=f"{create_path}?projectId={{{{_suiteProjectId}}}}&pageSize=100&filter=name%3D%22{prefix.lower()}-flt-{{{{runId}}}}%22",
                  test_script=[*assert_status(200),
@@ -1035,7 +1081,8 @@ def neg_invalid_types_block(prefix, create_path, body_create):
             classes=["VAL"], priority="P2",
             steps=[Step(name="cr-null", method="POST", path=create_path,
                         body={**body_create, "name": None},
-                        test_script=[*assert_status(200), *save_from_response("j.id", "opId")])],
+                        test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+                   *confirm_created_and_cleanup(create_path)],
         ),
         Case(
             id=f"{prefix}-CR-VAL-LABELS-STRING-TYPE",
@@ -1120,9 +1167,8 @@ def alreadyexists_dup_name_for(prefix, create_path, body_create):
         steps=[
             Step(name="cr-first", method="POST", path=create_path,
                  body={**body_create, "name": f"{prefix.lower()}-dupck-{{{{runId}}}}"},
-                 test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                              *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "firstId")]),
-            poll_operation_until_done(),
+                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+            poll_operation_until_done(capture_id_to="firstId"),
             Step(name="cr-dup", method="POST", path=create_path,
                  body={**body_create, "name": f"{prefix.lower()}-dupck-{{{{runId}}}}"},
                  test_script=[*assert_status(409), *assert_grpc_code(6, "ALREADY_EXISTS"),
@@ -1145,9 +1191,8 @@ def update_mask_partial_block(prefix, create_path, update_base_path, body_create
                 Step(name="cr", method="POST", path=create_path,
                      body={**body_create, "name": f"{prefix.lower()}-mn-{{{{runId}}}}",
                            "description": "init", "labels": {"orig": "1"}},
-                     test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                                  *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "createdId")]),
-                poll_operation_until_done(),
+                     test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+                poll_operation_until_done(capture_id_to="createdId"),
                 retry_until_authorized(Step(name="patch-name-only", method="PATCH",
                      path=f"{update_base_path}/{{{{createdId}}}}",
                      body={"updateMask": "name", "name": f"{prefix.lower()}-mnnew",
@@ -1181,9 +1226,8 @@ def perf_baseline_get_block(prefix, get_create_path, body_create):
         steps=[
             Step(name="cr", method="POST", path=get_create_path,
                  body={**body_create, "name": f"{prefix.lower()}-perf-{{{{runId}}}}"},
-                 test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                              *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "perfId")]),
-            poll_operation_until_done(),
+                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+            poll_operation_until_done(capture_id_to="perfId"),
             retry_until_authorized(Step(name="get-timed", method="GET", path=f"{get_create_path}/{{{{perfId}}}}",
                  test_script=[*assert_status(200),
                               "pm.test('response time < 300ms', () => pm.expect(pm.response.responseTime).to.be.below(300));"])),
@@ -1230,7 +1274,8 @@ def headers_content_type_block(prefix, create_path, body_create):
             steps=[Step(name="post-no-ct", method="POST", path=create_path,
                         body={**body_create, "name": f"{prefix.lower()}-noct-{{{{runId}}}}"},
                         pre_script=["pm.request.headers.remove('Content-Type');"],
-                        test_script=[*assert_status(200), *save_from_response("j.id", "opId")])],
+                        test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+                   *confirm_created_and_cleanup(create_path)],
         ),
     ]
 
@@ -1352,9 +1397,8 @@ def mutable_field_accepts(prefix, create_path, update_base_path, body_create,
         steps=[
             Step(name="cr", method="POST", path=create_path,
                  body={**body_create, "name": f"{prefix.lower()}-mut-{mutable_field[:5]}-{{{{runId}}}}"},
-                 test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                              *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "createdId")]),
-            poll_operation_until_done(),
+                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+            poll_operation_until_done(capture_id_to="createdId"),
             retry_until_authorized(Step(name="patch", method="PATCH",
                  path=f"{update_base_path}/{{{{createdId}}}}",
                  body={"updateMask": mutable_field, mutable_field: mutable_value},
@@ -1638,10 +1682,9 @@ def pairwise_subnet_pack():
                          # только код ответа.
                          "pm.test('операция без ошибки', () => "
                          "pm.expect(pm.response.json().error, pm.response.text()).to.be.undefined);",
-                         *save_from_response("j.id", "opId"),
-                         *save_from_response("j.metadata && j.metadata.subnetId", "subId"),
+                         *save_from_response("j.id", "opId")
                      ]),
-                poll_operation_until_done(),
+                poll_operation_until_done(capture_id_to="subId", id_expr="j.metadata && j.metadata.subnetId"),
                 # Ось префикса реальна только если префикс ДОЕХАЛ до ресурса. Однажды он
                 # не доезжал вовсе (край отбрасывал снятое поле), и девять кейсов
                 # зеленели, варьируя ничего. Чтение возвращает ту же строку — это и есть
@@ -1723,9 +1766,8 @@ def conformance_lifecycle_pack(prefix, create_path, body_create):
         steps=[
             Step(name="cr", method="POST", path=create_path,
                  body={**body_create, "name": f"{prefix.lower()}-life-{{{{runId}}}}"},
-                 test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                              *save_from_response("(j.metadata && Object.keys(j.metadata).filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''", "lifeId")]),
-            poll_operation_until_done(),
+                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+            poll_operation_until_done(capture_id_to="lifeId"),
             retry_until_authorized(Step(name="get-1", method="GET", path=f"{create_path}/{{{{lifeId}}}}",
                  test_script=[*assert_status(200),
                               "pm.test('id matches', () => pm.expect(pm.response.json().id).to.eql(pm.environment.get('lifeId')));"])),
@@ -1793,9 +1835,8 @@ def conf_alreadyexists_block(prefix, create_path, name_template, body_extra=None
         steps=[
             Step(name="create-first", method="POST", path=create_path,
                  body={"projectId": "{{_suiteProjectId}}", "name": name_template, **body_extra},
-                 test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
-                              *save_from_response("j.metadata && Object.values(j.metadata).find(v => typeof v === 'string' && v.length > 10)", "createdId")]),
-            poll_operation_until_done(),
+                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+            poll_operation_until_done(capture_id_to="createdId", id_expr="j.metadata && Object.values(j.metadata).find(v => typeof v === 'string' && v.length > 10)"),
             Step(name="create-dup", method="POST", path=create_path,
                  body={"projectId": "{{_suiteProjectId}}", "name": name_template, **body_extra},
                  test_script=[*assert_status(409), *assert_grpc_code(6, "ALREADY_EXISTS"),
@@ -1863,7 +1904,9 @@ def retry_until_authorized(step: Step, budget: int = 25, interval_ms: int = 500,
     Retries the SAME request (setNextRequest -> self) while the response code is in
     `retry_on` (default 403/404), spacing attempts by ~interval_ms (busy-wait -- newman
     fires setNextRequest before any setTimeout). budget*interval_ms bounds the wait
-    (default 15*400ms = ~6s) -- fail-closed: on any other code the wrapped step's real
+    (default 25*500ms = 12.5s -- шапка называла 15*400ms = ~6s, то есть ДРУГИЕ значения,
+    чем стоят в сигнатуре: бюджет поднимали, а описание осталось прежним, и читающий
+    планировал окно вдвое меньше действительного) -- fail-closed: on any other code the wrapped step's real
     test_script runs exactly once, and once the budget is spent it ALSO runs on the
     terminal 403/404 (a genuine, non-converging deny still FAILS the real assertions --
     never masked, never infinite).
@@ -1951,7 +1994,8 @@ def retry_until_absent(step: Step, still_present_expr: str, budget: int = 25,
                    test_script=guard + list(step.test_script))
 
 
-def poll_operation_until_done(must_fail: bool = False) -> Step:
+def poll_operation_until_done(must_fail: bool = False, capture_id_to: str = "",
+                              id_expr: str = "") -> Step:
     """Reusable poll step с retry-на-not-done через setNextRequest.
     До 30 попыток с ~500ms задержкой между ними (≈15s покрытия async-op tail, Koren #1),
     потом fail если done остался false.
@@ -1980,6 +2024,27 @@ def poll_operation_until_done(must_fail: bool = False) -> Step:
     отказ, ради которого кейс назван, не проверяется вовсе. Ставится в паре с
     `assert_refused_sync_or_async`. Никогда не применять там, где принятие законно — тогда
     шаг падал бы на корректном поведении.
+
+    `capture_id_to` — ЗАХВАТ ID СОЗДАННОГО РЕСУРСА ЗДЕСЬ, А НЕ ИЗ ОТВЕТА МУТАЦИИ.
+    Operation Kachō несёт ПРЕДВАРИТЕЛЬНО ВЫДЕЛЕННЫЙ id в `metadata` ещё до того, как
+    воркер отработал, поэтому он присутствует и у операции, завершившейся С ОШИБКОЙ
+    (id выделяется до async-фейла). Захват из синхронного ответа POST — это захват id
+    ресурса, которого может не существовать: дальше кейс патчит, читает и убирает
+    ФАНТОМ, а край отвечает на него `403` (scope_extractor не резолвит несуществующий
+    объект) и `404` (hide-existence). Ни один из этих кодов не называет настоящую
+    причину, и кейс сообщает «expected 404 to deeply equal 200» вместо «create упал:
+    <ошибка операции>». Замер 2026-08-04 на живом стенде: 63 упавших утверждения suite
+    vpc, ВСЕ до одного — каскад ровно этой подмены; истинная причина
+    (`address pool ... exhausted`) не была названа НИ ОДНИМ из них.
+
+    Поэтому: поллим до `done` → УТВЕРЖДАЕМ отсутствие `error` → и только тогда кладём
+    id в переменную. На ошибке переменная СНИМАЕТСЯ (`unset`), и следующий шаг падает
+    стражем неразрешённого адреса, называя имя переменной, — вместо того чтобы уйти на
+    фантом. Это норма `testing.md` §«Fixture-seed обязан проверять `op.error` перед
+    извлечением resource-id из `metadata`», записанная в самом хелпере.
+
+    `id_expr` — необязательное выражение выбора поля id из `j.metadata` (по умолчанию
+    первое поле, чьё имя оканчивается на `Id`).
     """
     _POLL_SEQ[0] += 1
     tail: List[str] = []
@@ -1987,6 +2052,24 @@ def poll_operation_until_done(must_fail: bool = False) -> Step:
         tail = [
             "pm.test('operation refused the request (carries an error)', () => "
             "  pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
+        ]
+    if capture_id_to:
+        if must_fail:
+            raise ValueError("capture_id_to несовместим с must_fail: у операции, "
+                             "предмет которой — отказ, нет созданного ресурса")
+        expr = id_expr or ("(j.metadata && Object.keys(j.metadata)"
+                           ".filter(k => k.endsWith('Id')).map(k => j.metadata[k])[0]) || ''")
+        tail = tail + [
+            "pm.test('operation succeeded (no phantom resource id)', () => "
+            "  pm.expect(j.error && JSON.stringify(j.error), 'operation.error')"
+            "    .to.eql(undefined));",
+            "if (j.error) {",
+            f"  pm.environment.unset('{capture_id_to}');",
+            "} else {",
+            f"  const _cid = ({expr});",
+            f"  if (_cid) pm.environment.set('{capture_id_to}', String(_cid));",
+            f"  else pm.environment.unset('{capture_id_to}');",
+            "}",
         ]
     return Step(
         name=f"poll-op-{_POLL_SEQ[0]}",

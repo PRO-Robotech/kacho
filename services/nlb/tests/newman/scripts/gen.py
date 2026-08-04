@@ -521,15 +521,35 @@ def retry_create_until_present(step: Step, budget: int = 25, interval_ms: int = 
     textbook cross-service read-your-writes lag -> the CLIENT retries the create; it is
     NOT a server barrier.
 
-    Retries the SAME request (setNextRequest -> self) while the response is a
-    `<something> not found` rejection (400/404 whose body message contains 'not found'),
-    spacing attempts ~interval_ms (busy-wait -- newman fires setNextRequest before any
-    setTimeout). A rejected create allocates NOTHING (sync reject before the Operation is
-    even minted), so re-POSTing is leak-free and idempotent. budget*interval_ms bounds
-    the wait (default 30*400ms = ~12s) -- fail-closed: on any other outcome the wrapped
-    step's real test_script runs exactly once, and once the budget is spent it ALSO runs
-    on the terminal not-found (a genuinely-absent peer still FAILS the real assertions --
+    Retries the SAME request (setNextRequest -> self) while the response says the peer
+    reference did not resolve, spacing attempts ~interval_ms (busy-wait -- newman fires
+    setNextRequest before any setTimeout). TWO discriminators, and the difference between
+    them matters:
+
+      * `ErrorInfo.reason == 'PEER_RESOURCE_MISSING'` in `details[]` -- the MACHINE
+        discriminator api-conventions.md mandates ("клиент машинно различает линии по
+        reason-token ... НЕ парся прозу message"). nlb emits it on the linked-address
+        lane, whose prose is deliberately generic anti-oracle text
+        ("Illegal argument addressId") and therefore carries no sniffable substring;
+      * the legacy prose test (400/404 whose body message contains 'not found') -- the
+        subnet lane still answers `"subnet <id> not found"` and is matched by prose only.
+
+    Prose sniffing alone was NOT enough, and that is the whole reason the token branch
+    exists: an address whose owner-tuple had not materialised answered with the generic
+    text, matched nothing, and the wrapped step burned its single attempt ~0.5s after the
+    address was created (CI 30919903252: cr-link / cr-ext-link / cr-linked, one attempt
+    each, zero retries).
+
+    A rejected create allocates NOTHING (sync reject before the Operation is even minted),
+    so re-POSTing is leak-free and idempotent. budget*interval_ms bounds the wait
+    (default 25*500ms = ~12.5s) -- fail-closed: on any other outcome the wrapped step's
+    real test_script runs exactly once, and once the budget is spent it ALSO runs on the
+    terminal rejection (a genuinely-absent peer still FAILS the real assertions --
     never masked, never infinite).
+
+    Terminal rejections stay terminal by construction: nlb attaches the token ONLY to the
+    peer-miss lane, so ownership/family/kind/placement mismatches (same generic prose,
+    code 3, no token) are not retried and their negative cases keep failing fast.
 
     Use ONLY on a create whose peer dependency was provisioned earlier in the SAME case.
     Do NOT wrap negative fixture-absent creates (they legitimately expect the rejection).
@@ -537,15 +557,24 @@ def retry_create_until_present(step: Step, budget: int = 25, interval_ms: int = 
     guard = [
         "// bounded read-your-writes retry over the cross-service peer-visibility window",
         "// (vpc subnet/address just provisioned; nlb peer-read briefly stale). Retries",
-        "// SELF only while the sync create is a transient '<peer> not found' rejection.",
+        "// SELF only while the sync create says the PEER REFERENCE did not resolve:",
+        "//   - ErrorInfo.reason == PEER_RESOURCE_MISSING  (machine discriminator; the",
+        "//     linked-address lane's prose is generic anti-oracle text on purpose), or",
+        "//   - a 400/404 whose message contains 'not found' (subnet lane prose).",
+        "// A terminal mismatch carries NEITHER, so negatives still fail on attempt one.",
         "if (pm.environment.get('_crRetryStarted') !== pm.info.requestName) {",
         "  pm.environment.set('_crRetryCount', '0');",
         "  pm.environment.set('_crRetryStarted', pm.info.requestName);",
         "}",
         "const _crc = parseInt(pm.environment.get('_crRetryCount') || '0', 10);",
         "let _crNotFound = false;",
-        "try { _crNotFound = [400, 404].includes(pm.response.code)"
-        " && /not found/i.test(pm.response.json().message || ''); } catch (e) {}",
+        "try {",
+        "  const _crb = pm.response.json();",
+        "  const _crPeerMiss = (_crb.details || []).some(d =>"
+        " d && d.reason === 'PEER_RESOURCE_MISSING');",
+        "  _crNotFound = _crPeerMiss || ([400, 404].includes(pm.response.code)"
+        " && /not found/i.test(_crb.message || ''));",
+        "} catch (e) {}",
         f"if (_crNotFound && _crc < {budget}) {{",
         "  pm.environment.set('_crRetryCount', String(_crc + 1));",
         f"  const _crd = Date.now(); while (Date.now() - _crd < {interval_ms}) {{ /* peer-visibility wait */ }}",

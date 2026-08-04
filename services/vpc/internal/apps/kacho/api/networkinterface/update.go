@@ -179,7 +179,7 @@ func (u *UpdateNetworkInterfaceUseCase) doUpdate(ctx context.Context, in UpdateI
 	// upsert с пустыми метками (НЕ Unregister: NIC все еще существует). Эталон —
 	// network/subnet/securitygroup update.
 	if labelsInMask(in.UpdateMask) {
-		if rerr := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(
+		if _, rerr := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(
 			fgaregister.ProjectHierarchyItem(string(updated.ProjectID), "vpc_network_interface", updated.ID,
 				domain.LabelsToMap(updated.Labels)),
 		)); rerr != nil {
