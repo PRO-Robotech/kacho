@@ -63,23 +63,43 @@ api-gateway:
   # Internal :9091 gRPC listener (InternalAuthzCacheService.InvalidateSubject, dialed
   # by the iam subject-change push-drainer) is ALWAYS up and validateProductionInternal
   # Listener FATAL-fails in a production-class env unless it runs mTLS + a SPIFFE
-  # allow-list. The gateway chart has no first-class knob for this (dev-masked gap —
-  # values.prod.yaml renders but the pod would Fatalf at boot). Wire it via the chart's
-  # generic extraEnv passthrough, reusing the already-mounted server cert
-  # (/etc/api-gateway/tls, api-gateway-tls) + backend-dial CA (/etc/api-gateway/mtls/
-  # ca.crt, already exported as KACHO_API_GATEWAY_MTLS_CA_FILE). Allow-list = the iam
-  # module SPIFFE SAN (the only authorised caller of InvalidateSubject).
+  # allow-list.
+  #
+  # Здесь стояло «у чарта нет первоклассной ручки для этого, провязываем через
+  # generic extraEnv» — и четыре переменные ниже действительно были объявлены
+  # пробросом. Ручка ЕСТЬ (api-gateway `internalListener.mtls` / `allowedSpiffe`,
+  # gateway/deploy/values.yaml), и утверждение пережило свой предмет. Цена была не
+  # косметическая, и она двойная:
+  #   • рядом с ручкой стоит её собственная проверка связности — блок шаблона
+  #     падает `fail`-ом, если internalListener.mtls.enable=true при mtls.enable=false
+  #     (листенеру нечем проверять клиентские сертификаты). Проброс её обходит:
+  #     переменные доезжают, а условие, при котором они осмысленны, не сверяется;
+  #   • на боевой цепочке, где ручка ВКЛЮЧЕНА, тот же проброс давал пять записей
+  #     с одним именем в контейнере края — шаблон зелёный, apiserver отвечает
+  #     «hides previous definition … may be dropped when using apply», и побеждает
+  #     та запись, которую выбрал порядок блоков шаблона.
+  # Теперь путь один — ручка. Сертификат переиспользуется уже смонтированный
+  # (/etc/api-gateway/tls, api-gateway-tls) + backend-dial CA
+  # (KACHO_API_GATEWAY_MTLS_CA_FILE); certFile/keyFile совпадают с умолчанием
+  # чарта и потому не повторяются.
+  #
+  # allowedSpiffe объявлен ЯВНО и НЕ равен умолчанию чарта
+  # (spiffe://kacho.cloud/ns/kacho/sa/kacho-iam): здесь стенд называет модуль iam
+  # в пространстве имён kacho-iam. Значение перенесено из проброса ДОСЛОВНО —
+  # смена круга законных отправителей на внутреннем листенере это отдельное
+  # решение со своим доказательством, а не побочный эффект переезда на ручку.
+  #
   # appEnv (first-class knob → KACHO_APP_ENV) overrides values.dev.yaml's `dev`.
   # MUST NOT set KACHO_APP_ENV via extraEnv here: the chart already renders a
   # KACHO_APP_ENV env from the appEnv knob, so an extraEnv.KACHO_APP_ENV produces a
   # DUPLICATE list key → helm strategic-merge `$setElementOrder` patch failure on
   # `helm upgrade` (dev base appEnv=dev + extraEnv=production → two KACHO_APP_ENV).
   appEnv: production
-  extraEnv:
-    KACHO_API_GATEWAY_INTERNAL_GRPC_MTLS_ENABLE: "true"
-    KACHO_API_GATEWAY_INTERNAL_GRPC_TLS_CERT_FILE: /etc/api-gateway/tls/tls.crt
-    KACHO_API_GATEWAY_INTERNAL_GRPC_TLS_KEY_FILE: /etc/api-gateway/tls/tls.key
-    KACHO_API_GATEWAY_INTERNAL_GRPC_ALLOWED_SPIFFE: spiffe://kacho.cloud/ns/kacho-iam/sa/kacho-iam
+  internalListener:
+    mtls:
+      enable: true
+    allowedSpiffe:
+      - spiffe://kacho.cloud/ns/kacho-iam/sa/kacho-iam
   authn:
     # Bearer REQUIRED, verified by signature against published public material;
     # missing token → 401. The line that used to sit under this one blanked a
@@ -242,19 +262,13 @@ kacho-iam:
     httpListeners: false
     jwksProxy: true
     registryToken: true
-  env:
-    # UNIFICATION FIX (dev-masked): the iam :9097 JWKS proxy — the endpoint every
-    # service is supposed to verify RS256 tokens through (registry-iam-jwks-unify) —
-    # derives its upstream from KACHO_IAM_HYDRA_ISSUER = https://hydra.api.kacho.cloud,
-    # the EXTERNAL ingress host that is UNREACHABLE in-cluster → the proxy fail-closes
-    # 502 and NO service can verify through it (they silently fall back to Hydra-direct,
-    # defeating the unification). Point the upstream at the in-cluster Hydra PUBLIC
-    # Service (same fix api-gateway.hydra.jwksUrl already carries). ResolveHydraJWKSURL
-    # honours this explicit override ahead of the issuer-derived default.
-    KACHO_IAM_HYDRA_JWKS_URL: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/.well-known/jwks.json"
-    # NB: the Hydra issuer override lives in config.authn.hydraIssuer above (a config
-    # value, not a KACHO_IAM_HYDRA_ISSUER env — the chart already emits that env from the
-    # domain and a duplicate dedups to the first/external on apply, non-deterministic).
+  # NB: the Hydra issuer override lives in config.authn.hydraIssuer above (a config
+  # value, not a KACHO_IAM_HYDRA_ISSUER env — the chart already emits that env from the
+  # domain and a duplicate dedups to the first/external on apply, non-deterministic).
+  # То же соображение относится и к KACHO_IAM_HYDRA_JWKS_URL: он объявлен ниже
+  # первоклассной ручкой kacho.iam.hydraJwksUrl (как в values.prod.yaml), а не
+  # родовым пробросом `env` — иначе одна и та же настройка провязана в двух
+  # цепочках разными путями чарта, и профили нельзя сравнить чтением.
   # Bootstrap-token mint (#58) + registry /iam/token shim — the client_credentials
   # exchange target. ResolveHydraTokenURL() honours this ahead of the issuer-derived
   # default (https://hydra.api.kacho.cloud/oauth2/token — UNREACHABLE in-cluster). The
@@ -270,6 +284,15 @@ kacho-iam:
       hydraAdminUrl: "https://kacho-umbrella-hydra-admin-tls.kacho.svc.cluster.local:4445"
       hydraAdminCaFile: /etc/kacho-iam/tls/server/ca.crt
       hydraTokenURL: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/oauth2/token"
+      # UNIFICATION FIX (dev-masked): the iam :9097 JWKS proxy — the endpoint every
+      # service is supposed to verify RS256 tokens through (registry-iam-jwks-unify) —
+      # derives its upstream from KACHO_IAM_HYDRA_ISSUER = https://hydra.api.kacho.cloud,
+      # the EXTERNAL ingress host that is UNREACHABLE in-cluster → the proxy fail-closes
+      # 502 and NO service can verify through it (they silently fall back to Hydra-direct,
+      # defeating the unification). Point the upstream at the in-cluster Hydra PUBLIC
+      # Service (same fix api-gateway.hydra.jwksUrl already carries). ResolveHydraJWKSURL
+      # honours this explicit override ahead of the issuer-derived default.
+      hydraJwksUrl: "http://kacho-umbrella-hydra-public.kacho.svc.cluster.local:4444/.well-known/jwks.json"
       # Bootstrap-admin SA ES256 (P-256, PKCS#8) signing key — signs the
       # private_key_jwt client_assertion the mint exchanges at Hydra. Empty ⇒ env
       # absent ⇒ MintBootstrapToken fails closed (UNAVAILABLE). Provisioned as a
