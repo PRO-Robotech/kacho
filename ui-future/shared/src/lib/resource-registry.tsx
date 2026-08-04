@@ -1010,12 +1010,20 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // resource_type/resource_id: у CreateAccessBindingRequest таких полей нет ни
     // под каким тегом, а обязательны (required) точечный scope_type и scope_id —
     // то есть реестр письменно объявлял форму запроса в снятом словаре.
+    //
+    // `target` (тег 15) тоже ОБЯЗАТЕЛЕН, и его отсутствие сервер отвергает первым
+    // же стейтментом — «target is required; use target.allInScope{} to grant all
+    // objects under the anchor». Скелет без него объявлял форму запроса, которую
+    // нельзя отправить; арм назван так же, как его пишет собственный сборщик тела
+    // консоли (`buildCreateAccessBindingBody`): точечный `resources`, когда
+    // оператор выбрал объекты, и весь якорь — когда не выбрал.
     template: ({ accountId }) => ({
       subject_type: "user",
       subject_id: "",
       role_id: "",
       scope_type: "iam.account",
       scope_id: accountId ?? "",
+      target: { all_in_scope: {} },
     }),
   },
 
@@ -3233,8 +3241,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       selector_priority: 0,
     }),
     // KAC-71: cidr_blocks разделён на v4_cidr_blocks + v6_cidr_blocks. Конвертирует
-    // [{value: "..."}] → ["..."] для wire format (как subnets.v4/v6_cidr_blocks),
-    // отбрасывает пустые и legacy-поле cidr_blocks.
+    // [{value: "..."}] → ["..."] для wire format (как subnets.v4/v6_cidr_blocks) и
+    // отбрасывает пустые.
+    //
+    // Здесь стояло ещё и снятие ключа `cidr_blocks`. Снимать его не с чего: такого
+    // поля нет ни в шаблоне, ни среди объявленных полей формы, а подстановки из
+    // ссылки фильтруются по объявленным именам — то есть строка описывала работу,
+    // предмета у которой не существует.
     sanitize: (obj) => {
       const flat: Record<string, unknown> = { ...obj };
       for (const key of ["v4_cidr_blocks", "v6_cidr_blocks"]) {
@@ -3249,7 +3262,6 @@ export const REGISTRY: Record<string, ResourceSpec> = {
             .filter((v) => typeof v === "string" && v.trim() !== "");
         }
       }
-      delete flat["cidr_blocks"];
       return flat;
     },
   },

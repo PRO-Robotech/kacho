@@ -1,5 +1,13 @@
 // OperationsTab — generic список операций (LRO) для конкретного ресурса.
-// Использует Kachō pattern: GET <spec.apiPath>/{id}/operations.
+//
+// Путь списка компонент НЕ собирает: он приходит готовым, из перечня
+// `lib/operations-subroute` — там же, где консоль утверждает, у каких ресурсов
+// подмаршрут операций в стволе вообще есть. Прежде путь склеивался здесь из
+// `spec.apiPath`, и у пяти адресов реестра (типы дисков и машин, регионы и зоны
+// geo, пулы адресов) такого связывания нет ни под каким тегом — вкладка была
+// видна, спрашивала несуществующий адрес и показывала отказ края. Решение о
+// том, показывать ли вкладку, принимает вызывающий, и принять его иначе, чем по
+// тому же перечню, он не может: без пути вкладки нет.
 //
 // Фильтры: input по идентификатору + Select по статусу.
 // Колонки — см. OperationsTable.
@@ -23,6 +31,8 @@ import { HeaderSlotPortal } from "@shared/components/organisms/DetailShell";
 interface Props {
   spec: ResourceSpec;
   resourceId: string;
+  /** Готовый путь ствола — `operationsListPath(spec.apiPath, resourceId)`. */
+  listPath: string;
 }
 
 const STATUS_OPTIONS: { value: OperationStatus | "all"; label: string }[] = [
@@ -33,7 +43,7 @@ const STATUS_OPTIONS: { value: OperationStatus | "all"; label: string }[] = [
   { value: "cancelled", label: "Отменена" },
 ];
 
-export function OperationsTab({ spec, resourceId }: Props) {
+export function OperationsTab({ spec, resourceId, listPath }: Props) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<OperationStatus | "all">("all");
   const [outcome, setOutcome] = useState<OutcomeFilter>("all");
@@ -41,7 +51,7 @@ export function OperationsTab({ spec, resourceId }: Props) {
   const { data, isLoading, isError, error } = useQuery({
     queryKey: [spec.id, "operations", resourceId],
     queryFn: () =>
-      api.list<{ operations: Op[]; next_page_token?: string }>(`${spec.apiPath}/${resourceId}/operations`, {
+      api.list<{ operations: Op[]; next_page_token?: string }>(listPath, {
         pageSize: "200",
       }),
     enabled: !!resourceId,

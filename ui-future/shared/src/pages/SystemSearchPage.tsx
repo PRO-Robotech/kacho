@@ -164,7 +164,9 @@ export function SystemSearchPage() {
   );
 }
 
-function extractExtras(resource: string, r: Record<string, unknown>): Record<string, string> {
+/** Экспортируется ради пробы: приписка читает имена полей ответа напрямую, и
+ *  снятое имя молча пустеет — проверять это можно только вызовом. */
+export function extractExtras(resource: string, r: Record<string, unknown>): Record<string, string> {
   const e: Record<string, string> = {};
   switch (resource) {
     case "addresses": {
@@ -189,11 +191,20 @@ function extractExtras(resource: string, r: Record<string, unknown>): Record<str
       if (cidrs.length > 0) e.cidrs = cidrs.join(",");
       break;
     }
-    case "address-pools":
+    case "address-pools": {
       if (r.zone_id) e.zone = String(r.zone_id);
       if (r.kind) e.kind = String(r.kind);
-      if (Array.isArray(r.cidr_blocks)) e.cidrs = (r.cidr_blocks as string[]).join(",");
+      // Слитное `cidr_blocks` (тег 7) у AddressPool зарезервировано и расщеплено
+      // на v4 (13) + v6 (14). Чтение снятого имени возвращало undefined молча —
+      // строка находилась, приписка диапазонов не появлялась никогда. Второй
+      // экземпляр того же класса, что чинился в подписи RefSelect.
+      const cidrs = [
+        ...(Array.isArray(r.v4_cidr_blocks) ? (r.v4_cidr_blocks as string[]) : []),
+        ...(Array.isArray(r.v6_cidr_blocks) ? (r.v6_cidr_blocks as string[]) : []),
+      ].filter(Boolean);
+      if (cidrs.length > 0) e.cidrs = cidrs.join(",");
       break;
+    }
     case "zones":
       if (r.region_id) e.region = String(r.region_id);
       break;

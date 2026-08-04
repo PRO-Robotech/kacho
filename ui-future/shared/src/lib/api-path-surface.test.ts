@@ -19,9 +19,23 @@
 // контроль в обе стороны — законный путь обязан признаваться, выдуманный обязан
 // отвергаться, иначе «все пути прошли» означало бы лишь, что сопоставитель
 // согласен на всё.
+//
+// ЧТО ЧИТАЕТСЯ. Первая часть — цельные литералы. Её одной было НЕДОСТАТОЧНО, и
+// это не мелочь охвата: путь, собранный из головы-подстановки
+// (`${spec.apiPath}/…/operations`), для неё не существует вовсе — а именно там и
+// сидел подмаршрут, которого ствол не подаёт. Вторая часть (ниже) читает
+// составные выражения, резолвя голову тем же способом, что сосед
+// `src/test/console-verb-routes-exist.test.ts`.
+//
+// ЧТО ОСТАЁТСЯ ВНЕ — названо, а не умолчано: выражение, чей ГЛАГОЛ подставляется
+// переменной (`…/${id}:${verb}`). Имя действия статически неизвестно ни здесь,
+// ни у соседа; такие места перечислены поимённо отдельным утверждением, и их
+// число обязано меняться вместе с кодом.
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
+
+import { REGISTRY } from "./resource-registry";
 
 // cwd прогона — каталог приложения (ui-future/<app>), одинаково у всех девяти:
 // их package.json запускает jest из своего каталога. Отсюда и относительные
@@ -226,6 +240,14 @@ describe("сопоставитель различает — контроль в 
 
   it("отвергает выдуманное, а не соглашается на всё", () => {
     expect(belongs("/vpc/v1/nope")).toBe(false);
+    // Каталог размещения: живой адрес принадлежит geo, а тот, что раньше стоял в
+    // поиске по системе, не существовал никогда — в proto compute нет ни одного
+    // сообщения Region/Zone. Пара утверждений держит именно этот случай, а не
+    // «какой-то путь вообще».
+    expect(belongs("/geo/v1/regions")).toBe(true);
+    expect(belongs("/geo/v1/zones")).toBe(true);
+    expect(belongs("/compute/v1/regions")).toBe(false);
+    expect(belongs("/compute/v1/zones")).toBe(false);
     expect(belongs("/vpc/v1/networks/${id}:no-such-verb")).toBe(false);
     // Слэшевая форма там, где ствол несёт глагольную, — разные пути.
     expect(belongs("/vpc/v1/networks/${id}/internal")).toBe(false);
@@ -239,5 +261,187 @@ describe("shared не адресует ничего вне поверхност�
 
   it.each(cases)("%s", (path, files) => {
     expect(belongs(path) ? "" : `${path} ← ${files.join(", ")}`).toBe("");
+  });
+});
+
+// ── Составные выражения пути ─────────────────────────────────────────────────
+//
+// Всё выше читает ЦЕЛЬНЫЕ литералы. Их недостаточно, и это не мелочь охвата:
+// путь, собранный из головы-подстановки (`${spec.apiPath}/…`), для этой части
+// пробы не существует вовсе — а именно так консоль строит вложенные подмаршруты
+// generic-компонентов, где имя ресурса неизвестно на месте написания.
+//
+// Голова резолвится ТЕМ ЖЕ способом, что у соседа
+// (`src/test/console-verb-routes-exist.test.ts`): строковая константа, запись
+// объектной карты путей, стрелка-константа, псевдоним записи реестра. Свободное
+// `<что-то>.apiPath` (проп generic-компонента) разворачивается по ВСЕМ apiPath
+// реестра — компонент обещает этот путь для КАЖДОЙ спеки, которую ему могут
+// передать, и обещание проверяется для каждой.
+
+const registryApiPaths = [...new Set(Object.values(REGISTRY).map((s) => s.apiPath))].sort();
+
+/** `const X = { a: "/p" } as const;` — карты путей (`IAM.users`, `CLUSTER.admins`). */
+const OBJECT_CONST = /(?:^|\n)\s*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*\{([^}]*)\}\s*as const;/g;
+const OBJECT_ENTRY = /([A-Za-z_$][\w$]*)\s*:\s*"([^"]*)"/g;
+/** `const X = "/p";` */
+const STRING_CONST = /(?:^|\n)\s*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*(?::[^=]*)?=\s*"([^"]*)"\s*;/g;
+/** `const X = (a: T) => `/p/${a}/q`;` — константа-построитель пути. */
+const ARROW_CONST = /(?:^|\n)\s*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*(?::[^=]*)?=\s*\([^)]*\)\s*=>\s*`([^`]*)`/g;
+/** `const spec = REGISTRY["subnets"];` / `REGISTRY.subnets` — псевдоним спеки. */
+const REGISTRY_ALIAS =
+  /(?:^|\n)\s*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*REGISTRY(?:\[\s*"([^"]+)"\s*\]|\.([A-Za-z_$][\w$]*))\s*;/g;
+
+const objectConsts = new Map<string, string>();
+for (const file of sharedFiles) {
+  const src = readFileSync(file, "utf8");
+  for (const o of src.matchAll(OBJECT_CONST)) {
+    for (const e of o[2].matchAll(OBJECT_ENTRY)) objectConsts.set(`${o[1]}.${e[1]}`, e[2]);
+  }
+}
+
+interface Composite {
+  file: string;
+  literal: string;
+  /** Пути, которые это выражение может произнести (для generic-спеки — все). */
+  candidates: string[];
+}
+
+/** Головы, которые резолвятся В ОДИН путь; `null` — «это не голова API-пути». */
+function headOf(
+  expr: string,
+  strings: Map<string, string>,
+  arrows: Map<string, string>,
+  aliases: Map<string, string>,
+): string[] | null {
+  const e = expr.trim();
+  // `REGISTRY["subnets"].apiPath` / `REGISTRY.subnets.apiPath` — точная спека.
+  const direct = /^REGISTRY(?:\[\s*"([^"]+)"\s*\]|\.([A-Za-z_$][\w$]*))\s*\.apiPath$/.exec(e);
+  if (direct) {
+    const spec = REGISTRY[direct[1] ?? direct[2]];
+    return spec ? [spec.apiPath] : null;
+  }
+  // `spec.apiPath` / `spec!.apiPath` / `spec?.apiPath`.
+  const dotApi = /^([A-Za-z_$][\w$]*)\s*[!?]?\.?\s*[!?]?\.apiPath$/.exec(e);
+  if (dotApi) {
+    const alias = aliases.get(dotApi[1]);
+    if (alias !== undefined) {
+      const spec = REGISTRY[alias];
+      return spec ? [spec.apiPath] : null;
+    }
+    // Свободная переменная — generic-компонент получает ЛЮБУЮ спеку реестра.
+    return registryApiPaths;
+  }
+  // `FN(arg)` — константа-построитель пути.
+  const call = /^([A-Za-z_$][\w$]*)\s*\(/.exec(e);
+  if (call) {
+    const body = arrows.get(call[1]);
+    return body?.startsWith("/") ? [body] : null;
+  }
+  // `OBJ.key` — запись карты путей.
+  if (objectConsts.has(e)) return [objectConsts.get(e)!];
+  // Одиночная строковая константа.
+  const str = strings.get(e);
+  if (str?.startsWith("/")) return [str];
+  return null;
+}
+
+const composites: Composite[] = [];
+/** Хвост несёт подставляемый ГЛАГОЛ — какой именно, статически неизвестно. */
+const dynamicVerb: Composite[] = [];
+let compositeLiteralsSeen = 0;
+
+for (const file of sharedFiles) {
+  const raw = readFileSync(file, "utf8");
+  const code = stripComments(raw);
+  const strings = new Map<string, string>();
+  for (const m of raw.matchAll(STRING_CONST)) strings.set(m[1], m[2]);
+  const arrows = new Map<string, string>();
+  for (const m of raw.matchAll(ARROW_CONST)) arrows.set(m[1], m[2]);
+  const aliases = new Map<string, string>();
+  for (const m of raw.matchAll(REGISTRY_ALIAS)) aliases.set(m[1], m[2] ?? m[3]);
+
+  for (const m of code.matchAll(/`([^`\n]*)`/g)) {
+    const literal = m[1];
+    const head = /^\$\{([^}]*)\}/.exec(literal);
+    if (!head) continue; // цельный литерал — его читает часть выше
+    compositeLiteralsSeen++;
+    const bases = headOf(head[1], strings, arrows, aliases);
+    if (bases === null) continue; // не API-путь (маршрут SPA, вёрстка, URL окна)
+    const tail = literal.slice(head[0].length);
+    const candidates = bases.map((b) => b + tail).filter((p) => API_PREFIX.test(p));
+    if (candidates.length === 0) continue;
+    const rel = file.slice(SHARED_SRC.length + 1);
+    const entry: Composite = { file: rel, literal, candidates };
+    // Глагол, собираемый на месте (`:${verb}`), этой пробе не разрешить: имя
+    // действия — значение переменной. Такие места выносим в объявленный остаток,
+    // а не считаем проверенными.
+    if (/:\$\{/.test(tail)) dynamicVerb.push(entry);
+    else composites.push(entry);
+  }
+}
+
+describe("составные пути — объём осмотренного", () => {
+  it("реестр прочитан, головы резолвятся, остаток объявлен числом", () => {
+    expect(registryApiPaths.length).toBeGreaterThan(20);
+    expect(objectConsts.size).toBeGreaterThan(5);
+    // Шаблонных литералов с подстановкой в голове — столько; из них API-путём
+    // оказываются те, чья голова резолвится в путь. Остальное — маршруты SPA и
+    // вёрстка, и это НЕ «ноль находок»: они прочитаны и классифицированы.
+    expect(compositeLiteralsSeen).toBeGreaterThan(40);
+    expect(composites.length).toBeGreaterThan(10);
+  });
+
+  it("остаток — только выражения с подставляемым глаголом, и он назван", () => {
+    // Их проверяет не эта проба: имя действия статически неизвестно ни здесь, ни
+    // у соседа (`console-verb-routes-exist`), который такую форму тоже пропускает.
+    // Число обязано меняться вместе с кодом — молчаливый рост остатка виден здесь.
+    expect(dynamicVerb.map((c) => `${c.file} ${c.literal}`).sort()).toEqual([
+      "components/organisms/AddressPoolCidrManager/AddressPoolCidrManager.tsx " +
+        "${POOLS_API}/${poolId}:${params.verb}CidrBlocks",
+      "components/organisms/NetworkCidrManager/NetworkCidrManager.tsx " +
+        "${NETWORKS_API}/${networkId}:${params.verb}-cidr-blocks",
+      "components/organisms/ResourceDetailPage/ResourceDetailPage.tsx ${spec.apiPath}/${uid}:${verb}",
+      "components/organisms/SubnetCidrManager/SubnetCidrManager.tsx " +
+        "${SUBNETS_API}/${subnetId}:${params.verb}-cidr-blocks",
+    ]);
+  });
+});
+
+describe("резолвер головы различает — контроль в обе стороны", () => {
+  const strings = new Map([["LOCAL", "/vpc/v1/networks"]]);
+  const arrows = new Map([["BUILD", "/iam/v1/users/${id}/tokens"]]);
+  const aliases = new Map([["sgSpec", "security-groups"]]);
+
+  it("резолвит все четыре формы головы", () => {
+    expect(headOf("LOCAL", strings, arrows, aliases)).toEqual(["/vpc/v1/networks"]);
+    expect(headOf("BUILD(x)", strings, arrows, aliases)).toEqual(["/iam/v1/users/${id}/tokens"]);
+    expect(headOf("sgSpec.apiPath", strings, arrows, aliases)).toEqual(["/vpc/v1/securityGroups"]);
+    expect(headOf("IAM.users", strings, arrows, aliases)).toEqual(["/iam/v1/users"]);
+    expect(headOf('REGISTRY["subnets"].apiPath', strings, arrows, aliases)).toEqual(["/vpc/v1/subnets"]);
+  });
+
+  it("свободное `.apiPath` разворачивается по всему реестру, а не по одной спеке", () => {
+    expect(headOf("spec.apiPath", strings, arrows, aliases)).toEqual(registryApiPaths);
+    expect(registryApiPaths.length).toBeGreaterThan(1);
+  });
+
+  it("не выдаёт за API-путь то, что им не является", () => {
+    expect(headOf("basePath", strings, arrows, aliases)).toBeNull();
+    expect(headOf("window.location.protocol", strings, arrows, aliases)).toBeNull();
+    expect(headOf("detailBase", strings, arrows, aliases)).toBeNull();
+  });
+});
+
+describe("составной путь shared принадлежит поверхности ствола", () => {
+  const cases = composites
+    .flatMap((c) => c.candidates.map((p) => [`${c.file} ${c.literal} → ${p}`, p] as const))
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  it("их не ноль — иначе утверждение ниже пустое", () => {
+    expect(cases.length).toBeGreaterThan(100);
+  });
+
+  it.each(cases)("%s", (label, path) => {
+    expect(belongs(path) ? "" : label).toBe("");
   });
 });

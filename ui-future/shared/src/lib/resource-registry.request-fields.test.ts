@@ -144,4 +144,34 @@ describe("spec fields name real request fields", () => {
     expect(tpl.scope_type).toBe("iam.account");
     expect(tpl.scope_id).toBe("acc-1");
   });
+
+  // vpc.v1.CreateAddressPoolRequest: `cidr_blocks` (tag 5) is `reserved`, split into
+  // `v4_cidr_blocks` (11) + `v6_cidr_blocks` (12). The Create body must name the
+  // split pair and must not name the retired one at any depth.
+  it("address-pools names the split cidr pair and not the retired one", () => {
+    const keys = createKeys("address-pools");
+    expect(keys).toContain("v4_cidr_blocks");
+    expect(keys).toContain("v6_cidr_blocks");
+    expect(keys).not.toContain("cidr_blocks");
+  });
+
+  // `AccessTarget target = 15` is `REQUIRED` on CreateAccessBindingRequest, and the
+  // service rejects its absence in the first statement: `targetFromProto` answers a
+  // nil target and an empty oneof alike with INVALID_ARGUMENT «target is required;
+  // use target.allInScope{} to grant all objects under the anchor»
+  // (services/iam/.../access_binding/delta_input.go). A skeleton without it states a
+  // request shape the server refuses — and it is the skeleton, not the bespoke page,
+  // that the next contributor copies. The arm is spelled the way the console's own
+  // body builder spells it (`buildCreateAccessBindingBody`, shared/src/api/iam.ts):
+  // per-object `resources` when the operator picks objects, whole-anchor otherwise.
+  it("access-bindings states the target the grant cannot be created without", () => {
+    const tpl = asObj(REGISTRY["access-bindings"].template({ accountId: "acc-1" }));
+    expect(tpl).toHaveProperty("target");
+    const target = asObj(tpl.target);
+    // Ровно один арм oneof — «оба» на проводе означало бы, что выигрывает
+    // последний, и выбор делает не форма, а порядок ключей.
+    const arms = Object.keys(target).filter((k) => k === "all_in_scope" || k === "resources");
+    expect(arms).toHaveLength(1);
+    expect(target.all_in_scope).toEqual({});
+  });
 });
