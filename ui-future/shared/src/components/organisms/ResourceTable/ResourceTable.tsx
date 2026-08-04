@@ -75,6 +75,7 @@ export function ResourceTable<T extends object>({
     const el = wrapRef.current;
     if (!el) return;
     const recompute = () => {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- ложное срабатывание: querySelector<E extends Element = Element>, и E выводится из самого утверждения типа. Без него E = Element, у которого нет offsetHeight (проверено tsc: удаление даёт TS2339).
       const thead = el.querySelector(".ant-table-thead") as HTMLElement | null;
       const theadH = thead?.offsetHeight ?? 40;
       const avail = el.clientHeight - theadH;

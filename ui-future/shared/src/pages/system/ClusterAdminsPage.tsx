@@ -73,7 +73,7 @@ export default function ClusterAdminsPage() {
       toast.error(revokeOp.error.message || "Не удалось отозвать admin");
     } else {
       toast.success("Admin отозван");
-      qc.invalidateQueries({ queryKey: ["cluster-admins"] });
+      void qc.invalidateQueries({ queryKey: ["cluster-admins"] });
     }
     setRevokeOpId(null);
     setRevokingId(null);
@@ -88,7 +88,7 @@ export default function ClusterAdminsPage() {
         setRevokeOpId(id);
       } else {
         toast.success("Admin отозван");
-        qc.invalidateQueries({ queryKey: ["cluster-admins"] });
+        void qc.invalidateQueries({ queryKey: ["cluster-admins"] });
         setRevokingId(null);
       }
     } catch (e) {

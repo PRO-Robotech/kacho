@@ -103,7 +103,7 @@ async function fetchJson<T>(method: string, path: string, body?: unknown): Promi
     }
   }
   // На приёме: camelCase → snake_case (UI ожидает proto-style ключи).
-  return camelToSnake(parsed) as T;
+  return camelToSnake(parsed);
 }
 
 export const api = {

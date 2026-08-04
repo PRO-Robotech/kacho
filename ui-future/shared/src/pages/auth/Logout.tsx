@@ -31,7 +31,7 @@ export function LogoutPage() {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       try {
         await logout();
         // BCL для Hydra session (если есть id-token-hint). Fire-and-forget.

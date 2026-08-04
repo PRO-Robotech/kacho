@@ -53,24 +53,24 @@ export function useOperation(opId: string | null) {
 function invalidateResourceKeys(qc: ReturnType<typeof useQueryClient>, resourceId: string) {
   const opts = { refetchType: "all" as const };
   // Все list-варианты этого ресурса (любой parent-фильтр).
-  qc.invalidateQueries({ queryKey: [resourceId, "list"], ...opts });
+  void qc.invalidateQueries({ queryKey: [resourceId, "list"], ...opts });
   // Detail-ключи resourceId-first:
   //   ResourceDetailPage/EditPage → [spec.id, "detail", uid]
   //   ResourceShell (Обзор + overviewBelow, где живут доменные панели) → [spec.id, "shell-detail", uid]
-  qc.invalidateQueries({ queryKey: [resourceId, "detail"], ...opts });
-  qc.invalidateQueries({ queryKey: [resourceId, "shell-detail"], ...opts });
+  void qc.invalidateQueries({ queryKey: [resourceId, "detail"], ...opts });
+  void qc.invalidateQueries({ queryKey: [resourceId, "shell-detail"], ...opts });
   // RefNameLink резолвит имя по списку владельца — сбрасываем все ref-name кэши.
-  qc.invalidateQueries({ queryKey: ["ref-name"], ...opts });
+  void qc.invalidateQueries({ queryKey: ["ref-name"], ...opts });
   // Network.Create side-effect'ом создаёт default Security Group.
   if (resourceId === "networks") {
-    qc.invalidateQueries({ queryKey: ["security-groups", "list"], ...opts });
-    qc.invalidateQueries({ queryKey: ["security-groups", "detail"], ...opts });
-    qc.invalidateQueries({ queryKey: ["security-groups", "shell-detail"], ...opts });
+    void qc.invalidateQueries({ queryKey: ["security-groups", "list"], ...opts });
+    void qc.invalidateQueries({ queryKey: ["security-groups", "detail"], ...opts });
+    void qc.invalidateQueries({ queryKey: ["security-groups", "shell-detail"], ...opts });
   }
   // Breadcrumb pills + dashboard counts.
-  qc.invalidateQueries({ queryKey: ["accounts-crumb"], ...opts });
-  qc.invalidateQueries({ queryKey: ["projects-crumb"], ...opts });
-  qc.invalidateQueries({ queryKey: ["dash"], ...opts });
+  void qc.invalidateQueries({ queryKey: ["accounts-crumb"], ...opts });
+  void qc.invalidateQueries({ queryKey: ["projects-crumb"], ...opts });
+  void qc.invalidateQueries({ queryKey: ["dash"], ...opts });
 }
 
 export function useInvalidateResourceList() {

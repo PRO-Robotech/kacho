@@ -69,12 +69,12 @@ function CidrSection({ networkId, kind, blocks }: SectionProps) {
         setOpTitle(`${vars.verb === "add" ? "Добавление" : "Удаление"} ${family} супернет-блока ${vars.cidr}`);
         setOpId(id);
       } else {
-        qc.invalidateQueries({ queryKey: ["networks"] });
+        void qc.invalidateQueries({ queryKey: ["networks"] });
         setPendingCidr(null);
       }
     },
     onError: (err, vars) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error).message;
+      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : err.message;
       toast.error(`${family} супернет ${vars.verb === "add" ? "добавление" : "удаление"}: ${m}`);
       setPendingCidr(null);
     },
@@ -177,7 +177,7 @@ function CidrSection({ networkId, kind, blocks }: SectionProps) {
         onDone={() => {
           setOpId(null);
           setPendingCidr(null);
-          qc.invalidateQueries({ queryKey: ["networks"] });
+          void qc.invalidateQueries({ queryKey: ["networks"] });
         }}
       />
     </Card>

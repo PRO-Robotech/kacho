@@ -2,6 +2,10 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// Импортируем чистую фильтр-логику из opFilter (без antd — иначе jest-граф с
+// `antd/es/table` подвешивает импорт runtime-модуля OperationsTable).
+import { matchesOutcome } from "./opFilter";
+
 const expectedExports = ["statusOf", "statusLabel", "OperationsTable"] as const;
 
 const source = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "OperationsTable.tsx"), "utf8");
@@ -13,10 +17,6 @@ describe("OperationsTable", () => {
     }
   });
 });
-
-// Импортируем чистую фильтр-логику из opFilter (без antd — иначе jest-граф с
-// `antd/es/table` подвешивает импорт runtime-модуля OperationsTable).
-import { matchesOutcome } from "./opFilter";
 
 describe("matchesOutcome", () => {
   it("keeps only failed operations for the error outcome", () => {

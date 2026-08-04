@@ -123,7 +123,7 @@ export function DetailShell({
 
   const setTab = (id: string) => {
     if (controlled) {
-      onTabSelect!(id);
+      onTabSelect(id);
       return;
     }
     const next = new URLSearchParams(params);
@@ -387,7 +387,9 @@ export function DetailShell({
             скроллит СЕБЯ (thead фиксирован), content-таб (Обзор/JSON/форма) —
             скроллится целиком. Внешний контейнер overflow:hidden + flex-column,
             скролл живёт во внутренней обёртке per-case. */}
-        <div style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div
+          style={{ flex: 1, minHeight: 0, minWidth: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}
+        >
           {mainOverride ? (
             <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: "auto" }}>{mainOverride}</div>
           ) : (

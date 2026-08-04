@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "dev": "powershell -ExecutionPolicy Bypass -File ./dev-federation.ps1",
-    "typecheck": "npm run typecheck --prefix host && npm run typecheck --prefix dashboard && npm run typecheck --prefix vpc && npm run typecheck --prefix compute && npm run typecheck --prefix storage && npm run typecheck --prefix nlb && npm run typecheck --prefix registry && npm run typecheck --prefix iam && npm run typecheck --prefix system",
+    "typecheck": "npm run typecheck --prefix shared && npm run typecheck --prefix host && npm run typecheck --prefix dashboard && npm run typecheck --prefix vpc && npm run typecheck --prefix compute && npm run typecheck --prefix storage && npm run typecheck --prefix nlb && npm run typecheck --prefix registry && npm run typecheck --prefix iam && npm run typecheck --prefix system",
     "test": "npm test --prefix host && npm test --prefix dashboard && npm test --prefix vpc && npm test --prefix compute && npm test --prefix storage && npm test --prefix nlb && npm test --prefix registry && npm test --prefix iam && npm test --prefix system"
   },
   "overrides": {

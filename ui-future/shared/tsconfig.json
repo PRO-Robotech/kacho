@@ -1,0 +1,31 @@
+{
+  // Собственный проект пакета `shared` — нужен для type-aware правил ESLint
+  // (`projectService` в eslint.config.js). На сборку приложений не влияет: каждое
+  // из девяти тянет ../shared/src своим tsconfig.app.json и на этот файл не ссылается,
+  // а ts-jest во всех девяти жёстко указывает `tsconfig: "tsconfig.app.json"`.
+  //
+  // compilerOptions повторяют tsconfig.app.json приложений — иначе линт судил бы
+  // общий код по другим правилам типизации, чем компилятор, который его собирает.
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": false,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "esModuleInterop": true,
+    "paths": {
+      "@shared/*": ["./src/*"]
+    }
+  },
+  "include": ["src"]
+}

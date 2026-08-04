@@ -167,7 +167,7 @@ export function InlineSubnetCreateForm({ projectId, networkId: presetNetworkId, 
       }
     },
     onError: (err) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error).message;
+      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : err.message;
       toast.error(`Создать подсеть: ${m}`);
     },
   });

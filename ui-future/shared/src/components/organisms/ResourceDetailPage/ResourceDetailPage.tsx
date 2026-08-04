@@ -119,7 +119,7 @@ export function ResourceDetailPage({
       const params = new URLSearchParams(searchParams);
       params.set("modal", `${spec.id}-edit`);
       params.set("id", uid);
-      navigate(`${detailPath}?${params.toString()}`, { replace: true });
+      void navigate(`${detailPath}?${params.toString()}`, { replace: true });
     }
   }, [isEditUrl, uid, detailPath, navigate, searchParams, spec.id]);
 
@@ -128,7 +128,7 @@ export function ResourceDetailPage({
     const params = new URLSearchParams(searchParams);
     params.set("modal", `${spec.id}-edit`);
     params.set("id", uid);
-    navigate(`${detailPath}?${params.toString()}`, { replace: false });
+    void navigate(`${detailPath}?${params.toString()}`, { replace: false });
   }, [detailPath, navigate, searchParams, spec.id, uid]);
 
   const exitEdit = useCallback(() => {
@@ -136,7 +136,7 @@ export function ResourceDetailPage({
     params.delete("modal");
     params.delete("id");
     const qs = params.toString();
-    navigate(qs ? `${detailPath}?${qs}` : detailPath, { replace: true });
+    void navigate(qs ? `${detailPath}?${qs}` : detailPath, { replace: true });
   }, [detailPath, navigate, searchParams]);
 
   // editing — legacy для renderInlineEdit. С KAC-70 edit-flow в модалке,
@@ -169,7 +169,7 @@ export function ResourceDetailPage({
       else invalidate(spec.id, project?.id);
     },
     onError: (e) => {
-      setActionErr(e instanceof ApiError ? `${e.code}: ${e.message}` : (e as Error).message);
+      setActionErr(e instanceof ApiError ? `${e.code}: ${e.message}` : e.message);
     },
   });
 
@@ -264,7 +264,7 @@ export function ResourceDetailPage({
             onClick: () => setDeleteOpen(true),
           }
         : null,
-    ].filter(Boolean) as MenuProps["items"];
+    ].filter(Boolean);
 
     return (
       <Space size="small">
@@ -404,7 +404,7 @@ export function ResourceDetailPage({
     getByPath<string>(data, "network_id")
       ? {
           label: "Сеть",
-          value: <RefNameLink specId="networks" refId={getByPath<string>(data, "network_id")!} />,
+          value: <RefNameLink specId="networks" refId={getByPath<string>(data, "network_id")} />,
         }
       : null,
     getByPath<string>(data, "description")
@@ -429,8 +429,8 @@ export function ResourceDetailPage({
       ? {
           label: "Супернет",
           value: (() => {
-            const v4 = (getByPath<string[]>(data, "ipv4_cidr_blocks") ?? []) as string[];
-            const v6 = (getByPath<string[]>(data, "ipv6_cidr_blocks") ?? []) as string[];
+            const v4 = getByPath<string[]>(data, "ipv4_cidr_blocks") ?? [];
+            const v6 = getByPath<string[]>(data, "ipv6_cidr_blocks") ?? [];
             const all = [...v4, ...v6];
             if (all.length === 0) return <Typography.Text type="secondary">—</Typography.Text>;
             return (
@@ -449,14 +449,14 @@ export function ResourceDetailPage({
     spec.id === "networks" && getByPath<string>(data, "default_security_group_id")
       ? {
           label: "Группа безопасности по умолчанию",
-          value: <RefNameLink specId="security-groups" refId={getByPath<string>(data, "default_security_group_id")!} />,
+          value: <RefNameLink specId="security-groups" refId={getByPath<string>(data, "default_security_group_id")} />,
         }
       : null,
     // Network-specific: system-provisioned default RT (VPC-1, echoed on create).
     spec.id === "networks" && getByPath<string>(data, "default_route_table_id")
       ? {
           label: "Таблица маршрутизации по умолчанию",
-          value: <RefNameLink specId="route-tables" refId={getByPath<string>(data, "default_route_table_id")!} />,
+          value: <RefNameLink specId="route-tables" refId={getByPath<string>(data, "default_route_table_id")} />,
         }
       : null,
     // SecurityGroup-specific: Правила (count + empty state).
@@ -464,7 +464,7 @@ export function ResourceDetailPage({
       ? {
           label: "Правила",
           value: (() => {
-            const rules = (getByPath<unknown[]>(data, "rules") ?? []) as unknown[];
+            const rules = getByPath<unknown[]>(data, "rules") ?? [];
             if (rules.length === 0) {
               return (
                 <Space direction="vertical" size={2}>
@@ -512,7 +512,7 @@ export function ResourceDetailPage({
           label: "IPv4 CIDR",
           value: (() => {
             const primary = getByPath<string>(data, "ipv4_cidr_primary") ?? "";
-            const extra = (getByPath<string[]>(data, "ipv4_cidr_blocks") ?? []) as string[];
+            const extra = getByPath<string[]>(data, "ipv4_cidr_blocks") ?? [];
             const all = [...(primary ? [primary] : []), ...extra];
             if (all.length === 0) return <Typography.Text type="secondary">—</Typography.Text>;
             return (
@@ -534,7 +534,7 @@ export function ResourceDetailPage({
           label: "IPv6 CIDR",
           value: (() => {
             const primary = getByPath<string>(data, "ipv6_cidr_primary") ?? "";
-            const extra = (getByPath<string[]>(data, "ipv6_cidr_blocks") ?? []) as string[];
+            const extra = getByPath<string[]>(data, "ipv6_cidr_blocks") ?? [];
             const all = [...(primary ? [primary] : []), ...extra];
             if (all.length === 0) return <Typography.Text type="secondary">—</Typography.Text>;
             return (

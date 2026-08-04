@@ -241,7 +241,7 @@ export function NicSpecFields({ pathPrefix, value, onChange }: Props) {
             <Cascader
               style={{ width: "100%" }}
               options={cascaderOptions}
-              value={cascaderPath as string[] | undefined}
+              value={cascaderPath}
               onChange={onCascaderChange}
               showSearch={{
                 filter: (input, path) =>
@@ -358,9 +358,9 @@ export function NicSpecFields({ pathPrefix, value, onChange }: Props) {
               void addressesQ.refetch().then((r) => {
                 const after = (r.data?.addresses ?? []).filter((a) => !!a.internal_ipv4_address);
                 const fresh = after.find((a) => !before.has(a.id) && a.internal_ipv4_address?.subnet_id === sid);
-                const nid = networkIdOfSubnet(sid!);
-                if (fresh && nid) applyAddressSelection(fresh, sid!, nid);
-                else if (nid) applyAddressSelection(undefined, sid!, nid);
+                const nid = networkIdOfSubnet(sid);
+                if (fresh && nid) applyAddressSelection(fresh, sid, nid);
+                else if (nid) applyAddressSelection(undefined, sid, nid);
               });
               setCreateInternalSubnet(null);
             }}

@@ -44,7 +44,7 @@ let calls: Call[] = [];
 
 /** Stub fetch: POST answers with `createAnswer`, the operation poll with `opAnswer`. */
 function stubFetch(createAnswer: unknown, opAnswer: unknown) {
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
     calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
@@ -55,7 +55,7 @@ function stubFetch(createAnswer: unknown, opAnswer: unknown) {
       statusText: "OK",
       text: async () => JSON.stringify(payload),
     } as Response;
-  }) as typeof globalThis.fetch;
+  };
 }
 
 function renderCreate() {
@@ -141,7 +141,7 @@ describe("ResourceCreatePage — Region", () => {
   it("does not report success when the operation status cannot be read", async () => {
     // The mutation was accepted, but the poll fails. Nothing is known about the
     // outcome — the old wiring simply spun forever.
-    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+    globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
       const method = init?.method ?? "GET";
       if (method === "POST") {
         return {
@@ -157,7 +157,7 @@ describe("ResourceCreatePage — Region", () => {
         statusText: "Forbidden",
         text: async () => JSON.stringify({ code: "PERMISSION_DENIED", message: "no path" }),
       } as Response;
-    }) as typeof globalThis.fetch;
+    };
 
     renderCreate();
     await submit();

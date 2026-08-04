@@ -67,8 +67,7 @@ export function InstanceDetailPage() {
         invalidate("volumes", project?.id);
       }
     },
-    onError: (e) =>
-      toast.error(`Подключить том: ${e instanceof ApiError ? `${e.code}: ${e.message}` : (e as Error).message}`),
+    onError: (e) => toast.error(`Подключить том: ${e instanceof ApiError ? `${e.code}: ${e.message}` : e.message}`),
   });
 
   const detachMut = useMutation({
@@ -85,8 +84,7 @@ export function InstanceDetailPage() {
         invalidate("volumes", project?.id);
       }
     },
-    onError: (e) =>
-      toast.error(`Отключить том: ${e instanceof ApiError ? `${e.code}: ${e.message}` : (e as Error).message}`),
+    onError: (e) => toast.error(`Отключить том: ${e instanceof ApiError ? `${e.code}: ${e.message}` : e.message}`),
   });
 
   const secondaryActions = useMemo(

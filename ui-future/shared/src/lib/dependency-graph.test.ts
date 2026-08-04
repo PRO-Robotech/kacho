@@ -67,7 +67,9 @@ describe("dependency-graph", () => {
     expect(userSg?.blocks).toBe(true);
 
     // blockingNodes walks recursively and collects only blocking nodes.
-    const blocking = blockingNodes(tree).map((n) => n.id).sort();
+    const blocking = blockingNodes(tree)
+      .map((n) => n.id)
+      .sort();
     expect(blocking).toEqual(["addr-1", "ni-1", "sg-user", "sn-1"]);
   });
 
@@ -76,7 +78,7 @@ describe("dependency-graph", () => {
       id: "ni-1",
       project_id: "p1",
       used_by: { referrer: { id: "inst-9" } },
-    } as never);
+    });
 
     const tree = await loadDependents("network-interfaces", { id: "ni-1", project_id: "p1" });
 
@@ -87,7 +89,7 @@ describe("dependency-graph", () => {
   });
 
   it("returns no dependents for an unattached NIC", async () => {
-    get.mockResolvedValue({ id: "ni-2", project_id: "p1" } as never);
+    get.mockResolvedValue({ id: "ni-2", project_id: "p1" });
     const tree = await loadDependents("network-interfaces", { id: "ni-2", project_id: "p1" });
     expect(tree).toEqual([]);
   });

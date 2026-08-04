@@ -45,7 +45,7 @@ export function InlineSecurityGroupEditForm({ projectId, sgId, onCancel }: Props
     if (!data || hydrated) return;
     setName((data.name as string) ?? "");
     setDescription((data.description as string) ?? "");
-    setObj({ labels: (data.labels as Record<string, string>) ?? {} });
+    setObj({ labels: data.labels ?? {} });
     setHydrated(true);
   }, [data, hydrated]);
 
@@ -71,7 +71,7 @@ export function InlineSecurityGroupEditForm({ projectId, sgId, onCancel }: Props
         labels: obj.labels ?? {},
         update_mask: mask.map(snakeToCamelPath).join(","),
       });
-      const opId = extractOperationId(resp as Parameters<typeof extractOperationId>[0]);
+      const opId = extractOperationId(resp);
       if (opId) {
         operationStore.start({
           id: opId,

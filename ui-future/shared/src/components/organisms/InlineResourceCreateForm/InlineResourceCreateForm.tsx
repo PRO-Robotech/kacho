@@ -10,16 +10,10 @@ import { Alert } from "antd";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
 import { ResourceFormBody } from "@shared/components/organisms/form/ResourceFormBody";
 import { ApiError, api } from "@shared/api/client";
-import {
-  applyFieldDefaults,
-  type ResourceSpec,
-} from "@shared/lib/resource-registry";
+import { applyFieldDefaults, type ResourceSpec } from "@shared/lib/resource-registry";
 import { setByPath } from "@shared/lib/path";
 import { buildCreateBody } from "@shared/lib/update-mask";
-import {
-  useInvalidateResourceList,
-  useOperation,
-} from "@shared/lib/use-operation";
+import { useInvalidateResourceList, useOperation } from "@shared/lib/use-operation";
 import { toast } from "@shared/lib/toast";
 
 interface Props {
@@ -60,21 +54,12 @@ export function InlineResourceCreateForm({
 }: Props) {
   const invalidate = useInvalidateResourceList();
   const presets = useMemo(() => presetFields ?? {}, [presetFields]);
-  const editablePresets = useMemo(
-    () => editablePresetFields ?? {},
-    [editablePresetFields],
-  );
+  const editablePresets = useMemo(() => editablePresetFields ?? {}, [editablePresetFields]);
 
   const initialObj = useMemo(() => {
     const tpl = spec.template(ctx);
-    const baseObj =
-      typeof tpl === "object" && tpl !== null
-        ? { ...(tpl as Record<string, unknown>) }
-        : {};
-    let merged: Record<string, unknown> = applyFieldDefaults(
-      spec.fields,
-      baseObj,
-    );
+    const baseObj = typeof tpl === "object" && tpl !== null ? { ...(tpl as Record<string, unknown>) } : {};
+    let merged: Record<string, unknown> = applyFieldDefaults(spec.fields, baseObj);
     for (const [path, val] of Object.entries(editablePresets)) {
       merged = setByPath(merged, path, val);
     }
@@ -84,10 +69,7 @@ export function InlineResourceCreateForm({
     // Auto-name: если у ресурса есть поле name и оно пустое, генерируем
     // <route>-NNNNNN — иначе backend (UNIQUE по project_id+name) отвечает
     // ALREADY_EXISTS на повторный nameless ресурс.
-    if (
-      spec.fields?.some((f) => f.name === "name") &&
-      (!merged.name || merged.name === "")
-    ) {
+    if (spec.fields?.some((f) => f.name === "name") && (!merged.name || merged.name === "")) {
       const stem = spec.route.replace(/-/g, "");
       merged.name = `${stem}-${Math.floor(100000 + Math.random() * 900000)}`;
     }
@@ -118,10 +100,7 @@ export function InlineResourceCreateForm({
       }
     },
     onError: (err) => {
-      const m =
-        err instanceof ApiError
-          ? `${err.code}: ${err.message}`
-          : (err as Error).message;
+      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : err.message;
       toast.error(`Создать ${spec.singular}: ${m}`);
     },
   });
@@ -162,12 +141,7 @@ export function InlineResourceCreateForm({
 
   const fields = spec.fields;
   if (!fields) {
-    return (
-      <Alert
-        type="warning"
-        message={`У ресурса ${spec.singular} нет form-schema; используйте API напрямую.`}
-      />
-    );
+    return <Alert type="warning" message={`У ресурса ${spec.singular} нет form-schema; используйте API напрямую.`} />;
   }
 
   return (

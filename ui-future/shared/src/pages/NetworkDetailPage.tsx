@@ -129,8 +129,8 @@ export function NetworkDetailPage() {
   // мутируется :add/:remove-cidr-blocks) + таблицу подсетей.
   const overviewExtras = useCallback(
     (data: Record<string, unknown>) => {
-      const v4 = (getByPath<string[]>(data, "ipv4_cidr_blocks") ?? []) as string[];
-      const v6 = (getByPath<string[]>(data, "ipv6_cidr_blocks") ?? []) as string[];
+      const v4 = getByPath<string[]>(data, "ipv4_cidr_blocks") ?? [];
+      const v6 = getByPath<string[]>(data, "ipv6_cidr_blocks") ?? [];
       return (
         <Space direction="vertical" size={24} style={{ width: "100%" }}>
           {networkId && (

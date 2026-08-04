@@ -30,7 +30,7 @@ export function RefNameLink({ specId, refId, projectId: projectOverride, asTag, 
   const { data } = useQuery({
     queryKey: ["ref-name", specId, projectId],
     queryFn: () =>
-      api.list<Record<string, Array<{ id: string; name?: string }>>>(spec!.apiPath, {
+      api.list<Record<string, Array<{ id: string; name?: string }>>>(spec.apiPath, {
         project_id: projectId!,
         pageSize: "500",
       }),

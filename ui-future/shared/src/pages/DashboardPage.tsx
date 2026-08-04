@@ -94,7 +94,7 @@ export function DashboardPage() {
   const openModule = (m: ServiceModule) => {
     const target = m.landing(projectId, accountId);
     if (target == null) return; // no-op для disabled-плашки
-    navigate(target);
+    void navigate(target);
   };
 
   const caption = (() => {

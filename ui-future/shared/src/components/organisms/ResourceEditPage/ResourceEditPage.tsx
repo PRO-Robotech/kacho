@@ -134,10 +134,10 @@ export function ResourceEditPage({ spec, paramKey = "uid" }: Props) {
         return;
       }
       invalidate(spec.id, project?.id ?? null);
-      navigate(backHref);
+      void navigate(backHref);
     },
     onError: (err) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error).message;
+      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : err.message;
       toast.error(`Сохранить ${spec.singular}: ${m}`);
     },
   });
@@ -152,7 +152,7 @@ export function ResourceEditPage({ spec, paramKey = "uid" }: Props) {
     invalidate(spec.id, project?.id ?? null);
     toast.success(`${spec.singular} сохранён`);
     setPendingOpId(null);
-    navigate(backHref);
+    void navigate(backHref);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outcome.kind, outcome.kind === "failed" ? outcome.message : null]);
 
@@ -166,7 +166,7 @@ export function ResourceEditPage({ spec, paramKey = "uid" }: Props) {
     // fields of any Update* message.
     const payload = buildUpdateBody(parsed, mask);
     if (!payload) {
-      navigate(backHref);
+      void navigate(backHref);
       return;
     }
     mutation.mutate(payload);

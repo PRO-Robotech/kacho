@@ -123,7 +123,7 @@ export function GrantAdminModal({ open, onClose }: Props) {
       return;
     }
     toast.success("Admin granted");
-    qc.invalidateQueries({ queryKey: ["cluster-admins"] });
+    void qc.invalidateQueries({ queryKey: ["cluster-admins"] });
     setSubmitting(false);
     setOpId(null);
     handleClose();
@@ -152,7 +152,7 @@ export function GrantAdminModal({ open, onClose }: Props) {
         // sync success (no operation envelope) — корректность сомнительная, но
         // покрываем по аналогии с другими IAM-мутациями.
         toast.success("Admin granted");
-        qc.invalidateQueries({ queryKey: ["cluster-admins"] });
+        void qc.invalidateQueries({ queryKey: ["cluster-admins"] });
         setSubmitting(false);
         handleClose();
       }
@@ -216,7 +216,7 @@ export function GrantAdminModal({ open, onClose }: Props) {
                 if (!v) setSelectedUser(null);
               }}
               onSelect={(_value, option) => {
-                const opt = option as unknown as UserOption;
+                const opt = option;
                 setSelectedUser(opt.user);
                 setQuery(opt.user.email || opt.user.id);
               }}

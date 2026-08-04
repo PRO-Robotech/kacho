@@ -84,12 +84,12 @@ export function CidrSection({ subnetId, kind, blocks, primary }: SectionProps) {
         // Широкий prefix-инвалидейт: ["subnets"] матчит и detail-страницу
         // (["subnets","shell-detail",uid]), и list — иначе detail показывает
         // старый CIDR (узкие ключи не совпадали с ключом ResourceShell).
-        qc.invalidateQueries({ queryKey: ["subnets"] });
+        void qc.invalidateQueries({ queryKey: ["subnets"] });
         setPendingCidr(null);
       }
     },
     onError: (err, vars) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error).message;
+      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : err.message;
       toast.error(`${family} CIDR ${vars.verb === "add" ? "добавление" : "удаление"}: ${m}`);
       setPendingCidr(null);
     },
@@ -261,7 +261,7 @@ export function CidrSection({ subnetId, kind, blocks, primary }: SectionProps) {
           setPendingCidr(null);
           // Широкий prefix — обновляет detail (shell-detail) + list + любые
           // subnet-вью, где видны CIDR-блоки.
-          qc.invalidateQueries({ queryKey: ["subnets"] });
+          void qc.invalidateQueries({ queryKey: ["subnets"] });
         }}
       />
     </div>

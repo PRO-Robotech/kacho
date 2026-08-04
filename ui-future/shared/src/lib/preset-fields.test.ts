@@ -12,7 +12,7 @@ import { presetFieldsForSpec } from "./preset-fields";
 import { REGISTRY } from "./resource-registry";
 import type { FormField } from "./form-schema";
 
-const str = (name: string): FormField => ({ name, label: name, type: "string" }) as FormField;
+const str = (name: string): FormField => ({ name, label: name, type: "string" });
 const fields = [str("name"), str("subnet_id"), str("internal_ipv4_address_spec.subnet_id"), str("_address_kind")];
 
 describe("presetFieldsForSpec", () => {
