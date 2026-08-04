@@ -11,6 +11,7 @@ import (
 	"go/token"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -236,17 +237,27 @@ type diskRootWalk struct {
 	Text string
 }
 
-// rootProducers — функции пакета, говорящие о КОРНЕ МОДУЛЯ.
+// rootProducers — функции пакета, говорящие о КОРНЕ ДЕРЕВА, которое
+// принадлежит репозиторию.
 //
-// Признак структурный, а не по списку имён: функция возвращает строку и
-// опирается на `go.mod`. Переименование такой функции признак переживает,
-// захардкоженный список имён — нет.
+// Признак структурный, а не по списку имён: функция возвращает строку и либо
+// (а) опирается на `go.mod`, либо (б) ПОДНИМАЕТСЯ вверх по каталогам
+// (`filepath.Dir` в связке с `os.Stat`), пока не найдёт каталог-маркер.
+// Переименование такой функции признак переживает, захардкоженный список имён —
+// нет.
+//
+// Вторая форма добавлена не для симметрии. Она была слепым пятном: помощник,
+// поднимающийся до каталога-маркера, возвращает каталог РЕПОЗИТОРИЯ так же
+// верно, как поиск `go.mod`, — просто не тот же самый. Гейт, знавший только
+// первую форму, обходов от таких корней не видел вовсе, и один из них
+// действительно читал игнорируемый git'ом сгенерированный каталог (фикс —
+// в этом же коммите).
 //
 // Признак намеренно ШИРЕ предмета: под него попадает и `moduleImportPath`,
 // которая `go.mod` читает, а не поднимается к нему. Ошибка в эту сторону
 // громкая — лишняя находка видна и разбирается; в обратную она тихая, и гейт
-// молча перестал бы искать. На дереве a15066ee (23 файла пакета) ложных
-// находок от этой широты нет.
+// молча перестал бы искать. На дереве этого коммита (3110 файлов, 333 пакета)
+// ложных находок от этой широты нет.
 //
 // Пустой результат означает, что предпосылка гейта исчезла: отличить обход
 // корня от обхода поддерева стало нечем. Вызывающий обязан на этом
@@ -269,13 +280,35 @@ func rootProducers(files map[string]*ast.File) map[string]bool {
 			if !returnsString {
 				continue
 			}
+			climbs, stats := false, false
 			ast.Inspect(fd.Body, func(n ast.Node) bool {
-				lit, isLit := n.(*ast.BasicLit)
-				if isLit && lit.Kind == token.STRING && lit.Value == `"go.mod"` {
+				if lit, isLit := n.(*ast.BasicLit); isLit &&
+					lit.Kind == token.STRING && lit.Value == `"go.mod"` {
 					out[fd.Name.Name] = true
+				}
+				call, isCall := n.(*ast.CallExpr)
+				if !isCall {
+					return true
+				}
+				sel, isSel := call.Fun.(*ast.SelectorExpr)
+				if !isSel {
+					return true
+				}
+				pkg, isIdent := sel.X.(*ast.Ident)
+				if !isIdent {
+					return true
+				}
+				switch pkg.Name + "." + sel.Sel.Name {
+				case "filepath.Dir":
+					climbs = true
+				case "os.Stat":
+					stats = true
 				}
 				return true
 			})
+			if climbs && stats {
+				out[fd.Name.Name] = true
+			}
 		}
 	}
 	return out
@@ -505,67 +538,134 @@ func renderExpr(fset *token.FileSet, e ast.Expr) string {
 // перечисляет обходы от КОРНЯ репозитория и требует, чтобы каждый шёл через
 // trackedTree.
 //
-// Перечисление идёт по исходникам пакета, а не по памяти автора: новый обход от
-// корня, добавленный мимо помощника, обязан быть виден. Дискриминатор проверен
-// в обе стороны отдельно — см. TestDiskRootWalkDiscriminatorCutsBothWays.
+// Перечисление идёт по исходникам ВСЕГО дерева, а не по памяти автора и не по
+// одному каталогу: новый обход от корня, добавленный мимо помощника, обязан быть
+// виден, где бы его ни завели. Дискриминатор проверен в обе стороны отдельно —
+// см. TestDiskRootWalkDiscriminatorCutsBothWays.
+//
+// # Почему дерево, а не этот пакет
+//
+// Прежняя редакция читала только `internal/repohygiene/`, тогда как обоснование
+// запрета — факт про ВЕСЬ репозиторий. Гейт судил не тот объём, и это ровно тот
+// класс, который он же и запрещает.
+//
+// Замер разбором (не грепом: греп считает и комментарии, и строковые литералы,
+// и на этом же дереве даёт 67 против 57). На состоянии, от которого писалась
+// правка, обходов `filepath.Walk`/`WalkDir` в индексе было 59 в 42 файлах, из
+// них в этом пакете 25 — то есть 34 не попадали в поле зрения вовсе. Один из
+// них читал игнорируемый git'ом сборочный каталог: файл, которого в репозитории
+// нет и по построению быть не может, ронял гейт края. Он и второй такой же
+// переведены на индекс тем же изменением, поэтому здесь и сейчас обходов 57,
+// вне этого пакета 32.
+//
+// # Что этот гейт НЕ покрывает, названное числом
+//
+// Обход ПОДДЕРЕВА (`filepath.Join(root, "services")`) под запрет не подпадает —
+// дискриминатор прослеживает источник, а у поддерева он другой. Таких обходов в
+// дереве 26. Считать их безопасными нельзя, и это не догадка: `.gitignore`
+// действует на любой глубине, а под `deploy/`, `gateway/`, `ui-future/` и
+// `services/` игнорируемое лежит на всякой машине, где поднимали стенд или
+// собирали фронтенд (распаковки чартов, сборочные каталоги, node_modules,
+// отчёты прогонов). Два обхода поддерева уже оказались дефектными и переведены
+// на индекс. Оставшиеся — открытый долг С ЧИСЛОМ, а не молчаливое «нормально»:
+// правильный корпус для них — internal/treecorpus.
 func TestTreeWalkersAskTheIndex(t *testing.T) {
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
 
-	// Файлы самого пакета — из индекса, не с диска (иначе проверка про обход
-	// индекса сама читала бы диск).
-	var pkgFiles []string
+	// Файлы — из индекса, не с диска (иначе проверка про обход индекса сама
+	// читала бы диск). Раскладываются по каталогам: производители корня и граф
+	// вызовов — понятия пакета, а не дерева.
+	byPkg := map[string][]string{}
 	for f := range tt.files {
-		if strings.HasPrefix(f, "internal/repohygiene/") && strings.HasSuffix(f, ".go") {
-			pkgFiles = append(pkgFiles, f)
+		if strings.HasSuffix(f, ".go") {
+			byPkg[path.Dir(f)] = append(byPkg[path.Dir(f)], f)
 		}
 	}
-	sort.Strings(pkgFiles)
-	if len(pkgFiles) == 0 {
-		t.Fatal("прочитано ноль файлов пакета — перепись пуста, вердикт ничего не значит")
+	if len(byPkg) == 0 {
+		t.Fatal("прочитано ноль .go-файлов — перепись пуста, вердикт ничего не значит")
+	}
+	pkgs := make([]string, 0, len(byPkg))
+	for p := range byPkg {
+		pkgs = append(pkgs, p)
+	}
+	sort.Strings(pkgs)
+
+	var (
+		offenders     []diskRootWalk
+		parsedFiles   int
+		pkgsWithRoot  int
+		producerNames = map[string]bool{}
+	)
+	for _, pkg := range pkgs {
+		rels := byPkg[pkg]
+		sort.Strings(rels)
+		fset := token.NewFileSet()
+		files := map[string]*ast.File{}
+		for _, rel := range rels {
+			body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+			if err != nil {
+				t.Fatalf("%s: %v", rel, err)
+			}
+			parsed, perr := parser.ParseFile(fset, rel, body, parser.ParseComments)
+			if perr != nil {
+				// Синтаксически битый файл поймает сборка; молчать о нём нельзя —
+				// непрочитанное не есть «чисто».
+				t.Fatalf("%s: разбор: %v — непрочитанный файл делает «ноль находок» "+
+					"неотличимым от «ноль осмотренного»", rel, perr)
+			}
+			files[rel] = parsed
+			parsedFiles++
+		}
+		producers := rootProducers(files)
+		if len(producers) == 0 {
+			continue
+		}
+		pkgsWithRoot++
+		for p := range producers {
+			producerNames[p] = true
+		}
+		offenders = append(offenders, findDiskRootWalks(fset, files, producers)...)
 	}
 
-	fset := token.NewFileSet()
-	files := map[string]*ast.File{}
-	for _, rel := range pkgFiles {
-		body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
-		if err != nil {
-			t.Fatalf("%s: %v", rel, err)
-		}
-		parsed, perr := parser.ParseFile(fset, rel, body, parser.ParseComments)
-		if perr != nil {
-			t.Fatalf("%s: разбор: %v", rel, perr)
-		}
-		files[rel] = parsed
+	// Предпосылка: в дереве обязан быть хоть один источник корня. Ноль означает,
+	// что отличить обход корня от обхода поддерева стало нечем, — и «ноль
+	// находок» тут значило бы «нечем было искать».
+	if pkgsWithRoot == 0 {
+		t.Fatal("во всём дереве не нашлось ни одной функции, находящей корень " +
+			"репозитория (возвращает строку и опирается на `go.mod` либо " +
+			"поднимается вверх по каталогам до маркера). Предпосылка гейта исчезла: " +
+			"без источника корня отличить обход корня от обхода поддерева нечем.")
 	}
-
-	producers := rootProducers(files)
-	if len(producers) == 0 {
-		t.Fatal("в пакете не нашлось ни одной функции, находящей корень репозитория " +
-			"(возвращает строку и упоминает `go.mod`). Предпосылка гейта исчезла: " +
-			"без источника корня отличить обход корня от обхода поддерева нечем, " +
-			"и «ноль находок» тут значило бы «нечем было искать».")
-	}
-	names := make([]string, 0, len(producers))
-	for p := range producers {
+	names := make([]string, 0, len(producerNames))
+	for p := range producerNames {
 		names = append(names, p)
 	}
 	sort.Strings(names)
 
-	t.Logf("осмотрено файлов пакета: %d (индекс: %d файлов); источники корня: %s",
-		len(files), tt.count(), strings.Join(names, ", "))
+	t.Logf("осмотрено: индекс %d файлов -> %d .go в %d пакетах; пакетов с источником "+
+		"корня: %d; сами источники: %s",
+		tt.count(), parsedFiles, len(byPkg), pkgsWithRoot, strings.Join(names, ", "))
 
-	offenders := findDiskRootWalks(fset, files, producers)
 	if len(offenders) > 0 {
+		sort.Slice(offenders, func(i, j int) bool {
+			if offenders[i].File != offenders[j].File {
+				return offenders[i].File < offenders[j].File
+			}
+			return offenders[i].Line < offenders[j].Line
+		})
 		lines := make([]string, 0, len(offenders))
 		for _, o := range offenders {
 			lines = append(lines, o.File+":"+strconv.Itoa(o.Line)+" ("+o.Func+") — "+o.Text)
 		}
 		t.Errorf("обход от корня репозитория идёт по ДИСКУ, а не по индексу — %d шт.:\n  %s\n\n"+
 			"Под корнем лежат каталоги, которых в репозитории нет (`.claude/worktrees/` —"+
-			" рабочие копии агентов, отчёты прогонов, локальные оверлеи). Прочитав их,"+
-			" гейт делает свой вердикт свойством ЧУЖОГО рабочего каталога, а не коммита."+
-			" Возьми список файлов у newTrackedTree(t, root).",
+			" рабочие копии агентов, отчёты прогонов, локальные оверлеи, сборочные и"+
+			" сгенерированные каталоги). Прочитав их, гейт делает свой вердикт свойством"+
+			" ЧУЖОГО рабочего каталога, а не коммита — и в обе стороны: красный на файле,"+
+			" которого в репозитории нет, и молчание в свежем checkout там, где обязан"+
+			" говорить. Возьми список файлов у newTrackedTree(t, root) — в этом пакете,"+
+			" или у internal/treecorpus — в любом другом.",
 			len(offenders), strings.Join(lines, "\n  "))
 	}
 }
@@ -638,6 +738,34 @@ func mentionsOnly(t *testing.T) {
 	_ = "filepath.Walk(root, ...)"
 	_ = "filepath.WalkDir(root, ...)"
 }
+
+// Вторая форма производителя: подъём по каталогам до КАТАЛОГА-МАРКЕРА, без
+// единого упоминания go.mod. Именно она была слепым пятном.
+func treeRootByMarker(t *testing.T) string {
+	dir, _ := os.Getwd()
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "gateway")); err == nil {
+			return filepath.Join(dir, "gateway")
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return ""
+		}
+		dir = parent
+	}
+}
+
+// ЛОВИТСЯ: корень найден подъёмом до маркера и уходит в обход диска.
+func viaMarkerRoot(t *testing.T) {
+	root := treeRootByMarker(t)
+	_ = filepath.Walk(root, nil)
+}
+
+// МОЛЧИТ: строку возвращает функция, которая по каталогам НЕ поднимается —
+// она их только соединяет. Признак не должен срабатывать на одном filepath.
+func joinsOnly(base string) string { return filepath.Join(base, "sub") }
+
+func viaJoinsOnly(t *testing.T) { _ = filepath.Walk(joinsOnly(t.TempDir()), nil) }
 `
 	fset := token.NewFileSet()
 	parsed, err := parser.ParseFile(fset, "synthetic.go", src, parser.ParseComments)
@@ -650,6 +778,16 @@ func mentionsOnly(t *testing.T) {
 	if !producers["repoRoot"] {
 		t.Fatalf("источник корня не опознан структурно (%v) — дискриминатор слеп на входе", producers)
 	}
+	if !producers["treeRootByMarker"] {
+		t.Fatalf("подъём по каталогам до маркера не опознан как источник корня (%v). "+
+			"Это была слепая зона: помощник, поднимающийся до каталога-маркера, "+
+			"возвращает каталог репозитория так же верно, как поиск go.mod, — и "+
+			"обходы от него гейт не видел вовсе", producers)
+	}
+	if producers["joinsOnly"] {
+		t.Errorf("соединение путей принято за подъём к корню (%v) — признак стал "+
+			"грубее своего предмета и будет ловить любую функцию с filepath", producers)
+	}
 
 	got := map[string]bool{}
 	for _, o := range findDiskRootWalks(fset, files, producers) {
@@ -661,6 +799,8 @@ func mentionsOnly(t *testing.T) {
 		"viaVar":      "корень уходит в обход через переменную",
 		"viaInline":   "корень уходит в обход прямо, без промежуточного имени",
 		"helperWalks": "обход спрятан в помощнике, корень приезжает параметром",
+		"viaMarkerRoot": "корень найден подъёмом по каталогам до маркера, а не " +
+			"поиском go.mod — форма, которой признак раньше не знал",
 	}
 	for fn, why := range mustCatch {
 		if !got[fn] {

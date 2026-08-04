@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/soheilhy/cmux"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // serveEdgeStack поднимает ТУ ЖЕ композицию, что и шлюз: мультиплексор края с
@@ -229,42 +231,40 @@ func TestNoRawCmuxNewOutsideFactory(t *testing.T) {
 	root := gatewayTreeRoot(t)
 	const factory = "cmd/api-gateway/cmux_firstbyte.go"
 
+	// Состав дерева берётся у индекса git, а не с диска. `gateway/build/`
+	// объявлен игнорируемым (gateway/.gitignore) и на машине, где шлюз собирали,
+	// содержит сгенерированный .go. Обход диска читал бы его, и вердикт гейта
+	// стал бы свойством рабочего каталога, а не коммита — в обе стороны: красный
+	// на файле, которого в репозитории нет и по построению быть не может, гейт
+	// обесценивает, а молчание в свежем checkout прячет то, о чём он обязан
+	// говорить.
+	sources, err := treecorpus.UnderWithSuffix(root, ".go")
+	if err != nil {
+		t.Fatalf("состав gateway/: %v", err)
+	}
+
 	var hits []string
 	scanned := 0
-	err := filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if info.IsDir() {
-			switch info.Name() {
-			case ".git", "node_modules", "vendor", "docs-site", "testdata":
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
+	for _, path := range sources {
 		rel, relErr := filepath.Rel(root, path)
 		if relErr != nil {
-			return relErr
+			t.Fatalf("относительный путь для %s: %v", path, relErr)
 		}
 		rel = filepath.ToSlash(rel)
+		if strings.HasSuffix(rel, "_test.go") || hasPathSegment(rel, "docs-site", "testdata") {
+			continue
+		}
 		scanned++
 		if rel == factory {
-			return nil
+			continue
 		}
 		body, readErr := os.ReadFile(path)
 		if readErr != nil {
-			return readErr
+			t.Fatalf("чтение %s: %v", rel, readErr)
 		}
 		for _, line := range cmuxNewCallLines(t, rel, body) {
 			hits = append(hits, rel+":"+strconv.Itoa(line))
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("обход gateway/: %v", err)
 	}
 
 	// «Ноль находок» обязано быть отличимо от «ноль прочитанного».
@@ -280,6 +280,23 @@ func TestNoRawCmuxNewOutsideFactory(t *testing.T) {
 			"времени. Создавай через newEdgeCmux(l, edgeFirstByteBudget).",
 			strings.Join(hits, ", "))
 	}
+}
+
+// hasPathSegment — путь содержит хотя бы один из названных СЕГМЕНТОВ.
+//
+// Именно сегмент, а не подстроку: прежний обход отбрасывал каталоги по имени
+// (`filepath.SkipDir`), и подстрочная замена молча разошлась бы с ним — на
+// верхнем уровне (`testdata/x.go`) и на пути, где имя каталога является частью
+// другого имени.
+func hasPathSegment(rel string, names ...string) bool {
+	for _, seg := range strings.Split(rel, "/") {
+		for _, n := range names {
+			if seg == n {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // TestEdgeCmuxFactoryPremiseHolds — запрет опирается на факт: у cmux есть ручка
