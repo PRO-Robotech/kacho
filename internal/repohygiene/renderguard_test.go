@@ -286,6 +286,7 @@ var outputCommands = map[string]bool{
 // кандидат (одно имя файла) находится ВНУТРИ присвоенного полного пути, и
 // поштучный разбор объявил бы ту же строку вызовом.
 func reAssignOf(cand string) *regexp.Regexp {
+	reachabilityCompiles.Add(1)
 	return regexp.MustCompile(`(?:^|[\s;&|(])([A-Za-z_]\w*)=["']?` + regexp.QuoteMeta(cand))
 }
 
@@ -301,6 +302,7 @@ func firstWord(line string) string {
 // execOfVarRe — исполнение значения переменной: `bash "$REMEASURE"`, `python3 $X`,
 // `exec "${X}"`, `./$X`.
 func execOfVarRe(name string) *regexp.Regexp {
+	reachabilityCompiles.Add(1)
 	return regexp.MustCompile(`(?:^|[\s;&|(]|\./)(?:bash|sh|zsh|python3?|exec|source|go run|\.)\s+["']?\$\{?` +
 		regexp.QuoteMeta(name) + `\}?\b`)
 }
@@ -323,6 +325,21 @@ func execOfVarRe(name string) *regexp.Regexp {
 // Присваивание не отбрасывается, а запоминается: `X=path` вместе с `bash "$X"`
 // в достижимом тексте — законный вызов, и это ходовая идиома дерева. Отбрасывается
 // присваивание, у которого исполняющего потребителя нет.
+//
+// СТОИМОСТЬ. Шаблоны зависят ТОЛЬКО от кандидата (и от имени переменной), а не от
+// осматриваемой строки, поэтому компилируются один раз на вызов — до обходов, а не
+// внутри них. Пока компиляция стояла в построчном цикле, один вопрос о достижимости
+// стоил «кандидаты × строки» компиляций, а строк здесь десятки тысяч: весь
+// `scriptgatewiring_test.go` не укладывался в бюджет пакета, ронял его
+// `panic: test timed out` и вместе с собой лишал вердикта тридцать шесть тестов,
+// до которых прогон не доходил. Свойство держит
+// TestReachabilityCostBelongsToCandidatesNotToTextSize.
+//
+// Отбор строк вхождением подстроки — не эвристика, а НЕОБХОДИМОЕ условие обоих
+// шаблонов: и `reAssignOf`, и `execOfVarRe` собраны через `regexp.QuoteMeta`, то
+// есть совпасть могут только на строке, содержащей кандидата (имя переменной)
+// буквально. Строка без вхождения не могла бы дать совпадения и раньше — она лишь
+// оплачивалась прогоном автомата.
 func anyMentions(reachable []string, guard string) bool {
 	dir := filepath.ToSlash(filepath.Dir(guard))
 	base := filepath.Base(guard)
@@ -330,6 +347,10 @@ func anyMentions(reachable []string, guard string) bool {
 	// `bash deploy/tests/render-guard.sh` из каталога сервиса.
 	if i := strings.Index(dir, "/"); i >= 0 {
 		candidates = append(candidates, dir[i+1:]+"/"+base)
+	}
+	assignOf := make([]*regexp.Regexp, len(candidates))
+	for i, c := range candidates {
+		assignOf[i] = reAssignOf(c)
 	}
 	aliases := map[string]bool{}
 	for _, cmd := range reachable {
@@ -344,9 +365,13 @@ func anyMentions(reachable []string, guard string) bool {
 			if outputCommands[firstWord(line)] {
 				continue
 			}
-			assigned := false
-			for _, c := range candidates {
-				if m := reAssignOf(c).FindStringSubmatch(line); m != nil {
+			assigned, mentioned := false, false
+			for i, c := range candidates {
+				if !strings.Contains(line, c) {
+					continue
+				}
+				mentioned = true
+				if m := assignOf[i].FindStringSubmatch(line); m != nil {
 					aliases[m[1]] = true
 					assigned = true
 				}
@@ -354,10 +379,8 @@ func anyMentions(reachable []string, guard string) bool {
 			if assigned {
 				continue
 			}
-			for _, c := range candidates {
-				if strings.Contains(line, c) {
-					return true
-				}
+			if mentioned {
+				return true
 			}
 		}
 	}
@@ -365,6 +388,9 @@ func anyMentions(reachable []string, guard string) bool {
 		re := execOfVarRe(name)
 		for _, cmd := range reachable {
 			for _, line := range strings.Split(cmd, "\n") {
+				if !strings.Contains(line, name) {
+					continue
+				}
 				if outputCommands[firstWord(line)] {
 					continue
 				}
