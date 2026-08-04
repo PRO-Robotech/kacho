@@ -131,7 +131,7 @@ func (u *UpdateSecurityGroupUseCase) doUpdate(ctx context.Context, in UpdateInpu
 	// (label-change reconcile / revoke). Update без labels → re-emit не делаем.
 	// Полное снятие labels → upsert с пустыми labels (не Unregister).
 	if labelsInMask(in.UpdateMask) {
-		if rerr := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(
+		if _, rerr := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(
 			fgaregister.ProjectHierarchyItem(string(updated.ProjectID), "vpc_security_group", updated.ID,
 				domain.LabelsToMap(updated.Labels)),
 		)); rerr != nil {

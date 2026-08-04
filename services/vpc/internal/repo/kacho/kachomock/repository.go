@@ -29,6 +29,7 @@ import (
 	"context"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
@@ -52,7 +53,9 @@ type OutboxEvent struct {
 // единообразно — in-memory state с TX-семантикой (writer accumulate'ит в local
 // map, Commit flush'ит в parent state).
 type Repository struct {
-	mu                sync.Mutex
+	mu sync.Mutex
+	// fgaStampSeq — счётчик детерминированных штампов EmitRegister (см. там же).
+	fgaStampSeq       int
 	networks          map[string]*kacho.NetworkRecord
 	securityGroups    map[string]*kacho.SecurityGroupRecord
 	subnets           map[string]*kacho.SubnetRecord
@@ -695,9 +698,27 @@ type fgaRegisterEmitter struct {
 	w *writerImpl
 }
 
-func (e *fgaRegisterEmitter) EmitRegister(_ context.Context, intent fgaregister.Intent) error {
-	return e.record(fgaregister.EventRegister, intent)
+// EmitRegister — parity с pg-impl: возвращает монотонный штамп, которым БД
+// пометила бы intent внутри writer-TX. In-memory-часов БД нет, поэтому штамп
+// берётся детерминированным шагом от базовой точки: тесты сверяют РАВЕНСТВО
+// версии, доехавшей до синхронного регистратора, с этой — а не её наличие.
+// Пустой Intent → нулевое время (штамповать было нечего), как и в pg.
+func (e *fgaRegisterEmitter) EmitRegister(_ context.Context, intent fgaregister.Intent) (time.Time, error) {
+	if err := e.record(fgaregister.EventRegister, intent); err != nil {
+		return time.Time{}, err
+	}
+	if len(intent.Items) == 0 {
+		return time.Time{}, nil
+	}
+	e.w.parent.mu.Lock()
+	e.w.parent.fgaStampSeq++
+	seq := e.w.parent.fgaStampSeq
+	e.w.parent.mu.Unlock()
+	return fgaMockStampBase.Add(time.Duration(seq) * time.Millisecond), nil
 }
+
+// fgaMockStampBase — база детерминированных штампов mock-эмиттера.
+var fgaMockStampBase = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 func (e *fgaRegisterEmitter) EmitUnregister(_ context.Context, intent fgaregister.Intent) error {
 	return e.record(fgaregister.EventUnregister, intent)

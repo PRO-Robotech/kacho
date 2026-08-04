@@ -272,7 +272,10 @@ func (u *CreateNetworkInterfaceUseCase) doCreate(ctx context.Context, niID strin
 			fgaregister.ProjectHierarchyItem(string(n.ProjectID), "vpc_network_interface", created.ID,
 				domain.LabelsToMap(created.Labels)),
 		}
-		if rerr := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(items...)); rerr != nil {
+		// Версия intent'а из writer-TX — её же понесёт синхронная регистрация ниже
+		// (одна версия на обе доставки ⇒ повтор гасится в любом порядке).
+		intentVersion, rerr := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(items...))
+		if rerr != nil {
 			w.Abort()
 			return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: fga register intent: %v", repo.ErrInternal, rerr))
 		}
@@ -290,7 +293,7 @@ func (u *CreateNetworkInterfaceUseCase) doCreate(ctx context.Context, niID strin
 		// достаёт вложенный статус и подменяет сообщение всей цепочкой) на уже
 		// созданный NIC — фантом. Поэтому предупреждение, а не ошибка.
 		if u.registrar != nil {
-			if rerr := u.registrar.Register(ctx, items); rerr != nil {
+			if rerr := u.registrar.Register(ctx, items, intentVersion); rerr != nil {
 				slog.WarnContext(ctx, "sync owner-tuple register failed; register-drainer will apply the durable intent",
 					"resource", "NetworkInterface", "id", created.ID, "err", rerr)
 			}

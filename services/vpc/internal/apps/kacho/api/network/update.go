@@ -123,7 +123,7 @@ func (u *UpdateNetworkUseCase) doUpdate(ctx context.Context, in UpdateInput) (*a
 	// Полное удаление labels → upsert с пустыми метками (НЕ Unregister: сеть все
 	// еще существует, mirror-row остается, просто перестает матчиться селектором).
 	if labelsInMask(in.UpdateMask) {
-		if err := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(
+		if _, err := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(
 			fgaregister.ProjectHierarchyItem(string(updated.ProjectID), "vpc_network", updated.ID,
 				domain.LabelsToMap(updated.Labels)),
 		)); err != nil {

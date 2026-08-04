@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -31,7 +32,7 @@ func TestSyncRegistrar_Register_AllItems(t *testing.T) {
 	err := reg.Register(context.Background(), []fgaregister.Item{
 		item("vpc_network:net1", map[string]string{"team": "core"}, "prj_x"),
 		item("vpc_security_group:sg1", nil, ""),
-	})
+	}, time.Now())
 	require.NoError(t, err)
 
 	require.Len(t, fake.registerCalls, 2)
@@ -50,7 +51,7 @@ func TestSyncRegistrar_Register_FailClosed(t *testing.T) {
 	fake := &fakeIAMRegisterClient{errSeq: []error{errors.New("iam unavailable")}}
 	reg := NewSyncRegistrar(fake)
 
-	err := reg.Register(context.Background(), []fgaregister.Item{item("vpc_network:net1", nil, "")})
+	err := reg.Register(context.Background(), []fgaregister.Item{item("vpc_network:net1", nil, "")}, time.Now())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "vpc_network:net1")
 }
@@ -59,6 +60,38 @@ func TestSyncRegistrar_Register_FailClosed(t *testing.T) {
 func TestSyncRegistrar_Register_Empty(t *testing.T) {
 	fake := &fakeIAMRegisterClient{}
 	reg := NewSyncRegistrar(fake)
-	require.NoError(t, reg.Register(context.Background(), nil))
+	require.NoError(t, reg.Register(context.Background(), nil, time.Now()))
 	assert.Empty(t, fake.registerCalls)
+}
+
+// СИНХРОННАЯ ДОСТАВКА НЕСЁТ ВЕРСИЮ INTENT'А, А НЕ СВЕЖИЕ ЧАСЫ.
+//
+// Каждая регистрация доезжает до iam ДВАЖДЫ: синхронным вызовом после коммита и
+// дренажом durable-intent'а. iam гасит вторую доставку монотонной сверкой версий
+// (`resource_mirror.source_version < EXCLUDED.source_version` — строгое `<`), и
+// гашение работает, ТОЛЬКО если обе доставки несут ОДНУ версию. Пока синхронный
+// путь штамповал `time.Now()` после коммита, его версия была строго БОЛЬШЕ
+// db-штампа intent'а, и порядок решал исход: выиграл дренаж — синхронный вызов
+// приходил новее, зеркало менялось, iam повторял материализацию целиком (полный
+// путь под EXCLUSIVE-локом привязки) уже на пути создания ресурса.
+//
+// Утверждение — РАВЕНСТВО версии, а не её наличие: соседний тест выше проверяет
+// `NotNil`, и он остаётся зелёным при любом штампе, то есть свойства не измеряет.
+func TestSyncRegistrar_Register_CarriesIntentSourceVersion(t *testing.T) {
+	fake := &fakeIAMRegisterClient{}
+	reg := NewSyncRegistrar(fake)
+	intentVersion := time.Date(2026, 8, 4, 12, 0, 0, 123456000, time.UTC)
+
+	err := reg.Register(context.Background(), []fgaregister.Item{
+		item("vpc_network:net1", nil, "prj_x"),
+		item("vpc_security_group:sg1", nil, "prj_x"),
+	}, intentVersion)
+	require.NoError(t, err)
+
+	require.Len(t, fake.registerCalls, 2)
+	for i, c := range fake.registerCalls {
+		require.NotNil(t, c.SourceVersion, "call %d: source_version обязателен", i)
+		assert.True(t, c.SourceVersion.AsTime().Equal(intentVersion),
+			"call %d: ожидалась версия intent'а %s, пришла %s", i, intentVersion, c.SourceVersion.AsTime())
+	}
 }

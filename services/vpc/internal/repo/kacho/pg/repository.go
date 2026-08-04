@@ -16,6 +16,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -295,12 +296,13 @@ type fgaRegisterEmitter struct {
 	tx pgx.Tx
 }
 
-func (e *fgaRegisterEmitter) EmitRegister(ctx context.Context, intent fgaregister.Intent) error {
+func (e *fgaRegisterEmitter) EmitRegister(ctx context.Context, intent fgaregister.Intent) (time.Time, error) {
 	return e.emit(ctx, fgaregister.EventRegister, intent)
 }
 
 func (e *fgaRegisterEmitter) EmitUnregister(ctx context.Context, intent fgaregister.Intent) error {
-	return e.emit(ctx, fgaregister.EventUnregister, intent)
+	_, err := e.emit(ctx, fgaregister.EventUnregister, intent)
+	return err
 }
 
 // emit вставляет одну fga_register_outbox-строку на каждый Item intent'а в той
@@ -318,7 +320,14 @@ func (e *fgaRegisterEmitter) EmitUnregister(ctx context.Context, intent fgaregis
 // ("<kind>:<id>", напр. "vpc_network:net-…") — это позволяет corelib
 // outbox/reconciler адресовать intent'ы по ресурсу (derive-from-state backfill +
 // inverse-orphan GC). Drainer эти колонки НЕ читает.
-func (e *fgaRegisterEmitter) emit(ctx context.Context, eventType string, intent fgaregister.Intent) error {
+// Возвращаемое время — тот самый штамп `now()`, что лёг в payload. Он читается
+// через RETURNING, а не вычисляется на стороне приложения: синхронная доставка
+// обязана нести ИМЕННО ЕГО, иначе повторная доставка того же intent'а не гасится
+// монотонной сверкой у принимающей стороны (см. godoc порта). `now()` — время
+// начала транзакции, поэтому все Item'ы одного вызова получают одинаковый штамп,
+// и достаточно вернуть последний.
+func (e *fgaRegisterEmitter) emit(ctx context.Context, eventType string, intent fgaregister.Intent) (time.Time, error) {
+	var stamped time.Time
 	for _, it := range intent.Items {
 		payload, err := fgaregister.Encode(fgaregister.Payload{
 			Tuple:           it.Tuple,
@@ -326,20 +335,21 @@ func (e *fgaRegisterEmitter) emit(ctx context.Context, eventType string, intent 
 			ParentProjectID: it.ParentProjectID,
 		})
 		if err != nil {
-			return fmt.Errorf("fga register intent marshal: %w", err)
+			return time.Time{}, fmt.Errorf("fga register intent marshal: %w", err)
 		}
 		kind, id := splitObject(it.Tuple.Object)
-		if _, err := e.tx.Exec(ctx,
+		if err := e.tx.QueryRow(ctx,
 			`INSERT INTO kacho_vpc.fga_register_outbox
 			   (event_type, resource_kind, resource_id, payload, created_at)
 			 VALUES ($1, $2, $3,
 			         jsonb_set($4::jsonb, '{source_version}', to_jsonb(now())),
-			         now())`,
-			eventType, kind, id, payload); err != nil {
-			return fmt.Errorf("fga register intent insert: %w", err)
+			         now())
+			 RETURNING (payload->>'source_version')::timestamptz`,
+			eventType, kind, id, payload).Scan(&stamped); err != nil {
+			return time.Time{}, fmt.Errorf("fga register intent insert: %w", err)
 		}
 	}
-	return nil
+	return stamped, nil
 }
 
 // splitObject разбивает FGA-object "<kind>:<id>" на (kind, id) для трассировочных

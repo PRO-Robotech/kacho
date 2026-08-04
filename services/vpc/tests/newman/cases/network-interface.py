@@ -37,22 +37,22 @@ def _net_subnet_steps(suffix, cidr="10.60.0.0/24"):
 
 
 def _cleanup_subnet():
-    return Step(name="cleanup-subnet", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
+    return retry_until_authorized(Step(name="cleanup-subnet", method="DELETE", path="/vpc/v1/subnets/{{subId}}",
                 test_script=["pm.test('cleanup subnet (200 or 400 if child leaked)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                             *save_from_response("j.id", "opId")])
+                             *save_from_response("j.id", "opId")]))
 
 
 def _cleanup_net():
-    return Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
+    return retry_until_authorized(Step(name="cleanup-net", method="DELETE", path="/vpc/v1/networks/{{netId}}",
                 test_script=["pm.test('cleanup net (200 or 400 if child leaked)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                             *save_from_response("j.id", "opId")])
+                             *save_from_response("j.id", "opId")]))
 
 
 def _cleanup_nic(env="nicId"):
     return [
-        Step(name="cleanup-nic", method="DELETE", path=f"/vpc/v1/networkInterfaces/{{{{{env}}}}}",
+        retry_until_authorized(Step(name="cleanup-nic", method="DELETE", path=f"/vpc/v1/networkInterfaces/{{{{{env}}}}}",
              test_script=["pm.test('cleanup nic (200 or 400)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                          *save_from_response("j.id", "opId")]),
+                          *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
     ]
 
@@ -313,9 +313,9 @@ CASES.append(Case(
              test_script=[*assert_status(200),
                           "pm.test('v4AddressIds echoed', () => pm.expect(pm.response.json().v4AddressIds || []).to.include(pm.environment.get('addrId')));"])),
         *_cleanup_nic(),
-        Step(name="cleanup-addr", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
+        retry_until_authorized(Step(name="cleanup-addr", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
              test_script=["pm.test('cleanup addr (200 or 400)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                          *save_from_response("j.id", "opId")]),
+                          *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         _cleanup_subnet(),
         poll_operation_until_done(),
@@ -364,9 +364,9 @@ CASES.append(Case(
              test_script=[*assert_status(200),
                           "pm.test('v6AddressIds echoed', () => pm.expect(pm.response.json().v6AddressIds || []).to.include(pm.environment.get('addrId')));"])),
         *_cleanup_nic(),
-        Step(name="cleanup-addr", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
+        retry_until_authorized(Step(name="cleanup-addr", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
              test_script=["pm.test('cleanup addr (200 or 400)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                          *save_from_response("j.id", "opId")]),
+                          *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         _cleanup_subnet(),
         poll_operation_until_done(),
@@ -468,17 +468,17 @@ CASES.append(Case(
         Step(name="assert-nic-created", method="GET", path="/operations/{{opId}}",
              test_script=["const j = pm.response.json();",
                           "pm.test('NIC create op done no error', () => pm.expect(j.done && !j.error).to.eql(true));"]),
-        Step(name="del-addr-blocked", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
+        retry_until_authorized(Step(name="del-addr-blocked", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
              # grpc-gateway маппит FAILED_PRECONDITION (9) → HTTP 400.
              test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
-                          "pm.test('message mentions network interface', () => pm.expect(pm.response.json().message).to.include('network interface'));"]),
+                          "pm.test('message mentions network interface', () => pm.expect(pm.response.json().message).to.include('network interface'));"])),
         # Удаляем NIC → адрес освобождается.
         Step(name="del-nic", method="DELETE", path="/vpc/v1/networkInterfaces/{{nicId}}",
              test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         # Теперь Address удаляется.
-        Step(name="del-addr-ok", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
-             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        retry_until_authorized(Step(name="del-addr-ok", method="DELETE", path="/vpc/v1/addresses/{{addrId}}",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         Step(name="assert-addr-deleted", method="GET", path="/operations/{{opId}}",
              test_script=["const j = pm.response.json();",
@@ -647,13 +647,13 @@ CASES.append(Case(
                  "});",
                  "pm.environment.unset('opId');",
              ]),
-        Step(name="del-addrA-v6", method="DELETE", path="/vpc/v1/addresses/{{addrIdA}}",
+        retry_until_authorized(Step(name="del-addrA-v6", method="DELETE", path="/vpc/v1/addresses/{{addrIdA}}",
              test_script=["pm.test('del 200|400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                          *save_from_response("j.id", "opId")]),
+                          *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
-        Step(name="del-addrB-v6", method="DELETE", path="/vpc/v1/addresses/{{addrIdB}}",
+        retry_until_authorized(Step(name="del-addrB-v6", method="DELETE", path="/vpc/v1/addresses/{{addrIdB}}",
              test_script=["pm.test('del 200|400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
-                          *save_from_response("j.id", "opId")]),
+                          *save_from_response("j.id", "opId")])),
         poll_operation_until_done(),
         _cleanup_subnet(),
         poll_operation_until_done(),
