@@ -82,7 +82,7 @@ _PF = re.compile(r'port-forward\s+\S+\s+"?(\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?|[0-9
 _PASS = re.compile(
     r'\b([A-Z][A-Z0-9_]*)="(?:[a-z]+://)?(?:localhost|127\.0\.0\.1):(\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?|[0-9]+)')
 # Ссылка на другой скрипт/модуль в теле скрипта.
-_REF = re.compile(r'[\w./$-]*[\w-]+\.(?:sh|py)\b')
+_REF = re.compile(r"[\w./$-]*[\w-]+\.(?:sh|py)\b")
 # Адрес-умолчание в shell: `ИМЯ="${ИМЯ:-http://localhost:24433}"`.
 _SH_DIAL = re.compile(
     r'([A-Z][A-Z0-9_]*)="\$\{[A-Za-z_][A-Za-z0-9_]*:-(?:[a-z]+://)?(?:localhost|127\.0\.0\.1):([0-9]+)')
@@ -153,8 +153,7 @@ def reachable(root: str, runner_path: str) -> tuple[list[str], list[str]]:
         except OSError:
             continue
         here = os.path.dirname(cur)
-        for tok in set(_REF.findall(body)) | set(re.findall(r'[\w./$-]*[\w-]+\.(?:sh|py)\b', body)):
-            raw = tok
+        for raw in set(_REF.findall(body)):
             for var in ("$REPO_ROOT/", "$SCRIPT_DIR/", "$ROOT/", "$SUITE_DIR/", "${REPO_ROOT}/", "./"):
                 if raw.startswith(var):
                     raw = raw[len(var):]
