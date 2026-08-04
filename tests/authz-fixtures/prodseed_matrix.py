@@ -18,10 +18,22 @@ sentence was WRONG for half of them and that error cost nine assertions that nev
   - `apiTokenValid` / `apiTokenRevoked` / `apiTokenMalformed` — minted (see the block in
     `seed()`). These are SERVICE-ACCOUNT KEYS, not human credentials; the case-file says
     so itself. Lumping them with the step-up token was the mistake.
-  - `apiTokenExpired` — not minted, and not fakeable: the provider signs the token and
-    owns its lifetime (900s), so "already expired" cannot be produced at seed time. It
-    needs its own wave that CREATES the condition (issue, then outwait the lifetime).
-    Until that wave exists its two assertions are an open debt, counted, not masked.
+  - `apiTokenExpired` — not minted here, and not fakeable: the provider signs the token
+    and owns its lifetime, so "already expired" cannot be produced at seed time. It needs
+    its own wave that CREATES the condition (issue, then outwait the lifetime) — that wave
+    now EXISTS: `services/iam/tests/newman/scripts/run-expired-bearer.sh`. It is not part
+    of the default parallel run because it takes as long as a token lives; until it has
+    actually been run, its assertions stay a counted open debt, not a mask.
+    THE LIFETIME IS 14400s (4h), NOT 900s — this line said 900s and that was wrong.
+    Measured three independent ways (2026-08-04): `exp - iat` on four issued tokens; the
+    provider's own config (`ttl.access_token: 4h`); and the absence of a per-client
+    override on this stand (`KACHO_IAM_SAKEY_ACCESSTOKENTTL` unset →
+    `IssueSAKeyUseCase.accessTokenLifespan()` returns "" → the provider default applies).
+    The magnitude is the whole point for whoever schedules the wave: "outwait 15 minutes"
+    and "outwait 4 hours" are different decisions. Note that
+    `IssueSAKeyRequest.ttl_seconds` does NOT shorten it — that field bounds the KEY's own
+    expiry row, not the `access_token_lifespan` stamped on the OAuth client, so it cannot
+    be used to make the wave quicker.
 
 THE OTHER STRUCTURAL LIMIT, MEASURED 2026-07-30 — no human principal reaches the edge.
 An Account is owned by a User by construction, so a case that CREATES an account needs a
@@ -564,10 +576,20 @@ def seed() -> dict:
     # по природе. Из-за одной формулировки девять утверждений не исполнялись ни разу.
     #
     # ЧТО ОСТАЁТСЯ ДОЛГОМ И ПОЧЕМУ ИМЕННО ОНО. `apiTokenExpired` требует предъявителя,
-    # чей срок УЖЕ истёк. Подписывает токены провайдер, срок жизни задаёт он же (900 с),
-    # и укоротить его на один выпуск нельзя. Подделать — значит вернуться ровно к тому,
-    # что здесь убирается. Значит этому кейсу нужна своя волна, создающая условие
-    # (выпустить и переждать срок), а до тех пор он ЧЕСТНО падает, а не зеленеет.
+    # чей срок УЖЕ истёк. Подписывает токены провайдер, срок жизни задаёт он же, и
+    # укоротить его на один выпуск нельзя. Подделать — значит вернуться ровно к тому, что
+    # здесь убирается. Значит этому кейсу нужна своя волна, создающая условие (выпустить и
+    # переждать срок) — она ЕСТЬ: `services/iam/tests/newman/scripts/run-expired-bearer.sh`.
+    # В общий параллельный прогон она не входит: идёт столько, сколько живёт предъявитель.
+    #
+    # СРОК — 14400 с (4 ч), А НЕ 900 с: здесь стояло 900, и это было неверно. Замер
+    # 2026-08-04 тремя независимыми способами — `exp - iat` четырёх выпущенных токенов,
+    # настройка провайдера (`ttl.access_token: 4h`) и отсутствие per-client override на
+    # этом стенде (`KACHO_IAM_SAKEY_ACCESSTOKENTTL` не задан → `accessTokenLifespan()`
+    # пуст → берётся умолчание провайдера). Величина здесь и есть смысл записи: тому, кто
+    # ставит волну в расписание, «переждать 15 минут» и «переждать 4 часа» — разные
+    # решения. `IssueSAKeyRequest.ttl_seconds` срок токена НЕ укорачивает: это поле
+    # ограничивает срок самого КЛЮЧА, а не `access_token_lifespan` OAuth-клиента.
     #
     # ОТЗЫВ ПРОВЕРЯЕТСЯ ПО-НАСТОЯЩЕМУ. `apiTokenRevoked` — это выпущенный токен, чей
     # ключ затем снят `SAKeyService.Revoke`. Если край такой предъявитель всё ещё
