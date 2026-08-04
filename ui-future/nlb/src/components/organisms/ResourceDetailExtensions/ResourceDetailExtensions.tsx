@@ -3,7 +3,8 @@
 // ResourceShell остаётся generic (Обзор / связанные / Операции / JSON + формы-
 // панели). Доменно-специфичные строки Обзора конкретного ресурса подключаются
 // здесь по spec.id. Для NLB: LoadBalancer — регион/схема/размещение/VIP/статус;
-// Listener — балансировщик/протокол/порт; TargetGroup — регион/health-check.
+// Listener — балансировщик/протокол/порт; TargetGroup — регион/порт/окна
+// вывода и разгона/проба.
 // Богатый LoadBalancer-detail (attach/detach TG, per-tab actions) подключается
 // отдельной кастом-обёрткой на следующем этапе.
 
@@ -62,6 +63,25 @@ function code(v: unknown): ReactNode {
 
 function boolTag(v: unknown, yes = "Да", no = "Нет"): ReactNode {
   return v ? <Tag color="green">{yes}</Tag> : <Tag>{no}</Tag>;
+}
+
+/** Ветви пробы целевой группы — ровно одна из четырёх задана (oneof options). */
+const HEALTH_CHECK_KINDS = ["tcp", "http", "https", "grpc"] as const;
+
+/**
+ * Краткое описание пробы: «<ветвь> :<порт>».
+ *
+ * Проба не именована — `name` снят с контракта, — поэтому отличать одну от
+ * другой приходится тем, что проба собственно делает. Порт берётся из
+ * производного `effective_port` (переопределение ветви, иначе порт группы):
+ * расхождение порта пробы и порта трафика видно by construction. Ни одной
+ * заданной ветви — пусто: молчание ответа не выдаём за настроенную проверку.
+ */
+function healthCheckSummary(data: Record<string, unknown>): string {
+  const kind = HEALTH_CHECK_KINDS.find((k) => getByPath<unknown>(data, `health_check.${k}`) != null);
+  if (!kind) return "";
+  const port = getByPath<number>(data, "health_check.effective_port");
+  return port ? `${kind} :${port}` : kind;
 }
 
 // ─────────────────────────── реестр ───────────────────────────
@@ -136,11 +156,18 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
   "target-groups": {
     overviewExtra: ({ data }) => [
       { label: "Регион", value: txt(getByPath<string>(data, "region_id")) },
-      {
-        label: "Drain timeout (с)",
-        value: code(getByPath<number>(data, "deregistration_delay_seconds")),
-      },
-      { label: "Health-check", value: code(getByPath<string>(data, "health_check.name")) },
+      // Единственный backend-порт группы: именно его листенер переотражает в
+      // `resolved_backend_port`, и от него же наследуется порт пробы.
+      { label: "Порт бэкенда", value: code(getByPath<number>(data, "port")) },
+      // Duration приходит строкой секунд с хвостовым «s» («300s») — своей
+      // единицы подпись не называет, иначе она противоречила бы значению.
+      { label: "Drain timeout", value: code(getByPath<string>(data, "deregistration_delay")) },
+      { label: "Slow start", value: code(getByPath<string>(data, "slow_start")) },
+      // У пробы нет имени (оно снято с контракта: HealthCheck — встроенный
+      // объект-значение, а не адресуемый ресурс). Содержательны выбранная ветвь
+      // (tcp|http|https|grpc) и разрешённый порт, а не идентичность.
+      { label: "Health-check", value: code(healthCheckSummary(data)) },
+      { label: "Статус", value: <StatusBadge state={getByPath<string>(data, "status")} /> },
     ],
     // Управление backend-таргетами (add/remove через :addTargets/:removeTargets)
     // прямо в блоке «Обзор».

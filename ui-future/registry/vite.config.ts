@@ -46,6 +46,13 @@ export default defineConfig({
         target: apiGateway,
         changeOrigin: true,
       },
+      // Справочник размещения — домен geo. Реестр ресурсов этого приложения
+      // объявляет /geo/v1/regions и /geo/v1/zones; без записи прокси запрос до
+      // края не доходит вовсе, и список выглядит пустым, а не отказавшим.
+      "/geo": {
+        target: apiGateway,
+        changeOrigin: true,
+      },
       "/iam/v1": {
         target: apiGateway,
         changeOrigin: true,

@@ -69,7 +69,11 @@ export const SERVICE_MODULES: ServiceModule[] = [
     short: "Compute",
     icon: <Cloud size={iconSize} />,
     color: "#36CFC9",
-    description: "Виртуальные машины, диски, образы и снимки дисков.",
+    // Блочное хранение (тома, образы, снимки) — домен storage, не compute:
+    // маршрутов /compute/v1/{disks,images,snapshots,diskTypes} в контракте нет.
+    // Плитка, обещавшая их под именем Compute, отправляла человека искать
+    // раздел, которого у этого домена больше нет.
+    description: "Виртуальные машины и типы машин.",
     requiresProject: true,
     landing: (projectId) => (projectId ? `/projects/${projectId}/compute/instances` : null),
     stats: [

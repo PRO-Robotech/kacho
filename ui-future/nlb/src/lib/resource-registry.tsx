@@ -133,7 +133,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     ops: { create: false, update: false, delete: false },
     columns: [
       { header: "Идентификатор", path: "id", format: "text", className: "font-mono" },
-      { header: "Статус", path: "status", format: "status" },
+      // Здесь стояла колонка «Статус» по полю `status`. Публичный geo.Region
+      // такого поля не несёт и не нёс никогда: состояние региона живёт только
+      // в `InternalRegion` на cluster-internal листенере (two-projection).
+      // Колонка была пуста при любом ответе сервера. Доступность размещения
+      // регион сообщает логическим `open_for_placement`.
+      { header: "Открыт для размещения", path: "open_for_placement", format: "text" },
     ],
     template: () => ({}),
   },
