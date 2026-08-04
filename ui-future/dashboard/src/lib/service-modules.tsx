@@ -72,13 +72,47 @@ export const SERVICE_MODULES: ServiceModule[] = [
     // Блочное хранение (тома, образы, снимки) — домен storage, не compute:
     // маршрутов /compute/v1/{disks,images,snapshots,diskTypes} в контракте нет.
     // Плитка, обещавшая их под именем Compute, отправляла человека искать
-    // раздел, которого у этого домена больше нет.
+    // раздел, которого у этого домена больше нет. Сам раздел никуда не делся —
+    // он ниже, отдельной плиткой Storage: обещание снято ВМЕСТЕ с выдачей
+    // нового адреса, иначе живой раздел остался бы недостижим с главной.
     description: "Виртуальные машины и типы машин.",
     requiresProject: true,
     landing: (projectId) => (projectId ? `/projects/${projectId}/compute/instances` : null),
     stats: [
       { key: "instances", label: "Машин", listPath: "/compute/v1/instances", payloadKey: "instances" },
     ],
+  },
+  {
+    key: "storage",
+    segment: "storage",
+    label: "Storage",
+    short: "Storage",
+    icon: <HardDrive size={iconSize} />,
+    color: "#13C2C2",
+    description: "Блочное хранение: тома, снимки, образы и типы дисков.",
+    requiresProject: true,
+    landing: (projectId) => (projectId ? `/projects/${projectId}/storage/volumes` : null),
+    stats: [
+      { key: "volumes", label: "Томов", listPath: "/storage/v1/volumes", payloadKey: "volumes" },
+      { key: "snapshots", label: "Снимков", listPath: "/storage/v1/snapshots", payloadKey: "snapshots" },
+      { key: "images", label: "Образов", listPath: "/storage/v1/images", payloadKey: "images" },
+    ],
+  },
+  {
+    key: "registry",
+    segment: "registry",
+    label: "Container Registry",
+    short: "Registry",
+    icon: <Boxes size={iconSize} />,
+    color: "#EB2F96",
+    description: "Реестры OCI-образов: реестры, репозитории и теги.",
+    requiresProject: true,
+    landing: (projectId) => (projectId ? `/projects/${projectId}/registry/registries` : null),
+    // Счётчик один, и это не упущение: репозитории и теги адресуются ТОЛЬКО
+    // внутри конкретного реестра (/registry/v1/registries/{registryId}/...) —
+    // плоского списка по проекту у них в контракте нет, а счётчик по несуществующему
+    // адресу дал бы вечный прочерк, неотличимый от «их нет».
+    stats: [{ key: "registries", label: "Реестров", listPath: "/registry/v1/registries", payloadKey: "registries" }],
   },
   {
     key: "nlb",

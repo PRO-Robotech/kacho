@@ -20,6 +20,26 @@ import {
   lbPlacementTypeFromPlacement,
 } from "@/components/organisms/form/NlbVipSourceField";
 
+/**
+ * Ячейка логического поля контракта — словом, а не литералом `false`.
+ *
+ * Словаря форматов колонок логический вариант не несёт: списки этого remote
+ * рисует общий рендер (`@shared/lib/spec-columns`), где ветка "text" отсеивает
+ * только пустое значение, поэтому `false` доехал бы до `String(v)` и напечатался
+ * английским литералом ровно в том случае, ради которого колонка и заводится, —
+ * регион, закрытый для размещения. Пока в общем словаре нет логического
+ * формата, ячейка задаётся собственным `render` колонки (его общий рендер
+ * уважает), а не расширением локального union'а: локальное расширение
+ * разъехалось бы с типом общего компонента, которому эта спека и передаётся.
+ *
+ * Отсутствие значения — НЕ «нет»: сервер, не приславший поле, ничего не
+ * утверждает.
+ */
+export function boolCell(v: unknown): ReactNode {
+  if (typeof v !== "boolean") return <span style={{ opacity: 0.45 }}>—</span>;
+  return v ? <span>Да</span> : <span style={{ opacity: 0.45 }}>Нет</span>;
+}
+
 export interface ResourceColumn {
   header: string;
   // Путь в плоском объекте: "name", "status", "region_id"
@@ -138,7 +158,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
       // в `InternalRegion` на cluster-internal листенере (two-projection).
       // Колонка была пуста при любом ответе сервера. Доступность размещения
       // регион сообщает логическим `open_for_placement`.
-      { header: "Открыт для размещения", path: "open_for_placement", format: "text" },
+      {
+        header: "Открыт для размещения",
+        path: "open_for_placement",
+        render: (row) => boolCell(row.open_for_placement),
+      },
     ],
     template: () => ({}),
   },
@@ -230,7 +254,12 @@ export const REGISTRY: Record<string, ResourceSpec> = {
   },
 
   // ====== nlb ======
-  // proto: kacho.cloud.nlb.v1.NetworkLoadBalancerService.
+  // proto: kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService. Здесь стояло
+  // имя пакета, выведенное из REST-сегмента `/nlb/v1/...`, — такого пакета в
+  // стволе нет. Сегмент пути и имя пакета у этого домена РАЗНЫЕ, и оба верны;
+  // мёртвое имя не воспроизводится даже в разборе ошибки, иначе разбор сам стал
+  // бы её повторением (гейт lib/proto-package-names.test.ts считает такую цитату
+  // живым утверждением — и правильно делает).
 
   "load-balancers": {
     id: "load-balancers",

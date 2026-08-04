@@ -1,6 +1,13 @@
 // TS-типы для flat storage API (kacho.cloud.storage.v1). Ресурсы — плоские
-// объекты (нет metadata/spec/status envelope). grpc-gateway сериализует proto
-// snake_case → JSON snake_case (client.ts делает camel↔snake на wire).
+// объекты (нет metadata/spec/status envelope).
+//
+// Имена полей: край отдаёт camelCase — оба mux'а api-gateway собираются с
+// `UseProtoNames: false` (`gateway/internal/restmux/strict_enum.go`). Объявления
+// ниже — в snake_case, как в proto, и мост между ними один: `api/client.ts`
+// переводит тело запроса snake_case → camelCase, а ответ обратно (`lib/case.ts`,
+// пользовательские map'ы вроде labels не трогаются). То есть snake_case здесь —
+// не то, что приходит с провода, а то, во что уже переведено. Убрать перевод,
+// поверив, что имена совпадают, значит начать читать поля, которых в ответе нет.
 
 // ====== Operation ======
 

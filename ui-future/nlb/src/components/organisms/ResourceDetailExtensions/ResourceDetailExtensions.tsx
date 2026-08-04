@@ -65,6 +65,59 @@ function boolTag(v: unknown, yes = "Да", no = "Нет"): ReactNode {
   return v ? <Tag color="green">{yes}</Tag> : <Tag>{no}</Tag>;
 }
 
+/**
+ * Административное состояние балансировщика — словом, а не именем константы.
+ *
+ * Это замена снятым глаголам `:start`/`:stop`: выключенный балансировщик
+ * сохраняет конфигурацию, а его таргеты сообщаются как INACTIVE. Не показать
+ * его значит оставить выключенный балансировщик неотличимым от рабочего —
+ * ACTIVE в строке «Статус» стоит у обоих.
+ */
+function adminStateTag(v: unknown): ReactNode {
+  switch (v) {
+    case "ADMIN_STATE_ENABLED":
+      return <Tag color="green">Включён</Tag>;
+    case "ADMIN_STATE_DISABLED":
+      return <Tag color="red">Выключен</Tag>;
+    default:
+      // UNSPECIFIED/пусто — сервер состояния не назвал; выдавать это за
+      // «включён» нельзя.
+      return dash;
+  }
+}
+
+/**
+ * Подстатус листенера — производное значение: резолвится ли его целевая группа.
+ *
+ * MISCONFIGURED значит «объявлен, обслуживать некому»; из строки «Статус» это не
+ * видно — она остаётся ACTIVE. UNSPECIFIED/пусто выдавать за OK нельзя.
+ */
+function substatusTag(v: unknown): ReactNode {
+  switch (v) {
+    case "OK":
+      return <Tag color="green">обслуживается</Tag>;
+    case "MISCONFIGURED":
+      return <Tag color="orange">целевая группа не резолвится</Tag>;
+    default:
+      return dash;
+  }
+}
+
+/** Список идентификаторов чипами; пустой набор — прочерк, а не пустая строка. */
+function idTags(v: unknown): ReactNode {
+  const ids = Array.isArray(v) ? (v as unknown[]).map(String).filter(Boolean) : [];
+  if (ids.length === 0) return dash;
+  return (
+    <span>
+      {ids.map((id) => (
+        <Tag key={id} style={{ marginInlineEnd: 4, fontFamily: "ui-monospace, SFMono-Regular, monospace" }}>
+          {id}
+        </Tag>
+      ))}
+    </span>
+  );
+}
+
 /** Ветви пробы целевой группы — ровно одна из четырёх задана (oneof options). */
 const HEALTH_CHECK_KINDS = ["tcp", "http", "https", "grpc"] as const;
 
@@ -91,6 +144,13 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
     // Единая таблица «Обзор»: immutable схема/размещение + mutable-скаляры +
     // резолвнутый VIP пофамильно + drain-зоны. Размещение — только для INTERNAL,
     // зоны без анонса — только для REGIONAL (зеркалит форму создания).
+    //
+    // Условные строки показываются ровно там, где поле применимо, — границы
+    // взяты у владельца контракта, а не угаданы: cross_zone_enabled применим при
+    // любом НЕ-зональном размещении (включая EXTERNAL, у которого placement_type
+    // пуст), security_group_ids — только у INTERNAL (группы сетевые). Показывать
+    // значение там, где сервер его отвергает, значит предлагать настройку,
+    // которой у этой посадки нет.
     overviewExtra: ({ data }) => {
       const type = getByPath<string>(data, "type") ?? "";
       const placement = getByPath<string>(data, "placement_type") ?? "";
@@ -109,6 +169,7 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
         });
       }
       items.push(
+        { label: "Административное состояние", value: adminStateTag(getByPath<string>(data, "admin_state")) },
         { label: "Session affinity", value: code(getByPath<string>(data, "session_affinity")) },
         { label: "IPv4-адрес", value: <NlbVipCell v4AddressId={getByPath<string>(data, "v4_address_id")} /> },
         { label: "IPv6-адрес", value: <NlbVipCell v6AddressId={getByPath<string>(data, "v6_address_id")} /> },
@@ -130,6 +191,20 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
             ),
         });
       }
+      // Балансировка между зонами неприменима только зональному размещению
+      // (у него зона одна) — при пустом placement_type (EXTERNAL) применима.
+      if (placement !== "ZONAL") {
+        items.push({
+          label: "Балансировка между зонами",
+          value: boolTag(getByPath<boolean>(data, "cross_zone_enabled")),
+        });
+      }
+      if (type === "INTERNAL") {
+        items.push({
+          label: "Группы безопасности VIP",
+          value: idTags(getByPath<string[]>(data, "security_group_ids")),
+        });
+      }
       items.push(
         { label: "Статус", value: <StatusBadge state={getByPath<string>(data, "status")} /> },
         { label: "Защита от удаления", value: boolTag(getByPath<boolean>(data, "deletion_protection")) },
@@ -149,6 +224,23 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
       { label: "Протокол", value: code(getByPath<string>(data, "protocol")) },
       { label: "Порт", value: code(getByPath<number>(data, "port")) },
       { label: "Порт на target", value: code(getByPath<number>(data, "target_port")) },
+      // Целевая группа листенера: привязка перешла сюда со снятых глаголов
+      // балансировщика (:attachTargetGroup / :detachTargetGroup). Строка одна, и
+      // групп тоже одна: на текущем шаге контракта `target_group_id` и
+      // `default_target_group_id` — два имени ОДНОЙ ссылки (владелец отдаёт в них
+      // одно значение). Показывается идущее вперёд имя; вторую строку заводить
+      // нельзя — она читалась бы как вторая группа.
+      {
+        label: "Целевая группа",
+        value: <RefNameLink specId="target-groups" refId={getByPath<string>(data, "target_group_id")} maxChars={42} />,
+      },
+      // Порт бэкенда — эхо TargetGroup.port, а не frontend-порт листенера.
+      // Ноль в контракте означает «ни одна группа не резолвится», а не номер
+      // порта, поэтому показывается прочерком.
+      { label: "Порт бэкенда", value: code(getByPath<number>(data, "resolved_backend_port") || "") },
+      // Подстатус: листенер бывает объявлен и ACTIVE, а обслуживать его некому
+      // (целевой группы нет или ссылка повисла). Из строки «Статус» это не видно.
+      { label: "Состояние конфигурации", value: substatusTag(getByPath<string>(data, "substatus")) },
       { label: "Статус", value: <StatusBadge state={getByPath<string>(data, "status")} /> },
     ],
   },
