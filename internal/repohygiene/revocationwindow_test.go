@@ -28,6 +28,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/tools/revocationwindowgate"
 )
@@ -331,7 +332,7 @@ func TestEveryVerdictCacheServiceIsDeclared(t *testing.T) {
 
 	t.Logf("осмотрено: файлов процессов прочитано=%d, процессов строит кеш вердиктов=%d, "+
 		"процессов объявлено политикой=%d, распознаваемых локальных конструкторов=%v",
-		filesRead, len(building), len(declared), revocationwindowgate.LocalVerdictCacheCtors())
+		filesRead, len(building), len(declared), revocationwindowgate.VerdictCacheCtorNames())
 
 	if filesRead == 0 {
 		t.Fatalf("предпосылка гейта нарушена: не прочитано ни одного файла сервисов")
@@ -353,6 +354,124 @@ func TestEveryVerdictCacheServiceIsDeclared(t *testing.T) {
 			"Кешируется положительный вердикт ⇒ у процесса есть окно отзыва. "+
 			"Внеси его в pkg/authz.RevocationPolicy (Windows — если у него своя ручка, "+
 			"Inherited — если он берёт умолчание).", svc)
+	}
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Второе окно у процесса, который уже переписан
+// ────────────────────────────────────────────────────────────────────────────
+
+// TestEveryAuthzWindowKnobIsDeclared — единица переписи здесь ОКНО, а не процесс.
+//
+// Проверка выше спрашивает «строит ли этот процесс кеш вердиктов» и отвечает
+// один раз на процесс. Поэтому процесс, единожды в перепись попавший, мог
+// завести ВТОРОЕ окно любой величины под ручкой, которой никто не перечислял, —
+// и красного не было бы ни от чего: ни от конструктора (он уже засчитан), ни от
+// сверки значений (она ходит по закрытому словарю имён).
+//
+// Здесь вопрос задан без словаря имён — по ФОРМЕ ручки — и по всему дереву, а
+// не по перечню каталогов конфигурации: перечень каталогов был бы третьим
+// местом того же класса, где ручка, объявленная не там, невидима.
+func TestEveryAuthzWindowKnobIsDeclared(t *testing.T) {
+	root := repoRoot(t)
+	files, err := treecorpus.UnderWithSuffix(root, ".go")
+	if err != nil {
+		t.Fatalf("предпосылка гейта нарушена: состав дерева не читается: %v", err)
+	}
+
+	declared := map[string]bool{}
+	for _, k := range revocationwindowgate.KnobNames() {
+		declared[k] = true
+	}
+
+	read := 0
+	type hit struct{ knob, file string }
+	var undeclared []hit
+	seenDeclared := map[string]bool{}
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		src, rerr := os.ReadFile(f)
+		if rerr != nil {
+			t.Fatalf("прочитать %s: %v", f, rerr)
+		}
+		read++
+		knobs, serr := revocationwindowgate.ScanWindowKnobNames(f, string(src))
+		if serr != nil {
+			continue // неразбираемый файл ловит собственный страж дерева
+		}
+		rel, _ := filepath.Rel(root, f)
+		for _, k := range knobs {
+			if declared[k] {
+				seenDeclared[k] = true
+				continue
+			}
+			undeclared = append(undeclared, hit{k, filepath.ToSlash(rel)})
+		}
+	}
+
+	t.Logf("осмотрено: отслеживаемых .go прочитано=%d; ручек формы «размеряет окно вердикта»: "+
+		"объявленных найдено=%d из %d, необъявленных=%d",
+		read, len(seenDeclared), len(declared), len(undeclared))
+
+	if read == 0 {
+		t.Fatalf("предпосылка гейта нарушена: не прочитано ни одного файла")
+	}
+	if len(seenDeclared) == 0 {
+		t.Fatalf("предпосылка гейта нарушена: прочитано %d файлов, но ни одна из %d объявленных "+
+			"ручек не найдена формой. Либо ручки переименованы, либо форма перестала их описывать — "+
+			"в обоих случаях эта проверка молчала бы и на настоящей находке", read, len(declared))
+	}
+	for _, h := range undeclared {
+		t.Errorf("%s: ручка %q по форме размеряет окно кеша вердиктов авторизации, но политикой "+
+			"НЕ объявлена.\n"+
+			"  Процесс, единожды попавший в перепись конструкторов, добавляет такое окно молча: "+
+			"«строит ли кеш» отвечено один раз, а величина сверяется по закрытому словарю имён, "+
+			"в котором этой ручки нет.\n"+
+			"  ЧТО ДЕЛАТЬ: внести окно в pkg/authz.RevocationPolicy (Windows) и имя ручки — в "+
+			"knobNames пакета гейта, чтобы её значение сверялось с политикой; либо, если ручка "+
+			"размеряет НЕ вердикт авторизации, переименовать её так, чтобы она этого не заявляла",
+			h.file, h.knob)
+	}
+}
+
+// TestKnobShapePredicateHasControlsBothWays — предикат формы измеряет свойство,
+// а не собственную удобную половину.
+//
+// Предикат, проверенный в одну сторону, не измеряет ничего: он либо находит всё
+// подряд, либо молчит на всём. Здесь обе половины утверждаются явно — каждая
+// объявленная ручка обязана находиться, и каждая ручка соседних семей (сессия,
+// повтор DPoP, кеш чужих фактов, сетевые сроки, размер кеша) обязана НЕ
+// находиться.
+func TestKnobShapePredicateHasControlsBothWays(t *testing.T) {
+	declared := revocationwindowgate.KnobNames()
+	if len(declared) == 0 {
+		t.Fatal("предпосылка пробы нарушена: политика не объявляет ни одной ручки")
+	}
+	for _, k := range declared {
+		if !revocationwindowgate.KnobSizesAuthzWindow(k) {
+			t.Errorf("объявленная ручка %q формой НЕ распознаётся — предикат пропустил бы и её "+
+				"необъявленного близнеца", k)
+		}
+	}
+
+	// Отрицательный контроль. Каждая строка — из соседней семьи: их окна тоже
+	// реальны, но ездят по другому пути отзыва (см. authz.RevocationPolicy,
+	// «Что НЕ ездит по этому окну»), и путать их — та самая ошибка, которая
+	// толкает уменьшать окно гранта вместо снятия учётных данных.
+	for _, k := range []string{
+		"KACHO_API_GATEWAY_SESSION_CACHE_TTL_SECONDS",
+		"KACHO_API_GATEWAY_DPOP_REPLAY_TTL_SECONDS",
+		"KACHO_IAM_INTROSPECTION_CACHE_TTL",
+		"KACHO_VPC_PEER_PROJECT_CACHE_TTL",
+		"http.client.timeout",
+		"authz.cache-size",
+	} {
+		if revocationwindowgate.KnobSizesAuthzWindow(k) {
+			t.Errorf("ручка %q признана размеряющей окно вердикта, хотя размеряет другое. "+
+				"Предикат, красный на законной конструкции, отключают первым", k)
+		}
 	}
 }
 

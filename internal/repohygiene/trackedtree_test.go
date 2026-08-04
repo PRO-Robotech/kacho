@@ -235,6 +235,75 @@ type diskRootWalk struct {
 	Line int
 	Func string // объемлющая функция — по ней читается, ЧЕЙ это обход
 	Text string
+	// Subtree — обходится не сам корень, а каталог ВНУТРИ него
+	// (`filepath.Join(root, "services")`). Класс тот же — правила игнорирования
+	// действуют на любой глубине, — но исход разный: корень запрещён
+	// безусловно, поддерево ведётся сокращающимся перечнем subtreeDiskWalks.
+	Subtree bool
+}
+
+// inRepoDiskWalks — обходы каталогов ВНУТРИ репозитория, всё ещё берущие состав
+// с диска, а не из индекса. ПЕРЕЧЕНЬ ЗАКРЫТ ДЛЯ ПОПОЛНЕНИЯ и может только
+// сокращаться: гейт падает и на новом непричисленном обходе, и на записи,
+// которой больше нечего покрывать, и на записи без причины.
+//
+// Почему перечень, а не запрет сразу. Предмет — 33 места в десяти пакетах, и
+// перевести их одним изменением вместе с починкой самого стража значило бы
+// смешать два предмета, лишив каждый собственного красного. Почему не проза:
+// прежняя редакция называла часть этого числом «26 обходов поддеревьев», не дав
+// предиката, которым его перемерить, — и для стороннего читателя число было
+// невоспроизводимым. Перечень И ЕСТЬ предикат: он проверяется исполнением.
+//
+// Ключ — «<файл>:<объемлющая функция>», без номера строки: строки съезжают от
+// любой правки, а предмет записи — обход, а не его координата. Значение —
+// ПРИЧИНА, по которой обход ещё на диске; пустая причина неотличима от упущения
+// и потому запрещена.
+const (
+	whyPending = "долг перевода на индекс: обход читает содержимое репозитория с диска, " +
+		"правила игнорирования на него не действуют"
+	whyOwnIgnoreReader = "обход НЕ слеп к игнорируемому: пакет читает правила игнорирования " +
+		"сам (ignoredPaths) и пропускает покрытые ими каталоги. Это не дыра, а ВТОРАЯ " +
+		"реализация того же предмета — она не знает вложенных правил, отрицаний и " +
+		"локальных исключений, которые знает git, и потому обязана сойтись с индексом"
+	whyCopiesRealTree = "копирует настоящее дерево во временный каталог, чтобы гейт " +
+		"исполнился на нём; состав копии обязан быть составом КОММИТА, иначе проба " +
+		"судит чужой рабочий каталог"
+)
+
+var inRepoDiskWalks = map[string]string{
+	"gateway/internal/restmux/console_body_contract_test.go:consoleExportedStringConsts":                           whyPending,
+	"gateway/internal/restmux/console_body_contract_test.go:consoleRegistryFiles":                                  whyPending,
+	"gateway/internal/restmux/console_body_contract_test.go:TestConsoleMutationSurfaceIsAccountedFor":              whyPending,
+	"internal/repohygiene/declaredcardinality_test.go:hasProductionReader":                                         whyPending,
+	"internal/repohygiene/guardnamedincomment_test.go:TestCommentsNamingAGuardHaveItInScope":                       whyPending,
+	"internal/repohygiene/guardnamedincomment_test.go:TestGuardedIdentifiersStillHaveSubject":                      whyPending,
+	"internal/repohygiene/hideexistence_test.go:serviceSourceCorpus":                                               whyPending,
+	"internal/repohygiene/listpaginationorder_test.go:forEachProductionGoFileForPagination":                        whyPending,
+	"internal/repohygiene/listreadrelationparity_test.go:deriveServiceDomain":                                      whyPending,
+	"internal/repohygiene/listreadrelationparity_test.go:discoverPageFilters":                                      whyPending,
+	"internal/repohygiene/listreadrelationparity_test.go:TestListReadRelationParity_PremiseHolds":                  whyPending,
+	"internal/repohygiene/lroreconciler_test.go:callsOperationsFunc":                                               whyPending,
+	"internal/repohygiene/lroreconciler_test.go:reconcilerGraceLiterals":                                           whyPending,
+	"internal/repohygiene/lroreconciler_test.go:unreachableReconcilerBuilders":                                     whyPending,
+	"internal/repohygiene/operationownershipport_test.go:operationServiceImplPackages":                             whyPending,
+	"internal/repohygiene/renderguard_test.go:findRenderGuards":                                                    whyPending,
+	"internal/repohygiene/revocationwindow_test.go:TestNoCallSiteTakesTheWindowUnprovably":                         whyPending,
+	"internal/repohygiene/revocationwindow_test.go:TestNoServiceTakesTheWindowImplicitly":                          whyPending,
+	"internal/repohygiene/scriptgatewiring_test.go:findToolScriptGates":                                            whyPending,
+	"internal/repohygiene/unscopedoperationslist_test.go:forEachProductionGoFile":                                  whyPending,
+	"internal/repohygiene/usecaselayout_test.go:TestUseCaseLayerHasOneLayout":                                      whyPending,
+	"internal/repohygiene/verbvocabulary_test.go:discoverTopLevelVerbLiterals":                                     whyPending,
+	"services/compute/internal/check/retired_block_storage_test.go:forEachComputeSource":                           whyPending,
+	"services/compute/internal/check/retired_table_identifier_test.go:forEachComputeGoFile":                        whyPending,
+	"services/compute/internal/commentlint/commentlint_test.go:TestCommentsAreCleanOfProcessNoiseAndForeignClouds": whyPending,
+	"services/compute/internal/handler/request_field_classification_test.go:computeNonTestSources":                 whyPending,
+	"services/registry/tools/auditlistfilter/audit.go:checkHandlerIsWired":                                         whyPending,
+	"services/registry/tools/auditlistfilter/audit.go:productionRefusalPinned":                                     whyPending,
+	"services/registry/tools/auditlistfilter/census_test.go:copyRealTree":                                          whyCopiesRealTree,
+	"tools/foreignclouds/foreignclouds.go:Scan":                                                                    whyOwnIgnoreReader,
+	"tools/foreignclouds/foreignclouds.go:undeclaredDebtFiles":                                                     whyOwnIgnoreReader,
+	"tools/foreignclouds/foreignclouds.go:unusedCoordinates":                                                       whyOwnIgnoreReader,
+	"tools/newmancensus/ci_wiring_test.go:TestEverySuiteValidatorIsCoveredByTheGlob":                               whyPending,
 }
 
 // rootProducers — функции пакета, говорящие о КОРНЕ ДЕРЕВА, которое
@@ -280,7 +349,7 @@ func rootProducers(files map[string]*ast.File) map[string]bool {
 			if !returnsString {
 				continue
 			}
-			climbs, stats := false, false
+			climbs, stats, caller := false, false, false
 			ast.Inspect(fd.Body, func(n ast.Node) bool {
 				if lit, isLit := n.(*ast.BasicLit); isLit &&
 					lit.Kind == token.STRING && lit.Value == `"go.mod"` {
@@ -303,10 +372,17 @@ func rootProducers(files map[string]*ast.File) map[string]bool {
 					climbs = true
 				case "os.Stat":
 					stats = true
+				case "runtime.Caller":
+					// Третья форма поиска корня, которой признак не знал:
+					// оттолкнуться от файла ЭТОГО исходника и подняться на
+					// известное число каталогов. Маркера она не ищет и не
+					// статит — поэтому пара «поднимается И проверяет» её не
+					// узнавала, и обход от такого корня был невидим.
+					caller = true
 				}
 				return true
 			})
-			if climbs && stats {
+			if (climbs && stats) || (climbs && caller) {
 				out[fd.Name.Name] = true
 			}
 		}
@@ -352,13 +428,43 @@ func paramNameAt(fd *ast.FuncDecl, i int) string {
 // isRootValued — выражение несёт корень репозитория: либо это прямой вызов
 // производителя, либо имя, уже окрашенное в этой функции.
 func isRootValued(e ast.Expr, producers, local map[string]bool) bool {
+	_, ok := rootValueOf(e, producers, local)
+	return ok
+}
+
+// rootValueOf — «это значение лежит внутри репозитория?» и, если да, «это САМ
+// корень или каталог внутри него?».
+//
+// Различение несёт исход: обход корня запрещён безусловно, обход поддерева
+// ведётся сокращающимся перечнем. Оба — один класс (правила игнорирования
+// действуют на любой глубине), но разной срочности.
+//
+// local: ключ — имя, несущее путь внутри репозитория; значение — «это сам
+// корень». Поэтому принадлежность и точность читаются РАЗНЫМИ операциями, и
+// подмена одной другою — как раз то, из-за чего каталог, собранный
+// `filepath.Join`, засчитывался корнем.
+func rootValueOf(e ast.Expr, producers, local map[string]bool) (exact bool, inRepo bool) {
 	switch v := e.(type) {
 	case *ast.Ident:
-		return local[v.Name]
+		ex, ok := local[v.Name]
+		return ex, ok
 	case *ast.CallExpr:
-		return producers[walkCalleeName(v.Fun)]
+		if producers[walkCalleeName(v.Fun)] {
+			return true, true
+		}
+		if sel, ok := v.Fun.(*ast.SelectorExpr); ok {
+			if pkg, ok2 := sel.X.(*ast.Ident); ok2 && pkg.Name == "filepath" && sel.Sel.Name == "Join" {
+				for i, a := range v.Args {
+					if _, in := rootValueOf(a, producers, local); in {
+						// Join(root) без добавленных сегментов — это по-прежнему
+						// корень; с сегментами — уже поддерево.
+						return len(v.Args) == 1 && i == 0, true
+					}
+				}
+			}
+		}
 	}
-	return false
+	return false, false
 }
 
 // rootValuedIdents — имена внутри fd, несущие корень репозитория: окрашенные
@@ -366,8 +472,8 @@ func isRootValued(e ast.Expr, producers, local map[string]bool) bool {
 func rootValuedIdents(fd *ast.FuncDecl, producers map[string]bool, tainted map[string]map[string]bool) map[string]bool {
 	local := map[string]bool{}
 	if fd.Name != nil {
-		for name := range tainted[fd.Name.Name] {
-			local[name] = true
+		for name, exact := range tainted[fd.Name.Name] {
+			local[name] = exact
 		}
 	}
 	if fd.Body == nil {
@@ -382,18 +488,31 @@ func rootValuedIdents(fd *ast.FuncDecl, producers map[string]bool, tainted map[s
 			}
 			for i, lhs := range as.Lhs {
 				id, isIdent := lhs.(*ast.Ident)
-				if !isIdent || id.Name == "_" || local[id.Name] {
+				if !isIdent || id.Name == "_" {
 					continue
 				}
-				if isRootValued(as.Rhs[i], producers, local) {
-					local[id.Name] = true
-					changed = true
+				exact, inRepo := rootValueOf(as.Rhs[i], producers, local)
+				if !inRepo {
+					continue
 				}
+				was, known := local[id.Name]
+				next := was || exact
+				if known && next == was {
+					continue
+				}
+				local[id.Name] = next
+				changed = true
 			}
 			return true
 		})
 	}
 	return local
+}
+
+// rootIsExact — выражение есть САМ корень репозитория, а не каталог внутри него.
+func rootIsExact(e ast.Expr, producers, local map[string]bool) bool {
+	exact, inRepo := rootValueOf(e, producers, local)
+	return inRepo && exact
 }
 
 // findDiskRootWalks — обходы ДИСКА от корня репозитория, найденные РАЗБОРОМ.
@@ -447,7 +566,8 @@ func findDiskRootWalks(fset *token.FileSet, files map[string]*ast.File, producer
 					return true
 				}
 				for i, arg := range call.Args {
-					if !isRootValued(arg, producers, local) {
+					exact, inRepo := rootValueOf(arg, producers, local)
+					if !inRepo {
 						continue
 					}
 					p := paramNameAt(callee, i)
@@ -457,10 +577,13 @@ func findDiskRootWalks(fset *token.FileSet, files map[string]*ast.File, producer
 					if tainted[callee.Name.Name] == nil {
 						tainted[callee.Name.Name] = map[string]bool{}
 					}
-					if !tainted[callee.Name.Name][p] {
-						tainted[callee.Name.Name][p] = true
-						changed = true
+					was, known := tainted[callee.Name.Name][p]
+					next := was || exact
+					if known && next == was {
+						continue
 					}
+					tainted[callee.Name.Name][p] = next
+					changed = true
 				}
 				return true
 			})
@@ -499,10 +622,11 @@ func findDiskRootWalks(fset *token.FileSet, files map[string]*ast.File, producer
 					enclosing = fd.Name.Name
 				}
 				out = append(out, diskRootWalk{
-					File: name,
-					Line: fset.Position(call.Pos()).Line,
-					Func: enclosing,
-					Text: "filepath." + sel.Sel.Name + "(" + renderExpr(fset, call.Args[0]) + ", …)",
+					File:    name,
+					Line:    fset.Position(call.Pos()).Line,
+					Func:    enclosing,
+					Text:    "filepath." + sel.Sel.Name + "(" + renderExpr(fset, call.Args[0]) + ", …)",
+					Subtree: !rootIsExact(call.Args[0], producers, local),
 				})
 				return true
 			})
@@ -549,26 +673,33 @@ func renderExpr(fset *token.FileSet, e ast.Expr) string {
 // запрета — факт про ВЕСЬ репозиторий. Гейт судил не тот объём, и это ровно тот
 // класс, который он же и запрещает.
 //
-// Замер разбором (не грепом: греп считает и комментарии, и строковые литералы,
-// и на этом же дереве даёт 67 против 57). На состоянии, от которого писалась
-// правка, обходов `filepath.Walk`/`WalkDir` в индексе было 59 в 42 файлах, из
-// них в этом пакете 25 — то есть 34 не попадали в поле зрения вовсе. Один из
-// них читал игнорируемый git'ом сборочный каталог: файл, которого в репозитории
-// нет и по построению быть не может, ронял гейт края. Он и второй такой же
-// переведены на индекс тем же изменением, поэтому здесь и сейчас обходов 57,
-// вне этого пакета 32.
+// Замер — разбором, не грепом, и разница воспроизводима одной командой:
+// `git grep -oE 'filepath\.(Walk|WalkDir)\('` по отслеживаемым `.go` даёт 69,
+// разбор — 57, потому что греп считает и комментарии, и строковые литералы.
+// Прежняя редакция называла здесь 67; число было верным для другого предиката,
+// и перемерить его по тексту правила было нельзя — предикат не назывался.
+// Теперь называется, вместе с обеими величинами.
 //
-// # Что этот гейт НЕ покрывает, названное числом
+// # Поддерево — тот же класс, и оно тоже под гейтом
 //
-// Обход ПОДДЕРЕВА (`filepath.Join(root, "services")`) под запрет не подпадает —
-// дискриминатор прослеживает источник, а у поддерева он другой. Таких обходов в
-// дереве 26. Считать их безопасными нельзя, и это не догадка: `.gitignore`
-// действует на любой глубине, а под `deploy/`, `gateway/`, `ui-future/` и
-// `services/` игнорируемое лежит на всякой машине, где поднимали стенд или
-// собирали фронтенд (распаковки чартов, сборочные каталоги, node_modules,
-// отчёты прогонов). Два обхода поддерева уже оказались дефектными и переведены
-// на индекс. Оставшиеся — открытый долг С ЧИСЛОМ, а не молчаливое «нормально»:
-// правильный корпус для них — internal/treecorpus.
+// Обход ПОДДЕРЕВА (`filepath.Join(root, "services")`) — тот же класс, что и
+// обход корня: `.gitignore` действует на любой глубине, а под `deploy/`,
+// `gateway/`, `ui-future/` и `services/` игнорируемое лежит на всякой машине,
+// где поднимали стенд или собирали фронтенд (распаковки чартов, сборочные
+// каталоги, node_modules, отчёты прогонов). Два таких обхода уже оказались
+// дефектными по этой самой причине.
+//
+// Прежняя редакция объявляла их «открытым долгом с числом 26» — и это было
+// худшее из двух: не запрет и не измерение. Числа было не перемерить (предикат
+// не назван), а пока долг живёт прозой, к нему невозбранно дописывается
+// двадцать седьмой. Теперь предикат назван (значение внутри репозитория —
+// корень либо собранный поверх него путь), а долг ведётся ПЕРЕЧНЕМ
+// inRepoDiskWalks, который может только сокращаться: новый непричисленный обход
+// — находка, запись без предмета — находка, запись без причины — находка.
+//
+// Обход САМОГО корня в перечень не дописывается: три существующие записи
+// объяснены тем, что читают правила игнорирования собственными силами, и это
+// вторая реализация предмета, а не дыра. Четвёртой такой записи быть не должно.
 func TestTreeWalkersAskTheIndex(t *testing.T) {
 	root := repoRoot(t)
 	tt := newTrackedTree(t, root)
@@ -647,15 +778,95 @@ func TestTreeWalkersAskTheIndex(t *testing.T) {
 		"корня: %d; сами источники: %s",
 		tt.count(), parsedFiles, len(byPkg), pkgsWithRoot, strings.Join(names, ", "))
 
-	if len(offenders) > 0 {
-		sort.Slice(offenders, func(i, j int) bool {
-			if offenders[i].File != offenders[j].File {
-				return offenders[i].File < offenders[j].File
+	sort.Slice(offenders, func(i, j int) bool {
+		if offenders[i].File != offenders[j].File {
+			return offenders[i].File < offenders[j].File
+		}
+		return offenders[i].Line < offenders[j].Line
+	})
+
+	// Обходы делятся на два исхода, и ни один из них не «нормально».
+	//
+	// Обход САМОГО корня запрещён безусловно. Обход ПОДДЕРЕВА внутри репозитория
+	// — тот же класс (правила игнорирования действуют на любой глубине, и два
+	// уже разобранных дефекта были именно такими), но его перевод затрагивает
+	// два с половиной десятка мест, поэтому он ведётся ПЕРЕЧНЕМ, который может
+	// только сокращаться: новое такое место — находка, а запись, которой больше
+	// нечего покрывать, — тоже находка.
+	//
+	// Прежняя редакция называла это «открытым долгом с числом 26», и число было
+	// названо без предиката, которым его можно перемерить. Теперь предикат и
+	// есть перечень: он воспроизводится исполнением, а не памятью.
+	var rootWalks, unpinned []diskRootWalk
+	covered := map[string]bool{}
+	var reasonless []string
+	for _, o := range offenders {
+		key := o.File + ":" + o.Func
+		why, pinned := inRepoDiskWalks[key]
+		switch {
+		case !pinned && !o.Subtree:
+			rootWalks = append(rootWalks, o)
+		case !pinned:
+			unpinned = append(unpinned, o)
+		default:
+			covered[key] = true
+			if strings.TrimSpace(why) == "" {
+				reasonless = append(reasonless, key)
 			}
-			return offenders[i].Line < offenders[j].Line
-		})
-		lines := make([]string, 0, len(offenders))
-		for _, o := range offenders {
+		}
+	}
+
+	var stale []string
+	for key := range inRepoDiskWalks {
+		if !covered[key] {
+			stale = append(stale, key)
+		}
+	}
+	sort.Strings(stale)
+	sort.Strings(reasonless)
+
+	subtrees := 0
+	for _, o := range offenders {
+		if o.Subtree {
+			subtrees++
+		}
+	}
+	t.Logf("перепись обходов: внутри репозитория %d (корневых %d, поддеревьев %d); "+
+		"перечень: записей %d, с предметом %d, просроченных %d",
+		len(offenders), len(offenders)-subtrees, subtrees,
+		len(inRepoDiskWalks), len(covered), len(stale))
+
+	for _, key := range stale {
+		t.Errorf("запись перечня без предмета: «%s» числится обходом по диску, но такого обхода "+
+			"в дереве больше нет.\n"+
+			"  Перечень обязан только сокращаться: запись, которой нечего покрывать, унаследует "+
+			"следующее слепое пятно — ровно так послабление переживает свой предмет.\n"+
+			"  ЧТО ДЕЛАТЬ: сними запись.", key)
+	}
+	for _, key := range reasonless {
+		t.Errorf("запись перечня без причины: «%s». Запись без обоснования неотличима от "+
+			"упущения, и снять её потом будет некому — назови, почему обход ещё на диске.", key)
+	}
+
+	if len(unpinned) > 0 {
+		lines := make([]string, 0, len(unpinned))
+		for _, o := range unpinned {
+			lines = append(lines, o.File+":"+strconv.Itoa(o.Line)+" ("+o.Func+") — "+o.Text)
+		}
+		t.Errorf("обход ПОДДЕРЕВА репозитория идёт по диску и в перечне не значится — %d шт.:\n  %s\n\n"+
+			"Правила игнорирования действуют на любой глубине: под deploy/, gateway/, ui-future/ и "+
+			"services/ игнорируемое лежит на всякой машине, где поднимали стенд или собирали "+
+			"фронтенд (распаковки чартов, сборочные каталоги, node_modules, отчёты прогонов). Два "+
+			"обхода поддерева уже оказались дефектными по этой самой причине.\n"+
+			"  ЧТО ДЕЛАТЬ: возьми состав у internal/treecorpus. Перечень inRepoDiskWalks закрыт "+
+			"для пополнения: он существует, чтобы уже накопленное сокращалось, а не чтобы в него "+
+			"дописывали новое.",
+			len(unpinned), strings.Join(lines, "\n  "))
+	}
+
+	if len(rootWalks) > 0 {
+		lines := make([]string, 0, len(rootWalks))
+		for _, o := range rootWalks {
 			lines = append(lines, o.File+":"+strconv.Itoa(o.Line)+" ("+o.Func+") — "+o.Text)
 		}
 		t.Errorf("обход от корня репозитория идёт по ДИСКУ, а не по индексу — %d шт.:\n  %s\n\n"+
@@ -666,7 +877,7 @@ func TestTreeWalkersAskTheIndex(t *testing.T) {
 			" которого в репозитории нет, и молчание в свежем checkout там, где обязан"+
 			" говорить. Возьми список файлов у newTrackedTree(t, root) — в этом пакете,"+
 			" или у internal/treecorpus — в любом другом.",
-			len(offenders), strings.Join(lines, "\n  "))
+			len(rootWalks), strings.Join(lines, "\n  "))
 	}
 }
 
@@ -790,21 +1001,37 @@ func viaJoinsOnly(t *testing.T) { _ = filepath.Walk(joinsOnly(t.TempDir()), nil)
 	}
 
 	got := map[string]bool{}
+	subtree := map[string]bool{}
 	for _, o := range findDiskRootWalks(fset, files, producers) {
 		got[o.Func] = true
+		subtree[o.Func] = o.Subtree
 	}
 
-	// (а) КРАСНОЕ НАПРАВЛЕНИЕ — каждое обязано быть названо.
-	mustCatch := map[string]string{
-		"viaVar":      "корень уходит в обход через переменную",
-		"viaInline":   "корень уходит в обход прямо, без промежуточного имени",
-		"helperWalks": "обход спрятан в помощнике, корень приезжает параметром",
-		"viaMarkerRoot": "корень найден подъёмом по каталогам до маркера, а не " +
-			"поиском go.mod — форма, которой признак раньше не знал",
+	// (а) КРАСНОЕ НАПРАВЛЕНИЕ — каждое обязано быть названо, и названо ВЕРНО.
+	//
+	// Значение — «это обход поддерева». Классификация здесь не украшение: от неё
+	// зависит исход (корень запрещён безусловно, поддерево ведётся перечнем), и
+	// именно она однажды разъехалась с предметом — обход, собранный
+	// `filepath.Join` поверх корня, засчитывался обходом самого корня, потому
+	// что принадлежность и точность читались одной операцией.
+	mustCatch := map[string]bool{
+		"viaVar":        false, // корень уходит в обход через переменную
+		"viaInline":     false, // корень уходит в обход прямо, без промежуточного имени
+		"helperWalks":   false, // обход спрятан в помощнике, корень приезжает параметром
+		"viaMarkerRoot": false, // корень найден подъёмом до маркера — форма, которой признак раньше не знал
+		"subtree":       true,  // каталог ВНУТРИ репозитория: тот же класс, другой исход
 	}
-	for fn, why := range mustCatch {
+	for fn, wantSubtree := range mustCatch {
 		if !got[fn] {
-			t.Errorf("не пойман обход корня в %s (%s); найдено: %v", fn, why, sortedNames(got))
+			t.Errorf("не пойман обход внутри репозитория в %s; найдено: %v", fn, sortedNames(got))
+			continue
+		}
+		if subtree[fn] != wantSubtree {
+			kind := map[bool]string{true: "поддеревом", false: "самим корнем"}
+			t.Errorf("%s классифицирован %s, а обходит %s. Классификация решает исход: "+
+				"обход корня запрещён безусловно, обход поддерева ведётся сокращающимся "+
+				"перечнем — перепутав их, гейт либо требует невозможного, либо разрешает "+
+				"лишнее", fn, kind[subtree[fn]], kind[wantSubtree])
 		}
 	}
 
@@ -812,13 +1039,13 @@ func viaJoinsOnly(t *testing.T) { _ = filepath.Walk(joinsOnly(t.TempDir()), nil)
 	//
 	// helperWalks и syntheticWalks пишут БУКВАЛЬНО одно и то же —
 	// `filepath.Walk(<параметр>, nil)`; различает их только источник значения.
-	// subtree обходит поддерево, mentionsOnly упоминает форму текстом.
+	// mentionsOnly упоминает форму текстом.
 	mustStaySilent := map[string]string{
 		"syntheticWalks": "тот же параметр, но приезжает временный каталог — " +
 			"дискриминатором стало ИМЯ переменной, а не источник значения",
 		"viaSynthetic": "вызов синтетического обхода сам обходом не является",
-		"subtree": "обход поддерева объявлен обходом корня — " +
-			"дискриминатор грубее своего предмета",
+		"viaJoinsOnly": "поддерево ВРЕМЕННОГО каталога — вне репозитория, " +
+			"признак стал ловить любое соединение путей",
 		"mentionsOnly": "форма найдена в строковом литерале или комментарии — " +
 			"проверка читает ТЕКСТ, а не исполняемую часть",
 		"repoRoot": "поиск go.mod принят за обход",

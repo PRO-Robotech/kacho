@@ -230,10 +230,10 @@ func TestSeedPostureFromEdgeRefusal(t *testing.T) {
 		why     string
 	}{
 		{
-			name:    "край требует удостоверение",
-			obs:     probeObservation{controlCode: "401", decidingCode: "401"},
-			want:    seedProceeds,
-			why:     "положительный контроль: доказанная боевая посадка обязана отдавать посев выдающему, иначе проба доказывала бы лишь «всё сломано»",
+			name: "край требует удостоверение",
+			obs:  probeObservation{controlCode: "401", decidingCode: "401"},
+			want: seedProceeds,
+			why:  "положительный контроль: доказанная боевая посадка обязана отдавать посев выдающему, иначе проба доказывала бы лишь «всё сломано»",
 		},
 		{
 			name:    "край обслужил запрос без удостоверения",

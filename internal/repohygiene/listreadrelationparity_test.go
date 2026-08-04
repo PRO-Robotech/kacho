@@ -31,11 +31,20 @@
 //
 // Механизм ищется как СВОЙСТВО пакета, в двух шагах:
 //
-//  1. пакет ФИЛЬТРУЕТ СТРАНИЦУ — объявляет функцию, принимающую `[]string` (страницу
-//     идентификаторов) и возвращающую `[]string` либо `map[string]bool` (её видимое
-//     подмножество), — И задаёт вопрос хранилищу прав (`Check`/`BatchCheck`…);
+//  1. пакет ФИЛЬТРУЕТ СТРАНИЦУ — объявляет функцию, принимающую страницу
+//     идентификаторов и возвращающую её видимое подмножество, — И задаёт вопрос
+//     хранилищу прав (`Check`/`BatchCheck`…);
 //  2. такой пакет ОБЪЯВЛЯЕТ предикат — package-level коллекцию строк, каждая из
 //     которых есть отношение, объявленное в `fga_model.fga`.
+//
+// Оба шага читают ЗНАЧЕНИЕ, а не написание, и это не мелочь оформления: пока
+// узнавание держалось на строковом литерале и на скаляре ровно типа `string`, пакет
+// снимался с обеих проверок одной правкой стиля — «без магических строк» и доменный
+// newtype вместо голой строки, то есть ровно тем, что ruleset этого дерева и
+// предписывает. Снимался при этом МОЛЧА: с исходом «делегирует» либо вовсе исчезая
+// из переписи. Держит границу TestListReadRelationParity_ReadsValuesNotSpelling —
+// одна конструкция в двух написаниях обязана дать один ответ, а то, что строкой не
+// является, субъектом не считается.
 //
 // Шаг 2 без шага 1 отсекает наборы отношений, которые предикатом страницы не являются
 // (`MutateRelations` стража, `callerAuthorityRelations`, словари `authzmap`). Шаг 1 без
@@ -60,6 +69,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -269,6 +279,64 @@ func domainsOf(p pageFilterPkg, reads map[string][]readGate) []string {
 	return []string{p.mapDomain}
 }
 
+// pkgVocab — СЛОВАРЬ ПАКЕТА: то, чем в нём названы строки и строковые типы.
+//
+// Без него узнавание держалось на НАПИСАНИИ, а не на значении: и опровержение
+// делегирования, и разбор объявления читали только `*ast.BasicLit`, поэтому
+// `relViewer` вместо `"viewer"` снимал пакет с обеих проверок разом — одной правкой
+// стиля, которую ruleset этого дерева как раз и предписывает («без магических строк»,
+// skill evgeniy). Тем же способом уходил субъект: forma требовала скаляр РОВНО типа
+// `string`, а доменный newtype (`type Subject string`) ею не признавался вовсе —
+// пакет не становился ни находкой, ни исключением, он исчезал из переписи.
+//
+// Словарь собирается ПЕРВЫМ проходом по всем файлам каталога, потому что константа
+// может быть объявлена в файле, который обходчик прочитает позже фильтра.
+type pkgVocab struct {
+	val        map[string]string // имя package-level const/var -> строковое значение
+	stringType map[string]bool   // имя собственного типа пакета, чья основа — string
+}
+
+func newPkgVocab() *pkgVocab {
+	return &pkgVocab{val: map[string]string{}, stringType: map[string]bool{}}
+}
+
+// stringValue — значение выражения как строки: литерал ЛИБО имя, разрешаемое словарём
+// пакета. Второй результат — признак успеха: пустая строка здесь ЗНАЧАЩАЯ (ключ «все
+// прочие типы»), и спутать её с «не строка» значило бы принять чужое выражение за
+// объявление умолчания.
+func (v *pkgVocab) stringValue(e ast.Expr) (string, bool) {
+	switch x := e.(type) {
+	case *ast.BasicLit:
+		if x.Kind != token.STRING {
+			return "", false
+		}
+		s, err := strconv.Unquote(x.Value)
+		return s, err == nil
+	case *ast.Ident:
+		s, ok := v.val[x.Name]
+		return s, ok
+	}
+	return "", false
+}
+
+// isStringScalar — тип скалярного параметра, который МОЖЕТ нести строку: сам `string`
+// либо собственный строковый тип пакета. Это и есть «про кого / про что» спрашивает
+// фильтр страницы.
+func (v *pkgVocab) isStringScalar(e ast.Expr) bool {
+	id, ok := e.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	return id.Name == "string" || v.stringType[id.Name]
+}
+
+// parsedGoFile — файл каталога, разобранный один раз и использованный обоими проходами.
+type parsedGoFile struct {
+	path string
+	fset *token.FileSet
+	file *ast.File
+}
+
 // discoverPageFilters обходит services/ и собирает пакеты, фильтрующие страницу
 // пообъектно, вместе с объявленным предикатом каждого. Возвращает и перепись —
 // «ноль находок» обязано быть отличимо от «ноль прочитанного».
@@ -276,9 +344,8 @@ func discoverPageFilters(t *testing.T, root string) (pkgs []pageFilterPkg, files
 	t.Helper()
 	relations := modelRelations(t, root)
 
-	byDir := map[string]*pageFilterPkg{}
-	svcDirOf := map[string]string{}
-
+	byDir := map[string][]parsedGoFile{}
+	var dirs []string
 	err := filepath.WalkDir(filepath.Join(root, "services"), func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil //nolint:nilerr // недоступный подкаталог не должен ронять обход
@@ -290,80 +357,125 @@ func discoverPageFilters(t *testing.T, root string) (pkgs []pageFilterPkg, files
 			return nil
 		}
 		dir := filepath.Dir(path)
-		p := byDir[dir]
-		if p == nil {
-			relDir, _ := filepath.Rel(root, dir)
-			slashed := filepath.ToSlash(relDir)
-			parts := strings.Split(slashed, "/")
-			svc := ""
-			if len(parts) > 1 {
-				svc = parts[1]
-			}
-			p = &pageFilterPkg{dir: slashed, service: svc, imports: map[string]bool{}}
-			byDir[dir] = p
-			svcDirOf[dir] = filepath.Join(root, "services", svc)
+		if _, seen := byDir[dir]; !seen {
+			dirs = append(dirs, dir)
 		}
-		for _, im := range f.Imports {
-			if v, uerr := strconv.Unquote(im.Path.Value); uerr == nil {
-				p.imports[v] = true
-			}
-		}
-		ast.Inspect(f, func(n ast.Node) bool {
-			switch x := n.(type) {
-			case *ast.FuncDecl:
-				if x.Type != nil && funcTakesPageReturnsSubset(x.Type) {
-					p.pageShape = true
-					// Предикат, объявленный ИНЛАЙНОМ в теле самого фильтра, —
-					// это тоже предикат. Собираем его отдельно: без этого пакет,
-					// спрашивающий модель своими отношениями, неотличим от
-					// пакета, делегирующего чужому объявлению.
-					collectInlineRelations(x.Body, relations, fset, root, p)
-				}
-			case *ast.InterfaceType:
-				if x.Methods == nil {
-					return true
-				}
-				for _, m := range x.Methods.List {
-					if ft, ok := m.Type.(*ast.FuncType); ok && funcTakesPageReturnsSubset(ft) {
-						p.pageShape = true
-					}
-				}
-			case *ast.SelectorExpr:
-				if isRelationStoreQuestion(x.Sel.Name) {
-					p.relStore = true
-				}
-			case *ast.ValueSpec:
-				for i, nm := range x.Names {
-					if i >= len(x.Values) {
-						continue
-					}
-					flat, byType, ok := parseRelationDeclaration(x.Values[i], relations)
-					if !ok {
-						continue
-					}
-					relPath, _ := filepath.Rel(root, path)
-					p.declFile = filepath.ToSlash(relPath)
-					p.declName = nm.Name
-					p.flat, p.byType = flat, byType
-				}
-			}
-			return true
-		})
+		byDir[dir] = append(byDir[dir], parsedGoFile{path: path, fset: fset, file: f})
 		return nil
 	})
 	if err != nil {
 		t.Fatalf("обойти services/: %v", err)
 	}
+	sort.Strings(dirs)
 
-	for dir, p := range byDir {
+	for _, dir := range dirs {
+		files := byDir[dir]
+		relDir, _ := filepath.Rel(root, dir)
+		slashed := filepath.ToSlash(relDir)
+		parts := strings.Split(slashed, "/")
+		svc := ""
+		if len(parts) > 1 {
+			svc = parts[1]
+		}
+		p := &pageFilterPkg{dir: slashed, service: svc, imports: map[string]bool{}}
+
+		// Проход 1 — словарь пакета. До него ни одна форма не узнаётся, иначе
+		// узнавание зависит от того, в каком файле лежит константа.
+		vocab := newPkgVocab()
+		for _, pf := range files {
+			collectPkgVocab(pf.file, vocab)
+		}
+
+		// Проход 2 — сами формы.
+		for _, pf := range files {
+			for _, im := range pf.file.Imports {
+				if v, uerr := strconv.Unquote(im.Path.Value); uerr == nil {
+					p.imports[v] = true
+				}
+			}
+			path, fset := pf.path, pf.fset
+			ast.Inspect(pf.file, func(n ast.Node) bool {
+				switch x := n.(type) {
+				case *ast.FuncDecl:
+					if x.Type != nil && funcTakesPageReturnsSubset(x.Type, vocab) {
+						p.pageShape = true
+						// Предикат, объявленный ИНЛАЙНОМ в теле самого фильтра, —
+						// это тоже предикат. Собираем его отдельно: без этого пакет,
+						// спрашивающий модель своими отношениями, неотличим от
+						// пакета, делегирующего чужому объявлению.
+						collectInlineRelations(x.Body, relations, fset, root, p, vocab)
+					}
+				case *ast.InterfaceType:
+					if x.Methods == nil {
+						return true
+					}
+					for _, m := range x.Methods.List {
+						if ft, ok := m.Type.(*ast.FuncType); ok && funcTakesPageReturnsSubset(ft, vocab) {
+							p.pageShape = true
+						}
+					}
+				case *ast.SelectorExpr:
+					if isRelationStoreQuestion(x.Sel.Name) {
+						p.relStore = true
+					}
+				case *ast.ValueSpec:
+					for i, nm := range x.Names {
+						if i >= len(x.Values) {
+							continue
+						}
+						flat, byType, ok := parseRelationDeclaration(x.Values[i], relations, vocab)
+						if !ok {
+							continue
+						}
+						relPath, _ := filepath.Rel(root, path)
+						p.declFile = filepath.ToSlash(relPath)
+						p.declName = nm.Name
+						p.flat, p.byType = flat, byType
+					}
+				}
+				return true
+			})
+		}
+
 		if !p.pageShape || !p.relStore {
 			continue
 		}
-		p.mapDomain = deriveServiceDomain(svcDirOf[dir])
+		p.mapDomain = deriveServiceDomain(filepath.Join(root, "services", svc))
 		pkgs = append(pkgs, *p)
 	}
 	sort.Slice(pkgs, func(i, j int) bool { return pkgs[i].dir < pkgs[j].dir })
 	return pkgs, filesWalked
+}
+
+// collectPkgVocab собирает package-level строковые имена и собственные строковые типы.
+// Область — только уровень пакета: локальная переменная функции предикатом пакета не
+// является и разрешению не подлежит.
+func collectPkgVocab(f *ast.File, v *pkgVocab) {
+	for _, d := range f.Decls {
+		gd, ok := d.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		for _, spec := range gd.Specs {
+			switch s := spec.(type) {
+			case *ast.ValueSpec:
+				for i, nm := range s.Names {
+					if i >= len(s.Values) {
+						continue
+					}
+					if bl, isLit := s.Values[i].(*ast.BasicLit); isLit && bl.Kind == token.STRING {
+						if str, uerr := strconv.Unquote(bl.Value); uerr == nil {
+							v.val[nm.Name] = str
+						}
+					}
+				}
+			case *ast.TypeSpec:
+				if id, isID := s.Type.(*ast.Ident); isID && id.Name == "string" {
+					v.stringType[s.Name.Name] = true
+				}
+			}
+		}
+	}
 }
 
 // funcTakesPageReturnsSubset — «спрашивает ЗА КОГО-ТО про страницу идентификаторов и
@@ -374,15 +486,23 @@ func discoverPageFilters(t *testing.T, root string) (pkgs []pageFilterPkg, files
 // над списком — нет. Без этого условия под форму попадал `dedupe(ids []string) []string`
 // в соседнем пакете, и охват объявлял находкой вспомогательную функцию — гейт, красный
 // на законной конструкции, отключают первым.
-// collectInlineRelations собирает отношения модели, записанные строковыми
-// литералами В ТЕЛЕ функции-фильтра страницы.
+// collectInlineRelations собирает отношения модели, названные В ТЕЛЕ функции-фильтра
+// страницы, — литералом ЛИБО именем package-level строковой константы.
 //
-// Область намеренно узкая — только тело страницы-фильтра. Отношение, названное
-// литералом в СОСЕДНЕЙ функции (проверка полномочий на мутацию, «admin» на
-// объекте области), предикатом страницы не является, и расширение области
-// сделало бы гейт красным на законной конструкции. Проверено обеими половинами
-// в TestListReadRelationParity_DelegationMustBeReal.
-func collectInlineRelations(body *ast.BlockStmt, relations map[string]bool, fset *token.FileSet, root string, p *pageFilterPkg) {
+// Имя разрешается словарём пакета намеренно: опровержение делегирования, читающее
+// только литералы, снимается одной правкой стиля (`relViewer` вместо `"viewer"`), и
+// снимается МОЛЧА — пакет получает исход «делегирует» и его предикат не сверяется ни
+// с чем. Читать надо значение, а не написание.
+//
+// Область по-прежнему узкая — только тело страницы-фильтра. Отношение, названное в
+// СОСЕДНЕЙ функции (проверка полномочий на мутацию, «admin» на объекте области),
+// предикатом страницы не является, и расширение области сделало бы гейт красным на
+// законной конструкции. Проверено обеими половинами в
+// TestListReadRelationParity_DelegationMustBeReal.
+func collectInlineRelations(
+	body *ast.BlockStmt, relations map[string]bool,
+	fset *token.FileSet, root string, p *pageFilterPkg, vocab *pkgVocab,
+) {
 	if body == nil {
 		return
 	}
@@ -390,21 +510,30 @@ func collectInlineRelations(body *ast.BlockStmt, relations map[string]bool, fset
 	for _, r := range p.inlineRels {
 		seen[r] = true
 	}
-	ast.Inspect(body, func(n ast.Node) bool {
-		lit, ok := n.(*ast.BasicLit)
-		if !ok || lit.Kind != token.STRING {
-			return true
-		}
-		v, err := strconv.Unquote(lit.Value)
-		if err != nil || !relations[v] || seen[v] {
-			return true
+	note := func(v string, pos token.Pos) {
+		if !relations[v] || seen[v] {
+			return
 		}
 		seen[v] = true
 		p.inlineRels = append(p.inlineRels, v)
 		if p.inlineAt == "" {
-			pos := fset.Position(lit.Pos())
-			if rel, rerr := filepath.Rel(root, pos.Filename); rerr == nil {
-				p.inlineAt = fmt.Sprintf("%s:%d", filepath.ToSlash(rel), pos.Line)
+			pp := fset.Position(pos)
+			if rel, rerr := filepath.Rel(root, pp.Filename); rerr == nil {
+				p.inlineAt = fmt.Sprintf("%s:%d", filepath.ToSlash(rel), pp.Line)
+			}
+		}
+	}
+	ast.Inspect(body, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.BasicLit:
+			if x.Kind == token.STRING {
+				if v, err := strconv.Unquote(x.Value); err == nil {
+					note(v, x.Pos())
+				}
+			}
+		case *ast.Ident:
+			if v, ok := vocab.val[x.Name]; ok {
+				note(v, x.Pos())
 			}
 		}
 		return true
@@ -412,17 +541,17 @@ func collectInlineRelations(body *ast.BlockStmt, relations map[string]bool, fset
 	sort.Strings(p.inlineRels)
 }
 
-func funcTakesPageReturnsSubset(ft *ast.FuncType) bool {
+func funcTakesPageReturnsSubset(ft *ast.FuncType, vocab *pkgVocab) bool {
 	takesPage, takesScalar := false, false
 	if ft.Params != nil {
 		for _, prm := range ft.Params.List {
 			switch pt := prm.Type.(type) {
 			case *ast.ArrayType:
-				if id, ok := pt.Elt.(*ast.Ident); ok && pt.Len == nil && id.Name == "string" {
+				if pt.Len == nil && vocab.isStringScalar(pt.Elt) {
 					takesPage = true
 				}
-			case *ast.Ident:
-				if pt.Name == "string" {
+			default:
+				if vocab.isStringScalar(pt) {
 					takesScalar = true
 				}
 			}
@@ -434,13 +563,12 @@ func funcTakesPageReturnsSubset(ft *ast.FuncType) bool {
 	for _, r := range ft.Results.List {
 		switch rt := r.Type.(type) {
 		case *ast.ArrayType:
-			if id, ok := rt.Elt.(*ast.Ident); ok && rt.Len == nil && id.Name == "string" {
+			if rt.Len == nil && vocab.isStringScalar(rt.Elt) {
 				return true
 			}
 		case *ast.MapType:
-			k, kok := rt.Key.(*ast.Ident)
 			v, vok := rt.Value.(*ast.Ident)
-			if kok && vok && k.Name == "string" && v.Name == "bool" {
+			if vok && vocab.isStringScalar(rt.Key) && v.Name == "bool" {
 				return true
 			}
 		}
@@ -466,7 +594,9 @@ func isRelationStoreQuestion(sel string) bool {
 //
 // Условие признания одно: КАЖДЫЙ строковый лист объявления есть отношение, объявленное
 // в модели. Набор с одной посторонней строкой — уже не предикат отношений.
-func parseRelationDeclaration(v ast.Expr, relations map[string]bool) (flat []string, byType map[string][]string, ok bool) {
+func parseRelationDeclaration(
+	v ast.Expr, relations map[string]bool, vocab *pkgVocab,
+) (flat []string, byType map[string][]string, ok bool) {
 	cl, isCL := v.(*ast.CompositeLit)
 	if !isCL || len(cl.Elts) == 0 {
 		return nil, nil, false
@@ -478,11 +608,11 @@ func parseRelationDeclaration(v ast.Expr, relations map[string]bool) (flat []str
 			if !isKV {
 				return nil, nil, false
 			}
-			key, kerr := relationStringLit(kv.Key)
-			if kerr != nil {
+			key, kok := vocab.stringValue(kv.Key)
+			if !kok {
 				return nil, nil, false
 			}
-			rels, rok := relationSlice(kv.Value, relations)
+			rels, rok := relationSlice(kv.Value, relations, vocab)
 			if !rok {
 				return nil, nil, false
 			}
@@ -490,39 +620,27 @@ func parseRelationDeclaration(v ast.Expr, relations map[string]bool) (flat []str
 		}
 		return nil, byType, len(byType) > 0
 	}
-	rels, rok := relationSlice(cl, relations)
+	rels, rok := relationSlice(cl, relations, vocab)
 	if !rok {
 		return nil, nil, false
 	}
 	return rels, nil, true
 }
 
-func relationSlice(e ast.Expr, relations map[string]bool) ([]string, bool) {
+func relationSlice(e ast.Expr, relations map[string]bool, vocab *pkgVocab) ([]string, bool) {
 	cl, isCL := e.(*ast.CompositeLit)
 	if !isCL || len(cl.Elts) == 0 {
 		return nil, false
 	}
 	out := make([]string, 0, len(cl.Elts))
 	for _, el := range cl.Elts {
-		s, err := relationStringLit(el)
-		if err != nil || !relations[s] {
+		s, sok := vocab.stringValue(el)
+		if !sok || !relations[s] {
 			return nil, false
 		}
 		out = append(out, s)
 	}
 	return out, true
-}
-
-// relationStringLit — строковый литерал с признаком успеха. Отдельно от пакетного
-// stringLit намеренно: тот возвращает "" и на пустом литерале, и на не-литерале, а
-// здесь пустая строка — ЗНАЧАЩИЙ ключ (запись «все прочие типы»), и спутать эти два
-// случая значило бы принять чужое выражение за объявление умолчания.
-func relationStringLit(e ast.Expr) (string, error) {
-	bl, ok := e.(*ast.BasicLit)
-	if !ok || bl.Kind != token.STRING {
-		return "", fmt.Errorf("не строковый литерал")
-	}
-	return strconv.Unquote(bl.Value)
 }
 
 // modelRelations — словарь отношений из канонической модели. Это и есть предпосылка
@@ -593,6 +711,9 @@ func loadReadGates(t *testing.T, root string) (map[string][]readGate, int) {
 		}
 		ot := e.ScopeExtractor.ObjectType
 		if ot == "" || ot == clusterScopeObjectType || e.RequiredRelation == "" {
+			// Пустое отношение при названном объекте выводит тип из сверки МОЛЧА —
+			// за этим следит TestListReadRelationParity_PremiseHolds, здесь только
+			// пропуск: сверять такую запись не с чем.
 			continue
 		}
 		dom := m[1]
@@ -893,6 +1014,45 @@ func TestListReadRelationParity_PremiseHolds(t *testing.T) {
 		t.Errorf("ни один пакет-фильтр не объявляет предикат в сверяемом виде — сверять нечего")
 	}
 
+	// Множество сверки обязано усыхать ГРОМКО. Проверка `covered == 0` ловит только
+	// полное обнуление: тип, у записи которого стёрли отношение, выпадает из сверки
+	// по одному — 21 пара становится 20, и ни один гейт не краснеет. Ниже — тот
+	// самый механизм выпадения, названный прямо: публичная запись `/Get`, которая
+	// НАЗЫВАЕТ объект области, обязана нести и отношение чтения.
+	//
+	// Запись БЕЗ объекта области — другой случай и здесь не рассматривается: у неё
+	// нет типа, с которым можно сверять предикат страницы, и решение о ней принимает
+	// не этот гейт. Такие записи перечислены ниже поимённо, чтобы их число не росло
+	// незаметно.
+	var scopedWithoutRelation, unscopedGets []string
+	for _, e := range readListReadCatalog(t, root) {
+		m := catalogFqnDomainRe.FindStringSubmatch(e.FQN)
+		if m == nil || m[3] != "Get" || strings.HasPrefix(m[2], "Internal") {
+			continue
+		}
+		switch {
+		case e.ScopeExtractor.ObjectType == "":
+			unscopedGets = append(unscopedGets, e.FQN)
+		case e.ScopeExtractor.ObjectType != clusterScopeObjectType && e.RequiredRelation == "":
+			scopedWithoutRelation = append(scopedWithoutRelation, e.FQN+" (объект "+e.ScopeExtractor.ObjectType+")")
+		}
+	}
+	sort.Strings(scopedWithoutRelation)
+	sort.Strings(unscopedGets)
+	if len(scopedWithoutRelation) > 0 {
+		t.Errorf("публичный `/Get` называет объект области, но НЕ называет отношение чтения (%d): %s\n"+
+			"  Такая запись выпадает из сверки этого гейта БЕЗ единого красного: тип просто перестаёт "+
+			"попадать в множество пар, и расхождение «страница ≠ чтение» по нему больше не проверяется "+
+			"ничем.\n"+
+			"  ЧТО ДЕЛАТЬ: вернуть отношение в запись каталога (регенерация из proto), либо — если "+
+			"чтение этого типа намеренно не гейтится пообъектно — снять и объект области, чтобы запись "+
+			"перестала обещать сужение, которого нет",
+			len(scopedWithoutRelation), strings.Join(scopedWithoutRelation, ", "))
+	}
+	t.Logf("перепись предпосылки: публичных `/Get` без объекта области = %d %v; "+
+		"с объектом, но без отношения = %d; сверяемых пар = %d",
+		len(unscopedGets), unscopedGets, len(scopedWithoutRelation), catalogGets)
+
 	// Исключение живёт, пока у него есть предмет — оба вида исключений.
 	var clusterGets int
 	for _, e := range readListReadCatalog(t, root) {
@@ -920,6 +1080,185 @@ func TestListReadRelationParity_PremiseHolds(t *testing.T) {
 			t.Errorf("исключение %q не называет причины: запись без обоснования неотличима от упущения", dir)
 		}
 	}
+}
+
+// TestListReadRelationParity_ReadsValuesNotSpelling — узнавание держится на ЗНАЧЕНИИ,
+// а не на написании.
+//
+// Прежняя редакция читала только `*ast.BasicLit` — и в опровержении делегирования, и в
+// разборе объявления. Поэтому одна правка стиля («без магических строк», ровно то, что
+// предписывает ruleset этого дерева) снимала пакет с ОБЕИХ проверок разом и снимала
+// МОЛЧА: он получал исход «делегирует», а его предикат не сверялся ни с чем. Тем же
+// способом исчезал пакет, у которого субъект — доменный newtype, а не голая строка:
+// форма не признавалась вовсе, и он не становился ни находкой, ни исключением.
+//
+// Проба даёт ОДНУ И ТУ ЖЕ конструкцию в двух написаниях и требует одинакового ответа,
+// плюс держит границу: то, что строкой не является, скаляром-субъектом не считается.
+func TestListReadRelationParity_ReadsValuesNotSpelling(t *testing.T) {
+	relations := map[string]bool{"viewer": true, "v_list": true, "v_get": true}
+
+	parse := func(t *testing.T, src string) (*ast.File, *token.FileSet) {
+		t.Helper()
+		fset := token.NewFileSet()
+		f, err := parser.ParseFile(fset, "synthetic.go", src, parser.SkipObjectResolution)
+		if err != nil {
+			t.Fatalf("разобрать синтетику: %v", err)
+		}
+		return f, fset
+	}
+	// scan — то же, что делает обходчик дерева: словарь пакета, затем формы.
+	scan := func(t *testing.T, src string) pageFilterPkg {
+		t.Helper()
+		f, fset := parse(t, src)
+		vocab := newPkgVocab()
+		collectPkgVocab(f, vocab)
+		p := pageFilterPkg{dir: "synthetic", imports: map[string]bool{}}
+		ast.Inspect(f, func(n ast.Node) bool {
+			switch x := n.(type) {
+			case *ast.FuncDecl:
+				if x.Type != nil && funcTakesPageReturnsSubset(x.Type, vocab) {
+					p.pageShape = true
+					collectInlineRelations(x.Body, relations, fset, ".", &p, vocab)
+				}
+			case *ast.SelectorExpr:
+				if isRelationStoreQuestion(x.Sel.Name) {
+					p.relStore = true
+				}
+			case *ast.ValueSpec:
+				for i, nm := range x.Names {
+					if i >= len(x.Values) {
+						continue
+					}
+					if flat, byType, ok := parseRelationDeclaration(x.Values[i], relations, vocab); ok {
+						p.declName, p.flat, p.byType = nm.Name, flat, byType
+					}
+				}
+			}
+			return true
+		})
+		return p
+	}
+
+	const bodyTmpl = `package p
+
+import "context"
+
+%s
+
+type C interface{ Check(ctx context.Context, s, r, o string) (bool, error) }
+
+func Visible(ctx context.Context, c C, subject string, ids []string) []string {
+	out := []string{}
+	for _, id := range ids {
+		for _, rel := range %s {
+			if ok, _ := c.Check(ctx, subject, rel, id); ok {
+				out = append(out, id)
+			}
+		}
+	}
+	return out
+}
+`
+
+	t.Run("инлайновый предикат: литералы и имена читаются одинаково", func(t *testing.T) {
+		lit := scan(t, fmt.Sprintf(bodyTmpl, "", `[]string{"viewer", "v_list"}`))
+		named := scan(t, fmt.Sprintf(bodyTmpl,
+			"const (\n\trelViewer = \"viewer\"\n\trelVList  = \"v_list\"\n)", `[]string{relViewer, relVList}`))
+		if len(lit.inlineRels) == 0 {
+			t.Fatal("литеральная запись не распознана — предпосылка пробы сломана")
+		}
+		if !reflect.DeepEqual(lit.inlineRels, named.inlineRels) {
+			t.Fatalf("одна и та же конструкция читается по-разному: литералами %v, именами %v.\n"+
+				"  Именно этим одна правка стиля снимала пакет с опровержения делегирования: он получал "+
+				"исход «делегирует», и его предикат не сверялся ни с чем",
+				lit.inlineRels, named.inlineRels)
+		}
+	})
+
+	t.Run("package-level объявление: литералы и имена читаются одинаково", func(t *testing.T) {
+		lit := scan(t, fmt.Sprintf(bodyTmpl,
+			"var pageRelations = []string{\"viewer\", \"v_list\"}", "pageRelations"))
+		named := scan(t, fmt.Sprintf(bodyTmpl,
+			"const (\n\trelViewer = \"viewer\"\n\trelVList  = \"v_list\"\n)\n\n"+
+				"var pageRelations = []string{relViewer, relVList}", "pageRelations"))
+		if !lit.declares() {
+			t.Fatal("литеральное объявление не распознано — предпосылка пробы сломана")
+		}
+		if !named.declares() || !reflect.DeepEqual(lit.flat, named.flat) {
+			t.Fatalf("объявление именами не признано объявлением: литералами %v, именами %v (declares=%v).\n"+
+				"  Такой предикат решает видимость, но сверке по типам недоступен — расхождение "+
+				"«страница ≠ чтение» по нему не проверяется ничем", lit.flat, named.flat, named.declares())
+		}
+	})
+
+	t.Run("ключ карты именем — тоже ключ", func(t *testing.T) {
+		p := scan(t, fmt.Sprintf(bodyTmpl,
+			"const typeSubnet = \"vpc_subnet\"\n\n"+
+				"var pageRelations = map[string][]string{typeSubnet: {\"v_get\"}}", `pageRelations[""]`))
+		if rels, ok := p.byType["vpc_subnet"]; !ok || !reflect.DeepEqual(rels, []string{"v_get"}) {
+			t.Fatalf("ключ, названный константой, не разрешён: byType=%v", p.byType)
+		}
+	})
+
+	t.Run("субъект доменным типом — форма признаётся", func(t *testing.T) {
+		p := scan(t, fmt.Sprintf(bodyTmpl,
+			"type Subject string\n\nvar pageRelations = []string{\"v_get\"}", "pageRelations"))
+		if !p.pageShape {
+			t.Fatal("предпосылка пробы сломана: голая строка перестала признаваться")
+		}
+		named := scan(t, `package p
+
+import "context"
+
+type Subject string
+
+var pageRelations = []string{"v_get"}
+
+type C interface{ Check(ctx context.Context, s, r, o string) (bool, error) }
+
+func Visible(ctx context.Context, c C, subject Subject, ids []string) []string {
+	out := []string{}
+	for _, id := range ids {
+		for _, rel := range pageRelations {
+			if ok, _ := c.Check(ctx, string(subject), rel, id); ok {
+				out = append(out, id)
+			}
+		}
+	}
+	return out
+}
+`)
+		if !named.pageShape {
+			t.Fatal("фильтр, чей субъект — доменный newtype, формой НЕ признан. Такой пакет исчезает " +
+				"из переписи целиком: он не находка, не исключение и не делегирование, а невидимка — " +
+				"ровно то состояние, в котором мимо гейта прожил пятый экземпляр")
+		}
+	})
+
+	t.Run("законный близнец: не-строковый скаляр субъектом не считается", func(t *testing.T) {
+		p := scan(t, `package p
+
+import "context"
+
+type C interface{ Check(ctx context.Context, s, r, o string) (bool, error) }
+
+// Head — помощник над списком: ни про кого не спрашивает.
+func Head(ids []string, limit int) []string { return ids }
+`)
+		if p.pageShape {
+			t.Fatal("помощник над списком признан фильтром страницы — гейт, красный на законной " +
+				"конструкции, отключают первым")
+		}
+	})
+
+	t.Run("законный близнец: чужая строка в наборе — не предикат отношений", func(t *testing.T) {
+		p := scan(t, fmt.Sprintf(bodyTmpl,
+			"const relViewer = \"viewer\"\nconst notARelation = \"выдумка\"\n\n"+
+				"var pageRelations = []string{relViewer, notARelation}", "pageRelations"))
+		if p.declares() {
+			t.Fatalf("набор с посторонней строкой признан предикатом отношений: %v", p.flat)
+		}
+	})
 }
 
 // TestListReadRelationParity_GateDiscriminates — инъекция в ОБЕ стороны на синтетике.

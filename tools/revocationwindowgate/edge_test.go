@@ -118,7 +118,7 @@ func TestScanConstructors_FindsTheLocalVerdictCache(t *testing.T) {
 		t.Fatalf("край строит кеш вердиктов собственным конструктором, а перепись ответила «не строит».\n"+
 			"Вопрос «строит ли процесс кеш вердиктов» силён тем, что не нуждается в словаре ручек — "+
 			"но заданный как «зовёт ли authz.NewCache», он сам становится словарём, только из "+
-			"конструкторов. Распознаваемый набор: %v", revocationwindowgate.LocalVerdictCacheCtors())
+			"конструкторов. Распознаваемый набор: %v", revocationwindowgate.VerdictCacheCtorNames())
 	}
 }
 
@@ -134,12 +134,58 @@ func TestScanConstructors_SilentOnTheCredentialCache(t *testing.T) {
 	}
 }
 
-// TestLocalVerdictCacheCtors_IsNotEmpty — предпосылка набора.
+// srcExtractedVerdictCache — тот же кеш ВЕРДИКТОВ, вынесенный в собственный
+// пакет и потому вызываемый по квалификатору, которого нет в corelib.
+//
+// Идиома в дереве не выдуманная: рядом уже живут два извлечённых кеша
+// (`gateway/internal/cache`, `gateway/internal/lrucache`), так что вынести
+// третий — обычный рефакторинг, а не экзотика.
+const srcExtractedVerdictCache = `package wiring
+
+func newAuthz(cfg Config) *Authz {
+	return &Authz{
+		cache: verdictcache.NewCacheWithLimit(cfg.CacheMaxEntries, cfg.CacheTTL),
+	}
+}
+`
+
+// TestScanConstructors_DiscriminatesByWhatIsHeldNotByQualifier — отрицание из
+// пробы выше годится ТОЛЬКО в паре с этим положительным.
+//
+// «Молчит на кеше учётных данных» само по себе не доказывает, что предикат
+// различает удостоверение и вердикт: он молчал бы и на любом имени вне своего
+// набора — то есть в том числе на НАСТОЯЩЕМ кеше вердиктов, вынесенном в свой
+// пакет. Ровно это и было: квалификатор жёстко сверялся с «authz», поэтому
+// перемещение кеша в соседний пакет снимало процесс с переписи. Утверждается
+// здесь ПАРА: находит вердикт под чужим квалификатором · молчит на
+// удостоверении под тем же.
+func TestScanConstructors_DiscriminatesByWhatIsHeldNotByQualifier(t *testing.T) {
+	verdict, err := revocationwindowgate.ScanConstructors("services/iam/internal/wiring/wiring.go", srcExtractedVerdictCache)
+	if err != nil {
+		t.Fatalf("разбор: %v", err)
+	}
+	if !verdict {
+		t.Fatalf("кеш ВЕРДИКТОВ, вынесенный в собственный пакет, переписью не найден.\n"+
+			"  Тогда отрицание «молчит на кеше учётных данных» ничего не измеряет: предикат "+
+			"молчал бы одинаково на обоих, и извлечение кеша в пакет — обычный рефакторинг — "+
+			"выводило бы процесс из переписи молча.\n"+
+			"  Распознаваемый набор конструкторов: %v", revocationwindowgate.VerdictCacheCtorNames())
+	}
+	cred, cerr := revocationwindowgate.ScanConstructors("gateway/internal/middleware/introspection_cache.go", srcCredentialLruCache)
+	if cerr != nil {
+		t.Fatalf("разбор: %v", cerr)
+	}
+	if cred {
+		t.Error("удостоверение засчитано вердиктом — различение потеряно в другую сторону")
+	}
+}
+
+// TestVerdictCacheCtorNames_IsNotEmpty — предпосылка набора.
 //
 // Пустой набор локальных конструкторов делает обе проверки выше тождественно
 // молчаливыми, и молчание снова стало бы читаться как «чисто».
-func TestLocalVerdictCacheCtors_IsNotEmpty(t *testing.T) {
-	if got := revocationwindowgate.LocalVerdictCacheCtors(); len(got) == 0 {
+func TestVerdictCacheCtorNames_IsNotEmpty(t *testing.T) {
+	if got := revocationwindowgate.VerdictCacheCtorNames(); len(got) == 0 {
 		t.Fatal("набор локальных конструкторов кеша вердиктов пуст — перепись по конструкторам " +
 			"вернулась к одному корелибовскому имени, и процесс со своим кешем снова невидим")
 	}
