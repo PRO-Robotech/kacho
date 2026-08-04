@@ -79,6 +79,7 @@ deploy/scripts/assert-generated-scripts-parse.js
 deploy/scripts/assert-outbox-autovacuum.sh
 deploy/scripts/assert-posture-branches-can-be-taken.py
 deploy/scripts/assert-report-readers-use-the-summary.py
+deploy/scripts/assert-step-up-bearer-matches-catalog.py
 deploy/scripts/assert-verdict-aggregators-honest.sh
 deploy/scripts/assert-waiters-name-their-target.sh
 deploy/scripts/remeasure-provider-listener-tls.sh
