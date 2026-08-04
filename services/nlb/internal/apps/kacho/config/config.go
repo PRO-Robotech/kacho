@@ -372,8 +372,10 @@ type TargetDrainConfig struct {
 	Interval time.Duration `mapstructure:"interval"`
 }
 
-// FreeIPConfig — параметры free_ip_runner (reconcile застрявших листенеров:
-// durable-handle create-orphan 'CREATING' + незавершённый Delete 'DELETING').
+// FreeIPConfig — параметры free_ip_runner (реконсиляция застрявших
+// БАЛАНСИРОВЩИКОВ: durable-handle create-сирота 'CREATING' + незавершённый
+// Delete 'DELETING'). Реконсайлер сканирует load_balancers и только их —
+// см. docs/architecture/15-free-ip-runner.md.
 type FreeIPConfig struct {
 	// Interval — период между тиками reconciler'а. Default 30s (сироты редки,
 	// чаще не нужно). Должен быть > 0.

@@ -227,7 +227,7 @@ func assembleBackgroundWorkers(ctx context.Context, d backgroundDeps) ([]bgWorke
 	drainRunner := jobs.NewTargetDrainRunner(d.pool, d.logger, d.cfg.Jobs.TargetDrain.Interval)
 	background = append(background, bgWorker{"target-drain", drainRunner.Run})
 
-	// free_ip_runner: reconcile застрявших листенеров (multi-replica-safe). Требует
+	// free_ip_runner: реконсиляция застрявших балансировщиков (multi-replica-safe). Требует
 	// vpc internal-address client (release) — иначе не стартует (иначе утечка VIP).
 	if d.peers.InternalAddress != nil {
 		var freeIPOpts []jobs.FreeIPOption
@@ -239,7 +239,7 @@ func assembleBackgroundWorkers(ctx context.Context, d backgroundDeps) ([]bgWorke
 			d.cfg.Jobs.FreeIP.Interval, d.cfg.Jobs.FreeIP.AgeThreshold, freeIPOpts...)
 		background = append(background, bgWorker{"free-ip-runner", freeIPRunner.Run})
 	} else {
-		d.logger.Warn("free_ip_runner_disabled — no vpc internal-address client; stuck-listener VIP reconcile inactive")
+		d.logger.Warn("free_ip_runner_disabled — no vpc internal-address client; stuck load-balancer VIP reconcile inactive")
 	}
 
 	// FGA Check cache invalidator: LISTEN kacho_iam_subjects на iam-DB через

@@ -258,7 +258,7 @@ func (c Config) Validate() error {
 		errs = multierr.Append(errs, fmt.Errorf("jobs.target-drain.interval must be > 0, got %v", c.Jobs.TargetDrain.Interval))
 	}
 
-	// Jobs.free-ip (reconciler застрявших листенеров). Interval > 0 (иначе
+	// Jobs.free-ip (реконсиляция застрявших балансировщиков). Interval > 0 (иначе
 	// tight-loop); age-threshold > 0 (иначе reconciler схватит свежий in-flight
 	// create/delete и удалит легитимную in-progress строку — гонка).
 	if c.Jobs.FreeIP.Interval <= 0 {

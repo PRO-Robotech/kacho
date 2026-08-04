@@ -30,18 +30,21 @@
 //     handler returns Operation immediately; worker propagates baggage values
 //     (slog logger, principal) but не наследует caller deadline.
 //
-// Compensation saga:
-//   - Create BYO   → SetReference CAS fails → worker returns InvalidArgument /
-//     FailedPrecondition; no listener row written, no VIP to release.
-//   - Create AUTO  → AllocateExternalIP/AllocateInternalIP succeeded but
-//     subsequent INSERT failed → `defer compensation: FreeIP(addr_id)` on
-//     return path. Best-effort, не 2PC; failure of compensation is logged but
-//     does not change Operation error (caller already sees the original error).
-//   - Delete       → FreeIP / ClearReference failure marks listener `FAILED`
-//     in outbox + retains row with `status='DELETING'`; background
-//     `jobs/free_ip_runner` reconciles the stuck row (release-by-address +
-//     delete + finalize) on a later tick. Within this Delete returns
-//     Unavailable если peer vpc недоступен; row остаётся в DELETING.
+// Компенсирующей саги у листенера НЕТ — и это не пропуск, а следствие того, где
+// живёт адрес.
+//
+// Листенер не аллоцирует и не освобождает VIP ни на одном пути: адрес
+// принадлежит родительскому балансировщику (один anycast-VIP на семейство), и
+// компенсирует его сам балансировщик — своим Delete, своей create-компенсацией
+// и `jobs/free_ip_runner`, который сканирует ТОЛЬКО load_balancers. В
+// `create.go`/`delete.go` листенера ноль обращений к адресному клиенту; колонки
+// адреса дропнуты миграцией 0028 вместе с недостижимой release-веткой.
+//
+// Прежняя редакция описывала здесь три ветви компенсации — отказ постановки
+// ссылки на чужой адрес, освобождение аллоцированного адреса при неудачном
+// INSERT и фоновую реконсиляцию застрявшей строки листенера. Ни одной из них в
+// дереве нет; шапка пережила свой предмет и обещала защиту, которой не
+// существует, — то есть была опаснее прямого умолчания.
 //
 // FGA owner-hierarchy tuple emit (transactional-outbox, replaces the former
 // best-effort direct FGA write —):

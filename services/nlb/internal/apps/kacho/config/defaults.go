@@ -144,8 +144,10 @@ func RegisterDefaults(v *viper.Viper) {
 	// target-drain: двухфазный drain runner. 10s — компромисс
 	// между latency удаления expired targets и нагрузкой на БД.
 	v.SetDefault("jobs.target-drain.interval", "10s")
-	// free-ip: reconcile застрявших листенеров. 30s — сироты редки; age-threshold
-	// 5m исключает гонку с нормальным in-flight create/delete.
+	// free-ip: реконсиляция застрявших БАЛАНСИРОВЩИКОВ (не листенеров — VIP
+	// консолидирован на LoadBalancer, колонки адреса у листенера дропнуты
+	// миграцией 0028). 30s — сироты редки; порог 5m исключает гонку со штатным
+	// in-flight create/delete.
 	v.SetDefault("jobs.free-ip.interval", "30s")
 	v.SetDefault("jobs.free-ip.age-threshold", "5m")
 
