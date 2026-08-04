@@ -31,6 +31,17 @@
 сверяется с first-party зависимостями умбреллы, поэтому новый сервисный чарт не
 может тихо оказаться вне гейта, а запись без предмета не может в нём остаться.
 
+ГЕЙТ ПРОВЕРЯЕТ СВОЮ ПРЕДПОСЫЛКУ. Предикат тут дизъюнктивный — имя тома объявлено
+`volumes` ЛИБО `volumeClaimTemplates`, — и вторая его половина держится на одном
+единственном наборе с состоянием во всём дереве. Если этот рендер перестанет
+происходить (чарт отказал, тумблер убрали из матрицы), про заявки на том гейт
+перестанет доказывать что бы то ни было, оставаясь сплошь зелёным: находок ноль,
+потому что предмет не читался. Поэтому число осмотренных claim-backed workload'ов
+печатается отдельно, а ноль — ПРОВАЛ. Ровно это и случилось: чарт реестра завёл
+fail-closed отказ рендера без учётных данных хранилища слоёв, таблица гейта их не
+несла, и все рендеры с zot умерли до анализа — набор с состоянием не осматривался
+НИ РАЗУ, при живом комментарии о том, что матрица его покрывает.
+
 Вынесен из bash-обёртки отдельным файлом: inline-python в шелле уже дал два
 дефекта — `python3 - <<'PY' <<<"$out"` (второй redirect перекрывает первый, python
 читает ДАННЫЕ как скрипт) и молчаливое «✓» при падении анализатора.
@@ -106,7 +117,20 @@ CHARTS = [
            # Не булев тумблер: имя секрета с якорем доверия к внутреннему CA —
            # пустое значение убирает том, непустое добавляет.
            ("hydra.adminCa.secretName", "", "internal-ca")]),
-    Chart("registry", "services/registry/deploy", [],
+    # Учётные данные хранилища слоёв — `required`, ровно по той же причине, что
+    # пароль БД у kacho-nlb: дефолта у них нет НАМЕРЕННО (чарт публичный, значит
+    # «дефолт» = общеизвестный секрет), и без них чарт fail-closed отказывает в
+    # рендере. Гейт обязан это удовлетворить, а не наказывать за правильный
+    # отказ: без пароля все рендеры с zot умирают ДО анализа, и единственный в
+    # дереве набор с состоянием не осматривается ни разу — при зелёном виде.
+    # Значение намеренно выглядит чужим (как renderPassword в zot_authn_test.go),
+    # чтобы правдоподобная фикстура не выдавала себя за рабочую настройку.
+    # `username` дефолт имеет, поэтому не задаётся; `auth.existingSecret` —
+    # альтернативная (боевая) форма того же требования, но тумблером ей тут не
+    # место: секций томов она не гейтит, а в матрицу входят только те ключи,
+    # чьи условия реально охватывают volumes / volumeMounts / volumeClaimTemplates.
+    Chart("registry", "services/registry/deploy",
+          ["--set", "zot.auth.password=render-guard-not-a-real-password"],
           [("mtls.enable", "false", "true"),
            # zot.enabled гейтит САМ StatefulSet, то есть тот единственный
            # workload платформы, чей том приходит из volumeClaimTemplates.
@@ -140,34 +164,52 @@ def pod_spec(doc):
     return tmpl.get("spec") or {}
 
 
-def declared_volume_names(doc, sp) -> set:
-    """Имена, которые ЭТОТ workload объявляет как тома.
+def claim_volume_names(doc) -> set:
+    """Имена, объявленные заявками на том — вторая половина предиката.
 
-    Два источника, и оба обязательны. `spec.template.spec.volumes` — обычный. У
-    StatefulSet имя объявляет ещё и `spec.volumeClaimTemplates[].metadata.name`:
-    по нему на каждую реплику создаётся PVC, и монт на такое имя совершенно
-    корректен. Читать только первый источник значит краснеть на правильном
-    наборе с состоянием.
+    ТОЛЬКО у StatefulSet: `spec.volumeClaimTemplates[].metadata.name` создаёт PVC
+    на каждую реплику, и монт на такое имя совершенно корректен. У прочих видов
+    это поле не действует, и принимать его за объявление значило бы пропускать
+    настоящий дефект (обе стороны заперты в self-test).
     """
-    names = {v["name"] for v in (sp.get("volumes") or [])
-             if isinstance(v, dict) and "name" in v}
-    if doc.get("kind") == "StatefulSet":
-        for vct in ((doc.get("spec") or {}).get("volumeClaimTemplates") or []):
-            if isinstance(vct, dict):
-                name = (vct.get("metadata") or {}).get("name")
-                if name:
-                    names.add(name)
+    if doc.get("kind") != "StatefulSet":
+        return set()
+    names = set()
+    for vct in ((doc.get("spec") or {}).get("volumeClaimTemplates") or []):
+        if isinstance(vct, dict):
+            name = (vct.get("metadata") or {}).get("name")
+            if name:
+                names.add(name)
     return names
 
 
+def declared_volume_names(doc, sp) -> set:
+    """Имена, которые ЭТОТ workload объявляет как тома.
+
+    Два источника, и оба обязательны. `spec.template.spec.volumes` — обычный,
+    `volumeClaimTemplates` — форма набора с состоянием (см. claim_volume_names).
+    Читать только первый источник значит краснеть на правильном StatefulSet.
+    """
+    names = {v["name"] for v in (sp.get("volumes") or [])
+             if isinstance(v, dict) and "name" in v}
+    return names | claim_volume_names(doc)
+
+
 def analyze(docs):
-    """Находки, число осмотренных workload'ов, число осмотренных контейнеров."""
-    bad, workloads, containers = [], 0, 0
+    """Находки, число workload'ов, контейнеров и workload'ов с заявками на том.
+
+    Четвёртое число — предпосылка гейта, а не украшение: на нём держится вторая
+    половина дизъюнкции «volumes ЛИБО volumeClaimTemplates». Ноль за весь прогон
+    означает, что про заявки гейт не доказал ничего (см. шапку файла).
+    """
+    bad, workloads, containers, claim_backed = [], 0, 0, 0
     for d in docs:
         if not isinstance(d, dict) or d.get("kind") not in WORKLOADS:
             continue
         workloads += 1
         sp = pod_spec(d)
+        if claim_volume_names(d):
+            claim_backed += 1
         vols = declared_volume_names(d, sp)
         for c in (sp.get("containers") or []) + (sp.get("initContainers") or []):
             containers += 1
@@ -178,7 +220,7 @@ def analyze(docs):
                 name = (d.get("metadata") or {}).get("name", "?")
                 bad.append("{} {} / контейнер {}: монт без тома {} (объявлены тома: {})".format(
                     d["kind"], name, c.get("name", "?"), sorted(missing), sorted(vols) or "нет"))
-    return bad, workloads, containers
+    return bad, workloads, containers, claim_backed
 
 
 def analyze_text(text: str):
@@ -188,7 +230,7 @@ def analyze_text(text: str):
 def stdin_mode() -> int:
     """Анализ одного рендера со stdin — анализатор отдельно от драйвера."""
     try:
-        bad, workloads, _ = analyze_text(sys.stdin.read())
+        bad, workloads, _, _ = analyze_text(sys.stdin.read())
     except yaml.YAMLError as e:
         print("не удалось разобрать YAML: {}".format(e), file=sys.stderr)
         return 2
@@ -277,7 +319,7 @@ def main() -> int:
         print("  ✗ покрытие: {}".format(line))
         rc = 1
 
-    renders = workloads_seen = 0
+    renders = workloads_seen = claims_seen = 0
     for chart in CHARTS:
         for label, sets in chart.renders():
             manifests, err = render(chart, sets)
@@ -286,13 +328,14 @@ def main() -> int:
                 rc = 1
                 continue
             try:
-                bad, workloads, _ = analyze_text(manifests)
+                bad, workloads, _, claim_backed = analyze_text(manifests)
             except yaml.YAMLError as e:
                 print("  ✗ {} ({}) — YAML не разобран: {}".format(chart.name, label, e))
                 rc = 1
                 continue
             renders += 1
             workloads_seen += workloads
+            claims_seen += claim_backed
             if not workloads:
                 print("  ✗ {} ({}) — в рендере НЕТ workload'ов: проверять было нечего".format(
                     chart.name, label))
@@ -305,10 +348,20 @@ def main() -> int:
             else:
                 print("  ✓ {} ({})".format(chart.name, label))
 
-    print("\nосмотрено: чартов {}, рендеров {}, workload'ов {}".format(
-        len(CHARTS), renders, workloads_seen))
+    print("\nосмотрено: чартов {}, рендеров {}, workload'ов {} "
+          "(из них с заявками на том {})".format(
+              len(CHARTS), renders, workloads_seen, claims_seen))
     if renders == 0 or workloads_seen == 0:
         print("FAIL: гейт не осмотрел НИ ОДНОГО workload'а — это провал, а не чистота")
+        return 1
+    if claims_seen == 0:
+        print("FAIL: за весь прогон не осмотрено НИ ОДНОГО workload'а с "
+              "volumeClaimTemplates — вторая половина предиката («volumes ЛИБО "
+              "volumeClaimTemplates») не исполнилась ни разу, значит про заявки на том "
+              "гейт не доказал ничего, а его зелень про них пуста. Таблица объявляет "
+              "такой рендер (registry, zot.enabled=true): либо этот рендер перестал "
+              "происходить, либо тумблер ушёл из матрицы — разбирать надо это, а не "
+              "снимать проверку.")
         return 1
     return rc
 
@@ -318,12 +371,19 @@ def self_test() -> int:
     законной конструкции той же формы. helm не нужен."""
     rc = 0
 
-    def case(name, text, want, want_in=""):
+    # want_claims утверждается в КАЖДОМ кейсе и по умолчанию 0: счётчик предпосылки
+    # обязан быть способен как посчитать заявку, так и НЕ посчитать её там, где её
+    # нет. Иначе «ноль claim-backed за прогон» неотличимо от сломанного счётчика, и
+    # проверка предпосылки сама стала бы формой без содержания.
+    def case(name, text, want, want_in="", want_claims=0):
         nonlocal rc
-        bad, workloads, containers = analyze_text(text)
-        ok = len(bad) == want and (not want_in or any(want_in in b for b in bad))
-        print("  {} {} (находок {}, ожидалось {}; workload'ов {}, контейнеров {})".format(
-            "ОК    " if ok else "ПРОВАЛ", name, len(bad), want, workloads, containers))
+        bad, workloads, containers, claim_backed = analyze_text(text)
+        ok = (len(bad) == want and (not want_in or any(want_in in b for b in bad))
+              and claim_backed == want_claims)
+        print("  {} {} (находок {}, ожидалось {}; workload'ов {}, контейнеров {}, "
+              "с заявками {}, ожидалось {})".format(
+                  "ОК    " if ok else "ПРОВАЛ", name, len(bad), want, workloads,
+                  containers, claim_backed, want_claims))
         if not ok:
             for b in bad:
                 print("        {}".format(b))
@@ -365,7 +425,7 @@ spec:
       containers:
         - name: app
           volumeMounts: [{name: storage, mountPath: /var/lib/data}]
-""", 0)
+""", 0, want_claims=1)
 
     # И обратное: заявки не делают StatefulSet бланкетно правым.
     case("StatefulSet: монт мимо volumes И заявок → находка", """
@@ -382,7 +442,7 @@ spec:
           volumeMounts:
             - {name: storage, mountPath: /var/lib/data}
             - {name: config, mountPath: /etc/app}
-""", 1, "config")
+""", 1, "config", want_claims=1)
 
     case("initContainer судится так же → находка", """
 kind: StatefulSet
@@ -399,7 +459,7 @@ spec:
       containers:
         - name: app
           volumeMounts: [{name: storage, mountPath: /d}]
-""", 1, "seed")
+""", 1, "seed", want_claims=1)
 
     case("CronJob вложен глубже, монт всё равно виден → находка", """
 kind: CronJob
@@ -429,7 +489,7 @@ spec:
           volumeMounts: [{name: storage, mountPath: /d}]
 """, 1, "storage")
 
-    bad, workloads, _ = analyze_text("kind: ConfigMap\nmetadata: {name: c}\n")
+    bad, workloads, _, _ = analyze_text("kind: ConfigMap\nmetadata: {name: c}\n")
     if workloads == 0 and not bad:
         print("  ОК     манифест без workload'ов даёт ноль осмотренного — отличимо от чистоты")
     else:
