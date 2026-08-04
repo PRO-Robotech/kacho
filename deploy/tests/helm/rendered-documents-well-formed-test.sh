@@ -164,9 +164,20 @@ check_profile "production (values.dev-prod поверх dev)" \
 # зовёт ровно эту цепочку). Ни одна из двух до сих пор не рендерилась ни одним
 # манифест-гейтом.
 check_profile "боевой (values.prod)" -f "$CHART/values.prod.yaml" || fail=1
-check_profile "боевой + площадка (values.prod + fe3455 + fe3455-prod)" \
-  -f "$CHART/values.prod.yaml" -f "$CHART/values.fe3455.yaml" \
-  -f "$CHART/values.fe3455-prod.yaml" || fail=1
+FE_ARGS=(-f "$CHART/values.prod.yaml" -f "$CHART/values.fe3455.yaml"
+         -f "$CHART/values.fe3455-prod.yaml")
+FE_LABEL="боевой + площадка (values.prod + fe3455 + fe3455-prod)"
+# Четвёртый слой боевого набора — values.fe3455-ory.yaml — НАМЕРЕННО не в
+# репозитории (несёт учётные данные стенда, см. cutover-fe3455.sh). Добавляем
+# его, только когда файл на месте: в CI меряются три слоя, на машине, где файл
+# есть, — все четыре. Что именно измерено, видно в метке профиля: «измерили
+# меньше» не должно выглядеть как «измерили всё». Тот же приём и по той же
+# причине уже применён в trusted-forwarder-profiles-test.sh.
+if [ -f "$CHART/values.fe3455-ory.yaml" ]; then
+  FE_ARGS+=(-f "$CHART/values.fe3455-ory.yaml")
+  FE_LABEL="$FE_LABEL + fe3455-ory"
+fi
+check_profile "$FE_LABEL" "${FE_ARGS[@]}" || fail=1
 
 if [ "$fail" -ne 0 ]; then
   echo
