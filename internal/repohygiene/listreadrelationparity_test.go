@@ -139,6 +139,14 @@ type pageFilterPkg struct {
 	mapDomain string // домен из карты прав сервиса ("" — карты нет)
 	relStore  bool   // задаёт вопрос хранилищу прав
 	pageShape bool   // принимает страницу id и возвращает её подмножество
+
+	// inlineRels — отношения модели, встреченные СТРОКОВЫМИ ЛИТЕРАЛАМИ в теле
+	// функции-фильтра страницы. Это предикат, объявленный инлайном: он существует
+	// и решает видимость, но package-level коллекцией не выражен, поэтому сверке
+	// по типам недоступен. Пакет с таким предикатом НЕ делегирует — он спрашивает
+	// сам, — и «делегирует либо записан» для него ложный исход.
+	inlineRels []string
+	inlineAt   string // файл:строка первого литерала — координата для отказа
 }
 
 func (p pageFilterPkg) declares() bool { return len(p.flat) > 0 || len(p.byType) > 0 }
@@ -305,6 +313,11 @@ func discoverPageFilters(t *testing.T, root string) (pkgs []pageFilterPkg, files
 			case *ast.FuncDecl:
 				if x.Type != nil && funcTakesPageReturnsSubset(x.Type) {
 					p.pageShape = true
+					// Предикат, объявленный ИНЛАЙНОМ в теле самого фильтра, —
+					// это тоже предикат. Собираем его отдельно: без этого пакет,
+					// спрашивающий модель своими отношениями, неотличим от
+					// пакета, делегирующего чужому объявлению.
+					collectInlineRelations(x.Body, relations, fset, root, p)
 				}
 			case *ast.InterfaceType:
 				if x.Methods == nil {
@@ -361,6 +374,44 @@ func discoverPageFilters(t *testing.T, root string) (pkgs []pageFilterPkg, files
 // над списком — нет. Без этого условия под форму попадал `dedupe(ids []string) []string`
 // в соседнем пакете, и охват объявлял находкой вспомогательную функцию — гейт, красный
 // на законной конструкции, отключают первым.
+// collectInlineRelations собирает отношения модели, записанные строковыми
+// литералами В ТЕЛЕ функции-фильтра страницы.
+//
+// Область намеренно узкая — только тело страницы-фильтра. Отношение, названное
+// литералом в СОСЕДНЕЙ функции (проверка полномочий на мутацию, «admin» на
+// объекте области), предикатом страницы не является, и расширение области
+// сделало бы гейт красным на законной конструкции. Проверено обеими половинами
+// в TestListReadRelationParity_DelegationMustBeReal.
+func collectInlineRelations(body *ast.BlockStmt, relations map[string]bool, fset *token.FileSet, root string, p *pageFilterPkg) {
+	if body == nil {
+		return
+	}
+	seen := map[string]bool{}
+	for _, r := range p.inlineRels {
+		seen[r] = true
+	}
+	ast.Inspect(body, func(n ast.Node) bool {
+		lit, ok := n.(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			return true
+		}
+		v, err := strconv.Unquote(lit.Value)
+		if err != nil || !relations[v] || seen[v] {
+			return true
+		}
+		seen[v] = true
+		p.inlineRels = append(p.inlineRels, v)
+		if p.inlineAt == "" {
+			pos := fset.Position(lit.Pos())
+			if rel, rerr := filepath.Rel(root, pos.Filename); rerr == nil {
+				p.inlineAt = fmt.Sprintf("%s:%d", filepath.ToSlash(rel), pos.Line)
+			}
+		}
+		return true
+	})
+	sort.Strings(p.inlineRels)
+}
+
 func funcTakesPageReturnsSubset(ft *ast.FuncType) bool {
 	takesPage, takesScalar := false, false
 	if ft.Params != nil {
@@ -651,35 +702,112 @@ func TestListReadRelationParity_EveryPageFilterIsAccountedFor(t *testing.T) {
 
 	accounted := 0
 	for _, p := range pkgs {
-		if p.declares() {
-			accounted++
+		reason, ok := pageFilterOutcome(p, declarerImportPaths)
+		if !ok {
+			t.Error(reason)
 			continue
 		}
-		delegates := false
-		for imp := range p.imports {
-			if declarerImportPaths[imp] {
-				delegates = true
-				break
-			}
-		}
-		if delegates {
-			accounted++
-			continue
-		}
-		if _, recorded := listReadRelationExceptions[p.dir]; recorded {
-			accounted++
-			continue
-		}
-		t.Errorf("%s фильтрует страницу пообъектно (принимает страницу id, возвращает подмножество, "+
-			"спрашивает хранилище прав), но предиката в сверяемом виде НЕ объявляет и не делегирует "+
-			"пакету, который объявляет.\n"+
-			"  Это ровно то состояние, в котором пятый экземпляр прожил мимо прошлого гейта: не нарушитель "+
-			"и не исключение, а невидимка.\n"+
-			"  ЧТО ДЕЛАТЬ: объявить предикат package-level коллекцией отношений модели (плоской либо "+
-			"map[тип][]отношение с записью %q для остальных), либо звать пакет, который её объявляет, "+
-			"либо внести запись с ПРИЧИНОЙ в listReadRelationExceptions.", p.dir, defaultPredicateKey)
+		accounted++
 	}
 	t.Logf("перепись охвата: пакетов-фильтров = %d, с явным исходом = %d", len(pkgs), accounted)
+}
+
+// pageFilterOutcome — РЕШЕНИЕ гейта об одном пакете-фильтре, вынесенное из тела
+// теста, чтобы самопроверка ниже исполняла ту же логику, а не её копию.
+// Копия самопроверки доказывала бы только собственную непротиворечивость.
+//
+// ok=true — у пакета есть явный исход; ok=false — находка, текст в reason.
+func pageFilterOutcome(p pageFilterPkg, declarerImportPaths map[string]bool) (reason string, ok bool) {
+	if p.declares() {
+		return "объявляет предикат", true
+	}
+	if _, recorded := listReadRelationExceptions[p.dir]; recorded {
+		return "записанное исключение", true
+	}
+	// Инлайновый предикат разбирается ДО делегирования, и это не порядок ради
+	// порядка. «Делегирует» выводится из РЕБРА ИМПОРТА, а импорт покупается
+	// одной строкой: пакет, спрашивающий модель СВОИМИ отношениями, получал
+	// исход «делегирует» ровно потому, что рядом стоял импорт объявителя, — и
+	// его предикат не сверялся ни с чем. Наличие собственных отношений
+	// опровергает делегирование прямо: тот, кто спрашивает сам, чужому
+	// объявлению не делегирует.
+	if len(p.inlineRels) > 0 {
+		return fmt.Sprintf("%s фильтрует страницу пообъектно и задаёт вопрос модели СВОИМИ отношениями %v, "+
+			"записанными литералами в теле фильтра (%s), но package-level предиката НЕ объявляет.\n"+
+			"  Такой предикат существует и решает видимость, однако сверке по типам недоступен: гейт не может "+
+			"сопоставить его с отношением чтения из каталога, поэтому расхождение «страница ≠ чтение» здесь "+
+			"не обнаруживается ничем.\n"+
+			"  Импорт пакета-объявителя этого НЕ исправляет и исходом «делегирует» не является: делегирует тот, "+
+			"кто чужим объявлением и спрашивает, а не тот, кто рядом его импортирует.\n"+
+			"  ЧТО ДЕЛАТЬ: поднять отношения в package-level коллекцию (плоскую либо map[тип][]отношение), "+
+			"либо задавать вопрос через пакет-объявитель, либо внести запись с ПРИЧИНОЙ в listReadRelationExceptions.",
+			p.dir, p.inlineRels, p.inlineAt), false
+	}
+	for imp := range p.imports {
+		if declarerImportPaths[imp] {
+			return "делегирует объявителю", true
+		}
+	}
+	return fmt.Sprintf("%s фильтрует страницу пообъектно (принимает страницу id, возвращает подмножество, "+
+		"спрашивает хранилище прав), но предиката в сверяемом виде НЕ объявляет и не делегирует "+
+		"пакету, который объявляет.\n"+
+		"  Это ровно то состояние, в котором пятый экземпляр прожил мимо прошлого гейта: не нарушитель "+
+		"и не исключение, а невидимка.\n"+
+		"  ЧТО ДЕЛАТЬ: объявить предикат package-level коллекцией отношений модели (плоской либо "+
+		"map[тип][]отношение с записью %q для остальных), либо звать пакет, который её объявляет, "+
+		"либо внести запись с ПРИЧИНОЙ в listReadRelationExceptions.", p.dir, defaultPredicateKey), false
+}
+
+// TestListReadRelationParity_DelegationMustBeReal — самопроверка того, что
+// «делегирует» больше не покупается ребром импорта.
+//
+// Инъекция в обе стороны на ОДНОМ И ТОМ ЖЕ входе: два пакета отличаются ровно
+// одним — есть ли у фильтра собственные отношения. Прежняя редакция обе клетки
+// считала делегированием, потому что смотрела только на импорт.
+func TestListReadRelationParity_DelegationMustBeReal(t *testing.T) {
+	declarers := map[string]bool{"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter": true}
+	importsDeclarer := map[string]bool{"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter": true}
+
+	t.Run("спрашивает сам, но импортирует объявителя — находка", func(t *testing.T) {
+		p := pageFilterPkg{
+			dir: "services/vpc/internal/probe", service: "vpc",
+			pageShape: true, relStore: true,
+			imports:    importsDeclarer,
+			inlineRels: []string{"v_list", "viewer"},
+			inlineAt:   "services/vpc/internal/probe/probe.go:25",
+		}
+		reason, ok := pageFilterOutcome(p, declarers)
+		if ok {
+			t.Fatalf("пакет со СВОИМ предикатом признан имеющим явный исход (%q) — ровно та дыра, "+
+				"через которую инлайновый союз проходил незамеченным", reason)
+		}
+		if !strings.Contains(reason, "services/vpc/internal/probe") || !strings.Contains(reason, "probe.go:25") {
+			t.Fatalf("отказ не называет координату: %s", reason)
+		}
+	})
+
+	t.Run("законный близнец той же формы — делегирует, молчит", func(t *testing.T) {
+		p := pageFilterPkg{
+			dir: "services/vpc/internal/probe", service: "vpc",
+			pageShape: true, relStore: true,
+			imports: importsDeclarer,
+			// собственных отношений нет: вопрос задаётся объявителем
+		}
+		if reason, ok := pageFilterOutcome(p, declarers); !ok {
+			t.Fatalf("настоящее делегирование признано находкой — гейт ловит форму, а не существо: %s", reason)
+		}
+	})
+
+	t.Run("ни своего предиката, ни делегирования — по-прежнему находка", func(t *testing.T) {
+		p := pageFilterPkg{
+			dir: "services/vpc/internal/probe", service: "vpc",
+			pageShape: true, relStore: true,
+			imports: map[string]bool{},
+		}
+		if _, ok := pageFilterOutcome(p, declarers); ok {
+			t.Fatal("невидимка признана имеющей явный исход — прежняя половина гейта потеряна")
+		}
+	})
 }
 
 // TestListReadRelationParity_PremiseHolds — гейт проверяет СВОЮ предпосылку.
