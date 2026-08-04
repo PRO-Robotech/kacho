@@ -41,6 +41,11 @@ var revocationScanRoots = []string{
 	"services/registry/internal/apps/kacho/config",
 	"services/compute/internal/config",
 	"services/storage/internal/config",
+	// Край. Он не лежит под services/, и именно поэтому его окно не попало в
+	// перепись: все корни обхода начинались с services/, так что процесс, через
+	// который проходит КАЖДЫЙ внешний запрос, не был прочитан ни одной из
+	// проверок — ни разу, ни одним файлом.
+	"gateway/internal/config",
 }
 
 // TestRevocationWindowIsDeclaredPolicy — окно отзыва объявлено в одном месте, и
@@ -162,8 +167,17 @@ func serviceOfPath(rel string) string {
 	if len(parts) >= 2 && parts[0] == "services" {
 		return parts[1]
 	}
+	// Край живёт вне services/ и зовётся по имени своего бинаря
+	// (gateway/cmd/api-gateway), а не по имени каталога: ключ переписи держит
+	// то имя, которое оператор станет искать.
+	if len(parts) >= 1 && parts[0] == "gateway" {
+		return gatewayProcess
+	}
 	return rel
 }
+
+// gatewayProcess — имя края в переписи политики.
+const gatewayProcess = "api-gateway"
 
 // checkFactoryFiles — композиционные площадки, где строится кеш вердиктов
 // пообъектной проверки. Сервис, у которого своего числа нет, строит его как
@@ -256,12 +270,26 @@ func TestInheritedWindowsAreDeclared(t *testing.T) {
 // старте на него даёт сам конструктор.
 func TestEveryVerdictCacheServiceIsDeclared(t *testing.T) {
 	root := repoRoot(t)
-	servicesDir := filepath.Join(root, "services")
 
+	// Процессы, а не каталоги под services/. Край — такой же процесс с таким же
+	// кешем вердиктов, но лежит вне services/, и обход, начинавшийся с одного
+	// этого каталога, не мог его увидеть в принципе.
+	processes := map[string]string{}
+	servicesDir := filepath.Join(root, "services")
 	svcEntries, err := os.ReadDir(servicesDir)
 	if err != nil {
 		t.Fatalf("предпосылка гейта нарушена: каталог services/ не читается: %v", err)
 	}
+	for _, svc := range svcEntries {
+		if svc.IsDir() {
+			processes[svc.Name()] = filepath.Join(servicesDir, svc.Name())
+		}
+	}
+	gatewayDir := filepath.Join(root, "gateway")
+	if _, serr := os.Stat(gatewayDir); serr != nil {
+		t.Fatalf("предпосылка гейта нарушена: дерево края gateway/ не читается: %v", serr)
+	}
+	processes[gatewayProcess] = gatewayDir
 
 	declared := map[string]bool{}
 	for key := range authz.RevocationPolicy.Windows {
@@ -273,11 +301,8 @@ func TestEveryVerdictCacheServiceIsDeclared(t *testing.T) {
 
 	filesRead := 0
 	building := map[string]bool{}
-	for _, svc := range svcEntries {
-		if !svc.IsDir() {
-			continue
-		}
-		err := filepath.WalkDir(filepath.Join(servicesDir, svc.Name()),
+	for name, dir := range processes {
+		err := filepath.WalkDir(dir,
 			func(p string, d os.DirEntry, err error) error {
 				if err != nil || d.IsDir() {
 					return err //nolint:wrapcheck // walk error propagates as-is
@@ -295,17 +320,18 @@ func TestEveryVerdictCacheServiceIsDeclared(t *testing.T) {
 					return perr //nolint:wrapcheck // parse error propagates as-is
 				}
 				if found {
-					building[svc.Name()] = true
+					building[name] = true
 				}
 				return nil
 			})
 		if err != nil {
-			t.Fatalf("обход services/%s: %v", svc.Name(), err)
+			t.Fatalf("обход %s: %v", dir, err)
 		}
 	}
 
-	t.Logf("осмотрено: файлов сервисов прочитано=%d, сервисов строит кеш вердиктов=%d, "+
-		"сервисов объявлено политикой=%d", filesRead, len(building), len(declared))
+	t.Logf("осмотрено: файлов процессов прочитано=%d, процессов строит кеш вердиктов=%d, "+
+		"процессов объявлено политикой=%d, распознаваемых локальных конструкторов=%v",
+		filesRead, len(building), len(declared), revocationwindowgate.LocalVerdictCacheCtors())
 
 	if filesRead == 0 {
 		t.Fatalf("предпосылка гейта нарушена: не прочитано ни одного файла сервисов")
@@ -323,8 +349,8 @@ func TestEveryVerdictCacheServiceIsDeclared(t *testing.T) {
 	}
 	sort.Strings(undeclared)
 	for _, svc := range undeclared {
-		t.Errorf("сервис строит кеш вердиктов, но политикой не объявлен: «%s».\n"+
-			"Кешируется положительный вердикт ⇒ у сервиса есть окно отзыва. "+
+		t.Errorf("процесс строит кеш вердиктов, но политикой не объявлен: «%s».\n"+
+			"Кешируется положительный вердикт ⇒ у процесса есть окно отзыва. "+
 			"Внеси его в pkg/authz.RevocationPolicy (Windows — если у него своя ручка, "+
 			"Inherited — если он берёт умолчание).", svc)
 	}
@@ -337,7 +363,12 @@ func TestEveryVerdictCacheServiceIsDeclared(t *testing.T) {
 // implicitScanRoots — деревья, в которых строится интерсептор. Оба, а не одно:
 // composition root'ы живут в services/, но литерал опций в самом corelib
 // подпадает под то же правило и молчаливого исключения не заслуживает.
-var implicitScanRoots = []string{"services", "pkg"}
+// Край добавлен третьим по той же причине, по которой он был добавлен в
+// revocationScanRoots: список корней, начинавшийся с services/, не мог увидеть
+// процесс, который лежит не там. Сегодня край корневой интерсептор не строит,
+// поэтому находок здесь от него не прибавится — но перечень корней не должен
+// оставаться тем местом, где край снова окажется невидим.
+var implicitScanRoots = []string{"services", "pkg", "gateway"}
 
 // TestNoServiceTakesTheWindowImplicitly — ни одна площадка не получает окно
 // отзыва, не назвав кеш.

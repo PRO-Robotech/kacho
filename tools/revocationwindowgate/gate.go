@@ -19,6 +19,29 @@
 // why. A number nobody chose cannot be reviewed, cannot be argued with, and
 // cannot be noticed when it changes.
 //
+// # A seventh holder, invisible to both of this package's questions
+//
+// The census as first written measured SERVICES, by two predicates that both
+// described how a cache is MADE rather than what it HOLDS: the walk started at
+// the `services/` directory, and the constructor was looked for by the name
+// `authz.NewCache`. The edge (`gateway/`) satisfies neither — it lives outside
+// `services/` and builds its decision cache with its own constructor over a
+// local LRU. So the process through which every external request passes held a
+// full window while contributing zero files to every walk, and its number was
+// written down nowhere.
+//
+// This was not an oversight in the walks. The edge lay outside what they could
+// express, and a question that cannot reach its subject reports silence — which
+// reads exactly like "clean". Both predicates are now sets: the scan roots
+// include the edge, and localVerdictCacheCtors names constructors beyond
+// corelib's. The census counts PROCESSES, not directories under `services/`.
+//
+// The edge differs from the services in one further respect worth keeping
+// straight: it is the only holder with a PROACTIVE drop (InvalidateSubject,
+// driven by the iam subject_change_outbox drainer, whose sender is real). Its
+// TTL is therefore a backstop rather than the primary path — and a backstop is
+// still a window, still owned by nobody until it is written down.
+//
 // # What it refuses
 //
 // Four separable failures, because they have different fixes:
@@ -42,9 +65,16 @@
 // A cache that is not an authorization-verdict cache — the project-existence
 // cache, the zone/region projection cache — is not this subject. Those cache
 // FACTS about peer resources, not DECISIONS about access, and withdrawing a
-// grant does not make a zone stop existing. Recognition is therefore by the
-// declared knob name, and the gate reports what it matched so a rename is
-// visible as a premise failure rather than as silence.
+// grant does not make a zone stop existing. The same line separates the edge's
+// credential caches — token introspection, Kratos session, DPoP replay — from
+// its decision cache: revoking a CREDENTIAL is a different lane with its own
+// immediate mechanism, and folding the two together would push someone to shrink
+// the grant window hoping to fix a problem it never governed.
+//
+// Recognition is therefore by what the cache HOLDS, expressed as two named sets
+// — the declared knob names and the verdict-cache constructors — and the gate
+// reports what it matched, so a rename shows up as a premise failure rather than
+// as silence.
 //
 // # Why this parses instead of grepping
 //
@@ -123,6 +153,37 @@ var knobNames = map[string]string{
 	"authz.list-filter.cache-ttl":            "list-filter",
 	"KACHO_COMPUTE_LIST_FILTER_CACHE_TTL_MS": "list-filter",
 	"KACHO_STORAGE_LIST_FILTER_CACHE_TTL_MS": "list-filter",
+	// per-request decision cache at the EDGE (gateway/internal/middleware).
+	// The edge is the only site with a proactive drop (InvalidateSubject, driven
+	// by the iam subject_change_outbox drainer), so its TTL is the BACKSTOP
+	// window — what remains when that drain is behind or down. A backstop is
+	// still a window, and an undeclared backstop is still an unowned security
+	// parameter, which is why it belongs in the same census as the rest.
+	"KACHO_API_GATEWAY_AUTHZ_CACHE_TTL_SECONDS": "edge-decision",
+}
+
+// localVerdictCacheCtors — package-local constructors whose product stores a
+// POSITIVE authorization verdict, and which therefore create a revocation
+// window exactly as the corelib cache does.
+//
+// Membership is by what the cache HOLDS, not by where it lives. A cache of
+// credentials — token introspection, Kratos session, DPoP replay — is not a
+// member: revoking a credential is a different lane with its own immediate
+// mechanism, and folding the two together pushes people to shrink this window
+// hoping to fix a problem it never governed.
+var localVerdictCacheCtors = map[string]bool{
+	"newDecisionCache": true, // gateway/internal/middleware/authz_cache.go
+}
+
+// LocalVerdictCacheCtors returns the recognised package-local constructor
+// names, sorted — so a caller can state the premise it relies on.
+func LocalVerdictCacheCtors() []string {
+	out := make([]string, 0, len(localVerdictCacheCtors))
+	for k := range localVerdictCacheCtors {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // KnobNames returns the recognised knob names, sorted — so a caller can state
@@ -288,9 +349,16 @@ func timeUnit(e ast.Expr) (time.Duration, bool) {
 }
 
 // parseWindow reads a struct-tag default. A knob whose name ends in _MS states
-// a count of milliseconds; anything else states a Go duration. The unit is
-// taken from the KNOB NAME rather than guessed from the digits, so "5000" is
-// never silently read as five thousand seconds.
+// a count of milliseconds, one ending in _SECONDS a count of seconds; anything
+// else states a Go duration. The unit is taken from the KNOB NAME rather than
+// guessed from the digits, so "5000" is never silently read as five thousand
+// seconds — and, symmetrically, the edge's bare "5" is never read as 5ns.
+//
+// That second half is not hypothetical. Before _SECONDS was recognised, the
+// edge knob's default parsed as neither a duration nor a millisecond count, so
+// parseWindow returned false and the site was skipped — silently. A census
+// whose parser declines to read a declaration does not report a gap; it reports
+// nothing at all, which is indistinguishable from the site not existing.
 func parseWindow(knob, def string) (time.Duration, bool) {
 	if strings.HasSuffix(knob, "_MS") {
 		n, err := strconv.ParseInt(def, 10, 64)
@@ -298,6 +366,13 @@ func parseWindow(knob, def string) (time.Duration, bool) {
 			return 0, false
 		}
 		return time.Duration(n) * time.Millisecond, true
+	}
+	if strings.HasSuffix(knob, "_SECONDS") {
+		n, err := strconv.ParseInt(def, 10, 64)
+		if err != nil {
+			return 0, false
+		}
+		return time.Duration(n) * time.Second, true
 	}
 	d, err := time.ParseDuration(def)
 	if err != nil {
@@ -392,6 +467,23 @@ func ScanInherit(service, path, src string) ([]InheritSite, int, error) {
 // worth remembering is not the missing check. It is that a check PROMISED to
 // catch what it could not see — and a promise like that is worse than silence,
 // being exactly what one relies on when deciding no further guard is needed.
+//
+// # The second thing this question could not see: another implementation
+//
+// "Does this process build a verdict cache" needs no knob vocabulary, which is
+// what makes it strong. But it was asked as "does it call `authz.NewCache`" —
+// and that is a vocabulary too, just of constructors instead of knob names. The
+// edge (gateway/internal/middleware) caches decisions over its own LRU
+// primitive and never calls the corelib constructor, so it answered "no" while
+// holding a full window. It was not overlooked by the walk; it was outside what
+// the walk could express.
+//
+// Hence the recognised set below is a SET, named and extensible, rather than
+// one hard-coded name — and each member is a constructor whose product stores a
+// positive authorization verdict. Caches of credentials (token introspection,
+// session, DPoP replay) are deliberately absent: those ride the credential
+// revocation lane, which is immediate by a different mechanism entirely. See
+// authz.RevocationPolicy, section "Что НЕ ездит по этому окну".
 func ScanConstructors(path, src string) (bool, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, path, src, parser.ParseComments)
@@ -404,16 +496,23 @@ func ScanConstructors(path, src string) (bool, error) {
 		if !ok {
 			return true
 		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
-		if !ok {
-			return true
-		}
-		pkg, ok := sel.X.(*ast.Ident)
-		if !ok || pkg.Name != "authz" {
-			return true
-		}
-		if sel.Sel.Name == "NewCache" || sel.Sel.Name == "NewCacheWithLimit" {
-			found = true
+		switch fn := call.Fun.(type) {
+		case *ast.SelectorExpr:
+			// corelib: authz.NewCache / authz.NewCacheWithLimit
+			pkg, ok := fn.X.(*ast.Ident)
+			if !ok || pkg.Name != "authz" {
+				return true
+			}
+			if fn.Sel.Name == "NewCache" || fn.Sel.Name == "NewCacheWithLimit" {
+				found = true
+			}
+		case *ast.Ident:
+			// package-local verdict-cache constructors. The edge builds its
+			// decision cache this way; matching only the qualified corelib form
+			// is what let a whole process hold an undeclared window.
+			if localVerdictCacheCtors[fn.Name] {
+				found = true
+			}
 		}
 		return true
 	})
