@@ -59,6 +59,20 @@ const (
 	FGAEventUnregister = "fga.unregister"
 )
 
+// Вид объекта, к которому относится намерение (колонка `resource_kind` очереди).
+//
+// Названы константами, а не повторены литералом семь раз, потому что по этому
+// значению теперь ОТБИРАЮТ: подметальщик осиротевших регистраций сужает журнал до
+// вида «репозиторий» — под тем же идентификатором объекта едут ещё и намерения о
+// публичном доступе, и, смешай их, последним событием объекта оказалось бы снятие
+// публичности, а сам объект остался бы неназванным. Опечатка в такой выборке не
+// падает, а МОЛЧА сужает её до пустоты.
+const (
+	RegisterIntentKindRegistry              = "Registry"
+	RegisterIntentKindRepository            = "Repository"
+	RegisterIntentKindRepositoryPublicGrant = "RepositoryPublicGrant"
+)
+
 // FGA verb-relation-строки (verb-bearing модель Kachō: repo-verb НЕ
 // наследуется от namespace-tier). ЕДИНЫЙ источник истины для обоих planes —
 // check.PermissionMap (control-plane interceptor-gate), handler/listauthz
@@ -292,7 +306,7 @@ func RegisterIntentForCreate(r *Registry, principalType, principalID string) Reg
 		tuples = append(tuples, FGAOwnerTuple(subject, r.ID))
 	}
 	return RegisterIntent{
-		Kind:            "Registry",
+		Kind:            RegisterIntentKindRegistry,
 		ResourceID:      r.ID,
 		Tuples:          tuples,
 		Labels:          copyLabels(r.Labels),
@@ -305,7 +319,7 @@ func RegisterIntentForCreate(r *Registry, principalType, principalID string) Reg
 // label-scoped доступ в iam-mirror (security-инвариант против label-clear no-op).
 func RegisterIntentForUpdate(r *Registry) RegisterIntent {
 	return RegisterIntent{
-		Kind:            "Registry",
+		Kind:            RegisterIntentKindRegistry,
 		ResourceID:      r.ID,
 		Tuples:          []FGATuple{FGAProjectTuple(r.ID, r.ProjectID)},
 		Labels:          copyLabels(r.Labels),
@@ -327,7 +341,7 @@ func RegisterIntentForUpdate(r *Registry) RegisterIntent {
 // продолжала отвечать allowed. Комментарий описывал намерение, а не код.
 func UnregisterIntentForDelete(registryID, projectID string) RegisterIntent {
 	return RegisterIntent{
-		Kind:       "Registry",
+		Kind:       RegisterIntentKindRegistry,
 		ResourceID: registryID,
 		Tuples:     []FGATuple{FGAProjectTuple(registryID, projectID)},
 	}
@@ -372,7 +386,7 @@ func RegisterIntentForRepoPush(registryID, repo, projectID, subject string) Regi
 		tuples = append(tuples, FGARepoOwnerTuple(registryID, repo, subject))
 	}
 	return RegisterIntent{
-		Kind:            "Repository",
+		Kind:            RegisterIntentKindRepository,
 		ResourceID:      repoObjectID(registryID, repo),
 		Tuples:          tuples,
 		ParentProjectID: projectID,
@@ -390,7 +404,7 @@ func RegisterIntentForRepoPush(registryID, repo, projectID, subject string) Regi
 // получает полный доступ к чужому содержимому.
 func UnregisterIntentForRepo(registryID, repo string) RegisterIntent {
 	return RegisterIntent{
-		Kind:       "Repository",
+		Kind:       RegisterIntentKindRepository,
 		ResourceID: repoObjectID(registryID, repo),
 		Tuples:     []FGATuple{FGARepoParentTuple(registryID, repo)},
 	}
@@ -413,7 +427,7 @@ func FGARepoPublicGetTuple(registryID, repo string) FGATuple {
 // outbox: повторный register того же wildcard дедуплицируется iam-side.
 func RegisterIntentForRepoPublicGrant(registryID, repo string) RegisterIntent {
 	return RegisterIntent{
-		Kind:       "RepositoryPublicGrant",
+		Kind:       RegisterIntentKindRepositoryPublicGrant,
 		ResourceID: repoObjectID(registryID, repo),
 		Tuples:     []FGATuple{FGARepoPublicGetTuple(registryID, repo)},
 	}
@@ -424,7 +438,7 @@ func RegisterIntentForRepoPublicGrant(registryID, repo string) RegisterIntent {
 // переименован). anon pull снова fail-closed 404. Per-subject grants не трогаются.
 func UnregisterIntentForRepoPublicGrant(registryID, repo string) RegisterIntent {
 	return RegisterIntent{
-		Kind:       "RepositoryPublicGrant",
+		Kind:       RegisterIntentKindRepositoryPublicGrant,
 		ResourceID: repoObjectID(registryID, repo),
 		Tuples:     []FGATuple{FGARepoPublicGetTuple(registryID, repo)},
 	}

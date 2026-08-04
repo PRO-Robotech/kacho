@@ -287,6 +287,11 @@ func runServe(cfg config.Config) error {
 	// в лог; «в очереди лежит N строк, старейшей M секунд» не производил никто, и
 	// застрявшая очередь молчала ровно так же, как пустая (см. diagnostics.go).
 	go runRegisterOutboxMetrics(ctx, pool, svcMetrics, logger)
+	// Сверка «у объекта прав есть живой ресурс». Держит само свойство, а не
+	// отсутствие одной его причины, и разбирает уже накопленное — снимать которое
+	// больше некому: оно не привязано ни к какому будущему удалению
+	// (см. orphan_sweep_backstop.go).
+	startOrphanSweepBackstop(ctx, registryRepo, logger)
 
 	// ── authz: per-RPC OpenFGA Check на ОБОИХ листенерах (AuthN+AuthZ везде —
 	// internal :9091 НЕ освобождён, security.md). Check обязателен —
