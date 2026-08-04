@@ -23,16 +23,29 @@
 // Гейт статический (никакого стенда) и точный: на 6 сервисах даёт 0 ложных
 // срабатываний — переменные, выставляемые скриптами коллекции (`pm.environment.set`),
 // учитываются как определённые.
+//
+// ЧТО СЧИТАЕТСЯ ИСТОЧНИКОМ. Отслеживаемый файл окружения набора (в дереве это
+// `…/environments/local.postman_environment.template.json` — из него прогон
+// материализует рабочий env), `pm.*.set` в самой коллекции и слоты, которые харнесс
+// передаёт через `--env-var` (runtimeVars). Запись, сделанную посевом в
+// `local.postman_environment.json`, гейт источником НЕ считает и считать не может:
+// этот файл объявлен игнорируемым (в него ложатся живые предъявительские токены),
+// в коммите его нет, и вердикт по нему был бы свойством чужого рабочего каталога.
+// Поэтому переменная, которую посев выставляет в рантайме, обязана быть ОБЪЯВЛЕНА
+// в отслеживаемом шаблоне — значение посев допишет.
 package repohygiene
 
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // runtimeVars — выставляются харнессом при запуске (deploy/scripts/newman-e2e.sh
@@ -78,40 +91,95 @@ type newmanScan struct {
 	used        map[string]bool // переменная встречается в коллекции набора
 	unsourced   map[string]bool // ...и её никто не выставляет: env, скрипт, runtime
 	collections int             // сколько файлов коллекций реально прочитано
+	suites      int             // ...из скольких наборов
+}
+
+// newmanSuiteSlot — к какому набору и к какой его части относится путь ИЗ ИНДЕКСА.
+//
+// Разбор по сегментам, а не по шаблону пути: сегмент — то же, чем набор адресуется
+// в дереве, и он переживает смену разделителя и вложенность. `ok=false` означает
+// «путь к наборам отношения не имеет», а не «набора нет».
+func newmanSuiteSlot(rel string) (suite, kind string, ok bool) {
+	if !strings.HasSuffix(rel, ".json") {
+		return "", "", false
+	}
+	parts := strings.Split(rel, "/")
+	// services/<svc>/tests/newman/<kind>/<файл>
+	if len(parts) == 6 && parts[0] == "services" && parts[2] == "tests" && parts[3] == "newman" {
+		return parts[1], parts[4], true
+	}
+	// gateway/tests/newman/<kind>/<файл>
+	if len(parts) == 5 && parts[0] == "gateway" && parts[1] == "tests" && parts[2] == "newman" {
+		return "gateway", parts[3], true
+	}
+	return "", "", false
 }
 
 // scanNewmanVars — единственное место, где вычисляются находки этого гейта.
+//
+// Состав наборов берётся у ИНДЕКСА git, а не с диска. Причина не косметическая:
+// `local.postman_environment.json` каждого набора объявлен игнорируемым (в него посев
+// пишет живые предъявительские токены), а рядом лежит отслеживаемый шаблон, из
+// которого прогон этот файл материализует. Обход диска читает оба — и вердикт гейта
+// перестаёт быть свойством КОММИТА, становясь свойством рабочего каталога: на машине,
+// где хоть раз поднимали стенд, переменная «определена» неотслеживаемым файлом и гейт
+// молчит; в свежем клоне (то есть в CI) того же коммита он краснеет. Ровно так этот
+// гейт и разошёлся сам с собой — 2026-08-04, две переменные iam.
+//
+// Обратная сторона того же дефекта тише: неотслеживаемая коллекция (черновик, отчёт
+// прогона) приносит СВОИ `{{переменные}}`, и гейт краснеет о наборе, которого коммит
+// не содержит. Инъекция в обе стороны — TestNewmanCorpusComesFromTheIndex.
 func scanNewmanVars(t *testing.T, root string) newmanScan {
 	t.Helper()
 
 	scan := newmanScan{used: map[string]bool{}, unsourced: map[string]bool{}}
 
-	suites, err := filepath.Glob(filepath.Join(root, "services", "*", "tests", "newman"))
+	tracked, err := treecorpus.Under(root)
 	if err != nil {
-		t.Fatalf("glob: %v", err)
-	}
-	if gw := filepath.Join(root, "gateway", "tests", "newman"); dirExists(gw) {
-		suites = append(suites, gw)
+		t.Fatalf("состав наборов newman: %v", err)
 	}
 
-	for _, suite := range suites {
-		svc := suiteName(root, suite)
-		cols, _ := filepath.Glob(filepath.Join(suite, "collections", "*.json"))
-		if len(cols) == 0 {
+	cols := map[string][]string{}
+	envs := map[string][]string{}
+	for _, abs := range tracked {
+		rel, relErr := filepath.Rel(root, abs)
+		if relErr != nil {
+			t.Fatalf("относительный путь для %s: %v", abs, relErr)
+		}
+		suite, kind, ok := newmanSuiteSlot(filepath.ToSlash(rel))
+		if !ok {
+			continue
+		}
+		switch kind {
+		case "collections":
+			cols[suite] = append(cols[suite], abs)
+		case "environments":
+			envs[suite] = append(envs[suite], abs)
+		}
+	}
+
+	suites := make([]string, 0, len(cols))
+	for suite := range cols {
+		suites = append(suites, suite)
+	}
+	sort.Strings(suites) // детерминизм входа — часть контракта проверки
+
+	for _, svc := range suites {
+		if len(cols[svc]) == 0 {
 			continue // набора нет (напр. geo — только README)
 		}
-		scan.collections += len(cols)
+		scan.collections += len(cols[svc])
+		scan.suites++
 
 		defined := map[string]bool{}
-		envs, _ := filepath.Glob(filepath.Join(suite, "environments", "*.json"))
-		for _, e := range envs {
+		for _, e := range envs[svc] {
 			for _, k := range envKeys(t, e) {
 				defined[k] = true
 			}
 		}
 
 		used := map[string]bool{}
-		for _, c := range cols {
+		for _, c := range cols[svc] {
 			b, err := os.ReadFile(c)
 			if err != nil {
 				t.Fatalf("read %s: %v", c, err)
@@ -140,8 +208,16 @@ func scanNewmanVars(t *testing.T, root string) newmanScan {
 // TestNewmanVariablesAreDefined — ни одна используемая {{var}} не остаётся без источника.
 func TestNewmanVariablesAreDefined(t *testing.T) {
 	scan := scanNewmanVars(t, repoRoot(t))
+
+	// Предпосылка: корпус прочитан. Прежняя редакция здесь ПРОПУСКАЛА проверку, и
+	// «наборов не найдено» было неотличимо от «наборы в порядке» — притом что ровно
+	// это состояние и наступает, если корпус перестал находиться (набор переехал,
+	// каталог переименован). Пропуск на пустом корпусе — не осторожность, а зелёный
+	// вердикт, за которым ничего не стоит.
 	if scan.collections == 0 {
-		t.Skip("newman-наборов не найдено")
+		t.Fatal("прочитано ноль коллекций newman — смотреть было не на что. " +
+			"«Ноль находок» здесь означало бы «ноль прочитанного»: проверь, не переехали " +
+			"ли наборы из <services/*|gateway>/tests/newman/collections/ и лежат ли они в индексе")
 	}
 
 	var problems []string
@@ -154,10 +230,21 @@ func TestNewmanVariablesAreDefined(t *testing.T) {
 	}
 	sort.Strings(problems)
 
+	// Объём осмотренного печатается всегда — и на зелёном тоже.
+	t.Logf("осмотрено: коллекций %d, наборов %d, переменных в употреблении %d; без источника %d "+
+		"(исключений knownGaps: %d)",
+		scan.collections, scan.suites, len(scan.used), len(scan.unsourced), len(knownGaps))
+
 	if len(problems) > 0 {
 		t.Errorf("%d newman-переменн(ая|ых) без источника — Postman подставит их ЛИТЕРАЛОМ, и падение "+
-			"будет выглядеть багом продукта:\n%s\n\nпочинить: засеять в tests/authz-fixtures/setup.sh "+
-			"(+ patch-env) либо выставлять в самой коллекции",
+			"будет выглядеть багом продукта:\n%s\n\n"+
+			"починить — ОДНО из двух:\n"+
+			"  1) объявить переменную в ОТСЛЕЖИВАЕМОМ шаблоне окружения набора\n"+
+			"     (…/environments/local.postman_environment.template.json), значение допишет\n"+
+			"     посев (tests/authz-fixtures/*, patch-env.py). Записи посева в игнорируемый\n"+
+			"     local.postman_environment.json НЕДОСТАТОЧНО: этого файла в коммите нет,\n"+
+			"     и вердикт по нему был бы свойством рабочего каталога;\n"+
+			"  2) выставлять её в самой коллекции через pm.environment.set.",
 			len(problems), strings.Join(problems, "\n"))
 	}
 }
@@ -209,6 +296,127 @@ func TestKnownGapsStillHaveSubject(t *testing.T) {
 	}
 }
 
+// TestNewmanCorpusComesFromTheIndex — вердикт гейта обязан быть свойством КОММИТА,
+// а не рабочего каталога, в котором когда-то гоняли стенд.
+//
+// Предмет. Env-файл набора (`local.postman_environment.json`) в репозитории не лежит:
+// в него посев пишет живые предъявительские токены, и `.gitignore` держит его вне
+// индекса намеренно. Рядом лежит ОТСЛЕЖИВАЕМЫЙ шаблон, из которого прогон этот файл
+// материализует. Собирая корпус с диска, гейт читает оба — и его ответ начинает
+// зависеть от того, гоняли ли на этой машине стенд.
+//
+// Расхождение ходит в обе стороны, и обе проверяются здесь настоящим входом:
+//
+//   - ТИШИНА: переменная, которой в отслеживаемом шаблоне нет, «определяется»
+//     неотслеживаемым файлом — на машине разработчика гейт молчит, в свежем клоне
+//     (то есть в CI) краснеет. Именно этим дефект и был найден;
+//   - ШУМ: коллекция, которой в репозитории нет (отчёт прогона, локальный черновик),
+//     приносит собственные `{{переменные}}` — гейт краснеет о наборе, которого коммит
+//     не содержит.
+//
+// Положительный контроль в паре с обоими: отслеживаемый шаблон источником быть НЕ
+// перестаёт, набор шлюза по-прежнему находится, и перепись прочитанных коллекций
+// печатается — «ноль находок» обязано быть отличимо от «ноль прочитанного».
+func TestNewmanCorpusComesFromTheIndex(t *testing.T) {
+	root := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	write := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	collection := func(vars ...string) string {
+		refs := make([]string, 0, len(vars))
+		for _, v := range vars {
+			refs = append(refs, `"{{`+v+`}}"`)
+		}
+		return `{"item":[` + strings.Join(refs, ",") + `]}`
+	}
+	env := func(keys ...string) string {
+		vals := make([]string, 0, len(keys))
+		for _, k := range keys {
+			vals = append(vals, `{"key":"`+k+`","value":""}`)
+		}
+		return `{"values":[` + strings.Join(vals, ",") + `]}`
+	}
+
+	git("init", "-q")
+	write("go.mod", "module synthetic\n")
+	// Ровно то правило игнорирования, что живёт в дереве: материализованный
+	// env-файл набора вне индекса, шаблон — в индексе.
+	write(".gitignore", "local.postman_environment.json\nstray.postman_collection.json\n")
+	write("services/demo/tests/newman/collections/demo.postman_collection.json",
+		collection("trackedVar", "strayVar"))
+	write("services/demo/tests/newman/environments/local.postman_environment.template.json",
+		env("trackedVar"))
+	write("gateway/tests/newman/collections/gw.postman_collection.json", collection("gwVar"))
+	write("gateway/tests/newman/environments/local.postman_environment.template.json",
+		env("gwVar"))
+	git("add", "-A")
+	git("-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "fixture")
+
+	// СЛЕДЫ ПРОШЛОГО ПРОГОНА — то, что лежит на машине, где поднимали стенд.
+	write("services/demo/tests/newman/environments/local.postman_environment.json",
+		env("trackedVar", "strayVar"))
+	write("services/demo/tests/newman/collections/stray.postman_collection.json",
+		collection("ghostVar"))
+
+	scan := scanNewmanVars(t, root)
+
+	// Перепись: сначала убеждаемся, что читали именно коммит.
+	if scan.collections != 2 {
+		t.Errorf("прочитано коллекций %d, а в индексе их 2 — корпус собран с диска: "+
+			"вердикт стал свойством рабочего каталога, а не коммита", scan.collections)
+	}
+
+	// (а) ТИШИНА: неотслеживаемый env-файл источником не является.
+	if !scan.unsourced["demo/strayVar"] {
+		t.Error("{{strayVar}} признана определённой: её выставляет только НЕотслеживаемый " +
+			"local.postman_environment.json. На машине со следами прогона гейт молчит, " +
+			"в свежем клоне краснеет — один коммит, два разных вердикта")
+	}
+
+	// (б) ШУМ: неотслеживаемая коллекция в корпус не входит.
+	if scan.used["demo/ghostVar"] {
+		t.Error("{{ghostVar}} засчитана использованной: её приносит НЕотслеживаемая " +
+			"коллекция. Гейт краснеет о наборе, которого коммит не содержит, — и " +
+			"настоящая находка тонет среди привнесённых")
+	}
+
+	// (в) ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: отслеживаемое источником быть не перестало.
+	if !scan.used["demo/trackedVar"] {
+		t.Error("{{trackedVar}} не увидена вовсе — отслеживаемая коллекция потеряна, " +
+			"и тогда «ноль находок» означает «ноль прочитанного»")
+	}
+	if scan.unsourced["demo/trackedVar"] {
+		t.Error("{{trackedVar}} объявлена без источника, хотя её определяет ОТСЛЕЖИВАЕМЫЙ " +
+			"шаблон окружения: отсев стал грубее своего предмета")
+	}
+	// (г) ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: набор шлюза находится и по индексу.
+	if !scan.used["gateway/gwVar"] {
+		t.Error("набор gateway/tests/newman не найден — прежняя редакция находила его " +
+			"проверкой существования каталога на диске, и замена обязана сохранить находку")
+	}
+	if scan.unsourced["gateway/gwVar"] {
+		t.Error("{{gwVar}} объявлена без источника, хотя её определяет отслеживаемый шаблон шлюза")
+	}
+}
+
 func envKeys(t *testing.T, path string) []string {
 	t.Helper()
 	b, err := os.ReadFile(path)
@@ -228,21 +436,4 @@ func envKeys(t *testing.T, path string) []string {
 		out = append(out, v.Key)
 	}
 	return out
-}
-
-func suiteName(root, suite string) string {
-	rel, err := filepath.Rel(root, suite)
-	if err != nil {
-		return suite
-	}
-	parts := strings.Split(rel, string(filepath.Separator))
-	if len(parts) >= 2 && parts[0] == "services" {
-		return parts[1]
-	}
-	return parts[0]
-}
-
-func dirExists(p string) bool {
-	st, err := os.Stat(p)
-	return err == nil && st.IsDir()
 }
