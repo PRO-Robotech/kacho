@@ -100,11 +100,25 @@ function declaredIn(headerText: string): string[] {
   return out;
 }
 
+// Обход ПРОД-исходников. Тестовая оснастка исключается ДВУМЯ признаками, и второй
+// не избыточен: `src/test/` — каталог оснастки целиком (setup, стабы antd/стилей,
+// моки, фикстуры аудитов), и лежащий там файл БЕЗ суффикса `.test.ts` под первый
+// признак не подпадает. Именно так гейт и покраснел: аудит подмаршрута операций
+// несёт литерал `"/operations"` как ПРЕДИКАТ ПОИСКА, а обход прочитал его как
+// адрес, который приложение якобы зовёт.
+//
+// Это сужение области, а не послабление утверждения: внутри оставшегося набора
+// равенство множеств по-прежнему точное — лишняя строка шапки находка ровно так
+// же, как недостающая. Фикстуры оснастки адресацией продукта не являются by
+// construction, а настоящая адресация из них недостижима: прод-код на `src/test/`
+// не ссылается (иначе стабы уехали бы в бандл).
 function tsFiles(dir: string, acc: string[] = []): string[] {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, e.name);
-    if (e.isDirectory()) tsFiles(p, acc);
-    else if (/\.tsx?$/.test(e.name) && !/\.test\.tsx?$/.test(e.name)) acc.push(p);
+    if (e.isDirectory()) {
+      if (e.name === "test") continue;
+      tsFiles(p, acc);
+    } else if (/\.tsx?$/.test(e.name) && !/\.test\.tsx?$/.test(e.name)) acc.push(p);
   }
   return acc;
 }
