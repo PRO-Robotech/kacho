@@ -126,4 +126,22 @@ describe("spec fields name real request fields", () => {
     expect(names).not.toContain("health_check.tcp_options.port");
     expect(names).toContain("health_check.tcp.port");
   });
+
+  // iam.v1.CreateAccessBindingRequest: the anchor pair is `scope_type` (dotted)
+  // + `scope_id`, both `(required) = true`. `resource_type`/`resource_id` are not
+  // fields of this message at any tag — the AccessBinding itself tombstones the
+  // whole legacy scope projection (`reserved 15,16,17,18; reserved "scope",
+  // "scope_ref", …`).
+  //
+  // The spec is not create-capable — the bespoke page builds the body — but the
+  // template is still the registry's written statement of the request's shape,
+  // and a statement in the wrong vocabulary is what the next contributor copies.
+  it("access-bindings anchors the grant in the vocabulary Create declares", () => {
+    const tpl = asObj(REGISTRY["access-bindings"].template({ accountId: "acc-1" }));
+    expect(tpl).not.toHaveProperty("resource_type");
+    expect(tpl).not.toHaveProperty("resource_id");
+    expect(tpl).not.toHaveProperty("scope_ref");
+    expect(tpl.scope_type).toBe("iam.account");
+    expect(tpl.scope_id).toBe("acc-1");
+  });
 });

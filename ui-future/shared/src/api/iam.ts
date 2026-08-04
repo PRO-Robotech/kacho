@@ -414,17 +414,18 @@ export function targetKind(
 
 export interface AccessBinding {
   id: string;
-  // Legacy single-subject (AS-IS): retained для back-compat. IAM-1 — subjects[].
+  // Legacy single-subject (AS-IS): retained для back-compat — сервер по-прежнему
+  // заполняет пару на чтении (= subjects[0]). IAM-1 — subjects[].
   subject_type: string;
   subject_id: string;
   role_id: string;
-  // Legacy scope-anchor (AS-IS, [DEPRECATED]): resource_type/resource_id. IAM-1
-  // переименовывает в scopeType/scopeId («resource» зарезервирован за target).
-  resource_type: string;
-  resource_id: string;
   created_at?: string;
-  // RBAC v2 (KAC-214): output-only scope tier enum (CLUSTER/ACCOUNT/PROJECT).
-  scope?: Scope;
+  // Здесь стояли `resource_type` / `resource_id` (обязательными!) и `scope`.
+  // Ни одного из этих полей у AccessBinding ствола нет: тройка снята в пользу
+  // scope_type/scope_id, а теги и имена `scope`/`scope_ref` — надгробия
+  // (`reserved 15,16,17,18`). Объявлять их обязательными значило обещать
+  // читателю поле, которого он никогда не получит. Одноимённые поля ЕСТЬ у
+  // SubjectPrivilege — это другое сообщение, см. ниже.
   // ── IAM-1 redesign (additive) ──
   // subjects[] — 1..N грантополучателей (per-subject независимый tuple-set/revoke).
   subjects?: Subject[];
@@ -578,14 +579,20 @@ export interface SubjectPrivilege {
   role_id: string;
   // resolved сервером (пусто для удалённой роли — UI fallback на role_id).
   role_name?: string;
+  // В ОТЛИЧИЕ от AccessBinding, это сообщение действительно несёт и старую
+  // тройку (теги 4/5/6), и точечную пару (12/13) — обе живые на ревизии.
   resource_type?: string;
   resource_id?: string;
   scope?: Scope;
+  scope_type?: IamScopeType;
+  scope_id?: string;
   status?: AccessBindingStatus;
   created_at?: string;
   granted_by_user_id?: string;
   expires_at?: string;
   derivation?: Derivation;
+  /** Группа, через членство в которой пришло право (тег 14). */
+  via_group_id?: string;
 }
 export interface SubjectPrivilegeList {
   privileges: SubjectPrivilege[];

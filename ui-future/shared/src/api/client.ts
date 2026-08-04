@@ -4,7 +4,7 @@
 //
 // URL-ы verbatim из proto google.api.http annotations:
 //   iam: /iam/v1/accounts, /iam/v1/projects
-//   vpc:                  /vpc/v1/networks, /vpc/v1/subnets, /vpc/v1/addresses, /vpc/v1/route-tables
+//   vpc:                  /vpc/v1/networks, /vpc/v1/subnets, /vpc/v1/addresses, /vpc/v1/routeTables
 //   operations:           /operations/{id}
 //
 // API mapping:

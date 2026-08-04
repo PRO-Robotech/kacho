@@ -201,144 +201,18 @@ export interface SecurityGroupList {
   next_page_token?: string;
 }
 
-// ====== compute ======
-
-export interface Disk {
-  id: string;
-  project_id?: string;
-  created_at?: string;
-  name: string;
-  description?: string;
-  labels?: Record<string, string>;
-  type_id?: string;
-  zone_id?: string;
-  size?: string | number;
-  block_size?: string | number;
-  status?: "STATUS_UNSPECIFIED" | "CREATING" | "READY" | "ERROR" | "DELETING" | string;
-  source_image_id?: string;
-  source_snapshot_id?: string;
-  instance_ids?: string[];
-}
-
-export interface DiskList {
-  disks: Disk[];
-  next_page_token?: string;
-}
-
-export interface Image {
-  id: string;
-  project_id?: string;
-  created_at?: string;
-  name: string;
-  description?: string;
-  labels?: Record<string, string>;
-  family?: string;
-  storage_size?: string | number;
-  min_disk_size?: string | number;
-  product_ids?: string[];
-  status?: "STATUS_UNSPECIFIED" | "CREATING" | "READY" | "ERROR" | "DELETING" | string;
-  os?: { type?: string };
-  pooled?: boolean;
-}
-
-export interface ImageList {
-  images: Image[];
-  next_page_token?: string;
-}
-
-export interface Snapshot {
-  id: string;
-  project_id?: string;
-  created_at?: string;
-  name: string;
-  description?: string;
-  labels?: Record<string, string>;
-  storage_size?: string | number;
-  disk_size?: string | number;
-  product_ids?: string[];
-  status?: "STATUS_UNSPECIFIED" | "CREATING" | "READY" | "ERROR" | "DELETING" | string;
-  source_disk_id?: string;
-}
-
-export interface SnapshotList {
-  snapshots: Snapshot[];
-  next_page_token?: string;
-}
-
-export interface InstanceNetworkInterface {
-  index?: string;
-  subnet_id?: string;
-  primary_v4_address?: { address?: string; one_to_one_nat?: { address?: string; ip_version?: string } };
-  security_group_ids?: string[];
-}
-
-export interface AttachedDisk {
-  mode?: string;
-  device_name?: string;
-  auto_delete?: boolean;
-  disk_id?: string;
-}
-
-export interface Instance {
-  id: string;
-  project_id?: string;
-  created_at?: string;
-  name: string;
-  description?: string;
-  labels?: Record<string, string>;
-  zone_id?: string;
-  platform_id?: string;
-  resources?: {
-    memory?: string | number;
-    cores?: string | number;
-    core_fraction?: string | number;
-    gpus?: string | number;
-  };
-  status?:
-    | "STATUS_UNSPECIFIED"
-    | "PROVISIONING"
-    | "RUNNING"
-    | "STOPPING"
-    | "STOPPED"
-    | "STARTING"
-    | "RESTARTING"
-    | "UPDATING"
-    | "ERROR"
-    | "CRASHED"
-    | "DELETING"
-    | string;
-  metadata?: Record<string, string>;
-  boot_disk?: AttachedDisk;
-  secondary_disks?: AttachedDisk[];
-  network_interfaces?: InstanceNetworkInterface[];
-  fqdn?: string;
-  service_account_id?: string;
-}
-
-export interface InstanceList {
-  instances: Instance[];
-  next_page_token?: string;
-}
-
-export interface DiskType {
-  id: string;
-  description?: string;
-  zone_ids?: string[];
-}
-
-export interface DiskTypeList {
-  disk_types: DiskType[];
-  next_page_token?: string;
-}
-
-// compute.v1.Zone — read-only справочник зон, зеркало vpc zones.
-export interface ComputeZone {
-  id: string;
-  region_id?: string;
-  status?: string;
-}
-
-export interface ComputeZoneList {
-  zones: ComputeZone[];
-  next_page_token?: string;
-}
+// ====== compute / storage ======
+//
+// Здесь лежал набор Disk/DiskList/Image/ImageList/Snapshot/SnapshotList/
+// AttachedDisk/InstanceNetworkInterface/Instance/InstanceList/DiskType/
+// DiskTypeList/ComputeZone/ComputeZoneList — форма compute ДО раскола блочного
+// хранения: family/os/min_disk_size/storage_size/product_ids/pooled у образа,
+// disk_size/source_disk_id у снимка, platform_id/resources/service_account_id
+// у машины. Ни одного из этих полей нет у ресурсов ствола, а `compute.Zone`
+// вообще никогда не существовал: каталог размещения принадлежит geo.
+//
+// Импортёров у них не было ни одного — ни в shared, ни в остальных восьми
+// приложениях (предикат: `grep -rw <имя>` по ui-future без node_modules); свои
+// типы каждое приложение держит в собственном api/types.ts. Мёртвое объявление
+// снятого контракта — это не «про запас»: следующий, кто станет типизировать
+// storage из shared, скопирует отсюда форму, которой нет.

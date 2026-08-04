@@ -111,7 +111,15 @@ export interface ResourceSpec {
   /** Path-template для internal/infra-проекции ресурса (плейсхолдер `{id}`).
    *  Если задан — на DetailPage появляется tab "jsonint", который делает
    *  GET <internalGetPath с подставленным {id}> и pretty-print'ит JSON-ответ.
-   *  Пример: "/vpc/v1/networks/{id}/internal". Большинство ресурсов его не имеют. */
+   *  Пример: "/vpc/v1/networks/{id}:internal" — форма ГЛАГОЛЬНАЯ, через
+   *  двоеточие: так объявлена единственная :internal-аннотация vpc
+   *  (`InternalNetworkService.GetNetwork`). Прежний пример показывал слэшевую
+   *  форму `/{id}/internal`, которой на поверхности нет, — и по образцу такое
+   *  поле завели ещё раз.
+   *  Поле ставится ТОЛЬКО когда у Internal*-сервиса есть http-аннотация:
+   *  `InternalNetworkInterfaceService` её не имеет вовсе (pure gRPC
+   *  service→service), поэтому вкладки internal у NIC быть не может.
+   *  Большинство ресурсов поля не имеют. */
   internalGetPath?: string;
   /** Admin-плоскость ресурса (`Internal*`-сервис на cluster-internal listener).
    *  `apiPath` остаётся поверхностью ЧТЕНИЯ; когда задан `admin`, Create/Update/
@@ -489,24 +497,24 @@ function definitionTierCell(row: Record<string, unknown>): ReactNode {
   );
 }
 
-// AccessBinding scopeType (dotted, IAM-1 F7) с legacy fallback (scope enum).
+// AccessBinding scopeType — точечная форма (iam.cluster|iam.account|iam.project).
+//
+// Здесь стоял запасной путь на `scope`/`resource_type`/`resource_id`. Эти имена
+// у AccessBinding ЗАРЕЗЕРВИРОВАНЫ надгробиями (`reserved 15,16,17,18; reserved
+// "scope","scope_ref",…`), сервер их не отдаёт ни при каких условиях, и ветка
+// была недостижимой — она документировала контракт, которого код не производит.
 function scopeTypeCell(row: Record<string, unknown>): ReactNode {
   const st = String(row.scope_type ?? row.scopeType ?? "");
-  if (st) return <Tag color={iamTierColor(st)}>{st}</Tag>;
-  const s = String(row.scope ?? "");
-  if (!s || s === "SCOPE_UNSPECIFIED") return IAM_DASH;
-  const color = s === "CLUSTER" ? "red" : s === "ACCOUNT" ? "blue" : s === "PROJECT" ? "green" : "default";
-  return <Tag color={color}>{s}</Tag>;
+  if (!st) return IAM_DASH;
+  return <Tag color={iamTierColor(st)}>{st}</Tag>;
 }
 
-// AccessBinding scope anchor (scopeId, IAM-1 F7) — ref по типу scope; legacy
-// fallback resource_id/resource_type.
+// AccessBinding scope anchor (scopeId) — ссылка по типу якоря.
 function scopeAnchorCell(row: Record<string, unknown>): ReactNode {
   const st = String(row.scope_type ?? row.scopeType ?? "");
-  const rt = String(row.resource_type ?? "");
   const anchorType =
-    st === "iam.account" ? "account" : st === "iam.project" ? "project" : st === "iam.cluster" ? "cluster" : rt;
-  const anchorId = String(row.scope_id ?? row.scopeId ?? row.resource_id ?? "");
+    st === "iam.account" ? "account" : st === "iam.project" ? "project" : st === "iam.cluster" ? "cluster" : "";
+  const anchorId = String(row.scope_id ?? row.scopeId ?? "");
   if (!anchorId) return IAM_DASH;
   const spec = anchorType === "account" ? "accounts" : anchorType === "project" ? "projects" : undefined;
   return spec ? <IamRefLink specId={spec} refId={anchorId} /> : <CopyableId id={anchorId} />;
@@ -940,14 +948,13 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         render: (row) => <IamRefLink specId="roles" refId={row.role_id as string | undefined} />,
       },
       {
-        // Область — IAM-1 F7 scopeType (dotted iam.account/project/cluster);
-        // legacy fallback scope enum.
+        // Область — точечный scopeType (iam.account|iam.project|iam.cluster).
         header: "Область",
         path: "scope_type",
         render: (row) => scopeTypeCell(row),
       },
       {
-        // Anchor — scopeId (ref по типу scope); legacy resource_id fallback.
+        // Anchor — scopeId, ссылка по типу якоря.
         header: "Anchor",
         path: "scope_id",
         render: (row) => scopeAnchorCell(row),
@@ -998,14 +1005,17 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         "(Account, Project или кластер). Создайте привязку, чтобы выдать доступ.",
       docs: ["Привязки доступа"],
     },
-    // create — bespoke AccessBindingCreatePage; template лишь удовлетворяет
-    // обязательному полю ResourceSpec.template + поддерживает URL-preset.
+    // create — bespoke AccessBindingCreatePage (ops.create=false); template лишь
+    // удовлетворяет обязательному полю ResourceSpec.template. Здесь стояла пара
+    // resource_type/resource_id: у CreateAccessBindingRequest таких полей нет ни
+    // под каким тегом, а обязательны (required) точечный scope_type и scope_id —
+    // то есть реестр письменно объявлял форму запроса в снятом словаре.
     template: ({ accountId }) => ({
       subject_type: "user",
       subject_id: "",
       role_id: "",
-      resource_type: "account",
-      resource_id: accountId ?? "",
+      scope_type: "iam.account",
+      scope_id: accountId ?? "",
     }),
   },
 
@@ -1017,7 +1027,10 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     route: "networks",
     apiPath: "/vpc/v1/networks",
     payloadKey: "networks",
-    internalGetPath: "/vpc/v1/networks/{id}/internal",
+    // proto: `InternalNetworkService.GetNetwork` → GET
+    // /vpc/v1/networks/{network_id}:internal (глагольный суффикс отличает её от
+    // публичного GET). Регистрируется только на cluster-internal mux.
+    internalGetPath: "/vpc/v1/networks/{id}:internal",
     related: [
       { childId: "subnets", filterField: "network_id", label: "Подсети" },
       {
@@ -1804,13 +1817,18 @@ export const REGISTRY: Record<string, ResourceSpec> = {
   // только во InternalNetworkInterfaceService, тут не показываются (см. workspace
   // CLAUDE.md §«Инфра-чувствительные данные»). Мутации (Create/Update/Delete/
   // Attach/Detach) async → Operation, как у остальных VPC-ресурсов.
+  //
+  // Вкладки «JSON (internal)» у NIC нет и быть не может: у
+  // InternalNetworkInterfaceService НЕТ ни одной google.api.http-аннотации — его
+  // proto прямо это объявляет («Pure gRPC service→service»). Стоявший здесь
+  // internalGetPath адресовал маршрут, которого не существует ни в какой форме,
+  // — снят, а не переписан.
 
   "network-interfaces": {
     id: "network-interfaces",
     route: "network-interfaces",
     apiPath: "/vpc/v1/networkInterfaces",
     payloadKey: "network_interfaces",
-    internalGetPath: "/vpc/v1/networkInterfaces/{id}/internal",
     singular: "Сетевой интерфейс",
     plural: "Сетевые интерфейсы",
     genitive: "Сетевого интерфейса",
@@ -2249,9 +2267,20 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     template: () => ({}),
   },
 
-  // compute-zones — read-only справочник зон. kacho-compute — owner Geography
-  // (Region/Zone перенесены из vpc, эпик KAC-15; см. workspace CLAUDE.md
-  // §«Кросс-доменные ссылки на ресурсы»). Admin-CRUD — registry-запись `zones`.
+  // compute-zones / compute-regions — read-only проекции ТОГО ЖЕ каталога
+  // размещения, что и записи `zones` / `regions`: тот же публичный путь geo, те
+  // же строки. Отдельные id живут потому, что на них ссылаются подборщики
+  // (`Instance.zone_id`, региональные поля балансировщика) в этом и в соседних
+  // приложениях; admin-CRUD — только у записей `zones` / `regions`.
+  //
+  // Владелец — kacho-geo, и всегда был им: здесь стояло «kacho-compute — owner
+  // Geography, Region/Zone перенесены из vpc», чего не было ни в одной ревизии
+  // (в proto compute нет ни одного сообщения Region/Zone).
+  //
+  // Колонки — публичная проекция: сырой admin-`status` у Zone ЗАРЕЗЕРВИРОВАН
+  // (`reserved 3; reserved "status"`), у Region его не было никогда, и колонка,
+  // привязанная к нему, рисовала пустую ячейку вечно. Доступность размещения
+  // несёт производный openForPlacement° — как в записях `zones` / `regions`.
   "compute-zones": {
     id: "compute-zones",
     route: "compute-zones",
@@ -2270,7 +2299,16 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         className: "font-mono",
       },
       { header: "Регион", path: "region_id", format: "text" },
-      { header: "Статус", path: "status", format: "status" },
+      {
+        header: "Размещение",
+        path: "open_for_placement",
+        render: (row) => (
+          <PlacementBadge
+            open={row.open_for_placement as boolean | undefined}
+            reason={row.placement_blocked_reason as PlacementBlockedReason | undefined}
+          />
+        ),
+      },
     ],
     template: () => ({}),
   },
@@ -2293,7 +2331,11 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         className: "font-mono",
       },
       { header: "Название", path: "name", format: "text" },
-      { header: "Статус", path: "status", format: "status" },
+      {
+        header: "Размещение",
+        path: "open_for_placement",
+        render: (row) => <PlacementBadge open={row.open_for_placement as boolean | undefined} />,
+      },
     ],
     template: () => ({}),
   },

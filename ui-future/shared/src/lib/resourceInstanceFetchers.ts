@@ -9,9 +9,15 @@
 // map ИЛИ has_list_endpoint=false → free-text fallback (НИКОГДА Select, бэкенящийся
 // несуществующим публичным List — security-инвариант).
 //
-// AddressPool/Condition (has_list_endpoint=false в каталоге) намеренно НЕ в map —
-// их List только Internal-only (AddressPool) / не зарегистрирован на external
-// (Condition). Даже будь они в map — каталожный флаг отрезал бы picker.
+// AddressPool (has_list_endpoint=false в каталоге) намеренно НЕ в map — его List
+// только Internal-only. Даже будь он в map — каталожный флаг отрезал бы picker.
+//
+// Рядом стояло такое же исключение для Condition. Исключать больше нечего:
+// токена `iam.condition` нет в закрытой таблице grantable-типов ствола, ресурс
+// снят целиком (в proto iam нет ни condition.proto, ни ConditionService), и
+// маршрутов /iam/v1/conditions на поверхности не осталось. Исключение, у
+// которого нет предмета, — находка: следующий читатель принимает его за
+// описание действительности.
 
 import { getResource, type ResourceSpec } from "@shared/lib/resource-registry";
 
@@ -43,8 +49,15 @@ const TOKEN_TO_REGISTRY_ID: Record<string, string> = {
   "iam.user": "users",
   "iam.account": "accounts",
   "iam.project": "projects",
-  // iam.condition — НЕ здесь (не зарегистрирован на external, has_list_endpoint=false).
   // iam.accessBinding — без простого id-named per-object List picker'а (custom RPC).
+
+  // НЕ покрыты, и это пробел, а не решение: storage.volumes / storage.snapshots /
+  // storage.images и registry.registries / registry.repositories — grantable-токены
+  // ствола, у которых публичный List есть, а записи здесь нет, поэтому picker
+  // падает в free-text. Заводить их надо вместе со спеками этих ресурсов в
+  // REGISTRY, иначе getResource вернёт undefined и запись не сработает.
+  // geo.regions / geo.zones в закрытой таблице grantable-типов ствола ОТСУТСТВУЮТ —
+  // им записи не полагается.
 };
 
 /** Описание fetcher'а инстансов для resource_names-picker. */

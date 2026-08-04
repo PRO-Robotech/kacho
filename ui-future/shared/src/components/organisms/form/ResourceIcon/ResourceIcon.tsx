@@ -14,7 +14,6 @@ import {
   GatewayOutlined,
   GlobalOutlined,
   HddOutlined,
-  HistoryOutlined,
   KeyOutlined,
   NodeIndexOutlined,
   ProjectOutlined,
@@ -36,7 +35,6 @@ const ICONS: Record<string, ReactNode> = {
   groups: <TeamOutlined />,
   roles: <SafetyCertificateOutlined />,
   "access-bindings": <KeyOutlined />,
-  operations: <HistoryOutlined />,
   // vpc (сайдбар: ApartmentOutlined / ClusterOutlined / GlobalOutlined /
   // NodeIndexOutlined / SafetyOutlined / ApiOutlined / GatewayOutlined)
   networks: <ApartmentOutlined />,
@@ -46,9 +44,14 @@ const ICONS: Record<string, ReactNode> = {
   "security-groups": <SafetyOutlined />,
   "network-interfaces": <ApiOutlined />,
   gateways: <GatewayOutlined />,
-  // compute (сайдбар: DesktopOutlined / HddOutlined / FileImageOutlined / CameraOutlined)
-  instances: <DesktopOutlined />,
-  disks: <HddOutlined />,
+  // compute / storage (сайдбар: DesktopOutlined / HddOutlined / FileImageOutlined
+  // / CameraOutlined). Ключ — идентификатор спеки, а не название раздела: здесь
+  // стояли `instances` (спека называется `compute-instances`, поэтому машина
+  // оставалась без иконки), `disks` и `operations` — за последними двумя нет
+  // спеки ни в одном реестре консоли, а публичного `/compute/v1/disks` в стволе
+  // нет вовсе. Соответствие держит ResourceIcon.registry.test.ts.
+  "compute-instances": <DesktopOutlined />,
+  volumes: <HddOutlined />,
   images: <FileImageOutlined />,
   snapshots: <CameraOutlined />,
   // admin / system

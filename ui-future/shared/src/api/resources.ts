@@ -1,7 +1,14 @@
 // Per-resource API helpers. Обёртки над api/client.api.list/get.
-// Используются ProjectSelector, DashboardPage и другими компонентами,
-// которые не могут пользоваться generic registry.
-// URL-ы verbatim из proto google.api.http annotations.
+// URL-ы verbatim из proto google.api.http annotations — это утверждение держит
+// проба `lib/api-path-surface.test.ts`, которая сверяет каждый путь shared с
+// http-аннотациями дерева proto (прежде тут стояло `/vpc/v1/route-tables`, чего
+// на поверхности нет ни в одной ревизии; маршрут таблиц маршрутов — camelCase).
+//
+// Здесь стояло «используются ProjectSelector, DashboardPage и другими
+// компонентами»: на 2026-08-04 у всех четырёх наборов ноль импортёров во всех
+// девяти приложениях (предикат — `grep -rw <имя>` по ui-future без
+// node_modules), потребители ходят через generic registry. Оставлены как
+// поверхность пакета; названо честно, чтобы «используются» не читалось как факт.
 //
 // KAC-124: organization-manager + resource-manager упразднены, заменены на
 // kacho.cloud.iam.v1 (Account / Project). Helpers под IAM лежат в api/iam.ts
@@ -37,5 +44,5 @@ export const addressesApi = {
 };
 
 export const routeTablesApi = {
-  list: (q?: Record<string, string>) => api.list<RouteTableList>("/vpc/v1/route-tables", q),
+  list: (q?: Record<string, string>) => api.list<RouteTableList>("/vpc/v1/routeTables", q),
 };
