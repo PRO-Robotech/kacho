@@ -713,6 +713,16 @@ jobs:
         # go install собирает НАШИМ toolchain'ом, поэтому рассинхрон невозможен.
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
       - name: golangci-lint
+        # Кэш линтера — В РАБОЧЕЙ КОПИИ этого job'а. Умолчание (~/.cache/golangci-lint)
+        # общее на машину, а запись в нём ключуется содержимым пакета, не деревом:
+        # где рабочих копий одного модуля больше одной (self-hosted runner, второй
+        # checkout, локальные worktree) прогон возвращает разбор ЧУЖИХ файлов — с
+        # чужими путями, мимо якорных исключений .golangci.yml. На эфемерном
+        # github-hosted runner'е предмета сейчас нет, и пин стоит именно поэтому:
+        # инвариант не должен зависеть от того, на чьей машине job приземлился.
+        # Гейт: internal/repohygiene/lintverdict_test.go
+        env:
+          GOLANGCI_LINT_CACHE: ${{ github.workspace }}/.cache/golangci-lint
         run: golangci-lint run --timeout=10m
 
   govulncheck:

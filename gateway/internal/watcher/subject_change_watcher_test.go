@@ -8,7 +8,6 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -17,15 +16,18 @@ import (
 
 // fakePoller returns configured batches one per call, then empty slices.
 // headID is max(ids) for non-empty batches, 0 for empty ones.
+//
+// It carries no completion signal, and that is deliberate: a fake can only ever
+// signal from INSIDE the call, i.e. before the tick that made the call has
+// decided anything — so a case waiting on such a signal reads the flush counter
+// in a race with the flush. The cases below drive ticks synchronously instead
+// (watcher.Tick), which makes the fake's own bookkeeping the only state there is.
 type fakePoller struct {
 	mu      sync.Mutex
 	batches [][]int64 // ids per call; nil / empty = empty batch
 	errs    []error   // parallel to batches; errs[i] (if set) is returned on call i
 	calls   int
 	sinces  []int64 // records the `since` cursor observed on each call
-	// advanced signals that the poller has been called enough times.
-	advanced  chan struct{}
-	threshold int // call-count at which to close advanced
 }
 
 func (f *fakePoller) PollSubjectChanges(ctx context.Context, since int64) (ids []int64, headID int64, err error) {
@@ -37,10 +39,6 @@ func (f *fakePoller) PollSubjectChanges(ctx context.Context, since int64) (ids [
 	var scriptedErr error
 	if i < len(f.errs) {
 		scriptedErr = f.errs[i]
-	}
-	// signal once we've crossed the threshold
-	if f.calls == f.threshold && f.advanced != nil {
-		close(f.advanced)
 	}
 	if scriptedErr != nil {
 		return nil, 0, scriptedErr
@@ -106,130 +104,79 @@ func TestSubjectChangeWatcher_PollHasPerCallDeadline(t *testing.T) {
 	cancel()
 }
 
+// script builds a watcher over a scripted poller and returns the poller, a
+// pointer to the flush counter, and a function that drives ONE complete poll
+// cycle.
+//
+// The cycle is synchronous, so after the n-th drive() returns, everything the
+// n-th tick was ever going to do has been done — nothing here waits, retries or
+// budgets, and no assertion below can be read early or late. The interval given
+// to New is never consulted: these cases do not run the loop, they run its body.
+func script(t *testing.T, batches [][]int64, errs []error) (*fakePoller, *int, func()) {
+	t.Helper()
+	p := &fakePoller{batches: batches, errs: errs}
+	var flushes int
+	w := watcher.New(p, func() { flushes++ }, time.Second, slog.Default())
+	return p, &flushes, func() { w.Tick(context.Background()) }
+}
+
 // TestSubjectChangeWatcher_PrimingTickDoesNotFlush verifies:
 //   - The FIRST (priming) tick — even if non-empty — does NOT flush.
 //   - A LATER non-empty tick DOES flush (exactly once for a single non-empty batch).
 func TestSubjectChangeWatcher_PrimingTickDoesNotFlush(t *testing.T) {
-	// batches[0] = {} → priming tick (empty ids); batches[1] = {1,2,3} → flush tick.
-	advanced := make(chan struct{})
-	p := &fakePoller{
-		batches:   [][]int64{{}, {1, 2, 3}},
-		advanced:  advanced,
-		threshold: 2, // closed after second call (flush tick) completes
+	// tick0 = {} → priming; tick1 = {1,2,3} → flush.
+	p, flushes, tick := script(t, [][]int64{{}, {1, 2, 3}}, nil)
+
+	tick()
+	if *flushes != 0 {
+		t.Fatalf("the priming tick flushed %d time(s); a cold cache has nothing to invalidate and the "+
+			"historical backlog must not be replayed", *flushes)
 	}
+	tick()
 
-	var flushCount int32
-	flushed := make(chan struct{}, 4)
-	flushFn := func() {
-		atomic.AddInt32(&flushCount, 1)
-		flushed <- struct{}{}
+	if *flushes != 1 {
+		t.Errorf("expected exactly 1 flush (priming tick contributes 0), got %d", *flushes)
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	w := watcher.New(p, flushFn, 10*time.Millisecond, slog.Default())
-	go w.Run(ctx)
-
-	// Wait until both ticks have fired (threshold=2 calls).
-	select {
-	case <-advanced:
-	case <-time.After(2 * time.Second):
-		t.Fatal("fakePoller was not called twice within timeout")
-	}
-
-	// Give the watcher a moment to complete the flush call if triggered.
-	// We use a short extra wait then check the count.
-	select {
-	case <-flushed:
-		// good — at least one flush happened
-	case <-time.After(time.Second):
-		t.Fatal("watcher did not flush after the second (non-priming) non-empty poll batch")
-	}
-
-	cancel() // stop watcher before the count assertion
-
-	got := atomic.LoadInt32(&flushCount)
-	if got != 1 {
-		t.Errorf("expected exactly 1 flush (priming tick contributes 0), got %d", got)
+	if p.calls != 2 {
+		t.Errorf("expected 2 polls, got %d", p.calls)
 	}
 }
 
 // TestSubjectChangeWatcher_PrimingNonEmptyStillDoesNotFlush verifies that even
 // when the very first poll returns non-empty ids, priming suppresses the flush.
 func TestSubjectChangeWatcher_PrimingNonEmptyStillDoesNotFlush(t *testing.T) {
-	// batches[0] = {10,20} → priming tick (non-empty!); batches[1] = {30} → flush tick.
-	advanced := make(chan struct{})
-	p := &fakePoller{
-		batches:   [][]int64{{10, 20}, {30}},
-		advanced:  advanced,
-		threshold: 2,
+	// tick0 = {10,20} → priming (non-empty!); tick1 = {30} → flush.
+	p, flushes, tick := script(t, [][]int64{{10, 20}, {30}}, nil)
+
+	tick()
+	if *flushes != 0 {
+		t.Fatalf("a non-empty priming tick flushed %d time(s); priming adopts headID as the cursor "+
+			"WITHOUT flushing, whatever the first batch contains", *flushes)
 	}
+	tick()
 
-	var flushCount int32
-	flushed := make(chan struct{}, 4)
-	flushFn := func() {
-		atomic.AddInt32(&flushCount, 1)
-		flushed <- struct{}{}
+	if *flushes != 1 {
+		t.Errorf("expected exactly 1 flush (non-empty priming tick must not flush), got %d", *flushes)
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	w := watcher.New(p, flushFn, 10*time.Millisecond, slog.Default())
-	go w.Run(ctx)
-
-	select {
-	case <-advanced:
-	case <-time.After(2 * time.Second):
-		t.Fatal("fakePoller was not called twice within timeout")
-	}
-
-	select {
-	case <-flushed:
-	case <-time.After(time.Second):
-		t.Fatal("watcher did not flush after the second (non-priming) non-empty poll batch")
-	}
-
-	cancel()
-
-	got := atomic.LoadInt32(&flushCount)
-	if got != 1 {
-		t.Errorf("expected exactly 1 flush (non-empty priming tick must not flush), got %d", got)
+	// Priming adopted headID=20, so the flushing tick was polled from there.
+	if got := p.sinceAt(1); got != 20 {
+		t.Errorf("post-priming poll observed since=%d, want 20 (headID adopted by priming)", got)
 	}
 }
 
 // TestSubjectChangeWatcher_NoFlushWhenAllEmpty verifies no flush when every tick is empty.
 func TestSubjectChangeWatcher_NoFlushWhenAllEmpty(t *testing.T) {
-	// advanced is closed after the 3rd poller call (prime + two empty ticks).
-	// Because flush() is called synchronously inside tick(), the channel signal
-	// already implies that any flush triggered by those ticks has completed —
-	// no extra sleep is needed.
-	advanced := make(chan struct{})
-	p := &fakePoller{
-		batches:   [][]int64{{}, {}, {}},
-		advanced:  advanced,
-		threshold: 3, // three empty calls: prime + two empty ticks
+	p, flushes, tick := script(t, [][]int64{{}, {}, {}}, nil)
+
+	tick() // prime
+	tick()
+	tick()
+
+	if *flushes != 0 {
+		t.Errorf("expected 0 flushes for all-empty batches, got %d", *flushes)
 	}
-
-	var flushCount int32
-	flushFn := func() { atomic.AddInt32(&flushCount, 1) }
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	w := watcher.New(p, flushFn, 10*time.Millisecond, slog.Default())
-	go w.Run(ctx)
-
-	select {
-	case <-advanced:
-	case <-time.After(2 * time.Second):
-		t.Fatal("fakePoller was not called 3 times within timeout")
-	}
-
-	// flush() is synchronous in tick(); advanced firing means all three tick
-	// calls have returned — cancel and assert immediately, no sleep required.
-	cancel()
-
-	if got := atomic.LoadInt32(&flushCount); got != 0 {
-		t.Errorf("expected 0 flushes for all-empty batches, got %d", got)
+	if p.calls != 3 {
+		t.Errorf("expected 3 polls, got %d", p.calls)
 	}
 }
 
@@ -240,45 +187,36 @@ func TestSubjectChangeWatcher_NoFlushWhenAllEmpty(t *testing.T) {
 //
 // Script (cursor starts at 0):
 //
-//	call0: {}    -> priming tick, cursor := headID(=0), no flush
-//	call1: {5}   -> flush #1, cursor := 5
-//	call2: ERROR -> no flush, cursor preserved at 5
-//	call3: {6}   -> flush #2, and MUST have been polled with since=5
+//	tick0: {}    -> priming tick, cursor := headID(=0), no flush
+//	tick1: {5}   -> flush #1, cursor := 5
+//	tick2: ERROR -> no flush, cursor preserved at 5
+//	tick3: {6}   -> flush #2, and MUST have been polled with since=5
 func TestSubjectChangeWatcher_PollErrorPreservesCursorNoFlush(t *testing.T) {
-	advanced := make(chan struct{})
-	p := &fakePoller{
-		batches:   [][]int64{{}, {5}, {}, {6}},
-		errs:      []error{nil, nil, errors.New("iam blip"), nil},
-		advanced:  advanced,
-		threshold: 4,
+	p, flushes, tick := script(t,
+		[][]int64{{}, {5}, {}, {6}},
+		[]error{nil, nil, errors.New("iam blip"), nil})
+
+	tick() // prime
+	tick() // flush #1, cursor := 5
+	if *flushes != 1 {
+		t.Fatalf("premise: the first non-priming non-empty batch must flush once, got %d", *flushes)
 	}
-
-	var flushCount int32
-	flushFn := func() { atomic.AddInt32(&flushCount, 1) }
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	w := watcher.New(p, flushFn, 5*time.Millisecond, slog.Default())
-	go w.Run(ctx)
-
-	select {
-	case <-advanced:
-	case <-time.After(2 * time.Second):
-		t.Fatal("fakePoller was not called 4 times within timeout")
+	tick() // ERROR
+	if *flushes != 1 {
+		t.Fatalf("a failed poll flushed: got %d flushes, want the flush count unchanged at 1", *flushes)
 	}
-	cancel()
+	tick() // recovery
 
-	// The errored call2 was polled at cursor 5 (set by the call1 flush), and the
-	// recovery call3 must STILL poll at 5 — the error did not advance the cursor.
+	// The errored tick2 was polled at cursor 5 (set by tick1's flush), and the
+	// recovery tick3 must STILL poll at 5 — the error did not advance the cursor.
 	if got := p.sinceAt(2); got != 5 {
-		t.Fatalf("errored poll observed since=%d, want 5 (cursor after call1 flush)", got)
+		t.Fatalf("errored poll observed since=%d, want 5 (cursor after tick1 flush)", got)
 	}
 	if got := p.sinceAt(3); got != 5 {
 		t.Fatalf("recovery poll observed since=%d, want 5 (cursor preserved across error)", got)
 	}
-	// prime(0) + flush(call1) + error(call2, 0) + flush(call3) == 2 flushes.
-	if got := atomic.LoadInt32(&flushCount); got != 2 {
-		t.Fatalf("expected exactly 2 flushes (error must not flush), got %d", got)
+	if *flushes != 2 {
+		t.Fatalf("expected exactly 2 flushes (error must not flush), got %d", *flushes)
 	}
 }
 
@@ -289,39 +227,28 @@ func TestSubjectChangeWatcher_PollErrorPreservesCursorNoFlush(t *testing.T) {
 //
 // Script:
 //
-//	call0: ERROR -> not primed, cursor stays 0
-//	call1: {7}   -> FIRST successful poll => priming tick, cursor := 7, NO flush
-//	call2: {8}   -> primed now => flush #1, cursor := 8
+//	tick0: ERROR -> not primed, cursor stays 0
+//	tick1: {7}   -> FIRST successful poll => priming tick, cursor := 7, NO flush
+//	tick2: {8}   -> primed now => flush #1, cursor := 8
 func TestSubjectChangeWatcher_ErrorOnFirstPollDoesNotPrime(t *testing.T) {
-	advanced := make(chan struct{})
-	p := &fakePoller{
-		batches:   [][]int64{{}, {7}, {8}},
-		errs:      []error{errors.New("iam cold blip"), nil, nil},
-		advanced:  advanced,
-		threshold: 3,
+	p, flushes, tick := script(t,
+		[][]int64{{}, {7}, {8}},
+		[]error{errors.New("iam cold blip"), nil, nil})
+
+	tick() // ERROR — must not prime
+	tick() // first SUCCESSFUL poll — deferred priming, no flush
+	if *flushes != 0 {
+		t.Fatalf("the deferred priming tick flushed %d time(s): an errored first poll must leave the "+
+			"watcher unprimed, so the first SUCCESSFUL batch is the one adopted as the cold-start cursor", *flushes)
 	}
+	tick()
 
-	var flushCount int32
-	flushFn := func() { atomic.AddInt32(&flushCount, 1) }
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	w := watcher.New(p, flushFn, 5*time.Millisecond, slog.Default())
-	go w.Run(ctx)
-
-	select {
-	case <-advanced:
-	case <-time.After(2 * time.Second):
-		t.Fatal("fakePoller was not called 3 times within timeout")
-	}
-	cancel()
-
-	// The errored first poll must not have primed/advanced: call1 still polls at 0.
+	// The errored first poll must not have primed/advanced: tick1 still polls at 0.
 	if got := p.sinceAt(1); got != 0 {
 		t.Fatalf("post-error poll observed since=%d, want 0 (error must not prime)", got)
 	}
-	// Only call2's {8} flushes; call1's {7} is the (deferred) priming tick.
-	if got := atomic.LoadInt32(&flushCount); got != 1 {
-		t.Fatalf("expected exactly 1 flush (error-first defers priming to call1), got %d", got)
+	// Only tick2's {8} flushes; tick1's {7} is the (deferred) priming tick.
+	if *flushes != 1 {
+		t.Fatalf("expected exactly 1 flush (error-first defers priming to tick1), got %d", *flushes)
 	}
 }
