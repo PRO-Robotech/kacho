@@ -30,7 +30,6 @@ package repohygiene
 import (
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -140,17 +139,9 @@ func AuditRetiredRPCSurface(opts RetiredRPCSurfaceOptions, out io.Writer) ([]Ret
 
 	// ── 2. Исходный контракт: имя ловится до регенерации стабов ───────────────
 	protoDir := filepath.Join(opts.Root, opts.ProtoRoot)
-	err = filepath.WalkDir(protoDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() || !strings.HasSuffix(path, ".proto") {
-			return nil
-		}
-		b, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
+	err = rootedWalk(protoDir, func(rel string) bool {
+		return strings.HasSuffix(rel, ".proto")
+	}, func(path string, b []byte) error {
 		c.ProtoFiles++
 		src := string(b)
 		pkg := ""

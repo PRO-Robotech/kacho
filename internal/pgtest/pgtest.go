@@ -64,6 +64,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	_ "github.com/jackc/pgx/v5/stdlib" // database/sql driver for template + admin work
 	"github.com/pressly/goose/v3"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
@@ -240,7 +241,7 @@ func (s *state) start() {
 		}
 		defer func() { _ = admin.Close() }()
 
-		if _, err := admin.ExecContext(ctx, `CREATE DATABASE `+s.template); err != nil {
+		if _, err := admin.ExecContext(ctx, createDatabaseStmt(s.template, "")); err != nil {
 			s.startErr = fmt.Errorf("create template database: %w", err)
 			return
 		}
@@ -265,6 +266,44 @@ func (s *state) dsnFor(name string) string {
 	return u.String()
 }
 
+// quoteIdent renders one database name as a single SQL identifier: wrapped in
+// double quotes, inner quotes doubled.
+//
+// This is the ONLY correct shape here, because the alternative does not exist:
+// CREATE/DROP DATABASE take no bind parameters — an identifier position in DDL is
+// not a parameter position — so "rewrite it as $1" is not an available outcome.
+// Quoting is what keeps the operand inside the statement it belongs to.
+//
+// It changes nothing for today's callers. Every Config.Name in the tree is a
+// lowercase ASCII identifier, and quoting a lowercase identifier is semantically
+// identical to leaving it bare (an unquoted identifier folds to lower case, and
+// these are already there). What it removes is the dependence on that remaining
+// true: the operand comes from a caller this package does not control.
+//
+// What holds this is ddlident_test.go, NOT a scanner's silence. gosec stopped
+// reporting the concatenation here because the operand became a call rather than
+// a bare identifier — a change of shape, which is not a verdict about safety.
+func quoteIdent(name string) string { return pgx.Identifier{name}.Sanitize() }
+
+// createDatabaseStmt builds the DDL that makes one database. template empty ⇒ no
+// TEMPLATE clause.
+func createDatabaseStmt(name, template string) string {
+	stmt := `CREATE DATABASE ` + quoteIdent(name)
+	if template != "" {
+		stmt += ` TEMPLATE ` + quoteIdent(template)
+	}
+	return stmt
+}
+
+// dropDatabaseStmt builds the DDL that removes one database.
+//
+// WITH (FORCE) stays OUTSIDE the identifier: it evicts connections a test left
+// open, and without it a leaked pool keeps the database alive for the rest of the
+// run.
+func dropDatabaseStmt(name string) string {
+	return `DROP DATABASE IF EXISTS ` + quoteIdent(name) + ` WITH (FORCE)`
+}
+
 // NewDB returns a DSN for this test's own database, cloned from the migrated
 // template, dropped when the test ends.
 func NewDB(t testing.TB) string { return newDatabase(t, true) }
@@ -285,10 +324,11 @@ func newDatabase(t testing.TB, fromTemplate bool) string {
 	}
 
 	name := fmt.Sprintf("kacho_%s_t%04d", s.cfg.Name, s.seq.Add(1))
-	stmt := `CREATE DATABASE ` + name
+	template := ""
 	if fromTemplate {
-		stmt += ` TEMPLATE ` + s.template
+		template = s.template
 	}
+	stmt := createDatabaseStmt(name, template)
 
 	admin, err := sql.Open("pgx", s.baseDSN)
 	if err != nil {
@@ -306,9 +346,7 @@ func newDatabase(t testing.TB, fromTemplate bool) string {
 			return
 		}
 		defer func() { _ = drop.Close() }()
-		// WITH (FORCE) evicts connections a test left open; without it a leaked pool
-		// would keep the database alive for the rest of the run.
-		_, _ = drop.Exec(`DROP DATABASE IF EXISTS ` + name + ` WITH (FORCE)`)
+		_, _ = drop.Exec(dropDatabaseStmt(name))
 	})
 
 	return s.dsnFor(name)
