@@ -337,14 +337,14 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="IMG-CR-NEG-PROJECT-NOTFOUND",
-    title="Create Image c garbage projectId → reject (peer iam.ProjectService.Get); authz-first толерантность 400/403/404/412 (scope_extractor project короткозамыкает ДО backend)",
+    title="Create Image c garbage projectId → reject (peer iam.ProjectService.Get); authz-first толерантность 400/403/404 (scope_extractor project короткозамыкает ДО backend)",
     classes=["NEG", "CONF"], priority="P1",
     # verifies STOR-1-29
     # # requires peer-validation enabled (iam peer reachable)
     steps=[Step(name="cr-bad-proj", method="POST", path=IMG,
                 body=_img_body("bp", projectId="{{garbageProjectId}}", sourceVolumeId="{{garbageStorageId}}"),
                 test_script=[
-                    "pm.test('rejected authz-first-tolerant (400/403/404/412, never 200/500)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 412]));",
+                    "pm.test('rejected authz-first-tolerant (400/403/404, never 200/500)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404]));",
                     "pm.test('grpc error body present', () => pm.expect(pm.response.json(), JSON.stringify(pm.response.json())).to.have.property('code'));"])],
 ))
 

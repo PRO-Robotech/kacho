@@ -405,7 +405,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected 4xx (FAILED_PRECONDITION → 400)', () => pm.expect(pm.response.code).to.be.oneOf([400, 409, 412, 422]));",
+                  "pm.test('rejected 4xx (FAILED_PRECONDITION → 400)', () => pm.expect(pm.response.code).to.be.oneOf([400, 409]));",
                   "pm.test('grpc code 9 (FAILED_PRECONDITION, peer-validate lane)', () => pm.expect(pm.response.json().code).to.eql(9));",
                   "pm.test('region not found text', () => pm.expect((pm.response.json().message||'').toLowerCase()).to.include('region').and.to.include('not found'));"
                 ]

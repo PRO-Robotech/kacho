@@ -2468,7 +2468,7 @@
       ]
     },
     {
-      "name": "IMG-CR-NEG-PROJECT-NOTFOUND — Create Image c garbage projectId → reject (peer iam.ProjectService.Get); authz-first толерантность 400/403/404/412 (scope_extractor project короткозамыкает ДО backend)",
+      "name": "IMG-CR-NEG-PROJECT-NOTFOUND — Create Image c garbage projectId → reject (peer iam.ProjectService.Get); authz-first толерантность 400/403/404 (scope_extractor project короткозамыкает ДО backend)",
       "description": "class:NEG | class:CONF | priority:P1",
       "item": [
         {
@@ -2508,7 +2508,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('rejected authz-first-tolerant (400/403/404/412, never 200/500)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404, 412]));",
+                  "pm.test('rejected authz-first-tolerant (400/403/404, never 200/500)', () => pm.expect(pm.response.code).to.be.oneOf([400, 403, 404]));",
                   "pm.test('grpc error body present', () => pm.expect(pm.response.json(), JSON.stringify(pm.response.json())).to.have.property('code'));"
                 ]
               }
