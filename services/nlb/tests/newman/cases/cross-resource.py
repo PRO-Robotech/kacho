@@ -410,7 +410,7 @@ CASES.append(Case(
              pre_script=[
                  "var __seq = parseInt(pm.environment.get('_cidrSeq') || '0', 10) + 1;",
                  "pm.environment.set('_cidrSeq', String(__seq));",
-                 "var __run = (pm.environment.get('runId') || 'x0');",
+                 "var __run = (pm.environment.get('runId') || 'x0') + '/cross-resource';",
                  "var __h = 0; for (var i = 0; i < __run.length; i++) { __h = ((__h << 5) - __h + __run.charCodeAt(i)) | 0; }",
                  "__h = __h & 0x7fffffff;",
                  "var __oct2 = 16 + (__h % 220);",

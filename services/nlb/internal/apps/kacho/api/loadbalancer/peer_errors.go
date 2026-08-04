@@ -6,6 +6,7 @@ package loadbalancer
 import (
 	"errors"
 
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -126,12 +127,54 @@ func subnetPeerErr(err error, id string) error {
 }
 
 // linkedAddressErr — анти-oracle маппинг AddressService.Get в link-precheck.
+//
+// Две РАЗНЫЕ полосы, которые прежде схлопывались в одну:
+//
+//   - ссылка не резолвится у владельца (`ErrNotFound` — hide-existence NOT_FOUND
+//     либо PERMISSION_DENIED от vpc) → `FAILED_PRECONDITION` +
+//     `ErrorInfo.reason = PEER_RESOURCE_MISSING` (api-conventions §By-lane
+//     code-split). Это ПЕРЕХОДНОЕ состояние на own-lane: адрес, только что
+//     созданный самим вызывающим, невидим, пока не материализовался пообъектный
+//     owner-tuple. Вызывающий закрывает окно bounded-ретраем — и различает полосу
+//     МАШИННО по reason-token, а не разбором прозы;
+//   - всё, что повтором не лечится (malformed id, ownership/family/kind/placement
+//     mismatch) → терминальный `INVALID_ARGUMENT` БЕЗ token'а.
+//
+// Проза в обоих случаях одна и та же генерическая — анти-oracle сохранён: ни
+// placement, ни ownership чужого адреса мы не подтверждаем. Token существования
+// оракулом не делает: vpc отвечает вызывающему ровно тем же hide-existence на
+// прямой `AddressService.Get` под его же личностью, то есть бит «мне этот id не
+// виден» ему доступен и без нас. Схлопывание отнимало у него не секрет, а
+// возможность отличить «повтори» от «исправь ввод».
 func linkedAddressErr(err error) error {
 	switch {
-	case errors.Is(err, domain.ErrNotFound), errors.Is(err, domain.ErrInvalidArg):
+	case errors.Is(err, domain.ErrNotFound):
+		return peerResourceMissing("vpc.address", "Illegal argument addressId")
+	case errors.Is(err, domain.ErrInvalidArg):
 		return status.Error(codes.InvalidArgument, "Illegal argument addressId")
 	case errors.Is(err, domain.ErrUnavailable):
 		return status.Error(codes.Unavailable, "address lookup unavailable")
 	}
 	return status.Error(codes.Internal, "address lookup failed")
+}
+
+// peerResourceMissing — единая форма полосы peer-validate «чужого ресурса нет у
+// владельца»: код `FAILED_PRECONDITION`, машинный `reason`-token в деталях,
+// проза — та, что передана вызывающим (здесь она намеренно генерическая).
+//
+// Детали не влияют на HTTP-статус края (grpc-gateway отображает по КОДУ), но
+// именно по ним клиент отличает переходную полосу от терминальной, не парся
+// сообщение (api-conventions.md §By-lane code-split).
+func peerResourceMissing(resourceType, msg string) error {
+	st := status.New(codes.FailedPrecondition, msg)
+	withDetails, derr := st.WithDetails(&errdetails.ErrorInfo{
+		Reason:   "PEER_RESOURCE_MISSING",
+		Domain:   "nlb.kacho.cloud",
+		Metadata: map[string]string{"resource_type": resourceType},
+	})
+	if derr != nil {
+		// Деталь не прикрепилась — код полосы важнее детали, отдаём его как есть.
+		return st.Err()
+	}
+	return withDetails.Err()
 }

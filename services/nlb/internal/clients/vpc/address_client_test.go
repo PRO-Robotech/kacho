@@ -171,13 +171,16 @@ func TestAddressClient_Get_ExternalIPv6(t *testing.T) {
 	assert.True(t, got.External, "external_ipv6 must surface External=true (BYO v6 external)")
 }
 
+// Полоса «нет у владельца» — `ErrNotFound`, а НЕ `ErrInvalidArg`: id well-formed,
+// и повтор его исправить не может, потому что исправлять нечего (см.
+// address_own_lane_visibility_test.go и godoc mapAddressErr).
 func TestAddressClient_Get_NotFound(t *testing.T) {
 	conn := startFakeVPC(t, nil, nil, &fakeAddressService{err: status.Error(codes.NotFound, "no address")},
 		nil, nil)
 	c := NewAddressClient(conn)
 	_, err := c.Get(ctxBackground(), "e9b-nx")
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, domain.ErrInvalidArg))
+	assert.True(t, errors.Is(err, domain.ErrNotFound))
 }
 
 func TestAddressClient_Get_PermissionDenied(t *testing.T) {
@@ -186,8 +189,9 @@ func TestAddressClient_Get_PermissionDenied(t *testing.T) {
 	c := NewAddressClient(conn)
 	_, err := c.Get(ctxBackground(), "e9b-other")
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, domain.ErrInvalidArg))
-	assert.NotContains(t, err.Error(), "permission")
+	assert.True(t, errors.Is(err, domain.ErrNotFound))
+	assert.NotContains(t, err.Error(), "permission",
+		"полоса сменилась, а неразглашение authz-факта — нет")
 }
 
 func TestAddressClient_Get_Unavailable(t *testing.T) {

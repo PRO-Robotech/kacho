@@ -71,8 +71,10 @@ type AddressOwner struct {
 type AddressClient interface {
 	// Get возвращает Address metadata + resolved Value/Family/UsedBy.
 	// Семантика ошибок:
-	//   - vpc NotFound                 → domain.ErrInvalidArg "address <id> not found"
-	//   - PermissionDenied             → domain.ErrInvalidArg (не лик'аем authz).
+	//   - vpc NotFound                 → domain.ErrNotFound "address <id> not found"
+	//   - PermissionDenied             → domain.ErrNotFound (не лик'аем authz: на
+	//                                    own-lane обе формы значат одно и то же —
+	//                                    см. ownResourceInvisible)
 	//   - Unavailable/DeadlineExceeded → domain.ErrUnavailable
 	//   - InvalidArgument              → domain.ErrInvalidArg
 	//   - Любая другая ошибка          → wrapped error без sentinel-обёртки.
@@ -188,6 +190,20 @@ func (c *addressClient) Get(ctx context.Context, addressID string) (*Address, er
 }
 
 // mapAddressErr транслирует gRPC-status в domain-sentinel-ошибки.
+//
+// NOT_FOUND и PERMISSION_DENIED — ОДНА полоса и она НЕ про аргумент. vpc прячет
+// существование через NOT_FOUND там, где скрывает, и отвечает PERMISSION_DENIED
+// там, где не скрывает; на own-lane обе формы значат «мой свежий ресурс ещё не
+// виден пообъектному authz» — ровно тот предикат, который этот пакет уже
+// объявил в `ownResourceInvisible` (internal_address_client.go) и ретраит на
+// reference-CAS полосе.
+//
+// Прежде обе схлопывались в `ErrInvalidArg`, и вызывающий получал терминальное
+// «аргумент незаконен» про well-formed id существующего ресурса: bounded
+// read-your-writes retry (api-conventions.md — «создал→сразу мутирую» закрывается
+// ретраем КЛИЕНТА, ban #9) не имел признака, по которому мог бы сработать.
+// Полоса отсутствия у владельца — `ErrNotFound` (§By-lane code-split);
+// `ErrInvalidArg` остаётся за тем, что повтором не лечится.
 func mapAddressErr(addressID string, err error) error {
 	st, ok := status.FromError(err)
 	if !ok {
@@ -195,9 +211,9 @@ func mapAddressErr(addressID string, err error) error {
 	}
 	switch st.Code() {
 	case codes.NotFound:
-		return fmt.Errorf("%w: address %s not found", domain.ErrInvalidArg, addressID)
+		return fmt.Errorf("%w: address %s not found", domain.ErrNotFound, addressID)
 	case codes.PermissionDenied:
-		return fmt.Errorf("%w: address %s not found", domain.ErrInvalidArg, addressID)
+		return fmt.Errorf("%w: address %s not found", domain.ErrNotFound, addressID)
 	case codes.Unavailable, codes.DeadlineExceeded:
 		return fmt.Errorf("%w: vpc address %s: %s", domain.ErrUnavailable, addressID, st.Message())
 	case codes.InvalidArgument:
