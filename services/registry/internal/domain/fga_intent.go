@@ -313,8 +313,18 @@ func RegisterIntentForUpdate(r *Registry) RegisterIntent {
 	}
 }
 
-// UnregisterIntentForDelete — unregister-intent на Delete: снимает project-tuple
-// (owner-tuple снимается iam-side GC при unregister project-hierarchy).
+// UnregisterIntentForDelete — unregister-intent на Delete: называет project-tuple.
+//
+// Остальное с объекта снимает ПРИНИМАЮЩАЯ сторона. Здесь называется только иерархический
+// указатель, потому что `owner` пишется от личности вызывающего, а её не хранит ни строка
+// реестра, ни зеркало iam — назвать этот tuple на удалении отсюда нечем. Снятие
+// иерархического указателя iam трактует как снос объекта и убирает всё, что этот же proxy
+// мог на объекте написать (services/iam/.../internal_iam: residualTuples).
+//
+// Прежняя редакция этой строки утверждала то же самое про «iam-side GC», но механизма не
+// существовало: замер 2026-08-04 показал, что `owner` пережил доставленное снятие в 180
+// случаях из 180 у реестров и в 60 из 60 у репозиториев, а модель на удалённом объекте
+// продолжала отвечать allowed. Комментарий описывал намерение, а не код.
 func UnregisterIntentForDelete(registryID, projectID string) RegisterIntent {
 	return RegisterIntent{
 		Kind:       "Registry",
@@ -369,9 +379,15 @@ func RegisterIntentForRepoPush(registryID, repo, projectID, subject string) Regi
 	}
 }
 
-// UnregisterIntentForRepo — unregister-intent на удаление последнего тега repo:
-// снимает parent-tuple registry_repository:<reg>/<repo> (owner-tuple снимается
-// iam-side GC при unregister parent-hierarchy) — не оставляем висячий authz-объект.
+// UnregisterIntentForRepo — unregister-intent на удаление последнего тега repo: называет
+// parent-tuple registry_repository:<reg>/<repo>.
+//
+// Как и у UnregisterIntentForDelete, остальное с объекта снимает принимающая сторона по
+// факту снятия иерархического указателя. Для репозитория это важнее, чем для реестра:
+// его id — путь `<registryID>/<repo>`, то есть ИМЯ, а не случайный идентификатор. Уцелевший
+// `owner` на удалённом репозитории поэтому не просто висит — он ВОЗВРАЩАЕТСЯ в силу, как
+// только кто-то создаст репозиторий с тем же именем в том же реестре, и прежний владелец
+// получает полный доступ к чужому содержимому.
 func UnregisterIntentForRepo(registryID, repo string) RegisterIntent {
 	return RegisterIntent{
 		Kind:       "Repository",

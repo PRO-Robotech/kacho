@@ -51,6 +51,15 @@ type Metrics struct {
 	outboxPoisonCur *prometheus.GaugeVec
 	outboxPoisonTot *prometheus.CounterVec
 
+	// Per-direction breakdown of the SAME queue. The table-wide series above aggregate
+	// grants and withdrawals, and grants flow continuously — so the aggregate stays
+	// healthy no matter whether a single withdrawal ever lands, and "it works" reads
+	// exactly like "it was never revoked". delivered_total is the one that separates
+	// "there were none" from "none get through".
+	outboxDirBacklog   *prometheus.GaugeVec
+	outboxDirOldest    *prometheus.GaugeVec
+	outboxDirDelivered *prometheus.GaugeVec
+
 	// free-ip reconciler (застрявшие LoadBalancer'ы)
 	freeIPPoisoned prometheus.Counter
 
@@ -105,6 +114,21 @@ func New(version, commit string) *Metrics {
 			Name: "kacho_nlb_outbox_poisoned_total",
 			Help: "Monotonic register-outbox poison events (lost owner-tuple delivery), by table.",
 		}, []string{"table"}),
+		outboxDirBacklog: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "kacho_nlb_outbox_backlog_depth_by_direction",
+			Help: "Pending register-outbox rows by table and queue direction (grant|withdrawal).",
+		}, []string{"table", "direction"}),
+		outboxDirOldest: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "kacho_nlb_outbox_oldest_pending_age_seconds_by_direction",
+			Help: "Age of the oldest pending register-outbox row by table and queue direction; " +
+				"for direction=withdrawal this is how long ago revocation stopped arriving.",
+		}, []string{"table", "direction"}),
+		outboxDirDelivered: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "kacho_nlb_outbox_delivered_by_direction",
+			Help: "Register-outbox rows delivered so far by table and queue direction. " +
+				"Zero for a direction means not one row of it has EVER been delivered — the " +
+				"state no other series here can distinguish from a quiet queue.",
+		}, []string{"table", "direction"}),
 		freeIPPoisoned: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "kacho_nlb_free_ip_poisoned_total",
 			Help: "Monotonic count of stuck LoadBalancers isolated by the free-ip reconciler due to a permanent VIP-release failure (VIP still allocated, no longer head-of-line-blocking the queue).",
@@ -134,6 +158,7 @@ func New(version, commit string) *Metrics {
 		m.terminalRetries, m.terminalFailures, m.orphans,
 		m.reconcileRuns, m.reconcileErrors,
 		m.outboxBacklog, m.outboxOldest, m.outboxPoisonCur, m.outboxPoisonTot,
+		m.outboxDirBacklog, m.outboxDirOldest, m.outboxDirDelivered,
 		m.freeIPPoisoned,
 		m.dependencyUp, buildInfo, lroActive,
 	)
@@ -205,6 +230,29 @@ func (m *Metrics) SetDependencyUp(dependency string, up bool) {
 
 // Compile-time: адаптер удовлетворяет обоим corelib Recorder-портам.
 var (
-	_ opmetrics.Recorder     = (*Metrics)(nil)
-	_ outboxmetrics.Recorder = (*Metrics)(nil)
+	_ opmetrics.Recorder              = (*Metrics)(nil)
+	_ outboxmetrics.Recorder          = (*Metrics)(nil)
+	_ outboxmetrics.DirectionRecorder = (*Metrics)(nil)
 )
+
+// ---- outbox/metrics.DirectionRecorder ----
+//
+// The Collector asserts this capability at run time, so losing these three methods in a
+// refactor would not break the build — it would silently stop publishing the only series
+// that says whether withdrawals arrive at all. The compile-time assertion above is what
+// keeps that from happening quietly.
+
+// SetBacklogDepthByDirection — pending rows of one direction of the queue.
+func (m *Metrics) SetBacklogDepthByDirection(table, direction string, depth float64) {
+	m.outboxDirBacklog.WithLabelValues(table, direction).Set(depth)
+}
+
+// SetOldestPendingAgeByDirection — age of the oldest pending row of one direction.
+func (m *Metrics) SetOldestPendingAgeByDirection(table, direction string, age float64) {
+	m.outboxDirOldest.WithLabelValues(table, direction).Set(age)
+}
+
+// SetDeliveredTotal — rows of one direction delivered so far.
+func (m *Metrics) SetDeliveredTotal(table, direction string, count float64) {
+	m.outboxDirDelivered.WithLabelValues(table, direction).Set(count)
+}

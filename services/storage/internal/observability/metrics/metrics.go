@@ -61,6 +61,15 @@ type Metrics struct {
 	outboxOldest    *prometheus.GaugeVec
 	outboxPoisonCur *prometheus.GaugeVec
 	outboxPoisonTot *prometheus.CounterVec
+
+	// Per-direction breakdown of the SAME queue. The table-wide series above aggregate
+	// grants and withdrawals, and grants flow continuously — so the aggregate stays
+	// healthy no matter whether a single withdrawal ever lands, and "it works" reads
+	// exactly like "it was never revoked". delivered_total is the one that separates
+	// "there were none" from "none get through".
+	outboxDirBacklog   *prometheus.GaugeVec
+	outboxDirOldest    *prometheus.GaugeVec
+	outboxDirDelivered *prometheus.GaugeVec
 }
 
 // New конструирует адаптер и регистрирует Go + process runtime-коллекторы и
@@ -90,8 +99,24 @@ func New() *Metrics {
 			Name: "kacho_storage_outbox_poisoned_total",
 			Help: "Poison events, monotonic. Poisoning is terminal, so every increment is an intent that was dropped.",
 		}, []string{"table"}),
+		outboxDirBacklog: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "kacho_storage_outbox_backlog_depth_by_direction",
+			Help: "Pending register-outbox rows by table and queue direction (grant|withdrawal).",
+		}, []string{"table", "direction"}),
+		outboxDirOldest: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "kacho_storage_outbox_oldest_pending_age_seconds_by_direction",
+			Help: "Age of the oldest pending register-outbox row by table and queue direction; " +
+				"for direction=withdrawal this is how long ago revocation stopped arriving.",
+		}, []string{"table", "direction"}),
+		outboxDirDelivered: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "kacho_storage_outbox_delivered_by_direction",
+			Help: "Register-outbox rows delivered so far by table and queue direction. " +
+				"Zero for a direction means not one row of it has EVER been delivered — the " +
+				"state no other series here can distinguish from a quiet queue.",
+		}, []string{"table", "direction"}),
 	}
-	reg.MustRegister(m.outboxBacklog, m.outboxOldest, m.outboxPoisonCur, m.outboxPoisonTot)
+	reg.MustRegister(m.outboxBacklog, m.outboxOldest, m.outboxPoisonCur, m.outboxPoisonTot,
+		m.outboxDirBacklog, m.outboxDirOldest, m.outboxDirDelivered)
 	return m
 }
 
@@ -122,4 +147,29 @@ func (m *Metrics) SetPoisonedCount(table string, count float64) {
 func (m *Metrics) IncPoisoned(table string) { m.outboxPoisonTot.WithLabelValues(table).Inc() }
 
 // Compile-time: адаптер удовлетворяет corelib Recorder-порту.
-var _ outboxmetrics.Recorder = (*Metrics)(nil)
+var (
+	_ outboxmetrics.Recorder          = (*Metrics)(nil)
+	_ outboxmetrics.DirectionRecorder = (*Metrics)(nil)
+)
+
+// ---- outbox/metrics.DirectionRecorder ----
+//
+// The Collector asserts this capability at run time, so losing these three methods in a
+// refactor would not break the build — it would silently stop publishing the only series
+// that says whether withdrawals arrive at all. The compile-time assertion above is what
+// keeps that from happening quietly.
+
+// SetBacklogDepthByDirection — pending rows of one direction of the queue.
+func (m *Metrics) SetBacklogDepthByDirection(table, direction string, depth float64) {
+	m.outboxDirBacklog.WithLabelValues(table, direction).Set(depth)
+}
+
+// SetOldestPendingAgeByDirection — age of the oldest pending row of one direction.
+func (m *Metrics) SetOldestPendingAgeByDirection(table, direction string, age float64) {
+	m.outboxDirOldest.WithLabelValues(table, direction).Set(age)
+}
+
+// SetDeliveredTotal — rows of one direction delivered so far.
+func (m *Metrics) SetDeliveredTotal(table, direction string, count float64) {
+	m.outboxDirDelivered.WithLabelValues(table, direction).Set(count)
+}
