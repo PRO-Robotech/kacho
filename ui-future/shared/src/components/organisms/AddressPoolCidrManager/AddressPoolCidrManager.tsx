@@ -70,12 +70,12 @@ function CidrSection({ poolId, kind, blocks }: SectionProps) {
     onSuccess: () => {
       // Широкий prefix-инвалидейт: ["address-pools"] матчит detail-страницу
       // (["address-pools","detail",uid]) и list; плюс utilization-виджет.
-      qc.invalidateQueries({ queryKey: ["address-pools"] });
-      qc.invalidateQueries({ queryKey: ["pool-util", poolId] });
+      void qc.invalidateQueries({ queryKey: ["address-pools"] });
+      void qc.invalidateQueries({ queryKey: ["pool-util", poolId] });
       setPendingCidr(null);
     },
     onError: (err, vars) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error).message;
+      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : err.message;
       toast.error(`${family} CIDR ${vars.verb === "add" ? "добавление" : "удаление"}: ${m}`);
       setPendingCidr(null);
     },

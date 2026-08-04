@@ -157,7 +157,7 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
           onClick: stop(() => setDeleteOpen(true)),
         }
       : null,
-  ].filter(Boolean) as MenuProps["items"];
+  ].filter(Boolean);
 
   return (
     <>

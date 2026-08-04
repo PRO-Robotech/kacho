@@ -192,7 +192,7 @@ export function RegisterPage() {
     // return_to is flow-supplied — constrain it to a same-origin in-app path
     // (CWE-601), mirroring Login. Falls back to the post-registration dashboard.
     const target = resolvePostAuthTarget(result.return_to, null, "/dashboard");
-    navigate(target, { replace: true });
+    void navigate(target, { replace: true });
   }
 
   if (loading || !flow) {

@@ -29,7 +29,7 @@ export function IamRefLink({ specId, refId, nameField = "name", maxChars = 36 }:
 
   const { data } = useQuery({
     queryKey: ["iam-ref", specId, refId],
-    queryFn: () => api.get<Record<string, unknown>>(`${spec!.apiPath}/${refId}`),
+    queryFn: () => api.get<Record<string, unknown>>(`${spec.apiPath}/${refId}`),
     enabled: !!spec && !!refId,
     staleTime: 30_000,
     retry: false,

@@ -33,7 +33,7 @@ interface Props {
 
 export function ErrorResult({ error, status: statusOverride, title, subTitle, extra, centered = true }: Props) {
   const p = presentError(error);
-  const status = statusOverride ?? (p.status as ResultStatusType);
+  const status = statusOverride ?? p.status;
   const finalTitle = title ?? p.title;
   // Оговорку про неоднозначность 404 показываем только когда именно её и
   // получили: под подставленным сверху статусом или чужим текстом она была бы

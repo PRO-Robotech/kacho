@@ -98,6 +98,6 @@ describe("every create-capable spec can express what Create requires", () => {
     // lock, not a pass.
     expect(required).toBeDefined();
     const settable = operatorSettableFields(specId);
-    expect(required!.filter((f) => !settable.has(f))).toEqual([]);
+    expect(required.filter((f) => !settable.has(f))).toEqual([]);
   });
 });

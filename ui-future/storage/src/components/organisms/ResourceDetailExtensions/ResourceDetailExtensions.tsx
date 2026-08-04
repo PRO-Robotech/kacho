@@ -36,7 +36,11 @@ export interface DetailExtension {
   overviewBelow?: (ctx: DetailExtCtx) => ReactNode;
   headerActions?: (ctx: DetailExtCtx) => ReactNode;
   extraTabs?: (ctx: DetailExtCtx) => DetailTab[];
-  hideOperations?: boolean;
+  // Здесь была ручка `hideOperations`. Её не выставляло ни одно расширение, а
+  // вкладка операций тем временем показывалась у ресурсов, у которых подмаршрута
+  // `<apiPath>/{id}/operations` в стволе нет вовсе. Решает не ручка, а контракт:
+  // `@shared/lib/operations-subroute` — единственное место, где консоль
+  // утверждает, у кого этот подмаршрут есть, и оно сверяется с деревом proto.
   title?: (data: Record<string, unknown>) => string | undefined;
 }
 

@@ -33,7 +33,7 @@ let methods: string[] = [];
 
 function stubFetch() {
   methods = [];
-  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+  globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
     methods.push(init?.method ?? "GET");
     return {
       ok: true,
@@ -41,7 +41,7 @@ function stubFetch() {
       statusText: "OK",
       text: async () => JSON.stringify({ id: "opr-1", done: true }),
     } as Response;
-  }) as typeof globalThis.fetch;
+  };
 }
 
 function renderCreate(spec: ResourceSpec) {

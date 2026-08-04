@@ -73,7 +73,7 @@ export function InlineResourceEditForm({ spec, data, projectId, onCancel, onSucc
       }
     },
     onError: (err) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error).message;
+      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : err.message;
       toast.error(`Сохранить ${spec.singular}: ${m}`);
     },
   });

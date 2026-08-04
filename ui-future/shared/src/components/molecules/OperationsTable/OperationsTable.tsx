@@ -186,6 +186,7 @@ export function OperationsTable({ rows, loading, showResourceKind, empty }: Prop
     const el = wrapRef.current;
     if (!el) return;
     const recompute = () => {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- ложное срабатывание: querySelector<E extends Element = Element>, и E выводится из самого утверждения типа. Без него E = Element, у которого нет offsetHeight (проверено tsc: удаление даёт TS2339).
       const thead = el.querySelector(".ant-table-thead") as HTMLElement | null;
       const avail = el.clientHeight - (thead?.offsetHeight ?? 40);
       setScrollY(avail > 48 ? avail : undefined);

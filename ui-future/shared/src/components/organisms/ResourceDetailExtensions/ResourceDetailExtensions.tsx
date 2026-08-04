@@ -90,7 +90,7 @@ function cidrTags(items: string[] | undefined): ReactNode {
           title="Нажмите, чтобы скопировать"
           onClick={(e) => {
             e.stopPropagation();
-            navigator.clipboard?.writeText(c);
+            void navigator.clipboard?.writeText(c);
             toast.success(`Скопировано: ${c}`);
           }}
           style={{ margin: 0, cursor: "pointer", fontFamily: "ui-monospace, monospace", fontSize: 12 }}
@@ -209,8 +209,8 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
     // through Update). Панель под Обзором, как CIDR у подсети.
     overviewBelow: ({ data }) => {
       const networkId = getByPath<string>(data, "id") ?? "";
-      const v4 = (getByPath<string[]>(data, "ipv4_cidr_blocks") ?? []) as string[];
-      const v6 = (getByPath<string[]>(data, "ipv6_cidr_blocks") ?? []) as string[];
+      const v4 = getByPath<string[]>(data, "ipv4_cidr_blocks") ?? [];
+      const v6 = getByPath<string[]>(data, "ipv6_cidr_blocks") ?? [];
       return (
         <div style={{ marginTop: 24, maxWidth: 760 }}>
           <NetworkCidrManager networkId={networkId} v4Blocks={v4} v6Blocks={v6} />
@@ -258,8 +258,8 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
       const subnetId = getByPath<string>(data, "id") ?? "";
       const v4Primary = getByPath<string>(data, "ipv4_cidr_primary") ?? "";
       const v6Primary = getByPath<string>(data, "ipv6_cidr_primary") ?? "";
-      const v4 = (getByPath<string[]>(data, "ipv4_cidr_blocks") ?? []) as string[];
-      const v6 = (getByPath<string[]>(data, "ipv6_cidr_blocks") ?? []) as string[];
+      const v4 = getByPath<string[]>(data, "ipv4_cidr_blocks") ?? [];
+      const v6 = getByPath<string[]>(data, "ipv6_cidr_blocks") ?? [];
       return (
         <SubnetCidrPanel
           subnetId={subnetId}
@@ -284,7 +284,7 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
     overviewBelow: ({ data, projectId }) => {
       // KAC-239: маршруты управляются отдельно от ресурса — RoutesPanel
       // (Добавить / чекбоксы + bulk-delete), не правкой всего RT.
-      const routes = (getByPath<StaticRoute[]>(data, "static_routes") ?? []) as StaticRoute[];
+      const routes = getByPath<StaticRoute[]>(data, "static_routes") ?? [];
       const rtId = getByPath<string>(data, "id") ?? "";
       return <RoutesPanel routeTableId={rtId} projectId={projectId} routes={routes} />;
     },
@@ -322,7 +322,7 @@ export const DETAIL_EXTENSIONS: Record<string, DetailExtension> = {
     // req: правила — ОТДЕЛЬНЫМ табом «Правила» (таблица + «Добавить» + чекбоксы +
     // bulk-delete через SgRulesPanel). Бэкенд — UpdateRules по стабильным id.
     extraTabs: ({ data, projectId }) => {
-      const all = (getByPath<SgRule[]>(data, "rules") ?? []) as SgRule[];
+      const all = getByPath<SgRule[]>(data, "rules") ?? [];
       const sgId = getByPath<string>(data, "id") ?? "";
       // KAC-243 (scenario 18): network_id SG → SG-target picker в редакторе
       // правил фильтрует кандидатов по той же сети.

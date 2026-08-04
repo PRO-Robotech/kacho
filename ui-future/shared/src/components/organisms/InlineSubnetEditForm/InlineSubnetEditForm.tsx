@@ -104,7 +104,7 @@ export function InlineSubnetEditForm({ projectId, subnetId, onCancel, onSuccess 
       }
     },
     onError: (err) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error).message;
+      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : err.message;
       toast.error(`Сохранить подсеть: ${m}`);
     },
   });

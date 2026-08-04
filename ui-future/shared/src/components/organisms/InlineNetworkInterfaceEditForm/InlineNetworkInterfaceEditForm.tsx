@@ -98,7 +98,7 @@ export function InlineNetworkInterfaceEditForm({ projectId, nicId, onCancel, onS
       }
     },
     onError: (err) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error).message;
+      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : err.message;
       toast.error(`Сохранить NIC: ${m}`);
     },
   });

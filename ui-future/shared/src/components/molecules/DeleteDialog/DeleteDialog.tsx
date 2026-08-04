@@ -95,7 +95,7 @@ export function DeleteDialog({
       onSuccess?.();
     },
     onError: (e) => {
-      const m = e instanceof ApiError ? `${e.code}: ${e.message}` : (e as Error).message;
+      const m = e instanceof ApiError ? `${e.code}: ${e.message}` : e.message;
       toast.error(`Удалить ${resourceLabel} ${name}: ${m}`);
     },
   });
@@ -247,7 +247,7 @@ export function DeleteDialog({
           <DependencyTreePanel
             nodes={depsQuery.data ?? []}
             loading={depsQuery.isLoading || depsQuery.isFetching}
-            error={depsQuery.error ? (depsQuery.error as Error).message : null}
+            error={depsQuery.error ? depsQuery.error.message : null}
           />
         </div>
       ) : (

@@ -119,7 +119,7 @@ export function RoutesPanel({ routeTableId, projectId, routes }: RoutesPanelProp
         });
       }
 
-      qc.invalidateQueries({ queryKey: [rtSpec.id] });
+      void qc.invalidateQueries({ queryKey: [rtSpec.id] });
     },
   });
 
@@ -258,7 +258,9 @@ export function RoutesPanel({ routeTableId, projectId, routes }: RoutesPanelProp
                           // поле адреса у неё пустое (это другая ветвь oneof), и без
                           // подписи выглядело бы как маршрут вовсе без next-hop.
                           // Введённый адрес осознанно заменяет ветвь.
-                          placeholder={row.gateway_id ? `шлюз ${row.gateway_id} — введите адрес, чтобы заменить` : "10.0.0.1"}
+                          placeholder={
+                            row.gateway_id ? `шлюз ${row.gateway_id} — введите адрес, чтобы заменить` : "10.0.0.1"
+                          }
                           value={row.next_hop_address}
                           onChange={(e) => setRow(i, { next_hop_address: e.target.value })}
                           style={cellInputStyle}

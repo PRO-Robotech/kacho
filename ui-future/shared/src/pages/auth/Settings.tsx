@@ -79,7 +79,7 @@ export function SettingsPage() {
       .filter((n) => n.group === "webauthn" && n.attributes?.name === "webauthn_remove")
       .map((n) => ({
         id: String(n.attributes?.value ?? ""),
-        display_name: (n.meta?.label?.text as string | undefined) ?? "Passkey",
+        display_name: n.meta?.label?.text ?? "Passkey",
         added_at: (n.attributes?.added_at as string | undefined) ?? undefined,
       }));
   }, [flow]);

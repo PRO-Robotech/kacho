@@ -98,7 +98,7 @@ export function ResourceFormBody({
       >
         {visible.map((f) => {
           const isLocked = locked.has(f.name) || (editMode && !!f.immutable);
-          const fullWidth = f.fullWidth ?? FULL_WIDTH.has(f.type as string);
+          const fullWidth = f.fullWidth ?? FULL_WIDTH.has(f.type);
 
           // Locked scalar/ref → read-only affordance (not hidden, not silent-disabled).
           if (isLocked && !fullWidth && f.type !== "labels") {

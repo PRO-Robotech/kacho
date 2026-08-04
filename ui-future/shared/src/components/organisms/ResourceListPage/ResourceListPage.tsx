@@ -128,7 +128,7 @@ export function ResourceListPage({
 
   const basePath = location.pathname.endsWith("/") ? location.pathname.slice(0, -1) : location.pathname;
 
-  const items = (data?.[spec.payloadKey] as Record<string, unknown>[] | undefined) ?? [];
+  const items = data?.[spec.payloadKey] ?? [];
 
   // Дополнительный фильтр "Зона доступности" — для ресурсов, у которых есть
   // понятие zone. Subnet хранит zone напрямую, Address — внутри
@@ -356,7 +356,7 @@ export function ResourceListPage({
               // в текущей секции (`${basePath}/${id}`).
               const target =
                 spec.childRoute && !disableChildRoute ? spec.childRoute.replace(":id", id) : `${basePath}/${id}`;
-              navigate(target);
+              void navigate(target);
             }}
           />
         )}

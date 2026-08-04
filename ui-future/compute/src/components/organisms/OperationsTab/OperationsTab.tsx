@@ -1,5 +1,14 @@
 // OperationsTab — generic список операций (LRO) для конкретного ресурса.
-// Использует контрактный путь: GET <spec.apiPath>/{id}/operations.
+//
+// Путь списка компонент НЕ собирает — он приходит готовым, пропом `listPath`.
+// Подмаршрут `<apiPath>/{id}/operations` ствол несёт НЕ у всякого ресурса: у
+// типов машин и у каталога размещения geo такого связывания нет вовсе, и
+// склеенный здесь из `spec.apiPath` адрес спрашивал бы то, чего нет, — край
+// отвечал отказом, а оператор читал это как поломку, а не как «операций у
+// этого ресурса не бывает». У кого подмаршрут есть, консоль утверждает в одном
+// месте — `@shared/lib/operations-subroute`, сверяемом с деревом proto в обе
+// стороны; решение показать вкладку принимает вызывающий, и принять его иначе
+// он не может: без пути вкладки нет.
 //
 // Фильтры: input по идентификатору + Select по статусу.
 // Колонки — см. OperationsTable.
@@ -16,6 +25,8 @@ import { HeaderSlotPortal } from "@/components/organisms/DetailShell";
 interface Props {
   spec: ResourceSpec;
   resourceId: string;
+  /** Готовый путь ствола — `operationsListPath(spec.apiPath, resourceId)`. */
+  listPath: string;
 }
 
 const STATUS_OPTIONS: { value: OperationStatus | "all"; label: string }[] = [
@@ -26,14 +37,14 @@ const STATUS_OPTIONS: { value: OperationStatus | "all"; label: string }[] = [
   { value: "cancelled", label: "Отменена" },
 ];
 
-export function OperationsTab({ spec, resourceId }: Props) {
+export function OperationsTab({ spec, resourceId, listPath }: Props) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<OperationStatus | "all">("all");
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: [spec.id, "operations", resourceId],
     queryFn: () =>
-      api.list<{ operations: Op[]; next_page_token?: string }>(`${spec.apiPath}/${resourceId}/operations`, {
+      api.list<{ operations: Op[]; next_page_token?: string }>(listPath, {
         pageSize: "200",
       }),
     enabled: !!resourceId,

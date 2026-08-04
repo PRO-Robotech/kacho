@@ -114,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Init: начальный refresh (сессия — по httpOnly cookie Kratos/Hydra).
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    void (async () => {
       if (!cancelled) await refresh();
     })();
     return () => {

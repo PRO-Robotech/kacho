@@ -121,7 +121,7 @@ export function RefSelect({
         }}
         options={[
           ...options.map((o) => ({
-            value: o.uid as string,
+            value: o.uid,
             label: `${o.name || o.uid}${o.extra ? ` · ${o.extra}` : ""}`,
           })),
           ...(createSpec ? [{ value: CREATE_SENTINEL, label: `+ Создать ${createSpec.singular.toLowerCase()}…` }] : []),
@@ -129,7 +129,7 @@ export function RefSelect({
       />
       {refProjectScoped && !project && <p className="text-xs text-amber-600">Выберите проект в шапке для загрузки.</p>}
       {needsDynParam && !dynParamValue && (
-        <p className="text-xs text-amber-600">Сначала выберите «{refQueryFromField!.field}» выше.</p>
+        <p className="text-xs text-amber-600">Сначала выберите «{refQueryFromField.field}» выше.</p>
       )}
       {isLoading && <p className="text-xs text-muted-foreground">Загрузка списка {spec.plural}…</p>}
       {error && <ErrorResult error={error} />}

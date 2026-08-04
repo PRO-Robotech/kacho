@@ -79,7 +79,7 @@ export function LoginPage() {
     ).PublicKeyCredential;
     if (!pkc?.isConditionalMediationAvailable) return;
     let cancelled = false;
-    pkc.isConditionalMediationAvailable().then((available) => {
+    void pkc.isConditionalMediationAvailable().then((available) => {
       if (!available || cancelled) return;
       // Берём challenge из flow.ui (Kratos рендерит webauthn_login_trigger).
       const triggerNode = findNode(flow.ui, "webauthn_login_trigger");
@@ -93,7 +93,7 @@ export function LoginPage() {
           .get({
             ...opts,
             mediation: "conditional",
-          } as CredentialRequestOptions)
+          })
           .then(() => {
             // На успех Kratos обработает результат через form-submit с hidden response field.
             // В conditional UI mode — focus переходит на input → user'у предложат Passkey.
@@ -201,7 +201,7 @@ export function LoginPage() {
     // Если попали сюда — берём return_to из flow или default.
     // Re-validate: the flow-supplied return_to must also stay same-origin.
     const target = resolvePostAuthTarget(result.return_to, returnTo);
-    navigate(target, { replace: true });
+    void navigate(target, { replace: true });
   }
 
   if (loading || !flow) {

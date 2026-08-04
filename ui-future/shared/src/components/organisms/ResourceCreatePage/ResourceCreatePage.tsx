@@ -50,8 +50,8 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
     const out: Record<string, unknown> = {};
     const soft: Record<string, unknown> = {};
     const optFilter: Record<string, string[]> = {};
-    const subnetId = (params.subnetId as string | undefined) ?? searchParams.get("subnet_id");
-    const networkId = (params.networkId as string | undefined) ?? searchParams.get("network_id");
+    const subnetId = params.subnetId ?? searchParams.get("subnet_id");
+    const networkId = params.networkId ?? searchParams.get("network_id");
     const kind = searchParams.get("kind");
     if (spec.id === "addresses" && subnetId) {
       // Адрес в контексте подсети — только ВНУТРЕННИЙ (internal); привязан к
@@ -109,9 +109,9 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
   // полученный URL `/projects/X/vpc/networks/Y/route-tables` не существует —
   // вместо этого возвращаемся к parent detail (network detail с табом).
   const rawBack = location.pathname.replace(/\/create$/, "") || "/";
-  const projectId = params.projectId as string | undefined;
-  const networkId = params.networkId as string | undefined;
-  const subnetId = params.subnetId as string | undefined;
+  const projectId = params.projectId;
+  const networkId = params.networkId;
+  const subnetId = params.subnetId;
   const isNestedUnderSubnet = !!(projectId && subnetId);
   const isNestedUnderNetwork = !!(projectId && networkId);
   const backHref = isNestedUnderSubnet
@@ -169,10 +169,10 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
       }
       // Синхронный ответ самим ресурсом (vpc AddressPool).
       invalidate(spec.id, filterValue ?? null);
-      navigate(backHref);
+      void navigate(backHref);
     },
     onError: (err) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error).message;
+      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : err.message;
       toast.error(`Создать ${spec.singular}: ${m}`);
     },
   });
@@ -191,7 +191,7 @@ export function ResourceCreatePage({ spec, parentField, parentParam, parentValue
     for (const w of operationWarnings(op)) toast.error(`${spec.singular}: ${w}`);
     toast.success(`${spec.singular} создан`);
     setPendingOpId(null);
-    navigate(backHref);
+    void navigate(backHref);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outcome.kind, outcome.kind === "failed" ? outcome.message : null]);
 

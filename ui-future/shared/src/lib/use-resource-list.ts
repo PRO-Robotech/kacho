@@ -80,7 +80,7 @@ export function useResourceList<T = Record<string, unknown>>(
     queryFn: ({ pageParam }) => {
       const q: Record<string, string> = { ...(extraQuery ?? {}), ...target.query };
       if (pageSize) q.pageSize = pageSize;
-      if (pageParam) q.pageToken = pageParam as string;
+      if (pageParam) q.pageToken = pageParam;
       return api.list<CursorPage>(target.path, q);
     },
     getNextPageParam: (lastPage) => lastPage.next_page_token || undefined,

@@ -41,7 +41,7 @@ export function OperationDialog({ opId, title, onSuccess, onClose }: Props) {
   const open = !!opId;
   const done = op?.done ?? false;
   const opError = op?.error;
-  const fetchError = isError ? (error as Error) : null;
+  const fetchError = isError ? error : null;
 
   const shortId = opId ? opId.slice(0, 16) + "…" : "";
 

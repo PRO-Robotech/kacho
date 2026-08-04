@@ -129,8 +129,7 @@ export function TargetGroupDetailPage() {
         invalidate("target-groups", project?.id);
       }
     },
-    onError: (e) =>
-      toast.error(`Добавить target: ${e instanceof ApiError ? `${e.code}: ${e.message}` : (e as Error).message}`),
+    onError: (e) => toast.error(`Добавить target: ${e instanceof ApiError ? `${e.code}: ${e.message}` : e.message}`),
   });
 
   const removeMut = useMutation({
@@ -145,13 +144,12 @@ export function TargetGroupDetailPage() {
         invalidate("target-groups", project?.id);
       }
     },
-    onError: (e) =>
-      toast.error(`Удалить target: ${e instanceof ApiError ? `${e.code}: ${e.message}` : (e as Error).message}`),
+    onError: (e) => toast.error(`Удалить target: ${e instanceof ApiError ? `${e.code}: ${e.message}` : e.message}`),
   });
 
   const targetsSection = useMemo(
     () => (data: Record<string, unknown>) => {
-      const targets = (getByPath<Target[]>(data, "targets") ?? []) as Target[];
+      const targets = getByPath<Target[]>(data, "targets") ?? [];
       const columns: ColumnsType<Target> = [
         { title: "Тип", key: "kind", width: 120, render: (_v, t) => <Tag>{targetIdentity(t).label}</Tag> },
         {
@@ -250,7 +248,7 @@ export function TargetGroupDetailPage() {
           <Form.Item label="Тип target">
             <Select
               value={kind}
-              onChange={(v) => setKind(v as TargetKind)}
+              onChange={(v) => setKind(v)}
               options={[
                 { value: "instance", label: "Compute Instance" },
                 { value: "nic", label: "VPC NetworkInterface" },

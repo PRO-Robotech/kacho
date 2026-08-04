@@ -31,7 +31,6 @@ import {
   targetResources,
   type AccessBindingTarget,
   type DefinitionTier,
-  type Role,
 } from "@shared/api/iam";
 
 export interface ResourceColumn {
@@ -620,11 +619,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // IAM-1 F1: ownerUserId НЕ в Create-форме (derived-from-caller, output-only;
     // передача в body → sync INVALID_ARGUMENT). Create-сага co-commit'ит default
     // Project + owner-AccessBinding (F2) — сервер-сторона, не форма.
-    fields: [
-      FIELD_NAME,
-      FIELD_LABELS,
-      FIELD_DESCRIPTION,
-    ],
+    fields: [FIELD_NAME, FIELD_LABELS, FIELD_DESCRIPTION],
     related: [
       { childId: "projects", filterField: "account_id", label: "Проекты" },
       {
@@ -840,8 +835,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         path: "is_system",
         // IAM-1 F4/F6: isSystem° derived (definitionTier.tierType==iam.cluster);
         // fallback на хранимый is_system/isSystem (AS-IS до миграции).
-        render: (row) =>
-          roleIsSystem(row as unknown as Role) ? <Tag color="purple">system</Tag> : <Tag color="default">custom</Tag>,
+        render: (row) => (roleIsSystem(row) ? <Tag color="purple">system</Tag> : <Tag color="default">custom</Tag>),
       },
       COL_ID,
       {
@@ -1396,8 +1390,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
     // generic-form parity / RefSelect).
     hydrate: (obj) => {
       const out: Record<string, unknown> = { ...obj };
-      const region = typeof out["region_id"] === "string" ? (out["region_id"] as string) : "";
-      const pt = typeof out["placement_type"] === "string" ? (out["placement_type"] as string) : "";
+      const region = typeof out["region_id"] === "string" ? out["region_id"] : "";
+      const pt = typeof out["placement_type"] === "string" ? out["placement_type"] : "";
       out["_placement"] = pt === "REGIONAL" || (!out["zone_id"] && region) ? "REGIONAL" : "ZONAL";
       return out;
     },
@@ -1796,6 +1790,7 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         fullWidth: false,
         description: "При обновлении список заменяется целиком (full-replace).",
         render: ({ value, onChange }) => {
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- ложное срабатывание: getByPath<T> выводит T из самого утверждения типа. Без него T = unknown, и RoutesEditor его не принимает (проверено tsc: удаление даёт TS2740).
           const routes = (getByPath(value, "static_routes") as RouteEntry[] | undefined) ?? [];
           return <RoutesEditor value={routes} onChange={(next) => onChange(setByPath(value, "static_routes", next))} />;
         },
@@ -3771,9 +3766,7 @@ export function sanitizeInstanceCreate(obj: Record<string, unknown>): Record<str
       const sgs = Array.isArray(nic["security_group_ids"])
         ? (nic["security_group_ids"] as unknown[])
             .map((it) =>
-              typeof it === "object" && it !== null && "value" in (it as object)
-                ? (it as Record<string, unknown>)["value"]
-                : it,
+              typeof it === "object" && it !== null && "value" in it ? (it as Record<string, unknown>)["value"] : it,
             )
             .filter((v) => typeof v === "string" && v)
         : [];

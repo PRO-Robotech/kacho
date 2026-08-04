@@ -180,7 +180,7 @@ export function TokenIssuancePage({ config }: { config: TokenKindConfig }) {
         setIssueOpen(false);
         form.resetFields();
         toast.success(`${cap(config.credentialSingular)} выпущен`);
-        invalidateCreds();
+        void invalidateCreds();
       } else {
         toast.error("Операция завершена, но секрет не получен");
       }
@@ -197,7 +197,7 @@ export function TokenIssuancePage({ config }: { config: TokenKindConfig }) {
       toast.error(revokeOp.error.message || "Не удалось отозвать");
     } else {
       toast.success(`${cap(config.credentialSingular)} отозван`);
-      invalidateCreds();
+      void invalidateCreds();
     }
     setRevokeOpId(null);
     setRevokingId(null);
@@ -211,7 +211,7 @@ export function TokenIssuancePage({ config }: { config: TokenKindConfig }) {
       const opId = resp.operation?.id;
       if (opId) setRevokeOpId(opId);
       else {
-        invalidateCreds();
+        void invalidateCreds();
         setRevokingId(null);
       }
     } catch (e) {
@@ -452,11 +452,7 @@ function IssueModal({
       data-testid="token-issue-modal"
     >
       <Form form={form} layout="vertical" preserve={false}>
-        <Form.Item
-          name="description"
-          label="Описание"
-          rules={[{ max: 256, message: "Не более 256 символов" }]}
-        >
+        <Form.Item name="description" label="Описание" rules={[{ max: 256, message: "Не более 256 символов" }]}>
           <Input placeholder="Например: CI runner prod" maxLength={256} />
         </Form.Item>
         <Form.Item

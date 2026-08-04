@@ -98,7 +98,7 @@ export function InlineNetworkInterfaceCreateForm({ projectId, subnetId: presetSu
       }
     },
     onError: (err) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error).message;
+      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : err.message;
       toast.error(`Создать NIC: ${m}`);
     },
   });

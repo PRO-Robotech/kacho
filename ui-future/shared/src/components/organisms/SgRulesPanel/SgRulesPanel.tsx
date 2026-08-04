@@ -16,8 +16,7 @@ import { ApiError, api } from "@shared/api/client";
 import { extractOperationId } from "@shared/components/molecules/OperationDialog";
 import { HeaderSlotPortal } from "@shared/components/organisms/DetailShell";
 import { RuleBody, emptyRule, type RuleExt } from "@shared/components/organisms/form/SgRulesEditor";
-import { hasProtocolNumber } from "@shared/lib/resource-registry";
-import { REGISTRY, sanitizeSgRule } from "@shared/lib/resource-registry";
+import { hasProtocolNumber, REGISTRY, sanitizeSgRule } from "@shared/lib/resource-registry";
 import { operationStore } from "@shared/lib/use-operation-store";
 import { toast } from "@shared/lib/toast";
 
@@ -88,9 +87,9 @@ export function SgRulesPanel({ sgId, projectId, rules, networkId }: Props) {
   const runOp = async (payload: { deletion_rule_ids?: string[]; addition_rule_specs?: unknown[] }, opTitle: string) => {
     try {
       const resp = await mutation.mutateAsync(payload);
-      const opId = extractOperationId(resp as Parameters<typeof extractOperationId>[0]);
+      const opId = extractOperationId(resp);
       if (opId) operationStore.start({ id: opId, title: opTitle, resourceId: sgSpec.id, projectId });
-      refresh();
+      void refresh();
     } catch (err) {
       const m = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error).message;
       toast.error(`Правило группы безопасности: ${m}`);

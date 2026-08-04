@@ -20,7 +20,7 @@ import { useParams, useNavigate, useLocation, Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Descriptions, Spin, Typography } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
-import { DetailShell, HeaderSlotPortal, type DetailTab, type DocLink } from "@shared/components/organisms/DetailShell";
+import { DetailShell, HeaderSlotPortal, type DetailTab } from "@shared/components/organisms/DetailShell";
 import { DetailHeaderProvider } from "@shared/components/molecules/PanelHeader";
 import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
 import { ResourceEmptyState } from "@shared/components/molecules/ResourceEmptyState";
@@ -33,7 +33,12 @@ import { RowActionsMenu } from "@shared/components/molecules/RowActionsMenu";
 import { LazyJsonMonacoView } from "@shared/components/molecules/JsonMonacoView";
 import { OperationsTab } from "@shared/components/organisms/OperationsTab";
 import { InlineResourceForm } from "@shared/components/organisms/InlineResourceForm";
-import { TableSearch, ColumnSettings, useHiddenColumns, type ToggleCol } from "@shared/components/molecules/TableToolbar";
+import {
+  TableSearch,
+  ColumnSettings,
+  useHiddenColumns,
+  type ToggleCol,
+} from "@shared/components/molecules/TableToolbar";
 import { useBreadcrumb, useHeaderRight } from "@shared/components/molecules/PageHeaderSlot";
 import { detailExtension, type DescItem } from "@shared/components/organisms/ResourceDetailExtensions";
 import { api } from "@shared/api/client";
@@ -103,7 +108,7 @@ function RelatedTable({
     accountScoped ? "account_id" : "project_id",
     accountScoped ? parentId : projectId,
   );
-  const all = (data?.[childSpec.payloadKey] as Record<string, unknown>[] | undefined) ?? [];
+  const all = data?.[childSpec.payloadKey] ?? [];
   // Фильтр по родителю (OR по нескольким полям — напр. subnet→addresses v4∪v6).
   const ownRows = all.filter((r) => filterFields.some((ff) => getByPath<string>(r, ff) === parentId));
 
@@ -167,7 +172,7 @@ function RelatedTable({
         empty={q ? "По запросу ничего не найдено." : undefined}
         onRowClick={(r) => {
           const id = getByPath<string>(r, "id");
-          if (id) navigate(`${flatChildBase}/${id}`);
+          if (id) void navigate(`${flatChildBase}/${id}`);
         }}
       />
     </div>
@@ -205,7 +210,7 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
     // Локализованная метка для кастомных child-create-роутов без REGISTRY-spec
     // (privileges → «Привилегии»), чтобы breadcrumb не показывал raw route.
     const CHILD_LABELS: Record<string, string> = { privileges: "Привилегии" };
-    const childLabel = childSpec?.plural ?? (childRoute ? CHILD_LABELS[childRoute] ?? childRoute : "");
+    const childLabel = childSpec?.plural ?? (childRoute ? (CHILD_LABELS[childRoute] ?? childRoute) : "");
     const sec = (txt: string) => <Typography.Text type="secondary">{txt}</Typography.Text>;
     const sep = <Typography.Text type="secondary">/</Typography.Text>;
     return (
@@ -421,7 +426,7 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
         onCancel={() => navigate(detailBase)}
         onSuccess={() => {
           invalidate(spec.id, projectId);
-          navigate(detailBase);
+          void navigate(detailBase);
         }}
       />
     );
@@ -462,8 +467,8 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
   else if (seg0 && tabs.some((t) => t.id === seg0)) activeTabId = seg0;
 
   const onTabSelect = (id: string) => {
-    if (id === "overview") navigate(detailBase);
-    else navigate(`${detailBase}/${id}`);
+    if (id === "overview") void navigate(detailBase);
+    else void navigate(`${detailBase}/${id}`);
   };
 
   // Зона-2 шапка для форм (edit/child-create): действие + тип + иконка ресурса
@@ -482,7 +487,7 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
     mode === "edit"
       ? spec.plural
       : mode === "child-create"
-        ? childForHeader?.plural ?? customChild?.title
+        ? (childForHeader?.plural ?? customChild?.title)
         : undefined;
   const headerIcon =
     mode === "child-create" && childForHeader ? (
@@ -500,7 +505,7 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
         resourceName={name}
         nameEyebrow={spec.singular}
         tabs={tabs}
-        docLinks={(spec.docs as DocLink[] | undefined) ?? []}
+        docLinks={spec.docs ?? []}
         mainOverride={mainOverride}
         activeTabId={activeTabId}
         onTabSelect={onTabSelect}

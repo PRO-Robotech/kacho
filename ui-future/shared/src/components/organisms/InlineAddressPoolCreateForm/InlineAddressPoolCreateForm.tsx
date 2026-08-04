@@ -81,7 +81,7 @@ export function InlineAddressPoolCreateForm({ onCancel, onSuccess }: Props) {
       onCancel();
     },
     onError: (err) => {
-      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : (err as Error).message;
+      const m = err instanceof ApiError ? `${err.code}: ${err.message}` : err.message;
       toast.error(`Создать пул адресов: ${m}`);
     },
   });
