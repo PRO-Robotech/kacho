@@ -70,9 +70,34 @@ FIXTURE_GLOBS = ["tests/authz-fixtures/*.py", "services/*/tests/newman/cases/*.p
 
 VERB_WILDCARD = "*"
 
+# Закрытая таблица (module.resource) → тип модели прав. Один источник с прод-кодом:
+# гейт читает ТУ ЖЕ карту, по которой строит объекты реконсайлер, поэтому «глагол
+# законен» решается набором ЕГО типа, а не общим словарём.
+TYPES_REL = "services/iam/internal/authzmap/fga_types.go"
+
 
 def repo_root():
     return os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+
+
+def object_types(types_path):
+    """{"module.resource": "тип_модели"} — из закрытой таблицы прод-кода.
+
+    ПОЧЕМУ ИЗ КОДА, А НЕ СПИСКОМ ЗДЕСЬ. Копия таблицы в гейте разъехалась бы с
+    прод-кодом молча: новый ресурс появился бы у реконсайлера и не появился бы
+    у проверки, и та начала бы считать законный глагол несуществующим.
+    """
+    try:
+        src = open(types_path, encoding="utf-8").read()
+    except OSError:
+        return None
+    m = re.search(r"var objectTypes = map\[string\]string\{(.*?)\n\}", src, re.S)
+    if not m:
+        return None
+    out = {}
+    for k, v in re.findall(r'"([^"]+)"\s*:\s*"([^"]+)"', m.group(1)):
+        out[k] = v
+    return out or None
 
 
 def model_verb_sets(model_path):
@@ -126,17 +151,23 @@ def role_rule_verbs(path):
                 slot = dict(zip([k.value if isinstance(k, ast.Constant) else None
                                  for k in node.keys], node.values))
                 verbs = _str_list(slot.get("verbs"))
+                mod = slot.get("module")
+                mod = mod.value if isinstance(mod, ast.Constant) and isinstance(mod.value, str) else None
+                res = _str_list(slot.get("resources"))
                 if verbs is None:
                     unresolved += 1
                 else:
-                    found.append((node.lineno, "rules[]", verbs))
+                    found.append((node.lineno, "rules[]", verbs, mod, res))
         if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                 and node.func.id == "custom_role" and len(node.args) >= 5):
             verbs = _str_list(node.args[4])
+            a2 = node.args[2]
+            mod = a2.value if isinstance(a2, ast.Constant) and isinstance(a2.value, str) else None
+            res = _str_list(node.args[3])
             if verbs is None:
                 unresolved += 1
             else:
-                found.append((node.lineno, "custom_role()", verbs))
+                found.append((node.lineno, "custom_role()", verbs, mod, res))
     return found, unresolved
 
 
@@ -150,17 +181,49 @@ def list_fixture_files(root):
         return None
 
 
-def scan(root, files, vocabulary):
-    findings, triples, unresolved = [], 0, 0
+def scan(root, files, verb_sets, types_map, fallback):
+    """Сверка глагола с набором ЕГО типа.
+
+    Пара (module, resource) резолвится закрытой таблицей прод-кода в тип модели, и
+    глагол ищется в наборе именно этого типа. Прежняя редакция сверяла с ОБЩИМ
+    словарём и держалась на предпосылке «у всех типов один набор»; предпосылка
+    отпала, как только у одного типа появились свои глаголы. Общий словарь пропускал
+    бы глагол, законный у соседа и несуществующий здесь.
+
+    Нерезолвимая пара (нет module/resources рядом либо пары нет в таблице) НЕ
+    молчит: она считается отдельно и печатается — «не смог разрешить» никогда не
+    равно «законно».
+    """
+    # Приведение авторского глагола — ТО ЖЕ, что делает прод-код перед выводом имени
+    # отношения (services/iam/internal/domain/rule_verbs.go::NormalizeVerb: обрезка
+    # пробелов + складывание регистра). Без него camelCase-глагол фикстуры не совпал
+    # бы с приведённым именем в модели, и гейт объявил бы находкой законную запись.
+    norm = lambda v: v.strip().lower()
+    findings, triples, unresolved, unmapped = [], 0, 0, []
     for rel in files:
         got, unres = role_rule_verbs(os.path.join(root, rel))
         unresolved += unres
-        for lineno, shape, verbs in got:
+        for lineno, shape, verbs, mod, res in got:
             triples += 1
-            absent = [v for v in verbs if v != VERB_WILDCARD and v not in vocabulary]
-            if absent:
-                findings.append((rel, lineno, shape, verbs, absent))
-    return findings, triples, unresolved
+            targets = []
+            if mod and res:
+                for r in res:
+                    t = types_map.get(mod + "." + r) if types_map else None
+                    if t and t in verb_sets:
+                        targets.append((r, verb_sets[t]))
+                    else:
+                        unmapped.append((rel, lineno, mod + "." + r))
+            if not targets:
+                # пары нет — судим по объединению, но факт неразрешённости уже записан
+                absent = [v for v in verbs if v != VERB_WILDCARD and norm(v) not in fallback]
+                if absent:
+                    findings.append((rel, lineno, shape, verbs, absent))
+                continue
+            for r, allowed in targets:
+                absent = [v for v in verbs if v != VERB_WILDCARD and norm(v) not in allowed]
+                if absent:
+                    findings.append((rel, lineno, shape + " → " + r, verbs, absent))
+    return findings, triples, unresolved, unmapped
 
 
 def run(root, files, verb_sets, label="дерево"):
@@ -170,20 +233,21 @@ def run(root, files, verb_sets, label="дерево"):
               f"предпосылка гейта не выполняется, молчание ничего не доказывает.")
         return 2
 
-    # ПРЕДПОСЫЛКА: один набор на все глагольные типы. Пока она держится, «глагол
-    # существует» решается без разрешения (модуль, ресурс) в тип.
-    distinct = {frozenset(v) for v in verb_sets.values()}
-    if len(distinct) != 1:
-        print("FATAL: глагольные типы модели больше НЕ несут один общий набор — "
-              "у этого гейта пропало основание судить по общему словарю.")
-        for t, v in sorted(verb_sets.items()):
-            print(f"    {t}: {sorted(v)}")
-        print("  Допиши разрешение пары (module, resource) в тип модели и сверяй "
-              "глагол с набором ЕГО типа. Пока этого нет, гейт пропускал бы глагол, "
-              "законный у соседнего типа и несуществующий у этого.")
-        return 2
+    # ПРЕДПОСЫЛКИ ОБЩЕГО НАБОРА БОЛЬШЕ НЕТ, и это не деградация, а уточнение.
+    # Пока у всех глагольных типов набор совпадал, «глагол существует» решалось без
+    # разрешения пары. Как только у одного типа появились свои глаголы, общий словарь
+    # стал пропускать глагол, законный у соседа и несуществующий здесь. Теперь глагол
+    # сверяется с набором ЕГО типа, а объединение остаётся ТОЛЬКО запасным путём для
+    # пары, которую не удалось разрешить, — и такая пара печатается отдельно.
+    fallback = set()
+    for v in verb_sets.values():
+        fallback |= set(v)
 
-    vocabulary = set(next(iter(distinct)))
+    types_map = object_types(os.path.join(root, TYPES_REL))
+    if not types_map:
+        print(f"FATAL: не прочитана закрытая таблица типов {TYPES_REL} — "
+              "разрешать пару (module, resource) нечем, и молчание ничего не доказывает.")
+        return 2
 
     if files is None:
         print("FATAL: состав фикстур не читается (git ls-files не отработал). "
@@ -194,14 +258,20 @@ def run(root, files, verb_sets, label="дерево"):
               "Ноль находок на нуле прочитанного — это провал, а не чистота.")
         return 1
 
-    findings, triples, unresolved = scan(root, files, vocabulary)
+    findings, triples, unresolved, unmapped = scan(root, files, verb_sets, types_map, fallback)
 
     # Перепись — ОТДЕЛЬНОЕ утверждение от вердикта: «0 находок» обязано быть
     # отличимо от «0 прочитанного».
     print(f"assert-fixture-role-verbs-exist: {label} — прочитано файлов: {len(files)}; "
           f"определений правил роли: {triples}; глаголы не разрешились статически: "
-          f"{unresolved}; словарь модели ({len(verb_sets)} глагольных типов): "
-          f"{sorted(vocabulary)}")
+          f"{unresolved}; глагольных типов модели: {len(verb_sets)}; пар в закрытой "
+          f"таблице: {len(types_map)}; пар не разрешилось в тип: {len(unmapped)}")
+    if unmapped:
+        # «Не разрешил» — отдельный исход, а не тишина: по нерезолвимой паре глагол
+        # сверяется объединением, то есть строже общего словаря не становится.
+        seen = sorted({u[2] for u in unmapped})
+        print(f"  пары вне закрытой таблицы ({len(seen)}): {seen[:12]}"
+              + (" …" if len(seen) > 12 else ""))
 
     if findings:
         print(f"\nFAIL: {len(findings)} определен(ий) роли построено из глагола, "
