@@ -7,6 +7,7 @@ import { SgRulesEditor } from "@shared/components/organisms/form/SgRulesEditor";
 import { LabelsEditor } from "@shared/components/organisms/form/LabelsEditor";
 import { getByPath, setByPath, deleteByPath } from "@shared/lib/path";
 import type { FormField as FF, ArrayField } from "@shared/lib/form-schema";
+import { displayText } from "@shared/lib/display-text";
 
 interface Props {
   field: FF;
@@ -152,7 +153,7 @@ function ScalarFieldRenderer({
         <Input
           id={id}
           type="number"
-          value={cur === undefined || cur === null ? "" : String(cur)}
+          value={displayText(cur)}
           onChange={(e) => set(e.target.value === "" ? undefined : Number(e.target.value))}
           min={field.min}
           max={field.max}

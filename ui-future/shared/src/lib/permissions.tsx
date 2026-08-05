@@ -23,6 +23,7 @@ import { Tooltip } from "antd";
 import { useAuth } from "@shared/contexts/AuthContext";
 import { extractDenyReasons, type AccountMembership, type WhoAmIResponse } from "@shared/api/auth";
 import { ApiError } from "@shared/api/client";
+import { displayText } from "@shared/lib/display-text";
 
 /** Аггрегированный permission-snapshot для текущего user'а. */
 export interface PermissionSnapshot {
@@ -173,7 +174,7 @@ export function mapApiErrorToMessage(err: unknown): string {
     return err.message || (err.status === 403 ? "Permission denied" : "Ошибка");
   }
   if (err instanceof Error) return err.message;
-  return String(err ?? "Ошибка");
+  return displayText(err) || "Ошибка";
 }
 
 /** True если err — ApiError со status=403/code=PERMISSION_DENIED. */

@@ -2,6 +2,17 @@
 // Ресурсы — плоские объекты (нет metadata/spec/status envelope).
 // grpc-gateway сериализует proto snake_case → JSON snake_case (прямой маппинг).
 
+// ====== Open enum ======
+//
+// Значения proto-enum'ов приезжают строками, и набор известных имён РАСШИРЯЕТСЯ
+// новыми версиями сервиса: консоль обязана пережить значение, которого ещё не
+// знает. Форма `"A" | "B" | string` это выражала неверно — TypeScript сводит её
+// к `string`, литералы исчезают, автодополнение и проверка опечаток пропадают,
+// а тип продолжает выглядеть перечислением. `OpenEnum` даёт то же намерение
+// честно: известные имена подсказываются и проверяются, любая другая строка
+// принимается.
+export type OpenEnum<Known extends string> = Known | (string & {});
+
 // ====== Operation ======
 
 export interface Operation {
@@ -96,7 +107,7 @@ export interface Subnet {
   description?: string;
   labels?: Record<string, string>;
   network_id?: string;
-  placement_type?: "ZONAL" | "REGIONAL" | string;
+  placement_type?: OpenEnum<"ZONAL" | "REGIONAL">;
   zone_id?: string;
   region_id?: string;
   ipv4_cidr_primary?: string;
@@ -173,7 +184,7 @@ export interface SecurityGroupRule {
   id?: string;
   description?: string;
   labels?: Record<string, string>;
-  direction?: "DIRECTION_UNSPECIFIED" | "INGRESS" | "EGRESS" | string;
+  direction?: OpenEnum<"DIRECTION_UNSPECIFIED" | "INGRESS" | "EGRESS">;
   ports?: { from_port?: number; to_port?: number };
   protocol_name?: string;
   protocol_number?: number;
@@ -191,7 +202,7 @@ export interface SecurityGroup {
   description?: string;
   labels?: Record<string, string>;
   network_id?: string;
-  status?: "STATUS_UNSPECIFIED" | "CREATING" | "ACTIVE" | "UPDATING" | "DELETING" | string;
+  status?: OpenEnum<"STATUS_UNSPECIFIED" | "CREATING" | "ACTIVE" | "UPDATING" | "DELETING">;
   rules?: SecurityGroupRule[];
   default_for_network?: boolean;
 }

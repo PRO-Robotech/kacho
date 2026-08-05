@@ -16,7 +16,7 @@
 // permission'а получит HTTP 403 от api-gateway middleware.
 
 import { api } from "./client";
-import type { Operation } from "./types";
+import type { OpenEnum, Operation } from "./types";
 
 /** Cluster singleton — единственная row с id `cluster_kacho_root`. */
 export interface Cluster {
@@ -27,7 +27,7 @@ export interface Cluster {
 }
 
 /** Proto enum `ClusterGrantSubjectType` — в этой версии только USER (D-2). */
-export type ClusterGrantSubjectType = "USER" | "SERVICE_ACCOUNT" | string;
+export type ClusterGrantSubjectType = OpenEnum<"USER" | "SERVICE_ACCOUNT">;
 
 /**
  * Денормализованный snapshot активной cluster_admin_grants row + JOIN на

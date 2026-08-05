@@ -33,14 +33,14 @@ let methods: string[] = [];
 
 function stubFetch() {
   methods = [];
-  globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+  globalThis.fetch = (_input: RequestInfo | URL, init?: RequestInit) => {
     methods.push(init?.method ?? "GET");
-    return {
+    return Promise.resolve({
       ok: true,
       status: 200,
       statusText: "OK",
-      text: async () => JSON.stringify({ id: "opr-1", done: true }),
-    } as Response;
+      text: () => Promise.resolve(JSON.stringify({ id: "opr-1", done: true })),
+    } as Response);
   };
 }
 

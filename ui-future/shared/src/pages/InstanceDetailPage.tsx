@@ -88,7 +88,7 @@ export function InstanceDetailPage() {
   });
 
   const secondaryActions = useMemo(
-    () => (data: Record<string, unknown>) => {
+    () => function InstanceSecondaryActions(data: Record<string, unknown>) {
       // AttachedDisk carries `volume_id` — there is no `disk_id` on it, so reading
       // that name yielded an empty id for every attachment and the detach hint
       // below listed nothing.

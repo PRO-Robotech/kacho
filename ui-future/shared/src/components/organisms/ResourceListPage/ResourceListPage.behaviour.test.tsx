@@ -23,13 +23,13 @@ const realFetch = globalThis.fetch;
 
 /** Answers every list GET with a single row under the spec's payload key. */
 function stubList(payloadKey: string, rows: Record<string, unknown>[]) {
-  globalThis.fetch = async () =>
-    ({
+  globalThis.fetch = () =>
+    Promise.resolve({
       ok: true,
       status: 200,
       statusText: "OK",
-      text: async () => JSON.stringify({ [payloadKey]: rows }),
-    }) as Response;
+      text: () => Promise.resolve(JSON.stringify({ [payloadKey]: rows })),
+    } as Response);
 }
 
 afterEach(() => {

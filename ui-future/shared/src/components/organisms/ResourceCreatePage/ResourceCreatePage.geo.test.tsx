@@ -44,17 +44,17 @@ let calls: Call[] = [];
 
 /** Stub fetch: POST answers with `createAnswer`, the operation poll with `opAnswer`. */
 function stubFetch(createAnswer: unknown, opAnswer: unknown) {
-  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
     calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
     const payload = method === "POST" ? createAnswer : opAnswer;
-    return {
+    return Promise.resolve({
       ok: true,
       status: 200,
       statusText: "OK",
-      text: async () => JSON.stringify(payload),
-    } as Response;
+      text: () => Promise.resolve(JSON.stringify(payload)),
+    } as Response);
   };
 }
 
@@ -141,22 +141,22 @@ describe("ResourceCreatePage — Region", () => {
   it("does not report success when the operation status cannot be read", async () => {
     // The mutation was accepted, but the poll fails. Nothing is known about the
     // outcome — the old wiring simply spun forever.
-    globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+    globalThis.fetch = (_input: RequestInfo | URL, init?: RequestInit) => {
       const method = init?.method ?? "GET";
       if (method === "POST") {
-        return {
+        return Promise.resolve({
           ok: true,
           status: 200,
           statusText: "OK",
-          text: async () => JSON.stringify({ id: "opr-1", done: false }),
-        } as Response;
+          text: () => Promise.resolve(JSON.stringify({ id: "opr-1", done: false })),
+        } as Response);
       }
-      return {
+      return Promise.resolve({
         ok: false,
         status: 403,
         statusText: "Forbidden",
-        text: async () => JSON.stringify({ code: "PERMISSION_DENIED", message: "no path" }),
-      } as Response;
+        text: () => Promise.resolve(JSON.stringify({ code: "PERMISSION_DENIED", message: "no path" })),
+      } as Response);
     };
 
     renderCreate();

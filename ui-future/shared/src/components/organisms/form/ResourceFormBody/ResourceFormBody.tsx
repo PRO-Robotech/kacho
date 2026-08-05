@@ -12,6 +12,7 @@ import { ImmutableField } from "@shared/components/organisms/form/ImmutableField
 import { getByPath } from "@shared/lib/path";
 import type { ResourceSpec } from "@shared/lib/resource-registry";
 import type { FormField } from "@shared/lib/form-schema";
+import { displayText } from "@shared/lib/display-text";
 
 export interface ResourceFormBodyProps {
   spec: ResourceSpec;
@@ -45,7 +46,7 @@ export function matchesVisibleWhen(
   if (!vw) return true;
   const raw = getByPath(obj, vw.field);
   if (raw === undefined || raw === null) return false;
-  const cur = String(raw);
+  const cur = displayText(raw);
   return Array.isArray(vw.equals) ? vw.equals.includes(cur) : cur === vw.equals;
 }
 
@@ -55,7 +56,7 @@ function displayValue(obj: Record<string, unknown>, field: FormField): React.Rea
     const opt = field.options.find((o) => o.value === raw);
     if (opt) return opt.label;
   }
-  return raw == null ? "" : String(raw);
+  return displayText(raw);
 }
 
 export function ResourceFormBody({

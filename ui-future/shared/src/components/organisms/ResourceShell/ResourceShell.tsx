@@ -15,7 +15,7 @@
 // Конфиг per-resource: spec.related / spec.docs / spec.emptyState (registry) +
 // DETAIL_EXTENSIONS (доменный React-контент: см. resource-detail-extensions).
 
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
 import { useParams, useNavigate, useLocation, Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Button, Descriptions, Spin, Typography } from "antd";
@@ -182,6 +182,12 @@ function RelatedTable({
 export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: ResourceShellMode }) {
   const { projectId, uid, childRoute } = useParams();
   const navigate = useNavigate();
+  // `DetailExtCtx.navigate` объявлен как переход без результата, а react-router
+  // возвращает из него промис. Передать сам `navigate` значило бы отдать
+  // расширению промис под видом void: отказ перехода стал бы необработанным
+  // отклонением, которое ни один обработчик уже не увидит. Адаптер снимает
+  // результат ЯВНО, ровно в той точке, где контракт его не принимает.
+  const go = useCallback((to: string) => void navigate(to), [navigate]);
   const location = useLocation();
   const invalidate = useInvalidateResourceList();
 
@@ -269,7 +275,7 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
           data={data}
           projectId={projectId ?? null}
           detailBase={detailBase}
-          extActions={ext?.headerActions?.({ data, projectId: projectId ?? null, detailBase, navigate })}
+          extActions={ext?.headerActions?.({ data, projectId: projectId ?? null, detailBase, navigate: go })}
         />
       ) : null;
     }
@@ -289,13 +295,13 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
     // Активный extra-таб (напр. «Привилегии») может нести собственный header-CTA
     // («Выдать доступ») — рендерим его в шапке страницы, как у related-табов.
     if (data) {
-      const activeExtra = (ext?.extraTabs?.({ data, projectId: projectId ?? null, detailBase, navigate }) ?? []).find(
+      const activeExtra = (ext?.extraTabs?.({ data, projectId: projectId ?? null, detailBase, navigate: go }) ?? []).find(
         (t) => t.id === headerTabId,
       );
       if (activeExtra?.headerAction) return activeExtra.headerAction;
     }
     return null;
-  }, [mode, headerTabId, data, spec, projectId, detailBase, ext, navigate]);
+  }, [mode, headerTabId, data, spec, projectId, detailBase, ext, navigate, go]);
   useHeaderRight(headerActions);
 
   if (isLoading && !data) {
@@ -310,7 +316,7 @@ export function ResourceShell({ spec, mode }: { spec: ResourceSpec; mode?: Resou
   }
 
   const related = spec.related ?? [];
-  const extCtx = { data, projectId: projectId ?? null, detailBase, navigate };
+  const extCtx = { data, projectId: projectId ?? null, detailBase, navigate: go };
 
   // ── Обзор: 5 обязательных + доменные строки расширения ──
   const overviewItems: DescItem[] = [

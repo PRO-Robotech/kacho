@@ -124,8 +124,6 @@ export function ResourceListPage({
   }, [spec, createTarget]);
   useHeaderRight(cta);
 
-  if (parentField && !filterValue) return <ProjectRequiredEmpty resource={spec.plural} />;
-
   const basePath = location.pathname.endsWith("/") ? location.pathname.slice(0, -1) : location.pathname;
 
   const items = data?.[spec.payloadKey] ?? [];
@@ -195,6 +193,15 @@ export function ResourceListPage({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, query, zone, hasZoneFilter, hasSystemFilter, roleKind, spec.id]);
+
+  // Заглушка «проект не выбран» — НИЖЕ всех хуков страницы, а не выше.
+  // Scope приходит из context-store (аккаунтные списки IAM) или из параметра
+  // маршрута, и меняется БЕЗ размонтирования компонента. Ранний выход над
+  // хуками означал бы, что при выборе проекта число вызванных хуков растёт
+  // между двумя рендерами одного и того же компонента, — React такой рендер
+  // отвергает целиком, и пользователь получает пустой экран вместо списка.
+  // Проба: ResourceListPage.hookorder.test.tsx.
+  if (parentField && !filterValue) return <ProjectRequiredEmpty resource={spec.plural} />;
 
   // params.projectId доступен для project-scoped listов (/projects/:projectId/...);
   // прокидываем в buildSpecColumns, чтобы format: "references" (used_by) мог

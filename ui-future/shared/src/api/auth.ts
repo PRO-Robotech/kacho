@@ -16,6 +16,7 @@
 // Все запросы — `credentials: 'include'` для cookie ory_kratos_session.
 
 import { camelToSnake } from "@shared/lib/case";
+import { displayText } from "@shared/lib/display-text";
 
 export type SubjectType = "user" | "service_account" | "system";
 
@@ -140,7 +141,7 @@ async function fetchWhoAmI(): Promise<WhoAmIResponse> {
   const parsed = JSON.parse(text);
   const adapted = camelToSnake<Record<string, unknown>>(parsed);
   return {
-    subject: String(adapted.subject ?? ""),
+    subject: displayText(adapted.subject),
     user_id: adapted.user_id as string | undefined,
     email: adapted.email as string | undefined,
     display_name: adapted.display_name as string | undefined,
@@ -215,8 +216,8 @@ export function extractDenyReasons(details: unknown): DenyReason[] {
       if (!r || typeof r !== "object") continue;
       const rr = r as Record<string, unknown>;
       out.push({
-        reason: String(rr.reason ?? ""),
-        message: String(rr.message ?? rr.reason ?? "Permission denied"),
+        reason: displayText(rr.reason),
+        message: displayText(rr.message) || displayText(rr.reason) || "Permission denied",
         required_relation: (rr.required_relation as string | undefined) ?? (rr.requiredRelation as string | undefined),
         resource: rr.resource as string | undefined,
       });

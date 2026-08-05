@@ -19,7 +19,7 @@ function toCamel(s: string): string {
   // foo_bar → fooBar; не трогаем строки начинающиеся с "@" (Any-tag) или
   // strings без подчёркиваний.
   if (!s.includes("_")) return s;
-  return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+  return s.replace(/_([a-z])/g, (_full: string, c: string) => c.toUpperCase());
 }
 
 function toSnake(s: string): string {

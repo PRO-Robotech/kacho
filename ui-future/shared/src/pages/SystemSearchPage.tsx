@@ -7,6 +7,7 @@ import { Link } from "react-router";
 import { useQueries } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { api } from "@shared/api/client";
+import { displayText } from "@shared/lib/display-text";
 
 interface Hit {
   resource: string;
@@ -75,8 +76,8 @@ export function SystemSearchPage() {
       if (!qry.data) return;
       const list = (qry.data[d.key] as Record<string, unknown>[] | undefined) ?? [];
       list.forEach((r) => {
-        const id = String(r.id ?? "");
-        const name = String(r.name ?? "");
+        const id = displayText(r.id);
+        const name = displayText(r.name);
         const matchesId = id.toLowerCase().includes(term);
         const matchesName = name.toLowerCase().includes(term);
         if (!matchesId && !matchesName) return;
@@ -86,7 +87,7 @@ export function SystemSearchPage() {
           name,
           project_id: r.project_id as string | undefined,
           account_id: r.account_id as string | undefined,
-          link: d.linkBase.replace(":project_id", String(r.project_id ?? "")).replace(":id", id),
+          link: d.linkBase.replace(":project_id", displayText(r.project_id)).replace(":id", id),
           extras: extractExtras(d.resource, r),
         });
       });
@@ -172,16 +173,16 @@ export function extractExtras(resource: string, r: Record<string, unknown>): Rec
     case "addresses": {
       const ext = r.external_ipv4_address as Record<string, unknown> | undefined;
       const intn = r.internal_ipv4_address as Record<string, unknown> | undefined;
-      if (ext?.address) e.ext = String(ext.address);
-      if (intn?.address) e.int = String(intn.address);
-      if (r.type) e.type = String(r.type);
+      if (ext?.address) e.ext = displayText(ext.address);
+      if (intn?.address) e.int = displayText(intn.address);
+      if (r.type) e.type = displayText(r.type);
       break;
     }
     case "subnets": {
       // VPC-1: placement anchor is zone_id (ZONAL) or region_id (REGIONAL);
       // CIDR is ipv4_cidr_primary + additional ranges (v4_cidr_blocks retired).
-      if (r.zone_id) e.zone = String(r.zone_id);
-      else if (r.region_id) e.region = String(r.region_id);
+      if (r.zone_id) e.zone = displayText(r.zone_id);
+      else if (r.region_id) e.region = displayText(r.region_id);
       const cidrs = [
         typeof r.ipv4_cidr_primary === "string" ? r.ipv4_cidr_primary : "",
         typeof r.ipv6_cidr_primary === "string" ? r.ipv6_cidr_primary : "",
@@ -192,8 +193,8 @@ export function extractExtras(resource: string, r: Record<string, unknown>): Rec
       break;
     }
     case "address-pools": {
-      if (r.zone_id) e.zone = String(r.zone_id);
-      if (r.kind) e.kind = String(r.kind);
+      if (r.zone_id) e.zone = displayText(r.zone_id);
+      if (r.kind) e.kind = displayText(r.kind);
       // Слитное `cidr_blocks` (тег 7) у AddressPool зарезервировано и расщеплено
       // на v4 (13) + v6 (14). Чтение снятого имени возвращало undefined молча —
       // строка находилась, приписка диапазонов не появлялась никогда. Второй
@@ -206,7 +207,7 @@ export function extractExtras(resource: string, r: Record<string, unknown>): Rec
       break;
     }
     case "zones":
-      if (r.region_id) e.region = String(r.region_id);
+      if (r.region_id) e.region = displayText(r.region_id);
       break;
   }
   return e;

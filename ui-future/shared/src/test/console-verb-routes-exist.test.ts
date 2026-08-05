@@ -162,6 +162,17 @@ export interface VerbRouteUse {
   resolved: string;
 }
 
+/**
+ * Плейсхолдер неразрешённого `${…}`-сегмента пути.
+ *
+ * Символ выбран так, чтобы не столкнуться ни с одним настоящим сегментом URL.
+ * Записан ЭКРАНИРОВАННО и ровно в одном месте: сырой управляющий байт в
+ * исходнике невидим — его не показывает ни diff, ни обзор, и он молча теряется
+ * при копировании строки, после чего сверка маршрутов начинает сравнивать не то,
+ * что думает.
+ */
+const UNRESOLVED = "\u0000";
+
 // resolveLiteral — подстановка констант в выражение пути. Неразрешённая
 // интерполяция становится ОДНИМ сегментом: это всегда подставленный id.
 function resolveLiteral(
@@ -175,7 +186,7 @@ function resolveLiteral(
     if (local !== undefined) return local;
     const obj = objects.get(key);
     if (obj !== undefined) return obj;
-    return " ";
+    return UNRESOLVED;
   });
   return resolved.startsWith("/") ? resolved : null;
 }
@@ -217,7 +228,7 @@ function collectVerbRoutes(
 // unmatched — выражения пути, не совпавшие ни с одним связыванием контракта.
 function unmatched(uses: VerbRouteUse[], matchers: RegExp[]): VerbRouteUse[] {
   return uses.filter((u) => {
-    const probe = u.resolved.replace(/ /g, "x");
+    const probe = u.resolved.split(UNRESOLVED).join("x");
     return !matchers.some((re) => re.test(probe));
   });
 }
@@ -257,7 +268,7 @@ describe("console addresses only verb-routes the contract serves", () => {
 
   it("every verb-route the console addresses exists in the contract", () => {
     const bad = unmatched(uses, matchers);
-    const report = bad.map((u) => `  ${u.file}\n      ${u.literal}\n      → ${u.resolved.replace(/ /g, "…")}`);
+    const report = bad.map((u) => `  ${u.file}\n      ${u.literal}\n      → ${u.resolved.split(UNRESOLVED).join("…")}`);
     expect(`${bad.length} console call(s) address a route the contract does not serve:\n${report.join("\n")}`).toBe(
       "0 console call(s) address a route the contract does not serve:\n",
     );
@@ -265,7 +276,7 @@ describe("console addresses only verb-routes the contract serves", () => {
 
   it("the matcher itself reddens on a route the contract does not serve", () => {
     const invented: VerbRouteUse[] = [
-      { file: "probe.ts", literal: "/vpc/v1/subnets/${id}:teleport", resolved: "/vpc/v1/subnets/ :teleport" },
+      { file: "probe.ts", literal: "/vpc/v1/subnets/${id}:teleport", resolved: `/vpc/v1/subnets/${UNRESOLVED}:teleport` },
     ];
     expect(unmatched(invented, matchers)).toHaveLength(1);
   });
@@ -275,7 +286,7 @@ describe("console addresses only verb-routes the contract serves", () => {
       {
         file: "probe.ts",
         literal: "/vpc/v1/subnets/${id}:add-cidr-blocks",
-        resolved: "/vpc/v1/subnets/ :add-cidr-blocks",
+        resolved: `/vpc/v1/subnets/${UNRESOLVED}:add-cidr-blocks`,
       },
     ];
     expect(unmatched(real, matchers)).toHaveLength(0);

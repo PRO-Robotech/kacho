@@ -17,6 +17,7 @@ import { kratos, type SelfServiceFlow, csrfToken, findNode, flowMessages } from 
 import { AuthLayout, bufferToBase64Url } from "./Login";
 import { config } from "@shared/lib/config";
 import { formatDateTime } from "@shared/lib/datetime";
+import { displayText } from "@shared/lib/display-text";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -78,7 +79,7 @@ export function SettingsPage() {
     return flow.ui.nodes
       .filter((n) => n.group === "webauthn" && n.attributes?.name === "webauthn_remove")
       .map((n) => ({
-        id: String(n.attributes?.value ?? ""),
+        id: displayText(n.attributes?.value),
         display_name: n.meta?.label?.text ?? "Passkey",
         added_at: (n.attributes?.added_at as string | undefined) ?? undefined,
       }));
@@ -88,7 +89,7 @@ export function SettingsPage() {
   const totpImage = useMemo(() => {
     if (!flow) return null;
     const n = flow.ui.nodes.find((x) => x.type === "img" && x.attributes?.name === "totp_qr");
-    return n?.attributes?.src ? String(n.attributes.src) : null;
+    return n?.attributes?.src ? displayText(n.attributes.src) : null;
   }, [flow]);
 
   const totpEnrolled = useMemo(() => {

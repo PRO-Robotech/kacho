@@ -102,7 +102,7 @@ export function useIamMutation(opts: {
         toast.error(op.error.message ?? "Operation failed");
       } else {
         if (successTextRef.current) toast.success(successTextRef.current);
-        invalidateRef.current.forEach((k) => qc.invalidateQueries({ queryKey: k }));
+        invalidateRef.current.forEach((k) => void qc.invalidateQueries({ queryKey: k }));
         if (onSuccessRef.current) onSuccessRef.current(op);
       }
       setOpId(null);
@@ -135,7 +135,7 @@ export function useIamMutation(opts: {
           setOpId(id);
         } else {
           // sync — нет operation; считаем успех
-          invalidateRef.current.forEach((k) => qc.invalidateQueries({ queryKey: k }));
+          invalidateRef.current.forEach((k) => void qc.invalidateQueries({ queryKey: k }));
           if (successTextRef.current) toast.success(successTextRef.current);
           setSubmitting(false);
         }
