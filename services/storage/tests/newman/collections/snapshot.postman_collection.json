@@ -288,7 +288,7 @@
           ]
         },
         {
-          "name": "get-rya22",
+          "name": "get-rya37",
           "request": {
             "method": "GET",
             "header": [
@@ -1409,7 +1409,7 @@
           ]
         },
         {
-          "name": "patch-rya23",
+          "name": "patch-rya38",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1554,7 +1554,7 @@
           ]
         },
         {
-          "name": "verify",
+          "name": "verify-rya43",
           "request": {
             "method": "GET",
             "header": [
@@ -1582,6 +1582,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('name updated', () => pm.expect(j.name).to.match(/^snap-upd2-/));",
@@ -1966,7 +1981,7 @@
           ]
         },
         {
-          "name": "del-rya24",
+          "name": "del-rya39",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2820,7 +2835,7 @@
           ]
         },
         {
-          "name": "patch-desc-256-rya25",
+          "name": "patch-desc-256-rya40",
           "request": {
             "method": "PATCH",
             "header": [
@@ -2965,7 +2980,7 @@
           ]
         },
         {
-          "name": "verify-256-applied",
+          "name": "verify-256-applied-rya44",
           "request": {
             "method": "GET",
             "header": [
@@ -2993,6 +3008,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('description at the limit was stored', () => pm.expect((pm.response.json().description || '').length).to.eql(256));"
                 ]
@@ -3056,7 +3086,7 @@
           ]
         },
         {
-          "name": "verify-257-not-applied",
+          "name": "verify-257-not-applied-rya45",
           "request": {
             "method": "GET",
             "header": [
@@ -3084,6 +3114,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('rejected description was not stored', () => pm.expect((pm.response.json().description || '').length).to.eql(256));"
                 ]
@@ -3466,7 +3511,7 @@
           ]
         },
         {
-          "name": "patch-labels-64-rya26",
+          "name": "patch-labels-64-rya41",
           "request": {
             "method": "PATCH",
             "header": [
@@ -3611,7 +3656,7 @@
           ]
         },
         {
-          "name": "verify-64-applied",
+          "name": "verify-64-applied-rya46",
           "request": {
             "method": "GET",
             "header": [
@@ -3639,6 +3684,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('64 labels at the limit were stored', () => pm.expect(Object.keys(pm.response.json().labels || {}).length).to.eql(64));"
                 ]
@@ -4076,7 +4136,7 @@
           ]
         },
         {
-          "name": "patch-name-upper-rya27",
+          "name": "patch-name-upper-rya42",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4140,7 +4200,7 @@
           ]
         },
         {
-          "name": "verify-name-unchanged",
+          "name": "verify-name-unchanged-rya47",
           "request": {
             "method": "GET",
             "header": [
@@ -4168,6 +4228,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('rejected name was not stored', () => pm.expect(pm.response.json().name).to.match(/^snap-updname-/));"
                 ]

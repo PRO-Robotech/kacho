@@ -457,7 +457,7 @@
           ]
         },
         {
-          "name": "get-nic-rya910",
+          "name": "get-nic-rya960",
           "request": {
             "method": "GET",
             "header": [
@@ -519,7 +519,7 @@
           ]
         },
         {
-          "name": "cleanup-nic-rya911",
+          "name": "cleanup-nic-rya961",
           "request": {
             "method": "DELETE",
             "header": [
@@ -629,7 +629,7 @@
           ]
         },
         {
-          "name": "cleanup-subnet-rya912",
+          "name": "cleanup-subnet-rya962",
           "request": {
             "method": "DELETE",
             "header": [
@@ -739,7 +739,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya913",
+          "name": "cleanup-net-rya963",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1179,7 +1179,7 @@
           ]
         },
         {
-          "name": "get-nic-mac-rya914",
+          "name": "get-nic-mac-rya964",
           "request": {
             "method": "GET",
             "header": [
@@ -1233,7 +1233,7 @@
           ]
         },
         {
-          "name": "update-nic-name",
+          "name": "update-nic-name-rya1012",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1270,6 +1270,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -1337,7 +1352,7 @@
           ]
         },
         {
-          "name": "get-nic-mac-stable",
+          "name": "get-nic-mac-stable-rya1013",
           "request": {
             "method": "GET",
             "header": [
@@ -1365,6 +1380,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('macAddress не меняется при Update (stable NIC MAC)', () => pm.expect(j.macAddress).to.eql(pm.environment.get('savedMac')));"
@@ -1374,7 +1404,7 @@
           ]
         },
         {
-          "name": "cleanup-nic-rya915",
+          "name": "cleanup-nic-rya965",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1484,7 +1514,7 @@
           ]
         },
         {
-          "name": "cleanup-subnet-rya916",
+          "name": "cleanup-subnet-rya966",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1594,7 +1624,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya917",
+          "name": "cleanup-net-rya967",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2175,7 +2205,7 @@
           ]
         },
         {
-          "name": "cleanup-nic-rya918",
+          "name": "cleanup-nic-rya968",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2285,7 +2315,7 @@
           ]
         },
         {
-          "name": "cleanup-subnet-rya919",
+          "name": "cleanup-subnet-rya969",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2395,7 +2425,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya920",
+          "name": "cleanup-net-rya970",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2982,7 +3012,7 @@
           ]
         },
         {
-          "name": "list-lst921",
+          "name": "list-lst971",
           "request": {
             "method": "GET",
             "header": [
@@ -3076,7 +3106,7 @@
           ]
         },
         {
-          "name": "cleanup-nic-rya922",
+          "name": "cleanup-nic-rya972",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3186,7 +3216,7 @@
           ]
         },
         {
-          "name": "cleanup-subnet-rya923",
+          "name": "cleanup-subnet-rya973",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3296,7 +3326,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya924",
+          "name": "cleanup-net-rya974",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3628,7 +3658,7 @@
           ]
         },
         {
-          "name": "get-net-for-sg-rya925",
+          "name": "get-net-for-sg-rya975",
           "request": {
             "method": "GET",
             "header": [
@@ -3791,7 +3821,7 @@
           ]
         },
         {
-          "name": "patch-nic",
+          "name": "patch-nic-rya1014",
           "request": {
             "method": "PATCH",
             "header": [
@@ -3828,6 +3858,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -3895,7 +3940,7 @@
           ]
         },
         {
-          "name": "get-after-upd-rya926",
+          "name": "get-after-upd-rya976",
           "request": {
             "method": "GET",
             "header": [
@@ -3949,7 +3994,7 @@
           ]
         },
         {
-          "name": "cleanup-nic-rya927",
+          "name": "cleanup-nic-rya977",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4059,7 +4104,7 @@
           ]
         },
         {
-          "name": "cleanup-subnet-rya928",
+          "name": "cleanup-subnet-rya978",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4169,7 +4214,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya929",
+          "name": "cleanup-net-rya979",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4609,7 +4654,7 @@
           ]
         },
         {
-          "name": "del-nic-rya930",
+          "name": "del-nic-rya980",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4792,7 +4837,7 @@
           ]
         },
         {
-          "name": "cleanup-subnet-rya931",
+          "name": "cleanup-subnet-rya981",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4902,7 +4947,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya932",
+          "name": "cleanup-net-rya982",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5484,7 +5529,7 @@
           ]
         },
         {
-          "name": "get-nic-rya933",
+          "name": "get-nic-rya983",
           "request": {
             "method": "GET",
             "header": [
@@ -5535,7 +5580,7 @@
           ]
         },
         {
-          "name": "cleanup-nic-rya934",
+          "name": "cleanup-nic-rya984",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5645,7 +5690,7 @@
           ]
         },
         {
-          "name": "cleanup-addr-rya935",
+          "name": "cleanup-addr-rya985",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5755,7 +5800,7 @@
           ]
         },
         {
-          "name": "cleanup-subnet-rya936",
+          "name": "cleanup-subnet-rya986",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5865,7 +5910,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya937",
+          "name": "cleanup-net-rya987",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6447,7 +6492,7 @@
           ]
         },
         {
-          "name": "get-nic-rya938",
+          "name": "get-nic-rya988",
           "request": {
             "method": "GET",
             "header": [
@@ -6498,7 +6543,7 @@
           ]
         },
         {
-          "name": "cleanup-nic-rya939",
+          "name": "cleanup-nic-rya989",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6608,7 +6653,7 @@
           ]
         },
         {
-          "name": "cleanup-addr-rya940",
+          "name": "cleanup-addr-rya990",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6718,7 +6763,7 @@
           ]
         },
         {
-          "name": "cleanup-subnet-rya941",
+          "name": "cleanup-subnet-rya991",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6828,7 +6873,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya942",
+          "name": "cleanup-net-rya992",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7518,7 +7563,7 @@
           ]
         },
         {
-          "name": "get-nic-rya943",
+          "name": "get-nic-rya993",
           "request": {
             "method": "GET",
             "header": [
@@ -7571,7 +7616,7 @@
           ]
         },
         {
-          "name": "cleanup-nic-rya944",
+          "name": "cleanup-nic-rya994",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7871,7 +7916,7 @@
           ]
         },
         {
-          "name": "cleanup-subnet-rya945",
+          "name": "cleanup-subnet-rya995",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7981,7 +8026,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya946",
+          "name": "cleanup-net-rya996",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8563,7 +8608,7 @@
           ]
         },
         {
-          "name": "del-addr-blocked-rya947",
+          "name": "del-addr-blocked-rya997",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8618,7 +8663,7 @@
           ]
         },
         {
-          "name": "del-nic",
+          "name": "del-nic-rya1015",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8646,6 +8691,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -8713,7 +8773,7 @@
           ]
         },
         {
-          "name": "del-addr-ok-rya948",
+          "name": "del-addr-ok-rya998",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8896,7 +8956,7 @@
           ]
         },
         {
-          "name": "cleanup-subnet-rya949",
+          "name": "cleanup-subnet-rya999",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9006,7 +9066,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya950",
+          "name": "cleanup-net-rya1000",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9588,7 +9648,7 @@
           ]
         },
         {
-          "name": "get-nic-rya951",
+          "name": "get-nic-rya1001",
           "request": {
             "method": "GET",
             "header": [
@@ -9639,7 +9699,7 @@
           ]
         },
         {
-          "name": "cleanup-nic-rya952",
+          "name": "cleanup-nic-rya1002",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9844,7 +9904,7 @@
           ]
         },
         {
-          "name": "cleanup-subnet-rya953",
+          "name": "cleanup-subnet-rya1003",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9954,7 +10014,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya954",
+          "name": "cleanup-net-rya1004",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10747,7 +10807,7 @@
           ]
         },
         {
-          "name": "cleanup-subnet-rya955",
+          "name": "cleanup-subnet-rya1005",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10857,7 +10917,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya956",
+          "name": "cleanup-net-rya1006",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11189,7 +11249,7 @@
           ]
         },
         {
-          "name": "add-v6-cidr-rya957",
+          "name": "add-v6-cidr-rya1007",
           "request": {
             "method": "POST",
             "header": [
@@ -11579,7 +11639,7 @@
           ]
         },
         {
-          "name": "del-addrA-v6-rya958",
+          "name": "del-addrA-v6-rya1008",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11689,7 +11749,7 @@
           ]
         },
         {
-          "name": "del-addrB-v6-rya959",
+          "name": "del-addrB-v6-rya1009",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11799,7 +11859,7 @@
           ]
         },
         {
-          "name": "cleanup-subnet-rya960",
+          "name": "cleanup-subnet-rya1010",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11909,7 +11969,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya961",
+          "name": "cleanup-net-rya1011",
           "request": {
             "method": "DELETE",
             "header": [

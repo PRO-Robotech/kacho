@@ -177,7 +177,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya365",
+          "name": "setup-materialize-lb-rya384",
           "request": {
             "method": "GET",
             "header": [
@@ -226,7 +226,7 @@
           ]
         },
         {
-          "name": "cr-lst-rya366",
+          "name": "cr-lst-rya385",
           "request": {
             "method": "POST",
             "header": [
@@ -348,7 +348,7 @@
           ]
         },
         {
-          "name": "get-st367",
+          "name": "get-st386",
           "request": {
             "method": "GET",
             "header": [
@@ -405,7 +405,7 @@
           ]
         },
         {
-          "name": "get-lb-vip-st368",
+          "name": "get-lb-vip-st387",
           "request": {
             "method": "GET",
             "header": [
@@ -774,7 +774,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya369",
+          "name": "setup-materialize-lb-rya388",
           "request": {
             "method": "GET",
             "header": [
@@ -823,7 +823,7 @@
           ]
         },
         {
-          "name": "cr-byo-rya370",
+          "name": "cr-byo-rya389",
           "request": {
             "method": "POST",
             "header": [
@@ -945,7 +945,7 @@
           ]
         },
         {
-          "name": "get-byo-rya371",
+          "name": "get-byo-rya390",
           "request": {
             "method": "GET",
             "header": [
@@ -1002,7 +1002,7 @@
           ]
         },
         {
-          "name": "get-lb-byo-vip-st372",
+          "name": "get-lb-byo-vip-st391",
           "request": {
             "method": "GET",
             "header": [
@@ -1373,7 +1373,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr373",
+          "name": "setup-lb-cr392",
           "request": {
             "method": "POST",
             "header": [
@@ -1517,7 +1517,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr373');",
+                  "  pm.execution.setNextRequest('setup-lb-cr392');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -1529,7 +1529,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya374",
+          "name": "setup-materialize-lb-rya393",
           "request": {
             "method": "GET",
             "header": [
@@ -1578,7 +1578,7 @@
           ]
         },
         {
-          "name": "cr-int-rya375",
+          "name": "cr-int-rya394",
           "request": {
             "method": "POST",
             "header": [
@@ -2106,7 +2106,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr376",
+          "name": "setup-lb-cr395",
           "request": {
             "method": "POST",
             "header": [
@@ -2250,7 +2250,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr376');",
+                  "  pm.execution.setNextRequest('setup-lb-cr395');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -2262,7 +2262,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya377",
+          "name": "setup-materialize-lb-rya396",
           "request": {
             "method": "GET",
             "header": [
@@ -2311,7 +2311,7 @@
           ]
         },
         {
-          "name": "cr-rya378",
+          "name": "cr-rya397",
           "request": {
             "method": "POST",
             "header": [
@@ -2433,7 +2433,7 @@
           ]
         },
         {
-          "name": "get-rya379",
+          "name": "get-rya398",
           "request": {
             "method": "GET",
             "header": [
@@ -2892,7 +2892,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr380",
+          "name": "setup-lb-cr399",
           "request": {
             "method": "POST",
             "header": [
@@ -3036,7 +3036,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr380');",
+                  "  pm.execution.setNextRequest('setup-lb-cr399');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -3048,7 +3048,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya381",
+          "name": "setup-materialize-lb-rya400",
           "request": {
             "method": "GET",
             "header": [
@@ -3097,7 +3097,7 @@
           ]
         },
         {
-          "name": "lst",
+          "name": "lst-rya482",
           "request": {
             "method": "GET",
             "header": [
@@ -3124,6 +3124,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('listeners array', () =>   pm.expect(pm.response.json().listeners || pm.response.json().items || []).to.be.an('array'));"
                 ]
@@ -3445,7 +3460,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr382",
+          "name": "setup-lb-cr401",
           "request": {
             "method": "POST",
             "header": [
@@ -3589,7 +3604,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr382');",
+                  "  pm.execution.setNextRequest('setup-lb-cr401');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -3601,7 +3616,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya383",
+          "name": "setup-materialize-lb-rya402",
           "request": {
             "method": "GET",
             "header": [
@@ -3650,7 +3665,7 @@
           ]
         },
         {
-          "name": "cr-rya384",
+          "name": "cr-rya403",
           "request": {
             "method": "POST",
             "header": [
@@ -3772,7 +3787,7 @@
           ]
         },
         {
-          "name": "upd-rya385",
+          "name": "upd-rya404",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4294,7 +4309,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya386",
+          "name": "setup-materialize-lb-rya405",
           "request": {
             "method": "GET",
             "header": [
@@ -4343,7 +4358,7 @@
           ]
         },
         {
-          "name": "cr-rya387",
+          "name": "cr-rya406",
           "request": {
             "method": "POST",
             "header": [
@@ -4465,7 +4480,7 @@
           ]
         },
         {
-          "name": "get-lb-vip-before-st388",
+          "name": "get-lb-vip-before-st407",
           "request": {
             "method": "GET",
             "header": [
@@ -4521,7 +4536,7 @@
           ]
         },
         {
-          "name": "del-rya389",
+          "name": "del-rya408",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4630,7 +4645,7 @@
           ]
         },
         {
-          "name": "get-lb-vip-after",
+          "name": "get-lb-vip-after-rya483",
           "request": {
             "method": "GET",
             "header": [
@@ -4658,6 +4673,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('parent LB VIP survives listener delete', () =>   pm.expect(pm.response.json().v4AddressId).to.eql(pm.environment.get('_lbVipBefore')));"
                 ]
@@ -4887,7 +4917,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr390",
+          "name": "setup-lb-cr409",
           "request": {
             "method": "POST",
             "header": [
@@ -5031,7 +5061,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr390');",
+                  "  pm.execution.setNextRequest('setup-lb-cr409');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -5043,7 +5073,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya391",
+          "name": "setup-materialize-lb-rya410",
           "request": {
             "method": "GET",
             "header": [
@@ -5092,7 +5122,7 @@
           ]
         },
         {
-          "name": "cr-rya392",
+          "name": "cr-rya411",
           "request": {
             "method": "POST",
             "header": [
@@ -5214,7 +5244,7 @@
           ]
         },
         {
-          "name": "lops-rya393",
+          "name": "lops-rya412",
           "request": {
             "method": "GET",
             "header": [
@@ -5673,7 +5703,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr394",
+          "name": "setup-lb-cr413",
           "request": {
             "method": "POST",
             "header": [
@@ -5817,7 +5847,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr394');",
+                  "  pm.execution.setNextRequest('setup-lb-cr413');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -5829,7 +5859,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya395",
+          "name": "setup-materialize-lb-rya414",
           "request": {
             "method": "GET",
             "header": [
@@ -5878,7 +5908,7 @@
           ]
         },
         {
-          "name": "cr-p0-rya396",
+          "name": "cr-p0-rya415",
           "request": {
             "method": "POST",
             "header": [
@@ -6250,7 +6280,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr397",
+          "name": "setup-lb-cr416",
           "request": {
             "method": "POST",
             "header": [
@@ -6394,7 +6424,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr397');",
+                  "  pm.execution.setNextRequest('setup-lb-cr416');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -6406,7 +6436,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya398",
+          "name": "setup-materialize-lb-rya417",
           "request": {
             "method": "GET",
             "header": [
@@ -6455,7 +6485,7 @@
           ]
         },
         {
-          "name": "cr-po-rya399",
+          "name": "cr-po-rya418",
           "request": {
             "method": "POST",
             "header": [
@@ -6830,7 +6860,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr400",
+          "name": "setup-lb-cr419",
           "request": {
             "method": "POST",
             "header": [
@@ -6974,7 +7004,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr400');",
+                  "  pm.execution.setNextRequest('setup-lb-cr419');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -6986,7 +7016,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya401",
+          "name": "setup-materialize-lb-rya420",
           "request": {
             "method": "GET",
             "header": [
@@ -7035,7 +7065,7 @@
           ]
         },
         {
-          "name": "cr-pn-rya402",
+          "name": "cr-pn-rya421",
           "request": {
             "method": "POST",
             "header": [
@@ -7410,7 +7440,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr403",
+          "name": "setup-lb-cr422",
           "request": {
             "method": "POST",
             "header": [
@@ -7554,7 +7584,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr403');",
+                  "  pm.execution.setNextRequest('setup-lb-cr422');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -7566,7 +7596,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya404",
+          "name": "setup-materialize-lb-rya423",
           "request": {
             "method": "GET",
             "header": [
@@ -7615,7 +7645,7 @@
           ]
         },
         {
-          "name": "cr-http-rya405",
+          "name": "cr-http-rya424",
           "request": {
             "method": "POST",
             "header": [
@@ -7990,7 +8020,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr406",
+          "name": "setup-lb-cr425",
           "request": {
             "method": "POST",
             "header": [
@@ -8134,7 +8164,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr406');",
+                  "  pm.execution.setNextRequest('setup-lb-cr425');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -8146,7 +8176,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya407",
+          "name": "setup-materialize-lb-rya426",
           "request": {
             "method": "GET",
             "header": [
@@ -8195,7 +8225,7 @@
           ]
         },
         {
-          "name": "cr-bad-name-rya408",
+          "name": "cr-bad-name-rya427",
           "request": {
             "method": "POST",
             "header": [
@@ -8570,7 +8600,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr409",
+          "name": "setup-lb-cr428",
           "request": {
             "method": "POST",
             "header": [
@@ -8714,7 +8744,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr409');",
+                  "  pm.execution.setNextRequest('setup-lb-cr428');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -8726,7 +8756,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya410",
+          "name": "setup-materialize-lb-rya429",
           "request": {
             "method": "GET",
             "header": [
@@ -8775,7 +8805,7 @@
           ]
         },
         {
-          "name": "cr-p1-rya411",
+          "name": "cr-p1-rya430",
           "request": {
             "method": "POST",
             "header": [
@@ -9303,7 +9333,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr412",
+          "name": "setup-lb-cr431",
           "request": {
             "method": "POST",
             "header": [
@@ -9447,7 +9477,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr412');",
+                  "  pm.execution.setNextRequest('setup-lb-cr431');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -9459,7 +9489,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya413",
+          "name": "setup-materialize-lb-rya432",
           "request": {
             "method": "GET",
             "header": [
@@ -9508,7 +9538,7 @@
           ]
         },
         {
-          "name": "cr-pmax-rya414",
+          "name": "cr-pmax-rya433",
           "request": {
             "method": "POST",
             "header": [
@@ -10091,7 +10121,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr415",
+          "name": "setup-lb-cr434",
           "request": {
             "method": "POST",
             "header": [
@@ -10235,7 +10265,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr415');",
+                  "  pm.execution.setNextRequest('setup-lb-cr434');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -10247,7 +10277,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya416",
+          "name": "setup-materialize-lb-rya435",
           "request": {
             "method": "GET",
             "header": [
@@ -10296,7 +10326,7 @@
           ]
         },
         {
-          "name": "cr-1-rya417",
+          "name": "cr-1-rya436",
           "request": {
             "method": "POST",
             "header": [
@@ -10418,7 +10448,7 @@
           ]
         },
         {
-          "name": "cr-2-dup-rya418",
+          "name": "cr-2-dup-rya437",
           "request": {
             "method": "POST",
             "header": [
@@ -10943,7 +10973,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr419",
+          "name": "setup-lb-cr438",
           "request": {
             "method": "POST",
             "header": [
@@ -11087,7 +11117,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr419');",
+                  "  pm.execution.setNextRequest('setup-lb-cr438');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -11099,7 +11129,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya420",
+          "name": "setup-materialize-lb-rya439",
           "request": {
             "method": "GET",
             "header": [
@@ -11148,7 +11178,7 @@
           ]
         },
         {
-          "name": "cr-likely-fail-rya421",
+          "name": "cr-likely-fail-rya440",
           "request": {
             "method": "POST",
             "header": [
@@ -11693,7 +11723,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr422",
+          "name": "setup-lb-cr441",
           "request": {
             "method": "POST",
             "header": [
@@ -11837,7 +11867,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr422');",
+                  "  pm.execution.setNextRequest('setup-lb-cr441');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -11849,7 +11879,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya423",
+          "name": "setup-materialize-lb-rya442",
           "request": {
             "method": "GET",
             "header": [
@@ -11898,7 +11928,7 @@
           ]
         },
         {
-          "name": "cr-rya424",
+          "name": "cr-rya443",
           "request": {
             "method": "POST",
             "header": [
@@ -12131,7 +12161,7 @@
           ]
         },
         {
-          "name": "upd-default-tg-mismatch-rya425",
+          "name": "upd-default-tg-mismatch-rya444",
           "request": {
             "method": "PATCH",
             "header": [
@@ -12963,7 +12993,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr426",
+          "name": "setup-lb-cr445",
           "request": {
             "method": "POST",
             "header": [
@@ -13107,7 +13137,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr426');",
+                  "  pm.execution.setNextRequest('setup-lb-cr445');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -13119,7 +13149,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya427",
+          "name": "setup-materialize-lb-rya446",
           "request": {
             "method": "GET",
             "header": [
@@ -13168,7 +13198,7 @@
           ]
         },
         {
-          "name": "cr-digit-rya428",
+          "name": "cr-digit-rya447",
           "request": {
             "method": "POST",
             "header": [
@@ -13543,7 +13573,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr429",
+          "name": "setup-lb-cr448",
           "request": {
             "method": "POST",
             "header": [
@@ -13687,7 +13717,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr429');",
+                  "  pm.execution.setNextRequest('setup-lb-cr448');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -13699,7 +13729,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya430",
+          "name": "setup-materialize-lb-rya449",
           "request": {
             "method": "GET",
             "header": [
@@ -13748,7 +13778,7 @@
           ]
         },
         {
-          "name": "cr-hyp-rya431",
+          "name": "cr-hyp-rya450",
           "request": {
             "method": "POST",
             "header": [
@@ -14123,7 +14153,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr432",
+          "name": "setup-lb-cr451",
           "request": {
             "method": "POST",
             "header": [
@@ -14267,7 +14297,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr432');",
+                  "  pm.execution.setNextRequest('setup-lb-cr451');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -14279,7 +14309,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya433",
+          "name": "setup-materialize-lb-rya452",
           "request": {
             "method": "GET",
             "header": [
@@ -14328,7 +14358,7 @@
           ]
         },
         {
-          "name": "cr-tp-0-rya434",
+          "name": "cr-tp-0-rya453",
           "request": {
             "method": "POST",
             "header": [
@@ -14703,7 +14733,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr435",
+          "name": "setup-lb-cr454",
           "request": {
             "method": "POST",
             "header": [
@@ -14847,7 +14877,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr435');",
+                  "  pm.execution.setNextRequest('setup-lb-cr454');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -14859,7 +14889,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya436",
+          "name": "setup-materialize-lb-rya455",
           "request": {
             "method": "GET",
             "header": [
@@ -14908,7 +14938,7 @@
           ]
         },
         {
-          "name": "cr-tp-o-rya437",
+          "name": "cr-tp-o-rya456",
           "request": {
             "method": "POST",
             "header": [
@@ -15283,7 +15313,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr438",
+          "name": "setup-lb-cr457",
           "request": {
             "method": "POST",
             "header": [
@@ -15427,7 +15457,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr438');",
+                  "  pm.execution.setNextRequest('setup-lb-cr457');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -15439,7 +15469,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya439",
+          "name": "setup-materialize-lb-rya458",
           "request": {
             "method": "GET",
             "header": [
@@ -15850,7 +15880,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr440",
+          "name": "setup-lb-cr459",
           "request": {
             "method": "POST",
             "header": [
@@ -15994,7 +16024,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr440');",
+                  "  pm.execution.setNextRequest('setup-lb-cr459');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -16006,7 +16036,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya441",
+          "name": "setup-materialize-lb-rya460",
           "request": {
             "method": "GET",
             "header": [
@@ -16055,7 +16085,7 @@
           ]
         },
         {
-          "name": "cr-ipv6-rya442",
+          "name": "cr-ipv6-rya461",
           "request": {
             "method": "POST",
             "header": [
@@ -16584,7 +16614,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr443",
+          "name": "setup-lb-cr462",
           "request": {
             "method": "POST",
             "header": [
@@ -16728,7 +16758,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr443');",
+                  "  pm.execution.setNextRequest('setup-lb-cr462');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -16740,7 +16770,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya444",
+          "name": "setup-materialize-lb-rya463",
           "request": {
             "method": "GET",
             "header": [
@@ -16789,7 +16819,7 @@
           ]
         },
         {
-          "name": "cr-pp2-rya445",
+          "name": "cr-pp2-rya464",
           "request": {
             "method": "POST",
             "header": [
@@ -16911,7 +16941,7 @@
           ]
         },
         {
-          "name": "get-rya446",
+          "name": "get-rya465",
           "request": {
             "method": "GET",
             "header": [
@@ -17368,7 +17398,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr447",
+          "name": "setup-lb-cr466",
           "request": {
             "method": "POST",
             "header": [
@@ -17512,7 +17542,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr447');",
+                  "  pm.execution.setNextRequest('setup-lb-cr466');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -17524,7 +17554,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya448",
+          "name": "setup-materialize-lb-rya467",
           "request": {
             "method": "GET",
             "header": [
@@ -17573,7 +17603,7 @@
           ]
         },
         {
-          "name": "cr-rya449",
+          "name": "cr-rya468",
           "request": {
             "method": "POST",
             "header": [
@@ -17695,7 +17725,7 @@
           ]
         },
         {
-          "name": "upd-clear-rya450",
+          "name": "upd-clear-rya469",
           "request": {
             "method": "PATCH",
             "header": [
@@ -17814,7 +17844,7 @@
           ]
         },
         {
-          "name": "get-after-clear-rya451",
+          "name": "get-after-clear-rya470",
           "request": {
             "method": "GET",
             "header": [
@@ -18360,7 +18390,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr452",
+          "name": "setup-lb-cr471",
           "request": {
             "method": "POST",
             "header": [
@@ -18504,7 +18534,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr452');",
+                  "  pm.execution.setNextRequest('setup-lb-cr471');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -18516,7 +18546,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya453",
+          "name": "setup-materialize-lb-rya472",
           "request": {
             "method": "GET",
             "header": [
@@ -18565,7 +18595,7 @@
           ]
         },
         {
-          "name": "page-1",
+          "name": "page-1-rya484",
           "request": {
             "method": "GET",
             "header": [
@@ -18592,6 +18622,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.environment.set('lstNextToken', pm.response.json().nextPageToken || '');"
                 ]
@@ -18600,7 +18645,7 @@
           ]
         },
         {
-          "name": "page-2",
+          "name": "page-2-rya485",
           "request": {
             "method": "GET",
             "header": [
@@ -18627,6 +18672,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));"
                 ]
               }
@@ -19051,7 +19111,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr454",
+          "name": "setup-lb-cr473",
           "request": {
             "method": "POST",
             "header": [
@@ -19195,7 +19255,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr454');",
+                  "  pm.execution.setNextRequest('setup-lb-cr473');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -19207,7 +19267,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya455",
+          "name": "setup-materialize-lb-rya474",
           "request": {
             "method": "GET",
             "header": [
@@ -19256,7 +19316,7 @@
           ]
         },
         {
-          "name": "cr-udp-rya456",
+          "name": "cr-udp-rya475",
           "request": {
             "method": "POST",
             "header": [
@@ -20227,7 +20287,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr457",
+          "name": "setup-lb-cr476",
           "request": {
             "method": "POST",
             "header": [
@@ -20371,7 +20431,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr457');",
+                  "  pm.execution.setNextRequest('setup-lb-cr476');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -20383,7 +20443,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya458",
+          "name": "setup-materialize-lb-rya477",
           "request": {
             "method": "GET",
             "header": [
@@ -21028,7 +21088,7 @@
           ]
         },
         {
-          "name": "setup-lb-cr459",
+          "name": "setup-lb-cr478",
           "request": {
             "method": "POST",
             "header": [
@@ -21172,7 +21232,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('setup-lb-cr459');",
+                  "  pm.execution.setNextRequest('setup-lb-cr478');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -21184,7 +21244,7 @@
           ]
         },
         {
-          "name": "setup-materialize-lb-rya460",
+          "name": "setup-materialize-lb-rya479",
           "request": {
             "method": "GET",
             "header": [
@@ -21233,7 +21293,7 @@
           ]
         },
         {
-          "name": "cr-rya461",
+          "name": "cr-rya480",
           "request": {
             "method": "POST",
             "header": [
@@ -21503,7 +21563,7 @@
           ]
         },
         {
-          "name": "get-after-refused-repoint-rya462",
+          "name": "get-after-refused-repoint-rya481",
           "request": {
             "method": "GET",
             "header": [

@@ -693,6 +693,16 @@ jobs:
         working-directory: services/vpc/tests/newman
         run: bash scripts/run_selftest.sh
 
+      # Тот же жанр: доказать инъекцией, что предикат «первый доступ к своему
+      # свежему ресурсу обёрнут ограниченным ретраем» ловит НАСТОЯЩИЙ пропуск и
+      # МОЛЧИТ на четырёх законных близнецах (негатив, поллер со своей петлёй,
+      # уже обёрнутый вручную, чужой id). Без второй половины гейт ловил бы
+      # форму, а не существо, и первый же ложный срабат его бы снял.
+      # Стенд и newman не нужны.
+      - name: предикат обёртки первого доступа (vpc)
+        working-directory: services/vpc/tests/newman
+        run: python3 scripts/selftest_autowrap.py
+
   lint:
     name: golangci-lint
     runs-on: ubuntu-latest

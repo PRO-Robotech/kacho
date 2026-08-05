@@ -164,7 +164,7 @@
           ]
         },
         {
-          "name": "get-rya571",
+          "name": "get-rya607",
           "request": {
             "method": "GET",
             "header": [
@@ -628,7 +628,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya572",
+          "name": "setup-materialize-tg-rya608",
           "request": {
             "method": "GET",
             "header": [
@@ -677,7 +677,7 @@
           ]
         },
         {
-          "name": "get-rya573",
+          "name": "get-rya609",
           "request": {
             "method": "GET",
             "header": [
@@ -1017,7 +1017,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya574",
+          "name": "setup-materialize-tg-rya610",
           "request": {
             "method": "GET",
             "header": [
@@ -1066,7 +1066,7 @@
           ]
         },
         {
-          "name": "upd-rya575",
+          "name": "upd-rya611",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1390,7 +1390,7 @@
           ]
         },
         {
-          "name": "del-rya576",
+          "name": "del-rya612",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1651,7 +1651,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya577",
+          "name": "setup-materialize-tg-rya613",
           "request": {
             "method": "GET",
             "header": [
@@ -1700,7 +1700,7 @@
           ]
         },
         {
-          "name": "move-cr578",
+          "name": "move-cr614",
           "request": {
             "method": "POST",
             "header": [
@@ -2150,7 +2150,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya579",
+          "name": "setup-materialize-tg-rya615",
           "request": {
             "method": "GET",
             "header": [
@@ -2199,7 +2199,7 @@
           ]
         },
         {
-          "name": "lops-rya580",
+          "name": "lops-rya616",
           "request": {
             "method": "GET",
             "header": [
@@ -4005,7 +4005,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya581",
+          "name": "setup-materialize-tg-rya617",
           "request": {
             "method": "GET",
             "header": [
@@ -4267,7 +4267,7 @@
           ]
         },
         {
-          "name": "del-blocked-rya582",
+          "name": "del-blocked-rya618",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4715,7 +4715,7 @@
           ]
         },
         {
-          "name": "del-blocked-rya583",
+          "name": "del-blocked-rya619",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5079,7 +5079,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya584",
+          "name": "setup-materialize-tg-rya620",
           "request": {
             "method": "GET",
             "header": [
@@ -5574,7 +5574,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya585",
+          "name": "setup-materialize-tg-rya621",
           "request": {
             "method": "GET",
             "header": [
@@ -8012,7 +8012,7 @@
           ]
         },
         {
-          "name": "get-https",
+          "name": "get-https-rya624",
           "request": {
             "method": "GET",
             "header": [
@@ -8040,6 +8040,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('https probe present', () => pm.expect(pm.response.json().healthCheck.https).to.be.an('object'));",
                   "pm.test('effectivePort=8443 (override)', () => pm.expect(pm.response.json().healthCheck.effectivePort).to.eql(8443));"
@@ -8255,7 +8270,7 @@
           ]
         },
         {
-          "name": "get-grpc",
+          "name": "get-grpc-rya625",
           "request": {
             "method": "GET",
             "header": [
@@ -8283,6 +8298,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('grpc probe present', () => pm.expect(pm.response.json().healthCheck.grpc).to.be.an('object'));",
                   "pm.test('effectivePort inherits TG.port', () => pm.expect(pm.response.json().healthCheck.effectivePort).to.eql(pm.response.json().port));"
@@ -9322,7 +9352,7 @@
           ]
         },
         {
-          "name": "setup-materialize-tg-rya586",
+          "name": "setup-materialize-tg-rya622",
           "request": {
             "method": "GET",
             "header": [
@@ -9371,7 +9401,7 @@
           ]
         },
         {
-          "name": "lst-filt-lst587",
+          "name": "lst-filt-lst623",
           "request": {
             "method": "GET",
             "header": [

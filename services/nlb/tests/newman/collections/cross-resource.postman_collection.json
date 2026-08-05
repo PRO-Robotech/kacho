@@ -57,7 +57,7 @@
       "description": "class:CRUD | class:STATE | priority:P0",
       "item": [
         {
-          "name": "create-lb-cr324",
+          "name": "create-lb-cr331",
           "request": {
             "method": "POST",
             "header": [
@@ -210,7 +210,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr324');",
+                  "  pm.execution.setNextRequest('create-lb-cr331');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -222,7 +222,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya325",
+          "name": "materialize-lb-rya332",
           "request": {
             "method": "GET",
             "header": [
@@ -271,7 +271,7 @@
           ]
         },
         {
-          "name": "get-lb-inactive-rya326",
+          "name": "get-lb-inactive-rya333",
           "request": {
             "method": "GET",
             "header": [
@@ -325,7 +325,7 @@
           ]
         },
         {
-          "name": "create-listener-rya327",
+          "name": "create-listener-rya334",
           "request": {
             "method": "POST",
             "header": [
@@ -456,7 +456,7 @@
           ]
         },
         {
-          "name": "get-listener-vip-rya328",
+          "name": "get-listener-vip-rya335",
           "request": {
             "method": "GET",
             "header": [
@@ -620,7 +620,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya329",
+          "name": "materialize-tg-rya336",
           "request": {
             "method": "GET",
             "header": [
@@ -669,7 +669,7 @@
           ]
         },
         {
-          "name": "add-instance-target-rya330",
+          "name": "add-instance-target-rya337",
           "request": {
             "method": "POST",
             "header": [
@@ -792,7 +792,7 @@
           ]
         },
         {
-          "name": "set-default-tg",
+          "name": "set-default-tg-rya367",
           "request": {
             "method": "PATCH",
             "header": [
@@ -829,6 +829,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -896,7 +911,7 @@
           ]
         },
         {
-          "name": "verify-default-tg-set-st331",
+          "name": "verify-default-tg-set-st338",
           "request": {
             "method": "GET",
             "header": [
@@ -953,7 +968,7 @@
           ]
         },
         {
-          "name": "get-lb-after-attach-rya332",
+          "name": "get-lb-after-attach-rya339",
           "request": {
             "method": "GET",
             "header": [
@@ -1005,7 +1020,7 @@
           ]
         },
         {
-          "name": "get-target-states-rya333",
+          "name": "get-target-states-rya340",
           "request": {
             "method": "GET",
             "header": [
@@ -1549,7 +1564,7 @@
       "description": "class:CRUD | priority:P1",
       "item": [
         {
-          "name": "create-lb-v6-cr334",
+          "name": "create-lb-v6-cr341",
           "request": {
             "method": "POST",
             "header": [
@@ -1702,7 +1717,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-v6-cr334');",
+                  "  pm.execution.setNextRequest('create-lb-v6-cr341');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -1714,7 +1729,7 @@
           ]
         },
         {
-          "name": "get-lb-v6-vip-rya335",
+          "name": "get-lb-v6-vip-rya342",
           "request": {
             "method": "GET",
             "header": [
@@ -1866,7 +1881,7 @@
       "description": "class:NEG | class:STATE | priority:P1",
       "item": [
         {
-          "name": "create-lb-cr336",
+          "name": "create-lb-cr343",
           "request": {
             "method": "POST",
             "header": [
@@ -2019,7 +2034,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr336');",
+                  "  pm.execution.setNextRequest('create-lb-cr343');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -2031,7 +2046,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya337",
+          "name": "materialize-lb-rya344",
           "request": {
             "method": "GET",
             "header": [
@@ -2080,7 +2095,7 @@
           ]
         },
         {
-          "name": "create-listener-rya338",
+          "name": "create-listener-rya345",
           "request": {
             "method": "POST",
             "header": [
@@ -2246,7 +2261,7 @@
           ]
         },
         {
-          "name": "verify-listener-unchanged-rya339",
+          "name": "verify-listener-unchanged-rya346",
           "request": {
             "method": "GET",
             "header": [
@@ -2669,7 +2684,7 @@
           ]
         },
         {
-          "name": "create-internal-lb-cr340",
+          "name": "create-internal-lb-cr347",
           "request": {
             "method": "POST",
             "header": [
@@ -2800,7 +2815,7 @@
           ]
         },
         {
-          "name": "get-internal-lb-rya341",
+          "name": "get-internal-lb-rya348",
           "request": {
             "method": "GET",
             "header": [
@@ -2855,7 +2870,7 @@
           ]
         },
         {
-          "name": "create-internal-listener-rya342",
+          "name": "create-internal-listener-rya349",
           "request": {
             "method": "POST",
             "header": [
@@ -2982,7 +2997,7 @@
           ]
         },
         {
-          "name": "get-internal-listener-status-rya343",
+          "name": "get-internal-listener-status-rya350",
           "request": {
             "method": "GET",
             "header": [
@@ -3146,7 +3161,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya344",
+          "name": "materialize-tg-rya351",
           "request": {
             "method": "GET",
             "header": [
@@ -3195,7 +3210,7 @@
           ]
         },
         {
-          "name": "get-internal-target-states",
+          "name": "get-internal-target-states-rya368",
           "request": {
             "method": "GET",
             "header": [
@@ -3224,6 +3239,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('GetTargetStates 200 on ready INTERNAL LB', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "const states = pm.response.json().targetStates || [];",
                   "pm.test('targetStates is an array', () => pm.expect(states).to.be.an('array'));"
@@ -3779,7 +3809,7 @@
           ]
         },
         {
-          "name": "get-no-network-rya345",
+          "name": "get-no-network-rya352",
           "request": {
             "method": "GET",
             "header": [
@@ -3983,7 +4013,7 @@
       "description": "class:CRUD | class:STATE | priority:P0",
       "item": [
         {
-          "name": "create-lb-cr346",
+          "name": "create-lb-cr353",
           "request": {
             "method": "POST",
             "header": [
@@ -4136,7 +4166,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr346');",
+                  "  pm.execution.setNextRequest('create-lb-cr353');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -4148,7 +4178,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya347",
+          "name": "materialize-lb-rya354",
           "request": {
             "method": "GET",
             "header": [
@@ -4197,7 +4227,7 @@
           ]
         },
         {
-          "name": "create-listener-rya348",
+          "name": "create-listener-rya355",
           "request": {
             "method": "POST",
             "header": [
@@ -4431,7 +4461,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya349",
+          "name": "materialize-tg-rya356",
           "request": {
             "method": "GET",
             "header": [
@@ -4480,7 +4510,7 @@
           ]
         },
         {
-          "name": "add-external-target-rya350",
+          "name": "add-external-target-rya357",
           "request": {
             "method": "POST",
             "header": [
@@ -4741,7 +4771,7 @@
           ]
         },
         {
-          "name": "lb-still-exists",
+          "name": "lb-still-exists-rya369",
           "request": {
             "method": "GET",
             "header": [
@@ -4769,6 +4799,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('LB survived the rejected delete', () =>   pm.expect(pm.response.json().id).to.eql(pm.environment.get('nlbId')));"
                 ]
@@ -4777,7 +4822,7 @@
           ]
         },
         {
-          "name": "clear-default",
+          "name": "clear-default-rya370",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4814,6 +4859,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -4880,7 +4940,7 @@
           ]
         },
         {
-          "name": "remove-target",
+          "name": "remove-target-rya371",
           "request": {
             "method": "POST",
             "header": [
@@ -4917,6 +4977,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -4983,7 +5058,7 @@
           ]
         },
         {
-          "name": "delete-listener",
+          "name": "delete-listener-rya372",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5011,6 +5086,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -5116,7 +5206,7 @@
           ]
         },
         {
-          "name": "delete-lb-empty",
+          "name": "delete-lb-empty-rya373",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5144,6 +5234,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -5249,7 +5354,7 @@
           ]
         },
         {
-          "name": "delete-tg",
+          "name": "delete-tg-rya374",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5277,6 +5382,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('TG delete accepted once drained and unreferenced', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "try {",
                   "  const j = pm.response.json();",
@@ -5389,7 +5509,7 @@
       "description": "class:NEG | class:STATE | priority:P0",
       "item": [
         {
-          "name": "create-lb-cr351",
+          "name": "create-lb-cr358",
           "request": {
             "method": "POST",
             "header": [
@@ -5542,7 +5662,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr351');",
+                  "  pm.execution.setNextRequest('create-lb-cr358');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -5554,7 +5674,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya352",
+          "name": "materialize-lb-rya359",
           "request": {
             "method": "GET",
             "header": [
@@ -5603,7 +5723,7 @@
           ]
         },
         {
-          "name": "create-listener-rya353",
+          "name": "create-listener-rya360",
           "request": {
             "method": "POST",
             "header": [
@@ -5766,7 +5886,7 @@
           ]
         },
         {
-          "name": "lb-survived-the-refusal",
+          "name": "lb-survived-the-refusal-rya375",
           "request": {
             "method": "GET",
             "header": [
@@ -5794,6 +5914,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('LB still exists after the refused delete', () =>   pm.expect(pm.response.json().id).to.eql(pm.environment.get('nlbId')));"
                 ]
@@ -5994,7 +6129,7 @@
       "description": "class:STATE | class:CRUD | priority:P0",
       "item": [
         {
-          "name": "create-lb-cr354",
+          "name": "create-lb-cr361",
           "request": {
             "method": "POST",
             "header": [
@@ -6147,7 +6282,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr354');",
+                  "  pm.execution.setNextRequest('create-lb-cr361');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -6159,7 +6294,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya355",
+          "name": "materialize-lb-rya362",
           "request": {
             "method": "GET",
             "header": [
@@ -6320,7 +6455,7 @@
           ]
         },
         {
-          "name": "materialize-tg-rya356",
+          "name": "materialize-tg-rya363",
           "request": {
             "method": "GET",
             "header": [
@@ -6369,7 +6504,7 @@
           ]
         },
         {
-          "name": "add-instance-target-rya357",
+          "name": "add-instance-target-rya364",
           "request": {
             "method": "POST",
             "header": [
@@ -6492,7 +6627,7 @@
           ]
         },
         {
-          "name": "get-tg-survives",
+          "name": "get-tg-survives-rya376",
           "request": {
             "method": "GET",
             "header": [
@@ -6520,6 +6655,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
                   "pm.test('TG read survives (not 404/500)', () =>   pm.expect(j.id).to.eql(pm.environment.get('tgId')));",
@@ -6530,7 +6680,7 @@
           ]
         },
         {
-          "name": "get-states-survives",
+          "name": "get-states-survives-rya377",
           "request": {
             "method": "GET",
             "header": [
@@ -6559,6 +6709,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const states = pm.response.json().targetStates || [];",
                   "pm.test('targetStates is an array', () => pm.expect(states).to.be.an('array'));",
@@ -6569,7 +6734,7 @@
           ]
         },
         {
-          "name": "remove-instance-target",
+          "name": "remove-instance-target-rya378",
           "request": {
             "method": "POST",
             "header": [
@@ -6606,6 +6771,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
@@ -6869,7 +7049,7 @@
       "description": "class:NEG | priority:P1",
       "item": [
         {
-          "name": "create-lb-cr358",
+          "name": "create-lb-cr365",
           "request": {
             "method": "POST",
             "header": [
@@ -7022,7 +7202,7 @@
                   "  pm.environment.unset('_crRetryCount');",
                   "  pm.environment.unset('opId');",
                   "  const _ord = Date.now(); while (Date.now() - _ord < 700) { /* peer-visibility wait */ }",
-                  "  pm.execution.setNextRequest('create-lb-cr358');",
+                  "  pm.execution.setNextRequest('create-lb-cr365');",
                   "  return;",
                   "}",
                   "pm.environment.unset('_opRedriveCount');",
@@ -7034,7 +7214,7 @@
           ]
         },
         {
-          "name": "materialize-lb-rya359",
+          "name": "materialize-lb-rya366",
           "request": {
             "method": "GET",
             "header": [

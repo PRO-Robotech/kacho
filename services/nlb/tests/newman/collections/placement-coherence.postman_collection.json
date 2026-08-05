@@ -289,7 +289,7 @@
           ]
         },
         {
-          "name": "create-cross-zone-cr567",
+          "name": "create-cross-zone-cr603",
           "request": {
             "method": "POST",
             "header": [
@@ -789,7 +789,7 @@
           ]
         },
         {
-          "name": "create-same-zone-cr568",
+          "name": "create-same-zone-cr604",
           "request": {
             "method": "POST",
             "header": [
@@ -1323,7 +1323,7 @@
           ]
         },
         {
-          "name": "create-wrong-region-cr569",
+          "name": "create-wrong-region-cr605",
           "request": {
             "method": "POST",
             "header": [
@@ -1782,7 +1782,7 @@
           ]
         },
         {
-          "name": "create-same-region-cr570",
+          "name": "create-same-region-cr606",
           "request": {
             "method": "POST",
             "header": [

@@ -443,7 +443,7 @@
           ]
         },
         {
-          "name": "list-and-cleanup",
+          "name": "list-and-cleanup-rya880",
           "request": {
             "method": "GET",
             "header": [
@@ -472,6 +472,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const subs = (pm.response.json().subnets || []);",
                   "pm.test('never 2 overlapping subnets survive (EXCLUDE holds)', () => pm.expect(subs.length).to.be.at.most(1));",
@@ -577,7 +592,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya862",
+          "name": "cleanup-net-rya876",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1406,7 +1421,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya863",
+          "name": "cleanup-sub-rya877",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1516,7 +1531,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya864",
+          "name": "cleanup-net-rya878",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1960,7 +1975,7 @@
           ]
         },
         {
-          "name": "fetch-sg-rules-after-occ",
+          "name": "fetch-sg-rules-after-occ-rya881",
           "request": {
             "method": "GET",
             "header": [
@@ -1988,6 +2003,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "const j = pm.response.json();",
                   "pm.test('sg fetch ok', () => pm.expect(pm.response.code).to.eql(200));",
                   "const rules = (j && j.rules) || [];",
@@ -2140,7 +2170,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya865",
+          "name": "cleanup-net-rya879",
           "request": {
             "method": "DELETE",
             "header": [

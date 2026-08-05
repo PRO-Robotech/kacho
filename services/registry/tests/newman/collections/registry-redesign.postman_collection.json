@@ -165,7 +165,7 @@
           ]
         },
         {
-          "name": "capture-rdRegId",
+          "name": "capture-rdRegId-rya72",
           "request": {
             "method": "GET",
             "header": [
@@ -191,6 +191,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('setup op ok (no error)', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));",
                   "const r = (pm.response.json().response) || {};",
@@ -206,7 +221,7 @@
           ]
         },
         {
-          "name": "warm-rdRegId-rya57",
+          "name": "warm-rdRegId-rya59",
           "request": {
             "method": "GET",
             "header": [
@@ -785,7 +800,7 @@
           ]
         },
         {
-          "name": "capture-rnRegId",
+          "name": "capture-rnRegId-rya73",
           "request": {
             "method": "GET",
             "header": [
@@ -811,6 +826,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('setup op ok (no error)', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));",
                   "const r = (pm.response.json().response) || {};",
@@ -826,7 +856,7 @@
           ]
         },
         {
-          "name": "warm-rnRegId-rya58",
+          "name": "warm-rnRegId-rya60",
           "request": {
             "method": "GET",
             "header": [
@@ -922,7 +952,7 @@
           ]
         },
         {
-          "name": "rename",
+          "name": "rename-rya74",
           "request": {
             "method": "PATCH",
             "header": [
@@ -959,6 +989,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
@@ -1031,7 +1076,7 @@
           ]
         },
         {
-          "name": "get-after-rename",
+          "name": "get-after-rename-rya75",
           "request": {
             "method": "GET",
             "header": [
@@ -1059,6 +1104,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('rename op ok (no error)', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
@@ -1211,7 +1271,7 @@
           ]
         },
         {
-          "name": "repo-create-rya59",
+          "name": "repo-create-rya61",
           "request": {
             "method": "POST",
             "header": [
@@ -1336,7 +1396,7 @@
           ]
         },
         {
-          "name": "repo-capture",
+          "name": "repo-capture-rya76",
           "request": {
             "method": "GET",
             "header": [
@@ -1362,6 +1422,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('createRepo op ok (no error)', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));",
                   "const r = (pm.response.json().response) || {};",
@@ -1372,7 +1447,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya60",
+          "name": "repo-warm-rya62",
           "request": {
             "method": "GET",
             "header": [
@@ -1629,7 +1704,7 @@
       "description": "class:CRUD | priority:P0",
       "item": [
         {
-          "name": "repo-create-rya61",
+          "name": "repo-create-rya63",
           "request": {
             "method": "POST",
             "header": [
@@ -1754,7 +1829,7 @@
           ]
         },
         {
-          "name": "repo-capture",
+          "name": "repo-capture-rya77",
           "request": {
             "method": "GET",
             "header": [
@@ -1780,6 +1855,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('createRepo op ok (no error)', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));",
                   "const r = (pm.response.json().response) || {};",
@@ -1791,7 +1881,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya62",
+          "name": "repo-warm-rya64",
           "request": {
             "method": "GET",
             "header": [
@@ -1950,7 +2040,7 @@
       "description": "class:CRUD | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya63",
+          "name": "repo-create-rya65",
           "request": {
             "method": "POST",
             "header": [
@@ -2075,7 +2165,7 @@
           ]
         },
         {
-          "name": "repo-capture",
+          "name": "repo-capture-rya78",
           "request": {
             "method": "GET",
             "header": [
@@ -2101,6 +2191,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('createRepo op ok (no error)', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));",
                   "const r = (pm.response.json().response) || {};",
@@ -2111,7 +2216,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya64",
+          "name": "repo-warm-rya66",
           "request": {
             "method": "GET",
             "header": [
@@ -2170,7 +2275,7 @@
       "description": "class:NEG | class:VAL | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya65",
+          "name": "repo-create-rya67",
           "request": {
             "method": "POST",
             "header": [
@@ -2295,7 +2400,7 @@
           ]
         },
         {
-          "name": "repo-capture",
+          "name": "repo-capture-rya79",
           "request": {
             "method": "GET",
             "header": [
@@ -2321,6 +2426,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('createRepo op ok (no error)', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));",
                   "const r = (pm.response.json().response) || {};",
@@ -2331,7 +2451,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya66",
+          "name": "repo-warm-rya68",
           "request": {
             "method": "GET",
             "header": [
@@ -2442,7 +2562,7 @@
       "description": "class:NEG | class:CONF | priority:P1",
       "item": [
         {
-          "name": "repo-create-rya67",
+          "name": "repo-create-rya69",
           "request": {
             "method": "POST",
             "header": [
@@ -2567,7 +2687,7 @@
           ]
         },
         {
-          "name": "repo-capture",
+          "name": "repo-capture-rya80",
           "request": {
             "method": "GET",
             "header": [
@@ -2593,6 +2713,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('createRepo op ok (no error)', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));",
                   "const r = (pm.response.json().response) || {};",
@@ -2603,7 +2738,7 @@
           ]
         },
         {
-          "name": "repo-warm-rya68",
+          "name": "repo-warm-rya70",
           "request": {
             "method": "GET",
             "header": [
@@ -2822,7 +2957,7 @@
           ]
         },
         {
-          "name": "capture-emRegId",
+          "name": "capture-emRegId-rya81",
           "request": {
             "method": "GET",
             "header": [
@@ -2848,6 +2983,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('setup op ok (no error)', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));",
                   "const r = (pm.response.json().response) || {};",
@@ -2863,7 +3013,7 @@
           ]
         },
         {
-          "name": "warm-emRegId-rya69",
+          "name": "warm-emRegId-rya71",
           "request": {
             "method": "GET",
             "header": [
@@ -2913,7 +3063,7 @@
           ]
         },
         {
-          "name": "update-emptymask",
+          "name": "update-emptymask-rya82",
           "request": {
             "method": "PATCH",
             "header": [
@@ -2950,6 +3100,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "pm.test('Operation envelope returned', () => {",
                   "  const j = pm.response.json();",
@@ -3022,7 +3187,7 @@
           ]
         },
         {
-          "name": "get-emptymask",
+          "name": "get-emptymask-rya83",
           "request": {
             "method": "GET",
             "header": [
@@ -3050,6 +3215,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (eventual-consistency); retries SELF only on 403/404 of own fresh resource.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 80) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 600) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('empty-mask op ok (no error)', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));",
                   "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
                   "const j = pm.response.json();",
