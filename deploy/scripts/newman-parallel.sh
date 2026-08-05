@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
 # Copyright (c) PRO-Robotech
 # SPDX-License-Identifier: BUSL-1.1
-# newman-parallel.sh — run the iam/vpc/compute/nlb newman suites CONCURRENTLY
-# against the running dev stand (директива #1).
+# newman-parallel.sh — прогнать набор newman-суит против поднятого стенда.
 #
-# Why parallel: the four service suites are independent (директива #2 gives each
-# its own account/project, so their fixtures don't collide) — running them one
-# after another serialised ~4× the wall-time and hit the CI job timeout
-# ("compute/nlb уходили в no-report"). Fanning them out cuts wall-time to ~max(one
-# suite) instead of sum(all), which is what removes the timeout.
+# ИМЯ ОСТАЛОСЬ, ПРЕДМЕТ ИЗМЕНИЛСЯ (2026-08-05). Скрипт назывался «parallel»,
+# потому что раскладывал восемь суит по одному стенду одновременно (JOBS=2 внутри
+# каждой ⇒ до шестнадцати коллекций сразу). Решением владельца конкуренция снята:
+# JOBS=1 и WAVE_JOBS=1, то есть стенд в каждый момент обслуживает ОДНУ коллекцию.
+# Имя файла не переименовано намеренно — на него ссылаются workflow, Makefile и
+# полдюжины гейтов; переименование дало бы ровно ту порцию ложных координат, за
+# которую мы ругаем документацию. Что скрипт делает сегодня, написано здесь.
+#
+# ПРОПУСКНУЮ СПОСОБНОСТЬ ТЕПЕРЬ ДАЁТ РАЗНЕСЕНИЕ ПО РАННЕРАМ, а не конкуренция
+# внутри одного: deploy/e2e-shards.json задаёт, какой шард какие суиты гоняет и
+# какие компоненты поднимает. Один шард = один kind-кластер = свои 4 ядра.
+# Прежнее обоснование конкуренции («суиты независимы, стенд один») отменено не
+# спором, а замером: на 4 ядрах восемь суит исчерпывали ёмкость (см. JOBS ниже).
 #
 # Flow (idempotent, deterministic — same as newman-e2e.sh, once for all four):
 #   1. port-forward api-gateway public(:18080)+internal(:18081) + iam-internal(:19091)
@@ -37,9 +44,11 @@
 #      verdicts read green.
 #
 # Usage (after `make dev-up`):
-#   ./scripts/newman-parallel.sh                 # all four
-#   SERVICES="vpc nlb" ./scripts/newman-parallel.sh
-#   DELAY=3 JOBS=3 ./scripts/newman-parallel.sh
+#   ./scripts/newman-parallel.sh                 # все восемь суит, по одной
+#   SERVICES="vpc nlb" ./scripts/newman-parallel.sh   # состав шарда
+#   DELAY=3 ./scripts/newman-parallel.sh              # темп запросов
+# JOBS/WAVE_JOBS существуют, но их умолчание — 1; поднимать их значит вернуть
+# снятую конкуренцию, и это должно быть решением с числом (см. ниже).
 set -uo pipefail
 
 # storage + registry added: their redesign was NOT under e2e coverage (artifact
@@ -84,7 +93,28 @@ KRATOS_PUBLIC_PORT="${KRATOS_PUBLIC_PORT:-24433}"  # native login flow (password
 KRATOS_ADMIN_PORT="${KRATOS_ADMIN_PORT:-24434}"    # identity create/lookup for the ceremony human
 HYDRA_ADMIN_PORT="${HYDRA_ADMIN_PORT:-24445}"      # login-request accept (TLS listener)
 DELAY="${DELAY:-3}"          # per-request delay (ms) inside each collection
-JOBS="${JOBS:-2}"            # per-suite collection concurrency (× len(SERVICES) total)
+# ПАРАЛЛЕЛЬНОСТЬ ВНУТРИ ПРОГОНА СНЯТА (решение владельца 2026-08-05).
+#
+# JOBS — сколько коллекций суиты гонятся одновременно; WAVE_JOBS — сколько СУИТ
+# одновременно внутри волны. Оба теперь 1, то есть в каждый момент стенд обслуживает
+# ровно одну коллекцию.
+#
+# Вред от конкуренции был известен ЗАДОЛГО до этого решения и записан прямо здесь же
+# (см. `sjobs` ниже): у nlb --jobs>1 исчерпывает общий пул внешних адресов, у iam и
+# registry обгоняет дренаж материализации. То есть три суиты из восьми уже стояли на
+# принудительной единице, а «параллельно» оставалось у остальных пяти по умолчанию —
+# не по замеру, а потому что так завели. Замер, который решил вопрос (04-05.08):
+# окно материализации локально (12 ядер) p50 2.0с / p90 5.0с, петель ≥10с ноль;
+# в CI (4 ядра) p50 6.0с / p90 11.0с, петель ≥10с — 52; плюс 5 отказов вида
+# «authorization backend unavailable» и 288 наблюдений ожидания блокировки
+# (среднее 0.72с, максимум 4.6с) — это исчерпание ёмкости, а не дефект логики.
+#
+# Пропускную способность теперь даёт РАЗНЕСЕНИЕ ПО РАННЕРАМ (deploy/e2e-shards.json):
+# каждый шард — свой kind-кластер со своим набором компонентов, свои 4 ядра.
+# Восстанавливать конкуренцию внутри шарда значит вернуть ровно то, что разнесение
+# и убирает.
+JOBS="${JOBS:-1}"            # коллекций одновременно внутри суиты
+WAVE_JOBS="${WAVE_JOBS:-1}"  # суит одновременно внутри волны
 SEED="${SEED:-true}"         # set false to reuse an already-seeded stand
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -216,9 +246,35 @@ if [ "$SEED" = "true" ]; then
   # «hydra token endpoint answers on :<новый>» печаталось за миг до отказа обмена по
   # старому адресу, то есть проверка достижимости подтверждала НЕ ТОТ сокет, который
   # набирают. Здесь открывающий порт и набираемый адрес сведены в один факт.
+  # ПОСЕВ ШИРЕ, ЧЕМ НАБОР СУИТ, И ЭТО НЕ ОПЛОШНОСТЬ.
+  #
+  # Что посеять — вопрос про СТЕНД, а не про то, чьи кейсы мы сегодня гоняем.
+  # Показательный случай: коллекция `label-revoke-nlb` живёт в суите iam, а
+  # создаёт балансировщик с автоматическим внешним адресом — то есть требует
+  # пула, который сеет посев nlb. При разнесении по раннерам шард iam поднимает
+  # nlb (иначе эта коллекция не выполнима), но суиту nlb не гоняет; посев,
+  # выведенный из списка суит, пул бы не завёл, и коллекция покраснела бы
+  # утверждением про продукт вместо «фикстуры нет».
+  #
+  # Поэтому список для посева = список суит ПЛЮС домены, чьи сервисы реально
+  # подняты на этом стенде. Предикат — факт о кластере (`kubectl get deploy`), а
+  # не объявление вызывающего: объявление и стенд разъезжаются молча.
+  SEED_SERVICES="$SERVICES"
+  for _pair in "nlb:kacho-nlb" "storage:kacho-storage" "compute:compute" "vpc:vpc" "registry:registry"; do
+    _svc="${_pair%%:*}"; _dep="${_pair##*:}"
+    case " $SEED_SERVICES " in *" $_svc "*) continue ;; esac
+    if kubectl -n "$NS" get deploy "$_dep" >/dev/null 2>&1; then
+      SEED_SERVICES="$SEED_SERVICES $_svc"
+    fi
+  done
+  if [ "$SEED_SERVICES" != "$SERVICES" ]; then
+    echo "[parallel] посев расширен по факту о стенде: суиты «$SERVICES» → посев «$SEED_SERVICES»"
+  fi
+
   env BASE_URL="http://localhost:$GW_PORT" INTERNAL_BASE_URL="http://localhost:$GW_INTERNAL_PORT" \
       IAM_INTERNAL_GRPC="localhost:$IAM_INTERNAL_PORT" HYDRA_PUBLIC_PORT="$HYDRA_PORT" \
       HYDRA_TOKEN_URL="http://localhost:$HYDRA_PORT/oauth2/token" \
+      SERVICES="$SEED_SERVICES" \
       PATCH_ENV=true SETUP_NS="$NS" "${MTLS_ENV[@]}" \
       bash "$REPO_ROOT/tests/authz-fixtures/setup.sh"
   SEED_RC=$?
@@ -296,10 +352,16 @@ _in_phase2() { case " $PHASE2 " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 RC=0
 declare -A SUITE_PID
 
-launch_wave() {  # $@ = services to run concurrently within this wave
+launch_wave() {  # $@ = суиты волны; одновременно исполняется не более WAVE_JOBS
   SUITE_PID=()
   local svc d sjobs st
   for svc in "$@"; do
+    # Ограничитель суит. При WAVE_JOBS=1 (умолчание) это делает волну строго
+    # последовательной, и «волна» из имени становится просто порядком, а не
+    # одновременностью. Ограничитель оставлен ручкой, а не выпилен: разнесение по
+    # раннерам обычно даёт шарду одну-две суиты, и восстановить конкуренцию должно
+    # быть решением с числом, а не правкой кода.
+    while [ "$(jobs -rp | wc -l)" -ge "$WAVE_JOBS" ]; do wait -n; done
     d="$(suite_dir "$svc")"
     # nlb EXTERNAL suites draw auto-VIPs from ONE shared external AddressPool — --jobs>1
     # transiently exhausts it → phantom (see nlb run.sh header). Force nlb serial.
@@ -317,11 +379,17 @@ launch_wave() {  # $@ = services to run concurrently within this wave
         --env-var "baseUrl=http://localhost:$GW_PORT" \
         --env-var "internalBaseUrl=http://localhost:$GW_INTERNAL_PORT" \
         --env-var "externalBaseUrl=https://127.0.0.1:$GW_TLS_PORT" \
-        >"$d/out/suite.log" 2>&1 ) &
+        >"$d/out/suite.log" 2>&1; echo "$?" > "$d/out/suite.rc" ) &
     SUITE_PID[$svc]=$!
   done
+  wait
   for svc in "$@"; do
-    if wait "${SUITE_PID[$svc]}"; then st="GREEN"; else st="RED"; RC=1; fi
+    # Код возврата читается из файла, а НЕ из `wait <pid>`: при WAVE_JOBS<N часть
+    # процессов уже пожата ограничителем выше (`wait -n`), и повторный `wait` по
+    # такому pid отвечает «не мой потомок» — то есть отказом, которого не было.
+    # Отсутствие файла — тоже исход, и он считается отказом, а не успехом.
+    st="RED"
+    if [ "$(cat "$(suite_dir "$svc")/out/suite.rc" 2>/dev/null || echo 1)" = "0" ]; then st="GREEN"; else RC=1; fi
     echo "===== [$svc] $st ====="
     tail -n +1 "$(suite_dir "$svc")/out/summary.txt" 2>/dev/null || echo "  (no summary — see out/suite.log)"
   done

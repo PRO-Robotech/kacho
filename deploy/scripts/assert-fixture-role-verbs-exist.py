@@ -57,6 +57,7 @@ import ast
 import os
 import re
 import subprocess
+import shutil
 import sys
 import tempfile
 
@@ -319,6 +320,13 @@ def self_test():
     print("=== инъекция: определение роли из несуществующего глагола ===")
     tmp = tempfile.mkdtemp()
     os.makedirs(os.path.join(tmp, "tests", "authz-fixtures"))
+    # Синтетическое дерево несёт НАСТОЯЩУЮ закрытую таблицу пар. Без неё вызовы
+    # `run()` ниже отвечали отказом «таблицы нет» (код 2), а самопроверка
+    # засчитывала это за «пустой состав — провал» (ждала любой ненулевой): два
+    # разных отказа под одним именем, то есть подпроверка проходила по причине,
+    # которую не проверяла.
+    os.makedirs(os.path.join(tmp, os.path.dirname(TYPES_REL)), exist_ok=True)
+    shutil.copyfile(os.path.join(root, TYPES_REL), os.path.join(tmp, TYPES_REL))
 
     def write(name, body):
         p = os.path.join(tmp, "tests", "authz-fixtures", name)
@@ -348,7 +356,18 @@ def self_test():
                   f'DOC = "verbs: [\\"{absent}\\"] — так делать нельзя"\n')
 
     files = sorted([bad_dict, bad_call, good, prose])
-    findings, triples, _ = scan(tmp, files, vocabulary)
+    # Разбор зовётся ТОЙ ЖЕ парой аргументов, что и боевой проход: закрытая
+    # таблица пар берётся из дерева, запасной словарь — объединение наборов.
+    # Прежняя редакция звала `scan(tmp, files, vocabulary)` — сигнатуру, которой
+    # у разбора нет с тех пор, как глагол стали сверять с набором СВОЕГО типа.
+    # Самопроверка падала исключением ДО первой инъекции, то есть гейт не мог
+    # доказать, что краснеет, — и его зелёный обычный проход ничего не значил.
+    types_map = object_types(os.path.join(root, TYPES_REL))
+    if not types_map:
+        print(f"  ПРОВАЛ закрытая таблица {TYPES_REL} не читается — "
+              f"самопроверке не на чем стоять")
+        return 1
+    findings, triples, _unresolved, _unmapped = scan(tmp, files, verb_sets, types_map, vocabulary)
     hit = {f[0] for f in findings}
 
     for want in (bad_dict, bad_call):
@@ -381,8 +400,11 @@ def self_test():
         print(f"  ОК  перепись видит все формы: определений {triples}")
 
     # ПУСТОЙ СОСТАВ — провал, а не тишина.
-    if run(tmp, [], verb_sets, label="самопроверка/пустой состав") == 0:
-        print("  ПРОВАЛ пустой состав фикстур принят за успех")
+    _empty_rc = run(tmp, [], verb_sets, label="самопроверка/пустой состав")
+    if _empty_rc != 1:
+        print(f"  ПРОВАЛ пустой состав фикстур дал код {_empty_rc}, а обязан 1 "
+              f"(0 — принят за успех; 2 — отказ по ДРУГОЙ причине, то есть "
+              f"подпроверка прошла не о том, о чём спрашивала)")
         rc = 1
     else:
         print("  ОК  пустой состав фикстур — провал, а не чистота")

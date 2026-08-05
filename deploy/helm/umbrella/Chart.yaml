@@ -38,14 +38,24 @@ dependencies:
     condition: ingress-nginx.enabled
 
   # ─── Per-service Postgres (database-per-service, workspace CLAUDE.md ban #8) ──
+  # pg-vpc / pg-compute condition-gated ровно как pg-nlb / pg-storage / pg-registry.
+  # Прежде эти двое были ЕДИНСТВЕННЫМИ базами без условия — не по решению, а по
+  # умолчанию: их просто не дописали, когда условия заводили остальным. Цена
+  # измерена: pg-vpc просит 2Gi/200m, pg-compute — 1Gi/200m, то есть 3Gi из 8.3Gi
+  # запросов всего стенда нельзя было не поднимать даже там, где ни vpc, ни compute
+  # не участвуют. Умолчание — `true` (условие с отсутствующим значением helm
+  # игнорирует, зависимость остаётся включённой), поэтому ни один существующий
+  # профиль не меняется.
   - name: postgresql
     alias: pg-vpc
     version: 13.x
     repository: https://charts.bitnami.com/bitnami
+    condition: pg-vpc.enabled
   - name: postgresql
     alias: pg-compute
     version: 13.x
     repository: https://charts.bitnami.com/bitnami
+    condition: pg-compute.enabled
   - name: postgresql
     alias: pg-iam
     version: 13.x
@@ -73,12 +83,20 @@ dependencies:
   # checkouts laid out next to kacho-deploy; the `file://` path is branch-agnostic).
   # Versions left unpinned (`>= 0.0.0`) — CI clones origin/main of each sibling and
   # the Chart.yaml there can be any version; a hard pin breaks `helm dep update`.
+  # vpc / compute condition-gated ровно как kacho-nlb / storage / registry.
+  # Отсутствие условия здесь означало, что `--set vpc.enabled=false` РЕНДЕРИЛСЯ
+  # успешно и НЕ ДЕЛАЛ НИЧЕГО: замер 2026-08-05 — выключение vpc+compute+registry+
+  # storage+nlb одной командой убирало пять последних и оставляло первые два на
+  # месте. Ручка, которая принимается и не читается, хуже отсутствующей: вызывающий
+  # уверен, что стенд сужен. Умолчание — `true` (см. выше про отсутствующее значение).
   - name: vpc
     version: ">= 0.0.0"
     repository: file://../../../services/vpc/deploy
+    condition: vpc.enabled
   - name: compute
     version: ">= 0.0.0"
     repository: file://../../../services/compute/deploy
+    condition: compute.enabled
   # kacho-nlb L4 NLB control-plane (NetworkLoadBalancer / Listener / TargetGroup).
   # Condition-gated so clusters without NLB skip it entirely.
   - name: kacho-nlb

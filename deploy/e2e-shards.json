@@ -1,0 +1,75 @@
+{
+  "_": [
+    "Разбиение e2e-newman по РАННЕРАМ: один шард = один kind-кластер = один раннер.",
+    "Единственный источник истины и для workflow (matrix), и для гейта покрытия",
+    "deploy/scripts/assert-shard-coverage.py. Два места об одном предмете здесь",
+    "разъехались бы молча, поэтому файл ровно один.",
+    "",
+    "ЧИСЛА, ИЗ КОТОРЫХ ВЫВЕДЕНО РАЗБИЕНИЕ (замер 2026-08-05, helm template",
+    "values.dev.yaml + values.dev-prod.yaml, единица счёта — workload с его",
+    "resources.requests):",
+    "  полный стенд           29 workload   8298Mi   2980m",
+    "  ядро без сервисных     18 workload   2730Mi   1330m",
+    "то есть 45% запрошенного CPU стенда не зависит от того, что тестируется",
+    "(iam+geo+gateway+openfga+hydra+kratos+cert-manager+ingress и их базы), а 55%",
+    "— зависит и снимается. Раннер даёт 4 ядра: 2980m запросов на 4000m",
+    "allocatable — это и есть измеренная причина (BatchCheck Unavailable, окно",
+    "материализации p90 11с против 5с локально).",
+    "",
+    "components — компоненты СВЕРХ ядра, которые шард поднимает. Всё, что в",
+    "gates и не названо шардом, выключается (--set <gate>.enabled=false).",
+    "Карта зависимостей, замеры по каждому шарду и обоснование каждой строки —",
+    "в deploy/E2E-SHARDS.md (рядом с этим файлом)."
+  ],
+
+  "gates": [
+    "vpc", "pg-vpc",
+    "compute", "pg-compute",
+    "kacho-nlb", "pg-nlb",
+    "storage", "pg-storage",
+    "registry", "pg-registry"
+  ],
+
+  "core_images": ["iam", "geo", "api-gateway"],
+
+  "gate_images": {
+    "vpc": "vpc",
+    "compute": "compute",
+    "kacho-nlb": "nlb",
+    "storage": "storage",
+    "registry": "registry"
+  },
+
+  "shards": [
+    {
+      "id": "vpc",
+      "suites": ["vpc"],
+      "components": ["vpc", "pg-vpc"],
+      "why": "16 коллекций / 3384 запроса — самая тяжёлая суита по объёму, отдельный раннер. Своих peer-зависимостей нет: geo и iam в ядре."
+    },
+    {
+      "id": "iam",
+      "suites": ["iam"],
+      "components": ["vpc", "pg-vpc", "compute", "pg-compute", "kacho-nlb", "pg-nlb", "storage", "pg-storage"],
+      "why": "30 коллекций / 1730 запросов. Разлучить с vpc/nlb/storage НЕЛЬЗЯ: label-revoke-vpc/-nlb/-storage и authz-sa-apitoken ходят в чужие домены (измерено по URL коллекций: vpc 21, storage 11, nlb 3 запроса). compute — из-за посева внешнего VIP-пула nlb, который создаёт Instance. Это самый широкий шард, и это честный отрицательный результат: он снимает только registry+zot."
+    },
+    {
+      "id": "nlb",
+      "suites": ["nlb"],
+      "components": ["vpc", "pg-vpc", "compute", "pg-compute", "kacho-nlb", "pg-nlb"],
+      "why": "9 коллекций / 1641 запрос. vpc — subnet/address/VIP-пул (122 запроса в коллекциях), compute — existingInstanceId для Target.instance_id (посев seed-nlb-fixtures.sh создаёт Instance)."
+    },
+    {
+      "id": "compute-storage",
+      "suites": ["compute", "storage"],
+      "components": ["vpc", "pg-vpc", "compute", "pg-compute", "storage", "pg-storage"],
+      "why": "6+9 коллекций / 1071 запрос. compute→vpc (networkInterfaceSpecs на existingSubnetId, посев prodseed_compute_ext.py) и compute→storage (attach тома в саге запуска). storage едет вместе, потому что его сервис здесь уже поднят."
+    },
+    {
+      "id": "edge",
+      "suites": ["geo", "registry", "api-gateway"],
+      "components": ["registry", "pg-registry"],
+      "why": "7+4+1 коллекция / 403 запроса. Ни одна из трёх суит не трогает vpc/compute/nlb/storage (измерено по URL: geo→geo, api-gateway→iam, registry→registry). Самый лёгкий стенд."
+    }
+  ]
+}
