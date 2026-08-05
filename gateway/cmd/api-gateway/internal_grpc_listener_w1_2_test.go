@@ -147,6 +147,7 @@ func TestW1_2_InternalGRPCListener_MTLS_ServesInvalidateSubject(t *testing.T) {
 		mtlsClientDialCreds(t, caFile, cliCert, cliKey, internalListenerServerName))
 	require.NoError(t, err, "dial internal listener with drainer client cert")
 	t.Cleanup(func() { _ = conn.Close() })
+	requireTransportReady(t, conn)
 
 	cli := apigatewayv1.NewInternalAuthzCacheServiceClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -185,6 +186,7 @@ func TestW1_2_InternalGRPCListener_MTLS_RejectsEmptySubject(t *testing.T) {
 		mtlsClientDialCreds(t, caFile, cliCert, cliKey, internalListenerServerName))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
+	requireTransportReady(t, conn)
 
 	cli := apigatewayv1.NewInternalAuthzCacheServiceClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -255,6 +257,7 @@ func TestW1_2_InternalGRPCListener_MTLS_RejectsNonAllowlistedCaller(t *testing.T
 		mtlsClientDialCreds(t, caFile, cliCert, cliKey, internalListenerServerName))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
+	requireTransportReady(t, conn)
 
 	cli := apigatewayv1.NewInternalAuthzCacheServiceClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -289,6 +292,7 @@ func TestW1_2_InternalGRPCListener_MTLS_RejectsNonSpiffeCaller(t *testing.T) {
 		mtlsClientDialCreds(t, caFile, cliCert, cliKey, internalListenerServerName))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
+	requireTransportReady(t, conn)
 
 	cli := apigatewayv1.NewInternalAuthzCacheServiceClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
