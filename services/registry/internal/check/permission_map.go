@@ -144,15 +144,23 @@ func PermissionMap() authz.RPCMap {
 			Extract:    projectObject(),
 			Permission: "registry.registries.create",
 		},
+		// Update/Delete — HideExistence зеркалит `hide_existence` каталога: край на
+		// этих двух мутациях отвечает промахом ВЛАДЕЛЬЦА, и сервис обязан звучать
+		// так же. Пообъектное чтение (`/Get` выше) скрывает существование по форме
+		// RPC и объявления не требует; мутация — требует, иначе на том же запросе
+		// край скажет «нет такого», а сервис «нет доступа», и разница между ними
+		// прочитывается как ответ на вопрос, который скрытие и закрывает.
 		"/kacho.cloud.registry.v1.RegistryService/Update": {
-			Relation:   relVUpdate,
-			Extract:    registryObject(),
-			Permission: "registry.registries.update",
+			Relation:      relVUpdate,
+			Extract:       registryObject(),
+			Permission:    "registry.registries.update",
+			HideExistence: true,
 		},
 		"/kacho.cloud.registry.v1.RegistryService/Delete": {
-			Relation:   relVDelete,
-			Extract:    registryObject(),
-			Permission: "registry.registries.delete",
+			Relation:      relVDelete,
+			Extract:       registryObject(),
+			Permission:    "registry.registries.delete",
+			HideExistence: true,
 		},
 		// ListOperations — per-resource история операций реестра. Interceptor-gated
 		// single-object Check v_list на registry_registry:<id> (namespace call-gate,

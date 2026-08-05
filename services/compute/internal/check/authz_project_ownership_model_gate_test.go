@@ -229,8 +229,23 @@ func TestProjectOwnershipRPCs_UngrantedSubjectStillDenied(t *testing.T) {
 					})
 
 				require.Error(t, err, "%s must be denied for an ungranted %s", rpc.fullMethod, principal.ptype)
-				assert.Equal(t, codes.PermissionDenied, status.Code(err),
-					"an authenticated-but-ungranted subject must get PermissionDenied(7)")
+				// The refusal's CODE follows the lane, and both lanes refuse. A
+				// per-object read answers with the owning service's own NotFound,
+				// because a refusal that reads differently from a genuine miss tells
+				// the caller the object is there — the existence oracle. Everything
+				// else keeps PermissionDenied. The expectation is derived from the
+				// REAL map through the same predicate the interceptor uses, so it
+				// cannot drift into "whatever the code does".
+				e, _ := check.PermissionMap().Lookup(rpc.fullMethod)
+				if authz.HidesExistenceOnDeny(rpc.fullMethod, e, rpc.objectType) {
+					assert.Equal(t, codes.NotFound, status.Code(err),
+						"a per-object read denied to an ungranted subject must answer the owner's NotFound(5)")
+					assert.Equal(t, "Instance "+rpc.targetObjID+" not found", status.Convert(err).Message(),
+						"the refusal must be byte-identical to the owner's own miss — a distinguishable text IS the oracle")
+				} else {
+					assert.Equal(t, codes.PermissionDenied, status.Code(err),
+						"an authenticated-but-ungranted subject must get PermissionDenied(7)")
+				}
 				assert.False(t, handlerReached,
 					"%s reached the handler despite a model DENY — AssertProjectOwnership "+
 						"is gone, so this would be an open door", rpc.fullMethod)

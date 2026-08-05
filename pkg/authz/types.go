@@ -105,6 +105,22 @@ type RPCEntry struct {
 	// `DecisionInternal` (skip) — общий, но смысл разный, поэтому отдельное поле.
 	ScopeFiltered bool
 
+	// HideExistence — отказ на этом RPC обязан прийти как NOT_FOUND ТЕКСТОМ
+	// владельца, а не как PermissionDenied.
+	//
+	// Пообъектное чтение (`/Get` на глагольном `v_get`) скрывает существование
+	// БЕЗ этого поля — оно выводится из формы RPC, ровно как на крае
+	// (`CatalogEntry.HidesExistenceOnDeny`). Поле нужно там, где вывести нельзя:
+	// МУТАЦИЯ, которую край помечает скрывающей явно (registry Update/Delete в
+	// каталоге несут `hide_existence`). Без него сервис отвечал бы 403 на тот же
+	// запрос, на который край отвечает 404, и вызывающий отличал бы «нет
+	// доступа» от «нет такого» по одному лишь коду.
+	//
+	// Поле НЕ включает скрытие само по себе: текст берётся из таблицы владельцев
+	// (hide_existence.go), поэтому тип объекта без текста и вызов без
+	// конкретного id остаются отказом — придумывать «not found» не из чего.
+	HideExistence bool
+
 	// Permission — строка из permission-catalog в формате
 	// `<module>.<resource>.<verb>` (напр. `loadbalancer.networkLoadBalancers.getTargetStates`),
 	// предназначена для будущего fine-grained Check.

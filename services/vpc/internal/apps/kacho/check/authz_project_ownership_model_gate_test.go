@@ -59,6 +59,7 @@ package check_test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"sync/atomic"
@@ -307,6 +308,22 @@ func TestProjectOwnershipRPCs_ModelCarriesThePerObjectGate(t *testing.T) {
 	}
 }
 
+// ownerMissText — the NotFound each vpc resource produces on a GENUINE miss,
+// written out from services/vpc/internal/repo/kacho/pg/*.go (+ repo/helpers/sg.go)
+// rather than read back from the table under test: an expectation copied from the
+// thing it checks asserts nothing. The security-group text carries a debug
+// rendering of the id on purpose — byte-identity with the backend is what closes
+// the oracle, so this side follows the backend, not the other way round.
+var ownerMissText = map[string]string{
+	"vpc_network":           "Network %s not found",
+	"vpc_subnet":            "Subnet %s not found",
+	"vpc_address":           "Address %s not found",
+	"vpc_route_table":       "Route table %s not found",
+	"vpc_security_group":    "Security group SecurityGroup.Id(value=%s) not found",
+	"vpc_gateway":           "Gateway %s not found",
+	"vpc_network_interface": "Network interface %s not found",
+}
+
 // TestProjectOwnershipRPCs_UngrantedSubjectStillDenied — (3), the assertion that
 // matters. A principal the model does not grant must never reach the handler.
 // This must hold for a machine principal exactly as for a human one: the point
@@ -331,8 +348,26 @@ func TestProjectOwnershipRPCs_UngrantedSubjectStillDenied(t *testing.T) {
 					})
 
 				require.Error(t, err, "%s must be denied for an ungranted %s", rpc.fullMethod, principal.ptype)
-				assert.Equal(t, codes.PermissionDenied, status.Code(err),
-					"an authenticated-but-ungranted subject must get PermissionDenied(7)")
+				// The refusal's CODE follows the lane, and both lanes refuse. A
+				// per-object read answers with the owning service's own NotFound: a
+				// refusal that reads differently from a genuine miss tells the caller
+				// the object is there, which is the existence oracle. Everything else
+				// keeps PermissionDenied. The lane is derived from the REAL map through
+				// the same predicate the interceptor uses; the expected TEXT is written
+				// out here from the owner's repo layer, not read back from the table
+				// under test.
+				e, _ := check.PermissionMap().Lookup(rpc.fullMethod)
+				if authz.HidesExistenceOnDeny(rpc.fullMethod, e, rpc.objectType) {
+					want, ok := ownerMissText[rpc.objectType]
+					require.True(t, ok, "no owner NotFound text written down for %q", rpc.objectType)
+					assert.Equal(t, codes.NotFound, status.Code(err),
+						"a per-object read denied to an ungranted subject must answer the owner's NotFound(5)")
+					assert.Equal(t, fmt.Sprintf(want, rpc.targetObjID), status.Convert(err).Message(),
+						"the refusal must be byte-identical to the owner's own miss — a distinguishable text IS the oracle")
+				} else {
+					assert.Equal(t, codes.PermissionDenied, status.Code(err),
+						"an authenticated-but-ungranted subject must get PermissionDenied(7)")
+				}
 				assert.False(t, handlerReached,
 					"%s reached the handler despite a model DENY — AssertProjectOwnership "+
 						"is gone, so this would be an open door", rpc.fullMethod)

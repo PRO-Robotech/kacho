@@ -101,6 +101,11 @@ type Entry struct {
 	// authenticates and runs no per-RPC Check. It is the catalog-side counterpart
 	// of authz.RPCEntry.ScopeFiltered, and Compare requires the two to agree.
 	ScopeFiltered bool `json:"scope_filtered"`
+	// HideExistence — the catalog's explicit mark that a deny on this method is
+	// answered with the owning service's NotFound. Mirrors
+	// authz.RPCEntry.HideExistence; see catalogHidesExistence for the derived
+	// (unmarked) majority.
+	HideExistence bool `json:"hide_existence"`
 }
 
 // LoadCatalog reads the generated catalog, keyed by gRPC full method
@@ -172,7 +177,7 @@ const (
 // Divergence is one method whose in-service requirement contradicts the catalog.
 type Divergence struct {
 	Method string
-	// Kind is "lane", "relation" or "scope".
+	// Kind is "lane", "relation", "scope" or "hide".
 	Kind             string
 	CatalogRelation  string
 	ServiceRelation  string
@@ -180,6 +185,10 @@ type Divergence struct {
 	ServiceScopeType string
 	CatalogLane      string
 	ServiceLane      string
+	// CatalogHidesExistence / ServiceHidesExistence — whether each side answers a
+	// deny with the owning service's own NotFound instead of PermissionDenied.
+	CatalogHidesExistence bool
+	ServiceHidesExistence bool
 }
 
 func (d Divergence) String() string {
@@ -190,6 +199,9 @@ func (d Divergence) String() string {
 	case "relation":
 		return fmt.Sprintf("%s: catalog requires relation %q, service map requires %q",
 			d.Method, d.CatalogRelation, d.ServiceRelation)
+	case "hide":
+		return fmt.Sprintf("%s: deny is answered with the owner's NotFound at the edge=%t, in the service map=%t",
+			d.Method, d.CatalogHidesExistence, d.ServiceHidesExistence)
 	default:
 		return fmt.Sprintf("%s: catalog anchors scope on object type %q, service map anchors on %q",
 			d.Method, d.CatalogScopeType, d.ServiceScopeType)
@@ -208,6 +220,33 @@ func catalogLane(e Entry) string {
 		return LaneExempt
 	default:
 		return LaneEdgeChecks
+	}
+}
+
+// catalogHidesExistence mirrors CatalogEntry.HidesExistenceOnDeny (the edge's own
+// resolution, gateway/internal/middleware/permission_catalog.go): the explicit
+// mark, otherwise the shape of a per-object read — a unary `/Get` gated on the
+// verb-bearing `v_get` against a CONCRETE per-resource scope.
+//
+// Kept here as a copy of a rule rather than an import because the rule lives
+// under gateway/internal/ and cannot be imported. The copy is not free-floating:
+// Compare fails the moment it stops agreeing with what the owning service does,
+// and the edge's own tests pin it against the shipped catalog.
+func catalogHidesExistence(fqn string, e Entry) bool {
+	if e.HideExistence {
+		return true
+	}
+	if !strings.HasSuffix(fqn, "/Get") || e.RequiredRelation != "v_get" {
+		return false
+	}
+	if strings.TrimSpace(e.ScopeExtractor.ObjectTypeFromRequestField) != "" {
+		return false
+	}
+	switch strings.TrimSpace(e.ScopeExtractor.FromRequestField) {
+	case "", "*", "subject", "resource":
+		return false
+	default:
+		return true
 	}
 }
 
@@ -328,6 +367,24 @@ func Compare(serviceMap authz.RPCMap, catalog map[string]Entry) Report {
 			rep.Divergences = append(rep.Divergences, Divergence{
 				Method: method, Kind: "scope",
 				CatalogScopeType: cat.ScopeExtractor.ObjectType, ServiceScopeType: svcScope,
+			})
+			// The two sides are not talking about the same object, so whether each
+			// hides existence is not yet a comparable question.
+			continue
+		}
+
+		// Hide axis: HOW a deny sounds. Both deciders refuse the same call; if one
+		// answers the owner's NotFound and the other answers PermissionDenied, the
+		// caller separates "not yours" from "not there" by reading which of the two
+		// answered — the very oracle hiding exists to close. The two do disagree in
+		// practice: each keeps its own positive-verdict cache with its own window,
+		// so a call the edge lets through can still be refused by the service.
+		catHides := catalogHidesExistence(strings.TrimPrefix(method, "/"), cat)
+		svcHides := authz.HidesExistenceOnDeny(method, entry, svcScope)
+		if catHides != svcHides {
+			rep.Divergences = append(rep.Divergences, Divergence{
+				Method: method, Kind: "hide",
+				CatalogHidesExistence: catHides, ServiceHidesExistence: svcHides,
 			})
 		}
 	}
