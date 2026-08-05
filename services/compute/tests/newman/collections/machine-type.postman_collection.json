@@ -315,7 +315,10 @@
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
                   "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
+                  "} catch (e) {}",
+                  "// УТВЕРЖДЕНИЕ ПО УМОЛЧАНИЮ для шага удаления: без него шаг зеленел бы и на",
+                  "// отказе, а следующий опрос уехал бы на opId предыдущей операции.",
+                  "pm.test('delete accepted: status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));"
                 ]
               }
             }
@@ -753,7 +756,10 @@
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
                   "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
+                  "} catch (e) {}",
+                  "// УТВЕРЖДЕНИЕ ПО УМОЛЧАНИЮ для шага удаления: без него шаг зеленел бы и на",
+                  "// отказе, а следующий опрос уехал бы на opId предыдущей операции.",
+                  "pm.test('delete accepted: status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));"
                 ]
               }
             }
@@ -1161,7 +1167,10 @@
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
                   "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
+                  "} catch (e) {}",
+                  "// УТВЕРЖДЕНИЕ ПО УМОЛЧАНИЮ для шага удаления: без него шаг зеленел бы и на",
+                  "// отказе, а следующий опрос уехал бы на opId предыдущей операции.",
+                  "pm.test('delete accepted: status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));"
                 ]
               }
             }
@@ -1877,7 +1886,10 @@
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
                   "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
+                  "} catch (e) {}",
+                  "// УТВЕРЖДЕНИЕ ПО УМОЛЧАНИЮ для шага удаления: без него шаг зеленел бы и на",
+                  "// отказе, а следующий опрос уехал бы на opId предыдущей операции.",
+                  "pm.test('delete accepted: status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));"
                 ]
               }
             }
@@ -1978,7 +1990,10 @@
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
                   "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
+                  "} catch (e) {}",
+                  "// УТВЕРЖДЕНИЕ ПО УМОЛЧАНИЮ для шага удаления: без него шаг зеленел бы и на",
+                  "// отказе, а следующий опрос уехал бы на opId предыдущей операции.",
+                  "pm.test('delete accepted: status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));"
                 ]
               }
             }
@@ -2079,7 +2094,10 @@
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
                   "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}"
+                  "} catch (e) {}",
+                  "// УТВЕРЖДЕНИЕ ПО УМОЛЧАНИЮ для шага удаления: без него шаг зеленел бы и на",
+                  "// отказе, а следующий опрос уехал бы на opId предыдущей операции.",
+                  "pm.test('delete accepted: status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));"
                 ]
               }
             }

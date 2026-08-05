@@ -40,9 +40,37 @@ def _setup_tg(name_suffix: str, dereg_seconds: int = 300):
     ]
 
 
-def _cleanup_tg():
+def _cleanup_tg(leftover_targets=None):
+    """Уборка группы целей. `leftover_targets` — то, что кейс в ней ОСТАВИЛ.
+
+    Продукт отказывается удалять непустую группу (`FailedPrecondition`
+    «TargetGroup has N target(s); remove them first via RemoveTargets») — это
+    его объявленный контракт, у него есть собственный отрицательный кейс
+    `TGR-DEL-NEG-HAS-TARGETS`. Значит уборка обязана сперва СЛИТЬ группу, иначе
+    она получает законный отказ и группа живёт до конца стенда.
+
+    Имя `best-effort` этого не оправдывало: пока шаг не нёс утверждения, отказ
+    был не виден, и «best-effort» читалось как решение, хотя было умолчанием.
+    Прогон CI 31053251941 показал отказ на `TGT-RM-STATE-SIBLING-STAYS-ACTIVE`,
+    где после снятия одной из двух целей вторая остаётся по замыслу кейса.
+
+    Кейс называет остаток САМ, а не выводится опросом: список известен ему по
+    построению, поэтому уборка остаётся детерминированной и не зависит от того,
+    что вернёт чтение. Забытый остаток теперь краснеет сразу — утверждение
+    шага удаления это ловит (`assert-delete-steps-are-asserted.py`).
+    """
+    drain = []
+    if leftover_targets:
+        drain = [
+            Step(name="cleanup-drain-targets", method="POST",
+                 path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
+                 body={"targets": list(leftover_targets)},
+                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+            poll_operation_until_done(),
+        ]
     return [
-        Step(name="cleanup-tg-best-effort", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
+        *drain,
+        Step(name="cleanup-tg", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
     ]
@@ -613,7 +641,12 @@ CASES.append(Case(
                           "pm.test('untouched target has no drain moment', () => "
                           "  pm.expect((kept || {}).drainStartedAt, JSON.stringify(tgts))"
                           "    .to.satisfy(v => v === null || v === undefined));"]),
-        *_cleanup_tg(),
+        # Нетронутый сосед — ПРЕДМЕТ этого кейса, поэтому он остаётся в группе, и
+        # уборка обязана слить его сама: непустую группу продукт удалять
+        # отказывается (его объявленный контракт, см. TGR-DEL-NEG-HAS-TARGETS).
+        # Прогон CI 31053251941 показал здесь ровно этот отказ — до утверждения на
+        # шаге удаления он был не виден, и группа переживала каждый прогон.
+        *_cleanup_tg(leftover_targets=[{"externalIp": {"address": "203.0.113.72"}}]),
     ],
 ))
 
