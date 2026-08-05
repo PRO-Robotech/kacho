@@ -65,6 +65,10 @@ func (w *SubjectChangeWatcher) Run(ctx context.Context) {
 	}
 }
 
+// tick performs exactly one poll cycle: poll, then prime OR advance-and-flush.
+// The whole cycle is synchronous — when it returns, everything this tick was
+// going to do has been done. Tests drive it directly (see export_test.go) so
+// that what a tick did is never read while it is still doing it.
 func (w *SubjectChangeWatcher) tick(ctx context.Context) {
 	// Per-call deadline: a stalled iam handler must not wedge the loop forever.
 	pollCtx, cancel := context.WithTimeout(ctx, w.pollTimeout)

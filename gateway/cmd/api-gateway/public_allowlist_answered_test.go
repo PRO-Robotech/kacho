@@ -123,18 +123,70 @@ func (p *edgeProbe) code(fqn string) codes.Code {
 	if err != nil {
 		return status.Code(err)
 	}
+	return statusOf(st)
+}
+
+// statusOf drives one already-created stream to completion and reports the
+// RPC's status code.
+//
+// The verdict is taken from RecvMsg ONLY. SendMsg does not deliver a status: it
+// queues bytes, and it reports io.EOF once the call is over — which for an
+// unserved method (trailers-only Unimplemented) can already be true before the
+// probe gets its empty body out. Reading the code off the send would then answer
+// Unknown, and WHICH of the two happens first is decided by machine load, not by
+// the edge. The same holds for CloseSend. Both errors are therefore left for
+// RecvMsg to report authoritatively — a genuine transport failure surfaces there
+// too, so nothing is swallowed. See TestEdgeProbe_ReadsStatusOffAFinishedStream.
+func statusOf(st grpc.ClientStream) codes.Code {
 	empty := []byte{}
-	if err := st.SendMsg(&empty); err != nil {
-		return status.Code(err)
-	}
-	if err := st.CloseSend(); err != nil {
-		return status.Code(err)
-	}
+	_ = st.SendMsg(&empty)
+	_ = st.CloseSend()
 	var out []byte
 	if err := st.RecvMsg(&out); err != nil {
 		return status.Code(err)
 	}
 	return codes.OK
+}
+
+// TestEdgeProbe_ReadsStatusOffAFinishedStream pins the one thing the gate below
+// cannot survive being wrong about: WHERE the probe reads the RPC's status from.
+//
+// The status of a gRPC call is carried by RecvMsg and by nothing else. SendMsg
+// only queues bytes; when the server has already finished the call — which is
+// what a trailers-only Unimplemented is — SendMsg reports io.EOF, a plain error
+// carrying no status, so status.Code() of it reads Unknown. Whether the probe
+// hits that ordering is decided by the machine: on an idle laptop the client
+// almost always gets its bytes out first, on a loaded runner the server's
+// refusal often lands first. A probe that took its verdict from SendMsg would
+// therefore answer Unknown to a live edge for no reason of the edge's, and the
+// gate's own discriminator premise ("an unserved method must read Unimplemented")
+// would fire — reading, to whoever finds it, as a broken bypass list.
+//
+// This case makes that ordering the ONLY ordering: the stream is driven to
+// completion first, so the status is already settled before statusOf touches it.
+func TestEdgeProbe_ReadsStatusOffAFinishedStream(t *testing.T) {
+	probe := newEdgeProbe(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	const unserved = "/kacho.cloud.iam.v1.GhostService/Vanish"
+	desc := &grpc.StreamDesc{StreamName: "probe", ClientStreams: true, ServerStreams: true}
+	st, err := probe.conn.NewStream(ctx, desc, unserved, grpc.ForceCodec(rawCodec{}))
+	require.NoError(t, err, "open a stream to an unserved method")
+
+	// Premise: settle the call before reading it. RecvMsg blocks until the
+	// server's refusal has arrived, so from here on the stream is FINISHED and
+	// every subsequent SendMsg on it yields io.EOF — deterministically, the same
+	// state the loaded runner reaches by chance.
+	var sink []byte
+	require.Equal(t, codes.Unimplemented, status.Code(st.RecvMsg(&sink)),
+		"premise: the edge must refuse %q with Unimplemented — otherwise this case is not set up on a finished stream", unserved)
+
+	require.Equal(t, codes.Unimplemented, statusOf(st),
+		"statusOf read the verdict off a send rather than off the RPC status: on a stream the server has already "+
+			"finished, SendMsg reports io.EOF (Unknown) and the real status is still there to be read. Taking the "+
+			"code from the send makes the probe's answer depend on machine speed, not on what the edge serves.")
 }
 
 // TestPublicAllowlist_EdgeAnswersEveryEntryItServes — THE GATE.
