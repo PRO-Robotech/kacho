@@ -550,6 +550,30 @@ type nlb_target_group
     define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
+    # NLB-TGT-1 — управление СОСТАВОМ группы отделено от изменения самой группы.
+    # Первый тип платформы, чей набор глаголов ШИРЕ канонического CRUD: набор — атрибут
+    # типа (authzmap.typeVerbRelations), и гейт дрейфа сверяет его с этими строками
+    # потипово (TestDrift_TypeVerbSetsMatchModelExactly).
+    #
+    # Зачем отдельные отношения: роль `loadbalancer.target_manager` объявляет
+    # `addTargets`/`removeTargets` и показывает их как то, что даёт. Пока оба RPC
+    # гейтились на `v_update`, выдать право управлять составом, не выдав права менять
+    # саму группу, было НЕЛЬЗЯ — роль была читательской вопреки своему имени.
+    #
+    # Почему НАДМНОЖЕСТВО `v_update`, а не самостоятельные отношения: у сегодняшнего
+    # редактора лежит прямой кортеж `v_update`, и ветвь `or v_update` разрешает ему
+    # новый вопрос ТЕМ ЖЕ кортежем. Значит переключение гейтинга не требует
+    # ре-материализации ни одной выдачи и не имеет окна, в котором прежний держатель
+    # отказан. `v_update` уже включает `super_admin`, поэтому каскад трёх верхних
+    # уровней наследуется без отдельного упоминания. Надмножество ОДНОСТОРОННЕ:
+    # держатель управления составом права менять саму группу не получает.
+    #
+    # Имена не выбраны, а выведены: реконсайлер собирает имя как
+    # `"v_" + domain.NormalizeVerb(<авторский глагол>)`, поэтому `addTargets` даёт
+    # ровно `v_addtargets`. Написать здесь иначе значило бы объявить отношение, по
+    # которому эмиттер никогда не постучится.
+    define v_addtargets: [user, service_account, group#member] or v_update
+    define v_removetargets: [user, service_account, group#member] or v_update
 
 # KAC-178 §4: nlb_listener — first-class FGA object для Listener (design §3.3).
 # Contract-A (flat model): listener no longer INHERITS permissions from its

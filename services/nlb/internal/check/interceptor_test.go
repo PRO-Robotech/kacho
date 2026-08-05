@@ -213,12 +213,18 @@ func TestAZD006_NLBMove_PerRPCCheck_OnResourceOnly(t *testing.T) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// TG.AddTargets: editor on TG required, viewer rejected.
+// TG.AddTargets / RemoveTargets: перехватчик спрашивает СВОЁ отношение управления
+// составом на самой группе (NLB-TGT-1), и отказ доезжает до вызывающего.
+//
+// Прежде оба RPC спрашивали отношение изменения группы, поэтому право управлять
+// составом было невыдаваемо отдельно. Утверждается ПАРА: какой вопрос задан
+// (отношение + объект) и какой ответ получил вызывающий, — код отказа без вопроса
+// остался бы зелёным при любом отношении.
 // ────────────────────────────────────────────────────────────────────────────
 
-func TestAZD008_TGAddTargets_VUpdate_Denied(t *testing.T) {
+func TestAZD008_TGAddTargets_VAddTargets_Denied(t *testing.T) {
 	intr, _, _ := newTestInterceptor(t, func(_ context.Context, _, rel, obj string) (bool, error) {
-		require.Equal(t, "v_update", rel)
+		require.Equal(t, "v_addtargets", rel)
 		require.Equal(t, "nlb_target_group:tgr-1", obj)
 		return false, nil
 	})
@@ -230,6 +236,41 @@ func TestAZD008_TGAddTargets_VUpdate_Denied(t *testing.T) {
 	)
 	st, _ := status.FromError(err)
 	require.Equal(t, codes.PermissionDenied, st.Code())
+}
+
+func TestAZD008_TGRemoveTargets_VRemoveTargets_Denied(t *testing.T) {
+	intr, _, _ := newTestInterceptor(t, func(_ context.Context, _, rel, obj string) (bool, error) {
+		require.Equal(t, "v_removetargets", rel)
+		require.Equal(t, "nlb_target_group:tgr-1", obj)
+		return false, nil
+	})
+	_, err := intr.Unary()(
+		principalCtx("user", "usr_v"),
+		&lbv1.RemoveTargetsRequest{TargetGroupId: "tgr-1"},
+		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.loadbalancer.v1.TargetGroupService/RemoveTargets"},
+		func(context.Context, any) (any, error) { t.Fatal("must not run"); return nil, nil },
+	)
+	st, _ := status.FromError(err)
+	require.Equal(t, codes.PermissionDenied, st.Code())
+}
+
+// TestNLBTGT1_MembershipDoesNotMoveTargetGroupUpdate — ПАРНЫЙ ПОЛОЖИТЕЛЬНЫЙ на ту же
+// точку решения: изменение самой группы по-прежнему спрашивает отношение изменения.
+// Без него «переключили управление составом» неотличимо от «переключили всё подряд».
+func TestNLBTGT1_MembershipDoesNotMoveTargetGroupUpdate(t *testing.T) {
+	intr, n, _ := newTestInterceptor(t, func(_ context.Context, _, rel, obj string) (bool, error) {
+		require.Equal(t, "v_update", rel)
+		require.Equal(t, "nlb_target_group:tgr-1", obj)
+		return true, nil
+	})
+	_, err := intr.Unary()(
+		principalCtx("user", "usr_e"),
+		&lbv1.UpdateTargetGroupRequest{TargetGroupId: "tgr-1"},
+		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.loadbalancer.v1.TargetGroupService/Update"},
+		func(context.Context, any) (any, error) { return "ok", nil },
+	)
+	require.NoError(t, err)
+	require.Equal(t, 1, *n)
 }
 
 // ────────────────────────────────────────────────────────────────────────────

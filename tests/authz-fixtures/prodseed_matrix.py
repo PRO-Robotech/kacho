@@ -515,34 +515,39 @@ def seed() -> dict:
     # Custom-role subjects. Their cases assert what a NARROW role does and does not
     # allow — "may addTargets, may not update the group's metadata" — which only means
     # something when the role exists and is bound. Mirrors the dev path (setup.sh §13d).
-    # Глаголы роли берутся из СЛОВАРЯ МОДЕЛИ, а не из имён RPC.
+    # Глаголы роли берутся из СЛОВАРЯ МОДЕЛИ, а не из имён RPC — и словарь у
+    # `nlb_target_group` теперь ШИРЕ канонического CRUD (NLB-TGT-1): тип объявляет
+    # `addTargets`/`removeTargets` собственными отношениями, надмножествами `update`.
     #
-    # Здесь стояло ["addTargets", "removeTargets"], и роль создавалась успешно —
-    # сегмент глагола в Role.Create не закрыт словарём (это отдельная под-фаза,
-    # см. services/iam/.../role/rules_catalog.go). Глагола вне набора своего типа
-    # реконсайлер не материализует НИЧЕГО, молча: держатель роли получал 403
-    # навсегда, а положительная половина кейса не могла пройти ни при каком
-    # исправном продукте.
-    #
-    # `nlb_target_group` объявляет ровно {get,list,create,update,delete}, а
-    # AddTargets/RemoveTargets гейтятся тем же `v_update`, что и Update. Поэтому
-    # роль грантит `update` — это и есть право, которым AddTargets пользуется, —
-    # а отличие проверяется на `delete`, которого у роли нет. Это различие модель
-    # действительно делает; прежнее «может addTargets, но не может Update»
-    # невыразимо: оба глагола — одно отношение.
+    # Здесь временно стоял `["update"]`, и рядом было записано, что различение
+    # «может добавлять цели, но не может править саму группу» НЕВЫРАЗИМО, поскольку
+    # оба глагола суть одно отношение. Это было верно тогда и неверно теперь: ровно
+    # это утверждение и было предметом под-фазы. Обход снят, а не переименован —
+    # роль снова грантит то, по чему названа, и её положительная половина проверяет
+    # право, ради которого роль существует.
     #
     # Операторской роли здесь БОЛЬШЕ НЕТ, и это решение, а не переименование.
     # Она строилась из `networkLoadBalancers.{start,stop}` — глаголов, снятых
     # миграцией 0059, когда административное включение/выключение переехало в поле
     # `NetworkLoadBalancer.admin_state`. Выразить её пост-0059 можно было бы только
-    # через `update` (правка admin_state — обычная мутация), но `update` уже несёт
-    # роль выше, и вторая роль с тем же глаголом ничего не различает: у набора
-    # пропадает предмет. Роль не использовал ни один шаг — её предъявитель
-    # упоминался только в перечне субъектов, поэтому снятие ничего не гасит.
+    # через `update`, а роль с одним лишь `update` на группах целей теперь есть ниже
+    # и служит парным контролем, а не дублем. Прежнюю роль не использовал ни один
+    # шаг — её предъявитель упоминался только в перечне субъектов.
     role_tm = custom_role(acctA, f"ps_nlb_targetmgr_{RID}", "loadbalancer",
-                          ["targetGroups"], ["update"])
+                          ["targetGroups"], ["addTargets", "removeTargets"])
     _, tok_crTargetMgr = subject(acctA, f"ps-cr-tm-{RID}",
                                  [(role_tm, P, projA1)] if role_tm else [])
+    # ПАРНЫЙ КОНТРОЛЬ к предыдущей роли: только `update` на тех же группах целей.
+    #
+    # Без него отказ держателю управления составом в правке группы неотличим от
+    # «этот субъект вообще ничего не может», а разрешение держателю `update`
+    # управлять составом (ветвь `or v_update` модели) вообще некому предъявить.
+    # Штатная роль редактора этого Given не строит: она объявляет правило `*.*`,
+    # то есть в матрице неразличима от администратора по этому вопросу.
+    role_tgupd = custom_role(acctA, f"ps_nlb_tgupdater_{RID}", "loadbalancer",
+                             ["targetGroups"], ["update"])
+    _, tok_crTgUpdater = subject(acctA, f"ps-cr-tgupd-{RID}",
+                                 [(role_tgupd, P, projA1)] if role_tgupd else [])
     _, tok_adminA = subject(acctA, f"ps-adm-a-{RID}", [(ROLE_ADMIN, A, acctA)])
     _, tok_adminB = subject(acctB, f"ps-adm-b-{RID}", [(ROLE_ADMIN, A, acctB)])
     # The id is KEPT, not discarded. A suite that binds a role to a subject and then
@@ -660,6 +665,10 @@ def seed() -> dict:
         # "targetManager may addTargets" could only ever see 403, so the verb its role
         # exists to grant was never once exercised.
         "jwtCustomRoleTargetManager": tok_crTargetMgr,
+        # Держатель ТОЛЬКО `update` на группах целей — парный контроль к предыдущему
+        # (NLB-TGT-1): он управляет составом по ветви `or v_update` модели И правит
+        # саму группу; держатель управления составом — только первое.
+        "jwtCustomRoleTgUpdater": tok_crTgUpdater,
         # ids
         "accountAId": acctA,
         "accountBId": acctB,

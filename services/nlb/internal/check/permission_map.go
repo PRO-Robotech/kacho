@@ -73,12 +73,27 @@ const (
 	//	v_get    — чтение содержимого самого ресурса (Get / GetTargetStates);
 	//	v_list   — видимость операций на самом ресурсе (ListOperations) — НЕ
 	//	           top-level project-List;
-	//	v_update — мутация самого ресурса (Update + move/targets);
+	//	v_update — мутация КОНФИГУРАЦИИ самого ресурса (Update, Move);
 	//	v_delete — удаление самого ресурса.
 	relationVGet    = "v_get"
 	relationVList   = "v_list"
 	relationVUpdate = "v_update"
 	relationVDelete = "v_delete"
+
+	// NLB-TGT-1 — управление СОСТАВОМ группы целей несёт собственные отношения.
+	//
+	// Прежде оба RPC гейтились на `v_update`, то есть право управлять составом было
+	// невыдаваемо отдельно от права менять саму группу: роль
+	// `loadbalancer.target_manager` объявляла `addTargets`/`removeTargets` и не давала
+	// ничего. В канонической модели оба отношения объявлены НАДМНОЖЕСТВОМ `v_update`
+	// (`or v_update`), поэтому сегодняшний редактор группы управление составом не
+	// теряет: его прямой кортеж `v_update` разрешает и новый вопрос.
+	//
+	// Имена совпадают с тем, что реконсайлер kacho-iam собирает из авторского глагола
+	// правила роли (`addTargets` → `v_addtargets`); source of truth имён —
+	// kacho-iam/internal/authzmap, здесь — backend view-only, как и у остальных v_*.
+	relationVAddTargets    = "v_addtargets"
+	relationVRemoveTargets = "v_removetargets"
 
 	// relationAnnounceWriter — least-priv writer-relation для inbound announce-state
 	// write (ReportAnnounceState). Единственный носитель — data plane (новое
@@ -368,14 +383,14 @@ func PermissionMap() authz.RPCMap {
 			}),
 		},
 		"/kacho.cloud.loadbalancer.v1.TargetGroupService/AddTargets": {
-			Relation:   relationVUpdate,
+			Relation:   relationVAddTargets,
 			Permission: permTGRAddTargets,
 			Extract: authz.StaticExtractor(objectTypeTargetGroup, func(req any) (string, error) {
 				return req.(*lbv1.AddTargetsRequest).GetTargetGroupId(), nil
 			}),
 		},
 		"/kacho.cloud.loadbalancer.v1.TargetGroupService/RemoveTargets": {
-			Relation:   relationVUpdate,
+			Relation:   relationVRemoveTargets,
 			Permission: permTGRRemoveTargets,
 			Extract: authz.StaticExtractor(objectTypeTargetGroup, func(req any) (string, error) {
 				return req.(*lbv1.RemoveTargetsRequest).GetTargetGroupId(), nil

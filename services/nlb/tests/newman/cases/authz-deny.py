@@ -423,35 +423,56 @@ CASES.append(Case(
     ],
 ))
 
-CASES.append(Case(
-    id="AZD-TGR-ADD-VIEWER-DENIED",
-    title="TGR.AddTargets with viewer → PERMISSION_DENIED (Verifies REQ-AZD-TGR-ADD)",
-    classes=["AZD"], priority="P0",
-    steps=[
-        Step(name="add-viewer", method="POST",
-             path=f"{_TGR}/{{{{garbageTgrId}}}}:addTargets",
-             auth="jwtProjectViewerA",
-             body={"targets": [{"externalIp": {"address": "203.0.113.30"}, "weight": 100}]},
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
-             ]),
-    ],
-))
+# ОБА КЕЙСА НИЖЕ АДРЕСУЮТ СУЩЕСТВУЮЩУЮ ГРУППУ, А НЕ `garbageTgrId` (NLB-TGT-1).
+#
+# На несуществующем объекте `404` — законный ответ по любой причине, поэтому
+# `oneOf([403, 404])` держалось и без всякого отказа в правах: наблюдатель, которому
+# управление составом ПО ОШИБКЕ разрешили бы, получил бы 404 и кейс остался бы зелёным.
+# Группа создаётся тут же редактором суиты, поэтому `404` перестаёт быть законным
+# исходом, и утверждается ТОЧНОЕ `403`. Парный положительный — чтение той же группы тем
+# же наблюдателем: отказ в управлении составом отличается от «субъект ничего не видит».
+def _tgr_viewer_membership_denied_case(case_id: str, verb: str, req_id: str) -> Case:
+    return Case(
+        id=case_id,
+        title=f"TGR.{verb} with viewer on a REAL group → PERMISSION_DENIED (Verifies {req_id})",
+        classes=["AZD"], priority="P0",
+        steps=[
+            Step(name="setup-tg", method="POST", path=_TGR, auth="jwtProjectEditorA",
+                 body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
+                       "name": f"azd-tgrvd-{verb.lower()}-{{{{runId}}}}", "port": 8080,
+                       "healthCheck": {"interval": "2s", "timeout": "1s",
+                                       "unhealthyThreshold": 3, "healthyThreshold": 2,
+                                       "tcp": {"port": 8080}}},
+                 test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
+                              *save_from_response("j.metadata && j.metadata.targetGroupId", "vdTgId")]),
+            poll_operation_until_done(fixture_ids=["vdTgId"], auth="jwtProjectEditorA"),
+            Step(name=f"{verb.lower()}-viewer-denied", method="POST",
+                 path=f"{_TGR}/{{{{vdTgId}}}}:{verb[0].lower()}{verb[1:]}",
+                 auth="jwtProjectViewerA",
+                 body={"targets": [{"externalIp": {"address": "203.0.113.30"}, "weight": 100}]},
+                 test_script=[
+                     "pm.test('viewer is denied membership management on a group that provably EXISTS', () => "
+                     "  pm.expect(pm.response.code, pm.response.text()).to.eql(403));",
+                 ]),
+            Step(name="get-viewer-ok", method="GET", path=f"{_TGR}/{{{{vdTgId}}}}",
+                 auth="jwtProjectViewerA",
+                 test_script=[
+                     "pm.test('the same viewer still READS the group (the denial is about membership, not visibility)', () => "
+                     "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 ]),
+            Step(name="cleanup", method="DELETE", path=f"{_TGR}/{{{{vdTgId}}}}",
+                 auth="jwtProjectEditorA",
+                 test_script=[*save_from_response("j.id", "opId")]),
+            poll_operation_until_done(auth="jwtProjectEditorA"),
+        ],
+    )
 
-CASES.append(Case(
-    id="AZD-TGR-RM-VIEWER-DENIED",
-    title="TGR.RemoveTargets with viewer → PERMISSION_DENIED",
-    classes=["AZD"], priority="P0",
-    steps=[
-        Step(name="rm-viewer", method="POST",
-             path=f"{_TGR}/{{{{garbageTgrId}}}}:removeTargets",
-             auth="jwtProjectViewerA",
-             body={"targets": [{"externalIp": {"address": "203.0.113.31"}}]},
-             test_script=[
-                 "pm.test('rejected', () => pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
-             ]),
-    ],
-))
+
+CASES.append(_tgr_viewer_membership_denied_case(
+    "AZD-TGR-ADD-VIEWER-DENIED", "AddTargets", "REQ-AZD-TGR-ADD"))
+
+CASES.append(_tgr_viewer_membership_denied_case(
+    "AZD-TGR-RM-VIEWER-DENIED", "RemoveTargets", "REQ-AZD-TGR-RM"))
 
 CASES.append(Case(
     id="AZD-TGR-GET-STRANGER-DENIED",
@@ -676,19 +697,24 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="AZD-CUSTOM-ROLE-TARGET-MANAGER",
-    title="Custom role targetManager: granted update drives AddTargets, and co-materializes delete",
+    title="Custom role targetManager adds and removes targets but may not edit the group itself",
     classes=["AZD"], priority="P1",
     steps=[
-        # BOTH halves of this case addressed `garbageTgrId` — a target group that does not
-        # exist. Against a non-existent object the positive half could not be shown at all
-        # (200 is unreachable) and it accepted 403 and 404 anyway, so a targetManager who
-        # had lost `addTargets` entirely would have passed. The negative half was no
-        # better: 404 answers "no such group" as much as "not yours", so it held with or
-        # without the deny. Neither half touched the custom role.
+        # ЧТО ЭТОТ КЕЙС УТВЕРЖДАЕТ, И ПОЧЕМУ ЭТО СТАЛО ВЫРАЗИМО (NLB-TGT-1).
         #
-        # A permission is a statement about a REAL object, so the case now creates one. The
-        # TG is made by the suite's editor and then handed to the custom-role subject: the
-        # verb it was granted must work, the verb it was not granted must not.
+        # Роль поставляется в продукте под именем управления целями и объявляет
+        # `addTargets`/`removeTargets`. Пока оба RPC гейтились тем же отношением, что и
+        # правка самой группы, различение «может управлять составом, но не может править
+        # группу» было НЕВЫРАЗИМО: субъект, вправе добавить цель, был вправе и
+        # переименовать группу — by construction. Прежняя редакция кейса поэтому грантила
+        # роли `update` и утверждала со-материализацию удаления: единственную пару,
+        # которую тогдашняя модель различала.
+        #
+        # Теперь у типа `nlb_target_group` два собственных отношения управления составом,
+        # объявленные НАДМНОЖЕСТВАМИ отношения правки. Кейс утверждает ровно ту пару,
+        # ради которой роль существует, и обе половины идут для ОДНОГО субъекта на ОДНОМ
+        # объекте: без успешного добавления отказ в правке был бы зелен и тогда, когда
+        # роль не даёт вообще ничего.
         Step(name="tm-setup-tg", method="POST", path=_TGR, auth="jwtProjectEditorA",
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "name": "azd-tm-tg-{{runId}}", "port": 8080,
@@ -698,11 +724,11 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tmTgId")]),
         poll_operation_until_done(fixture_ids=["tmTgId"], auth="jwtProjectEditorA"),
-        # The custom role's grant materializes eventually-consistent like any other, so a
-        # transient deny is retried — the outcome asserted is still success only. If it
-        # never converges, either the role or its binding was not seeded
-        # (tests/authz-fixtures/setup.sh §13d writes both best-effort) — that is the
-        # finding, and it belongs in the open rather than behind a tolerant assertion.
+        # Грант роли материализуется eventually-consistent, как любой другой, поэтому
+        # кратковременный отказ повторяется — утверждается по-прежнему только успех. Если
+        # он не сходится, роль или её привязка не посеяны (tests/authz-fixtures/
+        # prodseed_matrix.py) — это и есть находка, и ей место в открытую, а не за
+        # терпимым утверждением.
         retry_until_authorized(Step(name="add-as-tm", method="POST",
              path=f"{_TGR}/{{{{tmTgId}}}}:addTargets",
              auth="jwtCustomRoleTargetManager",
@@ -715,68 +741,111 @@ CASES.append(Case(
                  # опрашивал её под targetManager'ом. Видимость операции
                  # creator-principal-scoped, поэтому ответ был честный 404, а
                  # утверждение «poll status 200» краснело так, будто операция пропала.
-                 # Одна находка превращалась в две, и вторая называла неверную причину.
                  "pm.environment.unset('opId');",
                  "pm.test('targetManager may AddTargets (the verb its role grants)', () => "
                  "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                  *save_from_response("j.id", "opId"),
              ])),
         poll_operation_until_done(must_succeed=True, auth="jwtCustomRoleTargetManager"),
-        # The role carries addTargets/removeTargets and nothing else, so a metadata Update
-        # is refused. 404 stays admissible ONLY because the deny may hide existence — but
-        # it can no longer stand in for "there was no such group", since the group provably
-        # exists by this point.
-        # Отрицательная половина спрашивает про DELETE, а не про Update.
-        #
-        # Прежде здесь стоял PATCH с утверждением «targetManager НЕ может Update». Это
-        # неконструируемо: `AddTargets` и `Update` требуют ОДНОГО отношения (`v_update`,
-        # permission_catalog), поэтому субъект, который вправе добавить цель, вправе и
-        # править метаданные — по построению. Две половины кейса противоречили друг
-        # другу, и зелёной пара стать не могла: либо роль материализует `v_update` и
-        # падает отрицательная, либо не материализует — и падает положительная (что и
-        # наблюдалось, потому что роль грантила несуществующие глаголы).
-        #
-        # `v_delete` роль не несёт, и это различие модель делает по-настоящему.
-        # Цель снимается ДО отрицательной половины, и это не косметика порядка.
-        #
-        # DELETE группы с живой целью отвергается ПРЕДУСЛОВИЕМ ("TargetGroup has N
-        # target(s); remove them first") — бизнес-правилом, которое срабатывает раньше
-        # решения о правах. Поставленная после добавления цели, отрицательная половина
-        # получала 400 и была бы зелёной ровно так же, если бы роль `v_delete` НЕСЛА:
-        # она не различала отказ по правам и отказ по состоянию. Пустая группа убирает
-        # предусловие, и остаётся ровно тот вопрос, ради которого шаг существует.
-        Step(name="tm-rm-target", method="POST", path=f"{_TGR}/{{{{tmTgId}}}}:removeTargets",
+        # РЕЗУЛЬТАТ, А НЕ ТОЛЬКО КОД ОТВЕТА: цель обязана оказаться в группе. Код 200 на
+        # мутации, чей асинхронный хвост ничего не добавил, утверждал бы право и молчал
+        # о его действии.
+        Step(name="tm-verify-target-present", method="GET", path=f"{_TGR}/{{{{tmTgId}}}}",
              auth="jwtProjectEditorA",
-             body={"targets": [{"externalIp": {"address": "203.0.113.32"}}]},
-             test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(auth="jwtProjectEditorA"),
-        # ВТОРАЯ ПОЛОВИНА ЗАКРЕПЛЯЕТ СО-МАТЕРИАЛИЗАЦИЮ, А НЕ ВЫДУМАННЫЙ ЗАПРЕТ.
-        #
-        # Здесь по очереди стояли два отрицания — «не может Update» и «не может Delete», —
-        # и ОБА ложны по объявленной модели:
-        #   * Update и AddTargets требуют ОДНОГО отношения `v_update` (permission_catalog),
-        #     поэтому субъект, добавляющий цель, правит и метаданные — by construction;
-        #   * `v_update` на листовом типе СО-МАТЕРИАЛИЗУЕТ `v_delete` намеренно
-        #     (access_binding/reconcile/tuples.go: «CRUD editor DELETES what it edits»,
-        #     иерархические scope'ы account/project из этого исключены).
-        # Оба отрицания были бы «красными» не из-за продукта, а из-за кейса.
-        #
-        # Поэтому шаг утверждает то, что модель ДЕЙСТВИТЕЛЬНО обещает, и тем самым
-        # закрепляет правило, тихая регрессия которого иначе никем не ловится: узкая
-        # роль с одним глаголом `update` на листовом типе получает и удаление того же
-        # объекта. Если со-материализацию когда-нибудь снимут или расширят — упадёт здесь.
-        #
-        # Чем НЕ является: это не «ослабление до 200». Прежние формы утверждали
-        # несуществующее свойство; эта утверждает существующее и падает на его изменении.
-        Step(name="del-as-tm-comaterialized", method="DELETE",
-             path=f"{_TGR}/{{{{tmTgId}}}}",
-             auth="jwtCustomRoleTargetManager",
              test_script=[
-                 "pm.test('update on a leaf type co-materializes delete (a CRUD editor deletes what it edits)', () => "
+                 *assert_status(200),
+                 "const tg = pm.response.json();",
+                 "const addrs = (tg.targets || []).map(t => (t.externalIp || {}).address);",
+                 "pm.test('the target AddTargets accepted is actually in the group', () => "
+                 "  pm.expect(addrs, JSON.stringify(tg.targets || [])).to.include('203.0.113.32'));",
+             ]),
+        # ОТРИЦАТЕЛЬНАЯ ПОЛОВИНА — правка САМОЙ группы. Она осмысленна только потому, что
+        # положительная выше уже прошла тем же субъектом на том же объекте: отказ значит
+        # «различение работает», а не «субъект вообще ничего не может».
+        #
+        # Утверждается ТОЧНОЕ 403, а не `oneOf([403,404])`: группа доказано существует —
+        # её создали и прочитали шагами выше, — поэтому 404 перестал быть законным
+        # исходом, а взаимоисключающие исходы в одном утверждении суть отсутствие
+        # утверждения.
+        Step(name="upd-as-tm-denied", method="PATCH", path=f"{_TGR}/{{{{tmTgId}}}}",
+             auth="jwtCustomRoleTargetManager",
+             body={"updateMask": "description", "description": "azd-tm-{{runId}}"},
+             test_script=[
+                 "pm.test('targetManager may NOT edit the group itself (membership is not configuration)', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(403));",
+             ]),
+        # И удаление: управление составом не даёт снести саму группу. Удаление проверяется
+        # на ПУСТОЙ группе — иначе отказ пришёл бы предусловием («TargetGroup has N
+        # target(s); remove them first») и был бы зелёным ровно так же, если бы право
+        # удаления у роли БЫЛО: такой шаг не различает отказ по правам и отказ по
+        # состоянию.
+        Step(name="tm-rm-target", method="POST", path=f"{_TGR}/{{{{tmTgId}}}}:removeTargets",
+             auth="jwtCustomRoleTargetManager",
+             body={"targets": [{"externalIp": {"address": "203.0.113.32"}}]},
+             test_script=[
+                 "pm.test('targetManager may RemoveTargets (the second verb its role grants)', () => "
                  "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                  *save_from_response("j.id", "opId"),
              ]),
-        poll_operation_until_done(auth="jwtCustomRoleTargetManager"),
+        poll_operation_until_done(must_succeed=True, auth="jwtCustomRoleTargetManager"),
+        Step(name="del-as-tm-denied", method="DELETE", path=f"{_TGR}/{{{{tmTgId}}}}",
+             auth="jwtCustomRoleTargetManager",
+             test_script=[
+                 "pm.test('membership verbs do NOT co-materialize delete of the group', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(403));",
+             ]),
+        # ПАРНЫЙ ПОЛОЖИТЕЛЬНЫЙ НА ТУ ЖЕ ОСЬ — держатель ТОЛЬКО `update`.
+        #
+        # Он обязан управлять составом (ветвь `or v_update` модели: сегодняшний редактор
+        # ничего не теряет от раскола) И править саму группу. Без этой половины отказ
+        # выше был бы неотличим от «после раскола управление составом отобрали у всех».
+        retry_until_authorized(Step(name="add-as-tgupdater", method="POST",
+             path=f"{_TGR}/{{{{tmTgId}}}}:addTargets",
+             auth="jwtCustomRoleTgUpdater",
+             body={"targets": [{"externalIp": {"address": "203.0.113.33"}, "weight": 100}]},
+             test_script=[
+                 "pm.environment.unset('opId');",
+                 "pm.test('a holder of update still manages membership (the new relations are a SUPERSET)', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 *save_from_response("j.id", "opId"),
+             ])),
+        poll_operation_until_done(must_succeed=True, auth="jwtCustomRoleTgUpdater"),
+        Step(name="upd-as-tgupdater", method="PATCH", path=f"{_TGR}/{{{{tmTgId}}}}",
+             auth="jwtCustomRoleTgUpdater",
+             body={"updateMask": "description", "description": "azd-tgupd-{{runId}}"},
+             test_script=[
+                 "pm.test('a holder of update still edits the group itself', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                 *save_from_response("j.id", "opId"),
+             ]),
+        poll_operation_until_done(must_succeed=True, auth="jwtCustomRoleTgUpdater"),
+        # ТРЕТИЙ СУБЪЕКТ — наблюдатель: ни управления составом, ни правки. Его парный
+        # положительный — чтение той же группы: отказ в управлении составом отличается от
+        # «этот субъект ничего не видит».
+        Step(name="add-as-viewer-denied", method="POST",
+             path=f"{_TGR}/{{{{tmTgId}}}}:addTargets",
+             auth="jwtProjectViewerA",
+             body={"targets": [{"externalIp": {"address": "203.0.113.34"}, "weight": 100}]},
+             test_script=[
+                 "pm.test('a viewer may not manage membership', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(403));",
+             ]),
+        Step(name="get-as-viewer-ok", method="GET", path=f"{_TGR}/{{{{tmTgId}}}}",
+             auth="jwtProjectViewerA",
+             test_script=[
+                 "pm.test('the same viewer still reads the group (the denial above is about membership, not visibility)', () => "
+                 "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+             ]),
+        # Уборка своим субъектом — фикстура не течёт в соседние прогоны.
+        Step(name="tm-cleanup-rm-target", method="POST",
+             path=f"{_TGR}/{{{{tmTgId}}}}:removeTargets", auth="jwtProjectEditorA",
+             body={"targets": [{"externalIp": {"address": "203.0.113.33"}}]},
+             test_script=[*save_from_response("j.id", "opId")]),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
+        Step(name="tm-cleanup-tg", method="DELETE", path=f"{_TGR}/{{{{tmTgId}}}}",
+             auth="jwtProjectEditorA",
+             test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
     ],
 ))
 

@@ -31,8 +31,24 @@ var verbUpdateRPCs = []string{
 	"/kacho.cloud.loadbalancer.v1.ListenerService/Update",
 	"/kacho.cloud.loadbalancer.v1.TargetGroupService/Update",
 	"/kacho.cloud.loadbalancer.v1.TargetGroupService/Move",
-	"/kacho.cloud.loadbalancer.v1.TargetGroupService/AddTargets",
-	"/kacho.cloud.loadbalancer.v1.TargetGroupService/RemoveTargets",
+}
+
+// membershipRPCs — NLB-TGT-1: управление СОСТАВОМ группы целей энфорсится
+// собственными отношениями, а не отношением изменения самой группы.
+//
+// Пока обе точки решения требовали `v_update`, выдать право управлять составом, не
+// выдав права менять саму группу, было НЕЛЬЗЯ — а роль `loadbalancer.target_manager`
+// именно это и обещает. Оба отношения объявлены НАДМНОЖЕСТВОМ `v_update`
+// (proto/…/iam/v1/fga_model.fga), поэтому сегодняшний редактор ничего не теряет:
+// его прямой кортеж `v_update` разрешает и новый вопрос.
+//
+// Имена отношений не выбраны, а выведены: реконсайлер kacho-iam собирает их из
+// авторского глагола правила роли, поэтому `addTargets` даёт ровно `v_addtargets`.
+// Прежняя редакция этого замка требовала `v_update` для обоих RPC — она пинила
+// состояние ДО раскола и обновлена вместе с ним.
+var membershipRPCs = map[string]string{
+	"/kacho.cloud.loadbalancer.v1.TargetGroupService/AddTargets":    "v_addtargets",
+	"/kacho.cloud.loadbalancer.v1.TargetGroupService/RemoveTargets": "v_removetargets",
 }
 
 var verbDeleteRPCs = []string{
@@ -77,6 +93,30 @@ func TestPermissionMap_VerbBearing_Update_VUpdate(t *testing.T) {
 		require.Truef(t, ok, "%s must be mapped", rpc)
 		require.Equalf(t, "v_update", e.Relation, "%s: object-self mutation must enforce v_update (Design B)", rpc)
 	}
+}
+
+// TestPermissionMap_VerbBearing_Membership_OwnRelations — NLB-TGT-1.
+//
+// Несущее утверждение положительное: каждый RPC управления составом энфорсит СВОЁ
+// отношение. Парное отрицание — в том же прогоне: ни один из них не остался на
+// отношении изменения группы, иначе выдать управление составом отдельно по-прежнему
+// было бы нельзя, а замок зеленел бы на неизменившемся дереве.
+func TestPermissionMap_VerbBearing_Membership_OwnRelations(t *testing.T) {
+	m := check.PermissionMap()
+	require.NotEmpty(t, membershipRPCs, "перечень пуст — утверждать нечего")
+	for rpc, want := range membershipRPCs {
+		e, ok := m[rpc]
+		require.Truef(t, ok, "%s must be mapped", rpc)
+		require.Equalf(t, want, e.Relation,
+			"%s: управление составом обязано энфорсить %s, а не отношение изменения самой группы — "+
+				"иначе право управлять составом невыдаваемо отдельно", rpc, want)
+	}
+	// Парный положительный контроль на ту же карту: изменение самой группы с места
+	// не сдвинулось. Без него «переключили» неотличимо от «переключили всё подряд».
+	e, ok := m["/kacho.cloud.loadbalancer.v1.TargetGroupService/Update"]
+	require.True(t, ok, "TargetGroupService/Update must be mapped")
+	require.Equal(t, "v_update", e.Relation,
+		"изменение самой группы съехало с v_update — под-фаза трогает только управление составом")
 }
 
 func TestPermissionMap_VerbBearing_Delete_VDelete(t *testing.T) {
