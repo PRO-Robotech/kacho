@@ -59,11 +59,36 @@ type UpdateUseCase struct {
 	// (dev/unwired); owning-project-инвариант энфорсится безусловно. См. tg_ref.go.
 	checkClient CheckClient
 	logger      *slog.Logger
+	registrar   Registrar
 }
 
 // NewUpdateUseCase — конструктор.
 func NewUpdateUseCase(repo RepoFactory, opsRepo OperationsRepo, logger *slog.Logger) *UpdateUseCase {
 	return &UpdateUseCase{repo: repo, opsRepo: opsRepo, logger: logger}
+}
+
+// WithRegistrar подключает sync-primary owner-tuple registrar. Смена меток меняет
+// ПРОЕКЦИЮ, которую читает селектор владельца прав, поэтому обновлённое зеркало
+// доставляется на пути запроса — как регистрация на Create. Durable-intent
+// остаётся at-least-once backstop'ом, но ждать только его значит отдать ОТЗЫВ по
+// снятию метки глубине очереди (замер соседнего сервиса 2026-08-05: 188–365 с при
+// клиентском бюджете чтения-своих-записей 15 с). nil → sync-путь пропускается.
+func (u *UpdateUseCase) WithRegistrar(r Registrar) *UpdateUseCase {
+	u.registrar = r
+	return u
+}
+
+// syncRegister — BEST-EFFORT sync-доставка mirror-intent'а после durable commit.
+// Отказ ЛОГИРУЕТСЯ и ГЛОТАЕТСЯ: durable fga_register_outbox-intent + drainer —
+// at-least-once backstop; Operation.done НЕ гейтится на видимость (ban #9).
+func (u *UpdateUseCase) syncRegister(ctx context.Context, intent domain.FGARegisterIntent) {
+	if u.registrar == nil {
+		return
+	}
+	if err := u.registrar.Register(ctx, intent); err != nil {
+		u.logger.Warn("Listener.Update sync mirror registration incomplete; register-drainer will reconcile",
+			"err", err, "listener_id", intent.ResourceID)
+	}
 }
 
 // WithCheckClient подключает object-scoped authz-gate для caller-supplied
@@ -338,6 +363,9 @@ func (u *UpdateUseCase) doUpdate(ctx context.Context, next domain.Listener, expe
 	}
 	if err := w.Commit(); err != nil {
 		return nil, mapDomainErr(err)
+	}
+	if emitMirror {
+		u.syncRegister(ctx, listenerMirrorIntent(updated))
 	}
 	committed = true
 	return marshalListener(updated)

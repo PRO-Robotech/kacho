@@ -346,6 +346,16 @@ func (u *UseCase) Update(ctx context.Context, id string, mask []string, name, de
 		if derr != nil {
 			return nil, u.errStatus(derr)
 		}
+		// Смена меток меняет ПРОЕКЦИЮ, которую читает селектор владельца прав,
+		// поэтому обновлённое зеркало доставляется на пути запроса — ровно как
+		// регистрация на Create. Durable-intent (та же writer-TX) остаётся
+		// at-least-once backstop'ом, но ждать только его значит отдать ОТЗЫВ по
+		// снятию метки глубине очереди (замер соседнего сервиса 2026-08-05:
+		// 188–365 с при клиентском бюджете чтения-своих-записей 15 с).
+		// Update без меток в маске проекции не меняет — регистрации нет.
+		if upd.LabelsSet {
+			u.registerOwnerTuple(ctx, fgaregister.ImageItem(res.ProjectID, res.ID, res.Labels))
+		}
 		return marshalImage(res)
 	})
 	return &op, nil

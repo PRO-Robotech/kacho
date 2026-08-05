@@ -6,6 +6,7 @@ package routetable
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -32,13 +33,25 @@ type UpdateInput struct {
 // UpdateRouteTableUseCase — sync-валидация update_mask и значений, затем создание
 // Operation и async-апдейт в worker'е. Writer-TX явный: DML и outbox-emit атомарны.
 type UpdateRouteTableUseCase struct {
-	repo    Repo
-	opsRepo operations.Repo
+	repo      Repo
+	opsRepo   operations.Repo
+	registrar fgaregister.Registrar
 }
 
 // NewUpdateRouteTableUseCase создает UpdateRouteTableUseCase.
 func NewUpdateRouteTableUseCase(r Repo, opsRepo operations.Repo) *UpdateRouteTableUseCase {
 	return &UpdateRouteTableUseCase{repo: r, opsRepo: opsRepo}
+}
+
+// WithRegistrar подключает синхронный owner-tuple registrar — тот же, что у
+// create-пути. Смена меток меняет проекцию, которую читает селектор владельца
+// прав, поэтому она обязана доезжать на пути запроса: durable-intent остаётся
+// at-least-once backstop'ом, но ждать его — значит отдать ОТЗЫВ по снятию метки
+// глубине очереди (замер стенда 2026-08-05: 188–365 с при клиентском бюджете
+// 15 с). nil (dev/no-iam) → остаётся только async-путь.
+func (u *UpdateRouteTableUseCase) WithRegistrar(r fgaregister.Registrar) *UpdateRouteTableUseCase {
+	u.registrar = r
+	return u
 }
 
 // Execute — sync-проверки и запуск Update в worker'е.
@@ -104,17 +117,23 @@ func (u *UpdateRouteTableUseCase) doUpdate(ctx context.Context, in UpdateInput) 
 	// upsert с пустыми метками (НЕ Unregister: RouteTable все еще существует,
 	// mirror-row остается, просто перестает матчиться селектором). Эталон —
 	// network/subnet/securitygroup update.
+	var syncItems []fgaregister.Item
+	var intentVersion time.Time
 	if labelsInMask(in.UpdateMask) {
-		if _, err := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(
+		syncItems = []fgaregister.Item{
 			fgaregister.ProjectHierarchyItem(string(updated.ProjectID), "vpc_route_table", updated.ID,
 				domain.LabelsToMap(updated.Labels)),
-		)); err != nil {
+		}
+		var err error
+		if intentVersion, err = w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(syncItems...)); err != nil {
 			return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: fga register intent: %v", repo.ErrInternal, err))
 		}
 	}
 	if err := w.Commit(); err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
+	// Синхронная доставка ПОСЛЕ durable-коммита — симметрия с create-путём.
+	fgaregister.DeliverAfterCommit(ctx, u.registrar, syncItems, intentVersion, "RouteTable", updated.ID)
 	return marshalRouteTableRecord(updated)
 }
 

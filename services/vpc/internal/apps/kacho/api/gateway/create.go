@@ -6,7 +6,6 @@ package gateway
 import (
 	"context"
 	"fmt"
-	"log/slog"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -170,11 +169,6 @@ func (u *CreateGatewayUseCase) doCreate(ctx context.Context, gwID string, g doma
 	// отдать вызывающему код узла прав (status.FromError достаёт вложенный статус
 	// и подменяет сообщение всей цепочкой) на уже созданный gateway — фантом.
 	// Поэтому предупреждение, а не ошибка.
-	if u.registrar != nil {
-		if err := u.registrar.Register(ctx, items, intentVersion); err != nil {
-			slog.WarnContext(ctx, "sync owner-tuple register failed; register-drainer will apply the durable intent",
-				"resource", "Gateway", "id", created.ID, "err", err)
-		}
-	}
+	fgaregister.DeliverAfterCommit(ctx, u.registrar, items, intentVersion, "Gateway", created.ID)
 	return marshalGatewayRecord(created)
 }

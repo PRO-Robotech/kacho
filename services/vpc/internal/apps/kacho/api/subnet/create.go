@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/netip"
 
 	"google.golang.org/grpc/codes"
@@ -304,12 +303,7 @@ func (u *CreateSubnetUseCase) doCreate(ctx context.Context, subID string, s doma
 	// отдать вызывающему код узла прав (status.FromError достаёт вложенный статус
 	// и подменяет сообщение всей цепочкой) на уже созданную подсеть, чей CIDR уже
 	// занят EXCLUDE-ограничением, — фантом. Поэтому предупреждение, а не ошибка.
-	if u.registrar != nil {
-		if err := u.registrar.Register(ctx, items, intentVersion); err != nil {
-			slog.WarnContext(ctx, "sync owner-tuple register failed; register-drainer will apply the durable intent",
-				"resource", "Subnet", "id", created.ID, "err", err)
-		}
-	}
+	fgaregister.DeliverAfterCommit(ctx, u.registrar, items, intentVersion, "Subnet", created.ID)
 	return marshalSubnetRecord(created)
 }
 

@@ -6,6 +6,7 @@ package address
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -42,13 +43,25 @@ type UpdateInput struct {
 // hard-immutable, через mask их менять нельзя. Writer-TX явный: DML + outbox
 // (Address.UPDATED) атомарны.
 type UpdateAddressUseCase struct {
-	repo    Repo
-	opsRepo operations.Repo
+	repo      Repo
+	opsRepo   operations.Repo
+	registrar fgaregister.Registrar
 }
 
 // NewUpdateAddressUseCase создает UpdateAddressUseCase.
 func NewUpdateAddressUseCase(r Repo, opsRepo operations.Repo) *UpdateAddressUseCase {
 	return &UpdateAddressUseCase{repo: r, opsRepo: opsRepo}
+}
+
+// WithRegistrar подключает синхронный owner-tuple registrar — тот же, что у
+// create-пути. Смена меток меняет проекцию, которую читает селектор владельца
+// прав, поэтому она обязана доезжать на пути запроса: durable-intent остаётся
+// at-least-once backstop'ом, но ждать его — значит отдать ОТЗЫВ по снятию метки
+// глубине очереди (замер стенда 2026-08-05: 188–365 с при клиентском бюджете
+// 15 с). nil (dev/no-iam) → остаётся только async-путь.
+func (u *UpdateAddressUseCase) WithRegistrar(r fgaregister.Registrar) *UpdateAddressUseCase {
+	u.registrar = r
+	return u
 }
 
 // Execute — sync-проверки и запуск Update в worker'е.
@@ -113,17 +126,23 @@ func (u *UpdateAddressUseCase) doUpdate(ctx context.Context, in UpdateInput) (*a
 	// при снятии метки). Update без labels → переэмита нет. Полное снятие labels →
 	// upsert с пустыми метками (НЕ Unregister: Address все еще существует). Эталон —
 	// network/subnet/securitygroup update.
+	var syncItems []fgaregister.Item
+	var intentVersion time.Time
 	if labelsInMask(in.UpdateMask) {
-		if _, err := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(
+		syncItems = []fgaregister.Item{
 			fgaregister.ProjectHierarchyItem(string(updated.ProjectID), "vpc_address", updated.ID,
 				domain.LabelsToMap(updated.Labels)),
-		)); err != nil {
+		}
+		var err error
+		if intentVersion, err = w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(syncItems...)); err != nil {
 			return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: fga register intent: %v", repo.ErrInternal, err))
 		}
 	}
 	if err := w.Commit(); err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
+	// Синхронная доставка ПОСЛЕ durable-коммита — симметрия с create-путём.
+	fgaregister.DeliverAfterCommit(ctx, u.registrar, syncItems, intentVersion, "Address", updated.ID)
 	return marshalAddressRecord(updated)
 }
 

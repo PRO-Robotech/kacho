@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -220,11 +219,6 @@ func (u *CreateRouteTableUseCase) doCreate(ctx context.Context, rtID string, rt 
 	// отдать вызывающему код узла прав (status.FromError достаёт вложенный статус
 	// и подменяет сообщение всей цепочкой) на уже созданную RT — фантом.
 	// Поэтому предупреждение, а не ошибка.
-	if u.registrar != nil {
-		if err := u.registrar.Register(ctx, items, intentVersion); err != nil {
-			slog.WarnContext(ctx, "sync owner-tuple register failed; register-drainer will apply the durable intent",
-				"resource", "RouteTable", "id", created.ID, "err", err)
-		}
-	}
+	fgaregister.DeliverAfterCommit(ctx, u.registrar, items, intentVersion, "RouteTable", created.ID)
 	return marshalRouteTableRecord(created)
 }

@@ -11,13 +11,13 @@
 | snapshot | 24 | S3 (CS1-S3-*) |
 | disk-type | 8 | S2 (CS1-S2-*) |
 | operation | 8 | OperationService (OpsProxy sop) |
-| authz | 12 | INV-10 public authz (fixture-gated) |
+| authz | 13 | INV-10 public authz (fixture-gated) |
 | authz-catalog | 18 | матрица доступа к admin-каталогу DiskType (6 субъектов × 3 операции) |
 | internal-volume | 4 | S4 INV-7a external-absence |
 | sec-d | 4 | SEC-D owner-tuple через iam (outbox → RegisterResource) |
-| **Всего** | **162** | |
+| **Всего** | **163** | |
 
-`scripts/validate-cases.py` → OK (162 уникальных case-id, нет дублей, все
+`scripts/validate-cases.py` → OK (163 уникальных case-id, нет дублей, все
 каталогизированы). `python3 scripts/gen.py` → OK (9 коллекций).
 
 Таблица выше — не заметка «на память»: её сверяет с самими коллекциями гейт

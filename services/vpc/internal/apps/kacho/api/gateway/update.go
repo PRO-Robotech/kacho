@@ -6,6 +6,7 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -34,13 +35,25 @@ type UpdateInput struct {
 // Operation и async-update в worker'е. doUpdate открывает Writer-TX и делает
 // Get + apply mask + Update + outbox emit в одной транзакции.
 type UpdateGatewayUseCase struct {
-	repo    Repo
-	opsRepo operations.Repo
+	repo      Repo
+	opsRepo   operations.Repo
+	registrar fgaregister.Registrar
 }
 
 // NewUpdateGatewayUseCase создает UpdateGatewayUseCase.
 func NewUpdateGatewayUseCase(r Repo, opsRepo operations.Repo) *UpdateGatewayUseCase {
 	return &UpdateGatewayUseCase{repo: r, opsRepo: opsRepo}
+}
+
+// WithRegistrar подключает синхронный owner-tuple registrar — тот же, что у
+// create-пути. Смена меток меняет проекцию, которую читает селектор владельца
+// прав, поэтому она обязана доезжать на пути запроса: durable-intent остаётся
+// at-least-once backstop'ом, но ждать его — значит отдать ОТЗЫВ по снятию метки
+// глубине очереди (замер стенда 2026-08-05: 188–365 с при клиентском бюджете
+// 15 с). nil (dev/no-iam) → остаётся только async-путь.
+func (u *UpdateGatewayUseCase) WithRegistrar(r fgaregister.Registrar) *UpdateGatewayUseCase {
+	u.registrar = r
+	return u
 }
 
 // Execute — sync-проверки и запуск Update в worker'е.
@@ -105,17 +118,23 @@ func (u *UpdateGatewayUseCase) doUpdate(ctx context.Context, in UpdateInput) (*a
 	// при снятии метки). Update без labels → переэмита нет. Полное снятие labels →
 	// upsert с пустыми метками (НЕ Unregister: Gateway все еще существует). Эталон —
 	// network/subnet/securitygroup update.
+	var syncItems []fgaregister.Item
+	var intentVersion time.Time
 	if labelsInMask(in.UpdateMask) {
-		if _, err := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(
+		syncItems = []fgaregister.Item{
 			fgaregister.ProjectHierarchyItem(string(updated.ProjectID), "vpc_gateway", updated.ID,
 				domain.LabelsToMap(updated.Labels)),
-		)); err != nil {
+		}
+		var err error
+		if intentVersion, err = w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(syncItems...)); err != nil {
 			return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: fga register intent: %v", repo.ErrInternal, err))
 		}
 	}
 	if err := w.Commit(); err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
+	// Синхронная доставка ПОСЛЕ durable-коммита — симметрия с create-путём.
+	fgaregister.DeliverAfterCommit(ctx, u.registrar, syncItems, intentVersion, "Gateway", updated.ID)
 	return marshalGatewayRecord(updated)
 }
 

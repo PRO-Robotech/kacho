@@ -29,6 +29,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 )
 
@@ -193,5 +194,40 @@ func ProjectHierarchyItem(projectID, objectType, objectID string, labels map[str
 		Tuple:           ProjectHierarchy(projectID, objectType, objectID),
 		Labels:          labels,
 		ParentProjectID: projectID,
+	}
+}
+
+// DeliverAfterCommit — СИНХРОННАЯ доставка уже закоммиченного register-intent'а.
+//
+// Ускоритель окна видимости, а НЕ источник истины: те же Item'ы лежат
+// durable-строками в fga_register_outbox той же writer-TX, поэтому at-least-once
+// дренаж доведёт регистрацию сам. Отсюда и форма — отказ не возвращается
+// вызывающему, а логируется: провалить мутацию значило бы отдать клиенту ошибку
+// на уже созданный/изменённый ресурс (фантом: повтор ловит AlreadyExists по
+// занятому имени).
+//
+// `version` — штамп, который БД проставила intent'у ВНУТРИ writer-TX (его
+// возвращает FGARegisterEmitter.EmitRegister). Обе доставки одной регистрации —
+// синхронная и дренажная — обязаны нести ОДНУ версию: приёмная сторона гасит
+// повторную доставку строгим монотонным сравнением, и на свежих часах гашение
+// зависело бы от того, кто выиграл гонку.
+//
+// ЗАЧЕМ ОТДЕЛЬНАЯ ФУНКЦИЯ. Площадок четырнадцать: семь create-путей и семь
+// update-путей, по одному на ресурс. Пока текст стоял копией на каждой, ПОЛОВИНА
+// из них его просто не имела — update-пути эмитили durable-intent и на этом
+// заканчивали, отдавая доставку очереди. Наблюдаемое следствие измерено на стенде
+// 2026-08-05: строки intent'ов от Update'ов лежали в очереди 188–365 с, тогда как
+// клиентский бюджет чтения-своих-записей — 15 с; отзыв прав по снятию метки
+// приходил через минуты. Одна функция делает «доставили синхронно» свойством,
+// которое видно в дереве одним предикатом, а не глазами по четырнадцати файлам.
+//
+// nil-registrar (dev/no-iam) и пустой набор Item'ов — no-op.
+func DeliverAfterCommit(ctx context.Context, r Registrar, items []Item, version time.Time, resource, id string) {
+	if r == nil || len(items) == 0 {
+		return
+	}
+	if err := r.Register(ctx, items, version); err != nil {
+		slog.WarnContext(ctx, "sync owner-tuple register failed; register-drainer will apply the durable intent",
+			"resource", resource, "id", id, "err", err)
 	}
 }

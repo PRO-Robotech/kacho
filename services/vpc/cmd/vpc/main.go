@@ -927,7 +927,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	// inline default SG и Network.default_security_group_id заполняется атомарно.
 	netCreateUC := networkapp.NewCreateNetworkUseCase(kachoRepo, projectClient, opsRepo, cfg.Network.DefaultSGInline).
 		WithLogger(logger).WithRegistrar(registrar)
-	netUpdateUC := networkapp.NewUpdateNetworkUseCase(kachoRepo, opsRepo)
+	netUpdateUC := networkapp.NewUpdateNetworkUseCase(kachoRepo, opsRepo).WithRegistrar(registrar)
 	netDeleteUC := networkapp.NewDeleteNetworkUseCase(kachoRepo, subnetAdapter, routeTableAdapter, sgAdapter, opsRepo)
 	// Per-page FGA-фильтр (listFilter) питает ТОЛЬКО List; Get авторизуется
 	// прямым per-object Check'ом в interceptor'е. listFilter == nil → passthrough.
@@ -950,7 +950,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	gwCreateUC := gatewayapp.NewCreateGatewayUseCase(kachoRepo, projectClient, opsRepo).WithRegistrar(registrar)
 	gwHandler := gatewayapp.NewHandler(
 		gwCreateUC,
-		gatewayapp.NewUpdateGatewayUseCase(kachoRepo, opsRepo),
+		gatewayapp.NewUpdateGatewayUseCase(kachoRepo, opsRepo).WithRegistrar(registrar),
 		gatewayapp.NewDeleteGatewayUseCase(kachoRepo, opsRepo),
 		gatewayapp.NewGetGatewayUseCase(kachoRepo),
 		gatewayapp.NewListGatewaysUseCase(kachoRepo, listFilter),
@@ -962,7 +962,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	rtCreateUC := routetableapp.NewCreateRouteTableUseCase(kachoRepo, projectClient, opsRepo).WithRegistrar(registrar)
 	rtHandler := routetableapp.NewHandler(
 		rtCreateUC,
-		routetableapp.NewUpdateRouteTableUseCase(kachoRepo, opsRepo),
+		routetableapp.NewUpdateRouteTableUseCase(kachoRepo, opsRepo).WithRegistrar(registrar),
 		routetableapp.NewDeleteRouteTableUseCase(kachoRepo, opsRepo),
 		routetableapp.NewGetRouteTableUseCase(kachoRepo),
 		routetableapp.NewListRouteTablesUseCase(kachoRepo, listFilter),
@@ -974,7 +974,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	subnetCreateUC := subnetapp.NewCreateSubnetUseCase(kachoRepo, projectClient, geoClient, regionClient, opsRepo).WithRegistrar(registrar)
 	subnetHandler := subnetapp.NewHandler(
 		subnetCreateUC,
-		subnetapp.NewUpdateSubnetUseCase(kachoRepo, opsRepo),
+		subnetapp.NewUpdateSubnetUseCase(kachoRepo, opsRepo).WithRegistrar(registrar),
 		subnetapp.NewDeleteSubnetUseCase(kachoRepo, niAdapter, opsRepo),
 		subnetapp.NewGetSubnetUseCase(kachoRepo),
 		subnetapp.NewListSubnetsUseCase(kachoRepo, listFilter),
@@ -996,7 +996,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	addressCreateUC := addressapp.NewCreateAddressUseCase(kachoRepo, subnetAdapter, projectClient, opsRepo, addressPoolResolver).
 		WithRegistrar(registrar).
 		WithZoneRegistry(geoClient)
-	addressUpdateUC := addressapp.NewUpdateAddressUseCase(kachoRepo, opsRepo)
+	addressUpdateUC := addressapp.NewUpdateAddressUseCase(kachoRepo, opsRepo).WithRegistrar(registrar)
 	addressDeleteUC := addressapp.NewDeleteAddressUseCase(kachoRepo, opsRepo)
 	addressGetUC := addressapp.NewGetAddressUseCase(kachoRepo)
 	addressGetByValueUC := addressapp.NewGetByValueUseCase(kachoRepo)
@@ -1018,7 +1018,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 		WithSGReader(sgAdapter).WithRegistrar(registrar)
 	sgHandler := sgapp.NewHandler(
 		sgCreateUC,
-		sgapp.NewUpdateSecurityGroupUseCase(kachoRepo, opsRepo).WithSGReader(sgAdapter),
+		sgapp.NewUpdateSecurityGroupUseCase(kachoRepo, opsRepo).WithSGReader(sgAdapter).WithRegistrar(registrar),
 		// sgAdapter (SecurityGroupReader) — same-network-валидация SG-target-правил
 		// на UpdateRules/UpdateRule.
 		sgapp.NewUpdateRulesUseCase(kachoRepo, opsRepo, sgAdapter),
@@ -1036,7 +1036,7 @@ func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClie
 	niCreateUC := niapp.NewCreateNetworkInterfaceUseCase(kachoRepo, projectClient, opsRepo).WithRegistrar(registrar)
 	niHandler := niapp.NewHandler(
 		niCreateUC,
-		niapp.NewUpdateNetworkInterfaceUseCase(kachoRepo, opsRepo),
+		niapp.NewUpdateNetworkInterfaceUseCase(kachoRepo, opsRepo).WithRegistrar(registrar),
 		niapp.NewDeleteNetworkInterfaceUseCase(kachoRepo, opsRepo),
 		niapp.NewGetNetworkInterfaceUseCase(kachoRepo),
 		niapp.NewListNetworkInterfacesUseCase(kachoRepo, listFilter),

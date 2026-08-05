@@ -532,6 +532,16 @@ func (s *InstanceService) Update(ctx context.Context, req UpdateInstanceReq) (*o
 			if err != nil {
 				return nil, serviceerr.MapRepoErr(err)
 			}
+			// Смена меток меняет ПРОЕКЦИЮ, которую читает селектор владельца прав,
+			// поэтому доставляется на пути запроса — ровно как регистрация на Create.
+			// Durable-intent (writer-tx repo.Update) остаётся at-least-once backstop'ом,
+			// но ждать только его значит отдать ОТЗЫВ по снятию метки глубине очереди
+			// (замер соседнего сервиса, 2026-08-05: 188–365 с при клиентском бюджете
+			// чтения-своих-записей 15 с). Update без меток в маске проекции не меняет —
+			// звать владельца прав незачем.
+			if labelsInMask {
+				syncRegisterOwner(ctx, s.ownerRegistrar, "Instance", updated.ID, updated.ProjectID, updated.Labels)
+			}
 			return anypb.New(protoconv.Instance(updated))
 		})
 }

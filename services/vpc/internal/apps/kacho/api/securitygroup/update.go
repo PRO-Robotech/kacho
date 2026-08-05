@@ -6,6 +6,7 @@ package securitygroup
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -39,14 +40,26 @@ type UpdateInput struct {
 // создание Operation + async update в worker'е. Get + Update + outbox-emit —
 // в одной writer-TX (writer видит свои writes для Get).
 type UpdateSecurityGroupUseCase struct {
-	repo     Repo
-	opsRepo  operations.Repo
-	sgReader SecurityGroupReader // optional; same-network-валидация SG-target rule_specs
+	repo      Repo
+	opsRepo   operations.Repo
+	sgReader  SecurityGroupReader // optional; same-network-валидация SG-target rule_specs
+	registrar fgaregister.Registrar
 }
 
 // NewUpdateSecurityGroupUseCase создает UpdateSecurityGroupUseCase.
 func NewUpdateSecurityGroupUseCase(r Repo, opsRepo operations.Repo) *UpdateSecurityGroupUseCase {
 	return &UpdateSecurityGroupUseCase{repo: r, opsRepo: opsRepo}
+}
+
+// WithRegistrar подключает синхронный owner-tuple registrar — тот же, что у
+// create-пути. Смена меток меняет проекцию, которую читает селектор владельца
+// прав, поэтому она обязана доезжать на пути запроса: durable-intent остаётся
+// at-least-once backstop'ом, но ждать его — значит отдать ОТЗЫВ по снятию метки
+// глубине очереди (замер стенда 2026-08-05: 188–365 с при клиентском бюджете
+// 15 с). nil (dev/no-iam) → остаётся только async-путь.
+func (u *UpdateSecurityGroupUseCase) WithRegistrar(r fgaregister.Registrar) *UpdateSecurityGroupUseCase {
+	u.registrar = r
+	return u
 }
 
 // WithSGReader включает same-network-валидацию SG-target правил, переданных
@@ -130,17 +143,23 @@ func (u *UpdateSecurityGroupUseCase) doUpdate(ctx context.Context, in UpdateInpu
 	// kacho-iam держал resource_mirror актуальным для label-based селектора
 	// (label-change reconcile / revoke). Update без labels → re-emit не делаем.
 	// Полное снятие labels → upsert с пустыми labels (не Unregister).
+	var syncItems []fgaregister.Item
+	var intentVersion time.Time
 	if labelsInMask(in.UpdateMask) {
-		if _, rerr := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(
+		syncItems = []fgaregister.Item{
 			fgaregister.ProjectHierarchyItem(string(updated.ProjectID), "vpc_security_group", updated.ID,
 				domain.LabelsToMap(updated.Labels)),
-		)); rerr != nil {
+		}
+		var rerr error
+		if intentVersion, rerr = w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(syncItems...)); rerr != nil {
 			return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: fga register intent: %v", repo.ErrInternal, rerr))
 		}
 	}
 	if cerr := w.Commit(); cerr != nil {
 		return nil, serviceerr.MapRepoErr(cerr)
 	}
+	// Синхронная доставка ПОСЛЕ durable-коммита — симметрия с create-путём.
+	fgaregister.DeliverAfterCommit(ctx, u.registrar, syncItems, intentVersion, "SecurityGroup", updated.ID)
 	return marshalSecurityGroupRecord(updated)
 }
 

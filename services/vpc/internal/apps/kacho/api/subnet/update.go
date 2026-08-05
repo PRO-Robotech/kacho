@@ -6,6 +6,7 @@ package subnet
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -42,13 +43,25 @@ type UpdateInput struct {
 //
 // Worker открывает Writer-TX и делает Get+Update+outbox атомарно.
 type UpdateSubnetUseCase struct {
-	repo    Repo
-	opsRepo operations.Repo
+	repo      Repo
+	opsRepo   operations.Repo
+	registrar fgaregister.Registrar
 }
 
 // NewUpdateSubnetUseCase создает UpdateSubnetUseCase.
 func NewUpdateSubnetUseCase(r Repo, opsRepo operations.Repo) *UpdateSubnetUseCase {
 	return &UpdateSubnetUseCase{repo: r, opsRepo: opsRepo}
+}
+
+// WithRegistrar подключает синхронный owner-tuple registrar — тот же, что у
+// create-пути. Смена меток меняет проекцию, которую читает селектор владельца
+// прав, поэтому она обязана доезжать на пути запроса: durable-intent остаётся
+// at-least-once backstop'ом, но ждать его — значит отдать ОТЗЫВ по снятию метки
+// глубине очереди (замер стенда 2026-08-05: 188–365 с при клиентском бюджете
+// 15 с). nil (dev/no-iam) → остаётся только async-путь.
+func (u *UpdateSubnetUseCase) WithRegistrar(r fgaregister.Registrar) *UpdateSubnetUseCase {
+	u.registrar = r
+	return u
 }
 
 // Execute — sync-проверки и запуск Update в worker'е.
@@ -140,17 +153,23 @@ func (u *UpdateSubnetUseCase) doUpdate(ctx context.Context, in UpdateInput) (*an
 	// register-intent с обновленными labels в ТОЙ ЖЕ writer-TX, чтобы kacho-iam
 	// держал resource_mirror актуальным для label-селектора (reconcile при смене
 	// label'ов). Update без labels → re-emit не делаем.
+	var syncItems []fgaregister.Item
+	var intentVersion time.Time
 	if labelsInMask(in.UpdateMask) {
-		if _, err := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(
+		syncItems = []fgaregister.Item{
 			fgaregister.ProjectHierarchyItem(string(updated.ProjectID), "vpc_subnet", updated.ID,
 				domain.LabelsToMap(updated.Labels)),
-		)); err != nil {
+		}
+		var err error
+		if intentVersion, err = w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(syncItems...)); err != nil {
 			return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: fga register intent: %v", repo.ErrInternal, err))
 		}
 	}
 	if err := w.Commit(); err != nil {
 		return nil, serviceerr.MapRepoErr(err)
 	}
+	// Синхронная доставка ПОСЛЕ durable-коммита — симметрия с create-путём.
+	fgaregister.DeliverAfterCommit(ctx, u.registrar, syncItems, intentVersion, "Subnet", updated.ID)
 	return marshalSubnetRecord(updated)
 }
 

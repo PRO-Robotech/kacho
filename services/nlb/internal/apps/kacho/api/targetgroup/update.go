@@ -30,9 +30,10 @@ import (
 // Targets — отдельная семантика через AddTargets/RemoveTargets; mask=["targets"]
 // → InvalidArgument с фиксированным текстом.
 type UpdateTargetGroupUseCase struct {
-	repo    Repo
-	opsRepo OpsRepo
-	logger  *slog.Logger
+	repo      Repo
+	opsRepo   OpsRepo
+	logger    *slog.Logger
+	registrar Registrar
 }
 
 // NewUpdateTargetGroupUseCase конструктор.
@@ -41,6 +42,30 @@ func NewUpdateTargetGroupUseCase(repo Repo, opsRepo OpsRepo, logger *slog.Logger
 		logger = slog.Default()
 	}
 	return &UpdateTargetGroupUseCase{repo: repo, opsRepo: opsRepo, logger: logger}
+}
+
+// WithRegistrar подключает sync-primary owner-tuple registrar. Смена меток меняет
+// ПРОЕКЦИЮ, которую читает селектор владельца прав, поэтому обновлённое зеркало
+// доставляется на пути запроса — как регистрация на Create. Durable-intent
+// остаётся at-least-once backstop'ом, но ждать только его значит отдать ОТЗЫВ по
+// снятию метки глубине очереди (замер соседнего сервиса 2026-08-05: 188–365 с при
+// клиентском бюджете чтения-своих-записей 15 с). nil → sync-путь пропускается.
+func (u *UpdateTargetGroupUseCase) WithRegistrar(r Registrar) *UpdateTargetGroupUseCase {
+	u.registrar = r
+	return u
+}
+
+// syncRegister — BEST-EFFORT sync-доставка mirror-intent'а после durable commit.
+// Отказ ЛОГИРУЕТСЯ и ГЛОТАЕТСЯ: durable fga_register_outbox-intent + drainer —
+// at-least-once backstop; Operation.done НЕ гейтится на видимость (ban #9).
+func (u *UpdateTargetGroupUseCase) syncRegister(ctx context.Context, intent domain.FGARegisterIntent) {
+	if u.registrar == nil {
+		return
+	}
+	if err := u.registrar.Register(ctx, intent); err != nil {
+		u.logger.Warn("TargetGroup.Update sync mirror registration incomplete; register-drainer will reconcile",
+			"err", err, "target_group_id", intent.ResourceID)
+	}
 }
 
 // knownUpdateFieldsTG — whitelist update_mask fields (NLB-1c: durations
@@ -204,6 +229,9 @@ func (u *UpdateTargetGroupUseCase) doUpdate(ctx context.Context, tg domain.Targe
 	}
 	if err := w.Commit(); err != nil {
 		return nil, mapDomainErr(err)
+	}
+	if emitMirror {
+		u.syncRegister(ctx, tgMirrorIntent(updated))
 	}
 	return marshalTargetGroup(updated)
 }

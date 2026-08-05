@@ -6,6 +6,7 @@ package networkinterface
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -39,8 +40,9 @@ type UpdateInput struct {
 // update_mask и значения (Name/Description/Labels). Async-часть в одной writer-TX
 // делает diff address-refs + applyMask + writer.UpdateMeta + outbox-emit.
 type UpdateNetworkInterfaceUseCase struct {
-	repo    Repo
-	opsRepo operations.Repo
+	repo      Repo
+	opsRepo   operations.Repo
+	registrar fgaregister.Registrar
 }
 
 // NewUpdateNetworkInterfaceUseCase создает UpdateNetworkInterfaceUseCase.
@@ -48,6 +50,17 @@ type UpdateNetworkInterfaceUseCase struct {
 // не инъектируется.
 func NewUpdateNetworkInterfaceUseCase(r Repo, opsRepo operations.Repo) *UpdateNetworkInterfaceUseCase {
 	return &UpdateNetworkInterfaceUseCase{repo: r, opsRepo: opsRepo}
+}
+
+// WithRegistrar подключает синхронный owner-tuple registrar — тот же, что у
+// create-пути. Смена меток меняет проекцию, которую читает селектор владельца
+// прав, поэтому она обязана доезжать на пути запроса: durable-intent остаётся
+// at-least-once backstop'ом, но ждать его — значит отдать ОТЗЫВ по снятию метки
+// глубине очереди (замер стенда 2026-08-05: 188–365 с при клиентском бюджете
+// 15 с). nil (dev/no-iam) → остаётся только async-путь.
+func (u *UpdateNetworkInterfaceUseCase) WithRegistrar(r fgaregister.Registrar) *UpdateNetworkInterfaceUseCase {
+	u.registrar = r
+	return u
 }
 
 // Execute — sync-валидация и запуск Update в worker'е.
@@ -178,17 +191,23 @@ func (u *UpdateNetworkInterfaceUseCase) doUpdate(ctx context.Context, in UpdateI
 	// при снятии метки). Update без labels → переэмита нет. Полное снятие labels →
 	// upsert с пустыми метками (НЕ Unregister: NIC все еще существует). Эталон —
 	// network/subnet/securitygroup update.
+	var syncItems []fgaregister.Item
+	var intentVersion time.Time
 	if labelsInMask(in.UpdateMask) {
-		if _, rerr := w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(
+		syncItems = []fgaregister.Item{
 			fgaregister.ProjectHierarchyItem(string(updated.ProjectID), "vpc_network_interface", updated.ID,
 				domain.LabelsToMap(updated.Labels)),
-		)); rerr != nil {
+		}
+		var rerr error
+		if intentVersion, rerr = w.FGARegister().EmitRegister(ctx, fgaregister.RegisterItems(syncItems...)); rerr != nil {
 			return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: fga register intent: %v", repo.ErrInternal, rerr))
 		}
 	}
 	if cerr := w.Commit(); cerr != nil {
 		return nil, serviceerr.MapRepoErr(cerr)
 	}
+	// Синхронная доставка ПОСЛЕ durable-коммита — симметрия с create-путём.
+	fgaregister.DeliverAfterCommit(ctx, u.registrar, syncItems, intentVersion, "NetworkInterface", updated.ID)
 	return marshalNetworkInterfaceRecord(updated)
 }
 

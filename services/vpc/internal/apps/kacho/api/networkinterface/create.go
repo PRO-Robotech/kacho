@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -292,12 +291,7 @@ func (u *CreateNetworkInterfaceUseCase) doCreate(ctx context.Context, niID strin
 		// здесь значило бы отдать вызывающему код узла прав (status.FromError
 		// достаёт вложенный статус и подменяет сообщение всей цепочкой) на уже
 		// созданный NIC — фантом. Поэтому предупреждение, а не ошибка.
-		if u.registrar != nil {
-			if rerr := u.registrar.Register(ctx, items, intentVersion); rerr != nil {
-				slog.WarnContext(ctx, "sync owner-tuple register failed; register-drainer will apply the durable intent",
-					"resource", "NetworkInterface", "id", created.ID, "err", rerr)
-			}
-		}
+		fgaregister.DeliverAfterCommit(ctx, u.registrar, items, intentVersion, "NetworkInterface", created.ID)
 		return marshalNetworkInterfaceRecord(created)
 	}
 	// Все попытки исчерпаны. Последняя attach-TX уже откачена (`w.Abort()` на
