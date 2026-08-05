@@ -75,6 +75,7 @@ DECLARED="
 deploy/scripts/assert-admin-hop-transport.sh
 deploy/scripts/assert-alt-fixtures-are-another.py
 deploy/scripts/assert-ban6-external-isolation.py
+deploy/scripts/assert-burst-waits-for-materialization.py
 deploy/scripts/assert-dialled-transports-have-a-producer.py
 deploy/scripts/assert-fixture-role-verbs-exist.py
 deploy/scripts/assert-generated-scripts-parse.js
