@@ -354,10 +354,23 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// then five more `<exempt>` phantom-service entries, so the same +5 lands on
 	// 289 here. The numbers below are measured on THIS tree; the prose above is
 	// the historical trail, the assertions are the contract.
+	//
+	// Then vpc.v1 InternalAddressService/CreateOwnedAddress ADDED one exempt entry:
+	// 58→59 exempt, 294→295 total. Sensitive and routine are untouched. `<exempt>`
+	// here does NOT mean "ungated" — it means THE GATEWAY does not gate it, which is
+	// the only thing this catalog speaks about. The method lives on the cluster-internal
+	// listener :9091 and is never routed through the gateway, so the gateway has no
+	// request of its own to check. Its actual gate is the vpc interceptor, which is
+	// wired on BOTH listeners and resolves this method through
+	// services/vpc/internal/apps/kacho/check/permission_map.go: `editor` on the project
+	// taken from the creation body — the very same requirement the public
+	// AddressService/Create carries. All nine InternalAddressService methods sit in this
+	// catalog the same way, so the new one follows the established shape rather than
+	// introducing an exception to it.
 	assert.Equal(t, 27, n2, "sensitive count")
 	assert.Equal(t, 209, n1, "routine count")
-	assert.Equal(t, 58, nEmpty, "no-requirement (exempt) count")
-	assert.Equal(t, 294, n2+n1+nEmpty, "catalog total")
+	assert.Equal(t, 59, nEmpty, "no-requirement (exempt) count")
+	assert.Equal(t, 295, n2+n1+nEmpty, "catalog total")
 
 	// Byte-identity of the two embedded copies.
 	gw := middleware.EmbeddedPermissionCatalogJSON()
