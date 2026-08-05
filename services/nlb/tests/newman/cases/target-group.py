@@ -47,8 +47,30 @@ def _setup_tg(name_suffix: str, body_extra: dict = None, name_override: str = No
     ]
 
 
-def _cleanup_tg():
+def _cleanup_tg(leftover_targets=None):
+    """Уборка группы целей. `leftover_targets` — то, что кейс в ней ОСТАВИЛ.
+
+    Продукт отказывается удалять непустую группу (`FailedPrecondition`
+    «TargetGroup has N target(s); remove them first via RemoveTargets»); это его
+    объявленный контракт, у него есть собственный отрицательный кейс
+    `TGR-DEL-NEG-HAS-TARGETS`. Значит уборка обязана сперва СЛИТЬ группу, иначе
+    получает законный отказ, а группа живёт до конца стенда.
+
+    Остаток называет кейс, а не опрос: он известен по построению, поэтому
+    уборка детерминирована. Забытый остаток краснеет сразу — это ловит
+    утверждение на шаге удаления (assert-delete-steps-are-asserted.py).
+    """
+    drain = []
+    if leftover_targets:
+        drain = [
+            Step(name="cleanup-drain-targets", method="POST",
+                 path=f"{_TG_BASE}/{{{{tgId}}}}:removeTargets",
+                 body={"targets": list(leftover_targets)},
+                 test_script=[*assert_status(200), *save_from_response("j.id", "opId")]),
+            poll_operation_until_done(),
+        ]
     return [
+        *drain,
         Step(name="cleanup-tg", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
              test_script=[*save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
@@ -81,7 +103,11 @@ CASES.append(Case(
              test_script=[*assert_status(200),
                           "const j = pm.response.json();",
                           "pm.test('has health_check', () => pm.expect(j.healthCheck).to.be.an('object'));"])),
-        *_cleanup_tg(),
+        # Группа создана СРАЗУ С ЦЕЛЬЮ (в этом и предмет кейса), поэтому уборка
+        # обязана слить её перед удалением: непустую группу продукт удалять
+        # отказывается. Прогон CI 31053251941 показал здесь ровно этот отказ —
+        # до утверждения на шаге удаления группа переживала каждый прогон молча.
+        *_cleanup_tg(leftover_targets=[{"externalIp": {"address": "203.0.113.50"}}]),
     ],
 ))
 
