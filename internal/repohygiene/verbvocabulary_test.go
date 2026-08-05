@@ -80,6 +80,14 @@ var verbLiteralRoster = []verbLiteral{
 		retireWhen: "объявление удалено (типы перечисляют наборы поштучно)",
 	},
 	{
+		path: "services/iam/internal/authzmap/fga_types.go", varName: "targetGroupVerbRelations",
+		claims: "набор ОДНОГО типа — nlb_target_group: канонический CRUD плюс два отношения управления " +
+			"составом группы (NLB-TGT-1); полноты платформы НЕ утверждает — это первый в дереве набор, " +
+			"отличающийся от общего",
+		checkedBy:  "authzmap: TestDrift_TypeVerbSetsMatchModelExactly — потиповое равенство набора и модели",
+		retireWhen: "объявление удалено (тип вернулся к общему набору либо перечисляет его иначе)",
+	},
+	{
 		path: "services/iam/internal/domain/role_effective_verbs.go", varName: "verbDisplayPrecedence",
 		claims:     "старшинство ПОКАЗА в превью роли; полноты НЕ утверждает — глагол вне списка идёт в хвост",
 		checkedBy:  "domain: TestEffectiveVerbs_UnchangedForEveryRuleShape — порядок вывода по каждой форме правила",

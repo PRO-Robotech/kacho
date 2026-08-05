@@ -121,7 +121,10 @@ service TargetGroupService {
       response: "TargetGroup"
     };
     option (kacho.iam.authz.v1.permission)        = "loadbalancer.targetGroups.addTargets";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
+    // NLB-TGT-1: управление СОСТАВОМ группы — собственное отношение, объявленное
+    // надмножеством `v_update` в канонической модели. Пока здесь стояло `v_update`,
+    // право управлять составом было невыдаваемо отдельно от права менять саму группу.
+    option (kacho.iam.authz.v1.required_relation) = "v_addtargets";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
@@ -139,7 +142,8 @@ service TargetGroupService {
       response: "TargetGroup"
     };
     option (kacho.iam.authz.v1.permission)        = "loadbalancer.targetGroups.removeTargets";
-    option (kacho.iam.authz.v1.required_relation) = "v_update";
+    // NLB-TGT-1 — см. AddTargets выше: собственное отношение, надмножество `v_update`.
+    option (kacho.iam.authz.v1.required_relation) = "v_removetargets";
     option (kacho.iam.authz.v1.scope_extractor)   = {
       object_type:        "nlb_target_group"
       from_request_field: "target_group_id"
