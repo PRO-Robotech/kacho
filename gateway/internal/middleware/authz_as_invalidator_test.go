@@ -34,9 +34,9 @@ func TestW1_2_AuthzMiddleware_AsInvalidator_ReturnsInvalidator(t *testing.T) {
 	m, err := NewAuthzMiddleware(AuthzMiddlewareConfig{Enabled: false})
 	require.NoError(t, err)
 	m.cache = newDecisionCache(100, 5*time.Second, time.Now)
-	m.cache.put("user:nob|iam.projects.get|project|prj1|", decisionCacheEntry{allowed: true})
-	m.cache.put("user:nob|iam.projects.get|project|prj2|", decisionCacheEntry{allowed: true})
-	m.cache.put("user:alice|iam.projects.get|project|prj1|", decisionCacheEntry{allowed: true})
+	m.cache.put("user:nob|iam.projects.get|project|prj1|")
+	m.cache.put("user:nob|iam.projects.get|project|prj2|")
+	m.cache.put("user:alice|iam.projects.get|project|prj1|")
 	require.Equal(t, 3, m.cache.Size())
 
 	inv := m.AsInvalidator()

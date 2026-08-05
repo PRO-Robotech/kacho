@@ -22,11 +22,22 @@ import (
 	"github.com/PRO-Robotech/kacho/gateway/internal/lrucache"
 )
 
-// decisionCacheEntry — cached outcome.
-type decisionCacheEntry struct {
-	allowed bool
-	reasons []string
-}
+// decisionCacheEntry — форма кешируемого вердикта. Полей у неё нет НАМЕРЕННО:
+// кешируется ТОЛЬКО «разрешено», и сам факт живой записи это и означает.
+//
+// Отдельного поля «разрешено» здесь быть не должно, иначе отказ снова станет
+// представимым — а он не имеет права попадать в этот кеш. Срок жизни записи
+// объявлен политикой `pkg/authz.RevocationPolicy` как ОКНО ОТЗЫВА, и это
+// обоснование целиком про положительный вердикт: сколько продолжает проходить
+// тот, у кого право уже отобрали. На отказе то же число не защищает ничего
+// (отказ и так fail-closed) и работает второй, необъявленной стороной — как
+// ЗАДЕРЖКА ВЫДАЧИ: запрос, проигравший гонку материализации, сам записывал бы
+// свой отказ и держал его весь срок уже ПОСЛЕ появления права.
+//
+// Ровно так же и по той же причине устроен кеш общей библиотеки
+// (`pkg/authz.Cache`): «Кешируются ТОЛЬКО allowed=true». Край — последняя
+// площадка, которая от этого правила отступала.
+type decisionCacheEntry struct{}
 
 // decisionCache — LRU-with-TTL over the shared lrucache primitive, plus the
 // authz-specific subject-prefix invalidation. Safe for concurrent use.
@@ -38,22 +49,25 @@ func newDecisionCache(maxSize int, ttl time.Duration, now func() time.Time) *dec
 	return &decisionCache{c: lrucache.New[string, decisionCacheEntry](maxSize, ttl, now)}
 }
 
-func (c *decisionCache) get(key string) (decisionCacheEntry, bool) { return c.c.Get(key) }
+// allowed сообщает, есть ли живая запись, то есть закеширован ли положительный
+// вердикт. Второго исхода у этого кеша нет by construction.
+func (c *decisionCache) allowed(key string) bool { _, ok := c.c.Get(key); return ok }
 
-func (c *decisionCache) put(key string, v decisionCacheEntry) { c.c.Put(key, v) }
+func (c *decisionCache) put(key string) { c.c.Put(key, decisionCacheEntry{}) }
 
 // generation snapshots the invalidation generation for the epoch guard; see
 // putIfGen.
 func (c *decisionCache) generation() uint64 { return c.c.Generation() }
 
-// putIfGen stores v only when the cache generation still equals the snapshot the
-// caller captured at get()-miss time. If an Invalidate/InvalidateSubject ran in
-// between, the (potentially stale, pre-revocation) write is discarded — closing
-// the write-after-invalidate race where a Check computed against a pre-revocation
-// grant would otherwise re-populate a just-flushed allow=true entry and survive
-// for the whole TTL (CWE-362 + CWE-613).
-func (c *decisionCache) putIfGen(key string, v decisionCacheEntry, gen uint64) {
-	c.c.PutIfGen(key, v, gen)
+// putIfGen stores the allow only when the cache generation still equals the
+// snapshot the caller captured at get()-miss time. If an
+// Invalidate/InvalidateSubject ran in between, the (potentially stale,
+// pre-revocation) write is discarded — closing the write-after-invalidate race
+// where a Check computed against a pre-revocation grant would otherwise
+// re-populate a just-flushed entry and survive for the whole TTL
+// (CWE-362 + CWE-613).
+func (c *decisionCache) putIfGen(key string, gen uint64) {
+	c.c.PutIfGen(key, decisionCacheEntry{}, gen)
 }
 
 // Invalidate removes ALL cache entries — used by the LISTEN/NOTIFY

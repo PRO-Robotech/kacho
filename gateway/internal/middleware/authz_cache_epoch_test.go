@@ -32,7 +32,7 @@ func TestDecisionCache_PutIfGen_DroppedAfterInvalidate(t *testing.T) {
 
 	// A request begins: capture the generation at get()-miss time.
 	gen := c.generation()
-	_, ok := c.get("user:x|act|project|p1|")
+	ok := c.allowed("user:x|act|project|p1|")
 	require.False(t, ok, "cold cache must miss")
 
 	// Meanwhile a revocation flushes the subject (bumps the generation).
@@ -40,9 +40,9 @@ func TestDecisionCache_PutIfGen_DroppedAfterInvalidate(t *testing.T) {
 
 	// The in-flight request now tries to cache its stale allow=true. It must be
 	// dropped because the generation moved since the snapshot.
-	c.putIfGen("user:x|act|project|p1|", decisionCacheEntry{allowed: true}, gen)
+	c.putIfGen("user:x|act|project|p1|", gen)
 
-	_, ok = c.get("user:x|act|project|p1|")
+	ok = c.allowed("user:x|act|project|p1|")
 	assert.False(t, ok,
 		"stale allow written after InvalidateSubject must NOT survive (epoch guard)")
 }
@@ -52,12 +52,11 @@ func TestDecisionCache_PutIfGen_DroppedAfterInvalidate(t *testing.T) {
 func TestDecisionCache_PutIfGen_KeptWhenNoInvalidate(t *testing.T) {
 	c := newDecisionCache(100, 5*time.Second, time.Now)
 	gen := c.generation()
-	_, ok := c.get("user:x|act|project|p1|")
+	ok := c.allowed("user:x|act|project|p1|")
 	require.False(t, ok)
-	c.putIfGen("user:x|act|project|p1|", decisionCacheEntry{allowed: true}, gen)
-	got, ok := c.get("user:x|act|project|p1|")
+	c.putIfGen("user:x|act|project|p1|", gen)
+	ok = c.allowed("user:x|act|project|p1|")
 	require.True(t, ok, "put with unchanged generation must be stored")
-	assert.True(t, got.allowed)
 }
 
 // TestDecisionCache_PutIfGen_DroppedAfterFullFlush — the whole-cache flush path
@@ -66,8 +65,8 @@ func TestDecisionCache_PutIfGen_DroppedAfterFullFlush(t *testing.T) {
 	c := newDecisionCache(100, 5*time.Second, time.Now)
 	gen := c.generation()
 	c.Invalidate()
-	c.putIfGen("user:y|act|project|p1|", decisionCacheEntry{allowed: true}, gen)
-	_, ok := c.get("user:y|act|project|p1|")
+	c.putIfGen("user:y|act|project|p1|", gen)
+	ok := c.allowed("user:y|act|project|p1|")
 	assert.False(t, ok, "stale allow after full flush must be dropped")
 }
 
@@ -93,8 +92,8 @@ func TestDecisionCache_RevocationWinsUnderConcurrency(t *testing.T) {
 			defer wg.Done()
 			for j := 0; j < writerIters; j++ {
 				gen := c.generation()
-				if _, ok := c.get(key); !ok {
-					c.putIfGen(key, decisionCacheEntry{allowed: true}, gen)
+				if ok := c.allowed(key); !ok {
+					c.putIfGen(key, gen)
 				}
 			}
 		}()
@@ -118,8 +117,8 @@ func TestDecisionCache_RevocationWinsUnderConcurrency(t *testing.T) {
 	c.InvalidateSubject(subject)
 	// A late writer that snapshotted finalGen-era state and tries to write now
 	// must be dropped.
-	c.putIfGen(key, decisionCacheEntry{allowed: true}, finalGen)
-	_, ok := c.get(key)
+	c.putIfGen(key, finalGen)
+	ok := c.allowed(key)
 	assert.False(t, ok,
 		"after the final revocation no stale allow may survive for the revoked subject")
 }

@@ -17,7 +17,7 @@ func TestAuthzMiddleware_MaybeFlushOnMutation(t *testing.T) {
 	m, err := NewAuthzMiddleware(AuthzMiddlewareConfig{Enabled: false})
 	require.NoError(t, err)
 	m.cache = newDecisionCache(100, 5*time.Second, time.Now)
-	m.cache.put("user:nob|iam.projects.get|project|prj1|", decisionCacheEntry{allowed: true})
+	m.cache.put("user:nob|iam.projects.get|project|prj1|")
 
 	// Non-mutation / non-2xx — cache untouched.
 	m.MaybeFlushOnMutation("kacho.cloud.iam.v1.ProjectService/Get", 200)

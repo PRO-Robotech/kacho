@@ -1130,14 +1130,14 @@ func (m *AuthzMiddleware) phaseCheck(
 	// generation, and the put below is dropped so a grant revoked mid-Check is
 	// never re-cached (write-after-invalidate guard; CWE-362 + CWE-613).
 	cacheGen := m.cache.generation()
-	if cached, ok := m.cache.get(cacheKey); ok {
+	// Кеш хранит ТОЛЬКО положительный вердикт (см. decisionCacheEntry): попадание
+	// означает «разрешено», промах — «спросить авторитетный источник». Отказ сюда
+	// не кладётся, поэтому свежая выдача видна сразу, а ждёт один лишь отзыв —
+	// та же асимметрия, что у общей библиотеки.
+	if m.cache.allowed(cacheKey) {
 		m.metrics.RecordCacheHit()
-		if cached.allowed {
-			m.metrics.RecordAllow()
-			return decision{outcome: outcomeAllow, descriptor: descriptor, entry: entry}
-		}
-		m.metrics.RecordDeny()
-		return denyDecision(dr.FQN, entry, descriptor, cached.reasons)
+		m.metrics.RecordAllow()
+		return decision{outcome: outcomeAllow, descriptor: descriptor, entry: entry}
 	}
 	m.metrics.RecordCacheMiss()
 
@@ -1162,7 +1162,8 @@ func (m *AuthzMiddleware) phaseCheck(
 			st, _ := status.FromError(err)
 			m.metrics.RecordDeny()
 			reasons := []string{st.Message()}
-			m.cache.putIfGen(cacheKey, decisionCacheEntry{allowed: false, reasons: reasons}, cacheGen)
+			// Отказ НЕ кешируется: он и так fail-closed, а запись сделала бы из
+			// окна отзыва ещё и задержку выдачи (см. decisionCacheEntry).
 			return denyDecision(dr.FQN, entry, descriptor, reasons)
 		}
 		m.metrics.RecordError()
@@ -1177,7 +1178,7 @@ func (m *AuthzMiddleware) phaseCheck(
 	}
 
 	if result.Allowed {
-		m.cache.putIfGen(cacheKey, decisionCacheEntry{allowed: true}, cacheGen)
+		m.cache.putIfGen(cacheKey, cacheGen)
 		m.metrics.RecordAllow()
 		m.cfg.Logger.Info("authz allow",
 			"fqn", dr.FQN,
@@ -1194,7 +1195,9 @@ func (m *AuthzMiddleware) phaseCheck(
 	if len(reasons) == 0 {
 		reasons = []string{"no path"}
 	}
-	m.cache.putIfGen(cacheKey, decisionCacheEntry{allowed: false, reasons: reasons}, cacheGen)
+	// Отказ НЕ кешируется (см. decisionCacheEntry): иначе первый же запрос,
+	// проигравший гонку материализации права, сам держал бы свой отказ весь срок
+	// жизни записи — уже после того, как право появилось.
 	m.metrics.RecordDeny()
 	m.cfg.Logger.Info("authz deny",
 		"fqn", dr.FQN,
