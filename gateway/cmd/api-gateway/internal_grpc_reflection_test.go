@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 	reflectpb "google.golang.org/grpc/reflection/grpc_reflection_v1"
 	"google.golang.org/grpc/status"
@@ -36,6 +37,41 @@ import (
 // signed, so it clears the transport; it is the exact shape of caller the
 // allow-list exists to stop.
 const nonAllowlistedSPIFFE = "spiffe://kacho.cloud/ns/kacho-vpc/sa/kacho-vpc"
+
+// requireTransportReady blocks until the connection has actually completed its
+// TLS handshake, and fails the test if it never does.
+//
+// Why this is not ceremony. grpc.NewClient connects LAZILY, so without it the
+// first RPC carries two unrelated failures in one return value: the transport
+// never came up (wrong certificate, wrong server name, listener gone) and the
+// server refused the call on its merits. Both surface as "err != nil", and the
+// code that comes with them differs — a refused stream carries the interceptor's
+// PermissionDenied, a broken handshake carries Unknown or Unavailable. A test
+// asserting the former therefore reads a transport failure as "the listener
+// answered with the wrong code", which is precisely the wrong conclusion: it
+// points the next reader at authorisation when the connection is what broke.
+//
+// Observed, not theorised: this file's refusal case failed once in CI with
+// Unknown where PermissionDenied was asserted, while 44 local runs of the same
+// package — plain, single-CPU, and under external load — stayed green. Waiting
+// here does not weaken the assertion below (still PermissionDenied and nothing
+// else); it separates the two outcomes so that whichever one happens says so.
+func requireTransportReady(t *testing.T, conn *grpc.ClientConn) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn.Connect()
+	for {
+		s := conn.GetState()
+		if s == connectivity.Ready {
+			return
+		}
+		require.NotEqual(t, connectivity.Shutdown, s, "connection shut down before it was ready")
+		require.True(t, conn.WaitForStateChange(ctx, s),
+			"connection never reached READY (last state %s): the mTLS handshake did not complete, "+
+				"so anything the test asserts about the listener's answer would be about the transport instead", s)
+	}
+}
 
 // listServices drives one ServerReflectionInfo exchange and returns the service
 // names the listener reports, or the gRPC status of the refusal.
@@ -99,6 +135,7 @@ func TestInternalGRPCListener_MTLS_ServesReflectionToAllowlistedCaller(t *testin
 	conn, err := grpc.NewClient(addr, mtlsClientDialCreds(t, caFile, cert, key, internalListenerServerName))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
+	requireTransportReady(t, conn)
 
 	svcs, err := listServices(t, conn)
 	require.NoError(t, err,
@@ -121,6 +158,7 @@ func TestInternalGRPCListener_MTLS_RefusesReflectionToNonAllowlistedCaller(t *te
 	conn, err := grpc.NewClient(addr, mtlsClientDialCreds(t, caFile, cert, key, internalListenerServerName))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
+	requireTransportReady(t, conn)
 
 	_, err = listServices(t, conn)
 	require.Error(t, err, "a verified but non-allow-listed identity must not obtain the schema stream")
@@ -147,6 +185,7 @@ func TestInternalGRPCListener_InsecureDev_DoesNotServeReflection(t *testing.T) {
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
+	requireTransportReady(t, conn)
 
 	_, err = listServices(t, conn)
 	require.Error(t, err, "the insecure listener must not answer reflection: nothing there authorises a caller")
