@@ -150,8 +150,11 @@ fixture-gated (SKIP while `jwtProjectViewerA` is empty). See
 **Current mitigation (runnable in CI, no stand).**
 - Real authz-seam: `internal/check/viewer_boundary_test.go` runs the **real** corelib
   authz-interceptor over the registry `PermissionMap` with a fake `CheckClient` granting
-  exactly `v_get`, asserting Update/Delete → `NOT_FOUND` (existence-hidden) for an
-  authenticated principal. Not a handler fake — the production interceptor + map.
+  exactly `v_get`, asserting Update/Delete → `NOT_FOUND` (existence-hidden) **and its
+  verbatim text** for an authenticated principal. Not a handler fake — the production
+  interceptor + map. The fake now refuses the way the production client refuses (a plain
+  `allowed=false`); it used to hand the interceptor a sentinel that client never emits,
+  which made the assertion hold on the fixture rather than on the code.
 - Handler ScopeFiltered path: `internal/handler/listauthz_test.go`
   (`TestHandler_REG22_ListRepositories_NamespaceDeny_NotFound`, `REG24` deny) drives an
   **authenticated** principal (`carolCtx`) with a denying authorizer →
