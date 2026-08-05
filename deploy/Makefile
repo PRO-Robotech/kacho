@@ -8,7 +8,7 @@
         guard-kind-context guard-destructive gate-self-test waiter-discipline \
         report-reader-discipline alt-fixture-discipline posture-branch-discipline \
         verdict-aggregator-discipline ceremony-declaration-discipline \
-        dialled-transport-discipline \
+        dialled-transport-discipline delete-step-discipline \
         reload-svc-nlb psql-nlb logs-nlb seed-nlb e2e-newman stand-provenance
 
 SHELL := bash
@@ -714,6 +714,21 @@ generated-scripts-parse:
 	@node scripts/assert-generated-scripts-parse.js \
 	  ../services/*/tests/newman/collections/*.json \
 	  ../gateway/tests/newman/collections/*.json
+
+# delete-step-discipline — шаг удаления обязан НЕСТИ УТВЕРЖДЕНИЕ.
+#
+# Замерено на дереве: 82 коллекции, 8233 шага, 1359 из них DELETE — и 457 без
+# единого утверждения. Такой шаг читает 200, 403 и 500 одинаково и зеленеет на
+# каждом. Тихим это не остаётся: у асинхронного удаления шаг захватывает `opId`
+# из тела, а следующий опрашивает операцию по нему; отказ тела не несёт, `opId`
+# остаётся ОТ ПРЕДЫДУЩЕЙ операции, и опрос подтверждает чужой завершённый успех.
+# Кейс зеленеет по операции, которую не запускал, а ресурс живёт — фикстура
+# течёт, ограниченный пул деградирует, списочные контракты плывут.
+#
+# Чинится в ГЕНЕРАТОРЕ (`step_to_postman` ставит утверждение по умолчанию), а не
+# правкой коллекции: коллекции регенерируются побайтово.
+delete-step-discipline:
+	@python3 scripts/assert-delete-steps-are-asserted.py
 
 # waiter-discipline — ожидание и остановка идут по ЗАХВАЧЕННОМУ идентификатору
 # процесса, а не по шаблону командной строки.
