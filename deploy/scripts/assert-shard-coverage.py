@@ -32,7 +32,13 @@
 прочитанного»: если предикат перестанет находить коллекции, это будет видно
 числом, а не молчанием.
 
-Самопроверка (`--self-test`) вносит четыре дефекта по одному и требует красного
+  6. карта «компонент → образ» называет образы, которые знает сборка;
+  7. имя, которым шард объявляет отсутствие сервиса, понимает гейт посадки;
+  8. объединение доменов ban #6 по шардам покрывает ВСЕ домены с Internal*-контрактом
+     (проба ban #6 сужается составом стенда — без этого домен мог бы не измеряться
+     ни на одном шарде, оставаясь зелёным везде).
+
+Самопроверка (`--self-test`) вносит семь дефектов по одному и требует красного
 на каждом, плюс держит рядом ЗАКОННОГО близнеца (нетронутое дерево ⇒ зелёный).
 Гейт, который не покраснел на внесённом дефекте, — не гейт.
 """
@@ -94,6 +100,26 @@ def gated_deps(path: pathlib.Path) -> set[str]:
                          path.read_text(encoding="utf-8"), re.M):
         gated.add(m.group(1))
     return gated
+
+
+def internal_listener_domains(root: pathlib.Path) -> set[str]:
+    """Домены proto, объявляющие хотя бы один `service Internal…` — предмет ban #6.
+
+    Читается ИЗ ДЕРЕВА, а не списком здесь: список разъехался бы с proto молча, и
+    новый домен с Internal-контрактом выпал бы из охвата, не покраснев нигде.
+    """
+    out: set[str] = set()
+    base = root / "proto" / "kacho" / "cloud"
+    if not base.is_dir():
+        return out
+    for dom in base.iterdir():
+        if not dom.is_dir():
+            continue
+        for f in dom.rglob("*.proto"):
+            if re.search(r'^\s*service\s+Internal\w*\s*\{', f.read_text(encoding="utf-8"), re.M):
+                out.add(dom.name)
+                break
+    return out
 
 
 def check(root: pathlib.Path, manifest_path: pathlib.Path) -> tuple[list[str], dict]:
@@ -197,7 +223,35 @@ def check(root: pathlib.Path, manifest_path: pathlib.Path) -> tuple[list[str], d
                     f"такого сервиса не знает — POSTURE_SKIP='{img}' его не исключит, "
                     f"и стенд шарда покраснет на законном отсутствии")
 
+    # 8. ban #6: объединение доменов по шардам обязано покрывать ВСЕ домены,
+    #    у которых есть внутренний листенер. Проба ban #6 теперь сужается составом
+    #    стенда (`--domains`), и без этой проверки домен мог бы не измеряться НИ НА
+    #    ОДНОМ шарде, оставаясь при этом зелёным везде — ровно то послабление,
+    #    ради невозможности которого сужение и сделано явным.
+    core_b6 = set(manifest.get("core_ban6_domains", []))
+    gate_b6 = manifest.get("gate_ban6_domains", {})
+    union_b6 = set(core_b6)
+    for sh in shards:
+        union_b6 |= {gate_b6[c] for c in sh["components"] if c in gate_b6}
+    want_b6 = internal_listener_domains(root)
+    if not want_b6:
+        findings.append("не удалось перечислить домены с внутренним листенером — "
+                        "сверить охват ban #6 не с чем; это отказ, а не «сошлось»")
+    for d in sorted(want_b6 - union_b6):
+        findings.append(f"домен '{d}' несёт Internal*-контракт, но ban #6 для него не "
+                        f"измеряет НИ ОДИН шард — метод остался бы «изолированным» "
+                        f"просто потому, что его никто не спрашивал")
+    for d in sorted(union_b6 - want_b6):
+        findings.append(f"шарды заявляют ban #6 для домена '{d}', у которого нет "
+                        f"Internal*-контракта в proto — измерять нечего")
+    for g in sorted(set(gates) - {x for x in gates if x.startswith("pg-")}):
+        if g not in gate_b6:
+            findings.append(f"компонент '{g}' переключаемый, но домена ban #6 за ним "
+                            f"не закреплено — включивший его шард не проверит его изоляцию")
+
     stats = {
+        "ban6_domains_needed": len(want_b6),
+        "ban6_domains_covered": len(union_b6 & want_b6),
         "suites_tree": len(tree_suites),
         "suites_assigned": len([s for s in seen if s in tree_suites]),
         "collections_tree": tree_total,
@@ -214,6 +268,8 @@ def report(root: pathlib.Path, manifest_path: pathlib.Path) -> int:
     print("=== покрытие шардов (единица счёта — отслеживаемая git коллекция) ===")
     print(f"осмотрено: суит {st['suites_tree']}, коллекций {st['collections_tree']}, "
           f"шардов {st['shards']}, переключаемых компонентов {st['gates']}")
+    print(f"ban #6: доменов с Internal*-контрактом {st['ban6_domains_needed']}, "
+          f"покрыто шардами {st['ban6_domains_covered']}")
     print(f"назначено: суит {st['suites_assigned']}, коллекций {st['collections_assigned']}")
     for s, n in st["per_suite"].items():
         owner = next((sh["id"] for sh in json.loads(manifest_path.read_text())["shards"]
@@ -282,6 +338,18 @@ def _self_test() -> int:
     m = copy.deepcopy(base)
     m["gates"] = m["gates"] + ["kratos-selfservice-ui"]
     run(m, "(д) gate без condition в Chart.yaml", want_red=True)
+
+    # (е) ban #6: домен выпал из охвата ВСЕХ шардов. Это и есть послабление, ради
+    # невозможности которого сужение пробы сделано явным: без этой проверки метод
+    # такого домена остался бы «изолированным» просто потому, что его не спросили.
+    m = copy.deepcopy(base)
+    m["gate_ban6_domains"] = {k: v for k, v in m["gate_ban6_domains"].items() if k != "registry"}
+    run(m, "(е) домен registry не измеряет ни один шард", want_red=True)
+
+    # (ж) КОНТРОЛЬ: домен, который шарды заявляют, а Internal*-контракта у него нет.
+    m = copy.deepcopy(base)
+    m["core_ban6_domains"] = m["core_ban6_domains"] + ["operation"]
+    run(m, "(ж) заявлен домен без Internal*-контракта", want_red=True)
 
     print("самопроверка:", "OK" if ok else "FAIL")
     return 0 if ok else 1

@@ -429,8 +429,26 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--namespace", default=os.environ.get("KACHO_NS", "kacho"))
     ap.add_argument("--workdir", default="/tmp/ban6-gate")
+    # --domains — какие домены РАЗВЁРНУТЫ на этом стенде.
+    #
+    # Зачем понадобилось. Встречный контроль спрашивает внутренний листенер КАЖДОГО
+    # домена: «этот Internal-метод у тебя обслужен?». Не дозвонились — домен не
+    # засчитывается, и это правильно: «метода нет на внешнем» неотличимо от «метода
+    # нет нигде». Но с разнесением e2e по раннерам ни один стенд не несёт все восемь
+    # доменов, и гейт стал падать на ЗАКОННОМ отсутствии — то есть требовать
+    # измерения там, где предмета нет by design.
+    #
+    # Сузить набор молча было бы ровно тем классом, который этот гейт и ловит.
+    # Поэтому: (а) умолчание — ВСЕ домены (полный стенд ведёт себя как прежде);
+    # (б) сужение называется явно и печатается числом вместе с тем, что НЕ измерено;
+    # (в) полнота держится снаружи — deploy/scripts/assert-shard-coverage.py требует,
+    # чтобы объединение доменов по шардам покрывало все домены дерева. Ни один домен
+    # не может выпасть из измерения, оставшись при этом «зелёным».
+    ap.add_argument("--domains", default=os.environ.get("BAN6_DOMAINS", ""),
+                    help="домены, развёрнутые на этом стенде (через пробел); пусто = все")
     args = ap.parse_args(argv)
     ns, wd = args.namespace, args.workdir
+    only = {d for d in args.domains.replace(",", " ").split() if d}
     os.makedirs(wd, exist_ok=True)
 
     if not shutil.which("grpcurl"):
@@ -503,7 +521,24 @@ def main(argv: list[str]) -> int:
 
         # ── CONTROL-COUNTERPART ─────────────────────────────────────────────
         print("\n== CONTROL-COUNTERPART: тот же метод ОБСЛУЖЕН на своём :9091 ==")
-        domains = sorted({domain_of(p) for p, _, _ in rows})
+        all_domains = sorted({domain_of(p) for p, _, _ in rows})
+        if only:
+            unknown = sorted(only - set(all_domains))
+            if unknown:
+                print(f"HARNESS: --domains называет то, чего нет в дескрипторах: "
+                      f"{', '.join(unknown)} — сужение мимо предмета", file=sys.stderr)
+                return 2
+            domains = [d for d in all_domains if d in only]
+            skipped = [d for d in all_domains if d not in only]
+        else:
+            domains, skipped = all_domains, []
+        # Перепись ПЕРЕД вердиктом: «ноль находок» обязано быть отличимо от «ноль
+        # осмотренного», а сужение — быть видимым, а не выводимым из тишины.
+        print(f"ОХВАТ: доменов в дескрипторах {len(all_domains)}, "
+              f"измеряется на этом стенде {len(domains)}"
+              + (f"; НЕ развёрнуто здесь ({len(skipped)}): {', '.join(skipped)} — "
+                 f"их измеряет другой шард (полноту держит assert-shard-coverage.py)"
+                 if skipped else ""))
         confirmed: set[str] = set()
         unconfirmed: list[tuple[str, str]] = []
 
@@ -589,6 +624,10 @@ def main(argv: list[str]) -> int:
         # ── ПРЕДМЕТ ─────────────────────────────────────────────────────────
         print("\n== ПРЕДМЕТ: каждый Internal*-метод на внешнем листенере ==")
         isolated, violations, unresolved, inconclusive = 0, [], [], []
+        # Метод НЕ развёрнутого домена из предмета исключается: он «недостижим на
+        # внешнем листенере» просто потому, что его сервиса нет на кластере, и
+        # засчитать это в изоляцию значило бы получить зелёное из отсутствия.
+        rows = [r for r in rows if not only or domain_of(r[0]) in only]
         for pkg, svc, meth in rows:
             method = f"{pkg}.{svc}/{meth}"
             v, d = classify(grpc_probe(addr, method, cacert=ca,

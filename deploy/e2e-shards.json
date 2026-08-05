@@ -40,6 +40,23 @@
     "registry": "registry"
   },
 
+  "_ban6": [
+    "Домены proto, чей внутренний листенер проба ban #6 спрашивает встречным",
+    "контролем. Ядро есть на КАЖДОМ стенде; остальные приходят с компонентом.",
+    "Проба гоняется на КАЖДОМ шарде по своему набору — объединение обязано",
+    "покрывать все домены дерева, и это утверждает assert-shard-coverage.py.",
+    "Домены без внутреннего листенера (access/api/operation/reference) в наборе",
+    "не участвуют: у пробы для них нет предмета."
+  ],
+  "core_ban6_domains": ["iam", "geo", "apigateway"],
+  "gate_ban6_domains": {
+    "vpc": "vpc",
+    "compute": "compute",
+    "kacho-nlb": "loadbalancer",
+    "storage": "storage",
+    "registry": "registry"
+  },
+
   "shards": [
     {
       "id": "vpc",
