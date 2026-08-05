@@ -608,6 +608,23 @@ CASES.append(Case(
                          *save_from_response("j.metadata && j.metadata.securityGroupId", "sgId")],
         ),
         poll_operation_until_done(),
+        # Залп адресует СВЕЖИЙ объект в собственном URL, а не коллекцию в
+        # project-scope, — значит он упирается в окно материализации owner-tuple
+        # и обязан начаться ПОСЛЕ него. Обёртку ставить некуда: залп идёт из
+        # скрипта через pm.sendRequest, шаг ходит на /healthz, и предикат
+        # автообёртки его URL не видит по построению. Поэтому окно пережидает
+        # отдельный шаг — обычное первое чтение своего свежего ресурса, которое
+        # предикат обёртывает сам.
+        #
+        # Без него залп получал отказ ещё на крае: ни одна операция не
+        # создавалась, occResolved оставался пустым, и кейс, рассчитанный на
+        # гонку, краснел с ok=0 conflict=0 — то есть НЕ проверял ничего.
+        # Ослабления здесь нет: утверждения про xmin-OCC ниже не тронуты, а
+        # залп впервые доходит до сервиса.
+        Step(
+            name="await-sg-authorized", method="GET", path="/vpc/v1/securityGroups/{{sgId}}",
+            test_script=[*assert_status(200)],
+        ),
         Step(
             name="burst-update-rules", method="GET", path="/healthz",
             test_script=[

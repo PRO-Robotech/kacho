@@ -30,16 +30,20 @@
 // Гейт несёт проверку СВОЕЙ предпосылки: если ни одного генератора с
 // `retry_until_authorized` в дереве не нашлось, он падает, а не выходит
 // «нулём находок» — «ноль находок» обязано быть отличимо от «ноль прочитанного».
-// Поведение самого предиката (краснеет на инъекции, молчит на четырёх законных
-// близнецах) доказывается отдельно —
-// `services/vpc/tests/newman/scripts/selftest_autowrap.go`-эквивалентом на
-// python: `services/vpc/tests/newman/scripts/selftest_autowrap.py`, шаг CI
-// «предикат обёртки первого доступа (vpc)».
+// Этот гейт утверждает, что предикат ПРОВЯЗАН. Что он ещё и РАБОТАЕТ —
+// отдельное утверждение и отдельная проверка:
+// `services/vpc/tests/newman/scripts/selftest_autowrap.py` (три инъекции
+// настоящего пропуска краснеют, шесть законных близнецов молчат), шаг
+// «предикат обёртки первого доступа (vpc)» в job'е `plan` workflow'а
+// `e2e-newman.yml`. Прежняя редакция этой шапки на такой шаг уже ссылалась,
+// но вызывающего у самопроверки не было ни одного — ссылка вела в пустоту, и
+// проверка, доказывающая способность предиката краснеть, сама не исполнялась.
 package repohygiene
 
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -47,39 +51,31 @@ import (
 func TestOwnFreshReadWrapPredicateWiredInEveryNewmanGenerator(t *testing.T) {
 	root := repoRoot(t)
 
+	// Состав берётся из ИНДЕКСА git, а не обходом диска: под корнем лежат
+	// каталоги, которых в репозитории нет (рабочие копии агентов, отчёты
+	// прогонов), и обход по диску сделал бы вердикт свойством чужого рабочего
+	// каталога — в обе стороны: красный на файле, которого в коммите нет, и
+	// молчание в свежем checkout. Это требование держит соседний гейт
+	// (trackedtree_test.go), и оно нашло здесь ровно этот дефект.
+	tt := newTrackedTree(t, root)
 	var generators []string
-	err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
+	for rel := range tt.files {
+		if filepath.Base(rel) == "gen.py" && strings.Contains(rel, "tests/newman") {
+			generators = append(generators, rel)
 		}
-		if info.IsDir() {
-			switch info.Name() {
-			case ".git", "node_modules", "vendor", "ui-future":
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if info.Name() != "gen.py" || !strings.Contains(path, filepath.Join("tests", "newman")) {
-			return nil
-		}
-		generators = append(generators, path)
-		return nil
-	})
-	if err != nil {
-		t.Fatalf("обход дерева: %v", err)
 	}
+	sort.Strings(generators)
 
 	var withHelper, findings []string
-	for _, g := range generators {
-		b, err := os.ReadFile(g) //nolint:gosec // путь получен обходом дерева репозитория
+	for _, rel := range generators {
+		b, err := os.ReadFile(filepath.Join(root, rel)) // #nosec G304 -- путь получен из индекса git этого модуля
 		if err != nil {
-			t.Fatalf("чтение %s: %v", g, err)
+			t.Fatalf("чтение %s: %v", rel, err)
 		}
 		src := string(b)
 		if !strings.Contains(src, "def retry_until_authorized(") {
 			continue // генератор без полосы видимости — предмета нет
 		}
-		rel, _ := filepath.Rel(root, g)
 		withHelper = append(withHelper, rel)
 
 		hasPredicate := strings.Contains(src, "def _wrap_own_fresh_reads(")

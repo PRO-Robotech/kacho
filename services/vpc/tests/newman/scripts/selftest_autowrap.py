@@ -147,11 +147,106 @@ check("близнец-чужой: id, не рождённый в этом кей
       not wrapped(steps_of(foreign)[0]))
 
 # ---------------------------------------------------------------------------
-# 6. ОБЪЁМ ОСМОТРЕННОГО: «ноль находок» обязано быть отличимо от «ноль прочитанного».
+# 6. ИНЪЕКЦИЯ №2: шаг, у которого успешных исходов НЕСКОЛЬКО.
+#
+#    Уборка своего свежего ресурса часто утверждает не один код, а набор:
+#    «удалилось (200) ЛИБО не удалось из-за состояния (400)». Это по-прежнему
+#    ПОЛОЖИТЕЛЬНЫЙ первый доступ к своему — 403 в наборе НЕТ, то есть отказ
+#    авторизации там исходом не считается и обязан пережидаться так же.
+#    Пока предикат смотрел на буквальное `to.eql(200)`, такие шаги были ему
+#    невидимы по построению: в суите vpc их 77 из 93 записей с набором исходов.
+#    Форма взята с натуры — так записаны упавшие `cleanup-sg` (200|400) и
+#    `cleanup-rt` (200|400|404).
 # ---------------------------------------------------------------------------
+multi = Case(
+    id="SELFTEST-MULTI", title="own fresh cleanup with several accepted outcomes",
+    classes=["CRUD"], priority="P0",
+    steps=[
+        Step(name="create", method="POST", path="/vpc/v1/securityGroups",
+             test_script=[*gen.assert_status(200),
+                          *gen.save_from_response("j.metadata && j.metadata.securityGroupId", "stSgId")]),
+        Step(name="cleanup-sg", method="DELETE", path="/vpc/v1/securityGroups/{{stSgId}}",
+             test_script=["pm.test('cleanup sg 200 or 400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));"]),
+    ],
+)
+mout = steps_of(multi)
+check("инъекция-2: шаг с набором исходов {200,400} на своём свежем — обёрнут", wrapped(mout[1]),
+      "набор успешных исходов сделал шаг невидимым предикату")
+check("инъекция-2: ретрай идёт по 403 И 404 (ни один из них исходом не заявлен)",
+      "[403,404].includes" in "".join(mout[1].test_script).replace(" ", ""),
+      "".join(ln for ln in mout[1].test_script if "includes" in ln))
+
+# ---------------------------------------------------------------------------
+# 7. ИНЪЕКЦИЯ №3: набор исходов СОДЕРЖИТ 404 — по нему ретраить нельзя.
+#    404 здесь заявлен как законный исход («уже нет»), поэтому пережидать надо
+#    ТОЛЬКО 403. Иначе обёртка жгла бы бюджет на исходе, который кейс принимает,
+#    и превращала бы ожидание в ритуал.
+# ---------------------------------------------------------------------------
+multi404 = Case(
+    id="SELFTEST-MULTI-404", title="accepted 404 must not be retried",
+    classes=["CRUD"], priority="P0",
+    steps=[
+        Step(name="create", method="POST", path="/vpc/v1/routeTables",
+             test_script=[*gen.assert_status(200),
+                          *gen.save_from_response("j.metadata && j.metadata.routeTableId", "stRtId")]),
+        Step(name="cleanup-rt", method="DELETE", path="/vpc/v1/routeTables/{{stRtId}}",
+             test_script=["pm.test('cleanup rt (200/400/404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));"]),
+    ],
+)
+m4 = steps_of(multi404)
+body404 = "".join(m4[1].test_script).replace(" ", "")
+check("инъекция-3: шаг с набором {200,400,404} на своём свежем — обёрнут", wrapped(m4[1]))
+check("инъекция-3: ретрай ТОЛЬКО по 403 — заявленный исход 404 не пережидается",
+      "[403].includes" in body404, body404[:160])
+
+# ---------------------------------------------------------------------------
+# 8. ЗАКОННЫЙ БЛИЗНЕЦ №5: набор исходов СОДЕРЖИТ 403 (authz-first толерантность
+#    негатива). Там отказ — заявленный исход, а не окно: обёртка запрещена,
+#    иначе она пережидала бы ровно то, что кейс и проверяет.
+# ---------------------------------------------------------------------------
+authzfirst = Case(
+    id="SELFTEST-AUTHZFIRST", title="403 is an accepted outcome — never wrap",
+    classes=["NEG"], priority="P0",
+    steps=[
+        Step(name="create", method="POST", path="/vpc/v1/networks",
+             test_script=[*gen.assert_status(200),
+                          *gen.save_from_response("j.metadata && j.metadata.networkId", "stNetId")]),
+        Step(name="cross-account-get", method="GET", path="/vpc/v1/networks/{{stNetId}}",
+             test_script=["pm.test('denied', () => pm.expect(pm.response.code).to.be.oneOf([200, 403, 404]));"]),
+    ],
+)
+check("близнец-authz-first: шаг, принимающий 403 исходом, НЕ обёрнут",
+      not wrapped(steps_of(authzfirst)[1]))
+
+# ---------------------------------------------------------------------------
+# 9. ЗАКОННЫЙ БЛИЗНЕЦ №6: набор gRPC-кодов (`j.code`), а не HTTP. Числа там из
+#    другого пространства (5, 9, 10) и на полосу видимости не отображаются —
+#    предикат обязан их не читать вовсе.
+# ---------------------------------------------------------------------------
+grpccodes = Case(
+    id="SELFTEST-GRPCCODES", title="grpc code set is not an http outcome set",
+    classes=["NEG"], priority="P0",
+    steps=[
+        Step(name="create", method="POST", path="/vpc/v1/subnets",
+             test_script=[*gen.assert_status(200),
+                          *gen.save_from_response("j.metadata && j.metadata.subnetId", "stSub2Id")]),
+        Step(name="del-conflict", method="DELETE", path="/vpc/v1/subnets/{{stSub2Id}}",
+             test_script=["pm.test('grpc 5 or 9', () => {",
+                          "  const j = pm.response.json();",
+                          "  pm.expect(j.code, JSON.stringify(j)).to.be.oneOf([5, 9]);",
+                          "});"]),
+    ],
+)
+check("близнец-grpc: набор кодов ответа (не HTTP) не делает шаг положительным",
+      not wrapped(steps_of(grpccodes)[1]))
+
+# ---------------------------------------------------------------------------
+# 10. ОБЪЁМ ОСМОТРЕННОГО: «ноль находок» обязано быть отличимо от «ноль прочитанного».
+# ---------------------------------------------------------------------------
+_ALL = (injected, neg, poll, manual, foreign, multi, multi404, authzfirst, grpccodes)
 print()
-print(f"осмотрено кейсов самопроверки: 5, шагов: "
-      f"{sum(len(c.steps) for c in (injected, neg, poll, manual, foreign))}")
+print(f"осмотрено кейсов самопроверки: {len(_ALL)}, шагов: "
+      f"{sum(len(c.steps) for c in _ALL)}")
 
 if FAILURES:
     print(f"\nSELFTEST FAIL: {len(FAILURES)} — " + "; ".join(FAILURES), file=sys.stderr)
