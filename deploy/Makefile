@@ -289,6 +289,19 @@ check-mtls-off-complete:
 # краснота вылезла позже и совсем в другом месте.
 # Тот же класс, что near-miss 2026-07-15 (см. guard-kind-context ниже): упавший
 # `use-context` не прервал цепочку, и стенд поехал на ПРОД.
+#
+# И `set -e` ЗАКРЫВАЕТ НЕ ВСЁ: он не прерывает выполнение, когда падает команда
+# ВНУТРИ `&&`-списка и после неё есть ещё одно звено — правило bash освобождает от
+# выхода все звенья, кроме последнего. Проверяется однострочником:
+#   bash -c 'set -e; false && echo x && echo y; echo ПОСЛЕ'  → печатает ПОСЛЕ, rc=0.
+# Наблюдалось здесь 2026-08-05 на подкачке подчартов: `helm dep update` не смог
+# скачать зависимость (сетевой отказ), выход не сработал — и цель пошла дальше,
+# оставшись в helm/umbrella, потому что возврат `cd ../..` был третьим звеном и не
+# исполнился. Следующая команда упала с `path "./helm/umbrella" not found` —
+# сообщением, которое уводит от причины: каталог на месте, не на месте был рабочий
+# каталог. Поэтому такие пары пишутся ПОДОБОЛОЧКОЙ `( cd X && cmd )`: её отказ —
+# отказ statement-уровня (set -e срабатывает в точке причины), а рабочий каталог
+# не может утечь в следующие звенья. Та же форма уже стояла в helm-manifest-test.
 dev-up: preflight
 	@set -e; start=$$(date +%s); \
 	grep -qx "$(CLUSTER_NAME)" <<<"$$(kind get clusters)" || ./kind/create-cluster.sh; \
@@ -307,7 +320,7 @@ dev-up: preflight
 	  --overwrite >/dev/null; \
 	$(MAKE) build-services; \
 	./scripts/gen-tls-cert.sh; \
-	cd helm/umbrella && helm dep update >/dev/null && cd ../..; \
+	( cd helm/umbrella && helm dep update >/dev/null ); \
 	echo "=== helm phase 1: cert-manager + control-plane (insecure) ==="; \
 	helm upgrade --install kacho-umbrella ./helm/umbrella -n kacho --create-namespace \
 	  -f ./helm/umbrella/values.dev.yaml \
@@ -578,7 +591,8 @@ admin-hop-injection: guard-kind-context
 	@bash scripts/inject-admin-hop-defects.sh
 
 helm-lint:
-	cd helm/umbrella && helm dep update >/dev/null && helm lint -f values.dev.yaml
+	( cd helm/umbrella && helm dep update >/dev/null )
+	cd helm/umbrella && helm lint -f values.dev.yaml
 
 # Offline helm manifest-assertion suite (tests/helm/). Asserts kept-stack wiring
 # against the rendered umbrella — e.g. hydra-jwks-url-test.sh checks that
@@ -818,7 +832,7 @@ endif
 		: ; \
 	else \
 		d=$$(test "$(SVC)" = api-gateway && echo gateway || echo services/$(SVC)); \
-		cd .. && docker build -f $$d/Dockerfile $(IMAGE_LABELS) -t kacho-$(SVC):dev .; \
+		( cd .. && docker build -f $$d/Dockerfile $(IMAGE_LABELS) -t kacho-$(SVC):dev . ); \
 	fi && \
 	kind load docker-image kacho-$(SVC):dev --name $(CLUSTER_NAME) && \
 	kubectl rollout restart -n kacho deployment/$$DEPLOY_NAME
