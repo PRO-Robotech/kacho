@@ -175,7 +175,7 @@ func collectMakeInvocations(t *testing.T, root string) []makeInvocation {
 					continue
 				}
 				where := e.Name() + " job " + jobName + " step " + itoa(i)
-				script := stripShellComments(step.Run)
+				script := stripShellComments(maskExpressions(joinContinuations(step.Run)))
 
 				base := step.WorkingDirectory
 				if base == "" {
@@ -210,6 +210,40 @@ func collectMakeInvocations(t *testing.T, root string) []makeInvocation {
 		t.Fatal("no workflow files read — the walk found nothing, so it asserted nothing")
 	}
 	return out
+}
+
+// joinContinuations splices shell line-continuations (a trailing backslash) into
+// one logical line BEFORE any command is read.
+//
+// WHY. The extractor takes the tokens that follow `make` up to the end of the
+// line. A multi-line invocation — `make dev-up \` then its arguments — therefore
+// yielded the target `\`, and the gate reported that the Makefile declares no
+// such target. The Makefile was fine; the reader was not, and its verdict was a
+// property of formatting rather than of the tree.
+//
+// Continuations are spliced the way the shell splices them (backslash + newline
+// vanish, the next line continues the same command), so what the gate reads is
+// what CI executes.
+func joinContinuations(script string) string {
+	return strings.ReplaceAll(script, "\\\n", " ")
+}
+
+// maskExpressions collapses a GitHub expression into ONE space-free token before
+// the command is split into fields.
+//
+// WHY. `${{ matrix.shard.images }}` carries spaces, so field-splitting tore it
+// into `${{`, `matrix.shard.images`, `}}` — and each fragment was then read as a
+// make target. The gate reported three targets the Makefile does not declare, all
+// three invented by its own reader: the expression is substituted by the runner
+// BEFORE the shell ever sees it, and never reaches make as separate words.
+//
+// It is masked rather than expanded on purpose: its value is decided at run time,
+// so any expansion here would be a guess. One opaque token is honest — the reader
+// says «a value goes here», not «this value goes here».
+var ghExprRe = regexp.MustCompile(`\$\{\{[^}]*\}\}`)
+
+func maskExpressions(script string) string {
+	return ghExprRe.ReplaceAllString(script, "GH_EXPR")
 }
 
 // stripShellComments drops whole-line shell comments, so a command merely
