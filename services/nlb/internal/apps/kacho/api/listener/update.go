@@ -86,7 +86,7 @@ func (u *UpdateUseCase) syncRegister(ctx context.Context, intent domain.FGARegis
 		return
 	}
 	if err := u.registrar.Register(ctx, intent); err != nil {
-		u.logger.Warn("Listener.Update sync mirror registration incomplete; register-drainer will reconcile",
+		loggerOrDiscard(u.logger).Warn("Listener.Update sync mirror registration incomplete; register-drainer will reconcile",
 			"err", err, "listener_id", intent.ResourceID)
 	}
 }
