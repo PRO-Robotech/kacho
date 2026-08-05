@@ -66,6 +66,12 @@ var hideExistenceNotFoundFormats = map[string]string{
 	"vpc_security_group":    "Security group SecurityGroup.Id(value=%s) not found",
 	"vpc_gateway":           "Gateway %s not found",
 	"vpc_network_interface": "Network interface %s not found",
+	// storage — services/storage/internal/repo/pg/{volume,snapshot,image}_repo.go.
+	// Reachable since storage's object-self reads moved off the tier onto `v_get`:
+	// a read refused here must read exactly like the owner's own miss.
+	"storage_volume":   "Volume %s not found",
+	"storage_snapshot": "Snapshot %s not found",
+	"storage_image":    "Image %s not found",
 	// nlb
 	"nlb_network_load_balancer": "NetworkLoadBalancer %s not found",
 	"nlb_listener":              "Listener %s not found",

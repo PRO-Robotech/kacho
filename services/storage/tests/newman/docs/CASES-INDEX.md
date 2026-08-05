@@ -177,8 +177,11 @@ failed-op + контракт-тон not-found; Cancel: вся поверхнос
 
 ## Public-authz (`cases/authz.py`) — INV-10 (listauthz + object-scoped анти-BOLA)
 
-`# requires` authz-fixture стенд (см. шапку `cases/authz.py`). Denied → 403 / code 7 /
-`permission denied` (storage раскрывает PERMISSION_DENIED, existence-non-revealing).
+`# requires` authz-fixture стенд (см. шапку `cases/authz.py`). Отказ на МУТАЦИИ и на
+СПИСКЕ → 403 / code 7 / `permission denied`. Отказ на одиночном ЧТЕНИИ
+(`<Resource>.Get`) → **404 текстом владельца**, байт в байт как настоящий промах
+(`Volume <id> not found`): чтение гейтится глаголом `v_get` на самом объекте, и
+различимый текст отказа был бы оракулом существования.
 
 | case-id | CS1 | класс |
 |---|---|---|
@@ -194,6 +197,17 @@ failed-op + контракт-тон not-found; Cancel: вся поверхнос
 | AUTHZ-VOL-LST-OVERSHOW-LEAK-GUARD | CS1-S1-13 | leak-guard (per-object listauthz **внутри** проекта) |
 | AUTHZ-SNP-LST-OVERSHOW-LEAK-GUARD | CS1-S3-07 | leak-guard (per-object listauthz **внутри** проекта) |
 | AUTHZ-IMG-LST-OVERSHOW-LEAK-GUARD | CS1-S2-* | leak-guard (per-object listauthz **внутри** проекта) |
+| AUTHZ-VOL-VERB-CUT-NOT-TIER | CS1-S1-14 | verb-cut (выдача не шире названного: `v_list` да, `v_get`/`v_update`/`v_delete` нет) |
+
+`AUTHZ-VOL-VERB-CUT-NOT-TIER` закрывает разрез, которого до перевода object-self RPC
+storage на глаголы не существовало: пока эти RPC спрашивали ЯРУС, выдача, назвавшая
+`create` и `list`, открывала на объекте ещё и чтение, правку и удаление — реконсайлер
+кладёт рядом с `v_*` ярусный кортеж, выведенный из класса глаголов, а модель объявляет
+`editor ⇒ viewer`. Предъявитель — `jwtStorageCreateListOnlyA` (узкая роль
+`storage.volumes {create,list}` @ projectA1, посев `ps_storage_crlist_*`).
+Положительная половина идёт ПЕРВОЙ и обязательна: `ListOperations` (`v_list`) обязан
+пройти, иначе три отказа неотличимы от недоехавшей привязки. Парный контроль на ТОМ ЖЕ
+объекте — полноправный `jwtProjectEditorA` правит его успешно.
 
 Три `*-LST-OVERSHOW-LEAK-GUARD` закрывают измерение, которое до них было ЯВНОЙ дырой
 (шапка `cases/authz.py`): набор проверял только кросс-**проектную** изоляцию, поэтому

@@ -49,7 +49,7 @@ func TestFGAFilter_MaxPageWithinBudget_UnderLoadedPeerLatency(t *testing.T) {
 		ids = append(ids, id)
 		switch i % 3 {
 		case 0: // viewer-видимый — единственное отношение видимости
-			cli.allow("viewer", id)
+			cli.allow("v_get", id)
 			want = append(want, id)
 		case 1: // только v_list: Get отказал бы, значит и в списке его нет
 			cli.allow("v_list", id)
@@ -151,7 +151,7 @@ func TestFGAFilter_SingleBatchStaysSerial(t *testing.T) {
 	for i := 0; i < maxBatchCheckSize; i++ {
 		id := fmt.Sprintf("vol%017d", i)
 		ids = append(ids, id)
-		cli.allow("viewer", id)
+		cli.allow("v_get", id)
 	}
 	f := NewFGAFilter(cli, DefaultConfig())
 

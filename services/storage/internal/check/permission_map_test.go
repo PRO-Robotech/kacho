@@ -18,14 +18,17 @@ import (
 // registry Repository-overlay. Каждый served RPC ОБЯЗАН быть в map (fail-closed).
 func TestPermissionMap_ImageService_Mapped(t *testing.T) {
 	m := check.PermissionMap()
-	// proto image_service.proto: Get/List/ListOperations=viewer, Create/Update/Delete=editor.
+	// proto image_service.proto. Ось — SCOPE, а не глагол в имени метода: то, что
+	// адресует САМ образ, спрашивает его глагол; то, что анкерится на родительском
+	// проекте, спрашивает ярус проекта (`editor` — писать в него, `viewer` — читать
+	// его содержимое).
 	want := map[string]string{
-		"/kacho.cloud.storage.v1.ImageService/Get":            "viewer",
+		"/kacho.cloud.storage.v1.ImageService/Get":            "v_get",
 		"/kacho.cloud.storage.v1.ImageService/List":           "viewer",
-		"/kacho.cloud.storage.v1.ImageService/ListOperations": "viewer",
+		"/kacho.cloud.storage.v1.ImageService/ListOperations": "v_list",
 		"/kacho.cloud.storage.v1.ImageService/Create":         "editor",
-		"/kacho.cloud.storage.v1.ImageService/Update":         "editor",
-		"/kacho.cloud.storage.v1.ImageService/Delete":         "editor",
+		"/kacho.cloud.storage.v1.ImageService/Update":         "v_update",
+		"/kacho.cloud.storage.v1.ImageService/Delete":         "v_delete",
 	}
 	for fullMethod, rel := range want {
 		entry, ok := m[fullMethod]

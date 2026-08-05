@@ -114,7 +114,7 @@ func (f *fakeAuthorizeClient) BatchCheck(ctx context.Context, in *iamv1.BatchAut
 // Страница фильтруется per-object, порядок входа (курсора) сохраняется, а запрос
 // несёт явный required_relation и только id страницы.
 func TestFGAFilter_FiltersPageAndPreservesOrder(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "c", "a")
+	cli := newFakeAuthorizeClient().allow("v_get", "c", "a")
 	f := NewFGAFilter(cli, DefaultConfig())
 
 	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x",
@@ -127,17 +127,17 @@ func TestFGAFilter_FiltersPageAndPreservesOrder(t *testing.T) {
 	assert.Equal(t, "user:usr_x", cli.gotReqs[0].GetSubject())
 	assert.Equal(t, ResourceTypeVolume, cli.gotReqs[0].GetResource().GetType())
 	assert.Equal(t, ActionVolumeList, cli.gotReqs[0].GetAction())
-	assert.Equal(t, "viewer", cli.gotReqs[0].GetRequiredRelation(),
+	assert.Equal(t, "v_get", cli.gotReqs[0].GetRequiredRelation(),
 		"the decision must ride an explicit required_relation, not a server-side verb derivation")
 }
 
-// Отказ viewer'а — окончательный: страница не добирается вторым, более широким
-// отношением. `v_list` без резолвящегося `viewer` — это не выданный доступ, а
-// недоматериализованный/недоотозванный грант, и показывать по нему нечего: Get на
-// этот же объект гейтится `viewer`'ом и ответил бы отказом (см.
+// Отказ отношения чтения — окончательный: страница не добирается вторым, более
+// широким отношением. `v_list` без `v_get` — это не «видно, но не читается», а
+// вложенный список (операции ресурса), и членством в странице ПОЛНЫХ строк он не
+// является: Get на этот же объект гейтится `v_get` и ответил бы отказом (см.
 // filter_get_parity_test.go).
-func TestFGAFilter_ViewerDenialIsFinal(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "a").allow("v_list", "b")
+func TestFGAFilter_ReadRelationDenialIsFinal(t *testing.T) {
+	cli := newFakeAuthorizeClient().allow("v_get", "a").allow("v_list", "b")
 	f := NewFGAFilter(cli, DefaultConfig())
 
 	got, err := f.FilterVisibleIDs(context.Background(), "user:usr_x",
@@ -148,7 +148,7 @@ func TestFGAFilter_ViewerDenialIsFinal(t *testing.T) {
 
 // Пустой subject — fail-closed Unauthenticated, НИКОГДА не passthrough.
 func TestFGAFilter_EmptySubjectFailsClosed(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "a")
+	cli := newFakeAuthorizeClient().allow("v_get", "a")
 	f := NewFGAFilter(cli, DefaultConfig())
 
 	got, err := f.FilterVisibleIDs(context.Background(), "",
@@ -189,7 +189,7 @@ func TestFGAFilter_FailOpenReturnsUnfilteredPage(t *testing.T) {
 // Положительный вердикт кешируется, отрицательный — никогда (иначе revoke залипал
 // бы на TTL, а свежесозданный ресурс был бы невидим весь TTL).
 func TestFGAFilter_CachesOnlyPositiveVerdicts(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "a")
+	cli := newFakeAuthorizeClient().allow("v_get", "a")
 	f := NewFGAFilter(cli, DefaultConfig())
 
 	for i := 0; i < 3; i++ {
@@ -209,7 +209,7 @@ func TestFGAFilter_CachesOnlyPositiveVerdicts(t *testing.T) {
 
 // TTL истекает по инъектированным часам (детерминированно, без time.Sleep).
 func TestFGAFilter_CacheEntryExpires(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "a")
+	cli := newFakeAuthorizeClient().allow("v_get", "a")
 	f := NewFGAFilter(cli, DefaultConfig())
 	clock := time.Now()
 	f.now = func() time.Time { return clock }
@@ -234,7 +234,7 @@ func TestFGAFilter_CacheIsBoundedLRU(t *testing.T) {
 	cfg.CacheMaxEntries = 2
 	f := NewFGAFilter(cli, cfg)
 
-	cli.allow("viewer", "a", "b", "c")
+	cli.allow("v_get", "a", "b", "c")
 	for _, id := range []string{"a", "b", "c"} {
 		_, err := f.FilterVisibleIDs(context.Background(), "user:usr_x",
 			ResourceTypeVolume, ActionVolumeList, []string{id})
@@ -291,7 +291,7 @@ func TestSubjectFromPrincipal(t *testing.T) {
 // FilterVisiblePage без caller-identity отдаёт ПУСТУЮ страницу и не ходит в iam:
 // bypass на пустом subject'е — это и есть over-show-утечка.
 func TestFilterVisiblePage_NoSubjectYieldsEmptyPageWithoutIAM(t *testing.T) {
-	cli := newFakeAuthorizeClient().allow("viewer", "a")
+	cli := newFakeAuthorizeClient().allow("v_get", "a")
 	f := NewFGAFilter(cli, DefaultConfig())
 
 	got, err := FilterVisiblePage(context.Background(), f,

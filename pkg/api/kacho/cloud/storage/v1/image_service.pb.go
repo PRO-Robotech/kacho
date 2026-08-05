@@ -754,10 +754,10 @@ const file_kacho_cloud_storage_v1_image_service_proto_rawDesc = "" +
 	"\n" +
 	"operations\x18\x01 \x03(\v2 .kacho.cloud.operation.OperationR\n" +
 	"operations\x12&\n" +
-	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xb5\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken2\xb8\n" +
 	"\n" +
-	"\fImageService\x12\xb6\x01\n" +
-	"\x03Get\x12'.kacho.cloud.storage.v1.GetImageRequest\x1a\x1d.kacho.cloud.storage.v1.Image\"g\x8a\xb5\x18\x12storage.images.get\x92\xb5\x18\x06viewer\x9a\xb5\x18\x19\n" +
+	"\fImageService\x12\xb5\x01\n" +
+	"\x03Get\x12'.kacho.cloud.storage.v1.GetImageRequest\x1a\x1d.kacho.cloud.storage.v1.Image\"f\x8a\xb5\x18\x12storage.images.get\x92\xb5\x18\x05v_get\x9a\xb5\x18\x19\n" +
 	"\rstorage_image\x12\bimage_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02\x1f\x12\x1d/storage/v1/images/{image_id}\x12\xb8\x01\n" +
 	"\x04List\x12).kacho.cloud.storage.v1.ListImagesRequest\x1a*.kacho.cloud.storage.v1.ListImagesResponse\"Y\x8a\xb5\x18\x13storage.images.list\x92\xb5\x18\x06viewer\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
@@ -765,14 +765,14 @@ const file_kacho_cloud_storage_v1_image_service_proto_rawDesc = "" +
 	"\x06Create\x12*.kacho.cloud.storage.v1.CreateImageRequest\x1a .kacho.cloud.operation.Operation\"~\x8a\xb5\x18\x15storage.images.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\xb2\xd2*\x1c\n" +
-	"\x13CreateImageMetadata\x12\x05Image\x82\xd3\xe4\x93\x02\x17:\x01*\"\x12/storage/v1/images\x12\xe6\x01\n" +
-	"\x06Update\x12*.kacho.cloud.storage.v1.UpdateImageRequest\x1a .kacho.cloud.operation.Operation\"\x8d\x01\x8a\xb5\x18\x15storage.images.update\x92\xb5\x18\x06editor\x9a\xb5\x18\x19\n" +
+	"\x13CreateImageMetadata\x12\x05Image\x82\xd3\xe4\x93\x02\x17:\x01*\"\x12/storage/v1/images\x12\xe8\x01\n" +
+	"\x06Update\x12*.kacho.cloud.storage.v1.UpdateImageRequest\x1a .kacho.cloud.operation.Operation\"\x8f\x01\x8a\xb5\x18\x15storage.images.update\x92\xb5\x18\bv_update\x9a\xb5\x18\x19\n" +
 	"\rstorage_image\x12\bimage_id\xa2\xb5\x18\x011\xb2\xd2*\x1c\n" +
-	"\x13UpdateImageMetadata\x12\x05Image\x82\xd3\xe4\x93\x02\":\x01*2\x1d/storage/v1/images/{image_id}\x12\xf3\x01\n" +
-	"\x06Delete\x12*.kacho.cloud.storage.v1.DeleteImageRequest\x1a .kacho.cloud.operation.Operation\"\x9a\x01\x8a\xb5\x18\x15storage.images.delete\x92\xb5\x18\x06editor\x9a\xb5\x18\x19\n" +
+	"\x13UpdateImageMetadata\x12\x05Image\x82\xd3\xe4\x93\x02\":\x01*2\x1d/storage/v1/images/{image_id}\x12\xf5\x01\n" +
+	"\x06Delete\x12*.kacho.cloud.storage.v1.DeleteImageRequest\x1a .kacho.cloud.operation.Operation\"\x9c\x01\x8a\xb5\x18\x15storage.images.delete\x92\xb5\x18\bv_delete\x9a\xb5\x18\x19\n" +
 	"\rstorage_image\x12\bimage_id\xa2\xb5\x18\x011\xb2\xd2*,\n" +
 	"\x13DeleteImageMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02\x1f*\x1d/storage/v1/images/{image_id}\x12\xf8\x01\n" +
-	"\x0eListOperations\x122.kacho.cloud.storage.v1.ListImageOperationsRequest\x1a3.kacho.cloud.storage.v1.ListImageOperationsResponse\"}\x8a\xb5\x18\x1dstorage.images.listOperations\x92\xb5\x18\x06viewer\x9a\xb5\x18\x19\n" +
+	"\x0eListOperations\x122.kacho.cloud.storage.v1.ListImageOperationsRequest\x1a3.kacho.cloud.storage.v1.ListImageOperationsResponse\"}\x8a\xb5\x18\x1dstorage.images.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18\x19\n" +
 	"\rstorage_image\x12\bimage_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02*\x12(/storage/v1/images/{image_id}/operationsBHZFgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1;storagev1b\x06proto3"
 
 var (

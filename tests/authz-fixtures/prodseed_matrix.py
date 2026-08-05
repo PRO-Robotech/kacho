@@ -543,6 +543,22 @@ def seed() -> dict:
                           ["targetGroups"], ["update"])
     _, tok_crTargetMgr = subject(acctA, f"ps-cr-tm-{RID}",
                                  [(role_tm, P, projA1)] if role_tm else [])
+    # Роль, называющая РОВНО `create` и `list` на storage.volumes — предъявитель, на
+    # котором видно, что выдача не шире названного. Ни одна ярусная роль этого
+    # различия не делает: `edit` несёт get/list/update (+delete), `view` — get/list,
+    # и ни одна не позволяет спросить «перечислять можно, читать и менять — нет».
+    #
+    # Почему в роли ДВА глагола, а не один. Реконсайлер материализует на каждый
+    # объект в области привязки названные глаголы (`v_create`, `v_list`) И ярусный
+    # кортеж, выведенный из КЛАССА глаголов (`create` — запись ⇒ `editor`). `v_list`
+    # нужен как ПОЛОЖИТЕЛЬНАЯ половина: он гейтит object-self `ListOperations`,
+    # поэтому по нему видно, что материализация до этого объекта дошла. Без него
+    # «отказано на Get/Update/Delete» было бы неотличимо от «привязка не доехала
+    # вовсе» — отрицание зеленело бы на сломанной фикстуре.
+    role_storage_creator = custom_role(acctA, f"ps_storage_crlist_{RID}", "storage",
+                                       ["volumes"], ["create", "list"])
+    sva_storcr, tok_storageCreatorA = subject(acctA, f"ps-stor-cl-{RID}",
+                                              [(role_storage_creator, P, projA1)] if role_storage_creator else [])
     _, tok_adminA = subject(acctA, f"ps-adm-a-{RID}", [(ROLE_ADMIN, A, acctA)])
     _, tok_adminB = subject(acctB, f"ps-adm-b-{RID}", [(ROLE_ADMIN, A, acctB)])
     # The id is KEPT, not discarded. A suite that binds a role to a subject and then
@@ -660,6 +676,9 @@ def seed() -> dict:
         # "targetManager may addTargets" could only ever see 403, so the verb its role
         # exists to grant was never once exercised.
         "jwtCustomRoleTargetManager": tok_crTargetMgr,
+        # storage.volumes {create,list} @ A1 и БОЛЬШЕ НИЧЕГО — предъявитель разреза
+        # «глагол, а не ярус» (cases/authz.py, AUTHZ-VOL-VERB-*)
+        "jwtStorageCreateListOnlyA": tok_storageCreatorA,
         # ids
         "accountAId": acctA,
         "accountBId": acctB,
@@ -672,6 +691,7 @@ def seed() -> dict:
         "svaAId": sva_saA,
         "svaNoGrantId": sva_nogrant,
         "svaPureNoGrantId": sva_purenob,
+        "svaStorageCreateListOnlyId": sva_storcr,
         # Принципал, стоящий за `jwtInvitee`. Публикуется затем, чтобы кейс, который
         # ЧИТАЕТ этим токеном, имел чем связать привязку. См. PRINCIPAL_PAIRINGS.
         "svaInviteeId": sva_invitee,

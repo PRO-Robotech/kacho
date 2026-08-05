@@ -24,6 +24,7 @@ import (
 //	iam       services/iam/internal/repo/kacho/pg/*.go        (shared.MapRepoErr → iamerr.StripSentinel)
 //	compute   services/compute/internal/repo/instance_repo.go  (service.mapRepoErr → stripSentinel)
 //	vpc       services/vpc/internal/repo/kacho/pg/*.go
+//	storage   services/storage/internal/repo/pg/*.go          (serviceerr strip)
 //	nlb       services/nlb/internal/repo/kacho/pg/*.go        (shared.StripSentinel)
 //	registry  services/registry/internal/repo/kacho/pg/errmap.go    (wrapPgErr, resource "Registry")
 var hideExistenceReachableTypes = map[string]string{
@@ -46,6 +47,12 @@ var hideExistenceReachableTypes = map[string]string{
 	"vpc_security_group":    "Security group SecurityGroup.Id(value=%s) not found",
 	"vpc_gateway":           "Gateway %s not found",
 	"vpc_network_interface": "Network interface %s not found",
+	// storage — services/storage/internal/repo/pg/*.go (serviceerr strips the
+	// sentinel prefix, so the repo format is the wire text). Reachable since
+	// storage's object-self reads moved from the tier onto `v_get`.
+	"storage_volume":   "Volume %s not found",   // volume_repo.go
+	"storage_snapshot": "Snapshot %s not found", // snapshot_repo.go
+	"storage_image":    "Image %s not found",    // image_repo.go
 	// nlb — services/nlb/internal/repo/kacho/pg/*.go
 	"nlb_network_load_balancer": "NetworkLoadBalancer %s not found", // load_balancer_repo.go
 	"nlb_listener":              "Listener %s not found",            // listener_repo.go

@@ -6,9 +6,11 @@
 Публичные VolumeService/SnapshotService (:9090) — НЕ «read = всем можно». Каждый
 public-RPC проходит per-RPC InternalIAMService.Check с proto-scope_extractor:
   - object-scoped (анти-BOLA): Volume.Get/Update/Delete → {storage_volume, volume_id};
-    Snapshot.Get/Update/Delete → {storage_snapshot, snapshot_id}. Caller без
-    viewer(read)/editor(мутация) на проект ЦЕЛЕВОГО объекта → PERMISSION_DENIED
-    (existence-non-revealing — тот же `permission denied`, есть цель или нет; §0.2).
+    Snapshot.Get/Update/Delete → {storage_snapshot, snapshot_id}. Отношение — ГЛАГОЛ
+    этого объекта (`v_get`/`v_update`/`v_delete`), не ярус: ярусный кортеж пишется на
+    каждый материализованный объект и выводится из класса глаголов выдачи, поэтому на
+    ярусе «вправе создавать» читалось как «вправе читать, менять и удалять». Caller
+    без нужного глагола → отказ: 403 на мутации, 404-как-у-владельца на чтении.
   - list-scoped + result-filter (listauthz): Volume.List/Snapshot.List → {project,
     project_id}. Caller без viewer на запрошенный projectId → PERMISSION_DENIED;
     при наличии — результат отфильтрован listauthz (нет кросс-проектной утечки).
@@ -43,9 +45,14 @@ tools/audit-list-filter.sh.
     прогоном account→project containment делает его транзиторно авторизованным →
     сторож падал бы от загрязнения фикстуры, а не от утечки (kacho-iam#276).
 
-Storage-контракт (отличие от compute hide-existence): denied → 403 / code 7 /
-`permission denied` (НЕ 404 — §0.2, storage раскрывает PERMISSION_DENIED, но не
-существование цели). Assert — behaviour-level (код + фикс. текст).
+Storage-контракт отказа. Мутации и списки — 403 / code 7 / `permission denied`.
+Одиночное ЧТЕНИЕ (`<Resource>.Get`) — НЕ 403: оно гейтится глаголом `v_get` на самом
+объекте, а отказ на таком чтении край отдаёт как 404 с текстом ВЛАДЕЛЬЦА, байт в байт
+совпадающим с настоящим промахом (`Volume <id> not found`). Различимый текст здесь и
+был бы оракулом существования: по нему отличают «не твоё» от «нет такого». Прежняя
+редакция этой шапки объявляла для storage 403 на всех отказах и ссылалась на §0.2 —
+это описывало ярусный гейт, снятый вместе с переводом object-self RPC на глаголы.
+Assert — behaviour-level (код + точное сообщение).
 
 # requires: authz-fixture стенд (authz enforced, НЕ dev-passthrough) с identity
 # `jwtProjectAdminA1` (alice), авторизованной на projectA1Id и НЕ на projectB1Id.
@@ -62,6 +69,29 @@ SNP = "/storage/v1/snapshots"
 IMG = "/storage/v1/images"
 
 _ALICE = "jwtProjectAdminA1"  # authorized on projectA1Id, NOT on projectB1Id
+
+
+def _deny_hidden(case_id, resource, id_var):
+    """Отказ на одиночном ЧТЕНИИ: 404 с текстом ВЛАДЕЛЬЦА, байт в байт.
+
+    Утверждается ПАРА (код + точный текст), а не один код. Текст здесь и есть предмет:
+    он обязан совпасть с тем, что тот же путь отдаёт на НАСТОЯЩЕМ промахе — это
+    зафиксировано отдельным кейсом того же прогона (VOL-GET-NEG-NOTFOUND /
+    SNP-GET-NEG-NOTFOUND, cases/{volume,snapshot}.py, тот же `<Resource> <id> not
+    found`). Любое расхождение — оракул: по нему отличают «не твоё» от «нет такого».
+    """
+    return [
+        f"pm.test('[{case_id}] DENY-as-MISS: status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(404));",
+        "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+        f"pm.test('[{case_id}] DENY-as-MISS: grpc code 5 (NOT_FOUND)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
+        f"pm.test('[{case_id}] DENY-as-MISS: текст владельца, байт в байт', () => "
+        f"pm.expect((j && j.message) || '', JSON.stringify(j)).to.equal('{resource} ' + pm.environment.get('{id_var}') + ' not found'));",
+        f"pm.test('[{case_id}] отказ не называет ни прав, ни субъекта', () => {{",
+        "  const m = ((j && j.message) || '').toLowerCase();",
+        "  pm.expect(m, 'отказ, отличимый от промаха, и есть оракул').to.not.contain('permission');",
+        "  pm.expect(m).to.not.contain('denied');",
+        "});",
+    ]
 
 
 def _deny(case_id):
@@ -108,11 +138,12 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="AUTHZ-VOL-GET-CROSS-DENY",
-    title="[INV-10] alice Get чужого volume (scope {storage_volume,volume_id}) → 403 PERMISSION_DENIED (анти-BOLA, existence-non-revealing)",
+    title="[INV-10] alice Get чужого volume (scope {storage_volume,volume_id}) → 404 текстом владельца, неотличимо от промаха (анти-BOLA)",
     classes=["AUTHZ", "SEC", "NEG"], priority="P0",
     # verifies CS1-S1-14
     steps=[Step(name="get-cross", method="GET", path=f"{VOL}/{{{{garbageStorageId}}}}",
-                auth=_ALICE, test_script=_deny("AUTHZ-VOL-GET-CROSS-DENY"))],
+                auth=_ALICE,
+                test_script=_deny_hidden("AUTHZ-VOL-GET-CROSS-DENY", "Volume", "garbageStorageId"))],
 ))
 
 CASES.append(Case(
@@ -153,11 +184,12 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="AUTHZ-SNP-GET-CROSS-DENY",
-    title="[INV-10] alice Get чужого snapshot (scope {storage_snapshot,snapshot_id}) → 403 PERMISSION_DENIED (анти-BOLA)",
+    title="[INV-10] alice Get чужого snapshot (scope {storage_snapshot,snapshot_id}) → 404 текстом владельца, неотличимо от промаха (анти-BOLA)",
     classes=["AUTHZ", "SEC", "NEG"], priority="P0",
     # verifies CS1-S3-08
     steps=[Step(name="snp-get-cross", method="GET", path=f"{SNP}/{{{{garbageSnapshotId}}}}",
-                auth=_ALICE, test_script=_deny("AUTHZ-SNP-GET-CROSS-DENY"))],
+                auth=_ALICE,
+                test_script=_deny_hidden("AUTHZ-SNP-GET-CROSS-DENY", "Snapshot", "garbageSnapshotId"))],
 ))
 
 CASES.append(Case(
@@ -351,5 +383,113 @@ CASES.append(Case(
                                         "images", "Image")),
         *_delete(IMG, "leakImageId", "cleanup-image"),
         *_delete(VOL, "leakImgSrcVolumeId", "cleanup-img-src-vol"),
+    ],
+))
+
+
+# ---------------------------------------------------------------------------
+# Разрез «глагол, а не ярус» — выдача не шире названного.
+#
+# ПРЕДМЕТ. Публичные object-self RPC storage гейтятся ГЛАГОЛОМ своего объекта
+# (`v_get`/`v_list`/`v_update`/`v_delete`), а не ярусом. Разница не косметическая:
+# реконсайлер IAM пишет на КАЖДЫЙ материализованный объект, помимо `v_*`, ярусный
+# кортеж, и ярус выводится из КЛАССА глаголов выдачи — `create` относится к классу
+# записи, значит ярус `editor`, а модель объявляет `editor ⇒ viewer`. Пока эти RPC
+# спрашивали ярус, выдача, назвавшая `create` и `list`, открывала на объекте ещё и
+# чтение, правку и удаление.
+#
+# ПРЕДЪЯВИТЕЛЬ. `jwtStorageCreateListOnlyA` — служебная учётка с ОДНОЙ узкой ролью
+# `storage.volumes {create,list}`, привязанной к projectA1 (= проект сюиты). Роль
+# заведена посевом (tests/authz-fixtures/prodseed_matrix.py, `ps_storage_crlist_*`),
+# и её принципал объявлен парой к токену (principal_pairings.py), иначе привязка
+# именовала бы одного субъекта, а запрос приходил бы от другого — и кейс сдавался бы
+# таймаутом материализации в шести шагах от причины.
+#
+# ПОЛОЖИТЕЛЬНАЯ ПОЛОВИНА ОБЯЗАТЕЛЬНА И ИДЁТ ПЕРВОЙ. `ListOperations` того же тома
+# гейтится `v_list` — глаголом, который роль называет. Он проходит, и это
+# доказывает, что материализация дошла до ЭТОГО объекта под ЭТИМ предъявителем. Без
+# него три отказа ниже были бы неотличимы от «привязка не доехала вовсе» / «токен
+# пуст» — отрицание зеленело бы на сломанной фикстуре.
+#
+# ДИСЦИПЛИНА. Отрицательные шаги — строго single-shot, без retry: обёртка вокруг
+# настоящего отказа маскировала бы его (testing.md — оборачивать можно ТОЛЬКО первый
+# доступ к своему свежему ресурсу). Положительный шаг обёрнут: он и есть первый
+# доступ к свежесозданному объекту, и окно материализации здесь законно.
+# Ни один шаг не вправе получить 401: пустой/битый токен дал бы «отказано» по совсем
+# другой причине, поэтому код 16 запрещён явно на КАЖДОМ шаге.
+# ---------------------------------------------------------------------------
+
+_CRLIST = "jwtStorageCreateListOnlyA"  # storage.volumes {create,list} @ projectA1
+
+
+def _not_unauthenticated(case_id, step):
+    """На всех шагах: отказ обязан быть про ПРАВА, а не про личность."""
+    return [
+        "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
+        f"pm.test('[{case_id}] {step}: предъявитель аутентифицирован (не 16/401)', () => {{",
+        "  pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.not.equal(401);",
+        "  pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16);",
+        "});",
+    ]
+
+
+def _denied(case_id, step):
+    """Мутация без названного глагола → 403 / code 7 / `permission denied`."""
+    return [
+        *_not_unauthenticated(case_id, step),
+        f"pm.test('[{case_id}] {step}: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+        f"pm.test('[{case_id}] {step}: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.equal(7));",
+        f"pm.test('[{case_id}] {step}: message contains permission denied', () => pm.expect(((_j && _j.message) || '').toLowerCase()).to.contain('permission denied'));",
+    ]
+
+
+_VERB_CUT = "AUTHZ-VOL-VERB-CUT-NOT-TIER"
+
+CASES.append(Case(
+    id=_VERB_CUT,
+    title="[verb-cut] выдача `storage.volumes {create,list}` открывает ListOperations (v_list) и НЕ открывает Get/Update/Delete того же тома",
+    classes=["AUTHZ", "SEC", "NEG", "CONF"], priority="P0",
+    # index: object-self RPC гейтятся глаголом объекта, не ярусом (v_get/v_list/v_update/v_delete)
+    steps=[
+        # Сид дефолтным актором: том обязан существовать НЕЗАВИСИМО от предъявителя
+        # разреза, иначе «отказано» было бы про отсутствующую строку, а не про права.
+        *_seed_volume("verbcut", "verbCutVolumeId"),
+
+        # ПОЛОЖИТЕЛЬНАЯ ПОЛОВИНА — глагол, который роль называет.
+        retry_until_authorized(Step(
+            name="ops-as-crlist", method="GET",
+            path=f"{VOL}/{{{{verbCutVolumeId}}}}/operations", auth=_CRLIST,
+            test_script=[*_not_unauthenticated(_VERB_CUT, "list-operations"),
+                         f"pm.test('[{_VERB_CUT}] list-operations: 200 — глагол `list` выдан и материализован', "
+                         "() => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(200));",
+                         f"pm.test('[{_VERB_CUT}] list-operations: ответ — массив операций', "
+                         "() => pm.expect(pm.response.json().operations || [], JSON.stringify(pm.response.json())).to.be.an('array'));"])),
+
+        # ОТРИЦАНИЯ — глаголы, которых роль не называет. Ярус `editor`, который
+        # реконсайлер положил рядом, их открывать не вправе.
+        Step(name="get-as-crlist", method="GET", path=f"{VOL}/{{{{verbCutVolumeId}}}}",
+             auth=_CRLIST,
+             test_script=[*_not_unauthenticated(_VERB_CUT, "get"),
+                          *_deny_hidden(_VERB_CUT + "/get", "Volume", "verbCutVolumeId")]),
+        Step(name="patch-as-crlist", method="PATCH", path=f"{VOL}/{{{{verbCutVolumeId}}}}",
+             body={"updateMask": "description", "description": "verb-cut-attempt"},
+             auth=_CRLIST, test_script=_denied(_VERB_CUT, "update")),
+        Step(name="delete-as-crlist", method="DELETE", path=f"{VOL}/{{{{verbCutVolumeId}}}}",
+             auth=_CRLIST, test_script=_denied(_VERB_CUT, "delete")),
+
+        # ПАРНЫЙ КОНТРОЛЬ на ТОМ ЖЕ объекте: полноправный editor проекта правку и
+        # удаление проводит. Без него «отказано трижды» осталось бы неотличимо от
+        # «том не в том состоянии» или «ручка сломана для всех».
+        retry_until_authorized(Step(
+            name="patch-as-editor", method="PATCH", path=f"{VOL}/{{{{verbCutVolumeId}}}}",
+            body={"updateMask": "description", "description": "editor-can"},
+            auth="jwtProjectEditorA",
+            test_script=[*_not_unauthenticated(_VERB_CUT, "update-as-editor"),
+                         f"pm.test('[{_VERB_CUT}] update-as-editor: 200 — тот же объект правится полноправным грантом', "
+                         "() => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(200));",
+                         "if (pm.response.code === 200) { pm.environment.set('opId', pm.response.json().id); }"])),
+        poll_operation_until_done(auth="jwtProjectEditorA"),
+
+        *_delete(VOL, "verbCutVolumeId", "cleanup-verbcut-vol"),
     ],
 ))

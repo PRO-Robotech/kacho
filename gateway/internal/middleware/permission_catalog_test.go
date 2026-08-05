@@ -477,6 +477,19 @@ func TestPermissionCatalog_ListPermissionCatalog_ExemptAndTombstones(t *testing.
 // is in it. Reading the line off the verb alone is how seven top-level List RPCs
 // came to demand the project's own `v_list`, which the model defines as access to
 // the project object and explicitly "never to its contents".
+//
+// # What a table of names can and cannot hold
+//
+// Every row here is a name someone wrote down, so the table proves the convention
+// only for the domains it happens to name. It named storage once — VolumeService/
+// List, a row that is TRUE and about the tier half of the rule — while the whole
+// object-self surface of that domain sat on tiers, out of reach of the form. The
+// storage rows below close that instance; the CLASS is held elsewhere, by a probe
+// that derives its population from the catalog itself and asks the emitter what a
+// one-verb grant actually resolves:
+// services/iam/internal/apps/kacho/api/access_binding/reconcile,
+// TestCreateOnlyGrantOpensNoObjectSelfRPC. A new domain landing on tiers is caught
+// there without anyone remembering to add a row here.
 func TestPermissionCatalog_VBC22_VerbBearingFlip(t *testing.T) {
 	c, err := middleware.LoadEmbeddedPermissionCatalog("")
 	require.NoError(t, err)
@@ -497,6 +510,8 @@ func TestPermissionCatalog_VBC22_VerbBearingFlip(t *testing.T) {
 		// outside its reach. ListOperations is the real instance of the rule.
 		{"kacho.cloud.compute.v1.InstanceService/ListOperations", "v_list", "object-self list"},
 		{"kacho.cloud.vpc.v1.SubnetService/ListOperations", "v_list", "object-self list"},
+		{"kacho.cloud.storage.v1.VolumeService/ListOperations", "v_list", "object-self list"},
+		{"kacho.cloud.storage.v1.ImageService/ListOperations", "v_list", "object-self list"},
 		// Top-level project list → READ TIER on the parent project, the same axis
 		// create-child takes with `editor`. The project's own `v_list` is object-level
 		// access to the PROJECT ITSELF, never to its contents, so it is not the question
@@ -512,6 +527,19 @@ func TestPermissionCatalog_VBC22_VerbBearingFlip(t *testing.T) {
 		{"kacho.cloud.vpc.v1.NetworkService/Update", "v_update", "object-self update"},
 		{"kacho.cloud.vpc.v1.NetworkService/Delete", "v_delete", "object-self delete"},
 		{"kacho.cloud.iam.v1.AccessBindingService/Delete", "v_delete", "object-self delete"},
+		// storage — the domain this table used to describe by a single row (List),
+		// which is the one storage RPC the convention leaves on a tier. Everything
+		// object-self was outside the table's reach, so the gate declared the
+		// convention while the whole domain sat on tiers underneath it.
+		{"kacho.cloud.storage.v1.VolumeService/Get", "v_get", "object-self get"},
+		{"kacho.cloud.storage.v1.VolumeService/Update", "v_update", "object-self update"},
+		{"kacho.cloud.storage.v1.VolumeService/Delete", "v_delete", "object-self delete"},
+		{"kacho.cloud.storage.v1.SnapshotService/Get", "v_get", "object-self get"},
+		{"kacho.cloud.storage.v1.SnapshotService/Update", "v_update", "object-self update"},
+		{"kacho.cloud.storage.v1.SnapshotService/Delete", "v_delete", "object-self delete"},
+		{"kacho.cloud.storage.v1.ImageService/Get", "v_get", "object-self get"},
+		{"kacho.cloud.storage.v1.ImageService/Update", "v_update", "object-self update"},
+		{"kacho.cloud.storage.v1.ImageService/Delete", "v_delete", "object-self delete"},
 		// create-child stays editor on parent
 		{"kacho.cloud.vpc.v1.NetworkService/Create", "editor", "create-child → editor on parent (F-7)"},
 		{"kacho.cloud.compute.v1.InstanceService/Create", "editor", "create-child → editor on parent (F-7)"},
