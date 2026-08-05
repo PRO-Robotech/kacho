@@ -69,7 +69,7 @@ type Repository struct {
 	references map[string]*domain.AddressReference
 	// outboxEmitErr — тест-хук отказа outbox-emit (см. SetOutboxEmitErr).
 	outboxEmitErr error
-	gateways   map[string]*kacho.GatewayRecord
+	gateways      map[string]*kacho.GatewayRecord
 	// addressPools — admin-only ресурс.
 	addressPools map[string]*kacho.AddressPoolRecord
 	// netDefBinds — explicit-биндинги pool ↔ network (network_default).
@@ -535,10 +535,10 @@ type writerImpl struct {
 	// localRefs — referrer-строки, записанные ЭТОЙ writer-TX; flush в
 	// parent.references на Commit. Без TX-локальности проба «привязка разделяет
 	// судьбу транзакции» не отличала бы откат от коммита.
-	localRefs  map[string]*domain.AddressReference
-	localGWs   map[string]*kacho.GatewayRecord
-	localAPs   map[string]*kacho.AddressPoolRecord
-	localNDs   map[string]string
+	localRefs map[string]*domain.AddressReference
+	localGWs  map[string]*kacho.GatewayRecord
+	localAPs  map[string]*kacho.AddressPoolRecord
+	localNDs  map[string]string
 	// localFreelistAdds — буфер AddCidrToFreelist-вызовов, flush в
 	// parent.freelistAddedCidrs на Commit.
 	localFreelistAdds map[string][]string

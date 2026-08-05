@@ -31,17 +31,11 @@ const (
 	vpcOpPollTimeout  = 15 * time.Second
 )
 
-// Бюджет OWN-LANE read-your-writes ретрая: адрес уже закоммичен в vpc, но его
-// per-object owner-tuple материализуется eventually-consistent (outbox → drainer →
-// iam → FGA), поэтому непосредственно следующий SetAddressReference / Delete по
-// СВОЕМУ адресу может кратко получить hide-existence NOT_FOUND / PERMISSION_DENIED.
-// 12 × 500ms ≈ 6s покрывает штатное окно и остаётся заметно внутри
-// vpcOpPollTimeout; бюджет ОГРАНИЧЕН (fail-open в честный UNAVAILABLE), это
-// клиентский ретрай, а не серверный confirm-барьер (ban #9).
-const (
-	defaultAddressVisibilityRetries  = 12
-	defaultAddressVisibilityInterval = 500 * time.Millisecond
-)
+// Здесь стоял бюджет ретрая на окно видимости своего свежего адреса (12 × 500ms).
+// У него больше нет предмета: адрес рождается СРАЗУ привязанным к владельцу
+// (`createOwnedAddressAndWait`), поэтому второго решения о доступе на пути нет —
+// а ждать материализацию было нужно именно перед ним. Ожидание снято вместе с
+// причиной, а не заменено ретраем побольше.
 
 // DefaultInternalAddressCallTimeout — per-call deadline применяемый к КАЖДОМу
 // outbound gRPC-вызову этого client'а (Create/Delete/Get на AddressService,
@@ -607,10 +601,11 @@ func (c *internalAddressClient) resolveAddressValue(ctx context.Context, address
 }
 
 // createOwnedAddressAndWait — создать адрес, СРАЗУ привязанный к владельцу, и
-// дождаться завершения его операции. Зеркало `createAddressAndWait` на
-// внутреннем листенере: одна мутация вместо пары «создать + привязать», поэтому
-// на пути нет второго решения о доступе — а значит нет и зависимости от окна
-// материализации свежесозданного объекта.
+// дождаться завершения его операции. ОДНА мутация на внутреннем листенере вместо
+// прежней пары «создать, затем привязать»: на пути нет второго решения о доступе,
+// а значит нет и зависимости от окна материализации свежесозданного объекта.
+// Прежний двухшаговый путь удалён вместе со своим бюджетом ожидания — оставленный
+// мёртвым, он читался бы как действующая альтернатива.
 func (c *internalAddressClient) createOwnedAddressAndWait(
 	ctx context.Context, req *vpcpb.CreateOwnedAddressRequest,
 ) (*vpcpb.Address, error) {
@@ -635,36 +630,6 @@ func (c *internalAddressClient) createOwnedAddressAndWait(
 	addr := &vpcpb.Address{}
 	if err := resp.UnmarshalTo(addr); err != nil {
 		return nil, fmt.Errorf("vpc create owned address: unmarshal operation response: %w", err)
-	}
-	return addr, nil
-}
-
-// createAddressAndWait вызывает AddressService.Create + poll Operation до
-// done=true. Возвращает созданный Address. Маппит ошибки в sentinel'ы.
-func (c *internalAddressClient) createAddressAndWait(
-	ctx context.Context, req *vpcpb.CreateAddressRequest,
-) (*vpcpb.Address, error) {
-	createCtx, createCancel := c.withCallTimeout(ctx)
-	var op *operationpb.Operation
-	err := retry.OnUnavailable(createCtx, func(ctx context.Context) error {
-		var rerr error
-		op, rerr = c.addrs.Create(auth.PropagateOutgoing(ctx), req)
-		return rerr
-	})
-	createCancel()
-	if err != nil {
-		return nil, mapCreateAllocErr(err)
-	}
-	resp, err := c.waitOperation(ctx, op)
-	if err != nil {
-		return nil, mapCreateAllocErr(err)
-	}
-	if resp == nil {
-		return nil, fmt.Errorf("vpc create address: operation %s returned no response", op.GetId())
-	}
-	addr := &vpcpb.Address{}
-	if err := resp.UnmarshalTo(addr); err != nil {
-		return nil, fmt.Errorf("vpc create address: unmarshal operation response: %w", err)
 	}
 	return addr, nil
 }
