@@ -17,7 +17,7 @@
 **Newman-прогон против стенда — PENDING clean-seed CI.** Локальный newman-замер против
 уже-развёрнутого стенда даёт ложные падения, если pod'ы geo/gateway СТАРЕЕ ветки
 `redesign/integration` (см. §Известное расхождение стенда ниже); арбитр зелёности —
-CI-раннер (`deploy/scripts/newman-parallel.sh`, geo в PHASE2-волне) на СВЕЖЕ собранном
+CI-раннер (`deploy/scripts/newman-parallel.sh`, шард `edge`) на СВЕЖЕ собранном
 и посиженном стенде (`tests/authz-fixtures/setup.sh` минтит fresh-JWT'ы и патчит geo env;
 `--env-var baseUrl/internalBaseUrl` инжектятся раннером на public :18080 / internal :18081).
 

@@ -57,10 +57,16 @@ bash scripts/run.sh                     # весь suite (false-green guard: MIS
 bash scripts/run.sh --service region    # одна коллекция
 ```
 
-Umbrella (CI): `deploy/scripts/newman-parallel.sh` (geo — в PHASE2-волне,
-изолированной от leaf-resource нагрузки: geo мутирует ГЛОБАЛЬНЫЙ каталог, который
-читают vpc/compute/nlb при резолве zone/region — поэтому geo не гонится конкурентно
-с ними).
+Umbrella (CI): `deploy/scripts/newman-parallel.sh` на шарде `edge`
+(`deploy/e2e-shards.json`) — вместе с registry и api-gateway, на стенде БЕЗ
+vpc/compute/nlb/storage. Изоляция теперь физическая, а не расписанием: geo мутирует
+ГЛОБАЛЬНЫЙ каталог, который vpc/compute/nlb читают при резолве zone/region, и на этом
+кластере их просто нет.
+
+> Прежняя редакция говорила «geo — в PHASE2-волне». Это не выполнялось: умолчание
+> `PHASE2_SERVICES` — `iam`, и только он; geo всегда шёл в общей волне ровно с теми
+> суитами, от которых текст объявлял его изолированным. С 2026-08-05 конкуренции нет
+> вовсе (`JOBS=1`, `WAVE_JOBS=1`), а разделение даёт разнесение по раннерам.
 
 ## Gate-стадии
 
