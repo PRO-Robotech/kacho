@@ -563,17 +563,43 @@ CASES.append(Case(
 ))
 
 # Cleanup: удалить фикстуру от project-editor ПОСЛЕДНИМ → poll → Get 404.
+#
+# Чтение ПОСЛЕ удаления — самая жёсткая проба скрытия существования во всей суите,
+# и утверждать в ней один код нельзя. Владелец на настоящем промахе отвечает
+# `Registry <id> not found`; всякий иной ответ — «нет доступа», «not found» без
+# имени ресурса — отличим, а различимый ответ и есть оракул. Поэтому здесь
+# сначала снимается ЭТАЛОН промаха (well-formed отсутствующий id, тот же
+# вызывающий), а затем ответ на удалённый ресурс сверяется с ним ПОБАЙТОВО с
+# точностью до подстановки id.
+#
+# Проба стала различающей после снятия внутренней конкуренции: пока отзыв прав не
+# успевал доехать до подтверждающего чтения, шаг зеленел по неверной причине.
 CASES.append(Case(
     id="REG-AZ-CLEANUP-FIXTURE",
-    title="Cleanup: Delete fixture registry as project-editor (LAST) → Operation → poll → Get 404",
-    classes=["AZD"], priority="P2",
+    title="Cleanup: Delete fixture registry as project-editor (LAST) → Operation → poll → Get 404 byte-identical to a genuine miss",
+    classes=["AZD", "CONF"], priority="P2",
     steps=[
+        # Эталон снимается ДО удаления: тот же вызывающий, тот же ресурс-тип,
+        # заведомо отсутствующий well-formed id.
+        Step(name="capture-genuine-miss", method="GET", path=REG + "/reg00000000000000000",
+             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
+                          "const _m = (pm.response.json().message)||'';",
+                          "pm.test('genuine miss names the resource and echoes the id', () => "
+                          "pm.expect(_m).to.eql('Registry reg00000000000000000 not found'));",
+                          "pm.environment.set('regGenuineMissMsg', _m);"]),
         Step(name="delete-fixture", method="DELETE", path=f"{REG}/{{{{regIdAz}}}}",
              test_script=[*assert_status(200), *assert_operation_envelope(_OP_PREFIX),
                           *save_operation_id()]),
         poll_operation_until_done(),
         Step(name="confirm-deleted", method="GET", path=f"{REG}/{{{{regIdAz}}}}",
              test_script=["pm.test('cleanup op ok', () => pm.expect(pm.environment.get('lastOpError')||'').to.eql(''));",
-                          *assert_status(404), *assert_grpc_code(5, "NOT_FOUND")]),
+                          *assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
+                          # ТЕКСТ, а не только код: 403 «permission denied» и голое
+                          # «not found» отличимы от промаха владельца, и по этому
+                          # различию отделяют «нет доступа» от «нет такого».
+                          "const _abs = 'reg00000000000000000';",
+                          "const _norm = ((pm.response.json().message)||'').split(pm.environment.get('regIdAz')).join(_abs);",
+                          "pm.test('deleted-registry 404 is byte-identical to a genuine miss (no existence-oracle)', () => "
+                          "pm.expect(_norm).to.eql(pm.environment.get('regGenuineMissMsg')));"]),
     ],
 ))

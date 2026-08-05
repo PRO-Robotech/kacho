@@ -27,14 +27,18 @@ import (
 // CheckClient, грантящим ровно v_get.
 
 // viewerCheckClient — грантит только v_get на любой объект; на любой другой verb
-// (v_update/v_delete/…) возвращает ErrHideExistence (объект есть, но verb'а нет →
-// interceptor маппит в NOT_FOUND). Моделирует iam.Check для viewer'а на живом ресурсе.
+// (v_update/v_delete/…) отвечает ПРОСТЫМ отказом — ровно тем, что возвращает боевой
+// registry-клиент (internal/check/check_client.go: `resp.GetAllowed(), nil`).
+//
+// Прежняя редакция возвращала здесь authz.ErrHideExistence — сигнал, которого боевой
+// клиент не производит НИ РАЗУ (он не сверяет существование объекта со своей БД и
+// сентинелов не выставляет). Проба была зелёной на поведении, которого в развёрнутом
+// сервисе нет: фикстура оказалась снисходительнее продукта, и утверждение про
+// скрытие существования держалось на ней, а не на коде. Сигнал теперь тот же, что на
+// стенде, поэтому проба краснеет, если скрытие снимут.
 func viewerCheckClient() authz.CheckClient {
 	return authz.CheckClientFunc(func(_ context.Context, _, relation, _ string) (bool, error) {
-		if relation == relVGet {
-			return true, nil
-		}
-		return false, authz.ErrHideExistence
+		return relation == relVGet, nil
 	})
 }
 
@@ -76,6 +80,8 @@ func TestViewerBoundary_GetAllowed_UpdateDeleteHidden(t *testing.T) {
 	_, err = inter(ctx, &registryv1.UpdateRegistryRequest{RegistryId: regID},
 		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.registry.v1.RegistryService/Update"}, okHandler)
 	require.Equal(t, codes.NotFound, status.Code(err), "viewer denied Update → NOT_FOUND (existence-hidden)")
+	require.Equal(t, "Registry "+regID+" not found", status.Convert(err).Message(),
+		"текст обязан совпадать с промахом владельца побайтово — различимая формулировка и есть оракул")
 	require.False(t, ran, "Update handler NOT executed on deny")
 
 	// Delete — нет v_delete → NOT_FOUND, handler НЕ вызван.
@@ -83,5 +89,7 @@ func TestViewerBoundary_GetAllowed_UpdateDeleteHidden(t *testing.T) {
 	_, err = inter(ctx, &registryv1.DeleteRegistryRequest{RegistryId: regID},
 		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.registry.v1.RegistryService/Delete"}, okHandler)
 	require.Equal(t, codes.NotFound, status.Code(err), "viewer denied Delete → NOT_FOUND (existence-hidden)")
+	require.Equal(t, "Registry "+regID+" not found", status.Convert(err).Message(),
+		"текст обязан совпадать с промахом владельца побайтово — различимая формулировка и есть оракул")
 	require.False(t, ran, "Delete handler NOT executed on deny")
 }

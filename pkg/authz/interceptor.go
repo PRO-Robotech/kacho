@@ -413,6 +413,20 @@ func (i *Interceptor) authorize(ctx context.Context, fullMethod string, req any)
 		// есть шторм, который бюджет ограничивает.
 		i.rateLimiter.Charge(principalID)
 		atomic.AddUint64(&i.deniedTotal, 1)
+		// Пообъектное чтение (и мутация, объявленная скрывающей) отвечает голосом
+		// ВЛАДЕЛЬЦА: тем же NOT_FOUND, что даёт настоящий промах. Иначе вызывающий
+		// отличает «нет доступа» от «нет такого» по одному лишь ответу — а край на
+		// том же запросе уже отвечает промахом, и расхождение двух решателей
+		// (у каждого свой кэш положительных вердиктов со своим окном) выносит эту
+		// разницу наружу. Handler не вызывается ни в той, ни в другой ветке —
+		// решение об отказе не смягчается, меняется только его ЗВУЧАНИЕ.
+		if HidesExistenceOnDeny(fullMethod, entry, objectType) && ownerNotFoundText(objectType, objectID) != "" {
+			logger.Warn("authz_denied_hidden",
+				slog.String("subject", subjectFGA),
+				slog.String("relation", entry.Relation),
+				slog.String("object", object))
+			return verdict{decision: DecisionHideExistence, objectType: objectType, objectID: objectID}
+		}
 		logger.Warn("authz_denied",
 			slog.String("subject", subjectFGA),
 			slog.String("relation", entry.Relation),

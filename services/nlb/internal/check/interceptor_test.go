@@ -151,7 +151,13 @@ func TestAZD003_NLBGet_Stranger_Denied(t *testing.T) {
 	_, err := uIntr(ctx, req, info, handler)
 	require.Error(t, err)
 	st, _ := status.FromError(err)
-	require.Equal(t, codes.PermissionDenied, st.Code())
+	// Пообъектное чтение отвечает чужаку промахом ВЛАДЕЛЬЦА, а не отказом: ответ,
+	// отличимый от настоящего «нет такого», сам сообщает, что объект есть.
+	// Утверждается ТЕКСТ — различим здесь именно он, и один код оставил бы
+	// зелёной строку «not found» без имени ресурса, не похожую ни на один ответ
+	// владельца. Handler не вызван (t.Fatal выше) — решение об отказе прежнее.
+	require.Equal(t, codes.NotFound, st.Code())
+	require.Equal(t, "NetworkLoadBalancer nlb-1 not found", st.Message())
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -815,8 +821,13 @@ func TestAZD030_RaceRevoke_CacheInvalidatesBeforeNextCheck(t *testing.T) {
 	// Next Check goes to peer → denied.
 	_, err = uIntr(ctx, req, info, handler)
 	st, _ := status.FromError(err)
-	require.Equal(t, codes.PermissionDenied, st.Code(),
+	// Отзыв виден немедленно; форма ответа — промах владельца, потому что это
+	// пообъектное чтение (см. TestAZD003). Утверждается и код, и текст: иначе
+	// проба осталась бы зелёной, если бы отзыв вообще перестал доезжать, а ответ
+	// пришёл бы «не найдено» из какой-нибудь другой ветки.
+	require.Equal(t, codes.NotFound, st.Code(),
 		"after revoke + cache invalidation, next Check sees fresh deny within ≤10s window")
+	require.Equal(t, "NetworkLoadBalancer nlb-1 not found", st.Message())
 }
 
 // ────────────────────────────────────────────────────────────────────────────

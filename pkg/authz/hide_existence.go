@@ -22,7 +22,10 @@ package authz
 // one hop earlier; both must agree with the owning service, and the drift guard
 // in hide_existence_parity_test.go fails when they stop agreeing.
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // hideExistenceNotFoundFormats maps an authorization object type to the Kachō
 // contract-tone NotFound of the service that owns it.
@@ -96,8 +99,53 @@ var hideExistenceNotFoundFormats = map[string]string{
 // dictionary and — being unlike any backend text — be the very tell this function
 // exists to remove.
 func hideExistenceMessage(objectType, objectID string) string {
-	if f, ok := hideExistenceNotFoundFormats[objectType]; ok && objectID != "" && objectID != "*" {
-		return fmt.Sprintf(f, objectID)
+	if text := ownerNotFoundText(objectType, objectID); text != "" {
+		return text
 	}
 	return "not found"
+}
+
+// ownerNotFoundText returns the owning service's own miss for this object, or ""
+// when there is nothing to copy — an object type with no owning-service text, or
+// a call that named no concrete id (a wildcard/absent id would render
+// "<Resource>  not found", a malformed string that resembles no backend answer
+// and is therefore its own tell).
+func ownerNotFoundText(objectType, objectID string) string {
+	f, ok := hideExistenceNotFoundFormats[objectType]
+	if !ok || objectID == "" || objectID == "*" {
+		return ""
+	}
+	return fmt.Sprintf(f, objectID)
+}
+
+// HidesExistenceOnDeny reports whether a deny on this RPC must be answered with
+// the owning service's NotFound rather than PermissionDenied.
+//
+// It is the SERVICE side of the same rule the api-gateway applies one hop earlier
+// (CatalogEntry.HidesExistenceOnDeny), and it is deliberately written to the same
+// shape, because the two answers are compared by whoever called: an edge that
+// hides while the owner refuses is exactly the oracle hiding exists to close. The
+// two deciders disagree in practice — each keeps its own positive-verdict cache
+// with its own window — so a call the edge lets through can still be refused here.
+//
+// Resolution order:
+//
+//  1. explicit RPCEntry.HideExistence — for a MUTATION the edge marks the same
+//     way (registry Update/Delete carry `hide_existence` in the catalog);
+//  2. otherwise the shape of a per-object read: a unary `/Get` gated on the
+//     verb-bearing `v_get`.
+//
+// Both are additionally gated on there being an owner text to speak with: an
+// object type absent from hideExistenceNotFoundFormats keeps its PermissionDenied,
+// since a neutral "not found" would be as distinguishable as the 403 it replaced.
+// The repo-wide gate TestServiceGateHidesExistenceWhereTheEdgeDoes walks every
+// service map against the catalog and fails when the two sides stop agreeing.
+func HidesExistenceOnDeny(fullMethod string, entry RPCEntry, objectType string) bool {
+	if _, ok := hideExistenceNotFoundFormats[objectType]; !ok {
+		return false
+	}
+	if entry.HideExistence {
+		return true
+	}
+	return strings.HasSuffix(fullMethod, "/Get") && entry.Relation == "v_get"
 }
