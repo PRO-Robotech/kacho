@@ -6,14 +6,21 @@ import { CopyableName } from "./CopyableName";
 describe("CopyableName", () => {
   const writeText = jest.fn<(text: string) => Promise<void>>();
 
+  // Утверждения ссылаются на СПЯЩИЕ ФУНКЦИИ, а не на `toast.success`/`toast.error`
+  // по имени владельца: метод, оторванный от своего объекта, теряет получателя —
+  // сегодня тела этих методов `this` не читают, но проба не должна зависеть от
+  // свойства чужого тела.
+  let successSpy: jest.Spied<typeof toast.success>;
+  let errorSpy: jest.Spied<typeof toast.error>;
+
   beforeEach(() => {
     writeText.mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText },
     });
-    jest.spyOn(toast, "success").mockReturnValue("toast-id");
-    jest.spyOn(toast, "error").mockReturnValue("toast-id");
+    successSpy = jest.spyOn(toast, "success").mockReturnValue("toast-id");
+    errorSpy = jest.spyOn(toast, "error").mockReturnValue("toast-id");
   });
 
   afterEach(() => {
@@ -29,20 +36,21 @@ describe("CopyableName", () => {
   it("copies the provided name without bubbling the click", async () => {
     const onClick = jest.fn();
 
-    render(
-      <div onClick={onClick}>
-        <CopyableName name="frontend-subnet" />
-      </div>,
-    );
+    document.addEventListener("click", onClick);
+    try {
+      render(<CopyableName name="frontend-subnet" />);
 
-    const button = screen.getByRole("button", { name: "frontend-subnet" });
+      const button = screen.getByRole("button", { name: "frontend-subnet" });
 
-    fireEvent.click(button);
+      fireEvent.click(button);
 
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("frontend-subnet"));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Имя скопировано"));
-    expect(onClick).not.toHaveBeenCalled();
-    expect(button).toHaveAttribute("title", "Скопировано");
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith("frontend-subnet"));
+      await waitFor(() => expect(successSpy).toHaveBeenCalledWith("Имя скопировано"));
+      expect(onClick).not.toHaveBeenCalled();
+      expect(button).toHaveAttribute("title", "Скопировано");
+    } finally {
+      document.removeEventListener("click", onClick);
+    }
   });
 
   it("copies the fallback id when the name is empty", async () => {
@@ -55,7 +63,7 @@ describe("CopyableName", () => {
     fireEvent.click(button);
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("subnet-123"));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("ID скопирован"));
+    await waitFor(() => expect(successSpy).toHaveBeenCalledWith("ID скопирован"));
   });
 
   it("shows an error toast when copying fails", async () => {
@@ -65,6 +73,6 @@ describe("CopyableName", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "frontend-subnet" }));
 
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Не удалось скопировать"));
+    await waitFor(() => expect(errorSpy).toHaveBeenCalledWith("Не удалось скопировать"));
   });
 });

@@ -6,6 +6,7 @@ import {
   stripFormOnlyKeys,
 } from "./update-mask";
 import type { FormField } from "./form-schema";
+import { displayText } from "./display-text";
 
 const str = (name: string, extra: Partial<FormField> = {}): FormField =>
   ({ name, label: name, type: "string", ...extra }) as FormField;
@@ -71,8 +72,8 @@ describe("computeUpdateMask against a spec whose sanitize changes representation
   // short-circuits, and a field the operator never touched enters update_mask.
   // The original must therefore be stored in the same shape sanitize produces.
   const durationSpec = {
-    sanitize: (o: Record<string, unknown>) => ({ ...o, delay: `${o.delay}s` }),
-    hydrate: (o: Record<string, unknown>) => ({ ...o, delay: Number(String(o.delay).replace(/s$/, "")) }),
+    sanitize: (o: Record<string, unknown>) => ({ ...o, delay: `${displayText(o.delay)}s` }),
+    hydrate: (o: Record<string, unknown>) => ({ ...o, delay: Number(displayText(o.delay).replace(/s$/, "")) }),
   };
   const fields = [str("delay"), str("name")];
 

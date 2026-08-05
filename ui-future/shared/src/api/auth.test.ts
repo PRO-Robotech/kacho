@@ -12,14 +12,14 @@ type Captured = { url: string; init: RequestInit };
 
 function captureFetch(payload: unknown): { calls: Captured[] } {
   const calls: Captured[] = [];
-  globalThis.fetch = (async (url: string, init: RequestInit) => {
+  globalThis.fetch = ((url: string, init: RequestInit) => {
     calls.push({ url: String(url), init });
-    return {
+    return Promise.resolve({
       ok: true,
       status: 200,
       statusText: "OK",
-      text: async () => JSON.stringify(payload),
-    } as unknown as Response;
+      text: () => Promise.resolve(JSON.stringify(payload)),
+    } as unknown as Response);
   }) as unknown as typeof fetch;
   return { calls };
 }

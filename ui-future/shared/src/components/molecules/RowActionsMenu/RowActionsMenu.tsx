@@ -96,6 +96,12 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
   // menu-item доходит до строки таблицы и триггерит onRowClick → навигация
   // съедает наш setOpen / navigate. domEvent.stopPropagation() обязательно
   // на каждом item.
+  //
+  // `fn` объявлено действием без результата, и это не формальность: обработчик
+  // клика antd результат не читает и промис не дожидается. `navigate` в
+  // react-router 8 промис возвращает, поэтому на каждом вызове стоит явное
+  // `void` — иначе отказ перехода превратился бы в необработанное отклонение,
+  // которое некому увидеть.
   const stop =
     (fn: () => void) =>
     ({ domEvent }: { domEvent: React.MouseEvent | React.KeyboardEvent }) => {
@@ -108,7 +114,7 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
       key: "open",
       icon: drillIsChild ? <ArrowRightOutlined /> : <EyeOutlined />,
       label: drillIsChild ? "Открыть" : "Просмотр",
-      onClick: stop(() => navigate(drillTarget)),
+      onClick: stop(() => void navigate(drillTarget)),
     },
     isNetwork && currentProjectId
       ? {
@@ -118,7 +124,7 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
           // editAsPanel: форма-панель в зоне 3 shell сети (child-create).
           // Иначе (legacy list-модалка): ?modal-флаг над текущей страницей.
           onClick: stop(() =>
-            navigate(
+            void navigate(
               editAsPanel
                 ? `/projects/${currentProjectId}/vpc/networks/${id}/subnets/create`
                 : `/projects/${currentProjectId}/vpc/networks/${id}?modal=subnets-create&networkId=${id}`,
@@ -135,7 +141,7 @@ export function RowActionsMenu({ spec, row, basePath, projectId, editAsPanel }: 
           //   (`${basePath}/${id}/edit` → ResourceShell mode=edit), как создание.
           // Иначе (list-страница, KAC-70): модалка через ?modal-флаг.
           onClick: stop(() =>
-            navigate(editAsPanel ? `${basePath}/${id}/edit` : `${basePath}?modal=${spec.id}-edit&id=${id}`),
+            void navigate(editAsPanel ? `${basePath}/${id}/edit` : `${basePath}?modal=${spec.id}-edit&id=${id}`),
           ),
         }
       : null,

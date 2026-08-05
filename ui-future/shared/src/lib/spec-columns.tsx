@@ -13,6 +13,7 @@ import { RefNameLink } from "@shared/components/molecules/RefNameLink";
 import { getByPath, type ResourceColumn, type ResourceSpec } from "@shared/lib/resource-registry";
 import { formatDateTime } from "@shared/lib/datetime";
 import { referrerHref, referrerMeta } from "@shared/lib/referrer";
+import { displayText } from "@shared/lib/display-text";
 
 // Ре-экспорт для стабильности публичного API @shared/lib/spec-columns (route/label
 // логика вынесена в чистый ./referrer для unit-тестируемости без antd-графа).
@@ -193,6 +194,6 @@ export function formatCellByFormat(
     case "text":
     default:
       if (v == null || v === "") return <Typography.Text type="secondary">—</Typography.Text>;
-      return String(v);
+      return displayText(v);
   }
 }

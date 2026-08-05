@@ -7,6 +7,7 @@ import { type ReactNode, useMemo, useRef, useState, useEffect } from "react";
 import { Table } from "antd";
 import type { ColumnType, TableProps } from "antd/es/table";
 import { getByPath } from "@shared/lib/path";
+import { displayText } from "@shared/lib/display-text";
 
 export interface Column<T> {
   header: string;
@@ -54,7 +55,7 @@ export function ResourceTable<T extends object>({
             if (av == null) return 1;
             if (bv == null) return -1;
             if (typeof av === "number" && typeof bv === "number") return av - bv;
-            return String(av).localeCompare(String(bv));
+            return displayText(av).localeCompare(displayText(bv));
           };
           if (defaultSort && defaultSort.col === idx) {
             col.defaultSortOrder = defaultSort.dir === "asc" ? "ascend" : "descend";

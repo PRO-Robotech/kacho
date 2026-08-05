@@ -1,30 +1,16 @@
 {
-  "__": "Долг линта пакета shared: находки, существовавшие в момент включения линта. Числу запрещено расти; при исправлении — уменьшить в том же коммите. Пустой rules ⇒ удалить этот файл и scripts/check-shared-lint-debt.mjs, заменив вызов на eslint без храповика. Правила гейта — в шапке scripts/check-shared-lint-debt.mjs.",
+  "__": "Долг линта пакета shared: находки, оставшиеся НЕ ЗАКРЫТЫМИ на момент последнего пересчёта (не «те, что были при включении линта» — часть их с тех пор исправлена, и число уменьшено в том же коммите). Числу запрещено расти; при исправлении — уменьшить в том же коммите. Пустой rules ⇒ удалить этот файл и scripts/check-shared-lint-debt.mjs, заменив вызов на eslint без храповика. Правила гейта — в шапке scripts/check-shared-lint-debt.mjs.",
   "rules": {
-    "@typescript-eslint/no-base-to-string": 42,
-    "@typescript-eslint/no-misused-promises": 10,
-    "@typescript-eslint/no-redundant-type-constituents": 12,
+    "@typescript-eslint/no-base-to-string": 3,
     "@typescript-eslint/no-require-imports": 2,
-    "@typescript-eslint/no-unsafe-argument": 1,
-    "@typescript-eslint/no-unsafe-assignment": 5,
-    "@typescript-eslint/no-unsafe-call": 1,
-    "@typescript-eslint/no-unsafe-member-access": 3,
-    "@typescript-eslint/no-unsafe-return": 8,
-    "@typescript-eslint/require-await": 13,
-    "@typescript-eslint/restrict-template-expressions": 2,
-    "@typescript-eslint/unbound-method": 7,
-    "jsx-a11y/anchor-is-valid": 3,
-    "jsx-a11y/click-events-have-key-events": 3,
+    "@typescript-eslint/no-unsafe-assignment": 1,
+    "@typescript-eslint/no-unsafe-return": 4,
     "jsx-a11y/no-autofocus": 2,
-    "jsx-a11y/no-static-element-interactions": 3,
-    "no-control-regex": 2,
     "react-hooks/exhaustive-deps": 2,
     "react-hooks/immutability": 2,
     "react-hooks/purity": 2,
     "react-hooks/refs": 3,
-    "react-hooks/rules-of-hooks": 5,
     "react-hooks/set-state-in-effect": 29,
-    "react-hooks/use-memo": 2,
-    "react/display-name": 3
+    "react-hooks/use-memo": 2
   }
 }

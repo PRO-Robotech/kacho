@@ -11,6 +11,7 @@
 // A 403 carries no such ambiguity and is left alone.
 
 import { ApiError } from "@shared/api/client";
+import { displayText } from "@shared/lib/display-text";
 
 export type ErrorStatus = "403" | "404" | "500" | "warning" | "error";
 
@@ -84,7 +85,7 @@ export function presentError(err: unknown): ErrorPresentation {
   return {
     status: "error",
     title: TITLES.error,
-    subTitle: err instanceof Error ? err.message : String(err),
+    subTitle: err instanceof Error ? err.message : displayText(err),
     note: null,
     ambiguousNotFound: false,
   };

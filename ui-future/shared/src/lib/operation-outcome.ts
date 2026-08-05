@@ -18,6 +18,7 @@
 //     done=false arrives with no `done` key at all.
 
 import type { Operation } from "@shared/api/types";
+import { displayText } from "@shared/lib/display-text";
 
 export type OperationOutcome =
   { kind: "idle" } | { kind: "pending" } | { kind: "succeeded" } | { kind: "failed"; message: string };
@@ -37,7 +38,7 @@ export function operationOutcome(input: {
     return { kind: "failed", message: op.error.message || UNKNOWN_OPERATION_ERROR };
   }
   if (fetchError) {
-    const detail = fetchError instanceof Error ? fetchError.message : String(fetchError);
+    const detail = fetchError instanceof Error ? fetchError.message : displayText(fetchError);
     return { kind: "failed", message: `не удалось прочитать статус операции: ${detail}` };
   }
   if (!op || !op.done) return { kind: "pending" };

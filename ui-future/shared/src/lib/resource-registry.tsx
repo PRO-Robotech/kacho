@@ -32,6 +32,7 @@ import {
   type AccessBindingTarget,
   type DefinitionTier,
 } from "@shared/api/iam";
+import { displayText } from "@shared/lib/display-text";
 
 export interface ResourceColumn {
   header: string;
@@ -441,9 +442,9 @@ function SupernetCell({ v4, v6 }: { v4: unknown; v6: unknown }): ReactNode {
 // VPC-1 Subnet cell: server-derived placement — ZONAL(zone) | REGIONAL(region,
 // anycast). Discriminated by placement_type° with zone_id/region_id fallback.
 function PlacementCell({ row }: { row: Record<string, unknown> }): ReactNode {
-  const pt = String(row.placement_type ?? "");
-  const zone = String(row.zone_id ?? "");
-  const region = String(row.region_id ?? "");
+  const pt = displayText(row.placement_type);
+  const zone = displayText(row.zone_id);
+  const region = displayText(row.region_id);
   const anchor = region || zone;
   if (!pt && !anchor) return <span className="text-muted-foreground">—</span>;
   const isRegional = pt === "REGIONAL" || (!zone && !!region);
@@ -503,17 +504,17 @@ function definitionTierCell(row: Record<string, unknown>): ReactNode {
 // "scope","scope_ref",…`), сервер их не отдаёт ни при каких условиях, и ветка
 // была недостижимой — она документировала контракт, которого код не производит.
 function scopeTypeCell(row: Record<string, unknown>): ReactNode {
-  const st = String(row.scope_type ?? row.scopeType ?? "");
+  const st = displayText(row.scope_type ?? row.scopeType);
   if (!st) return IAM_DASH;
   return <Tag color={iamTierColor(st)}>{st}</Tag>;
 }
 
 // AccessBinding scope anchor (scopeId) — ссылка по типу якоря.
 function scopeAnchorCell(row: Record<string, unknown>): ReactNode {
-  const st = String(row.scope_type ?? row.scopeType ?? "");
+  const st = displayText(row.scope_type ?? row.scopeType);
   const anchorType =
     st === "iam.account" ? "account" : st === "iam.project" ? "project" : st === "iam.cluster" ? "cluster" : "";
-  const anchorId = String(row.scope_id ?? row.scopeId ?? "");
+  const anchorId = displayText(row.scope_id ?? row.scopeId);
   if (!anchorId) return IAM_DASH;
   const spec = anchorType === "account" ? "accounts" : anchorType === "project" ? "projects" : undefined;
   return spec ? <IamRefLink specId={spec} refId={anchorId} /> : <CopyableId id={anchorId} />;
@@ -557,7 +558,7 @@ function accessBindingSubjectsCell(row: Record<string, unknown>): ReactNode {
     Array.isArray(subjects) && subjects.length > 0
       ? subjects
       : row.subject_id
-        ? [{ type: String(row.subject_type ?? ""), id: String(row.subject_id) }]
+        ? [{ type: displayText(row.subject_type), id: displayText(row.subject_id) }]
         : [];
   if (list.length === 0) return IAM_DASH;
   const first = list[0];
@@ -1169,8 +1170,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         const raw = out[key];
         if (Array.isArray(raw)) {
           out[key] = raw
-            .map((item) =>
-              typeof item === "object" && item !== null && "value" in (item as object)
+            .map((item: unknown) =>
+              typeof item === "object" && item !== null && "value" in item
                 ? (item as Record<string, unknown>)["value"]
                 : item,
             )
@@ -2063,8 +2064,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         const raw = out[key];
         if (Array.isArray(raw)) {
           out[key] = raw
-            .map((item) =>
-              typeof item === "object" && item !== null && "value" in (item as object)
+            .map((item: unknown) =>
+              typeof item === "object" && item !== null && "value" in item
                 ? (item as Record<string, unknown>)["value"]
                 : item,
             )
@@ -3249,8 +3250,8 @@ export const REGISTRY: Record<string, ResourceSpec> = {
         const raw = flat[key];
         if (Array.isArray(raw)) {
           flat[key] = raw
-            .map((item) =>
-              typeof item === "object" && item !== null && "value" in (item as object)
+            .map((item: unknown) =>
+              typeof item === "object" && item !== null && "value" in item
                 ? (item as Record<string, unknown>)["value"]
                 : item,
             )

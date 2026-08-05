@@ -14,18 +14,18 @@ type Captured = { url: string; method: string; body: Record<string, unknown> };
 
 function captureFetch(): { calls: Captured[] } {
   const calls: Captured[] = [];
-  globalThis.fetch = (async (url: string, init: RequestInit) => {
+  globalThis.fetch = ((url: string, init: RequestInit) => {
     calls.push({
       url: String(url),
       method: String(init.method),
       body: init.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {},
     });
-    return {
+    return Promise.resolve({
       ok: true,
       status: 200,
       statusText: "OK",
-      text: async () => JSON.stringify({ operation: { id: "opr-1", done: false } }),
-    } as unknown as Response;
+      text: () => Promise.resolve(JSON.stringify({ operation: { id: "opr-1", done: false } })),
+    } as unknown as Response);
   }) as unknown as typeof fetch;
   return { calls };
 }

@@ -54,7 +54,7 @@ export function NetworkInterfaceDetailPage() {
   });
 
   const overviewExtras = useMemo(
-    () => (data: Record<string, unknown>) => {
+    () => function NicOverviewExtras(data: Record<string, unknown>) {
       const v4Ids = (data.v4_address_ids as string[] | undefined) ?? [];
       const v6Ids = (data.v6_address_ids as string[] | undefined) ?? [];
       const sgIds = (data.security_group_ids as string[] | undefined) ?? [];
@@ -114,7 +114,7 @@ export function NetworkInterfaceDetailPage() {
                     >
                       <td className="py-1 pr-3">
                         {row.name ? (
-                          <a className="text-primary hover:underline">{row.name}</a>
+                          <span className="text-primary hover:underline">{row.name}</span>
                         ) : (
                           <span className="text-muted-foreground">(без имени)</span>
                         )}
@@ -156,7 +156,7 @@ export function NetworkInterfaceDetailPage() {
                       >
                         <td className="py-1 pr-3">
                           {(sg?.name as string) ? (
-                            <a className="text-primary hover:underline">{sg?.name as string}</a>
+                            <span className="text-primary hover:underline">{sg?.name as string}</span>
                           ) : (
                             <span className="text-muted-foreground">(без имени)</span>
                           )}

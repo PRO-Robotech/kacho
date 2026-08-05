@@ -24,6 +24,7 @@
 // Все запросы — `credentials: 'include'` для cookie `ory_kratos_session`.
 
 import { config, kratosUrl } from "@shared/lib/config";
+import { displayText } from "@shared/lib/display-text";
 
 export type FlowType = "login" | "registration" | "recovery" | "settings" | "verification";
 
@@ -108,8 +109,8 @@ function buildError(status: number, body: unknown): KratosError {
   if (body && typeof body === "object") {
     const b = body as Record<string, unknown>;
     if (b.ui) err.ui = b.ui as UiContainer;
-    if (b.redirect_browser_to) err.redirect_browser_to = String(b.redirect_browser_to);
-    if (b.id) err.flow_id = String(b.id);
+    if (b.redirect_browser_to) err.redirect_browser_to = displayText(b.redirect_browser_to);
+    if (b.id) err.flow_id = displayText(b.id);
     if (typeof b.error === "object" && b.error !== null) {
       const e = b.error as { message?: string; reason?: string };
       err.message = e.message || e.reason || err.message;
@@ -158,7 +159,7 @@ export function findNode(ui: UiContainer, name: string): UiNode | undefined {
 /** Получить CSRF-token из flow.ui. */
 export function csrfToken(ui: UiContainer): string {
   const node = findNode(ui, "csrf_token");
-  return node?.attributes?.value ? String(node.attributes.value) : "";
+  return node?.attributes?.value ? displayText(node.attributes.value) : "";
 }
 
 /** Считать список доступных «методов» для login (по UI-nodes group). */

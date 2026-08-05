@@ -46,7 +46,7 @@ export function LogoutPage() {
         }
         if (cancelled) return;
         setStatus("ok");
-        setTimeout(() => navigate(postLogoutRedirect, { replace: true }), 800);
+        setTimeout(() => void navigate(postLogoutRedirect, { replace: true }), 800);
       } catch (e: unknown) {
         if (cancelled) return;
         setStatus("error");

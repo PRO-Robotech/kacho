@@ -31,7 +31,7 @@ export function AuthCallback() {
       return;
     }
     setStatus("ok");
-    setTimeout(() => navigate("/", { replace: true }), 1000);
+    setTimeout(() => void navigate("/", { replace: true }), 1000);
   }, [params, navigate]);
 
   if (status === "loading") {

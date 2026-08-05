@@ -33,6 +33,7 @@ import { RefSelect } from "@shared/components/organisms/form/RefSelect";
 import { CopyableId } from "@shared/components/atoms/CopyableId";
 import { ErrorResult } from "@shared/components/molecules/ErrorResult";
 import { InlineResourceCreateForm } from "@shared/components/organisms/InlineResourceCreateForm";
+import { displayText } from "@shared/lib/display-text";
 
 interface AnyRec {
   id: string;
@@ -124,7 +125,7 @@ export function NicSpecFields({ pathPrefix, value, onChange }: Props) {
         });
         return {
           value: sid,
-          label: sub.name ? `${sub.name}${sub.zone_id ? ` (${sub.zone_id})` : ""}` : sid,
+          label: sub.name ? `${sub.name}${sub.zone_id ? ` (${displayText(sub.zone_id)})` : ""}` : sid,
           children: [
             { value: `${CASCADER_NOADDR_PREFIX}${sid}`, label: "(без адреса)" },
             ...addrLeaves,

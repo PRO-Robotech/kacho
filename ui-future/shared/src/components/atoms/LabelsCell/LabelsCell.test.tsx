@@ -6,14 +6,21 @@ import { LabelsCell } from "./LabelsCell";
 describe("LabelsCell", () => {
   const writeText = jest.fn<(text: string) => Promise<void>>();
 
+  // Утверждения ссылаются на СПЯЩИЕ ФУНКЦИИ, а не на `toast.success`/`toast.error`
+  // по имени владельца: метод, оторванный от своего объекта, теряет получателя —
+  // сегодня тела этих методов `this` не читают, но проба не должна зависеть от
+  // свойства чужого тела.
+  let successSpy: jest.Spied<typeof toast.success>;
+  let errorSpy: jest.Spied<typeof toast.error>;
+
   beforeEach(() => {
     writeText.mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText },
     });
-    jest.spyOn(toast, "success").mockReturnValue("toast-id");
-    jest.spyOn(toast, "error").mockReturnValue("toast-id");
+    successSpy = jest.spyOn(toast, "success").mockReturnValue("toast-id");
+    errorSpy = jest.spyOn(toast, "error").mockReturnValue("toast-id");
   });
 
   afterEach(() => {
@@ -47,17 +54,18 @@ describe("LabelsCell", () => {
   it("copies a label without bubbling the click", async () => {
     const onClick = jest.fn();
 
-    render(
-      <div onClick={onClick}>
-        <LabelsCell labels={{ env: "prod" }} />
-      </div>,
-    );
+    document.addEventListener("click", onClick);
+    try {
+      render(<LabelsCell labels={{ env: "prod" }} />);
 
-    fireEvent.click(screen.getByText("env=prod"));
+      fireEvent.click(screen.getByText("env=prod"));
 
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("env=prod"));
-    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Скопировано: env=prod"));
-    expect(onClick).not.toHaveBeenCalled();
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith("env=prod"));
+      await waitFor(() => expect(successSpy).toHaveBeenCalledWith("Скопировано: env=prod"));
+      expect(onClick).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener("click", onClick);
+    }
   });
 
   it("shows an error toast when copying fails", async () => {
@@ -67,6 +75,6 @@ describe("LabelsCell", () => {
 
     fireEvent.click(screen.getByText("env=prod"));
 
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Не удалось скопировать"));
+    await waitFor(() => expect(errorSpy).toHaveBeenCalledWith("Не удалось скопировать"));
   });
 });

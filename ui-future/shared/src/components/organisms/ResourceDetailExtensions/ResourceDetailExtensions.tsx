@@ -27,6 +27,7 @@ import { ResourceIcon } from "@shared/components/organisms/form/ResourceIcon";
 import { ReferrerLink } from "@shared/lib/spec-columns";
 import { api } from "@shared/api/client";
 import { getByPath } from "@shared/lib/resource-registry";
+import { displayText } from "@shared/lib/display-text";
 
 export interface DescItem {
   label: string;
@@ -66,12 +67,12 @@ export interface DetailExtension {
 const dash = <Typography.Text type="secondary">—</Typography.Text>;
 
 function txt(v: unknown): ReactNode {
-  const s = v == null ? "" : String(v);
+  const s = displayText(v);
   return s ? s : dash;
 }
 
 function mono(v: unknown): ReactNode {
-  const s = v == null ? "" : String(v);
+  const s = displayText(v);
   return s ? <span style={{ fontFamily: "ui-monospace, monospace", fontSize: 12 }}>{s}</span> : dash;
 }
 

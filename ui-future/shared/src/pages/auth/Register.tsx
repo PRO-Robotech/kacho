@@ -90,15 +90,21 @@ export function RegisterPage() {
   };
 
   // Debounced HIBP check на change password input.
+  //
+  // Обработчик таймера — синхронный: `setTimeout` результат не читает и промис
+  // не дожидается, поэтому async-обработчик отдавал бы ему промис под видом
+  // void, а его отказ уходил бы в необработанное отклонение. Проверка сама
+  // fail-open (см. checkHibp), результат снимается явным `void`.
   useEffect(() => {
-    const t = setTimeout(async () => {
-      const password = form.getFieldValue("password");
+    const t = setTimeout(() => {
+      const password = form.getFieldValue("password") as string | undefined;
       if (!password) {
         setHibpWarn(null);
         return;
       }
-      const pwned = await checkHibp(password);
-      setHibpWarn(pwned ? "Этот пароль уже встречался в утечках. Выберите другой." : null);
+      void checkHibp(password).then((pwned) =>
+        setHibpWarn(pwned ? "Этот пароль уже встречался в утечках. Выберите другой." : null),
+      );
     }, 500);
     return () => clearTimeout(t);
   }, [form]);

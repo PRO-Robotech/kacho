@@ -34,8 +34,18 @@ function load(): State {
   try {
     const raw = window.localStorage.getItem(KEY);
     if (raw) {
-      const parsed = JSON.parse(raw);
-      return { account: parsed.account ?? null, project: parsed.project ?? null };
+      // Содержимое localStorage — ввод, а не наш тип: его мог оставить
+      // предыдущий формат, другая вкладка или рука в devtools. `JSON.parse`
+      // возвращает `any`, и чтение полей без сверки формы протащило бы любую
+      // структуру в состояние приложения под видом ссылки на аккаунт/проект.
+      const parsed: unknown = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        const o = parsed as { account?: unknown; project?: unknown };
+        return {
+          account: (o.account as AccountRef | null | undefined) ?? null,
+          project: (o.project as ProjectRef | null | undefined) ?? null,
+        };
+      }
     }
   } catch {
     // ignore
@@ -102,7 +112,12 @@ export const contextApi = {
     setState(next);
   },
 
-  subscribe(l: () => void) {
+  // Стрелочное свойство, а не метод: `subscribe` уходит в
+  // `useSyncExternalStore` ОТДЕЛЬНО от объекта, и метод-сокращение
+  // передавался бы туда отвязанным от получателя. Сейчас тело `this` не
+  // читает, поэтому промаха не видно, — но это свойство тела, а не контракта:
+  // первое же обращение к `this` внутри превратило бы передачу в тихую ошибку.
+  subscribe: (l: () => void) => {
     listeners.add(l);
     return () => listeners.delete(l);
   },

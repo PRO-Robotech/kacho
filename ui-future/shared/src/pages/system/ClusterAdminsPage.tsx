@@ -15,7 +15,7 @@
 // (для системы прав см. workspace CLAUDE.md §«Инфра-чувствительные данные»).
 
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { Alert, Button, Popconfirm, Space, Spin, Table, Tooltip, Typography } from "antd";
 import { DeleteOutlined, ExclamationCircleOutlined, ReloadOutlined, UserAddOutlined } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
@@ -260,7 +260,7 @@ export default function ClusterAdminsPage() {
         description={
           <>
             Cluster admin grants теперь видны и через страницу{" "}
-            <a onClick={() => navigate("/iam/access-bindings")}>Access Bindings</a> (фильтр
+            <Link to="/iam/access-bindings">Access Bindings</Link> (фильтр
             <code> resource_type=cluster, resource_id=cluster_kacho_root</code>). Создавать новый grant можно как через
             &quot;Добавить admin (legacy)&quot; (POST <code>/iam/v1/internal/cluster/admins</code>), так и через
             &quot;Выдать через AccessBinding&quot; — оба flow идемпотентны.

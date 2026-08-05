@@ -148,7 +148,7 @@ export function TargetGroupDetailPage() {
   });
 
   const targetsSection = useMemo(
-    () => (data: Record<string, unknown>) => {
+    () => function TargetGroupTargetsSection(data: Record<string, unknown>) {
       const targets = getByPath<Target[]>(data, "targets") ?? [];
       const columns: ColumnsType<Target> = [
         { title: "Тип", key: "kind", width: 120, render: (_v, t) => <Tag>{targetIdentity(t).label}</Tag> },
