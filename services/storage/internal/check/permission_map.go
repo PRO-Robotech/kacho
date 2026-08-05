@@ -16,7 +16,8 @@ import (
 // cluster-грантов) получал 403 на List/Get/Create/Update/Delete СВОЕГО проекта;
 // bootstrap-суиты это маскировали через iam cluster-admin short-circuit):
 //   - List/Create               → parent scope `project:<project_id>`, tier viewer/editor;
-//   - Get/Update/Delete/ListOps  → object-self `storage_<res>:<res_id>`, tier viewer/editor;
+//   - Get/Update/Delete/ListOps  → object-self `storage_<res>:<res_id>`, ГЛАГОЛ этого
+//     объекта (`v_get`/`v_update`/`v_delete`/`v_list`), а не ярус — см. ниже;
 //   - DiskType Get/List          → viewer на cluster singleton (глобальный read-only каталог);
 //   - InternalVolume Attach/Detach → object-self `storage_volume:<volume_id>` ПЛЮС
 //     вопрос про ВТОРОЙ объект (машину) на уровне данных, в use-case: у этих RPC
@@ -48,9 +49,30 @@ const (
 	objectTypeCluster      = "cluster"
 	clusterSingletonObject = "cluster_kacho_root"
 
+	// Ярусные отношения. Остаются РОВНО там, где вопрос задаётся о РОДИТЕЛЕ:
+	// create-child и top-level List анкерятся на `project:<project_id>`, и ярус —
+	// это и есть право писать в проект / читать его содержимое. На cluster-синглтоне
+	// ярус несёт глобальный справочник (DiskType) и его admin-CRUD.
 	relationViewer      = "viewer"
 	relationEditor      = "editor"
 	relationSystemAdmin = "system_admin"
+
+	// Глагольные отношения (`v_*`) — object-self RPC. Материализуются
+	// iam-реконсайлером per-object из выданных ГЛАГОЛОВ правила; дублируют имена из
+	// services/iam/internal/authzmap (там источник истины), здесь — backend view-only.
+	//
+	// Почему ярус здесь неприменим, хотя технически «работал»: реконсайлер на каждый
+	// материализованный объект пишет, помимо `v_*`, ярусный кортеж, и ярус выводится
+	// из КЛАССА глаголов правила — `create` относится к классу записи, значит ярус
+	// `editor`, а модель объявляет `editor ⇒ viewer`. Выдача, назвавшая один лишь
+	// `create`, получала на объекте `editor` и вместе с ним всё, что гейтилось
+	// ярусом: чтение, правку и удаление. Глагол задаёт РОВНО тот вопрос, который
+	// назван в выдаче. Замок класса — reconcile.TestCreateOnlyGrantOpensNoObjectSelfRPC
+	// (population выводится из каталога прав, а не перечисляется).
+	relationVGet    = "v_get"
+	relationVList   = "v_list"
+	relationVUpdate = "v_update"
+	relationVDelete = "v_delete"
 )
 
 // staticClusterCatalog — extractor, всегда возвращающий (cluster, cluster_kacho_root).
@@ -92,13 +114,13 @@ func PermissionMap() authz.RPCMap {
 			func(req any) (string, error) { return req.(*storagev1.ListVolumesRequest).GetProjectId(), nil }),
 		"/kacho.cloud.storage.v1.VolumeService/Create": scoped(relationEditor, objectTypeProject, "storage.volumes.create",
 			func(req any) (string, error) { return req.(*storagev1.CreateVolumeRequest).GetProjectId(), nil }),
-		"/kacho.cloud.storage.v1.VolumeService/Get": scoped(relationViewer, objectTypeVolume, "storage.volumes.get",
+		"/kacho.cloud.storage.v1.VolumeService/Get": scoped(relationVGet, objectTypeVolume, "storage.volumes.get",
 			func(req any) (string, error) { return req.(*storagev1.GetVolumeRequest).GetVolumeId(), nil }),
-		"/kacho.cloud.storage.v1.VolumeService/ListOperations": scoped(relationViewer, objectTypeVolume, "storage.volumes.listOperations",
+		"/kacho.cloud.storage.v1.VolumeService/ListOperations": scoped(relationVList, objectTypeVolume, "storage.volumes.listOperations",
 			func(req any) (string, error) { return req.(*storagev1.ListVolumeOperationsRequest).GetVolumeId(), nil }),
-		"/kacho.cloud.storage.v1.VolumeService/Update": scoped(relationEditor, objectTypeVolume, "storage.volumes.update",
+		"/kacho.cloud.storage.v1.VolumeService/Update": scoped(relationVUpdate, objectTypeVolume, "storage.volumes.update",
 			func(req any) (string, error) { return req.(*storagev1.UpdateVolumeRequest).GetVolumeId(), nil }),
-		"/kacho.cloud.storage.v1.VolumeService/Delete": scoped(relationEditor, objectTypeVolume, "storage.volumes.delete",
+		"/kacho.cloud.storage.v1.VolumeService/Delete": scoped(relationVDelete, objectTypeVolume, "storage.volumes.delete",
 			func(req any) (string, error) { return req.(*storagev1.DeleteVolumeRequest).GetVolumeId(), nil }),
 
 		// ---- SnapshotService (public :9090) ----
@@ -106,11 +128,11 @@ func PermissionMap() authz.RPCMap {
 			func(req any) (string, error) { return req.(*storagev1.ListSnapshotsRequest).GetProjectId(), nil }),
 		"/kacho.cloud.storage.v1.SnapshotService/Create": scoped(relationEditor, objectTypeProject, "storage.snapshots.create",
 			func(req any) (string, error) { return req.(*storagev1.CreateSnapshotRequest).GetProjectId(), nil }),
-		"/kacho.cloud.storage.v1.SnapshotService/Get": scoped(relationViewer, objectTypeSnapshot, "storage.snapshots.get",
+		"/kacho.cloud.storage.v1.SnapshotService/Get": scoped(relationVGet, objectTypeSnapshot, "storage.snapshots.get",
 			func(req any) (string, error) { return req.(*storagev1.GetSnapshotRequest).GetSnapshotId(), nil }),
-		"/kacho.cloud.storage.v1.SnapshotService/Update": scoped(relationEditor, objectTypeSnapshot, "storage.snapshots.update",
+		"/kacho.cloud.storage.v1.SnapshotService/Update": scoped(relationVUpdate, objectTypeSnapshot, "storage.snapshots.update",
 			func(req any) (string, error) { return req.(*storagev1.UpdateSnapshotRequest).GetSnapshotId(), nil }),
-		"/kacho.cloud.storage.v1.SnapshotService/Delete": scoped(relationEditor, objectTypeSnapshot, "storage.snapshots.delete",
+		"/kacho.cloud.storage.v1.SnapshotService/Delete": scoped(relationVDelete, objectTypeSnapshot, "storage.snapshots.delete",
 			func(req any) (string, error) { return req.(*storagev1.DeleteSnapshotRequest).GetSnapshotId(), nil }),
 
 		// ---- DiskTypeService (public :9090, read-only global catalog) ----
@@ -122,13 +144,13 @@ func PermissionMap() authz.RPCMap {
 			func(req any) (string, error) { return req.(*storagev1.ListImagesRequest).GetProjectId(), nil }),
 		"/kacho.cloud.storage.v1.ImageService/Create": scoped(relationEditor, objectTypeProject, "storage.images.create",
 			func(req any) (string, error) { return req.(*storagev1.CreateImageRequest).GetProjectId(), nil }),
-		"/kacho.cloud.storage.v1.ImageService/Get": scoped(relationViewer, objectTypeImage, "storage.images.get",
+		"/kacho.cloud.storage.v1.ImageService/Get": scoped(relationVGet, objectTypeImage, "storage.images.get",
 			func(req any) (string, error) { return req.(*storagev1.GetImageRequest).GetImageId(), nil }),
-		"/kacho.cloud.storage.v1.ImageService/ListOperations": scoped(relationViewer, objectTypeImage, "storage.images.listOperations",
+		"/kacho.cloud.storage.v1.ImageService/ListOperations": scoped(relationVList, objectTypeImage, "storage.images.listOperations",
 			func(req any) (string, error) { return req.(*storagev1.ListImageOperationsRequest).GetImageId(), nil }),
-		"/kacho.cloud.storage.v1.ImageService/Update": scoped(relationEditor, objectTypeImage, "storage.images.update",
+		"/kacho.cloud.storage.v1.ImageService/Update": scoped(relationVUpdate, objectTypeImage, "storage.images.update",
 			func(req any) (string, error) { return req.(*storagev1.UpdateImageRequest).GetImageId(), nil }),
-		"/kacho.cloud.storage.v1.ImageService/Delete": scoped(relationEditor, objectTypeImage, "storage.images.delete",
+		"/kacho.cloud.storage.v1.ImageService/Delete": scoped(relationVDelete, objectTypeImage, "storage.images.delete",
 			func(req any) (string, error) { return req.(*storagev1.DeleteImageRequest).GetImageId(), nil }),
 
 		// ---- InternalVolumeService (:9091 attach-координация) ----

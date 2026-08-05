@@ -78,7 +78,7 @@ func TestListNeverShowsWhatGetWouldRefuse(t *testing.T) {
 	)
 
 	client := newFakeAuthorizeClient().
-		allow("viewer", readable).
+		allow("v_get", readable).
 		allow("v_list", listOnly)
 
 	f := NewFGAFilter(client, Config{Enabled: true})

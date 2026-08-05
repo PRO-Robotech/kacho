@@ -42,6 +42,7 @@ PRINCIPAL_PAIRINGS = {
     "svaInviteeId": "jwtInvitee",
     "svaNoGrantId": "jwtSANoGrant",
     "svaPureNoGrantId": "jwtPureNoBindings",
+    "svaStorageCreateListOnlyId": "jwtStorageCreateListOnlyA",
 }
 
 

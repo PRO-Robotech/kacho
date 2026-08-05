@@ -141,6 +141,7 @@ func buildGRPCNotFoundStatus(desc permissionDeniedDescriptor) *status.Status {
 //	iam       services/iam/internal/repo/kacho/pg/{account,project,user_pool,group,service_account,access_binding}_repo.go
 //	compute   services/compute/internal/repo/instance_repo.go
 //	vpc       services/vpc/internal/repo/kacho/pg/*.go (+ repo/helpers/sg.go)
+//	storage   services/storage/internal/repo/pg/{volume,snapshot,image}_repo.go
 //	nlb       services/nlb/internal/repo/kacho/pg/{load_balancer,listener,target_group}_repo.go
 //	registry  services/registry/internal/repo/kacho/pg/errmap.go (wrapPgErr composes
 //	          "<Resource> %s not found" from the resource name its caller passes)
@@ -182,6 +183,15 @@ var hideExistenceNotFoundFormats = map[string]string{
 	"vpc_security_group":    "Security group SecurityGroup.Id(value=%s) not found",
 	"vpc_gateway":           "Gateway %s not found",
 	"vpc_network_interface": "Network interface %s not found",
+	// storage — services/storage/internal/repo/pg/{volume,snapshot,image}_repo.go.
+	// These three became reachable the moment storage's object-self reads moved off
+	// the tier onto `v_get`: before that, HidesExistenceOnDeny answered false for
+	// them and a deny left the gateway as a plain 403, so there was nothing to
+	// byte-match. Texts are the repo-layer NotFound verbatim (serviceerr strips only
+	// the sentinel prefix — see its errmap contract test).
+	"storage_volume":   "Volume %s not found",
+	"storage_snapshot": "Snapshot %s not found",
+	"storage_image":    "Image %s not found",
 	// nlb — services/nlb/internal/repo/kacho/pg/*.go
 	"nlb_network_load_balancer": "NetworkLoadBalancer %s not found",
 	"nlb_listener":              "Listener %s not found",

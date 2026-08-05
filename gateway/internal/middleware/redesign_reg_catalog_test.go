@@ -32,12 +32,15 @@ func TestPermissionCatalog_RedesignReg(t *testing.T) {
 		{"kacho.cloud.compute.v1.InternalMachineTypeService/Update", "compute.machineTypes.update", "system_admin", "cluster", "*"},
 		{"kacho.cloud.compute.v1.InternalMachineTypeService/Delete", "compute.machineTypes.delete", "system_admin", "cluster", "*"},
 		// storage ImageService — public CRUD + ListOperations (object-scoped anti-BOLA).
-		{"kacho.cloud.storage.v1.ImageService/Get", "storage.images.get", "viewer", "storage_image", "image_id"},
+		// Object-self rows take the OBJECT'S VERB; the two rows anchored on the parent
+		// project keep the project tier (`editor` to create into it, `viewer` to list
+		// what is in it) — that axis is unchanged.
+		{"kacho.cloud.storage.v1.ImageService/Get", "storage.images.get", "v_get", "storage_image", "image_id"},
 		{"kacho.cloud.storage.v1.ImageService/List", "storage.images.list", "viewer", "project", "project_id"},
 		{"kacho.cloud.storage.v1.ImageService/Create", "storage.images.create", "editor", "project", "project_id"},
-		{"kacho.cloud.storage.v1.ImageService/Update", "storage.images.update", "editor", "storage_image", "image_id"},
-		{"kacho.cloud.storage.v1.ImageService/Delete", "storage.images.delete", "editor", "storage_image", "image_id"},
-		{"kacho.cloud.storage.v1.ImageService/ListOperations", "storage.images.listOperations", "viewer", "storage_image", "image_id"},
+		{"kacho.cloud.storage.v1.ImageService/Update", "storage.images.update", "v_update", "storage_image", "image_id"},
+		{"kacho.cloud.storage.v1.ImageService/Delete", "storage.images.delete", "v_delete", "storage_image", "image_id"},
+		{"kacho.cloud.storage.v1.ImageService/ListOperations", "storage.images.listOperations", "v_list", "storage_image", "image_id"},
 		// storage InternalImageService — infra projection (internal-only).
 		{"kacho.cloud.storage.v1.InternalImageService/GetInternal", "storage.images.getInternal", "viewer", "storage_image", "image_id"},
 		// vpc NetworkService :verb supernet growth/shrink (object-scoped v_update).

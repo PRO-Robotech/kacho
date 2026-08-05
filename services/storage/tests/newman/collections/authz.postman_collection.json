@@ -166,7 +166,7 @@
       ]
     },
     {
-      "name": "AUTHZ-VOL-GET-CROSS-DENY — [INV-10] alice Get чужого volume (scope {storage_volume,volume_id}) → 403 PERMISSION_DENIED (анти-BOLA, existence-non-revealing)",
+      "name": "AUTHZ-VOL-GET-CROSS-DENY — [INV-10] alice Get чужого volume (scope {storage_volume,volume_id}) → 404 текстом владельца, неотличимо от промаха (анти-BOLA)",
       "description": "class:AUTHZ | class:SEC | class:NEG | priority:P0",
       "item": [
         {
@@ -216,10 +216,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-VOL-GET-CROSS-DENY] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "pm.test('[AUTHZ-VOL-GET-CROSS-DENY] DENY-as-MISS: status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(404));",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-VOL-GET-CROSS-DENY] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-VOL-GET-CROSS-DENY] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('[AUTHZ-VOL-GET-CROSS-DENY] DENY-as-MISS: grpc code 5 (NOT_FOUND)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
+                  "pm.test('[AUTHZ-VOL-GET-CROSS-DENY] DENY-as-MISS: текст владельца, байт в байт', () => pm.expect((j && j.message) || '', JSON.stringify(j)).to.equal('Volume ' + pm.environment.get('garbageStorageId') + ' not found'));",
+                  "pm.test('[AUTHZ-VOL-GET-CROSS-DENY] отказ не называет ни прав, ни субъекта', () => {",
+                  "  const m = ((j && j.message) || '').toLowerCase();",
+                  "  pm.expect(m, 'отказ, отличимый от промаха, и есть оракул').to.not.contain('permission');",
+                  "  pm.expect(m).to.not.contain('denied');",
+                  "});"
                 ]
               }
             }
@@ -422,7 +427,7 @@
       ]
     },
     {
-      "name": "AUTHZ-SNP-GET-CROSS-DENY — [INV-10] alice Get чужого snapshot (scope {storage_snapshot,snapshot_id}) → 403 PERMISSION_DENIED (анти-BOLA)",
+      "name": "AUTHZ-SNP-GET-CROSS-DENY — [INV-10] alice Get чужого snapshot (scope {storage_snapshot,snapshot_id}) → 404 текстом владельца, неотличимо от промаха (анти-BOLA)",
       "description": "class:AUTHZ | class:SEC | class:NEG | priority:P0",
       "item": [
         {
@@ -472,10 +477,15 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('[AUTHZ-SNP-GET-CROSS-DENY] DENY: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "pm.test('[AUTHZ-SNP-GET-CROSS-DENY] DENY-as-MISS: status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(404));",
                   "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
-                  "pm.test('[AUTHZ-SNP-GET-CROSS-DENY] DENY: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(7));",
-                  "pm.test('[AUTHZ-SNP-GET-CROSS-DENY] DENY: message contains permission denied', () => pm.expect((j && j.message || '').toLowerCase()).to.contain('permission denied'));"
+                  "pm.test('[AUTHZ-SNP-GET-CROSS-DENY] DENY-as-MISS: grpc code 5 (NOT_FOUND)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
+                  "pm.test('[AUTHZ-SNP-GET-CROSS-DENY] DENY-as-MISS: текст владельца, байт в байт', () => pm.expect((j && j.message) || '', JSON.stringify(j)).to.equal('Snapshot ' + pm.environment.get('garbageSnapshotId') + ' not found'));",
+                  "pm.test('[AUTHZ-SNP-GET-CROSS-DENY] отказ не называет ни прав, ни субъекта', () => {",
+                  "  const m = ((j && j.message) || '').toLowerCase();",
+                  "  pm.expect(m, 'отказ, отличимый от промаха, и есть оракул').to.not.contain('permission');",
+                  "  pm.expect(m).to.not.contain('denied');",
+                  "});"
                 ]
               }
             }
@@ -1872,6 +1882,648 @@
         },
         {
           "name": "poll-op-10",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "AUTHZ-VOL-VERB-CUT-NOT-TIER — [verb-cut] выдача `storage.volumes {create,list}` открывает ListOperations (v_list) и НЕ открывает Get/Update/Delete того же тома",
+      "description": "class:AUTHZ | class:SEC | class:NEG | class:CONF | priority:P0",
+      "item": [
+        {
+          "name": "seed-vol-verbcut",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/volumes",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "volumes"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"projectId\": \"{{_suiteProjectId}}\", \"name\": \"vol-leak-verbcut-{{runId}}\", \"zoneId\": \"{{existingZoneId}}\", \"diskTypeId\": \"{{existingDiskTypeId}}\", \"sizeBytes\": 10737418240}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}",
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.metadata && j.metadata.volumeId);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('verbCutVolumeId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-11",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "assert-op-success",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "pm.test('operation succeeded (response, no error)', () => pm.expect(Boolean(j.response) && !j.error, JSON.stringify(j)).to.eql(true));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ops-as-crlist-rya1",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/volumes/{{verbCutVolumeId}}/operations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "volumes",
+                "{{verbCutVolumeId}}",
+                "operations"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtStorageCreateListOnlyA'",
+                  "const __t = pm.environment.get('jwtStorageCreateListOnlyA') || pm.variables.get('jwtStorageCreateListOnlyA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtStorageCreateListOnlyA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtStorageCreateListOnlyA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
+                  "pm.test('[AUTHZ-VOL-VERB-CUT-NOT-TIER] list-operations: предъявитель аутентифицирован (не 16/401)', () => {",
+                  "  pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.not.equal(401);",
+                  "  pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16);",
+                  "});",
+                  "pm.test('[AUTHZ-VOL-VERB-CUT-NOT-TIER] list-operations: 200 — глагол `list` выдан и материализован', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(200));",
+                  "pm.test('[AUTHZ-VOL-VERB-CUT-NOT-TIER] list-operations: ответ — массив операций', () => pm.expect(pm.response.json().operations || [], JSON.stringify(pm.response.json())).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "get-as-crlist",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/volumes/{{verbCutVolumeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "volumes",
+                "{{verbCutVolumeId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtStorageCreateListOnlyA'",
+                  "const __t = pm.environment.get('jwtStorageCreateListOnlyA') || pm.variables.get('jwtStorageCreateListOnlyA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtStorageCreateListOnlyA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtStorageCreateListOnlyA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
+                  "pm.test('[AUTHZ-VOL-VERB-CUT-NOT-TIER] get: предъявитель аутентифицирован (не 16/401)', () => {",
+                  "  pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.not.equal(401);",
+                  "  pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16);",
+                  "});",
+                  "pm.test('[AUTHZ-VOL-VERB-CUT-NOT-TIER/get] DENY-as-MISS: status 404', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(404));",
+                  "let j; try { j = pm.response.json(); } catch(e) { j = null; }",
+                  "pm.test('[AUTHZ-VOL-VERB-CUT-NOT-TIER/get] DENY-as-MISS: grpc code 5 (NOT_FOUND)', () => pm.expect(j && j.code, JSON.stringify(j)).to.equal(5));",
+                  "pm.test('[AUTHZ-VOL-VERB-CUT-NOT-TIER/get] DENY-as-MISS: текст владельца, байт в байт', () => pm.expect((j && j.message) || '', JSON.stringify(j)).to.equal('Volume ' + pm.environment.get('verbCutVolumeId') + ' not found'));",
+                  "pm.test('[AUTHZ-VOL-VERB-CUT-NOT-TIER/get] отказ не называет ни прав, ни субъекта', () => {",
+                  "  const m = ((j && j.message) || '').toLowerCase();",
+                  "  pm.expect(m, 'отказ, отличимый от промаха, и есть оракул').to.not.contain('permission');",
+                  "  pm.expect(m).to.not.contain('denied');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "patch-as-crlist",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/volumes/{{verbCutVolumeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "volumes",
+                "{{verbCutVolumeId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"description\", \"description\": \"verb-cut-attempt\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtStorageCreateListOnlyA'",
+                  "const __t = pm.environment.get('jwtStorageCreateListOnlyA') || pm.variables.get('jwtStorageCreateListOnlyA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtStorageCreateListOnlyA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtStorageCreateListOnlyA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
+                  "pm.test('[AUTHZ-VOL-VERB-CUT-NOT-TIER] update: предъявитель аутентифицирован (не 16/401)', () => {",
+                  "  pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.not.equal(401);",
+                  "  pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16);",
+                  "});",
+                  "pm.test('[AUTHZ-VOL-VERB-CUT-NOT-TIER] update: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "pm.test('[AUTHZ-VOL-VERB-CUT-NOT-TIER] update: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.equal(7));",
+                  "pm.test('[AUTHZ-VOL-VERB-CUT-NOT-TIER] update: message contains permission denied', () => pm.expect(((_j && _j.message) || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "delete-as-crlist",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/volumes/{{verbCutVolumeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "volumes",
+                "{{verbCutVolumeId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtStorageCreateListOnlyA'",
+                  "const __t = pm.environment.get('jwtStorageCreateListOnlyA') || pm.variables.get('jwtStorageCreateListOnlyA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtStorageCreateListOnlyA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtStorageCreateListOnlyA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
+                  "pm.test('[AUTHZ-VOL-VERB-CUT-NOT-TIER] delete: предъявитель аутентифицирован (не 16/401)', () => {",
+                  "  pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.not.equal(401);",
+                  "  pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16);",
+                  "});",
+                  "pm.test('[AUTHZ-VOL-VERB-CUT-NOT-TIER] delete: status 403', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(403));",
+                  "pm.test('[AUTHZ-VOL-VERB-CUT-NOT-TIER] delete: grpc code 7 (PERMISSION_DENIED)', () => pm.expect(_j && _j.code, JSON.stringify(_j)).to.equal(7));",
+                  "pm.test('[AUTHZ-VOL-VERB-CUT-NOT-TIER] delete: message contains permission denied', () => pm.expect(((_j && _j.message) || '').toLowerCase()).to.contain('permission denied'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "patch-as-editor-rya2",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/volumes/{{verbCutVolumeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "volumes",
+                "{{verbCutVolumeId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"updateMask\": \"description\", \"description\": \"editor-can\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtProjectEditorA'",
+                  "const __t = pm.environment.get('jwtProjectEditorA') || pm.variables.get('jwtProjectEditorA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 15) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 400) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
+                  "let _j; try { _j = pm.response.json(); } catch(e) { _j = null; }",
+                  "pm.test('[AUTHZ-VOL-VERB-CUT-NOT-TIER] update-as-editor: предъявитель аутентифицирован (не 16/401)', () => {",
+                  "  pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.not.equal(401);",
+                  "  pm.expect(_j && _j.code, JSON.stringify(_j)).to.not.equal(16);",
+                  "});",
+                  "pm.test('[AUTHZ-VOL-VERB-CUT-NOT-TIER] update-as-editor: 200 — тот же объект правится полноправным грантом', () => pm.expect(pm.response.code, JSON.stringify(pm.response.text())).to.equal(200));",
+                  "if (pm.response.code === 200) { pm.environment.set('opId', pm.response.json().id); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-12",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/operations/{{opId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "operations",
+                "{{opId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// KAC-122 authz-deny: bearer from env 'jwtProjectEditorA'",
+                  "const __t = pm.environment.get('jwtProjectEditorA') || pm.variables.get('jwtProjectEditorA') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtProjectEditorA is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtProjectEditorA is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('poll status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                  "const j = pm.response.json();",
+                  "const pc = parseInt(pm.environment.get('_pollCount') || '0', 10);",
+                  "if (!j.done && pc < 30) {",
+                  "  pm.environment.set('_pollCount', String(pc + 1));",
+                  "  const _pd = Date.now(); while (Date.now() - _pd < 500) { /* inter-poll delay ~500ms (Koren #1) */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_pollCount');",
+                  "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
+                  "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
+                  "else pm.environment.unset('lastOpError');",
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "cleanup-verbcut-vol",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/storage/v1/volumes/{{verbCutVolumeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "storage",
+                "v1",
+                "volumes",
+                "{{verbCutVolumeId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "try {",
+                  "  const j = pm.response.json();",
+                  "  const v = (j.id);",
+                  "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
+                  "} catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "poll-op-13",
           "request": {
             "method": "GET",
             "header": [

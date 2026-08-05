@@ -146,8 +146,12 @@ black-box против external baseUrl (route absent → 404/405/501).
 (не dev-passthrough) с identity `jwtProjectAdminA1` (alice, авторизована на `projectA1Id`,
 не на `projectB1Id`), переиспользованной из compute authz-deny fixture (shared iam/fga seed).
 Гоняется в authz-профиле — как compute `authz-deny.py` (`# requires`). DENY-кейсы
-fixture-минимальны (existence-non-revealing → 403 независимо от существования цели);
+fixture-минимальны (исход не зависит от существования цели): мутация и список → 403,
+одиночное чтение → 404 текстом владельца, байт в байт как настоящий промах.
 `AUTHZ-VOL-LIST-OWN-ALLOW-NOLEAK` требует `viewer@projectA1` tuple.
+`AUTHZ-VOL-VERB-CUT-NOT-TIER` требует узкой роли посева `ps_storage_crlist_*` и её
+предъявителя `jwtStorageCreateListOnlyA` (`storage.volumes {create,list}` @ projectA1):
+без них разрез «глагол, а не ярус» предъявить нечем.
 
 ## Newman-provokable негативы (закрывают DoD «≥1 negative на ресурс», black-box)
 
