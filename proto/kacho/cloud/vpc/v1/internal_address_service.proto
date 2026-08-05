@@ -6,6 +6,8 @@ syntax = "proto3";
 package kacho.cloud.vpc.v1;
 
 import "google/protobuf/timestamp.proto";
+import "kacho/cloud/operation/operation.proto";
+import "kacho/cloud/vpc/v1/address_service.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1;vpcv1";
@@ -111,6 +113,35 @@ service InternalAddressService {
   rpc MarkAddressEphemeralInUse(MarkAddressEphemeralInUseRequest) returns (MarkAddressEphemeralInUseResponse) {
     option (kacho.iam.authz.v1.permission) = "<exempt>";
   }
+
+  // CreateOwnedAddress — создать адрес СРАЗУ привязанным к владельцу: вставка
+  // строки, IPAM-аллокация и referrer-запись выполняются в ОДНОЙ writer-TX.
+  //
+  // ЗАЧЕМ ОТДЕЛЬНЫЙ RPC, А НЕ ПАРА Create + SetAddressReference. Пара делит одно
+  // намерение на два запроса, и ВТОРОЙ гейтится на объекте, которого в момент
+  // начала операции не существовало: доступ к нему появляется у создателя не
+  // мгновенно (owner-tuple материализуется вне мутации), поэтому вызывающий был
+  // вынужден крутить ограниченный ретрай и — когда окно шире его бюджета —
+  // получал отказ на СВОЙ ЖЕ адрес, выделенный мгновение назад. Замер прогона
+  // CI 31002239590: 8 таких отказов на пути создания балансировщика утянули за
+  // собой 44 каскадных утверждения (фикстура не получала id, дальше по кейсу всё
+  // рушилось). Поднимать бюджет ретрая было бы маскировкой; здесь снимается сама
+  // зависимость от окна — второго решения о доступе на свежесозданном объекте
+  // больше нет.
+  //
+  // Право проверяется РОВНО то же, что у публичного `AddressService.Create`:
+  // `editor` на project'е из `address.project_id`. Достижимое состояние
+  // прежнее — вызывающий и раньше мог создать адрес и привязать его; менялось
+  // лишь то, сколько решений о доступе принимается по дороге.
+  //
+  // Асинхронный, как и публичный Create: возвращает `Operation`, ответом
+  // которой служит `Address`. Идемпотентности по имени нет — её обеспечивает
+  // UNIQUE(project,name), как и у публичного пути. Отказ на любом шаге
+  // откатывает ВСЮ транзакцию, поэтому half-allocated адреса и компенсации у
+  // вызывающего больше не существует by construction.
+  rpc CreateOwnedAddress(CreateOwnedAddressRequest) returns (operation.Operation) {
+    option (kacho.iam.authz.v1.permission) = "<exempt>";
+  }
 }
 
 message AllocateInternalIPRequest {
@@ -177,3 +208,21 @@ message MarkAddressEphemeralInUseRequest {
 }
 
 message MarkAddressEphemeralInUseResponse {}
+
+// CreateOwnedAddressRequest — публичная форма создания адреса плюс владелец,
+// которому он привязывается в той же транзакции.
+message CreateOwnedAddressRequest {
+  // Тело создания — ТО ЖЕ сообщение, что у публичного `AddressService.Create`.
+  // Переиспользуется целиком, а не переписывается полями: иначе внутренний путь
+  // тихо разошёлся бы с публичным на первом же новом поле спецификации адреса.
+  CreateAddressRequest address = 1;
+  // Тип ресурса-владельца, напр. "nlb_network_load_balancer".
+  string referrer_type = 2;
+  // ID ресурса-владельца.
+  string referrer_id = 3;
+  // Имя владельца на момент привязки (best-effort зеркало).
+  string referrer_name = 4;
+  // owned — владелец распоряжается жизненным циклом адреса (release =
+  // ClearReference + Delete), а не просто ссылается на него.
+  bool owned = 5;
+}

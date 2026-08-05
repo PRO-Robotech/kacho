@@ -193,10 +193,9 @@ func (c *addressClient) Get(ctx context.Context, addressID string) (*Address, er
 //
 // NOT_FOUND и PERMISSION_DENIED — ОДНА полоса и она НЕ про аргумент. vpc прячет
 // существование через NOT_FOUND там, где скрывает, и отвечает PERMISSION_DENIED
-// там, где не скрывает; на own-lane обе формы значат «мой свежий ресурс ещё не
-// виден пообъектному authz» — ровно тот предикат, который этот пакет уже
-// объявил в `ownResourceInvisible` (internal_address_client.go) и ретраит на
-// reference-CAS полосе.
+// там, где не скрывает; на BYO-полосе (адрес назван КЛИЕНТОМ) обе формы значат
+// «этот объект мне сейчас не виден», и решает по ним вызывающий use-case, а не
+// этот маппер.
 //
 // Прежде обе схлопывались в `ErrInvalidArg`, и вызывающий получал терминальное
 // «аргумент незаконен» про well-formed id существующего ресурса: bounded

@@ -1083,7 +1083,13 @@ func registerPublicServices(srv *grpc.Server, svcs *services, opsRepo operations
 
 // registerInternalServices — kacho-only/admin RPC на internal listener.
 func registerInternalServices(srv *grpc.Server, svcs *services) {
-	vpcv1.RegisterInternalAddressServiceServer(srv, handler.NewInternalAddressAllocateHandler(svcs.addressAllocate, svcs.addressRefService))
+	// `WithOwnedCreator` — путь `CreateOwnedAddress`: создание адреса, СРАЗУ
+	// привязанного к владельцу, одной writer-TX. Реализуется публичным
+	// транспортным handler'ом адреса, чтобы разбор тела создания оставался
+	// единственным на оба пути.
+	vpcv1.RegisterInternalAddressServiceServer(srv,
+		handler.NewInternalAddressAllocateHandler(svcs.addressAllocate, svcs.addressRefService).
+			WithOwnedCreator(svcs.addressHandler))
 	vpcv1.RegisterInternalAddressPoolServiceServer(srv, svcs.addressPoolHandler)
 	vpcv1.RegisterInternalNetworkServiceServer(srv, handler.NewInternalNetworkHandler(svcs.networkInternal))
 	// InternalNetworkInterfaceService — NIC↔Instance attach-CAS (:9091, ban #6): не на

@@ -143,7 +143,11 @@ func (aw *addressWriter) GetByValue(_ context.Context, intl, subnetID string) (*
 	return nil, repo.ErrNotFound
 }
 
-func (aw *addressWriter) GetReference(_ context.Context, _ string) (*domain.AddressReference, error) {
+func (aw *addressWriter) GetReference(_ context.Context, id string) (*domain.AddressReference, error) {
+	if ref, ok := aw.w.localRefs[id]; ok {
+		cp := *ref
+		return &cp, nil
+	}
 	return nil, repo.ErrNotFound
 }
 
@@ -266,6 +270,11 @@ func (aw *addressWriter) SetReference(_ context.Context, ref *domain.AddressRefe
 	a.Used = true
 	cp := *ref
 	cp.AttachedAt = time.Now()
+	// Запись идёт в TX-локальный буфер, а не сразу в общий state: иначе
+	// привязка была бы видна и после отката, то есть проба «в одной
+	// транзакции» перестала бы что-либо отличать.
+	stored := cp
+	aw.w.localRefs[ref.AddressID] = &stored
 	return &cp, nil
 }
 
@@ -278,6 +287,8 @@ func (aw *addressWriter) MarkEphemeralInUse(_ context.Context, ref *domain.Addre
 	a.Used = true
 	cp := *ref
 	cp.AttachedAt = time.Now()
+	stored := cp
+	aw.w.localRefs[ref.AddressID] = &stored
 	return &cp, nil
 }
 
@@ -287,6 +298,7 @@ func (aw *addressWriter) ClearReference(_ context.Context, addressID string) err
 		return repo.ErrNotFound
 	}
 	a.Used = false
+	delete(aw.w.localRefs, addressID)
 	return nil
 }
 

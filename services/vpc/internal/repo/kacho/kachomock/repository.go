@@ -67,6 +67,8 @@ type Repository struct {
 	// GetReference/ReferencesForAddresses (mock не моделирует SetReference-запись
 	// в этот map).
 	references map[string]*domain.AddressReference
+	// outboxEmitErr — тест-хук отказа outbox-emit (см. SetOutboxEmitErr).
+	outboxEmitErr error
 	gateways   map[string]*kacho.GatewayRecord
 	// addressPools — admin-only ресурс.
 	addressPools map[string]*kacho.AddressPoolRecord
@@ -165,6 +167,23 @@ func (r *Repository) SeedReference(ref *domain.AddressReference) {
 	defer r.mu.Unlock()
 	cp := *ref
 	r.references[ref.AddressID] = &cp
+}
+
+// SetOutboxEmitErr заставляет outbox-emit отказывать заданной ошибкой. Точка
+// выбрана намеренно: она лежит ПОСЛЕ вставки ресурса и привязки referrer'а, но
+// ДО коммита, поэтому проба может утверждать, что незакоммиченная привязка не
+// наблюдается. nil сбрасывает хук.
+func (r *Repository) SetOutboxEmitErr(err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.outboxEmitErr = err
+}
+
+// ReferenceCount — число видимых (закоммиченных) referrer-строк.
+func (r *Repository) ReferenceCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.references)
 }
 
 // SetNIInsertHook устанавливает тест-хук, вызываемый перед каждым NIC Insert
@@ -406,6 +425,11 @@ func (r *Repository) Writer(_ context.Context) (kacho.RepositoryWriter, error) {
 		cp := *ni
 		localNIs[id] = &cp
 	}
+	localRefs := make(map[string]*domain.AddressReference, len(r.references))
+	for id, ref := range r.references {
+		cp := *ref
+		localRefs[id] = &cp
+	}
 	localAddrs := make(map[string]*kacho.AddressRecord, len(r.addresses))
 	for id, a := range r.addresses {
 		cp := *a
@@ -433,6 +457,7 @@ func (r *Repository) Writer(_ context.Context) (kacho.RepositoryWriter, error) {
 		localRTs:   localRTs,
 		localNIs:   localNIs,
 		localAddrs: localAddrs,
+		localRefs:  localRefs,
 		localGWs:   localGWs,
 		localAPs:   localAPs,
 		localNDs:   localNDs,
@@ -507,6 +532,10 @@ type writerImpl struct {
 	localRTs   map[string]*kacho.RouteTableRecord
 	localNIs   map[string]*kacho.NetworkInterfaceRecord
 	localAddrs map[string]*kacho.AddressRecord
+	// localRefs — referrer-строки, записанные ЭТОЙ writer-TX; flush в
+	// parent.references на Commit. Без TX-локальности проба «привязка разделяет
+	// судьбу транзакции» не отличала бы откат от коммита.
+	localRefs  map[string]*domain.AddressReference
 	localGWs   map[string]*kacho.GatewayRecord
 	localAPs   map[string]*kacho.AddressPoolRecord
 	localNDs   map[string]string
@@ -632,6 +661,16 @@ func (w *writerImpl) Commit() error {
 	for id, a := range w.localAddrs {
 		w.parent.addresses[id] = a
 	}
+	// Применить writes (referrer-строки). Живут в TX-локальном буфере, поэтому
+	// незакоммиченная привязка не наблюдается — как и в Postgres.
+	for id := range w.parent.references {
+		if _, still := w.localRefs[id]; !still {
+			delete(w.parent.references, id)
+		}
+	}
+	for id, ref := range w.localRefs {
+		w.parent.references[id] = ref
+	}
 	// Удалить помеченные на delete (Gateway).
 	for id := range w.deletedGWIDs {
 		delete(w.parent.gateways, id)
@@ -681,6 +720,14 @@ type outboxEmitter struct {
 }
 
 func (e *outboxEmitter) Emit(_ context.Context, resource, id, action string, payload map[string]any) error {
+	// Тест-хук: отказ ПОСЛЕ вставки и привязки, но ДО коммита — единственная
+	// точка, из которой проба может потребовать отката всей транзакции.
+	e.w.parent.mu.Lock()
+	hook := e.w.parent.outboxEmitErr
+	e.w.parent.mu.Unlock()
+	if hook != nil {
+		return hook
+	}
 	// Скопируем payload (caller может его мутировать после Emit).
 	cp := make(map[string]any, len(payload))
 	for k, v := range payload {

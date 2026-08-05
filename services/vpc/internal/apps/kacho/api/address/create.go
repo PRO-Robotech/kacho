@@ -45,6 +45,22 @@ type InternalAddrSpec struct {
 	SubnetID string
 }
 
+// AddressOwner — владелец, которому адрес привязывается ТОЙ ЖЕ транзакцией, что
+// и создаётся (внутренний путь `InternalAddressService.CreateOwnedAddress`).
+//
+// Публичный путь тенанта владельца не несёт и нести не может: тенант заказывает
+// адрес сам по себе, а не под чужой ресурс. Разделение существует затем, чтобы
+// у платформенного заказчика (сага балансировщика) не было ВТОРОГО решения о
+// доступе — на объекте, которого в начале операции ещё не существовало.
+type AddressOwner struct {
+	ReferrerType string
+	ReferrerID   string
+	ReferrerName string
+	// Owned — владелец распоряжается жизненным циклом адреса (release =
+	// ClearReference + Delete), а не просто ссылается на него.
+	Owned bool
+}
+
 // CreateInput — параметры для CreateAddressUseCase.Execute.
 //
 // Композирует поля Address-запроса + четыре family-specific spec'а (External
@@ -65,6 +81,11 @@ type CreateInput struct {
 	InternalIpv6Spec *InternalAddrSpec
 	// Для external IPv6 (если ExternalIpv6Spec != nil):
 	ExternalIpv6Spec *ExternalAddrSpec
+	// Owner != nil — адрес рождается уже привязанным к владельцу; привязка
+	// выполняется в той же writer-TX, что вставка и IPAM-аллокация. Заполняется
+	// ТОЛЬКО внутренним путём (`CreateOwnedAddress`); публичный Create его
+	// не принимает.
+	Owner *AddressOwner
 }
 
 // CreateAddressUseCase инициирует создание Address (multi-family). Sync-
@@ -596,6 +617,23 @@ func (u *CreateAddressUseCase) doCreate(ctx context.Context, addrID string, in C
 		created.ExternalIpv6.AddressPoolID = res.PoolID
 	}
 
+	// Привязка к владельцу — В ТОЙ ЖЕ writer-TX, после аллокации и до outbox.
+	// Порядок важен только тем, что адрес к этому моменту уже вставлен; сама
+	// запись атомарна с ним по построению: отказ ниже (или отсутствие коммита)
+	// снимает и вставку, и привязку, поэтому half-linked адреса не бывает и
+	// компенсировать вызывающему нечего.
+	if in.Owner != nil {
+		if _, rerr := w.Addresses().SetReference(ctx, &domain.AddressReference{
+			AddressID:    created.ID,
+			ReferrerType: in.Owner.ReferrerType,
+			ReferrerID:   in.Owner.ReferrerID,
+			ReferrerName: in.Owner.ReferrerName,
+			Owned:        in.Owner.Owned,
+		}); rerr != nil {
+			return nil, serviceerr.MapRepoErr(rerr)
+		}
+		created.Used = true
+	}
 	if err := w.Outbox().Emit(ctx, "Address", created.ID, "CREATED", helpers.DomainToMap(created)); err != nil {
 		return nil, serviceerr.MapRepoErr(fmt.Errorf("%w: outbox emit: %v", repo.ErrInternal, err))
 	}

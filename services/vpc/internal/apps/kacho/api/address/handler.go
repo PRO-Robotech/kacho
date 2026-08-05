@@ -142,6 +142,48 @@ func (h *Handler) List(ctx context.Context, req *vpcv1.ListAddressesRequest) (*v
 // Create — proto → CreateInput → use-case. Project-scope AuthZ (`editor @
 // project:<project_id>`) энфорсит per-RPC authz-interceptor.
 func (h *Handler) Create(ctx context.Context, req *vpcv1.CreateAddressRequest) (*operationpb.Operation, error) {
+	op, err := h.create.Execute(ctx, createInputFromProto(req))
+	if err != nil {
+		return nil, err
+	}
+	return pbconv.OperationToProto(op), nil
+}
+
+// CreateOwnedAddress — internal-путь: то же создание, что и публичное, плюс
+// владелец, к которому адрес привязывается ТОЙ ЖЕ writer-TX (см. контракт RPC в
+// `internal_address_service.proto`). Тело создания разбирается ОДНОЙ функцией с
+// публичным путём — иначе внутренний путь тихо разошёлся бы с публичным на
+// первом же новом поле спецификации адреса.
+//
+// Право проверяет тот же per-RPC Check, что и у публичного Create (`editor` на
+// project'е из `address.project_id`) — см. `check.PermissionMap`.
+func (h *Handler) CreateOwnedAddress(ctx context.Context, req *vpcv1.CreateOwnedAddressRequest) (*operationpb.Operation, error) {
+	if req.GetAddress() == nil {
+		return nil, status.Error(codes.InvalidArgument, "address: required")
+	}
+	if req.GetReferrerType() == "" {
+		return nil, status.Error(codes.InvalidArgument, "referrer_type: required")
+	}
+	if req.GetReferrerId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "referrer_id: required")
+	}
+	in := createInputFromProto(req.GetAddress())
+	in.Owner = &AddressOwner{
+		ReferrerType: req.GetReferrerType(),
+		ReferrerID:   req.GetReferrerId(),
+		ReferrerName: req.GetReferrerName(),
+		Owned:        req.GetOwned(),
+	}
+	op, err := h.create.Execute(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	return pbconv.OperationToProto(op), nil
+}
+
+// createInputFromProto — единственный разбор тела создания адреса; общий для
+// публичного `Create` и внутреннего `CreateOwnedAddress`.
+func createInputFromProto(req *vpcv1.CreateAddressRequest) CreateInput {
 	in := CreateInput{
 		ProjectID:          req.ProjectId,
 		Name:               req.Name,
@@ -185,11 +227,7 @@ func (h *Handler) Create(ctx context.Context, req *vpcv1.CreateAddressRequest) (
 		}
 	}
 
-	op, err := h.create.Execute(ctx, in)
-	if err != nil {
-		return nil, err
-	}
-	return pbconv.OperationToProto(op), nil
+	return in
 }
 
 // Update — sync repo.Get (existence → NotFound) + use-case. Per-object AuthZ

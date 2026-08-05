@@ -5,6 +5,7 @@ package vpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -159,11 +160,6 @@ type internalAddressClient struct {
 	// конструкторы дефолтят на slog.Default() (main.go делает slog.SetDefault).
 	logger  *slog.Logger
 	timeout time.Duration
-
-	// visibilityRetries / visibilityInterval — бюджет OWN-LANE read-your-writes
-	// ретрая (см. linkOwnAddress). Тесты сжимают cadence.
-	visibilityRetries  int
-	visibilityInterval time.Duration
 }
 
 // NewInternalAddressClient оборачивает grpc-conn'ы в typed adapter.
@@ -322,246 +318,44 @@ func (c *internalAddressClient) AllocateInternalIPv6(
 	})
 }
 
-// allocFromCreate — общий хвост per-family auto-alloc: AddressService.Create
-// (vpc аллоцирует IP нужной family в writer-TX) + atomic SetReference сразу
-// после Create (used_by=<owner> до commit Listener.Create). readIP извлекает
-// family-specific resolved-адрес из ответа. pool_id не expose'ится через
-// Create-response (для NLB-флоу не критично — pool tracking отдельный enhancement).
+// allocFromCreate — общий хвост per-family auto-alloc: ОДИН вызов
+// `InternalAddressService.CreateOwnedAddress` (vpc вставляет строку, аллоцирует
+// IP нужной family и проставляет referrer `used_by=<owner>` в ОДНОЙ writer-TX).
+// readIP извлекает family-specific resolved-адрес из ответа. pool_id не
+// expose'ится через Create-response (для NLB-флоу не критично — pool tracking
+// отдельный enhancement).
+//
+// ЗДЕСЬ БЫЛА ПАРА «создать, затем привязать» — и она зависела от окна
+// материализации. Второй вызов гейтился на объекте, которого в начале операции
+// не существовало: доступ создателя к своему свежему адресу появляется не
+// мгновенно, поэтому привязка крутила ограниченный ретрай, а на исчерпании
+// бюджета отдавала честный transient-отказ — на СВОЙ ЖЕ адрес, выделенный
+// мгновение назад. Замер прогона CI 31002239590: 8 таких отказов на пути
+// создания балансировщика утянули 44 каскадных утверждения. Поднимать бюджет
+// значило бы маскировать; вместо этого снята сама зависимость — решение о
+// доступе принимается один раз и на project'е, который существует давно.
+//
+// Компенсации на этом пути больше нет by construction: отказ внутри одной
+// транзакции откатывает и вставку, и аллокацию, и привязку, поэтому
+// half-allocated адреса, который надо было бы возвращать в пул, не возникает.
 func (c *internalAddressClient) allocFromCreate(
 	ctx context.Context,
 	createReq *vpcpb.CreateAddressRequest,
 	owner AddressOwner,
 	readIP func(*vpcpb.Address) string,
 ) (*AllocateResponse, error) {
-	addr, err := c.createAddressAndWait(ctx, createReq)
-	if err != nil {
-		return nil, err
-	}
 	// auto-alloc → owned=true (адрес заказан LB неявно, lifecycle связан).
-	// OWN-LANE: адрес только что закоммичен нами, поэтому его невидимость —
-	// материализационное окно, а не «плохой id» (см. linkOwnAddress).
-	if err := c.linkOwnAddress(ctx, addr.GetId(), owner); err != nil {
-		// Компенсация: возвращаем half-allocated адрес в пул. Не маскируем
-		// исходную ошибку (она важнее для caller'а). Если компенсация тоже
-		// падает — адрес orphaned в kacho-vpc; логируем Warn, чтобы leaked-адрес
-		// был наблюдаем и реконсайлируем (иначе — silent IP leak).
-		if freeErr := c.freeOwnAddress(ctx, addr.GetId()); freeErr != nil {
-			c.logger.Warn("address_compensation_free_failed",
-				"address_id", addr.GetId(),
-				"owner_kind", owner.Kind,
-				"owner_id", owner.ID,
-				"set_reference_err", err.Error(),
-				"free_err", freeErr.Error(),
-			)
-		}
+	addr, err := c.createOwnedAddressAndWait(ctx, &vpcpb.CreateOwnedAddressRequest{
+		Address:      createReq,
+		ReferrerType: owner.Kind,
+		ReferrerId:   owner.ID,
+		ReferrerName: owner.Name,
+		Owned:        true,
+	})
+	if err != nil {
 		return nil, err
 	}
 	return &AllocateResponse{AddressID: addr.GetId(), Value: readIP(addr)}, nil
-}
-
-// linkOwnAddress — SetReference на адресе, который МЫ ЖЕ только что создали
-// (auto-alloc хвост `allocFromCreate`), с ограниченным read-your-writes ретраем.
-//
-// Почему отдельная полоса от публичного `SetReference`. Тот обслуживает BYO-lane,
-// где address_id пришёл ОТ КЛИЕНТА: там NOT_FOUND действительно значит «этот id не
-// резолвится» и намеренно схлопывается в generic `ErrInvalidArg` (анти-oracle — не
-// подтверждаем чужой ownership). Здесь id сминтили мы сами, а `AddressService.Create`
-// уже закоммитил строку — значит NOT_FOUND (hide-existence) / PERMISSION_DENIED от
-// vpc НЕ МОЖЕТ означать «нет такого адреса». Это отказ per-object authz-Check, пока
-// owner-tuple свежего `vpc_address:<id>` ещё не материализовался (data-integrity.md:
-// материализация eventually-consistent — outbox → drainer → iam → FGA).
-//
-// Наблюдённый инцидент (CI 30135586348, лог kacho-vpc — четыре случая, каждый убил
-// здоровый LoadBalancer.Create):
-//
-//	{"msg":"authz_hide_existence","rpc":".../InternalAddressService/SetAddressReference",
-//	 "relation":"v_update","object":"vpc_address:adrj251yyhebawpehh6h"}
-//
-// Прежде эта ошибка классифицировалась как `ErrInvalidArg`, и use-case (у которого не
-// оставалось полосы) отвечал capacity-непрозрачным «could not allocate load balancer
-// address» — фактически ЛОЖЬЮ: адрес был выделен, ёмкость ни при чём.
-//
-// Лечится КЛИЕНТСКИМ bounded-retry (api-conventions.md: «создал→сразу мутирую»
-// закрывается bounded client-retry, НЕ серверным confirm-барьером, ban #9).
-// Ретраим ТОЛЬКО own-lane и ТОЛЬКО коды невидимости; ёмкость/AlreadyExists/
-// InvalidArgument не ретраятся и сохраняют прежнюю классификацию. Бюджет исчерпан →
-// `ErrUnavailable` (честная transient-полоса: `allocAcquireErr` отдаёт UNAVAILABLE,
-// ничего не раскрывая), НИКОГДА не capacity-текст.
-func (c *internalAddressClient) linkOwnAddress(
-	ctx context.Context, addressID string, owner AddressOwner,
-) error {
-	attempts, interval := c.visibilityBudget(1)
-
-	var lastErr error
-	for i := range attempts {
-		rerr := c.setAddressReferenceRaw(ctx, addressID, owner, true)
-		if rerr == nil {
-			return nil
-		}
-		if !ownResourceInvisible(rerr) {
-			// Не полоса невидимости (ёмкость / AlreadyExists / InvalidArgument /
-			// peer down) — классифицируем как раньше, без ретрая.
-			return mapSetReferenceErr(addressID, rerr)
-		}
-		lastErr = rerr
-		c.logger.Debug("address_owner_tuple_not_visible_yet",
-			"address_id", addressID,
-			"owner_kind", owner.Kind,
-			"owner_id", owner.ID,
-			"attempt", i+1,
-			"err", rerr.Error(),
-		)
-		if i == attempts-1 {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("%w: vpc set address reference %s: %w", domain.ErrUnavailable, addressID, ctx.Err())
-		case <-time.After(interval):
-		}
-	}
-
-	c.logger.Warn("address_owner_tuple_never_materialized",
-		"address_id", addressID,
-		"owner_kind", owner.Kind,
-		"owner_id", owner.ID,
-		"attempts", attempts,
-		"err", lastErr.Error(),
-	)
-	// Ответ несёт ТОЛЬКО собственный вердикт полосы; `lastErr` остаётся в логе выше
-	// и НЕ попадает в цепочку — по двум причинам.
-	//
-	// 1. КОД. `lastErr` здесь по построению — то, что пропустил
-	// `ownResourceInvisible`: gRPC-status NOT_FOUND (hide-existence) либо
-	// PERMISSION_DENIED. Через `%w` он остался бы в цепочке, а `shared.MapDomainErr`
-	// (единый peer-маппер nlb) намеренно пробрасывает готовый status ПЕРВЫМ — и этот
-	// чужой код перебил бы UNAVAILABLE, который полоса и хотела сказать. Вызывающий
-	// получил бы ТЕРМИНАЛЬНОЕ «не найдено» и прекратил попытки ровно там, где обязан
-	// повторить: материализация eventually-consistent, следующая попытка вполне может
-	// пройти. Порядок ветвей маппера верен (типизированный peer-status обязан
-	// выживать) — не подмешивать чужой статус должно ЗДЕСЬ.
-	//
-	// 2. ТЕКСТ. `%w` на gRPC-ошибке впечатывает в сообщение транспортную обёртку
-	// («rpc error: code = … desc = …»), которой в тоне сообщений Kachō места нет
-	// (api-conventions.md). Пересказ самой фразы peer'а хуже: это hide-existence-
-	// ответ, созданный чтобы НЕ раскрывать, и он утверждает отсутствие адреса,
-	// который мы закоммитили мгновение назад.
-	//
-	// Причина не теряется — она логируется в точке сдачи (CWE-778), там ей и место.
-	return fmt.Errorf("%w: vpc set address reference %s: owner-tuple not visible after %d attempts",
-		domain.ErrUnavailable, addressID, attempts)
-}
-
-// freeOwnAddress — компенсирующий Delete адреса, который МЫ ЖЕ только что создали,
-// с тем же ограниченным read-your-writes ретраем, что и linkOwnAddress.
-//
-// Обычный `FreeIP` трактует NOT_FOUND как «уже удалён» и возвращает nil — верно для
-// произвольного address_id, но НЕВЕРНО здесь: адрес создан нами мгновение назад, значит
-// NOT_FOUND — это hide-existence deny того же не-материализовавшегося owner-tuple
-// (в инциденте deny на Delete приходил через ~10ms после deny на SetAddressReference,
-// на тот же объект). Проглотить его = превратить возвращаемый lease в МОЛЧАЛИВУЮ утечку
-// пула (data-integrity.md «Lease-recycle-on-delete»), невидимую даже для
-// `address_compensation_free_failed`.
-//
-// Поэтому ретраим Delete по полосе невидимости, а невозвращённый lease уходит наверх
-// ошибкой — вызывающий логирует его как утечку.
-func (c *internalAddressClient) freeOwnAddress(ctx context.Context, addressID string) error {
-	// Половинный бюджет: этот путь исполняется УЖЕ ПОСЛЕ того, как linkOwnAddress
-	// израсходовал свой (окно почти наверняка закрылось либо сломано по-крупному), а
-	// суммарная задержка неуспешной Create не должна выесть polling-бюджет клиента.
-	attempts, interval := c.visibilityBudget(2)
-
-	var lastErr error
-	for i := range attempts {
-		rerr := c.deleteAddressRaw(ctx, addressID)
-		if rerr == nil {
-			return nil
-		}
-		if !ownResourceInvisible(rerr) {
-			return mapAllocErr(addressID, rerr)
-		}
-		lastErr = rerr
-		if i == attempts-1 {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("%w: vpc address delete %s: %w", domain.ErrUnavailable, addressID, ctx.Err())
-		case <-time.After(interval):
-		}
-	}
-	// Та же дисциплина, что в linkOwnAddress: наружу — свой вердикт полосы, peer-статус
-	// в цепочку не подмешиваем (иначе он перебьёт код и притащит транспортную обёртку в
-	// текст). Причину логируем ЗДЕСЬ: вызывающий пишет только возвращённую ошибку
-	// (`address_compensation_free_failed`), поэтому без этой записи причина невозвращённого
-	// lease потерялась бы (CWE-778).
-	c.logger.Warn("address_compensation_owner_tuple_never_materialized",
-		"address_id", addressID,
-		"attempts", attempts,
-		"err", lastErr.Error(),
-	)
-	return fmt.Errorf("%w: vpc address delete %s: owner-tuple not visible after %d attempts",
-		domain.ErrUnavailable, addressID, attempts)
-}
-
-// deleteAddressRaw — AddressService.Delete + ожидание Operation, СЫРОЙ gRPC-status
-// наружу (без idempotent-NotFound трактовки `FreeIP`): own-lane сам решает, что
-// NOT_FOUND значит.
-func (c *internalAddressClient) deleteAddressRaw(ctx context.Context, addressID string) error {
-	callCtx, cancel := c.withCallTimeout(ctx)
-	var op *operationpb.Operation
-	err := retry.OnUnavailable(callCtx, func(ctx context.Context) error {
-		var rerr error
-		op, rerr = c.addrs.Delete(auth.PropagateOutgoing(ctx), &vpcpb.DeleteAddressRequest{AddressId: addressID})
-		return rerr
-	})
-	cancel()
-	if err != nil {
-		return err
-	}
-	if op == nil {
-		return nil
-	}
-	_, err = c.waitOperation(ctx, op)
-	return err
-}
-
-// visibilityBudget — бюджет own-lane read-your-writes ретрая, делённый на `divisor`
-// (1 — полный). Тесты сжимают cadence через поля клиента; нули → дефолты. Всегда
-// возвращает минимум 1 попытку (сам вызов).
-func (c *internalAddressClient) visibilityBudget(divisor int) (int, time.Duration) {
-	attempts := c.visibilityRetries
-	if attempts <= 0 {
-		attempts = defaultAddressVisibilityRetries
-	}
-	if divisor > 1 {
-		attempts /= divisor
-	}
-	if attempts < 1 {
-		attempts = 1
-	}
-	interval := c.visibilityInterval
-	if interval <= 0 {
-		interval = defaultAddressVisibilityInterval
-	}
-	return attempts, interval
-}
-
-// ownResourceInvisible — сырой gRPC-код означает «мой свежий ресурс ещё не виден
-// per-object authz». vpc отвечает hide-existence NOT_FOUND там, где скрывает
-// существование, и PERMISSION_DENIED там, где не скрывает; на own-lane обе формы
-// значат одно и то же. Классификация ПО КОДУ, не по прозе сообщения.
-func ownResourceInvisible(rerr error) bool {
-	st, ok := status.FromError(rerr)
-	if !ok {
-		return false
-	}
-	switch st.Code() {
-	case codes.NotFound, codes.PermissionDenied:
-		return true
-	default:
-		return false
-	}
 }
 
 // validateExternalReq — общая sync-валидация аргументов external-alloc (v4/v6).
@@ -812,6 +606,39 @@ func (c *internalAddressClient) resolveAddressValue(ctx context.Context, address
 	return "", nil
 }
 
+// createOwnedAddressAndWait — создать адрес, СРАЗУ привязанный к владельцу, и
+// дождаться завершения его операции. Зеркало `createAddressAndWait` на
+// внутреннем листенере: одна мутация вместо пары «создать + привязать», поэтому
+// на пути нет второго решения о доступе — а значит нет и зависимости от окна
+// материализации свежесозданного объекта.
+func (c *internalAddressClient) createOwnedAddressAndWait(
+	ctx context.Context, req *vpcpb.CreateOwnedAddressRequest,
+) (*vpcpb.Address, error) {
+	createCtx, createCancel := c.withCallTimeout(ctx)
+	var op *operationpb.Operation
+	err := retry.OnUnavailable(createCtx, func(ctx context.Context) error {
+		var rerr error
+		op, rerr = c.internal.CreateOwnedAddress(auth.PropagateOutgoing(ctx), req)
+		return rerr
+	})
+	createCancel()
+	if err != nil {
+		return nil, mapCreateAllocErr(err)
+	}
+	resp, err := c.waitOperation(ctx, op)
+	if err != nil {
+		return nil, mapCreateAllocErr(err)
+	}
+	if resp == nil {
+		return nil, fmt.Errorf("vpc create owned address: operation %s returned no response", op.GetId())
+	}
+	addr := &vpcpb.Address{}
+	if err := resp.UnmarshalTo(addr); err != nil {
+		return nil, fmt.Errorf("vpc create owned address: unmarshal operation response: %w", err)
+	}
+	return addr, nil
+}
+
 // createAddressAndWait вызывает AddressService.Create + poll Operation до
 // done=true. Возвращает созданный Address. Маппит ошибки в sentinel'ы.
 func (c *internalAddressClient) createAddressAndWait(
@@ -922,6 +749,14 @@ func mapCreateAllocErr(err error) error {
 // («Illegal argument addressId»), чтобы не подтверждать чужой ownership
 // (анти-oracle). CREATE-полоса использует `mapCreateAllocErr`.
 func mapAllocErr(addressID string, err error) error {
+	// Исчерпанный бюджет ожидания — это «сосед не ответил», а не «неизвестно
+	// что». Ошибка приезжает сюда НЕ gRPC-статусом (её родил истёкший per-call
+	// контекст поверх повторов на UNAVAILABLE), поэтому без явной ветки она
+	// попадала в неклассифицированную и теряла retryable-полосу: вызывающий
+	// получал «прочее» там, где верно «повтори позже».
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return fmt.Errorf("%w: vpc address allocate: peer did not answer within the call budget", domain.ErrUnavailable)
+	}
 	st, ok := status.FromError(err)
 	if !ok {
 		return fmt.Errorf("vpc address allocate %q: %w", addressID, err)

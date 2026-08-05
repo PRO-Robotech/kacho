@@ -613,6 +613,18 @@ func PermissionMap() authz.RPCMap {
 				return req.(*vpcv1.AllocateExternalIPRequest).GetAddressId(), nil
 			}),
 		},
+		// CreateOwnedAddress — РОВНО тот же гейт, что у публичного
+		// `AddressService/Create`: `editor` на project'е из тела создания. Объект
+		// решения — project, который существует задолго до запроса, поэтому путь
+		// не зависит от окна материализации свежесозданного адреса. Права это не
+		// расширяет: тот же вызывающий и раньше мог создать адрес в этом проекте
+		// и привязать его — менялось лишь число решений о доступе по дороге.
+		"/kacho.cloud.vpc.v1.InternalAddressService/CreateOwnedAddress": {
+			Relation: relationEditor,
+			Extract: authz.StaticExtractor(objectTypeProject, func(req any) (string, error) {
+				return req.(*vpcv1.CreateOwnedAddressRequest).GetAddress().GetProjectId(), nil
+			}),
+		},
 		"/kacho.cloud.vpc.v1.InternalAddressService/SetAddressReference": {
 			Relation: relationVUpdate,
 			Extract: authz.StaticExtractor(objectTypeAddress, func(req any) (string, error) {

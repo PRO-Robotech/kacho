@@ -11,6 +11,7 @@ package vpcv1
 
 import (
 	context "context"
+	operation "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -30,6 +31,7 @@ const (
 	InternalAddressService_ClearAddressReference_FullMethodName     = "/kacho.cloud.vpc.v1.InternalAddressService/ClearAddressReference"
 	InternalAddressService_GetAddressReference_FullMethodName       = "/kacho.cloud.vpc.v1.InternalAddressService/GetAddressReference"
 	InternalAddressService_MarkAddressEphemeralInUse_FullMethodName = "/kacho.cloud.vpc.v1.InternalAddressService/MarkAddressEphemeralInUse"
+	InternalAddressService_CreateOwnedAddress_FullMethodName        = "/kacho.cloud.vpc.v1.InternalAddressService/CreateOwnedAddress"
 )
 
 // InternalAddressServiceClient is the client API for InternalAddressService service.
@@ -115,6 +117,32 @@ type InternalAddressServiceClient interface {
 	//   - NotFound: address не существует.
 	//   - InvalidArgument: пустой address_id / referrer_type / referrer_id.
 	MarkAddressEphemeralInUse(ctx context.Context, in *MarkAddressEphemeralInUseRequest, opts ...grpc.CallOption) (*MarkAddressEphemeralInUseResponse, error)
+	// CreateOwnedAddress — создать адрес СРАЗУ привязанным к владельцу: вставка
+	// строки, IPAM-аллокация и referrer-запись выполняются в ОДНОЙ writer-TX.
+	//
+	// ЗАЧЕМ ОТДЕЛЬНЫЙ RPC, А НЕ ПАРА Create + SetAddressReference. Пара делит одно
+	// намерение на два запроса, и ВТОРОЙ гейтится на объекте, которого в момент
+	// начала операции не существовало: доступ к нему появляется у создателя не
+	// мгновенно (owner-tuple материализуется вне мутации), поэтому вызывающий был
+	// вынужден крутить ограниченный ретрай и — когда окно шире его бюджета —
+	// получал отказ на СВОЙ ЖЕ адрес, выделенный мгновение назад. Замер прогона
+	// CI 31002239590: 8 таких отказов на пути создания балансировщика утянули за
+	// собой 44 каскадных утверждения (фикстура не получала id, дальше по кейсу всё
+	// рушилось). Поднимать бюджет ретрая было бы маскировкой; здесь снимается сама
+	// зависимость от окна — второго решения о доступе на свежесозданном объекте
+	// больше нет.
+	//
+	// Право проверяется РОВНО то же, что у публичного `AddressService.Create`:
+	// `editor` на project'е из `address.project_id`. Достижимое состояние
+	// прежнее — вызывающий и раньше мог создать адрес и привязать его; менялось
+	// лишь то, сколько решений о доступе принимается по дороге.
+	//
+	// Асинхронный, как и публичный Create: возвращает `Operation`, ответом
+	// которой служит `Address`. Идемпотентности по имени нет — её обеспечивает
+	// UNIQUE(project,name), как и у публичного пути. Отказ на любом шаге
+	// откатывает ВСЮ транзакцию, поэтому half-allocated адреса и компенсации у
+	// вызывающего больше не существует by construction.
+	CreateOwnedAddress(ctx context.Context, in *CreateOwnedAddressRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 }
 
 type internalAddressServiceClient struct {
@@ -205,6 +233,16 @@ func (c *internalAddressServiceClient) MarkAddressEphemeralInUse(ctx context.Con
 	return out, nil
 }
 
+func (c *internalAddressServiceClient) CreateOwnedAddress(ctx context.Context, in *CreateOwnedAddressRequest, opts ...grpc.CallOption) (*operation.Operation, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(operation.Operation)
+	err := c.cc.Invoke(ctx, InternalAddressService_CreateOwnedAddress_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // InternalAddressServiceServer is the server API for InternalAddressService service.
 // All implementations must embed UnimplementedInternalAddressServiceServer
 // for forward compatibility.
@@ -288,6 +326,32 @@ type InternalAddressServiceServer interface {
 	//   - NotFound: address не существует.
 	//   - InvalidArgument: пустой address_id / referrer_type / referrer_id.
 	MarkAddressEphemeralInUse(context.Context, *MarkAddressEphemeralInUseRequest) (*MarkAddressEphemeralInUseResponse, error)
+	// CreateOwnedAddress — создать адрес СРАЗУ привязанным к владельцу: вставка
+	// строки, IPAM-аллокация и referrer-запись выполняются в ОДНОЙ writer-TX.
+	//
+	// ЗАЧЕМ ОТДЕЛЬНЫЙ RPC, А НЕ ПАРА Create + SetAddressReference. Пара делит одно
+	// намерение на два запроса, и ВТОРОЙ гейтится на объекте, которого в момент
+	// начала операции не существовало: доступ к нему появляется у создателя не
+	// мгновенно (owner-tuple материализуется вне мутации), поэтому вызывающий был
+	// вынужден крутить ограниченный ретрай и — когда окно шире его бюджета —
+	// получал отказ на СВОЙ ЖЕ адрес, выделенный мгновение назад. Замер прогона
+	// CI 31002239590: 8 таких отказов на пути создания балансировщика утянули за
+	// собой 44 каскадных утверждения (фикстура не получала id, дальше по кейсу всё
+	// рушилось). Поднимать бюджет ретрая было бы маскировкой; здесь снимается сама
+	// зависимость от окна — второго решения о доступе на свежесозданном объекте
+	// больше нет.
+	//
+	// Право проверяется РОВНО то же, что у публичного `AddressService.Create`:
+	// `editor` на project'е из `address.project_id`. Достижимое состояние
+	// прежнее — вызывающий и раньше мог создать адрес и привязать его; менялось
+	// лишь то, сколько решений о доступе принимается по дороге.
+	//
+	// Асинхронный, как и публичный Create: возвращает `Operation`, ответом
+	// которой служит `Address`. Идемпотентности по имени нет — её обеспечивает
+	// UNIQUE(project,name), как и у публичного пути. Отказ на любом шаге
+	// откатывает ВСЮ транзакцию, поэтому half-allocated адреса и компенсации у
+	// вызывающего больше не существует by construction.
+	CreateOwnedAddress(context.Context, *CreateOwnedAddressRequest) (*operation.Operation, error)
 	mustEmbedUnimplementedInternalAddressServiceServer()
 }
 
@@ -321,6 +385,9 @@ func (UnimplementedInternalAddressServiceServer) GetAddressReference(context.Con
 }
 func (UnimplementedInternalAddressServiceServer) MarkAddressEphemeralInUse(context.Context, *MarkAddressEphemeralInUseRequest) (*MarkAddressEphemeralInUseResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method MarkAddressEphemeralInUse not implemented")
+}
+func (UnimplementedInternalAddressServiceServer) CreateOwnedAddress(context.Context, *CreateOwnedAddressRequest) (*operation.Operation, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateOwnedAddress not implemented")
 }
 func (UnimplementedInternalAddressServiceServer) mustEmbedUnimplementedInternalAddressServiceServer() {
 }
@@ -488,6 +555,24 @@ func _InternalAddressService_MarkAddressEphemeralInUse_Handler(srv interface{}, 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InternalAddressService_CreateOwnedAddress_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateOwnedAddressRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InternalAddressServiceServer).CreateOwnedAddress(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InternalAddressService_CreateOwnedAddress_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InternalAddressServiceServer).CreateOwnedAddress(ctx, req.(*CreateOwnedAddressRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // InternalAddressService_ServiceDesc is the grpc.ServiceDesc for InternalAddressService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -526,6 +611,10 @@ var InternalAddressService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "MarkAddressEphemeralInUse",
 			Handler:    _InternalAddressService_MarkAddressEphemeralInUse_Handler,
+		},
+		{
+			MethodName: "CreateOwnedAddress",
+			Handler:    _InternalAddressService_CreateOwnedAddress_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

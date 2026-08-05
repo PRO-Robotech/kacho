@@ -36,6 +36,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/services/addressref"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
@@ -64,11 +65,22 @@ type AddressReferenceManager interface {
 	GetAddressReference(ctx context.Context, addressID string) (*domain.AddressReference, error)
 }
 
+// OwnedAddressCreator — port создания адреса, СРАЗУ привязанного к владельцу
+// (одна writer-TX). Реализуется публичным транспортным handler'ом адреса: тело
+// создания разбирается там ЕДИНСТВЕННОЙ функцией, общей с публичным Create, —
+// поэтому внутренний путь не может разойтись с публичным на новом поле
+// спецификации. Port транспортный (proto ↔ proto), use-case-конкреты сюда
+// по-прежнему не импортируются.
+type OwnedAddressCreator interface {
+	CreateOwnedAddress(ctx context.Context, req *vpcv1.CreateOwnedAddressRequest) (*operationpb.Operation, error)
+}
+
 // InternalAddressAllocateHandler — реализация InternalAddressService.
 type InternalAddressAllocateHandler struct {
 	vpcv1.UnimplementedInternalAddressServiceServer
 	allocate AddressAllocator
 	refs     AddressReferenceManager
+	owned    OwnedAddressCreator
 }
 
 // NewInternalAddressAllocateHandler собирает handler из двух port'ов —
@@ -76,6 +88,15 @@ type InternalAddressAllocateHandler struct {
 // и `*addressref.Service`.
 func NewInternalAddressAllocateHandler(allocate AddressAllocator, refs AddressReferenceManager) *InternalAddressAllocateHandler {
 	return &InternalAddressAllocateHandler{allocate: allocate, refs: refs}
+}
+
+// WithOwnedCreator подключает путь `CreateOwnedAddress`. Отдельным методом, а не
+// четвёртым аргументом конструктора: так уже существующие сборки (в том числе
+// тестовые) не переписываются, а отсутствие провязки честно отвечает
+// Unimplemented вместо тихого «создали, но не привязали».
+func (h *InternalAddressAllocateHandler) WithOwnedCreator(c OwnedAddressCreator) *InternalAddressAllocateHandler {
+	h.owned = c
+	return h
 }
 
 func (h *InternalAddressAllocateHandler) AllocateInternalIP(ctx context.Context, req *vpcv1.AllocateInternalIPRequest) (*vpcv1.AllocateIPResponse, error) {
@@ -187,6 +208,16 @@ func (h *InternalAddressAllocateHandler) MarkAddressEphemeralInUse(ctx context.C
 		return nil, err
 	}
 	return &vpcv1.MarkAddressEphemeralInUseResponse{}, nil
+}
+
+// CreateOwnedAddress — см. контракт RPC в `internal_address_service.proto`.
+// Транспортная делегация: разбор тела и вся семантика живут на общем с
+// публичным Create пути.
+func (h *InternalAddressAllocateHandler) CreateOwnedAddress(ctx context.Context, req *vpcv1.CreateOwnedAddressRequest) (*operationpb.Operation, error) {
+	if h.owned == nil {
+		return nil, status.Error(codes.Unimplemented, "owned address creation is not wired")
+	}
+	return h.owned.CreateOwnedAddress(ctx, req)
 }
 
 func addressReferenceToProto(r *domain.AddressReference) *vpcv1.AddressReference {

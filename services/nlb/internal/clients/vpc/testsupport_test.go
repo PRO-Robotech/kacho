@@ -40,6 +40,20 @@ func startFakeVPC(
 		vpcpb.RegisterAddressServiceServer(srv, addrs)
 	}
 	if internalAddrs != nil {
+		// Путь авто-аллокации ушёл в `CreateOwnedAddress` на ВНУТРЕННЕМ листенере,
+		// поэтому дублёр внутреннего сервиса обязан уметь отдать то, что раньше
+		// отдавал публичный Create. Связываем дублёров здесь, а не в каждой пробе:
+		// иначе фикстура была бы снисходительнее продукта — проба задавала бы
+		// поведение публичного Create, а продукт его больше не зовёт, и она
+		// зеленела бы на умолчании дублёра.
+		if fi, ok := internalAddrs.(*fakeInternalAddressService); ok {
+			switch fa := addrs.(type) {
+			case *fakeAddressForAlloc:
+				fi.addrFake = fa
+			case *fakeAddressForAllocPolling:
+				fi.createDelegate = fa.Create
+			}
+		}
 		vpcpb.RegisterInternalAddressServiceServer(srv, internalAddrs)
 	}
 	if ops != nil {

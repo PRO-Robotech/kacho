@@ -4,10 +4,8 @@
 package vpc
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"log/slog"
 	"sync"
 	"testing"
 	"time"
@@ -125,6 +123,54 @@ type fakeInternalAddressService struct {
 	clearCalls []*vpcpb.ClearAddressReferenceRequest
 
 	lastSetMD metadata.MD // incoming metadata последнего SetAddressReference (проверка principal-проброса)
+
+	// createOwned* — путь `CreateOwnedAddress` (создание адреса, СРАЗУ
+	// привязанного к владельцу, одной writer-TX). Счётчик и последний запрос
+	// нужны пробам, утверждающим, что на пути ОДНА мутация и она несёт
+	// владельца.
+	createOwnedResp   *vpcpb.Address
+	createOwnedErr    error
+	createOwnedCalls  int
+	lastCreateOwned   *vpcpb.CreateOwnedAddressRequest
+	lastCreateOwnedMD metadata.MD
+	// addrFake — дублёр публичного AddressService той же пробы. Когда своего
+	// ответа не задано, `CreateOwnedAddress` отвечает ЕГО поведением: создание
+	// адреса не изменилось — изменилось лишь то, что привязка приехала той же
+	// транзакцией. Связывается в `startFakeVPC`, чтобы фикстура не оказалась
+	// снисходительнее продукта.
+	addrFake *fakeAddressForAlloc
+	// createDelegate — то же для дублёров, отдающих НЕзавершённую операцию
+	// (проба поллера): создание адреса им и принадлежит.
+	createDelegate func(context.Context, *vpcpb.CreateAddressRequest) (*operationpb.Operation, error)
+}
+
+func (f *fakeInternalAddressService) CreateOwnedAddress(
+	ctx context.Context, req *vpcpb.CreateOwnedAddressRequest,
+) (*operationpb.Operation, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.createOwnedCalls++
+	f.lastCreateOwned = req
+	f.lastCreateOwnedMD, _ = metadata.FromIncomingContext(ctx)
+	if f.createOwnedErr != nil {
+		return nil, f.createOwnedErr
+	}
+	if f.createOwnedResp == nil && f.addrFake != nil {
+		return f.addrFake.Create(ctx, req.GetAddress())
+	}
+	if f.createOwnedResp == nil && f.createDelegate != nil {
+		return f.createDelegate(ctx, req.GetAddress())
+	}
+	resp := f.createOwnedResp
+	if resp == nil {
+		resp = &vpcpb.Address{Id: "adr-owned-default"}
+	}
+	any, _ := anypb.New(resp)
+	return &operationpb.Operation{
+		Id:     "op-alloc-owned-1",
+		Done:   true,
+		Result: &operationpb.Operation_Response{Response: any},
+	}, nil
 }
 
 func (f *fakeInternalAddressService) SetAddressReference(
@@ -195,74 +241,33 @@ func TestInternalAddressClient_AllocateExternalIP_HappyPath(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "e9b-ip-1", resp.AddressID)
 	assert.Equal(t, "203.0.113.5", resp.Value)
-	assert.Equal(t, 1, addrSvc.createCalls)
-	require.Len(t, intAddrSvc.setCalls, 1)
-	assert.Equal(t, "e9b-ip-1", intAddrSvc.setCalls[0].AddressId)
-	assert.Equal(t, "nlb_listener", intAddrSvc.setCalls[0].ReferrerType)
-	assert.Equal(t, "lst-1", intAddrSvc.setCalls[0].ReferrerId)
+	// Одна мутация несёт и создание, и владельца: отдельного вызова привязки
+	// на этом пути больше нет (он и вносил зависимость от окна материализации).
+	assert.Equal(t, 1, addrSvc.createCalls, "делегированный дублёр видел ровно одно создание")
+	assert.Zero(t, intAddrSvc.setCallCount())
+	got := intAddrSvc.lastCreateOwnedReq()
+	require.NotNil(t, got)
+	assert.Equal(t, "nlb_listener", got.GetReferrerType())
+	assert.Equal(t, "lst-1", got.GetReferrerId())
 	// referrer_name пробрасывается в vpc — used_by-зеркало показывает имя
 	// потребителя (иначе UI не может отрендерить ссылку на ресурс).
-	assert.Equal(t, "listener-a", intAddrSvc.setCalls[0].ReferrerName)
+	assert.Equal(t, "listener-a", got.GetReferrerName())
 }
 
-func TestInternalAddressClient_AllocateExternalIP_SetReferenceFailsTriggersCleanup(t *testing.T) {
-	allocResp := &vpcpb.Address{
-		Id: "e9b-ip-2",
-		Address: &vpcpb.Address_ExternalIpv4Address{
-			ExternalIpv4Address: &vpcpb.ExternalIpv4Address{Address: "203.0.113.6"},
-		},
-	}
-	addrSvc := &fakeAddressForAlloc{createResp: allocResp}
-	intAddrSvc := &fakeInternalAddressService{setErr: status.Error(codes.AlreadyExists, "already attached")}
-	conn := startFakeVPC(t, nil, nil, addrSvc, intAddrSvc, &fakeOperationService{})
-
-	c := NewInternalAddressClient(conn, conn)
-	_, err := c.AllocateExternalIP(ctxBackground(), AllocateExternalIPRequest{
-		ProjectID: "prj-1", ZoneID: "z", Owner: AddressOwner{Kind: "nlb_listener", ID: "lst-1"},
-	})
-	require.Error(t, err)
-	assert.True(t, errors.Is(err, domain.ErrFailedPrecondition))
-	assert.Equal(t, 1, addrSvc.deleteCalls, "cleanup must call Delete to free half-allocated address")
-}
-
-// TestInternalAddressClient_CompensatingFreeIPFailure_IsLogged — регрессия к
-// audit-finding "silent IP leak": когда SetReference падает ПОСЛЕ успешного
-// Create, а компенсирующий FreeIP тоже падает, только-что аллоцированный Address
-// оказывается orphaned в kacho-vpc. Раньше ошибка FreeIP глоталась (`_ =`) без
-// какого-либо следа. Теперь клиент обязан эмитить Warn-лог, чтобы leaked-адрес
-// был наблюдаем и реконсайлируем оператором. Исходная ошибка (SetReference)
-// остаётся возвращаемой.
-func TestInternalAddressClient_CompensatingFreeIPFailure_IsLogged(t *testing.T) {
-	prev := slog.Default()
-	t.Cleanup(func() { slog.SetDefault(prev) })
-	var buf bytes.Buffer
-	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})))
-
-	allocResp := &vpcpb.Address{
-		Id: "e9b-leak-1",
-		Address: &vpcpb.Address_ExternalIpv4Address{
-			ExternalIpv4Address: &vpcpb.ExternalIpv4Address{Address: "203.0.113.9"},
-		},
-	}
-	// Create succeeds; Delete (FreeIP compensation) fails with Unavailable;
-	// SetReference fails → triggers the doomed compensation.
-	addrSvc := &fakeAddressForAlloc{createResp: allocResp, deleteErr: status.Error(codes.Unavailable, "vpc down")}
-	intAddrSvc := &fakeInternalAddressService{setErr: status.Error(codes.AlreadyExists, "already attached")}
-	conn := startFakeVPC(t, nil, nil, addrSvc, intAddrSvc, &fakeOperationService{})
-
-	c := NewInternalAddressClient(conn, conn)
-	_, err := c.AllocateExternalIP(ctxBackground(), AllocateExternalIPRequest{
-		ProjectID: "prj-1", ZoneID: "z", Owner: AddressOwner{Kind: "nlb_listener", ID: "lst-1"},
-	})
-	require.Error(t, err)
-	assert.True(t, errors.Is(err, domain.ErrFailedPrecondition), "original SetReference error must be returned")
-	assert.GreaterOrEqual(t, addrSvc.deleteCalls, 1, "compensation must attempt FreeIP")
-
-	logged := buf.String()
-	assert.Contains(t, logged, "address_compensation_free_failed",
-		"leaked address must be logged for observability")
-	assert.Contains(t, logged, "e9b-leak-1", "log must carry the leaked address id")
-}
+// ЗДЕСЬ СТОЯЛИ ДВЕ ПРОБЫ КОМПЕНСАЦИИ — у них не осталось предмета.
+//
+// Обе описывали двухшаговый путь авто-аллокации: `Create` коммитил адрес, а
+// отдельная привязка могла отказать, и тогда клиент обязан был вернуть
+// half-allocated адрес в пул (и громко пожаловаться, если возврат тоже не
+// прошёл). Путь снят: создание, аллокация и привязка живут в ОДНОЙ транзакции
+// на стороне vpc, поэтому half-allocated адреса не бывает, компенсировать
+// нечего и «тихой утечки аренды» на этом пути возникнуть не может.
+//
+// Свойство, ради которого они существовали, теперь утверждает
+// `TestAllocate_FailureLeavesNothingToCompensate` (alloc_own_lane_visibility_test.go):
+// отказ мутации НЕ приводит к компенсирующему Delete, потому что откатывать
+// нечего. Утечка аренды на путях, где две стороны остаются (BYO-привязка,
+// teardown), покрыта своими пробами и этим изменением не затронута.
 
 func TestInternalAddressClient_AllocateExternalIP_PoolExhausted(t *testing.T) {
 	addrSvc := &fakeAddressForAlloc{createErr: status.Error(codes.FailedPrecondition, "pool exhausted")}
@@ -324,8 +329,10 @@ func TestInternalAddressClient_AllocateExternalIPv6_HappyPath(t *testing.T) {
 	assert.Equal(t, "e9b-ip6-1", resp.AddressID)
 	assert.Equal(t, "2001:db8::5", resp.Value)
 	require.NotNil(t, addrSvc.lastCreate.GetExternalIpv6AddressSpec(), "must build external_ipv6 spec, not v4")
-	require.Len(t, intAddrSvc.setCalls, 1)
-	assert.Equal(t, "e9b-ip6-1", intAddrSvc.setCalls[0].AddressId)
+	// Владелец едет той же единственной мутацией; отдельной привязки нет.
+	assert.Zero(t, intAddrSvc.setCallCount())
+	require.NotNil(t, intAddrSvc.lastCreateOwnedReq())
+	assert.Equal(t, "lst-1", intAddrSvc.lastCreateOwnedReq().GetReferrerId())
 }
 
 // NOTE: an empty ZoneID is NOT an error — it is the anycast (zone-independent)
