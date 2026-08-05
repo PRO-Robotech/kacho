@@ -340,7 +340,7 @@
           ]
         },
         {
-          "name": "get-viewer-rya317",
+          "name": "get-viewer-rya319",
           "request": {
             "method": "GET",
             "header": [
@@ -409,7 +409,7 @@
           ]
         },
         {
-          "name": "cleanup",
+          "name": "cleanup-rya326",
           "request": {
             "method": "DELETE",
             "header": [
@@ -455,6 +455,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -1137,7 +1152,7 @@
           ]
         },
         {
-          "name": "cleanup",
+          "name": "cleanup-rya327",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1183,6 +1198,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -2134,7 +2164,7 @@
           ]
         },
         {
-          "name": "cleanup",
+          "name": "cleanup-rya328",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2180,6 +2210,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -2478,7 +2523,7 @@
           ]
         },
         {
-          "name": "get-viewer-ok-rya324",
+          "name": "get-viewer-ok-rya329",
           "request": {
             "method": "GET",
             "header": [
@@ -2546,7 +2591,7 @@
           ]
         },
         {
-          "name": "cleanup",
+          "name": "cleanup-rya330",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2592,6 +2637,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -2890,7 +2950,7 @@
           ]
         },
         {
-          "name": "get-viewer-ok-rya325",
+          "name": "get-viewer-ok-rya331",
           "request": {
             "method": "GET",
             "header": [
@@ -2958,7 +3018,7 @@
           ]
         },
         {
-          "name": "cleanup",
+          "name": "cleanup-rya332",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3004,6 +3064,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -3540,7 +3615,7 @@
           ]
         },
         {
-          "name": "cleanup",
+          "name": "cleanup-rya333",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3586,6 +3661,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -3951,7 +4041,7 @@
           ]
         },
         {
-          "name": "add-as-tm-rya318",
+          "name": "add-as-tm-rya320",
           "request": {
             "method": "POST",
             "header": [
@@ -4107,7 +4197,7 @@
           ]
         },
         {
-          "name": "tm-verify-target-present-rya326",
+          "name": "tm-verify-target-present-rya334",
           "request": {
             "method": "GET",
             "header": [
@@ -4240,7 +4330,7 @@
           ]
         },
         {
-          "name": "tm-rm-target-rya327",
+          "name": "tm-rm-target-rya335",
           "request": {
             "method": "POST",
             "header": [
@@ -4448,7 +4538,7 @@
           ]
         },
         {
-          "name": "add-as-tgupdater-rya319",
+          "name": "add-as-tgupdater-rya321",
           "request": {
             "method": "POST",
             "header": [
@@ -4604,7 +4694,7 @@
           ]
         },
         {
-          "name": "upd-as-tgupdater-rya328",
+          "name": "upd-as-tgupdater-rya336",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4821,7 +4911,7 @@
           ]
         },
         {
-          "name": "get-as-viewer-ok-rya329",
+          "name": "get-as-viewer-ok-rya337",
           "request": {
             "method": "GET",
             "header": [
@@ -4889,7 +4979,7 @@
           ]
         },
         {
-          "name": "tm-cleanup-rm-target",
+          "name": "tm-cleanup-rm-target-rya338",
           "request": {
             "method": "POST",
             "header": [
@@ -4944,6 +5034,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -5027,7 +5132,7 @@
           ]
         },
         {
-          "name": "tm-cleanup-tg-rya330",
+          "name": "tm-cleanup-tg-rya339",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5459,7 +5564,7 @@
           ]
         },
         {
-          "name": "setup-cr-cr320",
+          "name": "setup-cr-cr322",
           "request": {
             "method": "POST",
             "header": [
@@ -5628,7 +5733,7 @@
           ]
         },
         {
-          "name": "del-rya321",
+          "name": "del-rya323",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5773,7 +5878,7 @@
           ]
         },
         {
-          "name": "get-after-delete",
+          "name": "get-after-delete-rya340",
           "request": {
             "method": "GET",
             "header": [
@@ -5819,6 +5924,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 404', () => pm.expect(pm.response.code).to.eql(404));",
                   "pm.test('grpc code 5 (NOT_FOUND)', () => {",
                   "  const j = pm.response.json();",
@@ -6103,7 +6223,7 @@
           ]
         },
         {
-          "name": "del-by-creator-rya322",
+          "name": "del-by-creator-rya324",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6401,7 +6521,7 @@
           ]
         },
         {
-          "name": "cleanup",
+          "name": "cleanup-rya341",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6447,6 +6567,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -6536,7 +6671,7 @@
       "description": "class:AZD | priority:P1",
       "item": [
         {
-          "name": "cr-as-group-member-rya323",
+          "name": "cr-as-group-member-rya325",
           "request": {
             "method": "POST",
             "header": [
@@ -6698,7 +6833,7 @@
           ]
         },
         {
-          "name": "cleanup",
+          "name": "cleanup-rya342",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6744,6 +6879,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",

@@ -241,7 +241,7 @@
           ]
         },
         {
-          "name": "get-internal-rya925",
+          "name": "get-internal-rya938",
           "request": {
             "method": "GET",
             "header": [
@@ -314,7 +314,7 @@
           ]
         },
         {
-          "name": "get-public-no-vrfid-rya929",
+          "name": "get-public-no-vrfid-rya942",
           "request": {
             "method": "GET",
             "header": [
@@ -367,7 +367,7 @@
           ]
         },
         {
-          "name": "cleanup-delete-rya930",
+          "name": "cleanup-delete-rya943",
           "request": {
             "method": "DELETE",
             "header": [
@@ -549,7 +549,7 @@
           ]
         },
         {
-          "name": "list-no-vrfid-lst926",
+          "name": "list-no-vrfid-lst939",
           "request": {
             "method": "GET",
             "header": [
@@ -603,7 +603,7 @@
           ]
         },
         {
-          "name": "cleanup-delete-rya931",
+          "name": "cleanup-delete-rya944",
           "request": {
             "method": "DELETE",
             "header": [
@@ -912,7 +912,7 @@
           ]
         },
         {
-          "name": "get-internal-before-rya927",
+          "name": "get-internal-before-rya940",
           "request": {
             "method": "GET",
             "header": [
@@ -985,7 +985,7 @@
           ]
         },
         {
-          "name": "update-name-rya928",
+          "name": "update-name-rya941",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1104,7 +1104,7 @@
           ]
         },
         {
-          "name": "get-internal-after-rya932",
+          "name": "get-internal-after-rya945",
           "request": {
             "method": "GET",
             "header": [
@@ -1173,7 +1173,7 @@
           ]
         },
         {
-          "name": "cleanup-delete-rya933",
+          "name": "cleanup-delete-rya946",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1355,7 +1355,7 @@
           ]
         },
         {
-          "name": "update-vrfid-rejected",
+          "name": "update-vrfid-rejected-rya947",
           "request": {
             "method": "PATCH",
             "header": [
@@ -1392,6 +1392,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
                   "  const j = pm.response.json();",
@@ -1403,7 +1418,7 @@
           ]
         },
         {
-          "name": "cleanup-delete-rya934",
+          "name": "cleanup-delete-rya948",
           "request": {
             "method": "DELETE",
             "header": [

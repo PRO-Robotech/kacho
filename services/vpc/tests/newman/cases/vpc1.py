@@ -847,11 +847,14 @@ CASES.append(Case(
                           *save_from_response("j.metadata && j.metadata.subnetId", "subId")]),
         poll_operation_until_done(),
         # read НЕ несёт dhcpOptions (field-absence, by design).
+        # retry_on здесь НЕ сужается: на чтении отказ спрятан под 404
+        # (hide-existence), поэтому ожидание одного лишь 403 не сработало бы ни
+        # разу — ровно так этот шаг и упал в прогоне 31044886565. Полосу задаёт
+        # метод, и `retry_until_authorized` выводит её сам.
         retry_until_authorized(Step(name="get-no-dhcp", method="GET", path="/vpc/v1/subnets/{{subId}}",
             test_script=[*assert_status(200),
                          "pm.test('no dhcpOptions on public Subnet', () => "
-                         "pm.expect(pm.response.json()).to.not.have.property('dhcpOptions'));"]),
-            retry_on=(403,)),
+                         "pm.expect(pm.response.json()).to.not.have.property('dhcpOptions'));"])),
         _cleanup_subnet(),
         poll_operation_until_done(),
         _cleanup_net(),

@@ -344,7 +344,7 @@
           ]
         },
         {
-          "name": "get-rya1212",
+          "name": "get-rya1268",
           "request": {
             "method": "GET",
             "header": [
@@ -395,7 +395,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1213",
+          "name": "cleanup-sg-rya1269",
           "request": {
             "method": "DELETE",
             "header": [
@@ -505,7 +505,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1214",
+          "name": "cleanup-net-rya1270",
           "request": {
             "method": "DELETE",
             "header": [
@@ -836,7 +836,7 @@
           ]
         },
         {
-          "name": "get-with-net-rya1215",
+          "name": "get-with-net-rya1271",
           "request": {
             "method": "GET",
             "header": [
@@ -887,7 +887,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1216",
+          "name": "cleanup-sg-rya1272",
           "request": {
             "method": "DELETE",
             "header": [
@@ -996,7 +996,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1217",
+          "name": "cleanup-net-rya1273",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1489,7 +1489,7 @@
           ]
         },
         {
-          "name": "list-by-network-lst1218",
+          "name": "list-by-network-lst1274",
           "request": {
             "method": "GET",
             "header": [
@@ -1543,7 +1543,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-a",
+          "name": "cleanup-sg-a-rya1402",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1571,6 +1571,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -1637,7 +1652,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-b",
+          "name": "cleanup-sg-b-rya1403",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1665,6 +1680,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -1731,7 +1761,7 @@
           ]
         },
         {
-          "name": "cleanup-net-b",
+          "name": "cleanup-net-b-rya1404",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1759,6 +1789,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -1825,7 +1870,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1219",
+          "name": "cleanup-net-rya1275",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2338,7 +2383,7 @@
           ]
         },
         {
-          "name": "update-rules-rya1220",
+          "name": "update-rules-rya1276",
           "request": {
             "method": "PATCH",
             "header": [
@@ -2458,7 +2503,7 @@
           ]
         },
         {
-          "name": "get-sg-rya1221",
+          "name": "get-sg-rya1277",
           "request": {
             "method": "GET",
             "header": [
@@ -2509,7 +2554,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1222",
+          "name": "cleanup-sg-rya1278",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2619,7 +2664,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1223",
+          "name": "cleanup-net-rya1279",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2896,7 +2941,7 @@
           ]
         },
         {
-          "name": "list-ops-rya1346",
+          "name": "list-ops-rya1405",
           "request": {
             "method": "GET",
             "header": [
@@ -2948,7 +2993,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1224",
+          "name": "cleanup-sg-rya1280",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3058,7 +3103,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1225",
+          "name": "cleanup-net-rya1281",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3565,7 +3610,7 @@
           ]
         },
         {
-          "name": "ur-bad-rule-id-rya1226",
+          "name": "ur-bad-rule-id-rya1282",
           "request": {
             "method": "PATCH",
             "header": [
@@ -3631,7 +3676,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1227",
+          "name": "cleanup-sg-rya1283",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3741,7 +3786,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1228",
+          "name": "cleanup-net-rya1284",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4018,7 +4063,7 @@
           ]
         },
         {
-          "name": "patch-rya1229",
+          "name": "patch-rya1285",
           "request": {
             "method": "PATCH",
             "header": [
@@ -4137,7 +4182,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1230",
+          "name": "cleanup-sg-rya1286",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4247,7 +4292,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1231",
+          "name": "cleanup-net-rya1287",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4778,7 +4823,7 @@
           ]
         },
         {
-          "name": "del-happy-rya1232",
+          "name": "del-happy-rya1288",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4888,7 +4933,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1233",
+          "name": "cleanup-net-rya1289",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5165,7 +5210,7 @@
           ]
         },
         {
-          "name": "add-rule-rya1234",
+          "name": "add-rule-rya1290",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5285,7 +5330,7 @@
           ]
         },
         {
-          "name": "get-sg-rule-id-rya1235",
+          "name": "get-sg-rule-id-rya1291",
           "request": {
             "method": "GET",
             "header": [
@@ -5340,7 +5385,7 @@
           ]
         },
         {
-          "name": "ur-rya1347",
+          "name": "ur-rya1406",
           "request": {
             "method": "PATCH",
             "header": [
@@ -5461,7 +5506,7 @@
           ]
         },
         {
-          "name": "cleanup",
+          "name": "cleanup-rya1407",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5489,6 +5534,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -5555,7 +5615,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1236",
+          "name": "cleanup-net-rya1292",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5992,7 +6052,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya1237",
+          "name": "ecp-cleanup-rya1293",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6102,7 +6162,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1240",
+          "name": "cleanup-net-rya1296",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6382,7 +6442,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya1238",
+          "name": "ecp-cleanup-rya1294",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6492,7 +6552,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1241",
+          "name": "cleanup-net-rya1297",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6708,7 +6768,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1242",
+          "name": "cleanup-net-rya1298",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6988,7 +7048,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya1239",
+          "name": "ecp-cleanup-rya1295",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7098,7 +7158,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1243",
+          "name": "cleanup-net-rya1299",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7314,7 +7374,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1244",
+          "name": "cleanup-net-rya1300",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7530,7 +7590,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1245",
+          "name": "cleanup-net-rya1301",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7746,7 +7806,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1246",
+          "name": "cleanup-net-rya1302",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8026,7 +8086,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya1247",
+          "name": "ecp-cleanup-rya1303",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8136,7 +8196,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1248",
+          "name": "cleanup-net-rya1304",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8352,7 +8412,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1249",
+          "name": "cleanup-net-rya1305",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8568,7 +8628,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1251",
+          "name": "cleanup-net-rya1307",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8784,7 +8844,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1252",
+          "name": "cleanup-net-rya1308",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9064,7 +9124,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya1250",
+          "name": "ecp-cleanup-rya1306",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9174,7 +9234,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1253",
+          "name": "cleanup-net-rya1309",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9390,7 +9450,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1254",
+          "name": "cleanup-net-rya1310",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9731,7 +9791,7 @@
           ]
         },
         {
-          "name": "list-p2-rya1348",
+          "name": "list-p2-rya1408",
           "request": {
             "method": "GET",
             "header": [
@@ -10005,7 +10065,7 @@
           ]
         },
         {
-          "name": "patch-rya1255",
+          "name": "patch-rya1311",
           "request": {
             "method": "PATCH",
             "header": [
@@ -10124,7 +10184,7 @@
           ]
         },
         {
-          "name": "verify-rya1256",
+          "name": "verify-rya1312",
           "request": {
             "method": "GET",
             "header": [
@@ -10175,7 +10235,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1257",
+          "name": "cleanup-rya1313",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10284,7 +10344,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1264",
+          "name": "cleanup-net-rya1320",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10564,7 +10624,7 @@
           ]
         },
         {
-          "name": "patch-rya1258",
+          "name": "patch-rya1314",
           "request": {
             "method": "PATCH",
             "header": [
@@ -10683,7 +10743,7 @@
           ]
         },
         {
-          "name": "verify-rya1259",
+          "name": "verify-rya1315",
           "request": {
             "method": "GET",
             "header": [
@@ -10734,7 +10794,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1260",
+          "name": "cleanup-rya1316",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10843,7 +10903,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1265",
+          "name": "cleanup-net-rya1321",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11123,7 +11183,7 @@
           ]
         },
         {
-          "name": "patch-rya1261",
+          "name": "patch-rya1317",
           "request": {
             "method": "PATCH",
             "header": [
@@ -11242,7 +11302,7 @@
           ]
         },
         {
-          "name": "verify-rya1262",
+          "name": "verify-rya1318",
           "request": {
             "method": "GET",
             "header": [
@@ -11294,7 +11354,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1263",
+          "name": "cleanup-rya1319",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11403,7 +11463,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1266",
+          "name": "cleanup-net-rya1322",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11923,7 +11983,7 @@
           ]
         },
         {
-          "name": "patch-multi-rya1267",
+          "name": "patch-multi-rya1323",
           "request": {
             "method": "PATCH",
             "header": [
@@ -12042,7 +12102,7 @@
           ]
         },
         {
-          "name": "verify-all-rya1268",
+          "name": "verify-all-rya1324",
           "request": {
             "method": "GET",
             "header": [
@@ -12097,7 +12157,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1269",
+          "name": "cleanup-rya1325",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12206,7 +12266,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1270",
+          "name": "cleanup-net-rya1326",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12486,7 +12546,7 @@
           ]
         },
         {
-          "name": "list-filtered-lst1271",
+          "name": "list-filtered-lst1327",
           "request": {
             "method": "GET",
             "header": [
@@ -12539,7 +12599,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1272",
+          "name": "cleanup-rya1328",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12648,7 +12708,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1273",
+          "name": "cleanup-net-rya1329",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12928,7 +12988,7 @@
           ]
         },
         {
-          "name": "ecp-cleanup-rya1274",
+          "name": "ecp-cleanup-rya1330",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13038,7 +13098,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1275",
+          "name": "cleanup-net-rya1331",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13256,7 +13316,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1276",
+          "name": "cleanup-net-rya1332",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13474,7 +13534,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1277",
+          "name": "cleanup-net-rya1333",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13996,7 +14056,7 @@
           ]
         },
         {
-          "name": "cleanup-first",
+          "name": "cleanup-first-rya1409",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14024,6 +14084,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -14090,7 +14165,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1278",
+          "name": "cleanup-net-rya1334",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14370,7 +14445,7 @@
           ]
         },
         {
-          "name": "patch-name-only-rya1279",
+          "name": "patch-name-only-rya1335",
           "request": {
             "method": "PATCH",
             "header": [
@@ -14489,7 +14564,7 @@
           ]
         },
         {
-          "name": "verify-rya1280",
+          "name": "verify-rya1336",
           "request": {
             "method": "GET",
             "header": [
@@ -14543,7 +14618,7 @@
           ]
         },
         {
-          "name": "cleanup-rya1281",
+          "name": "cleanup-rya1337",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14652,7 +14727,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1282",
+          "name": "cleanup-net-rya1338",
           "request": {
             "method": "DELETE",
             "header": [
@@ -14932,7 +15007,7 @@
           ]
         },
         {
-          "name": "get-timed-rya1283",
+          "name": "get-timed-rya1339",
           "request": {
             "method": "GET",
             "header": [
@@ -14983,7 +15058,7 @@
           ]
         },
         {
-          "name": "cleanup",
+          "name": "cleanup-rya1410",
           "request": {
             "method": "DELETE",
             "header": [
@@ -15011,6 +15086,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -15077,7 +15167,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1284",
+          "name": "cleanup-net-rya1340",
           "request": {
             "method": "DELETE",
             "header": [
@@ -15395,7 +15485,7 @@
           ]
         },
         {
-          "name": "update-rule-bad-rya1285",
+          "name": "update-rule-bad-rya1341",
           "request": {
             "method": "PATCH",
             "header": [
@@ -15464,7 +15554,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1286",
+          "name": "cleanup-sg-rya1342",
           "request": {
             "method": "DELETE",
             "header": [
@@ -15573,7 +15663,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1287",
+          "name": "cleanup-net-rya1343",
           "request": {
             "method": "DELETE",
             "header": [
@@ -15850,7 +15940,7 @@
           ]
         },
         {
-          "name": "update-rule-bad-rya1288",
+          "name": "update-rule-bad-rya1344",
           "request": {
             "method": "PATCH",
             "header": [
@@ -15919,7 +16009,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1289",
+          "name": "cleanup-sg-rya1345",
           "request": {
             "method": "DELETE",
             "header": [
@@ -16028,7 +16118,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1290",
+          "name": "cleanup-net-rya1346",
           "request": {
             "method": "DELETE",
             "header": [
@@ -16305,7 +16395,7 @@
           ]
         },
         {
-          "name": "update-rule-bad-rya1291",
+          "name": "update-rule-bad-rya1347",
           "request": {
             "method": "PATCH",
             "header": [
@@ -16425,7 +16515,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1292",
+          "name": "cleanup-sg-rya1348",
           "request": {
             "method": "DELETE",
             "header": [
@@ -16534,7 +16624,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1293",
+          "name": "cleanup-net-rya1349",
           "request": {
             "method": "DELETE",
             "header": [
@@ -16811,7 +16901,7 @@
           ]
         },
         {
-          "name": "update-rule-bad-rya1294",
+          "name": "update-rule-bad-rya1350",
           "request": {
             "method": "PATCH",
             "header": [
@@ -16875,7 +16965,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1295",
+          "name": "cleanup-sg-rya1351",
           "request": {
             "method": "DELETE",
             "header": [
@@ -16984,7 +17074,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1296",
+          "name": "cleanup-net-rya1352",
           "request": {
             "method": "DELETE",
             "header": [
@@ -17261,7 +17351,7 @@
           ]
         },
         {
-          "name": "update-rule-bad-rya1297",
+          "name": "update-rule-bad-rya1353",
           "request": {
             "method": "PATCH",
             "header": [
@@ -17330,7 +17420,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1298",
+          "name": "cleanup-sg-rya1354",
           "request": {
             "method": "DELETE",
             "header": [
@@ -17439,7 +17529,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1299",
+          "name": "cleanup-net-rya1355",
           "request": {
             "method": "DELETE",
             "header": [
@@ -17716,7 +17806,7 @@
           ]
         },
         {
-          "name": "update-rule-bad-rya1300",
+          "name": "update-rule-bad-rya1356",
           "request": {
             "method": "PATCH",
             "header": [
@@ -17785,7 +17875,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1301",
+          "name": "cleanup-sg-rya1357",
           "request": {
             "method": "DELETE",
             "header": [
@@ -17894,7 +17984,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1302",
+          "name": "cleanup-net-rya1358",
           "request": {
             "method": "DELETE",
             "header": [
@@ -18171,7 +18261,7 @@
           ]
         },
         {
-          "name": "update-rule-bad-rya1303",
+          "name": "update-rule-bad-rya1359",
           "request": {
             "method": "PATCH",
             "header": [
@@ -18240,7 +18330,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1304",
+          "name": "cleanup-sg-rya1360",
           "request": {
             "method": "DELETE",
             "header": [
@@ -18349,7 +18439,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1305",
+          "name": "cleanup-net-rya1361",
           "request": {
             "method": "DELETE",
             "header": [
@@ -18626,7 +18716,7 @@
           ]
         },
         {
-          "name": "update-rule-bad-rya1306",
+          "name": "update-rule-bad-rya1362",
           "request": {
             "method": "PATCH",
             "header": [
@@ -18746,7 +18836,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1307",
+          "name": "cleanup-sg-rya1363",
           "request": {
             "method": "DELETE",
             "header": [
@@ -18855,7 +18945,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1308",
+          "name": "cleanup-net-rya1364",
           "request": {
             "method": "DELETE",
             "header": [
@@ -19132,7 +19222,7 @@
           ]
         },
         {
-          "name": "update-rule-bad-rya1309",
+          "name": "update-rule-bad-rya1365",
           "request": {
             "method": "PATCH",
             "header": [
@@ -19252,7 +19342,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1310",
+          "name": "cleanup-sg-rya1366",
           "request": {
             "method": "DELETE",
             "header": [
@@ -19361,7 +19451,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1311",
+          "name": "cleanup-net-rya1367",
           "request": {
             "method": "DELETE",
             "header": [
@@ -19780,7 +19870,7 @@
           ]
         },
         {
-          "name": "get-default-sg-id-rya1312",
+          "name": "get-default-sg-id-rya1368",
           "request": {
             "method": "GET",
             "header": [
@@ -19834,7 +19924,7 @@
           ]
         },
         {
-          "name": "del-default-sg-rya1349",
+          "name": "del-default-sg-rya1411",
           "request": {
             "method": "DELETE",
             "header": [
@@ -19944,7 +20034,7 @@
           ]
         },
         {
-          "name": "check-result",
+          "name": "check-result-rya1412",
           "request": {
             "method": "GET",
             "header": [
@@ -19970,6 +20060,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "const j = pm.response.json();",
                   "// Текущее поведение: либо OK (default SG удален, можно тогда delete network), либо error (запрет)",
                   "pm.test('completed', () => pm.expect(j.done).to.eql(true));"
@@ -19979,7 +20084,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1313",
+          "name": "cleanup-net-rya1369",
           "request": {
             "method": "DELETE",
             "header": [
@@ -20527,7 +20632,7 @@
           ]
         },
         {
-          "name": "assert-nic-created",
+          "name": "assert-nic-created-rya1413",
           "request": {
             "method": "GET",
             "header": [
@@ -20553,6 +20658,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "const j = pm.response.json();",
                   "pm.test('NIC create op done no error', () => pm.expect(j.done && !j.error).to.eql(true));"
                 ]
@@ -20561,7 +20681,7 @@
           ]
         },
         {
-          "name": "del-sg-attached-rya1314",
+          "name": "del-sg-attached-rya1370",
           "request": {
             "method": "DELETE",
             "header": [
@@ -20671,7 +20791,7 @@
           ]
         },
         {
-          "name": "assert-sg-delete-blocked",
+          "name": "assert-sg-delete-blocked-rya1414",
           "request": {
             "method": "GET",
             "header": [
@@ -20697,6 +20817,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "const j = pm.response.json();",
                   "pm.test('sg delete op completed', () => pm.expect(j.done).to.eql(true));",
                   "pm.test('SG.Delete NIC-attached must fail FAILED_PRECONDITION (verifies #27)', () => {",
@@ -20709,7 +20844,7 @@
           ]
         },
         {
-          "name": "detach-sg-from-nic-rya1350",
+          "name": "detach-sg-from-nic-rya1415",
           "request": {
             "method": "PATCH",
             "header": [
@@ -20828,7 +20963,7 @@
           ]
         },
         {
-          "name": "cleanup-nic-rya1351",
+          "name": "cleanup-nic-rya1416",
           "request": {
             "method": "DELETE",
             "header": [
@@ -20938,7 +21073,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1315",
+          "name": "cleanup-sg-rya1371",
           "request": {
             "method": "DELETE",
             "header": [
@@ -20973,7 +21108,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -21048,7 +21183,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya1316",
+          "name": "cleanup-sub-rya1372",
           "request": {
             "method": "DELETE",
             "header": [
@@ -21083,7 +21218,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -21158,7 +21293,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1352",
+          "name": "cleanup-net-rya1417",
           "request": {
             "method": "DELETE",
             "header": [
@@ -21426,7 +21561,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1317",
+          "name": "cleanup-net-rya1373",
           "request": {
             "method": "DELETE",
             "header": [
@@ -21700,7 +21835,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1318",
+          "name": "cleanup-net-rya1374",
           "request": {
             "method": "DELETE",
             "header": [
@@ -22032,7 +22167,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1319",
+          "name": "cleanup-net-rya1375",
           "request": {
             "method": "DELETE",
             "header": [
@@ -22252,7 +22387,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1320",
+          "name": "cleanup-net-rya1376",
           "request": {
             "method": "DELETE",
             "header": [
@@ -22472,7 +22607,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1321",
+          "name": "cleanup-net-rya1377",
           "request": {
             "method": "DELETE",
             "header": [
@@ -22692,7 +22827,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1322",
+          "name": "cleanup-net-rya1378",
           "request": {
             "method": "DELETE",
             "header": [
@@ -22912,7 +23047,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1323",
+          "name": "cleanup-net-rya1379",
           "request": {
             "method": "DELETE",
             "header": [
@@ -23132,7 +23267,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1324",
+          "name": "cleanup-net-rya1380",
           "request": {
             "method": "DELETE",
             "header": [
@@ -23352,7 +23487,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1325",
+          "name": "cleanup-net-rya1381",
           "request": {
             "method": "DELETE",
             "header": [
@@ -23556,7 +23691,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1326",
+          "name": "cleanup-net-rya1382",
           "request": {
             "method": "DELETE",
             "header": [
@@ -23838,7 +23973,7 @@
           ]
         },
         {
-          "name": "assert-op-ok",
+          "name": "assert-op-ok-rya1418",
           "request": {
             "method": "GET",
             "header": [
@@ -23864,6 +23999,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "const j = pm.response.json();",
                   "pm.test('create op done no error', () => pm.expect(j.done && !j.error).to.eql(true));"
                 ]
@@ -23872,7 +24022,7 @@
           ]
         },
         {
-          "name": "get-rya1327",
+          "name": "get-rya1383",
           "request": {
             "method": "GET",
             "header": [
@@ -23923,7 +24073,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1328",
+          "name": "cleanup-sg-rya1384",
           "request": {
             "method": "DELETE",
             "header": [
@@ -24032,7 +24182,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1329",
+          "name": "cleanup-net-rya1385",
           "request": {
             "method": "DELETE",
             "header": [
@@ -24363,7 +24513,7 @@
           ]
         },
         {
-          "name": "patch-mask-network-rya1330",
+          "name": "patch-mask-network-rya1386",
           "request": {
             "method": "PATCH",
             "header": [
@@ -24426,7 +24576,7 @@
           ]
         },
         {
-          "name": "verify-unchanged-rya1331",
+          "name": "verify-unchanged-rya1387",
           "request": {
             "method": "GET",
             "header": [
@@ -24477,7 +24627,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1332",
+          "name": "cleanup-sg-rya1388",
           "request": {
             "method": "DELETE",
             "header": [
@@ -24586,7 +24736,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1333",
+          "name": "cleanup-net-rya1389",
           "request": {
             "method": "DELETE",
             "header": [
@@ -25026,7 +25176,7 @@
           ]
         },
         {
-          "name": "cleanup-target-b",
+          "name": "cleanup-target-b-rya1419",
           "request": {
             "method": "DELETE",
             "header": [
@@ -25054,6 +25204,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -25120,7 +25285,7 @@
           ]
         },
         {
-          "name": "cleanup-net-b",
+          "name": "cleanup-net-b-rya1420",
           "request": {
             "method": "DELETE",
             "header": [
@@ -25148,6 +25313,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -25159,7 +25339,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1334",
+          "name": "cleanup-net-rya1390",
           "request": {
             "method": "DELETE",
             "header": [
@@ -25544,7 +25724,7 @@
           ]
         },
         {
-          "name": "assert-op-ok",
+          "name": "assert-op-ok-rya1421",
           "request": {
             "method": "GET",
             "header": [
@@ -25570,6 +25750,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "const j = pm.response.json();",
                   "pm.test('same-network rule create op done no error', () => pm.expect(j.done && !j.error).to.eql(true));"
                 ]
@@ -25578,7 +25773,7 @@
           ]
         },
         {
-          "name": "get-rya1335",
+          "name": "get-rya1391",
           "request": {
             "method": "GET",
             "header": [
@@ -25630,7 +25825,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1336",
+          "name": "cleanup-sg-rya1392",
           "request": {
             "method": "DELETE",
             "header": [
@@ -25739,7 +25934,7 @@
           ]
         },
         {
-          "name": "cleanup-target-a",
+          "name": "cleanup-target-a-rya1422",
           "request": {
             "method": "DELETE",
             "header": [
@@ -25767,6 +25962,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -25833,7 +26043,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1337",
+          "name": "cleanup-net-rya1393",
           "request": {
             "method": "DELETE",
             "header": [
@@ -26326,7 +26536,7 @@
           ]
         },
         {
-          "name": "update-rules-cross-rya1338",
+          "name": "update-rules-cross-rya1394",
           "request": {
             "method": "PATCH",
             "header": [
@@ -26398,7 +26608,7 @@
           ]
         },
         {
-          "name": "verify-no-rules-rya1339",
+          "name": "verify-no-rules-rya1395",
           "request": {
             "method": "GET",
             "header": [
@@ -26449,7 +26659,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1340",
+          "name": "cleanup-sg-rya1396",
           "request": {
             "method": "DELETE",
             "header": [
@@ -26558,7 +26768,7 @@
           ]
         },
         {
-          "name": "cleanup-target-b",
+          "name": "cleanup-target-b-rya1423",
           "request": {
             "method": "DELETE",
             "header": [
@@ -26586,6 +26796,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -26652,7 +26877,7 @@
           ]
         },
         {
-          "name": "cleanup-net-b",
+          "name": "cleanup-net-b-rya1424",
           "request": {
             "method": "DELETE",
             "header": [
@@ -26680,6 +26905,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -26691,7 +26931,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1341",
+          "name": "cleanup-net-rya1397",
           "request": {
             "method": "DELETE",
             "header": [
@@ -27076,7 +27316,7 @@
           ]
         },
         {
-          "name": "update-rules-same-rya1342",
+          "name": "update-rules-same-rya1398",
           "request": {
             "method": "PATCH",
             "header": [
@@ -27196,7 +27436,7 @@
           ]
         },
         {
-          "name": "assert-op-ok",
+          "name": "assert-op-ok-rya1425",
           "request": {
             "method": "GET",
             "header": [
@@ -27222,6 +27462,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "const j = pm.response.json();",
                   "pm.test('same-network updateRules op done no error', () => pm.expect(j.done && !j.error).to.eql(true));"
                 ]
@@ -27230,7 +27485,7 @@
           ]
         },
         {
-          "name": "get-rya1343",
+          "name": "get-rya1399",
           "request": {
             "method": "GET",
             "header": [
@@ -27282,7 +27537,7 @@
           ]
         },
         {
-          "name": "cleanup-sg-rya1344",
+          "name": "cleanup-sg-rya1400",
           "request": {
             "method": "DELETE",
             "header": [
@@ -27391,7 +27646,7 @@
           ]
         },
         {
-          "name": "cleanup-target-a",
+          "name": "cleanup-target-a-rya1426",
           "request": {
             "method": "DELETE",
             "header": [
@@ -27419,6 +27674,21 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "// bounded read-your-writes retry over the owner-tuple materialization window",
+                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
+                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_authRetryCount', '0');",
+                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "}",
+                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
+                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
+                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "  pm.execution.setNextRequest(pm.info.requestName);",
+                  "  return;",
+                  "}",
+                  "pm.environment.unset('_authRetryCount');",
+                  "pm.environment.unset('_authRetryStarted');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -27485,7 +27755,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1345",
+          "name": "cleanup-net-rya1401",
           "request": {
             "method": "DELETE",
             "header": [

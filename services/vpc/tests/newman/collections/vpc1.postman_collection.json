@@ -251,7 +251,7 @@
           ]
         },
         {
-          "name": "get-supernet-rya1594",
+          "name": "get-supernet-rya1685",
           "request": {
             "method": "GET",
             "header": [
@@ -304,7 +304,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1595",
+          "name": "cleanup-net-rya1686",
           "request": {
             "method": "DELETE",
             "header": [
@@ -495,7 +495,7 @@
           ]
         },
         {
-          "name": "op-get-rya1596",
+          "name": "op-get-rya1687",
           "request": {
             "method": "GET",
             "header": [
@@ -544,7 +544,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1597",
+          "name": "cleanup-net-rya1688",
           "request": {
             "method": "DELETE",
             "header": [
@@ -783,7 +783,7 @@
           ]
         },
         {
-          "name": "get-def-sg-rya1598",
+          "name": "get-def-sg-rya1689",
           "request": {
             "method": "GET",
             "header": [
@@ -834,7 +834,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1599",
+          "name": "cleanup-net-rya1690",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1073,7 +1073,7 @@
           ]
         },
         {
-          "name": "get-def-rt-rya1600",
+          "name": "get-def-rt-rya1691",
           "request": {
             "method": "GET",
             "header": [
@@ -1129,7 +1129,7 @@
           ]
         },
         {
-          "name": "get-rt-resource-rya1601",
+          "name": "get-rt-resource-rya1692",
           "request": {
             "method": "GET",
             "header": [
@@ -1180,7 +1180,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1602",
+          "name": "cleanup-net-rya1693",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1419,7 +1419,7 @@
           ]
         },
         {
-          "name": "get-net-default-rt-rya1603",
+          "name": "get-net-default-rt-rya1694",
           "request": {
             "method": "GET",
             "header": [
@@ -1583,7 +1583,7 @@
           ]
         },
         {
-          "name": "get-sub-rt-rya1604",
+          "name": "get-sub-rt-rya1695",
           "request": {
             "method": "GET",
             "header": [
@@ -1634,7 +1634,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya1605",
+          "name": "cleanup-sub-rya1696",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1744,7 +1744,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1606",
+          "name": "cleanup-net-rya1697",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1983,7 +1983,7 @@
           ]
         },
         {
-          "name": "patch-supernet-immutable-rya1607",
+          "name": "patch-supernet-immutable-rya1698",
           "request": {
             "method": "PATCH",
             "header": [
@@ -2047,7 +2047,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1608",
+          "name": "cleanup-net-rya1699",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2286,7 +2286,7 @@
           ]
         },
         {
-          "name": "patch-project-immutable-rya1609",
+          "name": "patch-project-immutable-rya1700",
           "request": {
             "method": "PATCH",
             "header": [
@@ -2350,7 +2350,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1610",
+          "name": "cleanup-net-rya1701",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2589,7 +2589,7 @@
           ]
         },
         {
-          "name": "add-cidr-rya1611",
+          "name": "add-cidr-rya1702",
           "request": {
             "method": "POST",
             "header": [
@@ -2709,7 +2709,7 @@
           ]
         },
         {
-          "name": "get-grown-rya1612",
+          "name": "get-grown-rya1703",
           "request": {
             "method": "GET",
             "header": [
@@ -2762,7 +2762,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1613",
+          "name": "cleanup-net-rya1704",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3001,7 +3001,7 @@
           ]
         },
         {
-          "name": "remove-cidr-rya1614",
+          "name": "remove-cidr-rya1705",
           "request": {
             "method": "POST",
             "header": [
@@ -3121,7 +3121,7 @@
           ]
         },
         {
-          "name": "get-shrunk-rya1615",
+          "name": "get-shrunk-rya1706",
           "request": {
             "method": "GET",
             "header": [
@@ -3174,7 +3174,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1616",
+          "name": "cleanup-net-rya1707",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3590,7 +3590,7 @@
           ]
         },
         {
-          "name": "remove-covering-rya1617",
+          "name": "remove-covering-rya1708",
           "request": {
             "method": "POST",
             "header": [
@@ -3656,7 +3656,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya1618",
+          "name": "cleanup-sub-rya1709",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3766,7 +3766,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1619",
+          "name": "cleanup-net-rya1710",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4053,7 +4053,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1620",
+          "name": "cleanup-net-rya1711",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4401,7 +4401,7 @@
           ]
         },
         {
-          "name": "del-nonempty-rya1621",
+          "name": "del-nonempty-rya1712",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4456,7 +4456,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya1622",
+          "name": "cleanup-sub-rya1713",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4566,7 +4566,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1623",
+          "name": "cleanup-net-rya1714",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4805,7 +4805,7 @@
           ]
         },
         {
-          "name": "get-no-vrf-rya1624",
+          "name": "get-no-vrf-rya1715",
           "request": {
             "method": "GET",
             "header": [
@@ -4858,7 +4858,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1625",
+          "name": "cleanup-net-rya1716",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5206,7 +5206,7 @@
           ]
         },
         {
-          "name": "get-zonal-rya1626",
+          "name": "get-zonal-rya1717",
           "request": {
             "method": "GET",
             "header": [
@@ -5261,7 +5261,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya1627",
+          "name": "cleanup-sub-rya1718",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5371,7 +5371,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1628",
+          "name": "cleanup-net-rya1719",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5756,7 +5756,7 @@
           ]
         },
         {
-          "name": "get-regional-rya1629",
+          "name": "get-regional-rya1720",
           "request": {
             "method": "GET",
             "header": [
@@ -5810,7 +5810,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya1630",
+          "name": "cleanup-sub-rya1721",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5920,7 +5920,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1631",
+          "name": "cleanup-net-rya1722",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6207,7 +6207,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1632",
+          "name": "cleanup-net-rya1723",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6494,7 +6494,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1633",
+          "name": "cleanup-net-rya1724",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6781,7 +6781,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1634",
+          "name": "cleanup-net-rya1725",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7129,7 +7129,7 @@
           ]
         },
         {
-          "name": "patch-zone-immutable-rya1635",
+          "name": "patch-zone-immutable-rya1726",
           "request": {
             "method": "PATCH",
             "header": [
@@ -7193,7 +7193,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya1636",
+          "name": "cleanup-sub-rya1727",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7303,7 +7303,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1637",
+          "name": "cleanup-net-rya1728",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7651,7 +7651,7 @@
           ]
         },
         {
-          "name": "patch-network-immutable-rya1638",
+          "name": "patch-network-immutable-rya1729",
           "request": {
             "method": "PATCH",
             "header": [
@@ -7715,7 +7715,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya1639",
+          "name": "cleanup-sub-rya1730",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7825,7 +7825,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1640",
+          "name": "cleanup-net-rya1731",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8112,7 +8112,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1641",
+          "name": "cleanup-net-rya1732",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8508,7 +8508,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya1642",
+          "name": "cleanup-sub-rya1733",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8618,7 +8618,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1643",
+          "name": "cleanup-net-rya1734",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9190,7 +9190,7 @@
           ]
         },
         {
-          "name": "clean-sub-a-rya1644",
+          "name": "clean-sub-a-rya1735",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9300,7 +9300,7 @@
           ]
         },
         {
-          "name": "clean-sub-b-rya1645",
+          "name": "clean-sub-b-rya1736",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9410,7 +9410,7 @@
           ]
         },
         {
-          "name": "clean-net-a-rya1646",
+          "name": "clean-net-a-rya1737",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9520,7 +9520,7 @@
           ]
         },
         {
-          "name": "clean-net-b-rya1647",
+          "name": "clean-net-b-rya1738",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9868,7 +9868,7 @@
           ]
         },
         {
-          "name": "add-sub-cidr-rya1648",
+          "name": "add-sub-cidr-rya1739",
           "request": {
             "method": "POST",
             "header": [
@@ -9988,7 +9988,7 @@
           ]
         },
         {
-          "name": "get-added-rya1649",
+          "name": "get-added-rya1740",
           "request": {
             "method": "GET",
             "header": [
@@ -10041,7 +10041,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya1650",
+          "name": "cleanup-sub-rya1741",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10151,7 +10151,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1651",
+          "name": "cleanup-net-rya1742",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10499,7 +10499,7 @@
           ]
         },
         {
-          "name": "add-sub-outside-rya1652",
+          "name": "add-sub-outside-rya1743",
           "request": {
             "method": "POST",
             "header": [
@@ -10565,7 +10565,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya1653",
+          "name": "cleanup-sub-rya1744",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10675,7 +10675,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1654",
+          "name": "cleanup-net-rya1745",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11023,7 +11023,7 @@
           ]
         },
         {
-          "name": "remove-primary-rya1655",
+          "name": "remove-primary-rya1746",
           "request": {
             "method": "POST",
             "header": [
@@ -11089,7 +11089,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya1656",
+          "name": "cleanup-sub-rya1747",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11199,7 +11199,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1657",
+          "name": "cleanup-net-rya1748",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11682,7 +11682,7 @@
           ]
         },
         {
-          "name": "get-no-dhcp-rya1658",
+          "name": "get-no-dhcp-rya1749",
           "request": {
             "method": "GET",
             "header": [
@@ -11717,7 +11717,7 @@
                   "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
                   "}",
                   "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 25) {",
+                  "if ([403,404].includes(pm.response.code) && _arc < 25) {",
                   "  pm.environment.set('_authRetryCount', String(_arc + 1));",
                   "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
@@ -11733,7 +11733,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya1659",
+          "name": "cleanup-sub-rya1750",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11843,7 +11843,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1660",
+          "name": "cleanup-net-rya1751",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12191,7 +12191,7 @@
           ]
         },
         {
-          "name": "list-filter-zone-lst1661",
+          "name": "list-filter-zone-lst1752",
           "request": {
             "method": "GET",
             "header": [
@@ -12282,7 +12282,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya1662",
+          "name": "cleanup-sub-rya1753",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12392,7 +12392,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1663",
+          "name": "cleanup-net-rya1754",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12740,7 +12740,7 @@
           ]
         },
         {
-          "name": "list-filter-network-lst1664",
+          "name": "list-filter-network-lst1755",
           "request": {
             "method": "GET",
             "header": [
@@ -12793,7 +12793,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya1665",
+          "name": "cleanup-sub-rya1756",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12903,7 +12903,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1666",
+          "name": "cleanup-net-rya1757",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13333,7 +13333,7 @@
           ]
         },
         {
-          "name": "get-v6only-rya1667",
+          "name": "get-v6only-rya1758",
           "request": {
             "method": "GET",
             "header": [
@@ -13387,7 +13387,7 @@
           ]
         },
         {
-          "name": "cleanup-sub-rya1668",
+          "name": "cleanup-sub-rya1759",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13497,7 +13497,7 @@
           ]
         },
         {
-          "name": "cleanup-net-rya1669",
+          "name": "cleanup-net-rya1760",
           "request": {
             "method": "DELETE",
             "header": [

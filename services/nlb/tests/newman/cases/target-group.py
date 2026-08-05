@@ -573,6 +573,15 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
+        # read-your-writes: у создания слушателя цель проверки прав — СВЕЖИЙ
+        # балансировщик, названный в ТЕЛЕ запроса (адрес — коллекционный), а
+        # предикат автообёртки читает только адрес шага. Поэтому окно видимости
+        # пережидается явно — тем же приёмом, что и `setup-materialize-tg` выше.
+        # Без него создание слушателя получает отказ, слушателя нет, и дальше
+        # рушится всё, что на него опиралось: удаление группы проходит вместо
+        # отказа (10 упавших утверждений в прогоне 31044886565).
+        retry_until_authorized(Step(name="setup-materialize-lb", method="GET",
+             path="/nlb/v1/networkLoadBalancers/{{nlbId}}", test_script=[])),
         # No `ipVersion`: `reserved 8` in CreateListenerRequest (VIP lives on the LB).
         Step(name="wire-listener", method="POST", path="/nlb/v1/listeners",
              body={"loadBalancerId": "{{nlbId}}", "name": "tgr-del-lst-{{runId}}",
@@ -700,6 +709,10 @@ CASES.append(Case(
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
         poll_operation_until_done(),
+        # read-your-writes: цель проверки прав у создания слушателя — свежий
+        # балансировщик из ТЕЛА запроса; см. пояснение выше.
+        retry_until_authorized(Step(name="setup-materialize-lb", method="GET",
+             path="/nlb/v1/networkLoadBalancers/{{nlbId}}", test_script=[])),
         # Wire the TG to the LB via a listener (default_target_group_id) — a listener
         # referencing the TG is what now blocks the TG Move (attach/detach removed).
         # No `ipVersion`: `reserved 8` in CreateListenerRequest (VIP lives on the LB).
