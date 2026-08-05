@@ -29,6 +29,19 @@ deploy/helm/umbrella/charts/*.tgz
 deploy/helm/umbrella/Chart.lock
 deploy/helm/umbrella/values.image-ids.yaml
 
+# Второй экземпляр того же класса — артефакты прогонов e2e. Отчёты newman,
+# окружение, пропатченное посевом фикстур (в нём токены — они меняются на каждом
+# посеве by construction), и байткод python пишутся КАЖДЫМ прогоном e2e, лежат в
+# контексте и образам не нужны: коллекции рядом исключены с самого начала, а
+# `go build` ничего из tests/ не читает.
+# Замер на 8d119ccb: игнорируемых git файлов на диске 179, из них попадали в
+# контекст 164 — то есть после любого прогона e2e следующий `make dev-up`
+# пересобирал все восемь образов заново.
+**/tests/newman/out
+**/environments/local.postman_environment.json
+tests/authz-fixtures/out
+**/__pycache__
+
 # креды — в контекст сборки не попадают никогда
 pem
 *.pem
