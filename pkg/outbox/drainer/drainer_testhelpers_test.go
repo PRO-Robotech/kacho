@@ -7,11 +7,12 @@ package drainer_test
 //
 // Each test owns its own Postgres DATABASE on the package's single container
 // (no shared state, parallel-safe — see TestMain).
-// Schema is an inline copy of kacho-iam migration 0002_fga_outbox.sql —
-// kacho-corelib doesn't own kacho-iam migrations; copying the DDL here keeps
-// the drainer package self-contained for testing without a cross-repo dependency.
+// Schema is an inline copy of the kacho-iam `fga_outbox` DDL — corelib doesn't
+// own kacho-iam migrations; copying the DDL here keeps the drainer package
+// self-contained for testing without depending on another service's tree.
 // If the schema changes in kacho-iam, this constant must be re-synced
-// (intentional duplication, documented).
+// (intentional duplication, documented). fgaOutboxSchema below names the
+// migrations each piece comes from.
 
 import (
 	"context"
@@ -28,9 +29,29 @@ import (
 	"github.com/PRO-Robotech/kacho/internal/pgtest"
 )
 
-// fgaOutboxSchema — exact copy of kacho-iam/internal/migrations/0002_fga_outbox.sql
-// (only the fga_outbox table + trigger + index pieces; subject_change_outbox /
-// fga_model_version / watch_cursors omitted — not used by drainer).
+// fgaOutboxSchema — the `kacho_iam.fga_outbox` pieces the drainer exercises,
+// assembled from the migrations that produce them in
+// `services/iam/internal/migrations/`:
+//
+//   - `0001_initial.sql` — the table itself and the NOTIFY trigger on the
+//     channel `kacho_iam_fga_outbox` (the table has never had a migration of its
+//     own named after it; prose here used to cite one, and that citation resolved
+//     to an unrelated migration about e-mail uniqueness);
+//   - `0067_fga_outbox_tuple_key_partition.sql` — the `tuple_key` column, the
+//     BEFORE INSERT trigger that fills it, and the partition-head index;
+//   - `0063_fga_outbox_claim_order_idx.sql` — the claim's outer ordered scan;
+//   - `0068_fga_outbox_drop_decoy_pending_idx.sql` — the absence of any third
+//     partial index (the NOTE below).
+//
+// NOT a byte copy, and the difference is deliberate: 0067 also adds
+// `CHECK (tuple_key IS NOT NULL) NOT VALID`, which is what makes an incomplete
+// payload fail LOUDLY at emit in iam. It is omitted here because this fixture
+// serves the GENERIC drainer, whose decode-poison probes must be able to enqueue
+// a malformed payload on some table. The production constraint is not left
+// unguarded — it is asserted where it lives, against the real migration, by
+// `services/iam/internal/repo/kacho/pg/migration_0067_0068_fga_outbox_tuple_key_integration_test.go`.
+// Also omitted: subject_change_outbox / fga_model_version / watch_cursors — not
+// used by the drainer.
 const fgaOutboxSchema = `
 CREATE SCHEMA IF NOT EXISTS kacho_iam;
 SET search_path TO kacho_iam, public;

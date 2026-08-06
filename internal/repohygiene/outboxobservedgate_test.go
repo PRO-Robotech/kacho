@@ -42,6 +42,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/internal/treecorpus"
@@ -54,14 +55,24 @@ import (
 // Разложение по направлению отвечает на вопрос, который сводные серии задать не
 // могут: «доезжает ли ВТОРАЯ половина». Он осмыслен только там, где половин
 // действительно две.
+//
+// ПРЕДПОСЫЛКА — какие события очередь несёт — здесь НЕ пересказывается: она
+// объявлена один раз в `declaredQueueEventDictionary` и сверяется с БД гейтом
+// (outboxeventdictionary_test.go). Прежняя редакция этой записи предпосылку
+// пересказывала — и пересказ был ложным: «событие ровно одного вида» при
+// словаре из двух. Вывод устоял, основание — нет.
 var outboxDirectionSplitExempt = map[string]string{
 	"kacho_iam.provider_compensation_outbox": "" +
-		"событие ровно одного вида — «снять клиента у провайдера». Второй половины нет " +
-		"by construction, поэтому разложение по направлению разложило бы очередь на неё " +
-		"саму и на пустоту.",
+		"видов события два, но НАПРАВЛЕНИЕ у них одно: оба — снятия (клиента у " +
+		"провайдера и доверительного гранта), ни одно ничего не устанавливает. " +
+		"Обратной половины у потока нет by construction — постановка идёт синхронным " +
+		"вызовом на пути запроса и в очередь не попадает, — поэтому разложение по " +
+		"направлению разложило бы очередь на неё саму и на пустоту.",
 	"kacho_iam.subject_change_outbox": "" +
-		"очередь уведомлений об изменении субъекта: одно направление (уведомить), " +
-		"обратного события не существует.",
+		"очередь уведомлений об изменении субъекта. Видов события семь, и среди них " +
+		"есть выглядящие парными (выдать ↔ отозвать), но направление у всех одно: " +
+		"уведомить о том, что решения субъекта устарели. Обратного события — «вернуть " +
+		"кэшированное решение» — не существует ни в словаре, ни у принимающей стороны.",
 }
 
 // TestEveryDrainedOutboxIsObserved — каждая очередь, для которой поднят дренаж,
@@ -172,10 +183,84 @@ type outboxInventory struct {
 	observed map[string][]string
 	// split — у сканера этой таблицы задано разложение по направлению.
 	split map[string]bool
+	// partition — таблица → ключ партиции порядка, объявленный проводкой
+	// дренажа (drainer.Config.PartitionColumn). Ключа нет в карте = проводка
+	// поля не задаёт, то есть заявляет коммутативность потока. Читается гейтом
+	// порядка (outboxorderinggate_test.go).
+	partition map[string]string
+	// partitionUnresolved — координаты проводок, где поле ключа партиции задано,
+	// но его значение разбором исходника не восстанавливается. Такая проводка
+	// для гейта порядка неотличима от «ключ не задан», поэтому она называется
+	// вслух, а не проглатывается.
+	partitionUnresolved []string
 	// unresolved — координаты проводок, чьё поле Table не резолвится разбором.
 	unresolved []string
 	filesRead  int
 }
+
+// outboxInventoryCache — разобранный инвентарь на корень дерева.
+//
+// Семь проб (три про наблюдаемость, три про порядок, одна про словарь событий)
+// спрашивают ОДНО И ТО ЖЕ, а один разбор стоит двух проходов по всем не-тестовым
+// файлам каждого сервиса: сперва за строковыми константами, потом за
+// композитными литералами.
+//
+// # Величина выигрыша — и почему она приведена парами, а не одним числом
+//
+// Замер сумм собственного времени проб, по три прогона на условие, флаги
+// `-short -count=1`:
+//
+//	условие      | без кэша          | с кэшем
+//	-------------|-------------------|------------------
+//	под -race    | 12.8 / 13.0 / 15.0| 2.00 / 2.11 / 2.18
+//	без -race    | 1.93 / 1.96 / 1.97| 0.32 / 0.33 / 0.33
+//
+// Выигрыш — примерно ШЕСТИКРАТНЫЙ, и он один и тот же в обеих строках. А вот
+// абсолютные величины между строками отличаются на порядок, и это ловушка, в
+// которую здесь уже попались: сообщение коммита, вводившего кэш, назвало пару
+// «12.54 c → 0.36 c», то есть «до» из верхней строки и «после» из НИЖНЕЙ. Флаги
+// в том сообщении объявлены с `-race`. Выигрыш оказался завышен впятеро с
+// половиной, и заметил это приёмщик, а не автор: он не смог воспроизвести
+// «после» ни при одном наборе флагов — потому что при ОБЪЯВЛЕННЫХ флагах такой
+// величины не бывает.
+//
+// Мораль для следующего замера: величина без условия — не величина. Условие
+// здесь — флаги, набор проб и машина; менять их между «до» и «после» нельзя даже
+// случайно.
+//
+// # Зачем кэш вообще — и почему величину надо брать ИЗ КОНВЕЙЕРА
+//
+// Потолок задан явно: `UNIT_TIMEOUT ?= 5m` в корневом Makefile, то есть 300 c на
+// бинарь пакета. Пакет `internal/repohygiene` целиком под `-race -short`:
+//
+//	машина разработчика | 160 / 201 / 202 c
+//	конвейер (прогон 31094737316) | 293.8 c
+//
+// Местный замер занижает риск примерно в полтора раза и потому в качестве
+// вердикта не годится: запаса не «треть», а ШЕСТЬ СЕКУНД. Пакет древовидных
+// гейтов дорожает с деревом, и следующий гейт, добавленный сюда без замера в
+// конвейере, обратит зелёное в «не выполнилось» — причём не в красное: таймаут
+// не роняет ни одного утверждения, он их не доводит. Семь одинаковых разборов —
+// не то, на что стоит тратить такой запас; отсюда и кэш, и парный ему кэш
+// инвентаря словарей (outboxeventdictionary_test.go).
+//
+// Кэш безопасен по построению: ни одна проба этого пакета в читаемое дерево НЕ
+// пишет (те, кому нужно другое дерево, строят его во временном каталоге и зовут
+// другой разборщик), поэтому в пределах одного процесса ответ не может
+// устареть. Ключ — корень, так что появление второго корня даст свою запись, а
+// не чужой ответ. Кладётся только УСПЕШНЫЙ разбор: неудачный завершается
+// t.Fatalf внутри, до присвоения.
+//
+// Объём осмотренного при этом не подделывается: `filesRead` лежит в самом
+// инвентаре, поэтому проба, получившая кэш, печатает и проверяет НАСТОЯЩЕЕ число
+// прочитанных файлов — то самое, на котором инвентарь построен в этом же
+// процессе. Требование «ноль находок отличимо от ноль прочитанного» остаётся
+// выполненным: пустой разбор в кэш попадёт так же, как непустой, и первая же
+// проба на нём упадёт.
+var (
+	outboxInventoryMu    sync.Mutex
+	outboxInventoryCache = map[string]outboxInventory{}
+)
 
 // outboxWiringInventory разбирает composition root'ы всех сервисов и шлюза.
 //
@@ -185,10 +270,17 @@ type outboxInventory struct {
 // константы разных сервисов не должны сливаться в одну запись.
 func outboxWiringInventory(t *testing.T, root string) outboxInventory {
 	t.Helper()
+	outboxInventoryMu.Lock()
+	cached, ok := outboxInventoryCache[root]
+	outboxInventoryMu.Unlock()
+	if ok {
+		return cached
+	}
 	inv := outboxInventory{
-		drained:  map[string][]string{},
-		observed: map[string][]string{},
-		split:    map[string]bool{},
+		drained:   map[string][]string{},
+		observed:  map[string][]string{},
+		split:     map[string]bool{},
+		partition: map[string]string{},
 	}
 
 	servicesDir := filepath.Join(root, "services")
@@ -209,6 +301,9 @@ func outboxWiringInventory(t *testing.T, root string) outboxInventory {
 			scanOutboxWiring(t, path, svc, root, consts, &inv)
 		}
 	}
+	outboxInventoryMu.Lock()
+	outboxInventoryCache[root] = inv
+	outboxInventoryMu.Unlock()
 	return inv
 }
 
@@ -318,6 +413,8 @@ func scanOutboxWiring(t *testing.T, path, svc, root string, consts map[string]st
 		var table string
 		var hasTableKey bool
 		var hasDirections bool
+		var partition string
+		var hasPartitionKey bool
 		for _, elt := range cl.Elts {
 			kv, ok := elt.(*ast.KeyValueExpr)
 			if !ok {
@@ -333,6 +430,9 @@ func scanOutboxWiring(t *testing.T, path, svc, root string, consts map[string]st
 				table = resolveStringExpr(kv.Value, consts)
 			case "Directions":
 				hasDirections = true
+			case "PartitionColumn":
+				hasPartitionKey = true
+				partition = resolveStringExpr(kv.Value, consts)
 			}
 		}
 		if table == "" {
@@ -344,6 +444,13 @@ func scanOutboxWiring(t *testing.T, path, svc, root string, consts map[string]st
 		}
 		if kind == "дренаж" {
 			inv.drained[table] = append(inv.drained[table], coord)
+			switch {
+			case hasPartitionKey && partition != "":
+				inv.partition[table] = partition
+			case hasPartitionKey:
+				inv.partitionUnresolved = append(inv.partitionUnresolved,
+					coord+" (строка "+strconv.Itoa(fset.Position(cl.Pos()).Line)+")")
+			}
 			return true
 		}
 		inv.observed[table] = append(inv.observed[table], coord)

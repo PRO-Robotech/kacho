@@ -65,12 +65,11 @@ var nonPartitionDrainedOutboxes = map[string]string{
 		"а не приманка.",
 	"provider_compensation_outbox": "" +
 		"общий дренаж БЕЗ ключа партиции (provider_compensation_wiring.go): выборка `ORDER BY " +
-		"attempt_count, id LIMIT n`, анти-соединения по партиции нет. Ключ партиции не задан " +
-		"НАМЕРЕННО: событие ровно одного вида — «снять клиента у провайдера», два таких события " +
-		"одного client_id коммутируют и идемпотентны (провайдер отвечает 404 на повторное снятие, " +
-		"клиент трактует 404 как исполнено), поэтому финальное состояние сходится при любом " +
-		"порядке — условие (а) из drainer.Config.PartitionColumn. Единственный частичный индекс " +
-		"(attempt_count, id) — ровно тот порядок, который эта выборка и просит.",
+		"attempt_count, id LIMIT n`, анти-соединения по партиции нет. Единственный частичный " +
+		"индекс (attempt_count, id) — ровно тот порядок, который эта выборка и просит. ПОЧЕМУ " +
+		"ключ партиции не задан — предмет записи в repohygiene.commutativeDrainExempt, и здесь " +
+		"он намеренно НЕ пересказывается: прежняя редакция его пересказывала и пересказ стал " +
+		"ложным вместе с оригиналом, когда миграция расширила словарь событий очереди.",
 	"subject_change_outbox": "" +
 		"общий дренаж БЕЗ ключа партиции (subject_change_wiring.go): выборка `ORDER BY " +
 		"attempt_count, id LIMIT n`, анти-соединения по партиции нет, поэтому механизм " +
@@ -107,37 +106,37 @@ func TestOutboxPendingIndexSetIsExactlyTwo(t *testing.T) {
 		t.Fatalf("гейт не нашёл НИ ОДНОГО частичного индекса по неотправленным строкам в %d "+
 			"миграциях — распознавание сломано", files)
 	}
-	tables := make([]string, 0, len(inv))
-	for tbl := range inv {
-		tables = append(tables, tbl)
+	queues := make([]string, 0, len(inv))
+	for key := range inv {
+		queues = append(queues, key)
 	}
-	sort.Strings(tables)
-	t.Logf("прочитано миграций: %d; очередей с частичными индексами по неотправленным строкам: %d\n  %s",
-		files, len(tables), strings.Join(tables, "\n  "))
+	sort.Strings(queues)
+	t.Logf("прочитано миграций: %d; ФИЗИЧЕСКИХ очередей с частичными индексами по неотправленным "+
+		"строкам: %d (ключ — сервис:таблица; одно имя таблицы бывает у нескольких сервисов)\n  %s",
+		files, len(queues), strings.Join(queues, "\n  "))
 
-	covered := 0
-	for _, tbl := range tables {
+	covered := map[string]bool{}
+	for _, key := range queues {
+		tbl := queueTable(key)
 		partCol, partitioned := partitionDrainedOutboxes[tbl]
 		if !partitioned {
 			if _, known := nonPartitionDrainedOutboxes[tbl]; !known {
 				t.Errorf("очередь %s не отнесена ни к одному ярусу: неизвестно, чем она "+
 					"выбирается, а значит нечем проверить её набор индексов. Добавь её в "+
 					"partitionDrainedOutboxes (если выборка идёт по ключу партиции) либо в "+
-					"nonPartitionDrainedOutboxes с указанием её собственного запроса.", tbl)
+					"nonPartitionDrainedOutboxes с указанием её собственного запроса.", key)
 			}
 			continue
 		}
-		covered++
+		covered[tbl] = true
 
-		want := map[string]bool{
-			partCol + ", id":    true,
-			"attempt_count, id": true,
-		}
-		got := inv[tbl]
+		want := []string{partCol + ", id", "attempt_count, id"}
+		sort.Strings(want)
+		got := inv[key]
 		var extra []string
 		seen := map[string]bool{}
 		for name, cols := range got {
-			if want[cols] {
+			if cols == want[0] || cols == want[1] {
 				seen[cols] = true
 				continue
 			}
@@ -149,21 +148,25 @@ func TestOutboxPendingIndexSetIsExactlyTwo(t *testing.T) {
 				"Порядок, отличный от (%s, id) и (attempt_count, id), планировщик берёт при "+
 				"статистике пустой очереди — выборка теряет раннюю остановку по LIMIT и читает "+
 				"всю очередь, которую разгребает. Дропни новой миграцией либо приложи измерение "+
-				"плана на бэклоге.", tbl, strings.Join(extra, ", "), partCol)
+				"плана на бэклоге.", key, strings.Join(extra, ", "), partCol)
 		}
-		for cols := range want {
+		for _, cols := range want {
 			if !seen[cols] {
 				t.Errorf("очередь %s НЕ несёт частичного индекса (%s) по неотправленным строкам — "+
-					"выборка останется без нужного пути доступа", tbl, cols)
+					"выборка останется без нужного пути доступа. Индекс называется в миграциях ЭТОГО "+
+					"сервиса: одноимённый индекс соседа на его собственной схеме здесь не считается.",
+					key, cols)
 			}
 		}
 	}
 
 	// Область обхода утверждается числом: если роспись очередей с ключом
 	// партиции вдруг перестала находиться в дереве, гейт молчал бы «чисто».
-	if covered < len(partitionDrainedOutboxes) {
-		t.Errorf("в дереве нашлось %d очередей с ключом партиции из %d объявленных — запись "+
-			"пережила свой предмет либо распознавание сломано", covered, len(partitionDrainedOutboxes))
+	// Считаются РАЗНЫЕ имена росписи, а не физические очереди: одно имя росписи
+	// покрывает столько физических таблиц, сколько сервисов её завели.
+	if len(covered) < len(partitionDrainedOutboxes) {
+		t.Errorf("в дереве нашлось %d имён очередей с ключом партиции из %d объявленных — запись "+
+			"пережила свой предмет либо распознавание сломано", len(covered), len(partitionDrainedOutboxes))
 	}
 }
 
@@ -174,11 +177,15 @@ func TestNonPartitionOutboxExemptionsHaveSubject(t *testing.T) {
 	root := repoRoot(t)
 	inv, _ := pendingIndexInventory(t, root)
 
+	present := map[string]bool{}
+	for key := range inv {
+		present[queueTable(key)] = true
+	}
 	for tbl, why := range nonPartitionDrainedOutboxes {
 		if strings.TrimSpace(why) == "" {
 			t.Errorf("запись %s без обоснования: обязана называть, чем эта очередь выбирается", tbl)
 		}
-		if _, ok := inv[tbl]; !ok {
+		if !present[tbl] {
 			t.Errorf("запись %s больше не имеет предмета: такой очереди с частичными индексами "+
 				"по неотправленным строкам в дереве нет. Удали запись.", tbl)
 		}
@@ -186,14 +193,98 @@ func TestNonPartitionOutboxExemptionsHaveSubject(t *testing.T) {
 }
 
 var (
+	// UNIQUE читается наравне с обычным: для планировщика частичный УНИКАЛЬНЫЙ
+	// индекс по неотправленным строкам — такая же приманка (более узкий порядок
+	// по тем же строкам). Без этой группы целый вид приманки был бы невидим, и
+	// невидим МОЛЧА — сегодня таких в дереве ноль.
 	createPartialIdxRe = regexp.MustCompile(
-		`(?is)CREATE\s+INDEX(?:\s+CONCURRENTLY)?(?:\s+IF\s+NOT\s+EXISTS)?\s+([\w."]+)\s+ON\s+([\w."]+)\s*(?:USING\s+\w+\s*)?\(([^)]*)\)\s*(?:WHERE\s*\(?([^;]*?)\)?)?\s*;`)
+		`(?is)CREATE\s+(?:UNIQUE\s+)?INDEX(?:\s+CONCURRENTLY)?(?:\s+IF\s+NOT\s+EXISTS)?\s+([\w."]+)\s+ON\s+([\w."]+)\s*(?:USING\s+\w+\s*)?\(([^)]*)\)\s*(?:WHERE\s*\(?([^;]*?)\)?)?\s*;`)
 	dropIdxRe = regexp.MustCompile(`(?i)DROP\s+INDEX(?:\s+CONCURRENTLY)?(?:\s+IF\s+EXISTS)?\s+([\w."]+)\s*;`)
 )
 
+// sqlIndexOp — один оператор миграции, меняющий набор индексов, вместе с его
+// СМЕЩЕНИЕМ в тексте файла. Смещение здесь и есть предмет: без него создания и
+// удаления одного файла применялись двумя раздельными проходами, и законная
+// перестройка «удалить и создать заново» читалась как «удалён».
+type sqlIndexOp struct {
+	at    int    // смещение оператора в Up-секции — единственный источник порядка
+	drop  bool   // true → DROP INDEX, false → CREATE INDEX
+	name  string // имя индекса без схемы
+	table string // имя таблицы без схемы (только у CREATE: DROP таблицу не называет)
+	cols  string // список колонок (только у CREATE)
+}
+
+// indexOpsInTextOrder возвращает операторы Up-секции в том порядке, в каком их
+// исполнил бы Postgres.
+//
+// Частичность проверяется здесь же: CREATE без предиката по `sent_at` предметом
+// этого инвентаря не является и в список не попадает — но DROP попадает ВСЕГДА,
+// иначе снятие приманки одноимённым не-частичным индексом осталось бы незамеченным.
+func indexOpsInTextOrder(up string) []sqlIndexOp {
+	ops := make([]sqlIndexOp, 0, 8)
+	for _, m := range createPartialIdxRe.FindAllStringSubmatchIndex(up, -1) {
+		if m[8] < 0 { // индекс без предиката — не частичный, предметом не является
+			continue
+		}
+		where := strings.Join(strings.Fields(up[m[8]:m[9]]), " ")
+		if !strings.Contains(strings.ToLower(where), "sent_at") {
+			continue
+		}
+		ops = append(ops, sqlIndexOp{
+			at:    m[0],
+			name:  unqualify(up[m[2]:m[3]]),
+			table: unqualify(up[m[4]:m[5]]),
+			cols:  strings.Join(strings.Fields(up[m[6]:m[7]]), " "),
+		})
+	}
+	for _, m := range dropIdxRe.FindAllStringSubmatchIndex(up, -1) {
+		ops = append(ops, sqlIndexOp{at: m[0], drop: true, name: unqualify(up[m[2]:m[3]])})
+	}
+	sort.Slice(ops, func(i, j int) bool { return ops[i].at < ops[j].at })
+	return ops
+}
+
 // pendingIndexInventory проигрывает Up-секции всех миграций в порядке версий и
 // возвращает итоговый набор ЧАСТИЧНЫХ индексов по `sent_at IS NULL`:
-// таблица (без схемы) → имя индекса → список колонок.
+// **`<сервис>:<таблица без схемы>`** → имя индекса → список колонок.
+//
+// # Почему ключ несёт СЕРВИС, а не только имя таблицы
+//
+// `fga_register_outbox` — это ТРИ физические очереди: в схемах vpc, nlb и
+// storage. Серии миграций у них независимые, имена индексов совпадают дословно.
+// Ключ без сервиса складывал их в одну корзину, и вердикт становился функцией
+// того, В КАКОМ СЕРВИСЕ лежит дефект: снятие головного индекса партиции в
+// сервисе, который обход проходит раньше по алфавиту, затиралось созданием
+// одноимённого индекса в сервисе, который обход проходит позже. Измерено
+// инъекцией на настоящем дереве в обе стороны — тот же дефект у storage не виден,
+// у vpc виден. Симметрично: снятие у более позднего сервиса вычёркивало запись
+// более раннего, и находка приписывалась не тому. Проба —
+// outboxpendingindexperservice_test.go.
+//
+// Дропы применяются В ПРЕДЕЛАХ СЕРВИСА: `DROP INDEX` называет индекс, а не
+// таблицу, поэтому внутри своей схемы он снимает запись с любой таблицы, но
+// схемы соседа не касается.
+//
+// # Порядок операторов — ТЕКСТОВЫЙ, а не «сперва создания, потом удаления»
+//
+// Проигрывание обязано прийти к тому же состоянию схемы, к какому пришёл бы
+// Postgres, поэтому операторы одного файла применяются в порядке их СМЕЩЕНИЯ в
+// тексте (`indexOpsInTextOrder`). Двумя раздельными проходами законная
+// перестройка индекса в одной миграции («удалить и создать заново») читалась как
+// «удалён» — гейт покраснел бы на ПРАВИЛЬНОЙ схеме, а ложно краснеющий гейт
+// снимают как непонятный. Свойство держит пара проб над одинаковым набором
+// операторов в двух порядках (outboxpendingindexperservice_test.go).
+//
+// # Объявленная слепая зона: условное удаление
+//
+// `DROP INDEX` внутри `DO`-блока применяется БЕЗУСЛОВНО, хотя в самом блоке он
+// под условием. В дереве таких три (nlb 0012 ×2, 0021 ×1), все по шаблону «снять,
+// если индекс невалиден, и тут же создать заново», — с текстовым порядком
+// проигрывание сходится с Postgres и на них. Остаётся случай условного удаления
+// БЕЗ последующего создания: там инвентарь объявит индекс снятым, а он стоит.
+// Обратная эвристика («не применять удаления из `DO`-блоков») завела бы свою
+// слепую зону — безусловное удаление внутри такого блока, — поэтому зона названа,
+// а не подменена другой.
 //
 // Down-секции намеренно игнорируются: они описывают откат, а не состояние схемы.
 func pendingIndexInventory(t *testing.T, root string) (map[string]map[string]string, int) {
@@ -211,12 +302,14 @@ func pendingIndexInventory(t *testing.T, root string) (map[string]map[string]str
 		if !e.IsDir() {
 			continue
 		}
-		dir := filepath.Join(servicesDir, e.Name(), "internal", "migrations")
+		svc := e.Name()
+		dir := filepath.Join(servicesDir, svc, "internal", "migrations")
 		sqls, globErr := filepath.Glob(filepath.Join(dir, "*.sql"))
 		if globErr != nil {
 			t.Fatalf("обход %s: %v", dir, globErr)
 		}
 		sort.Strings(sqls) // имена миграций начинаются с версии — лексикографический порядок = порядок применения
+		svcKeys := map[string]bool{}
 		for _, path := range sqls {
 			body, readErr := os.ReadFile(path)
 			if readErr != nil {
@@ -227,32 +320,27 @@ func pendingIndexInventory(t *testing.T, root string) (map[string]map[string]str
 			if i := strings.Index(up, "-- +goose Down"); i >= 0 {
 				up = up[:i]
 			}
-			for _, m := range createPartialIdxRe.FindAllStringSubmatch(up, -1) {
-				where := strings.Join(strings.Fields(m[4]), " ")
-				if !strings.Contains(strings.ToLower(where), "sent_at") {
+			for _, op := range indexOpsInTextOrder(up) {
+				if op.drop {
+					for key := range svcKeys {
+						delete(inv[key], op.name)
+					}
 					continue
 				}
-				tbl := unqualify(m[2])
-				idx := unqualify(m[1])
-				cols := strings.Join(strings.Fields(m[3]), " ")
-				if inv[tbl] == nil {
-					inv[tbl] = map[string]string{}
+				key := svc + ":" + op.table
+				if inv[key] == nil {
+					inv[key] = map[string]string{}
 				}
-				inv[tbl][idx] = cols
-			}
-			for _, m := range dropIdxRe.FindAllStringSubmatch(up, -1) {
-				idx := unqualify(m[1])
-				for _, set := range inv {
-					delete(set, idx)
-				}
+				inv[key][op.name] = op.cols
+				svcKeys[key] = true
 			}
 		}
 	}
-	// Таблицы, у которых после всех дропов не осталось ни одного такого индекса,
+	// Очереди, у которых после всех дропов не осталось ни одного такого индекса,
 	// из инвентаря убираем — иначе они выглядели бы как очередь без индексов.
-	for tbl, set := range inv {
+	for key, set := range inv {
 		if len(set) == 0 {
-			delete(inv, tbl)
+			delete(inv, key)
 		}
 	}
 	return inv, files
