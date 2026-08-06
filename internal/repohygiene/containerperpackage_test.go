@@ -94,6 +94,15 @@ const modulePath = "github.com/PRO-Robotech/kacho/"
 // Множество, а не одна строка: поставщиков два (Postgres и OpenFGA), и вторым его
 // сделала не симметрия, а замер — старт OpenFGA на тест жил в пяти пакетах iam, в
 // одном из них 25 раз за прогон.
+//
+// «ПОКРАСНЕЕТ ТАМ» ВЕРНО ПОКА НЕ ДЛЯ ОБОИХ, и разница названа, а не сглажена.
+// Доказательство OpenFGA-половины конвейер ИСПОЛНЯЕТ с 2026-08-06: пакет входит в
+// перечень цели test-authz-fga (см. authzfgaproofs_test.go). Доказательство
+// Postgres-половины не исполняется ни одной джобой — под кратким режимом оно
+// пропускается, а отбор интеграционной джобы до `internal/pgtest` не достаёт, — и
+// пакет остаётся названным долгом в shortgatedselection_test.go. То есть санкция
+// здесь стоит на проверяемом утверждении для одного поставщика и на непроверяемом
+// для другого; закрывается это тем же способом, что и для первого.
 var sanctionedProviders = map[string]string{
 	"internal/pgtest": "internal/pgtest/pgtest_test.go: TestOneContainerManyDatabases + " +
 		"TestRowsDoNotCrossBetweenDatabases",
