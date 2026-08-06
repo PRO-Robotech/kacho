@@ -42,6 +42,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/PRO-Robotech/kacho/internal/treecorpus"
@@ -187,6 +188,35 @@ type outboxInventory struct {
 	filesRead  int
 }
 
+// outboxInventoryCache — разобранный инвентарь на корень дерева.
+//
+// Шесть проб (три про наблюдаемость, три про порядок) спрашивают ОДНО И ТО ЖЕ, а
+// один разбор стоит двух проходов по всем не-тестовым файлам каждого сервиса:
+// сперва за строковыми константами, потом за композитными литералами. Под `-race`
+// это 2.1 c на пробу — 12.5 c на шесть, из которых 10.4 c чистое повторение.
+// Пакет `internal/repohygiene` целиком укладывается в 167 c при потолке `go test`
+// в 5 минут на бинарь пакета, и этот запас уже съедался вариативностью ранера
+// (один и тот же коммит: 192 c успехом и таймаут на 300 c). Шесть одинаковых
+// разборов — не то, на что стоит тратить запас.
+//
+// Кэш безопасен по построению: ни одна проба этого пакета в читаемое дерево НЕ
+// пишет (те, кому нужно другое дерево, строят его во временном каталоге и зовут
+// другой разборщик), поэтому в пределах одного процесса ответ не может
+// устареть. Ключ — корень, так что появление второго корня даст свою запись, а
+// не чужой ответ. Кладётся только УСПЕШНЫЙ разбор: неудачный завершается
+// t.Fatalf внутри, до присвоения.
+//
+// Объём осмотренного при этом не подделывается: `filesRead` лежит в самом
+// инвентаре, поэтому проба, получившая кэш, печатает и проверяет НАСТОЯЩЕЕ число
+// прочитанных файлов — то самое, на котором инвентарь построен в этом же
+// процессе. Требование «ноль находок отличимо от ноль прочитанного» остаётся
+// выполненным: пустой разбор в кэш попадёт так же, как непустой, и первая же
+// проба на нём упадёт.
+var (
+	outboxInventoryMu    sync.Mutex
+	outboxInventoryCache = map[string]outboxInventory{}
+)
+
 // outboxWiringInventory разбирает composition root'ы всех сервисов и шлюза.
 //
 // Резолв имени таблицы: значение поля Table — либо строковый литерал, либо
@@ -195,6 +225,12 @@ type outboxInventory struct {
 // константы разных сервисов не должны сливаться в одну запись.
 func outboxWiringInventory(t *testing.T, root string) outboxInventory {
 	t.Helper()
+	outboxInventoryMu.Lock()
+	cached, ok := outboxInventoryCache[root]
+	outboxInventoryMu.Unlock()
+	if ok {
+		return cached
+	}
 	inv := outboxInventory{
 		drained:   map[string][]string{},
 		observed:  map[string][]string{},
@@ -220,6 +256,9 @@ func outboxWiringInventory(t *testing.T, root string) outboxInventory {
 			scanOutboxWiring(t, path, svc, root, consts, &inv)
 		}
 	}
+	outboxInventoryMu.Lock()
+	outboxInventoryCache[root] = inv
+	outboxInventoryMu.Unlock()
 	return inv
 }
 
