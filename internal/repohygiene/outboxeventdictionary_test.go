@@ -605,6 +605,44 @@ func Test_SqlEnumOf_RecognisesDictionaryAndRefusesLookalikes(t *testing.T) {
 	}
 }
 
+// declaredQueueEventDictionary — СЛОВАРЬ СОБЫТИЙ очереди, каким его понимают
+// записи об освобождении: очередь → колонка → её допустимые значения.
+//
+// # Почему ОДНО место, а не поле каждой записи
+//
+// Освобождений у одной очереди бывает несколько — от ключа порядка
+// (commutativeDrainExempt) и от разложения по направлению
+// (outboxDirectionSplitExempt), — и оба опираются на ОДИН факт: какие события
+// очередь несёт. Пересказанный дважды, факт разъезжается молча: расхождение
+// прозы с прозой не даёт ни конфликта при слиянии, ни красного гейта.
+//
+// Это не гипотеза. Фраза «событие ровно одного вида» лежала в ПЯТИ местах дерева
+// (перепись `git grep` по 6148 отслеживаемым файлам): в двух записях об
+// освобождении, в записи гейта индексов, в комментарии боевой проводки и в
+// странице архитектуры сервиса — плюс в комментарии миграции, где она была
+// ВЕРНА, потому что описывала состояние на тот день. Миграция, поставившая
+// второй вид, сделала ложными разом все пять. Приёмка нашла ОДНО.
+//
+// Поэтому здесь — единственная перепись, а прочие места на неё ССЫЛАЮТСЯ.
+//
+// # Что с этим делает гейт
+//
+// TestCommutativeDrainExemptionMatchesEventDictionary сверяет эту карту с
+// проигрыванием миграций В ОБЕ СТОРОНЫ. Миграция, расширяющая словарь, красит
+// гейт и требует пересмотреть обоснования — вместо того чтобы молча сделать их
+// ложью.
+var declaredQueueEventDictionary = map[string]map[string][]string{
+	"kacho_iam.provider_compensation_outbox": {
+		"event_type": {"provider.oauth_client.delete", "provider.trust_grant.delete"},
+	},
+	"kacho_iam.subject_change_outbox": {
+		"op": {
+			"bg_revoke", "binding_delete", "binding_grant", "binding_revoke",
+			"binding_upsert", "group_member_change", "jit_revoke",
+		},
+	},
+}
+
 // exemptQueueService — сервис, чья проводка дренит очередь. Ключ инвентаря
 // словарей несёт сервис (одно имя таблицы бывает у нескольких сервисов), а
 // запись об освобождении названа схемой БД, поэтому мост между ними —
@@ -663,15 +701,25 @@ func TestCommutativeDrainExemptionMatchesEventDictionary(t *testing.T) {
 			wiring.filesRead, dicts.filesRead, root)
 	}
 
-	tables := make([]string, 0, len(commutativeDrainExempt))
+	// Освобождения обоих видов опираются на один и тот же факт, поэтому и
+	// проверяются одним проходом: очередь, освобождённая хоть от чего-то, обязана
+	// иметь сверенный словарь.
+	exempted := map[string]bool{}
 	for table := range commutativeDrainExempt {
+		exempted[table] = true
+	}
+	for table := range outboxDirectionSplitExempt {
+		exempted[table] = true
+	}
+	tables := make([]string, 0, len(exempted))
+	for table := range exempted {
 		tables = append(tables, table)
 	}
 	sort.Strings(tables)
 
 	checked := 0
 	for _, table := range tables {
-		rec := commutativeDrainExempt[table]
+		declared, hasDeclared := declaredQueueEventDictionary[table]
 		coords, drained := wiring.drained[table]
 		if !drained {
 			continue // предмета нет — это находка СОСЕДНЕГО гейта, здесь не дублируется
@@ -679,6 +727,13 @@ func TestCommutativeDrainExemptionMatchesEventDictionary(t *testing.T) {
 		svc, err := exemptQueueService(coords)
 		if err != nil {
 			t.Errorf("освобождение %s: %v", table, err)
+			continue
+		}
+		if !hasDeclared {
+			t.Errorf("очередь %s освобождена от порядка и/или от разложения по направлению, "+
+				"но её словарь событий НИГДЕ не объявлен: сверять обоснование не с чем. "+
+				"Добавь запись в declaredQueueEventDictionary — она и есть единственная "+
+				"перепись факта, на который эти освобождения опираются.", table)
 			continue
 		}
 		key := svc + ":" + unqualify(table)
@@ -698,7 +753,7 @@ func TestCommutativeDrainExemptionMatchesEventDictionary(t *testing.T) {
 		for c := range got {
 			cols[c] = true
 		}
-		for c := range rec.events {
+		for c := range declared {
 			cols[c] = true
 		}
 		colNames := make([]string, 0, len(cols))
@@ -709,7 +764,7 @@ func TestCommutativeDrainExemptionMatchesEventDictionary(t *testing.T) {
 
 		for _, col := range colNames {
 			inDB, hasDB := got[col]
-			inNote, hasNote := rec.events[col]
+			inNote, hasNote := declared[col]
 			switch {
 			case hasDB && !hasNote:
 				t.Errorf("освобождение %s НЕ называет словарь колонки %q, а БД его закрывает: "+
@@ -733,6 +788,17 @@ func TestCommutativeDrainExemptionMatchesEventDictionary(t *testing.T) {
 		}
 	}
 
-	t.Logf("прочитано миграций: %d; освобождений от ключа порядка: %d; сверено со словарём БД: %d",
-		dicts.filesRead, len(commutativeDrainExempt), checked)
+	// Запись, которой больше нечего описывать: очередь ушла из обоих списков.
+	for table := range declaredQueueEventDictionary {
+		if !exempted[table] {
+			t.Errorf("объявленный словарь очереди %s больше не имеет предмета: она не "+
+				"освобождена ни от ключа порядка, ни от разложения по направлению. Удали "+
+				"запись — иначе она переживёт свой предмет и будет читаться как действующая.",
+				table)
+		}
+	}
+
+	t.Logf("прочитано миграций: %d; освобождённых очередей (порядок и/или направление): %d; "+
+		"объявленных словарей: %d; сверено со словарём БД: %d",
+		dicts.filesRead, len(exempted), len(declaredQueueEventDictionary), checked)
 }
