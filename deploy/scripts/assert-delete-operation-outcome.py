@@ -9,28 +9,30 @@
 зеленеют, поэтому ни один прогон их не показывал.
 
 ЧТО ИЗМЕРЕНО (перепись по дереву, `git ls-files '*.postman_collection.json'`,
-ревизия 72325f00 — снимок на момент находки, а не инвариант; живые числа
-печатает сам гейт при каждом проходе)
+ревизия 72325f00, ЭТИМ ЖЕ предикатом — снимок на момент находки, а не
+инвариант; живые числа печатает сам гейт при каждом проходе)
 ---------------------------------------------------------------------------
 82 коллекции, 8237 шагов, 1359 из них DELETE, 2683 шага опрашивают операцию.
-Шагов опроса, чей предмет — удаление: 909.
+Шагов опроса, чей предмет — удаление: 909; они складываются в 880 ЦЕПОЧЕК
+(у одного удаления читателей его операции бывает несколько — см. ниже).
 
-  • КЛАСС А — исход не утверждается: 893 из 909 (811 утверждают только
-    `done`, ещё 82 не утверждают вообще ничего). Операция, завершившаяся
-    ОШИБКОЙ, тоже `done`: `done === true` держится, шаг зелёный, ресурс жив.
-  • КЛАСС Б — идентификатор операции захватывается, не будучи снятым: 724 из
-    909. Отказ тела `id` не несёт, захват не срабатывает, и переменная
+  • КЛАСС А — исход не назван НИ ОДНИМ читателем цепочки: 842 из 880 (826
+    называют только завершение, ещё 16 не называют ничего). Операция,
+    завершившаяся ОШИБКОЙ, тоже `done`: `done === true` держится, шаг
+    зелёный, ресурс жив.
+  • КЛАСС Б — идентификатор операции захватывается, не будучи сброшенным:
+    706 из 880. Отказ тела `id` не несёт, захват не срабатывает, и имя
     сохраняет значение ПРЕДЫДУЩЕЙ операции. Опрос уезжает на чужую операцию —
     как правило давно завершённую, поэтому зелёный приходит БЫСТРО и уверенно.
 
-РАЗДЕЛЕНИЕ ПО СУЩЕСТВУ, А НЕ ПО ФОРМЕ. «Захват без снятия» опасен ровно тогда,
-когда переменная может нести значение, произведённое ВНЕ этого кейса. Перепись
-по области жизни имени: из 730 шагов «пишет, не снимает» у 724 переменная имеет
-писателя в ДРУГОМ кейсе той же коллекции (все — общий `opId`, у которого в
-коллекции от 78 до 357 писателей), и только у 6 писатель один и тот же кейс —
-там чужого значения взять неоткуда by construction. Требование снимать
-предъявляется всем: на кейс-приватном имени снятие безвредно, а различать их
-в гейте значило бы держать предикат, который разъедется с генератором.
+РАЗДЕЛЕНИЕ ПО СУЩЕСТВУ, А НЕ ПО ФОРМЕ. «Захват без сброса» опасен ровно тогда,
+когда имя может нести значение, произведённое ВНЕ этого кейса. Перепись по
+области жизни имени: из 706 у 701 есть писатель в ДРУГОМ кейсе той же коллекции
+(все — общий `opId`, у которого в коллекции от 3 до 89 писателей), и лишь у 5
+писатель один и тот же кейс — там чужого значения взять неоткуда by
+construction. Требование сбрасывать предъявляется всем: на кейс-приватном имени
+сброс безвреден, а различать их в гейте значило бы держать предикат, который
+разъедется с генератором.
 
 ПОЧЕМУ ЭТО ДВА РАЗНЫХ КЛАССА, А НЕ ОДИН. Класс Б делает опрос беспредметным
 (отвечает чужая операция), класс А — беззубым (своя операция отвечает, но её
@@ -41,20 +43,22 @@
 ЧТО ПРОВЕРЯЕТСЯ
 ---------------
 Для каждого шага, опрашивающего операцию (`GET /operations/{{<имя>}}`), предмет
-определяется ближайшим предшествующим шагом-мутацией ТОГО ЖЕ кейса. Если
-предмет — `DELETE`:
+определяется ближайшим предшествующим шагом-мутацией ТОГО ЖЕ кейса; шаги с
+одним предметом образуют ЦЕПОЧКУ читателей этой операции. Если предмет —
+`DELETE`:
 
-  А. скрипт опроса обязан утверждать ИСХОД операции — читать `error` в
-     `pm.expect(...)`. Утверждения одного лишь `done` недостаточно: у
-     завершившейся с ошибкой операции `done` тоже `true`;
-  Б. шаг удаления, ЗАПИСЫВАЮЩИЙ переменную, которую читает опрос, обязан её
-     сперва СНЯТЬ (`pm.environment.unset('<имя>')`) либо задать пустой
-     (`pm.environment.set('<имя>', '')`). Тогда несостоявшийся захват виден:
-     страж неразрешённой подстановки роняет опрос, называя имя, — вместо
-     подтверждения чужого успеха.
+  А. ИСХОД операции обязан назвать хотя бы один читатель цепочки — прочитать
+     `error` внутри `pm.expect(...)`. Утверждения одного лишь `done`
+     недостаточно: у завершившейся с ошибкой операции `done` тоже `true`;
+  Б. шаг удаления, ЗАПИСЫВАЮЩИЙ имя, которое читает опрос, обязан его сперва
+     сбросить — снять (`pm.environment.unset('<имя>')`) либо задать пустым
+     (`pm.environment.set('<имя>', '')`). Тогда несостоявшийся захват не
+     подменяется чужой операцией.
 
 Форма утверждения не навязывается — навязывается наличие: `j.error`,
-`_do.error`, `op.error` читаются одинаково.
+`_do.error`, `Boolean(j.response) && !j.error`, `lastOpError` читаются
+одинаково. Не навязывается и ЗНАК исхода: кейс, чей предмет — ОТКАЗ удаления,
+утверждает наличие ошибки и этим класс закрывает.
 
 ЧИТАЕТСЯ ИСПОЛНЯЕМАЯ ЧАСТЬ, А НЕ ТЕКСТ. Комментарии (`//`, `/* */`) снимаются
 до поиска: оба класса объясняются в коде рядом с защитой, и поиск по сырому
@@ -89,11 +93,28 @@ MUTATION_METHODS = ("POST", "PUT", "PATCH", "DELETE")
 # значило бы чинить не тот предмет.
 OP_POLL_URL = re.compile(r"/operations/\{\{(\w+)\}\}")
 
-# Утверждение ОБ ИСХОДЕ — чтение `error` внутри `pm.expect(...)`. Имя носителя
-# ответа у каждого поллера своё (`j`, `_dj`, `_do`), поэтому опознаётся
-# обращение к полю, а не конкретная переменная.
-OUTCOME_ASSERT = re.compile(r"pm\.expect\(\s*[A-Za-z_$][\w$]*\.error\b")
-DONE_ASSERT = re.compile(r"pm\.expect\(\s*[A-Za-z_$][\w$]*\.done\b")
+# Утверждение ОБ ИСХОДЕ / О ЗАВЕРШЕНИИ — обращение к полю операции ВНУТРИ
+# аргумента `pm.expect(...)`. Опознаётся поле, а не носитель: имя переменной у
+# каждого поллера своё (`j`, `_dj`, `_do`), а форма выражения — тем более
+# (`j.error && j.error.code`, `Boolean(j.response) && !j.error`,
+# `pm.environment.get('lastOpError') || ''`). Требовать одну запись значило бы
+# ловить полюбившуюся форму вместо существа.
+_FIELD_OUTCOME = re.compile(r"\.error\b|lastOpError")
+_FIELD_DONE = re.compile(r"\.done\b")
+
+
+def _expect_args(code: str):
+    """Аргументы каждого вызова `pm.expect(...)` — до конца стейтмента."""
+    for m in re.finditer(r"pm\.expect\(", code):
+        yield code[m.end():m.end() + 300].split(";")[0]
+
+
+def asserts_outcome(code: str) -> bool:
+    return any(_FIELD_OUTCOME.search(a) for a in _expect_args(code))
+
+
+def asserts_done(code: str) -> bool:
+    return any(_FIELD_DONE.search(a) for a in _expect_args(code))
 
 
 def strip_js_comments(src: str) -> str:
@@ -222,12 +243,23 @@ def walk(items, trail):
 def scan(root: str):
     """→ (находки А, находки Б, счётчики).
 
-    Предмет опроса — ближайший предшествующий шаг-мутация ТОГО ЖЕ кейса.
-    Граница кейса соблюдается намеренно: без неё опрос подхватывал бы удаление
-    из соседнего кейса и гейт судил бы о паре, которой нет.
+    Предмет опроса — ближайший предшествующий шаг-мутация ТОГО ЖЕ кейса. Граница
+    кейса соблюдается намеренно: без неё опрос подхватывал бы удаление из
+    соседнего кейса и гейт судил бы о паре, которой нет.
+
+    КЛАСС А СУДИТСЯ ПО ЦЕПОЧКЕ, А НЕ ПО ОТДЕЛЬНОМУ ШАГУ. У одного удаления
+    опросов бывает несколько: первый дожидается завершения, следующий читает ту
+    же операцию и утверждает о ней предметное. Разбирая шаги поодиночке, гейт
+    объявил бы находкой ожидающий шаг кейса, чей ПРЕДМЕТ — отказ удаления, и
+    потребовал бы от него утверждения, ПРОТИВОПОЛОЖНОГО тому, которое кейс уже
+    делает соседним шагом (замеренный случай: удаление отсутствующего образа —
+    ожидается ошибка операции; удаление роли, на которую есть выдача — то же).
+    Поэтому вопрос задаётся один на цепочку: сказал ли КТО-НИБУДЬ из читателей
+    этой операции о её исходе — успехе или отказе. Находка называется первым
+    шагом цепочки, потому что чинится она там.
     """
     a_findings, b_findings = [], []
-    n_col = n_step = n_del = n_poll = n_del_poll = 0
+    n_col = n_step = n_del = n_poll = n_del_poll = n_chain = 0
     for rel in collection_files(root):
         try:
             with open(os.path.join(root, rel), encoding="utf-8") as fh:
@@ -238,35 +270,35 @@ def scan(root: str):
         n_col += 1
         steps = list(walk(doc.get("item"), []))
         n_step += len(steps)
+        chains: dict[int, list[int]] = {}
+        subject_idx: int | None = None
+        subject_case: list | None = None
         for idx, (item, trail) in enumerate(steps):
             if method(item) == "DELETE":
                 n_del += 1
-            var = poll_var(item)
-            if not var:
+            if poll_var(item):
+                n_poll += 1
+                if subject_idx is not None and trail[:-1] == subject_case:
+                    chains.setdefault(subject_idx, []).append(idx)
                 continue
-            n_poll += 1
-            case = trail[:-1]
-            subject = None
-            for j in range(idx - 1, -1, -1):
-                if steps[j][1][:-1] != case:
-                    break
-                if poll_var(steps[j][0]):
-                    continue           # соседний опрос — не предмет
-                if method(steps[j][0]) in MUTATION_METHODS:
-                    subject = steps[j]
-                    break
-            if not subject or method(subject[0]) != "DELETE":
+            if method(item) in MUTATION_METHODS:
+                subject_idx, subject_case = idx, trail[:-1]
+        for sidx, polls in chains.items():
+            if method(steps[sidx][0]) != "DELETE":
                 continue
-            n_del_poll += 1
-            code = strip_js_comments(script(item, "test"))
-            if not OUTCOME_ASSERT.search(code):
-                why = ("утверждает только завершение" if DONE_ASSERT.search(code)
-                       else "не утверждает ничего")
-                a_findings.append(f"{rel} :: " + " :: ".join(trail) + f"  [{why}]")
-            subj_code = executable(subject[0])
+            n_chain += 1
+            n_del_poll += len(polls)
+            code = "\n".join(strip_js_comments(script(steps[k][0], "test")) for k in polls)
+            if not asserts_outcome(code):
+                why = ("утверждается только завершение" if asserts_done(code)
+                       else "не утверждается ничего")
+                a_findings.append(f"{rel} :: " + " :: ".join(steps[polls[0]][1])
+                                  + f"  [{why}; опросов в цепочке {len(polls)}]")
+            var = poll_var(steps[polls[0]][0])
+            subj_code = executable(steps[sidx][0])
             if writes_var(subj_code, var) and not clears_var(subj_code, var):
-                b_findings.append(f"{rel} :: " + " :: ".join(subject[1]) + f"  [{var}]")
-    return a_findings, b_findings, (n_col, n_step, n_del, n_poll, n_del_poll)
+                b_findings.append(f"{rel} :: " + " :: ".join(steps[sidx][1]) + f"  [{var}]")
+    return a_findings, b_findings, (n_col, n_step, n_del, n_poll, n_del_poll, n_chain)
 
 
 # ─────────────────────────── самопроверка ───────────────────────────────────
@@ -405,17 +437,59 @@ def self_test() -> int:
                        "pm.environment.set('_abDelOpId_X', String(j.id));"]),
                 _step("poll-op-own", "GET", "/operations/{{_abDelOpId_X}}", POLL_WITH_OUTCOME),
             ]),
+            # ── ЗАКОННЫЙ БЛИЗНЕЦ, РАДИ КОТОРОГО КЛАСС СУДИТСЯ ПО ЦЕПОЧКЕ: кейс,
+            # чей ПРЕДМЕТ — отказ удаления. Ожидающий шаг об исходе молчит, а
+            # следующий читатель ТОЙ ЖЕ операции утверждает, что она завершилась
+            # ошибкой. Гейт обязан молчать по ОБОИМ: требование к ожидающему
+            # означало бы утверждение, противоположное предмету кейса.
+            _case("CASE-delete-must-fail", [
+                _step("del-absent", "DELETE", "/x/v1/things/{{absentId}}",
+                      ["pm.environment.unset('opId');",
+                       "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                       *CAPTURE]),
+                _step("poll-op-8", "GET", "/operations/{{opId}}", POLL_DONE_ONLY),
+                _step("assert-op-error", "GET", "/operations/{{opId}}",
+                      ["const j = pm.response.json();",
+                       "pm.test('error code 5', () => "
+                       "pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql(5));"]),
+            ]),
+            # ── ВТОРАЯ ЗАКОННАЯ ЗАПИСЬ УСПЕХА В ЦЕПОЧКЕ: исход утверждён не
+            # прямым чтением поля, а через `Boolean(j.response) && !j.error` и
+            # через `lastOpError`. Обе — утверждения об исходе; узнавать одну
+            # запись значило бы ловить форму.
+            _case("CASE-chain-other-forms", [
+                _step("del-chained", "DELETE", "/x/v1/things/{{id}}",
+                      ["pm.environment.unset('opId');",
+                       "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                       *CAPTURE]),
+                _step("poll-op-9", "GET", "/operations/{{opId}}", POLL_DONE_ONLY),
+                _step("assert-op-success", "GET", "/operations/{{opId}}",
+                      ["const j = pm.response.json();",
+                       "pm.test('operation succeeded', () => "
+                       "pm.expect(Boolean(j.response) && !j.error, JSON.stringify(j)).to.eql(true));"]),
+            ]),
+            # ── ЦЕПОЧКА ИЗ ДВУХ, ГДЕ НЕ ГОВОРИТ НИ ОДИН: находка называется
+            # ПЕРВЫМ шагом цепочки (там она и чинится), второй не дублируется.
+            _case("CASE-chain-silent", [
+                _step("del-chain-silent", "DELETE", "/x/v1/things/{{id}}",
+                      ["pm.environment.unset('opId');",
+                       "pm.test('status 200', () => pm.expect(pm.response.code).to.eql(200));",
+                       *CAPTURE]),
+                _step("poll-op-10", "GET", "/operations/{{opId}}", POLL_DONE_ONLY),
+                _step("poll-op-11", "GET", "/operations/{{opId}}", POLL_DONE_ONLY),
+            ]),
         ]
         path = os.path.join(tmp, "svc", "collections", "probe.postman_collection.json")
         with open(path, "w", encoding="utf-8") as fh:
             json.dump({"info": {"name": "probe"}, "item": cases}, fh)
 
-        a_f, b_f, (n_col, n_step, n_del, n_poll, n_del_poll) = scan(tmp)
+        a_f, b_f, (n_col, n_step, n_del, n_poll, n_del_poll, n_chain) = scan(tmp)
         a_names = {f.split(" :: ")[-1].split("  [")[0] for f in a_f}
         b_names = {f.split(" :: ")[-1].split("  [")[0] for f in b_f}
 
         for want, why in (("poll-op-1", "утверждение одного лишь done принято за исход"),
                           ("poll-op-silent", "опрос без единого утверждения не назван"),
+                          ("poll-op-10", "цепочка, где не говорит ни один, не названа"),
                           ("poll-op-4", "объяснение защиты принято за защиту")):
             if want in a_names:
                 print(f"  ОК  А: дефект найден: {want}")
@@ -427,7 +501,13 @@ def self_test() -> int:
                            ("poll-op-5", "предмет опроса — создание, не удаление"),
                            ("poll-op-6", "у опроса нет мутации в своём кейсе"),
                            ("poll-op-7", "`//` внутри строкового литерала срезан как комментарий"),
-                           ("poll-op-own", "исход утверждён на своём имени операции")):
+                           ("poll-op-own", "исход утверждён на своём имени операции"),
+                           ("poll-op-8", "предмет кейса — ОТКАЗ удаления, и его утверждает "
+                                         "следующий читатель той же операции"),
+                           ("assert-op-error", "он и есть утверждение об исходе"),
+                           ("poll-op-9", "исход утверждён формой `Boolean(response) && !error`"),
+                           ("assert-op-success", "он и есть утверждение об исходе"),
+                           ("poll-op-11", "находка названа первым шагом цепочки, второй не дублируется")):
             if quiet in a_names:
                 print(f"  ПРОВАЛ А: ложное срабатывание: {quiet} — {why}")
                 rc = 1
@@ -446,6 +526,9 @@ def self_test() -> int:
                            ("del-silent", "снятие есть — это находка класса А, не Б"),
                            ("del-commented", "снятие есть"),
                            ("del-url", "снятие есть"),
+                           ("del-absent", "снятие есть"),
+                           ("del-chained", "снятие есть"),
+                           ("del-chain-silent", "снятие есть"),
                            ("create-thing", "предмет — создание, не удаление")):
             if quiet in b_names:
                 print(f"  ПРОВАЛ Б: ложное срабатывание: {quiet} — {why}")
@@ -462,18 +545,19 @@ def self_test() -> int:
             print(f"  ПРОВАЛ находка без координаты: {coord!r}")
             rc = 1
 
-        if (n_col, n_del, n_del_poll) == (1, 7, 7):
+        if (n_col, n_del, n_del_poll, n_chain) == (1, 10, 13, 10):
             print(f"  ОК  объём осмотренного считается: коллекций {n_col}, шагов {n_step}, "
-                  f"DELETE {n_del}, опросов {n_poll}, из них с предметом-удалением {n_del_poll}")
+                  f"DELETE {n_del}, опросов {n_poll}, из них с предметом-удалением "
+                  f"{n_del_poll} в {n_chain} цепочках")
         else:
             print(f"  ПРОВАЛ объём осмотренного неверен: коллекций {n_col}, шагов {n_step}, "
-                  f"DELETE {n_del}, опросов {n_poll}, с предметом-удалением {n_del_poll} "
-                  f"(ожидалось 1 / 7 / 7)")
+                  f"DELETE {n_del}, опросов {n_poll}, с предметом-удалением {n_del_poll}, "
+                  f"цепочек {n_chain} (ожидалось 1 / 10 / 13 / 10)")
             rc = 1
 
         # ПРЕДПОСЫЛКА: пустое дерево — ОТКАЗ, а не «чисто».
         with tempfile.TemporaryDirectory() as empty:
-            _, _, (e_col, _, _, _, e_dp) = scan(empty)
+            _, _, (e_col, _, _, _, e_dp, _) = scan(empty)
             if (e_col, e_dp) == (0, 0):
                 print("  ОК  пустое дерево даёт ноль ПРОЧИТАННОГО — основной проход обязан падать")
             else:
@@ -491,11 +575,11 @@ def main() -> int:
         return self_test()
 
     root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    a_f, b_f, (n_col, n_step, n_del, n_poll, n_del_poll) = scan(root)
+    a_f, b_f, (n_col, n_step, n_del, n_poll, n_del_poll, n_chain) = scan(root)
 
     print(f"=== опрос операции удаления: осмотрено коллекций {n_col}, шагов {n_step}, "
           f"DELETE {n_del}, опросов операции {n_poll}, из них с предметом-удалением "
-          f"{n_del_poll} ===")
+          f"{n_del_poll} в {n_chain} цепочках ===")
     if n_col == 0 or n_del_poll == 0:
         print("FAIL: обход не нашёл ни коллекций, ни пар «удаление → опрос операции» —")
         print("      предмет запрета потерян либо обход сломан. Пустая находка на пустом")
@@ -527,8 +611,8 @@ def main() -> int:
         print("сгенерированной коллекции будет затёрта следующим прогоном генератора.")
         return 1
 
-    print(f"PASS: все {n_del_poll} опросов удаления утверждают исход и опрашивают "
-          f"СВОЮ операцию")
+    print(f"PASS: все {n_chain} цепочек опроса удаления утверждают исход "
+          f"({n_del_poll} шагов опроса) и опрашивают СВОЮ операцию")
     return 0
 
 
