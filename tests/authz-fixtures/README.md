@@ -171,7 +171,11 @@ internal-RPC) в файлы `0600` под `/tmp`. В репозиторий кл
 >
 > Возврат ключа в дерево ловит `internal/repohygiene/sharedsigningliteral_test.go`;
 > отсутствие корзины «всё остальное» у посадочного гейта —
-> `internal/repohygiene/seedposturegate_test.go`.
+> `internal/repohygiene/seedposturegate_test.go`. Сам **выданный токен**, попавший
+> в индекс, — `internal/repohygiene/committedcredential_test.go`: он судит по
+> предъявимости (подпись той длины, что производит объявленный алгоритм) и не
+> читает имени ключа, поэтому ловит и слот шаблона, и токен в отчёте прогона,
+> и приватный ключ в профиле развёртывания.
 
 ## Идемпотентность
 

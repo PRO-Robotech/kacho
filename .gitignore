@@ -38,6 +38,10 @@ services/*/tests/newman/out-stale-*/
 # отсутствующий, так что на свежем клоне все восемь прогонщиков падали на
 # `missing env` ещё до запуска newman. Материализация обязана оставаться частью пути
 # прогона: шаг, который нужно вспомнить и сделать руками, рано или поздно не делается.
+#
+# Правило ниже — договорённость, и `git add -f` её не соблюдает, а новый набор про неё
+# не знает. Что кред не доедет до индекса, держит проверка, а не это правило:
+# internal/repohygiene/committedcredential_test.go (PRO-Robotech/kacho#70).
 services/*/tests/newman/environments/local.postman_environment.json
 gateway/tests/newman/environments/local.postman_environment.json
 
