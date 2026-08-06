@@ -428,7 +428,7 @@ INSERT INTO zones (id, region_id, status, name) VALUES
 ## psql быстрый доступ
 
 ```bash
-cd ../kacho-deploy && make psql SVC=compute       # psql kacho_compute
+make -C deploy psql SVC=compute       # psql kacho_compute (от корня репозитория)
 KACHO_COMPUTE_DB_PASSWORD=secret bin/kacho-migrator up   # миграции вне kind
 ```
 

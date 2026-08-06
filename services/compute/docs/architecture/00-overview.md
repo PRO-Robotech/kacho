@@ -134,7 +134,7 @@ prefix `epd`).
    свободно, наружу не публикуется). Compute-домен зафиксирован в
    `kacho-proto/proto/kacho/cloud/compute/v1/*.proto` (пакет
    `kacho.cloud.compute.v1`, gen/go сгенерирован).
-3. **Тесты на КАЖДУЮ функциональность** — Go-unit (`internal/service/*_test.go`,
+3. **Тесты на КАЖДУЮ функциональность** — Go-unit (`internal/apps/kacho/api/<resource>/*_test.go`,
    `internal/handler/*_test.go`, `internal/repo/*integration_test.go`) и newman
    e2e (`tests/newman/cases/*.py`). Каждый RPC и каждый класс кейсов
    (CRUD/VAL/NEG/BVA/CONF/STATE/...) покрыт обоими уровнями. Критерий приёмки:

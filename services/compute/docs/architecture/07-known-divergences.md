@@ -501,7 +501,7 @@ tuple'ов никто не эмитит, поэтому вопрос «viewer н
 
 ### service-слой возвращает gRPC-status (sentinel→code маппинг в use-case, не в handler)
 
-`internal/service/*` импортируют `google.golang.org/grpc/codes`+`status` и возвращают
+Use-case'ы `internal/apps/kacho/api/<resource>/*` импортируют `google.golang.org/grpc/codes`+`status` и возвращают
 `*status.Error` (через `mapRepoErr`/`mapZoneRefErr`). Формально §«Чистая архитектура»
 (CLAUDE.md) относит transport-code маппинг к тонкому handler-слою.
 

@@ -80,8 +80,9 @@ defensive (фиксируют `400` + непустое тело).
 
 malformed id → `InvalidArgument "invalid operation id '<X>'"`; well-formed id (известный
 prefix, но бэкенд не подключен) → `NotFound "Operation <X> not found"`; id с prefix
-домена с подключенным бэкендом → роутится туда. Реализация — `kacho-api-gateway`
-`internal/opsproxy/proxy.go`.
+домена с подключенным бэкендом → роутится туда. Реализация — `gateway/internal/opsproxy/proxy.go`
+(каталог края в монорепо; прежнее имя отдельного репозитория края координатой не является
+и здесь не воспроизводится).
 
 ## 11. Два error-mapper'а НЕ слиты в общий classifier — намеренно
 

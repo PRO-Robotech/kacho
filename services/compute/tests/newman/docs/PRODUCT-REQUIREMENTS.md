@@ -191,7 +191,7 @@ Partial UNIQUE `(project_id, name) WHERE name <> ''` для disks/images/snapsho
 ### REQ-CONF-01 — NotFound текст формата «<Resource> <id> not found» (контракт-тон)              [P1]
 Disk / Image / Snapshot / Instance / Disk type / Zone / Operation.
 - Validated-by: `*-GET-CONF-NF-TEXT`, `OP-GET-CONF-NF-TEXT`
-- Agent-check: error-text в `internal/repo`/`internal/service` (`fmt.Errorf("%s %s not found", ...)`).
+- Agent-check: error-text в `internal/repo` и `internal/apps/kacho/shared/serviceerr` (`fmt.Errorf("%s %s not found", ...)`).
 - Divergence: точная формулировка — `# probe-needed`; пока проверяем substr "not found".
 
 ---

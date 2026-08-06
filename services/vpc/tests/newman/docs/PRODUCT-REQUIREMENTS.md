@@ -595,7 +595,7 @@ sync-precheck `AddressesBySubnet` тоже покрывает обе семьи.
 RPC, оперирующие конкретным ресурсом, ДОЛЖНЫ проверять, что `resource.project_id` принадлежит caller'у;
 чужой ресурс → `PERMISSION_DENIED` (в `dev`-mode AuthN permissive — anonymous=admin; в `production`/`production-strict` fail-closed).
 - Validated-by: `*-AUTHZ-NF-SYNC` (Get/Update/Delete/Move/UpdateRule/UpdateRules), `*-AUTHZ-EMPTY-PROJECT-HEADER`; **gap** — полноценная cross-tenant matrix с двумя header-set'ами (см. `REQUIREMENTS.md` REQ-006)
-- Проверка: `internal/apps/kacho/check/permission_map.go` — per-RPC FGA-Check (`v_get`/`v_update`/`v_delete` per-object) на обоих листенерах; `internal/handler/authn_interceptor.go`; `internal/config/config.go` `AuthMode`.
+- Проверка: `internal/apps/kacho/check/permission_map.go` — per-RPC FGA-Check (`v_get`/`v_update`/`v_delete` per-object) на обоих листенерах; `internal/handler/authn_interceptor.go`; `internal/apps/kacho/config/config.go` `AuthMode`.
 
 ### REQ-AUTHZ-02 — List: project isolation [P0]
 Ресурс в project A не виден в `List` по project B.
@@ -770,7 +770,7 @@ change даже если service-слой не делал прямую UPDATE-о
 ### REQ-CONF-02 — created_at truncate до секунд [P1]
 Все `created_at` в proto-ответах — `timestamppb.New(t.Truncate(time.Second))`; микросекунды не уходят клиенту.
 - Validated-by: косвенно `*-CR-CRUD-OK`/`*-GET-CRUD-OK` (если кейс ассертит формат); явный кейс — желательно добавить
-- Проверка: `internal/protoconv/protoconv.go` — `ts(t)` хелпер во всех конвертерах; unit-тест `protoconv_test.go::TestCreatedAt_TruncatedToSeconds`.
+- Проверка: `internal/apps/kacho/shared/pbconv/pbconv.go` — хелпер усечения во всех конвертерах; unit-проба рядом с ним.
 
 ### REQ-CONF-03 — status-code mapping [P0]
 Маппинг ошибок → gRPC-коды по таблице (`06-conventions.md` / `docs/architecture/06-conventions.md`, раздел 3.3):

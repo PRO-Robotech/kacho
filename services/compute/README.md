@@ -1,39 +1,52 @@
 # kacho-compute
 
-Compute-сервис Kachō: control-plane для **Instance, Disk, Image, Snapshot** +
-read-only справочники **DiskType, Region, Zone** (Geography — owner kacho-compute,
-эпик `KAC-15`). Compute-NIC бэкуется ресурсом kacho-vpc `NetworkInterface`
-(`nic_id`, эпик `KAC-9`). Подробности — `CLAUDE.md` и `docs/architecture/`.
+Compute-сервис Kachō: control-plane для **Instance** и справочника
+**MachineType**. Compute-NIC бэкуется ресурсом vpc `NetworkInterface` (`nic_id`,
+эпик `KAC-9`). Подробности — `CLAUDE.md` и `docs/architecture/`.
+
+> [!note] Блочное хранение и ось размещения принадлежат другим сервисам
+> Здесь перечислялись как свои ещё четыре ресурса блочного хранения и два
+> справочника оси размещения. Ни одного из них compute не объявляет: в его
+> контрактах остались четыре сервиса — машина, тип машины и два внутренних, —
+> а край обслуживает под доменом compute только адреса машин, типов машин и
+> внутренней поверхности. Владельцы: блочное хранение — storage, регион и зона —
+> geo. Снятые адреса ниже не воспроизводятся: процитированные, они читаются как
+> живые, и смоук копируют в терминал первым делом.
 
 ## Quick start (локальный стенд)
 
+Команды запускаются **от корня репозитория**: дерево одно, соседних
+репозиториев стенда рядом с ним нет.
+
 ```bash
 # 1. Поднять полный стенд (kind + helm + Postgres + все сервисы)
-cd ../kacho-deploy && make dev-up
+make -C deploy dev-up
 
 # 2. Прокинуть api-gateway наружу
 kubectl -n kacho port-forward svc/api-gateway 18080:8080 &
 
 # 3. Smoke
 curl 'http://localhost:18080/compute/v1/machineTypes'
-curl 'http://localhost:18080/compute/v1/regions'
-curl 'http://localhost:18080/compute/v1/zones'
 curl 'http://localhost:18080/compute/v1/instances?projectId=<project>&pageSize=5'
 ```
 
 Перезапуск только compute после изменений в коде:
 ```bash
-cd ../kacho-deploy && make reload-svc SVC=compute
-make logs-svc SVC=compute        # tail логов
-make psql SVC=compute            # psql kacho_compute
+make -C deploy reload-svc SVC=compute
+make -C deploy logs-svc SVC=compute        # tail логов
+make -C deploy psql SVC=compute            # psql kacho_compute
 ```
 
 ## Архитектура
 
-Clean Architecture (`domain → service → handler/repo/clients`); `cmd/compute/main.go` —
-единственный composition root. Все мутации (`Create/Update/Delete/Start/Stop/...`)
-возвращают `Operation` (LRO), выполнение worker'ом через
-`kacho-corelib/operations.Run`. Outbox + LISTEN/NOTIFY дают event stream через
+Clean Architecture (`internal/domain` → `internal/apps/kacho/api/<resource>` →
+`internal/handler`, `internal/repo`, `internal/clients`); `cmd/compute/main.go` —
+единственный composition root. Слоя с именем «service» у сервиса нет — use-case
+живёт срезом на ресурс. Все мутации (`Create/Update/Delete/Start/Stop/...`)
+возвращают `Operation` (LRO), выполнение worker'ом через `pkg/operations`.`Run`
+(общий фундамент лежит в каталоге `pkg/` монорепо; прежнее имя отдельного
+репозитория фундамента здесь не воспроизводится — координатой оно не является).
+Outbox + LISTEN/NOTIFY дают event stream через
 `InternalWatchService` (для admin-tooling / UI). Подробности по слоям и
 паттернам — `CLAUDE.md` §4 и `docs/architecture/`.
 
@@ -46,21 +59,25 @@ Clean Architecture (`domain → service → handler/repo/clients`); `cmd/compute
 
 ## Тесты
 
+Команды — **от корня репозитория**; цели сборки объявлены в `services/compute/Makefile`.
+
 ```bash
-make test-short    # unit (service/handler) + -short
-make test          # unit + integration (testcontainers Postgres 16)
-python3 tests/newman/scripts/gen.py && tests/newman/scripts/run.sh   # E2E (нужен port-forward api-gateway)
+make -C services/compute test-short    # unit (use-case/handler) + -short
+make -C services/compute test          # unit + integration (testcontainers Postgres 16)
+# E2E (нужен port-forward api-gateway):
+python3 services/compute/tests/newman/scripts/gen.py && ./services/compute/tests/newman/scripts/run.sh
 ```
 
-Три уровня: unit (`internal/service|handler/*_test.go`, моки port-интерфейсов из
+Три уровня: unit (`internal/apps/kacho/api/<resource>/*_test.go` и `internal/handler/*_test.go`, моки port-интерфейсов из
 `internal/ports/portmock`), integration (`internal/repo/*integration_test.go`,
 testcontainers), e2e (`tests/newman/`, декларативные `cases/*.py` → `gen.py` →
-Postman-коллекции). Критерий приёмки: любой newman-кейс зеленеет и против
-объявленный контракт Kachō.
+Postman-коллекции). Критерий приёмки: newman-кейс зеленеет против объявленного
+контракта Kachō, а не против того, что сервис сегодня отвечает.
 
 ## Полезное
 
 - Открытые задачи / баги: GitHub Issues (`TODO.md` упразднён).
 - By-design отступления от конвенций: `docs/architecture/07-known-divergences.md`.
-- Proto: `../kacho-proto/proto/kacho/cloud/compute/v1/`.
-- Эталон-паттерны: `../kacho-vpc/` (compute написан на них).
+- Proto: `proto/kacho/cloud/compute/v1/` — единственный дом контрактов, в каталоге
+  сервиса `.proto` нет.
+- Эталон-паттерны: `services/vpc/` (compute написан на них).

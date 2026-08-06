@@ -110,21 +110,22 @@ gateway `restmux`/`DiscardUnknown` — не по идеализированно�
 ## Как прогнать
 
 ```bash
+# Команды — ОТ КОРНЯ РЕПОЗИТОРИЯ.
 # 1. Поднять стенд с задеплоенным compute + port-forward api-gateway → localhost:18080
-cd ../../kacho-deploy && make dev-up && make reload-svc SVC=compute
+make -C deploy dev-up && make -C deploy reload-svc SVC=compute
 # 2. (если seed e2e-ресурсов VPC отличается от env — поправить environments/local.postman_environment.json:
 #     existingNetworkId / existingSubnetId / existingSgId / existingPlatformId)
 # 3. Перегенерить коллекции (если меняли cases/*.py)
-python3 tests/newman/scripts/gen.py
+python3 services/compute/tests/newman/scripts/gen.py
 # 4a. Прогнать всё одним махом
-tests/newman/scripts/run.sh                       # сводка → out/summary.txt
-tests/newman/scripts/run.sh --service disk        # один ресурс
+./services/compute/tests/newman/scripts/run.sh                       # сводка → out/summary.txt
+./services/compute/tests/newman/scripts/run.sh --service instance-redesign        # один ресурс
 # 4b. Прогнать ПО ОДНОМУ кейсу за раз с зачисткой ресурсов (quota-safe)
-tests/newman/scripts/run-incremental.sh           # все ~296 кейсов; сводка → out/incremental/summary.txt
-tests/newman/scripts/run-incremental.sh --resume                 # продолжить прерванный
-tests/newman/scripts/run-incremental.sh --service instance       # один ресурс
-tests/newman/scripts/run-incremental.sh --failed                 # только упавшие из прошлого прогона
-tests/newman/scripts/run-incremental.sh --cleanup-only           # стереть throwaway-ресурсы в тест-папках
+./services/compute/tests/newman/scripts/run-incremental.sh           # все ~296 кейсов; сводка → out/incremental/summary.txt
+./services/compute/tests/newman/scripts/run-incremental.sh --resume                 # продолжить прерванный
+./services/compute/tests/newman/scripts/run-incremental.sh --service machine-type       # один ресурс
+./services/compute/tests/newman/scripts/run-incremental.sh --failed                 # только упавшие из прошлого прогона
+./services/compute/tests/newman/scripts/run-incremental.sh --cleanup-only           # стереть throwaway-ресурсы в тест-папках
 ```
 
 **Деплоймент-замечания:**

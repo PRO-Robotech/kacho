@@ -44,7 +44,7 @@ so `validate-cases.py` does not gate them).
 ## 1. Control-plane CRUD — `cases/registry.py` (PRESENT — 9 cases)
 
 RegistryService: `Get`/`List` sync, `Create`/`Update`/`Delete` async (→ `Operation`,
-op-id prefix `reo`, polled via `/registries/v1/operations/{id}`). Registry id prefix
+op-id prefix `reo`, polled via `/operations/{id}`). Registry id prefix
 `reg`. All cases run authenticated in a pre-allocated `existingProjectId`, isolated by
 `{{runId}}`-suffixed names.
 

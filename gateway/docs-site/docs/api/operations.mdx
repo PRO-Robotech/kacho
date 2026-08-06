@@ -57,19 +57,27 @@ Id операции несёт 3-символьный prefix домена-вла
 </table>
 
 :::note Единый источник истины по prefix
-Таблица prefix → backend в гейтвее биндится на константы `kacho-corelib/ids` и защищена тестом:
+Таблица prefix → backend в гейтвее биндится на константы `pkg/ids` и защищена тестом:
 если домен/corelib поменяет prefix, тест падает, а не молча ломает маршрутизацию. Legacy-id формата
 `<service>_<uuid>` (из старых долгоживущих клиентов) всё ещё читаемы.
 :::
 
 ## Методы
 
-`OperationService` — публичный native-сервис гейтвея на REST-префиксе `/operation/v1/`. Каждый
-вызов проходит те же AuthN/AuthZ, что и остальные RPC.
+`OperationService` — публичный native-сервис гейтвея. Его REST-путь **домен-агностичен и
+без версии в начале**: имени сервиса в нём нет, версия домена тоже, потому что операция
+не принадлежит ни одному домену — гейтвей выбирает владельца по префиксу идентификатора.
+Каждый вызов проходит те же AuthN/AuthZ, что и остальные RPC.
+
+:::note Прежде здесь стоял префикс с именем домена и версией
+Этого префикса край не обслуживает: контракт операции объявляет путь верхнего уровня,
+и таблица маршрутов гейтвея содержит ровно его. Снятая форма здесь не воспроизводится —
+адрес в тексте страницы читается как рабочий и копируется в терминал первым делом.
+:::
 
 ### Get — статус операции
 
-<ApiOperation method="GET" endpoint="/operation/v1/operations/{id}">
+<ApiOperation method="GET" endpoint="/operations/{id}">
 
 Возвращает текущее состояние операции. Клиент поллит его до `done=true`. Гейтвей направляет вызов
 в backend, владеющий операцией (по prefix id), с ограниченным per-call таймаутом (5 с) — зависший
@@ -77,7 +85,7 @@ backend не «подвешивает» handler.
 
 <CodeBlock language="bash">
   {dedent`
-    curl 'http://localhost:18080/operation/v1/operations/enp7f2k9x0abcde12' \\
+    curl 'http://localhost:18080/operations/enp7f2k9x0abcde12' \\
       -H "Authorization: Bearer $TOKEN"
   `}
 </CodeBlock>
@@ -114,7 +122,7 @@ backend не «подвешивает» handler.
 
 ### Cancel — отменить операцию
 
-<ApiOperation method="POST" endpoint="/operation/v1/operations/{id}:cancel">
+<ApiOperation method="POST" endpoint="/operations/{id}:cancel">
 
 Запрашивает отмену in-flight операции. Как и `Get`, направляется во владеющий backend по prefix id;
 фактическая семантика отмены — на стороне домена (best-effort). Уже завершённую операцию отменить
@@ -122,7 +130,7 @@ backend не «подвешивает» handler.
 
 <CodeBlock language="bash">
   {dedent`
-    curl -X POST 'http://localhost:18080/operation/v1/operations/enp7f2k9x0abcde12:cancel' \\
+    curl -X POST 'http://localhost:18080/operations/enp7f2k9x0abcde12:cancel' \\
       -H "Authorization: Bearer $TOKEN"
   `}
 </CodeBlock>

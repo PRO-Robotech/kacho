@@ -1,7 +1,7 @@
 # 04 — API Surface
 
-Полный список RPC kacho-compute + соответствующие REST endpoints (из
-`google.api.http`-аннотаций в `kacho-proto/proto/kacho/cloud/compute/v1/`) и
+Полный список RPC compute + соответствующие REST endpoints (из
+`google.api.http`-аннотаций в `proto/kacho/cloud/compute/v1/`) и
 Operation metadata/response (из `(kacho.cloud.api.operation)` options).
 
 ## Сводка
@@ -58,23 +58,23 @@ Operation metadata/response (из `(kacho.cloud.api.operation)` options).
 — metadata-сообщения без RPC; зарезервированы для будущих guest-инициированных
 переходов, в Kachō не эмитятся.)
 
-## RegionService (`region_service.proto`, `:9090`) — Geography, owner kacho-compute (эпик KAC-15)
-
-| RPC | REST | sync/async | response | статус |
-|---|---|---|---|---|
-| `Get` | `GET /compute/v1/regions/{region_id}` | sync | → `Region` | ✅ |
-| `List` | `GET /compute/v1/regions?pageSize=&pageToken=` | sync | → `ListRegionsResponse` | ✅ |
-
-## ZoneService (`zone_service.proto`, `:9090`) — Geography, owner kacho-compute (эпик KAC-15)
-
-| RPC | REST | sync/async | response | статус |
-|---|---|---|---|---|
-| `Get` | `GET /compute/v1/zones/{zone_id}` | sync | → `Zone` | ✅ |
-| `List` | `GET /compute/v1/zones?pageSize=&pageToken=` | sync | → `ListZonesResponse` | ✅ |
-
-> Geography (Region/Zone) перенесена в kacho-compute из kacho-vpc (эпик `KAC-15`):
-> compute читает зоны/регионы из своих таблиц (нет proxy / `skipPeer`-fallback);
-> другие сервисы (kacho-vpc) валидируют `zone_id` вызовом `ZoneService.Get`.
+> [!warning] Здесь стояли четыре таблицы оси размещения — ни одного из этих
+> адресов край под доменом compute не обслуживает, и владелец другой
+> Регион и зона принадлежат сервису geo (эпик KAC-82). В контрактах compute
+> ни region-, ни zone-сообщения нет; край под доменом compute обслуживает
+> адреса машин, типов машин и внутренней поверхности — и ничего больше.
+> Публичное чтение оси размещения живёт под доменом geo и объявлено
+> **задокументированным исключением** из проверки прав по проекту
+> (аутентификация обязательна, права по проекту сняты): глобальный справочник
+> обязан читать каждый арендатор, иначе он не сможет создать ни одного
+> размещаемого ресурса. Админский CRUD справочника — на внутреннем листенере
+> сервиса-владельца.
+>
+> Снятые адреса здесь **намеренно не воспроизводятся**: адрес в обратных
+> кавычках читается как живое утверждение — и проверкой свежести, и человеком,
+> который его скопирует. Сводная таблица в начале документа называет владельцев
+> верно уже сейчас; эти четыре таблицы противоречили ей полсотни строк спустя,
+> и ложной была та половина, которая подробнее.
 
 ## OperationService (`:9090`)
 
@@ -85,30 +85,24 @@ Operation metadata/response (из `(kacho.cloud.api.operation)` options).
 
 ## Internal сервисы (`:9091`, НЕ на external TLS endpoint)
 
-### InternalRegionService (`internal_catalog_service.proto`) — kacho-only (эпик KAC-15)
+### InternalMachineTypeService (`internal_machine_type_service.proto`) — kacho-only
 
 | RPC | REST (api-gateway internal mux) | response | примечание |
 |---|---|---|---|
-| `Create` | `POST /compute/v1/regions` body `{id, name}` | → `Region` | admin задаёт `id` явно (PK, immutable) |
-| `Update` | `PATCH /compute/v1/regions/{region_id}` body `{name}` | → `Region` | |
-| `Delete` | `DELETE /compute/v1/regions/{region_id}` | → `DeleteRegionResponse{}` | блокируется (FK `zones.region_id` RESTRICT) если есть зоны |
+| `Create` | `POST /compute/v1/internal/machineTypes` | → `MachineType` | admin задаёт `id` явно (PK, immutable) |
+| `Update` | `PATCH /compute/v1/internal/machineTypes/{machine_type_id}` | → `MachineType` | |
+| `Delete` | `DELETE /compute/v1/internal/machineTypes/{machine_type_id}` | → пусто | блокируется, если тип используется машиной |
 
-### InternalZoneService (`internal_catalog_service.proto`) — kacho-only
-
-| RPC | REST (api-gateway internal mux) | response | примечание |
-|---|---|---|---|
-| `Create` | `POST /compute/v1/zones` body `{id, region_id, name, status}` | → `Zone` | admin задаёт `id` явно (PK, immutable) |
-| `Update` | `PATCH /compute/v1/zones/{zone_id}` body `{region_id, name, status}` | → `Zone` | |
-| `Delete` | `DELETE /compute/v1/zones/{zone_id}` | → `DeleteZoneResponse{}` | проверяет своих dependents (instances/disks/disk_types); кросс-сервисных (vpc-подсети) НЕ проверяет — admin-ответственность |
-
-> ⚠️ `InternalDiskTypeService` / `InternalZoneService` — admin-поверхность
-> справочников; публично у `DiskTypeService` / `ZoneService` только `{Get,List}`
-> (статический discovery, без CRUD). Эти admin-RPC зарегистрированы в
-> `kacho-api-gateway/internal/restmux/mux.go` под блоком
-> `computeInternalAddr` → попадают **только** на cluster-internal listener,
-> **не** на external TLS endpoint (`api.kacho.local:443`, advertised внешним
-> клиентам). Любой admin-RPC, которого нет в публичном API ресурса, — добавлять
-> ТОЛЬКО в `Internal*` сервис на `:9091` (workspace `CLAUDE.md` §запрет 6). См.
+> [!warning] Здесь стояли две админ-таблицы оси размещения — предмета у них нет
+> Админский CRUD региона и зоны принадлежит сервису geo и живёт на **его**
+> внутреннем листенере; у compute внутренняя админ-поверхность одна — типы машин.
+> Снятые адреса не воспроизводятся по той же причине, что выше.
+>
+> Правило границы от этого не меняется и остаётся нормой: admin-RPC, которого нет
+> в публичном API ресурса, добавляется **только** в `Internal*`-сервис на `:9091`
+> и регистрируется в краевом мультиплексоре под internal-блоком своего домена —
+> тогда он попадает на cluster-internal listener и **не** попадает на external TLS
+> endpoint, объявленный внешним клиентам (workspace `CLAUDE.md` §запрет 6). См.
 > [`06-conventions.md`](06-conventions.md#admin-boundary).
 
 ### InternalWatchService (`internal_watch_service.proto`) — server-to-server
