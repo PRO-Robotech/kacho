@@ -107,37 +107,37 @@ func TestOutboxPendingIndexSetIsExactlyTwo(t *testing.T) {
 		t.Fatalf("гейт не нашёл НИ ОДНОГО частичного индекса по неотправленным строкам в %d "+
 			"миграциях — распознавание сломано", files)
 	}
-	tables := make([]string, 0, len(inv))
-	for tbl := range inv {
-		tables = append(tables, tbl)
+	queues := make([]string, 0, len(inv))
+	for key := range inv {
+		queues = append(queues, key)
 	}
-	sort.Strings(tables)
-	t.Logf("прочитано миграций: %d; очередей с частичными индексами по неотправленным строкам: %d\n  %s",
-		files, len(tables), strings.Join(tables, "\n  "))
+	sort.Strings(queues)
+	t.Logf("прочитано миграций: %d; ФИЗИЧЕСКИХ очередей с частичными индексами по неотправленным "+
+		"строкам: %d (ключ — сервис:таблица; одно имя таблицы бывает у нескольких сервисов)\n  %s",
+		files, len(queues), strings.Join(queues, "\n  "))
 
-	covered := 0
-	for _, tbl := range tables {
+	covered := map[string]bool{}
+	for _, key := range queues {
+		tbl := queueTable(key)
 		partCol, partitioned := partitionDrainedOutboxes[tbl]
 		if !partitioned {
 			if _, known := nonPartitionDrainedOutboxes[tbl]; !known {
 				t.Errorf("очередь %s не отнесена ни к одному ярусу: неизвестно, чем она "+
 					"выбирается, а значит нечем проверить её набор индексов. Добавь её в "+
 					"partitionDrainedOutboxes (если выборка идёт по ключу партиции) либо в "+
-					"nonPartitionDrainedOutboxes с указанием её собственного запроса.", tbl)
+					"nonPartitionDrainedOutboxes с указанием её собственного запроса.", key)
 			}
 			continue
 		}
-		covered++
+		covered[tbl] = true
 
-		want := map[string]bool{
-			partCol + ", id":    true,
-			"attempt_count, id": true,
-		}
-		got := inv[tbl]
+		want := []string{partCol + ", id", "attempt_count, id"}
+		sort.Strings(want)
+		got := inv[key]
 		var extra []string
 		seen := map[string]bool{}
 		for name, cols := range got {
-			if want[cols] {
+			if cols == want[0] || cols == want[1] {
 				seen[cols] = true
 				continue
 			}
@@ -149,21 +149,25 @@ func TestOutboxPendingIndexSetIsExactlyTwo(t *testing.T) {
 				"Порядок, отличный от (%s, id) и (attempt_count, id), планировщик берёт при "+
 				"статистике пустой очереди — выборка теряет раннюю остановку по LIMIT и читает "+
 				"всю очередь, которую разгребает. Дропни новой миграцией либо приложи измерение "+
-				"плана на бэклоге.", tbl, strings.Join(extra, ", "), partCol)
+				"плана на бэклоге.", key, strings.Join(extra, ", "), partCol)
 		}
-		for cols := range want {
+		for _, cols := range want {
 			if !seen[cols] {
 				t.Errorf("очередь %s НЕ несёт частичного индекса (%s) по неотправленным строкам — "+
-					"выборка останется без нужного пути доступа", tbl, cols)
+					"выборка останется без нужного пути доступа. Индекс называется в миграциях ЭТОГО "+
+					"сервиса: одноимённый индекс соседа на его собственной схеме здесь не считается.",
+					key, cols)
 			}
 		}
 	}
 
 	// Область обхода утверждается числом: если роспись очередей с ключом
 	// партиции вдруг перестала находиться в дереве, гейт молчал бы «чисто».
-	if covered < len(partitionDrainedOutboxes) {
-		t.Errorf("в дереве нашлось %d очередей с ключом партиции из %d объявленных — запись "+
-			"пережила свой предмет либо распознавание сломано", covered, len(partitionDrainedOutboxes))
+	// Считаются РАЗНЫЕ имена росписи, а не физические очереди: одно имя росписи
+	// покрывает столько физических таблиц, сколько сервисов её завели.
+	if len(covered) < len(partitionDrainedOutboxes) {
+		t.Errorf("в дереве нашлось %d имён очередей с ключом партиции из %d объявленных — запись "+
+			"пережила свой предмет либо распознавание сломано", len(covered), len(partitionDrainedOutboxes))
 	}
 }
 
@@ -174,11 +178,15 @@ func TestNonPartitionOutboxExemptionsHaveSubject(t *testing.T) {
 	root := repoRoot(t)
 	inv, _ := pendingIndexInventory(t, root)
 
+	present := map[string]bool{}
+	for key := range inv {
+		present[queueTable(key)] = true
+	}
 	for tbl, why := range nonPartitionDrainedOutboxes {
 		if strings.TrimSpace(why) == "" {
 			t.Errorf("запись %s без обоснования: обязана называть, чем эта очередь выбирается", tbl)
 		}
-		if _, ok := inv[tbl]; !ok {
+		if !present[tbl] {
 			t.Errorf("запись %s больше не имеет предмета: такой очереди с частичными индексами "+
 				"по неотправленным строкам в дереве нет. Удали запись.", tbl)
 		}
@@ -193,7 +201,24 @@ var (
 
 // pendingIndexInventory проигрывает Up-секции всех миграций в порядке версий и
 // возвращает итоговый набор ЧАСТИЧНЫХ индексов по `sent_at IS NULL`:
-// таблица (без схемы) → имя индекса → список колонок.
+// **`<сервис>:<таблица без схемы>`** → имя индекса → список колонок.
+//
+// # Почему ключ несёт СЕРВИС, а не только имя таблицы
+//
+// `fga_register_outbox` — это ТРИ физические очереди: в схемах vpc, nlb и
+// storage. Серии миграций у них независимые, имена индексов совпадают дословно.
+// Ключ без сервиса складывал их в одну корзину, и вердикт становился функцией
+// того, В КАКОМ СЕРВИСЕ лежит дефект: снятие головного индекса партиции в
+// сервисе, который обход проходит раньше по алфавиту, затиралось созданием
+// одноимённого индекса в сервисе, который обход проходит позже. Измерено
+// инъекцией на настоящем дереве в обе стороны — тот же дефект у storage не виден,
+// у vpc виден. Симметрично: снятие у более позднего сервиса вычёркивало запись
+// более раннего, и находка приписывалась не тому. Проба —
+// outboxpendingindexperservice_test.go.
+//
+// Дропы применяются В ПРЕДЕЛАХ СЕРВИСА: `DROP INDEX` называет индекс, а не
+// таблицу, поэтому внутри своей схемы он снимает запись с любой таблицы, но
+// схемы соседа не касается.
 //
 // Down-секции намеренно игнорируются: они описывают откат, а не состояние схемы.
 func pendingIndexInventory(t *testing.T, root string) (map[string]map[string]string, int) {
@@ -211,12 +236,14 @@ func pendingIndexInventory(t *testing.T, root string) (map[string]map[string]str
 		if !e.IsDir() {
 			continue
 		}
-		dir := filepath.Join(servicesDir, e.Name(), "internal", "migrations")
+		svc := e.Name()
+		dir := filepath.Join(servicesDir, svc, "internal", "migrations")
 		sqls, globErr := filepath.Glob(filepath.Join(dir, "*.sql"))
 		if globErr != nil {
 			t.Fatalf("обход %s: %v", dir, globErr)
 		}
 		sort.Strings(sqls) // имена миграций начинаются с версии — лексикографический порядок = порядок применения
+		svcKeys := map[string]bool{}
 		for _, path := range sqls {
 			body, readErr := os.ReadFile(path)
 			if readErr != nil {
@@ -232,27 +259,28 @@ func pendingIndexInventory(t *testing.T, root string) (map[string]map[string]str
 				if !strings.Contains(strings.ToLower(where), "sent_at") {
 					continue
 				}
-				tbl := unqualify(m[2])
+				key := svc + ":" + unqualify(m[2])
 				idx := unqualify(m[1])
 				cols := strings.Join(strings.Fields(m[3]), " ")
-				if inv[tbl] == nil {
-					inv[tbl] = map[string]string{}
+				if inv[key] == nil {
+					inv[key] = map[string]string{}
 				}
-				inv[tbl][idx] = cols
+				inv[key][idx] = cols
+				svcKeys[key] = true
 			}
 			for _, m := range dropIdxRe.FindAllStringSubmatch(up, -1) {
 				idx := unqualify(m[1])
-				for _, set := range inv {
-					delete(set, idx)
+				for key := range svcKeys {
+					delete(inv[key], idx)
 				}
 			}
 		}
 	}
-	// Таблицы, у которых после всех дропов не осталось ни одного такого индекса,
+	// Очереди, у которых после всех дропов не осталось ни одного такого индекса,
 	// из инвентаря убираем — иначе они выглядели бы как очередь без индексов.
-	for tbl, set := range inv {
+	for key, set := range inv {
 		if len(set) == 0 {
-			delete(inv, tbl)
+			delete(inv, key)
 		}
 	}
 	return inv, files
