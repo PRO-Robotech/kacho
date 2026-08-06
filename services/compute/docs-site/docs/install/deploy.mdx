@@ -30,15 +30,16 @@ Peer-валидацию можно отключить в изолированн�
 
 ## Локальный dev-стенд
 
-Самый быстрый путь — общий стенд платформы (`kacho-deploy`, kind + helm + Postgres):
+Самый быстрый путь — общий стенд платформы (каталог `deploy` того же
+репозитория, kind + helm + Postgres). Соседнего репозитория стенда рядом с
+деревом нет: команды запускаются **от корня репозитория**.
 
 <CodeBlock language="bash">
   {dedent`
-    cd ../kacho-deploy
-    make dev-up                       # поднять стенд (все сервисы + Postgres)
-    make reload-svc SVC=compute       # пересобрать/перезапустить только compute
-    make logs-svc SVC=compute         # логи сервиса
-    make psql SVC=compute             # psql к базе kacho_compute
+    make -C deploy dev-up                       # поднять стенд (все сервисы + Postgres)
+    make -C deploy reload-svc SVC=compute       # пересобрать/перезапустить только compute
+    make -C deploy logs-svc SVC=compute         # логи сервиса
+    make -C deploy psql SVC=compute             # psql к базе kacho_compute
   `}
 </CodeBlock>
 
