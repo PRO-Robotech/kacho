@@ -106,6 +106,7 @@ deploy/tests/helm/trusted-forwarder-profiles-test.sh
 services/iam/tests/newman/scripts/exec-coverage.py
 tests/authz-fixtures/ceremony_credentials.py
 tests/authz-fixtures/prodseed_all.py
+tests/authz-fixtures/prodseed_ceremony.py
 tools/mixedoutcomeaudit/mixed_outcome_audit.py
 "
 
