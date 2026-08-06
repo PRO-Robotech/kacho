@@ -55,20 +55,29 @@ import (
 //     fix is in, so their GREEN verdict is order-independent too and they cannot
 //     flake in CI. Their RED verdict is not: with the fix reverted the two
 //     candidates are io.EOF and the backend's status, and either may arrive
-//     first. Measured, not estimated — 600 runs over two sessions at
-//     GOMAXPROCS=2 under twelve busy cores, shimproxy.go reverted: they passed
-//     for the WRONG reason 4 and 10 times respectively, while the lock above
-//     failed 600 out of 600. They are kept because they assert what the lock
-//     cannot — that the backend's own code AND message come out unaltered — and
-//     they are deliberately not the injection proof.
+//     first. Measured, not estimated — 600 runs at GOMAXPROCS=2 under twelve
+//     busy cores, shimproxy.go reverted: they passed for the WRONG reason 9 and
+//     7 times out of 600, and WHICH of the two came off worse changed between
+//     runs, which is the signature of a coin rather than of a property. The lock
+//     above failed 600 out of 600 in the same runs. These two are kept because
+//     they assert what the lock cannot — that the backend's own code AND message
+//     come out unaltered — and they are deliberately not the injection proof.
 //
 //   - TestEdge_ClientGeneratedSendErrorIsStillReported is decided by
 //     construction in both directions: its backend keeps the stream open, so the
 //     receive half has nothing to report while the call is alive and the send
 //     half's status is the only candidate.
 //
-// None of the stubs is more lenient than the product: each reproduces one
-// arrangement the quoted contract permits, and nothing else.
+// LENIENCY RUNS ONE WAY ONLY, AND ONE STUB IS DELIBERATELY OUTSIDE THE QUOTE.
+// Every stub but one reproduces an arrangement the quoted contract permits and
+// nothing else. The exception is the wrapped-EOF stub: the contract says io.EOF,
+// meaning the sentinel, so a WRAPPED one is not something the contract describes
+// and not something this tree produces (checked: exactly one construction of a
+// wrapped io.EOF exists here, and it is that stub). It is there on purpose and
+// in the safe direction — it demands the handler tolerate a WIDER class than can
+// occur, so it can only ever produce a false red if the predicate is narrowed.
+// What is forbidden here is a stub LOOSER than the product, one that accepts
+// what the product would refuse; there is none.
 
 // ---------------------------------------------------------------------------
 // The premise, asserted rather than quoted.
