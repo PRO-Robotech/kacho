@@ -53,7 +53,10 @@ PRO-Robotech/kacho#55 (gateway OpsProxy `prefixToBackend` без prefix `geo` �
 проксируется через ПУБЛИЧНЫЙ `/operations/{id}`). Под GEO-1 geo admin-мутация —
 `Operation{done:true}` синхронно + admin/internal-only; клиент разворачивает `.response`,
 op-poll не нужен, а публичный OpsProxy-роутинг geo-op **НЕ является контрактом GEO-1
-acceptance** (GEO-1-16 поллит опционально через internal `/geo/v1/internal/operations/{id}`).
+acceptance** (GEO-1-16 поллит опционально; отдельного операционного маршрута под доменом
+geo край не обслуживает — `OperationService` домен-агностичен, путь `/operations/{operation_id}`,
+и шлюз выбирает бэкенд по префиксу id. Прежде здесь стоял внутренний geo-адрес; он не
+воспроизводится, потому что процитированный читается как живой маршрут).
 RED-lock неконтрактной поверхности = suite красный впустую → заменён позитивом
 `GEO-IOP-SYNC-DONE-OK` (Operation{done:true, metadata.regionId, response=public Region}).
 `prefixToBackend`-фикс geo остаётся отдельным (не-GEO-1) улучшением, если публичный

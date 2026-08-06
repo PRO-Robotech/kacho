@@ -10,5 +10,7 @@
 Conventions:
 - `gen.py` is invoked via `python3 scripts/gen.py [service]` (no args = regenerate all).
 - `gen.py --validate` delegates to `validate-cases.py` for convenience.
-- `run.sh` reads `environments/local.postman_environment.json` by default; override with `--env`.
+- `run.sh` reads the local environment file in `environments/` by default; on first run it
+  materialises it from the tracked `environments/local.postman_environment.template.json`
+  (the materialised copy is gitignored — it holds one stand's values). Override with `--env`.
 - All scripts are POSIX-clean; no Node-only dependencies beyond `newman` itself.

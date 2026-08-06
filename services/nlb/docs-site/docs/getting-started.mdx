@@ -43,7 +43,7 @@ kacho-compute, kacho-geo) и kacho-iam для авторизации. REST-пр�
 Схема `kacho_nlb` создаётся набором goose-миграций (`internal/migrations`): таблицы
 балансировщиков, листенеров, групп таргетов, pivot членства, `operations` (LRO) и
 outbox-таблицы (lifecycle-feed + FGA register). Мигратор — отдельный бинарь; DSN он берёт по
-приоритету `--dsn` > ENV `KACHO_NLB_REPOSITORY__POSTGRES__URL` > `config.yaml`.
+приоритету `--dsn` > ENV `KACHO_NLB_REPOSITORY__POSTGRES__URL` > свой YAML-файл конфигурации (путь передаётся флагом `--config`; имя выбирает оператор, в дереве такого файла нет — есть образец `deploy/configmap-sample.yaml`).
 
 <CodeBlock language="bash">
   {dedent`
@@ -71,7 +71,7 @@ breakglass допустим; production требует TLS и сконфигур
   `}
 </CodeBlock>
 
-Минимальный `config.yaml` для локального запуска — в
+Минимальный конфиг для локального запуска — в
 [`deploy/configmap-sample.yaml`](/install/configuration): `mode: dev` и валидный
 `repository.postgres.url` достаточны, чтобы сервис стартовал.
 

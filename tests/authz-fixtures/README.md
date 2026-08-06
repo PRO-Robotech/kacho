@@ -17,11 +17,16 @@ kubectl port-forward -n kacho svc/api-gateway 18080:8080 &
 # 2. Run setup (idempotent; re-run safe)
 bash tests/authz-fixtures/setup.sh
 
-# 3. Run newman per service
-cd project/kacho-iam/tests/newman    && ./scripts/run.sh --service authz-deny
-cd project/kacho-vpc/tests/newman    && ./scripts/run.sh --service authz-deny
-cd project/kacho-compute/tests/newman && ./scripts/run.sh --service authz-deny
+# 3. Run newman per service (пути — от корня ЭТОГО репозитория)
+(cd services/iam/tests/newman     && ./scripts/run.sh --service authz-deny)
+(cd services/vpc/tests/newman     && ./scripts/run.sh --service authz-deny)
+(cd services/compute/tests/newman && ./scripts/run.sh --service authz-deny)
 ```
+
+Прежняя редакция звала эти три команды в отдельные репозитории сервисов —
+разработка ведётся в одном репозитории с 2026-08, и цепочка `cd` без подоболочки
+уводила из первого же каталога, поэтому вторая и третья строки не выполнились бы
+даже при живых путях.
 
 ## Две посадки — один вход (`setup.sh`)
 
@@ -132,8 +137,8 @@ internal-RPC) в файлы `0600` под `/tmp`. В репозиторий кл
 | `POSTURE_PROBE_RETRIES` | `5` | повторы **только** на отсутствие ответа транспорта; решённый статус не повторяется |
 | ~~`SEED_POSTURE`~~ | — | **удалена.** Посадку нельзя назначить снаружи; заданная переменная отвергает вызов (см. выше) |
 | `HYDRA_PUBLIC_PORT` | `14444` | порт-форвард Hydra public (OAuth2 обмен, только production) |
-| `OUT_DIR` | `tests/authz-fixtures/out` | куда писать `authz-fixtures.json` + `jwts.json` |
-| `PATCH_ENV` | `true` | патчить ли `environments/local.postman_environment.json` всех 3 newman-suite'ов |
+| `OUT_DIR` | `tests/authz-fixtures/out` | куда посев пишет свои артефакты. Каталог целиком под `.gitignore` этого каталога, поэтому в дереве его файлов нет by construction. Что туда кладут: реестр фикстур (пишет `prodseed_all.py`) и провенанс посадки (`out/seed-posture`, см. выше). Прежняя редакция называла здесь ещё один файл с токенами — его **не пишет ни одна строка дерева**: единственное упоминание того имени было в этой же таблице |
+| `PATCH_ENV` | `true` | патчить ли окружение newman-суит. Отслеживается git **шаблон** — `environments/local.postman_environment.template.json` каждой суиты; рабочий файл прогонщик делает из него копией и патчит уже копию. Копия намеренно не отслеживается (корневой `.gitignore`), потому что несёт значения конкретного стенда |
 | `VERBOSE` | `false` | echo каждый curl |
 
 ## Что создаётся (минимум)
@@ -154,7 +159,8 @@ internal-RPC) в файлы `0600` под `/tmp`. В репозиторий кл
 - 2 service accounts в account-A: `authz-sa-a` (granted) + `authz-sa-nogrant`
 - 1 access binding: `vpc-editor on project-A1` → SA-A (`subjectType=service_account`)
 - 1 SA-key (Hydra OAuth client) для SA-A через `SAKeyService.Issue`;
-  `client_secret` возвращается ОДИН раз, **не персистится** в `authz-fixtures.json`
+  `client_secret` возвращается ОДИН раз и **не персистится** в реестр фикстур
+  (`OUT_DIR`, см. таблицу выше — каталог целиком под `.gitignore`)
 - токены (HS256 dev-equivalents Hydra-issued JWT — api-gateway dev-mode authn):
   - `jwtSAA` — SA-A токен (`kacho_principal_type=service_account`, `sub=<svaAId>`)
   - `jwtSANoGrant` — SA без grant'ов
@@ -188,4 +194,7 @@ Re-run setup безопасен; ID'ы стабильны между запус�
 - НЕ удаляет фикстуры после прогона newman (для скорости re-runs)
 - НЕ trash'ит существующие данные другого назначения
 
-См. design: [`docs/superpowers/specs/2026-05-19-authz-default-deny-matrix-newman-design.md`](../../docs/superpowers/specs/2026-05-19-authz-default-deny-matrix-newman-design.md).
+Проектный документ этой матрицы лежал в каталоге сторонних артефактов под `docs/`.
+Каталог удалён целиком решением владельца 2026-06-11 (коммит `28778ef4`), поэтому
+здесь стояла ссылка в никуда; адрес не воспроизводится — процитированный, он
+читается как живой. Текст восстанавливается из истории по этому коммиту.

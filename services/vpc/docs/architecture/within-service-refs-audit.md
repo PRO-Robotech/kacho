@@ -316,7 +316,11 @@ jsonb остаётся output-only зеркалом.
 
 - Каждый новый ссылочный field / инвариант: integration-тест обязателен (concurrent goroutines
   на спорный путь — ровно один winner, остальные получают ожидаемый sentinel). Эталоны:
-  `internal/repo/network_interface_attach_race_integration_test.go` (atomic CAS),
+  гонка привязки интерфейса — покрытия под этим именем в дереве **нет**: файла не
+  существует, и имя здесь не воспроизводится как координата. Рядом живут
+  `internal/repo/networkinterface_delete_toctou_integration_test.go` и
+  `internal/repo/address_repo_set_reference_race_integration_test.go` — они про другие
+  спорные пути. Это открытый долг покрытия, а не переименование,
   `internal/repo/kacho/pg/address.go` (`FOR UPDATE SKIP LOCKED`),
   `internal/repo/kacho/pg/security_group.go` (`xmin` OCC).
 - Перед merge каждой миграции — pre-flight на dev-стенде: `SELECT … WHERE …` проверить, что
@@ -328,7 +332,9 @@ jsonb остаётся output-only зеркалом.
 
 - `05-database.md` — миграционная история, индексы, generated-columns.
 - `er-diagram.md` — полная ER-схема и DB-level гарантии.
-- `internal/migrations/0001_initial.sql..0009_operations_account_id.sql` — источник истины.
+- `internal/migrations/` целиком — источник истины (диапазон «от начальной до девятой»,
+  стоявший здесь прежде, записан был как один путь с двумя точками и ничему в дереве не
+  соответствует; нумерация с тех пор ушла дальше).
 - `internal/repo/kacho/pg/network_interface.go` — эталон atomic CAS pattern.
 - `internal/repo/kacho/pg/address.go` — эталон `FOR UPDATE SKIP LOCKED` pattern.
 - `internal/repo/kacho/pg/security_group.go` — эталон `xmin` OCC pattern.

@@ -123,14 +123,19 @@ placeholder'ы. По конвенции Kachō тон сообщений — ч�
 
 ## 6. DiskType / Region / Zone admin CRUD через `Internal*` сервисы — kacho-only расширение
 
-Публичная поверхность справочников — только чтение: `DiskTypeService.{Get,List}` /
-`ZoneService.{Get,List}` / `RegionService.{Get,List}` (статический discovery, без
-Create/Update/Delete). Сеять справочники всё равно кому-то надо, поэтому
-admin-CRUD живёт в `InternalDiskTypeService.{Create,Update,Delete}` /
-`InternalRegionService.{Create,Update,Delete}` / `InternalZoneService.
-{Create,Update,Delete}` на cluster-internal порту `:9091`, проброшенном через
-api-gateway internal mux на `/compute/v1/internal/machineTypes`,
-`/compute/v1/zones` — для admin-tooling / UI.
+Публичная поверхность справочника compute — только чтение: `MachineTypeService.{Get,List}`
+(статический discovery, без Create/Update/Delete). Сеять справочник всё равно кому-то
+надо, поэтому admin-CRUD живёт в `InternalMachineTypeService.{Create,Update,Delete}` на
+cluster-internal порту `:9091`, проброшенном через api-gateway internal mux на
+`/compute/v1/internal/machineTypes` — для admin-tooling / UI.
+
+> [!note] Здесь перечислялись ещё два справочника — их владелец не compute
+> Прежняя редакция называла в этом же ряду справочник типов дисков и ось размещения
+> (регион/зона) вместе с их внутренними админ-сервисами и одним REST-адресом. Ни одного
+> из этих контрактов в `proto/kacho/cloud/compute/v1/` нет (предикат:
+> `grep -hE '^message (DiskType|Region|Zone)\b'` даёт ноль), владельцы — `services/storage/`
+> и `services/geo/`. Снятый адрес не воспроизводится: в обратных кавычках он читается как
+> живой маршрут, которого край не обслуживает.
 
 Это **сознательное решение** (admin-функция не расширяет публичный сервис
 ресурса — иначе она засветилась бы на external endpoint). На external TLS
@@ -163,9 +168,10 @@ workspace `CLAUDE.md` §«Кросс-доменные ссылки на ресу
 > не пишутся и не читаются, а RPC `AttachNetworkInterface` /
 > `DetachNetworkInterface` / `UpdateNetworkInterface` / `AddOneToOneNat` /
 > `RemoveOneToOneNat` — `Unimplemented`. Соответственно снято и ребро
-> `kacho-compute → kacho-vpc` (NIC-spec/IPAM): `internal/clients/vpc_client.go` и
-> порт `VPCClient` удалены как мёртвый код. Описание ниже сохранено как история
-> прежнего дизайна.
+> `kacho-compute → kacho-vpc` (NIC-spec/IPAM): единый клиент vpc и его порт удалены как
+> мёртвый код — имя файла здесь не воспроизводится, процитированное оно читается как живая
+> координата. Сегодня в `internal/clients/` лежат два узких клиента vpc (NIC и подсеть),
+> заведённые под другую задачу. Описание ниже сохранено как история прежнего дизайна.
 
 **Намеренное решение** (clean-API дизайн; verbatim-parity отложена): compute-NIC
 бэкуется first-class ресурсом kacho-vpc `NetworkInterface` (вариант А, эпик
@@ -293,9 +299,9 @@ newman); `internal/handler/instance_dropped_fields_test.go` (седьмое по
 
 > **Снято (no auto-NIC).** Instance больше не выделяет IPv4 через kacho-vpc IPAM:
 > раз NIC не создаётся (см. §6.2), эфемерные `Address`-ресурсы, referrer-tracking
-> и teardown не выполняются. `internal/clients/vpc_client.go` (IPAM + referrer)
-> удалён как мёртвый код, `KACHO_COMPUTE_VPC_*` конфиг снят. Раздел ниже сохранён
-> как история прежнего дизайна.
+> и teardown не выполняются. Прежний единый клиент vpc (IPAM + referrer) удалён как мёртвый
+> код — имя не воспроизводится по той же причине, что выше. Раздел ниже сохранён как история
+> прежнего дизайна.
 
 `Instance.Create` (и `AddOneToOneNat`) выделяют **реальные** IPv4 для NIC-ей
 через kacho-vpc IPAM, создавая в kacho-vpc эфемерные `Address`-ресурсы:
@@ -530,11 +536,13 @@ sentinel→code в отдельный слой (если когда-либо) �
   различает NotFound vs `FailedPrecondition "Disk size can only be increased"`.
   Software-проверка оставлена как fast-path (чёткий InvalidArgument для
   single-threaded усадки), но НЕ авторитетна — монотонность гарантирует CAS.
-  Тест: `disk_resize_monotonic_race_integration_test.go` (RED→GREEN, `-race`).
+  Тест жил рядом с этим кодом; вместе с блочным хранением он уехал в `services/storage/`,
+  поэтому имя файла здесь не воспроизводится — в compute его нет, и цитата вела бы в пустоту.
 
 - **Referenced-resource lookups больше не маскируют транзиентные сбои под NotFound.**
-  Existence-check ссылочных ресурсов той же БД (Image/Snapshot/Disk/DiskType на
-  request-path в `disk.go`/`instance.go`/`image.go`/`snapshot.go`) слепо маппил
+  Existence-check ссылочных ресурсов той же БД на request-path (в compute сегодня это
+  `internal/apps/kacho/api/instance/instance.go`; полосы блочного хранения уехали в
+  `services/storage/` вместе со своими ресурсами) слепо маппил
   ЛЮБУЮ non-nil ошибку в `codes.NotFound` → обрыв соединения/deadline во время
   lookup выдавался клиенту как перманентный «<Resource> not found» (CWE-388, не
   retryable). Фикс: новый `mapRefErr(err, resource, id)` — настоящий `ErrNotFound`
@@ -546,10 +554,11 @@ sentinel→code в отдельный слой (если когда-либо) �
   проверяли отказ условно (`if (j.error) …`) → регрессия, при которой нелегальная
   операция начинает УСПЕШНО проходить, оставалась зелёной (нарушение ban #12/#13).
   Фикс: безусловный `pm.expect(Boolean(j.error)).to.eql(true)` + проверка кода
-  (`instance.py`/`disk.py`); `DISK-CR-NEG-ZONE-UNKNOWN` переведён с «tolerate 200 без
+  (кейсы инстанса и диска; имена файлов не воспроизводятся — набор с тех пор переразложен,
+  а диск уехал в свой сервис); `DISK-CR-NEG-ZONE-UNKNOWN` переведён с «tolerate 200 без
   assert» на детерминированный `poll → assert_op_error_oneof([3,5])` (zone-check в
   `doCreate`-worker — async, как project). Хелпер `assert_op_error_oneof` добавлен в
-  `gen.py`; коллекции перегенерированы.
+  `tests/newman/scripts/gen.py`; коллекции перегенерированы.
 
 **Осознанно НЕ меняется** (by-design / вне scope internal security-правки):
 
@@ -623,10 +632,10 @@ sentinel→code в отдельный слой (если когда-либо) �
   Kachō, без оглядки на чужие облака), поэтому пункт снят, а не продлён. Ресурс
   называется **`Project`** (`proto/kacho/cloud/iam/v1/project.proto`), клиент шлёт
   `projectId` — прежнее имя не называет ничего на публичной поверхности, искать его в
-  доке бесполезно. `service/project_check.go` отдаёт конвенционные
+  доке бесполезно. `internal/apps/kacho/api/instance/project_check.go` отдаёт конвенционные
   `NotFound "Project %s not found"` и `Unavailable "project check: upstream project
   service unavailable"` (api-conventions.md, тон `"<Resource> %s not found"`).
-  Regression-lock — `service/project_check_test.go` (текст + отсутствие прежнего слова
+  Regression-lock — `internal/apps/kacho/api/instance/project_check_test.go` (текст + отсутствие прежнего слова
   в сообщении). **Код НЕ менялся**: `NOT_FOUND` остаётся `NOT_FOUND`; перевод этой
   peer-validate-линии на `FAILED_PRECONDITION` (api-conventions.md by-lane
   code-split) — отдельное ломающее решение под свой тикет.
@@ -663,20 +672,22 @@ sentinel→code в отдельный слой (если когда-либо) �
   из `DELETE FROM attached_disks … RETURNING disk_id, auto_delete`, предварительно
   взяв `SELECT … FOR UPDATE` на row инстанса (сериализует против FK KEY-SHARE lock'а,
   который берёт конкурентный AttachDisk-INSERT → новая привязка не проскочит в окно
-  между sweep'ом и DELETE instance). Тесты: `instance_delete_autodelete_race_integration_test.go`
-  (deterministic in-tx + concurrent attach-vs-delete race, testcontainers, `-race`).
+  между sweep'ом и DELETE instance). Тест на эту гонку жил рядом с привязкой дисков и уехал
+  вместе с ней в `services/storage/` (владелец таблицы привязок) — имя файла не
+  воспроизводится, в compute его нет.
 - **Per-object FGA List-фильтр нельзя молча выключить в production.** `validateAuthMode`
   (production И production-strict) теперь требует `requireListFilter`: `KACHO_COMPUTE_LIST_FILTER_ENABLED=true`
   И непустой `KACHO_COMPUTE_AUTHZ_IAM_GRPC_ADDR` (иначе `authzConn=nil` → `buildListFilter`
   вернёт nil → handler'ы bypass'ят фильтр). Раньше бинарь стартовал healthy с
-  выключенным фильтром, и principal с project-tier `viewer` видел ВСЕ Disk/Image/
-  Snapshot/Instance проекта (over-show / BOLA-lite, CWE-862). Fail-closed зеркалит
+  выключенным фильтром, и principal с project-tier `viewer` видел ВСЕ ресурсы проекта,
+  которые сервис тогда обслуживал (over-show / BOLA-lite, CWE-862). Fail-closed зеркалит
   `requireDBSSLMode`/`requireTrustedForwarders`. Тесты: `authmode_gate_test.go`
   (`*_RequiresListFilter`, prod + strict).
-- **DiskType admin-CRUD (Create/Update/Delete) покрыт testcontainers-тестом.** Раньше
-  write-путь `DiskTypeService` гонялся только через portmock; реальный SQLSTATE→sentinel
-  (PK 23505 → AlreadyExists; RETURNING/RowsAffected 0-rows → NotFound) через `mapRepoErr`
-  не проверялся end-to-end. Тест: `catalog_repo_integration_test.go`. Прод-код не тронут.
+- **Админ-CRUD справочника типов дисков покрыт testcontainers-тестом.** Раньше write-путь
+  гонялся только через portmock; реальный SQLSTATE→sentinel (PK 23505 → AlreadyExists;
+  RETURNING/RowsAffected 0-rows → NotFound) не проверялся end-to-end. Прод-код не тронут.
+  Запись историческая: и сервис справочника, и его тест уехали в `services/storage/`
+  вместе с блочным хранением, поэтому ни имя сервиса, ни имя файла здесь не цитируются.
 - **`Instance.SimulateMaintenanceEvent` / `Instance.ListOperations` получили
   функциональные тесты** (portmock): empty-id → InvalidArgument, missing-id → op-error
   NotFound / sync NotFound, happy. Прод-код не тронут (`instance_ops_test.go`).

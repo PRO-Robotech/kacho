@@ -33,7 +33,7 @@ import dedent from 'ts-dedent'
 
 Схема `kacho_nlb` управляется goose-миграциями (`internal/migrations`, встроены в бинарь).
 Применяются **отдельным** бинарём `bin/kacho-migrator` (не самим сервисом на старте). DSN
-берётся по приоритету `--dsn` > ENV `KACHO_NLB_REPOSITORY__POSTGRES__URL` > `config.yaml`.
+берётся по приоритету `--dsn` > ENV `KACHO_NLB_REPOSITORY__POSTGRES__URL` > свой YAML-файл конфигурации (путь передаётся флагом `--config`; имя выбирает оператор, в дереве такого файла нет — есть образец `deploy/configmap-sample.yaml`).
 
 <CodeBlock language="bash">
   {dedent`

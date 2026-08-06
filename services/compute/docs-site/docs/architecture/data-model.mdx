@@ -102,7 +102,7 @@ Id **неизменяем на всю жизнь ресурса** — опера
 ## Ошибки и маппинг SQLSTATE
 
 Сервисный слой транслирует repo-sentinel'ы и SQLSTATE в gRPC-коды (единая точка —
-`internal/service/maperr.go`). Тексты — часть контракта (стабильны):
+`internal/apps/kacho/shared/serviceerr/maperr.go`). Тексты — часть контракта (стабильны):
 
 | Условие | SQLSTATE | gRPC | Текст (пример) |
 |---|---|---|---|

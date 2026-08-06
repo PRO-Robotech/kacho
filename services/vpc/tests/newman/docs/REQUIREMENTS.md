@@ -31,7 +31,8 @@
 - **Description**: kacho-deploy init-job создает два Project с фиксированными
   ID или экспортирует actual IDs в ConfigMap. Newman читает env из ConfigMap
   при старте.
-- **Rationale**: после каждого `make dev-up` `local.postman_environment.json`
+- **Rationale**: после каждого `make dev-up` рабочий файл окружения суиты (копия
+  отслеживаемого `environments/local.postman_environment.template.json`)
   устаревает — IDs новых projects случайны, env приходится править руками.
 - **Impact**: zero-touch repeatable runs.
 - **Owner**: `kacho-deploy` + `tests/newman/scripts/`.

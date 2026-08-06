@@ -11,9 +11,9 @@
 | `instance-redesign` | 43 | легаси-поля Create отвергаются, не игнорируются (`INST-RD-CR-VAL-UNSUPPORTED-*`, 6 полей + «все шесть разом»; см. `docs/architecture/07-known-divergences.md` §7.1) · F1 kind-oneof XOR (01-04) · F2 machineTypeId single-channel (05-08) · F3 bootSource grammar (09-11) · F4 SA Referrer (12-13) · F5 unreachable-guard (14) · F6 launch-skeleton (16-17) · F8 malformed-first (22) · F9/F11 field-absence (24/28) · F10 Update mutability + STOPPED-gate (04/25/26/27) · F12 dup-name (30) · F13 zone peer-validate (33) · F14 List authz+pagination+filter (34-36) · F15 Delete hard-delete + name-recycle (37-38) |
 
 Прогон — **CI** (`deploy/scripts/newman-e2e.sh`, локальный env-blocked: harness убивает port-forward).
-Ожидание: все кейсы **зелёные** (поведение сверено с реализацией `services/compute/internal/service/
-{instance,machine_type}.go` + `protoconv` + gateway `restmux`/`DiscardUnknown` — не по идеализированному
-тексту acceptance).
+Ожидание: все кейсы **зелёные** (поведение сверено с реализацией
+`services/compute/internal/apps/kacho/api/instance/` и `.../machinetype/` + `protoconv` +
+gateway `restmux`/`DiscardUnknown` — не по идеализированному тексту acceptance).
 
 ### Сверка с контрактом — задокументированные нюансы (НЕ баги продукта, findings для acceptance-author)
 
@@ -51,10 +51,12 @@
    Толерантность здесь была «формой без содержания» — `oneOf([200,400])` проходил и при молчаливом
    игнорировании фильтра, то есть ровно на том дефекте, ради которого писался.
 
-3. ~~**Legacy `cases/instance.py` (77 кейсов)**~~ — **снято 2026-07-28: файла нет.**
-   Этот пункт объявлял 77 pre-existing-red кейсов и follow-up-миграцию для них.
-   `cases/instance.py` в дереве отсутствует; покрытие живёт в `cases/instance-redesign.py`.
-   Заявленной работы не существует — не планировать её по этому пункту.
+3. ~~**Legacy-набор кейсов инстанса (77 кейсов)**~~ — **снято 2026-07-28: файла нет.**
+   Этот пункт объявлял 77 pre-existing-red кейсов и follow-up-миграцию для них. Того файла
+   в дереве нет; покрытие живёт в `cases/instance-redesign.py`. Заявленной работы не
+   существует — не планировать её по этому пункту. Имя снятого файла не цитируется: в
+   обратных кавычках оно читается как живая координата, и прежняя редакция этого самого
+   пункта из-за такой цитаты числилась расхождением.
 
    **Остатки снятого файла закрыты (эта ветка).** Сам файл ушёл, а ссылки на него — нет,
    и одна из них была не косметической: `run-incremental.js` держал ВТОРОЙ, независимый от

@@ -174,12 +174,13 @@ NetworkPolicy (cluster-internal), а authz включается выставле
 «Скопировали dev-values на общий стенд» — конфиг-ошибка оператора, а не дефолт:
 production-дефолт (`authn.mode=production`) fail-closed.
 
-## 14. `cmd/vpc/runServe` — единый линейный composition root, намеренно длинный
+## 14. `cmd/vpc/main.go:runServe` — единый линейный composition root, намеренно длинный
 
 `runServe` длинный (весь boot-sequence в одной функции): signal-setup, пулы
 master/slave, ops-repo, метрики, mTLS load+validate, dial'ы vpc→iam / vpc→geo /
 authz, list-filter, registrar/drainer, два gRPC-listener'а, graceful-shutdown.
-CLAUDE.md **предписывает** `cmd/main.go` как **единственное** место wiring
+Правило воркспейса `architecture.md` **предписывает** `cmd/<svc>/main.go` (здесь —
+`cmd/vpc/main.go`) как **единственное** место wiring
 (composition root) — размазывать инициализацию по пакетам запрещено. Длина —
 следствие этого правила плюс плотных inline-комментариев с security-обоснованием
 каждого fail-closed гардрейла (ValidateServerMTLS, mTLS-creds-ветвления,

@@ -152,7 +152,9 @@ CAS-guard + row-lock сериализуют пересчёт с `SetStatusCAS`; 
 ## Composition-root `runServe` — намеренно линейный, длинный wiring (не «толстая функция»)
 
 **Что.** `cmd/kacho-loadbalancer/main.go:runServe` — единственный composition-root
-(CLAUDE.md sanctions `cmd/main.go` как единственное место wiring'а). Функция длинная
+(правило воркспейса `architecture.md` называет единственным местом wiring'а
+`cmd/<svc>/main.go`; здесь `<svc>` — `kacho-loadbalancer`, и путь выше это уже
+раскрывает). Функция длинная
 (~300 строк, из них ~190 кода — остальное inline-документация каждого шага), но это
 **не** нарушение layering'а и не «толстый сервис».
 

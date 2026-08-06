@@ -18,8 +18,7 @@ noted in `docs/architecture/07-known-divergences.md` of kacho-nlb.
 
 > **Sub-phase 8.1 supersession (VIP model).** The VIP-handling requirements below
 > (notably REQ-NLB-CR-01/CR-02 and the listener-level VIP REQ-LST-CR-AUTO-VIP /
-> REQ-LST-CR-BYO / REQ-LST-CR-INTERNAL) are **superseded** by
-> `docs/specs/sub-phase-8.1-nlb-loadbalancer-placement-link-model-acceptance.md`.
+> REQ-LST-CR-BYO / REQ-LST-CR-INTERNAL) are **superseded** — приёмкой под-фазы 8.1 (модель размещения и источника VIP у балансировщика). **Документа с таким именем в репозитории воркспейса нет и никогда не было** — проверено `git log --all` по пути: ноль коммитов. Приёмки nlb, которые там есть, лежат в `docs/specs/` того репозитория и названы по схеме `sub-phase-NLB-*`; какая из них покрывает этот набор — открытый вопрос, и он записан как долг, а не закрыт догадкой. Прежнее имя не воспроизводится: в обратных кавычках оно читается как существующий документ.
 > Under 8.1 the VIP moved from the Listener to the LoadBalancer: every LB carries a
 > per-family VIP *source* on Create (`v4Source`/`v6Source` = `{subnetId}`|`{addressId}`|
 > `{public}`), plus `placementType` (INTERNAL only) and `disabledAnnounceZones`

@@ -10,7 +10,8 @@
 > `ExplainResolution` (`IPL-ADDROVR-*`/`IPL-CHK-*`/`IPL-EXPLAIN-*`/
 > `IPL-DEL-NEG-OVERRIDE-EXISTS`/`IPL-RESOLVE-{SELECTOR,OVERRIDE}-FAMILY-SKIP`),
 > и весь `InternalCloudService` PoolSelector suite (`CLD-SEL-*`, файл
-> `cases/internal-cloud.py` удален). IPAM cascade сведен к
+> модуль кейсов внутреннего облачного пула удалён — его имя здесь не воспроизводится,
+> процитированное оно читается как живой файл). IPAM cascade сведен к
 > network_default → zone_default → global_default.
 
 > v20: AddressPool split CIDR family (`cidr_blocks` → `v4_cidr_blocks`

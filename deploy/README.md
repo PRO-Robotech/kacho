@@ -16,8 +16,13 @@
 - `make reload-svc-iam` — alias for `make reload-svc SVC=iam`
 - `make psql-iam` — psql в `kacho_iam`-БД (pg-iam)
 - `make logs-iam` — `kubectl logs -f deploy/kacho-iam`
-- `make zitadel-admin` — pod-листинг + initial admin credentials Zitadel (читает из логов)
 - `make fga-bootstrap` — вручную запустить openfga-bootstrap Job (создаёт store + загружает model)
+
+Здесь стояла ещё одна цель — про начальные учётные данные администратора того
+поставщика личности, который стенд поднимал до KAC-127. Поставщик заменён на Ory
+(Kratos + Hydra), цель снята вместе с ним, и её имя тут намеренно не
+воспроизводится: процитированное, оно читается как живая команда. Надгробие с
+причиной стоит в самом `Makefile`, рядом с тем местом, где цель была.
 
 ## E2E (`e2e/`) и CI
 
@@ -37,59 +42,80 @@ newman-job ~7 мин → ~3 мин.
 
 ## Требования
 
-- docker, kind v0.20+, kubectl, helm 3, bats-core
-- Свободный порт 80 на host-машине
-- В `/etc/hosts`: `127.0.0.1 api.kacho.local kacho.local zitadel.kacho.local openfga.kacho.local`
-  (последние два — для KAC-105 IAM stack, см. ниже)
+Перечень — тот, что проверяет цель `preflight`, а не отдельный список рядом с ней:
+**docker** (демон запущен), **kind**, **kubectl**, **helm**. Прежняя редакция
+требовала сверх этого ещё и bats — во всём каталоге развёртывания нет ни одного
+файла, который бы его звал.
+
+Запись в `/etc/hosts` **не требуется ни для одного пути прогона**, и это говорит
+сама цель `preflight`: харнесс доходит до каждого листенера через
+`kubectl port-forward`, включая объявленный внешний TLS. Запись полезна только
+тому, кто хочет постучать в Ingress руками, — и даже тогда kind публикует
+node:80 на 28080 хоста (443 не публикуется вовсе), а тот Ingress ходит по GRPCS,
+поэтому REST через него отвечает 502. Прежняя редакция требовала четыре имени, из
+которых одно принадлежало снятому поставщику личности, а второе — снятому
+инвентарю адресов.
 
 ## Persistence
 
 Postgres использует `emptyDir` — данные не сохраняются между `dev-down`/`dev-up`. Это сознательно для воспроизводимости тестов (`03-deployment-and-operations.md` §5).
 
-## NetBox
+> [!note] Здесь стоял раздел про внешний инвентарь адресов — стенд его не поднимает
+> Раздел на тринадцать строк описывал сторонний компонент как живую часть стенда:
+> свой чарт, свой постгрес, своё имя в `/etc/hosts`, свои учётные данные и совет
+> смотреть его логи по метке. Во всём каталоге развёртывания у него **ноль**
+> упоминаний вне этого README — ни зависимости в `Chart.yaml`, ни ключа в
+> `values.dev.yaml`, ни цели в `Makefile`. Имена здесь не воспроизводятся: адрес в
+> обратных кавычках читается как живое утверждение, а учётные данные к
+> несуществующему UI — приглашение искать то, чего нет.
 
-Dev-стенд поднимает NetBox рядом с остальными сервисами (chart: `netbox-community/netbox`, app v4.5.x). PG — alias `pg-netbox` по тому же паттерну, что `pg-vpc`/`pg-resource-manager`. Valkey (Redis-совместимый) — встроенный subchart NetBox.
+## IAM stack (KAC-105, sub-phase 2.0; auth-tier переведён на Ory в KAC-127)
 
-- В `/etc/hosts` добавить: `127.0.0.1 netbox.kacho.local`
-- UI: `http://netbox.kacho.local`
-- Dev-creds: `admin` / `admin`
-- API token: получить через UI или `POST /api/users/tokens/provision/` с `admin`/`admin` (NetBox 4.x не принимает legacy hex-токены, поэтому статичный токен в values не задан)
-- Postgres: `make psql SVC=netbox`
-
-Persistence у NetBox media/reports/scripts и `pg-netbox` — `emptyDir`, как у остальных сервисов: данные пропадают при `make dev-down`.
-
-`make reload-svc SVC=netbox` и `make logs-svc SVC=netbox` не работают — NetBox не пересобирается локально (внешний образ), а `logs-svc` ожидает один Deployment с именем сервиса, у NetBox их несколько (web/worker). Используйте `kubectl logs -n kacho -l app.kubernetes.io/name=netbox -f`.
-
-## IAM stack (KAC-105, sub-phase 2.0)
-
-Dev-стенд поднимает три новых компонента рядом с остальными сервисами:
+Dev-стенд поднимает рядом с остальными сервисами:
 
 - **kacho-iam** — control-plane сервис IAM (Account / Project / User / ServiceAccount /
   Group / Role / AccessBinding). gRPC `:9090` (public) + `:9091` (internal, admin-only).
   Sub-chart живёт в `helm/umbrella/charts/kacho-iam/`. Image: `kacho-iam:dev`
-  (build из `project/kacho-iam/`).
-- **Zitadel** — OIDC issuer (источник identity, signup, JWT). UI на
-  `http://zitadel.kacho.local`. Внешний chart `charts.zitadel.com`.
-- **OpenFGA** — REBAC engine (Zanzibar-модель, tuple-store, Check-API). gRPC `:8081`,
-  HTTP `:8080` (playground enabled в dev — `http://openfga.kacho.local`). Внешний chart
+  (build из `services/iam/` **этого** репозитория — отдельного репозитория сервиса
+  не существует с переходом на монорепо).
+- **Ory Kratos + Ory Hydra** — identity и OIDC-issuer. Оба приезжают внешними чартами
+  `k8s.ory.sh/helm/charts`, у каждого свой постгрес (`pg-kratos`, `pg-hydra`). Публичный
+  адрес выдающего в dev — `http://localhost:28080/.ory/hydra/public/` через kind-ingress;
+  `auth.kacho.local` заведён в `values.dev.yaml` для тех, кто ходит браузером. Hydra
+  остаётся **единственным** подписантом, а iam — единственным фасадом к ней
+  (`security.md` §Production-mode обязателен ВЕЗДЕ).
+- **kratos-selfservice-ui** — sub-chart в `helm/umbrella/charts/kratos-selfservice-ui/`,
+  интерактивный логин для тех кейсов, где нужен человек.
+- **OpenFGA** — ReBAC engine (tuple-store, Check-API). gRPC `:8081`, HTTP `:8080`
+  (playground в dev — `http://openfga.kacho.local`). Внешний chart
   `openfga.github.io/helm-charts`.
 
-Постгресы — три отдельных инстанса (запрет #8: DB-per-service):
+Постгресы — **отдельный инстанс на каждого владельца данных** (запрет #8:
+DB-per-service). Перечень выводится из `helm/umbrella/Chart.yaml`, а не выписывается
+здесь: `grep -n 'alias: pg-' helm/umbrella/Chart.yaml` (на 2026-08-06 — десять
+инстансов; прежняя редакция называла три, включая постгрес снятого поставщика
+личности).
 
-- `pg-iam` → `kacho_iam` БД (`iam` / `dev-iam-password`)
-- `pg-zitadel` → `zitadel` БД (`zitadel` / `dev-zitadel-password`)
-- `pg-openfga` → `openfga` БД (`openfga` / `dev-openfga-password`)
-
-**Bootstrap-order** (NFR-9): Zitadel-postgres → Zitadel → kacho-iam (init-container
-`wait-for-zitadel` / `wait-for-openfga` блокирует startup до :8080 ready). OpenFGA store
-создаётся `openfga-bootstrap` post-install Job'ом (helm hook), store_id пишется в Secret
-`kacho-iam-openfga-store`, kacho-iam читает его при старте через `optional: true` secretKeyRef.
+**Bootstrap-order** (NFR-9): OpenFGA → kacho-iam. Init-container `wait-for-openfga`
+блокирует старт iam, пока `kacho-umbrella-openfga:8080` не ответит (условие
+`initContainer.waitForExtAuth.enabled`, по умолчанию включено). OpenFGA store создаётся
+`openfga-bootstrap` post-install Job'ом (helm hook), store_id пишется в Secret
+`kacho-iam-openfga-store`, kacho-iam читает его при старте через `optional: true`
+secretKeyRef. Ожидания поставщика личности в шаблоне больше нет — надгробие с
+причиной стоит в самом шаблоне.
 
 **Полезные команды** (см. секцию «IAM stack» выше):
 - `make psql-iam` — psql в `kacho_iam`
 - `make logs-iam` — логи kacho-iam
-- `make zitadel-admin` — credentials Zitadel UI
 - `make fga-bootstrap` — пересоздать OpenFGA store + model вручную
 
-**Persistence**: `pg-iam` / `pg-zitadel` / `pg-openfga` — все `emptyDir`, данные пропадают
-при `make dev-down`. Bootstrap-job и default-roles seed выполнятся заново при `make dev-up`.
+**Persistence**: все постгресы стенда — `emptyDir`, данные пропадают при
+`make dev-down`. Bootstrap-job и default-roles seed выполнятся заново при `make dev-up`.
+
+## Проверка посадки
+
+`make dev-up` поднимает стенд; `make dev-prod-up` дополнительно прогоняет гейты
+посадки (`assert-rollout-ready`, `assert-production-posture`, `assert-outbox-autovacuum`)
+и только после них печатает готовность. Production-posture обязателен на **любом**
+поднятом стенде, включая локальный (`security.md` §Production-mode обязателен ВЕЗДЕ),
+поэтому вердикт о стенде читается с `dev-prod-up`, а не с `dev-up`.
