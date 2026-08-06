@@ -18,9 +18,14 @@ Data-plane harness scenario ids are informational (the harness is not a gen.py m
 so `validate-cases.py` does not gate them).
 
 > Format: `<case-id>` — `<classes>` — `<priority>` — `<meaning>` — `Verifies REG-NN`
-> Acceptance source of truth:
-> `docs/specs/sub-phase-registry-mvp-acceptance.md` (REG-01..REG-44) and
-> `docs/specs/sub-phase-registry-token-exchange-acceptance.md` (REG-TX-01..22).
+> Acceptance source of truth: два документа приёмки — на базовый набор (REG-01..REG-44)
+> и на обмен токенов (REG-TX-01..22). **Ни один из них не существует в репозитории
+> воркспейса под теми именами, которыми они здесь назывались, и никогда не существовал**
+> (`git log --all` по обоим путям: ноль коммитов). Приёмки registry, которые там есть,
+> лежат в `docs/specs/` того репозитория под именами вида `sub-phase-REG-1-*`,
+> `sub-phase-RG-1-*` и `sub-phase-registry-iam-jwks-unify-*`; какая из них закрывает
+> какой диапазон идентификаторов — открытый вопрос и долг, а не догадка. Прежние имена не
+> воспроизводятся: процитированные, они читаются как существующие документы.
 
 ## Class legend
 
@@ -39,7 +44,7 @@ so `validate-cases.py` does not gate them).
 ## 1. Control-plane CRUD — `cases/registry.py` (PRESENT — 9 cases)
 
 RegistryService: `Get`/`List` sync, `Create`/`Update`/`Delete` async (→ `Operation`,
-op-id prefix `reo`, polled via `/registries/v1/operations/{id}`). Registry id prefix
+op-id prefix `reo`, polled via `/operations/{id}`). Registry id prefix
 `reg`. All cases run authenticated in a pre-allocated `existingProjectId`, isolated by
 `{{runId}}`-suffixed names.
 

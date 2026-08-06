@@ -33,9 +33,13 @@ toggle.
 
 **Sub-concern: a misspelled env var is silently ignored, and the external-edge
 relaxed-posture check is a WARN, not a fatal, outside prod-labelled envs.**
-`envconfig` binds by exact name and ignores names it does not recognise, so a
-fat-fingered `KACHO_API_GATEWAY_AUTHZ_ENABLE` (missing `D`) leaves
-`AuthZEnabled` at its default. Two compensating controls already exist and are
+`envconfig` binds by exact name and ignores names it does not recognise, so the real
+knob `KACHO_API_GATEWAY_AUTHZ_ENABLED` typed one letter short — without its trailing
+**D** — leaves `AuthZEnabled` at its default. The misspelling is deliberately *not*
+reproduced here as a quoted name: a name in backticks reads as a coordinate, and this
+one names nothing on purpose. (The same near-miss pair is the documented reason the
+freshness hook compares whole env names rather than substrings — a referent one letter
+longer would make a dead knob look alive.) Two compensating controls already exist and are
 deliberate:
 
 - `validateProductionAuthzConfig` (main.go, keyed on `KACHO_APP_ENV`) **fatally**
@@ -360,9 +364,11 @@ Check dispatch each), on the highest-blast-radius security decision path.
 *internally* into small, single-purpose phase functions
 (`phaseCatalog` → `phaseSubject` → `phaseResource` → `phaseCheck`, plus the
 HTTP/gRPC entry adapters), so the cognitive unit is the phase, not the file. The
-audit's own proposed fix is a pure **file-move** (`authz_phases.go` /
-`authz_http.go` / `authz_grpc.go`) with no behavior change and identical exported
-`AuthzMiddleware` API. On the single most security-sensitive code path, a large
+audit's own proposed fix is a pure **file-move** — one module per phase group plus
+separate HTTP and gRPC entry adapters — with no behavior change and identical exported
+`AuthzMiddleware` API. The proposed file names are given as prose, not as paths: none of
+them exists, and a path in backticks reads as a coordinate the next contributor will go
+looking for. Today the phases live together in `gateway/internal/middleware/authz.go`. On the single most security-sensitive code path, a large
 mechanical churn that touches every line's location — inflating the review diff
 and colliding with other in-flight security branches — carries more regression
 and review-miss risk than the maintainability signal it addresses, for zero
@@ -477,9 +483,10 @@ no symbols and are unaffected.
 **Why the list has a gate.** Six further entries were removed in an earlier
 change: they named a gRPC `AuthService` / `BackChannelLogoutService` that does
 not exist in the contract and never has in this repository. The interactive auth
-flow is HTTP (`/iam/v1/auth/…` in `middleware/oidc_auth.go`, `/oauth/logout` in
-`handler/logout_handler.go`) and its pre-auth exemption is `isPublicHTTPPath` in
-`authz_util.go` — a separate list, unaffected by the removal. An entry naming
+flow is HTTP (`/iam/v1/auth/…` in `gateway/internal/middleware/session_identity_handler.go`,
+`/oauth/logout` in `gateway/internal/handler/logout_handler.go`) and its pre-auth exemption
+is `isPublicHTTPPath` in `gateway/internal/middleware/authz_util.go` — a separate list,
+unaffected by the removal. An entry naming
 nothing is not inert: it reads like a reviewed decision, and the next person
 adding a bypass copies its shape. `authz_public_allowlist_resolves_test.go`
 resolves every entry against the served contract and fails the build on one that

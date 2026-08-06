@@ -1,7 +1,10 @@
 # kacho-nlb — k6 load tests
 
 Load-test suite for the `kacho-nlb` control plane. Five scenarios cover the
-SLO matrix from the design doc (`docs/superpowers/specs/2026-05-23-kacho-nlb-design.md` §7.4).
+SLO matrix — из проектного документа nlb, §7.4. Он лежал в каталоге сторонних артефактов
+под `docs/`, удалённом целиком решением владельца 2026-06-11 (коммит `28778ef4`); адрес не
+воспроизводится — процитированный, он читается как живой. Текст восстанавливается из
+истории по этому коммиту.
 
 > Methodology and anti-patterns follow `.claude/skills/load-testing-coach`
 > (workspace-level) and `kacho-vpc/.claude/agents/vpc-load-testing`.

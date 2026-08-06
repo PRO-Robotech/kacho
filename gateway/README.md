@@ -61,8 +61,9 @@ curl -X POST -H "Authorization: Bearer $TOKEN" \
   http://localhost:8080/vpc/v1/networks \
   -d '{"projectId":"<project-id>","name":"my-net"}'
 
-# Поллинг операции до done=true.
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/operation/v1/operations/<op-id>
+# Поллинг операции до done=true. Путь домен-агностичен и без версии:
+# имени сервиса в нём нет, операция не принадлежит домену.
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/operations/<op-id>
 ```
 
 gRPC-клиенты ходят на тот же порт (`cmux` различает по `Content-Type: application/grpc`);

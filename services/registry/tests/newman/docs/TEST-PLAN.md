@@ -151,7 +151,9 @@ python3 scripts/gen.py
 > `docs/specs/sub-phase-REG-1-registry-repository-acceptance.md`.
 
 `run.sh` writes `out/<service>.json` (newman JSON reporter), `out/<service>.cli`, and
-`out/summary.txt`. Use `--delay <ms>` to give async Operation workers time; use
+the summary file its `scripts/run.sh` writes into the suite's `out/` directory
+(gitignored — produced by a run, not tracked). Use `--delay <ms>` to give async
+Operation workers time; use
 `--bail` to stop on first failure.
 
 ### 6.2 Data-plane + token-exchange harness

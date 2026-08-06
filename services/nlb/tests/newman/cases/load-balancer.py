@@ -3,8 +3,10 @@
 
 """NetworkLoadBalancerService cases (NLB-*) — 12 RPC × full RPC × class matrix.
 
-Acceptance source (VIP model): docs/specs/sub-phase-8.1-nlb-loadbalancer-placement-link-model-acceptance.md
-  (8.1-01..8.1-36) — supersedes the sub-phase-4.0 VIP handling.
+Acceptance source (VIP model): приёмка под-фазы 8.1 (8.1-01..8.1-36), которая
+  вытесняет разбор VIP из под-фазы 4.0. Документа с прежде стоявшим здесь именем в
+  репозитории воркспейса нет и никогда не было (git log --all по пути: ноль коммитов);
+  имя не воспроизводится, чтобы его не искали.
 Carry-over lifecycle / CRUD / validation semantics (Start/Stop/Move/attach/detach/GetTargetStates,
   name / labels / pagination / immutability) remain from sub-phase-4.0 (§3, GWT-NLB-001..048) — all
   12 RPCs survive the VIP redesign; only the Create request shape and Get projection changed.
@@ -2221,7 +2223,7 @@ CASES.append(Case(
 
 # ===========================================================================
 # Sub-phase 8.1 — placement + per-family VIP-source link/allocate model
-#   docs/specs/sub-phase-8.1-nlb-loadbalancer-placement-link-model-acceptance.md
+#   (приёмка под-фазы 8.1; документа под прежним именем в воркспейсе нет — см. шапку файла)
 #
 # Group C (source×type×placement matrix negatives) are SYNC fail-fast — strict
 # REST 400 + INVALID_ARGUMENT + contract text, no fixtures. Group A/B/G happy +

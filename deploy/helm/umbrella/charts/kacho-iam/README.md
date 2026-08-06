@@ -31,20 +31,26 @@ ConfigMap / RBAC / Service objects.
 ## Bundle signing key rotation (180d schedule)
 
 > [!warning] Этот раздел описывает НЕреализованный замысел — читать как план, не как факт.
-> **JWKS-ротатора больше нет** (`templates/jwks-rotator-cronjob.yaml` удалён как
-> вестигиальный): iam не владеет ключом подписи токенов — издатель и подписант
-> Hydra, а iam лишь проксирует её публичный JWKS байт-в-байт. Соответственно
-> **никто не наполняет** ConfigMap `kacho-iam-jwks` — в нём остаётся пустой
-> placeholder-PEM, а bundle-signing в коде iam вообще отсутствует (JWS-подписи
-> бандлов нет ни в одном пакете). Раздел оставлен как описание намерения; прежде
-> чем на него опираться — реализовать подпись бандлов и её собственный
-> key-lifecycle. Весь текст ниже про «rotator» относится к этому нереализованному
-> плану.
+> **Ротатора JWKS в чарте нет** — cronjob-шаблон, который его нёс, снят как
+> вестигиальный, и его имя здесь намеренно не воспроизводится: путь в обратных
+> кавычках читается следующим как живая координата, даже внутри абзаца,
+> объясняющего, что файла нет. Причина снятия: iam не владеет ключом подписи
+> токенов — издатель и подписант Hydra, а iam лишь проксирует её публичный JWKS
+> байт-в-байт. Соответственно **никто не наполняет** ConfigMap `kacho-iam-jwks` —
+> в нём остаётся пустой placeholder-PEM, а bundle-signing в коде iam вообще
+> отсутствует (JWS-подписи бандлов нет ни в одном пакете). Раздел оставлен как
+> описание намерения; прежде чем на него опираться — реализовать подпись бандлов
+> и её собственный key-lifecycle. Весь текст ниже про «rotator» относится к этому
+> нереализованному плану.
 
 The OPA bundle is (per the above plan) signed with JWS ES256; the public half
-would live in ConfigMap `kacho-iam-jwks` (umbrella-managed:
-`templates/kacho-iam-jwks-configmap.yaml`), which OPA sidecars across the fleet
-load at startup to verify each downloaded bundle.
+would live in ConfigMap `kacho-iam-jwks`, rendered by
+`templates/jwks-configmap.yaml` of this chart, which OPA sidecars across the
+fleet load at startup to verify each downloaded bundle. (Прежняя редакция называла
+шаблон длинным именем с префиксом сервиса и объявляла его umbrella-managed — ни такого
+файла, ни такого расположения в дереве нет: шаблон лежит в этом же чарте и называется
+короче. Снятое имя здесь не воспроизводится: в обратных кавычках оно читается как живая
+координата — именно на этом прежняя редакция абзаца сама и попалась.)
 
 ### Rotation cadence
 
@@ -155,5 +161,10 @@ extraSecrets:
 ## See also
 
 - `docs/specs/sub-phase-3.3-iam-authz-fga-conditions-opa-acceptance.md` — full design + GWT.
-- `docs/superpowers/specs/2026-05-19-iam-prod-ready-next-gen-design.md` §4 — DSL v2 + Rego.
 - Umbrella templates (Phase 3): `helm/umbrella/templates/{openfga-*,opa-*}*.yaml`.
+
+Здесь стояла вторая ссылка — на проектный документ iam из каталога сторонних
+артефактов под `docs/`. Каталог удалён целиком решением владельца 2026-06-11
+(коммит `28778ef4`, «сторонние артефакты superpowers-скила … восстановимо из
+git-истории»); адрес не воспроизводится, потому что процитированный он читается
+как живой. Кому нужен тот текст — он лежит в истории по этому коммиту.

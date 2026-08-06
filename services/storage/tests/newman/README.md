@@ -40,14 +40,17 @@ tests/newman/
 ## Быстрый старт
 
 ```bash
-# 1. Поднять стенд с задеплоенным kacho-storage + port-forward api-gateway → :18080
-cd ../../kacho-deploy && make dev-up && make reload-svc SVC=storage
+# Команды — ОТ КОРНЯ РЕПОЗИТОРИЯ. Скрипты набора находят свой корень сами,
+# поэтому звать их можно откуда угодно; смешивать два разных «где я» в одном
+# блоке — нельзя.
+# 1. Поднять стенд с задеплоенным storage + port-forward api-gateway → :18080
+make -C deploy dev-up && make -C deploy reload-svc SVC=storage
 # 2. Валидация + генерация коллекций из cases/*.py (обязательный workflow нового кейса)
-python3 scripts/validate-cases.py     # уникальность case-id + CASES-INDEX
-python3 scripts/gen.py                 # все ресурсы; или: python3 scripts/gen.py volume
+python3 services/storage/tests/newman/scripts/validate-cases.py   # уникальность case-id + CASES-INDEX
+python3 services/storage/tests/newman/scripts/gen.py              # все ресурсы; или: … gen.py volume
 # 3. Прогон
-./scripts/run.sh                       # все коллекции, сводка → out/summary.txt
-./scripts/run.sh --service volume      # один ресурс
+./services/storage/tests/newman/scripts/run.sh                    # все коллекции, сводка → out/summary.txt
+./services/storage/tests/newman/scripts/run.sh --service volume   # один ресурс
 ```
 
 ## Принципы (из testing-product-coach)

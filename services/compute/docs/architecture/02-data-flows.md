@@ -1,7 +1,7 @@
 # 02 — Data Flows
 
 Sequence-диаграммы compute-сценариев (то, что в коде / задано CLAUDE.md).
-Стиль и шаблон идентичны kacho-vpc (см. `../kacho-vpc/docs/architecture/02-data-flows.md`).
+Стиль и шаблон идентичны vpc (см. `../../../vpc/docs/architecture/02-data-flows.md`).
 
 ## Содержание
 
@@ -21,7 +21,7 @@ Sequence-диаграммы compute-сценариев (то, что в коде
 Все мутации (`Create/Update/Delete/Start/Stop/Restart/AttachDisk/...`)
 возвращают `*operation.Operation`; реальная работа — в worker-горутине через
 `operations.Run(ctx, opsRepo, opID, fn)`. Шаблон идентичен VPC
-(`../kacho-vpc/internal/service/route_table.go`).
+(`../../../vpc/internal/apps/kacho/api/routetable/`).
 
 ```mermaid
 sequenceDiagram
@@ -371,8 +371,9 @@ sequenceDiagram
   Note over W: defer UNLISTEN compute_outbox + conn.Close() + release semaphore slot
 ```
 
-Структурно `internal/handler/internal_watch_handler.go` идентичен
-`../kacho-vpc/internal/handler/internal_watch_handler.go`. `compute_watch_cursors`
+Структурно `internal/handler/internal_watch_handler.go` — реализация compute; парного
+обработчика у vpc нет (в его дереве ноль файлов с этим именем), поэтому прежняя ссылка
+«идентичен такому же у соседа» указывала на несуществующий образец. `compute_watch_cursors`
 (`subscriber_id PK, last_sequence_no`) — таблица для persistence-курсоров будущих
 durable-consumer'ов (сейчас не обязательна — клиент передаёт `from_sequence_no`
 сам). UI/CLI **не используют** Watch — они полят через
@@ -385,15 +386,13 @@ durable-consumer'ов (сейчас не обязательна — клиент
 
 | Поток | Код |
 |---|---|
-| Operations worker | `kacho-corelib/operations/run.go`, `worker.go` |
-| Disk create | `internal/service/disk.go::doCreate` |
-| Image create + source resolve | `internal/service/image.go::doCreate` |
-| Snapshot create | `internal/service/snapshot.go::doCreate` |
-| Instance create (без авто-NIC, KAC-266) | `internal/service/instance.go::doCreate` |
-| Attach/Detach/NAT/UpdateNIC | `internal/service/instance.go` |
-| Instance delete + auto_delete | `internal/service/instance.go::doDelete` |
-| Cross-service clients | `internal/clients/iam_client.go`, `internal/clients/vpc_client.go` |
-| Outbox emit | `internal/repo/*.go` (в той же TX, что domain-write) |
+| Operations worker | `pkg/operations/worker.go` (`Run` + `Worker`) |
+| Блочное хранение (том / образ / снимок) | **не в compute** — владелец `services/storage/`, см. карту владельцев в правиле целостности данных |
+| Instance create | `internal/apps/kacho/api/instance/instance.go` |
+| NIC-спека инстанса | `internal/apps/kacho/api/instance/instance_nic.go` |
+| Instance delete | `internal/apps/kacho/api/instance/instance.go` |
+| Cross-service clients | `internal/clients/` (`iam_client.go`, `geo_client.go`, `storage_client.go`, `vpc_nic_client.go`, `vpc_subnet_client.go`) |
+| Outbox emit | `internal/repo/` (в той же TX, что domain-write) |
 | Outbox + LISTEN/NOTIFY | `internal/handler/internal_watch_handler.go` |
-| Platform validation | `internal/service/platforms.go` |
-| Error mapping | `internal/service/maperr.go` |
+| Резолв типа машины | `internal/apps/kacho/api/instance/instance.go` (`resolveMachineType`) против каталога `internal/apps/kacho/api/machinetype/machine_type.go` |
+| Error mapping | `internal/apps/kacho/shared/serviceerr/maperr.go` |

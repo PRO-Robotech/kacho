@@ -12,7 +12,8 @@ Pre-req:
 # Single scenario
 k6 run scripts/network-create-burst.js
 
-# Все scenarios sequentially (CI-like)
+# Прогон в CI-режиме: ПЯТЬ сценариев из девяти, по возрастанию нагрузки
+# (список — в самом run-all.sh; «все» он не гоняет)
 ./run-all.sh
 
 # Specific environment
@@ -24,16 +25,35 @@ k6 run --out json=results/network-create-burst.json scripts/network-create-burst
 
 ## Сценарии
 
-| Файл | Назначение | Длительность | VU profile |
-|---|---|---|---|
-| `network-create-burst.js` | Burst Network Create | 5 min | ramp 0→50 |
-| `subnet-create-burst.js` | Burst Subnet Create | 5 min | ramp 0→30 |
-| `allocate-external-burst.js` | AllocateExternalIP capacity | 5 min | ramp 0→100 |
-| `list-heavy.js` | List под нагрузкой read | 3 min | constant 50 |
-| `mixed-read-write.js` | Production-like 60/30/10 | 10 min | constant 50 |
-| `lro-completion.js` | Latency Create→done=true | 5 min | constant 20 |
-| `breakpoint.js` | Linear ramp до crash | до failure | 0→1000 |
-| `soak-24h.js` | Stability 24h | 24h | constant 30 |
+Перечень сверяется с деревом, а не помнится, и предикат тут **два**, потому что
+сценарии лежат в двух местах: `ls scripts/*.js` — на 2026-08-06 восемь файлов,
+плюс один сценарий в корне `tests/k6/` (последняя строка таблицы), итого девять.
+Один предикат назвать было нельзя: `ls scripts/*.js` даёт восемь, и число «девять»
+рядом с ним оказалось бы верным для другого предиката, чем объявленный.
+
+| Файл | Назначение | В `run-all.sh` |
+|---|---|---|
+| `list-heavy.js` | List под нагрузкой read | да (1-й) |
+| `network-create-burst.js` | Burst Network Create | да (2-й) |
+| `allocate-external-burst.js` | AllocateExternalIP capacity | да (3-й) |
+| `mixed-read-write.js` | Production-like смесь | да (4-й) |
+| `breakpoint.js` | Linear ramp до отказа | да (5-й) |
+| `network-create-pure.js` | Create без сопутствующего чтения | нет |
+| `network-update-burst.js` | Burst Network Update | нет |
+| `allocate-external-pure.js` | Аллокация без сопутствующего чтения | нет |
+| `list_filter_perf.js` | Стоимость фильтра списка (лежит в корне `tests/k6/`, не в `scripts/`) | нет |
+
+> [!note] Три строки этой таблицы описывали сценарии, которых в дереве нет
+> Прежняя редакция называла burst-создание подсети, замер задержки до
+> `done=true` и суточный soak — ни одного из этих файлов в `scripts/` нет, и
+> ни один не выполнялся бы. Их имена здесь не воспроизводятся: путь в обратных
+> кавычках читается следующим как живая координата. Одновременно таблица
+> **молчала** о трёх существующих сценариях — расхождение множеств в обе
+> стороны, а не «немного устарело».
+
+Профили нагрузки (VU, длительность) заданы **в самих сценариях** и здесь не
+дублируются: прежняя редакция несла их отдельной колонкой, которая ни из чего не
+выводилась и разошлась бы с первой же правкой `options` в файле.
 
 ## SLO targets (local KIND)
 
@@ -51,20 +71,17 @@ tests/k6/
 ├── scripts/
 │   ├── lib/
 │   │   ├── client.js     — common HTTP + auth headers
-│   │   ├── fixtures.js   — read env, helpers для names
-│   │   ├── poll-op.js    — LRO polling
-│   │   └── slo.js        — thresholds
-│   ├── network-create-burst.js
-│   ├── subnet-create-burst.js
-│   ├── allocate-external-burst.js
-│   ├── list-heavy.js
-│   ├── mixed-read-write.js
-│   ├── lro-completion.js
-│   ├── breakpoint.js
-│   └── soak-24h.js
-├── environments/
-│   └── local.json        — BASE_URL, PROJECT_ID, ZONE_ID
+│   │   └── poll-op.js    — LRO polling
+│   └── *.js              — сценарии, перечень в таблице выше
+├── ghz/                  — gRPC-нагрузка (отдельный инструмент)
+├── list_filter_perf.js   — стоимость фильтра списка
 ├── results/              — gitignored
-├── run-all.sh            — run all in CI mode
+├── run-all.sh            — прогон ПЯТИ сценариев, не всех
 └── README.md
 ```
+
+Дерево выше — иллюстрация, а не источник: сверяй `ls -R`, не память. Прежняя
+редакция называла в `lib/` два помощника, которых здесь нет (один существует у
+соседнего сервиса — оттого и не ловился поиском по голому имени), и целый
+каталог окружений с файлом настроек. Каталога нет: адреса приезжают флагами
+`--env`, а их значения по умолчанию заданы в `run-all.sh`.

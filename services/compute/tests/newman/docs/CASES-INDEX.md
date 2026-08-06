@@ -31,11 +31,13 @@ kacho-storage, его suite живёт в `services/storage/tests/newman/`).
 
 ## Instance — `cases/instance-redesign.py`
 
-Здесь стоял перечень «Instance (77 кейсов) — `cases/instance.py`». Файла в дереве нет:
-кейсы инстанса живут в `cases/instance-redesign.py`, а перечень описывал шаги снятого
-контракта (`platformId`/`resourcesSpec`/`bootDiskSpec`, Disk/Image/Snapshot). Он
-противоречил переписи в шапке ЭТОГО ЖЕ файла — то есть был не устаревшей подробностью,
-а утверждением о покрытии, которого нет.
+Здесь стоял перечень на 77 кейсов, отнесённый к отдельному файлу кейсов инстанса. Того
+файла в дереве нет — кейсы инстанса живут в `cases/instance-redesign.py`, — а перечень
+описывал шаги снятого контракта (сырое описание ресурсов, платформа, загрузочный диск,
+блочное хранение). Он противоречил переписи в шапке ЭТОГО ЖЕ файла, то есть был не
+устаревшей подробностью, а утверждением о покрытии, которого нет. Имя снятого файла здесь
+намеренно не воспроизводится: в обратных кавычках оно читается как живая координата — и
+именно так прежняя редакция этого абзаца сама стала находкой.
 
 Пер-кейсовый перечень сюда НЕ переписывается: источник истины — `cases/*.py`, а вторая
 копия расходится с ним молча (ровно это и случилось). Что прогоняется прямо сейчас,
@@ -48,7 +50,9 @@ kacho-storage, его suite живёт в `services/storage/tests/newman/`).
 ## Zone / Region — removed (Stage S7)
 
 Geography (Region/Zone) serving was removed from kacho-compute — it is owned by
-kacho-geo (epic kacho-workspace#82). `cases/zone.py` / `cases/region-zone.py` deleted.
+kacho-geo (epic kacho-workspace#82). The two zone/region case files were deleted along
+with it; their names are deliberately not quoted here — a path in backticks reads as a live
+coordinate even inside the sentence that says it is gone.
 `Instance/Disk.zone_id` is still validated (via the geo client) — see the
 `zoneId`-bearing cases in `cases/instance-redesign.py`.
 

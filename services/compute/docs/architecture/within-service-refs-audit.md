@@ -29,7 +29,7 @@
 >
 > Источник истины **на момент аудита**:
 > - Миграции `internal/migrations/0001_initial.sql` (squashed baseline) + `0002..0005`.
-> - Service-слой `internal/service/*.go` (software-prechecks как UX-layer).
+> - Слой use-case `internal/apps/kacho/api/<resource>/*.go` (software-prechecks как UX-layer).
 > - Repo-слой `internal/repo/*.go` (маппинг ошибок в sentinel-errors).
 >
 > Парный аудит для kacho-vpc — `services/vpc/docs/architecture/within-service-refs-audit.md`

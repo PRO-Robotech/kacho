@@ -45,37 +45,37 @@
 Gateway; все project-scoped (`project_id` обязателен в Create); все поддерживают
 `Get`/`List`/`Create`/`Update`/`Delete`, а Network/Subnet/Address/RouteTable/SecurityGroup/Gateway — еще и `Move`.
 - Validated-by: `*-LIFECYCLE-CONF`, `*-CR-CRUD-OK`, `*-GET-CRUD-OK`, `*-LST-CRUD-OK`, `*-UPD-CRUD-OK`, `*-DEL-CRUD-OK`, `*-MV-CRUD-OK`
-- Проверка: `internal/service/*.go` (по сервису на ресурс), `cmd/vpc/main.go` (регистрация), `kacho-proto/.../<res>_service.proto`.
+- Проверка: `internal/apps/kacho/api/*/` (по сервису на ресурс), `cmd/vpc/main.go` (регистрация), `proto/kacho/cloud/vpc/v1/<res>_service.proto`.
 
 ### REQ-RES-02 — все мутации возвращают Operation (async) [P0]
 `Create`/`Update`/`Delete`/`Move`/`AddCidrBlocks`/`RemoveCidrBlocks`/`Relocate`/`UpdateRules`/`UpdateRule`
 ДОЛЖНЫ возвращать `operation.Operation`; реальная работа — в worker-горутине; клиент поллит
 `OperationService.Get(id)` до `done=true`. Возвращать сам ресурс синхронно из мутации — ЗАПРЕЩЕНО.
 - Validated-by: `OP-GET-CRUD-OK`, `*-LOP-CRUD-OK` (ListOperations содержит create-op), все `*-CR-*`/`*-UPD-*`/`*-DEL-*` (poll-паттерн)
-- Проверка: сигнатуры RPC в `.proto` (`returns (operation.Operation)`); `internal/service/*.go` — `operations.New` + `operations.Run` шаблон; правило «мутации возвращают Operation».
+- Проверка: сигнатуры RPC в `.proto` (`returns (operation.Operation)`); `internal/apps/kacho/api/*/` — `operations.New` + `operations.Run` шаблон; правило «мутации возвращают Operation».
 
 ### REQ-RES-03 — Delete-операция: response = Empty, metadata = DeleteXxxMetadata [P1]
 В завершенной Delete-`Operation`: `response` = `google.protobuf.Empty`, `metadata` = `DeleteXxxMetadata{<res>_id}`.
 - Validated-by: `*-DEL-CRUD-OK` (poll → response shape)
-- Проверка: worker всех `Delete` в `internal/service/*.go` (`return anypb.New(&emptypb.Empty{})`); proto-options `response`/`metadata` в `<res>_service.proto`.
+- Проверка: worker всех `Delete` в `internal/apps/kacho/api/*/` (`return anypb.New(&emptypb.Empty{})`); proto-options `response`/`metadata` в `<res>_service.proto`.
 
 ### REQ-RES-04 — Create retry-safe (идемпотентность по input) [P1]
 Повторный `Create` с тем же input (где это детектируемо) ДОЛЖЕН давать консистентный результат
 (не дубль-ресурс при одинаковом `name` — см. REQ-NAME-04).
 - Validated-by: `*-CR-IDM-RETRY`
-- Проверка: `internal/service/*.go` doCreate — UNIQUE-violation → `AlreadyExists` (не сырой 500); idempotency на уровне Operation.
+- Проверка: `internal/apps/kacho/api/*/` doCreate — UNIQUE-violation → `AlreadyExists` (не сырой 500); idempotency на уровне Operation.
 
 ### REQ-RES-05 — hard-delete, без soft-delete/tombstone [P2]
 `Delete` физически удаляет строку (`DELETE FROM`); в схеме нет `deletion_timestamp`/`finalizers`,
 flat-таблицы без K8s-envelope.
 - Validated-by: косвенно `*-DEL-CRUD-OK` + `*-GET-NEG-NF` после Delete
-- Проверка: `internal/migrations/0001_initial.sql` (нет envelope-колонок); `internal/repo/*.go` (`DELETE FROM`).
+- Проверка: `internal/migrations/0001_initial.sql` (нет envelope-колонок); `internal/repo/kacho/pg/*.go` (`DELETE FROM`).
 
-### REQ-RES-06 — Move в текущий project → InvalidArgument [P2]
-`Move` ресурса в его же `project_id` → sync `InvalidArgument "Illegal argument Destination project
-is the same as the source"` (контракт Kachō). Ресурс не меняется.
-- Validated-by: `*-MV-IDM-SAME-PROJECT`
-- Проверка: `internal/service/*.go` Move → `checkMoveDestination` в `internal/service/validate.go`; порядок sync-проверок: формат id → id required → destination required → `repo.Get` (NotFound) → same-project/dest-exists.
+### REQ-RES-06 — Move в текущий project → InvalidArgument [P2] — СНЯТО
+**Снято вместе с RPC `Move`** (см. contract-removal в шапке). Проверять нечего: ни один
+ресурс vpc метода перемещения между проектами не выставляет, и ни один кейс набора его
+не зовёт. Прежний текст описывал порядок sync-проверок и называл функцию-помощник —
+ни функции, ни вызывающего в дереве нет, поэтому имена здесь не воспроизводятся.
 
 ### REQ-RES-07 — SecurityGroup: `network_id` ОБЯЗАТЕЛЕН + НЕИЗМЕНЯЕМ [P1]
 > ** реверт ``.** Раньше `network_id` был опционален (SG без сети допустима) —
@@ -89,10 +89,10 @@ silent-ignore (не меняется). Нет RPC attach/detach/reassign. `List`
 см. REQ-SG-RULE-SAME-NETWORK; Move-guard — REQ-SG-MOVE-NETWORK-BOUND.
 - Validated-by: `SG-NET-01-NEG-CREATE-NO-NETWORK`, `SG-NET-02-CREATE-OK`, `SG-NET-03-NEG-NETWORK-NOTFOUND`,
  `SG-NET-04-NEG-UPDATE-MASK-NETWORK`, `SG-CR-WITH-NETWORK-OK`, `SG-LIST-FILTER-NETWORK-OK`
-- Проверка: `kacho-proto/.../security_group_service.proto` (`CreateSecurityGroupRequest.network_id`
+- Проверка: `proto/kacho/cloud/vpc/v1/security_group_service.proto` (`CreateSecurityGroupRequest.network_id`
  `(required)=true`; `network_id` НЕ в `UpdateSecurityGroupRequest`); `internal/apps/kacho/api/securitygroup/create.go`
  (`network_id required` sync + `networkReader.Get`); `validateSGUpdate`/`applySGMask` (network_id не в known-mask,
- silent-ignore); `internal/repo/security_group_repo.go` List (фильтр `network_id`).
+ silent-ignore); `internal/repo/kacho/pg/security_group.go` List (фильтр `network_id`).
 
 ### REQ-RES-08 — Network: нет data-plane-идентификатора на публичной поверхности [P0]
 У `Network` нет числового data-plane-идентификатора. Соответствующее internal-поле прежней
@@ -101,7 +101,7 @@ silent-ignore (не меняется). Нет RPC attach/detach/reassign. `List`
 (`NetworkService.Get`/`List`) НИКОГДА не должна нести data-plane-инфо (защита от случайного
 reintroduce инфра-чувствительного поля — см. правило про инфра-чувствительные данные).
 - Validated-by: `NET-GET-NO-VPNID-OK` (guard: публичный GET не содержит data-plane-поля)
-- Проверка: `kacho-proto/.../network_service.proto` (public `Network` без data-plane-id); `internal/handler/network_handler.go` (публичный mapper не выставляет инфра-полей).
+- Проверка: `proto/kacho/cloud/vpc/v1/network_service.proto` (public `Network` без data-plane-id); `internal/apps/kacho/api/network/handler.go` (публичный mapper не выставляет инфра-полей).
 
 ---
 
@@ -112,7 +112,7 @@ reintroduce инфра-чувствительного поля — см. пра�
 (все ресурсы); `network_id` (Subnet/RouteTable/SecurityGroup); `zone_id` (Subnet);
 `v4_cidr_blocks` (Subnet, ≥1); gateway-type oneof (Gateway).
 - Validated-by: `*-CR-VAL-REQ-PROJECTID`/`-NETWORKID`/`-ZONEID`/`-V4CIDRBLOCKS`, `*-CR-VAL-PROJECT-REQUIRED`, `*-CR-VAL-NETWORK-REQUIRED`, `*-CR-VAL-ZONE-REQUIRED`, `*-CR-VAL-CIDR-REQUIRED`, `*-CR-VAL-MISSING-TYPE`, `*-CR-VAL-SERVICE-MISSING`
-- Проверка: начало `Create` в `internal/service/*.go` — `corevalidate.Required`/явные проверки ДО `operations.New`.
+- Проверка: начало `Create` в `internal/apps/kacho/api/*/` — `corevalidate.Required`/явные проверки ДО `operations.New`.
 
 ### REQ-VAL-02 — malformed body / типы полей [P1]
 Malformed JSON → `400`. Неверный тип поля (`description`=число, `labels`=строка, `name`=null) → `400`.
@@ -127,13 +127,13 @@ Malformed JSON → `400`. Неверный тип поля (`description`=чис
 `description` len ≤ 256 (257 → `InvalidArgument`); ≤ 64 пар `labels` (65 → `400`); ключ `labels`
 по regex (lowercase, без спец-символов, не UPPERCASE) — нарушение → `400`.
 - Validated-by: `*-CR-BVA-DESC-MAX-256`/`-OVER-257`, `*-CR-BVA-LABELS-MAX-64`/`-OVER-65`, `*-CR-VAL-LABELS-INVALID-KEY-CHAR`, `*-CR-VAL-LABELS-UPPERCASE-KEY`
-- Проверка: `corevalidate.Description`/`corevalidate.Labels` в `internal/service/validate.go` + вызовы.
+- Проверка: самовалидирующиеся domain-типы `RcDescription`/`LabelKey`/`LabelVal` в `internal/domain/types.go` (метод `Validate`) + их вызовы из `Validate()` каждого ресурса. Отдельного файла-валидатора в сервисе нет — проверка живёт в самом типе поля.
 
 ### REQ-VAL-04 — DhcpOptions / static_routes валидация [P1]
 Subnet `dhcp_options`: `domain_name` по RFC 1123 (invalid → `400`); `domain_name_servers[]`/`ntp_servers[]` — валидные IP (invalid → `400`).
 RouteTable `static_routes[]`: непустой `destination_prefix` (валидный CIDR) и `next_hop_address` (валидный IP) — иначе `400`.
 - Validated-by: `*-CR-VAL-DHCP-DOMAIN-INVALID`/`-OK`, `*-CR-VAL-DHCP-NS-INVALID-IP`/`-OK`, `*-CR-VAL-DHCP-NTP-INVALID-IP`/`-OK`, `*-CR-VAL-ROUTE-EMPTY-HOP`/`-EMPTY-PREFIX`/`-INVALID-HOP`/`-INVALID-PREFIX`/`-OK`
-- Проверка: `internal/service/subnet.go` (DhcpOptions), `internal/service/route_table.go` (static_routes) — sync-валидация.
+- Проверка: `internal/apps/kacho/api/subnet/` (DhcpOptions), `internal/apps/kacho/api/routetable/` (static_routes) — sync-валидация.
 
 ---
 
@@ -143,25 +143,25 @@ RouteTable `static_routes[]`: непустой `destination_prefix` (валид�
 `name` этих ресурсов — **необязателен** и валидируется permissive-regex `^([a-zA-Z]([-_a-zA-Z0-9]{0,61}[a-zA-Z0-9])?)?$`
 (пустое / UPPERCASE / underscore — разрешены). НЕ возвращать `"name is required"`.
 - Validated-by: `*-CR-BVA-NAME-EMPTY`, `*-CR-VAL-NAME-UPPERCASE`, `*-CR-BVA-NAME-MAX-63`
-- Проверка: `corevalidate.NameVPC` + вызовы в `internal/service/{network,subnet,address,route_table,security_group}.go`.
+- Проверка: `RcNameVPC.Validate` в `internal/domain/types.go` (регекс имени) + поле `Name` этого типа у Network / Subnet / Address / RouteTable / SecurityGroup в `internal/domain/`.
 
 ### REQ-NAME-02 — Gateway: strict NameGateway [P1]
 `Gateway.name` — strict: `^[a-z]([-a-z0-9]{0,61}[a-z0-9])?$` (lowercase, без uppercase/underscore).
 - Validated-by: `GW-CR-VAL-NAME-*` (см. паттерны `*-CR-VAL-NAME-DIGIT-START`/`-HYPHEN-START`/`-SPECIAL-CHARS`/`-UPPERCASE` на app `gat`)
-- Проверка: `corevalidate.NameGateway` в `internal/service/gateway.go`.
+- Проверка: `corevalidate.NameGateway` в `internal/apps/kacho/api/gateway/`.
 
 ### REQ-NAME-03 — name boundary & format [P1]
 `name` len > 63 → `InvalidArgument`. Начинается с цифры/дефиса, содержит спец-символы → `400`
 (для strict-ресурсов; для permissive — UPPERCASE/underscore допустимы, остальное по regex).
 - Validated-by: `*-CR-BVA-NAME-OVER-64`, `*-CR-VAL-NAME-DIGIT-START`, `*-CR-VAL-NAME-HYPHEN-START`, `*-CR-VAL-NAME-SPECIAL-CHARS`
-- Проверка: regex'ы в `kacho-corelib/validate/validate.go`.
+- Проверка: regex'ы в `pkg/validate/validate.go`.
 
 ### REQ-NAME-04 — UNIQUE (project_id, name) — все 7 ресурсов [P1]
 В пределах project не может быть двух ресурсов одного типа с одинаковым непустым `name` →
 async `ALREADY_EXISTS`. Пустое `name` от уникальности освобождено (partial UNIQUE `WHERE name <> ''`,
 кроме Network — там non-partial).
 - Validated-by: `*-CR-NEG-DUP-NAME`, `*-CR-NEG-DUP-NAME-CHECK`
-- Проверка: `internal/migrations/0001_initial.sql` (`networks_project_id_name_key`) + `0002_resource_name_unique.sql`; `mapRepoErr` (`23505` → `ErrAlreadyExists`).
+- Проверка: `internal/migrations/0001_initial.sql` (`networks_project_id_name_key` и одноимённые индексы прочих ресурсов — вся name-уникальность живёт в начальной миграции); `serviceerr.MapRepoErr` (`23505` → `ErrAlreadyExists`).
 
 ---
 
@@ -170,63 +170,60 @@ async `ALREADY_EXISTS`. Пустое `name` от уникальности осв
 ### REQ-CIDR-01 — host-bits = 0 [P0]
 CIDR с host-bits ≠ 0 (`10.0.0.5/24`) → sync `InvalidArgument`. Касается Create.v4/v6_cidr_blocks и AddCidrBlocks.
 - Validated-by: `*-CR-VAL-CIDR-HOSTBITS`, `*-ACB-VAL-HOST-BITS`
-- Проверка: `validateCIDRPrefix` (`netip.Prefix.Masked == prefix`) в `internal/service/validate.go`.
+- Проверка: `validateCIDRPrefix` (`netip.Prefix.Masked == prefix`) в `internal/apps/kacho/api/subnet/helpers.go`.
 
 ### REQ-CIDR-02 — overlap внутри Network запрещен (race-free) [P0]
 Два Subnet с пересекающимися CIDR в одной Network → второй `FAILED_PRECONDITION "Subnet CIDRs can not overlap"`.
 Защита atomic — DB EXCLUDE constraint (`23P01` → `FailedPrecondition`).
 - Validated-by: `*-CR-NEG-CIDR-OVERLAP`, `*-ACB-NEG-OVERLAP`, `*-ACB-NEG-OVERLAP-SELF`
-- Проверка: `internal/migrations/0001_initial.sql` — `subnets_no_overlap_v4`/`v6` EXCLUDE GIST; `mapRepoErr` `23P01`.
+- Проверка: `internal/migrations/0001_initial.sql` — `subnets_no_overlap_v4`/`v6` EXCLUDE GIST; `serviceerr.MapRepoErr` `23P01`.
 
 ### REQ-CIDR-03 — CIDR внутри одного запроса не пересекаются [P1]
 В Create или AddCidrBlocks несколько CIDR в одном запросе не должны пересекаться между собой → `InvalidArgument`.
 - Validated-by: `*-ACB-STATE-DISJOINT-CIDRS`
-- Проверка: `checkCIDRDisjoint` в `internal/service/subnet.go`.
+- Проверка: `checkCIDRDisjoint` в `internal/apps/kacho/api/subnet/`.
 
 ### REQ-CIDR-04 — AddCidrBlocks [P1]
 `AddCidrBlocks` добавляет 1+ CIDR; новые блоки видны в `Get`; пересечение с existing → `InvalidArgument`/`FailedPrecondition`.
 - Validated-by: `*-ACB-CRUD-OK`, `*-ACB-CRUD-ADD-ONE`, `*-ACB-CRUD-ADD-MULTIPLE`
-- Проверка: `internal/service/subnet.go` AddCidrBlocks.
+- Проверка: `internal/apps/kacho/api/subnet/` AddCidrBlocks.
 
 ### REQ-CIDR-05 — RemoveCidrBlocks: нельзя удалить primary/last [P0]
 `RemoveCidrBlocks` для primary (первого) v4-CIDR → отказ (`FailedPrecondition "cannot remove last CIDR block from subnet"`).
 CIDR не из списка → `InvalidArgument`/`FailedPrecondition` (документировать). Add+Remove roundtrip — state invariant.
 - Validated-by: `*-RCB-NEG-CANNOT-REMOVE-PRIMARY`, `*-RCB-NEG-NF`, `*-RCB-NEG-NOT-PRESENT`, `*-RCB-CRUD-OK`, `*-RCB-CRUD-REMOVE-ONE`, `*-RCB-CONF-STATE`, `*-ACB-RCB-ROUNDTRIP`
-- Проверка: `internal/service/subnet.go` RemoveCidrBlocks.
+- Проверка: `internal/apps/kacho/api/subnet/` RemoveCidrBlocks.
 
-### REQ-CIDR-06 — Relocate Subnet: всегда запрещен [P1]
-`Relocate` Subnet → **всегда** sync `FailedPrecondition "Invalid subnet state"` (контракт Kachō,
-контракт Kachō) — даже для свежей подсети без адресов и валидной целевой зоны;
-Operation не создается. Без `destinationZoneId` → sync `InvalidArgument`. Несуществующая подсеть → `NotFound`.
-- Validated-by: `*-REL-NEG-IN-USE`, `*-REL-STATE-NO-ADDRESSES-OK`, `*-REL-VAL-NO-DEST`
-- Проверка: `internal/service/subnet.go` Relocate — после format-check id, валидации `destination_zone_id`, `repo.Get` → `return status.Error(codes.FailedPrecondition, "Invalid subnet state")`.
+### REQ-CIDR-06 — Relocate Subnet: всегда запрещён [P1] — СНЯТО
+**Снято вместе с RPC `Subnet.Relocate`** (см. contract-removal в шапке). Требование
+описывало отказ метода, которого в контракте больше нет, — отказывать нечему.
 
 ### REQ-CIDR-07 — Subnet IPv4-префикс ≤ /28 [P2]
 Subnet с IPv4 CIDR-префиксом длиннее `/28` (`/29`, `/30`, `/31`, `/32`) → sync
 `InvalidArgument "Illegal argument Invalid network prefix /N"` (контракт Kachō
 ). Касается Create.v4_cidr_blocks и AddCidrBlocks. `/28` — допустимо.
 - Validated-by: `SUB-CR-BVA-CIDR-28`, `SUB-CR-BVA-CIDR-29`, `SUB-CR-BVA-CIDR-30`, `SUB-CR-BVA-CIDR-31`
-- Проверка: `validateSubnetV4CIDR` в `internal/service/validate.go` (`prefix.Addr.Is4 && prefix.Bits > 28`).
+- Проверка: `validateSubnetV4CIDR` в `internal/apps/kacho/api/subnet/helpers.go` (`prefix.Addr.Is4 && prefix.Bits > 28`).
 
 ### REQ-CIDR-08 — Subnet: IPv4 CIDR опционален (CIDR-less subnet) [P1]
 `Subnet.Create` БЕЗ `v4_cidr_blocks` → 200, создается CIDR-less (или v6-only) подсеть.
 `Address.Create` с internal-spec в подсеть без IPv4 CIDR → `FailedPrecondition`/`InvalidArgument`
 (`"subnet <id> has no IPv4 CIDR"` — некуда аллоцировать v4-IP).
 - Validated-by: `SUB-CR-NO-CIDR-OK`, `SUB-CR-NEG-ADDR-INTO-CIDRLESS`
-- Проверка: `internal/service/subnet.go` Create (`v4_cidr_blocks` не required); `internal/service/address.go` doCreate (guard «no IPv4 CIDR» перед allocate).
+- Проверка: `internal/apps/kacho/api/subnet/` Create (`v4_cidr_blocks` не required); `internal/apps/kacho/api/address/` doCreate (guard «no IPv4 CIDR» перед allocate).
 
 ### REQ-CIDR-09 — Subnet: IPv6 CIDR (dual-stack / v6-only) [P1]
 `Subnet.Create` с `v6_cidr_blocks` → 200, `v6_cidr_blocks` виден в GET; допустимы dual-stack
 (v4+v6) и v6-only подсети. v6-CIDR с host-bits → `InvalidArgument` (как v4).
 - Validated-by: `SUB-CR-V6-OK`
-- Проверка: `internal/service/subnet.go` Create (валидация `v6_cidr_blocks`, host-bits); миграция `subnets.v6_cidr_*` + EXCLUDE `subnets_no_overlap_v6`.
+- Проверка: `internal/apps/kacho/api/subnet/` Create (валидация `v6_cidr_blocks`, host-bits); миграция `subnets.v6_cidr_*` + EXCLUDE `subnets_no_overlap_v6`.
 
 ### REQ-CIDR-10 — Subnet: v6-CIDR изменяется через AddCidrBlocks/RemoveCidrBlocks [P1]
 `Subnet.AddCidrBlocks` с IPv6-блоком → блок добавлен в `v6_cidr_blocks` (Subnet становится dual-stack);
 `RemoveCidrBlocks` с ним → блок убран. v6-блок с host-bits в AddCidrBlocks → `InvalidArgument`.
 (Прямое изменение `v6_cidr_blocks` через `Update.mask` — soft-immutable no-op, см. REQ-UPD-05.)
 - Validated-by: `SUB-CIDR-ADD-V6-OK`, `SUB-CIDR-ADD-V6-NEG-HOSTBITS`, `SUB-CIDR-REMOVE-V6-OK`
-- Проверка: `internal/service/subnet.go` AddCidrBlocks/RemoveCidrBlocks (family-aware: v4→`v4_cidr_blocks`, v6→`v6_cidr_blocks`); `validateCIDRPrefix` (host-bits для обеих семей).
+- Проверка: `internal/apps/kacho/api/subnet/` AddCidrBlocks/RemoveCidrBlocks (family-aware: v4→`v4_cidr_blocks`, v6→`v6_cidr_blocks`); `validateCIDRPrefix` (host-bits для обеих семей).
 
 ---
 
@@ -236,25 +233,25 @@ Subnet с IPv4 CIDR-префиксом длиннее `/28` (`/29`, `/30`, `/31`
 `Address.Create` ДОЛЖЕН требовать ровно один из `external_ipv4_address_spec` / `internal_ipv4_address_spec`.
 Оба → `InvalidArgument`; ни одного → `InvalidArgument`. Internal-spec с `subnet_id` + external-spec одновременно → `400 oneof`.
 - Validated-by: `*-CR-VAL-BOTH-SPEC`, `*-CR-VAL-SPEC-ONEOF`, `*-CR-VAL-EXT-WITH-SUBNET-FK`, `*-CR-CRUD-EXT`, `*-CR-CRUD-INT`
-- Проверка: `internal/service/address.go` — oneof-валидация sync.
+- Проверка: `internal/apps/kacho/api/address/` — oneof-валидация sync.
 
 ### REQ-IPAM-02 — external Address → IP из резолвленного pool; internal → IP в subnet [P1]
 `Create` external Address (с `zone_id`) → IP выделяется из pool по cascade-резолву (см. `docs/architecture/03-ipam.md`).
 `Create` internal Address → IP в пределах `v4_cidr_blocks` указанного Subnet; explicit IP вне CIDR → `InvalidArgument`.
 - Validated-by: `*-CR-CRUD-EXT`, `*-CR-CRUD-INT`
-- Проверка: `internal/service/address.go` doCreate (inline allocate, cascade); `internal/service/address_pool_service.go`.
+- Проверка: `internal/apps/kacho/api/address/` doCreate (inline allocate, cascade); `internal/apps/kacho/api/addresspool/`.
 
 ### REQ-IPAM-03 — аллокатор race-free [P0]
 Параллельные `AllocateExternalIP` / параллельные internal-allocate ДОЛЖНЫ выдавать уникальные IP
 (UNIQUE constraint `addresses_external_pool_ip_uniq` + retry на violation).
 - Validated-by: **gap — нет concurrency-кейса** (см. `REQUIREMENTS.md` REQ-007 / backlog); инвариант проверяется integration-тестом `ipam_cascade_integration_test.go` (частично).
-- Проверка: `internal/service/address.go` — двухфазный аллокатор + UNIQUE-retry; миграция `addresses_external_pool_ip_uniq`.
+- Проверка: `internal/apps/kacho/api/address/` — двухфазный аллокатор + UNIQUE-retry; миграция `addresses_external_pool_ip_uniq`.
 
 ### REQ-IPAM-04 — Address.GetByValue: невалидный IP → 400, отсутствующий → 404 [P1]
 `GetByValue` с не-IP значением → `InvalidArgument "Cannot parse address: <X>"` (контракт Kachō).
 Отсутствующий IP → `NOT_FOUND` (см. REQ-AUTHZ-04).
 - Validated-by: `*-GBV-VAL-INVALID-IP`, `*-GBV-NEG-NF`, `*-GBV-CRUD-OK`
-- Проверка: `internal/service/address.go` GetByValue — `netip.ParseAddr` sync, затем `repo.GetByValue`.
+- Проверка: `internal/apps/kacho/api/address/` GetByValue — `netip.ParseAddr` sync, затем `repo.GetByValue`.
 
 ### REQ-IPAM-05 — свежий Address зарезервирован; снять резерв — через Update [P2]
 `reserved` означает, что адрес удерживается **за проектом сам по себе**: тенант заказал
@@ -278,19 +275,19 @@ Subnet с IPv4 CIDR-префиксом длиннее `/28` (`/29`, `/30`, `/31`
 для каждого `/N` блока (`2^(32-N)-2` строк). `ipv6_pool_cursors` для v4-only pool
 не инициализируется.
 - Validated-by: `IPL-CR-CRUD-V4-OK`
-- Проверка: `kacho-proto/.../internal_address_pool_service.proto` (`AddressPool.v4_cidr_blocks=13`); `internal/service/address_pool_service.go::Create`.
+- Проверка: `proto/kacho/cloud/vpc/v1/internal_address_pool_service.proto` (`AddressPool.v4_cidr_blocks=13`); `internal/apps/kacho/api/addresspool/create.go`.
 
 ### REQ-IPL-CR-02 — Create v6-only AddressPool [P0]
 `Create` с `v4_cidr_blocks=[]` и `v6_cidr_blocks` непустым → 200, pool создается как
 v6-only. `ipv6_pool_cursors` инициализируется (`InitIPv6PoolCursor`, sparse counter).
 - Validated-by: `IPL-CR-CRUD-V6-OK`
-- Проверка: `internal/service/address_pool_service.go::Create`; `internal/repo/address_pool_repo.go` (`InitIPv6PoolCursor` для v6-блоков).
+- Проверка: `internal/apps/kacho/api/addresspool/create.go`; `internal/repo/kacho/pg/address_pool.go` (`InitIPv6PoolCursor` для v6-блоков).
 
 ### REQ-IPL-CR-03 — Create dual-stack AddressPool [P0]
 `Create` с оба `v4_cidr_blocks` и `v6_cidr_blocks` непустыми → 200, pool dual-stack.
 И free-list, и v6-cursor инициализируются.
 - Validated-by: `IPL-CR-CRUD-DS-OK`, `IPL-RESOLVE-DUALSTACK-OK`
-- Проверка: `internal/service/address_pool_service.go::Create` — оба пути материализации.
+- Проверка: `internal/apps/kacho/api/addresspool/create.go` — оба пути материализации.
 
 ### REQ-IPL-CR-04 — Pool с обоими CIDR-списками пустыми → InvalidArgument [P0]
 `Create` (и `Update` post-state) с `v4_cidr_blocks=[]` И `v6_cidr_blocks=[]` →
@@ -305,7 +302,7 @@ IPv6 prefix в `v4_cidr_blocks` (или v4 в `v6_cidr_blocks`) → sync `Invali
 `"v4_cidr_blocks[N]: %q is not an IPv4 prefix"` / `"v6_cidr_blocks[N]: ... is not an IPv6 prefix"`.
 Family detection: `netip.ParsePrefix` + `Addr.Is6 && !Addr.Is4In6`.
 - Validated-by: `IPL-CR-VAL-CROSS-V4-IN-V6`
-- Проверка: `internal/service/address_pool_service.go` — per-slot validate family.
+- Проверка: `internal/apps/kacho/api/addresspool/` — per-slot validate family.
 
 ### REQ-IPL-UPD-01 — Update НЕ меняет CIDR-блоки [P0]
 `Update` (`PATCH /vpc/v1/addressPools/{id}`) мутирует только `name` / `description` /
@@ -372,50 +369,56 @@ DB EXCLUDE — backstop для cross-pool/concurrent. `:removeCidrBlocks` осв
  `create.go`/`add_cidr_blocks.go` (InsertCidrBlocks + `checkPoolCIDRsDisjoint`),
  `remove_cidr_blocks.go` (DeleteCidrBlocks).
 
-### REQ-IPL-BIND-FAMILY-AGNOSTIC — Bind*/Override*/SetPoolSelector family-agnostic [P0]
-`BindAddressPoolAsNetworkDefault`, `OverridePoolForAddress`, `SetPoolSelector` (на Network/Cloud) —
-НЕ валидируют family pool'а в момент связывания. Можно забиндить v4-only pool к Network с
-v6-allocate-намерением и наоборот; binding сохраняется. Family-фильтр работает ТОЛЬКО на
-resolve-этапе (`address_pool_service.go::doResolve`, 5 шагов cascade). Это позволяет
-"пре-биндить" pool под будущее использование без runtime-знания, что нужно tenant'у.
+### REQ-IPL-BIND-FAMILY-AGNOSTIC — привязка пула family-agnostic [P0]
+Привязка пула как умолчания сети НЕ валидирует family пула в момент связывания. Можно
+забиндить v4-only пул к Network с v6-allocate-намерением и наоборот; binding сохраняется.
+Family-фильтр работает ТОЛЬКО на resolve-этапе
+(`internal/apps/kacho/api/addresspool/resolve.go`, `doResolve`, **три** шага каскада). Это
+позволяет «пре-биндить» пул под будущее использование без runtime-знания, что нужно тенанту.
 - Validated-by: `IPL-BIND-FAMILY-AGNOSTIC`
-- Проверка: `internal/service/network_service.go::BindAsNetworkDefault` + аналогичные RPC — НЕТ family-check; family-фильтр только в `doResolve`.
+- Проверка: `internal/apps/kacho/api/addresspool/bindings.go` (use-case) + `handler.go`
+ (`BindAsNetworkDefault`) — family-check отсутствует; фильтр только в `doResolve`.
+
+> [!note] Из заголовка требования выведены две привязки, которых в контракте нет
+> Прежняя редакция называла сверх умолчания сети ещё per-address override и селектор пула
+> на Network/Cloud. Обоих RPC в дереве нет (проверено поиском по `proto/` и по коду
+> сервиса — ноль вхождений), а стоявший за ними каскадный шаг снят миграцией
+> `0002_drop_override_and_cloud_pool_selector.sql`. Имена не воспроизводятся: в обратных
+> кавычках они читаются как живая часть контракта.
 
 ### REQ-RESOLVE-01 — Cascade family-skip для v6-allocate [P0]
-В cascade 5 шагов (`address_pool_address_override` → `address_pool_network_default` →
-label_selector → zone_default → global_default): pool, у которого `v6_cidr_blocks=[]`,
+В каскаде **три** шага (network_default → zone_default → global_default; перечень и порядок
+сверяются по `internal/apps/kacho/api/addresspool/resolve.go`, а не по памяти — прежняя
+редакция называла пять, включая два снятых миграцией
+`0002_drop_override_and_cloud_pool_selector.sql`): pool, у которого `v6_cidr_blocks=[]`,
 пропускается при `family=v6`. Если ни один pool с v6-блоками не найден → `ErrPoolNotResolved`
 → gRPC `FailedPrecondition` (код 9, не `Internal` 13). После фильтр работает через
 `len(pool.V6CIDRBlocks) > 0` (без runtime-парсинга CIDR).
 - Validated-by: `ADR-CR-EXT-FALLTHROUGH-V6`, `ADR-CR-EXT-V6-FAMILY-FALLTHROUGH` (наследник pre-split поведения)
-- Проверка: `internal/service/address_pool_service.go::doResolve` — `poolHasFamily` заменен на `len(V6CIDRBlocks)>0` для FamilyV6.
+- Проверка: `internal/apps/kacho/api/addresspool/resolve.go` (`doResolve`) — `poolHasFamily` заменен на `len(V6CIDRBlocks)>0` для FamilyV6.
 
 ### REQ-RESOLVE-02 — Cascade family-skip для v4-allocate [P0]
 Зеркало REQ-RESOLVE-01 для v4: pool с `v4_cidr_blocks=[]` пропускается при `family=v4`.
 - Validated-by: `ADR-CR-EXT-FALLTHROUGH-V4`
-- Проверка: `internal/service/address_pool_service.go::doResolve` — `len(V4CIDRBlocks)>0` для FamilyV4.
+- Проверка: `internal/apps/kacho/api/addresspool/resolve.go` (`doResolve`) — `len(V4CIDRBlocks)>0` для FamilyV4.
 
-### REQ-RESOLVE-04 — ExplainResolution на fall-through → matched_via="none" [P1]
-`InternalAddressPoolService.ExplainResolution` при `ErrPoolNotResolved` из cascade
-возвращает HTTP 200 / gRPC OK с `matched_via="none"` и пустым `selected_pool` (вместо
-gRPC `FailedPrecondition`, как для Allocate-методов). Это требует **handler-change** —
-`ExplainResolution` ловит `ErrPoolNotResolved` отдельно (до `mapPoolErr`). Семантика
-остальных Allocate-методов (REQ-RESOLVE-01/02) — без изменений: `FailedPrecondition`.
-- Validated-by: `IPL-EXPLAIN-NONE`
-- Проверка: `internal/handler/internal_address_pool_handler.go::ExplainResolution`.
+### REQ-RESOLVE-04 — fall-through объяснялся отдельным RPC [P1] — СНЯТО
+**Снято вместе с объясняющим RPC AddressPool** (см. contract-removal в шапке). Имя метода
+и путь его обработчика здесь не воспроизводятся: ни того, ни другого в дереве нет, а
+процитированные, они читаются как живые. Поведение прочих Allocate-методов на
+нерезолвящемся пуле — `FailedPrecondition`, см. REQ-RESOLVE-01/02.
 
-### REQ-RESOLVE-06 — Cascade Step 1 (per-address override) family-skip [P0]
-Per-address override на pool не той family, что у address'а — cascade Step 1 находит pool,
-family-фильтр пропускает, fall-through до конца. Override НЕ форсирует family-mismatch:
-семантика family-filter unified на всех 5 шагах.
-- Validated-by: `IPL-RESOLVE-OVERRIDE-FAMILY-SKIP`
-- Проверка: `internal/service/address_pool_service.go::doResolve` — Step 1 (address_pool_address_override) применяет тот же family-filter.
+### REQ-RESOLVE-06 — family-skip на шаге per-address override [P0] — СНЯТО
+**Снято вместе с самим шагом**: per-address override удалён из каскада миграцией
+`0002_drop_override_and_cloud_pool_selector.sql`. Каскад сегодня — три шага
+(network_default → zone_default → global_default), см. REQ-RESOLVE-01.
 
-### REQ-RESOLVE-07 — Cascade Step 2 (per-network default) family-skip [P0]
-Per-network binding на pool не той family — cascade Step 2 пропускает; fall-through. Симметрично
-REQ-RESOLVE-06; binding НЕ форсирует family-mismatch.
+### REQ-RESOLVE-07 — шаг per-network default: family-skip [P0]
+Привязка пула к сети на пул не той family — шаг network_default пропускает пул, каскад идёт
+дальше; привязка НЕ форсирует family-mismatch. Это **первый** шаг каскада — прежняя редакция
+называла его вторым по нумерации из пятишагового каскада, которого больше нет.
 - Validated-by: `IPL-RESOLVE-NETWORK-DEFAULT-FAMILY-SKIP`
-- Проверка: `internal/service/address_pool_service.go::doResolve` — Step 2 (address_pool_network_default) с тем же family-filter.
+- Проверка: `internal/apps/kacho/api/addresspool/resolve.go` (`doResolve`) — шаг network_default с тем же family-filter.
 
 ---
 
@@ -425,12 +428,12 @@ REQ-RESOLVE-06; binding НЕ форсирует family-mismatch.
 `Update` с пустым `update_mask` → применяются все mutable-поля из тела; immutable-поля из тела
 **silently игнорируются** (контракт Kachō).
 - Validated-by: `*-UPD-VAL-MASK-EMPTY`, `*-UPD-CRUD-DESC`/`-DESCRIPTION`/`-LABELS`/`-NAME`/`-MULTI-MASK`
-- Проверка: `internal/service/*.go` Update — ветка `len(mask)==0`.
+- Проверка: `internal/apps/kacho/api/*/` Update — ветка `len(mask)==0`.
 
 ### REQ-UPD-02 — unknown поле в mask → InvalidArgument [P1]
 `Update` с полем в `update_mask`, которого нет в known-set ресурса → `InvalidArgument`. Несколько unknown → `400`.
 - Validated-by: `*-UPD-VAL-UNKNOWN-MASK`, `*-UPD-VAL-MASK-MULTIPLE-UNKNOWN`
-- Проверка: `corevalidate.UpdateMask(known-set)` в `internal/service/*.go`.
+- Проверка: `corevalidate.UpdateMask(known-set)` в `internal/apps/kacho/api/*/`.
 
 ### REQ-UPD-03 — hard-immutable поле в mask → InvalidArgument (точный текст) [P1]
 `Update` с hard-immutable-полем в `update_mask` → `InvalidArgument "<field> is immutable after <Resource>.Create"`.
@@ -440,19 +443,19 @@ Hard-immutable по ресурсам: **все** — `project_id`; **Subnet** �
 Subnet `v4_cidr_blocks`/`v6_cidr_blocks` — **soft-immutable**: в mask → НЕ ошибка (контракт Kachō
 `200`); у нас принимается, но `repo.Update` CIDR не перезаписывает → no-op.
 - Validated-by: `*-UPD-STATE-IMMUTABLE-PROJECT`/`-PROJECT-ID`, `SUB-UPD-STATE-IMMUTABLE-CIDR` (→ `200`), `*-UPD-STATE-IMMUTABLE-NETWORK-ID`/`-ZONE-ID`, `*-UPD-STATE-IMMUTABLE-EXTERNAL-IPV4-ADDRESS-SPEC`/`-INTERNAL-IPV4-ADDRESS-SPEC`, `*-UPD-STATE-IMMUTABLE-SUBNET-ID`/`-SERVICE-TYPE`/`-ADDRESS-ID`
-- Проверка: начало `Update` в `internal/service/*.go` — `switch field { case <hard-immutable>: return invalidArg(...) }`; список в `docs/architecture/06-conventions.md`; для Subnet НЕ должно быть `v4_cidr_blocks`/`v6_cidr_blocks` в reject-switch.
+- Проверка: начало `Update` в `internal/apps/kacho/api/*/` — `switch field { case <hard-immutable>: return invalidArg(...) }`; список в `docs/architecture/06-conventions.md`; для Subnet НЕ должно быть `v4_cidr_blocks`/`v6_cidr_blocks` в reject-switch.
 
 ### REQ-UPD-04 — mask=<single mutable> → меняется только это поле [P2]
 `Update` с `update_mask=name` (или одно mutable-поле) → меняется только оно; description/labels не трогаются.
 - Validated-by: `*-UPD-VAL-MASK-NAME-ONLY`, `*-UPD-CRUD-MULTI-MASK`
-- Проверка: `internal/service/*.go` Update — применение по mask.
+- Проверка: `internal/apps/kacho/api/*/` Update — применение по mask.
 
 ### REQ-UPD-05 — Subnet.Update с `v6_cidr_blocks` в mask → 200, no-op (soft-immutable) [P2]
 `Subnet.Update` с `update_mask` содержащим `v6_cidr_blocks` (+ значение в body) → 200, операция
 завершается без error; `repo.Update` v6-CIDR-колонки не перезаписывает (контракт Kachō принимает в mask
 и меняет — у нас no-op). Реальное изменение v6-CIDR — через `:add-cidr-blocks`/`:remove-cidr-blocks` (REQ-CIDR-10).
 - Validated-by: `SUB-UPD-V6-NOOP`
-- Проверка: `internal/service/subnet.go` Update — `v6_cidr_blocks` НЕ в hard-immutable reject-switch; `internal/repo/subnet_repo.go` Update не трогает v6-колонки; `kacho-proto/.../subnet_service.proto` `UpdateSubnetRequest.v6_cidr_blocks`.
+- Проверка: `internal/apps/kacho/api/subnet/` Update — `v6_cidr_blocks` НЕ в hard-immutable reject-switch; `internal/repo/kacho/pg/subnet.go` Update не трогает v6-колонки; `proto/kacho/cloud/vpc/v1/subnet_service.proto` `UpdateSubnetRequest.v6_cidr_blocks`.
 
 ---
 
@@ -472,31 +475,31 @@ Boundary 1000 → ok; 1001 → `400`.
 ### REQ-LIST-03 — page_size contract: ответ не превышает page_size [P2]
 `List` с `page_size=N` → в ответе ≤ N элементов; есть еще → непустой `next_page_token`.
 - Validated-by: `*-LST-CONTRACT-NEVER-EXCEEDS-PAGESIZE`, `*-LST-BVA-PAGESIZE-1`
-- Проверка: `internal/repo/*.go` `List` — `LIMIT page_size+1` (cursor-pagination).
+- Проверка: `internal/repo/kacho/pg/*.go` `List` — `LIMIT page_size+1` (cursor-pagination).
 
 ### REQ-LIST-04 — page_token roundtrip; garbage token → InvalidArgument [P1]
 `next_page_token` из ответа подается в следующий `List` → продолжение без пропусков/дублей.
 Невалидный (не-decodable base64 / garbage) `page_token` → `InvalidArgument`; НЕ silent-fallback на page 1.
 - Validated-by: `*-LST-PAGE-ROUNDTRIP`, `*-LST-ROUNDTRIP`, `*-LST-PAGE-TOKEN-GARBAGE`
-- Проверка: `internal/repo/*.go` decode page_token (base64 `{created_at,id}`); ошибка декода → `ErrInvalidArg`.
+- Проверка: `internal/repo/kacho/pg/*.go` decode page_token (base64 `{created_at,id}`); ошибка декода → `ErrInvalidArg`.
 
 ### REQ-LIST-05 — filter: только whitelisted поля [P1]
 `filter` (опционален): поддерживается `name="<value>"` (текущая фаза). Filter на не-whitelisted поле →
 `InvalidArgument`. Garbage filter syntax → `InvalidArgument`. Пустой filter → ok (опционален). SQLi в filter → НЕ 500.
 - Validated-by: `*-LST-FILTER-NAME-OK`/`-MATCH`/`-EMPTY`, `*-LST-FILTER-GARBAGE`, `*-LST-FILTER-UNKNOWN-FIELD`, `*-LST-SEC-FILTER-SQLI`, `*-LST-FILTER-CASE-SENSITIVITY`, `*-LST-FILTER-SPECIAL-CHARS`
-- Проверка: `kacho-corelib/filter.Parse(whitelist)` + вызовы; параметризация в `internal/repo/*.go` (никакой строковой конкатенации в SQL).
+- Проверка: `pkg/filter`.`Parse(whitelist)` + вызовы; параметризация в `internal/repo/kacho/pg/*.go` (никакой строковой конкатенации в SQL).
 
 ### REQ-LIST-06 — child-list RPC: parent NotFound → 404 [P1]
 `Network.ListSubnets`/`ListSecurityGroups`/`ListRouteTables`, `Subnet.ListUsedAddresses`, `Address.ListBySubnet`,
 `<Resource>.ListOperations` для несуществующего parent → `NOT_FOUND` (для ListBySubnet/ListUsedAddresses/ListOperations
 допускается `404` ИЛИ пустой `200` — документировать).
 - Validated-by: `*-LSUB-NEG-PARENT-NF`, `*-LSG-NEG-PARENT-NF`, `*-LRT-NEG-PARENT-NF`, `*-LUA-NEG-PARENT-NF`, `*-LBS-NEG-PARENT-NF`, `*-LOP-NEG-PARENT-NF`
-- Проверка: `internal/service/*.go` child-list — parent-existence check.
+- Проверка: `internal/apps/kacho/api/*/` child-list — parent-existence check.
 
 ### REQ-LIST-07 — ListSecurityGroups содержит default SG (при inline-режиме) [P1]
 При `KACHO_VPC_DEFAULT_SG_INLINE=true` (default) после `Network.Create` → `ListSecurityGroups` возвращает auto-созданный default SG `default-sg-<8>`.
 - Validated-by: `*-LSG-CRUD-DEFAULT-SG`
-- Проверка: `internal/service/network.go` doCreate (inline default-SG) + `SetSGRepo` в `cmd/vpc/main.go`.
+- Проверка: `internal/apps/kacho/api/network/` doCreate (inline default-SG) + `SetSGRepo` в `cmd/vpc/main.go`.
 
 ---
 
@@ -505,12 +508,12 @@ Boundary 1000 → ok; 1001 → `400`.
 ### REQ-DEL-01 — Delete несуществующего → sync 404 (точный текст) [P1]
 `Delete` несуществующего ресурса → sync `NOT_FOUND "<Resource> <id> not found"` (не Operation).
 - Validated-by: `*-DEL-AUTHZ-NF-SYNC`, `*-DEL-CONF-NF-TEXT`, `*-DEL-CONF-FULLTEXT`, `*-DEL-NEG-NF-INVALID-PREFIX`
-- Проверка: `internal/service/*.go` Delete — `corevalidate.ResourceID(...)` (первым стейтментом) + `repo.Get` ДО Operation. (id-syntax → `InvalidArgument`: см. REQ-CONF-04.)
+- Проверка: `internal/apps/kacho/api/*/` Delete — `corevalidate.ResourceID(...)` (первым стейтментом) + `repo.Get` ДО Operation. (id-syntax → `InvalidArgument`: см. REQ-CONF-04.)
 
 ### REQ-DEL-02 — Network: нельзя удалить с детьми (FK RESTRICT) [P0]
 `Delete` Network, у которой есть Subnet / RouteTable / не-default SecurityGroup → `FailedPrecondition "network is not empty"` (FK RESTRICT).
 - Validated-by: `*-DEL-NEG-HAS-SUBNETS`, `*-DEL-NEG-HAS-ROUTE-TABLE`, `*-DEL-NEG-HAS-NONDEFAULT-SG`
-- Проверка: миграция — FK `ON DELETE RESTRICT` от children к networks; `mapRepoErr` `23503` → `ErrFailedPrecondition`.
+- Проверка: миграция — FK `ON DELETE RESTRICT` от children к networks; `serviceerr.MapRepoErr` `23503` → `ErrFailedPrecondition`.
 
 ### REQ-DEL-03 — Subnet: нельзя удалить с internal Address (FK RESTRICT) [P0]
 `Delete` Subnet с привязанным internal Address → `FailedPrecondition`.
@@ -521,12 +524,12 @@ Boundary 1000 → ok; 1001 → `400`.
 `Delete` Network, у которой единственный child — auto-default-SG → worker сначала удаляет default-SG, потом Network → успех.
 Прямой `Delete` default-SG в обход → отказ.
 - Validated-by: `*-DEL-CRUD-ONLY-DEFAULT-SG`, `*-DEL-STATE-DEFAULT-SG`
-- Проверка: `internal/service/network.go` doDelete; `internal/service/security_group.go` — запрет удаления default напрямую.
+- Проверка: `internal/apps/kacho/api/network/` doDelete; `internal/apps/kacho/api/securitygroup/` — запрет удаления default напрямую.
 
 ### REQ-DEL-05 — deletion_protection: sync-check перед Delete [P1]
 `Delete` ресурса с `deletion_protection=true` → sync `FailedPrecondition "... deletion_protection enabled; clear it via Update before Delete"`.
 - Validated-by: **gap — нет явного кейса в текущем индексе** (документировано в gotchas; добавить `*-DEL-NEG-DELETION-PROTECTION`)
-- Проверка: `internal/service/*.go` Delete — sync-проверка `deletion_protection` ДО Operation.
+- Проверка: `internal/apps/kacho/api/*/` Delete — sync-проверка `deletion_protection` ДО Operation.
 
 ### REQ-DEL-06 — Subnet: нельзя удалить с internal **v6** Address [P0]
 `Delete` Subnet, в которой есть internal Address (v4 ИЛИ v6) → `FailedPrecondition`. FK
@@ -534,27 +537,27 @@ Boundary 1000 → ok; 1001 → `400`.
 выводимую из `internal_ipv4->>'subnet_id'` ИЛИ `internal_ipv6->>'subnet_id'` (миграция 0013);
 sync-precheck `AddressesBySubnet` тоже покрывает обе семьи.
 - Validated-by: `SUB-DEL-NEG-HAS-V6-ADDRESS` (+ `*-DEL-NEG-HAS-ADDRESSES` для v4)
-- Проверка: `internal/migrations/0013_address_internal_subnet_id_v6.sql`; `internal/service/subnet.go` Delete (`AddressesBySubnet` precheck); `mapRepoErr` `23503` → `ErrFailedPrecondition`.
+- Проверка: `internal/migrations/0001_initial.sql` (FK `addresses` → `subnets` `ON DELETE RESTRICT` на generated-колонке); `internal/apps/kacho/api/subnet/` Delete (`AddressesBySubnet` precheck); `serviceerr.MapRepoErr` `23503` → `ErrFailedPrecondition`.
 
 ### REQ-DEL-07 — Subnet: нельзя удалить с NetworkInterface [P0]
 `Delete` Subnet, к которой привязан хоть один `NetworkInterface` → sync `FailedPrecondition`
 со списком NIC-id (сначала удалите NIC'и). FK `network_interfaces.subnet_id` ON DELETE RESTRICT
 (миграция 0012 — откат CASCADE из). Порядок удаления — снизу вверх: NIC → Address → Subnet → Network.
 - Validated-by: `SUB-DEL-NEG-HAS-NIC`
-- Проверка: `internal/migrations/0012_nic_subnet_restrict.sql`; `internal/service/subnet.go` Delete (sync-precheck NIC); FK RESTRICT в worker'е как backstop.
+- Проверка: `internal/migrations/0001_initial.sql` (`network_interfaces.subnet_id … REFERENCES subnets(id) ON DELETE RESTRICT`); `internal/apps/kacho/api/subnet/` Delete (sync-precheck NIC); FK RESTRICT в worker'е как backstop.
 
 ### REQ-DEL-08 — Network: транзитивно нельзя удалить (Subnet с NIC) [P0]
 `Delete` Network, у которой Subnet содержит NIC → `FailedPrecondition "network is not empty"`
 (NIC блокирует Subnet, Subnet блокирует Network). Удаление возможно только после зачистки снизу вверх.
 - Validated-by: `NET-DEL-NEG-HAS-SUBNET-WITH-NIC` (+ `*-DEL-NEG-HAS-SUBNETS` базовый)
-- Проверка: FK-цепочка `network_interfaces→subnets→networks` (все RESTRICT); `internal/service/network.go` doDelete.
+- Проверка: FK-цепочка `network_interfaces→subnets→networks` (все RESTRICT); `internal/apps/kacho/api/network/` doDelete.
 
 ### REQ-DEL-09 — Address: нельзя удалить, если референсится NIC [P0]
 `Delete` Address, который указан в `v4_address_ids`/`v6_address_ids` хоть одного `NetworkInterface`
 → `FailedPrecondition` (сначала detach Address у NIC). Один Address — максимум на одном NIC
 (enforced сервис-слоем через `addresses.used` + referrer-tracking).
 - Validated-by: `ADDR-DEL-NEG-USED-BY-NIC`
-- Проверка: `internal/service/address.go` Delete — проверка referrer'ов (NIC) ДО Operation; `internal/service/network_interface.go` (referrer-tracking при Create/Attach).
+- Проверка: `internal/apps/kacho/api/address/` Delete — проверка referrer'ов (NIC) ДО Operation; `internal/apps/kacho/api/networkinterface/` (referrer-tracking при Create/Attach).
 
 ---
 
@@ -563,7 +566,7 @@ sync-precheck `AddressesBySubnet` тоже покрывает обе семьи.
 ### REQ-OPS-01 — OperationService.Get свежесозданной op → done=true с response [P1]
 После завершения worker'а `OperationService.Get(id)` → `done=true`, `response` = ресурс (для Create/Update) или Empty (Delete), либо `error` (`google.rpc.Status`).
 - Validated-by: `OP-GET-CRUD-OK`
-- Проверка: `internal/handler/operation_handler.go`; `kacho-corelib/operations` worker.
+- Проверка: `internal/handler/operation_handler.go`; `pkg/operations` worker.
 
 ### REQ-OPS-02 — OperationService.Get bad id [P1]
 Несуществующий op-id с правильным prefix → `NOT_FOUND "Operation <id> not found"`. Malformed / unknown-prefix id →
@@ -575,14 +578,14 @@ sync-precheck `AddressesBySubnet` тоже покрывает обе семьи.
 ### REQ-OPS-03 — ListOperations<Resource>: содержит create-op [P1]
 `<Resource>.ListOperations(<id>)` после Create → список содержит create-Operation. Несуществующий parent → `404` или пустой.
 - Validated-by: `*-LOP-CRUD-OK`, `*-LOP-NEG-PARENT-NF`
-- Проверка: `internal/service/*.go` ListOperations (filter по resource_id в `operations`).
+- Проверка: `internal/apps/kacho/api/*/` ListOperations (filter по resource_id в `operations`).
 
 ### REQ-OPS-04 — история операций переживает удаление ресурса [P1]
 После `Delete` ресурса его операции НЕ удаляются: `<Resource>.ListOperations(<deleted-id>)` все еще
 возвращает историю (create + delete), `OperationService.Get(<opId>)` по операции удаленного ресурса → 200.
 Таблица `operations` не имеет FK-cascade от ресурсных таблиц.
 - Validated-by: `NET-LISTOPS-AFTER-DELETE-OK`, `OP-LIST-AFTER-DELETE-OK`
-- Проверка: `internal/migrations/0001_initial.sql` (`operations` без FK на ресурсы); `internal/repo/*.go` Delete (`DELETE FROM <table>` — не трогает `operations`); `kacho-corelib/operations` Repo.
+- Проверка: `internal/migrations/0001_initial.sql` (`operations` без FK на ресурсы); `internal/repo/kacho/pg/*.go` Delete (`DELETE FROM <table>` — не трогает `operations`); `pkg/operations` Repo.
 
 ---
 
@@ -592,22 +595,22 @@ sync-precheck `AddressesBySubnet` тоже покрывает обе семьи.
 RPC, оперирующие конкретным ресурсом, ДОЛЖНЫ проверять, что `resource.project_id` принадлежит caller'у;
 чужой ресурс → `PERMISSION_DENIED` (в `dev`-mode AuthN permissive — anonymous=admin; в `production`/`production-strict` fail-closed).
 - Validated-by: `*-AUTHZ-NF-SYNC` (Get/Update/Delete/Move/UpdateRule/UpdateRules), `*-AUTHZ-EMPTY-PROJECT-HEADER`; **gap** — полноценная cross-tenant matrix с двумя header-set'ами (см. `REQUIREMENTS.md` REQ-006)
-- Проверка: `internal/apps/kacho/check/permission_map.go` — per-RPC FGA-Check (`v_get`/`v_update`/`v_delete` per-object) на обоих листенерах; `internal/handler/authn_interceptor.go`; `internal/config/config.go` `AuthMode`.
+- Проверка: `internal/apps/kacho/check/permission_map.go` — per-RPC FGA-Check (`v_get`/`v_update`/`v_delete` per-object) на обоих листенерах; `internal/handler/authn_interceptor.go`; `internal/apps/kacho/config/config.go` `AuthMode`.
 
 ### REQ-AUTHZ-02 — List: project isolation [P0]
 Ресурс в project A не виден в `List` по project B.
 - Validated-by: `*-LST-AUTHZ-CROSS-PROJECT-ISOLATION`, `*-LST-CRUD-OK`
-- Проверка: `internal/repo/*.go` `List` — `WHERE project_id = $1`.
+- Проверка: `internal/repo/kacho/pg/*.go` `List` — `WHERE project_id = $1`.
 
 ### REQ-AUTHZ-03 — мутация несуществующего ресурса → sync ошибка, не async [P1]
 `Update`/`Delete`/`Move`/`AddCidrBlocks`/... несуществующего → sync `NOT_FOUND`/`PERMISSION_DENIED` (per-RPC FGA-Check в интерсепторе + `repo.Get` до Operation), а не Operation, которая потом падает. Часть контракта Kachō.
 - Validated-by: `*-UPD-AUTHZ-NF-SYNC`, `*-DEL-AUTHZ-NF-SYNC`, `*-MV-AUTHZ-NF-SYNC`, `*-UR-AUTHZ-NF-SYNC`, `*-URL-AUTHZ-NF-SYNC`, `*-UPD-CONF-NF-TEXT`, `*-DEL-CONF-NF-TEXT`, `*-MV-CONF-NF-TEXT`
-- Проверка: `internal/service/*.go` — `repo.Get` ДО `operations.New` для не-Create мутаций.
+- Проверка: `internal/apps/kacho/api/*/` — `repo.Get` ДО `operations.New` для не-Create мутаций.
 
 ### REQ-AUTHZ-04 — GetByValue: no info-leak (404 для чужого и несуществующего) [P0]
 `Address.GetByValue` чужого (cross-tenant) Address И несуществующего IP дают **одинаковый** `NOT_FOUND` — нельзя по коду ответа пробить, какие IP выделены.
 - Validated-by: `*-GBV-CONF-NOLEAK-FOR-EXISTING-OTHER`, `*-GBV-NEG-NF`
-- Проверка: `internal/service/address.go` GetByValue — cross-tenant и not-found сливаются в `ErrNotFound`.
+- Проверка: `internal/apps/kacho/api/address/` GetByValue — cross-tenant и not-found сливаются в `ErrNotFound`.
 
 ---
 
@@ -617,7 +620,7 @@ RPC, оперирующие конкретным ресурсом, ДОЛЖНЫ 
 `name`/`description`/`labels`/`filter` с SQLi / XSS / cmd-injection / path-traversal / null-byte / union / long-payload →
 обработано (`InvalidArgument`/`200`), **никогда** `500`/`Internal` с утечкой стектрейса/SQLSTATE.
 - Validated-by: `*-CR-SEC-SQLI`/`-XSS`/`-CMD`/`-PATH`/`-NULLBYTE`/`-UNION`/`-LONGPAYLOAD`, `*-LST-SEC-FILTER-SQLI`
-- Проверка: параметризованные запросы (pgx) во всех `internal/repo/*.go`; `mapRepoErr` — generic `"internal database error"`, без сырого pgx-текста; то же для Internal handlers (`internalMapErr`).
+- Проверка: параметризованные запросы (pgx) во всех `internal/repo/kacho/pg/*.go`; `serviceerr.MapRepoErr` — generic `"internal database error"`, без сырого pgx-текста; то же для Internal handlers (`internalMapErr`).
 
 ### REQ-SEC-02 — HTTP-метод/Content-Type robustness [P3]
 `PUT`/`HEAD`/`DELETE` на List-endpoint → `405` или `404` (не 500). `POST` без `Content-Type` → `400`/`415`/`200` (lenient).
@@ -632,7 +635,7 @@ RPC, оперирующие конкретным ресурсом, ДОЛЖНЫ 
 `UpdateRules` (batch) и `UpdateRule` (single) добавляют/меняют правила; результат виден в `Get`.
 `UpdateRule` несуществующего `rule_id` → `NOT_FOUND`.
 - Validated-by: `*-URL-CRUD-OK`, `*-UR-CRUD-OK`, `*-UR-NEG-RULE-NF`
-- Проверка: `internal/service/security_group.go` UpdateRules/UpdateRule.
+- Проверка: `internal/apps/kacho/api/securitygroup/` UpdateRules/UpdateRule.
 
 ### REQ-SG-02 — rule-field валидация [P1]
 Правило: `direction` ∈ {INGRESS,EGRESS} (иначе `400`); `protocol_name` — известный (иначе `400`);
@@ -660,7 +663,7 @@ RPC, оперирующие конкретным ресурсом, ДОЛЖНЫ 
 ### REQ-SG-03 — optimistic concurrency для UpdateRules (xmin) [P1]
 Конкурентные `UpdateRules` на одну SG не теряют изменения — read-modify-write через Postgres `xmin::text` (lost-update protection).
 - Validated-by: **gap — нет concurrency-кейса в newman**; покрыто integration-тестом `security_group_occ_integration_test.go`
-- Проверка: `internal/repo/security_group_repo.go` — `SELECT ..., xmin::text` / `UPDATE ... AND xmin::text = $`.
+- Проверка: `internal/repo/kacho/pg/security_group.go` — `SELECT ..., xmin::text` / `UPDATE ... AND xmin::text = $`.
 
 ### REQ-SG-RULE-SAME-NETWORK — SG-target rule только в пределах той же Network [P1]
 SG-target rule (`oneof target = security_group_id`) разрешен **только** если target-SG в той же
@@ -679,16 +682,10 @@ rule-target-таблицы).
 - Проверка: `internal/apps/kacho/api/securitygroup/{create,update_rules,update_rule}.go` — same-network
  reader + `BadRequest.field_violations`.
 
-### REQ-SG-MOVE-NETWORK-BOUND — Move network-bound SG между проектами запрещен [P1]
-`SecurityGroup.Move` (cross-project) для SG, привязанной к `Network` (в новой модели — все SG), →
-sync `FAILED_PRECONDITION` «`security group cannot be moved between projects while bound to a network`».
-SG неизменна (`project_id`/`network_id`). Guard в `MoveSecurityGroupUseCase` срабатывает **до**
-`checkMoveDestination` (same-project check) и до создания Operation. Обоснование: `network_id`
-mandatory+immutable, Network привязана к проекту → cross-project Move сделал бы `network_id` dangling.
-- Validated-by: `SG-NET-19-NEG-MOVE-FORBIDDEN` (cross-project), `SG-MV-CRUD-OK` (same-project —
- guard precedence над same-project check).
-- Проверка: `internal/apps/kacho/api/securitygroup/move.go` — `if cur.NetworkID != "" { … FailedPrecondition }`
- до `checkMoveDestination`.
+### REQ-SG-MOVE-NETWORK-BOUND — Move network-bound SG запрещён [P1] — СНЯТО
+**Снято вместе с RPC `Move`** (см. contract-removal в шапке). Инвариант, ради которого
+стоял guard, держится теперь по построению: `network_id` у SecurityGroup обязателен и
+неизменяем, а способа сменить проект у ресурса нет вовсе.
 
 ### REQ-SG-DEL-NIC-REFCHECK — SG, прилинкованный к NIC, нельзя удалить [P0]
 SecurityGroup, к которой один или более `NetworkInterface` ссылается через `security_group_ids[]`,
@@ -702,8 +699,8 @@ JSONB-массива `security_group_ids` ссылочный constraint еще �
 - Blocked by: (within-service refs through DB)
 - Проверка: `internal/migrations/*.sql` — миграция, выражающая инвариант (BEFORE DELETE
  trigger на `security_groups`, проверяющий `NOT EXISTS … FROM network_interfaces WHERE
- security_group_ids ? sg.id`, либо эквивалент); `internal/repo/security_group_repo.go` —
- маппинг SQLSTATE → `mapRepoErr` (`23P01` / custom RAISE → `FailedPrecondition`).
+ security_group_ids ? sg.id`, либо эквивалент); `internal/repo/kacho/pg/security_group.go` —
+ маппинг SQLSTATE → `serviceerr.MapRepoErr` (`23P01` / custom RAISE → `FailedPrecondition`).
 
 ### REQ-NET-LSG-DEFAULT — default SG живет ровно жизненный цикл Network [P1]
 При `Network.Create` (когда `KACHO_VPC_DEFAULT_SG_INLINE=true`, default) автоматически
@@ -711,8 +708,8 @@ JSONB-массива `security_group_ids` ссылочный constraint еще �
 `Network.default_security_group_id`. При `Network.Delete` default SG **удаляется** —
 explicit `GET /securityGroups/{defSgId}` после Network.Delete обязан вернуть `NOT_FOUND`.
 - Validated-by: `*-LSG-CRUD-DEFAULT-SG` (create-side), `NET-DEL-CRUD-DEFAULT-SG-REMOVED` (delete-side).
-- Проверка: `internal/service/network.go::doCreate` (inline `CreateDefaultForNetwork`);
- `internal/service/network.go::doDelete` (predeletion default-SG cleanup).
+- Проверка: `internal/apps/kacho/api/network/create.go` + `default_sg.go` (`CreateDefaultSGUseCase`, inline в writer-TX);
+ `internal/apps/kacho/api/network/delete.go` (снятие default-SG перед удалением).
 
 ### REQ-SUB-DEFAULT-RT-BINDING — Subnet.Create привязывается к объявленному дефолту сети [P1]
 `Network.Create` **безусловно** провижнит системную default-RouteTable в своей writer-TX и
@@ -768,51 +765,44 @@ change даже если service-слой не делал прямую UPDATE-о
 `"Network <X> not found"`, `"Subnet CIDRs can not overlap"`, `"Invalid subnet state"`, `"<field> is immutable after <Resource>.Create"`,
 `"<field> is required"`, `"page_size must be in [0..1000]"`, и т.д. (полный список — `docs/architecture/06-conventions.md`, раздел 3.1).
 - Validated-by: `*-CR-CONF-PROJECT-NF-TEXT`/`-NET-NF-TEXT`/`-SUB-NF-TEXT`, `*-GET-CONF-NF-TEXT`/`-FULLTEXT`, `*-UPD-CONF-NF-TEXT`, `*-DEL-CONF-NF-TEXT`, `*-MV-CONF-NF-TEXT`, `*-UPD-STATE-IMMUTABLE-*`
-- Проверка: строки в `internal/service/*.go`; сверка с контрактом; идеально — snapshot-differential suite (`REQUIREMENTS.md` REQ-008).
+- Проверка: строки в `internal/apps/kacho/api/*/`; сверка с контрактом; идеально — snapshot-differential suite (`REQUIREMENTS.md` REQ-008).
 
 ### REQ-CONF-02 — created_at truncate до секунд [P1]
 Все `created_at` в proto-ответах — `timestamppb.New(t.Truncate(time.Second))`; микросекунды не уходят клиенту.
 - Validated-by: косвенно `*-CR-CRUD-OK`/`*-GET-CRUD-OK` (если кейс ассертит формат); явный кейс — желательно добавить
-- Проверка: `internal/protoconv/protoconv.go` — `ts(t)` хелпер во всех конвертерах; unit-тест `protoconv_test.go::TestCreatedAt_TruncatedToSeconds`.
+- Проверка: `internal/apps/kacho/shared/pbconv/pbconv.go` — хелпер усечения во всех конвертерах; unit-проба рядом с ним.
 
 ### REQ-CONF-03 — status-code mapping [P0]
 Маппинг ошибок → gRPC-коды по таблице (`06-conventions.md` / `docs/architecture/06-conventions.md`, раздел 3.3):
 NotFound→`NOT_FOUND`, AlreadyExists→`ALREADY_EXISTS`, CIDR overlap/FK/relocate-blocked/deletion_protection→`FAILED_PRECONDITION`,
 поля/mask/page_size→`INVALID_ARGUMENT`, project-check-unavailable→`UNAVAILABLE`, repo-error→`INTERNAL` (generic, без leak).
 - Validated-by: все `*-NEG-*`/`*-VAL-*` кейсы (ассертят grpc-код)
-- Проверка: `internal/service/network.go::mapRepoErr` + `internal/handler/internal_maperr.go`.
+- Проверка: `internal/apps/kacho/shared/serviceerr/` (`MapRepoErr`) + `internal/handler/internal_maperr.go`.
 
 ### REQ-CONF-04 — id-syntax sync-валидация [P1]
 Каждый id-берущий RPC первым стейтментом вызывает `corevalidate.ResourceID(resourceType, ids.PrefixXxx, id)`:
 malformed / нераспознанный resource-id (нет известного 3-char prefix `b1g/bpf/enp/e9b/epd/fd8`) → sync `InvalidArgument "invalid <res> id '<X>'"`
 (контракт Kachō); well-formed-но-несуществующий (известный prefix) → `NotFound` через `repo.Get`. Семантика family-agnostic.
 - Validated-by: `*-GET-NEG-NF`, `*-GET-NEG-NOT-FOUND`, `*-UPD-NEG-NF-INVALID-PREFIX`, `*-DEL-NEG-NF-INVALID-PREFIX`
-- Проверка: `corevalidate.ResourceID` вызывается первым стейтментом в `internal/service/*.go` для каждого id-берущего RPC; `06-conventions.md` gotcha #1.
+- Проверка: `corevalidate.ResourceID` вызывается первым стейтментом в `internal/apps/kacho/api/*/` для каждого id-берущего RPC; `06-conventions.md` gotcha #1.
 - Divergence: нет — выровнено с контракт Kachō (`` закрыт).
 
 ### REQ-CONF-05 — REST-пути стабильны и не нормализуются [P2]
-REST-пути (`google.api.http` в `kacho-proto`): kebab у custom-методов (`:add-cidr-blocks`,`:move`), snake у child-list
+REST-пути (`google.api.http` в `proto/`): kebab у custom-методов (`:add-cidr-blocks`,`:move`), snake у child-list
 (`security_groups`,`route_tables`), camel у top-level, `/operations/{id}` без `/vpc/v1/`. НЕ «причесывать» — это осознанный выбор контракта Kachō.
 - Validated-by: косвенно — все REST-кейсы используют эти пути; явный — `04-api-surface.md`
-- Проверка: `google.api.http`-аннотации в `kacho-proto/.../<res>_service.proto`; `07-known-divergences.md`, раздел 1.
+- Проверка: `google.api.http`-аннотации в `proto/kacho/cloud/vpc/v1/<res>_service.proto`; `07-known-divergences.md`, раздел 1.
 - Divergence: видимая «неоднородность» — by-design (контракт Kachō).
 
 ---
 
 ## N. Move semantics
 
-### REQ-MOVE-01 — Move в другой project обновляет project_id [P1]
-`Move(destination_project_id)` существующего ресурса → `project_id` обновлен; ресурс виден в `List` нового project.
-- Validated-by: `*-MV-CRUD-OK`
-- Проверка: `internal/service/*.go` doMove.
+### REQ-MOVE-01 — Move в другой project обновляет project_id [P1] — СНЯТО
+**Снято вместе с RPC `Move`** (см. contract-removal в шапке).
 
-### REQ-MOVE-02 — Move: destination / resource NotFound / отсутствует [P1]
-`Move` в несуществующий project → sync `NOT_FOUND "Project <X> not found"`.
-`Move` без `destination_project_id` → sync `InvalidArgument`. `Move` несуществующего ресурса
-(well-formed id) → sync `NOT_FOUND "<Resource> ... not found"` (— Move делает sync
-`repo.Get`). `Move` в текущий project → см. REQ-RES-06.
-- Validated-by: `*-MV-NEG-DEST-PROJECT-NF`, `*-MV-VAL-NO-DEST`, `*-MV-AUTHZ-NF-SYNC`, `*-MV-CONF-NF-TEXT`
-- Проверка: `internal/service/*.go` Move — sync `repo.Get` → `checkMoveDestination` ДО `operations.New`.
+### REQ-MOVE-02 — Move: destination / resource NotFound [P1] — СНЯТО
+**Снято вместе с RPC `Move`** (см. contract-removal в шапке).
 
 ---
 
@@ -823,19 +813,19 @@ REST-пути (`google.api.http` в `kacho-proto`): kebab у custom-методо
 (`subnet_id` обязателен). Полный CRUD (`Get`/`List`/`Create`/`Update`/`Delete`) + `ListOperations`.
 `Create` с garbage `subnet_id` → async `NotFound "Subnet ... not found"`. REST: `/vpc/v1/networkInterfaces`.
 - Validated-by: `NIC-CR-CRUD-OK`, `NIC-CR-NEG-BAD-SUBNET`, `NIC-LIST-OK`, `NIC-DEL-OK`
-- Проверка: `kacho-proto/.../network_interface_service.proto`; `internal/service/network_interface.go`; `cmd/vpc/main.go` (регистрация).
+- Проверка: `proto/kacho/cloud/vpc/v1/network_interface_service.proto`; `internal/apps/kacho/api/networkinterface/`; `cmd/vpc/main.go` (регистрация).
 
 ### REQ-NIC-02 — Delete NIC освобождает референсные Address [P1]
 `Delete` не-приаттаченного NIC → Operation → NIC исчезает; привязанные через `v4_address_ids`/`v6_address_ids`
 Address освобождаются (`Address.used` → false, referrer снят).
 - Validated-by: `NIC-DEL-OK`
-- Проверка: `internal/service/network_interface.go` doDelete — снятие referrer'ов / `addresses.used`.
+- Проверка: `internal/apps/kacho/api/networkinterface/` doDelete — снятие referrer'ов / `addresses.used`.
 
 ### REQ-NIC-03 — Attach/Detach: `used_by` зеркалит привязку; приаттаченный NIC нельзя удалить [P1]
 `AttachToInstance` → `used_by` = `{compute_instance, <instance_id>}`; `DetachFromInstance` → `used_by` очищен.
 `Delete` NIC с непустым `used_by` (приаттачен) → `FailedPrecondition` (сначала Detach).
 - Validated-by: `NIC-ATTACH-DETACH-OK`, `NIC-DEL-NEG-ATTACHED`
-- Проверка: `internal/service/network_interface.go` Attach/Detach (flat-колонки `used_by_*` на `network_interfaces`); doDelete — guard на `used_by`.
+- Проверка: `internal/apps/kacho/api/networkinterface/` Attach/Detach (flat-колонки `used_by_*` на `network_interfaces`); doDelete — guard на `used_by`.
 
 ### REQ-NIC-04 — NIC ссылается на Address по id; занятый Address нельзя удалить [P0]
 `NetworkInterface` ссылается на `Address`-ресурсы по id: `v4_address_ids[]` / `v6_address_ids[]`.
@@ -843,14 +833,14 @@ Address освобождаются (`Address.used` → false, referrer снят)
 `Create` NIC с предсозданными v4/v6 internal Address → 200, address(а) привязаны. `Address.Delete`
 референсимого NIC'ом адреса → `FailedPrecondition` (REQ-DEL-09).
 - Validated-by: `NIC-CR-WITH-ADDR-OK`, `NIC-CR-WITH-V6-ADDR-OK`, `ADDR-DEL-NEG-USED-BY-NIC`
-- Проверка: `internal/service/network_interface.go` Create/Attach (referrer-tracking, как `address_references`); `internal/service/address.go` Delete (referrer-check).
+- Проверка: `internal/apps/kacho/api/networkinterface/` Create/Attach (referrer-tracking, как `address_references`); `internal/apps/kacho/api/address/` Delete (referrer-check).
 
 ### REQ-NIC-05 — NIC несет `security_group_ids[]` [P2]
 `NetworkInterface` несет `security_group_ids[]` — ссылки на существующие SG. `Create` NIC с такой SG → 200.
 (SG теперь mandatory-network — REQ-RES-07; кейс создает SG, привязанную к сети NIC'а. NIC сам
 network-bound валидацию SG-привязки не навязывает — проверяет лишь существование SG.)
 - Validated-by: `NIC-CR-WITH-UNBOUND-SG-OK`
-- Проверка: `internal/service/network_interface.go` Create/Update — валидация существования SG.
+- Проверка: `internal/apps/kacho/api/networkinterface/` Create/Update — валидация существования SG.
 
 ### REQ-NIC-06 — проекция NIC — lean (control-plane only, без инфра-полей) [P0]
 `NetworkInterface` (`Get`/`List`/`Create`-result) содержит ТОЛЬКО `id`/`project_id`/`name`/
@@ -859,13 +849,13 @@ network-bound валидацию SG-привязки не навязывает �
 `kacho-vpc-implement`. Регрессионное требование: публичная NIC НИКОГДА не должна нести инфра-чувствительные
 поля (placement, SRv6-SID, host-wiring) — защита от случайного reintroduce.
 - Validated-by: `NIC-LIST-OK`, `NIC-CR-CRUD-OK` (assert «no infra-sensitive fields»)
-- Проверка: `kacho-proto/.../network_interface_service.proto` (public `NetworkInterface` без инфра-полей); `internal/handler/network_interface_handler.go` (public mapper не выставляет инфра-поля); разделом про инфра-чувствительные данные.
+- Проверка: `proto/kacho/cloud/vpc/v1/network_interface_service.proto` (public `NetworkInterface` без инфра-полей); `internal/apps/kacho/api/networkinterface/handler.go` (public mapper не выставляет инфра-поля); разделом про инфра-чувствительные данные.
 
 ### REQ-NIC-07 — Update NIC: меняются mutable-поля, subnet_id/инфра — нет [P1]
 `Update` NIC через mask (`name`/`labels`/`security_group_ids`) → Operation → новые значения видны;
 `subnet_id` — immutable (в mask → `InvalidArgument`); инфра-поля недоступны для записи через публичный API.
 - Validated-by: `NIC-UPD-OK`
-- Проверка: `internal/service/network_interface.go` Update — `subnet_id` в hard-immutable reject-switch; mask-применение только к mutable.
+- Проверка: `internal/apps/kacho/api/networkinterface/` Update — `subnet_id` в hard-immutable reject-switch; mask-применение только к mutable.
 
 ### REQ-NIC-08 — NIC.mac_address — output-only, стабилен, cloud-wide unique [P1]
 `mac_address` на публичной `NetworkInterface` (самостоятельный сетевой интерфейс): аллоцируется системой
@@ -876,7 +866,7 @@ network-bound валидацию SG-привязки не навязывает �
 с него; остальные 5 байт — `crypto/rand` (40 бит энтропии); коллизии ловятся UNIQUE-constraint'ом
 и retry'ятся в service-слое (до 3 попыток).
 - Validated-by: `NIC-CR-MAC-OK` (формат + стабильность при Update)
-- Проверка: `kacho-proto/.../network_interface.proto` (field 19, mac_address); `internal/migrations/0014_nic_mac_address.sql` (UNIQUE + backfill); `internal/service/mac.go` (`GenerateMAC` + префикс `0e:`); `internal/service/network_interface.go` (retry-loop в `doCreate`); `internal/repo/network_interface_repo.go` (Insert + isNICMacCollision).
+- Проверка: `proto/kacho/cloud/vpc/v1/network_interface.proto` (field 19, mac_address); `internal/migrations/0001_initial.sql` (`network_interfaces_mac_address_key` UNIQUE + CHECK формата; обратного заполнения нет — колонка заведена начальной миграцией); `internal/apps/kacho/shared/macutil/mac.go` (`GenerateMAC` + префикс `0e:`); `internal/apps/kacho/api/networkinterface/` (retry-loop в `doCreate`); `internal/repo/kacho/pg/network_interface.go` (Insert + isNICMacCollision).
 
 ---
 

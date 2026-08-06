@@ -210,7 +210,7 @@ scope-filtered (existence-hiding). Недоступность kacho-iam на req
     <tr><td><code>ListTags</code></td><td><code>GET …/repositories/&#123;repo&#125;/tags</code></td><td>sync</td></tr>
     <tr><td><code>DeleteTag</code></td><td><code>DELETE …/tags/&#123;tag&#125;</code></td><td>async</td></tr>
     <tr><td><code>ListOperations</code></td><td><code>GET …/&#123;id&#125;/operations</code></td><td>sync</td></tr>
-    <tr><td><code>OperationService</code><br/>(оба listener'а)</td><td><code>Get</code></td><td><code>GET /registry/v1/operations/&#123;id&#125;</code></td><td>sync</td></tr>
+    <tr><td><code>OperationService</code><br/>(оба listener'а)</td><td><code>Get</code></td><td><code>GET /operations/&#123;id&#125;</code></td><td>sync</td></tr>
     <tr><td rowSpan="2"><code>InternalRegistryService</code><br/>(internal :9091)</td><td><code>TriggerGarbageCollection</code></td><td>— (gRPC only)</td><td>async</td></tr>
     <tr><td><code>GetRegistryStats</code></td><td>— (gRPC only)</td><td>sync</td></tr>
   </tbody>

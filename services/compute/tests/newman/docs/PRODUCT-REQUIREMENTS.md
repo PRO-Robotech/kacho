@@ -36,7 +36,7 @@
 обязателен в Create; поддерживают Get/List/Create/Update/Delete + ListOperations; Disk — ещё Relocate)
 и read-only справочники DiskType, Zone (только Get/List). (Move у Disk/Instance — removed KAC-266.)
 - Validated-by: `*-LIFECYCLE-CONF`, `*-CR-CRUD-OK`, `*-GET-*`, `*-LST-CRUD-OK`, `DT-*`, `ZONE-*`
-- Agent-check: `internal/service/{disk,image,snapshot,instance,disk_type,zone}.go`, `cmd/compute/main.go`, `kacho-proto/.../compute/v1/*_service.proto`.
+- Agent-check: `internal/apps/kacho/api/instance/`, `internal/apps/kacho/api/machinetype/`, `cmd/compute/main.go`, `proto/kacho/cloud/compute/v1/*_service.proto`. Прочие ресурсы этого требования сервису не принадлежат — владелец предмета — другой сервис (блочное хранение — `services/storage/`, ось размещения — `services/geo/`), координаты кода здесь поэтому не даются.
 
 ### REQ-RES-02 — все мутации возвращают Operation (async LRO)                               [P0]
 `Create`/`Update`/`Delete`/`Relocate`/`Start`/`Stop`/`Restart`/`AttachDisk`/`DetachDisk`/
@@ -45,24 +45,24 @@
 до `done=true`. Возвращать сам ресурс синхронно из мутации — ЗАПРЕЩЕНО. `GetSerialPortOutput` —
 sync (не мутация). DiskType/Zone Create/Update/Delete не существуют (read-only).
 - Validated-by: `OP-GET-CRUD-OK`, все `*-CR/*-UPD/*-DEL` (poll-паттерн), `INST-STATE-*`, `INST-AD/DD/NAT/UMETA-*`
-- Agent-check: сигнатуры RPC в `.proto` (`returns (operation.Operation)`); `internal/service/*.go` — `operations.New`+`operations.Run`; workspace `CLAUDE.md` запрет #9.
+- Agent-check: сигнатуры RPC в `.proto` (`returns (operation.Operation)`); `internal/apps/kacho/api/*/` — `operations.New`+`operations.Run`; workspace `CLAUDE.md` запрет #9.
 
 ### REQ-RES-03 — Delete-операция: response = Empty, metadata = Delete<Resource>Metadata{<res>_id}   [P1]
 В завершённой Delete-`Operation`: `response` = `google.protobuf.Empty`, `metadata` = `Delete<Resource>Metadata` с id ресурса.
 - Validated-by: `DISK-DEL-CONF-RESPONSE-EMPTY`, `INST-DEL-CONF-RESPONSE-EMPTY`
-- Agent-check: worker всех `Delete` в `internal/service/*.go` (`return anypb.New(&emptypb.Empty{})`); proto-option `response`/`metadata`.
+- Agent-check: worker всех `Delete` в `internal/apps/kacho/api/*/` (`return anypb.New(&emptypb.Empty{})`); proto-option `response`/`metadata`.
 
 ### REQ-RES-04 — operation prefix всегда `epd` независимо от ресурса                           [P0]
 ID любой compute-операции начинается с `epd` (`PrefixOperationCompute == PrefixInstance`).
 ID ресурсов: Instance/Disk — `epd`; Image/Snapshot — `fd8`. api-gateway OpsProxy маршрутизирует
 `/operations/{id}` по первым 3 символам id → backend `compute`.
 - Validated-by: `*-CR-CONF-ID-PREFIX-*`, `*-CR-CRUD-OK` (assert id regex), `OP-GET-CRUD-OK`, `OP-GET-NEG-UNKNOWN-PREFIX`
-- Agent-check: `kacho-corelib/ids/ids.go` (`PrefixOperationCompute`, `PrefixDisk`/`PrefixInstance`=`epd`, `PrefixImage`/`PrefixSnapshot`=`fd8`); `operations.New(ids.PrefixOperationCompute, ...)`; `kacho-api-gateway/internal/opsproxy/proxy.go` (`"epd": "compute"`).
+- Agent-check: `pkg/ids/ids.go` (`PrefixOperationCompute` == `PrefixInstance` == `epd`); `operations.New(ids.PrefixOperationCompute, ...)`; `gateway/internal/opsproxy/proxy.go` (`"epd": "compute"`). Префиксы блочного хранения перечислялись здесь же — они принадлежат `services/storage/` и в этом требовании предмета не имеют.
 
 ### REQ-RES-05 — hard-delete, без soft-delete/tombstone                                        [P2]
 `Delete` физически удаляет строку (`DELETE FROM`); в схеме нет `deletion_timestamp`/`finalizers`/envelope.
 - Validated-by: косвенно `*-DEL-CRUD-OK` + `*-GET-NEG-NOTFOUND` после Delete; `*-LIFECYCLE-CONF`
-- Agent-check: `internal/migrations/0001_initial.sql` (нет envelope-колонок); `internal/repo/*.go` (`DELETE FROM`).
+- Agent-check: `internal/migrations/0001_initial.sql` (нет envelope-колонок); `internal/repo/` (`DELETE FROM`).
 
 ### REQ-RES-06 — created_at в proto-ответе truncate до секунд                                  [P1]
 Поле `created_at` всех ресурсов в proto-ответе НЕ содержит дробной секунды (конвенция Kachō).
@@ -84,7 +84,7 @@ ID ресурсов: Instance/Disk — `epd`; Image/Snapshot — `fd8`. api-gate
 lowercase/digits/`-`/`_`, длина ≤63. UPPERCASE / digit-start / hyphen-start / спец-символы → `InvalidArgument`.
 ⚠️ Это НЕ `NameVPC` (там uppercase разрешён) — нужен `corevalidate.NameCompute`.
 - Validated-by: `*-CR-VAL-NAME-{EMPTY-OK,UPPERCASE,DIGIT-START,HYPHEN-START,SPECIAL-CHARS}`, `*-CR-BVA-NAME-{MAX-63,OVER-64}`, `INST-CR-VAL-NAME-*`
-- Agent-check: `kacho-corelib/validate/validate.go` (`NameCompute`); вызов в начале каждого `Create`/`Update` (`internal/service/*.go`).
+- Agent-check: `pkg/validate/validate.go` (`NameCompute`); вызов в начале каждого `Create`/`Update` (`internal/apps/kacho/api/*/`).
 - Divergence: формулировка контракта для empty/edge ещё не закреплена — `# probe-needed`; см. `docs/architecture/07-known-divergences.md`.
 
 ### REQ-VAL-01 — required-поля Create — sync `InvalidArgument`                                  [P0]
@@ -93,7 +93,7 @@ lowercase/digits/`-`/`_`, длина ≤63. UPPERCASE / digit-start / hyphen-sta
 (KAC-266: `network_interface_spec` больше не требуется — Instance создаётся без NIC, no auto-NIC.)
 Отсутствие → `InvalidArgument`.
 - Validated-by: `*-CR-VAL-*-REQUIRED`, `INST-CR-VAL-MISSING-*`, `SNAP-CR-VAL-NO-DISK`, `IMG-CR-VAL-PROJECT-REQUIRED`, `*-CR-VAL-EMPTY-BODY`
-- Agent-check: начало каждого `Create` в `internal/service/*.go` (sync-checks до `operations.New`).
+- Agent-check: начало каждого `Create` в `internal/apps/kacho/api/*/` (sync-checks до `operations.New`).
 
 ### REQ-VAL-02 — `description` ≤256, `labels` ≤64 пар (key regex `[a-z][-_./\@0-9a-z]*`)         [P2]
 Превышение → `InvalidArgument`.
@@ -104,12 +104,12 @@ lowercase/digits/`-`/`_`, длина ≤63. UPPERCASE / digit-start / hyphen-sta
 Из proto `(value)`. Вне диапазона → `InvalidArgument`. Update size — только увеличение
 (`InvalidArgument` при уменьшении). Верхняя граница Update (4 TiB) меньше Create (≈26 TiB).
 - Validated-by: `DISK-CR-BVA-SIZE-{MIN-OK,BELOW-MIN,CREATE-MAX-OK,ABOVE-CREATE-MAX}`, `DISK-UPD-SIZE-{INCREASE-OK,DECREASE-REJECT}`
-- Agent-check: `internal/service/disk.go` `validateDiskSize` (разные max для Create/Update); proto `disk_service.proto` `(value)`.
+- Agent-check: владелец предмета — другой сервис (блочное хранение — `services/storage/`, ось размещения — `services/geo/`), координаты кода здесь поэтому не даются.
 
 ### REQ-VAL-03 — Instance resources: cores ∈ proto-set {2,4,6,...,80}; core_fraction ∈ {0,5,20,50,100}; memory ≤ 274877906944   [P1]
 Per-platform валидация. Невалидные → `InvalidArgument`.
 - Validated-by: `INST-CR-VAL-CORE-FRACTION-INVALID`, `INST-CR-VAL-CORES-ODD-INVALID`
-- Agent-check: `internal/service/platforms.go` + sync-валидация в `InstanceService.Create`.
+- Agent-check: резолв `machine_type_id` против каталога — `internal/apps/kacho/api/instance/instance.go` (`resolveMachineType`), сам каталог — `internal/apps/kacho/api/machinetype/machine_type.go`. Сырое описание ресурсов и таблица платформ с контракта сняты (`reserved` в `proto/kacho/cloud/compute/v1/instance_service.proto`).
 
 ### REQ-VAL-04 — `boot_disk_spec` / `secondary_disk_specs[i]`: exactly one of {disk_id, disk_spec}   [P1]
 И `disk_id`, и `disk_spec` одновременно → `InvalidArgument` (proto `(exactly_one)`).
@@ -128,7 +128,7 @@ Per-platform валидация. Невалидные → `InvalidArgument`.
 Immutable: Disk — `type_id`, `zone_id`, `block_size`, `source`; Image — `family`, `min_disk_size`, `os`, `product_ids`, `pooled`;
 Snapshot — `source_disk_id`, `disk_size`, `storage_size`; Instance — `zone_id`, `boot_disk`.
 - Validated-by: `DISK-UPD-MASK-IMMUTABLE-{TYPE,ZONE}`, `IMG-UPD-MASK-IMMUTABLE-FAMILY`, `SNAP-UPD-MASK-IMMUTABLE-SOURCE-DISK`, `INST-UPD-MASK-IMMUTABLE-ZONE`
-- Agent-check: switch в начале каждого `Update` в `internal/service/*.go`.
+- Agent-check: switch в начале каждого `Update` в `internal/apps/kacho/api/*/`.
 - Divergence: точный текст — `# probe-needed`.
 
 ### REQ-UPD-03 — пустой mask → full-object PATCH; immutable из body silently игнорируются          [P2]
@@ -140,7 +140,7 @@ Snapshot — `source_disk_id`, `disk_size`, `storage_size`; Instance — `zone_i
 Изменение cores/memory/platform на RUNNING-инстансе отвергается `FailedPrecondition`; после Stop → OK.
 `metadata` обновляется через `UpdateMetadata` RPC, не через Update.
 - Validated-by: `INST-UPD-RESOURCES-REQUIRES-STOPPED`, `INST-UMETA-CRUD-OK`
-- Agent-check: `internal/service/instance.go` doUpdate — state-check перед применением resources/platform.
+- Agent-check: `internal/apps/kacho/api/instance/instance.go` doUpdate — state-check перед применением resources/platform.
 - Divergence: точный текст («Instance must be stopped») — `# probe-needed`.
 
 ---
@@ -160,7 +160,7 @@ Pagination cursor `(created_at, id)` ASC,ASC; `page_token` opaque base64.
 
 ### REQ-LIST-03 — filter `name="<v>"` поддерживается; не-`name`/garbage syntax — `InvalidArgument` или игнор   [P2]
 - Validated-by: `*-LST-FILTER-{NAME-OK,GARBAGE,UNKNOWN-FIELD,MATCH}`
-- Agent-check: `kacho-corelib/filter.Parse` с whitelist + использование в `List`.
+- Agent-check: `pkg/filter` (`Parse` с whitelist) + использование в `List`.
 
 ### REQ-LIST-04 — Instance.List view=BASIC (default) → metadata не возвращается                   [P2]
 Контракт Kachō: BASIC опускает `Instance.metadata`; FULL — включает.
@@ -175,7 +175,7 @@ Pagination cursor `(created_at, id)` ASC,ASC; `page_token` opaque base64.
 Well-formed-но-отсутствующий id → `NotFound` (Get — sync; mutate — sync через AuthZ-Get-guard).
 Конвенция Kachō требует на malformed/wrong-prefix id sync `InvalidArgument "invalid <res> id '<X>'"`; здесь пока `NotFound` — отступление.
 - Validated-by: `*-GET-NEG-NOTFOUND`, `*-UPD-AUTHZ-NF-SYNC`, `*-DEL-NEG-NOTFOUND`, `INST-{START,STOP}-AUTHZ-NF-SYNC`, `INST-SPO-*-NF-SYNC`
-- Agent-check: `internal/service/*.go` mutate-методы — Get перед Operation; `internal/repo/*.go` `ErrNotFound`.
+- Agent-check: `internal/apps/kacho/api/*/` mutate-методы — Get перед Operation; `internal/repo/` `ErrNotFound`.
 - Divergence: malformed-id → NotFound вместо InvalidArgument; `docs/architecture/07-known-divergences.md` (паритет kacho-vpc gotcha #1).
 
 ### REQ-AUTHZ-02 — duplicate name `(project_id, name)` в Create → async `ALREADY_EXISTS`            [P1]
@@ -186,12 +186,12 @@ Partial UNIQUE `(project_id, name) WHERE name <> ''` для disks/images/snapsho
 
 ### REQ-AUTHZ-03 — error mapping: ErrNotFound→NOT_FOUND, ErrAlreadyExists→ALREADY_EXISTS, ErrFailedPrecondition→FAILED_PRECONDITION, ErrInvalidArg→INVALID_ARGUMENT, ErrInternal→INTERNAL (без leak)   [P0]
 - Validated-by: все NEG-кейсы (проверка grpc code); `*-SEC-*` (нет pgx/stack leak в INTERNAL)
-- Agent-check: `internal/service/maperr.go` `mapRepoErr` + `stripSentinel`.
+- Agent-check: `internal/apps/kacho/shared/serviceerr/maperr.go` (`MapRepoErr` + `stripSentinel`).
 
 ### REQ-CONF-01 — NotFound текст формата «<Resource> <id> not found» (контракт-тон)              [P1]
 Disk / Image / Snapshot / Instance / Disk type / Zone / Operation.
 - Validated-by: `*-GET-CONF-NF-TEXT`, `OP-GET-CONF-NF-TEXT`
-- Agent-check: error-text в `internal/repo`/`internal/service` (`fmt.Errorf("%s %s not found", ...)`).
+- Agent-check: error-text в `internal/repo` и `internal/apps/kacho/shared/serviceerr` (`fmt.Errorf("%s %s not found", ...)`).
 - Divergence: точная формулировка — `# probe-needed`; пока проверяем substr "not found".
 
 ---
@@ -220,7 +220,7 @@ NIC и не валидирует subnet/security_group/address через kacho-
 ### REQ-STATE-01 — Create→RUNNING; Start←{STOPPED}→RUNNING; Stop←{RUNNING}→STOPPED; Restart←{RUNNING}→RUNNING; иначе `FailedPrecondition`   [P0]
 Control-plane: переходы детерминированы внутри worker'а соответствующей операции (без таймеров).
 - Validated-by: `INST-CR-CRUD-OK` (RUNNING), `INST-STATE-{STOP-OK,START-FROM-STOPPED-OK,RESTART-OK}` (happy), `INST-STATE-{START-FROM-RUNNING,STOP-FROM-STOPPED,RESTART-FROM-STOPPED}` (FailedPrec)
-- Agent-check: `internal/service/instance.go` doStart/doStop/doRestart — precondition-проверки; `internal/domain/instance.go` Status enum.
+- Agent-check: `internal/apps/kacho/api/instance/instance.go` doStart/doStop/doRestart — precondition-проверки; `internal/domain/instance.go` Status enum.
 - Divergence: точные precondition-тексты («Instance is not running» и т.п.) — `# probe-needed`.
 
 ---
@@ -229,11 +229,11 @@ Control-plane: переходы детерминированы внутри work
 
 ### REQ-ATTACH-01 — AttachDisk: disk должен быть READY, в той же zone, не attached → иначе `InvalidArgument`/`FailedPrecondition`; успех → secondary_disks обновлён   [P0]
 - Validated-by: `INST-AD-{CRUD-OK,NEG-WRONG-ZONE,NEG-ALREADY-ATTACHED}`
-- Agent-check: `internal/service/instance.go` doAttachDisk — проверки disk.status / disk.zone_id / уже-attached.
+- Agent-check: `internal/apps/kacho/api/instance/instance.go` doAttachDisk — проверки disk.status / disk.zone_id / уже-attached.
 
 ### REQ-ATTACH-02 — DetachDisk boot disk → `FailedPrecondition` («Cannot detach boot disk»); detach не-attached → ошибка   [P0]
 - Validated-by: `INST-DD-{CRUD-OK,NEG-BOOT,NEG-NOT-ATTACHED}`
-- Agent-check: `internal/service/instance.go` doDetachDisk — `is_boot` check.
+- Agent-check: `internal/apps/kacho/api/instance/instance.go` doDetachDisk — `is_boot` check.
 - Divergence: точный текст — `# probe-needed`.
 
 ### REQ-ATTACH-03 — Disk.Delete пока attached к Instance → `FailedPrecondition` («The disk ... is being used»); Detach → Delete OK   [P0]
@@ -245,7 +245,7 @@ FK `attached_disks.disk_id` → disks ON DELETE RESTRICT.
 ### REQ-ATTACH-04 — Instance.Delete: auto_delete=true диск удаляется; auto_delete=false — остаётся   [P1]
 worker сначала обрабатывает attached disks по `auto_delete`, затем DELETE instance (cascade чистит instance_network_interfaces + attached_disks). (KAC-266: no auto-NIC — Instance не создаёт NIC при Create, поэтому teardown NIC-ресурсов больше не нужен; эфемерные one-to-one NAT addresses, если бы они были, освобождались бы best-effort.)
 - Validated-by: `INST-DEL-STATE-AUTODELETE-BOOT-GONE`, `INST-DEL-STATE-NONAUTODELETE-DISK-REMAINS`
-- Agent-check: `internal/service/instance.go` doDelete; `attached_disks.instance_id` FK CASCADE.
+- Agent-check: `internal/apps/kacho/api/instance/instance.go` doDelete; `attached_disks.instance_id` FK CASCADE.
 
 ---
 
@@ -260,7 +260,7 @@ NIC binding убрана из lifecycle Instance. Кейсы `INST-UNI-*` уда
 
 ### REQ-NAT-03 — UpdateMetadata: upsert/delete; FULL-view round-trip отражает изменения; total ≤512 KB   [P1]
 - Validated-by: `INST-UMETA-CRUD-OK`
-- Agent-check: `internal/service/instance.go` doUpdateMetadata.
+- Agent-check: `internal/apps/kacho/api/instance/instance.go` doUpdateMetadata.
 
 ---
 
@@ -269,11 +269,11 @@ NIC binding убрана из lifecycle Instance. Кейсы `INST-UNI-*` уда
 ### REQ-IMG-01 — Create: exactly one of source {image_id, snapshot_id, disk_id, uri}; нет/несколько → `InvalidArgument`   [P0]
 Control-plane: uri-download мгновенный → status сразу `READY`. family pattern `|[a-z][-a-z0-9]{1,61}[a-z0-9]`.
 - Validated-by: `IMG-CR-{VAL-NO-SOURCE,VAL-MULTIPLE-SOURCE,VAL-FAMILY-INVALID,CRUD-FROM-URI-OK,CRUD-FROM-IMAGE-OK,CRUD-FROM-SNAPSHOT-OK,CRUD-OK}`
-- Agent-check: sync-валидация oneof в `ImageService.Create`; `internal/service/image.go` — uri→READY.
+- Agent-check: владелец предмета — другой сервис (блочное хранение — `services/storage/`, ось размещения — `services/geo/`), координаты кода здесь поэтому не даются.
 
 ### REQ-IMG-02 — GetLatestByFamily: возвращает самый новый Image из family; family без images → `NotFound`; без project_id → `InvalidArgument`   [P1]
 - Validated-by: `IMG-GLF-{CRUD-OK,NEG-NOTFOUND,VAL-PROJECT-REQUIRED}`
-- Agent-check: `internal/service/image.go` GetLatestByFamily (ORDER BY created_at DESC LIMIT 1 в family).
+- Agent-check: владелец предмета — другой сервис (блочное хранение — `services/storage/`, ось размещения — `services/geo/`), координаты кода здесь поэтому не даются.
 
 ---
 
@@ -282,7 +282,7 @@ Control-plane: uri-download мгновенный → status сразу `READY`. 
 ### REQ-SNAP-01 — Create требует disk_id; snapshot.disk_size == исходный disk.size; status READY; source_disk_id сохраняется   [P1]
 Disk можно удалить, оставив Snapshot (source_disk_id не FK).
 - Validated-by: `SNAP-CR-{CRUD-OK,VAL-NO-DISK,NEG-DISK-NOTFOUND}`, `SNAP-DEL-STATE-DISK-DELETABLE-AFTER`
-- Agent-check: `internal/service/snapshot.go` doCreate.
+- Agent-check: владелец предмета — другой сервис (блочное хранение — `services/storage/`, ось размещения — `services/geo/`), координаты кода здесь поэтому не даются.
 
 ---
 
@@ -290,22 +290,22 @@ Disk можно удалить, оставив Snapshot (source_disk_id не FK)
 
 ### REQ-CAT-01 — DiskType.List ≥4 seeded (network-hdd / network-ssd / network-ssd-nonreplicated / network-ssd-io-m3); каждый с непустым zone_ids; Get garbage → `NotFound`   [P1]
 - Validated-by: `DT-{LST-CRUD-OK,GET-CRUD-OK,GET-CRUD-HDD-OK,GET-NEG-NOTFOUND,GET-CONF-NF-TEXT}`
-- Agent-check: `internal/migrations/0001_initial.sql` seed `disk_types`; `internal/service/disk_type.go`.
+- Agent-check: владелец предмета — другой сервис (блочное хранение — `services/storage/`, ось размещения — `services/geo/`), координаты кода здесь поэтому не даются.
 
 ### REQ-CAT-02 — Zone.List ≥3 seeded (ru-central1-a / -b / -d), status UP, region_id set; Get garbage → `NotFound`   [P1]
 Seed зеркалит kacho-vpc geography.
 - Validated-by: `ZONE-{LST-CRUD-OK,GET-CRUD-OK,GET-CRUD-ALT-OK,GET-NEG-NOTFOUND,GET-CONF-NF-TEXT}`
-- Agent-check: `internal/migrations/0001_initial.sql` seed `zones`; `internal/service/zone.go`.
+- Agent-check: владелец предмета — другой сервис (блочное хранение — `services/storage/`, ось размещения — `services/geo/`), координаты кода здесь поэтому не даются.
 
 ### REQ-CAT-03 — DiskType/Zone — read-only (нет Create/Update/Delete на публичном API)            [P2]
 POST на `/compute/v1/machineTypes` → 404/405/501. Admin-CRUD — только через `Internal*` сервисы (порт 9091).
 - Validated-by: `DT-CR-NEG-NOT-ALLOWED`, `ZONE-CR-NEG-NOT-ALLOWED`
-- Agent-check: `disk_type_service.proto` / `zone_service.proto` (только Get/List); workspace `CLAUDE.md` запрет #6.
+- Agent-check: владелец предмета — другой сервис (блочное хранение — `services/storage/`, ось размещения — `services/geo/`), координаты кода здесь поэтому не даются; запрет #6 воркспейса остаётся нормой у владельца.
 
 ### REQ-OPS-01 — Disk.Create с unknown type_id (или без type_id) → `NotFound`/default network-ssd   [P1]
 Пустой type_id → default `network-ssd`; garbage type_id → `NotFound "Disk type ... not found"`.
 - Validated-by: `DISK-CR-CRUD-OK` (typeId set в Get), `DISK-CR-CRUD-TYPE-EXPLICIT`, `DISK-CR-NEG-TYPE-UNKNOWN`
-- Agent-check: `internal/service/disk.go` doCreate — type-resolve.
+- Agent-check: владелец предмета — другой сервис (блочное хранение — `services/storage/`, ось размещения — `services/geo/`), координаты кода здесь поэтому не даются.
 - Divergence: точный текст — `# probe-needed`.
 
 ---
@@ -314,7 +314,7 @@ POST на `/compute/v1/machineTypes` → 404/405/501. Admin-CRUD — тольк�
 
 ### REQ-SEC-01 — injection в name / filter (SQLi/cmd/XSS/path) → не `INTERNAL` (500), без pgx/sqlstate/stack-trace leak в ответе   [P0]
 - Validated-by: `*-CR-SEC-{SQLI,UNION,XSS,CMD,PATH,LONGPAYLOAD}`, `*-LST-SEC-FILTER-SQLI`
-- Agent-check: параметризованные запросы (sqlc + pgx) `internal/repo/*.go`; `mapRepoErr` не протекает SQLSTATE; нет `fmt.Errorf("%v", pgErr)` в публичных текстах.
+- Agent-check: параметризованные запросы (sqlc + pgx) `internal/repo/`; `mapRepoErr` не протекает SQLSTATE; нет `fmt.Errorf("%v", pgErr)` в публичных текстах.
 
 ### REQ-SEC-02 — HTTP method semantics: PUT/DELETE на коллекционный endpoint → 404/405/501; malformed JSON → 400/415   [P3]
 - Validated-by: `*-METHOD-{PUT-NOT-ALLOWED,DELETE-LIST}`, `*-CR-VAL-{MALFORMED-JSON,EMPTY-BODY}`

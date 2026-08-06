@@ -172,9 +172,13 @@ sizing-каталог (`machine_type_id`), из которого выводит�
   `instance_id WHERE is_boot`). `device_name` уникален в пределах instance
   (`attached_disks_device_uniq` partial UNIQUE на `(instance_id, device_name)
   WHERE device_name <> ''`).
-- `resources_spec` валидируется per-platform (`internal/service/platforms.go`):
-  `cores` per-platform set, `memory` кратно GB и в range, `core_fraction ∈
-  {0,5,20,50,100}`, `gpus` per-platform.
+- Размер инстанса задаётся ссылкой `machine_type_id` на каталожную запись; валидация —
+  резолв ссылки (`internal/apps/kacho/api/instance/instance.go`, `resolveMachineType`)
+  против каталога (`internal/apps/kacho/api/machinetype/machine_type.go`), а сами
+  величины приезжают output-only зеркалом `EffectiveResources`. Прежняя редакция
+  описывала посемейственную валидацию сырого описания ресурсов и ссылалась на
+  файл-таблицу платформ: поле снято с контракта (`reserved` в
+  `proto/kacho/cloud/compute/v1/instance_service.proto`), файла нет, имя не цитируется.
 - `status_message` поле — всегда пусто (control-plane).
 - State-машина статуса — [`03-instance-lifecycle.md`](03-instance-lifecycle.md).
 

@@ -205,7 +205,7 @@ per-stream semaphore. Подробно — [02-data-flows.md](architecture/02-da
 base64; `page_size` (0→50, max 1000); garbage token → `InvalidArgument`. Filter —
 `name="<v>"` (whitelist). `order_by` — пока частично.
 
-**Error mapping.** `internal/service/maperr.go::mapRepoErr`: `ErrNotFound`→
+**Error mapping.** `internal/apps/kacho/shared/serviceerr/maperr.go`.`MapRepoErr`: `ErrNotFound`→
 `NOT_FOUND`; `ErrAlreadyExists`→`ALREADY_EXISTS`; `ErrFailedPrecondition`→
 `FAILED_PRECONDITION`; `ErrInvalidArg`→`INVALID_ARGUMENT`; `ErrInternal`→
 `INTERNAL "internal database error"` (no pgx-text leak). `stripSentinel` убирает
@@ -342,7 +342,7 @@ admin paths для будущего TLS-фильтра — `/compute/v1/internal
 
 ## Часть XI. Тестирование
 
-Три уровня (как kacho-vpc): **unit** (`internal/service/*_test.go`,
+Три уровня (как vpc): **unit** (`internal/apps/kacho/api/<resource>/*_test.go`,
 `internal/handler/*_test.go` — моки port-интерфейсов из `internal/ports/portmock`;
 worker'ы дожидаются через `portmock.AwaitOpDone`/`AwaitAllOpsDone`, не
 `time.Sleep`; `make test-short`); **integration** (`internal/repo/*integration_test.go`
@@ -387,8 +387,9 @@ Unavailable), `shutdown` (graceful). Таблицу `operations` каждый с
    `validate.NameCompute`. Если меняются общие пакеты — отдельный PR.
 3. **`kacho-compute`**: `internal/migrations/0001_initial.sql` (есть);
    `internal/config/config.go` (есть); затем `internal/domain/` → `internal/ports/`
-   (sentinel + portmock) → `internal/service/` (use-cases + port-интерфейсы +
-   `platforms.go` + `maperr.go`) → `internal/repo/` (pgx + outbox) →
+   (sentinel + portmock) → `internal/apps/kacho/api/` (use-cases + port-интерфейсы,
+   срез на ресурс) и `internal/apps/kacho/shared/serviceerr/` (трансляция ошибок)
+   → `internal/repo/` (pgx + outbox) →
    `internal/clients/` (projectClient + vpcClient) → `internal/handler/` (public +
    internal + watch) → `internal/protoconv/` → `cmd/compute/main.go`. Тесты — на
    каждую функциональность (unit + integration + newman).

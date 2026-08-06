@@ -149,4 +149,7 @@ before newman runs):
 | `garbageInvalidOpId` | `garbage-id-no-prefix` |
 
 The kind-stand `setup.sh` allocates these and writes `kind-stand.postman_environment.json`;
-local development uses `local.postman_environment.json` with the same shape.
+local development uses the runner-materialised environment file with the same shape:
+`scripts/run.sh` copies the tracked `environments/local.postman_environment.template.json`
+into its non-tracked sibling on first run (the sibling is gitignored — it carries one
+stand's values).

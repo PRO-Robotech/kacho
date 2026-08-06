@@ -70,7 +70,7 @@
 | `id` PK | уникальный | `networks_pkey` ✅ | n/a | OK |
 | `project_id` | существует в `kacho-iam` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
 | `(project_id, name)` | уникальный name на project | `networks_project_id_name_key` UNIQUE ✅ | redundant List+name check (для UX) | OK |
-| `default_security_group_id` | если не пустой — указывает на существующий SG | `networks_default_security_group_fk` FK ON DELETE SET NULL ✅ (0005) | inline в `network.go::doCreate` | OK |
+| `default_security_group_id` | если не пустой — указывает на существующий SG | `networks_default_security_group_fk` FK ON DELETE SET NULL ✅ (0005) | inline в `internal/apps/kacho/api/network/create.go`.`doCreate` | OK |
 | `vrf_id` | уникальный per-network | `networks_vrf_id_key` UNIQUE ✅ (0007) + sequence-backed | n/a (DB-allocated) | OK |
 
 ### 1.2 `subnets`
@@ -153,7 +153,7 @@
 | `project_id` | существует в `kacho-iam` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
 | `(project_id, name)` | уникальный non-empty | `security_groups_project_id_name_key` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
 | `network_id` | если задан — существует, RESTRICT удаления | `security_groups_network_id_fkey` FK ON DELETE RESTRICT ✅; nullable (unbound SG) | sync через `Get(networkID)` в `doCreate` | OK |
-| `(network_id) WHERE default_for_network = true` | один default SG на сеть | `security_groups_one_default_per_network` partial UNIQUE ✅ (0005) | inline в `network.go::doCreate` | OK |
+| `(network_id) WHERE default_for_network = true` | один default SG на сеть | `security_groups_one_default_per_network` partial UNIQUE ✅ (0005) | inline в `internal/apps/kacho/api/network/create.go`.`doCreate` | OK |
 | `rules` JSONB OCC | concurrent UpdateRules без lost update | conditional UPDATE с `WHERE xmin::text = $expected` + `RETURNING` ✅; 0 rows → `ErrFailedPrecondition` | n/a (xmin OCC pattern) | OK |
 | individual rule.id within rules array | уникальный rule.id | ❌ jsonb-массив, нельзя UNIQUE per-element | sync check duplicate id в `security_group.go` | acceptable (denorm rules-в-JSONB by design) |
 
@@ -316,7 +316,11 @@ jsonb остаётся output-only зеркалом.
 
 - Каждый новый ссылочный field / инвариант: integration-тест обязателен (concurrent goroutines
   на спорный путь — ровно один winner, остальные получают ожидаемый sentinel). Эталоны:
-  `internal/repo/network_interface_attach_race_integration_test.go` (atomic CAS),
+  гонка привязки интерфейса — покрытия под этим именем в дереве **нет**: файла не
+  существует, и имя здесь не воспроизводится как координата. Рядом живут
+  `internal/repo/networkinterface_delete_toctou_integration_test.go` и
+  `internal/repo/address_repo_set_reference_race_integration_test.go` — они про другие
+  спорные пути. Это открытый долг покрытия, а не переименование,
   `internal/repo/kacho/pg/address.go` (`FOR UPDATE SKIP LOCKED`),
   `internal/repo/kacho/pg/security_group.go` (`xmin` OCC).
 - Перед merge каждой миграции — pre-flight на dev-стенде: `SELECT … WHERE …` проверить, что
@@ -328,7 +332,9 @@ jsonb остаётся output-only зеркалом.
 
 - `05-database.md` — миграционная история, индексы, generated-columns.
 - `er-diagram.md` — полная ER-схема и DB-level гарантии.
-- `internal/migrations/0001_initial.sql..0009_operations_account_id.sql` — источник истины.
+- `internal/migrations/` целиком — источник истины (диапазон «от начальной до девятой»,
+  стоявший здесь прежде, записан был как один путь с двумя точками и ничему в дереве не
+  соответствует; нумерация с тех пор ушла дальше).
 - `internal/repo/kacho/pg/network_interface.go` — эталон atomic CAS pattern.
 - `internal/repo/kacho/pg/address.go` — эталон `FOR UPDATE SKIP LOCKED` pattern.
 - `internal/repo/kacho/pg/security_group.go` — эталон `xmin` OCC pattern.

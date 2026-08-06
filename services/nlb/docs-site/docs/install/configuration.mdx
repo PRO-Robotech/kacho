@@ -9,7 +9,9 @@ import dedent from 'ts-dedent'
 
 # Конфигурация
 
-Kachō NLB конфигурируется YAML-файлом (`config.yaml`) с ENV-override. Любое поле переопределяется
+Kachō NLB конфигурируется YAML-файлом с ENV-override; путь к нему передаётся флагом
+`--config`, имя выбирает оператор (в дереве такого файла нет — есть образец
+`deploy/configmap-sample.yaml`, а в чарте он рендерится в ConfigMap). Любое поле переопределяется
 переменной окружения с префиксом **`KACHO_NLB_`** и разделителем вложенности `__` (двойное
 подчёркивание): `repository.postgres.url` → `KACHO_NLB_REPOSITORY__POSTGRES__URL`. Дефолты
 заданы в коде (`internal/apps/kacho/config/defaults.go`); большинство ключей опциональны.

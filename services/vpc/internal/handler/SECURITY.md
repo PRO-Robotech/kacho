@@ -47,7 +47,7 @@ miss (info-leak prevention).
 модель (`viewer ∪ v_list` на `vpc_network_interface:<id>`); production boot-guard
 `ValidateListFilter` не даёт стартовать без включённого фильтра.
 
-`KACHO_VPC_AUTH_MODE` (`internal/config/config.go`):
+`KACHO_VPC_AUTH_MODE` (`internal/apps/kacho/config/config.go`):
 - `dev` — anonymous-mode, callers без AuthN-headers пропускаются как admin
   (только для локальных фикстур; в развернутом стенде/проде недопустимо).
 - `production` — **fail-closed**: запрос без forwarded-принципала (`x-kacho-principal-*`)
@@ -91,10 +91,13 @@ hostname/db/query-fragment в тексте. Прямых `status.Errorf(codes.In
   → `RequireAndVerifyClientCert` (server-cert + client-CA), fail-closed при отсутствии
   cert-тройки (без тихого downgrade в insecure). Исходящие client-ребра
   (`vpc→iam` register/project/authz, `vpc→geo`) — тот же per-edge opt-in.
-- `KACHO_VPC_DB_SSLMODE` (default `disable` для dev; в production helm-values — `verify-full`) — `internal/config/config.go`.
-- `KACHO_VPC_RESOURCE_MANAGER_TLS` (default `false`; true в production) — TLS-credentials
-  для gRPC-клиента к resource-manager (`cmd/vpc/main.go::dialResourceManager`).
-- `production-strict`-mode проверяет, что оба включены (иначе старт падает).
+- `KACHO_VPC_DB_SSLMODE` (default `disable` для dev; в production helm-values — `verify-full`) — `internal/apps/kacho/config/config.go`.
+- Здесь стояла ручка TLS до сервиса управления ресурсами и функция, которая её
+  читает. В дереве нет ни того, ни другого: ни одного вхождения ни имени ручки, ни
+  самого этого сервиса под доменом vpc — имена не воспроизводятся, чтобы их не искали.
+- `production-strict` требует **включённого TLS на ребре к iam** (`extapi.iam.tls.enable`),
+  иначе загрузка конфигурации возвращает ошибку и сервис не стартует. Прежняя редакция
+  говорила «оба включены», имея в виду в том числе несуществующую ручку.
 
 ## Что осталось (зависит от интеграции с `kacho-iam`)
 

@@ -49,16 +49,24 @@ flowchart LR
 
 ## Методы
 
+:::note Путь операции домен-агностичен — имени сервиса и версии в нём нет
+Контракт операции общий для всех доменов, поэтому его адрес объявлен на верхнем
+уровне, а владельца край выбирает по префиксу идентификатора. Прежняя редакция
+страницы ставила перед ним имя домена и версию — такого адреса край не
+обслуживает; снятая форма здесь не воспроизводится, потому что адрес на этой
+странице читается как рабочий и попадает в терминал прямо отсюда.
+:::
+
 ### Get — получить операцию
 
-<ApiOperation method="GET" endpoint="/registry/v1/operations/{operationId}">
+<ApiOperation method="GET" endpoint="/operations/{operationId}">
 
 Возвращает текущее состояние операции (`done` / `response` / `error`). Клиент поллит этот метод до
 `done=true`. Доступен на **обоих** control-plane-listener'ах.
 
 <CodeBlock language="bash">
   {dedent`
-    curl 'http://localhost:18080/registry/v1/operations/rop7h9x2k4m8p0q1r5' \\
+    curl 'http://localhost:18080/operations/rop7h9x2k4m8p0q1r5' \\
       -H 'Authorization: Bearer <JWT>'
   `}
 </CodeBlock>

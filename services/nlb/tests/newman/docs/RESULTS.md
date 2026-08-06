@@ -56,7 +56,9 @@ a cancelled run. Residual non-convergence is a finding about the path.
 за таймаутом прогонщика — на отменённый прогон). Приведена к реальности только запись.
 
 > Baseline counters established with the initial check-in (KAC-NLB-newman-cases).
-> Updated after every run via `scripts/run.sh` → `out/summary.txt`.
+> Updated after every run via `scripts/run.sh`, which writes its summary into the
+> suite's `out/` directory (that directory is under `.gitignore` — the artefacts are
+> produced by a run, not tracked, so they are named here by role, not by path).
 
 ## Latest baseline (v0 — initial commit)
 
@@ -361,8 +363,16 @@ failures). The real ci-rep3 signatures, in order:
 
 ### Root cause A — stale AttachTargetGroup request shape (the dominant new signature, ~12)
 
-The current contract (verified in **both** `kacho-proto` and the umbrella `proto/`, plus the
-handler `internal/apps/kacho/api/loadbalancer/attach_target_group.go`) is:
+> [!note] Запись историческая: описанного RPC в контракте больше нет
+> Ни привязки группы целей к балансировщику отдельным RPC, ни её inline-поля на Create/Update
+> сегодня не существует: поля объявлены `reserved` в
+> `proto/kacho/cloud/loadbalancer/v1/network_load_balancer_service.proto`, а среди RPC сервиса
+> остались Get / List / Create / Update / Delete / Move / GetTargetStates / ListOperations.
+> Ни файла-обработчика, названного прежней редакцией, ни отдельного репозитория контрактов
+> (`kacho-proto`) в дереве нет — имена не воспроизводятся. Разбор ниже сохранён как история
+> прогона ci-rep3.
+
+Контракт **на момент того прогона** был:
 
 ```
 AttachNetworkLoadBalancerTargetGroupRequest {
@@ -507,6 +517,7 @@ python3 scripts/gen.py                       # regenerate collections (already c
 ./scripts/run.sh --env environments/kind-stand.postman_environment.json
 ```
 
-After each run, paste `out/summary.txt` (or `out/inc-summary.txt`) into a new
+After each run, paste the summary written by `scripts/run.sh` (or the per-case table
+written by `scripts/run-incremental.sh`) into a new
 row of the **Version history** table above and append per-service breakdown
 into the **Latest baseline** table.

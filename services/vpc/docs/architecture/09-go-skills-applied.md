@@ -11,7 +11,7 @@
 | Naming | MixedCaps + acronym rules; proto-mirror naming (`IpVersion`, `SetXxxId`) сохранен — переименование сломало бы proto-API |
 | Современный Go | код на Go 1.22+; `copyloopvar` включен в линтере |
 | Линтинг | `.golangci.yml` v2: errcheck + govet + ineffassign + staticcheck + unused + misspell + revive + bodyclose + copyloopvar — 0 issues |
-| CI | `.github/workflows/ci.yml` (build + vet + test-race + lint + govulncheck) + dependabot |
+| CI | `.github/workflows/ci.yaml` (build + vet + test-race + lint + govulncheck) + dependabot. Расширение `.yaml`, не `.yml` — прежняя редакция называла второе, и файла с таким именем в дереве нет |
 
 ## Error handling и context
 
@@ -25,10 +25,13 @@
 ## Структуры, интерфейсы, DI
 
 - Constructor injection (порты + Clean Architecture); композиционный корень —
-  единственное место wiring (`cmd/vpc/main.go::run`). DI-фреймворк не используется —
+  единственное место wiring (`cmd/vpc/main.go`.`runServe`). DI-фреймворк не используется —
   для сервиса такого размера это лишняя абстракция.
 - `AddressAllocator` вынесен из `AddressService` (single responsibility); порт-интерфейсы
-  сегрегированы в `address_pool_ports.go`. Embedding не используется намеренно.
+  сегрегированы в `internal/apps/kacho/api/addresspool/iface.go` (`AddressRepo`,
+  `NetworkRepo`, `SubnetReader`, `ZoneRegistry`). Отдельного файла с прежним именем в
+  дереве нет — порты собраны в один `iface.go` на пакет, как у остальных use-case'ов.
+  Embedding не используется намеренно.
 - Паттерны: worker (`operations.Run`), transactional outbox, retry-on-conflict в
   allocator. Functional options не нужны (конструкторы короткие, опции не накапливаются).
 

@@ -485,10 +485,11 @@ CASES.extend(perf_baseline_block("SG", "/vpc/v1/securityGroups"))
 CASES.extend(verbatim_text_pack("SG", "SecurityGroup", "/vpc/v1/securityGroups", text_template="Security group SecurityGroup.Id(value={id}) not found"))
 CASES.extend(authz_caller_headers_block("SG", "/vpc/v1/securityGroups"))
 
-# move_same_project («Destination project is the same as the source») для SG не
-# применим: network-bound Move-guard срабатывает первым (все SG network-bound), до
-# same-project check. Паттерн *-MV-IDM-SAME-PROJECT остается валиден для прочих
-# ресурсов (net/rt/...).
+# Перемещения ресурса между проектами в контракте vpc НЕТ — RPC снят целиком, и
+# ни один кейс набора его не зовёт (проверено поиском по cases/: ноль вхождений).
+# Прежняя редакция этого комментария объясняла, почему одна проверка перемещения
+# неприменима к SG, и добавляла, что её образец «остаётся валиден для прочих
+# ресурсов». Второе пережило свой предмет: прочих тоже нет.
 
 CASES.append(_sg_wrap("SG", "v8m",
     update_happy_multi_field("SG", "/vpc/v1/securityGroups", "/vpc/v1/securityGroups",

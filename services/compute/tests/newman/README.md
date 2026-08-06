@@ -46,21 +46,24 @@ by-design отступления от конвенций Kachō — `docs/archit
 ## Быстрый старт
 
 ```bash
+# Команды — ОТ КОРНЯ РЕПОЗИТОРИЯ. Скрипты набора находят свой корень сами
+# (`Path(__file__).parents[1]` / `cd "$(dirname "$0")/.."`), поэтому звать их
+# можно откуда угодно — а смешивать в одном блоке два разных «где я» нельзя.
 # 1. Поднять стенд с задеплоенным compute + port-forward api-gateway → localhost:18080
-cd ../../kacho-deploy && make dev-up && make reload-svc SVC=compute
+make -C deploy dev-up && make -C deploy reload-svc SVC=compute
 # 2. Перегенерить коллекции из cases/*.py (если меняли cases или код)
-python3 scripts/gen.py            # все ресурсы; или: python3 scripts/gen.py disk
+python3 services/compute/tests/newman/scripts/gen.py        # все ресурсы; или: … gen.py instance-redesign
 # 3a. Прогнать всё одним махом (быстро; во время прогона создаётся много ресурсов разом)
-./scripts/run.sh                  # сводка → out/summary.txt
-./scripts/run.sh --service disk   # один ресурс
+./services/compute/tests/newman/scripts/run.sh                  # сводка → out/summary.txt
+./services/compute/tests/newman/scripts/run.sh --service instance-redesign   # один ресурс
 # 3b. Прогнать ПО ОДНОМУ кейсу за раз с зачисткой ресурсов после каждого
 #     (низкий resource-footprint в любой момент → безопасно при quota-guard)
-./scripts/run-incremental.sh                        # все ~296 кейсов; сводка → out/incremental/summary.txt
-./scripts/run-incremental.sh --resume               # продолжить прерванный прогон
-./scripts/run-incremental.sh --service instance     # один ресурс
-./scripts/run-incremental.sh --failed               # только упавшие из прошлого прогона (после фикса)
-./scripts/run-incremental.sh --cases DISK-CR-CRUD-OK,INST-STATE-STOP-OK   # явный список кейсов
-./scripts/run-incremental.sh --cleanup-only         # просто стереть throwaway-ресурсы в тест-папках
+./services/compute/tests/newman/scripts/run-incremental.sh                        # все ~296 кейсов; сводка → out/incremental/summary.txt
+./services/compute/tests/newman/scripts/run-incremental.sh --resume               # продолжить прерванный прогон
+./services/compute/tests/newman/scripts/run-incremental.sh --service machine-type     # один ресурс
+./services/compute/tests/newman/scripts/run-incremental.sh --failed               # только упавшие из прошлого прогона (после фикса)
+./services/compute/tests/newman/scripts/run-incremental.sh --cases INST-RD-CR-CRUD-VM-OK,INST-RD-CR-NEG-DUP-NAME   # явный список кейсов
+./services/compute/tests/newman/scripts/run-incremental.sh --cleanup-only         # просто стереть throwaway-ресурсы в тест-папках
 #     тюнинг через env: CLEANUP_EVERY (как часто periodic-cleanup, default 25), DELAY_REQUEST (ms, default 30), SERVICES='r1 r2 ...'
 ```
 

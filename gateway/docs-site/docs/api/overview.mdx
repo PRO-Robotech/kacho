@@ -35,13 +35,23 @@ REST-пути, формат JSON, аутентификацию и авториз
   <tbody>
     <tr><td>IAM</td><td><code>/iam/v1/</code></td><td><code>kacho.cloud.iam.v1</code></td><td>Account / Project / User / ServiceAccount / Group / Role / AccessBinding</td></tr>
     <tr><td>VPC</td><td><code>/vpc/v1/</code></td><td><code>kacho.cloud.vpc.v1</code></td><td>Network / Subnet / SecurityGroup / RouteTable / Address / Gateway / NetworkInterface</td></tr>
-    <tr><td>Compute</td><td><code>/compute/v1/</code></td><td><code>kacho.cloud.compute.v1</code></td><td>Instance / Disk / Image / Snapshot / DiskType</td></tr>
+    <tr><td>Compute</td><td><code>/compute/v1/</code></td><td><code>kacho.cloud.compute.v1</code></td><td>Instance / MachineType</td></tr>
+    <tr><td>Storage</td><td><code>/storage/v1/</code></td><td><code>kacho.cloud.storage.v1</code></td><td>Volume / Snapshot / Image / DiskType</td></tr>
     <tr><td>Geography</td><td><code>/geo/v1/</code></td><td><code>kacho.cloud.geo.v1</code></td><td>Region / Zone</td></tr>
-    <tr><td>Load Balancer</td><td><code>/loadbalancer/v1/</code></td><td><code>kacho.cloud.loadbalancer.v1</code></td><td>NetworkLoadBalancer / Listener / TargetGroup</td></tr>
+    <tr><td>Load Balancer</td><td><code>/nlb/v1/</code></td><td><code>kacho.cloud.loadbalancer.v1</code></td><td>NetworkLoadBalancer / Listener / TargetGroup</td></tr>
     <tr><td>Registry</td><td><code>/registry/v1/</code></td><td><code>kacho.cloud.registry.v1</code></td><td>RegistryService (control-plane)</td></tr>
-    <tr><td>Operations</td><td><code>/operation/v1/</code></td><td><code>kacho.cloud.operation.v1</code></td><td><code>OperationService</code> (fan-out, native)</td></tr>
+    <tr><td>Operations</td><td><code>/operations</code></td><td><code>kacho.cloud.operation</code></td><td><code>OperationService</code> (fan-out, native)</td></tr>
   </tbody>
 </table>
+
+:::note Три строки этой таблицы называли не то, что обслуживает край
+Домен балансировщика адресуется коротким именем, а не полным; у операций нет ни
+имени домена, ни версии в пути — и в имени пакета версии тоже нет; блочное
+хранение стояло у compute, хотя владелец — storage, и собственной строки у него
+не было вовсе. Снятые формы здесь не воспроизводятся: адрес в этой таблице
+читается как рабочий. Сверено с таблицей маршрутов гейтвея и объявлениями
+пакетов в контрактах.
+:::
 
 ## REST-пути и методы
 

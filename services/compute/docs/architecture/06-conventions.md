@@ -1,8 +1,10 @@
 # 06 — Conventions & Gotchas
 
 Compute-specific правила, error mapping, top-10 gotchas. Workspace-уровень
-(naming, polyrepo, git, Issues) — в `kacho-workspace/CLAUDE.md`. Эталон-паттерны —
-`../kacho-vpc/docs/architecture/06-conventions.md` (compute написан на них).
+(naming, polyrepo, git, Issues) — в корневом индексе репозитория
+`PRO-Robotech/kacho-workspace` (пути отсюда не даются: репозиторий другой).
+Эталон-паттерны —
+`../../../vpc/docs/architecture/06-conventions.md` (compute написан на них).
 
 ## Naming
 
@@ -72,13 +74,20 @@ Compute-specific правила, error mapping, top-10 gotchas. Workspace-уро
   — `[4194304 .. 4398046511104]`. `block_size` — default 4096, whitelist
   {4096, ...} (точный set ещё не закреплён в контракте).
 - Image `min_disk_size` — `[4194304 .. 4398046511104]`.
-- Instance `resources_spec`: `memory ≤ 274877906944` и per-platform range/multiple;
-  `cores ∈ {2,4,6,...,80}` и per-platform set; `core_fraction ∈ {0,5,20,50,100}`;
-  `gpus ∈ {0,1,2,4}` и per-platform. Сложная per-platform валидация —
-  `internal/service/platforms.go` (таблица платформ `standard-v1/v2/v3`,
-  `highfreq-v3`, `gpu-*`). `metadata` — суммарно ≤ 256 KiB (proto: суммарно
-  ключей+значений < 512 KB; каждое значение ≤ 256 KB).
-  `maintenance_grace_period` — `[1s .. 24h]`.
+- Размер инстанса задаётся **ссылкой на тип машины** (`machine_type_id`), а не сырым
+  описанием ресурсов. Валидация — резолв ссылки против каталога
+  (`internal/apps/kacho/api/instance/instance.go`, `resolveMachineType`; сам каталог —
+  `internal/apps/kacho/api/machinetype/machine_type.go`), а размеры приезжают
+  output-only зеркалом `EffectiveResources` из каталожной записи.
+  `metadata` — суммарно ≤ 256 KiB (proto: суммарно ключей+значений < 512 KB;
+  каждое значение ≤ 256 KB). `maintenance_grace_period` — `[1s .. 24h]`.
+
+  > [!note] Здесь стояла таблица платформ и покомпонентная валидация ресурсов — предмета нет
+  > Прежняя редакция описывала посемейственные наборы ядер, кратность памяти и долю ядра,
+  > ссылаясь на файл-таблицу платформ в слое сервисов. Ни файла, ни слоя, ни самих полей
+  > запроса в дереве нет: поля объявлены `reserved` в `proto/kacho/cloud/compute/v1/instance_service.proto`,
+  > то есть сняты с контракта с резервированием номера и имени. Имя файла не
+  > воспроизводится: в обратных кавычках оно читается как живая координата.
 - `boot_disk_spec` / `secondary_disk_specs[]` / `AttachInstanceDiskRequest.
   attached_disk_spec`: ровно один из `{disk_id, disk_spec}` (proto
   `(exactly_one)`). `DetachInstanceDiskRequest`: ровно один из
@@ -110,7 +119,7 @@ Compute-specific правила, error mapping, top-10 gotchas. Workspace-уро
 
 ## Error mapping (sentinel → gRPC code)
 
-`internal/service/maperr.go::mapRepoErr` — единая точка трансляции (копия VPC):
+`internal/apps/kacho/shared/serviceerr/maperr.go` — единая точка трансляции (тот же приём, что в vpc):
 
 | Sentinel error (`internal/ports`) | gRPC code | Контрактный текст |
 |---|---|---|
@@ -121,8 +130,9 @@ Compute-specific правила, error mapping, top-10 gotchas. Workspace-уро
 | `ErrInternal` | `INTERNAL` | `"internal database error"` (no leak — pgx-текст не утекает наружу) |
 
 `stripSentinel` удаляет sentinel-префикс из текста, чтобы клиент видел
-контрактное сообщение без internal-обёртки. Файлы `internal/service/errors.go` +
-`internal/ports/errors.go` — type-alias'ы как в VPC (sentinel-ы живут в
+контрактное сообщение без internal-обёртки. Файлы
+`internal/apps/kacho/shared/serviceerr/errors.go` + `internal/ports/errors.go` —
+type-alias'ы как в vpc (sentinel-ы живут в
 leaf-пакете `internal/ports`, чтобы `portmock` мог их возвращать без
 import-cycle). `status.FromError + code != Unknown` guard — не маппить повторно
 уже-обёрнутые grpc-статусы.
@@ -171,7 +181,7 @@ Decision table (как в VPC):
 - Pagination — cursor `(created_at, id)` ORDER BY ASC, ASC. `page_token` — opaque
   base64 структуры `{created_at, id}`. `page_size` через `corevalidate.PageSize`
   (0 → DefaultPageSize=50, max 1000). Garbage `page_token` → `InvalidArgument`.
-  Зеркаль `../kacho-vpc/internal/repo/paging.go`.
+  Зеркаль `../../../vpc/internal/repo/helpers/paging.go`.
 - Filter — `List*` RPC принимают `filter` строку (`name="<v>"`; для
   Instance proto документирует `id/name/created_at/status/zone_id/platform_id/
   host_id`, но текущая фаза — только `name=`). Парсится через

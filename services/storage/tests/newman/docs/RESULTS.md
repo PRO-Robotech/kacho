@@ -115,7 +115,9 @@ memory `local-newman-env-blocked`). Кейсы авторены против APP
 исполняет CI-раннер._ Требует: `kacho-deploy` up + `reload-svc SVC=storage` + port-forward
 api-gateway → :18080, `newman` установлен. Значения `existingProjectId`/`existingZoneId`/
 `existingRegionId`/`existingDiskTypeId`/`garbageImageId` в
-`environments/local.postman_environment.json` — сверить с фактическим seed стенда.
+рабочий файл окружения в `environments/` (прогонщик делает его копией из отслеживаемого
+`environments/local.postman_environment.template.json`; сама копия под `.gitignore`) —
+сверить с фактическим seed стенда.
 
 **Known failing — product bugs:** нет (расхождений прода от контракта STOR-1 при авторинге
 не выявлено; все IMG-кейсы — ожидаемо-зелёные regression против landed-редизайна).

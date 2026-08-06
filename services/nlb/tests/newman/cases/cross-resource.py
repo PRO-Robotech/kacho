@@ -3,7 +3,9 @@
 
 """Cross-resource end-to-end cases (XRES-*) — sub-phase 6.0 S4 (UC-1/UC-2/UC-5).
 
-Acceptance source: docs/specs/sub-phase-6.0-nlb-functional-acceptance.md §S4
+Acceptance source: функциональная приёмка под-фазы 6.0, §S4. Документа под прежде
+  стоявшим здесь именем в репозитории воркспейса нет и никогда не было (git log --all
+  по пути: ноль коммитов); имя не воспроизводится.
   (6.0-34 EXTERNAL e2e, 6.0-35 INTERNAL e2e, 6.0-36 teardown bottom-up,
    6.0-37 dangling instance-target graceful read).
 Design source: docs/specs/nlb-functional-design-plan.md §5 (UC-1/UC-2/UC-5), §6.1.

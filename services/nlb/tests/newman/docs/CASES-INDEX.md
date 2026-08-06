@@ -95,8 +95,8 @@ existing pattern, no separate catalogue entry needed").
 
 ### Sub-phase 8.1 — placement + per-family VIP-source link/allocate model
 
-Source: `docs/specs/sub-phase-8.1-nlb-loadbalancer-placement-link-model-acceptance.md`
-(8.1-01..8.1-36). The LoadBalancer now carries a per-family VIP *source* on Create
+Источник — приёмкой под-фазы 8.1 (модель размещения и источника VIP у балансировщика). **Документа с таким именем в репозитории воркспейса нет и никогда не было** — проверено `git log --all` по пути: ноль коммитов. Приёмки nlb, которые там есть, лежат в `docs/specs/` того репозитория и названы по схеме `sub-phase-NLB-*`; какая из них покрывает этот набор — открытый вопрос, и он записан как долг, а не закрыт догадкой. Прежнее имя не воспроизводится: в обратных кавычках оно читается как существующий документ (нумерация кейсов 8.1-01..8.1-36 сохранена).
+The LoadBalancer now carries a per-family VIP *source* on Create
 (`v4Source`/`v6Source` = `{subnetId}`|`{addressId}`|`{public}`) + `placementType`
 (INTERNAL only) + `disabledAnnounceZones` (REGIONAL only); output resolves to
 `v4AddressId`/`v6AddressId`. `securityGroupIds`/`crossZoneEnabled`/`networkId`/anycast
@@ -433,8 +433,10 @@ These ids come from gen.py helper blocks and pass validation via the
 ## 8. Cross-resource e2e (XRES-*) — sub-phase 6.0 S4 (6.0-34 … 6.0-37)
 
 End-to-end tenant journeys orchestrating the per-resource RPCs (UC-1/UC-2/UC-5)
-plus the by-design dangling cross-service-target survival. Source:
-`docs/specs/sub-phase-6.0-nlb-functional-acceptance.md` §S4. Module:
+plus the by-design dangling cross-service-target survival. Источником назывался
+функциональный acceptance под-фазы 6.0, §S4 — **документа с таким именем в репозитории
+воркспейса нет и никогда не было** (`git log --all` по пути: ноль коммитов); имя не
+воспроизводится, чтобы не читалось как живая ссылка. Module:
 `cross-resource.py`. Cross-domain fixture-dependent steps assert the
 nlb-guaranteed contract strictly and gate peer-linkage assertions on the resource
 actually being created (suite stays green on a bare lane, fully exercises the
