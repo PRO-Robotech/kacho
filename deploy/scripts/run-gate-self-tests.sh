@@ -87,6 +87,7 @@ deploy/scripts/assert-refusal-lane-has-a-reader.py
 deploy/scripts/assert-report-readers-use-the-summary.py
 deploy/scripts/assert-shard-coverage.py
 deploy/scripts/assert-step-up-bearer-matches-catalog.py
+deploy/scripts/assert-teardown-frees-parent.py
 deploy/scripts/assert-verdict-aggregators-honest.sh
 deploy/scripts/assert-wave-scheduler-terminates.sh
 deploy/scripts/assert-waiters-name-their-target.sh
@@ -106,6 +107,7 @@ deploy/tests/helm/trusted-forwarder-profiles-test.sh
 services/iam/tests/newman/scripts/exec-coverage.py
 tests/authz-fixtures/ceremony_credentials.py
 tests/authz-fixtures/prodseed_all.py
+tests/authz-fixtures/prodseed_ceremony.py
 tools/mixedoutcomeaudit/mixed_outcome_audit.py
 "
 

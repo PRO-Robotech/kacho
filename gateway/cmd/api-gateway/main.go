@@ -81,8 +81,15 @@ func main() {
 	defer closeBackends()
 
 	// --- IAM subject client (gRPC-direct к kacho-iam:9091 для LookupSubject) ---
-	// InternalIAMService НЕ регистрируется в restmux (Internal* не на external),
-	// поэтому subject-lookup идет напрямую через grpc.NewClient.
+	// gRPC-direct ЗДЕСЬ — чтобы не рекурсировать через собственный middleware:
+	// этот клиент зовут из auth-интерсептора, и пойти к себе же по REST значило бы
+	// снова войти в цепочку, которая его и вызвала (loop-prevention).
+	//
+	// НЕ потому, что REST-маршрута нет: `internal/restmux/mux.go` регистрирует
+	// InternalIAMService на ВНУТРЕННЕМ mux (`/iam/v1/internal/iam:lookupSubject`,
+	// `:check`), и на внешний listener они не попадают — это делает HasInternalSuffix
+	// у gRPC-роутера и `isInternalRoute` у REST. Прежняя редакция утверждала
+	// «НЕ регистрируется в restmux»; это неверно и уже вводило в заблуждение.
 	// Это ребро gateway→iam → те же MTLS_IAM_ENABLE creds, что и у iam
 	// backend conns. Fail-fast on misconfig.
 	iamSubjectCreds, err := iamEdgeDialCreds(cfg, cfg.IAMInternalAddr)

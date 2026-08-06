@@ -269,7 +269,9 @@ var AllowedMethods = map[string]struct{}{
 	// 404/NotFound при gRPC-маршрутизации).
 	"/kacho.cloud.iam.v1.PermissionCatalogService/ListPermissionCatalog": {},
 	// iam.v1 — InternalIAMService / InternalUserService.* — НЕ в allowlist
-	// (HasInternalSuffix блокирует автоматически; запрет #6). gRPC-direct only.
+	// (HasInternalSuffix блокирует автоматически; запрет #6). Речь ровно про
+	// ВНЕШНИЙ listener: на внутреннем у части этих RPC есть и REST-маршрут
+	// (restmux заводит их на internalMux), и это запрету #6 не противоречит.
 
 	// loadbalancer.v1 — NetworkLoadBalancerService (kacho-nlb)
 	"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Get":             {},
