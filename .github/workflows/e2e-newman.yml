@@ -188,6 +188,20 @@ jobs:
           python3 deploy/scripts/assert-teardown-frees-parent.py --self-test
           python3 deploy/scripts/assert-teardown-frees-parent.py
 
+      # Третий остаток той же волны, и он про потомка, которого кейс НЕ ЗАВОДИЛ:
+      # сага `Account.Create` co-commit'ит проект `default` в своей же транзакции,
+      # а `Account.Delete` отказывает, пока в аккаунте есть хоть один проект. Кейс
+      # видит этого потомка только как `metadata.defaultProjectId`; не сняв его,
+      # уборка получает ЗАКОННЫЙ отказ на последнем шаге, аккаунт переживает
+      # прогон, и красным становится кейс, а не продукт. Стало видно ровно тогда,
+      # когда шаг удаления начал утверждать ИСХОД операции (гейт выше). Гейт
+      # статический, стенда не требует, проверяет свои предпосылки и падает, если
+      # сага исчезла, — на снятом предмете он зеленеть не вправе.
+      - name: гейт — уборка снимает потомка, заведённого САГОЙ создания родителя
+        run: |
+          python3 deploy/scripts/assert-cocreated-child-is-torn-down.py --self-test
+          python3 deploy/scripts/assert-cocreated-child-is-torn-down.py
+
       - name: гейт — у каждой исполняемой суиты есть свой шаг-гейт и артефакт
         run: |
           python3 .github/scripts/check-newman-suite-gates.py --self-test

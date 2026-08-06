@@ -76,6 +76,7 @@ deploy/scripts/assert-admin-hop-transport.sh
 deploy/scripts/assert-alt-fixtures-are-another.py
 deploy/scripts/assert-ban6-external-isolation.py
 deploy/scripts/assert-burst-waits-for-materialization.py
+deploy/scripts/assert-cocreated-child-is-torn-down.py
 deploy/scripts/assert-delete-operation-outcome.py
 deploy/scripts/assert-delete-steps-are-asserted.py
 deploy/scripts/assert-dialled-transports-have-a-producer.py
