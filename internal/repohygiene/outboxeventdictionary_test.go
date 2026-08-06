@@ -79,6 +79,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -342,10 +343,30 @@ func constraintOpsInTextOrder(up, fileTag string) []sqlConstraintOp {
 	return ops
 }
 
+// enumDictInventoryCache — разобранный инвентарь словарей на корень дерева.
+//
+// Проигрывание миграций спрашивают две пробы этого файла, и стоит оно под `-race`
+// около секунды на проход. Мотив и границы кэша — те же, что у инвентаря проводок
+// (outboxInventoryCache выше): ни одна проба пакета в читаемое дерево не пишет,
+// ключ — корень, кладётся только успешный разбор, а `filesRead` лежит внутри
+// инвентаря, поэтому «объём осмотренного» остаётся настоящим и у пробы, получившей
+// готовый ответ. Пакет живёт у самого потолка бюджета (в конвейере он занял
+// 293.8 c при 300 c), поэтому лишний проход по дереву здесь — не мелочь.
+var (
+	enumDictInventoryMu    sync.Mutex
+	enumDictInventoryCache = map[string]enumDictInventory{}
+)
+
 // enumDictionaryInventory проигрывает Up-секции всех миграций всех сервисов в
 // порядке версий и возвращает ИТОГОВЫЕ закрытые словари.
 func enumDictionaryInventory(t *testing.T, root string) enumDictInventory {
 	t.Helper()
+	enumDictInventoryMu.Lock()
+	cached, ok := enumDictInventoryCache[root]
+	enumDictInventoryMu.Unlock()
+	if ok {
+		return cached
+	}
 
 	servicesDir := filepath.Join(root, "services")
 	entries, err := os.ReadDir(servicesDir)
@@ -436,6 +457,9 @@ func enumDictionaryInventory(t *testing.T, root string) enumDictInventory {
 			inv.dict[key] = merged
 		}
 	}
+	enumDictInventoryMu.Lock()
+	enumDictInventoryCache[root] = inv
+	enumDictInventoryMu.Unlock()
 	return inv
 }
 
