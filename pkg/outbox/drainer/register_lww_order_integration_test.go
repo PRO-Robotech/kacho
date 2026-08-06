@@ -22,7 +22,7 @@ package drainer_test
 // permanently, because iam's reconciler is level-triggered off the mirror and
 // treats the resurrected row as the current truth.
 //
-// Event-type mapping: the inline test schema (copy of iam migration 0002) has a
+// Event-type mapping: the inline test schema (fgaOutboxSchema) has a
 // CHECK on event_type, so `fga.tuple.write` stands for register and
 // `fga.tuple.delete` for unregister. Only the ordering semantics matter here.
 //
