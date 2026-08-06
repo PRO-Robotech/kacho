@@ -83,6 +83,7 @@ deploy/scripts/assert-fixture-role-verbs-exist.py
 deploy/scripts/assert-generated-scripts-parse.js
 deploy/scripts/assert-outbox-autovacuum.sh
 deploy/scripts/assert-posture-branches-can-be-taken.py
+deploy/scripts/assert-refusal-lane-has-a-reader.py
 deploy/scripts/assert-report-readers-use-the-summary.py
 deploy/scripts/assert-shard-coverage.py
 deploy/scripts/assert-step-up-bearer-matches-catalog.py
