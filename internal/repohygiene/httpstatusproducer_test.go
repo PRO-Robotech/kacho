@@ -27,8 +27,17 @@
 // `WithErrorHandler`, предпосылка станет ложной — и об этом сказано в
 // `api-conventions.md` §«gRPC-код → HTTP-статус», где живёт канон.
 //
-// ОБЪЁМ ОСМОТРЕННОГО ПЕЧАТАЕТСЯ. «Ноль находок» обязано быть отличимо от «ноль
-// прочитанного»: гейт отказывается проходить, если не прочитал ни одного файла.
+// ЧИТАЮТСЯ ОБА МЕСТА, ГДЕ ЖИВУТ УТВЕРЖДЕНИЯ. Рукописный кейс и ГЕНЕРАТОР суиты:
+// одна строка генератора раскладывается на десятки шагов. Пока читались только
+// кейсы, гейт был зелёным при 124 утверждениях о коде ответа, лежавших в восьми
+// генераторах, — то есть корзина, в которой он ищет, не совпадала с местом, где
+// пишут. Прежний счёт «781 утверждение» стал 905.
+//
+// ОБЪЁМ ОСМОТРЕННОГО ПЕЧАТАЕТСЯ, И ОТДЕЛЬНО — ОБЪЁМ НЕПРОЧИТАННОГО. «Ноль
+// находок» обязано быть отличимо и от «ноль прочитанного» (гейт отказывается
+// проходить, не прочитав ни одного файла), и от «прочитано не то»: строки,
+// называющие код ответа формой, которую предикат не разбирает, считаются
+// отдельно, иначе рост слепой зоны неотличим от чистоты.
 package repohygiene
 
 import (
@@ -45,20 +54,50 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-// muxOwnStatuses — коды, которые мультиплексор края отдаёт САМ, не транслируя
-// ответ бэкенда. Они не выводятся из `HTTPStatusFromCode`, поэтому названы
-// поимённо и с причиной: список без причин через полгода неотличим от списка
-// удобства, а именно в такой список и складывают то, что лень чинить.
+// muxOwnStatuses — коды, которые край отдаёт САМ, не транслируя ответ бэкенда.
+// Они не выводятся из `HTTPStatusFromCode`, поэтому названы поимённо и с
+// причиной: список без причин через полгода неотличим от списка удобства, а
+// именно в такой список и складывают то, что лень чинить.
+//
+// Производитель у каждой записи ЖИВОЙ и проверяется отдельным утверждением
+// (см. edgeStatusProducers ниже): запись, чей производитель ушёл из дерева, —
+// находка, а не тихое послабление.
 var muxOwnStatuses = map[int]string{
 	405: "маршрут есть, метод не тот — решает сам мультиплексор до вызова бэкенда",
 	415: "тело в типе, который marshaler не берёт — тоже до бэкенда",
+	413: "объявленная длина тела больше потолка — отдаёт middleware края ДО мультиплексора " +
+		"(и ingress своим пределом тоже), поэтому проба, допускающая 413 на большом теле, " +
+		"называет исход, у которого есть производитель",
+}
+
+// edgeStatusProducers — чем ДОКАЗЫВАЕТСЯ каждая запись muxOwnStatuses, которую
+// производит не библиотека, а наш собственный код. Ключ — код, значение — файл
+// и литерал, который его выдаёт.
+//
+// Без этого запись «этот код кто-то производит» была бы утверждением о продукте,
+// которое ничем не держится: снимут middleware — запись переживёт свой предмет и
+// начнёт освобождать пробу, ждущую невозможного.
+var edgeStatusProducers = map[int]struct{ file, literal string }{
+	413: {"gateway/internal/middleware/http_body_limit.go", "http.StatusRequestEntityTooLarge"},
 }
 
 // statusAssertion — литерал кода рядом с `pm.response.code`.
+//
+// Форм РАВЕНСТВА в этом дереве две, и обе настоящие: chai даёт `.to.eql` и
+// `.to.equal`, кейсы пишут и так и так (замер на d24476c1: 169 строк первой формы
+// и 66 второй). Предикат, знающий одну, молча освобождал бы вторую — и «ноль
+// находок» покрывал бы 66 утверждений, которых он не читал.
 var (
-	reEql   = regexp.MustCompile(`pm\.response\.code[^;]{0,120}?\.to\.eql\(\s*(\d{3})\s*\)`)
+	reEql   = regexp.MustCompile(`pm\.response\.code[^;]{0,120}?\.to\.(?:eql|equal)\(\s*(\d{3})\s*\)`)
 	reOneOf = regexp.MustCompile(`pm\.response\.code[^;]{0,160}?\.to\.be\.oneOf\(\s*\[([0-9,\s]+)\]`)
 )
+
+// reUnreadShape — строка, которая ГОВОРИТ о коде ответа, но ни одной формой выше
+// не читается: отрицательное сравнение (`.to.not.equal(403)`), ветвление
+// (`if (pm.response.code === 404)`), список с подстановкой. Такие не находки — но
+// и не «прочитано». Их число печатается отдельно, иначе рост слепой зоны
+// неотличим от чистоты, а смена формы записи тихо выключает гейт.
+var reUnreadShape = regexp.MustCompile(`pm\.response\.code`)
 
 func producibleStatuses() map[int]codes.Code {
 	out := map[int]codes.Code{}
@@ -90,9 +129,17 @@ func TestNoCaseAssertsAStatusTheEdgeCannotProduce(t *testing.T) {
 			len(producible))
 	}
 
+	// Утверждения о коде ответа живут в ДВУХ местах, и оба обязаны читаться:
+	// рукописный кейс и ГЕНЕРАТОР, который раскладывает одну строку на десятки
+	// шагов. Пока читались только кейсы, четыре строки генераторов давали 42 шага
+	// в 6 коллекциях, и ни одна из них не была даже рассмотрена. Соседний гейт
+	// того же корпуса (tools/mixedoutcomeaudit) читает оба места — то есть где
+	// лежат утверждения, корпус уже знал.
 	patterns := []string{
 		filepath.Join(root, "services", "*", "tests", "newman", "cases", "*.py"),
 		filepath.Join(root, "gateway", "tests", "newman", "cases", "*.py"),
+		filepath.Join(root, "services", "*", "tests", "newman", "scripts", "gen.py"),
+		filepath.Join(root, "gateway", "tests", "newman", "scripts", "gen.py"),
 	}
 	var files []string
 	for _, p := range patterns {
@@ -105,6 +152,7 @@ func TestNoCaseAssertsAStatusTheEdgeCannotProduce(t *testing.T) {
 	sort.Strings(files)
 
 	filesRead, linesScanned, assertionsSeen := 0, 0, 0
+	linesMentioning, linesUnread := 0, 0
 	var findings []string
 
 	for _, f := range files {
@@ -117,9 +165,10 @@ func TestNoCaseAssertsAStatusTheEdgeCannotProduce(t *testing.T) {
 		for i, raw := range strings.Split(string(b), "\n") {
 			linesScanned++
 			line := stripJSLineComment(raw)
-			if !strings.Contains(line, "pm.response.code") {
+			if !reUnreadShape.MatchString(line) {
 				continue
 			}
+			linesMentioning++
 			var got []int
 			if m := reEql.FindStringSubmatch(line); m != nil {
 				n, _ := strconv.Atoi(m[1])
@@ -131,6 +180,9 @@ func TestNoCaseAssertsAStatusTheEdgeCannotProduce(t *testing.T) {
 						got = append(got, n)
 					}
 				}
+			}
+			if len(got) == 0 {
+				linesUnread++
 			}
 			for _, code := range got {
 				assertionsSeen++
@@ -151,9 +203,12 @@ func TestNoCaseAssertsAStatusTheEdgeCannotProduce(t *testing.T) {
 		}
 	}
 
-	t.Logf("осмотрено: файлов кейсов %d, строк %d, утверждений о коде ответа %d; "+
+	t.Logf("осмотрено: файлов кейсов %d, строк %d; строк, называющих код ответа, %d "+
+		"(из них ПРОЧИТАНО предикатом %d, НЕ прочитано %d — отрицательные сравнения, "+
+		"ветвления, списки с подстановкой); утверждений о коде ответа %d; "+
 		"производимых статусов %d (вычислено вызовом библиотеки, не выписано)",
-		filesRead, linesScanned, assertionsSeen, len(producible))
+		filesRead, linesScanned, linesMentioning, linesMentioning-linesUnread, linesUnread,
+		assertionsSeen, len(producible))
 
 	if filesRead == 0 {
 		t.Fatal("прочитано НОЛЬ файлов кейсов — гейт не проверен ни против чего. " +
@@ -166,5 +221,66 @@ func TestNoCaseAssertsAStatusTheEdgeCannotProduce(t *testing.T) {
 	if len(findings) > 0 {
 		t.Fatalf("утверждений о непроизводимом коде: %d\n  %s",
 			len(findings), strings.Join(findings, "\n  "))
+	}
+}
+
+// TestEdgeOwnStatusesStillHaveAProducer — освобождение живёт, пока живёт то, что
+// оно освобождает.
+//
+// `muxOwnStatuses` перечисляет коды, которых `HTTPStatusFromCode` не отдаёт, и
+// тем ОСВОБОЖДАЕТ пробы, которые их ждут. Для кодов, производимых библиотекой
+// grpc-gateway (405, 415), предмет держится самой библиотекой. Для кода, который
+// производит НАШ код, предмета в дереве может не стать — и тогда запись начнёт
+// освобождать пробу, ждущую исхода, которого больше нет: ровно то освобождение,
+// которому нечего исключать.
+//
+// Поэтому у каждой такой записи назван производитель координатой, и здесь
+// проверяется, что он на месте. Утверждается ИСПОЛНЯЕМАЯ часть: литерал ищется
+// в файле, а совпадение в комментарии предметом не считается, иначе шапка,
+// объясняющая запрет, вечно доказывала бы его предпосылку.
+func TestEdgeOwnStatusesStillHaveAProducer(t *testing.T) {
+	root := repoRoot(t)
+
+	checked := 0
+	for code, src := range edgeStatusProducers {
+		if _, declared := muxOwnStatuses[code]; !declared {
+			t.Errorf("%d: производитель назван, но код НЕ объявлен в muxOwnStatuses — "+
+				"запись доказывает то, чего никто не освобождает. Удали её", code)
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(src.file)))
+		if err != nil {
+			t.Errorf("%d: производитель %s не читается (%v) — запись muxOwnStatuses[%d] "+
+				"пережила свой предмет. Либо верни координату, либо сними освобождение",
+				code, src.file, err, code)
+			continue
+		}
+		found := false
+		for _, raw := range strings.Split(string(body), "\n") {
+			line := strings.TrimSpace(raw)
+			if strings.HasPrefix(line, "//") {
+				continue // комментарий — не производитель
+			}
+			if strings.Contains(stripJSLineComment(raw), src.literal) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("%d: в %s нет исполняемого %s — код больше никто не производит, "+
+				"а muxOwnStatuses[%d] продолжает освобождать пробы, которые его ждут. "+
+				"Сними освобождение вместе с производителем",
+				code, src.file, src.literal, code)
+			continue
+		}
+		checked++
+	}
+
+	t.Logf("перепись: кодов в muxOwnStatuses %d, из них производимых нашим кодом %d "+
+		"(производитель проверен у %d)", len(muxOwnStatuses), len(edgeStatusProducers), checked)
+
+	if len(edgeStatusProducers) > 0 && checked == 0 {
+		t.Fatal("ни у одной записи производитель не подтверждён — проверка предпосылки " +
+			"сама осталась без предмета")
 	}
 }
