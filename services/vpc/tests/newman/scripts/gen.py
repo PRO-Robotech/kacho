@@ -1589,25 +1589,35 @@ def subnet_cidr_expand_shrink_pack():
     ))
 
     # 6) Remove несуществующий CIDR — не во v4_cidr_blocks
+    #
+    # ЗАГОЛОВОК БОЛЬШЕ НЕ ХЕДЖИРУЕТ. Прежний обещал «FailedPrecondition ИЛИ silent»,
+    # а утверждение принимало `oneOf([200, 400])` и затем один лишь `done` — то есть
+    # кейс был удовлетворён ЛЮБЫМ исходом, включая тот, при котором продукт молча
+    # принимает удаление отсутствующего блока. Второй ветки в продукте нет:
+    # `RemoveCidrBlocksUseCase` работает через `RunSync`, и отсутствующий блок
+    # отвергается ВНУТРИ операции (`FailedPrecondition`, «one or more CIDR blocks
+    # not found in subnet»). Синхронная `400` на этом входе производится только
+    # malformed-id и пустым списком блоков — ни того, ни другого здесь нет.
+    #
+    # Отсюда: шаг утверждает чеканку Operation (`200`), а ОТКАЗ утверждает парный
+    # поллер — вместе с кодом и дословным тоном. Отдельный шаг `check-result` снят:
+    # он адресовался `{{opId}}`, который на объявленной (и несуществующей) полосе
+    # `400` пуст, и в этом случае уезжал на `/operations/` без сегмента.
     cases.append(Case(
         id="SUB-RCB-NEG-NOT-PRESENT",
-        title="RemoveCidrBlocks с CIDR не из списка → ожидаемое поведение (FailedPrecondition или silent)",
+        title="RemoveCidrBlocks с CIDR не из списка → FailedPrecondition в операции",
         classes=["NEG", "VAL"], priority="P1",
         steps=[
             Step(name="rm-missing", method="POST",
                  path="/vpc/v1/subnets/{{addedSubId}}:remove-cidr-blocks",
                  body={"ipv4CidrBlocks": ["192.168.99.0/24"]},
                  test_script=[
-                     "pm.test('200 (op) or 400 sync', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                     *assert_status(200),
                      *save_from_response("j.id", "opId"),
                  ]),
-            poll_operation_until_done(),
-            Step(name="check-result", method="GET", path="/operations/{{opId}}",
-                 test_script=[
-                     "const j = pm.response.json();",
-                     "// service может вернуть error.code=9 (FailedPrecondition) или silent success",
-                     "pm.test('completed', () => pm.expect(j.done).to.eql(true));",
-                 ]),
+            poll_operation_until_done(
+                must_fail=True, must_fail_code=9,
+                must_fail_message="one or more CIDR blocks not found in subnet"),
         ],
     ))
 
@@ -2162,7 +2172,8 @@ def _wrap_own_fresh_reads(steps: List[Step], rename: bool = True) -> List[Step]:
 
 
 def poll_operation_until_done(must_fail: bool = False, capture_id_to: str = "",
-                              id_expr: str = "") -> Step:
+                              id_expr: str = "", must_fail_code: int = 0,
+                              must_fail_message: str = "") -> Step:
     """Reusable poll step с retry-на-not-done через setNextRequest.
     До 30 попыток с ~500ms задержкой между ними (≈15s покрытия async-op tail, Koren #1),
     потом fail если done остался false.
@@ -2220,6 +2231,26 @@ def poll_operation_until_done(must_fail: bool = False, capture_id_to: str = "",
             "pm.test('operation refused the request (carries an error)', () => "
             "  pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
         ]
+        # КОД И ТОН ОТКАЗА — ЧАСТЬ КОНТРАКТА, и утверждаются здесь, а не отдельным
+        # шагом. Отдельный шаг пришлось бы адресовать `{{opId}}`, который на
+        # синхронной полосе пуст: так и появляется опрос, уезжающий на
+        # `/operations/` без сегмента (мерка
+        # `deploy/scripts/assert-refusal-lane-has-a-reader.py`). Здесь же ранний
+        # выход по пустому имени уже стоит выше по скрипту, поэтому утверждение
+        # исполняется РОВНО тогда, когда Operation существует.
+        if must_fail_code:
+            tail.append(
+                f"pm.test('refusal carries gRPC code {must_fail_code}', () => "
+                f"  pm.expect(j.error && j.error.code, JSON.stringify(j)).to.eql({must_fail_code}));")
+        if must_fail_message:
+            tail.append(
+                f"pm.test('refusal keeps the contract tone', () => "
+                f"  pm.expect(j.error && j.error.message, JSON.stringify(j))"
+                f"    .to.eql({json.dumps(must_fail_message)}));")
+    elif must_fail_code or must_fail_message:
+        raise ValueError("must_fail_code/must_fail_message требуют must_fail=True: "
+                         "утверждать текст отказа у операции, от которой отказа не "
+                         "ждут, значит объявить проверку, которая не исполнится")
     if capture_id_to:
         if must_fail:
             raise ValueError("capture_id_to несовместим с must_fail: у операции, "

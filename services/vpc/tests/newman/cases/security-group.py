@@ -696,18 +696,47 @@ CASES.append(Case(
                               "pm.expect(def, 'must have default SG').to.be.an('object');",
                               "pm.environment.set('defaultSgId', def.id);"]),
             retry_on=(403, 404)),
+        # ПРЕДМЕТ КЕЙСА — ОТКАЗ, и он утверждается как отказ.
+        #
+        # Прежняя редакция принимала `oneOf([200, 400, 409])` и на этом
+        # заканчивала: единственное утверждение кейса проходило и когда группа
+        # по умолчанию УДАЛЯЛАСЬ, и когда удаление отвергалось, — то есть кейс
+        # не мог покраснеть на том, ради запрета чего написан. Ниже — три
+        # решения, каждое взято из продукта, а не из соображений удобства:
+        #
+        #   • ПОЛОСА ОДНА. Защита живёт в СИНХРОННОЙ пред-проверке use-case'а
+        #     (`securitygroup.DeleteSecurityGroupUseCase.Execute` читает
+        #     `DefaultForNetwork` ДО `operations.NewFromContext`), поэтому
+        #     Operation здесь не чеканится ВООБЩЕ. Второй, асинхронной полосы у
+        #     этого входа нет by construction → `async_lane=False`.
+        #   • 409 СНЯТ. `ALREADY_EXISTS`/`ABORTED` на этом пути ничем не
+        #     производятся; исход без производителя — не терпимость, а строка,
+        #     которая не покраснеет никогда (тот же класс, что снятое ожидание
+        #     412 в `api-conventions.md`).
+        #   • ТОН — ЧАСТЬ КОНТРАКТА, поэтому утверждается дословно, вместе с
+        #     кодом gRPC. HTTP 400 здесь — механическое следствие
+        #     `FAILED_PRECONDITION` по таблице края, а не отдельное решение.
+        #
+        # Парный опрос операции снят вместе с полосой: опрашивать нечего, а
+        # прежний безусловный `GET /operations/{{opId}}` на пустом
+        # идентификаторе уезжал в `/operations/` и 27 раз получал 403, после
+        # чего кейс падал сообщением «expected undefined to deeply equal true»
+        # — про авторизацию, которой здесь нет вовсе. (Единица счёта — элемент
+        # `run.executions` отчёта прогона 31061894576: индексы 422-448, то есть
+        # один опрос операции и 26 повторов чтения результата; 449 — уже уборка
+        # сети. Та же цифра стоит в шапке
+        # `deploy/scripts/assert-refusal-lane-has-a-reader.py`: два места об
+        # одном предмете обязаны совпадать, и первая редакция здесь их развела.)
         Step(name="del-default-sg", method="DELETE",
              path="/vpc/v1/securityGroups/{{defaultSgId}}",
              test_script=[
-                 "pm.test('200 (op started) or 400/409 sync', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 409]));",
-                 *save_from_response("j.id", "opId"),
-             ]),
-        poll_operation_until_done(),
-        Step(name="check-result", method="GET", path="/operations/{{opId}}",
-             test_script=[
-                 "const j = pm.response.json();",
-                 "// Текущее поведение: либо OK (default SG удален, можно тогда delete network), либо error (запрет)",
-                 "pm.test('completed', () => pm.expect(j.done).to.eql(true));",
+                 *assert_refused_sync_or_async(
+                     "Delete of the network's default SG",
+                     sync_codes=(400,), async_lane=False),
+                 *assert_grpc_code(9, "FAILED_PRECONDITION"),
+                 "pm.test('contract tone: default SG refusal names the reason', () => "
+                 "pm.expect(pm.response.json().message, pm.response.text())"
+                 ".to.eql('default security group cannot be deleted'));",
              ]),
         # cleanup — пытаемся удалить network в любом состоянии. DELETE of the caller's OWN
         # fresh network → v_delete owner-tuple lag can 403 under parallel load; retry SELF on
@@ -775,9 +804,23 @@ CASES.append(Case(
              test_script=["const j = pm.response.json();",
                           "pm.test('NIC create op done no error', () => pm.expect(j.done && !j.error).to.eql(true));"]),
         # Главная проверка: SG.Delete должна быть отвергнута.
+        #
+        # ПОЛОСА ЗДЕСЬ ОДНА, И ОНА АСИНХРОННАЯ. Отказ живёт в writer-TX репозитория
+        # (`SELECT … FOR UPDATE` + `EXISTS(security_group_ids @> …)`), то есть его
+        # выносит ВОРКЕР: синхронная фаза `DeleteSecurityGroupUseCase.Execute` для
+        # well-formed не-default SG всегда чеканит Operation и отвечает `200`.
+        # Прежняя редакция объявляла законной ещё и синхронную `400`, у которой на
+        # этом входе НЕТ ПРОИЗВОДИТЕЛЯ, — и объявление было не безобидным: на этой
+        # ветке Operation не чеканится, `opId` сбрасывается в пустое, а следующий
+        # шаг `assert-sg-delete-blocked` уезжает на `/operations/` без сегмента.
+        # Полоса без производителя не «терпимость к порядку», а объявленный путь,
+        # который никто не читает (мерка
+        # `deploy/scripts/assert-refusal-lane-has-a-reader.py`).
         retry_until_authorized(Step(name="del-sg-attached", method="DELETE", path="/vpc/v1/securityGroups/{{sgId}}",
              test_script=[
-                 "pm.test('sync 200 (op started) or 400 (sync FailedPrecondition)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",
+                 *assert_status(200),
+                 "pm.test('Operation minted (the refusal is the worker\\'s to make)', () => "
+                 "pm.expect(pm.response.json().id, pm.response.text()).to.be.a('string'));",
                  *save_from_response("j.id", "opId"),
              ])),
         poll_operation_until_done(),
@@ -799,9 +842,17 @@ CASES.append(Case(
         # Cleanup: сначала detach SG из NIC (PATCH securityGroupIds=[]),
         # затем удаление снизу вверх. Если кейс красный (refcheck нет),
         # SG уже удалена — detach/cleanup-sg просто no-op'ит.
-        Step(name="detach-sg-from-nic", method="PATCH", path="/vpc/v1/networkInterfaces/{{nicId}}",
+        #
+        # ИМЯ ШАГА НАЗЫВАЕТ ЕГО РОЛЬ, а не только глагол, и это требование, а не
+        # оформление: предмет кейса — ОТКАЗ удаления, а этот шаг принимает и
+        # успех, и отказ. Отличить «уборка вправе принять оба исхода» от «кейс
+        # зеленеет на том, что запрещает» можно ровно по одному признаку — по
+        # тому, объявил ли шаг себя уборкой. Прежнее имя `detach-sg-from-nic`
+        # называло действие и молчало о роли, поэтому шаг попадал в находки
+        # мерки `tools/mixedoutcomeaudit`, и справедливо.
+        Step(name="cleanup-detach-sg-from-nic", method="PATCH", path="/vpc/v1/networkInterfaces/{{nicId}}",
              body={"updateMask": "securityGroupIds", "securityGroupIds": []},
-             test_script=["pm.test('detach (200 / 400 / 404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
+             test_script=["pm.test('cleanup detach (200 / 400 / 404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 400, 404]));",
                           *save_from_response("j.id", "opId")]),
         poll_operation_until_done(),
         Step(name="cleanup-nic", method="DELETE", path="/vpc/v1/networkInterfaces/{{nicId}}",
