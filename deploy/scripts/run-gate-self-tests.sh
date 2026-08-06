@@ -86,6 +86,7 @@ deploy/scripts/assert-posture-branches-can-be-taken.py
 deploy/scripts/assert-report-readers-use-the-summary.py
 deploy/scripts/assert-shard-coverage.py
 deploy/scripts/assert-step-up-bearer-matches-catalog.py
+deploy/scripts/assert-teardown-frees-parent.py
 deploy/scripts/assert-verdict-aggregators-honest.sh
 deploy/scripts/assert-wave-scheduler-terminates.sh
 deploy/scripts/assert-waiters-name-their-target.sh
