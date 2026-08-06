@@ -41,8 +41,9 @@ model
 #
 #	define super_admin: <derivation over this type's OWN structural pointer>
 #
-# unioned into the type's five verbs and its `admin` tier (the other tiers derive
-# from `admin`, so they follow). `project.super_admin` is derived from its ACCOUNT
+# unioned into every verb the type declares and into its `admin` tier (the other
+# tiers derive from `admin`, so they follow). `project.super_admin` is derived
+# from its ACCOUNT
 # and the CLUSTER and deliberately NOT from `project.admin` — project scope and
 # below stay flat, which keeps the anti-over-grant boundary of data-integrity.md
 # intact. Behavioural lock: authzmap/super_admin_cascade_test.go.
@@ -53,7 +54,7 @@ model
 # not: the right to delete arrived with the owner ROLE BINDING, materialized per
 # object by the reconciler, so a just-created account could not be deleted until
 # the queue caught up, while the cloud administrator's equivalent right cascaded
-# and always worked. `account`'s five verbs therefore read `or owner` directly.
+# and always worked. `account`'s verbs therefore read `or owner` directly.
 # NOT via the `admin` tier: `account.admin` also accepts DIRECT subjects, so
 # reading it would hand the DELEGATED account administrator the account object
 # itself — and the recorded picture puts him inside the account, not over it
@@ -80,6 +81,27 @@ model
 #     lifecycle and the cluster-singleton write-enforcement. Only `super_admin`
 #     derives over them; no tenant access cascade reads them;
 #   - CEL conditions (unchanged).
+#
+# `v_create` IS NOT PART OF THE OBJECT VERB-SET, AND THAT IS THE WHOLE POINT.
+# A verb relation names an operation performed ON the object the tuple points at.
+# "Create" is not one: at the moment authority is decided the object does not yet
+# exist, so the question is always asked of a PARENT. Kachō answers it with the
+# write tier on that parent — `editor@project` gates every resource Create in the
+# permission catalog — which is why a per-object `v_create` had no reader anywhere.
+# It was nonetheless declared by 24 types and materialized on every one of them:
+# 41087 tuples on the reference stand, 9.05% of the whole store, all of them
+# answering a question nothing asks. Worse than the cost, a relation that is
+# granted, written and never checked is a right nobody reviews, and the role editor
+# offered `create` on 23 resources where authoring it delivered exactly nothing.
+#
+# ONE type keeps it, on container semantics: `registry_registry`. "Create a
+# repository in this namespace" IS an operation on the registry object, and it is
+# really asked — control plane (CreateRepository / RenameRepository) and data plane
+# (docker push to a new repo, cross-repo mount, first-push blob-reveal guard).
+#
+# Both directions are locked by authzmap/verb_relation_has_reader_test.go: a
+# reader-less carrier reappearing reds with the type name, and so does an exemption
+# that outlived its subject.
 #
 # Contract-B (acceptance D-12) REMOVED the B2B `type organization` and every
 # `... from organization` derivation — Organization is fully gone.
@@ -201,7 +223,9 @@ type account
     # are object-level read/write on the account OBJECT ITSELF; a grant of e.g.
     # `iam.account.get` materializes `account:<id> # v_get @ subj` → "see the
     # account in a selector without any access to its contents" (D-2: no implicit
-    # hierarchy cascade into content). Full verb-set for symmetry with leaf types.
+    # hierarchy cascade into content). Object verb-set, in parity with leaf types
+    # (see the `v_create` note in the header: creating an account is not an
+    # operation ON an account, so no `v_create` here).
     #
     # Exactly two derivations, and no others:
     #   `owner`       — the account is created by SELF-SERVICE, so deleting it must
@@ -215,7 +239,6 @@ type account
     # within it. Structural lock: authzmap/account_owner_structural_test.go.
     define v_get: [user, service_account, group#member] or owner or super_admin
     define v_list: [user, service_account, group#member] or owner or super_admin
-    define v_create: [user, service_account, group#member] or owner or super_admin
     define v_update: [user, service_account, group#member] or owner or super_admin
     define v_delete: [user, service_account, group#member] or owner or super_admin
 
@@ -237,11 +260,12 @@ type project
     # rbac-2026 P2 (D-6): project becomes a verb-bearing resource. Same contract
     # as account.v_* — DIRECT subjects only, NO cascade, NOT implied by tiers.
     # A grant materializes `project:<id> # v_get @ subj` (object-level access to
-    # the project itself, never to its contents — D-2). Full verb-set for
-    # symmetry with leaf resource types.
+    # the project itself, never to its contents — D-2). Object verb-set, in parity
+    # with leaf resource types. Creating resources IN a project is authorized by
+    # the write tier on the project (`editor@project`), not by a per-object
+    # `v_create` — see the `v_create` note in the header.
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
 
@@ -266,7 +290,6 @@ type iam_user
     define viewer: [user, service_account, group#member] or subject or editor
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
 
@@ -281,7 +304,6 @@ type iam_service_account
     define token_creator: [user, service_account] or admin
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
 
@@ -295,7 +317,6 @@ type iam_group
     define viewer: [user, service_account, group#member] or editor
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
 
@@ -311,7 +332,6 @@ type iam_role
     define viewer: [user, service_account, group#member] or editor
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
 
@@ -330,7 +350,6 @@ type iam_access_binding
     define viewer: [user, service_account, group#member] or editor
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
 
@@ -369,7 +388,6 @@ type vpc_network
     define viewer: [user, service_account, group#member] or editor
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
 
@@ -383,7 +401,6 @@ type vpc_subnet
     define use: [user, service_account] or editor
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
 
@@ -396,7 +413,6 @@ type vpc_security_group
     define viewer: [user, service_account, group#member] or editor
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
 
@@ -409,7 +425,6 @@ type vpc_route_table
     define viewer: [user, service_account, group#member] or editor
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
 
@@ -423,7 +438,6 @@ type vpc_address
     define use: [user, service_account] or editor
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
 
@@ -436,7 +450,6 @@ type vpc_gateway
     define viewer: [user, service_account, group#member] or editor
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
 
@@ -449,7 +462,6 @@ type vpc_network_interface
     define viewer: [user, service_account, group#member] or editor
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
 
@@ -463,7 +475,6 @@ type vpc_address_pool
     define viewer: [user, service_account] or admin
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
 
@@ -495,7 +506,6 @@ type compute_instance
     define console: [user with mfa_fresh] or admin
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
 
@@ -508,7 +518,6 @@ type nlb_network_load_balancer
     define viewer: [user, service_account, group#member] or editor
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
     # announce_writer — inbound data-plane feedback gate for
@@ -547,7 +556,6 @@ type nlb_target_group
     define viewer: [user, service_account, group#member] or editor
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
     # NLB-TGT-1 — управление СОСТАВОМ группы отделено от изменения самой группы.
@@ -596,7 +604,6 @@ type nlb_listener
     define viewer: [user, service_account, group#member] or editor
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
 
@@ -622,6 +629,17 @@ type registry_registry
     # only editor-tier v_get/v_list/v_update/v_delete (the `edit` role authors no
     # `create` verb) and CreateRepository denied → 404 for the owner. Per-OBJECT
     # computed relation (like `editor: this or admin`), NOT a hierarchy cascade.
+    #
+    # `v_create` LIVES HERE AND NOWHERE ELSE — do not "restore parity" by adding it
+    # back to the other types. A registry is a CONTAINER: "create a repository in
+    # this namespace" is a real operation on the registry object, and it is really
+    # asked — by the control plane (CreateRepository / RenameRepository) and by the
+    # data plane (docker push to a new repo, cross-repo mount into a new dst, and
+    # the first-push blob-reveal guard). Every other type answered a question no
+    # request ever asks: "create" is not an operation on an already-existing object,
+    # and creating a resource inside a scope is authorized by the write tier on that
+    # scope. Locked by authzmap/verb_relation_has_reader_test.go, which reds with the
+    # type name if a reader-less carrier reappears.
     define v_get: [user, service_account, group#member] or owner or super_admin
     define v_list: [user, service_account, group#member] or owner or super_admin
     define v_create: [user, service_account, group#member] or owner or super_admin
@@ -648,7 +666,6 @@ type registry_repository
     # on v_get ONLY (anonymous public-read floor, B14).
     define v_get: [user:*, user, service_account, group#member] or owner or super_admin
     define v_list: [user, service_account, group#member] or owner or super_admin
-    define v_create: [user, service_account, group#member] or owner or super_admin
     define v_update: [user, service_account, group#member] or owner or super_admin
     define v_delete: [user, service_account, group#member] or owner or super_admin
 
@@ -680,7 +697,6 @@ type storage_volume
     define viewer: [user, service_account, group#member] or editor
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
 
@@ -693,7 +709,6 @@ type storage_snapshot
     define viewer: [user, service_account, group#member] or editor
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
 
@@ -706,7 +721,6 @@ type storage_image
     define viewer: [user, service_account, group#member] or editor
     define v_get: [user, service_account, group#member] or super_admin
     define v_list: [user, service_account, group#member] or super_admin
-    define v_create: [user, service_account, group#member] or super_admin
     define v_update: [user, service_account, group#member] or super_admin
     define v_delete: [user, service_account, group#member] or super_admin
 
