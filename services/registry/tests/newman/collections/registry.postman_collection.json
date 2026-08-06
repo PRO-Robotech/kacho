@@ -100,6 +100,7 @@
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
                   "});",
                   "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -532,6 +533,7 @@
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
                   "});",
                   "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -799,6 +801,7 @@
                   "pm.environment.unset('_authRetryStarted');",
                   "pm.test('delete accepted', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
                   "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -857,7 +860,16 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "// ИСХОД УДАЛЕНИЯ, А НЕ ТОЛЬКО ЕГО ЗАВЕРШЕНИЕ: операция, завершившаяся",
+                  "// ошибкой, тоже done — без этого утверждения отказ удаления читается как",
+                  "// успех, ресурс остаётся жить, а вердикт не меняется.",
+                  "(function () {",
+                  "  var _do; try { _do = pm.response.json(); } catch (e) { return; }",
+                  "  pm.test('delete operation succeeded (no operation.error)', function () {",
+                  "    pm.expect(_do.error && JSON.stringify(_do.error), 'operation.error').to.eql(undefined);",
+                  "  });",
+                  "})();"
                 ]
               }
             }
@@ -1412,6 +1424,7 @@
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
                   "});",
                   "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -1620,6 +1633,7 @@
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
                   "});",
                   "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -1829,6 +1843,7 @@
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
                   "});",
                   "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -2717,6 +2732,7 @@
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
                   "});",
                   "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -2940,6 +2956,7 @@
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
                   "});",
                   "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -2998,7 +3015,16 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "// ИСХОД УДАЛЕНИЯ, А НЕ ТОЛЬКО ЕГО ЗАВЕРШЕНИЕ: операция, завершившаяся",
+                  "// ошибкой, тоже done — без этого утверждения отказ удаления читается как",
+                  "// успех, ресурс остаётся жить, а вердикт не меняется.",
+                  "(function () {",
+                  "  var _do; try { _do = pm.response.json(); } catch (e) { return; }",
+                  "  pm.test('delete operation succeeded (no operation.error)', function () {",
+                  "    pm.expect(_do.error && JSON.stringify(_do.error), 'operation.error').to.eql(undefined);",
+                  "  });",
+                  "})();"
                 ]
               }
             }
@@ -3155,6 +3181,7 @@
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
                   "});",
                   "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -3378,6 +3405,7 @@
                   "  pm.expect(j.metadata, 'operation.metadata').to.be.an('object');",
                   "});",
                   "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -3436,7 +3464,16 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "// ИСХОД УДАЛЕНИЯ, А НЕ ТОЛЬКО ЕГО ЗАВЕРШЕНИЕ: операция, завершившаяся",
+                  "// ошибкой, тоже done — без этого утверждения отказ удаления читается как",
+                  "// успех, ресурс остаётся жить, а вердикт не меняется.",
+                  "(function () {",
+                  "  var _do; try { _do = pm.response.json(); } catch (e) { return; }",
+                  "  pm.test('delete operation succeeded (no operation.error)', function () {",
+                  "    pm.expect(_do.error && JSON.stringify(_do.error), 'operation.error').to.eql(undefined);",
+                  "  });",
+                  "})();"
                 ]
               }
             }
@@ -3530,6 +3567,7 @@
                 "exec": [
                   "pm.test('delete accepted', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
                   "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
@@ -3588,7 +3626,16 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "// ИСХОД УДАЛЕНИЯ, А НЕ ТОЛЬКО ЕГО ЗАВЕРШЕНИЕ: операция, завершившаяся",
+                  "// ошибкой, тоже done — без этого утверждения отказ удаления читается как",
+                  "// успех, ресурс остаётся жить, а вердикт не меняется.",
+                  "(function () {",
+                  "  var _do; try { _do = pm.response.json(); } catch (e) { return; }",
+                  "  pm.test('delete operation succeeded (no operation.error)', function () {",
+                  "    pm.expect(_do.error && JSON.stringify(_do.error), 'operation.error').to.eql(undefined);",
+                  "  });",
+                  "})();"
                 ]
               }
             }
