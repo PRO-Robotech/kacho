@@ -91,7 +91,14 @@
 //   - iam.v1 admin (kacho-only): InternalUserService.Get — для admin tooling; зарегистрирован
 //     в internal mux pro-forma (proto-аннотации `google.api.http` отсутствуют → real-трафик
 //     идет только через gRPC-direct до kacho-iam:9091) + REST для UpsertFromIdentity.
-//     InternalIAMService.LookupSubject/ListPermissions — НЕ регистрируется в REST (gRPC-direct).
+//     InternalIAMService: LookupSubject и Check ИМЕЮТ http-аннотации, поэтому
+//     RegisterInternalIAMServiceHandlerFromEndpoint (ниже, ветка internalMux) заводит им
+//     REST-маршруты `/iam/v1/internal/iam:lookupSubject` и `:check` — они есть в
+//     rest_route_table_gen.go и проходят через phaseInternalOriginExempt. Здесь стояло
+//     «НЕ регистрируется в REST», и это противоречило коду двумя экранами ниже: два места
+//     об одном предмете, из которых верно одно. `ListPermissions` в той же строке —
+//     tombstone, RPC удалён (см. internal_iam_service.proto), поэтому регистрировать его
+//     нечего вовсе. Строка была не устаревшей наполовину, а неверной в обеих половинах.
 //   - operation (без v1!): OperationService (in-process OpsProxy)
 package restmux
 

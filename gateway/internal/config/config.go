@@ -75,8 +75,12 @@ type Config struct {
 	// proto-аннотации `google.api.http` отсутствуют — handler регистрируется в mux
 	// pro-forma, реальный трафик идет по gRPC) + REST для
 	// InternalUserService.UpsertFromIdentity (OIDC-callback).
-	// InternalIAMService.LookupSubject/ListPermissions — НЕ регистрируется в REST
-	// (auth-interceptor звонит kacho-iam:9091 напрямую через grpc-client).
+	// InternalIAMService.LookupSubject/Check — REST-маршруты ЕСТЬ на внутреннем mux
+	// (`/iam/v1/internal/iam:lookupSubject` и `:check`, см. restmux/mux.go и
+	// middleware/rest_route_table_gen.go). Auth-interceptor при этом ходит на :9091
+	// напрямую по gRPC — одно другого не отменяет, а прежняя редакция этой строки
+	// выводила из второго первое и утверждала, что маршрутов нет. `ListPermissions`
+	// оттуда же выведен: RPC удалён (tombstone), регистрировать нечего.
 	IAMInternalAddr string `envconfig:"KACHO_API_GATEWAY_IAM_INTERNAL_GRPC" default:"iam.kacho.svc.cluster.local:9091"`
 
 	// NLBAddr — public gRPC backend of kacho-nlb (NetworkLoadBalancer/Listener/TargetGroup).
