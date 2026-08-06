@@ -55,10 +55,22 @@ var muxOwnStatuses = map[int]string{
 }
 
 // statusAssertion — литерал кода рядом с `pm.response.code`.
+//
+// Форм РАВЕНСТВА в этом дереве две, и обе настоящие: chai даёт `.to.eql` и
+// `.to.equal`, кейсы пишут и так и так (замер на d24476c1: 169 строк первой формы
+// и 66 второй). Предикат, знающий одну, молча освобождал бы вторую — и «ноль
+// находок» покрывал бы 66 утверждений, которых он не читал.
 var (
-	reEql   = regexp.MustCompile(`pm\.response\.code[^;]{0,120}?\.to\.eql\(\s*(\d{3})\s*\)`)
+	reEql   = regexp.MustCompile(`pm\.response\.code[^;]{0,120}?\.to\.(?:eql|equal)\(\s*(\d{3})\s*\)`)
 	reOneOf = regexp.MustCompile(`pm\.response\.code[^;]{0,160}?\.to\.be\.oneOf\(\s*\[([0-9,\s]+)\]`)
 )
+
+// reUnreadShape — строка, которая ГОВОРИТ о коде ответа, но ни одной формой выше
+// не читается: отрицательное сравнение (`.to.not.equal(403)`), ветвление
+// (`if (pm.response.code === 404)`), список с подстановкой. Такие не находки — но
+// и не «прочитано». Их число печатается отдельно, иначе рост слепой зоны
+// неотличим от чистоты, а смена формы записи тихо выключает гейт.
+var reUnreadShape = regexp.MustCompile(`pm\.response\.code`)
 
 func producibleStatuses() map[int]codes.Code {
 	out := map[int]codes.Code{}
@@ -105,6 +117,7 @@ func TestNoCaseAssertsAStatusTheEdgeCannotProduce(t *testing.T) {
 	sort.Strings(files)
 
 	filesRead, linesScanned, assertionsSeen := 0, 0, 0
+	linesMentioning, linesUnread := 0, 0
 	var findings []string
 
 	for _, f := range files {
@@ -117,9 +130,10 @@ func TestNoCaseAssertsAStatusTheEdgeCannotProduce(t *testing.T) {
 		for i, raw := range strings.Split(string(b), "\n") {
 			linesScanned++
 			line := stripJSLineComment(raw)
-			if !strings.Contains(line, "pm.response.code") {
+			if !reUnreadShape.MatchString(line) {
 				continue
 			}
+			linesMentioning++
 			var got []int
 			if m := reEql.FindStringSubmatch(line); m != nil {
 				n, _ := strconv.Atoi(m[1])
@@ -131,6 +145,9 @@ func TestNoCaseAssertsAStatusTheEdgeCannotProduce(t *testing.T) {
 						got = append(got, n)
 					}
 				}
+			}
+			if len(got) == 0 {
+				linesUnread++
 			}
 			for _, code := range got {
 				assertionsSeen++
@@ -151,9 +168,12 @@ func TestNoCaseAssertsAStatusTheEdgeCannotProduce(t *testing.T) {
 		}
 	}
 
-	t.Logf("осмотрено: файлов кейсов %d, строк %d, утверждений о коде ответа %d; "+
+	t.Logf("осмотрено: файлов кейсов %d, строк %d; строк, называющих код ответа, %d "+
+		"(из них ПРОЧИТАНО предикатом %d, НЕ прочитано %d — отрицательные сравнения, "+
+		"ветвления, списки с подстановкой); утверждений о коде ответа %d; "+
 		"производимых статусов %d (вычислено вызовом библиотеки, не выписано)",
-		filesRead, linesScanned, assertionsSeen, len(producible))
+		filesRead, linesScanned, linesMentioning, linesMentioning-linesUnread, linesUnread,
+		assertionsSeen, len(producible))
 
 	if filesRead == 0 {
 		t.Fatal("прочитано НОЛЬ файлов кейсов — гейт не проверен ни против чего. " +

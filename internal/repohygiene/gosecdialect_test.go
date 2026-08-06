@@ -97,9 +97,17 @@ func TestNoInertGosecSuppressions(t *testing.T) {
 	root := repoRoot(t)
 
 	var hits []string
+	goFiles, withAnyNolint := 0, 0
 	walkGoFiles(t, root, func(rel string, body []byte) {
+		goFiles++
 		if rel == selfFile || slices.Contains(pendingHandoff, rel) {
 			return
+		}
+		// Перепись предмета: файлы, несущие директиву golangci-lint ВООБЩЕ.
+		// Из них гейт выбирает те, что называют gosec. Ноль здесь означал бы,
+		// что форма директивы в дереве сменилась, а не что дерево чисто.
+		if strings.Contains(string(body), "//nolint") {
+			withAnyNolint++
 		}
 		for i, line := range strings.Split(string(body), "\n") {
 			if nolintGosecRe.MatchString(line) {
@@ -107,6 +115,16 @@ func TestNoInertGosecSuppressions(t *testing.T) {
 			}
 		}
 	})
+
+	// «Ноль находок» обязано быть отличимо от «ноль прочитанного».
+	t.Logf("осмотрено: файлов .go %d (освобождено %d + сам гейт); "+
+		"несут директиву `//nolint` в любом виде: %d; из них называют gosec: %d",
+		goFiles, len(pendingHandoff), withAnyNolint, len(hits))
+
+	if goFiles == 0 {
+		t.Fatal("обход не прочитал ни одного файла .go — это отказ, а не чистота: " +
+			"гейту нечего было судить")
+	}
 
 	if len(hits) > 0 {
 		t.Errorf("найдено %d подавлений gosec в диалекте, который в этом репозитории "+

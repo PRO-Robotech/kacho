@@ -5,7 +5,10 @@ package softopengate
 
 import (
 	"os"
+	"os/exec"
+	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -13,21 +16,42 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// filterRoots — все шесть фильтров сужения страницы. Список перечислен ЦЕЛИКОМ, а не
+// declaredFilterRoots — все фильтры сужения страницы. Перечислены ЦЕЛИКОМ, а не
 // образцом: утверждение «у остальных так же» проверяется перечислением, иначе это
-// догадка. iam и registry входят, хотя мягкого прохода у них нет вовсе — именно это и
-// подтверждается их нулём.
+// догадка. iam и registry входят, хотя мягкого прохода у них нет вовсе — именно это
+// и подтверждается их нулём.
+//
+// Перечень ВЫПИСАН, а не выведен, и
+// именно поэтому рядом стоит TestFilterRootsCoverEveryPageFilterInTheTree: он
+// сверяет этот перечень с деревом. Без сверки перечень полон ровно на тот день,
+// когда его писали, — а новый сервис со своим фильтром страницы попадал бы в
+// слепую зону молча (проверено инъекцией: подложенный сервис с непрослеживаемым
+// мягким проходом гейт не увидел и остался зелёным на «6 root(s)»).
+var declaredFilterRoots = []string{
+	"services/compute/internal/authzfilter",
+	"services/nlb/internal/authzfilter",
+	"services/storage/internal/authzfilter",
+	"services/vpc/internal/authzfilter",
+	"services/iam/internal/authzfilter",
+	"services/registry/internal/handler",
+}
+
+// pageFilterDirGlob — форма, по которой фильтр сужения страницы опознаётся В
+// ДЕРЕВЕ. Это предпосылка сверки: если ей перестанет соответствовать хоть один
+// каталог, сверка скажет об этом, а не промолчит.
+const pageFilterDirGlob = "services/*/internal/authzfilter"
+
+// declaredNonFilterRoots — корни перечня, которые под форму выше НЕ подпадают, и
+// причина у каждого. Запись, у которой не осталось предмета, — находка: иначе
+// освобождение переживёт то, что освобождало.
+var declaredNonFilterRoots = map[string]string{
+	"services/registry/internal/handler": "у registry фильтр страницы живёт в обработчике, отдельного пакета нет",
+}
+
 func filterRoots(t *testing.T) []string {
 	t.Helper()
 	repo := repoRoot(t)
-	roots := []string{
-		"services/compute/internal/authzfilter",
-		"services/nlb/internal/authzfilter",
-		"services/storage/internal/authzfilter",
-		"services/vpc/internal/authzfilter",
-		"services/iam/internal/authzfilter",
-		"services/registry/internal/handler",
-	}
+	roots := declaredFilterRoots
 	out := make([]string, 0, len(roots))
 	for _, r := range roots {
 		p := filepath.Join(repo, r)
@@ -51,6 +75,119 @@ func repoRoot(t *testing.T) string {
 			t.Fatal("go.mod не найден вверх по дереву")
 		}
 	}
+}
+
+// trackedPageFilterDirs — каталоги фильтра страницы, ВЫВЕДЕННЫЕ ИЗ ИНДЕКСА git.
+//
+// Индекс, а не диск: гейт судит о том, что уедет в чистый клон и в CI, и не
+// должен зависеть от локального мусора рядом.
+func trackedPageFilterDirs(t *testing.T, repo string) []string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", repo, "ls-files", "-z", "--", pageFilterDirGlob+"/*.go").Output()
+	require.NoError(t, err, "git ls-files сорвался — предпосылку сверки не на чем проверить")
+
+	seen := map[string]bool{}
+	for _, rel := range strings.Split(string(out), "\x00") {
+		if rel == "" {
+			continue
+		}
+		seen[path.Dir(filepath.ToSlash(rel))] = true
+	}
+	dirs := make([]string, 0, len(seen))
+	for d := range seen {
+		dirs = append(dirs, d)
+	}
+	sort.Strings(dirs)
+	return dirs
+}
+
+// TestFilterRootsCoverEveryPageFilterInTheTree — перечень обхода сверяется с
+// ДЕРЕВОМ, а не остаётся утверждением того дня, когда его писали.
+//
+// # Предмет
+//
+// Гейт мягкого прохода судит только те каталоги, которые ему назвали. Пока
+// перечень пишется руками, «шесть корней» — это не факт о дереве, а память
+// автора: сервис, заведший СВОЙ фильтр страницы после, в обход не попадает, и
+// непрослеживаемый мягкий проход в нём остаётся невидим. Гейт при этом зелёный и
+// печатает честную перепись — по ней и не отличить «нечего находить» от «мы туда
+// не смотрели». Ровно та форма без содержания, которую сам гейт и ловит, только
+// уровнем выше: не ветка не может упасть, а обход не доходит.
+//
+// # Что это стоит
+//
+// Мягкий проход отдаёт вызывающему НЕСУЖЕННУЮ страницу. Радиус пропуска здесь —
+// не стиль, а видимость чужих строк.
+//
+// # Предпосылка проверяется
+//
+// Сверка обоснована тем, что фильтр страницы в этом дереве опознаётся формой
+// каталога. Перестанет — выведенное множество опустеет, и тест скажет об этом
+// вместо того, чтобы молча согласиться с перечнем.
+//
+// # Доказано инъекцией в обе стороны
+//
+// Подложенный каталог седьмого сервиса той же формы даёт находку с именем
+// каталога; чистое дерево — молчание.
+func TestFilterRootsCoverEveryPageFilterInTheTree(t *testing.T) {
+	repo := repoRoot(t)
+	derived := trackedPageFilterDirs(t, repo)
+
+	declared := map[string]bool{}
+	for _, r := range declaredFilterRoots {
+		declared[r] = true
+	}
+
+	t.Logf("перепись: выведено из индекса по форме %q — %d каталог(ов) %v; "+
+		"объявлено корней — %d (из них не подпадающих под форму — %d)",
+		pageFilterDirGlob, len(derived), derived, len(declaredFilterRoots), len(declaredNonFilterRoots))
+
+	// Предпосылка: форма всё ещё опознаёт хоть что-то. Пустое выведенное
+	// множество — это «мы не посмотрели», а не «сверять нечего».
+	require.NotEmpty(t, derived,
+		"по форме %q не найдено НИ ОДНОГО каталога: фильтры страницы переименованы или "+
+			"переехали. Сверка перечня с деревом потеряла предмет, и «перечень полон» "+
+			"больше ничем не подтверждается", pageFilterDirGlob)
+
+	var findings []string
+	for _, d := range derived {
+		if !declared[d] {
+			findings = append(findings, d+": каталог фильтра страницы есть в дереве, но гейт "+
+				"мягкого прохода его НЕ обходит — непрослеживаемый мягкий проход в нём остался бы "+
+				"невидимым, а гейт зелёным. Добавь каталог в declaredFilterRoots")
+		}
+	}
+
+	// Обратная сторона: объявленный корень, подпадающий под форму, обязан в
+	// дереве быть. Иначе перечень описывает то, чего нет.
+	inDerived := map[string]bool{}
+	for _, d := range derived {
+		inDerived[d] = true
+	}
+	for _, r := range declaredFilterRoots {
+		if _, excused := declaredNonFilterRoots[r]; excused {
+			continue
+		}
+		if ok, _ := path.Match(pageFilterDirGlob, r); ok && !inDerived[r] {
+			findings = append(findings, r+": объявлен корнем, но в индексе под этой формой "+
+				"каталога нет — запись пережила свой предмет")
+		}
+	}
+
+	// Освобождение живёт, пока у него есть предмет.
+	for r, why := range declaredNonFilterRoots {
+		if !declared[r] {
+			findings = append(findings, r+": освобождение ("+why+") не относится ни к одному "+
+				"объявленному корню — удали запись")
+			continue
+		}
+		if ok, _ := path.Match(pageFilterDirGlob, r); ok {
+			findings = append(findings, r+": освобождение ("+why+") больше не нужно — корень "+
+				"подпадает под общую форму. Удали запись, иначе она станет тихой слепой зоной")
+		}
+	}
+
+	assert.Empty(t, findings, strings.Join(findings, "\n"))
 }
 
 // TestSoftOpenPassesAreObservable — предмет гейта на реальном дереве.

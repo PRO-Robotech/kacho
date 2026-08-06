@@ -80,19 +80,35 @@ func findShebangLine(t *testing.T, path string) int {
 func TestShebangScriptsAreExecutable(t *testing.T) {
 	root := repoRoot(t)
 	var broken []string
+	indexed, withShebang := 0, 0
 	for _, line := range gitLsFiles(t, root) {
 		mode, path, ok := parseLsFiles(line)
 		if !ok {
 			continue
 		}
+		indexed++
 		abs := filepath.Join(root, path)
 		if !hasShebang(t, abs) {
 			continue
 		}
+		withShebang++
 		if mode != "100755" {
 			broken = append(broken, path+" (mode="+mode+", ожидался 100755)")
 		}
 	}
+
+	// «Ноль находок» обязано быть отличимо от «ноль прочитанного»: без переписи
+	// пустой индекс и чистое дерево читаются одинаково.
+	t.Logf("осмотрено: записей индекса %d, из них с shebang'ом %d; неисполняемых %d",
+		indexed, withShebang, len(broken))
+	if indexed == 0 {
+		t.Fatal("индекс git пуст — обход не дошёл ни до одного файла. Это отказ, а не чистота")
+	}
+	if withShebang == 0 {
+		t.Fatal("ни одного файла с shebang'ом: предпосылка гейта не выполняется — " +
+			"либо признак перестал опознавать форму, либо скрипты ушли из индекса")
+	}
+
 	if len(broken) > 0 {
 		t.Errorf("%d файл(ов) с shebang'ом НЕ исполняемы в индексе git — в чистом клоне не запустятся:\n%s\n\nпочинить: git add --chmod=+x <файл>",
 			len(broken), strings.Join(broken, "\n"))
@@ -105,6 +121,7 @@ func TestShebangScriptsAreExecutable(t *testing.T) {
 func TestShebangIsFirstLine(t *testing.T) {
 	root := repoRoot(t)
 	var broken []string
+	scripts, withShebang := 0, 0
 	for _, line := range gitLsFiles(t, root) {
 		_, path, ok := parseLsFiles(line)
 		if !ok {
@@ -115,11 +132,24 @@ func TestShebangIsFirstLine(t *testing.T) {
 		default:
 			continue
 		}
+		scripts++
 		abs := filepath.Join(root, path)
-		if n := findShebangLine(t, abs); n > 1 {
+		n := findShebangLine(t, abs)
+		if n > 0 {
+			withShebang++
+		}
+		if n > 1 {
 			broken = append(broken, path+" (shebang на строке "+itoa(n)+", должен быть на 1-й)")
 		}
 	}
+
+	t.Logf("осмотрено: сценариев в индексе %d, из них с shebang'ом %d; не на первой строке %d",
+		scripts, withShebang, len(broken))
+	if scripts == 0 {
+		t.Fatal("в индексе нет ни одного .sh/.py/.bash — обход не дошёл до предмета. " +
+			"Это отказ, а не чистота")
+	}
+
 	if len(broken) > 0 {
 		t.Errorf("%d файл(ов) с shebang'ом НЕ на первой строке — ядро его не увидит:\n%s",
 			len(broken), strings.Join(broken, "\n"))

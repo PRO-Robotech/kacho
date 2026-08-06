@@ -129,17 +129,36 @@ func TestNoBlindPrincipalAbsenceAssertions(t *testing.T) {
 	root := repoRoot(t)
 
 	var hits []string
+	goFiles, testFiles, mentioning := 0, 0, 0
 	walkGoFiles(t, root, func(rel string, body []byte) {
+		goFiles++
 		if !strings.HasSuffix(rel, "_test.go") {
 			return
 		}
+		testFiles++
 		if containsPath(contractOwners, rel) {
 			return
+		}
+		// Упоминание имени — НЕ находка (оно бывает и в прозе), но это перепись
+		// предмета: множество, из которого гейт вообще может что-то выбрать.
+		if strings.Contains(string(body), "SystemPrincipal") {
+			mentioning++
 		}
 		for _, line := range systemPrincipalComparisons(t, rel, body) {
 			hits = append(hits, rel+":"+strconv.Itoa(line))
 		}
 	})
+
+	// «Ноль находок» обязано быть отличимо от «ноль прочитанного»: без этой
+	// строки молчание гейта нечем отличить от обхода, который никуда не дошёл.
+	t.Logf("осмотрено: файлов .go %d, из них тестовых %d (освобождено %d); "+
+		"тестовых файлов, упоминающих SystemPrincipal, %d; сравнений найдено %d",
+		goFiles, testFiles, len(contractOwners), mentioning, len(hits))
+
+	if goFiles == 0 || testFiles == 0 {
+		t.Fatalf("обход не дошёл ни до одного тестового файла (.go %d, тестовых %d) — "+
+			"это отказ, а не чистота: гейту нечего было судить", goFiles, testFiles)
+	}
 
 	if len(hits) > 0 {
 		t.Errorf("найдено %d сравнений с operations.SystemPrincipal() в тестах:\n  %s\n\n"+

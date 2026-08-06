@@ -126,23 +126,40 @@ func TestSPDXHeadersPresent(t *testing.T) {
 	// values.fe3455-ory.yaml (креды кластера, локальный артефакт). Обход диска требовал
 	// бы от НИХ SPDX-хедер, что бессмысленно: гейт про содержимое РЕПОЗИТОРИЯ.
 	// Индекс — ровно то, что уедет в чистый клон и в CI.
+	indexed, inScopeN, generated := 0, 0, 0
 	for _, line := range gitLsFiles(t, root) {
 		_, rel, ok := parseLsFiles(line)
 		if !ok {
 			continue
 		}
+		indexed++
 		if skipPath(rel) || !inScope(rel) {
 			continue
 		}
 		abs := filepath.Join(root, rel)
 		if isGenerated(t, abs) {
+			generated++
 			continue
 		}
+		inScopeN++
 		if !hasHeader(t, abs) {
 			missing = append(missing, rel)
 		}
 	}
 	sort.Strings(missing)
+
+	// «Ноль находок» обязано быть отличимо от «ноль прочитанного»: пустой индекс
+	// и дерево, где хедер есть везде, иначе читаются одинаково.
+	t.Logf("осмотрено: записей индекса %d, в области покрытия %d (генерённых пропущено %d); "+
+		"без SPDX-хедера %d", indexed, inScopeN, generated, len(missing))
+	if indexed == 0 {
+		t.Fatal("индекс git пуст — обход не дошёл ни до одного файла. Это отказ, а не чистота")
+	}
+	if inScopeN == 0 {
+		t.Fatal("в области покрытия не оказалось НИ ОДНОГО файла: предикат inScope разошёлся " +
+			"с деревом. Это отказ, а не чистота")
+	}
+
 	if len(missing) > 0 {
 		t.Errorf("%d source file(s) missing SPDX header:\n%s",
 			len(missing), strings.Join(missing, "\n"))
