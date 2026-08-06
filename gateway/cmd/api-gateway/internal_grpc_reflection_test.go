@@ -91,7 +91,17 @@ func requireTransportReady(t *testing.T, conn *grpc.ClientConn) {
 // authorisation instead of on the probe. The status lives on Recv; anything
 // else Send returns was generated locally, is itself a status, and travels.
 //
-// Same rule, same reason, as statusOf in public_allowlist_answered_test.go.
+// Same rule, same reason, as statusOf in public_allowlist_answered_test.go and
+// as the send half of the shim proxy's copy loop — three places that live off
+// one quote. The quote itself is asserted in exactly one place, against the
+// grpc-go actually in this module rather than against its documentation:
+// TestGrpcGoStillHandsTheSendHalfABareEOF, in gateway/internal/proxy. When the
+// dependency changes that answer, that is the case that reddens; this comment
+// cannot, so read it as a pointer and not as the authority.
+//
+// The reflection descriptor is why this file is in the class at all: it is
+// client-streaming, and it comes from grpc-go rather than from this tree, so a
+// census of hand-written descriptors here does not find it.
 func exchangeListServices(
 	stream reflectpb.ServerReflection_ServerReflectionInfoClient,
 ) (*reflectpb.ServerReflectionResponse, error) {
