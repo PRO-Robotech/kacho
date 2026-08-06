@@ -194,10 +194,56 @@ func TestNonPartitionOutboxExemptionsHaveSubject(t *testing.T) {
 }
 
 var (
+	// UNIQUE читается наравне с обычным: для планировщика частичный УНИКАЛЬНЫЙ
+	// индекс по неотправленным строкам — такая же приманка (более узкий порядок
+	// по тем же строкам). Без этой группы целый вид приманки был бы невидим, и
+	// невидим МОЛЧА — сегодня таких в дереве ноль.
 	createPartialIdxRe = regexp.MustCompile(
-		`(?is)CREATE\s+INDEX(?:\s+CONCURRENTLY)?(?:\s+IF\s+NOT\s+EXISTS)?\s+([\w."]+)\s+ON\s+([\w."]+)\s*(?:USING\s+\w+\s*)?\(([^)]*)\)\s*(?:WHERE\s*\(?([^;]*?)\)?)?\s*;`)
+		`(?is)CREATE\s+(?:UNIQUE\s+)?INDEX(?:\s+CONCURRENTLY)?(?:\s+IF\s+NOT\s+EXISTS)?\s+([\w."]+)\s+ON\s+([\w."]+)\s*(?:USING\s+\w+\s*)?\(([^)]*)\)\s*(?:WHERE\s*\(?([^;]*?)\)?)?\s*;`)
 	dropIdxRe = regexp.MustCompile(`(?i)DROP\s+INDEX(?:\s+CONCURRENTLY)?(?:\s+IF\s+EXISTS)?\s+([\w."]+)\s*;`)
 )
+
+// sqlIndexOp — один оператор миграции, меняющий набор индексов, вместе с его
+// СМЕЩЕНИЕМ в тексте файла. Смещение здесь и есть предмет: без него создания и
+// удаления одного файла применялись двумя раздельными проходами, и законная
+// перестройка «удалить и создать заново» читалась как «удалён».
+type sqlIndexOp struct {
+	at    int    // смещение оператора в Up-секции — единственный источник порядка
+	drop  bool   // true → DROP INDEX, false → CREATE INDEX
+	name  string // имя индекса без схемы
+	table string // имя таблицы без схемы (только у CREATE: DROP таблицу не называет)
+	cols  string // список колонок (только у CREATE)
+}
+
+// indexOpsInTextOrder возвращает операторы Up-секции в том порядке, в каком их
+// исполнил бы Postgres.
+//
+// Частичность проверяется здесь же: CREATE без предиката по `sent_at` предметом
+// этого инвентаря не является и в список не попадает — но DROP попадает ВСЕГДА,
+// иначе снятие приманки одноимённым не-частичным индексом осталось бы незамеченным.
+func indexOpsInTextOrder(up string) []sqlIndexOp {
+	ops := make([]sqlIndexOp, 0, 8)
+	for _, m := range createPartialIdxRe.FindAllStringSubmatchIndex(up, -1) {
+		if m[8] < 0 { // индекс без предиката — не частичный, предметом не является
+			continue
+		}
+		where := strings.Join(strings.Fields(up[m[8]:m[9]]), " ")
+		if !strings.Contains(strings.ToLower(where), "sent_at") {
+			continue
+		}
+		ops = append(ops, sqlIndexOp{
+			at:    m[0],
+			name:  unqualify(up[m[2]:m[3]]),
+			table: unqualify(up[m[4]:m[5]]),
+			cols:  strings.Join(strings.Fields(up[m[6]:m[7]]), " "),
+		})
+	}
+	for _, m := range dropIdxRe.FindAllStringSubmatchIndex(up, -1) {
+		ops = append(ops, sqlIndexOp{at: m[0], drop: true, name: unqualify(up[m[2]:m[3]])})
+	}
+	sort.Slice(ops, func(i, j int) bool { return ops[i].at < ops[j].at })
+	return ops
+}
 
 // pendingIndexInventory проигрывает Up-секции всех миграций в порядке версий и
 // возвращает итоговый набор ЧАСТИЧНЫХ индексов по `sent_at IS NULL`:
@@ -219,6 +265,27 @@ var (
 // Дропы применяются В ПРЕДЕЛАХ СЕРВИСА: `DROP INDEX` называет индекс, а не
 // таблицу, поэтому внутри своей схемы он снимает запись с любой таблицы, но
 // схемы соседа не касается.
+//
+// # Порядок операторов — ТЕКСТОВЫЙ, а не «сперва создания, потом удаления»
+//
+// Проигрывание обязано прийти к тому же состоянию схемы, к какому пришёл бы
+// Postgres, поэтому операторы одного файла применяются в порядке их СМЕЩЕНИЯ в
+// тексте (`indexOpsInTextOrder`). Двумя раздельными проходами законная
+// перестройка индекса в одной миграции («удалить и создать заново») читалась как
+// «удалён» — гейт покраснел бы на ПРАВИЛЬНОЙ схеме, а ложно краснеющий гейт
+// снимают как непонятный. Свойство держит пара проб над одинаковым набором
+// операторов в двух порядках (outboxpendingindexperservice_test.go).
+//
+// # Объявленная слепая зона: условное удаление
+//
+// `DROP INDEX` внутри `DO`-блока применяется БЕЗУСЛОВНО, хотя в самом блоке он
+// под условием. В дереве таких три (nlb 0012 ×2, 0021 ×1), все по шаблону «снять,
+// если индекс невалиден, и тут же создать заново», — с текстовым порядком
+// проигрывание сходится с Postgres и на них. Остаётся случай условного удаления
+// БЕЗ последующего создания: там инвентарь объявит индекс снятым, а он стоит.
+// Обратная эвристика («не применять удаления из `DO`-блоков») завела бы свою
+// слепую зону — безусловное удаление внутри такого блока, — поэтому зона названа,
+// а не подменена другой.
 //
 // Down-секции намеренно игнорируются: они описывают откат, а не состояние схемы.
 func pendingIndexInventory(t *testing.T, root string) (map[string]map[string]string, int) {
@@ -254,25 +321,19 @@ func pendingIndexInventory(t *testing.T, root string) (map[string]map[string]str
 			if i := strings.Index(up, "-- +goose Down"); i >= 0 {
 				up = up[:i]
 			}
-			for _, m := range createPartialIdxRe.FindAllStringSubmatch(up, -1) {
-				where := strings.Join(strings.Fields(m[4]), " ")
-				if !strings.Contains(strings.ToLower(where), "sent_at") {
+			for _, op := range indexOpsInTextOrder(up) {
+				if op.drop {
+					for key := range svcKeys {
+						delete(inv[key], op.name)
+					}
 					continue
 				}
-				key := svc + ":" + unqualify(m[2])
-				idx := unqualify(m[1])
-				cols := strings.Join(strings.Fields(m[3]), " ")
+				key := svc + ":" + op.table
 				if inv[key] == nil {
 					inv[key] = map[string]string{}
 				}
-				inv[key][idx] = cols
+				inv[key][op.name] = op.cols
 				svcKeys[key] = true
-			}
-			for _, m := range dropIdxRe.FindAllStringSubmatch(up, -1) {
-				idx := unqualify(m[1])
-				for key := range svcKeys {
-					delete(inv[key], idx)
-				}
 			}
 		}
 	}
