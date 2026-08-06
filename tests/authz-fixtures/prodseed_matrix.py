@@ -552,6 +552,11 @@ def seed() -> dict:
     # поэтому по нему видно, что материализация до этого объекта дошла. Без него
     # «отказано на Get/Update/Delete» было бы неотличимо от «привязка не доехала
     # вовсе» — отрицание зеленело бы на сломанной фикстуре.
+    # `create` здесь — ЗАЯВЛЕННОЕ исключение, а не недосмотр: гейт
+    # deploy/scripts/assert-fixture-role-verbs-exist.py требует, чтобы каждый глагол
+    # роли объявлялся типом, и этот — не объявляется намеренно. Запись с причиной
+    # лежит в его таблице VERB_FOR_TIER_ONLY и истекает сама: уберут глагол отсюда —
+    # гейт покраснеет НА ЗАПИСИ, которой больше нечего извинять.
     role_storage_creator = custom_role(acctA, f"ps_storage_crlist_{RID}", "storage",
                                        ["volumes"], ["create", "list"])
     sva_storcr, tok_storageCreatorA = subject(acctA, f"ps-stor-cl-{RID}",
