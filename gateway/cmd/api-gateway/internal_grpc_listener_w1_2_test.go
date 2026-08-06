@@ -19,8 +19,10 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"net"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -79,6 +81,23 @@ func mtlsInternalSecurityFromFiles(t *testing.T, serverCert, serverKey, caFile s
 	return sec
 }
 
+// signalOnAcceptListener closes `entered` the first time Accept is called, which
+// is the earliest moment at which grpc.Server.Serve is demonstrably running.
+//
+// Serve's very first act on the listener is to call Accept, so the signal fires
+// before any client connection exists — it reports the server's own readiness,
+// not traffic. Subsequent Accepts pass straight through.
+type signalOnAcceptListener struct {
+	net.Listener
+	once    sync.Once
+	entered chan struct{}
+}
+
+func (l *signalOnAcceptListener) Accept() (net.Conn, error) {
+	l.once.Do(func() { close(l.entered) })
+	return l.Listener.Accept()
+}
+
 // startSecuredInternalListener starts the wiring helper on an ephemeral port with
 // the given security posture and returns the listener addr for the test to dial.
 func startSecuredInternalListener(t *testing.T, inv handler.Invalidator, sec internalListenerSecurity) string {
@@ -94,7 +113,29 @@ func startSecuredInternalListener(t *testing.T, inv handler.Invalidator, sec int
 		srv.GracefulStop()
 		_ = lis.Close()
 	})
-	go func() { _ = srv.Serve(lis) }()
+
+	// The address is handed out only once the server is actually accepting.
+	//
+	// `Serve` runs in a goroutine, so returning the address right after starting it
+	// publishes a port that is bound but not yet served. A dial then lands in the
+	// kernel's accept queue and is answered by nobody: the test proceeds, and if it
+	// finishes first, Cleanup's GracefulStop tears down a server that never entered
+	// Serve — the queued connection dies without a gRPC status, and the client
+	// reports Unknown. Asserting a specific code against that reads a startup race
+	// as "the listener answered with the wrong code".
+	//
+	// Waiting for READY on the client is NOT enough and this is where that lesson
+	// came from: the TCP connection reaches READY against the kernel queue while the
+	// server is still absent, so the client's view says ready and the server's says
+	// nothing. The synchronisation therefore has to be on the SERVER side — entering
+	// Accept is the first observable moment at which Serve is running.
+	serving := make(chan struct{})
+	go func() { _ = srv.Serve(&signalOnAcceptListener{Listener: lis, entered: serving}) }()
+	select {
+	case <-serving:
+	case <-time.After(10 * time.Second):
+		t.Fatal("internal listener never entered Accept: the server did not start serving")
+	}
 
 	// Internal admin service must NOT be registered on the external server.
 	const fqn = "kacho.cloud.apigateway.v1.InternalAuthzCacheService"
