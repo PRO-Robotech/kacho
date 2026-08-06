@@ -2532,6 +2532,87 @@ _POOL_SEED_BODY = {
 _POOL_SEED_SERVICES = {"internal-pool", "address", "address-zone-coherence"}
 
 
+# ── ZONE-INDEPENDENT (anycast) default pool ────────────────────────────────────
+#
+# The pool cascade is TWO MUTUALLY EXCLUSIVE LANES keyed on the placement of the
+# request, not one fallback chain (see ResolverService.ResolvePoolForAddressObjFamily):
+# a ZONAL request stops at the zone-default and never falls through, and a request with
+# NO zone (anycast / REGIONAL) is served ONLY by the zone-independent default
+# (`zone_id IS NULL`). The seed above fills the ZONAL lane only.
+#
+# The zone-independent lane's pool was therefore authored in exactly one place in the
+# tree — deploy/scripts/seed-nlb-fixtures.sh (kac-nlb-seed-anycast-pool), which runs for
+# the nlb shard. On the vpc shard it does not run, so the anycast lane had NO pool at all
+# and EVERY zoneless external allocation failed FailedPrecondition. That is a fixture gap,
+# not product behaviour: the resolver, the API (`ZoneID == ""` = zone-independent pool)
+# and the delete/recycle path are all correct.
+#
+# What it looked like instead: the failing Create is ASYNC, so the case saw a sync 200 and
+# an Operation that carried the PRE-ALLOCATED addressId even though the worker had errored
+# → the case deleted a resource that had never existed → the edge answered 403 (the
+# scope_extractor cannot resolve a nonexistent object to a project, fail-closed) → the
+# symptom read as "the owner may not delete his own anycast address", an authz defect that
+# was not there. The case now asserts op.error before using the id (see
+# address-zone-coherence.py), so the cause names itself.
+#
+# Safe to add: the lanes are exclusive, so a zonal request can never reach this pool — that
+# is precisely why the lane split exists. v4-only and 100.65.0.0/24 on purpose:
+#   * v4-only  — the suite's v6 cases (ADR-CR-EXT-V6-FAMILY-FALLTHROUGH and friends) assert
+#                that a v6 request finds NO pool; they are zone-pinned and stop in the zonal
+#                lane anyway, but staying v4-only removes the question entirely.
+#   * CIDR     — address_pool_cidrs EXCLUDE is GLOBAL per kind, so this must not overlap the
+#                zonal seed (100.64.0.0/24), the internal-pool suite (100.100.0.0/16), the
+#                address suite (100.101.0.0/16) or the nlb seed (100.102.<octet>.0/24).
+# Soft and idempotent like the zonal seed: 200 first time, 409 thereafter — and 409 is also
+# the right answer on an umbrella stand where the nlb seed already owns this cluster-wide
+# slot (`(COALESCE(zone_id,''), kind) WHERE is_default` is a singleton). Either way the lane
+# ends up with a pool, which is all the suite needs.
+_ANYCAST_POOL_SEED_BODY = {
+    "name": "seed-default-external-anycast",
+    "kind": "EXTERNAL_PUBLIC",
+    # zoneId deliberately ABSENT — that is what makes the pool zone-independent.
+    "v4CidrBlocks": ["100.65.0.0/24"],
+    "v6CidrBlocks": [],
+    "isDefault": True,
+}
+
+# Collections that allocate an external address with NO zone (anycast lane).
+_ANYCAST_POOL_SEED_SERVICES = {"address-zone-coherence"}
+
+# Soft on purpose, and nothing is captured: no case addresses this pool by id — it is
+# reached only through the resolver's zone-independent lane. If the seed cannot run, the
+# dependent case says so itself now (its poll asserts op.error), which is why this step
+# does not need an assertion of its own to keep the failure visible.
+_ANYCAST_POOL_SEED_TEST = [
+    "// setup-only: seeding is soft; ZC-VPC-ADDR-ZONE-04 surfaces a missing pool itself.",
+]
+
+
+def _anycast_pool_seed_item() -> Dict:
+    """Idempotent setup item: ensure the zone-independent default EXTERNAL_PUBLIC pool exists."""
+    return {
+        "name": "_SETUP-POOL-ANYCAST — ensure zone-independent default EXTERNAL_PUBLIC pool",
+        "event": [{
+            "listen": "test",
+            "script": {"type": "text/javascript", "exec": _ANYCAST_POOL_SEED_TEST},
+        }],
+        "request": {
+            "method": "POST",
+            "header": [
+                {"key": "Authorization", "value": "Bearer {{jwtBootstrap}}"},
+                {"key": "Content-Type", "value": "application/json"},
+            ],
+            "body": {"mode": "raw", "raw": json.dumps(_ANYCAST_POOL_SEED_BODY)},
+            # AddressPool is admin-only (ban #6): internal mux only, like the zonal seed.
+            "url": {
+                "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
+                "host": ["{{internalBaseUrl}}"],
+                "path": ["vpc", "v1", "addressPools"],
+            },
+        },
+    }
+
+
 def _pool_seed_item() -> Dict:
     """Idempotent setup item: ensure a default EXTERNAL_PUBLIC pool exists at zoneA."""
     return {
@@ -2574,6 +2655,8 @@ def build_collection(service: str, cases: List[Case]) -> Dict:
     setup_items = [_zone_setup_item()]
     if service in _POOL_SEED_SERVICES:
         setup_items.append(_pool_seed_item())
+    if service in _ANYCAST_POOL_SEED_SERVICES:
+        setup_items.append(_anycast_pool_seed_item())
     pre = PRE_GLOBAL + _ADMIN_DEFAULT_PRE if service in _ADMIN_DEFAULT_SERVICES else PRE_GLOBAL
     return {
         "info": {

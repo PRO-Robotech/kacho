@@ -168,6 +168,48 @@
       }
     },
     {
+      "name": "_SETUP-POOL-ANYCAST — ensure zone-independent default EXTERNAL_PUBLIC pool",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// setup-only: seeding is soft; ZC-VPC-ADDR-ZONE-04 surfaces a missing pool itself."
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{jwtBootstrap}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"name\": \"seed-default-external-anycast\", \"kind\": \"EXTERNAL_PUBLIC\", \"v4CidrBlocks\": [\"100.65.0.0/24\"], \"v6CidrBlocks\": [], \"isDefault\": true}"
+        },
+        "url": {
+          "raw": "{{internalBaseUrl}}/vpc/v1/addressPools",
+          "host": [
+            "{{internalBaseUrl}}"
+          ],
+          "path": [
+            "vpc",
+            "v1",
+            "addressPools"
+          ]
+        }
+      }
+    },
+    {
       "name": "ZC-VPC-ADDR-ZONE-01-NEG-UNKNOWN-ZONE — Create external IPv4 Address с несуществующей zone_id → sync 400 unknown-zone (Verifies ZC-VPC-ADDR-ZONE-01)",
       "description": "class:NEG | class:CONF | priority:P1",
       "item": [
@@ -321,11 +363,6 @@
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
                   "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.metadata && j.metadata.addressId);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('zcAddrId', String(v));",
                   "} catch (e) {}"
                 ]
               }
@@ -381,7 +418,15 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "pm.test('operation succeeded (no phantom resource id)', () =>   pm.expect(j.error && JSON.stringify(j.error), 'operation.error')    .to.eql(undefined));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('zcAddrId');",
+                  "} else {",
+                  "  const _cid = (j.metadata && j.metadata.addressId);",
+                  "  if (_cid) pm.environment.set('zcAddrId', String(_cid));",
+                  "  else pm.environment.unset('zcAddrId');",
+                  "}"
                 ]
               }
             }
@@ -600,11 +645,6 @@
                   "  const j = pm.response.json();",
                   "  const v = (j.id);",
                   "  if (v !== undefined && v !== null) pm.environment.set('opId', String(v));",
-                  "} catch (e) {}",
-                  "try {",
-                  "  const j = pm.response.json();",
-                  "  const v = (j.metadata && j.metadata.addressId);",
-                  "  if (v !== undefined && v !== null) pm.environment.set('zcAddrId', String(v));",
                   "} catch (e) {}"
                 ]
               }
@@ -660,7 +700,20 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "pm.test('operation succeeded (no phantom resource id)', () =>   pm.expect(j.error && JSON.stringify(j.error), 'operation.error')    .to.eql(undefined));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('zcAddrId');",
+                  "} else {",
+                  "  const _cid = (j.metadata && j.metadata.addressId);",
+                  "  if (_cid) pm.environment.set('zcAddrId', String(_cid));",
+                  "  else pm.environment.unset('zcAddrId');",
+                  "}",
+                  "if (!j.error) {",
+                  "  const _a = (j.response || {});",
+                  "  pm.test('anycast address allocated (has external ipv4)', () =>     pm.expect(_a.externalIpv4Address, JSON.stringify(j)).to.be.an('object'));",
+                  "  pm.test('anycast: allocated zoneId stays empty (zone-independent lane)', () =>     pm.expect((_a.externalIpv4Address || {}).zoneId || '').to.eql(''));",
+                  "}"
                 ]
               }
             }
