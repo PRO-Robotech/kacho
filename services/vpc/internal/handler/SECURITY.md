@@ -92,9 +92,12 @@ hostname/db/query-fragment в тексте. Прямых `status.Errorf(codes.In
   cert-тройки (без тихого downgrade в insecure). Исходящие client-ребра
   (`vpc→iam` register/project/authz, `vpc→geo`) — тот же per-edge opt-in.
 - `KACHO_VPC_DB_SSLMODE` (default `disable` для dev; в production helm-values — `verify-full`) — `internal/apps/kacho/config/config.go`.
-- `KACHO_VPC_RESOURCE_MANAGER_TLS` (default `false`; true в production) — TLS-credentials
-  для gRPC-клиента к resource-manager (`cmd/vpc/main.go::dialResourceManager`).
-- `production-strict`-mode проверяет, что оба включены (иначе старт падает).
+- Здесь стояла ручка TLS до сервиса управления ресурсами и функция, которая её
+  читает. В дереве нет ни того, ни другого: ни одного вхождения ни имени ручки, ни
+  самого этого сервиса под доменом vpc — имена не воспроизводятся, чтобы их не искали.
+- `production-strict` требует **включённого TLS на ребре к iam** (`extapi.iam.tls.enable`),
+  иначе загрузка конфигурации возвращает ошибку и сервис не стартует. Прежняя редакция
+  говорила «оба включены», имея в виду в том числе несуществующую ручку.
 
 ## Что осталось (зависит от интеграции с `kacho-iam`)
 

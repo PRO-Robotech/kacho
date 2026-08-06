@@ -753,7 +753,7 @@ k8s NodeSelector — safe-by-default: неучтенная комбинация 
 
 ### 7.3 Двухфазный allocator
 
-Параметры (`internal/apps/kacho/api/address/create.go::const`):
+Параметры — константы в `internal/apps/kacho/api/address/create.go`:
 
 | Константа | Значение | Смысл |
 |---|---|---|

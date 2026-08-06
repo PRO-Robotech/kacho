@@ -205,7 +205,7 @@ per-stream semaphore. Подробно — [02-data-flows.md](architecture/02-da
 base64; `page_size` (0→50, max 1000); garbage token → `InvalidArgument`. Filter —
 `name="<v>"` (whitelist). `order_by` — пока частично.
 
-**Error mapping.** `internal/apps/kacho/shared/serviceerr/maperr.go`.`mapRepoErr`: `ErrNotFound`→
+**Error mapping.** `internal/apps/kacho/shared/serviceerr/maperr.go`.`MapRepoErr`: `ErrNotFound`→
 `NOT_FOUND`; `ErrAlreadyExists`→`ALREADY_EXISTS`; `ErrFailedPrecondition`→
 `FAILED_PRECONDITION`; `ErrInvalidArg`→`INVALID_ARGUMENT`; `ErrInternal`→
 `INTERNAL "internal database error"` (no pgx-text leak). `stripSentinel` убирает

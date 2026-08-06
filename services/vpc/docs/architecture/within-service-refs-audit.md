@@ -70,7 +70,7 @@
 | `id` PK | уникальный | `networks_pkey` ✅ | n/a | OK |
 | `project_id` | существует в `kacho-iam` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
 | `(project_id, name)` | уникальный name на project | `networks_project_id_name_key` UNIQUE ✅ | redundant List+name check (для UX) | OK |
-| `default_security_group_id` | если не пустой — указывает на существующий SG | `networks_default_security_group_fk` FK ON DELETE SET NULL ✅ (0005) | inline в `network.go::doCreate` | OK |
+| `default_security_group_id` | если не пустой — указывает на существующий SG | `networks_default_security_group_fk` FK ON DELETE SET NULL ✅ (0005) | inline в `internal/apps/kacho/api/network/create.go`.`doCreate` | OK |
 | `vrf_id` | уникальный per-network | `networks_vrf_id_key` UNIQUE ✅ (0007) + sequence-backed | n/a (DB-allocated) | OK |
 
 ### 1.2 `subnets`
@@ -153,7 +153,7 @@
 | `project_id` | существует в `kacho-iam` | N/A (cross-service) | `ProjectClient.Exists` | OK (cross-service) |
 | `(project_id, name)` | уникальный non-empty | `security_groups_project_id_name_key` partial UNIQUE WHERE `name <> ''` ✅ | n/a | OK |
 | `network_id` | если задан — существует, RESTRICT удаления | `security_groups_network_id_fkey` FK ON DELETE RESTRICT ✅; nullable (unbound SG) | sync через `Get(networkID)` в `doCreate` | OK |
-| `(network_id) WHERE default_for_network = true` | один default SG на сеть | `security_groups_one_default_per_network` partial UNIQUE ✅ (0005) | inline в `network.go::doCreate` | OK |
+| `(network_id) WHERE default_for_network = true` | один default SG на сеть | `security_groups_one_default_per_network` partial UNIQUE ✅ (0005) | inline в `internal/apps/kacho/api/network/create.go`.`doCreate` | OK |
 | `rules` JSONB OCC | concurrent UpdateRules без lost update | conditional UPDATE с `WHERE xmin::text = $expected` + `RETURNING` ✅; 0 rows → `ErrFailedPrecondition` | n/a (xmin OCC pattern) | OK |
 | individual rule.id within rules array | уникальный rule.id | ❌ jsonb-массив, нельзя UNIQUE per-element | sync check duplicate id в `security_group.go` | acceptable (denorm rules-в-JSONB by design) |
 

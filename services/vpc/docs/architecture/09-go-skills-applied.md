@@ -25,7 +25,7 @@
 ## Структуры, интерфейсы, DI
 
 - Constructor injection (порты + Clean Architecture); композиционный корень —
-  единственное место wiring (`cmd/vpc/main.go::run`). DI-фреймворк не используется —
+  единственное место wiring (`cmd/vpc/main.go`.`runServe`). DI-фреймворк не используется —
   для сервиса такого размера это лишняя абстракция.
 - `AddressAllocator` вынесен из `AddressService` (single responsibility); порт-интерфейсы
   сегрегированы в `internal/apps/kacho/api/addresspool/iface.go` (`AddressRepo`,

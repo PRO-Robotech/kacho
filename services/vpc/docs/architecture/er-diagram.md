@@ -251,7 +251,7 @@ erDiagram
 #### `networks`
 Контейнер VPC. PK `id` (`net…`). UNIQUE `(project_id, name)` non-partial.
 `default_security_group_id` — FK → `security_groups(id) ON DELETE SET NULL` (миграция 0005;
-ранее без FK, nullable после 0005); выставляется inline в `network.go::doCreate` при
+ранее без FK, nullable после 0005); выставляется inline в `internal/apps/kacho/api/network/create.go`.`doCreate` при
 `KACHO_VPC_DEFAULT_SG_INLINE=true`. `vrf_id` (миграция 0007) — sequence-backed уникальный
 per-network VRF id data-plane; инфра-чувствительное поле, отдается только через
 `InternalNetworkService.GetNetwork`.

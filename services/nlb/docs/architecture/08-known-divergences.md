@@ -159,7 +159,7 @@ CAS-guard + row-lock сериализуют пересчёт с `SetStatusCAS`; 
 **не** нарушение layering'а и не «толстый сервис».
 
 **Почему by-design (а не рефакторить в helper'ы дальше).** Тяжёлые шаги уже вынесены
-в `wiring.go`/`observability.go`/`backstop.go`: `dialPeers`, `check.NewInterceptor`,
+в `wiring.go`/`observability.go`/`backstop.go`: `check.NewInterceptor`,
 `assembleBackgroundWorkers`, `buildInterceptorChains`, `registerGRPCServices`,
 `startDiagnosticListener`, `startLROWorker`, `buildReadinessCheckers`. Остаток
 `runServe` — (1) плоская последовательность создания ресурсов с `defer`-cleanup'ами
