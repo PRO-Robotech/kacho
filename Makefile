@@ -86,7 +86,31 @@ INTEGRATION_TIMEOUT ?= 25m
 # Сервисы, у которых есть интеграционные пакеты. Совпадает с матрицей CI.
 SERVICES ?= iam vpc compute geo nlb storage registry
 
-.PHONY: test test-unit test-integration test-service test-service-short docs-sites help
+# AUTHZ_FGA_PKGS — пакеты, чьи пробы спрашивают НАСТОЯЩИЙ OpenFGA (поведение
+# модели прав, а не её текст). Единственный источник этого перечня; конвейер,
+# человек и гейт провязки читают его отсюда.
+#
+# Отбор интеграционной джобы идёт ПО ПУТИ (`/internal/(repo|clients)` внутри
+# services/), и ни один из них в него не попадает: они лежат в apps/ и в
+# internal/authz*. Быстрая джоба гоняет `-short`, под которым каждый из них
+# пропускается. То есть до появления этой цели поведенческие пробы модели прав
+# не исполнялись НИ ОДНОЙ джобой — при том что именно они отвечают на вопрос
+# «изменились ли права», на который ссылаются решения о модели.
+#
+# Состав НЕ выписан на глаз: предикат — «тесты пакета импортируют общий стенд
+# `services/iam/internal/testsupport/fgatest`» плюс сам стенд, чьи пробы держат
+# его собственный инвариант (один сервер, разные области). Перепись сверяется
+# гейтом internal/repohygiene/authzfgaproofs_test.go: пакет с таким импортом,
+# не названный здесь, — находка; названный здесь без такого импорта — тоже.
+AUTHZ_FGA_PKGS ?= \
+	./services/iam/internal/apps/kacho/api/access_binding \
+	./services/iam/internal/apps/kacho/api/readauthz \
+	./services/iam/internal/authzcascade \
+	./services/iam/internal/authzmap \
+	./services/iam/internal/service \
+	./services/iam/internal/testsupport/fgatest
+
+.PHONY: test test-unit test-integration test-authz-fga test-service test-service-short docs-sites help
 
 ## test — всё, что проверяет CI: юниты + интеграция по всем сервисам.
 test: test-unit test-integration
@@ -125,6 +149,51 @@ else
 		$(MAKE) --no-print-directory test-integration SVC=$$svc; \
 	done
 endif
+
+## test-authz-fga — поведенческие пробы модели прав на НАСТОЯЩЕМ OpenFGA.
+##
+## ПРОПУСК ЗДЕСЬ — ОТКАЗ, и ровно ради этого цель существует. Эти пробы
+## пропускаются под `-short`, а пропущенный пакет печатает `ok` и неотличим от
+## пройденного: быстрая джоба поэтому о них не говорит ничего, а отбор
+## интеграционной идёт по пути и до них не достаёт. Три следствия сведены здесь
+## вместе: `-short` не передаётся; `KACHO_IAM_REQUIRE_REAL_FGA` запрещает пробам
+## пропускать себя по остальным причинам (нет Docker, не поднялся образ
+## преобразователя модели); вердикт выносится ПО ЧИСЛАМ — сколько пакетов
+## отчиталось, сколько утверждений прошло, сколько пропущено.
+##
+## Цена ИЗМЕРЕНА, а не оценена (эта машина, Docker 29.3.1, `-race -p 1`,
+## 2026-08-06): шесть пакетов, 562 пройденных теста, 0 пропущенных, 59 с wall;
+## самый дорогой — access_binding, 15.4 с. Прежний замер того же пакета (7.6 мин,
+## 2026-08-01) устарел через четыре часа: контейнер стал подниматься один на
+## пакет вместо одного на тест, и цена упала на два порядка.
+test-authz-fga:
+	@set -o pipefail; \
+	log=$$(mktemp); \
+	trap 'rm -f "$$log"' EXIT; \
+	named=$$(printf '%s\n' $(AUTHZ_FGA_PKGS) | grep -c . || true); \
+	if [ "$$named" -eq 0 ]; then \
+	  echo "AUTHZ_FGA_PKGS пуст — это отказ, а не «нечего запускать»: пустой перечень" >&2; \
+	  echo "дал бы зелёную цель с нулём исполненных проб." >&2; exit 1; fi; \
+	echo "пакетов заявлено: $$named"; \
+	rc=0; \
+	KACHO_IAM_REQUIRE_REAL_FGA=1 $(GO) test -race -count=1 -p 1 -v \
+	  -timeout $(INTEGRATION_TIMEOUT) $(AUTHZ_FGA_PKGS) 2>&1 | tee "$$log" || rc=$$?; \
+	pass=$$(grep -c -- '--- PASS' "$$log" || true); \
+	skip=$$(grep -c -- '--- SKIP' "$$log" || true); \
+	failed=$$(grep -c -- '--- FAIL' "$$log" || true); \
+	reported=$$(grep -cE '^(ok|FAIL|\?)[[:space:]]+github\.com/PRO-Robotech/kacho/' "$$log" || true); \
+	echo "перепись: пакетов отчиталось $$reported из $$named; утверждений пройдено $$pass, пропущено $$skip, упало $$failed"; \
+	if [ "$$rc" -ne 0 ] || [ "$$failed" -gt 0 ]; then \
+	  echo "пробы модели прав упали (код $$rc, упавших утверждений $$failed)" >&2; exit 1; fi; \
+	if [ "$$skip" -gt 0 ]; then \
+	  echo "пропущено $$skip проб модели прав. Пропуск здесь — ОТКАЗ: пробу, которая" >&2; \
+	  echo "не выполнилась, нельзя засчитать выполненной, а именно ради невозможности" >&2; \
+	  echo "такого зачёта эта цель и заведена." >&2; exit 1; fi; \
+	if [ "$$pass" -eq 0 ]; then \
+	  echo "ноль пройденных утверждений — цель отработала вхолостую и зелёной не будет" >&2; exit 1; fi; \
+	if [ "$$reported" -ne "$$named" ]; then \
+	  echo "отчиталось $$reported пакетов из $$named заявленных — часть перечня не дошла" >&2; \
+	  echo "до прогона, и её молчание неотличимо от успеха." >&2; exit 1; fi
 
 ## test-service — ВСЁ одного сервиса (юниты + интеграция). SVC обязателен.
 ## Сюда делегируют `make test` в services/<svc>/Makefile.

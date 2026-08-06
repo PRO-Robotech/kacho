@@ -58,6 +58,25 @@
 // шардом. Здесь ничего из этого НЕ сделано намеренно: замер и предложение —
 // не то же самое, что правка.
 //
+// # Цена выше УСТАРЕЛА через четыре часа — и это урок, а не опечатка
+//
+// Замер сделан коммитом 50792d7a (2026-08-01 21:59). Коммит 46166941
+// (2026-08-02 02:19) сделал контейнер общим на пакет вместо одного на тест — и
+// самый дорогой пункт разбора, `api/access_binding` (25 стартов сервера за
+// прогон), подешевел на два порядка. Перемер 2026-08-06, эта же машина, Docker
+// 29.3.1, `-race -count=1`, тот же предикат: **15.4 с** вместо 7.6 мин; шесть
+// пакетов, которые ушли под цель test-authz-fga, — **59 с wall** на все вместе
+// (`-race -p 1`, 562 пройденных теста, 0 пропущенных).
+//
+// Число само по себе не соврало — оно было верно для своего дерева. Соврал
+// ВЫВОД, который на нём стоял: «расширение — решение владельца с ценой»
+// пережило свою цену и четыре дня удерживало шесть пакетов вне наблюдения уже
+// даром. Поэтому разбор выше оставлен как есть (он описывает своё дерево и свою
+// ревизию), а не переписан задним числом: правка на месте скрыла бы именно то,
+// ради чего этот абзац стоит. Числа остального перечня (pkg/*, nlb, compute,
+// migrations) НЕ перемерены — переносить на них вывод из перемера OpenFGA-части
+// было бы тем же классом с обратным знаком.
+//
 // # Единица наблюдения обязана совпадать с единицей утверждения
 //
 // Наивный предикат «в файлах пакета есть `testing.Short()`» НЕДОСТАТОЧЕН, и это
@@ -107,18 +126,24 @@ var integrationSelectionRe = regexp.MustCompile(`^services/[^/]+/internal/(repo|
 // не осталось предмета (пакет исчез или перестал гейтиться), — находка: иначе
 // список переживает свой повод и достаётся следующему как слепая зона.
 var shortGatedOutsideSelection = []string{
-	// Два поставщика общего контейнера. Их тесты — ПОВОДНАЯ ЧАСТЬ другого гейта:
-	// containerperpackage_test.go не считает вызовы к ним стартом контейнера именно
-	// потому, что здесь доказано «сервер один, области разные, данные не ходят».
-	// Сейчас это доказательство не исполняется НИГДЕ: под кратким оно пропускается
-	// (ему нужен Docker), а отбор интеграционной джобы смотрит только внутрь
-	// services/<svc>/internal/(repo|clients), куда ни один из них не попадает —
-	// internal/pgtest лежит в корне и в тот обход не входит вовсе.
+	// Поставщик общего контейнера Postgres. Его тесты — ПОВОДНАЯ ЧАСТЬ другого
+	// гейта: containerperpackage_test.go не считает вызовы к нему стартом
+	// контейнера именно потому, что здесь доказано «сервер один, области разные,
+	// данные не ходят». Это доказательство не исполняется НИГДЕ: под кратким оно
+	// пропускается (нужен Docker), а отбор интеграционной джобы смотрит только
+	// внутрь services/<svc>/internal/(repo|clients) — internal/pgtest лежит в корне
+	// и в тот обход не входит вовсе.
 	//
 	// То есть санкция стоит на утверждении, которое конвейер не проверяет. Это долг,
-	// и он назван, а не умолчан: закрывается расширением отбора (решение с ценой —
-	// за владельцем), после чего обе записи отсюда уходят, и гейт выше на этом
-	// покраснеет сам.
+	// и он назван, а не умолчан.
+	//
+	// Записей здесь было ДВЕ: второй поставщик, стенд OpenFGA
+	// services/iam/internal/testsupport/fgatest, ушёл отсюда 2026-08-06 — его гоняет
+	// цель test-authz-fga (см. shortGatedRunByOwnCIStep ниже). Долг у Postgres-половины
+	// остался прежним и закрывается тем же способом; цена, из-за которой он назывался
+	// решением владельца, у OpenFGA-половины оказалась переоценённой на два порядка
+	// (см. замер в шапке файла), а у Postgres-половины НЕ перемерена — переносить на
+	// неё чужой вывод было бы ровно тем классом, который этот файл ловит.
 	"internal/pgtest",
 	"pkg/authz",
 	"pkg/db",
@@ -131,20 +156,13 @@ var shortGatedOutsideSelection = []string{
 	"pkg/outbox/reconciler",
 	"services/compute/internal/handler",
 	"services/compute/internal/migrations",
-	"services/iam/internal/apps/kacho/api/access_binding",
 	"services/iam/internal/apps/kacho/api/audit",
 	"services/iam/internal/apps/kacho/api/cluster",
 	"services/iam/internal/apps/kacho/api/internal_iam",
-	"services/iam/internal/apps/kacho/api/readauthz",
 	"services/iam/internal/apps/kacho/api/sa_keys",
 	"services/iam/internal/apps/kacho/api/session_revocations",
 	"services/iam/internal/apps/kacho/seed",
-	"services/iam/internal/authzcascade",
-	"services/iam/internal/authzmap",
 	"services/iam/internal/migrations",
-	"services/iam/internal/service",
-	// Второй поставщик общего контейнера — см. комментарий у internal/pgtest выше.
-	"services/iam/internal/testsupport/fgatest",
 	"services/nlb/internal/apps/kacho/api/internal_lifecycle",
 	"services/nlb/internal/apps/kacho/api/loadbalancer",
 	"services/nlb/internal/apps/kacho/api/operation",
@@ -171,6 +189,24 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// Свой шаг + tools/listfiltergate (TestCIRunsThisCensus), как у четырёх
 	// соседних гейтов tools/.
 	"tools/listfiltergate": "go test ./tools/listfiltergate/ -run TestCensus_EveryTransportListingIsSeenByItsAnalyser",
+
+	// Шесть носителей поведенческих проб модели прав: пакет спрашивает НАСТОЯЩИЙ
+	// OpenFGA, а не читает текст модели. Цель test-authz-fga гонит их целиком (без
+	// `-short`), запрещает пробам пропускать себя и выносит вердикт ПО ЧИСЛАМ —
+	// поэтому здесь они исполняются, а не числятся долгом.
+	//
+	// Одной строки в ci.yaml на все шесть мало: перечень живёт в Makefile, и по
+	// ci.yaml не видно, дошёл ли до прогона КАЖДЫЙ. Второй половиной шва стоит
+	// authzfgaproofs_test.go (TestAuthzFGAOwnStepDeclarationsPointAtTheList) —
+	// он требует, чтобы всякая запись отсюда, ссылающаяся на эту цель, нашлась в
+	// AUTHZ_FGA_PKGS. Без него освобождение снова стало бы способом выйти из-под
+	// гейта одной строкой в списке.
+	"services/iam/internal/apps/kacho/api/access_binding": "make test-authz-fga",
+	"services/iam/internal/apps/kacho/api/readauthz":      "make test-authz-fga",
+	"services/iam/internal/authzcascade":                  "make test-authz-fga",
+	"services/iam/internal/authzmap":                      "make test-authz-fga",
+	"services/iam/internal/service":                       "make test-authz-fga",
+	"services/iam/internal/testsupport/fgatest":           "make test-authz-fga",
 }
 
 // TestShortGatedPackagesAreEitherSelectedOrCounted — сам гейт против дерева.
