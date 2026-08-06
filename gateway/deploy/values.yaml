@@ -37,7 +37,7 @@ backends:
   geo: kacho-geo.kacho.svc.cluster.local:9090
   geoInternal: kacho-geo-internal.kacho.svc.cluster.local:9091
   # kacho-registry public + internal endpoints (OCI/Docker image registry leaf).
-  # Public RegistryService on /registries/v1/*; InternalRegistryService (GC/stats)
+  # Public RegistryService on /registry/v1/*; InternalRegistryService (GC/stats)
   # on the internal :9091 mux (ban #6). The registry data-plane :8080 is NOT
   # gateway-routed — docker push/pull go through the registry.kacho.local ingress.
   registry: kacho-registry.kacho.svc.cluster.local:9090

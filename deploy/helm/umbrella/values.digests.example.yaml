@@ -18,7 +18,10 @@
 #          -f values.prod.yaml -f values.digests.yaml
 #
 # The placeholders below are intentionally NOT valid digests — this file is a
-# template, never applied as-is. See docs/security/image-digest-pinning.md.
+# template, never applied as-is. Здесь стояла ссылка на отдельный документ про
+# закрепление образов по digest — такого документа нет ни в этом репозитории, ни
+# в воркспейсе, ни в одном их коммите. Механизм целиком описан ниже, в разделе
+# MECHANISM этого же файла; других мест у него нет.
 #
 # MECHANISM
 #   - kacho-iam: `kacho-iam.image.digest` — when set, the container image renders

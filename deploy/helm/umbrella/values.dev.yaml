@@ -15,7 +15,10 @@
 # │ + ssl-mode=require). The prod profile is fail-closed and guarded by        │
 # │ tests/helm/prod-profile-fail-closed-test.sh. Rotate/override these         │
 # │ placeholders before any non-dev use.                                      │
-# │ See docs/security/dev-credentials.md.                                     │
+# │ Отдельного документа про эти учётные данные нет — ни в этом репозитории,  │
+# │ ни в воркспейсе, ни в одном их коммите; здесь стояла ссылка на такой.     │
+# │ Что есть на самом деле: сам профиль values.prod.yaml и названная выше     │
+# │ проба, которая держит его fail-closed.                                    │
 # └───────────────────────────────────────────────────────────────────────────┘
 
 # KAC-127 — dev-стенд (kind) использует локально-загруженные образы `:dev`
