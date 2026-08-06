@@ -172,6 +172,16 @@ type outboxInventory struct {
 	observed map[string][]string
 	// split — у сканера этой таблицы задано разложение по направлению.
 	split map[string]bool
+	// partition — таблица → ключ партиции порядка, объявленный проводкой
+	// дренажа (drainer.Config.PartitionColumn). Ключа нет в карте = проводка
+	// поля не задаёт, то есть заявляет коммутативность потока. Читается гейтом
+	// порядка (outboxorderinggate_test.go).
+	partition map[string]string
+	// partitionUnresolved — координаты проводок, где поле ключа партиции задано,
+	// но его значение разбором исходника не восстанавливается. Такая проводка
+	// для гейта порядка неотличима от «ключ не задан», поэтому она называется
+	// вслух, а не проглатывается.
+	partitionUnresolved []string
 	// unresolved — координаты проводок, чьё поле Table не резолвится разбором.
 	unresolved []string
 	filesRead  int
@@ -186,9 +196,10 @@ type outboxInventory struct {
 func outboxWiringInventory(t *testing.T, root string) outboxInventory {
 	t.Helper()
 	inv := outboxInventory{
-		drained:  map[string][]string{},
-		observed: map[string][]string{},
-		split:    map[string]bool{},
+		drained:   map[string][]string{},
+		observed:  map[string][]string{},
+		split:     map[string]bool{},
+		partition: map[string]string{},
 	}
 
 	servicesDir := filepath.Join(root, "services")
@@ -318,6 +329,8 @@ func scanOutboxWiring(t *testing.T, path, svc, root string, consts map[string]st
 		var table string
 		var hasTableKey bool
 		var hasDirections bool
+		var partition string
+		var hasPartitionKey bool
 		for _, elt := range cl.Elts {
 			kv, ok := elt.(*ast.KeyValueExpr)
 			if !ok {
@@ -333,6 +346,9 @@ func scanOutboxWiring(t *testing.T, path, svc, root string, consts map[string]st
 				table = resolveStringExpr(kv.Value, consts)
 			case "Directions":
 				hasDirections = true
+			case "PartitionColumn":
+				hasPartitionKey = true
+				partition = resolveStringExpr(kv.Value, consts)
 			}
 		}
 		if table == "" {
@@ -344,6 +360,13 @@ func scanOutboxWiring(t *testing.T, path, svc, root string, consts map[string]st
 		}
 		if kind == "дренаж" {
 			inv.drained[table] = append(inv.drained[table], coord)
+			switch {
+			case hasPartitionKey && partition != "":
+				inv.partition[table] = partition
+			case hasPartitionKey:
+				inv.partitionUnresolved = append(inv.partitionUnresolved,
+					coord+" (строка "+strconv.Itoa(fset.Position(cl.Pos()).Line)+")")
+			}
 			return true
 		}
 		inv.observed[table] = append(inv.observed[table], coord)
