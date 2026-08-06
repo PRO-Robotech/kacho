@@ -554,7 +554,11 @@ CASES.append(Case(
     classes=["CRUD"], priority="P3",
     steps=[
         Step(name="reg-delete", method="DELETE", path=REG + "/{{repoRegId}}",
-             test_script=["pm.test('delete accepted (200/404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
+             # Сброс идентификатора операции ПЕРЕД захватом — см. разбор у
+             # `_delete_registry` в registry-redesign.py: на законной ветке `404`
+             # захват не срабатывает, и без сброса опрос уехал бы на чужую операцию.
+             test_script=["pm.environment.set('opId', '');",
+                          "pm.test('delete accepted (200/404)', () => pm.expect(pm.response.code).to.be.oneOf([200, 404]));",
                           "const j=pm.response.json(); if (j && j.id) pm.environment.set('opId', String(j.id));"]),
         poll_operation_until_done(),
     ],
