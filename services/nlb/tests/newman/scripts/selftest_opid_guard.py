@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (c) PRO-Robotech
+# SPDX-License-Identifier: BUSL-1.1
 """Гейт: шаг, за которым идёт поллер операции, не вправе УДАЛЯТЬ `opId`.
 
 ПРЕДМЕТ. Поллер умеет «нечего поллить» — его первая строка `if (!get('opId')) return`.

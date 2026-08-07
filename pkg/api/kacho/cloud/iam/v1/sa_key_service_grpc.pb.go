@@ -33,15 +33,28 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // SAKeyService — public-facing CRUD for static ServiceAccount OAuth keys
-// (Class A workload identity). Each key maps to a Hydra OAuth 2.0 client
-// registered with `grant_types=[client_credentials]`; external workloads
-// authenticate via Hydra's standard `/oauth2/token` endpoint using basic-auth
-// `<client_id>:<client_secret>` and obtain a Kachō-issued JWT.
+// (Class A workload identity). Each key maps to an OAuth 2.0 client registered
+// with `grant_types=[client_credentials]`; external workloads exchange it for a
+// Kachō-issued JWT at the provider's standard token endpoint.
 //
-// The plaintext `client_secret` is returned EXACTLY ONCE in the Issue
-// response — never persisted by kacho-iam; Hydra stores a bcrypt hash on its
-// side, and kacho-iam keeps only the `hydra_client_id` → ServiceAccount
-// mapping in `service_account_oauth_clients`.
+// AUTHENTICATION IS `private_key_jwt`, NOT A SHARED SECRET. The workload holds
+// the PKCS#8 EC private key returned in `private_key_pem` and signs an RFC-7523
+// client assertion with it; nothing symmetric is exchanged, and kacho-iam stores
+// only the public half plus the `hydra_client_id` → ServiceAccount mapping in
+// `service_account_oauth_clients`.
+//
+// `private_key_pem` is returned EXACTLY ONCE in the Issue response and is never
+// persisted by kacho-iam. `client_secret` is `[deprecated = true]` and is always
+// empty for keys issued today — see the field's own comment.
+//
+// This header used to describe basic-auth `<client_id>:<client_secret>` and
+// promised the plaintext secret «exactly once». That outlived its subject when
+// the flow moved to `private_key_jwt`, and it sat two lines above the field
+// marking the same secret deprecated — two statements about one thing, of which
+// one was true. It is corrected here rather than deleted, because a reader who
+// followed it would look for a field the contract no longer carries and would
+// put the wrong value in the docker username (that is `client_id`, not the
+// Kachō-side `key_id`).
 type SAKeyServiceClient interface {
 	Issue(ctx context.Context, in *IssueSAKeyRequest, opts ...grpc.CallOption) (*operation.Operation, error)
 	List(ctx context.Context, in *ListSAKeysRequest, opts ...grpc.CallOption) (*ListSAKeysResponse, error)
@@ -91,15 +104,28 @@ func (c *sAKeyServiceClient) Revoke(ctx context.Context, in *RevokeSAKeyRequest,
 // for forward compatibility.
 //
 // SAKeyService — public-facing CRUD for static ServiceAccount OAuth keys
-// (Class A workload identity). Each key maps to a Hydra OAuth 2.0 client
-// registered with `grant_types=[client_credentials]`; external workloads
-// authenticate via Hydra's standard `/oauth2/token` endpoint using basic-auth
-// `<client_id>:<client_secret>` and obtain a Kachō-issued JWT.
+// (Class A workload identity). Each key maps to an OAuth 2.0 client registered
+// with `grant_types=[client_credentials]`; external workloads exchange it for a
+// Kachō-issued JWT at the provider's standard token endpoint.
 //
-// The plaintext `client_secret` is returned EXACTLY ONCE in the Issue
-// response — never persisted by kacho-iam; Hydra stores a bcrypt hash on its
-// side, and kacho-iam keeps only the `hydra_client_id` → ServiceAccount
-// mapping in `service_account_oauth_clients`.
+// AUTHENTICATION IS `private_key_jwt`, NOT A SHARED SECRET. The workload holds
+// the PKCS#8 EC private key returned in `private_key_pem` and signs an RFC-7523
+// client assertion with it; nothing symmetric is exchanged, and kacho-iam stores
+// only the public half plus the `hydra_client_id` → ServiceAccount mapping in
+// `service_account_oauth_clients`.
+//
+// `private_key_pem` is returned EXACTLY ONCE in the Issue response and is never
+// persisted by kacho-iam. `client_secret` is `[deprecated = true]` and is always
+// empty for keys issued today — see the field's own comment.
+//
+// This header used to describe basic-auth `<client_id>:<client_secret>` and
+// promised the plaintext secret «exactly once». That outlived its subject when
+// the flow moved to `private_key_jwt`, and it sat two lines above the field
+// marking the same secret deprecated — two statements about one thing, of which
+// one was true. It is corrected here rather than deleted, because a reader who
+// followed it would look for a field the contract no longer carries and would
+// put the wrong value in the docker username (that is `client_id`, not the
+// Kachō-side `key_id`).
 type SAKeyServiceServer interface {
 	Issue(context.Context, *IssueSAKeyRequest) (*operation.Operation, error)
 	List(context.Context, *ListSAKeysRequest) (*ListSAKeysResponse, error)
