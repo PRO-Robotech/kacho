@@ -54,7 +54,15 @@ def _cidr_pre():
 
 
 def _provision_zonal_subnet(zone_var, suffix, save_var, family="v4"):
-    """Provision ZONAL vpc Subnet in a given zone env-var; save its id (fixture-tolerant)."""
+    """Provision ZONAL vpc Subnet in a given zone env-var; save its id.
+
+    Опрос называет опубликованное имя (`fixture_ids`), и это не украшение. Приём
+    операции (`200`) означает только, что запрос принят: идентификатор подсети
+    чеканится ДО того, как воркер отработает, поэтому `metadata.subnetId` приезжает
+    и у операции, завершившейся ОШИБКОЙ. Без этого имени шаг публиковал бы координату
+    несуществующей подсети, а падал бы не он, а безусловная уборка в конце кейса —
+    отказом удаления по фантому, то есть в месте, не имеющем к причине отношения.
+    """
     cidr_field = "ipv4CidrPrimary" if family == "v4" else "ipv6CidrPrimary"
     cidr_var = "_zcV4Cidr" if family == "v4" else "_zcV6Cidr"
     return [
@@ -71,12 +79,17 @@ def _provision_zonal_subnet(zone_var, suffix, save_var, family="v4"):
                  f"  if (j.metadata && j.metadata.subnetId) pm.environment.set('{save_var}', j.metadata.subnetId);",
                  "} else { pm.environment.set('opId', ''); }",
              ]),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=[save_var]),
     ]
 
 
 def _provision_regional_subnet(region_var, suffix, save_var):
-    """Provision REGIONAL (anycast) vpc Subnet in a given region env-var; save its id."""
+    """Provision REGIONAL (anycast) vpc Subnet in a given region env-var; save its id.
+
+    Опрос называет опубликованное имя по той же причине, что и зональный сосед выше:
+    идентификатор чеканится до работы воркера, поэтому приём операции о создании
+    подсети не свидетельствует.
+    """
     return [
         Step(name=f"prov-regional-{suffix}", method="POST", path=_VPC_SUBNETS,
              pre_script=_cidr_pre(),
@@ -91,14 +104,28 @@ def _provision_regional_subnet(region_var, suffix, save_var):
                  f"  if (j.metadata && j.metadata.subnetId) pm.environment.set('{save_var}', j.metadata.subnetId);",
                  "} else { pm.environment.set('opId', ''); }",
              ]),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=[save_var]),
     ]
 
 
 def _cleanup_vpc(id_var):
+    """Убрать подсеть фикстуры, если она была создана.
+
+    Проверка имени — не смягчение утверждения, а условие его осмысленности. Шаг
+    удаления несёт строгое `delete accepted: status 200` (оно ставится по умолчанию
+    всем шагам удаления, и снимать его нельзя: без него отказ уборки зеленел бы).
+    Но утверждать приём удаления имеет смысл ровно тогда, когда есть что удалять:
+    на несозданной фикстуре адрес собрался бы из пустого имени, и строгое
+    утверждение объявляло бы дефектом отсутствие ресурса, которого кейс не создавал.
+    Провижн выше падает САМ и атрибутивно, поэтому пропуск уборки здесь ничего не
+    прячет — он лишь не добавляет второго, вводящего в заблуждение падения.
+    """
     return [
         Step(name=f"zc-cleanup-{id_var}", method="DELETE", path=f"{_VPC_SUBNETS}/{{{{{id_var}}}}}",
-             test_script=[*save_from_response("j.id", "opId")]),
+             test_script=[
+                 f"if (!pm.environment.get('{id_var}')) {{ pm.environment.set('opId', ''); return; }}",
+                 *save_from_response("j.id", "opId"),
+             ]),
         poll_operation_until_done(),
     ]
 
@@ -106,7 +133,10 @@ def _cleanup_vpc(id_var):
 def _cleanup_lb():
     return [
         Step(name="zc-cleanup-lb", method="DELETE", path=f"{_LB}/{{{{zcLbId}}}}",
-             test_script=[*save_from_response("j.id", "opId")]),
+             test_script=[
+                 "if (!pm.environment.get('zcLbId')) { pm.environment.set('opId', ''); return; }",
+                 *save_from_response("j.id", "opId"),
+             ]),
         poll_operation_until_done(),
     ]
 
@@ -178,7 +208,9 @@ CASES.append(Case(
                  "  pm.test('no fixture → lawful rejection', () => pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
                  "}",
              ])),
-        poll_operation_until_done(),
+        # То же, что и в парном региональном кейсе: имя названо, чтобы провал
+        # создания падал здесь, а не отказом уборки по несуществующему адресу.
+        poll_operation_until_done(fixture_ids=["zcLbId"]),
         Step(name="zc-cleanup-lb-cond", method="DELETE", path=f"{_LB}/{{{{zcLbId}}}}",
              test_script=[
                  "if (!pm.environment.get('zcLbId')) { pm.environment.set('opId', ''); return; }",
@@ -285,7 +317,10 @@ CASES.append(Case(
                  "  pm.test('no fixture → lawful rejection', () => pm.expect(pm.response.code).to.be.oneOf([400, 404, 503]));",
                  "}",
              ])),
-        poll_operation_until_done(),
+        # Кейс назван OK: создание обязано УДАТЬСЯ, а не только быть принятым. Имя
+        # балансировщика названо опросу, поэтому провал операции снимает его здесь
+        # и падает здесь же, вместо того чтобы уехать фантомом в уборку.
+        poll_operation_until_done(fixture_ids=["zcLbId"]),
         Step(name="zc-cleanup-lb-sr", method="DELETE", path=f"{_LB}/{{{{zcLbId}}}}",
              test_script=[
                  "if (!pm.environment.get('zcLbId')) { pm.environment.set('opId', ''); return; }",

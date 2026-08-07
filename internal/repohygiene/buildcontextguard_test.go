@@ -100,6 +100,16 @@ func dockerIgnoreExcludes(pats []string, rel string) bool {
 				if match(suf, tail) {
 					return true
 				}
+				// Каталог исключается ЦЕЛИКОМ, на любую глубину. `match` выше
+				// доходит лишь до одного уровня (`p+"/*"`, где `*` не проходит
+				// через разделитель), поэтому `**/node_modules` покрывал бы
+				// `node_modules/x`, но не `node_modules/.bin/x` — и гейт
+				// предъявлял бы находкой файл, который docker в контекст не
+				// берёт. Ложная находка здесь дороже пропуска: гейт, который
+				// краснеет на исключённом, снимают целиком.
+				if strings.HasPrefix(tail, strings.TrimSuffix(suf, "/")+"/") {
+					return true
+				}
 			}
 		}
 	}
