@@ -352,8 +352,9 @@ func (r *InstanceRepo) SetStatusCAS(ctx context.Context, id string, expected, ne
 // говорит: «the IPAM/NIC materialize saga is COMP-2»), клиента адреса/IPAM у
 // compute нет, а `StorageClient` несёт только Attach/Detach/ListAttachments.
 // Очередь, не получающая ни одной строки, неотличима от исправной — этот класс
-// уже стоил нам инцидента (`data-integrity.md` §«Межсервисное намерение»).
-// B12 приземляется ВМЕСТЕ с COMP-2, не раньше.
+// уже стоил нам инцидента: отказ в правах классифицировался временным, голова
+// партиции заклинивала, и ни одна строка не доезжала за всю жизнь очереди.
+// Компенсация запуска приземляется ВМЕСТЕ с материализующей сагой, не раньше.
 func (r *InstanceRepo) GateForAttach(ctx context.Context, id string) (string, string, string, error) {
 	var zoneID, projectID, name string
 	var eligible bool
