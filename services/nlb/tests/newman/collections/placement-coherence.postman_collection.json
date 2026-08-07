@@ -166,7 +166,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('zcSubV4Id');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -282,7 +286,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('zcSubV6Id');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -408,6 +416,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
+                  "if (!pm.environment.get('zcSubV4Id')) { pm.environment.set('opId', ''); return; }",
                   "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
@@ -529,6 +538,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
+                  "if (!pm.environment.get('zcSubV6Id')) { pm.environment.set('opId', ''); return; }",
                   "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
@@ -722,7 +732,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('zcSubV4Id');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -838,7 +852,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('zcSubV6Id');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -970,7 +988,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('zcLbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -1142,6 +1164,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
+                  "if (!pm.environment.get('zcSubV4Id')) { pm.environment.set('opId', ''); return; }",
                   "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
@@ -1263,6 +1286,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
+                  "if (!pm.environment.get('zcSubV6Id')) { pm.environment.set('opId', ''); return; }",
                   "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
@@ -1456,7 +1480,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('zcSubR2Id');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -1778,6 +1806,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
+                  "if (!pm.environment.get('zcSubR2Id')) { pm.environment.set('opId', ''); return; }",
                   "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
@@ -1971,7 +2000,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('zcSubR1Id');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -2103,7 +2136,11 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('zcLbId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
@@ -2275,6 +2312,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
+                  "if (!pm.environment.get('zcSubR1Id')) { pm.environment.set('opId', ''); return; }",
                   "pm.environment.set('opId', '');",
                   "try {",
                   "  const j = pm.response.json();",
