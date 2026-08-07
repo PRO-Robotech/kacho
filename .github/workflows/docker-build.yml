@@ -195,7 +195,7 @@ jobs:
       # Кэш слоёв теперь внешний (`type=gha` в шаге сборки), и это единственное место,
       # где он есть: builder своего между прогонами не хранит.
       - name: Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
         with:
           driver-opts: image=mirror.gcr.io/moby/buildkit:buildx-stable-1
 
