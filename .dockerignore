@@ -64,3 +64,46 @@ kubeconfig*
 # git-ignored файлов попадает в контекст, и падает с их перечнем.
 .claude
 .pytest_cache
+**/.pytest_cache
+
+# ПРОИЗВЕДЁННОЕ СБОРКОЙ — В КОНТЕКСТ НЕ ЕДЕТ
+#
+# Ниже — то, что появляется на диске от локальной работы и чего нет в чистом
+# checkout'е. Из-за этого дефект класса «раздутый контекст» виден ТОЛЬКО тому, кто
+# собирал локально, и молчит в конвейере: там дерево чистое, гейт зелёный, а у
+# разработчика в контекст уезжают сотни мегабайт и промахиваются мимо кэша слоёв.
+#
+# Проверено, что ни один из 25 Dockerfile дерева этих путей не читает (предикат:
+# git grep по 'charts/|tsbuildinfo|seeded-ids|Chart.lock' в '**/Dockerfile*' — пусто).
+#
+# Гейт класса — internal/repohygiene/buildcontextguard_test.go.
+
+# вендоренные субчарты: их кладёт `helm dep update`, в образ они не входят
+deploy/helm/*/charts
+# бинари сервисов от локального `go build` — имя совпадает с именем каталога
+/bin
+/kacho-iam
+services/*/vpc
+services/*/compute
+services/*/kacho-iam
+gateway/bin
+# кэш инкрементальной сборки TypeScript
+**/*.tsbuildinfo
+# идентификаторы, записанные посевом стенда
+deploy/.seeded-ids.env
+deploy/helm/*/Chart.lock
+# промежуточные артефакты генераторов и сборки края
+gateway/build
+gateway/coverage.out
+# отчёты покрытия и прогонов проб
+**/coverage.out
+**/coverage-full.out
+**/test-results
+# собранный фронтенд: образы ui берут `dist` из СВОЕЙ стадии сборки
+# (`COPY --from=build /app/dist`), а не из контекста, поэтому локальная сборка
+# в контексте лишняя — проверено по всем Dockerfile каталога ui-future
+**/dist
+# вспомогательные бинари инструментов
+services/*/bin
+# профиль значений, собираемый под конкретный стенд
+deploy/helm/*/values.*-ory.yaml
