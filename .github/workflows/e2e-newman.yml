@@ -69,7 +69,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [redesign/integration]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
