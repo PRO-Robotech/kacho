@@ -127,12 +127,24 @@ const authzFieldName = "authz"
 // load-bearing half is the argument: the call only counts when the RAW getter
 // travels into it (carriesRawGetter). A perfectly-named validator handed a value
 // someone already coerced still counts for nothing.
+// Регистр НЕ учитывается, и это не косметика. Прежний предикат требовал заглавной
+// `Validate`, поэтому идиоматичный неэкспортируемый хелпер `validatePagination`
+// не опознавался вовсе: один и тот же хендлер с ПРАВИЛЬНЫМ порядком операций давал
+// две находки `access-before-format`, если валидатор назван со строчной, и ноль —
+// если с заглавной (доказано инъекцией на ревизии d24476c1, issue #111). Смещение
+// шло в сторону ЛОЖНОЙ находки, а гейт, который краснеет на верном коде, снимают
+// быстрее, чем чинят, — и вместе с ним уходит настоящая проверка.
+//
+// Несущая половина теста от этого не меняется: имя — дешёвая половина, а считается
+// вызов только когда в него едет СЫРОЙ геттер (carriesRawGetter). Идеально
+// названный валидатор, которому подали уже приведённое значение, не значит ничего.
 func isPageValidator(name string) bool {
 	if name == "PageSize" { // pkg/validate.PageSize — the platform predicate
 		return true
 	}
-	return strings.HasPrefix(name, "Validate") &&
-		(strings.Contains(name, "Page") || strings.Contains(name, "Pagination"))
+	lower := strings.ToLower(name)
+	return strings.HasPrefix(lower, "validate") &&
+		(strings.Contains(lower, "page") || strings.Contains(lower, "pagination"))
 }
 
 // Rule names the reason a method was reported.

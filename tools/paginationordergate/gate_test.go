@@ -333,3 +333,39 @@ func findRule(r Report, rule Rule) Finding {
 	}
 	return Finding{}
 }
+
+// Регистр имени валидатора НЕ решает исход — утверждение о САМОМ предикате.
+//
+// Прежняя редакция требовала заглавной `Validate`, поэтому идиоматичный
+// неэкспортируемый хелпер `validatePagination` не опознавался вовсе (issue #111).
+// Тест держит предикат НАПРЯМУЮ, а не через сборку дерева: попытка доказать это
+// синтетическим хендлером оказалась вакуумной — на таком входе находки нет ни с
+// фиксом, ни без него, потому что решает там позиция вызова, а не имя. Проверка,
+// зелёная в обе стороны, хуже отсутствующей: она занимает слот и создаёт
+// уверенность, которой нет.
+func TestPageValidatorNameIsCaseInsensitive(t *testing.T) {
+	recognised := []string{
+		"ValidatePagination", "validatePagination",
+		"ValidatePageToken", "validatePageToken",
+		"ValidateRepoListPage", "validateRepoListPage",
+		"PageSize",
+	}
+	for _, name := range recognised {
+		if !isPageValidator(name) {
+			t.Errorf("валидатор %q НЕ опознан — регистр не вправе решать исход", name)
+		}
+	}
+
+	// Отрицание в паре с положительным: без него «опознаёт всё подряд» выглядело бы
+	// как успех. Эти имена не про формат страницы и опознаваться не должны ни в каком
+	// регистре.
+	foreign := []string{
+		"Validate", "validate", "ValidateName", "validateName",
+		"ListPages", "PageToken", "Paginate", "", "GetPageSize",
+	}
+	for _, name := range foreign {
+		if isPageValidator(name) {
+			t.Errorf("%q опознан валидатором формата страницы — предикат слишком широк", name)
+		}
+	}
+}
