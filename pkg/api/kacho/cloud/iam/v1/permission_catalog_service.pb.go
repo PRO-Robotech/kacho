@@ -73,7 +73,7 @@ type ListPermissionCatalogResponse struct {
 	// Deterministic order.
 	Modules []*CatalogModule `protobuf:"bytes,1,rep,name=modules,proto3" json:"modules,omitempty"`
 	// Набор глаголов, ОБЩИЙ ДЛЯ ВСЕХ ресурсов: пересечение наборов всех типов,
-	// сегодня ["get","list","create","update","delete"]. Порядок канонический и
+	// сегодня ["get","list","update","delete"]. Порядок канонический и
 	// фиксированный — он часть контракта поля.
 	//
 	// Набор глаголов — атрибут ТИПА, а не платформы. Поле показывает то, что даёт
@@ -81,6 +81,13 @@ type ListPermissionCatalogResponse struct {
 	// не попадёт — обещать его от имени всех ресурсов поле не может. Словарь ПО
 	// РЕСУРСУ — предмет отдельной под-фазы; имя поля сохранено, чтобы не ломать
 	// существующих клиентов.
+	//
+	// Сегодня шире общего объявлены ТРИ пары: `addTargets`/`removeTargets` у
+	// `loadbalancer.targetGroups` и `create` у `registry.registries`. Такой глагол
+	// энфорсится, но не предлагается редактором ролей — роль с ним авторуется через
+	// API. Радиус прибит гейтом (kacho-iam authzmap, «enforced verbs absent from
+	// closed_verbs»): четвёртая пара покраснеет, и покраснеет же запись, которую
+	// словарь по ресурсу сделает ненужной.
 	ClosedVerbs []string `protobuf:"bytes,2,rep,name=closed_verbs,json=closedVerbs,proto3" json:"closed_verbs,omitempty"`
 	// Platform-wide wildcard policy flags.
 	WildcardPolicy *WildcardPolicy `protobuf:"bytes,3,opt,name=wildcard_policy,json=wildcardPolicy,proto3" json:"wildcard_policy,omitempty"`

@@ -42,7 +42,7 @@ grant-tier (роли). Это позволяет точечно выдавать
   <tbody>
     <tr><td><code>v_get</code></td><td>читать один объект</td><td>Registry.Get; data-plane pull</td></tr>
     <tr><td><code>v_list</code></td><td>видеть в списке</td><td>List / ListRepositories / ListTags / ListOperations (row-filter)</td></tr>
-    <tr><td><code>v_create</code></td><td>создавать дочерний объект</td><td>Registry.Create (на project); push нового repo (на registry)</td></tr>
+    <tr><td><code>v_create</code></td><td>создавать дочерний объект в контейнере — объявлено ТОЛЬКО у <code>registry_registry</code></td><td>CreateRepository / RenameRepository; push нового repo; mount в новый dst</td></tr>
     <tr><td><code>v_update</code></td><td>изменять</td><td>Registry.Update; push в существующий repo</td></tr>
     <tr><td><code>v_delete</code></td><td>удалять</td><td>Registry.Delete; DeleteTag</td></tr>
   </tbody>
@@ -62,7 +62,7 @@ verb@object **до** выполнения метода. Нет отношени�
   <thead><tr><th>RPC</th><th>verb</th><th>object</th></tr></thead>
   <tbody>
     <tr><td><code>Registry.Get</code></td><td><code>v_get</code></td><td><code>registry_registry</code></td></tr>
-    <tr><td><code>Registry.Create</code></td><td><code>v_create</code> (editor-tier)</td><td><code>project</code> (parent — объекта ещё нет)</td></tr>
+    <tr><td><code>Registry.Create</code></td><td><code>editor</code></td><td><code>project</code> (parent — объекта ещё нет; <code>project</code> не несёт <code>v_create</code>)</td></tr>
     <tr><td><code>Registry.Update</code></td><td><code>v_update</code></td><td><code>registry_registry</code></td></tr>
     <tr><td><code>Registry.Delete</code></td><td><code>v_delete</code></td><td><code>registry_registry</code></td></tr>
     <tr><td><code>ListOperations</code></td><td><code>v_list</code></td><td><code>registry_registry</code></td></tr>

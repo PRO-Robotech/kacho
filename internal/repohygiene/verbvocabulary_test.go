@@ -74,16 +74,27 @@ type verbLiteral struct {
 // добросовестностью того, кто сюда дописывает.
 var verbLiteralRoster = []verbLiteral{
 	{
-		path: "services/iam/internal/authzmap/fga_types.go", varName: "fullCrudVerbRelations",
-		claims:     "набор, который на сегодня СОВПАДАЮЩЕ объявляют 24 типа; НЕ «все глаголы платформы»",
+		path: "services/iam/internal/authzmap/fga_types.go", varName: "objectVerbRelations",
+		claims: "набор операций НАД УЖЕ СУЩЕСТВУЮЩИМ объектом, который совпадающе объявляют 22 типа; " +
+			"НЕ «все глаголы платформы». `create` в него не входит намеренно: создание авторизуется " +
+			"ярусом записи на РОДИТЕЛЕ, а не пообъектным глаголом",
 		checkedBy:  "authzmap: TestDrift_TypeVerbSetsMatchModelExactly — потиповое равенство набора и модели",
 		retireWhen: "объявление удалено (типы перечисляют наборы поштучно)",
 	},
 	{
+		path: "services/iam/internal/authzmap/fga_types.go", varName: "registryNamespaceVerbRelations",
+		claims: "набор ОДНОГО типа — registry_registry: операции над объектом плюс `v_create` " +
+			"(контейнерная семантика «создать репозиторий в этом пространстве имён»); полноты " +
+			"платформы НЕ утверждает — это единственный носитель `v_create` в модели",
+		checkedBy: "authzmap: TestDrift_TypeVerbSetsMatchModelExactly (потиповое равенство) + " +
+			"TestVerbRelation_CreateIsDeclaredOnlyWhereEnforced (у носителя есть читатель)",
+		retireWhen: "объявление удалено (тип вернулся к общему набору либо перечисляет его иначе)",
+	},
+	{
 		path: "services/iam/internal/authzmap/fga_types.go", varName: "targetGroupVerbRelations",
-		claims: "набор ОДНОГО типа — nlb_target_group: канонический CRUD плюс два отношения управления " +
-			"составом группы (NLB-TGT-1); полноты платформы НЕ утверждает — это первый в дереве набор, " +
-			"отличающийся от общего",
+		claims: "набор ОДНОГО типа — nlb_target_group: операции над объектом плюс два отношения " +
+			"управления составом группы (NLB-TGT-1); полноты платформы НЕ утверждает — это первый " +
+			"в дереве набор, отличающийся от общего",
 		checkedBy:  "authzmap: TestDrift_TypeVerbSetsMatchModelExactly — потиповое равенство набора и модели",
 		retireWhen: "объявление удалено (тип вернулся к общему набору либо перечисляет его иначе)",
 	},
@@ -92,24 +103,6 @@ var verbLiteralRoster = []verbLiteral{
 		claims:     "старшинство ПОКАЗА в превью роли; полноты НЕ утверждает — глагол вне списка идёт в хвост",
 		checkedBy:  "domain: TestEffectiveVerbs_UnchangedForEveryRuleShape — порядок вывода по каждой форме правила",
 		retireWhen: "объявление удалено (порядок берётся откуда-то ещё)",
-	},
-	{
-		path: "services/iam/internal/authzmap/account_owner_structural_test.go", varName: "aoVerbs",
-		claims:     "ожидаемые отношения владельца аккаунта в структурной проверке модели",
-		checkedBy:  "тот же файл: утверждение о выводимости каждого отношения из отношения владельца",
-		retireWhen: "объявление удалено",
-	},
-	{
-		path: "services/iam/internal/authzmap/super_admin_cascade_test.go", varName: "saVerbs",
-		claims:     "ожидаемые отношения каскада супер-администратора",
-		checkedBy:  "тот же файл: утверждение о каскаде по каждому отношению",
-		retireWhen: "объявление удалено",
-	},
-	{
-		path: "services/iam/internal/service/cascade_queue_independence_integration_test.go", varName: "ciVerbs",
-		claims:     "ожидаемые отношения в проверке независимости очереди каскада",
-		checkedBy:  "тот же файл: интеграционное утверждение по каждому отношению",
-		retireWhen: "объявление удалено",
 	},
 	{
 		path: "services/iam/internal/domain/rule_verbs_test.go", varName: "scopeTypeVerbs",

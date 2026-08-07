@@ -689,8 +689,17 @@ CASES.append(Case(
                  "    pm.expect(((lb || {}).resources || []).find(x => x.resource === r).hasVerbRelations)"
                  "      .to.eql(true));",
                  "});",
-                 "pm.test('closed verb set is the one nlb permission strings are built from', () => "
-                 "  pm.expect(j.closedVerbs || []).to.have.members(['get','list','create','update','delete']));",
+                 "pm.test('закрытый набор — тот, из которого строятся строки прав nlb', () => {",
+                 "  // Литеральный перечень пережил бы своё изменение молча: он был",
+                 "  // [get,list,create,update,delete] и остался бы им после того, как глагол",
+                 "  // создания перестал быть общим для типов. Утверждается СВОЙСТВО.",
+                 "  const verbs = j.closedVerbs || [];",
+                 "  pm.expect(verbs, JSON.stringify(j)).to.be.an('array').that.is.not.empty;",
+                 "  // Строки прав nlb строятся из глаголов чтения, перечисления, правки и",
+                 "  // удаления — каждый обязан быть общим, иначе гейты домена нечем описать.",
+                 "  pm.expect(verbs, 'глаголы, из которых строятся права nlb')",
+                 "    .to.include.members(['get','list','update','delete']);",
+                 "});",
              ]),
     ],
 ))

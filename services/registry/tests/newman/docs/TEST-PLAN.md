@@ -84,7 +84,8 @@ cannot access.** Deny is indistinguishable from absence.
   (deny→404, `corelib ErrHideExistence`), **never `PERMISSION_DENIED`**; the async
   `Operation` is **not** created and no state changes.
 - `Create` is authorized on the **parent project** (`create-child = editor-tier on parent`,
-  `v_create@iam_project`, because `registry_registry:<new-id>` does not exist yet):
+  `editor@project`, because `registry_registry:<new-id>` does not exist yet — and `project`
+  carries no `v_create` relation at all: create-authority is the parent write tier):
   - deny on a **visible member** project → `PERMISSION_DENIED` (membership is not secret);
   - deny on a **hidden/non-member** project → `NOT_FOUND` (existence-hiding on the parent).
 - `List` → listauthz filter (`viewer ∪ v_list`); cross-tenant rows never appear (CI-gate
@@ -177,7 +178,7 @@ Report its outcome into `RESULTS.md` alongside the newman summary.
 | `baseUrl` | api-gateway REST entry (fe3455 forward / kind NodePort) |
 | `existingProjectId` | project where `jwtProjectEditorA` holds registry create/edit rights |
 | `existingProjectCrossId` | second project for cross-tenant no-leak / hidden-project tests |
-| `jwtProjectEditorA` | subject with `v_create`/`v_update` in `existingProjectId` |
+| `jwtProjectEditorA` | subject with the `editor` tier in `existingProjectId` (create-authority) |
 | `jwtProjectViewerA` | viewer (read-only) in `existingProjectId` |
 | `jwtStranger` | subject with no bindings (existence-hiding target) |
 | `jwtServiceAccountEditor` | SA subject for owner-tuple / SA-key flows |

@@ -176,7 +176,8 @@ setup/cleanup, `-{{runId}}`-изоляция, `regionId={{existingRegionId}}` (g
 Auth model — **existence-hiding** (see TEST-PLAN §Auth model): read/mutation of a resource
 the subject cannot see returns `NOT_FOUND` (deny→404, `corelib ErrHideExistence`), never
 `PERMISSION_DENIED`. Exception: `Create` is authorized on the **parent project**
-(`v_create@iam_project`); deny on a **visible** project → `PERMISSION_DENIED`, deny on a
+(`editor@project` — the parent write tier; `project` carries no `v_create`); deny on a
+**visible** project → `PERMISSION_DENIED`, deny on a
 **hidden** project → `NOT_FOUND`. `List` returns only authz-visible rows (listauthz,
 `viewer ∪ v_list`).
 
@@ -185,7 +186,7 @@ the subject cannot see returns `NOT_FOUND` (deny→404, `corelib ErrHideExistenc
 | `REG-GET-AZ-EXISTENCE-HIDING` | AZ, NEG | P0 | Get someone else's `reg-*` without `v_get` → 404 NOT_FOUND, **not** 403 (deny→404 no-leak) | REG-05 |
 | `REG-LST-AZ-OWNER-SEES-OWN` | AZ | P0 | editor sees own registry in authz-filtered List (read==enforce) | REG-06 |
 | `REG-LST-AZ-CROSS-TENANT-NOLEAK` | AZ, NEG | P0 | List by subject scoped to project A does **not** contain project-B registries | REG-06 |
-| `REG-CR-AZ-NO-GRANT-DENIED` | AZ, NEG | P0 | Create without `v_create` on a **visible** member project → 403 PERMISSION_DENIED, no Operation | REG-01a |
+| `REG-CR-AZ-NO-GRANT-DENIED` | AZ, NEG | P0 | Create without `editor` on a **visible** member project → 403 PERMISSION_DENIED, no Operation | REG-01a |
 | `REG-CR-AZ-HIDDEN-PROJECT-NF` | AZ, NEG | P1 | Create targeting a **non-member/hidden** project → 404 NOT_FOUND (existence-hiding on parent) | REG-01a |
 | `REG-DEL-AZ-NO-GRANT-NF` | AZ, NEG | P0 | Delete without `v_delete` → **sync** 404 NOT_FOUND (existence-hiding), no Operation, status unchanged | REG-07 |
 | `REG-UPD-AZ-NO-GRANT-NF` | AZ, NEG | P1 | Update without `v_update` → **sync** 404 NOT_FOUND (existence-hiding), no Operation | REG-36 |
