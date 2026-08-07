@@ -759,7 +759,7 @@ CASES.append(Case(
                  "pm.test(\"message is 'at least one target is required'\", () => "
                  "  pm.expect(pm.response.json().message || '', pm.response.text())"
                  "    .to.include('at least one target is required'));",
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
              ]),
         *_cleanup_tg(),
     ],

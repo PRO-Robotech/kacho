@@ -1424,7 +1424,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -1557,7 +1557,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -2088,7 +2088,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -2223,7 +2223,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -2356,7 +2356,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -2940,7 +2940,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -3075,7 +3075,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -3208,7 +3208,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -3545,7 +3545,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -3680,7 +3680,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -3813,7 +3813,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -4463,7 +4463,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -5244,7 +5244,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -5377,7 +5377,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -5961,7 +5961,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -6096,7 +6096,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -6229,7 +6229,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -6575,7 +6575,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -6710,7 +6710,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -6843,7 +6843,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -7192,7 +7192,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -7327,7 +7327,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -7460,7 +7460,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -7809,7 +7809,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -7944,7 +7944,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -8077,7 +8077,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -8426,7 +8426,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -8561,7 +8561,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -8694,7 +8694,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -9043,7 +9043,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -9178,7 +9178,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -9311,7 +9311,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -9842,7 +9842,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -9977,7 +9977,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -10110,7 +10110,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -10641,7 +10641,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -10831,7 +10831,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -10964,7 +10964,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -11614,7 +11614,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -11749,7 +11749,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -11882,7 +11882,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -12076,7 +12076,7 @@
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
                   "});",
                   "pm.test('refusal guides the caller to create the TargetGroup first', () =>   pm.expect(pm.response.json().message || '', pm.response.text())    .to.include('create the TargetGroup first'));",
-                  "pm.environment.unset('opId');"
+                  "pm.environment.set('opId', '');"
                 ]
               }
             }
@@ -12233,7 +12233,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -12536,7 +12536,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -12669,7 +12669,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -13102,7 +13102,7 @@
                   "  const m = pm.response.json().message || '';",
                   "  pm.expect(m, pm.response.text()).to.match(/does not match listener region/);",
                   "});",
-                  "pm.environment.unset('opId');"
+                  "pm.environment.set('opId', '');"
                 ]
               }
             }
@@ -13501,7 +13501,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -13901,7 +13901,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -14034,7 +14034,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -14383,7 +14383,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -14518,7 +14518,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -14651,7 +14651,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -15000,7 +15000,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -15135,7 +15135,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -15268,7 +15268,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -15617,7 +15617,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -15752,7 +15752,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -15885,7 +15885,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -16234,7 +16234,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -16369,7 +16369,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -16502,7 +16502,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -16675,7 +16675,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
                   "  const j = pm.response.json();",
@@ -16838,7 +16838,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -16973,7 +16973,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -17106,7 +17106,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -17638,7 +17638,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -17773,7 +17773,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -17906,7 +17906,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -18488,7 +18488,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -18623,7 +18623,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -18756,7 +18756,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -19461,7 +19461,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -19682,7 +19682,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -19815,7 +19815,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -20201,7 +20201,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -20440,7 +20440,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -20573,7 +20573,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -21104,7 +21104,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -21682,7 +21682,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -21815,7 +21815,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -21988,7 +21988,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "pm.environment.set('tgCrossId', 'tgrabsent0000000000x');",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
@@ -22172,7 +22172,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('cross-project TG reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('tgCrossId');"
                 ]
@@ -22394,7 +22394,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]
@@ -22529,7 +22529,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -22662,7 +22662,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -22958,7 +22958,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "pm.environment.set('tgCrossId', 'tgrabsent0000000000x');",
                   "if (pm.response.code === 200) {",
                   "  const j = pm.response.json();",
@@ -23153,7 +23153,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('cross-project TG reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('tgCrossId');"
                 ]
@@ -23496,7 +23496,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('subnet reclaim best-effort (never fails the case)', () =>   pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "if (pm.response.code === 200) { try { const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                   "pm.environment.unset('lstSubnetId');"
                 ]

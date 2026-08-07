@@ -11239,7 +11239,7 @@
                   "  const fv = ((j.details || []).find(d => (d.fieldViolations || []).length) || {}).fieldViolations || [];",
                   "  pm.expect(fv.map(v => v.field), pm.response.text()).to.include('v4_address_ids');",
                   "});",
-                  "pm.environment.unset('opId');"
+                  "pm.environment.set('opId', '');"
                 ]
               }
             }
@@ -12336,7 +12336,7 @@
                   "  const fv = ((j.details || []).find(d => (d.fieldViolations || []).length) || {}).fieldViolations || [];",
                   "  pm.expect(fv.map(v => v.field), pm.response.text()).to.include('v6_address_ids');",
                   "});",
-                  "pm.environment.unset('opId');"
+                  "pm.environment.set('opId', '');"
                 ]
               }
             }

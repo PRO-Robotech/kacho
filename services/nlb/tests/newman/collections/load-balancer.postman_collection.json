@@ -416,7 +416,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -974,7 +974,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -1555,7 +1555,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -2165,7 +2165,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -2774,7 +2774,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -3264,7 +3264,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -3875,7 +3875,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -4184,7 +4184,7 @@
                   "  pm.environment.set('_mvMoved', '1');",
                   "  const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id);",
                   "} else {",
-                  "  pm.environment.unset('opId');",
+                  "  pm.environment.set('opId', '');",
                   "  pm.test('cross-project move lawfully rejected when dst fixture absent (Project not found)', () => {",
                   "    pm.expect(pm.response.code).to.eql(400);",
                   "    pm.expect(pm.response.json().message || '').to.match(/not found/i);",
@@ -4357,7 +4357,7 @@
                   "pm.environment.unset('_authRetryStarted');",
                   "if (pm.environment.get('_mvMoved') && pm.response.code === 200) {",
                   "  const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -4604,7 +4604,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -5138,7 +5138,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
                   "pm.test('grpc code 9 (FAILED_PRECONDITION)', () => {",
                   "  const j = pm.response.json();",
@@ -5691,7 +5691,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -5995,7 +5995,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
                   "  const j = pm.response.json();",
@@ -6194,7 +6194,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -6963,7 +6963,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -10064,7 +10064,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -11294,7 +11294,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -12019,7 +12019,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -12521,7 +12521,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -13022,7 +13022,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -13523,7 +13523,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -14021,7 +14021,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -14497,7 +14497,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
                   "  const j = pm.response.json();",
@@ -14700,7 +14700,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -15310,7 +15310,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -18108,7 +18108,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -20587,7 +20587,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -21248,7 +21248,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -22016,7 +22016,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -22320,7 +22320,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
                   "  const j = pm.response.json();",
@@ -22518,7 +22518,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -23217,7 +23217,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -23771,7 +23771,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
                   "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
                   "  const j = pm.response.json();",
@@ -23849,7 +23849,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -24163,7 +24163,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.addressId) pm.environment.set('vpcAddrId', j.metadata.addressId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -24759,7 +24759,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -25318,7 +25318,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -25874,7 +25874,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -25986,7 +25986,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.addressId) pm.environment.set('vpcAddrId', j.metadata.addressId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -26648,7 +26648,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.addressId) pm.environment.set('vpcAddrId', j.metadata.addressId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -27203,7 +27203,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -27315,7 +27315,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.addressId) pm.environment.set('vpcAddr6Id', j.metadata.addressId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -27991,7 +27991,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -28492,7 +28492,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -29056,7 +29056,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -29839,7 +29839,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('vpcSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -30333,7 +30333,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.addressId) pm.environment.set('vpcAddrId', j.metadata.addressId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -30465,7 +30465,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
@@ -30572,7 +30572,7 @@
                   "if (pm.environment.get('nlbId')) {",
                   "  pm.test('Delete accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
                   "  const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }

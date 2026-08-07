@@ -741,7 +741,7 @@ CASES.append(Case(
                  # опрашивал её под targetManager'ом. Видимость операции
                  # creator-principal-scoped, поэтому ответ был честный 404, а
                  # утверждение «poll status 200» краснело так, будто операция пропала.
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
                  "pm.test('targetManager may AddTargets (the verb its role grants)', () => "
                  "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                  *save_from_response("j.id", "opId"),
@@ -804,7 +804,7 @@ CASES.append(Case(
              auth="jwtCustomRoleTgUpdater",
              body={"targets": [{"externalIp": {"address": "203.0.113.33"}, "weight": 100}]},
              test_script=[
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
                  "pm.test('a holder of update still manages membership (the new relations are a SUPERSET)', () => "
                  "  pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                  *save_from_response("j.id", "opId"),
@@ -922,7 +922,7 @@ CASES.append(Case(
                  "  const j = pm.response.json();",
                  "  if (j.id) pm.environment.set('opId', j.id);",
                  "  if (j.metadata && j.metadata.subnetId) pm.environment.set('azdSubnetId', j.metadata.subnetId);",
-                 "} else { pm.environment.unset('opId'); }",
+                 "} else { pm.environment.set('opId', ''); }",
              ]),
         poll_operation_until_done(auth="jwtProjectEditorA"),
         retry_create_until_present(Step(name="setup-cr", method="POST", path=_NLB, auth="jwtProjectEditorA",

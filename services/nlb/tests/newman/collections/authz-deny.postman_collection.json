@@ -4196,7 +4196,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "pm.test('targetManager may AddTargets (the verb its role grants)', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -4695,7 +4695,7 @@
                   "}",
                   "pm.environment.unset('_authRetryCount');",
                   "pm.environment.unset('_authRetryStarted');",
-                  "pm.environment.unset('opId');",
+                  "pm.environment.set('opId', '');",
                   "pm.test('a holder of update still manages membership (the new relations are a SUPERSET)', () =>   pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -5585,7 +5585,7 @@
                   "  const j = pm.response.json();",
                   "  if (j.id) pm.environment.set('opId', j.id);",
                   "  if (j.metadata && j.metadata.subnetId) pm.environment.set('azdSubnetId', j.metadata.subnetId);",
-                  "} else { pm.environment.unset('opId'); }"
+                  "} else { pm.environment.set('opId', ''); }"
                 ]
               }
             }
