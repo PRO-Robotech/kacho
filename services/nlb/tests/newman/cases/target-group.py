@@ -247,7 +247,7 @@ CASES.append(Case(
                  "pm.expect.fail('the destination project fixture was never seeded, so a cross-project "
                  "move could not have been attempted. Seed via tests/authz-fixtures. Absence of a "
                  "fixture is a refusal, not an alternative pass.'));",
-                 "  pm.environment.unset('opId');",
+                 "  pm.environment.set('opId', '');",
                  "  return;",
                  "}",
                  "pm.test('cross-project move accepted as Operation', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
@@ -255,14 +255,14 @@ CASES.append(Case(
                  "  pm.environment.set('tgMoved', '1');",
                  *save_from_response("j.id", "opId"),
                  "} else {",
-                 "  pm.environment.unset('opId');",
+                 "  pm.environment.set('opId', '');",
                  "}",
              ])),
         poll_operation_until_done(),
         Step(name="move-back", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:move",
              body={"destinationProjectId": "{{_suiteProjectId}}"},
              test_script=[
-                 "if (!pm.environment.get('tgMoved')) { pm.environment.unset('opId'); return; }",
+                 "if (!pm.environment.get('tgMoved')) { pm.environment.set('opId', ''); return; }",
                  *save_from_response("j.id", "opId"),
              ]),
         poll_operation_until_done(),
@@ -628,7 +628,7 @@ CASES.append(Case(
         # going THROUGH — as satisfying a case whose entire subject is that it must not.
         retry_until_authorized(Step(name="del-blocked", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
              test_script=[
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
                  *assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
                  "pm.test('names the listeners that block the delete', () => "
                  "  pm.expect((pm.response.json().message || '')).to.include("
@@ -669,7 +669,7 @@ CASES.append(Case(
         # cannot pose as this one.
         retry_until_authorized(Step(name="del-blocked", method="DELETE", path=f"{_TG_BASE}/{{{{tgId}}}}",
              test_script=[
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
                  *assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
                  "pm.test('names the targets that block the delete', () => "
                  "  pm.expect((pm.response.json().message || '')).to.match("
@@ -757,7 +757,7 @@ CASES.append(Case(
         Step(name="mv-blocked", method="POST", path=f"{_TG_BASE}/{{{{tgId}}}}:move",
              body={"destinationProjectId": "{{_suiteProjectCrossId}}"},
              test_script=[
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
                  *assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
                  "pm.test('names the listeners that block the move', () => "
                  "  pm.expect((pm.response.json().message || '')).to.match("
@@ -1048,7 +1048,7 @@ CASES.append(Case(
         Step(name="cr-r2", method="POST", path=_TG_BASE,
              body={**_TG_BODY, "regionId": "{{_suiteRegionAltId}}", "name": "xreg-{{runId}}"},
              test_script=[
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
                  *assert_status(409), *assert_grpc_code(6, "ALREADY_EXISTS"),
                  "pm.test('names the colliding target group and its project', () => "
                  "  pm.expect((pm.response.json().message || '')).to.match("

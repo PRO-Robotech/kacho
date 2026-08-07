@@ -135,7 +135,7 @@ def _provision_subnet(placement, suffix, save_var="vpcSubnetId", dualstack=False
                  "  const j = pm.response.json();",
                  "  if (j.id) pm.environment.set('opId', j.id);",
                  f"  if (j.metadata && j.metadata.subnetId) pm.environment.set('{save_var}', j.metadata.subnetId);",
-                 "} else { pm.environment.unset('opId'); }",
+                 "} else { pm.environment.set('opId', ''); }",
              ]),
         # fixture_ids: an Operation carries the PRE-ALLOCATED id in metadata even when it
         # finishes done:true WITH an error, so an unguarded capture publishes the id of a
@@ -190,7 +190,7 @@ def _provision_internal_address(subnet_var, suffix, save_var="vpcAddrId", family
                  "  const j = pm.response.json();",
                  "  if (j.id) pm.environment.set('opId', j.id);",
                  f"  if (j.metadata && j.metadata.addressId) pm.environment.set('{save_var}', j.metadata.addressId);",
-                 "} else { pm.environment.unset('opId'); }",
+                 "} else { pm.environment.set('opId', ''); }",
              ]),
         poll_operation_until_done(fixture_ids=[save_var]),
     ]
@@ -214,7 +214,7 @@ def _provision_external_address(suffix, save_var="vpcAddrId"):
                  "  const j = pm.response.json();",
                  "  if (j.id) pm.environment.set('opId', j.id);",
                  f"  if (j.metadata && j.metadata.addressId) pm.environment.set('{save_var}', j.metadata.addressId);",
-                 "} else { pm.environment.unset('opId'); }",
+                 "} else { pm.environment.set('opId', ''); }",
              ]),
         poll_operation_until_done(fixture_ids=[save_var]),
     ]
@@ -512,7 +512,7 @@ CASES.append(Case(
                  "  pm.environment.set('_mvMoved', '1');",
                  "  const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id);",
                  "} else {",
-                 "  pm.environment.unset('opId');",
+                 "  pm.environment.set('opId', '');",
                  "  pm.test('cross-project move lawfully rejected when dst fixture absent (Project not found)', () => {",
                  "    pm.expect(pm.response.code).to.eql(400);",
                  "    pm.expect(pm.response.json().message || '').to.match(/not found/i);",
@@ -534,7 +534,7 @@ CASES.append(Case(
              test_script=[
                  "if (pm.environment.get('_mvMoved') && pm.response.code === 200) {",
                  "  const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id);",
-                 "} else { pm.environment.unset('opId'); }",
+                 "} else { pm.environment.set('opId', ''); }",
              ]),
         poll_operation_until_done(),
         *_cleanup_lb(),
@@ -577,7 +577,7 @@ CASES.append(Case(
                  # (loadbalancer/move.go: HasWiredTargetGroup -> FAILED_PRECONDITION), so no
                  # Operation is minted. Accepting 200 let the move GO THROUGH and still pass
                  # the case whose only subject is that it must not.
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
                  *assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
                  "pm.test('says a wired listener blocks the move', () => "
                  "  pm.expect((pm.response.json().message || '')).to.include("
@@ -641,7 +641,7 @@ CASES.append(Case(
                  # (loadbalancer/move.go). The code check used to be written
                  # `if (code === 400)`, i.e. it only ran once the refusal it was meant to
                  # establish had already happened.
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
                  *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                  "pm.test('names the same-destination condition', () => "
                  "  pm.expect(pm.response.json().message || '').to.eql("
@@ -1473,7 +1473,7 @@ CASES.append(Case(
         Step(name="upd-empty-partial-body", method="PATCH", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
              body={"description": "partial body {{runId}}"},
              test_script=[
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
                  *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                  "pm.test('the refusal names the field the body dropped', () => {",
                  "  const j = pm.response.json();",
@@ -2189,7 +2189,7 @@ CASES.append(Case(
                  # exists (loadbalancer/update.go -> updated.Validate() -> ValidateLabels,
                  # "too many labels (max 64)"), so this is a sync refusal. 65 labels being
                  # ACCEPTED is the regression, and it used to satisfy the case.
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
                  *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
              ]),
         *_cleanup_lb(),
@@ -2402,7 +2402,7 @@ CASES.append(Case(
              body={"projectId": "{{_suiteProjectId}}", "regionId": "{{_suiteRegionId}}",
                    "placement": "INTERNAL_ZONAL", "name": "no-src-{{runId}}"},
              test_script=[
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
                  *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                  "pm.test('names the missing vip source', () => "
                  "  pm.expect(pm.response.json().message || '').to.eql("
@@ -2923,7 +2923,7 @@ CASES.append(Case(
                  "  const j = pm.response.json();",
                  "  if (j.id) pm.environment.set('opId', j.id);",
                  "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                 "} else { pm.environment.unset('opId'); }",
+                 "} else { pm.environment.set('opId', ''); }",
              ])),
         poll_operation_until_done(),
         retry_until_authorized(Step(name="del-linked-lb", method="DELETE", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",
@@ -2931,7 +2931,7 @@ CASES.append(Case(
                  "if (pm.environment.get('nlbId')) {",
                  "  pm.test('Delete accepted as Operation', () => pm.expect(pm.response.code).to.eql(200));",
                  "  const j = pm.response.json(); if (j.id) pm.environment.set('opId', j.id);",
-                 "} else { pm.environment.unset('opId'); }",
+                 "} else { pm.environment.set('opId', ''); }",
              ])),
         poll_operation_until_done(),
         Step(name="lb-gone", method="GET", path=f"{_CREATE_BASE}/{{{{nlbId}}}}",

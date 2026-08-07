@@ -101,7 +101,7 @@ def _setup_lb(name_suffix: str, lb_type: str = "INTERNAL"):
                  "  const j = pm.response.json();",
                  "  if (j.id) pm.environment.set('opId', j.id);",
                  "  if (j.metadata && j.metadata.networkLoadBalancerId) pm.environment.set('nlbId', j.metadata.networkLoadBalancerId);",
-                 "} else { pm.environment.unset('opId'); }",
+                 "} else { pm.environment.set('opId', ''); }",
              ]))
         return [
             Step(name="setup-subnet", method="POST", path=_VPC_SUBNETS,
@@ -115,7 +115,7 @@ def _setup_lb(name_suffix: str, lb_type: str = "INTERNAL"):
                      "  const j = pm.response.json();",
                      "  if (j.id) pm.environment.set('opId', j.id);",
                      "  if (j.metadata && j.metadata.subnetId) pm.environment.set('lstSubnetId', j.metadata.subnetId);",
-                     "} else { pm.environment.unset('opId'); }",
+                     "} else { pm.environment.set('opId', ''); }",
                  ]),
             poll_operation_until_done(fixture_ids=["lstSubnetId"]),
             setup_lb,
@@ -196,7 +196,7 @@ def _cleanup_lb(reclaim_subnet: bool = True):
              test_script=[
                  "pm.test('subnet reclaim best-effort (never fails the case)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 405, 409]));",
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
                  "if (pm.response.code === 200) { try { const j = pm.response.json();"
                  " if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                  "pm.environment.unset('lstSubnetId');",
@@ -720,7 +720,7 @@ CASES.append(Case(
                  "pm.test('refusal guides the caller to create the TargetGroup first', () => "
                  "  pm.expect(pm.response.json().message || '', pm.response.text())"
                  "    .to.include('create the TargetGroup first'));",
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
              ])),
         *_cleanup_lb(),
     ],
@@ -823,7 +823,7 @@ CASES.append(Case(
                  "  const m = pm.response.json().message || '';",
                  "  pm.expect(m, pm.response.text()).to.match(/does not match listener region/);",
                  "});",
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
              ]), retry_on=(403,)),
         Step(name="cleanup-tg-alt", method="DELETE", path="/nlb/v1/targetGroups/{{tgAltId}}",
              test_script=[*save_from_response("j.id", "opId")]),
@@ -1013,7 +1013,7 @@ CASES.append(Case(
              body={"loadBalancerId": "{{nlbId}}", "name": "enum-{{runId}}",
                    "protocol": "DOES_NOT_EXIST", "port": 80, "targetPort": 8080},
              test_script=[
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
                  *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
                  "pm.test('names the field whose enum value was refused', () => "
                  "  pm.expect((pm.response.json().message || '')).to.include("
@@ -1435,7 +1435,7 @@ def _cross_project_tg_setup(suffix: str):
                                    "unhealthyThreshold": 3, "healthyThreshold": 2,
                                    "tcp": {"port": 80}}},
              test_script=[
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
                  "pm.environment.set('tgCrossId', 'tgrabsent0000000000x');",
                  "if (pm.response.code === 200) {",
                  "  const j = pm.response.json();",
@@ -1454,7 +1454,17 @@ def _cross_project_tg_cleanup():
              test_script=[
                  "pm.test('cross-project TG reclaim best-effort (never fails the case)', () => "
                  "  pm.expect(pm.response.code).to.be.oneOf([200, 400, 403, 404, 409]));",
-                 "pm.environment.unset('opId');",
+                 # ПУСТАЯ строка, а НЕ unset — шаг best-effort, и поллер за ним обязан
+                 # уметь «нечего поллить». Он это умеет (`if (!get('opId')) return`), но
+                 # его guard живёт в post-скрипте, а страж неразрешённых подстановок —
+                 # в pre-скрипте КОРНЯ коллекции и потому бьёт раньше: удалённая
+                 # переменная для него «не определена ни в одной области», и он честно
+                 # роняет шаг. Заданная пустой — законный негативный вход, до которого
+                 # страж не доберётся by construction (так сказано в его собственном
+                 # комментарии). Наблюдалось прогоном 31204778717: уборка вернула 403
+                 # (отзыв прав на чужом проекте успел материализоваться), операции нет,
+                 # и поллер уронил кейс, чьи содержательные утверждения были зелёными.
+                 "pm.environment.set('opId', '');",
                  "if (pm.response.code === 200) { try { const j = pm.response.json();"
                  " if (j.id) pm.environment.set('opId', j.id); } catch (e) {} }",
                  "pm.environment.unset('tgCrossId');",

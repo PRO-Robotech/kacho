@@ -584,7 +584,7 @@ CASES.append(Case(
                  "  const fv = ((j.details || []).find(d => (d.fieldViolations || []).length) || {}).fieldViolations || [];",
                  "  pm.expect(fv.map(v => v.field), pm.response.text()).to.include('v4_address_ids');",
                  "});",
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
              ]),
         # Cleanup addresses (NIC не создалось → не блокирует).
         Step(name="del-addrA", method="DELETE", path="/vpc/v1/addresses/{{addrIdA}}",
@@ -645,7 +645,7 @@ CASES.append(Case(
                  "  const fv = ((j.details || []).find(d => (d.fieldViolations || []).length) || {}).fieldViolations || [];",
                  "  pm.expect(fv.map(v => v.field), pm.response.text()).to.include('v6_address_ids');",
                  "});",
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
              ]),
         retry_until_authorized(Step(name="del-addrA-v6", method="DELETE", path="/vpc/v1/addresses/{{addrIdA}}",
              test_script=["pm.test('del 200|400', () => pm.expect(pm.response.code).to.be.oneOf([200, 400]));",

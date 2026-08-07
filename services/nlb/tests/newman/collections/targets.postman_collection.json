@@ -13544,7 +13544,7 @@
                   "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
                   "});",
                   "pm.test(\"message is 'at least one target is required'\", () =>   pm.expect(pm.response.json().message || '', pm.response.text())    .to.include('at least one target is required'));",
-                  "pm.environment.unset('opId');"
+                  "pm.environment.set('opId', '');"
                 ]
               }
             }

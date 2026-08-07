@@ -124,7 +124,7 @@ CASES.append(Case(
              ])),
         Step(name="cleanup-known-zone", method="DELETE", path=f"{_ADDR}/{{{{zcAddrId}}}}",
              test_script=[
-                 "if (!pm.environment.get('zcAddrId')) { pm.environment.unset('opId'); return; }",
+                 "if (!pm.environment.get('zcAddrId')) { pm.environment.set('opId', ''); return; }",
                  *save_from_response("j.id", "opId"),
              ]),
         poll_operation_until_done(),
@@ -158,7 +158,7 @@ CASES.append(Case(
         _anycast_poll(),
         Step(name="cleanup-anycast", method="DELETE", path=f"{_ADDR}/{{{{zcAddrId}}}}",
              test_script=[
-                 "if (!pm.environment.get('zcAddrId')) { pm.environment.unset('opId'); return; }",
+                 "if (!pm.environment.get('zcAddrId')) { pm.environment.set('opId', ''); return; }",
                  *save_from_response("j.id", "opId"),
              ]),
         poll_operation_until_done(),

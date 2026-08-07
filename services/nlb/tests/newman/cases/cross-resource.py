@@ -380,7 +380,7 @@ CASES.append(Case(
                    "placement": "EXTERNAL_REGIONAL", "name": "xres-v4v6-{{runId}}",
                    "v4Source": {"addressId": "{{existingAddressIPv6Id}}"}},
              test_script=[
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
                  "pm.test('seeded IPv6 address fixture is present (precondition)', () => "
                  "  pm.expect(pm.environment.get('existingAddressIPv6Id') || '').to.match(/^adr[a-z0-9]+$/));",
                  *assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
@@ -433,7 +433,7 @@ CASES.append(Case(
                  "  const j = pm.response.json();",
                  "  if (j.id) pm.environment.set('opId', j.id);",
                  "  if (j.metadata && j.metadata.subnetId) pm.environment.set('xresSubnetId', j.metadata.subnetId);",
-                 "} else { pm.environment.unset('opId'); }",
+                 "} else { pm.environment.set('opId', ''); }",
              ]),
         poll_operation_until_done(fixture_ids=["xresSubnetId"]),
         # The just-provisioned vpc subnet can be briefly invisible to nlb's vpc peer-read
@@ -632,7 +632,7 @@ CASES.append(Case(
         # conditional on the refusal it was supposed to establish.
         Step(name="delete-lb-not-empty", method="DELETE", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
                  *assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
                  "pm.test('says the load balancer still owns listeners', () => "
                  "  pm.expect((pm.response.json().message || '')).to.match("
@@ -709,7 +709,7 @@ CASES.append(Case(
         # never the text the service returns).
         Step(name="delete-blocked", method="DELETE", path=f"{_LB_BASE}/{{{{nlbId}}}}",
              test_script=[
-                 "pm.environment.unset('opId');",
+                 "pm.environment.set('opId', '');",
                  *assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
                  "pm.test('says the load balancer still owns listeners', () => "
                  "  pm.expect((pm.response.json().message || '')).to.match("
