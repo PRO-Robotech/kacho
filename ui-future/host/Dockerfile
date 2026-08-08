@@ -25,11 +25,19 @@ RUN npm ci
 COPY host/ ./
 RUN npm run build
 
-FROM nginx:1.27-alpine
+# nginx-unprivileged: работает под non-root uid 101, слушает 8080, pid и временные файлы
+# уводит в /tmp — поэтому уживается с runAsNonRoot + readOnlyRootFilesystem
+# (см. deploy/templates/deployment-*.yaml). Конфиг в кластере приезжает шаблоном из
+# ConfigMap и рендерится в /etc/nginx/conf.d, куда деплоймент подкладывает emptyDir;
+# конфиг ниже — запечённый, для одиночного `docker run`.
+FROM nginxinc/nginx-unprivileged:1.27-alpine
 
 COPY host/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 
-EXPOSE 80
+# Явный non-root USER (trivy DS-0002: контейнер не должен работать под root).
+USER 101
+
+EXPOSE 8080
 
 CMD ["nginx", "-g", "daemon off;"]

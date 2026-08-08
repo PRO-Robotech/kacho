@@ -26,8 +26,9 @@
 # исключать, верить нельзя ни в одну сторону: оно ничего не защищает и при этом выдаёт
 # закрытый долг за открытый.
 #
-# Замер, по которому составлен перечень (`trivy config` 0.64.1, ignorefile отключён, —
-# то есть ниже стоят реальные FAIL, а не предположение о них):
+# Замер, по которому составлялся перечень (`trivy config` 0.64.1, ignorefile отключён, —
+# то есть ниже стоят реальные FAIL, а не предположение о них). Он снят 2026-08-03, то есть
+# ДО перевода сайтов документации, и оставлен как след того, откуда взялись строки:
 #   AVD-DS-0002  — 16 FAIL:  9 ui-future + 7 сайтов документации  (iam НЕ входит)
 #   AVD-KSV-0014 — 22 FAIL:  9 ui-future + 7 сайтов + 6 нагрузочных (iam НЕ входит)
 #   AVD-KSV-0118 — те же 22
@@ -35,58 +36,41 @@
 # hpa/configmap, которые не дают находок ни по одному правилу. Под исключением остаётся
 # только `deployment*.yaml`.
 #
-# Отсюда пофайловое перечисление. Цена — строка на файл; выгода в том, что оба события
-# становятся видимы правкой этого файла, а не молчанием: сайт вычистили — его строка тут
-# лишняя; появился новый сайт — он НЕ накрыт, скан краснеет и требует решения, вместо
-# того чтобы унаследовать чужое послабление по совпадению пути.
+# ── ВСЕ nginx-ОБРАЗЫ ВЫЧИЩЕНЫ, ИХ СТРОКИ СНЯТЫ (правка 2026-08-08) ───────────────────
+# Семь сайтов документации (gateway + compute/geo/nlb/registry/storage/vpc) и девять
+# remotes ui-future (host/dashboard/vpc/iam/nlb/registry/system/compute/storage)
+# переведены на эталон iam: образ на базе nginx-unprivileged с `USER 101`, деплоймент с
+# securityContext пода и контейнера, readOnlyRootFilesystem и emptyDir под всё, куда
+# nginx пишет. Снято 24 строки путей: 21 у сайтов документации (7 файлов × 3 правила,
+# перечислены пофайлово) и 3 у ui-future (там путь задавался образцом — по одной строке
+# на правило на все девять remotes). Гейт самоистечения
+# `deploy/scripts/assert-iac-exclusions-still-have-a-subject.py` называл их поимённо, а
+# оставленными они предъявляли бы закрытый долг за открытый.
+#
+# У remotes ui-future записываемых мест ТРИ, а не два: к /tmp и /var/cache/nginx
+# добавляется /etc/nginx/conf.d — конфиг приезжает ШАБЛОНОМ из ConfigMap, и
+# `20-envsubst-on-templates.sh` рендерит его именно туда. Без этого emptyDir контейнер
+# не поднимается вовсе (`can't create /etc/nginx/conf.d/default.conf: Read-only file
+# system`) — проверено прогоном, а не выведено из чтения.
+#
+# Замер тем же предикатом 2026-08-08, ПОСЛЕ правки:
+#   AVD-DS-0002  — 0 FAIL
+#   AVD-KSV-0014 — 6 FAIL:  только нагрузочные джобы
+#   AVD-KSV-0118 — 12 FAIL: те же 6 файлов, по ДВЕ находки на файл (под и контейнер)
+# Итого 82 → 18. «22 против 44» у KSV-0118 в строке выше — не расхождение замеров, а
+# разные единицы счёта: та строка считала ФАЙЛЫ, сканер считает находки, а их у этого
+# правила две на файл. Число из неё поэтому нельзя сравнивать с выводом сканера напрямую.
+#
+# Правило, по которому эти строки заводились, действует и дальше, хотя ни одного
+# nginx-исключения в файле не осталось: путь перечисляется ПОФАЙЛОВО, а не образцом.
+# Цена — строка на файл; выгода в том, что оба события становятся видимы правкой этого
+# файла, а не молчанием: сайт вычистили — его строка тут лишняя (гейт самоистечения на
+# ней краснеет); появился новый сайт — он НЕ накрыт, скан краснеет и требует решения,
+# вместо того чтобы унаследовать чужое послабление по совпадению пути. Сейчас второе
+# верно by construction: образца, способного накрыть новый nginx-образ или его
+# деплоймент, в файле больше нет вовсе.
 
 misconfigurations:
-  # ── nginx-образы: 9 remotes ui-future + 7 сайтов документации ─────────────────────
-  # nginx по умолчанию требует root: биндит :80 и пишет в /var/cache/nginx,
-  # /var/run/nginx.pid. Перевод на non-root — не однострочник: база
-  # nginx-unprivileged ЛИБО правка nginx.conf (listen 8080, pid /tmp), перенос
-  # Service/Ingress/containerPort 80→8080 и emptyDir под cache/tmp. Риск — сломать
-  # консоль на проде (uif держит kacho.in-cloud.io), поэтому нужен отдельный прогон с
-  # проверкой в браузере.
-  # Эталон перевода лежит в дереве и не гипотетичен: services/iam/docs-site прошёл его
-  # целиком — по нему и делаются остальные семь.
-  # Отслеживается: PRO-Robotech/kacho#4
-  - id: AVD-DS-0002
-    paths:
-      - "ui-future/*/Dockerfile"
-      - "gateway/docs-site/Dockerfile"
-      - "services/compute/docs-site/Dockerfile"
-      - "services/geo/docs-site/Dockerfile"
-      - "services/nlb/docs-site/Dockerfile"
-      - "services/registry/docs-site/Dockerfile"
-      - "services/storage/docs-site/Dockerfile"
-      - "services/vpc/docs-site/Dockerfile"
-    statement: "nginx требует root (:80 + /var/cache/nginx); iam уже переведён и здесь не значится — kacho#4"
-
-  - id: AVD-KSV-0118
-    paths:
-      - "ui-future/deploy/templates/deployment-*.yaml"
-      - "gateway/docs-site/deploy/templates/deployment.yaml"
-      - "services/compute/docs-site/deploy/templates/deployment.yaml"
-      - "services/geo/docs-site/deploy/templates/deployment.yaml"
-      - "services/nlb/docs-site/deploy/templates/deployment.yaml"
-      - "services/registry/docs-site/deploy/templates/deployment.yaml"
-      - "services/storage/docs-site/deploy/templates/deployment.yaml"
-      - "services/vpc/docs-site/deploy/templates/deployment.yaml"
-    statement: "securityContext для nginx-деплойментов; iam уже вычищен и здесь не значится — kacho#4"
-
-  - id: AVD-KSV-0014
-    paths:
-      - "ui-future/deploy/templates/deployment-*.yaml"
-      - "gateway/docs-site/deploy/templates/deployment.yaml"
-      - "services/compute/docs-site/deploy/templates/deployment.yaml"
-      - "services/geo/docs-site/deploy/templates/deployment.yaml"
-      - "services/nlb/docs-site/deploy/templates/deployment.yaml"
-      - "services/registry/docs-site/deploy/templates/deployment.yaml"
-      - "services/storage/docs-site/deploy/templates/deployment.yaml"
-      - "services/vpc/docs-site/deploy/templates/deployment.yaml"
-    statement: "read-only rootfs требует emptyDir под cache/tmp; iam уже вычищен — kacho#4"
-
   # ── k6 / ghz — НАГРУЗОЧНЫЕ джобы, не прод ────────────────────────────────────────
   # Эфемерные Job'ы, которые запускают вручную под нагрузочный прогон. В кластере не
   # живут, tenant-данных не касаются, снаружи не доступны. Хардить их полезно, но
