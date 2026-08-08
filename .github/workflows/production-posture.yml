@@ -101,7 +101,7 @@ jobs:
       # deploy/tests/helm/podtemplate-annotation-single-owner-test.sh.
       # Расхождение значения между тремя конвейерами ловит
       # .github/scripts/check-pinned-tools.sh --divergence-only.
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
         with:
           version: v4.2.3
       - uses: azure/setup-kubectl@v4

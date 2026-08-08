@@ -962,7 +962,7 @@ jobs:
       # задание начальной настройки хранилища прав (kacho#3). Второй писатель снят:
       # поле объявляет только тот, кто его и заполняет. Держит это
       # deploy/tests/helm/podtemplate-annotation-single-owner-test.sh.
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
         with:
           version: v4.2.3
 
