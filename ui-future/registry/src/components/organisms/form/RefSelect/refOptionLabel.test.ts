@@ -8,23 +8,18 @@
 // становится пустой, и выбирающий подсеть человек не отличает одну от другой.
 //
 // Отдельно: `v4_cidr_blocks` остаётся ЖИВЫМ именем в другом месте контракта —
-// vpc SecurityGroup, message CidrBlocks (security_group.proto:121). Поэтому
-// запрет ниже сформулирован не по имени вообще, а по чтению этого имени С
-// СТРОКИ РЕСУРСА (`row.<имя>`): вложенное `cidr_blocks.v4_cidr_blocks` правила
-// не нарушает и гейт молчит.
-
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+// у пула адресов (AddressPool, поля 13/14). Поэтому запрет сформулирован не по
+// имени вообще, а по ПОВЕДЕНИЮ: строка в снятой форме подписи не даёт, строка
+// в форме ствола — даёт, а пул по тем же именам подписывается по-прежнему.
+//
+// Прежняя редакция утверждала это же чтением исходника `RefSelect.tsx` и
+// поиском в нём `row.v4_cidr_blocks`. У такого запрета НЕТ ПРОИЗВОДИТЕЛЯ:
+// компонент строк ресурса не читает вовсе — он зовёт `refOptionHead`/
+// `refOptionExtra` (RefSelect.tsx, единственные два обращения к строке), а те
+// живут в другом файле. То есть проверка не могла покраснеть ни на каком
+// состоянии дерева. Ниже то же свойство утверждается вызовом функции.
 
 import { refOptionExtra, refOptionHead } from "./refOptionLabel";
-
-const COMPONENT = "src/components/organisms/form/RefSelect/RefSelect.tsx";
-
-/** Исходник компонента без комментариев — гейт судит код, а не прозу о нём. */
-function refSelectCode(): string {
-  const raw = readFileSync(join(process.cwd(), COMPONENT), "utf8");
-  return raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
-}
 
 describe("подписи опций RefSelect против контракта ствола", () => {
   it("подсеть подписывается первичным якорем и дополнительными диапазонами", () => {
@@ -43,14 +38,49 @@ describe("подписи опций RefSelect против контракта с
     expect(refOptionExtra("subnets", { ipv4_cidr_primary: "10.0.1.0/24" })).not.toBe("");
   });
 
+  it("подсеть В СНЯТОЙ ФОРМЕ подписи не получает — снятые имена не читаются", () => {
+    // Это и есть предмет: строка со старого сервера (или из устаревшей фикстуры)
+    // не должна выглядеть подписанной. Пара с утверждением выше обязательна —
+    // иначе «пусто» было бы верно и у функции, которая не умеет ничего.
+    expect(
+      refOptionExtra("subnets", {
+        v4_cidr_blocks: ["10.0.2.0/24"],
+        v6_cidr_blocks: ["fd00::/64"],
+      }),
+    ).toBe("");
+  });
+
+  it("те же имена у ПУЛА адресов по-прежнему читаются — запрет не по имени, а по месту", () => {
+    // Контроль в другую сторону: у AddressPool `v4_cidr_blocks`/`v6_cidr_blocks`
+    // живы, и запрет, сформулированный по имени вообще, отверг бы законное поле.
+    const extra = refOptionExtra("address-pools", {
+      v4_cidr_blocks: ["192.0.2.0/24"],
+      v6_cidr_blocks: ["2001:db8::/48"],
+      is_default: true,
+    });
+    expect(extra).toContain("192.0.2.0/24");
+    expect(extra).toContain("2001:db8::/48");
+    expect(extra).toContain("default");
+  });
+
+  it("пустая строка подписи не выдумывает", () => {
+    // Граница: отсутствие данных — не повод показать «·» или мусор.
+    expect(refOptionExtra("subnets", {})).toBe("");
+    expect(refOptionExtra("address-pools", {})).toBe("");
+    expect(refOptionExtra("что-то-незнакомое", { name: "x" })).toBe("");
+  });
+
   it("имя ресурса берётся из name, а у пользователя — из display_name", () => {
     expect(refOptionHead("subnets", { name: "sub-a" })).toBe("sub-a");
     expect(refOptionHead("users", { display_name: "Иван", email: "i@example.org" })).toBe("Иван");
   });
 
-  it("компонент не читает снятые имена подсети со строки ресурса", () => {
-    const code = refSelectCode();
-    expect(code).not.toMatch(/row\.v4_cidr_blocks/);
-    expect(code).not.toMatch(/row\.v6_cidr_blocks/);
+  it("у пользователя без имени подпись спускается к почте, затем к идентификатору", () => {
+    // Границы цепочки запасных значений: каждая ступень проверяется отдельно,
+    // иначе «работает» верно лишь для первой.
+    expect(refOptionHead("users", { email: "i@example.org", id: "usr-1" })).toBe("i@example.org");
+    expect(refOptionHead("users", { id: "usr-1" })).toBe("usr-1");
+    expect(refOptionHead("users", {})).toBe("");
+    expect(refOptionHead("subnets", {})).toBe("");
   });
 });

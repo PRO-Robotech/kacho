@@ -45,4 +45,33 @@ export const SettingOutlined = Icon;
 export const UserOutlined = Icon;
 export const WarningFilled = Icon;
 
+// Имена ниже приезжают из `ui-future/shared/src`: он собирается ВМЕСТЕ с этим
+// пакетом (своих node_modules у него нет), поэтому его импорты проходят через
+// тот же линкер и через этот же стаб. Пока страницы не монтировались, недостача
+// была невидима — линкер валит суиту только на реальном пути монтирования.
+export const ArrowLeftOutlined = Icon;
+export const BankOutlined = Icon;
+export const CloudServerOutlined = Icon;
+export const CopyOutlined = Icon;
+export const DeploymentUnitOutlined = Icon;
+export const DownloadOutlined = Icon;
+export const ExclamationCircleFilled = Icon;
+export const ExclamationCircleOutlined = Icon;
+export const FolderOpenOutlined = Icon;
+export const HistoryOutlined = Icon;
+export const HomeOutlined = Icon;
+export const KeyOutlined = Icon;
+export const LoginOutlined = Icon;
+export const LogoutOutlined = Icon;
+export const MailOutlined = Icon;
+export const MinusOutlined = Icon;
+export const PauseCircleOutlined = Icon;
+export const PlayCircleOutlined = Icon;
+export const ProjectOutlined = Icon;
+export const RobotOutlined = Icon;
+export const SafetyCertificateOutlined = Icon;
+export const TeamOutlined = Icon;
+export const UserAddOutlined = Icon;
+export const WarningOutlined = Icon;
+
 export default Icon;
