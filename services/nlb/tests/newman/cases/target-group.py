@@ -1059,12 +1059,23 @@ CASES.append(Case(
 ))
 
 
-# CONTRACT LOCK (не aspirational — не positive-CRUD): proto HealthCheck.options oneof
-# NLB-1c closes the proto-gap (#8): the HealthCheck oneof now carries all four
-# probe kinds (tcp/http/https/grpc). https/grpc probes are VALID config on Create;
-# the explicit probe port surfaces via effectivePort (override, not TG.port).
-# Техники: ECP (positive probe variant), effectivePort override lock.
-# verifies https://github.com/PRO-Robotech/kacho/issues/8
+# NLB-1c закрыл разрыв прото-поверхности: oneof `HealthCheck.options` несёт все четыре
+# вида пробы — tcp/http (поля 6/7) и https/grpc (поля 8/9, добавлены в ТОТ ЖЕ oneof).
+# https/grpc — ВАЛИДНАЯ конфигурация на Create; явный порт пробы виден в effectivePort
+# (переопределение, не `TargetGroup.port`).
+# Техники: ECP (положительный вариант пробы), фиксация переопределения effectivePort.
+#
+# ПОМЕТКА `# verifies …/issues/8` СНЯТА ЗДЕСЬ И НА ПАРНОМ КЕЙСЕ НИЖЕ. Она означает «кейс
+# ожидаемо КРАСНЫЙ, пока дефект открыт» (ban #13) и выкупает кейс из «всё обязано быть
+# зелёным», а кейс уже переписан из отрицательного («https/grpc не поддержаны → 400») в
+# положительный CRUD и утверждает ИСПРАВЛЕННЫЙ контракт. Тикет `kacho#8` закрыт COMPLETED
+# 2026-08-06; разбор входа — `internal/apps/kacho/api/targetgroup/helpers.go`, проекция
+# обеих проб в ответ — `internal/dto/type2pb/health_check.go`. Пометка противоречила
+# собственному заголовку кейса, который уже называл тикет закрытым.
+#
+# ЧТО ЗАЩИЩАЕТ КЕЙС: https-проба принимается на Create, доезжает до чтения
+# (`healthCheck.https` присутствует в ответе Get) и effectivePort равен ПОРТУ ПРОБЫ, а не
+# порту группы — то есть переопределение не теряется по дороге.
 CASES.append(Case(
     id="TGR-CR-CRUD-HTTPS-PROBE",
     title="Create TG with health_check.https probe → OK; effectivePort reflects override (#8 closed, NLB-1c)",
@@ -1087,8 +1098,12 @@ CASES.append(Case(
     ],
 ))
 
-# NLB-1c: grpc probe is valid config; serviceName is the gRPC health service.
-# verifies https://github.com/PRO-Robotech/kacho/issues/8
+# NLB-1c: grpc-проба — валидная конфигурация; `serviceName` — имя службы проверки здоровья
+# gRPC. Пометка `# verifies …/issues/8` снята вместе с парной выше (разбор — там же).
+#
+# ЧТО ЗАЩИЩАЕТ КЕЙС: grpc-проба принимается и читается обратно, а effectivePort при
+# ОТСУТСТВИИ переопределения наследует порт группы — вторая половина той же развилки,
+# первая половина которой (переопределение) зафиксирована на https выше.
 CASES.append(Case(
     id="TGR-CR-CRUD-GRPC-PROBE",
     title="Create TG with health_check.grpc probe → OK (#8 closed, NLB-1c)",
