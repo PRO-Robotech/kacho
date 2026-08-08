@@ -131,14 +131,37 @@ PRE_GLOBAL = [
     "  const __b = pm.environment.get('baseUrl') || 'http://localhost:18080';",
     "  pm.environment.set('internalBaseUrl', __b.replace(/:(1?)8080(\\b|$)/, ':$18081'));",
     "}",
-    "// Дефолтный Bearer (bootstrap cluster-admin) для шагов с auth=None: без него все",
-    "// запросы анонимны → IAM authn-gate 401 fail-closed. Per-step auth ('anonymous'",
-    "// снимает, '<envVar>' переопределяет) идёт в item-pre-request ПОСЛЕ collection-",
-    "// pre-request, поэтому этот дефолт им не мешает (e2e-newman fullscope root A1).",
-    "const __defAuth = pm.environment.get('jwtBootstrap');",
+    "// Дефолтный Bearer — ПРОЕКТНЫЙ актор (editor @ project-A1 и project-A2), а НЕ",
+    "// бутстрап-админ. Без какого-либо дефолта все шаги с auth=None анонимны → authn-",
+    "// гейт края отвечает 401 fail-closed; с бутстрапом же они проходят ВСЕГДА, потому",
+    "// что у него права на всё, — и тогда суита не может отличить работающую",
+    "// project-scope авторизацию от сломанной. Ровно этот класс уже ловился в дереве:",
+    "// карта прав сервиса разошлась с каталогом края по паре scope+relation, проектный",
+    "// принципал получал отказ на СВОИХ ресурсах, а бутстрап-админ этого не видел.",
+    "// Паритет с services/vpc/tests/newman/scripts/gen.py (там дефолт проектный).",
+    "// Шаг, которому НУЖЕН cluster-admin (InternalMachineTypeService — system_admin на",
+    "// cluster-singleton), объявляет это САМ: auth='jwtBootstrap'. Требование держит",
+    "// проверка 4 в scripts/validate-cases.py, а не соглашение.",
+    "// Per-step auth ('anonymous' снимает, '<envVar>' переопределяет) идёт в",
+    "// item-pre-request ПОСЛЕ collection-pre-request, поэтому этот дефолт им не мешает.",
+    "const __defAuth = pm.environment.get('jwtProjectAdminA1') || pm.variables.get('jwtProjectAdminA1') || '';",
     "if (__defAuth) { pm.request.headers.upsert({ key: 'Authorization', value: 'Bearer ' + __defAuth }); }",
     *_URL_VAR_GUARD,
 ]
+
+# Актор, которого требует cluster-scoped админ-поверхность compute
+# (`InternalMachineTypeService.Create/Delete/Update` → `system_admin` @
+# `cluster:cluster_kacho_root`). Проектный актор его НЕ держит и держать не должен:
+# посев выдаёт матричным служебным учёткам только `system_viewer@cluster` — этаж чтения
+# глобального каталога, — поэтому админ-CRUD каталога размерностей остаётся за
+# бутстрапом. Имя вынесено сюда, чтобы у всех кейсов был ОДИН источник и они не
+# разъезжались по написанию.
+ADMIN_AUTH = "jwtBootstrap"
+
+# Маршрут админ-CRUD каталога размерностей на cluster-internal REST-листенере.
+# Держится здесь же, потому что по нему проверка 4 в validate-cases.py опознаёт шаги,
+# обязанные нести ADMIN_AUTH.
+MT_INTERNAL_PATH = "/compute/v1/internal/machineTypes"
 
 
 # ---------------------------------------------------------------------------
@@ -1328,6 +1351,8 @@ def load_cases_module(path: Path):
     mod.security_injection_block = security_injection_block
     mod.http_method_block = http_method_block
     mod.malformed_body_block = malformed_body_block
+    mod.ADMIN_AUTH = ADMIN_AUTH
+    mod.MT_INTERNAL_PATH = MT_INTERNAL_PATH
     spec.loader.exec_module(mod)
     return mod
 

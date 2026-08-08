@@ -12,8 +12,17 @@ Covered RPCs:
 
 Каталог НЕ засеян на стенде (миграция 0015 создаёт пустую таблицу) — каждый read-кейс
 **self-seed'ит** свежий MachineType через internal admin Create ({{runId}}-уникальное имя,
-UNIQUE(name) cluster-wide) и убирает за собой (internal Delete). Seed идёт на internal-mux;
-poll /operations/{id} — на public OpsProxy (op owned дефолтным jwtBootstrap = system_admin@cluster).
+UNIQUE(name) cluster-wide) и убирает за собой (internal Delete). Seed идёт на internal-mux.
+
+АКТОР. Дефолт коллекции — ПРОЕКТНЫЙ (`jwtProjectAdminA1`), поэтому публичные read-кейсы
+проверяют то, ради чего написаны: что каталог размерностей читает обычный тенант, а не
+только тот, у кого права на всё. Этаж чтения ему даёт `system_viewer@cluster` из посева
+(`tests/authz-fixtures/prodseed_matrix.py::subject`), из которого модель выводит
+`viewer` — то самое отношение, что объявляет каталог прав для `MachineTypeService`.
+Админ-CRUD (`InternalMachineTypeService` — `system_admin` на cluster-singleton) проектному
+актору недоступен и НЕ должен быть: такие шаги несут `auth=ADMIN_AUTH` явно, и вместе с
+ними — опрос их Operation (владелец операции = создавший её принципал, чужому
+`OperationService.Get` отвечает NotFound).
 
 Трассировка: COMP-1-18 (Get flat-проекция) · COMP-1-19 (List + filter family=/minGpus=/name=,
 GPU-гранулярность) · COMP-1-20 (malformed-first + NOT_FOUND) · COMP-1-21 (admin-CRUD на Internal*).
@@ -49,17 +58,18 @@ def _seed_mt(suffix, family="STANDARD", vcpu=2, mem=8192, gpus=0, gputype="",
         ts.append(f"pm.environment.set('{name_var}', 'mt{suffix}' + pm.environment.get('runId'));")
     return [
         Step(name=f"seed-mt-{suffix}", method="POST", path=MT_INT, body=body, internal=True,
-             test_script=ts),
-        poll_operation_until_done(),
-        assert_op_success(),   # phantom-id discipline: !op.error before trusting id_var
+             auth=ADMIN_AUTH, test_script=ts),
+        poll_operation_until_done(auth=ADMIN_AUTH),
+        # phantom-id discipline: !op.error before trusting id_var
+        assert_op_success(auth=ADMIN_AUTH),
     ]
 
 
 def _cleanup_mt(id_var="mtId", name="cleanup-mt"):
     return [
         Step(name=name, method="DELETE", path=MT_INT + "/{{" + id_var + "}}", internal=True,
-             test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
+             auth=ADMIN_AUTH, test_script=[*save_from_response("j.id", "opId")]),
+        poll_operation_until_done(auth=ADMIN_AUTH),
     ]
 
 
@@ -93,7 +103,10 @@ CASES.append(Case(
           "'name is required' (admin Create input-validate ДО insert; НЕ мутирует). "
           "[class:VAL,NEG priority:P2 verifies COMP-1-21 · ECP required-field]",
     classes=["VAL", "NEG"], priority="P2",
-    steps=[Step(name="cr-no-name", method="POST", path=MT_INT, internal=True,
+    # Предмет кейса — ВАЛИДАЦИЯ входа админ-CRUD, а не решение о доступе к нему. Поэтому
+    # шаг несёт cluster-admin: под проектным актором он получил бы 403 authz-first и
+    # никогда не дошёл бы до проверки поля, о которой утверждает.
+    steps=[Step(name="cr-no-name", method="POST", path=MT_INT, internal=True, auth=ADMIN_AUTH,
                 body={"name": "", "family": "STANDARD",
                       "effectiveResources": {"vCpu": 2, "memoryMib": 8192}},
                 test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),

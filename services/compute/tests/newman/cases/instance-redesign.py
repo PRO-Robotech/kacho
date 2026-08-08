@@ -28,6 +28,14 @@ truncate, canonical mt- echo, field-absence retired YC-cruft).
 доступ к своему свежему ресурсу; async op-poll с задержкой; negatives НЕ оборачиваются;
 authz-first → oneOf([400,403,404]) где gateway scope_extractor короткозамыкает; per-case
 self-seed + cleanup; {{runId}}-уникальные имена.
+
+АКТОР. Дефолт коллекции — ПРОЕКТНЫЙ (`jwtProjectAdminA1`, editor @ project-A1/A2), то есть
+жизненный цикл Instance проверяется под тем принципалом, для которого он и предназначен:
+`InstanceService.Create` гейтится `editor` на `project:<projectId>`, а Get/Update/Delete —
+пообъектными `v_get`/`v_update`/`v_delete`, материализуемыми из привязки роли (миграция
+0053 seeds селекторы `edit` на `compute.instance`). Cluster-admin остаётся ровно на
+админ-CRUD каталога размерностей (`auth=ADMIN_AUTH`) — он гейтится `system_admin` на
+cluster-singleton и проектному актору не принадлежит.
 """
 
 CASES = []
@@ -51,7 +59,12 @@ _SA_WELLFORMED = "svate85k1x8bphdnn0wp"           # well-formed sva- (existence 
 
 def _seed_mt(suffix, family="STANDARD", vcpu=2, mem=8192, gpus=0, id_var="mtId", name_var=None):
     """Seed a MachineType via InternalMachineTypeService.Create (:8081) → sets id_var to mt- id
-    (checked !error via assert_op_success). {{runId}}-уникальное имя (UNIQUE(name) cluster-wide)."""
+    (checked !error via assert_op_success). {{runId}}-уникальное имя (UNIQUE(name) cluster-wide).
+
+    Актор — cluster-admin (`ADMIN_AUTH`), в отличие от остальных шагов кейса: админ-CRUD
+    каталога размерностей гейтится `system_admin` на cluster-singleton, а дефолт коллекции
+    проектный. Опрос Operation несёт ТОГО ЖЕ актора — владелец операции есть создавший её
+    принципал, и чужому `OperationService.Get` отвечает NotFound (no-leak), а не отказом."""
     nm = f"mt{suffix}{{{{runId}}}}"
     body = {"name": nm, "family": family,
             "effectiveResources": {"vCpu": vcpu, "memoryMib": mem, "gpus": gpus},
@@ -61,14 +74,14 @@ def _seed_mt(suffix, family="STANDARD", vcpu=2, mem=8192, gpus=0, id_var="mtId",
     if name_var:
         ts.append(f"pm.environment.set('{name_var}', 'mt{suffix}' + pm.environment.get('runId'));")
     return [Step(name=f"seed-mt-{suffix}", method="POST", path=MT_INT, body=body, internal=True,
-                 test_script=ts),
-            poll_operation_until_done(), assert_op_success()]
+                 auth=ADMIN_AUTH, test_script=ts),
+            poll_operation_until_done(auth=ADMIN_AUTH), assert_op_success(auth=ADMIN_AUTH)]
 
 
 def _cleanup_mt(id_var="mtId", name="cleanup-mt"):
     return [Step(name=name, method="DELETE", path=MT_INT + "/{{" + id_var + "}}", internal=True,
-                 test_script=[*save_from_response("j.id", "opId")]),
-            poll_operation_until_done()]
+                 auth=ADMIN_AUTH, test_script=[*save_from_response("j.id", "opId")]),
+            poll_operation_until_done(auth=ADMIN_AUTH)]
 
 
 def _vm_body(suffix, mt="{{mtId}}", name=None, ack=True, boot=None, nic=True, extra=None):
@@ -963,9 +976,9 @@ CASES.append(Case(
         # Тип занят живым инстансом — DELETE обязан быть отвергнут (не молча удалить,
         # оставив инстансы с dangling machineTypeId).
         Step(name="del-mt-inuse", method="DELETE", path=MT_INT + "/{{mtId}}", internal=True,
-             test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
-        assert_op_error(9, "FAILED_PRECONDITION", msg_substr="is in use"),
+             auth=ADMIN_AUTH, test_script=[*save_from_response("j.id", "opId")]),
+        poll_operation_until_done(auth=ADMIN_AUTH),
+        assert_op_error(9, "FAILED_PRECONDITION", msg_substr="is in use", auth=ADMIN_AUTH),
         # Каталожная запись на месте — public read по-прежнему резолвит sizing инстанса.
         Step(name="mt-still-readable", method="GET", path=MT + "/{{mtId}}",
              test_script=[*assert_status(200),
@@ -974,8 +987,8 @@ CASES.append(Case(
         # Снимаем ссылку → тип освобождается и удаляется штатно.
         *_delete_inst(name="del-inst-mtfk"),
         Step(name="del-mt-freed", method="DELETE", path=MT_INT + "/{{mtId}}", internal=True,
-             test_script=[*save_from_response("j.id", "opId")]),
-        poll_operation_until_done(),
-        assert_op_success(),
+             auth=ADMIN_AUTH, test_script=[*save_from_response("j.id", "opId")]),
+        poll_operation_until_done(auth=ADMIN_AUTH),
+        assert_op_success(auth=ADMIN_AUTH),
     ],
 ))
