@@ -47,8 +47,18 @@ auth:
 
 iamAddr: "kacho-iam.kacho.svc.cluster.local:9090"
 vpcAddr: "vpc.kacho.svc.cluster.local:9090"
-# vpcInternalAddr — internal-порт kacho-vpc (:9091): InternalZoneService —
-# compute берёт справочник зон из VPC-модуля (см. docs/architecture/07-known-divergences.md §6.1).
+# vpcInternalAddr — внутренний листенер kacho-vpc (:9091):
+# InternalNetworkInterfaceService (Attach/Detach/ListByInstance) — привязка
+# интерфейса к машине и её снятие на удалении. config.go cfg.VPCInternalGRPCAddr.
+# Пустое значение ("" present) → NoopNicClient: привязка fail-closed Unavailable,
+# зеркало и ШАГ ВЫСВОБОЖДЕНИЯ интерфейса при удалении машины молча становятся
+# пустыми — то есть заглушка вместо вызова, а не «ребро выключено».
+#
+# Здесь стояло «InternalZoneService — compute берёт справочник зон из VPC-модуля»
+# со ссылкой на docs/architecture/07-known-divergences.md §6.1. Ни того, ни
+# другого нет: справочник зон принадлежит kacho-geo (эпик #82), а названный
+# раздел объявляет эту переменную упразднённой — при том что её читает конфиг и
+# выставляет чарт. Комментарий пережил свой предмет дважды.
 vpcInternalAddr: "vpc.kacho.svc.cluster.local:9091"
 # geoAddr — kacho-geo public :9090 (geo.v1.ZoneService.Get): consumer-валидация
 # Instance.zone_id (kacho-geo epic, Stage S4). config.go cfg.GeoGRPCAddr default-host.
@@ -57,8 +67,14 @@ geoAddr: "kacho-geo.kacho.svc.cluster.local:9090"
 # Attach/Detach/ListAttachments): volume↔Instance attach-saga (compute→storage edge,
 # compute/storage split). Internal-only (never external endpoint, ban #6). config.go
 # cfg.StorageInternalGRPCAddr default-host. Empty "" (present) → NoopStorageClient:
-# attach fail-closed Unavailable, mirror omitted (dev profiles that skip storage set
-# this empty so instance delete/attach ops don't hang on an unresolved peer).
+# attach fail-closed Unavailable, а ListAttachments пуст — то есть шаг высвобождения
+# тома в саге удаления машины молча не снимает ничего.
+#
+# Здесь стояло, что профили без storage «выставляют это пустым, чтобы операции не
+# висли на неподнятом соседе». Такого профиля больше нет: storage поднимается в
+# зонтике, и обнулять адрес нечему. Обнуление отвергает проба
+# peer_addr_profiles_test.go — стенд без соседа собирается выключением САБЧАРТА
+# соседа, а не подменой его вызова заглушкой у консумера.
 storageInternalAddr: "kacho-storage.kacho.svc.cluster.local:9091"
 skipPeerValidation: "false"
 

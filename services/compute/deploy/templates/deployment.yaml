@@ -172,7 +172,12 @@ spec:
               value: {{ .Values.mtls.serverName.iamAuthz | quote }}
             {{- end }}
             {{- if .Values.mtls.edges.vpc }}
-            # compute→vpc (NIC-spec validation + IPAM Address) client-creds.
+            # compute→vpc — ДВА провода, оба под одним ключом edges.vpc: они делят
+            # один клиентский сертификат, один CA и один Service `vpc`, чей
+            # server-cert покрывает оба порта, поэтому включать их врозь нечего.
+            #
+            # Провод 1 — SubnetService.Get на ПУБЛИЧНОМ :9090 (placement-валидация
+            # подсети NIC-спеки на Instance.Create). Группа VPC_MTLS.
             - name: KACHO_COMPUTE_VPC_MTLS_ENABLE
               value: "true"
             - name: KACHO_COMPUTE_VPC_MTLS_CERTFILE
@@ -182,6 +187,23 @@ spec:
             - name: KACHO_COMPUTE_VPC_MTLS_CAFILES
               value: {{ printf "%s/ca.crt" $cli | quote }}
             - name: KACHO_COMPUTE_VPC_MTLS_SERVERNAME
+              value: {{ .Values.mtls.serverName.vpc | quote }}
+            # Провод 2 — InternalNetworkInterfaceService на ВНУТРЕННЕМ :9091
+            # (привязка/снятие интерфейса и его высвобождение на удалении машины).
+            # Группа VPC_NIC_MTLS. Листенер :9091 требует проверенный клиентский
+            # сертификат, поэтому без этой группы ребро не «слабее защищено», а не
+            # работает вовсе: дозвон открытым текстом обрывается на рукопожатии и
+            # возвращается вызывающему как codes.Unavailable. Парность объявления
+            # и производителя держит гейт peer_mtls_producer_test.go.
+            - name: KACHO_COMPUTE_VPC_NIC_MTLS_ENABLE
+              value: "true"
+            - name: KACHO_COMPUTE_VPC_NIC_MTLS_CERTFILE
+              value: {{ printf "%s/tls.crt" $cli | quote }}
+            - name: KACHO_COMPUTE_VPC_NIC_MTLS_KEYFILE
+              value: {{ printf "%s/tls.key" $cli | quote }}
+            - name: KACHO_COMPUTE_VPC_NIC_MTLS_CAFILES
+              value: {{ printf "%s/ca.crt" $cli | quote }}
+            - name: KACHO_COMPUTE_VPC_NIC_MTLS_SERVERNAME
               value: {{ .Values.mtls.serverName.vpc | quote }}
             {{- end }}
             {{- if .Values.mtls.edges.geo }}
