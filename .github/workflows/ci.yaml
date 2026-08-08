@@ -179,6 +179,36 @@ jobs:
       - name: поведенческие пробы модели прав (пропуск = отказ)
         run: make test-authz-fga
 
+  # Пробы, которым нужен НАСТОЯЩИЙ Postgres, но которых отбор интеграционной
+  # джобы не достаёт (`/internal/(repo|clients)` внутри services/).
+  #
+  # ОТДЕЛЬНОЕ ЗАДАНИЕ, и это не оформление. До него такие пробы исполняла ТОЛЬКО
+  # быстрая джоба — а она идёт `./... -race -short` с умолчанием `-p` = число
+  # ядер, то есть 12 пакетов разом. Контейнерная проба в такой раскладке отдаёт
+  # красное там, где ничего не сломано (шапка корневого Makefile: «под -p 12
+  # контейнерные пакеты голодают друг у друга»), и ровно это наблюдалось дважды
+  # за день на пробах iam. Плюс быстрая джоба задумана как обходящаяся без
+  # Docker, а internal/pgtest по построению ОТКАЗЫВАЕТ, когда демона нет.
+  #
+  # Перечень пакетов и числовой вердикт — в корневом Makefile (цель
+  # test-pg-outside-selection), а не здесь: команда обязана быть ОДНОЙ у
+  # конвейера, у человека и у гейта провязки. Провязка залочена
+  # internal/repohygiene/shortgatedselection_test.go — запись в
+  # shortGatedRunByOwnCIStep, за которой нет этой строки, краснеет.
+  pg-outside-selection:
+    name: Postgres-пробы вне отбора интеграционной джобы (пропуск = отказ)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go mod download
+
+      - name: пробы с настоящим Postgres вне отбора (пропуск = отказ)
+        run: make test-pg-outside-selection
+
   proto:
     name: buf lint · breaking · generate-diff
     runs-on: ubuntu-latest

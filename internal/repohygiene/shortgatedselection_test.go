@@ -204,6 +204,15 @@ var shortGatedRunByOwnCIStep = map[string]string{
 	// он требует, чтобы всякая запись отсюда, ссылающаяся на эту цель, нашлась в
 	// AUTHZ_FGA_PKGS. Без него освобождение снова стало бы способом выйти из-под
 	// гейта одной строкой в списке.
+	// Пакет, которому нужен настоящий Postgres, а отбор по пути до него не
+	// достаёт. Пропуск под кратким появился у него 2026-08-08 и НЕ снял пробы с
+	// прогона — он перевёл их из быстрой волны, где они были единственными
+	// контейнерными на 12-кратной параллели, в сериализованную цель с числовым
+	// вердиктом. До этого пакет числился исполняемым и потому в переписи долга не
+	// стоял: исполняла его волна, чьё собственное обоснование гласит, что
+	// контейнерных пакетов в ней нет.
+	"services/iam/internal/apps/kacho/api/bootstrap_token": "make test-pg-outside-selection",
+
 	"services/iam/internal/apps/kacho/api/access_binding": "make test-authz-fga",
 	"services/iam/internal/apps/kacho/api/readauthz":      "make test-authz-fga",
 	"services/iam/internal/authzcascade":                  "make test-authz-fga",
