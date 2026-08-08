@@ -8,7 +8,6 @@ package kacho.cloud.compute.v1;
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "kacho/cloud/compute/v1/kek.proto";
-import "kacho/cloud/compute/v1/application.proto";
 import "kacho/cloud/compute/v1/hardware_generation.proto";
 import "kacho/cloud/compute/v1/machine_type.proto";
 import "kacho/cloud/compute/v1/maintenance.proto";

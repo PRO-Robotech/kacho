@@ -63,7 +63,6 @@
 package iamv1
 
 import (
-	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud"
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/iam/authz/v1"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -220,7 +219,7 @@ var File_kacho_cloud_iam_v1_internal_bootstrap_token_service_proto protoreflect.
 
 const file_kacho_cloud_iam_v1_internal_bootstrap_token_service_proto_rawDesc = "" +
 	"\n" +
-	"9kacho/cloud/iam/v1/internal_bootstrap_token_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\".\n" +
+	"9kacho/cloud/iam/v1/internal_bootstrap_token_service.proto\x12\x12kacho.cloud.iam.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a&kacho/iam/authz/v1/authz_options.proto\".\n" +
 	"\x19MintBootstrapTokenRequestJ\x04\b\x01\x10\x02R\vttl_seconds\"\x94\x02\n" +
 	"\x1aMintBootstrapTokenResponse\x12!\n" +
 	"\faccess_token\x18\x01 \x01(\tR\vaccessToken\x12\x1d\n" +

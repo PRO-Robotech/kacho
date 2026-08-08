@@ -3777,7 +3777,7 @@ var File_kacho_cloud_compute_v1_instance_service_proto protoreflect.FileDescript
 
 const file_kacho_cloud_compute_v1_instance_service_proto_rawDesc = "" +
 	"\n" +
-	"-kacho/cloud/compute/v1/instance_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/access/access.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a(kacho/cloud/compute/v1/application.proto\x1a%kacho/cloud/compute/v1/instance.proto\x1a(kacho/cloud/compute/v1/maintenance.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"}\n" +
+	"-kacho/cloud/compute/v1/instance_service.proto\x12\x16kacho.cloud.compute.v1\x1a\x1cgoogle/api/annotations.proto\x1a\x1egoogle/protobuf/duration.proto\x1a google/protobuf/field_mask.proto\x1a\x1fkacho/cloud/access/access.proto\x1a\x1fkacho/cloud/api/operation.proto\x1a%kacho/cloud/compute/v1/instance.proto\x1a(kacho/cloud/compute/v1/maintenance.proto\x1a%kacho/cloud/operation/operation.proto\x1a\x1ckacho/cloud/validation.proto\x1a&kacho/iam/authz/v1/authz_options.proto\"}\n" +
 	"\x12GetInstanceRequest\x12-\n" +
 	"\vinstance_id\x18\x01 \x01(\tB\f\xe8\xc71\x01\x8a\xc81\x04<=50R\n" +
 	"instanceId\x128\n" +
@@ -4349,7 +4349,6 @@ func file_kacho_cloud_compute_v1_instance_service_proto_init() {
 	if File_kacho_cloud_compute_v1_instance_service_proto != nil {
 		return
 	}
-	file_kacho_cloud_compute_v1_application_proto_init()
 	file_kacho_cloud_compute_v1_instance_proto_init()
 	file_kacho_cloud_compute_v1_maintenance_proto_init()
 	file_kacho_cloud_compute_v1_instance_service_proto_msgTypes[3].OneofWrappers = []any{

@@ -58,7 +58,6 @@ syntax = "proto3";
 package kacho.cloud.iam.v1;
 
 import "google/protobuf/timestamp.proto";
-import "kacho/cloud/validation.proto";
 import "kacho/iam/authz/v1/authz_options.proto";
 
 option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1;iamv1";
