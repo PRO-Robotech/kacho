@@ -104,6 +104,12 @@ export function antdStub(): Record<string, unknown> {
     );
   const Select = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
     React.createElement("select", props, children);
+  // Настоящий `Checkbox` — это флажок с подписью. Прежде здесь стоял тот же
+  // заменитель, что у текстового поля: у него нет ни роли флажка, ни `checked`
+  // у цели события, поэтому настройка видимости колонок была ненаблюдаема
+  // целиком.
+  const Checkbox = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
+    React.createElement("label", null, React.createElement("input", { type: "checkbox", ...props }), children);
 
   const Typography = Object.assign(Component, {
     Text: Component,
@@ -153,7 +159,7 @@ export function antdStub(): Record<string, unknown> {
     Button,
     Card: Component,
     Cascader: Select,
-    Checkbox: Input,
+    Checkbox,
     Col: Component,
     Collapse: Component,
     Descriptions: Component,
