@@ -14,31 +14,55 @@
 сообщение целиком, поэтому «принято и выброшено» одинаково относится и к
 вложенному полю.
 
-ЧТО СЧИТАЕТСЯ ЧИТАТЕЛЕМ — ТРИ ФОРМЫ, И ВСЕ ТРИ ОБЯЗАТЕЛЬНЫ. Предикат, знающий
-только геттер, ЛЖЁТ: `CreateInstanceRequest.placement_group_id` читается как
-`req.PlacementGroupId` (обращение к полю структуры, `internal/handler/
-instance_handler.go`) и как строка `"placement_group_id"` (known-set маски,
-`api/instance/instance.go`) — геттера у него нет ни одного. Поэтому читателем
-считается любая из форм:
+ЧТО СЧИТАЕТСЯ ЧИТАТЕЛЕМ — ДВЕ ОСНОВЫ, И ОНИ РАЗНОЙ СИЛЫ.
 
-  1. `Get<Go>(`      — сгенерированный геттер;
-  2. `.<Go>`         — обращение к полю структуры;
-  3. `"<snake>"`     — имя поля строкой (known-set update_mask, whitelist
-                       фильтра, `from_request_field` каталога прав — край читает
-                       поле рефлексией ПО ИМЕНИ, и это настоящий читатель).
+  1. ЧТЕНИЕ У ЭТОГО СООБЩЕНИЯ (сильная, основная). Вызов геттера `x.GetFoo()` или
+     обращение к полю `x.Foo`, где ТИП `x` — именно это сообщение. Тип резолвится
+     `go/types`; индекс строит `tools/unreadfieldaudit/cmd/proto-field-readers`,
+     этот предикат его запускает сам. Совпадение имён здесь не закрывает ничего
+     by construction.
+  2. ИМЯ ПОЛЯ СТРОКОЙ (слабая). `"<snake>"` в прод-коде: known-set маски
+     обновления, whitelist фильтра, `from_request_field` каталога прав — край
+     читает поле РЕФЛЕКСИЕЙ ПО ИМЕНИ, и это настоящий читатель. Но у строки нет
+     получателя, поэтому приписать её конкретному сообщению нечем: если такое имя
+     объявлено не в одном сообщении домена, читатель мог принадлежать другому.
+     Поля, закрытые ТОЛЬКО этой формой, печатаются поимённо, а не прячутся в
+     «закрыто».
 
-Смещение предиката — в сторону НЕДОобнаружения: любая из трёх форм закрывает
-поле. Значит находка — высокой достоверности, а «ноль находок» не означает
-«полей без читателя нет», означает «этим предикатом не найдено».
+ПОЧЕМУ ОСНОВА СМЕНИЛАСЬ (issue kacho#110). Прежде все формы искали ИМЯ, и имя
+между сообщениями одного домена не уникально (`filter`, `name`, `labels`,
+`page_size`). Замер на `e5bbd92f`: из 826 осмотренных полей 755 закрывались
+именем-омонимом — девять десятых вердикта держались на совпадении имён, то есть
+«полей без читателя: 0» опиралось на атрибуцию, которая могла указывать на другое
+сообщение. Так предикат пропускал `NetworkInterfaceSpec.nic_id` и `.index` (оба
+найдены глазами, оба оказались дефектами). После смены основы слабой атрибуцией
+закрыто 8 полей — и они названы поимённо.
 
-ИМЯ НЕ УНИКАЛЬНО, И ЭТО ГЛАВНАЯ СЛАБОСТЬ МЕРКИ. Все три формы ищут ИМЯ, а одно и
-то же имя объявлено в разных сообщениях: `placement_group_id` — в пяти сообщениях
-compute, из них живы три. Поэтому найденный читатель мог принадлежать ДРУГОМУ
-сообщению, и поле объявляется читаемым, не будучи им. Так предикат пропустил
-`NetworkInterfaceSpec.nic_id` и `.index` (их имена читаются у соседних сообщений в
-том же файле) — оба найдены глазами и оба оказались настоящими дефектами. Число
-полей, закрытых неуникальным именем, печатается отдельной строкой; список — по
-флагу `--suspect`. Развязать это по-настоящему может только типовой анализ.
+ПРЕДПОСЫЛКИ, БЕЗ КОТОРЫХ ПРЕДИКАТ НЕ УТВЕРЖДАЕТ НИЧЕГО (проверяются, а не
+предполагаются; при невыполнении — выход с кодом 2, не «чисто»):
+
+  * дерево СОБИРАЕТСЯ: типы берутся из export-данных `go list -deps -export`.
+    Пакет, который не протипизировался, — это пакет, чьи чтения НЕВИДИМЫ, а его
+    поля стали бы ложными находками. Такой пакет валит индекс целиком;
+  * файлы прод-кода перечисляет ТОТ ЖЕ индекс, что резолвит типы, — поэтому
+    «где искали строку» и «где резолвили тип» разойтись не могут. Следствие,
+    которое надо помнить: файл, отсечённый build-тегом, невидим ОБЕИМ формам;
+  * Go-имя поля берётся из `pkg/api/**/*.pb.go`, а не выводится самодельной
+    камелизацией; сообщение без сгенерированного кода НЕ осмотрено и называется
+    отдельной строкой переписи;
+  * ПОЛЯ ВНУТРИ `oneof` НЕ ОСМАТРИВАЮТСЯ ВОВСЕ — слепая зона, унаследованная от
+    разборщика: `_own_level` вырезает любой `{…}`-блок, поэтому члены `oneof`
+    не попадают в поля объемлющего сообщения. Замер на `e5bbd92f` (предикат:
+    для каждого `oneof … {` в `proto/kacho/cloud/*/v1/*.proto` посчитаны
+    объявления полей внутри блока, владелец — самое узкое объемлющее
+    `message`): таких полей 62, из них 37 — в сообщениях, которые предикат
+    раскрывает как публичный запрос (`CreateInstanceRequest.spec`,
+    `Target.identity`, `VipSource.source`, `HealthCheck.options` и др.). Это
+    ЗНАЧИТ, что «осмотрено полей: N» — про поля вне `oneof`, и закрытие этой
+    зоны — отдельная работа, а не побочный эффект правки основы (issue #110
+    менял АТРИБУЦИЮ читателя, а не состав осматриваемых полей);
+  * у домена найдено хоть одно дерево прод-кода (имя proto-домена не равно имени
+    каталога сервиса — см. DOMAIN_SERVICE_DIR).
 
 ОТСУТСТВИЕ ЧИТАТЕЛЯ — НЕ ВСЕГДА НАХОДКА, И ДВЕ ПРИЧИНЫ ВЫЧИСЛЯЮТСЯ ПО ДЕРЕВУ, а не
 предполагаются (иначе перепись выдаётся за вердикт):
@@ -54,32 +78,31 @@ compute, из них живы три. Поэтому найденный чита
 Остаётся «полей БЕЗ читателя» — вот это вердикт, и он требует одного из трёх
 исходов правила по каждому полю.
 
-ИМЕНА ЧИТАЮТСЯ ИЗ СГЕНЕРИРОВАННОГО КОДА, А НЕ УГАДЫВАЮТСЯ. Go-имя поля берётся
-из `pkg/api/**/*.pb.go` (`func (x *Msg) Get<Name>()`), а не выводится
-самодельной камелизацией: правила protoc-gen-go для цифр и подчёркиваний
-неочевидны, и предикат, ошибающийся в имени, ошибается в единственном, ради чего
-существует. Следствие-предпосылка: **предикат читает только те сообщения, для
-которых в дереве есть сгенерированный код**; сообщение без `.pb.go` он не видит и
-сообщает об этом отдельной строкой переписи.
-
 ПЕРЕПИСЬ — ОТДЕЛЬНОЕ УТВЕРЖДЕНИЕ. Печатаются: сколько proto-файлов прочитано,
-сколько публичных сервисов и RPC найдено, сколько сообщений раскрыто, сколько
-полей осмотрено и сколько сообщений осталось без сгенерированного кода. Пустой
-обход — выход с кодом 2, а не «чисто».
+сколько публичных сервисов и RPC найдено, сколько пакетов и файлов прод-кода
+протипизировано, сколько сообщений раскрыто, сколько полей осмотрено и сколько
+сообщений осталось без сгенерированного кода. Пустой обход — выход с кодом 2, а
+не «чисто».
 
 Запуск из корня репозитория:
 
     python3 tools/unreadfieldaudit/unread_field_audit.py [<домен> …]
 
-Без аргументов — все домены `proto/kacho/cloud/*/v1`.
+Без аргументов — все домены `proto/kacho/cloud/*/v1`. Флаг
+`--reader-index=<файл>` берёт готовый индекс вместо построения (отладка; в CI не
+нужен — предикат строит индекс сам).
 """
 import glob
+import json
 import os
 import re
+import subprocess
 import sys
 
 PROTO_ROOT = "proto/kacho/cloud"
 GEN_ROOT = "pkg/api/kacho/cloud"
+MODULE = "github.com/PRO-Robotech/kacho"
+INDEXER = "./tools/unreadfieldaudit/cmd/proto-field-readers"
 
 # ИМЯ PROTO-ДОМЕНА НЕ РАВНО ИМЕНИ КАТАЛОГА СЕРВИСА, и это не мелочь предпосылки:
 # домен `loadbalancer` реализован в `services/nlb`, поэтому вывод пути по имени
@@ -91,9 +114,17 @@ DOMAIN_SERVICE_DIR = {"loadbalancer": "nlb"}
 
 # Деревья прод-кода, где законно живёт читатель поля запроса: сам сервис, край
 # (grpc-gateway + authz-middleware читают поля запроса рефлексией по имени) и
-# общий repo-root `internal/`.
+# общий repo-root `internal/`. Здесь — в виде префиксов ПАКЕТОВ: файлы приходят
+# из индекса, сгруппированные по пакету, поэтому дерево выбирается по пакету, а
+# не по пути.
+def prod_pkg_prefixes(domain):
+    svc = DOMAIN_SERVICE_DIR.get(domain, domain)
+    return (f"{MODULE}/services/{svc}", f"{MODULE}/gateway", f"{MODULE}/internal")
+
+
 def prod_trees(domain):
-    return [f"services/{DOMAIN_SERVICE_DIR.get(domain, domain)}", "gateway", "internal"]
+    svc = DOMAIN_SERVICE_DIR.get(domain, domain)
+    return [f"services/{svc}", "gateway", "internal"]
 
 
 RE_SERVICE = re.compile(r"^service\s+(\w+)\s*\{", re.M)
@@ -189,28 +220,65 @@ def load_getters(domain):
     return out
 
 
-def prod_sources(domain):
-    """Список (path, text) непроверочных прод-файлов, где законен читатель."""
+def build_reader_index(path=None):
+    """Индекс чтений, атрибутированный ТИПОМ ПОЛУЧАТЕЛЯ.
+
+    Строится Go-командой `proto-field-readers` (она же перечисляет файлы прод-кода,
+    которые протипизировала). Отказ команды — ОТКАЗ ПРЕДИКАТА, а не повод
+    вернуться к поиску по имени: тихий откат к слабой основе выглядел бы как
+    зелёный обход и был бы ровно тем «мягким проходом при отказе», который правила
+    запрещают.
+    """
+    if path:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    proc = subprocess.run(["go", "run", INDEXER], capture_output=True, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"индекс чтений не построен (go run {INDEXER} → {proc.returncode}). "
+            f"stderr:\n{proc.stderr.strip()}")
+    return json.loads(proc.stdout)
+
+
+_FILE_CACHE = {}
+
+
+def prod_sources(index, domain):
+    """Список (path, text) файлов прод-кода домена — ИЗ ИНДЕКСА, не своим обходом.
+
+    Один обход на оба вопроса («где резолвился тип» и «где искалась строка») —
+    иначе они разойдутся молча, и разойдутся там, где расхождение не видно.
+    """
+    prefixes = prod_pkg_prefixes(domain)
     files = []
-    for root in prod_trees(domain):
-        for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = [d for d in dirnames
-                           if d not in (".git", "testdata", "newman", "tests")]
-            for fn in filenames:
-                if not fn.endswith(".go") or fn.endswith("_test.go"):
-                    continue
-                p = os.path.join(dirpath, fn)
-                if p.startswith("pkg/api/"):
-                    continue
+    for pkg in index["packages"]:
+        p = pkg["path"]
+        if not any(p == pref or p.startswith(pref + "/") for pref in prefixes):
+            continue
+        for rel in pkg["files"]:
+            if rel not in _FILE_CACHE:
                 try:
-                    files.append((p, open(p, encoding="utf-8").read()))
+                    _FILE_CACHE[rel] = open(rel, encoding="utf-8").read()
                 except OSError:
                     continue
+            files.append((rel, _FILE_CACHE[rel]))
     return files
 
 
-
-RE_HANDLER = None  # построится под конкретный пакет в has_handler()
+def typed_readers(index, domain):
+    """{(Сообщение, ПолеGo)} — прочитано у ЭТОГО сообщения в деревьях домена."""
+    stub = f"{MODULE}/{GEN_ROOT}/{domain}/v1|"
+    prefixes = prod_pkg_prefixes(domain)
+    out = set()
+    for key, readers in index["reads"].items():
+        if not key.startswith(stub):
+            continue
+        if not any(r == pref or r.startswith(pref + "/")
+                   for r in readers for pref in prefixes):
+            continue
+        msg, _sep, field = key[len(stub):].partition("|")
+        out.add((msg, field))
+    return out
 
 
 def has_handler(request_msg, sources):
@@ -226,7 +294,7 @@ def has_handler(request_msg, sources):
     они не приняты вовсе. Считать их находками того же класса — врать в обе стороны:
     завышать число и прятать за ним настоящие.
     """
-    needle = f"context.Context, req *"
+    needle = "context.Context, req *"
     tail = f".{request_msg})"
     for _p, text in sources:
         i = 0
@@ -337,12 +405,11 @@ def excused_sets(messages, roots_impl, roots_unimpl, refused):
 def homonym_names(messages):
     """Имена полей, объявленные более чем в одном сообщении домена.
 
-    ЭТО ОБЪЯВЛЕНИЕ СЛАБОСТИ ПРЕДИКАТА, а не украшение. Читатель ищется по ИМЕНИ
-    (геттер / поле структуры / строка), а имя не уникально: `placement_group_id`
-    объявлен в пяти сообщениях compute, из них живы три. Значит найденный читатель
-    мог принадлежать ДРУГОМУ сообщению, и поле объявляется читаемым, не будучи им, —
-    ложноотрицательный результат. Такие поля печатаются числом и списком: их надо
-    смотреть глазами, а не считать закрытыми.
+    ОСТАЛОСЬ ОБЪЯВЛЕНИЕМ СЛАБОСТИ, НО ТЕПЕРЬ УЗКИМ. Сильная основа (чтение у этого
+    сообщения) омонимией не задевается вовсе. Пометка нужна ровно для второй,
+    слабой формы — имени поля строкой: у строки нет получателя, приписать её
+    конкретному сообщению нечем, и если имя объявлено не в одном сообщении домена,
+    читатель мог принадлежать другому.
     """
     seen, dup = {}, set()
     for msg, fields in messages.items():
@@ -354,19 +421,42 @@ def homonym_names(messages):
 
 
 def main():
-    domains = [a for a in sys.argv[1:] if not a.startswith("-")] or [
+    args = sys.argv[1:]
+    index_path = None
+    for a in args:
+        if a.startswith("--reader-index="):
+            index_path = a.split("=", 1)[1]
+    domains = [a for a in args if not a.startswith("-")] or [
         os.path.basename(os.path.dirname(d))
         for d in sorted(glob.glob(os.path.join(PROTO_ROOT, "*", "v1")))]
+
+    try:
+        index = build_reader_index(index_path)
+    except (RuntimeError, OSError, ValueError) as e:
+        print(f"ПРЕДПОСЫЛКА НЕ ВЫПОЛНЕНА: {e}", file=sys.stderr)
+        return 2
+    if index.get("errors"):
+        for e in index["errors"]:
+            print(f"ПРЕДПОСЫЛКА НЕ ВЫПОЛНЕНА (пакет не протипизирован, его чтения "
+                  f"невидимы): {e}", file=sys.stderr)
+        return 2
+    idx_pkgs = index.get("packages") or []
+    idx_files = sum(len(p["files"]) for p in idx_pkgs)
+    if not idx_pkgs or idx_files == 0:
+        print("ПРЕДПОСЫЛКА НЕ ВЫПОЛНЕНА: индекс чтений пуст — прод-код не прочитан",
+              file=sys.stderr)
+        return 2
+
     protos_read = svc_public = rpc_public = 0
     msgs_expanded = fields_seen = 0
+    closed_typed = 0
     without_gen = []
     premise_failures = []
     findings = []
     buckets = {"RPC-НЕ-РЕАЛИЗОВАН": [], "ПРЕДОК-ОТВЕРГАЕТСЯ": [],
                "ОТВЕРГАЕТСЯ-ПО-ИМЕНИ": []}
-    suspect = []
+    by_name_only = []
     unimpl_rpcs = {}
-    refused_by_domain = {}
 
     for domain in domains:
         proto_paths = sorted(glob.glob(os.path.join(PROTO_ROOT, domain, "v1", "*.proto")))
@@ -402,7 +492,7 @@ def main():
             continue
 
         getters = load_getters(domain)
-        sources = prod_sources(domain)
+        sources = prod_sources(index, domain)
         if not sources:
             # ПРЕДПОСЫЛКА НЕ ВЫПОЛНЕНА: дерево прод-кода этого домена не найдено, а
             # значит «читателя нет» здесь означает «читать было негде». Молчать нельзя
@@ -410,6 +500,7 @@ def main():
             # непрочитанном.
             premise_failures.append(domain)
             continue
+        typed = typed_readers(index, domain)
         # Две причины отсутствия читателя, которые находкой НЕ являются, —
         # вычисляются по дереву, а не предполагаются (см. godoc обеих функций).
         roots_impl = [r for r in set(roots) if has_handler(r, sources)]
@@ -418,7 +509,6 @@ def main():
         by_unimpl, by_refusal = excused_sets(messages, roots_impl, roots_unimpl, refused)
         homonyms = homonym_names(messages)
         unimpl_rpcs[domain] = sorted(roots_unimpl)
-        refused_by_domain[domain] = sorted(refused)
 
         for name in sorted(reach):
             gos = getters.get(name)
@@ -434,12 +524,16 @@ def main():
                     findings.append((domain, name, fname, "НЕТ ГЕТТЕРА В GEN"))
                     continue
                 fields_seen += 1
-                if _has_reader(go, fname, sources):
-                    # Читатель найден ПО ИМЕНИ. Если имя объявлено не в одном
-                    # сообщении домена, он мог принадлежать другому — поле идёт в
-                    # список подозрительных, а не в «закрыто».
-                    if fname in homonyms:
-                        suspect.append((domain, name, fname, go))
+                if (name, go) in typed:
+                    # Сильная основа: чтение у ЭТОГО сообщения, тип получателя
+                    # резолвлен. Омонимия ничего здесь не закрывает.
+                    closed_typed += 1
+                    continue
+                if _has_string_reader(fname, sources):
+                    # Слабая основа: рефлексивный читатель по имени. Приписать его
+                    # сообщению нечем — поле называется поимённо, а не прячется.
+                    by_name_only.append(
+                        (domain, name, fname, go, fname in homonyms))
                     continue
                 if name in by_unimpl:
                     buckets["RPC-НЕ-РЕАЛИЗОВАН"].append((domain, name, fname, go))
@@ -456,6 +550,9 @@ def main():
 
     print(f"прочитано .proto: {protos_read}; публичных сервисов: {svc_public}; "
           f"публичных RPC: {rpc_public}")
+    print(f"протипизировано пакетов прод-кода: {len(idx_pkgs)}; файлов: {idx_files} "
+          f"(пакетов без непроверочных файлов: "
+          f"{len(index.get('skipped_no_prod_files') or [])})")
     print(f"раскрыто сообщений публичного запроса: {msgs_expanded} "
           f"(без сгенерированного кода, НЕ осмотрены: {len(without_gen)})")
     for name in without_gen:
@@ -468,6 +565,8 @@ def main():
         print(f"ПРЕДПОСЫЛКА НЕ ВЫПОЛНЕНА: у домена {d!r} не найдено ни одного файла "
               f"прод-кода в {prod_trees(d)} — домен НЕ измерен (сопоставь его каталог "
               f"сервиса в DOMAIN_SERVICE_DIR)")
+    print(f"закрыто ЧТЕНИЕМ У ЭТОГО СООБЩЕНИЯ (тип получателя резолвлен): "
+          f"{closed_typed} из {fields_seen}")
     for label in ("RPC-НЕ-РЕАЛИЗОВАН", "ПРЕДОК-ОТВЕРГАЕТСЯ", "ОТВЕРГАЕТСЯ-ПО-ИМЕНИ"):
         rows = buckets[label]
         print(f"НЕ находка ({label}): {len(rows)}")
@@ -476,20 +575,23 @@ def main():
     for domain, rpcs in sorted(unimpl_rpcs.items()):
         if rpcs:
             print(f"    у домена {domain} без обработчика: {', '.join(rpcs)}")
-    # ЧИСЛО, А НЕ СПИСОК — И ЭТО ОСОЗНАННО. Список из 766 строк при 849 осмотренных
-    # полях не указывает ни на что: имена полей в этом дереве почти всегда не
-    # уникальны (`project_id`, `name`, `labels`…), поэтому «подозрителен» почти каждый.
-    # Перечисление, помечающее девять десятых, не помечает ничего — тот же класс, что
-    # ловится в кейсах. Поэтому печатается ЧИСЛО (оно и есть утверждение о слабости
-    # мерки) и даётся флаг, чтобы список получить прицельно.
-    print(f"закрыто ИМЕНЕМ-ОМОНИМОМ (читатель мог принадлежать другому сообщению): "
-          f"{len(suspect)} из {fields_seen}")
-    if "--suspect" in sys.argv:
-        for domain, msg, fname, go in suspect:
-            print(f"    {domain}: {msg}.{fname}  (Go: {go})")
-    else:
-        print("    (список — с флагом --suspect; ложноотрицательные из него ищутся "
-              "глазами: так найдены NetworkInterfaceSpec.nic_id и .index)")
+    # СПИСОК, А НЕ ТОЛЬКО ЧИСЛО — И ЭТО СТАЛО ВОЗМОЖНЫМ ПОСЛЕ СМЕНЫ ОСНОВЫ. Прежняя
+    # слабая корзина держала 755 полей из 826: перечисление, помечающее девять
+    # десятых, не помечает ничего, поэтому печаталось одно число. Теперь слабой
+    # остаётся только форма «имя поля строкой», и её можно назвать поимённо —
+    # объявление слабости, которое можно взять и проверить глазами.
+    weak = sum(1 for *_x, homo in by_name_only if homo)
+    print(f"закрыто ТОЛЬКО ИМЕНЕМ-СТРОКОЙ (рефлексивный читатель): "
+          f"{len(by_name_only)} из {fields_seen}")
+    # СТРОКА-ПРЕЕМНИЦА прежней «закрыто ИМЕНЕМ-ОМОНИМОМ: 755 из 826». Она и есть
+    # объявление слабости мерки числом: закрыто там, где приписать читателя
+    # сообщению НЕЧЕМ (у строкового литерала нет получателя) И имя объявлено не в
+    # одном сообщении домена. Порог на неё в CI сужается, не растёт.
+    print(f"закрыто СЛАБОЙ АТРИБУЦИЕЙ (имя-строка + имя объявлено не в одном "
+          f"сообщении домена): {weak} из {fields_seen}")
+    for domain, msg, fname, go, homo in by_name_only:
+        mark = "имя-омоним" if homo else "имя уникально в домене"
+        print(f"    {domain}: {msg}.{fname}  (Go: {go}; {mark})")
     print(f"полей БЕЗ читателя в прод-коде: {len(findings)}")
     for domain, msg, fname, go in findings:
         print(f"  {domain}: {msg}.{fname}  (Go: {go})")
@@ -507,12 +609,11 @@ def _match_go(snake, gos):
     return None
 
 
-def _has_reader(go, snake, sources):
-    getter = f"Get{go}("
-    field = f".{go}"
+def _has_string_reader(snake, sources):
+    """Рефлексивный читатель: имя поля строковым литералом в прод-коде."""
     quoted = f'"{snake}"'
     for _p, text in sources:
-        if getter in text or field in text or quoted in text:
+        if quoted in text:
             return True
     return False
 
