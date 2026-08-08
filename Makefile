@@ -110,7 +110,35 @@ AUTHZ_FGA_PKGS ?= \
 	./services/iam/internal/service \
 	./services/iam/internal/testsupport/fgatest
 
-.PHONY: test test-unit test-integration test-authz-fga test-service test-service-short docs-sites help
+# PG_OUTSIDE_SELECTION_PKGS — пакеты, которым нужен НАСТОЯЩИЙ Postgres, но
+# которых отбор интеграционной джобы (`/internal/(repo|clients)` внутри
+# services/) не достаёт. Единственный источник перечня; конвейер, человек и гейт
+# провязки читают его отсюда.
+#
+# ЗАЧЕМ ЦЕЛЬ ЗАВЕДЕНА. Пробы этого пакета исполняла только быстрая волна
+# (`go test ./... -race -short`) — она идёт с умолчанием `-p` = число ядер, то
+# есть 12 пакетов разом, а её собственное обоснование гласит, что `-short`
+# отсекает пакеты с testcontainers. Для этого пакета это было неверно, и он
+# оставался ЕДИНСТВЕННЫМ во всём дереве, кто поднимал Postgres под `-short`
+# (перепись поведением: маркер в internal/pgtest.newDatabase, 43 пакета-владельца
+# контейнера, `-short -p 1` — три теста доходят до старта контейнера, у остальных
+# 42 пакетов ноль). Раскладка «контейнерный пакет под -p 12» описана в шапке этого
+# файла как негодная — контейнерные пакеты голодают друг у друга и отдают красное
+# там, где ничего не сломано.
+#
+# Второе следствие от нагрузки не зависело: `internal/pgtest` по построению
+# ОТКАЗЫВАЕТ, а не пропускает, когда демона Docker нет, — поэтому быстрая волна,
+# задуманная как обходящаяся без Docker, без него не проходила.
+#
+# ПОЧЕМУ НЕ РАСШИРИТЬ ОТБОР. Расширение пути подобрало бы вместе с этим пакетом
+# всю перепись долга из internal/repohygiene/shortgatedselection_test.go — это
+# решение с ценой в минутах самого долгого шарда, и принимает его владелец. Здесь
+# закрыт один пакет, у которого предмет ДРУГОЙ: он не числился долгом, потому что
+# формально исполнялся, — просто не той волной.
+PG_OUTSIDE_SELECTION_PKGS ?= \
+	./services/iam/internal/apps/kacho/api/bootstrap_token
+
+.PHONY: test test-unit test-integration test-authz-fga test-pg-outside-selection test-service test-service-short docs-sites help
 
 ## test — всё, что проверяет CI: юниты + интеграция по всем сервисам.
 test: test-unit test-integration
@@ -197,6 +225,43 @@ test-authz-fga:
 	if [ "$$skip" -gt 0 ]; then \
 	  echo "пропущено $$skip проб модели прав. Пропуск здесь — ОТКАЗ: пробу, которая" >&2; \
 	  echo "не выполнилась, нельзя засчитать выполненной, а именно ради невозможности" >&2; \
+	  echo "такого зачёта эта цель и заведена." >&2; exit 1; fi; \
+	if [ "$$pass" -eq 0 ]; then \
+	  echo "ноль пройденных утверждений — цель отработала вхолостую и зелёной не будет" >&2; exit 1; fi; \
+	if [ "$$reported" -ne "$$named" ]; then \
+	  echo "отчиталось $$reported пакетов из $$named заявленных — часть перечня не дошла" >&2; \
+	  echo "до прогона, и её молчание неотличимо от успеха." >&2; exit 1; fi
+
+## test-pg-outside-selection — пробы, которым нужен Postgres, но которых отбор
+## интеграционной джобы не достаёт (перечень — PG_OUTSIDE_SELECTION_PKGS).
+##
+## ПРОПУСК ЗДЕСЬ — ОТКАЗ, ровно как в test-authz-fga и по той же причине:
+## пропущенный пакет печатает `ok` и неотличим от пройденного, поэтому цель, в
+## которой пробы пропустились, зелёной быть не может. `-short` не передаётся;
+## `-p 1` сериализует пакеты (контейнерным пробам параллель противопоказана —
+## см. шапку файла); вердикт выносится ПО ЧИСЛАМ.
+test-pg-outside-selection:
+	@set -o pipefail; \
+	log=$$(mktemp); \
+	trap 'rm -f "$$log"' EXIT; \
+	named=$$(printf '%s\n' $(PG_OUTSIDE_SELECTION_PKGS) | grep -c . || true); \
+	if [ "$$named" -eq 0 ]; then \
+	  echo "PG_OUTSIDE_SELECTION_PKGS пуст — это отказ, а не «нечего запускать»:" >&2; \
+	  echo "пустой перечень дал бы зелёную цель с нулём исполненных проб." >&2; exit 1; fi; \
+	echo "пакетов заявлено: $$named"; \
+	rc=0; \
+	$(GO) test -race -count=1 -p 1 -v -timeout $(INTEGRATION_TIMEOUT) \
+	  $(PG_OUTSIDE_SELECTION_PKGS) 2>&1 | tee "$$log" || rc=$$?; \
+	pass=$$(grep -c -- '--- PASS' "$$log" || true); \
+	skip=$$(grep -c -- '--- SKIP' "$$log" || true); \
+	failed=$$(grep -c -- '--- FAIL' "$$log" || true); \
+	reported=$$(grep -cE '^(ok|FAIL|\?)[[:space:]]+github\.com/PRO-Robotech/kacho/' "$$log" || true); \
+	echo "перепись: пакетов отчиталось $$reported из $$named; утверждений пройдено $$pass, пропущено $$skip, упало $$failed"; \
+	if [ "$$rc" -ne 0 ] || [ "$$failed" -gt 0 ]; then \
+	  echo "пробы упали (код $$rc, упавших утверждений $$failed)" >&2; exit 1; fi; \
+	if [ "$$skip" -gt 0 ]; then \
+	  echo "пропущено $$skip проб. Пропуск здесь — ОТКАЗ: пробу, которая не" >&2; \
+	  echo "выполнилась, нельзя засчитать выполненной, а именно ради невозможности" >&2; \
 	  echo "такого зачёта эта цель и заведена." >&2; exit 1; fi; \
 	if [ "$$pass" -eq 0 ]; then \
 	  echo "ноль пройденных утверждений — цель отработала вхолостую и зелёной не будет" >&2; exit 1; fi; \
