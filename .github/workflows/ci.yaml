@@ -874,18 +874,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # ПИН ОБЯЗАТЕЛЕН. setup-helm без version ставит ПОСЛЕДНЮЮ — и притащил Helm 4.2.3,
-      # тогда как локально и на проде helm v3.17. Helm 4 по умолчанию делает
-      # SERVER-SIDE APPLY (Helm 3 — client-side 3-way merge), а это разная семантика
-      # владения полями: apply упирается в чужой field-manager и валится
-      #   UPGRADE FAILED: conflict with "kubectl-patch" using apps/v1:
-      #   .spec.template.metadata.annotations.kacho.cloud/openfga-model-id-rev
-      # (аннотацию объявляет чарт kacho-iam и патчит openfga-bootstrap-job — двойное
-      # владение, для Helm 3 безобидное). Гейт при этом «зеленел», проверяя чарты НЕ той
-      # версией, которой разворачивается прод, — ложная уверенность.
+      # ПИН ОБЯЗАТЕЛЕН: без `version` setup-helm ставит ПОСЛЕДНЮЮ, то есть версия
+      # менялась бы без единой правки в дереве, а гейт проверял бы чарты не тем,
+      # чем поднимается стенд. Значение обязано совпадать с e2e-newman.yml и
+      # production-posture.yml — это сверяет
+      # .github/scripts/check-pinned-tools.sh --divergence-only.
+      #
+      # Здесь стоял v3.17.0 не ради свежести, а потому что Helm 4 применяет
+      # манифесты на стороне сервера, где владение полем энфорсится, и у аннотации
+      # шаблона пода `kacho.cloud/openfga-model-id-rev` было ДВА писателя — чарт и
+      # задание начальной настройки хранилища прав (kacho#3). Второй писатель снят:
+      # поле объявляет только тот, кто его и заполняет. Держит это
+      # deploy/tests/helm/podtemplate-annotation-single-owner-test.sh.
       - uses: azure/setup-helm@v4
         with:
-          version: v3.17.0
+          version: v4.2.3
 
       # Только `helm lint`, БЕЗ голого `helm template <chart>`: последний НЕ является
       # валидным гейтом — часть чартов ОСОЗНАННО падает без секретов (kacho-nlb:

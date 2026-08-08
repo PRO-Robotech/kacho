@@ -17,7 +17,7 @@ ConfigMap / RBAC / Service objects.
 | OPA sidecar | `templates/deployment.yaml` injects container `opa` when `opaSidecar.enabled=true`. |
 | `KACHO_IAM_OPENFGA_MODEL_ID` env | Read from Secret `openfga-model-id`, key `current`. |
 | Pod label `kacho.cloud/opa-sidecar=true` | Matched by umbrella NetworkPolicy `opa-sidecar-egress-allowlist`. |
-| Annotation `kacho.cloud/openfga-model-id-rev` | Bumped by `openfga-bootstrap-job` to trigger rolling restart on model change. |
+| Annotation `kacho.cloud/openfga-model-id-rev` | Ставится **только** `openfga-bootstrap-job`, чтобы перекатить под при смене модели. Чарт её НЕ объявляет — у поля один писатель (kacho#3: два писателя роняли `helm upgrade` конфликтом владения на server-side apply). |
 
 > [!warning] Снято как мёртвая поверхность.
 > `envFrom: opa-bundle-server-config` и его ConfigMap удалены: iam не
