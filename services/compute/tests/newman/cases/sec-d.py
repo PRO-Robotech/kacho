@@ -121,14 +121,42 @@ CASES.append(Case(
 # отсутствует (нечему записаться). Тот же путь, что get-after-delete happy-кейса.
 # ---------------------------------------------------------------------------
 
+# ДВЕ ЗАЩИТИМЫЕ ЛИНИИ, И КАЖДАЯ ПРОВЕРЯЕТСЯ ПО СУЩЕСТВУ — это не ослабление.
+#
+# Под ПРОЕКТНЫМ актором (а не бутстрап-админом, см. #72) край короткозамыкает
+# раньше сервиса: `scope_extractor` не может резолвить target→project для
+# несуществующего объекта, поэтому анти-BOLA отвечает fail-closed 403 ДО того, как
+# запрос дойдёт до `repo.Get`. Наблюдалось прогоном: код 7 и
+# `"no authorization path to the resource"`.
+#
+# Прежняя редакция требовала строго 404 и была верна ровно для привилегированного
+# вызывающего, который видит всё. Толерантность здесь перечисляет РАЗНЫЕ ЛИНИИ, у
+# каждой свой производитель, — а не разные исходы одной линии (`testing.md`
+# §e2e-инварианты прямо предписывает эту форму и объясняет, почему authz-отказ на
+# недоступный объект защитим).
+#
+# Взаимоисключающих исходов тут нет: обе ветки означают ОТКАЗ, и внутри каждой
+# утверждение остаётся полным — код gRPC и предмет сообщения. Пустить `oneOf` без
+# разбора по ветке значило бы перестать утверждать вовсе.
 CASES.append(Case(
     id="SECD-DEL-NEG-NOT-FOUND",
-    title="SEC-D: Delete несуществующего instance → sync 404 NOT_FOUND (ownership pre-check фиксирует отсутствие ДО Operation; orphan unregister-intent не пишется)",
+    title="SEC-D: Delete несуществующего instance → отвергнут (404 own-полосой либо authz-first 403 на крае); Operation не заводится, orphan unregister-intent не пишется",
     classes=["NEG"], priority="P2",
     steps=[
         Step(name="delete-missing", method="DELETE", path=INSTANCES + "/ins-00000000000000000",
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                          "pm.test('text mentions not found', () => pm.expect((pm.response.json().message || '').toLowerCase()).to.include('not found'));"]),
+             test_script=[
+                 "pm.test('rejected: 404 own-lane or authz-first 403', () => "
+                 "pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
+                 "if (pm.response.code === 404) {",
+                 "  pm.test('grpc code 5 (NOT_FOUND)', () => pm.expect(pm.response.json().code).to.eql(5));",
+                 "  pm.test('text mentions not found', () => "
+                 "pm.expect((pm.response.json().message || '').toLowerCase()).to.include('not found'));",
+                 "} else {",
+                 "  pm.test('grpc code 7 (PERMISSION_DENIED)', () => pm.expect(pm.response.json().code).to.eql(7));",
+                 "  pm.test('authz-first: no path to the resource', () => "
+                 "pm.expect(JSON.stringify(pm.response.json()).toLowerCase()).to.include('authorization path'));",
+                 "}",
+             ]),
     ],
 ))
 
