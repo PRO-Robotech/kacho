@@ -24,15 +24,29 @@ type AnyProps = Record<string, unknown>;
 
 interface MockColumn {
   title?: React.ReactNode;
+  dataIndex?: string;
   render?: (value: unknown, row: unknown, index: number) => React.ReactNode;
 }
 
 interface MockTableProps {
   columns?: MockColumn[];
   dataSource?: unknown[];
-  rowKey?: (row: unknown) => string;
+  /** Настоящая таблица принимает и имя поля, и функцию — заменитель обязан тоже. */
+  rowKey?: string | ((row: unknown) => string);
   onRow?: (row: unknown) => Record<string, unknown>;
   locale?: { emptyText?: React.ReactNode };
+}
+
+/** Значение клетки: настоящая таблица достаёт его по `dataIndex` и отдаёт в `render`. */
+function cellValue(row: unknown, dataIndex?: string): unknown {
+  if (!dataIndex) return undefined;
+  return (row as Record<string, unknown> | null)?.[dataIndex];
+}
+
+function keyOf(row: unknown, rowKey: MockTableProps["rowKey"], index: number): string | number {
+  if (typeof rowKey === "function") return rowKey(row);
+  if (typeof rowKey === "string") return String(cellValue(row, rowKey) ?? index);
+  return index;
 }
 
 export function antdStub(): Record<string, unknown> {
@@ -69,8 +83,15 @@ export function antdStub(): Record<string, unknown> {
           : dataSource.map((row, ri) =>
               React.createElement(
                 "tr",
-                { key: rowKey ? rowKey(row) : ri, ...(onRow ? onRow(row) : {}) },
-                columns.map((c, ci) => React.createElement("td", { key: ci }, c.render?.(undefined, row, ri))),
+                { key: keyOf(row, rowKey, ri), ...(onRow ? onRow(row) : {}) },
+                columns.map((c, ci) => {
+                  const value = cellValue(row, c.dataIndex);
+                  return React.createElement(
+                    "td",
+                    { key: ci },
+                    c.render ? c.render(value, row, ri) : (value as React.ReactNode),
+                  );
+                }),
               ),
             ),
       ),
@@ -98,6 +119,10 @@ export function antdStub(): Record<string, unknown> {
     confirm: jest.fn(),
     destroyAll: jest.fn(),
   });
+  // `Space.Compact` — не украшение: без него узел `<Space.Compact>` в реальном
+  // компоненте разворачивается в `undefined` и падает весь рендер, то есть
+  // проба не доходит до утверждений вовсе.
+  const Space = Object.assign(Component, { Compact: Component });
   const theme = {
     useToken: () => ({
       token: {
@@ -128,7 +153,10 @@ export function antdStub(): Record<string, unknown> {
     Descriptions: Component,
     Divider: Component,
     Dropdown: Component,
-    Empty: Component,
+    // Настоящий `Empty` рисует своё пояснение; заменитель-`<div>` прятал его в
+    // атрибут, и утверждение о тексте пустого списка было недостижимо.
+    Empty: ({ children, description }: React.PropsWithChildren<{ description?: React.ReactNode }>) =>
+      React.createElement("div", null, description, children),
     Form,
     Image: Component,
     Input: Object.assign(Input, { TextArea: Textarea, Search }),
@@ -142,7 +170,7 @@ export function antdStub(): Record<string, unknown> {
     Row: Component,
     Segmented: Component,
     Select,
-    Space: Component,
+    Space,
     Spin: Component,
     Statistic: Component,
     Switch: Input,
