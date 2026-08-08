@@ -5,11 +5,11 @@
 #
 # Дополняет dependabot, а не дублирует. Dependabot обновляет `uses: owner/action@v4`,
 # go.mod, package.json и Dockerfile-FROM — но НЕ видит версию, заданную входом шага
-# (`with: {version: v3.17.0}`), командой (`go install …@v2.12.2`) или URL'ом в curl
-# (kind, grpcurl). Мы пиним именно так, осознанно, ради local == CI: незапиненный
-# setup-helm однажды притащил Helm 4, и helm-гейт зеленел на версии, которой нет на
-# проде. Без сторожа такой пин протухает МОЛЧА — trivy со старой базой CVE, gosec без
-# новых правил.
+# (`with: {version: v4.2.3}`), командой (`go install …@v2.12.2`) или URL'ом в curl
+# (kind, grpcurl). Мы пиним именно так, осознанно: незапиненный setup-helm однажды
+# притащил мажорную версию, которой не разворачивался стенд, и helm-гейт зеленел не о
+# том предмете. Без сторожа такой пин протухает МОЛЧА — trivy со старой базой CVE,
+# gosec без новых правил.
 #
 # Вся логика — в .github/scripts/check-pinned-tools.sh (её можно прогнать локально:
 # `bash .github/scripts/check-pinned-tools.sh`). Здесь только расписание и issue.

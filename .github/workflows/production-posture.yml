@@ -93,13 +93,17 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      # ПИН ОБЯЗАТЕЛЕН — та же причина, что в ci.yaml/e2e-newman: setup-helm без version
-      # ставит Helm 4, у которого server-side apply вместо client-side 3-way merge
-      # (другая семантика владения полями → UPGRADE FAILED на чужом field-manager).
-      # Гейт обязан проверять чарты ТОЙ версией, которой разворачивается прод.
+      # ПИН ОБЯЗАТЕЛЕН — та же причина и то же значение, что в ci.yaml/e2e-newman:
+      # без `version` setup-helm ставит ПОСЛЕДНЮЮ, и версия менялась бы без единой
+      # правки в дереве. Прежний v3.17.0 удерживал прошлую мажорную из-за двойного
+      # владения аннотацией `kacho.cloud/openfga-model-id-rev` под server-side apply
+      # (kacho#3); второй писатель снят — держит это
+      # deploy/tests/helm/podtemplate-annotation-single-owner-test.sh.
+      # Расхождение значения между тремя конвейерами ловит
+      # .github/scripts/check-pinned-tools.sh --divergence-only.
       - uses: azure/setup-helm@v4
         with:
-          version: v3.17.0
+          version: v4.2.3
       - uses: azure/setup-kubectl@v4
 
       # kind — БИНАРЬ, без создания кластера: кластер поднимает `make dev-up` своим
