@@ -46,7 +46,14 @@ data:
         # запрос/lock не держит pooled-connection (CWE-770/400). 0 → без лимита.
         statement-timeout: {{ default "30s" .Values.repository.postgres.statementTimeout | quote }}
         lock-timeout: {{ default "15s" .Values.repository.postgres.lockTimeout | quote }}
-        ssl-mode: {{ default "disable" .Values.repository.postgres.sslMode | quote }}
+        # ЯВНО ЗАДАННЫЙ, А НЕ ПОДРАЗУМЕВАЕМЫЙ. Здесь стояло `default "disable"`:
+        # профиль, обнуливший ручку, получал открытый канал к базе МОЛЧА — рендер
+        # зелёный, в манифесте `disable` неотличим от объявленного. `required`
+        # превращает это в отказ с именем настройки, который видит оператор.
+        # Умолчание чарта (values.yaml) осталось на месте — снят только невидимый
+        # подстановочный путь. Что sslmode обязан быть НЕ открытым на боевом
+        # стеке, держит deploy/dbtls_declaration_test.go.
+        ssl-mode: {{ required "repository.postgres.sslMode не задан: канал к Postgres обязан быть объявлен явно (disable|require|verify-ca|verify-full); пустое значение молча дало бы открытый текст" .Values.repository.postgres.sslMode | quote }}
         password-from-env: KACHO_VPC_DB_PASSWORD
 
     authn:
