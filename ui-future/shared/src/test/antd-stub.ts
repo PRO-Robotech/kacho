@@ -45,7 +45,13 @@ function cellValue(row: unknown, dataIndex?: string): unknown {
 
 function keyOf(row: unknown, rowKey: MockTableProps["rowKey"], index: number): string | number {
   if (typeof rowKey === "function") return rowKey(row);
-  if (typeof rowKey === "string") return String(cellValue(row, rowKey) ?? index);
+  if (typeof rowKey === "string") {
+    const v = cellValue(row, rowKey);
+    // Ключом годится только скаляр: объект дал бы всем строкам одно и то же
+    // «[object Object]», то есть один ключ на весь список.
+    if (typeof v === "string" || typeof v === "number") return v;
+    return index;
+  }
   return index;
 }
 

@@ -18,7 +18,7 @@ describe("Input", () => {
     fireEvent.change(screen.getByLabelText("Имя"), { target: { value: "frontend" } });
 
     expect(onChange).toHaveBeenCalledTimes(1);
-    expect((screen.getByLabelText("Имя") as HTMLInputElement).value).toBe("frontend");
+    expect(screen.getByLabelText<HTMLInputElement>("Имя").value).toBe("frontend");
   });
 
   it("по умолчанию текстовое, но заданный тип уважает", () => {
@@ -39,12 +39,12 @@ describe("Input", () => {
     const onChange = jest.fn();
     render(<Input aria-label="Имя" disabled onChange={onChange} />);
 
-    const input = screen.getByLabelText("Имя");
+    const input = screen.getByLabelText<HTMLInputElement>("Имя");
     expect(input).toBeDisabled();
     await userEvent.type(input, "x");
 
     expect(onChange).not.toHaveBeenCalled();
-    expect((input as HTMLInputElement).value).toBe("");
+    expect(input.value).toBe("");
   });
 
   it("пробрасывает ref на живой узел", () => {
@@ -69,7 +69,7 @@ describe("Textarea", () => {
     fireEvent.change(screen.getByLabelText("Описание"), { target: { value: "первая\nвторая" } });
 
     expect(onChange).toHaveBeenCalledTimes(1);
-    expect((screen.getByLabelText("Описание") as HTMLTextAreaElement).value).toBe("первая\nвторая");
+    expect(screen.getByLabelText<HTMLTextAreaElement>("Описание").value).toBe("первая\nвторая");
   });
 });
 

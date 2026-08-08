@@ -24,7 +24,7 @@ function stubUsers(users: unknown[] | null) {
           status: 200,
           statusText: "OK",
           text: () => Promise.resolve(JSON.stringify({ users })),
-        } as Response)) as typeof fetch;
+        } as Response));
 }
 
 afterEach(() => {
@@ -117,16 +117,16 @@ describe("OperationsTable", () => {
 
 describe("statusOf", () => {
   it("незавершённая операция — выполняется", () => {
-    expect(statusOf({ id: "op-1", done: false })).toBe("running");
+    expect(statusOf({ done: false })).toBe("running");
   });
 
   it("завершённая без ошибки — успех, с ошибкой — отказ", () => {
-    expect(statusOf({ id: "op-1", done: true })).toBe("done");
-    expect(statusOf({ id: "op-1", done: true, error: { message: "boom" } })).toBe("error");
+    expect(statusOf({ done: true })).toBe("done");
+    expect(statusOf({ done: true, error: { message: "boom" } })).toBe("error");
   });
 
   it("отмену отличает от отказа по коду", () => {
-    expect(statusOf({ id: "op-1", done: true, error: { code: 1, message: "cancelled" } })).toBe("cancelled");
+    expect(statusOf({ done: true, error: { code: 1, message: "cancelled" } })).toBe("cancelled");
   });
 });
 

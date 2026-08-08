@@ -33,7 +33,7 @@ beforeEach(() => {
   loadingSpy = jest.spyOn(toast, "loading").mockReturnValue("t-load");
   successSpy = jest.spyOn(toast, "success").mockReturnValue("t");
   errorSpy = jest.spyOn(toast, "error").mockReturnValue("t");
-  dismissSpy = jest.spyOn(toast, "dismiss").mockReturnValue(undefined as never);
+  dismissSpy = jest.spyOn(toast, "dismiss").mockReturnValue(undefined);
 });
 
 afterEach(() => {

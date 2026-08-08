@@ -18,7 +18,7 @@ function stubOperation(op: unknown) {
       status: 200,
       statusText: "OK",
       text: () => Promise.resolve(JSON.stringify(op)),
-    } as Response)) as typeof fetch;
+    } as Response));
 }
 
 function stubOperationFailure() {
@@ -28,7 +28,7 @@ function stubOperationFailure() {
       status: 503,
       statusText: "Service Unavailable",
       text: () => Promise.resolve(JSON.stringify({ code: "UNAVAILABLE", message: "operations service is down" })),
-    } as Response)) as typeof fetch;
+    } as Response));
 }
 
 afterEach(() => {
@@ -120,7 +120,9 @@ describe("extractOperationId", () => {
     // Дискриминатор плоской формы — наличие булева `done`, а не просто `id`:
     // синхронный ответ ресурсом тоже несёт `id`, и принять его за операцию
     // значило бы начать опрашивать несуществующую.
-    expect(extractOperationId({ id: "sub-1", name: "frontend" })).toBeNull();
+    // Приведение намеренное: это ответ РЕСУРСОМ, а не операцией, — тип
+    // вызывающего его и не описывает, а разобрать такой ответ функция обязана.
+    expect(extractOperationId({ id: "sub-1", name: "frontend" } as never)).toBeNull();
   });
 
   it("на ответе без операции возвращает пусто, а не выдумывает идентификатор", () => {

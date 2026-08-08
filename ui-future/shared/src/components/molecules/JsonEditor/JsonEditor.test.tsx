@@ -8,7 +8,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { JsonEditor } from "./JsonEditor";
 
 function editor(): HTMLTextAreaElement {
-  return screen.getByRole("textbox") as HTMLTextAreaElement;
+  return screen.getByRole("textbox");
 }
 
 describe("JsonEditor", () => {

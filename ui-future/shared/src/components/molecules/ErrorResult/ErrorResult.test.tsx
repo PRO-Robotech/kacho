@@ -25,10 +25,20 @@ jest.unstable_mockModule("antd", () => {
     Typography: Object.assign(({ children }: React.PropsWithChildren) => React.createElement("div", null, children), {
       Text,
     }),
-    Result: ({ status, title, subTitle, extra }: Record<string, React.ReactNode>) =>
+    Result: ({
+      status,
+      title,
+      subTitle,
+      extra,
+    }: {
+      status?: string;
+      title?: React.ReactNode;
+      subTitle?: React.ReactNode;
+      extra?: React.ReactNode;
+    }) =>
       React.createElement(
         "div",
-        { "data-status": String(status), role: "alert" },
+        { "data-status": status ?? "", role: "alert" },
         React.createElement("h3", null, title),
         React.createElement("div", { "data-testid": "subtitle" }, subTitle),
         extra,
