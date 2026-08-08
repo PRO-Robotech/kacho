@@ -354,16 +354,23 @@ def _seed_bootstrap_root_cluster():
 
 
 def _seed_geo_catalog():
-    """Seed the admin-curated geo baseline (region ru-central1 + zones a/b/c/d, status
-    UP) via the geo Internal admin RPC (:18081, gated system_admin@cluster = jwtBootstrap).
+    """Seed the admin-curated geo baseline via the geo Internal admin RPC (:18081, gated
+    system_admin@cluster = jwtBootstrap): region ru-central1 with one zone per
+    ZONE_SUFFIXES (default a,b,c,d,e), plus ALT_REGION with a single zone. Zone count is
+    NOT written out here -- it is whatever ZONE_SUFFIXES says, and an earlier revision of
+    this docstring named four zones while the tuple listed five.
 
     Greenfield/fresh stands have NO geo baseline: geo goose-migrations create the schema
-    but seed no rows, and the compute->geo data-migration Helm-job is a no-op on an empty
-    greenfield compute -> every compute/nlb/vpc create fails "Zone/Region not found"
+    but seed no rows -> every compute/nlb/vpc create fails "Zone/Region not found"
     (peer-validate geo.{Zone,Region}Service.Get, fail-closed) -> all downstream Get/List
-    404. Seeded here as a NEWMAN PREREQUISITE (not a migration -- geo Region/Zone is an
-    admin-curated catalog, so a fixture-seed via the admin RPC is the right layer, same as
-    every other prerequisite). Idempotent: re-create of an existing row -> AlreadyExists,
+    404. The compute->geo data-migration Helm-job does NOT cover this and is not a no-op
+    either: compute dropped its Region/Zone tables, and a dropped table answers 42P01, so
+    the Job would fail -- which is why it is disabled in every shipped profile.
+
+    A STAND raised by `make dev-up` now seeds the same baseline itself
+    (deploy/scripts/geo-baseline.sql, target `make seed-geo`), so on such a stand this
+    function is a confirmed no-op; it stays because a newman run must not DEPEND on how
+    the stand was raised. Idempotent: re-create of an existing row -> AlreadyExists,
     tolerated; the confirm-loops pass immediately when already seeded. `existingZoneId`
     etc. in the fixtures dict below already name these ids."""
     _curl("POST", "/geo/v1/internal/regions", boot,

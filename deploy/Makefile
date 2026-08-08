@@ -9,7 +9,7 @@
         report-reader-discipline alt-fixture-discipline posture-branch-discipline \
         verdict-aggregator-discipline ceremony-declaration-discipline \
         dialled-transport-discipline delete-step-discipline \
-        reload-svc-nlb psql-nlb logs-nlb seed-nlb e2e-newman stand-provenance
+        reload-svc-nlb psql-nlb logs-nlb seed-nlb seed-geo e2e-newman stand-provenance
 
 SHELL := bash
 
@@ -377,6 +377,12 @@ dev-up: preflight
 	kubectl -n kacho rollout status deploy/kacho-iam --timeout=180s || true; \
 	kubectl -n kacho rollout status deploy/api-gateway --timeout=180s || true; \
 	$(MAKE) --no-print-directory assert-forwarder-narrowing; \
+	echo "=== базовый каталог geo (Region/Zone) ==="; \
+	echo "    Каталог geo стартует ПУСТЫМ, и пока он пуст, КАЖДОЕ создание зонального"; \
+	echo "    или регионального ресурса отвечает «зона/регион не найдены» (peer-validate"; \
+	echo "    к geo на пути запроса, fail-closed). Поднятый стенд без этого шага"; \
+	echo "    непригоден, и ни один «под Ready» этого не показывает."; \
+	$(MAKE) --no-print-directory seed-geo; \
 	end=$$(date +%s); \
 	echo "dev-up complete in $$((end-start))s"; \
 	echo; \
@@ -1140,3 +1146,27 @@ logs-nlb:
 seed-nlb:
 	@BASE_URL="$${BASE_URL:-http://localhost:28080}" \
 	 bash ./scripts/seed-nlb-fixtures.sh
+
+# ─── Базовый каталог размещения kacho-geo (Region/Zone) ────────────────────
+#
+# ЗАЧЕМ ЭТО ОТДЕЛЬНАЯ ЦЕЛЬ И ПОЧЕМУ ОНА ВЫЗЫВАЕТСЯ ИЗ `dev-up`. Каталог geo
+# стартует ПУСТЫМ — осознанное решение (`services/geo/internal/migrations/*.sql`
+# не содержит ни одного INSERT: `git grep -c 'INSERT INTO' -- \
+# 'services/geo/internal/migrations/*.sql'` → 0 файлов; Region/Zone заводит
+# администратор). Пока каталог пуст, ЛЮБОЕ создание зонального или регионального
+# ресурса отвечает «зона/регион не найдены»: vpc/compute/nlb/storage/registry
+# валидируют placement peer-вызовом к geo на пути запроса, fail-closed. То есть
+# свежеподнятый стенд непригоден, и это НЕ видно ни по одному «под Ready» —
+# ровно тот класс, который ловит `assert-production-posture`.
+#
+# ПОЧЕМУ НЕ МИГРАЦИЕЙ: пустой старт каталога — решение (см. 0001_initial.sql), а
+# применённую миграцию не правят. ПОЧЕМУ НЕ ХУКОМ ЧАРТА: единственный Job-хук
+# geo — ОДНОРАЗОВЫЙ перенос из legacy-compute, у него другой предмет и он
+# выключен во всех профилях. ПОЧЕМУ НЕ ЧЕРЕЗ ADMIN-RPC: этой дорогой каталог
+# сеет приёмочная фикстура (нужен бутстрап-токен + Hydra + проброс портов);
+# вторая копия той машинерии в Makefile разъехалась бы молча. Обоснование
+# равнозначности SQL-посева — в шапке `scripts/geo-baseline.sql`.
+#
+# guard-kind-context: цель ПИШЕТ в базу активного контекста.
+seed-geo: guard-kind-context
+	@bash ./scripts/seed-geo-baseline.sh
