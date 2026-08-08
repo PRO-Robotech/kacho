@@ -951,6 +951,36 @@ func discoverSuites(root string) []string {
 	return out
 }
 
+// defaultOwner — владелец, к которому относятся репозитории продукта. Ссылки в этих
+// документах пишутся и с владельцем (`PRO-Robotech/kacho#8`), и без (`kacho#8`), а
+// разбор нормализует обе формы к имени репозитория — значит владельца обязан вернуть
+// тот, кто зовёт трекер.
+const defaultOwner = "PRO-Robotech"
+
+// trackerSlug доводит имя репозитория до формы, которую принимает `gh`.
+//
+// Без этого измерение «тикет всё ещё открыт» НЕ МОГЛО СРАБОТАТЬ НИ РАЗУ: `gh issue view N
+// --repo kacho` отвергается самим `gh` («expected the "[HOST/]OWNER/REPO" format»), любой
+// тикет получал StateUnknown, и вердикт печатался как НЕПРОВЕРЕНО — то есть проверка
+// присутствовала, исполнялась на каждом прогоне и не отказала ни разу, потому что
+// спрашивала не туда. «Ноль находок» и «ноль заданных вопросов» печатались одинаково
+// убедительно.
+func trackerSlug(repo string) string {
+	if repo == "" || strings.Contains(repo, "/") {
+		return repo
+	}
+	return defaultOwner + "/" + repo
+}
+
+// ghArgs — ровно те аргументы, с которыми зовётся `gh`. Вынесено отдельной функцией,
+// чтобы проба утверждала СТРОКУ ЗАПРОСА, а не поведение вспомогательной функции: проверка
+// одного `trackerSlug` оставалась бы зелёной при снятом вызове, то есть её заголовок был
+// бы шире тела.
+func ghArgs(repo string, n int) []string {
+	return []string{"issue", "view", strconv.Itoa(n),
+		"--repo", trackerSlug(repo), "--json", "state", "-q", ".state"}
+}
+
 // ghResolver asks the GitHub CLI for one issue's state.
 func ghResolver() func(string, int) (IssueState, error) {
 	return func(repo string, n int) (IssueState, error) {
@@ -961,8 +991,7 @@ func ghResolver() func(string, int) (IssueState, error) {
 		defer cancel()
 		// #nosec G204 -- аргументы фиксированы: номер приходит числом, слаг репозитория
 		// собран из каталога, оболочки нет.
-		cmd := exec.CommandContext(ctx, "gh", "issue", "view", strconv.Itoa(n),
-			"--repo", repo, "--json", "state", "-q", ".state")
+		cmd := exec.CommandContext(ctx, "gh", ghArgs(repo, n)...)
 		raw, err := cmd.Output()
 		if err != nil {
 			return StateUnknown, fmt.Errorf("gh issue view %s#%d failed", repo, n)
