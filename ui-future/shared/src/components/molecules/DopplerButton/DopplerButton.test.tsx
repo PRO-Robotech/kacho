@@ -1,15 +1,80 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+// Кнопка отправки формы, пульсирующая, пока асинхронная Operation не завершена.
+// Мутации в Kachō асинхронны (ban #9), и эта пульсация — единственный признак
+// того, что запрос принят и идёт: без неё пользователь жмёт «Создать» повторно.
+// Поэтому утверждается связь состояния ожидания с наблюдаемым видом и то, что
+// цвет пульсации следует деструктивности действия.
 
-const expectedExports = ["DopplerButton"] as const;
+import { jest } from "@jest/globals";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { DopplerButton } from "./DopplerButton";
 
-const source = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "DopplerButton.tsx"), "utf8");
+function buttonEl(name: string): HTMLElement {
+  return screen.getByRole("button", { name });
+}
 
 describe("DopplerButton", () => {
-  it("declares its public component exports", () => {
-    for (const exportName of expectedExports) {
-      expect(source).toContain(exportName);
-    }
+  it("зовёт обработчик по клику", () => {
+    const onClick = jest.fn();
+    render(<DopplerButton onClick={onClick}>Создать</DopplerButton>);
+
+    fireEvent.click(buttonEl("Создать"));
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("в покое не пульсирует", () => {
+    render(<DopplerButton>Создать</DopplerButton>);
+    const el = buttonEl("Создать");
+    expect(el.className).toContain("doppler-btn");
+    expect(el.className).not.toContain("is-pulsing");
+    expect(el.style.getPropertyValue("--doppler-c")).toBe("");
+  });
+
+  it("в ожидании пульсирует", () => {
+    render(<DopplerButton pulsing>Создать</DopplerButton>);
+    const el = buttonEl("Создать");
+    expect(el.className).toContain("is-pulsing");
+    expect(el.style.getPropertyValue("--doppler-c")).not.toBe("");
+  });
+
+  it("деструктивное действие пульсирует красным, обычное — синим", () => {
+    // Цвет здесь несёт смысл: синяя пульсация на удалении читалась бы как
+    // обычное сохранение.
+    render(
+      <>
+        <DopplerButton pulsing danger>
+          Удалить
+        </DopplerButton>
+        <DopplerButton pulsing>Создать</DopplerButton>
+      </>,
+    );
+    const danger = buttonEl("Удалить").style.getPropertyValue("--doppler-c");
+    const primary = buttonEl("Создать").style.getPropertyValue("--doppler-c");
+    expect(danger).toBe("rgba(255, 77, 79, 0.6)");
+    expect(primary).toBe("rgba(22, 119, 255, 0.55)");
+    expect(danger).not.toBe(primary);
+  });
+
+  it("собственные класс и стиль вызывающего не затираются", () => {
+    render(
+      <DopplerButton pulsing className="w-full" style={{ marginTop: "8px" }}>
+        Создать
+      </DopplerButton>,
+    );
+    const el = buttonEl("Создать");
+    expect(el.className).toContain("w-full");
+    expect(el.className).toContain("is-pulsing");
+    expect(el.style.marginTop).toBe("8px");
+  });
+
+  it("состояние загрузки antd пульсации не включает", () => {
+    // Пульсация привязана к `pulsing` — внешнему ожиданию асинхронной Operation,
+    // а не к собственному `loading` кнопки. Смешать их значило бы пульсировать
+    // на любом «занят», в том числе там, где никакой операции не заводилось.
+    render(<DopplerButton loading>Создать</DopplerButton>);
+    const el = buttonEl("Создать");
+    expect(el.className).toContain("doppler-btn");
+    expect(el.className).not.toContain("is-pulsing");
+    expect(el.style.getPropertyValue("--doppler-c")).toBe("");
   });
 });
