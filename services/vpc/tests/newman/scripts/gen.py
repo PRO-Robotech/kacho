@@ -1613,6 +1613,18 @@ def subnet_cidr_expand_shrink_pack():
                  body={"ipv4CidrBlocks": ["192.168.99.0/24"]},
                  test_script=[
                      *assert_status(200),
+                     # ЧЕКАНКА OPERATION УТВЕРЖДАЕТСЯ ЗДЕСЬ, а не подразумевается.
+                     # Весь отказ этого кейса живёт в парном поллере, а поллер
+                     # выходит РАНЬШЕ своих утверждений, если `opId` пуст, —
+                     # тогда три утверждения об отказе не исполняются вовсе и
+                     # кейс зеленеет на несделанном. Предпосылка узкая (продукт
+                     # должен отдать `200` без `id`), но именно её узость и
+                     # оставляла её неназванной: в парном `SG-DEL-NEG-NIC-ATTACHED`
+                     # эта тропа закрыта, а здесь опорой служил один `200`
+                     # (асимметрия названа приёмкой 2026-08-06).
+                     "pm.test('Operation minted (the refusal is the operation\\'s to carry)', "
+                     "() => pm.expect(pm.response.json().id, pm.response.text())"
+                     ".to.be.a('string'));",
                      *save_from_response("j.id", "opId"),
                  ]),
             poll_operation_until_done(

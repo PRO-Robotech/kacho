@@ -144,7 +144,7 @@ api-gateway:
     # The registry Services are `registry` / `registry-internal` (registry chart
     # `.Values.name`), NOT `kacho-registry`. The chart default dials
     # kacho-registry.kacho.svc.cluster.local, which does not exist → NXDOMAIN →
-    # 503 on every /registries/v1/* call. The dev profile carries this override
+    # 503 on every /registry/v1/* call. The dev profile carries this override
     # with the same note; the production profile never did.
     # These hosts are also the registry server-cert SANs, so the derived
     # SERVER_NAME matches once the mTLS edge below is armed.
@@ -255,7 +255,7 @@ api-gateway:
       # gateway→registry (public :9090 Registry/Repository + internal :9091
       # InternalRegistryService). registry.mtls.enable=true below → server-mTLS on
       # both listeners, so this leg is what makes the registry reachable at all;
-      # without it every /registries/v1/* call fails the handshake. SERVER_NAME is
+      # without it every /registry/v1/* call fails the handshake. SERVER_NAME is
       # derived from the corrected dial-hosts above (registry / registry-internal,
       # both in the registry server-cert SAN).
       registry: true

@@ -8,7 +8,11 @@ Acceptance source: функциональная приёмка под-фазы 6
   по пути: ноль коммитов); имя не воспроизводится.
   (6.0-34 EXTERNAL e2e, 6.0-35 INTERNAL e2e, 6.0-36 teardown bottom-up,
    6.0-37 dangling instance-target graceful read).
-Design source: docs/specs/nlb-functional-design-plan.md §5 (UC-1/UC-2/UC-5), §6.1.
+Design source: здесь стояла вторая такая же ссылка — на план проектирования под
+  именем, которого в воркспейсе тоже никогда не было (ноль коммитов по пути через
+  все ссылки). Обе снимались по одной причине, но в прошлый раз строкой ниже — то
+  есть радиус правки был один абзац вместо класса. Живое описание сценариев —
+  ниже в этом же docstring и в docs/CASES-INDEX.md набора.
 
 These cases orchestrate the standard per-resource RPCs (already covered atomically
 by load-balancer.py / listener.py / target-group.py / targets.py) into the full

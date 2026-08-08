@@ -4,7 +4,8 @@ This catalogue enumerates every case-id in the kacho-registry newman suite acros
 its three surfaces:
 
 - **control-plane CRUD** — `cases/registry.py` → `collections/registry.postman_collection.json`
-  (black-box through api-gateway REST `/registries/v1/...`);
+  (black-box through api-gateway REST `/registry/v1/...` — домен `registry`,
+  коллекция ресурсов `registries` идёт вторым сегментом);
 - **control-plane authz** — `cases/registry-authz.py` (existence-hiding / listauthz /
   grant-latency / owner-tuple), also black-box through api-gateway;
 - **data-plane + token-exchange** — `scripts/dataplane-e2e.sh` (Docker Registry v2 / OCI

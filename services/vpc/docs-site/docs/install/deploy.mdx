@@ -226,25 +226,27 @@ kacho-vpc следует принципу **database-per-service**: владее
 
 ## Локальный dev-стенд (kind)
 
-Стенд поднимается одной командой из репозитория `kacho-deploy` — kind-кластер +
-PostgreSQL + ingress + все сервисы umbrella-чарта.
+Стенд поднимается одной командой из каталога `deploy` того же репозитория —
+kind-кластер + PostgreSQL + ingress + все сервисы umbrella-чарта. Соседнего
+репозитория стенда рядом с деревом нет: команды ниже запускаются **от корня
+репозитория**, каталог цели называется флагом `-C`.
 
 <CodeBlock language="bash">
   {dedent`
     # поднять стенд целиком (kind + helm + Postgres)
-    cd ../kacho-deploy && make dev-up
+    make -C deploy dev-up
 
     # пересобрать образ и перекатить только VPC
-    cd ../kacho-deploy && make reload-svc SVC=vpc
+    make -C deploy reload-svc SVC=vpc
 
     # логи сервиса
-    cd ../kacho-deploy && make logs-svc SVC=vpc
+    make -C deploy logs-svc SVC=vpc
 
     # psql в БД kacho_vpc
-    cd ../kacho-deploy && make psql SVC=vpc
+    make -C deploy psql SVC=vpc
 
     # снести стенд
-    cd ../kacho-deploy && make dev-down
+    make -C deploy dev-down
   `}
 </CodeBlock>
 
