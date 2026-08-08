@@ -309,10 +309,23 @@ jobs:
       # что и разработчик локально. БЕЗ sudo и в ~/bin: установка в ~/bin переносима
       # между ранерами и потому переживает смену площадки — а этот workflow её уже
       # пережил однажды.
+      #
+      # ВЕРСИЯ kind ЗАДАЁТ ВЕРСИЮ KUBERNETES стенда — это не косметический пин. 0.32.0
+      # ставит узел `kindest/node:v1.36.1` (0.30.0 ставил v1.34.0), и вместе с ним
+      # kind переходит на формат kubeadm v1beta4 для Kubernetes 1.36.0+. Наш
+      # deploy/kind/kind-config.yaml патчит `nodeRegistration.kubeletExtraArgs`
+      # НЕВЕРСИОНИРОВАННЫМ патчем в map-форме — именно та форма, которую 0.32.0
+      # переводит в list-форму v1beta4 сам. Версионированный патч пришлось бы
+      # переписывать под v1beta4 руками; у нас его нет, и завести — значит взять эту
+      # работу на себя без нужды.
+      #
+      # Второй пин этой версии — в production-posture.yml. Их совпадение держит
+      # .github/scripts/check-pinned-tools.sh (--divergence-only): два конвейера,
+      # поднимающие стенд разными kind, дают несравнимые вердикты о том же дереве.
       - name: kind
         run: |
           mkdir -p "$HOME/bin"
-          curl -sSLo "$HOME/bin/kind" https://kind.sigs.k8s.io/dl/v0.30.0/kind-linux-amd64
+          curl -sSLo "$HOME/bin/kind" https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64
           chmod +x "$HOME/bin/kind"
           echo "$HOME/bin" >> "$GITHUB_PATH"
           "$HOME/bin/kind" version
