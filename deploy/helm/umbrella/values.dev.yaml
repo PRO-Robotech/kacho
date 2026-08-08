@@ -222,24 +222,30 @@ compute:
   # resolves fast. serverName.storage (compute→storage mTLS) chart default
   # kacho-storage.kacho.svc.cluster.local ∈ storage server-cert SAN.
   storageInternalAddr: kacho-storage.kacho.svc.cluster.local:9091
-  # Delete-instance сага (internal/service/instance.go) НЕ становится fast-success от
-  # одного лишь storage-Noop: перед step-3 (storage volume-release) идёт step-2 —
-  # NIC-release через compute→vpc InternalNetworkInterfaceService.ListByInstance на
-  # vpc INTERNAL :9091 (нижний mTLS-листенер, НЕ public :9090). Этот edge в
-  # dev/newman-профиле не доступен компьюту (transport codes.Unavailable — единственный
-  # retryable-код: не 5s-DeadlineExceeded, не authz-403), поэтому ListByInstance жжёт
-  # весь 30s retry.OnUnavailable-бюджет ЛЮБОГО Delete (шаг безусловный, вызывается даже
-  # для инстансов без NIC) > 15s newman poll → done:false. Это ровно тот же класс, что
-  # ce01e92 закрыл для storage, но для vpc-NIC-ребра: 36 Delete-instance зависаний +
-  # каскад cleanup-Delete по всей instance-суите. Пустой addr → NoopNicClient (main.go):
-  # ListByInstance пуст (задокументированный degraded-path delete-саги — при неподнятом
-  # peer'е NIC-привязки не отслеживаются) → step-2 мгновенный → Delete завершается.
-  # В этом профиле NIC-attach всё равно не работает (:attachNetworkInterface отдаёт 403
-  # на gateway), а NIC-mirror и так пуст (graceful-degrade), так что рабочей
-  # функциональности не теряем. Прод не затронут — vpcInternalAddr там реальный
-  # (compute chart default vpc.kacho.svc.cluster.local:9091). NIC-AD/DD-кейсы требуют
-  # ЖИВОГО vpc-internal — зелёные только в umbrella-e2e, не в compute-only профиле.
-  vpcInternalAddr: ""
+  # vpcInternalAddr здесь БОЛЬШЕ НЕ ПЕРЕОПРЕДЕЛЯЕТСЯ — действует умолчание чарта
+  # (vpc.kacho.svc.cluster.local:9091), как и во всех остальных профилях: ни один
+  # другой профиль зонтика этот ключ не задавал.
+  #
+  # Тут стояло `vpcInternalAddr: ""` с обоснованием «ребро compute→vpc :9091 в этом
+  # профиле недоступно (codes.Unavailable), поэтому шаг высвобождения интерфейса
+  # сжигает весь 30-секундный бюджет повторов на КАЖДОМ удалении машины». Симптом
+  # был описан верно, причина — нет: недоступность создавал сам чарт компьюта.
+  # Группу клиентских кред `KACHO_COMPUTE_VPC_NIC_MTLS_*` конфиг читал, а шаблон не
+  # выставлял НИ РАЗУ (`git log -S 'VPC_NIC_MTLS' 6b1293713 -- services/compute/deploy/`
+  # → 0 коммитов; ревизия названа намеренно — без неё предикат устаревает от того
+  # самого коммита, который его закрывает), поэтому дозвон шёл открытым текстом
+  # на листенер, который требует проверенный клиентский сертификат, —
+  # рукопожатие обрывалось, и вызывающий
+  # получал ровно тот самый codes.Unavailable. Производитель группы добавлен в
+  # шаблон; парность объявления и производителя держит гейт
+  # services/compute/deploy/peer_mtls_producer_test.go.
+  #
+  # Почему пустую строку нельзя было оставить как «осознанный размен»: она не
+  # выключает ребро, а подменяет его заглушкой (NoopNicClient). Привязка интерфейса
+  # отвечает Unavailable, а шаг ВЫСВОБОЖДЕНИЯ интерфейса на удалении машины молча
+  # находит пустой список и не снимает ничего — то есть тихая деградация вместо
+  # отказа. Пустое значение на этом ключе теперь отвергает проба
+  # services/compute/deploy/peer_addr_profiles_test.go.
   # Dev kind stack: pg-compute (bitnami postgres) serves NO TLS, so the migrator
   # + serve DB channel must be sslmode=disable. The compute chart DEFAULTS to
   # `require` (stricter than vpc/iam, which default to disable), which here fails
