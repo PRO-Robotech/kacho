@@ -39,7 +39,7 @@ def _setup_tg(name_suffix: str, body_extra: dict = None, name_override: str = No
              body={**_TG_BODY, "name": name, **(body_extra or {})},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["tgId"]),
         # read-your-writes: materialize the TG owner-tuple (eventually-consistent after
         # opgate removal) before the first real self-access; silent (empty test_script).
         retry_until_authorized(Step(name="setup-materialize-tg", method="GET",
@@ -598,7 +598,7 @@ CASES.append(Case(
                    "name": "tgr-del-lb-{{runId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["nlbId"]),
         # read-your-writes: у создания слушателя цель проверки прав — СВЕЖИЙ
         # балансировщик, названный в ТЕЛЕ запроса (адрес — коллекционный), а
         # предикат автообёртки читает только адрес шага. Поэтому окно видимости
@@ -734,7 +734,7 @@ CASES.append(Case(
                    "name": "tgr-mv-lb-{{runId}}", "placement": "EXTERNAL_REGIONAL", "v4Source": {"public": {}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.networkLoadBalancerId", "nlbId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["nlbId"]),
         # read-your-writes: цель проверки прав у создания слушателя — свежий
         # балансировщик из ТЕЛА запроса; см. пояснение выше.
         retry_until_authorized(Step(name="setup-materialize-lb", method="GET",

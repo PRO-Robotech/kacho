@@ -32,7 +32,7 @@ def _setup_tg(name_suffix: str, dereg_seconds: int = 300):
                    "deregistrationDelay": f"{dereg_seconds}s"},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["tgId"]),
         # read-your-writes: materialize the TG owner-tuple (eventually-consistent after
         # opgate removal) before the first :addTargets / :removeTargets self-access.
         retry_until_authorized(Step(name="setup-materialize-tg", method="GET",
