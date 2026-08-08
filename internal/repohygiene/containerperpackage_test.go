@@ -676,6 +676,11 @@ func TestSanctionedProvidersStillExist(t *testing.T) {
 				"git нет — санкция осталась без того, на чём стоит", provider, file)
 		}
 	}
+
+	// Перепись: «все дозволенные поставщики на месте» держится и на пустом обходе,
+	// поэтому объём осмотренного назван отдельным утверждением.
+	t.Logf("перепись: отслеживаемых путей %d, каталогов-поставщиков %d",
+		len(tracked), len(dirs))
 }
 
 // TestScannerClassifiesKnownStartersInTheTree — положительная проба на ЖИВОМ дереве.
@@ -712,6 +717,11 @@ func TestScannerClassifiesKnownStartersInTheTree(t *testing.T) {
 				"ничего не означает", k.dir, k.name)
 		}
 	}
+
+	// Перепись: сколько мест обходчик классифицировал. Ноль найденных дал бы тот же
+	// зелёный вердикт, что и верная классификация всех.
+	t.Logf("перепись: обязательных к распознанию %d; обходчик разобрал файлов %d, тестовых пакетов %d, стартующих функций %d",
+		len(must), sc.filesParsed, sc.testPkgs, len(sc.starters))
 }
 
 // TestContainerStartAPIsStillExistInTheTree — предпосылка гейта.
