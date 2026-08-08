@@ -99,8 +99,11 @@
 // # What this gate does NOT see, stated rather than implied
 //
 // It reads `docs/RESULTS.md` of each newman suite, and inside it only the sections whose
-// heading declares known-failing cases. A red declared somewhere else — another document,
-// or a section titled so that nothing marks it as a declaration — is invisible here. That
+// heading declares known-failing cases; plus `cases/*.py` of each suite for the
+// `# verifies <issue>` marker (annotation.go — same three questions, asked of the same kind
+// of declaration written on the case itself). A red declared somewhere else — another
+// document, or a section titled so that nothing marks it as a declaration — is invisible
+// here. That
 // is a real limit, not a rhetorical one, and it is written down for the same reason the
 // premise above is: a gate whose blind spot is undocumented gets trusted for more than it
 // checks. Closing it by matching every section that happens to name a case id was tried
@@ -118,11 +121,14 @@
 // # Relationship to the per-suite gate in services/storage
 //
 // services/storage/tools/auditknownfailing asks different questions about the same
-// rows for one suite: roster parity with the generated collections, and a two-way
-// binding to `# verifies <issue-url>` annotations in cases/. That contract is
-// stricter and only that suite adopted it. This gate asks the repository-wide
-// question — does the declaration have a subject, and is the subject still red — and
-// does not require the annotation. Both check liveness; neither subsumes the other.
+// rows for one suite: roster parity with the generated collections, and a TWO-WAY
+// binding between a RESULTS.md row and a `# verifies <issue-url>` annotation in cases/.
+// That contract is stricter and only that suite adopted it. This gate asks the
+// repository-wide question — does the declaration have a subject, and is the subject
+// still red — of BOTH places where such a declaration is written: the results doc
+// (here) and the case file (annotation.go). It does NOT require the two to be paired,
+// because that pairing is the stricter per-suite contract, not the tree-wide one.
+// Both gates check liveness; neither subsumes the other.
 package knownfailingsubject
 
 import (
@@ -182,6 +188,17 @@ type Census struct {
 	// file of that suite" must never print the same thing.
 	MarkerFiles int
 	MarkerLines int
+	// CaseFiles / CaseMarkers / CaseAnnotations — объём третьей половины
+	// (annotation.go): файлов кейсов прочитано, пометок `# verifies` найдено, из них
+	// со ссылкой на ТИКЕТ. Три числа, а не одно: пометка на пункт требований тикета
+	// не называет и здесь не судится, поэтому «пометок много, судимых ноль» обязано
+	// быть отличимо и от «пометок нет», и от «файлов не прочитано».
+	CaseFiles       int
+	CaseMarkers     int
+	CaseAnnotations int
+	// CaseSubjectsResolved — сколько пометок разрешились до кейса, который сюита
+	// действительно генерирует.
+	CaseSubjectsResolved int
 }
 
 // Report is the census, the findings, and the dimensions that could not be resolved.
@@ -354,6 +371,30 @@ func Scan(o Options) (Report, error) {
 		}
 	}
 
+	// Третья половина: пометка `# verifies <тикет>` в файле кейсов — объявление того же
+	// рода, что запись в документе отчёта (ban #13: «кейс ожидаемо красный, пока дефект
+	// открыт»). Идёт СВОИМ обходом, а не внутри цикла выше, потому что сюита без
+	// `docs/RESULTS.md` там пропускается — а пометки в её кейсах читать всё равно надо
+	// (такая сюита в дереве есть: gateway). Названные тикеты складываются в ТУ ЖЕ карту
+	// `issues`, поэтому сетевое обращение остаётся одним на тикет за прогон. См.
+	// annotation.go — там же обоснование, почему не снимок состояний в дереве.
+	for _, rel := range suites {
+		anns, files, markers := scanCaseAnnotations(o.Root, rel)
+		rep.Census.CaseFiles += files
+		rep.Census.CaseMarkers += markers
+		rep.Census.CaseAnnotations += len(anns)
+		if len(anns) == 0 {
+			continue
+		}
+		base := filepath.Join(o.Root, rel)
+		idx, _ := readSuite(base)
+		reports, _ := readReports(base, idx)
+		f, u, resolved := judgeCaseAnnotations(anns, idx, reports, rel, issues)
+		rep.Census.CaseSubjectsResolved += resolved
+		rep.Findings = append(rep.Findings, f...)
+		rep.Unverified = append(rep.Unverified, u...)
+	}
+
 	rep.Census.IssuesChecked = len(issues)
 	for _, ir := range sortedRefs(issues) {
 		state, err := resolve(ir.repo, ir.num)
@@ -367,9 +408,13 @@ func Scan(o Options) (Report, error) {
 				"issue %s#%d (%s): %s — \"still open\" is UNPROVEN, not proven",
 				ir.repo, ir.num, strings.Join(issues[ir], ", "), reason))
 		case state == StateClosed:
+			// Координата ведёт либо в документ отчёта (запись раздела), либо в файл кейсов
+			// (пометка `# verifies`) — оба места объявляют одно и то же, поэтому и текст
+			// один. Что удалить, видно по координате.
 			rep.Findings = append(rep.Findings, fmt.Sprintf(
 				"issue %s#%d is no longer open, but it is still declared at %s — a known-failing "+
-					"declaration that outlived its fix is a false statement about the product; delete it",
+					"declaration (a RESULTS.md record or a `# verifies` marker on a case) that "+
+					"outlived its fix is a false statement about the product; delete it",
 				ir.repo, ir.num, strings.Join(issues[ir], ", ")))
 		}
 	}
@@ -388,6 +433,14 @@ func Scan(o Options) (Report, error) {
 		rep.Findings = append(rep.Findings, fmt.Sprintf(
 			"read 0 results doc(s) across %d suite dir(s) under %s — the gate examined nothing, so it "+
 				"proved nothing (zero findings must not be reachable from zero reads)",
+			rep.Census.Suites, o.Root))
+	}
+	// Та же премиса для третьей половины: «ни одной пометки» законно, «не прочитано ни
+	// одного файла кейсов» — нет. Иначе переезд каталога кейсов молча выключил бы её.
+	if rep.Census.Suites > 0 && rep.Census.CaseFiles == 0 {
+		rep.Findings = append(rep.Findings, fmt.Sprintf(
+			"read 0 case file(s) across %d suite dir(s) under %s — the `# verifies` half examined "+
+				"nothing, so it proved nothing (zero findings must not be reachable from zero reads)",
 			rep.Census.Suites, o.Root))
 	}
 
@@ -951,6 +1004,36 @@ func discoverSuites(root string) []string {
 	return out
 }
 
+// defaultOwner — владелец, к которому относятся репозитории продукта. Ссылки в этих
+// документах пишутся и с владельцем (`PRO-Robotech/kacho#8`), и без (`kacho#8`), а
+// разбор нормализует обе формы к имени репозитория — значит владельца обязан вернуть
+// тот, кто зовёт трекер.
+const defaultOwner = "PRO-Robotech"
+
+// trackerSlug доводит имя репозитория до формы, которую принимает `gh`.
+//
+// Без этого измерение «тикет всё ещё открыт» НЕ МОГЛО СРАБОТАТЬ НИ РАЗУ: `gh issue view N
+// --repo kacho` отвергается самим `gh` («expected the "[HOST/]OWNER/REPO" format»), любой
+// тикет получал StateUnknown, и вердикт печатался как НЕПРОВЕРЕНО — то есть проверка
+// присутствовала, исполнялась на каждом прогоне и не отказала ни разу, потому что
+// спрашивала не туда. Найдено инъекцией настоящей ссылки в дерево: без неё «ноль находок»
+// и «ноль заданных вопросов» печатались одинаково убедительно.
+func trackerSlug(repo string) string {
+	if repo == "" || strings.Contains(repo, "/") {
+		return repo
+	}
+	return defaultOwner + "/" + repo
+}
+
+// ghArgs — ровно те аргументы, с которыми зовётся `gh`. Вынесено отдельной функцией,
+// чтобы проба утверждала СТРОКУ ЗАПРОСА, а не поведение вспомогательной функции: пока
+// проверялся только `trackerSlug`, снятие его вызова оставляло пробу зелёной, то есть
+// заголовок был шире тела.
+func ghArgs(repo string, n int) []string {
+	return []string{"issue", "view", strconv.Itoa(n),
+		"--repo", trackerSlug(repo), "--json", "state", "-q", ".state"}
+}
+
 // ghResolver asks the GitHub CLI for one issue's state.
 func ghResolver() func(string, int) (IssueState, error) {
 	return func(repo string, n int) (IssueState, error) {
@@ -961,8 +1044,7 @@ func ghResolver() func(string, int) (IssueState, error) {
 		defer cancel()
 		// #nosec G204 -- аргументы фиксированы: номер приходит числом, слаг репозитория
 		// собран из каталога, оболочки нет.
-		cmd := exec.CommandContext(ctx, "gh", "issue", "view", strconv.Itoa(n),
-			"--repo", repo, "--json", "state", "-q", ".state")
+		cmd := exec.CommandContext(ctx, "gh", ghArgs(repo, n)...)
 		raw, err := cmd.Output()
 		if err != nil {
 			return StateUnknown, fmt.Errorf("gh issue view %s#%d failed", repo, n)
@@ -984,10 +1066,12 @@ func Print(rep Report, out io.Writer) {
 		"collection(s), %d run report(s); %d declaring section(s), %d resolution record(s) skipped, "+
 		"%d declaration(s), %d subject(s) resolved, %d issue(s) checked, "+
 		"%d defect-side retirement condition(s); %d suite file(s) read for a declaration "+
-		"marker, %d line(s) carried one\n",
+		"marker, %d line(s) carried one; %d case file(s) read for `# verifies`, %d marker(s) "+
+		"found, %d naming a tracker issue, %d resolved to a generated case\n",
 		c.Suites, c.Docs, c.Collections, c.Reports, c.DeclaringSections, c.ArchivedSections,
 		c.Declarations, c.SubjectsResolved, c.IssuesChecked, c.RetirementClauses,
-		c.MarkerFiles, c.MarkerLines)
+		c.MarkerFiles, c.MarkerLines,
+		c.CaseFiles, c.CaseMarkers, c.CaseAnnotations, c.CaseSubjectsResolved)
 
 	if len(rep.Unverified) > 0 {
 		_, _ = fmt.Fprintf(out, "known-failing-subject: NOT VERIFIED for %d item(s) — printed so that "+
@@ -1016,6 +1100,12 @@ must be checkable and it must expire by itself:
   - where a run report exists, the named case is still red. A case that ran and
     passed means the declaration outlived its fix — delete it, do not "update" it.
 Sections whose heading records a red as resolved are history and are not checked.
+
+The same three questions are asked of a ` + "`# verifies <issue>`" + ` marker written on a case
+in cases/*.py: it means exactly the same thing (ban #13 — expected red while the
+defect is open), so it must name its repository, must point at a case the suite
+generates, and must go once the defect is fixed. Replace it with a description of
+the property the case protects; do not leave it pointing at a closed issue.
 `
 
 func dedupe(in []string) []string {
