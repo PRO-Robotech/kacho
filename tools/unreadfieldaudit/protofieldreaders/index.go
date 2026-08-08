@@ -121,6 +121,8 @@ func Build(patterns ...string) (*Index, error) {
 		if !ok {
 			return nil, fmt.Errorf("нет export-данных для %q", path)
 		}
+		// #nosec G304 -- путь берётся из карты экспортов, заполненной выводом `go list`
+		// о СОБСТВЕННОМ дереве репозитория; внешнего ввода на этом пути нет.
 		return os.Open(f)
 	})
 
@@ -253,6 +255,8 @@ func golist(patterns []string) ([]listPkg, error) {
 		"list", "-deps", "-export",
 		"-json=ImportPath,Dir,Export,GoFiles,DepOnly",
 	}, patterns...)
+	// #nosec G204 -- программа фиксирована (`go`), переменная часть — шаблоны пакетов,
+	// которые задаёт сам инструмент анализа, а не внешний вызывающий.
 	cmd := exec.Command("go", args...)
 	cmd.Stderr = os.Stderr
 	out, err := cmd.StdoutPipe()
