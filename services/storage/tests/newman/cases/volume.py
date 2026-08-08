@@ -91,17 +91,29 @@ CASES.append(Case(
 # jwtBootstrap GET=200 but jwtProjectEditorA GET=403 "no authorization path"). That
 # false-green shipped storage object-self reads broken (#71). This case exercises
 # the tenant anti-BOLA path as jwtProjectEditorA (editor on _suiteProjectId) so the
-# suite actually covers it: RED until the #71 FGA model+wiring deploys (owner v_*
-# materialize from the project-editor binding), GREEN after. retry_until_authorized
-# absorbs ONLY the read-your-writes owner-tuple materialization window (never a real
-# deny — a genuine 403 still fails the assertion once the budget is spent).
+# suite actually covers it. retry_until_authorized absorbs ONLY the read-your-writes
+# owner-tuple materialization window (never a real deny — a genuine 403 still fails
+# the assertion once the budget is spent).
+#
+# ЗДЕСЬ СТОЯЛО «RED until the #71 FGA model+wiring deploys … GREEN after» И ПОМЕТКА
+# `# verifies #71` НА САМОМ КЕЙСЕ. Оба пережили свой предмет: типы `storage_volume` /
+# `storage_snapshot` / `storage_image` в модели есть
+# (`proto/kacho/cloud/iam/v1/fga_model.fga`), тикет `kacho#71` закрыт COMPLETED
+# 2026-08-06 — значит объявление «ожидаемо красный» стало ЛОЖНЫМ утверждением о
+# продукте, а пометка выкупала из «всё обязано быть зелёным» кейс, который обязан быть
+# зелёным. Отдельно: пометка называла тикет БЕЗ репозитория (`#71`), а такую ссылку
+# нельзя разрешить — у неё не было срока жизни даже в принципе.
+#
+# ЧТО ЗАЩИЩАЕТ КЕЙС: полный object-self CRUD своего тома выполняется под
+# ПРОЕКТНО-ОГРАНИЧЕННЫМ действующим лицом, а не только под кластерным администратором,
+# чья проверка короткозамыкает пообъектную. Именно эта пара и отличает «доступ
+# материализован» от «маскируется вышестоящим правом».
 # ---------------------------------------------------------------------------
 
 CASES.append(Case(
     id="VOL-OBJSELF-PROJECT-SCOPED-CRUD",
     title="[#71] project-scoped editor Get/Update/Delete OWN volume → 200 (object-self anti-BOLA; NOT cluster-admin-masked)",
     classes=["CRUD", "AUTHZ", "CONF"], priority="P0",
-    # verifies #71 (storage_* FGA types + reconciler wiring; object-self tenant authz)
     steps=[
         # Create as the default cluster-admin (reliable seed); the volume lands in
         # _suiteProjectId, on which jwtProjectEditorA holds an editor binding.
