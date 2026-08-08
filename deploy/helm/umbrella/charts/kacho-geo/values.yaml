@@ -133,12 +133,18 @@ resources:
 # Post-install/post-upgrade Helm-hook Job: copies regions/zones rows from the
 # kacho_compute DB → kacho_geo DB PRESERVING ids (so existing Instance.zone_id /
 # Subnet.zone_id / address_pools.zone_id / NLB region_id stay valid). Idempotent
-# (ON CONFLICT DO NOTHING) — the geo migration already seeds the same baseline
-# rows, so this carries only admin-added rows. Runs AFTER geo + pg-geo are up
-# (post-install/upgrade hook), BEFORE consumers are repointed (S4/S5 image switch
-# deploys later). On a greenfield/ephemeral stand (fe3455) the geo seed covers
-# the baseline → this is a no-op there, but required for stands with admin-added
-# geography.
+# (ON CONFLICT DO NOTHING): a re-run never duplicates and never fails.
+#
+# ЧТО ЗДЕСЬ СТОЯЛО НЕВЕРНО. Две строки утверждали, что «geo migration already
+# seeds the same baseline rows» и что на чистом стенде Job — no-op. Оба неверны:
+# `services/geo/internal/migrations/*.sql` не содержит ни одного INSERT
+# (`git grep -c 'INSERT INTO' services/geo/internal/migrations` → 0), а источник
+# (`kacho_compute.regions`/`.zones`) на чистом стенде ДРОПНУТ, а не пуст, —
+# значит Job не «ничего не копирует», а падает на 42P01. Ровно поэтому
+# `enabled: false` во всех профилях; это ОДНОРАЗОВЫЙ инструмент переноса.
+#
+# Базовый каталог чистого стенда сеет `make seed-geo`
+# (`deploy/scripts/geo-baseline.sql`), вызываемый из рецепта `dev-up`.
 dataMigration:
   enabled: false
   # psql image with access to both Postgres instances (source kacho_compute,
