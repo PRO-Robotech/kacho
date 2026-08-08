@@ -48,7 +48,7 @@ func repoRoot(t *testing.T) string {
 func readRepoFile(t *testing.T, rel string) string {
 	t.Helper()
 	p := filepath.Join(repoRoot(t), rel)
-	b, err := os.ReadFile(p) //nolint:gosec // путь собран из константы и корня репо
+	b, err := os.ReadFile(p) // #nosec G304 -- путь собран из константы пробы и корня репозитория, извне не приходит
 	require.NoError(t, err, "нет артефакта %s — проба читает поставляемый файл, а не свою копию", rel)
 	require.NotEmpty(t, strings.TrimSpace(string(b)), "%s пуст", rel)
 	return string(b)
