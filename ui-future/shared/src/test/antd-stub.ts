@@ -111,10 +111,15 @@ export function antdStub(): Record<string, unknown> {
   const Checkbox = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
     React.createElement("label", null, React.createElement("input", { type: "checkbox", ...props }), children);
 
+  // Ссылка настоящей типографики — якорь. Её отсутствие в наборе не «обедняло
+  // проверку», а роняло рендер целиком: узел разворачивался в `undefined`.
+  const Anchor = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
+    React.createElement("a", props, children);
   const Typography = Object.assign(Component, {
     Text: Component,
     Title: Component,
     Paragraph: Component,
+    Link: Anchor,
   });
   const Layout = Object.assign(Component, {
     Content: Component,
