@@ -70,8 +70,10 @@ cd "$REPO_ROOT" || exit 2
 DECLARED="
 .github/scripts/aggregate-shard-verdicts.py
 .github/scripts/check-newman-suite-gates.py
+.github/scripts/check-pinned-tools.sh
 .github/scripts/check-volume-mounts.py
 .github/scripts/newman-live.py
+.github/scripts/run-python-probes.py
 deploy/scripts/assert-admin-hop-transport.sh
 deploy/scripts/assert-alt-fixtures-are-another.py
 deploy/scripts/assert-ban6-external-isolation.py
@@ -105,6 +107,7 @@ deploy/tests/helm/networkpolicy-egress-test.sh
 deploy/tests/helm/outbox-autovacuum-naptime-test.sh
 deploy/tests/helm/prerequisite-secrets-test.sh
 deploy/tests/helm/trusted-forwarder-profiles-test.sh
+services/compute/tests/newman/scripts/validate-cases.py
 services/iam/tests/newman/scripts/exec-coverage.py
 tests/authz-fixtures/ceremony_credentials.py
 tests/authz-fixtures/prodseed_all.py

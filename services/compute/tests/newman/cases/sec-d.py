@@ -14,6 +14,12 @@ eventual через IAM), а Delete → Get 404.
 
 Контракт изоляции: каждый case в своём runId, работает внутри pre-allocated
 existingProjectId (_suiteProjectId из env); имена суффиксуются {{runId}}.
+
+АКТОР. Дефолт коллекции — ПРОЕКТНЫЙ (`jwtProjectAdminA1`), и здесь это несущее: предмет
+кейса — что owner-tuple ресурса ДОЕЗЖАЕТ через очередь регистраций и пообъектная проверка
+после этого резолвится. Под бутстрап-админом утверждение было бы вакуумным — кластерный ярус
+разрешает плоско, поэтому `Get` прошёл бы и при вовсе не доставленном tuple. Cluster-admin
+остаётся только на посеве каталога размерностей (`auth=ADMIN_AUTH`).
 Носителем этих проб был Disk; дубль блочного хранения снят (владелец —
 kacho-storage), а проверяемое свойство — owner-tuple через outbox — принадлежит
 не ему, поэтому пробы переехали на Instance. id-prefix Instance = `ins-`.
@@ -32,20 +38,25 @@ _BOOT_STORAGE = {"type": "storage.image", "id": "img-9k2m4x7q1n8p:22.04-lts"}
 
 
 def _seed_mt(suffix):
-    """Seed a MachineType (Internal*, :8081) → sets mtId. Instance.Create needs one."""
+    """Seed a MachineType (Internal*, :8081) → sets mtId. Instance.Create needs one.
+
+    Актор — cluster-admin (`ADMIN_AUTH`): админ-CRUD каталога размерностей гейтится
+    `system_admin` на cluster-singleton, а дефолт коллекции проектный. Опрос Operation несёт
+    того же актора — владелец операции есть создавший её принципал."""
     body = {"name": f"mtsd{suffix}{{{{runId}}}}", "family": "STANDARD",
             "effectiveResources": {"vCpu": 2, "memoryMib": 8192, "gpus": 0},
             "availableZones": ["{{existingZoneId}}", "{{existingZoneAltId}}"], "status": "AVAILABLE"}
     return [Step(name=f"seed-mt-{suffix}", method="POST", path=MT_INT, body=body, internal=True,
+                 auth=ADMIN_AUTH,
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("j.metadata && j.metadata.machineTypeId", "mtId")]),
-            poll_operation_until_done(), assert_op_success()]
+            poll_operation_until_done(auth=ADMIN_AUTH), assert_op_success(auth=ADMIN_AUTH)]
 
 
 def _cleanup_mt():
     return [Step(name="cleanup-mt", method="DELETE", path=MT_INT + "/{{mtId}}", internal=True,
-                 test_script=[*save_from_response("j.id", "opId")]),
-            poll_operation_until_done()]
+                 auth=ADMIN_AUTH, test_script=[*save_from_response("j.id", "opId")]),
+            poll_operation_until_done(auth=ADMIN_AUTH)]
 
 
 # ---------------------------------------------------------------------------
@@ -110,14 +121,42 @@ CASES.append(Case(
 # отсутствует (нечему записаться). Тот же путь, что get-after-delete happy-кейса.
 # ---------------------------------------------------------------------------
 
+# ДВЕ ЗАЩИТИМЫЕ ЛИНИИ, И КАЖДАЯ ПРОВЕРЯЕТСЯ ПО СУЩЕСТВУ — это не ослабление.
+#
+# Под ПРОЕКТНЫМ актором (а не бутстрап-админом, см. #72) край короткозамыкает
+# раньше сервиса: `scope_extractor` не может резолвить target→project для
+# несуществующего объекта, поэтому анти-BOLA отвечает fail-closed 403 ДО того, как
+# запрос дойдёт до `repo.Get`. Наблюдалось прогоном: код 7 и
+# `"no authorization path to the resource"`.
+#
+# Прежняя редакция требовала строго 404 и была верна ровно для привилегированного
+# вызывающего, который видит всё. Толерантность здесь перечисляет РАЗНЫЕ ЛИНИИ, у
+# каждой свой производитель, — а не разные исходы одной линии (`testing.md`
+# §e2e-инварианты прямо предписывает эту форму и объясняет, почему authz-отказ на
+# недоступный объект защитим).
+#
+# Взаимоисключающих исходов тут нет: обе ветки означают ОТКАЗ, и внутри каждой
+# утверждение остаётся полным — код gRPC и предмет сообщения. Пустить `oneOf` без
+# разбора по ветке значило бы перестать утверждать вовсе.
 CASES.append(Case(
     id="SECD-DEL-NEG-NOT-FOUND",
-    title="SEC-D: Delete несуществующего instance → sync 404 NOT_FOUND (ownership pre-check фиксирует отсутствие ДО Operation; orphan unregister-intent не пишется)",
+    title="SEC-D: Delete несуществующего instance → отвергнут (404 own-полосой либо authz-first 403 на крае); Operation не заводится, orphan unregister-intent не пишется",
     classes=["NEG"], priority="P2",
     steps=[
         Step(name="delete-missing", method="DELETE", path=INSTANCES + "/ins-00000000000000000",
-             test_script=[*assert_status(404), *assert_grpc_code(5, "NOT_FOUND"),
-                          "pm.test('text mentions not found', () => pm.expect((pm.response.json().message || '').toLowerCase()).to.include('not found'));"]),
+             test_script=[
+                 "pm.test('rejected: 404 own-lane or authz-first 403', () => "
+                 "pm.expect(pm.response.code).to.be.oneOf([403, 404]));",
+                 "if (pm.response.code === 404) {",
+                 "  pm.test('grpc code 5 (NOT_FOUND)', () => pm.expect(pm.response.json().code).to.eql(5));",
+                 "  pm.test('text mentions not found', () => "
+                 "pm.expect((pm.response.json().message || '').toLowerCase()).to.include('not found'));",
+                 "} else {",
+                 "  pm.test('grpc code 7 (PERMISSION_DENIED)', () => pm.expect(pm.response.json().code).to.eql(7));",
+                 "  pm.test('authz-first: no path to the resource', () => "
+                 "pm.expect(JSON.stringify(pm.response.json()).toLowerCase()).to.include('authorization path'));",
+                 "}",
+             ]),
     ],
 ))
 

@@ -10,10 +10,16 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# Runtime — nginx serves the static Docusaurus output (NO proxy_pass)
-FROM nginx:1.27-alpine
+# Runtime — nginx раздаёт статику Docusaurus (без proxy_pass).
+# nginx-unprivileged: работает под non-root uid 101, слушает 8080, pid и временные
+# файлы уводит в /tmp — поэтому уживается с runAsNonRoot + readOnlyRootFilesystem
+# (см. deploy/templates/deployment.yaml).
+FROM nginxinc/nginx-unprivileged:1.27-alpine
 COPY --from=build /app/build /usr/share/nginx/html
 COPY deploy/default.conf /etc/nginx/conf.d/default.conf
+
+# Явный non-root USER (trivy DS-0002: контейнер не должен работать под root).
+USER 101
 
 EXPOSE 8080
 CMD ["nginx", "-g", "daemon off;"]

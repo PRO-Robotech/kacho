@@ -18,22 +18,37 @@ Idempotent: re-runs never duplicate / never fail (ON CONFLICT (id) DO NOTHING).
 NOTE (doc-truthfulness): the geo goose migration does NOT seed any baseline rows
 — `services/geo/internal/migrations/0001_initial.sql` starts the catalog EMPTY.
 On a live cutover this Job carries the real Region/Zone rows out of a populated
-kacho_compute; the baseline for greenfield/ephemeral stands is seeded separately
-as a newman fixture prerequisite (tests/authz-fixtures/setup.sh::seed_geo_baseline
-+ prodseed_matrix.py::_seed_geo_catalog), not by this Job or the migration.
+kacho_compute; the baseline for greenfield/ephemeral stands is seeded separately,
+not by this Job and not by the migration. Its TWO real producers, both verified
+present in the tree (`git grep -n`):
+  * stand bring-up — `deploy/scripts/geo-baseline.sql`, applied by
+    `deploy/scripts/seed-geo-baseline.sh` (target `make seed-geo`, called from
+    the `dev-up` recipe). This is what makes a fresh stand usable at all.
+  * newman prerequisite — `tests/authz-fixtures/prodseed_matrix.py`
+    `_seed_geo_catalog()`, via the geo Internal admin RPC.
+An earlier revision of this note named a seeding function inside
+tests/authz-fixtures/setup.sh as the producer. No such function exists there (the
+file has zero occurrences of that name), so the note pointed at nothing; the dead
+name is deliberately not reproduced here, because a name in backticks reads as a
+live coordinate and the next reader would go looking for it.
 created_at is carried verbatim (the INSERT lists created_at explicitly — not
-DEFAULT now()), so timestamps are preserved.
+DEFAULT now()), so timestamps are preserved. status is NOT carried verbatim —
+see the comment at the upsert for why it is derived/normalised there.
 
 Ordering: hook-weight ensures regions load BEFORE zones (zones.region_id FK
 RESTRICT → regions(id)). The Job is a post-install/post-upgrade hook → it runs
 AFTER geo + pg-geo are up and migrated. Consumers are repointed later (S4/S5
 image switch deploys after this).
 
-Greenfield/ephemeral stand (fe3455): the source kacho_compute is EMPTY (compute
-dropped its Region/Zone tables in the redesign — 0011_drop_geography.sql), so this
-Job is a genuine no-op there (nothing to copy). The baseline for such stands comes
-from the newman fixture prerequisite (setup.sh::seed_geo_baseline), NOT this Job.
-Still wired so a live cutover from a populated compute carries geography across.
+Greenfield/ephemeral stand: this Job is NOT a no-op there — it FAILS. compute
+DROPPED its Region/Zone tables in the redesign (0011_drop_geography.sql), and a
+dropped table is not an empty one: `\copy (SELECT … FROM kacho_compute.regions)`
+answers 42P01 and `-v ON_ERROR_STOP=1` turns that into a non-zero exit. That is
+exactly why `dataMigration.enabled` is `false` in every profile that ships
+(`git grep -n 'enabled:' -A0` under `dataMigration:` → values.yaml / values.dev /
+values.prod, all false). The gated template stays as a ONE-TIME tool: flip it on
+only for a stand that still has legacy compute-side geography to carry across.
+The baseline of every other stand comes from the two producers named above.
 */}}
 apiVersion: batch/v1
 kind: Job
@@ -157,13 +172,39 @@ spec:
               # 3) idempotent upsert into kacho_geo (ON CONFLICT DO NOTHING).
               #    regions BEFORE zones (FK RESTRICT zones.region_id -> regions.id).
               #    created_at carried verbatim (NOT DEFAULT now()) — timestamps preserved.
+              #
+              #    ПЕРЕНОС ОБЯЗАН СОХРАНИТЬ НАБОР ЗОН, ПРИГОДНЫХ ДЛЯ РАЗМЕЩЕНИЯ.
+              #    До переноса зона была пригодна ⟺ zone.status='UP' (у источника
+              #    региональной колонки статуса НЕ БЫЛО вовсе — только id/name/created_at).
+              #    После переноса зона пригодна ⟺ zone.status='UP' И region.status='UP'
+              #    (см. kacho_geo миграцию 0004: у обеих таблиц fail-safe DEFAULT 'DOWN').
+              #    Поэтому статус региона ВЫВОДИТСЯ: регион открыт ровно тогда, когда у
+              #    него есть хотя бы одна перенесённая зона 'UP'. Без этого перенесённый
+              #    регион берёт умолчание 'DOWN' и закрывает ВСЕ свои зоны — единственный
+              #    публичный сигнал размещения (openForPlacement°) становится false на
+              #    целой географии, тогда как существование региона/зоны потребители
+              #    по-прежнему подтверждают, то есть отказ приходит не оттуда, где причина.
+              #    Регион без ни одной 'UP'-зоны остаётся 'DOWN' — открывать нечего.
+              #
+              #    Статус зоны ПРИВОДИТСЯ к домену CHECK'а kacho_geo ('UP'|'DOWN'):
+              #    у источника колонка допускала третье значение 'STATUS_UNSPECIFIED',
+              #    которое пригодным никогда не было, а CHECK 0004 его запрещает —
+              #    перенос такой строки как есть роняет весь Job на 23514.
               psql "$DST" -v ON_ERROR_STOP=1 <<'SQL'
-              INSERT INTO regions (id, name, created_at)
-              SELECT id, name, created_at FROM _geo_stg_regions
+              INSERT INTO regions (id, name, status, created_at)
+              SELECT r.id, r.name,
+                     CASE WHEN EXISTS (SELECT 1 FROM _geo_stg_zones z
+                                        WHERE z.region_id = r.id AND z.status = 'UP')
+                          THEN 'UP' ELSE 'DOWN' END,
+                     r.created_at
+              FROM _geo_stg_regions r
               ON CONFLICT (id) DO NOTHING;
 
               INSERT INTO zones (id, region_id, status, name, created_at)
-              SELECT id, region_id, status, name, created_at FROM _geo_stg_zones
+              SELECT id, region_id,
+                     CASE WHEN status = 'UP' THEN 'UP' ELSE 'DOWN' END,
+                     name, created_at
+              FROM _geo_stg_zones
               ON CONFLICT (id) DO NOTHING;
 
               DROP TABLE IF EXISTS _geo_stg_regions;

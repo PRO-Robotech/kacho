@@ -23,8 +23,23 @@ spec:
       annotations:
         checksum/nginx: {{ include (print $.Template.BasePath "/configmap-nginx.yaml") . | sha256sum }}
     spec:
+      # Ужесточение пода (trivy KSV-0118): non-root + seccomp RuntimeDefault.
+      # uid 101 — пользователь образа nginx-unprivileged.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
       enableServiceLinks: false
       volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-conf
+          emptyDir: {}
         - name: nginx-template
           configMap:
             name: {{ include "ui.vpcName" . }}-nginx
@@ -35,10 +50,30 @@ spec:
         - name: vpc
           image: {{ include "ui.vpcImage" . | quote }}
           imagePullPolicy: {{ include "ui.vpcImagePullPolicy" . }}
+          # Ужесточение контейнера (trivy KSV-0014/KSV-0118): read-only rootfs, запрет
+          # повышения привилегий, снятие ВСЕХ capabilities. Записываемых мест ровно три,
+          # и все три — emptyDir ниже: /tmp (pid и временные файлы nginx),
+          # /var/cache/nginx (кэш) и /etc/nginx/conf.d — туда
+          # `20-envsubst-on-templates.sh` рендерит шаблон конфига из ConfigMap, без
+          # записи в этот каталог контейнер не стартует вовсе.
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - name: http
               containerPort: {{ .Values.vpc.port }}
           volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
             - name: nginx-template
               mountPath: /etc/nginx/templates/default.conf.template
               subPath: default.conf.template

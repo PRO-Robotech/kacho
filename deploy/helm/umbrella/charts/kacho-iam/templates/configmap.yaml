@@ -49,7 +49,14 @@ data:
       postgres:
         url: {{ printf "postgres://%s@%s:%v/%s" .Values.db.user .Values.db.host .Values.db.port .Values.db.name | quote }}
         max-conns: {{ default 0 .Values.config.repository.postgres.maxConns }}
-        ssl-mode: {{ default "disable" .Values.config.repository.postgres.sslMode | quote }}
+        # ЯВНО ЗАДАННЫЙ, А НЕ ПОДРАЗУМЕВАЕМЫЙ. Здесь стояло `default "disable"`:
+        # профиль, обнуливший ручку, получал открытый канал к базе МОЛЧА — рендер
+        # зелёный, в манифесте `disable` неотличим от объявленного. `required`
+        # превращает это в отказ с именем настройки, который видит оператор.
+        # Умолчание чарта (values.yaml) осталось на месте — снят только невидимый
+        # подстановочный путь. Что sslmode обязан быть НЕ открытым на боевом
+        # стеке, держит deploy/dbtls_declaration_test.go.
+        ssl-mode: {{ required "config.repository.postgres.sslMode не задан: канал к Postgres обязан быть объявлен явно (disable|require|verify-ca|verify-full); пустое значение молча дало бы открытый текст" .Values.config.repository.postgres.sslMode | quote }}
         password-from-env: KACHO_IAM_DB_PASSWORD
 
     authn:

@@ -74,6 +74,20 @@ python3 services/compute/tests/newman/scripts/gen.py        # все ресур�
 - **Источник истины**: acceptance-spec + proto-определения (`kacho-proto/.../compute/v1/`).
 - **Изоляция**: каждый case-сценарий внутри своего `runId`; suite внутри pre-allocated
   `existingProjectId`/`existingProjectCrossId` (env), проектов **не создаёт**; имена суффиксуются `{{runId}}`.
+- **Актор — ПРОЕКТНЫЙ, отступления объявляет шаг.** Дефолтный Bearer всех шести коллекций —
+  `jwtProjectAdminA1` (editor на `project-A1` и `project-A2`, служебная учётка посева
+  `tests/authz-fixtures/`). Бутстрап-админ дефолтом быть не может: он держит права на всё,
+  поэтому под ним шаг проходит независимо от того, работает ли project-scope авторизация, —
+  и суита перестаёт отличать исправное от сломанного (этот класс уже ловился в дереве:
+  карта прав сервиса разошлась с каталогом края по паре scope+relation, проектный принципал
+  получал отказ на своих ресурсах, бутстрап этого не видел). Cluster-admin остаётся ровно
+  там, где проектный актор недоступен by construction, и каждое такое место объявлено
+  шагом: `auth=ADMIN_AUTH` — админ-CRUD каталога размерностей (`InternalMachineTypeService`,
+  `system_admin` на cluster-singleton) и кейс `OP-GET-CRUD-FAILED-OP`, чей спусковой крючок
+  — создание в чужом проекте — проектному актору недоступен. **Читатель Operation несёт
+  того же актора, что её создатель**: `OperationService.Get/Cancel` энфорсит владение и
+  отвечает чужому `NotFound`. Все три свойства держит проверка 4 в `scripts/validate-cases.py`
+  (её доказательство инъекцией исполняемо: `validate-cases.py --self-test`), а не соглашение.
 - **LRO-poll**: каждая мутация (`Create/Update/Delete/Move/Relocate/Start/Stop/Restart/Attach/Detach/NAT/UpdateMetadata`)
   → `Operation` → poll `GET /operations/{id}` (retry до 8 раз через `setNextRequest`) до `done=true` → assert `response`/`error`.
 - **Формальные техники**: ECP, BVA, decision tables, state transition, error guessing, security — все классы кейсов выводятся системно.

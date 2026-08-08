@@ -234,9 +234,14 @@ fi
 
 if [ "$SEED" = "true" ]; then
   echo "[parallel] seeding auth fixtures (per-service isolated) + patching envs"
-  # INTERNAL_BASE_URL (:8081 internal mux, already port-forwarded above) lets setup.sh
-  # seed the geo baseline (region/zones) + any Internal admin catalog via the :18081 mux.
-  # Without it the greenfield geo catalog stays empty → every zone/region create fails.
+  # INTERNAL_BASE_URL (:8081 internal mux, already port-forwarded above) lets the seed
+  # reach the Internal admin catalog via the :18081 mux. Производитель посева geo назван
+  # точно: setup.sh — точка входа, а регион и зоны заводит его делегат
+  # tests/authz-fixtures/prodseed_matrix.py, функция _seed_geo_catalog. Без этой
+  # переменной каталог greenfield-стенда остаётся пуст → каждое создание зоны/региона
+  # падает. На стенде, поднятом `make dev-up`, тот же базовый каталог уже посеян целью
+  # `make seed-geo`, и делегат становится подтверждённым no-op — но прогон не вправе
+  # ЗАВИСЕТЬ от того, чем поднимали стенд, поэтому посев остаётся.
   # HYDRA_TOKEN_URL передаётся ЯВНО, а не оставляется на умолчание посева. Посев
   # состоит из двух половин, читающих РАЗНЫЕ переменные об одном предмете:
   # prodseed_all.py пробрасывает и проверяет ответ на HYDRA_PUBLIC_PORT, а обмен в
