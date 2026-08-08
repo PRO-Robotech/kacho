@@ -75,6 +75,16 @@ global:
 #    collision). username/database are plain config (NOT secrets) and MUST be set
 #    here so the server bootstraps the role/db the kacho service connects as —
 #    values.prod carries only existingSecret. ──
+# ВКЛЮЧЁННЫЙ TLS — ЭТО ПРЕДЛОЖЕНИЕ, А НЕ ТРЕБОВАНИЕ (выведено из #121).
+# `tls.enabled` заставляет сервер УМЕТЬ шифровать, но правила доступа bitnami по
+# умолчанию — `host`, а `host` матчит соединение и с TLS, и без него: шифрование
+# держится ровно на том, что каждый клиент помнит про `sslmode`. Пропуск виден
+# только со стороны СУБД (`pg_stat_ssl`), постфактум и только пока клиент
+# подключён — поэтому виновника ночной находки #121 установить уже не удалось.
+# Требование перенесено на СЕРВЕР: незашифрованные соединения ПО СЕТИ он больше
+# не принимает. Петля и unix-сокет оставлены открытыми намеренно — сети там нет,
+# и через 127.0.0.1 ходят пробы готовности чарта (`pg_isready -h 127.0.0.1`).
+# Гейт — deploy/dbhba_tls_required_test.go.
 pg-vpc:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
@@ -84,6 +94,15 @@ pg-vpc:
     certificatesSecret: kacho-umbrella-pg-vpc-server-tls
     certFilename: tls.crt
     certKeyFilename: tls.key
+  primary:
+    pgHbaConfiguration: &pgHbaTLSRequired |
+      local     all all                md5
+      host      all all 127.0.0.1/32   md5
+      host      all all ::1/128        md5
+      hostssl   all all 0.0.0.0/0      md5
+      hostssl   all all ::/0           md5
+      hostnossl all all 0.0.0.0/0      reject
+      hostnossl all all ::/0           reject
 pg-compute:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
@@ -93,6 +112,8 @@ pg-compute:
     certificatesSecret: kacho-umbrella-pg-compute-server-tls
     certFilename: tls.crt
     certKeyFilename: tls.key
+  primary:
+    pgHbaConfiguration: *pgHbaTLSRequired
 pg-iam:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
@@ -102,6 +123,8 @@ pg-iam:
     certificatesSecret: kacho-umbrella-pg-iam-server-tls
     certFilename: tls.crt
     certKeyFilename: tls.key
+  primary:
+    pgHbaConfiguration: *pgHbaTLSRequired
 pg-geo:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
@@ -111,6 +134,8 @@ pg-geo:
     certificatesSecret: kacho-umbrella-pg-geo-server-tls
     certFilename: tls.crt
     certKeyFilename: tls.key
+  primary:
+    pgHbaConfiguration: *pgHbaTLSRequired
 pg-nlb:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
@@ -123,6 +148,8 @@ pg-nlb:
 
 # ── infra PGs (openfga/kratos/hydra): bitnamilegacy image + operator secret;
 #    DSN stays Ory/openfga-managed (sslmode=disable) per concession #1. ──
+  primary:
+    pgHbaConfiguration: *pgHbaTLSRequired
 pg-openfga:
   image: { registry: docker.io, repository: bitnamilegacy/postgresql }
   volumePermissions: { image: { registry: docker.io, repository: bitnamilegacy/os-shell } }
@@ -576,3 +603,4 @@ pg-storage:
     resources:
       requests: { cpu: 100m, memory: 256Mi }
       limits: { cpu: 1000m, memory: 1Gi }
+    pgHbaConfiguration: *pgHbaTLSRequired

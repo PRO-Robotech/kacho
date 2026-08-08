@@ -763,6 +763,16 @@ registry:
 # server side of the ssl-mode=require floor: without it the services' `require`
 # has nothing to negotiate with and every connection is refused. Server-auth
 # only — deliberately NO certCAFilename (see the mtls.pgTls note).
+# ВКЛЮЧЁННЫЙ TLS — ЭТО ПРЕДЛОЖЕНИЕ, А НЕ ТРЕБОВАНИЕ (выведено из #121).
+# `tls.enabled` заставляет сервер УМЕТЬ шифровать, но правила доступа bitnami по
+# умолчанию — `host`, а `host` матчит соединение и с TLS, и без него: шифрование
+# держится ровно на том, что каждый клиент помнит про `sslmode`. Пропуск виден
+# только со стороны СУБД (`pg_stat_ssl`), постфактум и только пока клиент
+# подключён — поэтому виновника ночной находки #121 установить уже не удалось.
+# Требование перенесено на СЕРВЕР: незашифрованные соединения ПО СЕТИ он больше
+# не принимает. Петля и unix-сокет оставлены открытыми намеренно — сети там нет,
+# и через 127.0.0.1 ходят пробы готовности чарта (`pg_isready -h 127.0.0.1`).
+# Гейт — deploy/dbhba_tls_required_test.go.
 pg-vpc:
   auth:
     username: vpc
@@ -773,6 +783,15 @@ pg-vpc:
     certificatesSecret: kacho-umbrella-pg-vpc-server-tls
     certFilename: tls.crt
     certKeyFilename: tls.key
+  primary:
+    pgHbaConfiguration: &pgHbaTLSRequired |
+      local     all all                md5
+      host      all all 127.0.0.1/32   md5
+      host      all all ::1/128        md5
+      hostssl   all all 0.0.0.0/0      md5
+      hostssl   all all ::/0           md5
+      hostnossl all all 0.0.0.0/0      reject
+      hostnossl all all ::/0           reject
 pg-compute:
   auth:
     username: compute
@@ -783,6 +802,8 @@ pg-compute:
     certificatesSecret: kacho-umbrella-pg-compute-server-tls
     certFilename: tls.crt
     certKeyFilename: tls.key
+  primary:
+    pgHbaConfiguration: *pgHbaTLSRequired
 pg-iam:
   auth:
     username: iam
@@ -793,6 +814,8 @@ pg-iam:
     certificatesSecret: kacho-umbrella-pg-iam-server-tls
     certFilename: tls.crt
     certKeyFilename: tls.key
+  primary:
+    pgHbaConfiguration: *pgHbaTLSRequired
 pg-geo:
   auth:
     username: geo
@@ -803,6 +826,8 @@ pg-geo:
     certificatesSecret: kacho-umbrella-pg-geo-server-tls
     certFilename: tls.crt
     certKeyFilename: tls.key
+  primary:
+    pgHbaConfiguration: *pgHbaTLSRequired
 pg-openfga:
   enabled: true
   auth:
@@ -823,6 +848,8 @@ pg-nlb:
 # Backing Postgres for kacho-storage (schema kacho_storage). Condition-gated and
 # OFF in base values — enabled here together with `storage` above; the service's
 # db.host/passwordSecretName point at this instance.
+  primary:
+    pgHbaConfiguration: *pgHbaTLSRequired
 pg-storage:
   enabled: true
   auth:
@@ -837,6 +864,8 @@ pg-storage:
 # Backing Postgres for kacho-registry (schema kacho_registry). Condition-gated and
 # absent from base values — enabled here together with `registry` above; the
 # service's chart-default db.host/existingSecret already point at this instance.
+  primary:
+    pgHbaConfiguration: *pgHbaTLSRequired
 pg-registry:
   enabled: true
   auth:
@@ -848,6 +877,8 @@ pg-registry:
     certificatesSecret: kacho-umbrella-pg-registry-server-tls
     certFilename: tls.crt
     certKeyFilename: tls.key
+  primary:
+    pgHbaConfiguration: *pgHbaTLSRequired
 pg-kratos:
   enabled: true
   auth:
