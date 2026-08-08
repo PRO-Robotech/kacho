@@ -14,6 +14,12 @@ eventual через IAM), а Delete → Get 404.
 
 Контракт изоляции: каждый case в своём runId, работает внутри pre-allocated
 existingProjectId (_suiteProjectId из env); имена суффиксуются {{runId}}.
+
+АКТОР. Дефолт коллекции — ПРОЕКТНЫЙ (`jwtProjectAdminA1`), и здесь это несущее: предмет
+кейса — что owner-tuple ресурса ДОЕЗЖАЕТ через очередь регистраций и пообъектная проверка
+после этого резолвится. Под бутстрап-админом утверждение было бы вакуумным — кластерный ярус
+разрешает плоско, поэтому `Get` прошёл бы и при вовсе не доставленном tuple. Cluster-admin
+остаётся только на посеве каталога размерностей (`auth=ADMIN_AUTH`).
 Носителем этих проб был Disk; дубль блочного хранения снят (владелец —
 kacho-storage), а проверяемое свойство — owner-tuple через outbox — принадлежит
 не ему, поэтому пробы переехали на Instance. id-prefix Instance = `ins-`.
@@ -32,20 +38,25 @@ _BOOT_STORAGE = {"type": "storage.image", "id": "img-9k2m4x7q1n8p:22.04-lts"}
 
 
 def _seed_mt(suffix):
-    """Seed a MachineType (Internal*, :8081) → sets mtId. Instance.Create needs one."""
+    """Seed a MachineType (Internal*, :8081) → sets mtId. Instance.Create needs one.
+
+    Актор — cluster-admin (`ADMIN_AUTH`): админ-CRUD каталога размерностей гейтится
+    `system_admin` на cluster-singleton, а дефолт коллекции проектный. Опрос Operation несёт
+    того же актора — владелец операции есть создавший её принципал."""
     body = {"name": f"mtsd{suffix}{{{{runId}}}}", "family": "STANDARD",
             "effectiveResources": {"vCpu": 2, "memoryMib": 8192, "gpus": 0},
             "availableZones": ["{{existingZoneId}}", "{{existingZoneAltId}}"], "status": "AVAILABLE"}
     return [Step(name=f"seed-mt-{suffix}", method="POST", path=MT_INT, body=body, internal=True,
+                 auth=ADMIN_AUTH,
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("j.metadata && j.metadata.machineTypeId", "mtId")]),
-            poll_operation_until_done(), assert_op_success()]
+            poll_operation_until_done(auth=ADMIN_AUTH), assert_op_success(auth=ADMIN_AUTH)]
 
 
 def _cleanup_mt():
     return [Step(name="cleanup-mt", method="DELETE", path=MT_INT + "/{{mtId}}", internal=True,
-                 test_script=[*save_from_response("j.id", "opId")]),
-            poll_operation_until_done()]
+                 auth=ADMIN_AUTH, test_script=[*save_from_response("j.id", "opId")]),
+            poll_operation_until_done(auth=ADMIN_AUTH)]
 
 
 # ---------------------------------------------------------------------------
