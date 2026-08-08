@@ -38,25 +38,31 @@ MT_INT = "/compute/v1/internal/machineTypes"   # admin seed (:8081, ban #6)
 def _seed_mt(suffix, id_var="mtId"):
     """Seed a MachineType via InternalMachineTypeService.Create (:8081) so the instance
     Create can resolve machineTypeId in the catalog (doCreate → resolveMachineType;
-    catalog empty on the stand). Uses the DEFAULT bootstrap cluster-admin Bearer (the
-    Internal admin-CRUD is system_admin — jwtProjectAdminA1 cannot seed it), so NO per-step
-    auth override. Sets id_var to the mt- id. Mirrors instance-redesign _seed_mt (COMP-1 F7);
-    {{runId}}-unique name (UNIQUE(name) cluster-wide)."""
+    catalog empty on the stand). Sets id_var to the mt- id. Mirrors instance-redesign
+    _seed_mt (COMP-1 F7); {{runId}}-unique name (UNIQUE(name) cluster-wide).
+
+    Актор — cluster-admin (`ADMIN_AUTH`) ЯВНО. Прежде это держалось на том, что дефолтом
+    коллекции был бутстрап-админ, и здесь стояла запись «per-step override не нужен» —
+    утверждение, верное только пока дефолт был именно таким. Дефолт стал проектным, и
+    неявная опора превратилась бы в 403 на посеве. Опрос Operation несёт того же актора:
+    владелец операции — создавший её принципал."""
     nm = f"lfmt{suffix}{{{{runId}}}}"
     body = {"name": nm, "family": "STANDARD",
             "effectiveResources": {"vCpu": 2, "memoryMib": 8192, "gpus": 0},
             "availableZones": ["{{existingZoneId}}", "{{existingZoneAltId}}"], "status": "AVAILABLE"}
     return [Step(name=f"lf-seed-mt-{suffix}", method="POST", path=MT_INT, body=body, internal=True,
+                 auth=ADMIN_AUTH,
                  test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                               *save_from_response("j.metadata && j.metadata.machineTypeId", id_var)]),
-            poll_operation_until_done(), assert_op_success()]
+            poll_operation_until_done(auth=ADMIN_AUTH), assert_op_success(auth=ADMIN_AUTH)]
 
 
 def _cleanup_mt(suffix, id_var="mtId"):
-    """Delete the seeded MachineType (default bootstrap admin auth, as _seed_mt)."""
+    """Delete the seeded MachineType (cluster-admin, as _seed_mt)."""
     return [Step(name=f"lf-cleanup-mt-{suffix}", method="DELETE", path=MT_INT + "/{{" + id_var + "}}",
-                 internal=True, test_script=[*save_from_response("j.id", "opId")]),
-            poll_operation_until_done()]
+                 internal=True, auth=ADMIN_AUTH,
+                 test_script=[*save_from_response("j.id", "opId")]),
+            poll_operation_until_done(auth=ADMIN_AUTH)]
 
 
 def _instance_body(name_suffix, project_var, mt="{{mtId}}"):
