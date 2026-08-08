@@ -154,6 +154,9 @@ func TestUnscopedCancelExemptionsStillHaveSubject(t *testing.T) {
 				"несуженную отмену незамеченной.", dir)
 		}
 	}
+
+	// Перепись: пустой список законен, но обязан быть отличим от непрочитанного.
+	t.Logf("перепись: записей исключений рассмотрено %d", len(unscopedCancelExempt))
 }
 
 // TestOwnershipScopedPortPremiseHolds — запрет опирается на факт, который может

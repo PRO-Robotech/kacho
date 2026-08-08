@@ -143,6 +143,11 @@ func TestHideExistenceFormatsMatchTheOwningServiceSource(t *testing.T) {
 				"больше нет. Удали её, иначе исключение станет слепой зоной.", objType)
 		}
 	}
+
+	// Перепись: сколько таблиц прочитано и сколько форм сверено. Проверка
+	// предпосылки выше роняет гейт на пустом корпусе, но её прохождение молчаливо.
+	t.Logf("перепись: таблиц скрытия %d, форм совпало %d, освобождено %d; корпус исходников %d байт",
+		len(hideExistenceTables), matched, exempted, len(sources))
 }
 
 // catalogScopeObjectTypes — множество типов объектов, которые каталог якорит хотя

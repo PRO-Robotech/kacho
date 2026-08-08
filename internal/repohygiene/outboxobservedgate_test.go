@@ -160,6 +160,11 @@ func TestEveryDrainedOutboxIsSplitByDirection(t *testing.T) {
 			"выдачи дренятся непрерывно. Задай CollectorConfig.Directions либо заведи "+
 			"запись в outboxDirectionSplitExempt с обоснованием.", table)
 	}
+
+	// Перепись: «все очереди разложены по направлению» значимо ровно настолько,
+	// насколько обход нашёл очереди. Ноль дренируемых дал бы тот же зелёный.
+	t.Logf("перепись: дренируемых очередей %d, наблюдаемых %d, освобождено записью %d",
+		len(inv.drained), len(inv.observed), len(outboxDirectionSplitExempt))
 }
 
 // TestOutboxDirectionExemptionsHaveSubject — исключение живёт, пока у него есть
@@ -174,6 +179,11 @@ func TestOutboxDirectionExemptionsHaveSubject(t *testing.T) {
 				"дереве нет. Удали запись.", table)
 		}
 	}
+
+	// Перепись: пустой список исключений законен, но обязан быть отличим от
+	// списка, который не прочитали.
+	t.Logf("перепись: записей исключений рассмотрено %d, дренируемых очередей в дереве %d",
+		len(outboxDirectionSplitExempt), len(inv.drained))
 }
 
 type outboxInventory struct {

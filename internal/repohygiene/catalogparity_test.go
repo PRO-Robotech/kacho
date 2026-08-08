@@ -207,6 +207,15 @@ func TestScopeFilteredCatalogRowsAreBackedByAServiceMap(t *testing.T) {
 				"становится слепой зоной, которую унаследует следующий.", fqn)
 		}
 	}
+
+	// Перепись: «ноль необеспеченных» обязано быть отличимо от «ноль прочитанных
+	// строк каталога» и от «ноль найденных карт прав». Обе предпосылки выше уже
+	// роняют гейт на пустоте, но их прохождение молчаливо — а молчание неотличимо
+	// от того, что осмотра не было.
+	t.Logf("перепись: строк каталога %d, из них scope_filtered %d; карт прав осмотрено %d, "+
+		"объявляют сужение %d; необеспеченных %d (внесено с разбором %d)",
+		len(rows), len(declared), len(discoverAuthzMapPackages(t, root)), len(backed),
+		len(actual), len(pinned))
 }
 
 // scopeFilteredMethods — ключи карты прав, значение которых объявляет
@@ -303,6 +312,15 @@ func TestEveryServiceAuthzMapIsComparedAgainstTheCatalog(t *testing.T) {
 			"если это не карта прав / удалить неподключённую карту.",
 			len(missing), strings.Join(missing, "\n  "))
 	}
+
+	// Перепись: «ни одна карта не осталась несверенной» значит что-то только если
+	// карт вообще нашлось. Ноль найденных дал бы ровно тот же зелёный вердикт.
+	pf := 0
+	for _, p := range pkgs {
+		pf += len(p.ParityFiles)
+	}
+	t.Logf("перепись: карт прав найдено %d, сверяющих проб при них %d, несверенных %d",
+		len(pkgs), pf, len(missing))
 }
 
 // TestCatalogDivergenceRosterIsPinned — репо-широкий реестр расхождений обязан
@@ -364,6 +382,11 @@ func TestCatalogDivergenceRosterIsPinned(t *testing.T) {
 				"расхождений и становится списком, которому никто не верит.", d)
 		}
 	}
+
+	// Перепись: пустой обход дал бы «расхождений нет» — вердикт, неотличимый от
+	// зелёного по существу. Числа отделяют одно от другого.
+	t.Logf("перепись: пакетов с картой прав %d, расхождений в дереве %d, в реестре %d",
+		len(pkgs), len(actual), len(pinned))
 }
 
 // TestCatalogParityRosterPremiseHolds — гейт выше опирается на факты, которые
@@ -428,6 +451,22 @@ func TestCatalogParityRosterPremiseHolds(t *testing.T) {
 			"Пересинхронизируй обе из перегенерированной (`make -C gateway permission-catalog-apply`).",
 			catalogEmbedPath, iamCatalogMirrorPath)
 	}
+
+	// Перепись предпосылок: сколько пакетов осмотрено и у скольких из них найдены обе
+	// несущие конструкции. Проверка предпосылки, о результате которой не сказано,
+	// сама становится тем, от чего защищает.
+	withVar, withDiff := 0, 0
+	for _, p := range pkgs {
+		if p.DivergenceVarDecls == 1 {
+			withVar++
+		}
+		if p.DiffCalls > 0 {
+			withDiff++
+		}
+	}
+	t.Logf("перепись предпосылок: пакетов с картой прав %d; из них объявляют реестр ровно "+
+		"один раз %d, передают его в сравнение %d; копий каталога сверено 2, байт %d",
+		len(pkgs), withVar, withDiff, len(embedded))
 }
 
 // discoverAuthzMapPackages — находит пакеты с `func PermissionMap() authz.RPCMap`

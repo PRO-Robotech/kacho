@@ -620,6 +620,10 @@ func TestStaleClaimLegitimateHitsStillHaveSubject(t *testing.T) {
 				"иначе она станет слепой зоной для следующего вхождения", l.file, l.contains)
 		}
 	}
+
+	// Перепись: сколько записей перечня рассмотрено. «Все с предметом» на пустом
+	// перечне — утверждение ни о чём.
+	t.Logf("перепись: записей перечня законного рассмотрено %d, файлов осмотрено %d", len(legitimateCalibrationHits), len(files))
 }
 
 // TestStaleClaimSelfReferenceStillHasSubject — исключение самоцитирования обязано
