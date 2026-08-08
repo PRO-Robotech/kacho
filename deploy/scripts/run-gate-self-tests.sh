@@ -70,6 +70,7 @@ cd "$REPO_ROOT" || exit 2
 DECLARED="
 .github/scripts/aggregate-shard-verdicts.py
 .github/scripts/check-newman-suite-gates.py
+.github/scripts/check-pinned-tools.sh
 .github/scripts/check-volume-mounts.py
 .github/scripts/newman-live.py
 .github/scripts/run-python-probes.py

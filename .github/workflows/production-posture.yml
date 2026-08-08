@@ -105,10 +105,17 @@ jobs:
       # kind — БИНАРЬ, без создания кластера: кластер поднимает `make dev-up` своим
       # kind-config (host-port mappings для ingress). БЕЗ sudo и в ~/bin — установка
       # переносима между ранерами и переживает смену площадки.
+      #
+      # ВЕРСИЯ ОБЯЗАНА СОВПАДАТЬ с пином в e2e-newman.yml, и это не оформление: версия
+      # kind задаёт версию Kubernetes узла (0.32.0 → `kindest/node:v1.36.1`, 0.30.0
+      # ставил v1.34.0). Два конвейера, поднимающие стенд разными kind, судят о том же
+      # дереве на разных кластерах — вердикты становятся несравнимы. Совпадение держит
+      # .github/scripts/check-pinned-tools.sh (--divergence-only), там же — разбор
+      # перехода на kubeadm v1beta4.
       - name: kind
         run: |
           mkdir -p "$HOME/bin"
-          curl -sSLo "$HOME/bin/kind" https://kind.sigs.k8s.io/dl/v0.30.0/kind-linux-amd64
+          curl -sSLo "$HOME/bin/kind" https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64
           chmod +x "$HOME/bin/kind"
           echo "$HOME/bin" >> "$GITHUB_PATH"
           "$HOME/bin/kind" version
