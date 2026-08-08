@@ -127,6 +127,11 @@ func TestUseCaseLayerHasOneLayout(t *testing.T) {
 			"helper). Каталог с именем слоя вне слоя — не исход.",
 			strings.Join(hits, "\n  "))
 	}
+
+	// Перепись: «второй раскладки нет» значимо ровно настолько, насколько обход
+	// вообще дошёл до сервисов. Ноль осмотренных дал бы тот же зелёный вердикт.
+	t.Logf("перепись: сервисов осмотрено %d, каталогов-слоёв вне apps найдено %d, "+
+		"освобождено записью %d", len(serviceDirs(t, root)), len(hits), len(useCaseLayoutHandoff))
 }
 
 // TestUseCaseLayoutExemptionsStillHaveSubject — исключение обязано умереть
@@ -151,6 +156,10 @@ func TestUseCaseLayoutExemptionsStillHaveSubject(t *testing.T) {
 				"и запись из useCaseLayoutHandoff.", rel)
 		}
 	}
+
+	// Перепись: пустой список исключений — законное состояние, но он обязан быть
+	// отличим от списка, который забыли прочитать.
+	t.Logf("перепись: записей исключений рассмотрено %d", len(useCaseLayoutHandoff))
 }
 
 // TestUseCaseLayoutPremiseHolds — запрет выше опирается на факт, который может
@@ -169,6 +178,7 @@ func TestUseCaseLayoutExemptionsStillHaveSubject(t *testing.T) {
 // — ровно на compute, и именно так и должна была себя вести.
 func TestUseCaseLayoutPremiseHolds(t *testing.T) {
 	root := repoRoot(t)
+	total := 0
 
 	for _, svc := range serviceDirs(t, root) {
 		api := filepath.Join(root, svc, "internal", "apps", "kacho", "api")
@@ -190,7 +200,13 @@ func TestUseCaseLayoutPremiseHolds(t *testing.T) {
 				"в нём нет. Предпосылка запрета второй раскладки не выполняется — "+
 				"use-case этого сервиса лежит не там, где утверждает правило.", svc)
 		}
+		total += pkgs
 	}
+
+	// Перепись: предпосылка проверена по КАЖДОМУ сервису, и это число названо —
+	// иначе «предпосылка держится» неотличимо от «сервисов не нашлось».
+	t.Logf("перепись: сервисов осмотрено %d, пакетов слоя в них суммарно %d",
+		len(serviceDirs(t, root)), total)
 }
 
 // serviceDirs — каталоги сервисов (`services/<svc>`), у которых есть `internal`.
