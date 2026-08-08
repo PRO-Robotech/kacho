@@ -14,12 +14,19 @@ import (
 
 // ─── fixtures ────────────────────────────────────────────────────────────────
 
-// suite writes a minimal newman suite: one collection of folders and steps, plus
-// the results doc. Everything the gate reads, nothing it does not.
+// suite writes a minimal newman suite: one collection of folders and steps, the
+// results doc, and a case file. Everything the gate reads, nothing it does not.
+//
+// The case file carries no `# verifies` marker, so the third half of the gate
+// (annotation.go) has nothing to judge here — but it must have something to READ:
+// that half treats "zero case files across the tree" as a finding, on the same
+// premise as "zero results docs". A fixture without cases/ would trip it, and the
+// fix is to give the fixture what a real suite has, not to soften the premise.
 func suite(t *testing.T, root, svc, results string, folders map[string][]string) {
 	t.Helper()
 	base := filepath.Join(root, "services", svc, "tests", "newman")
 	mustWrite(t, filepath.Join(base, "docs", "RESULTS.md"), results)
+	mustWrite(t, filepath.Join(base, "cases", "main.py"), "CASES = []\n")
 
 	var items []any
 	for folder, steps := range folders {
