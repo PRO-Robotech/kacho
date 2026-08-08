@@ -121,11 +121,15 @@ def _cleanup_vpc(id_var):
     прячет — он лишь не добавляет второго, вводящего в заблуждение падения.
     """
     return [
-        Step(name=f"zc-cleanup-{id_var}", method="DELETE", path=f"{_VPC_SUBNETS}/{{{{{id_var}}}}}",
-             test_script=[
-                 f"if (!pm.environment.get('{id_var}')) {{ pm.environment.set('opId', ''); return; }}",
-                 *save_from_response("j.id", "opId"),
-             ]),
+        # Повтор на время возврата аренды: удаление балансировщика долговечно, а
+        # освобождение выделенных им адресов идёт следом и асинхронно, поэтому
+        # подсеть в узком окне отвергает своё удаление. Любой другой отказ терминален.
+        retry_delete_until_released(
+            Step(name=f"zc-cleanup-{id_var}", method="DELETE", path=f"{_VPC_SUBNETS}/{{{{{id_var}}}}}",
+                 test_script=[
+                     f"if (!pm.environment.get('{id_var}')) {{ pm.environment.set('opId', ''); return; }}",
+                     *save_from_response("j.id", "opId"),
+                 ])),
         poll_operation_until_done(),
     ]
 

@@ -654,6 +654,54 @@ def retry_create_until_present(step: Step, budget: int = 25, interval_ms: int = 
                    test_script=guard + list(step.test_script))
 
 
+def retry_delete_until_released(step: Step, budget: int = 25, interval_ms: int = 500) -> Step:
+    """Обернуть УБОРКУ подсети в ограниченный повтор на время освобождения адресов.
+
+    Удаление балансировщика отвечает Operation `done` — предмет мутации долговечен. Но
+    возврат выделенных адресов в свободный список идёт СЛЕДОМ и асинхронно (см.
+    data-integrity.md §lease-recycle-on-delete), поэтому подсеть в узком окне ещё
+    держит их и синхронно отвергает своё удаление: `FAILED_PRECONDITION` с текстом
+    "Subnet has allocated internal addresses".
+
+    Это ЗАКОННЫЙ временный отказ, а не дефект: кейс не про него, а про совпадение зон.
+    Наблюдался в шарде nlb, где уборка v6-подсети падала ПОСЛЕ успешного удаления
+    балансировщика (первое исполнение 200, второе — 400 с этим текстом).
+
+    ПОЧЕМУ ЭТО НЕ ОСЛАБЛЕНИЕ. Повтор различается ПО СУЩЕСТВУ отказа, а не по коду:
+    сообщение конкретно и производится ровно одной причиной. Бюджет ограничен, и по его
+    исчерпании настоящее утверждение шага исполняется РОВНО ОДИН раз на терминальном
+    ответе — подсеть, которая не освобождается никогда (настоящий дефект пула), всё
+    равно уронит кейс. Ни маскировки, ни бесконечного ожидания.
+    """
+    guard = [
+        "// SELF-повтор, пока подсеть держит ещё не возвращённые адреса: удаление",
+        "// балансировщика долговечно, а возврат аренды в пул идёт следом и асинхронно.",
+        "// Любой ДРУГОЙ отказ терминален и роняет шаг с первой попытки.",
+        "if (pm.environment.get('_dlRetryStarted') !== pm.info.requestName) {",
+        "  pm.environment.set('_dlRetryCount', '0');",
+        "  pm.environment.set('_dlRetryStarted', pm.info.requestName);",
+        "}",
+        "const _dlc = parseInt(pm.environment.get('_dlRetryCount') || '0', 10);",
+        "let _dlHeld = false;",
+        "try {",
+        "  const _dlb = pm.response.json();",
+        "  _dlHeld = [400, 409].includes(pm.response.code)"
+        " && /allocated internal addresses/i.test(_dlb.message || '');",
+        "} catch (e) {}",
+        f"if (_dlHeld && _dlc < {budget}) {{",
+        "  pm.environment.set('_dlRetryCount', String(_dlc + 1));",
+        f"  const _dld = Date.now(); while (Date.now() - _dld < {interval_ms}) {{ /* lease-release wait */ }}",
+        "  pm.execution.setNextRequest(pm.info.requestName);",
+        "  return;",
+        "}",
+        "pm.environment.unset('_dlRetryCount');",
+        "pm.environment.unset('_dlRetryStarted');",
+    ]
+    _RYA_SEQ[0] += 1
+    return replace(step, name=f"{step.name}-dl{_RYA_SEQ[0]}",
+                   test_script=guard + list(step.test_script))
+
+
 def poll_operation_until_done(
     fixture_ids: Optional[List[str]] = None,
     must_succeed: bool = False,
@@ -1371,6 +1419,7 @@ def load_cases_module(path: Path):
     mod.retry_until_present = retry_until_present
     mod.retry_until_state = retry_until_state
     mod.retry_create_until_present = retry_create_until_present
+    mod.retry_delete_until_released = retry_delete_until_released
     mod.http_method_not_allowed_block = http_method_not_allowed_block
     mod.conf_alreadyexists_block = conf_alreadyexists_block
     spec.loader.exec_module(mod)

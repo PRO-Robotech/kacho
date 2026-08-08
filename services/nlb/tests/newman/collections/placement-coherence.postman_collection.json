@@ -297,7 +297,7 @@
           ]
         },
         {
-          "name": "create-cross-zone-cr778",
+          "name": "create-cross-zone-cr784",
           "request": {
             "method": "POST",
             "header": [
@@ -373,7 +373,7 @@
           ]
         },
         {
-          "name": "zc-cleanup-zcSubV4Id-rya782",
+          "name": "zc-cleanup-zcSubV4Id-dl785",
           "request": {
             "method": "DELETE",
             "header": [
@@ -401,21 +401,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "// SELF-повтор, пока подсеть держит ещё не возвращённые адреса: удаление",
+                  "// балансировщика долговечно, а возврат аренды в пул идёт следом и асинхронно.",
+                  "// Любой ДРУГОЙ отказ терминален и роняет шаг с первой попытки.",
+                  "if (pm.environment.get('_dlRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_dlRetryCount', '0');",
+                  "  pm.environment.set('_dlRetryStarted', pm.info.requestName);",
                   "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "const _dlc = parseInt(pm.environment.get('_dlRetryCount') || '0', 10);",
+                  "let _dlHeld = false;",
+                  "try {",
+                  "  const _dlb = pm.response.json();",
+                  "  _dlHeld = [400, 409].includes(pm.response.code) && /allocated internal addresses/i.test(_dlb.message || '');",
+                  "} catch (e) {}",
+                  "if (_dlHeld && _dlc < 25) {",
+                  "  pm.environment.set('_dlRetryCount', String(_dlc + 1));",
+                  "  const _dld = Date.now(); while (Date.now() - _dld < 500) { /* lease-release wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.environment.unset('_dlRetryCount');",
+                  "pm.environment.unset('_dlRetryStarted');",
                   "if (!pm.environment.get('zcSubV4Id')) { pm.environment.set('opId', ''); return; }",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -495,7 +501,7 @@
           ]
         },
         {
-          "name": "zc-cleanup-zcSubV6Id-rya783",
+          "name": "zc-cleanup-zcSubV6Id-dl786",
           "request": {
             "method": "DELETE",
             "header": [
@@ -523,21 +529,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "// SELF-повтор, пока подсеть держит ещё не возвращённые адреса: удаление",
+                  "// балансировщика долговечно, а возврат аренды в пул идёт следом и асинхронно.",
+                  "// Любой ДРУГОЙ отказ терминален и роняет шаг с первой попытки.",
+                  "if (pm.environment.get('_dlRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_dlRetryCount', '0');",
+                  "  pm.environment.set('_dlRetryStarted', pm.info.requestName);",
                   "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "const _dlc = parseInt(pm.environment.get('_dlRetryCount') || '0', 10);",
+                  "let _dlHeld = false;",
+                  "try {",
+                  "  const _dlb = pm.response.json();",
+                  "  _dlHeld = [400, 409].includes(pm.response.code) && /allocated internal addresses/i.test(_dlb.message || '');",
+                  "} catch (e) {}",
+                  "if (_dlHeld && _dlc < 25) {",
+                  "  pm.environment.set('_dlRetryCount', String(_dlc + 1));",
+                  "  const _dld = Date.now(); while (Date.now() - _dld < 500) { /* lease-release wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.environment.unset('_dlRetryCount');",
+                  "pm.environment.unset('_dlRetryStarted');",
                   "if (!pm.environment.get('zcSubV6Id')) { pm.environment.set('opId', ''); return; }",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -863,7 +875,7 @@
           ]
         },
         {
-          "name": "create-same-zone-cr779",
+          "name": "create-same-zone-cr787",
           "request": {
             "method": "POST",
             "header": [
@@ -999,7 +1011,7 @@
           ]
         },
         {
-          "name": "zc-cleanup-lb-cond-rya784",
+          "name": "zc-cleanup-lb-cond-rya794",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1121,7 +1133,7 @@
           ]
         },
         {
-          "name": "zc-cleanup-zcSubV4Id-rya785",
+          "name": "zc-cleanup-zcSubV4Id-dl788",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1149,21 +1161,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "// SELF-повтор, пока подсеть держит ещё не возвращённые адреса: удаление",
+                  "// балансировщика долговечно, а возврат аренды в пул идёт следом и асинхронно.",
+                  "// Любой ДРУГОЙ отказ терминален и роняет шаг с первой попытки.",
+                  "if (pm.environment.get('_dlRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_dlRetryCount', '0');",
+                  "  pm.environment.set('_dlRetryStarted', pm.info.requestName);",
                   "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "const _dlc = parseInt(pm.environment.get('_dlRetryCount') || '0', 10);",
+                  "let _dlHeld = false;",
+                  "try {",
+                  "  const _dlb = pm.response.json();",
+                  "  _dlHeld = [400, 409].includes(pm.response.code) && /allocated internal addresses/i.test(_dlb.message || '');",
+                  "} catch (e) {}",
+                  "if (_dlHeld && _dlc < 25) {",
+                  "  pm.environment.set('_dlRetryCount', String(_dlc + 1));",
+                  "  const _dld = Date.now(); while (Date.now() - _dld < 500) { /* lease-release wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.environment.unset('_dlRetryCount');",
+                  "pm.environment.unset('_dlRetryStarted');",
                   "if (!pm.environment.get('zcSubV4Id')) { pm.environment.set('opId', ''); return; }",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -1243,7 +1261,7 @@
           ]
         },
         {
-          "name": "zc-cleanup-zcSubV6Id-rya786",
+          "name": "zc-cleanup-zcSubV6Id-dl789",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1271,21 +1289,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "// SELF-повтор, пока подсеть держит ещё не возвращённые адреса: удаление",
+                  "// балансировщика долговечно, а возврат аренды в пул идёт следом и асинхронно.",
+                  "// Любой ДРУГОЙ отказ терминален и роняет шаг с первой попытки.",
+                  "if (pm.environment.get('_dlRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_dlRetryCount', '0');",
+                  "  pm.environment.set('_dlRetryStarted', pm.info.requestName);",
                   "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "const _dlc = parseInt(pm.environment.get('_dlRetryCount') || '0', 10);",
+                  "let _dlHeld = false;",
+                  "try {",
+                  "  const _dlb = pm.response.json();",
+                  "  _dlHeld = [400, 409].includes(pm.response.code) && /allocated internal addresses/i.test(_dlb.message || '');",
+                  "} catch (e) {}",
+                  "if (_dlHeld && _dlc < 25) {",
+                  "  pm.environment.set('_dlRetryCount', String(_dlc + 1));",
+                  "  const _dld = Date.now(); while (Date.now() - _dld < 500) { /* lease-release wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.environment.unset('_dlRetryCount');",
+                  "pm.environment.unset('_dlRetryStarted');",
                   "if (!pm.environment.get('zcSubV6Id')) { pm.environment.set('opId', ''); return; }",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -1491,7 +1515,7 @@
           ]
         },
         {
-          "name": "create-wrong-region-cr780",
+          "name": "create-wrong-region-cr790",
           "request": {
             "method": "POST",
             "header": [
@@ -1633,7 +1657,7 @@
           ]
         },
         {
-          "name": "cleanup-zc-leak-lb-rya787",
+          "name": "cleanup-zc-leak-lb-rya795",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1763,7 +1787,7 @@
           ]
         },
         {
-          "name": "zc-cleanup-zcSubR2Id-rya788",
+          "name": "zc-cleanup-zcSubR2Id-dl791",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1791,21 +1815,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "// SELF-повтор, пока подсеть держит ещё не возвращённые адреса: удаление",
+                  "// балансировщика долговечно, а возврат аренды в пул идёт следом и асинхронно.",
+                  "// Любой ДРУГОЙ отказ терминален и роняет шаг с первой попытки.",
+                  "if (pm.environment.get('_dlRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_dlRetryCount', '0');",
+                  "  pm.environment.set('_dlRetryStarted', pm.info.requestName);",
                   "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "const _dlc = parseInt(pm.environment.get('_dlRetryCount') || '0', 10);",
+                  "let _dlHeld = false;",
+                  "try {",
+                  "  const _dlb = pm.response.json();",
+                  "  _dlHeld = [400, 409].includes(pm.response.code) && /allocated internal addresses/i.test(_dlb.message || '');",
+                  "} catch (e) {}",
+                  "if (_dlHeld && _dlc < 25) {",
+                  "  pm.environment.set('_dlRetryCount', String(_dlc + 1));",
+                  "  const _dld = Date.now(); while (Date.now() - _dld < 500) { /* lease-release wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.environment.unset('_dlRetryCount');",
+                  "pm.environment.unset('_dlRetryStarted');",
                   "if (!pm.environment.get('zcSubR2Id')) { pm.environment.set('opId', ''); return; }",
                   "pm.environment.set('opId', '');",
                   "try {",
@@ -2011,7 +2041,7 @@
           ]
         },
         {
-          "name": "create-same-region-cr781",
+          "name": "create-same-region-cr792",
           "request": {
             "method": "POST",
             "header": [
@@ -2147,7 +2177,7 @@
           ]
         },
         {
-          "name": "zc-cleanup-lb-sr-rya789",
+          "name": "zc-cleanup-lb-sr-rya796",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2269,7 +2299,7 @@
           ]
         },
         {
-          "name": "zc-cleanup-zcSubR1Id-rya790",
+          "name": "zc-cleanup-zcSubR1Id-dl793",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2297,21 +2327,27 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "// bounded read-your-writes retry over the owner-tuple materialization window",
-                  "// (opgate removed -> eventual-consistency); retries SELF only on 403/404.",
-                  "if (pm.environment.get('_authRetryStarted') !== pm.info.requestName) {",
-                  "  pm.environment.set('_authRetryCount', '0');",
-                  "  pm.environment.set('_authRetryStarted', pm.info.requestName);",
+                  "// SELF-повтор, пока подсеть держит ещё не возвращённые адреса: удаление",
+                  "// балансировщика долговечно, а возврат аренды в пул идёт следом и асинхронно.",
+                  "// Любой ДРУГОЙ отказ терминален и роняет шаг с первой попытки.",
+                  "if (pm.environment.get('_dlRetryStarted') !== pm.info.requestName) {",
+                  "  pm.environment.set('_dlRetryCount', '0');",
+                  "  pm.environment.set('_dlRetryStarted', pm.info.requestName);",
                   "}",
-                  "const _arc = parseInt(pm.environment.get('_authRetryCount') || '0', 10);",
-                  "if ([403].includes(pm.response.code) && _arc < 25) {",
-                  "  pm.environment.set('_authRetryCount', String(_arc + 1));",
-                  "  const _ard = Date.now(); while (Date.now() - _ard < 500) { /* owner-tuple materialization wait */ }",
+                  "const _dlc = parseInt(pm.environment.get('_dlRetryCount') || '0', 10);",
+                  "let _dlHeld = false;",
+                  "try {",
+                  "  const _dlb = pm.response.json();",
+                  "  _dlHeld = [400, 409].includes(pm.response.code) && /allocated internal addresses/i.test(_dlb.message || '');",
+                  "} catch (e) {}",
+                  "if (_dlHeld && _dlc < 25) {",
+                  "  pm.environment.set('_dlRetryCount', String(_dlc + 1));",
+                  "  const _dld = Date.now(); while (Date.now() - _dld < 500) { /* lease-release wait */ }",
                   "  pm.execution.setNextRequest(pm.info.requestName);",
                   "  return;",
                   "}",
-                  "pm.environment.unset('_authRetryCount');",
-                  "pm.environment.unset('_authRetryStarted');",
+                  "pm.environment.unset('_dlRetryCount');",
+                  "pm.environment.unset('_dlRetryStarted');",
                   "if (!pm.environment.get('zcSubR1Id')) { pm.environment.set('opId', ''); return; }",
                   "pm.environment.set('opId', '');",
                   "try {",
