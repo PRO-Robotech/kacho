@@ -22,15 +22,16 @@ let IamScopedListShell: typeof IamScopedListShellExport;
 const spec = { id: "projects", plural: "Projects" } as ResourceSpec;
 
 /**
- * Текст заглушки «ничего нет».
+ * Текст заглушки «ничего нет» — ровно тот, что ВИДИТ пользователь.
  *
- * Он приходит компоненту `Empty` СВОЙСТВОМ `description`, а не потомком, поэтому
- * поиском по тексту не находится: в наборе проб antd подменён, и свойство
- * оседает атрибутом. Читаем именно его — иначе утверждение проверяло бы форму
- * подмены, а не то, что видит пользователь.
+ * Прежняя редакция читала его из атрибута `description`, потому что старый
+ * дублёр antd прятал свойство туда вместо отрисовки. Это утверждало форму
+ * подмены, а не наблюдаемое: настоящий `Empty` рисует пояснение текстом.
+ * Дублёр приведён к настоящему поведению, и проба следует за ним — теперь она
+ * читает то же, что прочёл бы человек.
  */
 const emptyText = (root: HTMLElement): string | null =>
-  root.querySelector("[description]")?.getAttribute("description") ?? null;
+  root.textContent?.match(/Выберите[^.]*\./)?.[0] ?? null;
 
 describe("IamScopedListShell", () => {
   beforeAll(async () => {
