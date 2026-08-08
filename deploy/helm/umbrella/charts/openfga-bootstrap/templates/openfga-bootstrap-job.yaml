@@ -217,6 +217,13 @@ spec:
               # KAC-127 (deploy#38): фактические имена Deployment'ов — `kacho-iam`,
               # `api-gateway`, `vpc`, `compute`, `loadbalancer` (без `kacho-umbrella-`
               # префикса; раньше список был неверным → restart-bump молча скипался).
+              #
+              # ЭТО ЕДИНСТВЕННЫЙ ПИСАТЕЛЬ ПОЛЯ (kacho#3). Ни один чарт не вправе
+              # объявлять `kacho.cloud/openfga-model-id-rev` в шаблоне пода: helm 4
+              # применяет манифесты на стороне сервера, где владение полем
+              # энфорсится, и второй писатель роняет обновление релиза конфликтом
+              # менеджеров полей. Заглушка в чарте kacho-iam снята именно поэтому.
+              # Держит это deploy/tests/helm/podtemplate-annotation-single-owner-test.sh.
               REV=$(date +%s)
               for DEP in {{ .Values.openfgaBootstrap.consumerDeployments | join " " }}; do
                 if kubectl -n "${NAMESPACE}" get deployment "${DEP}" >/dev/null 2>&1; then

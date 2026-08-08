@@ -48,10 +48,27 @@ spec:
         kacho.cloud/image-id: {{ dig "kachoImageIds" "iam" "unset" (.Values.global | default dict) | quote }}
         # ConfigMap-content hash → pod rolling-restart при изменении config.yaml.
         kacho.cloud/config-checksum: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        # KAC-127 Phase 3: bump on openfga model-id change (set by
-        # openfga-bootstrap-job patching this Deployment annotation post-install).
-        # Initial value `pending` — replaced by bootstrap-job after WriteAuthorizationModel.
-        kacho.cloud/openfga-model-id-rev: "pending"
+        # ЗДЕСЬ НАМЕРЕННО НЕТ `kacho.cloud/openfga-model-id-rev` — kacho#3.
+        #
+        # Эта аннотация на живом объекте ЕСТЬ: её ставит openfga-bootstrap-job
+        # (post-install/post-upgrade hook) после записи новой модели прав, чтобы
+        # перекатить под — идентификатор модели приезжает через
+        # `valueFrom.secretKeyRef` и читается процессом РОВНО ОДИН РАЗ, на старте.
+        #
+        # Объявлять её ещё и здесь нельзя: у поля стало бы два писателя — чарт со
+        # значением-заглушкой и задание с настоящим. Helm 3 сводил манифесты
+        # на клиенте и на владение не смотрел; Helm 4 применяет их на стороне
+        # сервера, где владение полем энфорсится, — и обновление релиза падает
+        # конфликтом менеджеров полей на этой самой аннотации.
+        #
+        # Владельца нельзя выбрать в пользу чарта: значение существует только
+        # ПОСЛЕ обращения к OpenFGA, а OpenFGA поднимает этот же релиз — то есть
+        # раньше момента, когда шаблон рендерится, идентификатора не существует.
+        # Значит поле принадлежит заданию, а чарт про него только рассказывает.
+        # Остальные Deployment'ы из списка задания эту аннотацию и не объявляли —
+        # здесь снята единственная асимметрия.
+        #
+        # Держит это deploy/tests/helm/podtemplate-annotation-single-owner-test.sh.
         {{- if .Values.opaSidecar.enabled }}
         # config-checksum выше хэширует ТОЛЬКО configmap.yaml, а с включённым
         # OPA-сайдкаром под потребляет ещё два ConfigMap'а: политику сайдкара

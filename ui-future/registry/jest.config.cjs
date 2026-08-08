@@ -6,6 +6,15 @@ module.exports = {
   extensionsToTreatAsEsm: [".ts", ".tsx"],
   setupFilesAfterEnv: ["<rootDir>/src/test/setup.ts"],
   testMatch: ["<rootDir>/src/**/*.test.{ts,tsx}"],
+  // У `ui-future/shared` собственных node_modules нет: его исходники — часть сборки
+  // КАЖДОГО remote'а, и зависимости им даёт remote (так же это делает vite, для
+  // которого `@shared/*` — обычный alias внутри одного графа). Без этой строки любой
+  // импорт shared-файла из непрямой зависимости (`clsx`, `tailwind-merge`, …) роняет
+  // СУИТУ ЦЕЛИКОМ сообщением «Cannot find module … from ../shared/src/…», то есть
+  // не про свой предмет. Точечные отображения синглтонов ниже это НЕ покрывают —
+  // они прибивают перечисленные пакеты, а здесь речь о произвольной транзитивной
+  // зависимости общего кода.
+  moduleDirectories: ["node_modules", "<rootDir>/node_modules"],
   moduleNameMapper: {
     // @ant-design/icons → статический стаб (kacho#7): Proxy-мок в setup.ts не давал
     // статических named-экспортов → ESM-линкер `import { XOutlined }` висел под vm-modules.

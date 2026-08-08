@@ -12,17 +12,21 @@
 // отчёт зелёный, а поведение не проверено ничем. Это хуже отсутствующей пробы:
 // отсутствие видно, а ложная уверенность — нет.
 //
-// Отслеживается PRO-Robotech/kacho#5. Замер на 2026-08-08: из 240 проб интерфейса
-// 135 не делают ничего, кроме чтения своего исходника, ещё 4 совмещают это с
-// рендером. Класс РАСТЁТ: с момента заведения issue прибавилось 97 файлов проб, из
-// них 36 написаны тем же образцом — то есть он воспроизводится копированием.
+// Отслеживается PRO-Robotech/kacho#5. Число долга ЗДЕСЬ НЕ ВЫПИСЫВАЕТСЯ: его
+// печатает сам гейт («перепись: проб интерфейса осмотрено N, читают свой
+// исходник M, числится долгом K») на каждом прогоне. Выписанное число живёт
+// ровно до следующей переписанной пробы и потом остаётся утверждением о дереве,
+// которого больше нет, — тот же класс, который гейт и ловит. На заведении issue
+// замер был: из 240 проб 135 не делали ничего, кроме чтения своего исходника, и
+// ещё 4 совмещали это с рендером; из тогдашнего прироста 36 файлов написаны тем
+// же образцом, то есть он воспроизводится копированием.
 //
 // # Почему гейт, а не разовая переписка
 //
-// Заменить 135 файлов — работа, которую нельзя сделать одним заходом. Но пока
-// образец не запрещён, каждый новый компонент приносит сто тридцать шестой, и
-// переписка не сходится by construction. Гейт останавливает рост: перечень ниже
-// фиксирует ДОЛГ, а не разрешение.
+// Такую переписку нельзя сделать одним заходом. Но пока образец не запрещён,
+// каждый новый компонент приносит следующий его экземпляр, и переписка не
+// сходится by construction. Гейт останавливает рост: перечень ниже фиксирует
+// ДОЛГ, а не разрешение.
 //
 // # Самоистечение
 //
@@ -54,7 +58,6 @@ import (
 // компонент и утверждала ИСХОД, — и удалить строку отсюда.
 var uiSourceReadingTests = []string{
 	"ui-future/compute/src/api/client.endpoints.test.ts",
-	"ui-future/compute/src/components/atoms/CopyableName/CopyableName.test.tsx",
 	"ui-future/compute/src/lib/form-schema.attribution.test.ts",
 	"ui-future/compute/src/test/operations-subroute-audit.test.ts",
 	"ui-future/dashboard/src/lib/proto-package-names.test.ts",
@@ -62,73 +65,27 @@ var uiSourceReadingTests = []string{
 	"ui-future/host/src/components/molecules/HostBreadcrumb/HostBreadcrumb.labels.test.tsx",
 	"ui-future/host/src/components/organisms/HostRail/HostRail.spec-icons.test.ts",
 	"ui-future/iam/src/access-binding-field-names.test.ts",
-	"ui-future/iam/src/components/molecules/auth/StepUpModal/StepUpModal.test.tsx",
-	"ui-future/iam/src/components/organisms/iam/IamScopedListShell/IamScopedListShell.test.tsx",
-	"ui-future/iam/src/components/organisms/SaKeysPanel/SaKeysPanel.test.tsx",
-	"ui-future/iam/src/components/organisms/UserTokensPanel/UserTokensPanel.test.tsx",
-	"ui-future/iam/src/pages/iam/GroupsPage/GroupsPage.test.tsx",
-	"ui-future/iam/src/pages/iam/UsersPage/UsersPage.test.tsx",
-	"ui-future/iam/src/registerExtensions.test.tsx",
 	"ui-future/iam/src/registry-iam1.test.ts",
 	"ui-future/iam/src/vite-proxy-covers-rule-pickers.test.ts",
 	"ui-future/nlb/src/api/types.contract.test.ts",
 	"ui-future/nlb/src/api/wire-naming.test.ts",
-	"ui-future/nlb/src/components/organisms/form/RefSelect/refOptionLabel.test.ts",
 	"ui-future/nlb/src/dev-proxy.test.ts",
 	"ui-future/nlb/src/lib/proto-package-names.test.ts",
 	"ui-future/nlb/src/lib/spec-columns.bool.test.tsx",
-	"ui-future/nlb/src/pages/NlbPage/NlbPage.test.tsx",
 	"ui-future/registry/src/api/types.contract.test.ts",
 	"ui-future/registry/src/api/wire-naming.test.ts",
-	"ui-future/registry/src/components/organisms/form/RefSelect/refOptionLabel.test.ts",
 	"ui-future/registry/src/dev-proxy.test.ts",
 	"ui-future/registry/src/lib/proto-package-names.test.ts",
-	"ui-future/registry/src/pages/RegistryPage/RegistryPage.test.tsx",
-	"ui-future/shared/src/components/atoms/ContextBadge/ContextBadge.test.tsx",
-	"ui-future/shared/src/components/atoms/CopyableId/CopyableId.test.tsx",
-	"ui-future/shared/src/components/atoms/StatusBadge/StatusBadge.test.tsx",
-	"ui-future/shared/src/components/atoms/ui/Button/Button.test.tsx",
-	"ui-future/shared/src/components/atoms/ui/Dialog/Dialog.test.tsx",
-	"ui-future/shared/src/components/atoms/ui/Input/Input.test.tsx",
-	"ui-future/shared/src/components/molecules/DeleteDialog/DeleteDialog.test.tsx",
 	"ui-future/shared/src/components/molecules/DetailOverviewActions/DetailOverviewActions.test.tsx",
-	"ui-future/shared/src/components/molecules/DopplerButton/DopplerButton.test.tsx",
-	"ui-future/shared/src/components/molecules/EditableKVTable/EditableKVTable.test.tsx",
-	"ui-future/shared/src/components/molecules/ErrorResult/ErrorResult.test.tsx",
-	"ui-future/shared/src/components/molecules/IpamUtilizationBar/IpamUtilizationBar.test.tsx",
-	"ui-future/shared/src/components/molecules/JsonEditor/JsonEditor.test.tsx",
-	"ui-future/shared/src/components/molecules/JsonMonacoView/JsonMonacoView.test.tsx",
-	"ui-future/shared/src/components/molecules/MoveStubDialog/MoveStubDialog.test.tsx",
-	"ui-future/shared/src/components/molecules/OperationBanner/OperationBanner.test.tsx",
-	"ui-future/shared/src/components/molecules/OperationDialog/OperationDialog.test.tsx",
-	"ui-future/shared/src/components/molecules/OperationsTable/OperationsTable.test.tsx",
-	"ui-future/shared/src/components/molecules/OperationToastWatcher/OperationToastWatcher.test.tsx",
-	"ui-future/shared/src/components/molecules/PageHeaderSlot/PageHeaderSlot.test.tsx",
-	"ui-future/shared/src/components/molecules/PanelHeader/PanelHeader.test.tsx",
-	"ui-future/shared/src/components/molecules/ProjectRequiredEmpty/ProjectRequiredEmpty.test.tsx",
-	"ui-future/shared/src/components/molecules/RefNameLink/RefNameLink.test.tsx",
-	"ui-future/shared/src/components/molecules/ResourceEmptyState/ResourceEmptyState.test.tsx",
 	"ui-future/shared/src/components/molecules/ResourceRefChips/ResourceRefChips.test.tsx",
-	"ui-future/shared/src/components/molecules/RowActionsMenu/RowActionsMenu.test.tsx",
-	"ui-future/shared/src/components/molecules/SectionHeader/SectionHeader.test.tsx",
-	"ui-future/shared/src/components/molecules/SubnetCidrChips/SubnetCidrChips.test.tsx",
-	"ui-future/shared/src/components/molecules/TableToolbar/TableToolbar.test.tsx",
 	"ui-future/shared/src/components/organisms/AddressPoolCidrManager/AddressPoolCidrManager.test.tsx",
-	"ui-future/shared/src/components/organisms/DependencyTreePanel/DependencyTreePanel.test.tsx",
 	"ui-future/shared/src/components/organisms/DetailShell/DetailShell.test.tsx",
-	"ui-future/shared/src/components/organisms/form/FieldLabel/FieldLabel.test.tsx",
 	"ui-future/shared/src/components/organisms/form/FormField/FormField.test.tsx",
-	"ui-future/shared/src/components/organisms/form/FormFooter/FormFooter.test.tsx",
-	"ui-future/shared/src/components/organisms/form/FormShell/FormShell.test.tsx",
-	"ui-future/shared/src/components/organisms/form/ImmutableField/ImmutableField.test.tsx",
-	"ui-future/shared/src/components/organisms/form/LabelsEditor/LabelsEditor.test.tsx",
 	"ui-future/shared/src/components/organisms/form/NicSpecFields/NicSpecFields.test.tsx",
 	"ui-future/shared/src/components/organisms/form/RefSelect/RefSelect.test.tsx",
 	"ui-future/shared/src/components/organisms/form/ResourceFormBody/ResourceFormBody.test.tsx",
 	"ui-future/shared/src/components/organisms/form/ResourceIcon/ResourceIcon.registry.test.ts",
-	"ui-future/shared/src/components/organisms/form/ResourceIcon/ResourceIcon.test.tsx",
 	"ui-future/shared/src/components/organisms/form/SgRulesEditor/SgRulesEditor.test.tsx",
-	"ui-future/shared/src/components/organisms/GlobalResourceFormModal/GlobalResourceFormModal.test.tsx",
 	"ui-future/shared/src/components/organisms/iam/IamCommon/IamCommon.test.tsx",
 	"ui-future/shared/src/components/organisms/InlineAddressPoolCreateForm/InlineAddressPoolCreateForm.test.tsx",
 	"ui-future/shared/src/components/organisms/InlineAddressPoolEditForm/InlineAddressPoolEditForm.test.tsx",
@@ -140,9 +97,7 @@ var uiSourceReadingTests = []string{
 	"ui-future/shared/src/components/organisms/InlineSecurityGroupEditForm/InlineSecurityGroupEditForm.test.tsx",
 	"ui-future/shared/src/components/organisms/InlineSubnetCreateForm/InlineSubnetCreateForm.test.tsx",
 	"ui-future/shared/src/components/organisms/InlineSubnetEditForm/InlineSubnetEditForm.test.tsx",
-	"ui-future/shared/src/components/organisms/LabelsEditor/LabelsEditor.test.tsx",
 	"ui-future/shared/src/components/organisms/NetworkCidrManager/NetworkCidrManager.test.tsx",
-	"ui-future/shared/src/components/organisms/OperationsTab/OperationsTab.test.tsx",
 	"ui-future/shared/src/components/organisms/ResourceCreatePage/ResourceCreatePage.test.tsx",
 	"ui-future/shared/src/components/organisms/ResourceDetailExtensions/ResourceDetailExtensions.test.tsx",
 	"ui-future/shared/src/components/organisms/ResourceDetailPage/ResourceDetailPage.test.tsx",
@@ -150,13 +105,28 @@ var uiSourceReadingTests = []string{
 	"ui-future/shared/src/components/organisms/ResourceFormModal/ResourceFormModal.test.tsx",
 	"ui-future/shared/src/components/organisms/ResourceListPage/ResourceListPage.test.tsx",
 	"ui-future/shared/src/components/organisms/ResourceShell/ResourceShell.test.tsx",
-	"ui-future/shared/src/components/organisms/ResourceTable/ResourceTable.test.tsx",
-	"ui-future/shared/src/components/organisms/RoutesEditor/RoutesEditor.test.tsx",
 	"ui-future/shared/src/components/organisms/RoutesPanel/RoutesPanel.test.tsx",
 	"ui-future/shared/src/components/organisms/SgRulesPanel/SgRulesPanel.test.tsx",
 	"ui-future/shared/src/components/organisms/SubnetCidrManager/SubnetCidrManager.test.tsx",
-	"ui-future/shared/src/components/organisms/SubnetCidrPanel/SubnetCidrPanel.test.tsx",
 	"ui-future/shared/src/components/organisms/system/GrantAdminModal/GrantAdminModal.test.tsx",
+	// РАЗБОР (см. §«Что НЕ является находкой»): восемь строк ниже — НЕ долг.
+	// Предмет каждой из них — САМ ФАЙЛ или сверка нескольких файлов дерева
+	// между собой, поэтому чтение здесь и есть проверка, а не подмена ей:
+	//   api-path-surface / console-verb-routes-exist / operations-subroute —
+	//     сверяют адреса, которые произносит консоль, с http-связываниями
+	//     `proto/`; источник истины — дерево, не список рядом с пробой;
+	//   antd-icons-stub — сверяет полноту заменителя иконок с импортами
+	//     прод-кода (недостающий глиф уводит прогон jest молча, с кодом 0);
+	//   iam-pages-authz-single-source / shared-organisms-single-source —
+	//     запрещают вторую копию поверхности; предмет — наличие файлов;
+	//   request-body-built-not-spread — требует, чтобы пути отправки формы
+	//     ЗВАЛИ сборщик тела: вызов доказуем только по исходнику;
+	//   ResourceIcon.registry — сверяет ключи карты иконок с идентификаторами
+	//     спек ВСЕХ реестров консоли.
+	// Их переписывание на монтирование сняло бы работающие проверки — это было
+	// бы удалением гейта, а не закрытием долга. Строки остаются, чтобы гейт
+	// оставался тотальным по дереву; изъять их можно только вместе с переносом
+	// этих проб за пределы `ui-future/**/*.test.ts*`.
 	"ui-future/shared/src/lib/api-path-surface.test.ts",
 	"ui-future/shared/src/lib/operations-subroute.test.ts",
 	"ui-future/shared/src/pages/InstanceDetailPage.attach.test.ts",
@@ -166,32 +136,11 @@ var uiSourceReadingTests = []string{
 	"ui-future/shared/src/test/request-body-built-not-spread.test.ts",
 	"ui-future/shared/src/test/shared-organisms-single-source.test.ts",
 	"ui-future/storage/src/api/wire-naming.test.ts",
-	"ui-future/storage/src/components/atoms/StatusBadge/StatusBadge.test.tsx",
-	"ui-future/storage/src/components/organisms/form/RefSelect/refOptionLabel.test.ts",
 	"ui-future/storage/src/dev-proxy.test.ts",
 	"ui-future/storage/src/lib/proto-package-names.test.ts",
-	"ui-future/system/src/components/molecules/auth/StepUpModal/StepUpModal.test.tsx",
 	"ui-future/system/src/pages/SystemPage/SystemPage.host-addresses.test.ts",
 	"ui-future/system/src/pages/SystemPage/SystemPage.proxy-coverage.test.ts",
 	"ui-future/system/src/pages/SystemPage/SystemPage.search-domains.test.ts",
-	"ui-future/vpc/src/components/atoms/brand/KachoLogo/KachoLogo.test.tsx",
-	"ui-future/vpc/src/components/molecules/auth/HeaderAuth/HeaderAuth.test.tsx",
-	"ui-future/vpc/src/components/molecules/auth/LoginButton/LoginButton.test.tsx",
-	"ui-future/vpc/src/components/molecules/auth/RequireAuth/RequireAuth.test.tsx",
-	"ui-future/vpc/src/components/molecules/auth/RequireMFAFresh/RequireMFAFresh.test.tsx",
-	"ui-future/vpc/src/components/molecules/auth/StepUpModal/StepUpModal.test.tsx",
-	"ui-future/vpc/src/components/molecules/auth/UserMenu/UserMenu.test.tsx",
-	"ui-future/vpc/src/components/molecules/ContextBreadcrumb/ContextBreadcrumb.test.tsx",
-	"ui-future/vpc/src/components/molecules/DeleteButton/DeleteButton.test.tsx",
-	"ui-future/vpc/src/components/molecules/DeleteConfirmStub/DeleteConfirmStub.test.tsx",
-	"ui-future/vpc/src/components/molecules/JsonView/JsonView.test.tsx",
-	"ui-future/vpc/src/components/molecules/Toaster/Toaster.test.tsx",
-	"ui-future/vpc/src/components/organisms/AdminLayout/AdminLayout.test.tsx",
-	"ui-future/vpc/src/components/organisms/ContextUrlSync/ContextUrlSync.test.tsx",
-	"ui-future/vpc/src/components/organisms/form/FormSection/FormSection.test.tsx",
-	"ui-future/vpc/src/components/organisms/Layout/Layout.test.tsx",
-	"ui-future/vpc/src/components/organisms/ServiceSidebar/ServiceSidebar.test.tsx",
-	"ui-future/vpc/src/components/organisms/VpcShell/VpcShell.test.tsx",
 }
 
 // TestUITestsDoNotReadTheirOwnSourceAsText — новая проба интерфейса не вправе

@@ -8,6 +8,43 @@ Object.assign(globalThis, {
   TextEncoder,
 });
 
+// Три пробела в API браузера, которых у jsdom нет, а у antd-организмов (Table,
+// Dropdown, Tabs) — есть на пути монтирования. Без них render страницы падает
+// AggregateError'ом, в котором ИМЯ причины не печатается вовсе: список
+// вложенных ошибок React 19 в отчёт jest не выводит, и падение читается как
+// «страница не монтируется», хотя не хватает ровно этих трёх заглушек.
+//
+// Заглушки НЕ подменяют поведение продукта — они дают средам ответ той же формы,
+// какой даёт браузер: наблюдатель, который ничего не наблюдает; медиазапрос,
+// который не совпал; и вычисленный стиль без псевдоэлемента (jsdom умеет только
+// его). Если проба начнёт зависеть от настоящего замера — она обязана это
+// назвать, а не молча получить нули.
+if (!("ResizeObserver" in globalThis)) {
+  Object.assign(globalThis, {
+    ResizeObserver: class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  });
+}
+if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
+}
+if (typeof window !== "undefined") {
+  const computed = window.getComputedStyle.bind(window);
+  window.getComputedStyle = ((elt: Element) => computed(elt)) as typeof window.getComputedStyle;
+}
+
 jest.unstable_mockModule("@monaco-editor/react", () => ({
   __esModule: true,
   default: (props: React.HTMLAttributes<HTMLDivElement>) => React.createElement("div", props),
@@ -71,6 +108,12 @@ jest.unstable_mockModule("antd", () => {
     Checkbox: Input,
     Col: Component,
     Collapse: Component,
+    // ConfigProvider несёт `ThemeProvider` раздела, то есть стоит НА ПУТИ
+    // монтирования любой страницы. Стаб без него не «даёт компонент попроще» —
+    // ESM-линкер валит СУИТУ ЦЕЛИКОМ («does not provide an export named
+    // ConfigProvider») до первого утверждения, и падение читается как «страницу
+    // смонтировать нельзя». Дублёр обязан выполнять контракт настоящего.
+    ConfigProvider: Component,
     Descriptions: Component,
     Divider: Component,
     Dropdown: Component,

@@ -1,40 +1,156 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { jest } from "@jest/globals";
+import { act, render, screen } from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import type { Operation } from "@shared/api/types";
-// Импортируем только чистый nav-helper (без antd/react-query — иначе jest-граф
-// с `antd/es/table` подвешивает импорт runtime-модуля GroupsPage).
+// Чистый nav-helper импортируется напрямую: у него нет графа UI, и его ответ —
+// самостоятельный предмет утверждения.
 import { groupDetailPathFromOp } from "./groupNav";
+import type { GroupCreatePage as GroupCreatePageExport } from "./GroupsPage";
 
-const source = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "GroupsPage.tsx"), "utf8");
+interface MutationOpts {
+  method: string;
+  path: unknown;
+  successText?: string;
+  onSuccess?: (op: Operation) => void;
+}
+
+const mutations: MutationOpts[] = [];
+const run = jest.fn<(body: unknown) => Promise<unknown>>();
+
+jest.unstable_mockModule("antd", async () => (await import("@/test/antd-double")).antdDouble);
+
+jest.unstable_mockModule("@shared/api/client", () => ({ api: { get: jest.fn(), post: jest.fn() } }));
+
+jest.unstable_mockModule("@shared/api/iam", () => ({
+  IAM: { groups: "/iam/v1/groups" },
+  iamApi: { listGroups: jest.fn() },
+}));
+
+jest.unstable_mockModule("@shared/components/organisms/iam/IamCommon", () => ({
+  useIamMutation: (opts: MutationOpts) => {
+    mutations.push(opts);
+    return { run, submitting: false };
+  },
+  fmtTs: (v?: string) => v ?? "—",
+  CopyableMonoId: ({ id }: { id?: string }) => <span>{id ?? ""}</span>,
+}));
+
+jest.unstable_mockModule("@shared/components/molecules/PageHeaderSlot", () => ({
+  useBreadcrumb: () => undefined,
+  useHeaderRight: () => undefined,
+}));
+
+jest.unstable_mockModule("@shared/components/organisms/LabelsEditor", () => ({
+  LabelsEditor: () => <div data-testid="labels-editor" />,
+  labelsFromEntries: () => ({}),
+}));
+
+jest.unstable_mockModule("@shared/components/organisms/form/FormShell", () => ({
+  FormShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
+
+jest.unstable_mockModule("@shared/components/organisms/form/FormFooter", () => ({
+  FormFooter: ({ submitLabel, onSubmit }: { submitLabel: string; onSubmit: () => void }) => (
+    <button type="button" onClick={onSubmit}>
+      {submitLabel}
+    </button>
+  ),
+}));
+
+jest.unstable_mockModule("@shared/components/molecules/SectionHeader", () => ({ SectionHeader: () => null }));
+jest.unstable_mockModule("@shared/components/organisms/form/ResourceIcon", () => ({ ResourceIcon: () => null }));
+jest.unstable_mockModule("@/components/molecules/IamRefLink", () => ({ IamRefLink: () => null }));
+jest.unstable_mockModule("@/components/organisms/iam/IamListShell", () => ({
+  IamListShell: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  useTableScrollY: () => ({ wrapRef: { current: null }, scrollY: 100 }),
+}));
+
+let GroupCreatePage: typeof GroupCreatePageExport;
+
+function Where() {
+  const { pathname } = useLocation();
+  return <div data-testid="where">{pathname}</div>;
+}
+
+const renderCreate = () =>
+  render(
+    <MemoryRouter initialEntries={["/iam/groups/create"]}>
+      <GroupCreatePage />
+      <Routes>
+        <Route path="*" element={<Where />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+
+const where = () => screen.getByTestId("where").textContent;
 
 describe("groupDetailPathFromOp", () => {
-  it("navigates to the created group detail when metadata.group_id is present", () => {
+  it("ведёт на карточку созданной группы, когда операция принесла её идентификатор", () => {
     const op: Operation = { id: "op-1", done: true, metadata: { "@type": "…", group_id: "grp-abc" } };
     expect(groupDetailPathFromOp(op)).toBe("/iam/groups/grp-abc");
   });
 
-  it("falls back to the groups list when metadata.group_id is absent", () => {
+  it("без идентификатора возвращает к списку, а не в никуда", () => {
     expect(groupDetailPathFromOp({ id: "op-1", done: true })).toBe("/iam/groups");
     expect(groupDetailPathFromOp({ id: "op-1", done: true, metadata: { "@type": "…" } })).toBe("/iam/groups");
     expect(groupDetailPathFromOp(undefined)).toBe("/iam/groups");
   });
-
-  it("wires the create onSuccess to the new group detail via the nav helper", () => {
-    // FIX 4: onSuccess(op) → navigate(groupDetailPathFromOp(op)); больше не
-    // безусловный navigate("/iam/groups").
-    expect(source).toContain("onSuccess: (op)");
-    expect(source).toContain("navigate(groupDetailPathFromOp(op))");
-  });
 });
 
-describe("GroupCreatePage form", () => {
-  it("drops the read-only Account Form.Item and adds a labels editor", () => {
-    // FIX 5: read-only «Account» field удалён; форма — name + labels + description.
-    expect(source).not.toContain('<Form.Item label="Account">');
-    expect(source).toContain("LabelsEditor");
-    expect(source).toContain('<Form.Item label="Метки">');
-    // account_id всё ещё уходит в тело POST (auto-derived из host-контекста).
-    expect(source).toContain("account_id: accountId");
+describe("GroupCreatePage", () => {
+  beforeAll(async () => {
+    ({ GroupCreatePage } = await import("./GroupsPage"));
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mutations.length = 0;
+    run.mockResolvedValue(undefined);
+  });
+
+  it("создание идёт на коллекцию групп", () => {
+    renderCreate();
+
+    expect(mutations[0].method).toBe("POST");
+    expect(mutations[0].path).toBe("/iam/v1/groups");
+  });
+
+  it("после создания открывает карточку СОЗДАННОЙ группы, а не список", () => {
+    renderCreate();
+    expect(where()).toBe("/iam/groups/create");
+
+    act(() => {
+      mutations[0].onSuccess?.({ id: "op-1", done: true, metadata: { "@type": "…", group_id: "grp-abc" } });
+    });
+
+    expect(where()).toBe("/iam/groups/grp-abc");
+  });
+
+  it("если операция не назвала группу — возвращает к списку", () => {
+    renderCreate();
+
+    act(() => {
+      mutations[0].onSuccess?.({ id: "op-1", done: true });
+    });
+
+    expect(where()).toBe("/iam/groups");
+  });
+
+  it("форма предлагает имя, метки и описание", () => {
+    renderCreate();
+
+    expect(screen.getByText("Имя")).toBeInTheDocument();
+    expect(screen.getByText("Метки")).toBeInTheDocument();
+    expect(screen.getByText("Описание")).toBeInTheDocument();
+    expect(screen.getByTestId("labels-editor")).toBeInTheDocument();
+  });
+
+  it("аккаунт полем формы не является — он берётся из контекста", () => {
+    // Поле только для чтения обещало бы выбор, которого нет: аккаунт выводится
+    // из контекста секции и в тело запроса уезжает сам.
+    renderCreate();
+
+    expect(screen.queryByText("Account")).not.toBeInTheDocument();
+    expect(screen.queryByText("Аккаунт")).not.toBeInTheDocument();
   });
 });

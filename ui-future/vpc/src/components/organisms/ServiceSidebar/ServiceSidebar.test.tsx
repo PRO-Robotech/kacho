@@ -1,67 +1,142 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { COMMON_BOTTOM } from "@shared/lib/service-modules";
-import { buildSidebarGroups, flattenGroups } from "@shared/lib/sidebar-groups";
-import { VPC_APP_MODULES } from "./ServiceSidebar";
+import { jest } from "@jest/globals";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
+import type { AuthUser } from "@shared/api/auth";
+import type { AuthContextValue } from "@shared/contexts/AuthContext";
+import { contextApi } from "@shared/lib/context-store";
+import type { ServiceSidebar as ServiceSidebarExport, VPC_APP_MODULES as VpcAppModulesExport } from "./ServiceSidebar";
 
-// Сайдбар предлагает переход только туда, куда ЭТО приложение умеет попасть.
-//
-// Управление доступом из standalone-сборки vpc убрано (единственная поверхность
-// IAM — ремоут iam, хост федерирует `/iam/*` туда). Значит и лаунчер в IAM
-// отсюда предлагаться не должен: иначе кнопка есть, а за ней — молчаливый
-// редирект «*» в корень, то есть ровно тот же класс, что и обращение к
-// маршруту, которого нет.
-//
-// Утверждение идёт ЧЕРЕЗ ТУ ЖЕ ЦЕПОЧКУ, что строит меню: набор модулей
-// приложения → buildSidebarGroups → адреса переходов.
-const here = path.dirname(fileURLToPath(import.meta.url));
-const source = readFileSync(path.join(here, "ServiceSidebar.tsx"), "utf8");
-const appSource = readFileSync(path.join(here, "../../../App.tsx"), "utf8");
+const login = jest.fn<(returnTo?: string) => void>();
+const auth = { user: null, loading: false, login, logout: jest.fn() } as unknown as AuthContextValue;
 
-function destinations(pathname: string): string[] {
-  const groups = buildSidebarGroups(pathname, "prj-1", "acc-1", COMMON_BOTTOM, VPC_APP_MODULES);
-  return flattenGroups(groups).map((leaf) => leaf.to("prj-1"));
+jest.unstable_mockModule("@shared/contexts/AuthContext", () => ({
+  useAuth: () => auth,
+}));
+
+let ServiceSidebar: typeof ServiceSidebarExport;
+let VPC_APP_MODULES: typeof VpcAppModulesExport;
+
+/** Печатает текущий адрес — навигация сайдбара иначе ненаблюдаема. */
+function Where() {
+  const { pathname } = useLocation();
+  return <div data-testid="where">{pathname}</div>;
 }
 
-describe("ServiceSidebar offers only destinations this app routes", () => {
-  it("declares its public component exports", () => {
-    expect(source).toContain("ServiceSidebar");
+const renderAt = (path: string) =>
+  render(
+    <MemoryRouter initialEntries={[path]}>
+      <ServiceSidebar />
+      <Routes>
+        <Route path="*" element={<Where />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+
+const where = () => screen.getByTestId("where").textContent;
+
+describe("ServiceSidebar", () => {
+  beforeAll(async () => {
+    ({ ServiceSidebar, VPC_APP_MODULES } = await import("./ServiceSidebar"));
   });
 
-  it("список модулей приложения непуст и не содержит IAM", () => {
-    expect(VPC_APP_MODULES.length).toBeGreaterThan(0);
+  beforeEach(() => {
+    jest.clearAllMocks();
+    auth.user = null;
+    auth.loading = false;
+    window.localStorage.clear();
+    contextApi.setAccount(null);
+  });
+
+  it("объявляет себя навигацией и несёт бренд-кнопку на главную", () => {
+    renderAt("/dashboard");
+
+    expect(screen.getByRole("navigation", { name: "Навигация сервиса" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Kachō Console" }));
+
+    expect(where()).toBe("/");
+  });
+
+  it("не предлагает раздел управления доступом — этого маршрута у приложения нет", () => {
+    // Кнопка, за которой ничего не откроется, — тот же дефект, что мёртвая ссылка.
     expect(VPC_APP_MODULES.map((m) => m.key)).not.toContain("iam");
+    expect(VPC_APP_MODULES.length).toBeGreaterThan(0);
   });
 
-  it("вне модуля лаунчеров в IAM нет", () => {
-    expect(destinations("/dashboard").filter((d) => d.startsWith("/iam"))).toEqual([]);
+  it("вне проекта пункты, которым проект нужен, отключены", () => {
+    renderAt("/dashboard");
+
+    expect(screen.getByRole("button", { name: "Virtual Private Cloud" })).toBeDisabled();
   });
 
-  it("и по «активному» IAM-адресу меню тоже не раскрывает раздел IAM", () => {
-    expect(destinations("/iam/accounts").filter((d) => d.startsWith("/iam"))).toEqual([]);
+  it("с выбранным проектом те же пункты открываются и ведут внутрь проекта", () => {
+    contextApi.setProject({ id: "prj-7", name: "Седьмой", accountId: "acc-1" });
+
+    renderAt("/dashboard");
+
+    const vpc = screen.getByRole("button", { name: "Virtual Private Cloud" });
+    expect(vpc).not.toBeDisabled();
+
+    fireEvent.click(vpc);
+
+    expect(where()).toContain("prj-7");
   });
 
-  it("«Профиль» ведёт в маршрут, который приложение объявляет", () => {
-    expect(source).toContain('navigate("/auth/settings")');
-    expect(appSource).toContain('path="/auth/settings"');
+  it("внутри модуля показывает его собственные разделы и отмечает текущий", () => {
+    contextApi.setProject({ id: "prj-7", name: "Седьмой", accountId: "acc-1" });
+
+    renderAt("/projects/prj-7/vpc/subnets");
+
+    const subnets = screen.getByRole("button", { name: "Подсети" });
+    expect(subnets).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "Облачные сети" })).not.toHaveAttribute("aria-current");
   });
 
-  it("каждый проектный переход ведёт в раздел, объявленный маршрутами приложения", () => {
-    // Раздел (первый сегмент после проекта) обязан встречаться в маршрутах —
-    // либо своим экраном (`.../dashboard"`), либо поддеревом (`.../vpc/...`).
-    const segments = destinations("/dashboard")
-      .map((d) => /^\/projects\/[^/]+\/([^/]+)/.exec(d)?.[1])
-      .filter((s): s is string => !!s);
-    expect(segments.length).toBeGreaterThan(0);
-    for (const seg of segments) {
-      // Маршрут объявляется литералом (`path="…"`) либо шаблоном (`path={`…`}`),
-      // когда раздел разворачивается по списку ресурсов реестра.
-      const declared =
-        appSource.includes(`path="/projects/:projectId/${seg}/`) ||
-        appSource.includes(`path="/projects/:projectId/${seg}"`) ||
-        appSource.includes("path={`/projects/:projectId/" + seg + "/");
-      expect([seg, declared]).toEqual([seg, true]);
-    }
+  it("неавторизованному не показывает администрирование и предлагает вход", () => {
+    renderAt("/dashboard");
+
+    expect(screen.queryByRole("button", { name: "Администрирование" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Войти" })).toBeInTheDocument();
+  });
+
+  it("вход начинается только по нажатию и запоминает, откуда ушли", () => {
+    renderAt("/dashboard");
+
+    expect(login).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Войти" }));
+
+    expect(login).toHaveBeenCalledTimes(1);
+    expect(String(login.mock.calls[0][0])).toContain(window.location.pathname);
+  });
+
+  it("пока личность грузится — ни входа, ни администрирования", () => {
+    auth.loading = true;
+
+    renderAt("/dashboard");
+
+    expect(screen.queryByRole("button", { name: "Войти" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Администрирование" })).not.toBeInTheDocument();
+  });
+
+  it("авторизованному открывает администрирование и подписывает его личностью", () => {
+    auth.user = { id: "usr-1", display_name: "Иван Петров" } as AuthUser;
+
+    renderAt("/dashboard");
+
+    expect(screen.getByRole("button", { name: "Администрирование" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Иван Петров" })).toBeInTheDocument();
+    expect(screen.getByText("ИП")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Войти" })).not.toBeInTheDocument();
+  });
+
+  it("администрирование ведёт в раздел регионов", () => {
+    auth.user = { id: "usr-1" } as AuthUser;
+
+    renderAt("/dashboard");
+
+    fireEvent.click(screen.getByRole("button", { name: "Администрирование" }));
+
+    expect(where()).toBe("/system/regions");
   });
 });

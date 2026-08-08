@@ -158,14 +158,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya846",
+          "name": "setup-materialize-tg-rya852",
           "request": {
             "method": "GET",
             "header": [
@@ -214,7 +218,7 @@
           ]
         },
         {
-          "name": "add-inst-rya847",
+          "name": "add-inst-rya853",
           "request": {
             "method": "POST",
             "header": [
@@ -333,7 +337,7 @@
           ]
         },
         {
-          "name": "rm-cleanup-rya891",
+          "name": "rm-cleanup-rya897",
           "request": {
             "method": "POST",
             "header": [
@@ -451,7 +455,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya892",
+          "name": "cleanup-tg-rya898",
           "request": {
             "method": "DELETE",
             "header": [
@@ -679,14 +683,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya848",
+          "name": "setup-materialize-tg-rya854",
           "request": {
             "method": "GET",
             "header": [
@@ -735,7 +743,7 @@
           ]
         },
         {
-          "name": "add-nic-rya849",
+          "name": "add-nic-rya855",
           "request": {
             "method": "POST",
             "header": [
@@ -854,7 +862,7 @@
           ]
         },
         {
-          "name": "rm-cleanup-rya893",
+          "name": "rm-cleanup-rya899",
           "request": {
             "method": "POST",
             "header": [
@@ -972,7 +980,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya894",
+          "name": "cleanup-tg-rya900",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1200,14 +1208,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya850",
+          "name": "setup-materialize-tg-rya856",
           "request": {
             "method": "GET",
             "header": [
@@ -1256,7 +1268,7 @@
           ]
         },
         {
-          "name": "add-ipref-rya851",
+          "name": "add-ipref-rya857",
           "request": {
             "method": "POST",
             "header": [
@@ -1375,7 +1387,7 @@
           ]
         },
         {
-          "name": "rm-cleanup-rya895",
+          "name": "rm-cleanup-rya901",
           "request": {
             "method": "POST",
             "header": [
@@ -1493,7 +1505,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya896",
+          "name": "cleanup-tg-rya902",
           "request": {
             "method": "DELETE",
             "header": [
@@ -1721,14 +1733,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya852",
+          "name": "setup-materialize-tg-rya858",
           "request": {
             "method": "GET",
             "header": [
@@ -1777,7 +1793,7 @@
           ]
         },
         {
-          "name": "add-ext-rya853",
+          "name": "add-ext-rya859",
           "request": {
             "method": "POST",
             "header": [
@@ -1896,7 +1912,7 @@
           ]
         },
         {
-          "name": "rm-cleanup-rya897",
+          "name": "rm-cleanup-rya903",
           "request": {
             "method": "POST",
             "header": [
@@ -2014,7 +2030,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya898",
+          "name": "cleanup-tg-rya904",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2242,14 +2258,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya854",
+          "name": "setup-materialize-tg-rya860",
           "request": {
             "method": "GET",
             "header": [
@@ -2298,7 +2318,7 @@
           ]
         },
         {
-          "name": "add-mixed-rya855",
+          "name": "add-mixed-rya861",
           "request": {
             "method": "POST",
             "header": [
@@ -2417,7 +2437,7 @@
           ]
         },
         {
-          "name": "rm-cleanup-rya899",
+          "name": "rm-cleanup-rya905",
           "request": {
             "method": "POST",
             "header": [
@@ -2535,7 +2555,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya900",
+          "name": "cleanup-tg-rya906",
           "request": {
             "method": "DELETE",
             "header": [
@@ -2763,14 +2783,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya856",
+          "name": "setup-materialize-tg-rya862",
           "request": {
             "method": "GET",
             "header": [
@@ -2819,7 +2843,7 @@
           ]
         },
         {
-          "name": "add-empty-rya901",
+          "name": "add-empty-rya907",
           "request": {
             "method": "POST",
             "header": [
@@ -2878,7 +2902,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya902",
+          "name": "cleanup-tg-rya908",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3106,14 +3130,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya857",
+          "name": "setup-materialize-tg-rya863",
           "request": {
             "method": "GET",
             "header": [
@@ -3162,7 +3190,7 @@
           ]
         },
         {
-          "name": "add-w-neg-rya903",
+          "name": "add-w-neg-rya909",
           "request": {
             "method": "POST",
             "header": [
@@ -3221,7 +3249,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya904",
+          "name": "cleanup-tg-rya910",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3449,14 +3477,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya858",
+          "name": "setup-materialize-tg-rya864",
           "request": {
             "method": "GET",
             "header": [
@@ -3505,7 +3537,7 @@
           ]
         },
         {
-          "name": "add-w-over-rya905",
+          "name": "add-w-over-rya911",
           "request": {
             "method": "POST",
             "header": [
@@ -3564,7 +3596,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya906",
+          "name": "cleanup-tg-rya912",
           "request": {
             "method": "DELETE",
             "header": [
@@ -3792,14 +3824,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya859",
+          "name": "setup-materialize-tg-rya865",
           "request": {
             "method": "GET",
             "header": [
@@ -3848,7 +3884,7 @@
           ]
         },
         {
-          "name": "add-w-0-rya860",
+          "name": "add-w-0-rya866",
           "request": {
             "method": "POST",
             "header": [
@@ -3967,7 +4003,7 @@
           ]
         },
         {
-          "name": "rm-rya907",
+          "name": "rm-rya913",
           "request": {
             "method": "POST",
             "header": [
@@ -4085,7 +4121,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya908",
+          "name": "cleanup-tg-rya914",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4313,14 +4349,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya861",
+          "name": "setup-materialize-tg-rya867",
           "request": {
             "method": "GET",
             "header": [
@@ -4369,7 +4409,7 @@
           ]
         },
         {
-          "name": "add-w-1000-rya862",
+          "name": "add-w-1000-rya868",
           "request": {
             "method": "POST",
             "header": [
@@ -4488,7 +4528,7 @@
           ]
         },
         {
-          "name": "rm-rya909",
+          "name": "rm-rya915",
           "request": {
             "method": "POST",
             "header": [
@@ -4606,7 +4646,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya910",
+          "name": "cleanup-tg-rya916",
           "request": {
             "method": "DELETE",
             "header": [
@@ -4834,14 +4874,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya863",
+          "name": "setup-materialize-tg-rya869",
           "request": {
             "method": "GET",
             "header": [
@@ -4890,7 +4934,7 @@
           ]
         },
         {
-          "name": "add-bogon-rya911",
+          "name": "add-bogon-rya917",
           "request": {
             "method": "POST",
             "header": [
@@ -4953,7 +4997,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya912",
+          "name": "cleanup-tg-rya918",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5181,14 +5225,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya864",
+          "name": "setup-materialize-tg-rya870",
           "request": {
             "method": "GET",
             "header": [
@@ -5237,7 +5285,7 @@
           ]
         },
         {
-          "name": "add-out-rya913",
+          "name": "add-out-rya919",
           "request": {
             "method": "POST",
             "header": [
@@ -5357,7 +5405,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya914",
+          "name": "cleanup-tg-rya920",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5585,14 +5633,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya865",
+          "name": "setup-materialize-tg-rya871",
           "request": {
             "method": "GET",
             "header": [
@@ -5641,7 +5693,7 @@
           ]
         },
         {
-          "name": "add-inst-nx-rya915",
+          "name": "add-inst-nx-rya921",
           "request": {
             "method": "POST",
             "header": [
@@ -5761,7 +5813,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya916",
+          "name": "cleanup-tg-rya922",
           "request": {
             "method": "DELETE",
             "header": [
@@ -5989,14 +6041,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya866",
+          "name": "setup-materialize-tg-rya872",
           "request": {
             "method": "GET",
             "header": [
@@ -6045,7 +6101,7 @@
           ]
         },
         {
-          "name": "add-nic-nx-rya867",
+          "name": "add-nic-nx-rya873",
           "request": {
             "method": "POST",
             "header": [
@@ -6165,7 +6221,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya917",
+          "name": "cleanup-tg-rya923",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6393,14 +6449,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya868",
+          "name": "setup-materialize-tg-rya874",
           "request": {
             "method": "GET",
             "header": [
@@ -6449,7 +6509,7 @@
           ]
         },
         {
-          "name": "add-sub-nx-rya918",
+          "name": "add-sub-nx-rya924",
           "request": {
             "method": "POST",
             "header": [
@@ -6569,7 +6629,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya919",
+          "name": "cleanup-tg-rya925",
           "request": {
             "method": "DELETE",
             "header": [
@@ -6797,14 +6857,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya869",
+          "name": "setup-materialize-tg-rya875",
           "request": {
             "method": "GET",
             "header": [
@@ -6853,7 +6917,7 @@
           ]
         },
         {
-          "name": "add-inst-other-region-rya920",
+          "name": "add-inst-other-region-rya926",
           "request": {
             "method": "POST",
             "header": [
@@ -6973,7 +7037,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya921",
+          "name": "cleanup-tg-rya927",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7201,14 +7265,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya870",
+          "name": "setup-materialize-tg-rya876",
           "request": {
             "method": "GET",
             "header": [
@@ -7257,7 +7325,7 @@
           ]
         },
         {
-          "name": "add-nic-other-region-rya922",
+          "name": "add-nic-other-region-rya928",
           "request": {
             "method": "POST",
             "header": [
@@ -7377,7 +7445,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya923",
+          "name": "cleanup-tg-rya929",
           "request": {
             "method": "DELETE",
             "header": [
@@ -7605,14 +7673,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya871",
+          "name": "setup-materialize-tg-rya877",
           "request": {
             "method": "GET",
             "header": [
@@ -7661,7 +7733,7 @@
           ]
         },
         {
-          "name": "add-sub-other-region-rya924",
+          "name": "add-sub-other-region-rya930",
           "request": {
             "method": "POST",
             "header": [
@@ -7781,7 +7853,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya925",
+          "name": "cleanup-tg-rya931",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8009,14 +8081,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya872",
+          "name": "setup-materialize-tg-rya878",
           "request": {
             "method": "GET",
             "header": [
@@ -8065,7 +8141,7 @@
           ]
         },
         {
-          "name": "add-1-rya873",
+          "name": "add-1-rya879",
           "request": {
             "method": "POST",
             "header": [
@@ -8184,7 +8260,7 @@
           ]
         },
         {
-          "name": "add-2-dup-rya926",
+          "name": "add-2-dup-rya932",
           "request": {
             "method": "POST",
             "header": [
@@ -8303,7 +8379,7 @@
           ]
         },
         {
-          "name": "rm-cleanup-rya927",
+          "name": "rm-cleanup-rya933",
           "request": {
             "method": "POST",
             "header": [
@@ -8421,7 +8497,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya928",
+          "name": "cleanup-tg-rya934",
           "request": {
             "method": "DELETE",
             "header": [
@@ -8649,14 +8725,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya874",
+          "name": "setup-materialize-tg-rya880",
           "request": {
             "method": "GET",
             "header": [
@@ -8705,7 +8785,7 @@
           ]
         },
         {
-          "name": "add-1-rya875",
+          "name": "add-1-rya881",
           "request": {
             "method": "POST",
             "header": [
@@ -8824,7 +8904,7 @@
           ]
         },
         {
-          "name": "add-2-dup-rya929",
+          "name": "add-2-dup-rya935",
           "request": {
             "method": "POST",
             "header": [
@@ -8943,7 +9023,7 @@
           ]
         },
         {
-          "name": "rm-rya930",
+          "name": "rm-rya936",
           "request": {
             "method": "POST",
             "header": [
@@ -9061,7 +9141,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya931",
+          "name": "cleanup-tg-rya937",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9289,14 +9369,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya876",
+          "name": "setup-materialize-tg-rya882",
           "request": {
             "method": "GET",
             "header": [
@@ -9345,7 +9429,7 @@
           ]
         },
         {
-          "name": "add-1-rya877",
+          "name": "add-1-rya883",
           "request": {
             "method": "POST",
             "header": [
@@ -9464,7 +9548,7 @@
           ]
         },
         {
-          "name": "add-2-rya932",
+          "name": "add-2-rya938",
           "request": {
             "method": "POST",
             "header": [
@@ -9583,7 +9667,7 @@
           ]
         },
         {
-          "name": "rm-rya933",
+          "name": "rm-rya939",
           "request": {
             "method": "POST",
             "header": [
@@ -9701,7 +9785,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya934",
+          "name": "cleanup-tg-rya940",
           "request": {
             "method": "DELETE",
             "header": [
@@ -9929,14 +10013,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya878",
+          "name": "setup-materialize-tg-rya884",
           "request": {
             "method": "GET",
             "header": [
@@ -9985,7 +10073,7 @@
           ]
         },
         {
-          "name": "add-rya879",
+          "name": "add-rya885",
           "request": {
             "method": "POST",
             "header": [
@@ -10104,7 +10192,7 @@
           ]
         },
         {
-          "name": "rm-phase-a-rya935",
+          "name": "rm-phase-a-rya941",
           "request": {
             "method": "POST",
             "header": [
@@ -10223,7 +10311,7 @@
           ]
         },
         {
-          "name": "re-add-rya936",
+          "name": "re-add-rya942",
           "request": {
             "method": "POST",
             "header": [
@@ -10342,7 +10430,7 @@
           ]
         },
         {
-          "name": "rm-cleanup-rya937",
+          "name": "rm-cleanup-rya943",
           "request": {
             "method": "POST",
             "header": [
@@ -10460,7 +10548,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya938",
+          "name": "cleanup-tg-rya944",
           "request": {
             "method": "DELETE",
             "header": [
@@ -10744,14 +10832,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya880",
+          "name": "setup-materialize-tg-rya886",
           "request": {
             "method": "GET",
             "header": [
@@ -10800,7 +10892,7 @@
           ]
         },
         {
-          "name": "add-rya881",
+          "name": "add-rya887",
           "request": {
             "method": "POST",
             "header": [
@@ -10919,7 +11011,7 @@
           ]
         },
         {
-          "name": "rm-phase-a-rya939",
+          "name": "rm-phase-a-rya945",
           "request": {
             "method": "POST",
             "header": [
@@ -11038,7 +11130,7 @@
           ]
         },
         {
-          "name": "verify-still-present-as-draining-rya940",
+          "name": "verify-still-present-as-draining-rya946",
           "request": {
             "method": "GET",
             "header": [
@@ -11093,7 +11185,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya941",
+          "name": "cleanup-tg-rya947",
           "request": {
             "method": "DELETE",
             "header": [
@@ -11321,14 +11413,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya882",
+          "name": "setup-materialize-tg-rya888",
           "request": {
             "method": "GET",
             "header": [
@@ -11377,7 +11473,7 @@
           ]
         },
         {
-          "name": "add-two-rya883",
+          "name": "add-two-rya889",
           "request": {
             "method": "POST",
             "header": [
@@ -11496,7 +11592,7 @@
           ]
         },
         {
-          "name": "rm-one-rya942",
+          "name": "rm-one-rya948",
           "request": {
             "method": "POST",
             "header": [
@@ -11615,7 +11711,7 @@
           ]
         },
         {
-          "name": "verify-sibling-active-rya943",
+          "name": "verify-sibling-active-rya949",
           "request": {
             "method": "GET",
             "header": [
@@ -11670,7 +11766,7 @@
           ]
         },
         {
-          "name": "cleanup-drain-targets-rya944",
+          "name": "cleanup-drain-targets-rya950",
           "request": {
             "method": "POST",
             "header": [
@@ -11789,7 +11885,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya945",
+          "name": "cleanup-tg-rya951",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12017,14 +12113,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya884",
+          "name": "setup-materialize-tg-rya890",
           "request": {
             "method": "GET",
             "header": [
@@ -12073,7 +12173,7 @@
           ]
         },
         {
-          "name": "add-with-status-rya885",
+          "name": "add-with-status-rya891",
           "request": {
             "method": "POST",
             "header": [
@@ -12141,7 +12241,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya946",
+          "name": "cleanup-tg-rya952",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12369,14 +12469,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya886",
+          "name": "setup-materialize-tg-rya892",
           "request": {
             "method": "GET",
             "header": [
@@ -12425,7 +12529,7 @@
           ]
         },
         {
-          "name": "rm-absent-rya887",
+          "name": "rm-absent-rya893",
           "request": {
             "method": "POST",
             "header": [
@@ -12544,7 +12648,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya947",
+          "name": "cleanup-tg-rya953",
           "request": {
             "method": "DELETE",
             "header": [
@@ -12772,14 +12876,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya888",
+          "name": "setup-materialize-tg-rya894",
           "request": {
             "method": "GET",
             "header": [
@@ -12828,7 +12936,7 @@
           ]
         },
         {
-          "name": "add-rya889",
+          "name": "add-rya895",
           "request": {
             "method": "POST",
             "header": [
@@ -12947,7 +13055,7 @@
           ]
         },
         {
-          "name": "rm-rya948",
+          "name": "rm-rya954",
           "request": {
             "method": "POST",
             "header": [
@@ -13113,7 +13221,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya949",
+          "name": "cleanup-tg-rya955",
           "request": {
             "method": "DELETE",
             "header": [
@@ -13430,14 +13538,18 @@
                   "pm.test('operation done', () => pm.expect(j.done, JSON.stringify(j)).to.eql(true));",
                   "if (j.error) pm.environment.set('lastOpError', JSON.stringify(j.error));",
                   "else pm.environment.unset('lastOpError');",
-                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));"
+                  "if (j.response) pm.environment.set('lastOpResponse', JSON.stringify(j.response));",
+                  "if (j.error) {",
+                  "  pm.environment.unset('tgId');",
+                  "}",
+                  "pm.test('fixture operation succeeded (no phantom resource id)', () =>   pm.expect(j.error, JSON.stringify(j.error || {})).to.be.undefined);"
                 ]
               }
             }
           ]
         },
         {
-          "name": "setup-materialize-tg-rya890",
+          "name": "setup-materialize-tg-rya896",
           "request": {
             "method": "GET",
             "header": [
@@ -13486,7 +13598,7 @@
           ]
         },
         {
-          "name": "rm-empty-rya950",
+          "name": "rm-empty-rya956",
           "request": {
             "method": "POST",
             "header": [
@@ -13551,7 +13663,7 @@
           ]
         },
         {
-          "name": "cleanup-tg-rya951",
+          "name": "cleanup-tg-rya957",
           "request": {
             "method": "DELETE",
             "header": [

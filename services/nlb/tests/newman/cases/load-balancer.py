@@ -556,7 +556,7 @@ CASES.append(Case(
                                    "tcp": {"port": 80}}},
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["tgId"]),
         # Wire the TG to the LB via a listener (attach/detach RPCs removed) — a listener
         # referencing the TG is what now blocks the LB Move ("has a listener wired to a
         # target group; repoint before Move").
@@ -666,7 +666,7 @@ def _setup_tg(name_suffix: str, body_extra: dict = None):
         Step(name="setup-create-tg", method="POST", path="/nlb/v1/targetGroups", body=body,
              test_script=[*assert_status(200), *save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.targetGroupId", "tgId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["tgId"]),
         # read-your-writes: materialize the TG owner-tuple before the first real access.
         retry_until_authorized(Step(name="setup-materialize-tg", method="GET",
              path="/nlb/v1/targetGroups/{{tgId}}", test_script=[])),
@@ -1527,7 +1527,7 @@ CASES.append(Case(
                    "protocol": "TCP", "port": 80, "targetPort": 8080},
              test_script=[*save_from_response("j.id", "opId"),
                           *save_from_response("j.metadata && j.metadata.listenerId", "lstId")]),
-        poll_operation_until_done(),
+        poll_operation_until_done(fixture_ids=["lstId"]),
         # Same class as NLB-DEL-STATE-PROTECTION: the "has listener(s)" precondition is
         # SYNCHRONOUS, so the refusal is this response. The old assertion accepted 200
         # (deletion accepted) and 403 (never even reached the precondition), and the

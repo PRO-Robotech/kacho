@@ -1,15 +1,32 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-const expectedExports = ["KachoLogo"] as const;
-
-const source = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "KachoLogo.tsx"), "utf8");
+import { render, screen } from "@testing-library/react";
+import { KachoLogo } from ".";
 
 describe("KachoLogo", () => {
-  it("declares its public component exports", () => {
-    for (const exportName of expectedExports) {
-      expect(source).toContain(exportName);
-    }
+  it("рисует один только знак в режиме mark", () => {
+    render(<KachoLogo variant="mark" size={44} />);
+
+    expect(screen.getByRole("img", { name: "Kachō" })).toBeInTheDocument();
+    expect(screen.queryByText("Kachō")).not.toBeInTheDocument();
+  });
+
+  it("добавляет вордмарк в режиме full", () => {
+    render(<KachoLogo variant="full" size={44} />);
+
+    expect(screen.getByRole("img", { name: "Kachō" })).toBeInTheDocument();
+    expect(screen.getByText("Kachō")).toBeInTheDocument();
+  });
+
+  it("масштабирует знак заданным размером", () => {
+    const { container } = render(<KachoLogo variant="mark" size={64} />);
+
+    const svg = container.querySelector("svg");
+    expect(svg).toHaveAttribute("width", "64");
+    expect(svg).toHaveAttribute("height", "64");
+  });
+
+  it("красит вордмарк переданным цветом, а знак — нет", () => {
+    render(<KachoLogo variant="full" size={24} wordmarkColor="rgb(255, 0, 0)" />);
+
+    expect(screen.getByText("Kachō")).toHaveStyle({ color: "rgb(255, 0, 0)" });
   });
 });

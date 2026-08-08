@@ -1,15 +1,103 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+// Ссылка на чужой ресурс по идентификатору. Kachō адресует ресурсы по
+// неизменяемому `id` (core #15), а показывать пользователю надо имя — его и
+// резолвит эта ссылка. Существенны: адрес перехода включает сегмент сервиса
+// (без него маршрут не совпадает и клик уводит в пустоту), клик не всплывает до
+// строки таблицы, а нерезолвленный ресурс показывается идентификатором, а не
+// исчезает.
 
-const expectedExports = ["RefNameLink"] as const;
+import { jest } from "@jest/globals";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router";
+import { RefNameLink } from "./RefNameLink";
 
-const source = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "RefNameLink.tsx"), "utf8");
+const realFetch = globalThis.fetch;
+
+function stubList(payload: unknown) {
+  globalThis.fetch = () =>
+    Promise.resolve({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      text: () => Promise.resolve(JSON.stringify(payload)),
+    } as Response);
+}
+
+afterEach(() => {
+  globalThis.fetch = realFetch;
+});
+
+function renderLink(props: Partial<Parameters<typeof RefNameLink>[0]> = {}) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={["/projects/prj-1/vpc/subnets"]}>
+        <RefNameLink specId="networks" refId="net-1" projectId="prj-1" {...props} />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
 
 describe("RefNameLink", () => {
-  it("declares its public component exports", () => {
-    for (const exportName of expectedExports) {
-      expect(source).toContain(exportName);
-    }
+  it("без ссылки рисует прочерк, а не пустоту", () => {
+    stubList({ networks: [] });
+    renderLink({ refId: null });
+    expect(screen.getByText("—")).toBeInTheDocument();
+  });
+
+  it("резолвит имя по идентификатору и ведёт на карточку с сегментом сервиса", async () => {
+    // Сегмент сервиса обязателен: без него маршрут карточки не совпадает и
+    // клик уходит в запасной путь приложения.
+    stubList({ networks: [{ id: "net-1", name: "core" }] });
+    renderLink();
+
+    const link = await screen.findByRole("link", { name: "core" });
+    expect(link).toHaveAttribute("href", "/projects/prj-1/vpc/networks/net-1");
+  });
+
+  it("клик по ссылке не всплывает до строки таблицы", async () => {
+    stubList({ networks: [{ id: "net-1", name: "core" }] });
+    const onRowClick = jest.fn();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={["/projects/prj-1/vpc/subnets"]}>
+          {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events */}
+          <div onClick={onRowClick}>
+            <RefNameLink specId="networks" refId="net-1" projectId="prj-1" />
+          </div>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("link", { name: "core" }));
+
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
+
+  it("нерезолвленный идентификатор показывает усечённым, а не теряет", async () => {
+    // Ресурс мог быть удалён или недоступен вызывающему; пустое место означало
+    // бы «ссылки нет», хотя ссылка есть и указывает в никуда.
+    stubList({ networks: [] });
+    renderLink({ refId: "net01h9zt6k3mqx4vabc" });
+
+    expect(await screen.findByTitle("net01h9zt6k3…")).toBeInTheDocument();
+  });
+
+  it("неизвестный тип ресурса показывает идентификатор без ссылки", () => {
+    stubList({});
+    renderLink({ specId: "нет-такого-ресурса" });
+    expect(screen.getByText("net-1")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("длинное имя обрезает, а полное оставляет в подсказке", async () => {
+    stubList({ networks: [{ id: "net-1", name: "очень-длинное-имя-сети" }] });
+    renderLink({ maxChars: 8 });
+
+    // Ждём именно резолва: до ответа списка ссылка показывает усечённый
+    // идентификатор, и утверждение об обрезке имени на нём было бы о другом.
+    const link = await screen.findByTitle("очень-длинное-имя-сети");
+    expect(link).toHaveTextContent("очень-дл…");
   });
 });
