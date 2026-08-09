@@ -21,7 +21,9 @@ service InternalWatchService {
   // Watch — server-stream события из compute_outbox с указанной позиции
   // (sequence_no exclusive).
   rpc Watch (WatchRequest) returns (stream Event) {
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.permission) = "compute.instances.watch";
+    option (kacho.iam.authz.v1.scope_filtered) = true;
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

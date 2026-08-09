@@ -16,7 +16,13 @@ option go_package = "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalan
 // Loadbalancer-specific kinds: "nlb_load_balancer" | "nlb_listener" | "nlb_target_group".
 service InternalResourceLifecycleService {
   rpc Subscribe (SubscribeRequest) returns (stream ResourceLifecycleEvent) {
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.permission) = "loadbalancer.resourceLifecycle.subscribe";
+    option (kacho.iam.authz.v1.required_relation) = "system_viewer";
+    option (kacho.iam.authz.v1.scope_extractor) = {
+      object_type: "cluster"
+      from_request_field: "*"
+    };
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 

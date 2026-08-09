@@ -36,14 +36,17 @@ service RegistryService {
   // из своей БД и спрашивает модель про идентификаторы ЭТОЙ страницы — пообъектный
   // Check с ограниченной конкурентностью, отношение `v_list` на
   // `registry_registry:<id>`; отказ модели — fail-closed UNAVAILABLE, нефильтрованная
-  // страница не отдаётся никогда. → gateway <exempt>, authn остаётся.
+  // страница не отдаётся никогда. → каталог объявляет полосу `scope_filtered`:
+  // край не спрашивает модель, но принципала требует.
   //
   // Прежде здесь назывались перечисление разрешённых объектов у iam и союз
   // отношений. Перечисления в потоке нет (у него жёсткий серверный предел без
   // продолжения), союза тоже: спрашивается одно отношение.
   rpc List(ListRegistriesRequest) returns (ListRegistriesResponse) {
     option (google.api.http) = {get: "/registry/v1/registries"};
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.permission) = "registry.registries.list";
+    option (kacho.iam.authz.v1.scope_filtered) = true;
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // Create — async. create-child = editor-tier на parent-project (Check на
@@ -144,7 +147,7 @@ service RegistryService {
   // натуральным ключом (registry_id,name). Read — sync; мутации — async→Operation
   // (ban #9). Per-repo authz на COMPOSITE-объекте `registry_repository:<reg>/<repo>`
   // НЕ выразим gateway scope_extractor'ом (тот берёт одно top-level поле) → все
-  // repository-scoped RPC gateway `<exempt>`, а per-repo Check + existence-hiding
+  // repository-scoped RPC несут полосу `scope_filtered`, а per-repo Check + existence-hiding
   // выполняет handler (parity с ListRepositories). Deny на repo ИЛИ невидимый
   // namespace → uniform NOT_FOUND "repository not found" (existence-hiding,
   // security.md — НЕ PERMISSION_DENIED, иначе existence-oracle); admin-gate на
@@ -156,12 +159,14 @@ service RegistryService {
   // Bare `{repository=**}` catch-all — объявлен ПЕРЕД sub-resource'ами (precedence).
   rpc GetRepository(GetRepositoryRequest) returns (Repository) {
     option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/repositories/{repository=**}"};
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.permission) = "registry.repositories.get";
+    option (kacho.iam.authz.v1.scope_filtered) = true;
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // ListRepositories — sync-проекция repos из zot. Per-repo listauthz: handler
   // = call-gate (доступ к namespace) + row-filter по registry_repository v_list.
-  // → gateway <exempt>, authz полностью в handler'е.
+  // → полоса `scope_filtered`: authz целиком в handler'е, принципал обязателен.
   //
   // ПОРЯДОК (Defect B, #64): объявлен ПОСЛЕ GetRepository catch-all'а. grpc-gateway
   // `{repository=**}` deep-wildcard матчит и ПУСТОЙ хвост, поэтому `GET …/repositories`
@@ -172,7 +177,9 @@ service RegistryService {
   // без wildcard, не матчит непустой хвост).
   rpc ListRepositories(ListRepositoriesRequest) returns (ListRepositoriesResponse) {
     option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/repositories"};
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.permission) = "registry.repositories.list";
+    option (kacho.iam.authz.v1.scope_filtered) = true;
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // CreateRepository — async. Вставка overlay-строки (durable, survives-empty);
@@ -188,7 +195,9 @@ service RegistryService {
       metadata: "CreateRepositoryMetadata"
       response: "Repository"
     };
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.permission) = "registry.repositories.create";
+    option (kacho.iam.authz.v1.scope_filtered) = true;
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // UpdateRepository — async, FieldMask-PATCH overlay (description/labels/visibility;
@@ -205,7 +214,9 @@ service RegistryService {
       metadata: "UpdateRepositoryMetadata"
       response: "Repository"
     };
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.permission) = "registry.repositories.update";
+    option (kacho.iam.authz.v1.scope_filtered) = true;
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // DeleteRepository — async, reject-if-tags (D-4). Пустой durable → снимает overlay
@@ -220,21 +231,25 @@ service RegistryService {
       metadata: "DeleteRepositoryMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.permission) = "registry.repositories.delete";
+    option (kacho.iam.authz.v1.scope_filtered) = true;
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // ListTags — sync-проекция тегов repo из zot. Per-repo Check v_list на
-  // registry_repository в handler'е → gateway <exempt>. Sub-resource `…/tags` —
+  // registry_repository в handler'е → полоса `scope_filtered`. Sub-resource `…/tags` —
   // объявлен ПОСЛЕ GetRepository catch-all'а → пробуется РАНЬШЕ, не затеняется
   // (см. блок-заголовок «ПОРЯДОК ОБЪЯВЛЕНИЯ ЗНАЧИМ»).
   rpc ListTags(ListTagsRequest) returns (ListTagsResponse) {
     option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/repositories/{repository}/tags"};
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.permission) = "registry.repositories.list";
+    option (kacho.iam.authz.v1.scope_filtered) = true;
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // DeleteTag — async, единственный destructive-путь для образов (data-plane
   // DELETE отвергается 405). Per-repo v_delete Check синхронно в handler'е ДО
-  // создания Operation → gateway <exempt>. Sub-resource `…/tags/{tag}` — объявлен
+  // создания Operation → полоса `scope_filtered`. Sub-resource `…/tags/{tag}` — объявлен
   // ПОСЛЕ DeleteRepository catch-all'а → пробуется РАНЬШЕ, не затеняется.
   rpc DeleteTag(DeleteTagRequest) returns (operation.Operation) {
     option (google.api.http) = {delete: "/registry/v1/registries/{registry_id}/repositories/{repository}/tags/{tag}"};
@@ -242,7 +257,9 @@ service RegistryService {
       metadata: "DeleteTagMetadata"
       response: "google.protobuf.Empty"
     };
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.permission) = "registry.repositories.delete";
+    option (kacho.iam.authz.v1.scope_filtered) = true;
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // RenameRepository — async, в пределах ОДНОГО реестра (new_name — голое repo-имя;
@@ -262,7 +279,9 @@ service RegistryService {
       metadata: "RenameRepositoryMetadata"
       response: "Repository"
     };
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.permission) = "registry.repositories.update";
+    option (kacho.iam.authz.v1.scope_filtered) = true;
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   // ListReferrers — sync-проекция referrer-графа одного subject_digest (D-8: bounded
@@ -272,7 +291,9 @@ service RegistryService {
   // Sub-resource `…/referrers` — объявлен ПОСЛЕ catch-all'ов → пробуется РАНЬШЕ.
   rpc ListReferrers(ListReferrersRequest) returns (ListReferrersResponse) {
     option (google.api.http) = {get: "/registry/v1/registries/{registry_id}/repositories/{repository=**}/referrers"};
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.permission) = "registry.repositories.get";
+    option (kacho.iam.authz.v1.scope_filtered) = true;
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 }
 
