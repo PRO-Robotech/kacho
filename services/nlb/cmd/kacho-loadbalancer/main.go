@@ -294,7 +294,7 @@ func runServe(configPath string) error {
 	// armed and the register-drainer is not IAM-connected, so no resource is created
 	// without a deliverable owner-tuple intent. Read RPCs are untouched.
 	publicUnary, publicStream, internalUnary, internalStream := buildInterceptorChains(
-		bootGate, authzIntr, cfg.Authz.TrustedForwarderSANs)
+		logger, bootGate, authzIntr, cfg.Authz.TrustedForwarderSANs)
 	publicSrv := grpcsrv.NewServer(
 		serverCreds,
 		grpc.ChainUnaryInterceptor(publicUnary...),

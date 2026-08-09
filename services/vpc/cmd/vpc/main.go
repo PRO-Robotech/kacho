@@ -414,7 +414,7 @@ func runServe(cfg config.Config) error {
 	// самоотчёт о посадке, поэтому проводка и отчёт разъехаться не могут.
 	forwarders := cfg.TrustedForwarders()
 	publicUnary := []grpc.UnaryServerInterceptor{
-		handler.UnaryRecoveryInterceptor(logger),
+		grpcsrv.UnaryPanicRecovery(logger),
 		handler.UnaryTimeoutInterceptor(reqTimeout),
 		fgaboot.GuardCreateUnary(bootGate),
 	}
@@ -422,7 +422,7 @@ func runServe(cfg config.Config) error {
 	publicUnary = append(publicUnary, handler.AuthNUnaryInterceptor(productionMode))
 
 	publicStream := []grpc.StreamServerInterceptor{
-		handler.StreamRecoveryInterceptor(logger),
+		grpcsrv.StreamPanicRecovery(logger),
 		handler.StreamTimeoutInterceptor(reqTimeout),
 	}
 	publicStream = append(publicStream, principalExtractStream(forwarders)...)
@@ -439,14 +439,14 @@ func runServe(cfg config.Config) error {
 	// заголовка (её объявлял о себе сам звонящий) и вдобавок отвергал вызывающих,
 	// которым модель говорит «да». Привилегию выдаёт модель — см. authn_interceptor.go.
 	internalUnary := []grpc.UnaryServerInterceptor{
-		handler.UnaryRecoveryInterceptor(logger),
+		grpcsrv.UnaryPanicRecovery(logger),
 		handler.UnaryTimeoutInterceptor(reqTimeout),
 	}
 	internalUnary = append(internalUnary, principalExtractUnary(forwarders)...)
 	internalUnary = append(internalUnary, handler.AuthNUnaryInterceptor(productionMode))
 
 	internalStream := []grpc.StreamServerInterceptor{
-		handler.StreamRecoveryInterceptor(logger),
+		grpcsrv.StreamPanicRecovery(logger),
 		handler.StreamTimeoutInterceptor(reqTimeout),
 	}
 	internalStream = append(internalStream, principalExtractStream(forwarders)...)

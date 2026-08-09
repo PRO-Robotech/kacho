@@ -222,18 +222,28 @@ func runServe(cfg config.Config) error {
 	// Прежняя grpcsrv.UnaryPrincipalExtract доверяла x-kacho-principal-* metadata
 	// любого peer'а безусловно (spoof: peer без cert'а форжил чужого principal'а).
 	//
-	// boot-gate: guardCreateUnary FIRST on the public chain — a
+	// panic-recovery — ПЕРВЫМ (outermost) в цепочках ОБОИХ листенеров. grpc-go
+	// панику обработчика не восстанавливает: она уходит из серверной горутины и
+	// завершает процесс вместе с исполнителем операций и дренажом регистраций,
+	// то есть дефект в обработке одного запроса прекращает обслуживание всех.
+	// Звено стоит НАД boot-gate, принципалом и authz — фильтр паникует так же,
+	// как обработчик. Наблюдающего звена в этой цепочке нет, поэтому «под
+	// наблюдением» здесь совпадает с «снаружи всего».
+	//
+	// boot-gate: guardCreateUnary — первый из ГЕЙТОВ public-цепочки: a
 	// mutating tenant-resource Create is refused (UNAVAILABLE) when require-iam is
 	// armed and the register-drainer is not IAM-connected, so no resource is created
 	// without a deliverable owner-tuple intent. Read RPCs are untouched.
 	forwarders := cfg.AuthZTrustedForwarderSANs
 	publicUnary := []grpc.UnaryServerInterceptor{
+		grpcsrv.UnaryPanicRecovery(logger),
 		fgaboot.GuardCreateUnary(bootGate),
 		grpcsrv.UnaryCertIdentityExtract(),
 		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
 		handler.TenantUnaryInterceptor(false, productionMode),
 	}
 	publicStream := []grpc.StreamServerInterceptor{
+		grpcsrv.StreamPanicRecovery(logger),
 		grpcsrv.StreamCertIdentityExtract(),
 		grpcsrv.StreamTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
 		handler.TenantStreamInterceptor(false, productionMode),
@@ -252,11 +262,13 @@ func runServe(cfg config.Config) error {
 	// corelib нет, незамапленный RPC (unary или stream) fail-closed'ится
 	// PermissionDenied.
 	internalUnary := []grpc.UnaryServerInterceptor{
+		grpcsrv.UnaryPanicRecovery(logger),
 		grpcsrv.UnaryCertIdentityExtract(),
 		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
 		handler.TenantUnaryInterceptor(true, productionMode),
 	}
 	internalStream := []grpc.StreamServerInterceptor{
+		grpcsrv.StreamPanicRecovery(logger),
 		grpcsrv.StreamCertIdentityExtract(),
 		grpcsrv.StreamTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
 		handler.TenantStreamInterceptor(true, productionMode),

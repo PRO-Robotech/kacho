@@ -305,10 +305,21 @@ func runServe(cfg config.Config) error {
 	})
 
 	// ── цепочки интерсепторов ──
-	// ОБА листенера: cert-identity → trusted-principal (anti-spoof) → authz Check.
+	// ОБА листенера: panic-recovery → cert-identity → trusted-principal
+	// (anti-spoof) → authz Check.
 	// Public (:9090) не освобождён от доверенной пары так же, как internal (:9091)
 	// не освобождён от per-RPC authz: публичный листенер — обычный Service внутри
 	// пространства имён, и дозвониться до него может любой под (см. identityUnary).
+	//
+	// panic-recovery монтируется ОТДЕЛЬНОЙ опцией у самого листенера (ниже, в
+	// grpcsrv.NewServer), а не подмешивается в эти переменные. Причина не
+	// косметическая: переменные цепочек обязаны оставаться ровно тем, что вернул
+	// боевой сборщик личности, иначе переприсваивание литералом вернуло бы дыру
+	// анти-спуфинга, оставив остальные проверки зелёными — это стережёт
+	// TestServe_ChainVariablesAreNeverReassignedToALiteral, и ослаблять его ради
+	// удобства проводки нельзя. grpc.ChainUnaryInterceptor накапливает, поэтому
+	// опция, объявленная раньше, оказывается outermost — то есть звено всё равно
+	// стоит НАД принципалом и authz.
 	publicUnary := identityUnary(cfg)
 	publicStream := identityStream(cfg)
 	internalUnary := identityUnary(cfg)
@@ -346,13 +357,21 @@ func runServe(cfg config.Config) error {
 		return fmt.Errorf("internal listener tls creds: %w", err)
 	}
 
+	// Звено восстановления паники объявлено ПЕРВОЙ опцией цепочки, поэтому оно
+	// outermost и охватывает принципала, authz и обработчик: grpc-go панику не
+	// восстанавливает, а её последствие — завершение процесса, который держит и
+	// оба этих листенера, и data-plane docker pull/push.
 	grpcSrv := grpcsrv.NewServer(
 		publicCreds,
+		grpc.ChainUnaryInterceptor(grpcsrv.UnaryPanicRecovery(logger)),
+		grpc.ChainStreamInterceptor(grpcsrv.StreamPanicRecovery(logger)),
 		grpc.ChainUnaryInterceptor(publicUnary...),
 		grpc.ChainStreamInterceptor(publicStream...),
 	)
 	internalSrv := grpcsrv.NewServer(
 		internalCreds,
+		grpc.ChainUnaryInterceptor(grpcsrv.UnaryPanicRecovery(logger)),
+		grpc.ChainStreamInterceptor(grpcsrv.StreamPanicRecovery(logger)),
 		grpc.ChainUnaryInterceptor(internalUnary...),
 		grpc.ChainStreamInterceptor(internalStream...),
 	)
