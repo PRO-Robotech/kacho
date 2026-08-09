@@ -212,9 +212,17 @@ type account
     define admin: [user, service_account, group#member] or owner or super_admin
     define editor: [user, service_account, group#member] or admin
     # Contract-A (flat): the SEC-L `or system_viewer from cluster` read-cascade is
-    # REMOVED — account.viewer is no longer derived from a cluster relation. The
-    # kacho-vpc-operator's account-list visibility is now materialized per-object
-    # by the iam reconciler (direct viewer tuples on each account).
+    # REMOVED — account.viewer is no longer derived from a cluster relation.
+    # Visibility is materialized per-object by the iam reconciler (direct viewer
+    # tuples on each account).
+    #
+    # This note used to name the network operator as the consumer of that
+    # materialization, in the present tense. It outlived its subject: the
+    # component never existed in the tree, its service account and grants were
+    # retired by migration 0081, and its trusted-forwarder pins were removed the
+    # same day. A comment that keeps naming a retired consumer sends the next
+    # reader looking for a caller that cannot be found — and the model is the one
+    # place where that search costs the most.
     # Contract-B: the `... from organization` disjuncts and the `organization`
     # parent-pointer are REMOVED — B2B Organization is fully gone (D-12).
     define viewer: [user, service_account, group#member] or editor
