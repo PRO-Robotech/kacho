@@ -234,20 +234,18 @@ func runServe(cfg config.Config) error {
 	// mutating tenant-resource Create is refused (UNAVAILABLE) when require-iam is
 	// armed and the register-drainer is not IAM-connected, so no resource is created
 	// without a deliverable owner-tuple intent. Read RPCs are untouched.
-	forwarders := cfg.AuthZTrustedForwarderSANs
+	forwarders := cfg.TrustedForwarders()
 	publicUnary := []grpc.UnaryServerInterceptor{
 		grpcsrv.UnaryPanicRecovery(logger),
 		fgaboot.GuardCreateUnary(bootGate),
-		grpcsrv.UnaryCertIdentityExtract(),
-		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
-		handler.TenantUnaryInterceptor(false, productionMode),
 	}
+	publicUnary = append(publicUnary, grpcsrv.PrincipalExtractUnary(forwarders)...)
+	publicUnary = append(publicUnary, handler.TenantUnaryInterceptor(false, productionMode))
 	publicStream := []grpc.StreamServerInterceptor{
 		grpcsrv.StreamPanicRecovery(logger),
-		grpcsrv.StreamCertIdentityExtract(),
-		grpcsrv.StreamTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
-		handler.TenantStreamInterceptor(false, productionMode),
 	}
+	publicStream = append(publicStream, grpcsrv.PrincipalExtractStream(forwarders)...)
+	publicStream = append(publicStream, handler.TenantStreamInterceptor(false, productionMode))
 
 	// Internal listener (:9091) — тот же authN+authZ, что и public (security-инвариант:
 	// «authN+authZ на обоих listener'ах»; internal-периметр НЕ доверенный). Та же
@@ -263,16 +261,14 @@ func runServe(cfg config.Config) error {
 	// PermissionDenied.
 	internalUnary := []grpc.UnaryServerInterceptor{
 		grpcsrv.UnaryPanicRecovery(logger),
-		grpcsrv.UnaryCertIdentityExtract(),
-		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
-		handler.TenantUnaryInterceptor(true, productionMode),
 	}
+	internalUnary = append(internalUnary, grpcsrv.PrincipalExtractUnary(forwarders)...)
+	internalUnary = append(internalUnary, handler.TenantUnaryInterceptor(true, productionMode))
 	internalStream := []grpc.StreamServerInterceptor{
 		grpcsrv.StreamPanicRecovery(logger),
-		grpcsrv.StreamCertIdentityExtract(),
-		grpcsrv.StreamTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
-		handler.TenantStreamInterceptor(true, productionMode),
 	}
+	internalStream = append(internalStream, grpcsrv.PrincipalExtractStream(forwarders)...)
+	internalStream = append(internalStream, handler.TenantStreamInterceptor(true, productionMode))
 
 	var authzConn *grpc.ClientConn
 	if cfg.AuthZIAMGRPCAddr != "" {
@@ -604,14 +600,13 @@ func requireDBSSLMode(cfg config.Config) error {
 // insecureListenersInProduction / requireDBSSLMode. В dev допустимо пусто
 // (принимаем любой principal — back-compat локальных фикстур).
 //
-// Считаем НЕПУСТЫЕ записи, а не длину среза: WithTrustedForwarders принимает
-// только s != "", поэтому список из одних пустых строк (`SANS=","`) вырождается
+// Спрашиваем ТОТ ЖЕ объект и ТОТ ЖЕ предикат, что и проводка с самоотчётом
+// (grpcsrv.TrustedForwarders.IsNarrowed): WithTrustedForwarders принимает только
+// непустые записи, поэтому список из одних пустых строк (`SANS=","`) вырождается
 // там в пустое множество — то есть снова «доверяем любому». Проверка по длине
-// пропускала такое значение, и сервис стартовал, доверяя всем. Тот же предикат
-// применяет самоотчёт о посадке (hasNonEmpty), поэтому «стража пропустила» и
-// «отчёт говорит: круг сужен» не могут разъехаться.
+// сырого среза пропускала такое значение, и сервис стартовал, доверяя всем.
 func requireTrustedForwarders(cfg config.Config) error {
-	if !hasNonEmpty(cfg.AuthZTrustedForwarderSANs) {
+	if !cfg.TrustedForwarders().IsNarrowed() {
 		return fmt.Errorf("production mode requires a non-empty KACHO_COMPUTE_AUTHZ_TRUSTED_FORWARDER_SANS allow-list " +
 			"(empty → any mTLS peer is trusted to forward the end-user principal → subject spoofing / tenant crossing)")
 	}

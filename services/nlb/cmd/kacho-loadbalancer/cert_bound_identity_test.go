@@ -45,51 +45,50 @@ const gatewaySAN = "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
 
 // --- 1. source-level wiring guards ---
 
-// TestListeners_UseTrustAwarePrincipalExtract — оба интерсептор-набора
-// (publicUnary/internalUnary + stream-аналоги) обязаны навешивать trust-aware
-// CertIdentityExtract + TrustedPrincipalExtract (в этом порядке) и НЕ содержать
-// legacy unconditional UnaryPrincipalExtract / StreamPrincipalExtract.
+// TestListeners_TakeThePairFromTheSharedConstructor — все четыре цепочки (public
+// и internal, unary и stream) обязаны получать пару извлечения личности у ОБЩЕГО
+// конструктора grpcsrv.PrincipalExtract*, а не пересобирать её здесь.
 //
-// RED-демонстрация: вернуть на любой листенер grpcsrv.UnaryPrincipalExtract —
-// тест падает.
-func TestListeners_UseTrustAwarePrincipalExtract(t *testing.T) {
-	// Цепочки собираются в buildInterceptorChains (wiring.go) как named-return
-	// слайсы (`publicUnary = []…{…}`); source-guard проверяет их там.
+// Почему требование сменилось со «звенья на месте и в правильном порядке» на «пара
+// берётся у конструктора». Пока пара выписывалась в каждом листенере вручную, её
+// можно было и разорвать (одно звено), и переставить (решение о доверии по ещё не
+// извлечённой личности), поэтому страж проверял оба свойства текстом. Теперь оба
+// свойства держит сам конструктор — он всегда отдаёт ДВА звена в одном порядке, и
+// это заперто в pkg/grpcsrv (TestPrincipalExtractPairOrderIsLoadBearing, где
+// перевёрнутый порядок доказательно теряет личность). Значит здесь остаётся ровно
+// то, что конструктор гарантировать не может: что его действительно позвали для
+// каждой цепочки.
+//
+// RED-демонстрация: заменить любой из четырёх вызовов на ручную пару — падает.
+func TestListeners_TakeThePairFromTheSharedConstructor(t *testing.T) {
 	src := readSrcFile(t, "wiring.go")
 
-	type listener struct {
-		name        string
-		marker      string
-		certExtract string
-		trusted     string
-		legacy      string
-	}
-	for _, l := range []listener{
-		{"publicUnary", "publicUnary = []grpc.UnaryServerInterceptor{",
-			"grpcsrv.UnaryCertIdentityExtract()", "grpcsrv.UnaryTrustedPrincipalExtract(", "grpcsrv.UnaryPrincipalExtract()"},
-		{"internalUnary", "internalUnary = []grpc.UnaryServerInterceptor{",
-			"grpcsrv.UnaryCertIdentityExtract()", "grpcsrv.UnaryTrustedPrincipalExtract(", "grpcsrv.UnaryPrincipalExtract()"},
-		{"publicStream", "publicStream = []grpc.StreamServerInterceptor{",
-			"grpcsrv.StreamCertIdentityExtract()", "grpcsrv.StreamTrustedPrincipalExtract(", "grpcsrv.StreamPrincipalExtract()"},
-		{"internalStream", "internalStream = []grpc.StreamServerInterceptor{",
-			"grpcsrv.StreamCertIdentityExtract()", "grpcsrv.StreamTrustedPrincipalExtract(", "grpcsrv.StreamPrincipalExtract()"},
+	for _, l := range []struct{ name, want string }{
+		{"publicUnary", "publicUnary = append(publicUnary, grpcsrv.PrincipalExtractUnary(forwarders)...)"},
+		{"publicStream", "publicStream = append(publicStream, grpcsrv.PrincipalExtractStream(forwarders)...)"},
+		{"internalUnary", "internalUnary = append(internalUnary, grpcsrv.PrincipalExtractUnary(forwarders)...)"},
+		{"internalStream", "internalStream = append(internalStream, grpcsrv.PrincipalExtractStream(forwarders)...)"},
 	} {
-		block := braceBlockAfter(t, src, l.marker)
-		if !strings.Contains(block, l.certExtract) {
-			t.Errorf("%s: missing %s — principal-metadata НЕ привязана к mTLS-cert'у (spoof risk)", l.name, l.certExtract)
+		if !strings.Contains(src, l.want) {
+			t.Errorf("%s: цепочка не берёт пару у общего конструктора (ожидалось `%s`) — "+
+				"пара, собранная на месте, может потерять звено или переставить их, и тогда "+
+				"переданная личность принимается без привязки к сертификату (principal-spoofing)",
+				l.name, l.want)
 		}
-		if !strings.Contains(block, l.trusted) {
-			t.Errorf("%s: missing %s — principal-metadata НЕ trust-gated", l.name, l.trusted)
+	}
+	// Безусловный извлекатель заголовков не должен остаться нигде: он читает
+	// x-kacho-principal-* без всякой проверки транспорта.
+	for _, legacy := range []string{"grpcsrv.UnaryPrincipalExtract()", "grpcsrv.StreamPrincipalExtract()"} {
+		if strings.Contains(src, legacy) {
+			t.Errorf("проводка всё ещё монтирует %s — пир без проверенного сертификата подделает личность", legacy)
 		}
-		if strings.Contains(block, l.legacy) {
-			t.Errorf("%s: still wires legacy %s — peer без verified client-cert может подделать principal'а", l.name, l.legacy)
-		}
-		// Порядок: CertIdentityExtract обязан стоять раньше TrustedPrincipalExtract
-		// (Trusted читает verified-флаг, который ставит cert-extract).
-		ci := strings.Index(block, l.certExtract)
-		tp := strings.Index(block, l.trusted)
-		if ci < 0 || tp < 0 || ci >= tp {
-			t.Errorf("%s: ordering violated — %s обязан идти раньше %s", l.name, l.certExtract, l.trusted)
+	}
+	// Ручная пересборка пары мимо конструктора — тот же класс: она снова
+	// становится разрываемой и переставляемой.
+	for _, manual := range []string{"grpcsrv.UnaryTrustedPrincipalExtract(", "grpcsrv.StreamTrustedPrincipalExtract("} {
+		if strings.Contains(src, manual) {
+			t.Errorf("проводка пересобирает пару вручную (%s) вместо grpcsrv.PrincipalExtract* — "+
+				"порядок и полнота пары снова держатся текстом, а не конструкцией", manual)
 		}
 	}
 }
@@ -184,14 +183,14 @@ func TestPrincipalChain_ForwarderAllowlist_DropsNonGateway(t *testing.T) {
 
 // --- helpers ---
 
-// principalChainUnderTest собирает ту же unary-цепочку principal-extract, что
-// навешивает main.go на оба листенера. forwarderSANs пробрасываются как
-// WithTrustedForwarders (пусто → trust любого verified peer'а).
+// principalChainUnderTest прогоняет запрос через ТУ ЖЕ пару извлечения, которую
+// композиционный корень навешивает на оба листенера, — она берётся у общего
+// конструктора, а не пересобирается здесь. Реконструкция была бы фикстурой,
+// способной разойтись с продуктом молча: пара, собранная в тесте, осталась бы
+// верной и после того, как продукт перестал бы её собирать.
+// forwarderSANs — круг доверенных отправителей (пусто → круг не сужен).
 func principalChainUnderTest(forwarderSANs ...string) grpc.UnaryServerInterceptor {
-	return chainUnaryServer(
-		grpcsrv.UnaryCertIdentityExtract(),
-		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarderSANs...)),
-	)
+	return chainUnaryServer(grpcsrv.PrincipalExtractUnary(grpcsrv.NewTrustedForwarders(forwarderSANs...))...)
 }
 
 // runChain прогоняет ctx через цепочку и возвращает то, что увидел бы handler:

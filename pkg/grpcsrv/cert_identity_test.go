@@ -205,7 +205,7 @@ func TestTrustedForwarders_NonForwarderVerifiedPeer_PrincipalDropped(t *testing.
 	}
 	chained := chainUnary(
 		grpcsrv.UnaryCertIdentityExtract(),
-		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(gatewaySAN)),
+		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(grpcsrv.NewTrustedForwarders(gatewaySAN))),
 	)
 	_, err := chained(ctx, nil, nil, final)
 	require.NoError(t, err)
@@ -232,7 +232,7 @@ func TestTrustedForwarders_ForwarderVerifiedPeer_PrincipalTrusted(t *testing.T) 
 	}
 	chained := chainUnary(
 		grpcsrv.UnaryCertIdentityExtract(),
-		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(gatewaySAN)),
+		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(grpcsrv.NewTrustedForwarders(gatewaySAN))),
 	)
 	_, err := chained(ctx, nil, nil, final)
 	require.NoError(t, err)
@@ -254,7 +254,7 @@ func TestTrustedForwarders_NonForwarder_PrincipalContextOK_False(t *testing.T) {
 	}
 	chained := chainUnary(
 		grpcsrv.UnaryCertIdentityExtract(),
-		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(gatewaySAN)),
+		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(grpcsrv.NewTrustedForwarders(gatewaySAN))),
 	)
 	_, err := chained(ctx, nil, nil, final)
 	require.NoError(t, err)

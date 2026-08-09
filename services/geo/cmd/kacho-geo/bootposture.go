@@ -33,6 +33,6 @@ func bootPosture(cfg config.Config) observability.BootPosture {
 		PublicMTLS:        cfg.PublicServerMTLS.Enable,
 		InternalMTLS:      cfg.InternalServerMTLS.Enable,
 		AuthZCheck:        cfg.AuthZIAMGRPCAddr != "",
-		TrustedForwarders: countNonEmpty(cfg.AuthZTrustedForwarderSANs) > 0,
+		TrustedForwarders: cfg.TrustedForwarders().IsNarrowed(),
 	}
 }

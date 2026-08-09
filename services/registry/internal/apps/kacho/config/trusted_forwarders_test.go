@@ -40,7 +40,7 @@ func TestTrustedForwarders_ArrivesFromTheEnvironment(t *testing.T) {
 		"KACHO_REGISTRY_DB_PASSWORD":                  "secret",
 		"KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS": gatewaySAN,
 	})
-	got := c.TrustedForwarders()
+	got := c.TrustedForwarders().SANs()
 	if len(got) != 1 || got[0] != gatewaySAN {
 		t.Fatalf("TrustedForwarders() = %#v, want exactly [%q] — "+
 			"the knob does not reach the value that goes into WithTrustedForwarders", got, gatewaySAN)
@@ -57,7 +57,7 @@ func TestTrustedForwarders_MatchesTheCorelibFilter(t *testing.T) {
 		"KACHO_REGISTRY_DB_PASSWORD":                  "secret",
 		"KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS": " ," + gatewaySAN + " ,",
 	})
-	got := c.TrustedForwarders()
+	got := c.TrustedForwarders().SANs()
 	if len(got) != 1 || got[0] != gatewaySAN {
 		t.Fatalf("TrustedForwarders() = %#v, want exactly [%q]", got, gatewaySAN)
 	}
@@ -68,7 +68,7 @@ func TestTrustedForwarders_MatchesTheCorelibFilter(t *testing.T) {
 // проверки по длине). Именно на этом значении обязана отказать стража старта.
 func TestTrustedForwarders_UnsetIsEmpty(t *testing.T) {
 	c := loadEnv(t, map[string]string{"KACHO_REGISTRY_DB_PASSWORD": "secret"})
-	if got := c.TrustedForwarders(); len(got) != 0 {
+	if got := c.TrustedForwarders(); got.IsNarrowed() {
 		t.Fatalf("TrustedForwarders() = %#v, want empty when the knob is unset", got)
 	}
 }

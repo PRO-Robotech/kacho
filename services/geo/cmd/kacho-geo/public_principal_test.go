@@ -20,6 +20,8 @@ import (
 	"testing"
 
 	"google.golang.org/grpc"
+
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 )
 
 // Source-level wiring guard для public/internal листенеров теперь — общий
@@ -76,6 +78,6 @@ func TestPublicPrincipalChain_ForwarderAllowlist_DropsNonGateway(t *testing.T) {
 // тот же builder), а не её локальную реконструкцию. forwarderSANs — allow-list
 // доверенных форвардеров.
 func publicPrincipalChain(forwarderSANs ...string) grpc.UnaryServerInterceptor {
-	unary, _ := newPrincipalInterceptors(forwarderSANs)
+	unary, _ := newPrincipalInterceptors(grpcsrv.NewTrustedForwarders(forwarderSANs...))
 	return chainUnaryServer(unary...)
 }

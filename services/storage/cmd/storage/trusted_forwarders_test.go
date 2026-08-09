@@ -194,7 +194,7 @@ func TestBootPosture_ReportsWhetherTheCircleIsNarrowed(t *testing.T) {
 // отфильтровано так же, как фильтрует corelib (пустые записи отбрасываются). Иначе
 // стража считала бы список заполненным там, где corelib видит пустой.
 func TestTrustedForwarders_MatchesTheCorelibFilter(t *testing.T) {
-	got := prodCfg(" ", gatewaySAN+" ", "").TrustedForwarders()
+	got := prodCfg(" ", gatewaySAN+" ", "").TrustedForwarders().SANs()
 	if len(got) != 1 || got[0] != gatewaySAN {
 		t.Fatalf("TrustedForwarders() = %#v, want exactly [%q]", got, gatewaySAN)
 	}

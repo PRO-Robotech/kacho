@@ -54,13 +54,12 @@ func loggingUnaryInterceptor(logger *slog.Logger) grpc.UnaryServerInterceptor {
 // интерсептор (corelib authz), собранный composition root'ом из конфига; nil, если
 // authz не сконфигурирован (dev-старт без kacho-iam) → per-RPC Check пропускается,
 // AuthN (mTLS+principal) сохраняется. Одинаков на ОБОИХ листенерах (security.md).
-func unaryChain(logger *slog.Logger, forwarders []string, authz grpc.UnaryServerInterceptor) []grpc.UnaryServerInterceptor {
+func unaryChain(logger *slog.Logger, forwarders grpcsrv.TrustedForwarders, authz grpc.UnaryServerInterceptor) []grpc.UnaryServerInterceptor {
 	chain := []grpc.UnaryServerInterceptor{
 		loggingUnaryInterceptor(logger),
 		grpcsrv.UnaryPanicRecovery(logger),
-		grpcsrv.UnaryCertIdentityExtract(),
-		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
 	}
+	chain = append(chain, grpcsrv.PrincipalExtractUnary(forwarders)...)
 	if authz != nil {
 		chain = append(chain, authz)
 	}
@@ -68,12 +67,11 @@ func unaryChain(logger *slog.Logger, forwarders []string, authz grpc.UnaryServer
 }
 
 // streamChain — stream-аналог unaryChain (тот же инвариант порядка).
-func streamChain(logger *slog.Logger, forwarders []string, authz grpc.StreamServerInterceptor) []grpc.StreamServerInterceptor {
+func streamChain(logger *slog.Logger, forwarders grpcsrv.TrustedForwarders, authz grpc.StreamServerInterceptor) []grpc.StreamServerInterceptor {
 	chain := []grpc.StreamServerInterceptor{
 		grpcsrv.StreamPanicRecovery(logger),
-		grpcsrv.StreamCertIdentityExtract(),
-		grpcsrv.StreamTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
 	}
+	chain = append(chain, grpcsrv.PrincipalExtractStream(forwarders)...)
 	if authz != nil {
 		chain = append(chain, authz)
 	}

@@ -93,9 +93,10 @@ func TestValidate_Dev_EmptyTrustedForwarders_Allowed(t *testing.T) {
 // пропустила» ⟺ «круг реально сужен» по построению, а не по совпадению.
 func TestTrustedForwarders_DropsEntriesTheTransportWouldIgnore(t *testing.T) {
 	c := fwdCfg(ModeProduction, []string{"", gatewaySAN, "   ", "  " + gatewaySAN + "\t"})
-	assert.Equal(t, []string{gatewaySAN, gatewaySAN}, c.TrustedForwarders(),
-		"пустые записи отбрасываются (их отбрасывает и corelib), пробелы по краям "+
-			"срезаются — иначе запись не совпала бы ни с одним сертификатом побайтово")
+	assert.Equal(t, []string{gatewaySAN}, c.TrustedForwarders().SANs(),
+		"пустые записи отбрасываются (их отбрасывает и транспорт), пробелы по краям "+
+			"срезаются — иначе запись не совпала бы ни с одним сертификатом побайтово; "+
+			"повтор схлопывается — круг это множество, и транспорт всегда складывал его в map")
 }
 
 // Ручка обязана быть ДОСТИЖИМА из окружения: список задаёт чарт, а не литерал в коде.
@@ -109,5 +110,5 @@ func TestLoad_TrustedForwardersFromEnv(t *testing.T) {
 	assert.Equal(t, []string{
 		gatewaySAN,
 		"spiffe://kacho.cloud/ns/kacho/sa/kacho-compute",
-	}, c.TrustedForwarders())
+	}, c.TrustedForwarders().SANs())
 }

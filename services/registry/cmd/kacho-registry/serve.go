@@ -800,7 +800,7 @@ func requireTrustedForwarders(cfg config.Config) error {
 	default:
 		return nil
 	}
-	if len(cfg.TrustedForwarders()) == 0 {
+	if !cfg.TrustedForwarders().IsNarrowed() {
 		return errors.New("trusted-forwarder allow-list required: set KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS " +
 			"(empty → any certificate-verified peer may forward an end-user identity, so a neighbouring " +
 			"service can act as any tenant; pin the api-gateway SAN)")
@@ -833,15 +833,9 @@ func requireTrustedForwarders(cfg config.Config) error {
 // (KACHO_API_GATEWAY_REGISTRY_GRPC :9090 и ..._REGISTRY_INTERNAL_GRPC :9091),
 // поэтому список общий: внутренний периметр не освобождён.
 func identityUnary(cfg config.Config) []grpc.UnaryServerInterceptor {
-	return []grpc.UnaryServerInterceptor{
-		grpcsrv.UnaryCertIdentityExtract(),
-		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(cfg.TrustedForwarders()...)),
-	}
+	return grpcsrv.PrincipalExtractUnary(cfg.TrustedForwarders())
 }
 
 func identityStream(cfg config.Config) []grpc.StreamServerInterceptor {
-	return []grpc.StreamServerInterceptor{
-		grpcsrv.StreamCertIdentityExtract(),
-		grpcsrv.StreamTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(cfg.TrustedForwarders()...)),
-	}
+	return grpcsrv.PrincipalExtractStream(cfg.TrustedForwarders())
 }

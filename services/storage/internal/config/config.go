@@ -9,7 +9,6 @@ package config
 
 import (
 	"fmt"
-	"strings"
 
 	"google.golang.org/grpc"
 
@@ -149,34 +148,20 @@ type Config struct {
 	InternalServerMTLS grpcsrv.TLSServer `envconfig:"INTERNAL_SERVER_MTLS"`
 }
 
-// TrustedForwarders — список личностей сертификата, который РЕАЛЬНО уезжает в
+// TrustedForwarders — круг отправителей, который РЕАЛЬНО уезжает в
 // grpcsrv.WithTrustedForwarders на обоих листенерах.
 //
 // Единственный источник этого значения на процесс: его читает и проводка
 // (cmd/storage/serve.go), и стража старта (Validate), и самоотчёт о посадке
-// (cmd/storage/bootposture.go). Поэтому «стража пропустила» ⟺ «круг отправителей
-// реально сужен» — по построению, а не по совпадению; разъехаться им нечем.
+// (cmd/storage/bootposture.go). Все трое спрашивают ОДИН объект и ОДИН его
+// предикат, поэтому «стража пропустила» ⟺ «круг реально сужен» — по построению,
+// а не по совпадению трёх одинаково написанных тел.
 //
-// Отбрасывает пустые записи, потому что их отбрасывает и corelib
-// (WithTrustedForwarders пропускает только s != ""): список из одних пустых строк
-// (`SANS=","`) там вырождается в пустое множество, то есть снова «доверяем любому».
-// Считать такую строку заполненной значило бы пропустить дыру через гейт.
-//
-// Пробелы по краям срезаются — и это НЕ зеркало corelib, а осознанное расхождение:
-// corelib сравнивает личность сертификата побайтово (CertIdentity отдаёт SAN как
-// есть), поэтому запись " spiffe://…" не совпала бы там ни с одним сертификатом.
-// Без среза оператор, написавший список через «запятая-пробел», получил бы не
-// отказ старта, а молчаливый отказ в обслуживании законному отправителю. Круг
-// доверенных от этого не расширяется: в него попадают ровно те строки, которые
-// оператор перечислил, — срезаются только окружающие пробелы.
-func (c Config) TrustedForwarders() []string {
-	out := make([]string, 0, len(c.AuthZTrustedForwarderSANs))
-	for _, s := range c.AuthZTrustedForwarderSANs {
-		if s = strings.TrimSpace(s); s != "" {
-			out = append(out, s)
-		}
-	}
-	return out
+// Нормализация круга (пустые записи, пробелы по краям, повторы) живёт в
+// конструкторе типа и здесь не пересказывается: два места об одном предмете
+// разъезжаются молча. См. grpcsrv.NewTrustedForwarders.
+func (c Config) TrustedForwarders() grpcsrv.TrustedForwarders {
+	return grpcsrv.NewTrustedForwarders(c.AuthZTrustedForwarderSANs...)
 }
 
 // PublicServerCreds возвращает grpc.ServerOption для публичного листенера (:9090).

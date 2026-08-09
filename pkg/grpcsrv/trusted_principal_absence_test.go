@@ -76,7 +76,7 @@ func TestTrustedPrincipal_VerifiedForwarderNoIdentityMetadata_NoOwnerKey(t *test
 	}}}
 	ctx := metadata.NewIncomingContext(peer.NewContext(context.Background(), tlsPeer), metadata.MD{})
 
-	owner, has := ownerFromChain(t, ctx, grpcsrv.WithTrustedForwarders(gatewaySAN))
+	owner, has := ownerFromChain(t, ctx, grpcsrv.WithTrustedForwarders(grpcsrv.NewTrustedForwarders(gatewaySAN)))
 	require.False(t, has,
 		"доверенный форвардер без пересланной личности не наделяет запрос личностью")
 	require.Equal(t, operations.Owner{}, owner)

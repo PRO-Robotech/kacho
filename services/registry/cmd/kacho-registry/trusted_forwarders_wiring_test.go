@@ -30,12 +30,12 @@ var unconditionalExtract = regexp.MustCompile(`grpcsrv\.(Unary|Stream)PrincipalE
 // строки при форматировании не должен превращать стража в ложное падение.
 var chainCall = regexp.MustCompile(`(?s)\bidentity(Unary|Stream)\(\s*cfg\s*\)`)
 
-// forwardersArg — то, ЧТО уезжает в corelib как allow-list. Ищем все вхождения, а
-// не первое: одного вызова с литералом достаточно, чтобы круг снова не сужался.
-// Аргумент сам содержит скобки (`cfg.TrustedForwarders()...`), поэтому класс
-// «что угодно, кроме скобки» здесь не годится — берём нежадное совпадение до
-// многоточия.
-var forwardersArg = regexp.MustCompile(`WithTrustedForwarders\(\s*(.*?)\s*\.\.\.\s*\)`)
+// forwardersArg — то, ЧТО уезжает в общий конструктор пары как круг отправителей.
+// Ищем все вхождения, а не первое: одного вызова с литералом достаточно, чтобы
+// круг снова не сужался. Аргумент сам содержит скобки
+// (`cfg.TrustedForwarders()`), поэтому класс «что угодно, кроме скобки» здесь не
+// годится — берём нежадное совпадение до закрывающей скобки строки.
+var forwardersArg = regexp.MustCompile(`(?m)grpcsrv\.PrincipalExtract(?:Unary|Stream)\(\s*(.*?)\s*\)\s*$`)
 
 // chainAssign — ЛЮБОЕ присваивание переменной, которая уезжает в листенер.
 // Считать одни только вызовы сборщика недостаточно: переприсваивание литералом
@@ -100,8 +100,9 @@ func TestServe_ForwarderAllowListComesFromConfig(t *testing.T) {
 
 	all := forwardersArg.FindAllStringSubmatch(src, -1)
 	if len(all) == 0 {
-		t.Fatal("serve.go: WithTrustedForwarders не вызывается вовсе — круг отправителей " +
-			"чужой личности ничем не сужается")
+		t.Fatal("serve.go: пара извлечения личности не собирается общим конструктором " +
+			"grpcsrv.PrincipalExtract* — круг отправителей чужой личности ничем не сужается " +
+			"(либо страж перестал читать проводку и его надо обновить вместе с ней)")
 	}
 	for _, m := range all {
 		arg := strings.TrimSpace(m[1])

@@ -350,3 +350,20 @@ func Load() (Config, error) {
 	err := corecfg.LoadPrefixed(EnvPrefix, &c)
 	return c, err
 }
+
+// TrustedForwarders — круг отправителей, который РЕАЛЬНО уезжает в
+// grpcsrv.WithTrustedForwarders на обоих листенерах.
+//
+// Единственный источник этого значения на процесс: его читает и проводка
+// (cmd/compute/main.go), и стража старта (Validate), и самоотчёт о посадке
+// (cmd/compute/bootposture.go). Все трое спрашивают ОДИН объект и ОДИН его
+// предикат, поэтому «стража пропустила» ⟺ «круг реально сужен» — по построению,
+// а не по совпадению трёх одинаково написанных тел. До ввода типа их было
+// именно три, и каждое считало по-своему.
+//
+// Нормализация круга (пустые записи, пробелы по краям, повторы) живёт в
+// конструкторе типа и здесь не пересказывается: два места об одном предмете
+// разъезжаются молча. См. grpcsrv.NewTrustedForwarders.
+func (c Config) TrustedForwarders() grpcsrv.TrustedForwarders {
+	return grpcsrv.NewTrustedForwarders(c.AuthZTrustedForwarderSANs...)
+}

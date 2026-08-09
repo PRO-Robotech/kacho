@@ -228,12 +228,13 @@ func (c Config) Validate() error {
 		// поэтому allow-list обязан быть непустым (перечисляет SAN доверенного
 		// форвардера — api-gateway). Guard оставлен gated на mtls.server.Enable: если он
 		// off, ошибка insecure-server-transport уже поднята выше — не дублируем.
-		// Считаем НЕПУСТЫЕ записи, а не длину среза: WithTrustedForwarders
-		// принимает только s != "", поэтому список из одних пустых строк
+		// Спрашиваем ТОТ ЖЕ объект и ТОТ ЖЕ предикат, что и проводка с самоотчётом
+		// (grpcsrv.TrustedForwarders.IsNarrowed): WithTrustedForwarders принимает
+		// только непустые записи, поэтому список из одних пустых строк
 		// (`trusted-forwarder-sans: ["",""]`) вырождается там в пустое множество —
 		// то есть снова «доверяем любому mTLS-verified пиру». Проверка по длине
-		// пропускала такое значение, и сервис стартовал, доверяя всем.
-		if c.MTLS.Server.Enable && !hasNonEmptyForwarderSAN(c.Authz.TrustedForwarderSANs) {
+		// сырого среза пропускала такое значение, и сервис стартовал, доверяя всем.
+		if c.MTLS.Server.Enable && !c.TrustedForwarders().IsNarrowed() {
 			errs = multierr.Append(errs, fmt.Errorf(
 				"production mode: authz.trusted-forwarder-sans must be non-empty when mtls.server.enable=true "+
 					"(empty allow-list trusts any mTLS-verified peer to forward the end-user principal — impersonation vector)"))
@@ -378,18 +379,4 @@ func validateEndpoint(field, raw string) error {
 		return fmt.Errorf("%s: %q missing :port", field, raw)
 	}
 	return nil
-}
-
-// hasNonEmptyForwarderSAN — есть ли в списке хотя бы одна запись, которую примет
-// corelib. grpcsrv.WithTrustedForwarders пропускает только s != "", поэтому список
-// из одних пустых строк даёт там пустой allow-list, а пустой allow-list означает
-// «доверять форвардинг x-kacho-principal-* ЛЮБОМУ mTLS-verified пиру». Считать
-// такой список заполненным значило бы пропустить дыру через стражу старта.
-func hasNonEmptyForwarderSAN(sans []string) bool {
-	for _, s := range sans {
-		if s != "" {
-			return true
-		}
-	}
-	return false
 }

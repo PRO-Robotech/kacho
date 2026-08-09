@@ -69,7 +69,7 @@ func buildInterceptorChains(
 	logger *slog.Logger,
 	bootGate *bootgate.Gate,
 	authzIntr *authz.Interceptor,
-	forwarders []string,
+	forwarders grpcsrv.TrustedForwarders,
 ) (
 	publicUnary []grpc.UnaryServerInterceptor,
 	publicStream []grpc.StreamServerInterceptor,
@@ -79,28 +79,27 @@ func buildInterceptorChains(
 	publicUnary = []grpc.UnaryServerInterceptor{
 		grpcsrv.UnaryPanicRecovery(logger),
 		fgaboot.GuardCreateUnary(bootGate),
-		grpcsrv.UnaryCertIdentityExtract(),
-		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
-		authzIntr.Unary(),
 	}
+	publicUnary = append(publicUnary, grpcsrv.PrincipalExtractUnary(forwarders)...)
+	publicUnary = append(publicUnary, authzIntr.Unary())
+
 	publicStream = []grpc.StreamServerInterceptor{
 		grpcsrv.StreamPanicRecovery(logger),
-		grpcsrv.StreamCertIdentityExtract(),
-		grpcsrv.StreamTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
-		authzIntr.Stream(),
 	}
+	publicStream = append(publicStream, grpcsrv.PrincipalExtractStream(forwarders)...)
+	publicStream = append(publicStream, authzIntr.Stream())
+
 	internalUnary = []grpc.UnaryServerInterceptor{
 		grpcsrv.UnaryPanicRecovery(logger),
-		grpcsrv.UnaryCertIdentityExtract(),
-		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
-		authzIntr.Unary(),
 	}
+	internalUnary = append(internalUnary, grpcsrv.PrincipalExtractUnary(forwarders)...)
+	internalUnary = append(internalUnary, authzIntr.Unary())
+
 	internalStream = []grpc.StreamServerInterceptor{
 		grpcsrv.StreamPanicRecovery(logger),
-		grpcsrv.StreamCertIdentityExtract(),
-		grpcsrv.StreamTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
-		authzIntr.Stream(),
 	}
+	internalStream = append(internalStream, grpcsrv.PrincipalExtractStream(forwarders)...)
+	internalStream = append(internalStream, authzIntr.Stream())
 	return publicUnary, publicStream, internalUnary, internalStream
 }
 

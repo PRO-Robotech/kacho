@@ -133,7 +133,7 @@ func runServe(cfg config.Config) error {
 	// своим валидным client-cert'ом) НЕ может выдать себя за пользователя. Пустой
 	// allow-list (default) сохраняет прежнее «любой verified peer доверен» (dev
 	// back-compat) — enforce задаётся конфигом в production.
-	forwarders := cfg.AuthZTrustedForwarderSANs
+	forwarders := cfg.TrustedForwarders()
 	// Оба листенера получают ОДНУ И ТУ ЖЕ trust-aware principal-цепочку
 	// (cert-identity → trusted-principal с allow-list форвардеров) — единый source
 	// wiring'а через newPrincipalInterceptors, чтобы public и internal не могли
@@ -402,10 +402,11 @@ func validateSecurityConfig(cfg config.Config) error {
 	// список молча разрешался в dev (config-default) — insecure-by-default gap:
 	// оператор, забывший выставить production, отгружал spoofing-путь.
 	//
-	// Теперь trust-any — ЯВНЫЙ opt-in, не дефолт. Пустая строка в списке — НЕ
-	// форвардер (WithTrustedForwarders отбрасывает "" → trust-any), поэтому
-	// считаем только непустые.
-	if countNonEmpty(cfg.AuthZTrustedForwarderSANs) == 0 {
+	// Теперь trust-any — ЯВНЫЙ opt-in, не дефолт. Спрашиваем ТОТ ЖЕ объект и ТОТ
+	// ЖЕ предикат, что и проводка с самоотчётом
+	// (grpcsrv.TrustedForwarders.IsNarrowed): пустая запись в списке — НЕ
+	// форвардер (транспорт отбрасывает её → trust-any).
+	if !cfg.TrustedForwarders().IsNarrowed() {
 		switch cfg.AuthMode {
 		case "production", "production-strict":
 			// В production trust-any недопустим ни при каких условиях — opt-in
@@ -420,19 +421,6 @@ func validateSecurityConfig(cfg config.Config) error {
 		}
 	}
 	return nil
-}
-
-// countNonEmpty возвращает число непустых строк в срезе. Пустые SAN'ы игнорируются
-// corelib WithTrustedForwarders (отбрасывает "" → пустой allow-list → trust-any),
-// поэтому production-гейт учитывает только непустые записи.
-func countNonEmpty(ss []string) int {
-	n := 0
-	for _, s := range ss {
-		if s != "" {
-			n++
-		}
-	}
-	return n
 }
 
 // authzIAMConn нормализует *grpc.ClientConn в grpc.ClientConnInterface без
@@ -455,16 +443,8 @@ func authzIAMConn(conn *grpc.ClientConn) grpc.ClientConnInterface {
 // идентична by construction. forwarders (allow-list SAN'ов доверенных
 // форвардеров) пробрасывается в WithTrustedForwarders — verified-но-не-форвардер
 // peer не может форвардить произвольного principal'а.
-func newPrincipalInterceptors(forwarders []string) ([]grpc.UnaryServerInterceptor, []grpc.StreamServerInterceptor) {
-	unary := []grpc.UnaryServerInterceptor{
-		grpcsrv.UnaryCertIdentityExtract(),
-		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
-	}
-	stream := []grpc.StreamServerInterceptor{
-		grpcsrv.StreamCertIdentityExtract(),
-		grpcsrv.StreamTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
-	}
-	return unary, stream
+func newPrincipalInterceptors(forwarders grpcsrv.TrustedForwarders) ([]grpc.UnaryServerInterceptor, []grpc.StreamServerInterceptor) {
+	return grpcsrv.PrincipalExtractUnary(forwarders), grpcsrv.PrincipalExtractStream(forwarders)
 }
 
 // assembleUnaryChain строит финальную упорядоченную unary-цепочку ОДНОГО листенера

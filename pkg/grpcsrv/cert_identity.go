@@ -57,21 +57,31 @@ type trustedPrincipalConfig struct {
 // TrustedPrincipalOption — функциональная опция UnaryTrustedPrincipalExtract.
 type TrustedPrincipalOption func(*trustedPrincipalConfig)
 
-// WithTrustedForwarders ограничивает форвард end-user principal'а перечнем
-// cert-identity SAN'ов доверенных форвардеров (api-gateway). Если задан, principal
-// форвардится ТОЛЬКО когда cert-identity peer'а ∈ allow-list — иначе principal
-// снимается (defense-in-depth против confused-deputy: внутренний сервис со своим
-// валидным mTLS-cert'ом не может выдать себя за пользователя). Пустой список
-// (опция не вызвана) сохраняет прежнее поведение «любой verified peer доверен».
-func WithTrustedForwarders(sans ...string) TrustedPrincipalOption {
+// WithTrustedForwarders ограничивает форвард end-user principal'а КРУГОМ
+// доверенных отправителей (api-gateway и те, кто законно говорит за инициатора).
+// Когда круг сужен, principal форвардится ТОЛЬКО если cert-identity peer'а ∈ круг —
+// иначе principal снимается (defense-in-depth против confused-deputy: внутренний
+// сервис со своим валидным mTLS-cert'ом не может выдать себя за пользователя).
+// Несуженный круг (нулевое значение [TrustedForwarders]) сохраняет прежнее
+// поведение «любой verified peer доверен».
+//
+// Эта семантика НЕ изменилась вместе с вводом типа и меняться не должна: её уже
+// читают все, включая тех, кто про тип ничего не знает. От «забыл заполнить»
+// защищает отказ старта у каждого, кто сужает, — а не переопределение смысла
+// пустого множества здесь.
+//
+// Аргумент — ТИП, а не срез строк, намеренно: круг обязан приезжать сюда ровно
+// тем значением, которое одобрила стража старта и о котором отчитался самоотчёт
+// о посадке. Сырой срез компилятор здесь больше не примет, поэтому «стража
+// считала одно, транспорт получил другое» стало невыразимым.
+func WithTrustedForwarders(f TrustedForwarders) TrustedPrincipalOption {
 	return func(c *trustedPrincipalConfig) {
+		sans := f.SANs()
 		if c.forwarders == nil {
 			c.forwarders = make(map[string]struct{}, len(sans))
 		}
 		for _, s := range sans {
-			if s != "" {
-				c.forwarders[s] = struct{}{}
-			}
+			c.forwarders[s] = struct{}{}
 		}
 	}
 }

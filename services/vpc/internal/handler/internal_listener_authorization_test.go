@@ -98,7 +98,7 @@ func chainOutcome(
 	inner := authzIntr.Unary()
 	authnIntr := AuthNUnaryInterceptor(productionMode)
 	trustIntr := grpcsrv.UnaryTrustedPrincipalExtract(
-		grpcsrv.WithTrustedForwarders(testForwarderSAN))
+		grpcsrv.WithTrustedForwarders(grpcsrv.NewTrustedForwarders(testForwarderSAN)))
 
 	_, err = trustIntr(ctx, req, info, func(ctx context.Context, req any) (any, error) {
 		return authnIntr(ctx, req, info, func(ctx context.Context, req any) (any, error) {

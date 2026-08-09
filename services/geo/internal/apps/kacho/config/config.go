@@ -152,3 +152,19 @@ func Load() (Config, error) {
 	err := corecfg.LoadPrefixed(envPrefix, &c)
 	return c, err
 }
+
+// TrustedForwarders — круг отправителей, который РЕАЛЬНО уезжает в
+// grpcsrv.WithTrustedForwarders на обоих листенерах.
+//
+// Единственный источник этого значения на процесс: его читает и проводка
+// (cmd/kacho-geo/serve.go), и стража старта (Validate), и самоотчёт о посадке
+// (cmd/kacho-geo/bootposture.go). Все трое спрашивают ОДИН объект и ОДИН его
+// предикат, поэтому «стража пропустила» ⟺ «круг реально сужен» — по построению,
+// а не по совпадению одинаково написанных тел.
+//
+// Нормализация круга (пустые записи, пробелы по краям, повторы) живёт в
+// конструкторе типа и здесь не пересказывается: два места об одном предмете
+// разъезжаются молча. См. grpcsrv.NewTrustedForwarders.
+func (c Config) TrustedForwarders() grpcsrv.TrustedForwarders {
+	return grpcsrv.NewTrustedForwarders(c.AuthZTrustedForwarderSANs...)
+}

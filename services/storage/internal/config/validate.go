@@ -160,14 +160,14 @@ func (c Config) Validate() error {
 	// листенере ещё и привязывает/отвязывает их. Внутренний периметр у нас объявлен
 	// НЕдоверенным, и слой TLS имена не сверяет — сужает только этот список.
 	//
-	// Проверяем результат TrustedForwarders(), а не длину сырого поля: там же, где
-	// сужение реально произойдёт, отбрасываются пустые записи, поэтому `SANS=","`
-	// не может пройти гейт и вернуть дыру (у compute и nlb этот кейс считается
-	// len() и проходит).
+	// Спрашиваем ТОТ ЖЕ объект и ТОТ ЖЕ предикат, что и проводка с самоотчётом:
+	// grpcsrv.TrustedForwarders.IsNarrowed. Считать длину сырого поля нельзя — там
+	// же, где сужение реально произойдёт, отбрасываются пустые записи, поэтому
+	// `SANS=","` прошёл бы проверку длины и вернул дыру.
 	//
 	// dev осознанно терпит пусто — но только в in-process фикстурах: на РАЗВЁРНУТОМ
 	// стенде dev-посадка запрещена отдельным правилом (production-mode ВЕЗДЕ).
-	if len(c.TrustedForwarders()) == 0 {
+	if !c.TrustedForwarders().IsNarrowed() {
 		problems = append(problems,
 			"trusted-forwarder allow-list required: set KACHO_STORAGE_AUTHZ_TRUSTED_FORWARDER_SANS "+
 				"(empty → any certificate-verified peer may forward an end-user identity, so a neighbouring "+

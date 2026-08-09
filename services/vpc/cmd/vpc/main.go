@@ -418,14 +418,14 @@ func runServe(cfg config.Config) error {
 		handler.UnaryTimeoutInterceptor(reqTimeout),
 		fgaboot.GuardCreateUnary(bootGate),
 	}
-	publicUnary = append(publicUnary, principalExtractUnary(forwarders)...)
+	publicUnary = append(publicUnary, grpcsrv.PrincipalExtractUnary(forwarders)...)
 	publicUnary = append(publicUnary, handler.AuthNUnaryInterceptor(productionMode))
 
 	publicStream := []grpc.StreamServerInterceptor{
 		grpcsrv.StreamPanicRecovery(logger),
 		handler.StreamTimeoutInterceptor(reqTimeout),
 	}
-	publicStream = append(publicStream, principalExtractStream(forwarders)...)
+	publicStream = append(publicStream, grpcsrv.PrincipalExtractStream(forwarders)...)
 	publicStream = append(publicStream, handler.AuthNStreamInterceptor(productionMode))
 
 	// internal listener :9091 — цепочка ТА ЖЕ, что у public, и это принципиально:
@@ -442,14 +442,14 @@ func runServe(cfg config.Config) error {
 		grpcsrv.UnaryPanicRecovery(logger),
 		handler.UnaryTimeoutInterceptor(reqTimeout),
 	}
-	internalUnary = append(internalUnary, principalExtractUnary(forwarders)...)
+	internalUnary = append(internalUnary, grpcsrv.PrincipalExtractUnary(forwarders)...)
 	internalUnary = append(internalUnary, handler.AuthNUnaryInterceptor(productionMode))
 
 	internalStream := []grpc.StreamServerInterceptor{
 		grpcsrv.StreamPanicRecovery(logger),
 		handler.StreamTimeoutInterceptor(reqTimeout),
 	}
-	internalStream = append(internalStream, principalExtractStream(forwarders)...)
+	internalStream = append(internalStream, grpcsrv.PrincipalExtractStream(forwarders)...)
 	internalStream = append(internalStream, handler.AuthNStreamInterceptor(productionMode))
 
 	// authzConn (kacho-iam internal :9091, InternalIAMService.Check) собран один раз

@@ -55,7 +55,7 @@ const gatewaySAN = "spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
 // «brittle source-string matching»). Проверяет:
 //  1. ровно ДВА вызова newPrincipalInterceptors(forwarders) — public + internal;
 //  2. forwarders привязан к cfg.AuthZTrustedForwarderSANs (allow-list доезжает);
-//  3. сам builder навешивает TrustedPrincipalExtract(WithTrustedForwarders(...));
+//  3. сам builder берёт пару у общего конструктора grpcsrv.PrincipalExtract*;
 //  4. нет bare PrincipalExtract (доверяющего любому peer'у).
 //
 // Поведенческая сторона (что цепочка реально снимает forged principal) покрыта
@@ -67,12 +67,12 @@ func TestServe_BothListeners_UseSharedPrincipalBuilder(t *testing.T) {
 	if n := strings.Count(src, "newPrincipalInterceptors(forwarders)"); n != 2 {
 		t.Fatalf("serve.go: newPrincipalInterceptors(forwarders) вызван %d раз, ожидалось 2 (public+internal) — листенеры могут разъехаться по anti-spoof", n)
 	}
-	if !strings.Contains(src, "forwarders := cfg.AuthZTrustedForwarderSANs") {
-		t.Errorf("serve.go: forwarders не привязан к cfg.AuthZTrustedForwarderSANs — allow-list форвардеров может не доехать до цепочки")
+	if !strings.Contains(src, "forwarders := cfg.TrustedForwarders()") {
+		t.Errorf("serve.go: forwarders не привязан к cfg.TrustedForwarders() — круг доверенных отправителей может не доехать до цепочки, а стража и самоотчёт читают именно его")
 	}
-	if !strings.Contains(src, "grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(") ||
-		!strings.Contains(src, "grpcsrv.StreamTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(") {
-		t.Errorf("serve.go: newPrincipalInterceptors без TrustedPrincipalExtract(WithTrustedForwarders(...)) — principal НЕ trust-gated (confused-deputy)")
+	if !strings.Contains(src, "grpcsrv.PrincipalExtractUnary(forwarders)") ||
+		!strings.Contains(src, "grpcsrv.PrincipalExtractStream(forwarders)") {
+		t.Errorf("serve.go: newPrincipalInterceptors не берёт пару у общего конструктора — собранная вручную пара может потерять звено или переставить их местами (principal НЕ trust-gated, confused-deputy)")
 	}
 	if strings.Contains(src, "grpcsrv.UnaryPrincipalExtract(") || strings.Contains(src, "grpcsrv.StreamPrincipalExtract(") {
 		t.Errorf("serve.go: bare PrincipalExtract присутствует — forwarded principal доверяется безусловно (principal-spoofing)")
@@ -129,7 +129,7 @@ func TestInternalPrincipalChain_ForwarderAllowlist_DropsNonGateway(t *testing.T)
 // что и продовый листенер, а не её локальную реконструкцию (устранена зависимость
 // от совпадения строк serve.go). forwarderSANs — allow-list доверенных форвардеров.
 func internalPrincipalChain(forwarderSANs ...string) grpc.UnaryServerInterceptor {
-	unary, _ := newPrincipalInterceptors(forwarderSANs)
+	unary, _ := newPrincipalInterceptors(grpcsrv.NewTrustedForwarders(forwarderSANs...))
 	return chainUnaryServer(unary...)
 }
 
