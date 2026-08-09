@@ -66,9 +66,11 @@ Compute-specific правила, error mapping, top-10 gotchas. Workspace-уро
   regex `[-_./\@0-9a-z]*`, value ≤63).
 - `zone_id` — required + existence через `ZoneRegistry` — **локальная таблица
   `zones`** (kacho-compute owns Geography, эпик `KAC-15`; больше нет proxy в
-  kacho-vpc и `skipPeer`-fallback). Неизвестная зона → `InvalidArgument "Zone
-  <id> not found"` (по конвенции by-lane split чужой id — это peer-validate
-  lane, то есть `FailedPrecondition`; выбор кода здесь ещё не выровнен).
+  kacho-vpc и `skipPeer`-fallback). Неизвестная зона → `FailedPrecondition "Zone
+  <id> not found"` + машинный признак `PEER_RESOURCE_MISSING`: чужой id — это
+  полоса peer-validate (by-lane split). Прежде здесь стоял `InvalidArgument`, и
+  код противоречил собственному тексту; HTTP-статус края от выравнивания не
+  изменился — оба кода дают 400.
 - Disk `size` — `[4194304 .. 28587302322176]` на Create, `[4194304 ..
   4398046511104]` на Update (из proto `(value)`). `AttachedDiskSpec.DiskSpec.size`
   — `[4194304 .. 4398046511104]`. `block_size` — default 4096, whitelist

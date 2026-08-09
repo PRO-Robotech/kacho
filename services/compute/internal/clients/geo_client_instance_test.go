@@ -88,8 +88,10 @@ func TestInstance_Create_ValidatesZoneViaGeo_OK(t *testing.T) {
 	require.True(t, called, "Instance.Create must validate zone_id by calling kacho-geo ZoneService.Get")
 }
 
-// TestInstance_Create_ValidatesZoneViaGeo_NotFound — geo не знает зону →
-// InvalidArgument "Zone ... not found" (NOT_FOUND из geo → InvalidArgument).
+// TestInstance_Create_ValidatesZoneViaGeo_NotFound — geo не знает зону → полоса
+// peer-validate: FailedPrecondition "Zone ... not found". Проба сквозная: она
+// утверждает то, что доедет до Operation.error, — а туда полоса попадает через
+// worker, то есть через ещё один слой сборки статуса.
 func TestInstance_Create_ValidatesZoneViaGeo_NotFound(t *testing.T) {
 	svc, ops := newInstanceSvcGeo(t, fakeGeoZoneCli{get: func(_ context.Context, _ *geov1.GetZoneRequest) (*geov1.Zone, error) {
 		return nil, status.Error(codes.NotFound, "Zone no-such-zone not found")
@@ -101,7 +103,7 @@ func TestInstance_Create_ValidatesZoneViaGeo_NotFound(t *testing.T) {
 	require.NoError(t, err)
 	done := portmock.AwaitOpDone(t, ops, op.ID)
 	require.NotNil(t, done.Error)
-	require.Equal(t, int32(codes.InvalidArgument), done.Error.Code)
+	require.Equal(t, int32(codes.FailedPrecondition), done.Error.Code)
 	require.Contains(t, done.Error.Message, "no-such-zone")
 }
 
