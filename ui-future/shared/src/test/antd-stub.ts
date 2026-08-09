@@ -49,6 +49,21 @@ interface TagProps {
   [key: string]: unknown;
 }
 
+interface AlertProps {
+  children?: React.ReactNode;
+  message?: React.ReactNode;
+  description?: React.ReactNode;
+}
+
+interface ButtonProps {
+  children?: React.ReactNode;
+  loading?: boolean;
+  disabled?: boolean;
+  onClick?: (e: React.MouseEvent) => void;
+  htmlType?: string;
+  [key: string]: unknown;
+}
+
 interface CardProps {
   children?: React.ReactNode;
   title?: React.ReactNode;
@@ -108,9 +123,37 @@ function domAttrs(props: Record<string, unknown>): Record<string, unknown> {
 export function antdStub(): Record<string, unknown> {
   const Component = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
     React.createElement("div", props, children);
-  const Button = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
-    React.createElement("button", { type: "button", ...props }, children);
-  const Input = (props: AnyProps) => React.createElement("input", props);
+  // Настоящая кнопка antd в состоянии `loading` НЕ принимает нажатий (защита от
+  // повторной отправки), а её вид задаётся `type`/`size`/`danger` — это
+  // параметры виджета, а не атрибуты DOM. Заменитель, отдававший всё в DOM,
+  // делал повторную отправку возможной и ронял `type="primary"` в атрибут
+  // нативной кнопки.
+  const Button = ({ children, loading, disabled, onClick, htmlType, ...props }: ButtonProps) =>
+    React.createElement(
+      "button",
+      {
+        type: (htmlType as string) ?? "button",
+        disabled: Boolean(disabled) || Boolean(loading),
+        onClick,
+        className: props.className as string | undefined,
+        style: props.style as React.CSSProperties | undefined,
+        ...domAttrs(props),
+      },
+      children,
+    );
+  // Настоящее поле ввода показывает свои `prefix`/`suffix` (замок с причиной,
+  // единицы измерения). Заменитель ронял их, и объяснение «почему нельзя
+  // править» было ненаблюдаемо, хотя пользователь его видит.
+  const Input = ({ prefix, suffix, ...props }: AnyProps & { prefix?: React.ReactNode; suffix?: React.ReactNode }) =>
+    prefix || suffix
+      ? React.createElement(
+          "span",
+          null,
+          prefix as React.ReactNode,
+          React.createElement("input", props),
+          suffix as React.ReactNode,
+        )
+      : React.createElement("input", props);
   const Search = (props: AnyProps) => React.createElement("input", { type: "search", ...props });
   const Textarea = (props: AnyProps) => React.createElement("textarea", props);
 
@@ -196,8 +239,13 @@ export function antdStub(): Record<string, unknown> {
     Header: Component,
     Sider: Component,
   });
+  // Настоящий `Form.Item` ПОКАЗЫВАЕТ подпись поля; заменитель ронял её в
+  // атрибут, поэтому «какие поля видит пользователь» было ненаблюдаемо, а
+  // проба о составе формы утверждала бы форму дублёра.
+  const FormItem = ({ children, label }: { children?: React.ReactNode; label?: React.ReactNode }) =>
+    React.createElement("div", null, React.createElement("label", null, label as React.ReactNode), children);
   const Form = Object.assign(Component, {
-    Item: Component,
+    Item: FormItem,
     List: Component,
     useForm: () => [{}],
     useWatch: () => undefined,
@@ -235,7 +283,10 @@ export function antdStub(): Record<string, unknown> {
 
   return {
     __esModule: true,
-    Alert: Component,
+    // Настоящее уведомление показывает свои `message` и `description`;
+    // заменитель ронял их в атрибуты, и текст предупреждения был ненаблюдаем.
+    Alert: ({ children, message, description }: AlertProps) =>
+      React.createElement("div", { role: "alert" }, message as React.ReactNode, description as React.ReactNode, children),
     App: Component,
     AutoComplete: Input,
     Avatar: Component,
@@ -303,7 +354,10 @@ export function antdStub(): Record<string, unknown> {
             )
           : null,
       ),
-    Tooltip: Component,
+    // Подпись подсказки достаётся нативным `title`: у настоящего antd она видна
+    // при наведении, здесь — читается атрибутом. Пропасть она не может.
+    Tooltip: ({ children, title }: { children?: React.ReactNode; title?: React.ReactNode }) =>
+      React.createElement("span", title ? { title: String(title) } : {}, children),
     Tree: Component,
     Typography,
     theme,
