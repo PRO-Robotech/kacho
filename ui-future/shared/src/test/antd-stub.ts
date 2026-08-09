@@ -28,6 +28,42 @@ interface MockColumn {
   render?: (value: unknown, row: unknown, index: number) => React.ReactNode;
 }
 
+interface SelectOption {
+  value: unknown;
+  label?: React.ReactNode;
+}
+
+interface SelectProps {
+  children?: React.ReactNode;
+  options?: SelectOption[];
+  onChange?: (value: string, option?: SelectOption) => void;
+  value?: string;
+  placeholder?: React.ReactNode;
+  [key: string]: unknown;
+}
+
+interface TagProps {
+  children?: React.ReactNode;
+  closable?: boolean;
+  onClose?: (e: { preventDefault: () => void }) => void;
+  [key: string]: unknown;
+}
+
+interface CardProps {
+  children?: React.ReactNode;
+  title?: React.ReactNode;
+  extra?: React.ReactNode;
+  [key: string]: unknown;
+}
+
+interface ModalRootProps {
+  children?: React.ReactNode;
+  open?: boolean;
+  className?: string;
+  style?: React.CSSProperties;
+  [key: string]: unknown;
+}
+
 interface MockTableProps {
   columns?: MockColumn[];
   dataSource?: unknown[];
@@ -53,6 +89,20 @@ function keyOf(row: unknown, rowKey: MockTableProps["rowKey"], index: number): s
     return index;
   }
   return index;
+}
+
+/**
+ * Только те свойства, которые настоящий компонент доносит до DOM: `data-*`,
+ * `aria-*`, `id`, `title`. Остальные (`width`, `destroyOnClose`, `maskClosable`,
+ * …) — параметры виджета: React ругается на них как на неизвестные атрибуты, а
+ * проба, которая начнёт их читать, будет утверждать форму дублёра.
+ */
+function domAttrs(props: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(props)) {
+    if (k.startsWith("data-") || k.startsWith("aria-") || k === "id" || k === "title") out[k] = v;
+  }
+  return out;
 }
 
 export function antdStub(): Record<string, unknown> {
@@ -102,8 +152,28 @@ export function antdStub(): Record<string, unknown> {
             ),
       ),
     );
-  const Select = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
-    React.createElement("select", props, children);
+  // Настоящий `Select` рисует ВАРИАНТЫ и отдаёт в `onChange` выбранное
+  // ЗНАЧЕНИЕ (не DOM-событие). Заменитель-`<select>` с `options` в атрибуте не
+  // показывал ни одного варианта и передавал событие: состав списка был
+  // ненаблюдаем, а выбор — невоспроизводим, поэтому проба поневоле утверждала
+  // бы форму дублёра.
+  const Select = ({ children, options, onChange, value, placeholder, ...props }: SelectProps) =>
+    React.createElement(
+      "select",
+      {
+        ...props,
+        value: value ?? "",
+        onChange: (e: { target: { value: string } }) => {
+          const picked = (options ?? []).find((o) => String(o.value) === e.target.value);
+          onChange?.(e.target.value, picked);
+        },
+      },
+      React.createElement("option", { key: "__placeholder__", value: "" }, placeholder as React.ReactNode),
+      ...(options ?? []).map((o) =>
+        React.createElement("option", { key: String(o.value), value: String(o.value) }, o.label as React.ReactNode),
+      ),
+      children,
+    );
   // Настоящий `Checkbox` — это флажок с подписью. Прежде здесь стоял тот же
   // заменитель, что у текстового поля: у него нет ни роли флажка, ни `checked`
   // у цели события, поэтому настройка видимости колонок была ненаблюдаема
@@ -137,8 +207,10 @@ export function antdStub(): Record<string, unknown> {
   // показало X» проходило ещё ДО клика — то есть проба закрепляла форму
   // дублёра, а не наблюдаемое. Пропуск `open` (неуправляемое окно) сохраняет
   // прежнее поведение: скрывать нечего.
-  const ModalRoot = ({ children, open, ...props }: React.PropsWithChildren<{ open?: boolean }>) =>
-    open === false ? null : React.createElement("div", props, children);
+  const ModalRoot = ({ children, open, className, style, ...rest }: ModalRootProps) =>
+    open === false
+      ? null
+      : React.createElement("div", { className, style, role: "dialog", ...domAttrs(rest) }, children);
   const Modal = Object.assign(ModalRoot, {
     confirm: jest.fn(),
     destroyAll: jest.fn(),
@@ -169,7 +241,17 @@ export function antdStub(): Record<string, unknown> {
     Avatar: Component,
     Badge: Component,
     Button,
-    Card: Component,
+    // Настоящая карточка показывает свои заголовок и дополнение; заменитель
+    // ронял их в атрибуты, поэтому счётчик/подпись в шапке карточки были
+    // ненаблюдаемы вовсе.
+    Card: ({ children, title, extra, ...rest }: CardProps) =>
+      React.createElement(
+        "div",
+        domAttrs(rest),
+        React.createElement("div", null, title as React.ReactNode),
+        React.createElement("div", null, extra as React.ReactNode),
+        children,
+      ),
     Cascader: Select,
     Checkbox,
     Col: Component,
@@ -200,7 +282,27 @@ export function antdStub(): Record<string, unknown> {
     Switch: Input,
     Table,
     Tabs: Component,
-    Tag: Component,
+    // Настоящий закрываемый `Tag` рисует крестик с доступным именем `close`
+    // (aria-label самого antd). Заменитель-`<div>` его не рисовал вовсе, и
+    // снятие элемента из набора было ненаблюдаемо — то есть проверялась
+    // только та половина виджета, где ничего не меняется.
+    Tag: ({ children, closable, onClose, color: _color, ...rest }: TagProps) =>
+      React.createElement(
+        "span",
+        rest,
+        children,
+        closable
+          ? React.createElement(
+              "button",
+              {
+                type: "button",
+                "aria-label": "close",
+                onClick: () => onClose?.({ preventDefault: () => {} }),
+              },
+              "\u00d7",
+            )
+          : null,
+      ),
     Tooltip: Component,
     Tree: Component,
     Typography,
