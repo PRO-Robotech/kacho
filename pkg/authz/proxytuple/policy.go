@@ -55,9 +55,19 @@ type Relation string
 // (`system_admin`/`admin`/`editor`/`viewer`/`v_*`/`fga_writer`/`use`) are absent on
 // purpose — those are authored by the AccessBinding flow, where a grant is
 // enumerable, scoped and revocable, never by a module speaking for itself.
+//
+// `account` USED TO BE HERE AND IS NOT, and its absence is load-bearing rather
+// than an oversight. No module owns a resource whose containment pointer is an
+// account: iam writes its own account links directly, on its own object types,
+// without the proxy. An accepted relation nobody emits cannot be observed either
+// working or broken — nothing reaches it — while the next reader takes it for a
+// live capability of the product and builds a resource on it. Held by
+// TestEveryAcceptedRelationHasAnEmitter, which reddens on any entry that loses its
+// producer, and by TestProxyRegistrationTriplesAreAcceptedByOwner, which reddens
+// with a coordinate the moment somebody emits a relation that is not here — so
+// putting the tier back when a resource actually needs it is a deliberate edit.
 const (
 	RelationProject Relation = "project"
-	RelationAccount Relation = "account"
 	RelationParent  Relation = "parent"
 	RelationOwner   Relation = "owner"
 )
@@ -65,7 +75,6 @@ const (
 // hierarchicalRelations — the set above, in the form the rule evaluates.
 var hierarchicalRelations = map[Relation]struct{}{
 	RelationProject: {},
-	RelationAccount: {},
 	RelationParent:  {},
 	RelationOwner:   {},
 }
@@ -83,7 +92,7 @@ func Hierarchical(r Relation) bool {
 // HierarchicalRelations returns the accepted owner-hierarchy relations, sorted the
 // way they are declared. Consumers of the census (gates, reports) get a copy.
 func HierarchicalRelations() []Relation {
-	return []Relation{RelationProject, RelationAccount, RelationParent, RelationOwner}
+	return []Relation{RelationProject, RelationParent, RelationOwner}
 }
 
 // PublicReadRelation / PublicReadSubject — the only NON-hierarchical pair the proxy
