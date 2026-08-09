@@ -410,7 +410,7 @@ global:
       # Бюджет запроса принадлежит владельцу запроса: не короче самого длинного
       # per-call дедлайна потребителя.
       upstreamTimeout: "30s"
-      image: nginxinc/nginx-unprivileged:1.27-alpine
+      image: nginxinc/nginx-unprivileged:1.31-alpine
       # Окно между сигналом остановки и уходом процесса — чтобы снятие конечных
       # точек успело распространиться.
       preStopSeconds: 5

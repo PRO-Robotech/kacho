@@ -98,7 +98,7 @@ service:
     # поведение неизменно.
     tlsSidecar:
       enabled: false
-      image: nginxinc/nginx-unprivileged:1.27-alpine
+      image: nginxinc/nginx-unprivileged:1.31-alpine
       # Upstream, куда nginx проксирует `/iam/token` (iam registry-token shim :9096).
       iamTokenShimUpstream: kacho-iam.kacho.svc.cluster.local:9096
       # ─── Server-cert для :8443-listener'а sidecar'а ──────────────────────────
