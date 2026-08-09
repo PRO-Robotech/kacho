@@ -93,7 +93,7 @@ spec:
               value: "{{ .Values.ports.internalGrpc }}"
             # ─── SEC auth posture — arms fail-closed production gates ──────
             # cmd/compute/main.go::validateAuthMode + requireDBSSLMode +
-            # requireTrustedForwarders + RequireIAM boot-gate. Chart defaults to
+            # Config.Validate (круг отправителей) + RequireIAM boot-gate. Chart defaults to
             # production (rules/security.md: every deploy is production-mode); a
             # dev stand overrides auth.mode=dev + mtls.enable=false + db.sslMode=disable.
             - name: KACHO_COMPUTE_AUTH_MODE

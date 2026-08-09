@@ -196,7 +196,7 @@ authz:
   # client cert comes from the same internal CA — so an empty list means a
   # neighbouring pod can read, change and delete foreign registries and repositories
   # in the victim's name. Any production mode therefore refuses to start on an empty
-  # list (validateSecurityConfig → requireTrustedForwarders).
+  # list (config.Config.Validate → grpcsrv.TrustedForwarders.Require).
   #
   # There is exactly ONE legitimate sender: the api-gateway. Established from the
   # import graph — outside the service itself, the registry gRPC stubs are imported

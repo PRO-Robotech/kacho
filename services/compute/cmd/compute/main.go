@@ -651,7 +651,7 @@ func requireDBSSLMode(cfg config.Config) error {
 // Instance проекта (блочное хранение ушло из compute миграцией 0021 — Disk/Image/
 // Snapshot тут больше не значатся), включая объекты без per-object гранта
 // (over-show / BOLA-lite, CWE-862 / OWASP A01). Fail-closed зеркалит requireDBSSLMode /
-// requireTrustedForwarders (project-rule security.md → make audit-list-filter).
+// requireDBSSLMode (project-rule security.md → make audit-list-filter).
 //
 // Ручка отказа — часть предмета стражи, а не соседняя настройка. Стража, знающая
 // только про наличие фильтра, охраняет его присутствие и не охраняет его

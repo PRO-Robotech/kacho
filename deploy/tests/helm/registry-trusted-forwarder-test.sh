@@ -84,7 +84,7 @@ ok
 
 # ── 2. Оператор всё ещё может выразить пустой список ─────────────────────────
 # Чарт не решает за стражу: пусто он отрендерит, а откажет в старте боевой режим
-# (validateSecurityConfig → requireTrustedForwarders). Так «пусто» остаётся
+# (Config.Validate → grpcsrv.TrustedForwarders.Require). Так «пусто» остаётся
 # наблюдаемым, а не подменяется чартом на дефолт втихую.
 EMPTY_RENDER="$(helm template registry "$CHART" "${ZOT_STUB[@]}" --set authz.trustedForwarderSANs="" \
   --show-only templates/deployment.yaml 2>/dev/null)" || fail "render with an empty override failed"

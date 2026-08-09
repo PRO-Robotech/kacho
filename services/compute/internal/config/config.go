@@ -127,7 +127,7 @@ type Config struct {
 	// Принимает comma-separated список. Пусто (default) → любой mTLS-verified peer
 	// доверен как форвардер (паритет с insecure dev back-compat и kacho-iam) — допустимо
 	// ТОЛЬКО в dev: validateAuthMode() fail-closed отвергает пустой список в любом
-	// production-режиме (requireTrustedForwarders). Задаётся
+	// production-режиме (Config.Validate). Задаётся
 	// в production для defense-in-depth против confused-deputy: внутренний сервис со
 	// своим валидным client-cert'ом не сможет выдать себя за пользователя. На обоих
 	// листенерах principal trust-gated через grpcsrv.UnaryCertIdentityExtract +

@@ -241,7 +241,7 @@ func TestValidateAuthMode_ProductionStrict_RequiresTrustedForwarders(t *testing.
 // Без фильтра principal с project-tier viewer видит ВСЕ Disk/Image/Snapshot/
 // Instance проекта, включая объекты без per-object v_get (over-show / BOLA-lite,
 // CWE-862 / OWASP A01). Fail-closed зеркалит requireDBSSLMode /
-// requireTrustedForwarders.
+// Config.Validate → grpcsrv.TrustedForwarders.Require.
 func TestValidateAuthMode_Production_RequiresListFilter(t *testing.T) {
 	// master-switch off → отказ.
 	cfg := securedProduction()
