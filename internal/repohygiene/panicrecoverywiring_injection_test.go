@@ -11,6 +11,7 @@ package repohygiene
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -116,6 +117,17 @@ func authzUnary() grpc.UnaryServerInterceptor { return nil }
 
 // synthTree строит минимальное дерево: go.mod (по нему резолвятся импорты
 // модуля), общее звено и один сервис с одним композиционным корнем.
+//
+// Дерево инициализируется как репозиторий, и файлы кладутся в индекс: гейт берёт
+// состав у `internal/treecorpus`, то есть у git, а не у диска. Фикстура, которая
+// этого не делает, оставляет гейт с пустым составом — и он молчит не потому, что
+// нарушения нет, а потому, что смотреть было не на что. Направление «гейт обязан
+// покраснеть» такую пустоту не отличило бы от исправного дерева.
+//
+// Коммита нет намеренно: `git ls-files` показывает и проиндексированное, а
+// `commit` потребовал бы личности автора, которой в чистом окружении прогона нет
+// (ровно этот класс уже ронял конвейер: проба, чья предпосылка невыполнима там,
+// где она исполняется).
 func synthTree(t *testing.T, rootGo string, extra map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
@@ -134,7 +146,25 @@ func synthTree(t *testing.T, rootGo string, extra map[string]string) string {
 	for rel, body := range extra {
 		write(rel, body)
 	}
+	synthTrack(t, root)
 	return root
+}
+
+// synthTrack делает временный каталог рабочим деревом git и индексирует всё
+// записанное. Отказ здесь — Fatal, а не пропуск: гейт на неотслеживаемом дереве
+// вернул бы «ноль находок», и проба зазеленела бы на несделанной работе.
+func synthTrack(t *testing.T, root string) {
+	t.Helper()
+	for _, args := range [][]string{
+		{"init", "-q"},
+		{"add", "-A"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v в синтетическом дереве: %v\n%s", args, err, out)
+		}
+	}
 }
 
 // TestPanicRecoveryGateRedOnInjectedDefect — направление (а): звено снято ->

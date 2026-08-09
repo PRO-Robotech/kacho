@@ -51,6 +51,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/PRO-Robotech/kacho/internal/treecorpus"
 )
 
 // grpcImportPath — пакет, по объявлению импорта которого опознаётся локальное
@@ -697,31 +699,37 @@ func dirOfModuleImport(fromDir, importPath string) (string, bool) {
 	return filepath.Join(root, filepath.FromSlash(strings.TrimPrefix(importPath, mod))), true
 }
 
+// walkGoASTFilesForPanicGate обходит прод-исходники под root и отдаёт каждый
+// разобранным.
+//
+// Состав берётся у индекса отслеживаемых файлов, а НЕ обходом диска: под
+// `.claude/worktrees/` лежат рабочие копии всего дерева, которые git не
+// отслеживает, а `filepath.WalkDir` видит. Гейт, считающий по диску, померил бы
+// листенеры копий вместе с настоящими, и его число перестало бы что-либо
+// означать. То же требование энфорсит `TestTreeWalkersAskTheIndex`, чей перечень
+// исключений закрыт для пополнения, — первая редакция этого гейта его роняла.
 func walkGoASTFilesForPanicGate(t *testing.T, root string, fn func(string, *ast.File, *token.FileSet)) {
 	t.Helper()
+	if _, err := os.Stat(root); os.IsNotExist(err) {
+		// Каталога нет — обходить нечего. Прежняя редакция проглатывала это
+		// через os.IsNotExist от самого обхода; здесь проверяется явно, потому
+		// что на несуществующий путь индекс отвечает не тем же.
+		return
+	}
+	tracked, err := treecorpus.UnderWithSuffix(root, ".go")
+	if err != nil {
+		t.Fatalf("состав дерева под %s взять неоткуда: %v", root, err)
+	}
 	fset := token.NewFileSet()
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			if d.Name() == "testdata" || d.Name() == "vendor" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
+	for _, path := range tracked {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
 		}
 		f, perr := parser.ParseFile(fset, path, nil, 0)
 		if perr != nil {
-			return nil
+			continue
 		}
 		fn(path, f, fset)
-		return nil
-	})
-	if err != nil && !os.IsNotExist(err) {
-		t.Fatalf("обход %s: %v", root, err)
 	}
 }
 
