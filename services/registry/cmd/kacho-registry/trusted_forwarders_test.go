@@ -39,6 +39,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 
+	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
@@ -65,11 +66,18 @@ const (
 // список отправителей.
 func prodCfg(forwarders ...string) config.Config {
 	return config.Config{
-		AuthMode:                  "production",
-		DBSSLMode:                 "require",
-		AuthZIAMGRPCAddr:          "kacho-iam-internal.kacho.svc.cluster.local:9091",
-		PublicServerMTLS:          grpcsrv.TLSServer{Enable: true},
-		InternalServerMTLS:        grpcsrv.TLSServer{Enable: true},
+		AuthMode:           "production",
+		DBSSLMode:          "require",
+		AuthZIAMGRPCAddr:   "kacho-iam-internal.kacho.svc.cluster.local:9091",
+		PublicServerMTLS:   grpcsrv.TLSServer{Enable: true},
+		InternalServerMTLS: grpcsrv.TLSServer{Enable: true},
+		// Транспорт поднимаемого ребра registry→iam: с тех пор как страж требует
+		// его в боевом режиме, конфигурация без этой ручки боевой не является.
+		// Фикстура, снисходительнее продукта, делает невидимым ровно тот дефект,
+		// ради которого её подставляют; измерение ослабляется только в своей
+		// пробе (peer_transport_test.go). Рёбра project/geo здесь не подняты
+		// (адреса пусты) — по тому же предикату, что читает проводка.
+		IAMAuthzMTLS:              grpcclient.TLSClient{Enable: true},
 		AuthZTrustedForwarderSANs: forwarders,
 	}
 }

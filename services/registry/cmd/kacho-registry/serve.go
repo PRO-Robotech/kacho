@@ -697,7 +697,61 @@ func validateSecurityConfig(cfg config.Config) error {
 	if !cfg.PublicServerMTLS.Enable || !cfg.InternalServerMTLS.Enable {
 		return errors.New("mTLS required on both listeners: set KACHO_REGISTRY_PUBLIC_SERVER_MTLS_ENABLE and KACHO_REGISTRY_INTERNAL_SERVER_MTLS_ENABLE=true (or KACHO_REGISTRY_AUTHZ_BREAKGLASS=true to bypass)")
 	}
+	if err := requirePeerTransport(cfg); err != nil {
+		return err
+	}
 	return requireTrustedForwarders(cfg)
+}
+
+// requirePeerTransport — в любом боевом режиме транспорт КАЖДОГО поднимаемого
+// исходящего ребра обязан быть проверяемым.
+//
+// Почему это отдельное измерение, а не следствие проверки листенеров. Проверка
+// выше говорит о том, КАК с нами говорят; здесь — как говорим мы. Невзведённая
+// ручка клиента не даёт ошибки сама по себе: grpcclient.TLSClientTransportCreds
+// на Enable=false возвращает insecure-creds БЕЗ ошибки, поэтому процесс
+// поднимается, честно печатает «registry→iam edges wired» с authz_mtls=false — и
+// per-RPC Check уходит по открытому каналу. Контроль, от которого зависит
+// решение о доступе, при этом присутствует и не отказывает ни разу за свою жизнь.
+//
+// Предикат активности — ТОТ ЖЕ, что читает проводка: composition root поднимает
+// соединение ровно при непустом адресе (`if cfg.<Addr> != ""` в runServe).
+// Поэтому «страж увидел ребро» ⟺ «ребро дилится»: незаданный адрес не порождает
+// требования к транспорту, а заданный — порождает всегда. Связь стража с
+// проводкой заперта peer_transport_wiring_test.go.
+//
+// Что покрыто: authz (:9091 — Check + fga-proxy регистрация владельца), project
+// (:9090 — существование проекта и поиск аккаунта, вход в резолв области), geo
+// (:9090 — регион реестра). Ребро JWKS сюда НЕ входит: оно ходит по HTTPS
+// односторонним TLS и держится своей стражей (requireSecureJWKSURL).
+//
+// dev осознанно терпит невзведённый транспорт — только локальные фикстуры; на
+// РАЗВЁРНУТОМ стенде dev-посадка запрещена отдельным правилом (production-mode
+// ВЕЗДЕ), поэтому послабление не расширяет поверхность стенда.
+func requirePeerTransport(cfg config.Config) error {
+	switch cfg.AuthMode {
+	case "production", "production-strict":
+	default:
+		return nil
+	}
+	if cfg.AuthZIAMGRPCAddr != "" && !cfg.IAMAuthzMTLS.Enable {
+		return errors.New("verified transport required on the registry→iam authz edge: set " +
+			"KACHO_REGISTRY_IAM_AUTHZ_MTLS_ENABLE=true (with cert/key/CA) — the per-RPC authorization Check " +
+			"and the owner-tuple registration travel over this connection, and unarmed client credentials " +
+			"degrade to cleartext silently, so the process starts and reports authorization as enabled")
+	}
+	if cfg.IAMProjectGRPCAddr != "" && !cfg.IAMProjectMTLS.Enable {
+		return errors.New("verified transport required on the registry→iam project edge: set " +
+			"KACHO_REGISTRY_IAM_PROJECT_MTLS_ENABLE=true (with cert/key/CA) — project existence and the " +
+			"account lookup that scopes a registry are decided on this connection, and unarmed client " +
+			"credentials degrade to cleartext silently")
+	}
+	if cfg.GeoGRPCAddr != "" && !cfg.GeoMTLS.Enable {
+		return errors.New("verified transport required on the registry→geo edge: set " +
+			"KACHO_REGISTRY_GEO_MTLS_ENABLE=true (with cert/key/CA) — region existence for registry " +
+			"placement is decided on this connection, and unarmed client credentials degrade to cleartext silently")
+	}
+	return nil
 }
 
 // requireTrustedForwarders — в любом боевом режиме круг отправителей чужой
