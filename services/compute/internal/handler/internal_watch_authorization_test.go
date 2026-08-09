@@ -19,6 +19,11 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
+	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
+	"google.golang.org/grpc"
 )
 
 // internal_watch_authorization_test.go — the OBSERVABLE contract of the outbox
@@ -48,45 +53,58 @@ import (
 // that a refusal cannot be mistaken for the behaviour they assert.
 const watchTestSubject = "user:usr_alice"
 
-// stubVisibility — an in-memory stand-in for the per-object visibility question.
-// allow lists the object ids the subject may see; err, when set, is what the
-// model answers (an unreachable model must never read as "yes").
+// stubVisibility — подставная ПРИЁМНАЯ СТОРОНА вопроса о видимости.
+//
+// Дублируется сосед, а не сужатель: тот теперь один на дерево, и подменять его
+// целиком значило бы проверять чужую реализацию вместо боевой. allow перечисляет
+// объекты, которые субъекту видны; err — то, чем отвечает модель (недоступная модель
+// никогда не читается как «да»).
 type stubVisibility struct {
-	allow   map[string]bool
-	err     error
-	narrows bool
-	asked   []string
+	allow map[string]bool
+	err   error
+	asked []string
 }
 
-func (s *stubVisibility) FilterVisibleIDs(_ context.Context, subject, resourceType, action string, ids []string) ([]string, error) {
-	s.asked = append(s.asked, ids...)
+func (s *stubVisibility) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckRequest,
+	_ ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
+	for _, c := range in.GetChecks() {
+		s.asked = append(s.asked, c.GetResource().GetId())
+	}
 	if s.err != nil {
 		return nil, s.err
 	}
-	if len(ids) > watchVisibilityBatchSize {
+	if len(in.GetChecks()) > watchVisibilityBatchSize {
 		return nil, status.Errorf(codes.InvalidArgument,
-			"visibility question exceeded the batch contract: %d ids in one partition", len(ids))
+			"visibility question exceeded the batch contract: %d ids in one partition", len(in.GetChecks()))
 	}
-	out := make([]string, 0, len(ids))
-	for _, id := range ids {
-		if s.allow[id] {
-			out = append(out, id)
-		}
+	out := make([]*iamv1.AuthorizeCheckResponse, 0, len(in.GetChecks()))
+	for _, c := range in.GetChecks() {
+		out = append(out, &iamv1.AuthorizeCheckResponse{Allowed: s.allow[c.GetResource().GetId()]})
 	}
-	return out, nil
+	return &iamv1.BatchAuthorizeCheckResponse{Responses: out}, nil
 }
 
-func (s *stubVisibility) Narrows() bool { return s.narrows }
+// narrowerOver — настоящий сужатель поверх подставного соседа.
+func narrowerOver(s *stubVisibility) *listnarrow.Narrower {
+	return listnarrow.New(s, listnarrow.Config{Relations: authzfilter.PageRelations})
+}
 
-// allowAll — visibility that really narrows but happens to allow everything it is
-// asked about. Used by the pre-existing streaming tests, whose subject is cursor
-// mechanics rather than authorisation.
-func allowAllVisibility(ids ...string) *stubVisibility {
+// allowAllVisibility — видимость, которая ДЕЙСТВИТЕЛЬНО сужает, но разрешает всё, о
+// чём спрошена. Нужна пробам, чей предмет — механика курсора, а не авторизация.
+func allowAllVisibility(ids ...string) *listnarrow.Narrower {
+	n, _ := recordingVisibility(ids...)
+	return n
+}
+
+// recordingVisibility — то же, вместе с соседом: пробе, утверждающей, О ЧЁМ спросили
+// (или что не спросили вовсе), нужен сам наблюдатель, а не только исход.
+func recordingVisibility(ids ...string) (*listnarrow.Narrower, *stubVisibility) {
 	allow := make(map[string]bool, len(ids))
 	for _, id := range ids {
 		allow[id] = true
 	}
-	return &stubVisibility{allow: allow, narrows: true}
+	stub := &stubVisibility{allow: allow}
+	return narrowerOver(stub), stub
 }
 
 // ctxWithUser — a request that names a caller, the way the trust-aware
@@ -166,7 +184,8 @@ func TestIntegration_Watch_EntitledToOneProjectSeesOnlyItsOwnRows(t *testing.T) 
 	ctx, cancel := context.WithTimeout(ctxWithUser(base, "usr_alice"), 3*time.Second)
 	defer cancel()
 
-	vis := &stubVisibility{narrows: true, allow: map[string]bool{mine[0]: true, mine[1]: true}}
+	stub := &stubVisibility{allow: map[string]bool{mine[0]: true, mine[1]: true}}
+	vis := narrowerOver(stub)
 	h := NewInternalWatchHandler(pool, dsn, slog.Default(), 0, vis)
 	fs := &fakeWatchStream{ctx: ctx}
 
@@ -178,7 +197,7 @@ func TestIntegration_Watch_EntitledToOneProjectSeesOnlyItsOwnRows(t *testing.T) 
 	}
 	assert.ElementsMatch(t, mine, got,
 		"the stream must carry only rows the caller is entitled to; rows of other tenants must be absent")
-	assert.NotEmpty(t, vis.asked, "the model must actually be asked about the rows, not bypassed")
+	assert.NotEmpty(t, stub.asked, "the model must actually be asked about the rows, not bypassed")
 }
 
 // TestIntegration_Watch_ModelErrorDeliversNothing — an unreachable or erroring
@@ -202,7 +221,8 @@ func TestIntegration_Watch_ModelErrorDeliversNothing(t *testing.T) {
 	ctx, cancel := context.WithTimeout(ctxWithUser(base, "usr_alice"), 3*time.Second)
 	defer cancel()
 
-	vis := &stubVisibility{narrows: true, err: status.Error(codes.Unavailable, "authorize peer down")}
+	stub := &stubVisibility{err: status.Error(codes.Unavailable, "authorize peer down")}
+	vis := narrowerOver(stub)
 	h := NewInternalWatchHandler(pool, dsn, slog.Default(), 0, vis)
 	fs := &fakeWatchStream{ctx: ctx}
 
@@ -246,9 +266,10 @@ func TestIntegration_Watch_KindWithNoObjectTypeIsNotDelivered(t *testing.T) {
 
 	// Deliberately permissive about every id — the drop must come from the kind
 	// having no object type, not from the verdict.
-	vis := &stubVisibility{narrows: true, allow: map[string]bool{
+	stub := &stubVisibility{allow: map[string]bool{
 		"epi-live1": true, "epd-retired": true, "epm-retired": true,
 	}}
+	vis := narrowerOver(stub)
 	h := NewInternalWatchHandler(pool, dsn, slog.Default(), 0, vis)
 	fs := &fakeWatchStream{ctx: ctx}
 
@@ -299,18 +320,19 @@ func TestIntegration_WatchStreamSince_CursorAdvancesPastDroppedRows(t *testing.T
 		 VALUES ('Instance','epi-visible','CREATED','{}'::jsonb)`)
 	require.NoError(t, err)
 
-	ctx, cancel := context.WithTimeout(base, 20*time.Second)
+	ctx, cancel := context.WithTimeout(ctxWithUser(base, "usr_alice"), 20*time.Second)
 	defer cancel()
 
 	conn, err := pgx.Connect(ctx, dsn)
 	require.NoError(t, err)
 	defer func() { _ = conn.Close(context.Background()) }()
 
-	vis := &stubVisibility{narrows: true, allow: map[string]bool{"epi-visible": true}}
+	stub := &stubVisibility{allow: map[string]bool{"epi-visible": true}}
+	vis := narrowerOver(stub)
 	h := NewInternalWatchHandler(pool, dsn, slog.Default(), 0, vis)
 	fs := &fakeWatchStream{ctx: ctx}
 
-	newCursor, err := h.streamSince(ctx, conn, 0, nil, watchTestSubject, fs)
+	newCursor, err := h.streamSince(ctx, conn, 0, nil, fs)
 	require.NoError(t, err, "a batch of invisible rows must not stall the read loop")
 
 	got := make([]string, 0, len(fs.sent))
@@ -374,7 +396,8 @@ func TestIntegration_Watch_DeletionEventIsNotDeliverableOnceTheObjectIsGone(t *t
 
 	// The settled state: the model holds nothing about the deleted object, exactly as
 	// after the withdrawal intent drains. It still answers about the live one.
-	vis := &stubVisibility{narrows: true, allow: map[string]bool{"epi-alive": true}}
+	stub := &stubVisibility{allow: map[string]bool{"epi-alive": true}}
+	vis := narrowerOver(stub)
 	h := NewInternalWatchHandler(pool, dsn, slog.Default(), 0, vis)
 	fs := &fakeWatchStream{ctx: ctx}
 
@@ -388,7 +411,7 @@ func TestIntegration_Watch_DeletionEventIsNotDeliverableOnceTheObjectIsGone(t *t
 		"known consequence: a DELETED row is undeliverable once the object's registration is "+
 			"withdrawn — see the comment above and known-divergences item 14; it must NOT be 'fixed' by "+
 			"delivering the row unconditionally")
-	assert.Contains(t, vis.asked, "epi-gone",
+	assert.Contains(t, stub.asked, "epi-gone",
 		"the row must be REFUSED by the model, not skipped before asking — otherwise a later "+
 			"policy decision about deletion visibility would have nowhere to take effect")
 }
@@ -404,10 +427,10 @@ func TestIntegration_Watch_DeletionEventIsNotDeliverableOnceTheObjectIsGone(t *t
 func TestWatch_RefusedWhenNothingNarrowsTheStream(t *testing.T) {
 	cases := []struct {
 		name string
-		vis  EventVisibility
+		vis  *listnarrow.Narrower
 	}{
 		{"no filter wired at all", nil},
-		{"filter wired but does not narrow", &stubVisibility{narrows: false}},
+		{"filter wired but does not narrow", narrowtest.Breakglass()},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -445,10 +468,14 @@ func TestNarrowToSubject_SplitsIntoPartitionsTheModelAccepts(t *testing.T) {
 		batch = append(batch, &computev1.Event{SequenceNo: int64(i + 1), ResourceKind: "Instance", ResourceId: id})
 	}
 
-	vis := allowAllVisibility(ids...)
-	h := NewInternalWatchHandler(nil, "", slog.Default(), 0, vis)
+	allow := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		allow[id] = true
+	}
+	stub := &stubVisibility{allow: allow}
+	h := NewInternalWatchHandler(nil, "", slog.Default(), 0, narrowerOver(stub))
 
-	visible, err := h.narrowToSubject(context.Background(), watchTestSubject, batch)
+	visible, err := h.narrowToSubject(ctxWithUser(context.Background(), "usr_alice"), batch)
 
 	require.NoError(t, err, "each partition must be within the size the model accepts")
 	require.Len(t, visible, rows, "splitting must not lose or duplicate rows")
@@ -459,21 +486,22 @@ func TestNarrowToSubject_SplitsIntoPartitionsTheModelAccepts(t *testing.T) {
 		}
 		return got
 	}(), "input order must survive the split — the journal is ordered by sequence_no")
-	assert.Len(t, vis.asked, rows, "every row must be asked about exactly once")
+	assert.Len(t, stub.asked, rows, "every row must be asked about exactly once")
 }
 
-// passthroughVisibility — a filter that IS wired and answers, but returns every id it
-// is asked about. This is what the real filter does when its master switch is off,
-// when it has no client to the model, and on any model error in soft-pass mode
-// (authzfilter.FGAFilter.FilterVisibleIDs / handleErr). It reports Narrows() == false,
-// which is the only thing distinguishing it from a working one.
-type passthroughVisibility struct{ asked int }
-
-func (p *passthroughVisibility) FilterVisibleIDs(_ context.Context, _, _, _ string, ids []string) ([]string, error) {
-	p.asked += len(ids)
-	return ids, nil
+// passthroughNarrower — сужатель, который ПРОВЯЗАН и отвечает, но пропускает всё, о
+// чём спрошен. Это ровно то, что делает настоящий сужатель в аварийном режиме, и
+// единственное, чем он отличается от работающего, — `Narrows() == false`.
+//
+// Дублёра здесь больше нет: аварийный режим — БОЕВАЯ посадка, и проба берёт её как
+// есть, вместе с записывающим соседом, чтобы утверждать, что его даже не спросили.
+func passthroughNarrower() (*listnarrow.Narrower, *narrowtest.Peer) {
+	peer := &narrowtest.Peer{AllowAll: true}
+	return listnarrow.New(peer, listnarrow.Config{
+		Relations:  authzfilter.PageRelations,
+		Breakglass: true,
+	}), peer
 }
-func (p *passthroughVisibility) Narrows() bool { return false }
 
 // TestNarrowToSubject_RefusesAFilterThatDoesNotNarrow — the read loop must refuse a
 // non-narrowing filter, not merely a missing one.
@@ -487,10 +515,10 @@ func (p *passthroughVisibility) Narrows() bool { return false }
 // Asserted on the observable: an error and no rows, for a filter that would otherwise
 // have said yes to everything.
 func TestNarrowToSubject_RefusesAFilterThatDoesNotNarrow(t *testing.T) {
-	vis := &passthroughVisibility{}
+	vis, peer := passthroughNarrower()
 	h := NewInternalWatchHandler(nil, "", slog.Default(), 0, vis)
 
-	visible, err := h.narrowToSubject(context.Background(), watchTestSubject,
+	visible, err := h.narrowToSubject(ctxWithUser(context.Background(), "usr_alice"),
 		[]*computev1.Event{
 			{SequenceNo: 1, ResourceKind: "Instance", ResourceId: "epi-a"},
 			{SequenceNo: 2, ResourceKind: "Instance", ResourceId: "epi-b"},
@@ -499,7 +527,7 @@ func TestNarrowToSubject_RefusesAFilterThatDoesNotNarrow(t *testing.T) {
 	require.Error(t, err, "a filter that passes ids through is not narrowing, so it cannot authorise the rows")
 	assert.Equal(t, codes.PermissionDenied, status.Code(err))
 	assert.Empty(t, visible, "not one row may be returned by a filter that narrows nothing")
-	assert.Zero(t, vis.asked, "such a filter must not even be consulted — its answer means nothing")
+	assert.Zero(t, peer.Calls, "such a filter must not even be consulted — its answer means nothing")
 }
 
 // TestWatchStreamSince_WithoutAFilterFailsClosedRatherThanPanics — the narrowing must
@@ -519,7 +547,7 @@ func TestWatchStreamSince_WithoutAFilterFailsClosedRatherThanPanics(t *testing.T
 
 	// A non-empty batch is what makes the question unavoidable; an empty one has
 	// nothing to ask about and would pass regardless.
-	visible, err := h.narrowToSubject(context.Background(), watchTestSubject,
+	visible, err := h.narrowToSubject(ctxWithUser(context.Background(), "usr_alice"),
 		[]*computev1.Event{{SequenceNo: 1, ResourceKind: "Instance", ResourceId: "epi-x"}})
 
 	require.Error(t, err, "no filter means no answer about these rows, which is not a yes")

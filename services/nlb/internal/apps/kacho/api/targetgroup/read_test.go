@@ -17,6 +17,8 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // ---- Get -------------------------------------------------------------------
@@ -66,7 +68,7 @@ func TestList_FilterByProject(t *testing.T) {
 	repo.seedTG(makeTG("prj-a", "tg-a2"))
 	repo.seedTG(makeTG("prj-b", "tg-b1"))
 
-	uc := NewListTargetGroupsUseCase(repo, allowAll())
+	uc := NewListTargetGroupsUseCase(repo, narrowtest.AllowingAll())
 	resp, err := uc.Execute(ctxWithUser("usr_lister"), &lbv1.ListTargetGroupsRequest{
 		ProjectId: "prj-a",
 	})

@@ -16,6 +16,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 func seedLB(t *testing.T, repo *fakeRepo, projectID, name string) string {
@@ -61,7 +63,7 @@ func TestListLoadBalancers_FiltersByProject(t *testing.T) {
 	seedLB(t, repo, "prj-a", "lb-a1")
 	seedLB(t, repo, "prj-a", "lb-a2")
 	seedLB(t, repo, "prj-b", "lb-b1")
-	uc := NewListLoadBalancersUseCase(repo, allowAll())
+	uc := NewListLoadBalancersUseCase(repo, narrowtest.AllowingAll())
 	resp, err := uc.Execute(ctxWithUser("usr_lister"), &lbv1.ListNetworkLoadBalancersRequest{ProjectId: "prj-a"})
 	require.NoError(t, err)
 	require.Len(t, resp.GetNetworkLoadBalancers(), 2)
@@ -72,7 +74,7 @@ func TestListLoadBalancers_FilterName(t *testing.T) {
 	repo := newFakeRepo()
 	seedLB(t, repo, "prj-a", "edge")
 	seedLB(t, repo, "prj-a", "api")
-	uc := NewListLoadBalancersUseCase(repo, allowAll())
+	uc := NewListLoadBalancersUseCase(repo, narrowtest.AllowingAll())
 	resp, err := uc.Execute(ctxWithUser("usr_lister"), &lbv1.ListNetworkLoadBalancersRequest{
 		ProjectId: "prj-a", Filter: `name="edge"`,
 	})
@@ -90,7 +92,7 @@ func TestListLoadBalancers_InvalidFilter(t *testing.T) {
 	t.Parallel()
 	repo := newFakeRepo()
 	seedLB(t, repo, "prj-a", "edge")
-	uc := NewListLoadBalancersUseCase(repo, allowAll())
+	uc := NewListLoadBalancersUseCase(repo, narrowtest.AllowingAll())
 	for _, bad := range []string{`name=edge`, `other="foo"`, `garbage`} {
 		_, err := uc.Execute(context.Background(), &lbv1.ListNetworkLoadBalancersRequest{
 			ProjectId: "prj-a", Filter: bad,

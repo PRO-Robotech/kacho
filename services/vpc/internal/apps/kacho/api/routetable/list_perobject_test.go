@@ -15,6 +15,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // Per-page фильтрованный List для RouteTableService: возвращаем ТОЛЬКО
@@ -90,10 +92,10 @@ func TestRouteTableListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedRouteTablesLabeled(t, kr, "prj_1", "enp_net1", "rtb_aaa", "rtb_bbb", "rtb_ccc")
 
-	filter := &fakeListFilter{allowed: []string{"rtb_aaa", "rtb_bbb"}}
+	filter, peer := narrowtest.Recording("rtb_aaa", "rtb_bbb")
 	uc := NewListRouteTablesUseCase(kr, filter)
 
-	rts, _, err := uc.Execute(context.Background(), "user:usr_alice", RouteTableFilter{ProjectID: "prj_1"}, Pagination{})
+	rts, _, err := uc.Execute(narrowtest.Caller(), RouteTableFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	require.Len(t, rts, 2)
 	got := map[string]bool{}
@@ -106,10 +108,10 @@ func TestRouteTableListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 
 	// read==enforce: фильтр зовется с read-verb (action vpc.routeTables.list,
 	// FGA-тип vpc_route_table) и получает РОВНО идентификаторы страницы.
-	assert.Equal(t, "user:usr_alice", filter.gotSubject)
-	assert.Equal(t, "vpc_route_table", filter.gotResourceType)
-	assert.Equal(t, "vpc.routeTables.list", filter.gotAction)
-	assert.ElementsMatch(t, []string{"rtb_aaa", "rtb_bbb", "rtb_ccc"}, filter.gotIDs,
+	assert.Equal(t, "user:usr_alice", peer.Subject)
+	assert.Equal(t, "vpc_route_table", peer.ResourceType)
+	assert.Equal(t, "vpc.routeTables.list", peer.Action)
+	assert.ElementsMatch(t, []string{"rtb_aaa", "rtb_bbb", "rtb_ccc"}, peer.IDs,
 		"visibility must be asked for the page's ids, never for the whole universe")
 }
 
@@ -118,10 +120,10 @@ func TestRouteTableListPerObject_NoLeak(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedRouteTablesLabeled(t, kr, "prj_1", "enp_net1", "rtb_visible", "rtb_secret")
 
-	filter := &fakeListFilter{allowed: []string{"rtb_visible"}}
+	filter := narrowtest.Allowing("rtb_visible")
 	uc := NewListRouteTablesUseCase(kr, filter)
 
-	rts, _, err := uc.Execute(context.Background(), "user:usr_alice", RouteTableFilter{ProjectID: "prj_1"}, Pagination{})
+	rts, _, err := uc.Execute(narrowtest.Caller(), RouteTableFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	require.Len(t, rts, 1)
 	assert.Equal(t, "rtb_visible", rts[0].ID)
@@ -132,10 +134,10 @@ func TestRouteTableListPerObject_EmptyGrantEmptyList(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedRouteTablesLabeled(t, kr, "prj_1", "enp_net1", "rtb_a", "rtb_b")
 
-	filter := &fakeListFilter{allowed: nil}
+	filter := narrowtest.DenyingAll()
 	uc := NewListRouteTablesUseCase(kr, filter)
 
-	rts, _, err := uc.Execute(context.Background(), "user:usr_alice", RouteTableFilter{ProjectID: "prj_1"}, Pagination{})
+	rts, _, err := uc.Execute(narrowtest.Caller(), RouteTableFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Empty(t, rts)
 }
@@ -145,10 +147,10 @@ func TestRouteTableListPerObject_AllVisibleReturnsAll(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedRouteTablesLabeled(t, kr, "prj_1", "enp_net1", "rtb_a", "rtb_b", "rtb_c")
 
-	filter := &fakeListFilter{allowAll: true}
+	filter := narrowtest.AllowingAll()
 	uc := NewListRouteTablesUseCase(kr, filter)
 
-	rts, _, err := uc.Execute(context.Background(), "user:usr_alice", RouteTableFilter{ProjectID: "prj_1"}, Pagination{})
+	rts, _, err := uc.Execute(narrowtest.Caller(), RouteTableFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, rts, 3)
 }
@@ -158,10 +160,10 @@ func TestRouteTableListPerObject_FailClosedUnavailable(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedRouteTablesLabeled(t, kr, "prj_1", "enp_net1", "rtb_a")
 
-	filter := &fakeListFilter{err: status.Error(codes.Unavailable, "iam down")}
+	filter := narrowtest.Failing(status.Error(codes.Unavailable, "iam down"))
 	uc := NewListRouteTablesUseCase(kr, filter)
 
-	_, _, err := uc.Execute(context.Background(), "user:usr_alice", RouteTableFilter{ProjectID: "prj_1"}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), RouteTableFilter{ProjectID: "prj_1"}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.Unavailable, st.Code())
@@ -173,10 +175,10 @@ func TestRouteTableListPerObject_FailClosedPlainError(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedRouteTablesLabeled(t, kr, "prj_1", "enp_net1", "rtb_a")
 
-	filter := &fakeListFilter{err: errors.New("boom")}
+	filter := narrowtest.Failing(errors.New("boom"))
 	uc := NewListRouteTablesUseCase(kr, filter)
 
-	_, _, err := uc.Execute(context.Background(), "user:usr_alice", RouteTableFilter{ProjectID: "prj_1"}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), RouteTableFilter{ProjectID: "prj_1"}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.NotEqual(t, codes.OK, st.Code())
@@ -187,8 +189,8 @@ func TestRouteTableListPerObject_NilFilterPassthrough(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedRouteTablesLabeled(t, kr, "prj_1", "enp_net1", "rtb_a", "rtb_b")
 
-	uc := NewListRouteTablesUseCase(kr, nil)
-	rts, _, err := uc.Execute(context.Background(), "user:usr_alice", RouteTableFilter{ProjectID: "prj_1"}, Pagination{})
+	uc := NewListRouteTablesUseCase(kr, narrowtest.AllowingAll())
+	rts, _, err := uc.Execute(narrowtest.Caller(), RouteTableFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, rts, 2)
 }
@@ -196,9 +198,9 @@ func TestRouteTableListPerObject_NilFilterPassthrough(t *testing.T) {
 // project_id по-прежнему обязателен (контракт не меняется).
 func TestRouteTableListPerObject_ProjectIDRequired(t *testing.T) {
 	kr := kachomock.NewRepository()
-	uc := NewListRouteTablesUseCase(kr, &fakeListFilter{allowAll: true})
+	uc := NewListRouteTablesUseCase(kr, narrowtest.AllowingAll())
 
-	_, _, err := uc.Execute(context.Background(), "user:usr_alice", RouteTableFilter{}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), RouteTableFilter{}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
@@ -211,10 +213,10 @@ func TestRouteTableListPerObject_EmptySubjectFailsClosed(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedRouteTablesLabeled(t, kr, "prj_1", "enp_net1", "rtb_a", "rtb_b")
 
-	filter := &fakeListFilter{allowed: []string{"rts_unused"}}
+	filter := narrowtest.Allowing("rts_unused")
 	uc := NewListRouteTablesUseCase(kr, filter)
 
-	rts, _, err := uc.Execute(context.Background(), "", RouteTableFilter{ProjectID: "prj_1"}, Pagination{})
+	rts, _, err := uc.Execute(narrowtest.Caller(), RouteTableFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Empty(t, rts, "empty subject + filter enabled -> fail-closed empty, NOT leak")
 }

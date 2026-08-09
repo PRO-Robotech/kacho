@@ -20,6 +20,8 @@ import (
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // Тесты Subnet use-case'ов и handler'а. Subnet работает поверх CQRS-Repository;
@@ -44,7 +46,7 @@ func makeHandler(t *testing.T,
 	update := NewUpdateSubnetUseCase(kr, or)
 	deleteUC := NewDeleteSubnetUseCase(kr, nil, or)
 	get := NewGetSubnetUseCase(kr)
-	list := NewListSubnetsUseCase(kr, nil)
+	list := NewListSubnetsUseCase(kr, narrowtest.AllowingAll())
 	addCidr := NewAddCidrBlocksUseCase(kr, or)
 	removeCidr := NewRemoveCidrBlocksUseCase(kr, or)
 	listUsedAddrs := NewListUsedAddressesUseCase(kr, nil)
@@ -110,14 +112,14 @@ func TestHandler_Get_InvalidIDFormat(t *testing.T) {
 
 func TestHandler_List_Empty(t *testing.T) {
 	h, _, _, _ := minimalHandler(t, true)
-	resp, err := h.List(context.Background(), &vpcv1.ListSubnetsRequest{ProjectId: "f1"})
+	resp, err := h.List(narrowtest.Caller(), &vpcv1.ListSubnetsRequest{ProjectId: "f1"})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Subnets)
 }
 
 func TestHandler_List_RequiresProject(t *testing.T) {
 	h, _, _, _ := minimalHandler(t, true)
-	_, err := h.List(context.Background(), &vpcv1.ListSubnetsRequest{ProjectId: ""})
+	_, err := h.List(narrowtest.Caller(), &vpcv1.ListSubnetsRequest{ProjectId: ""})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
@@ -482,7 +484,7 @@ func TestDeleteUseCase_InvalidArg(t *testing.T) {
 
 func TestListUseCase_RequiresProject(t *testing.T) {
 	uc := NewListSubnetsUseCase(kachomock.NewRepository(), nil)
-	_, _, err := uc.Execute(context.Background(), "", SubnetFilter{}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), SubnetFilter{}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
@@ -550,7 +552,7 @@ func TestHandler_FullFlow(t *testing.T) {
 	repomock.AwaitOpDone(t, or, createOp.Id)
 
 	// List
-	resp, err := h.List(context.Background(), &vpcv1.ListSubnetsRequest{ProjectId: "f1"})
+	resp, err := h.List(narrowtest.Caller(), &vpcv1.ListSubnetsRequest{ProjectId: "f1"})
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.Subnets)
 	subID := resp.Subnets[0].Id
@@ -616,7 +618,7 @@ func TestHandler_Delete_ResponseIsEmpty(t *testing.T) {
 	require.NoError(t, err)
 	repomock.AwaitOpDone(t, or, createOp.Id)
 
-	resp, _ := h.List(context.Background(), &vpcv1.ListSubnetsRequest{ProjectId: "f1"})
+	resp, _ := h.List(narrowtest.Caller(), &vpcv1.ListSubnetsRequest{ProjectId: "f1"})
 	require.Len(t, resp.Subnets, 1)
 
 	delOp, err := h.Delete(context.Background(), &vpcv1.DeleteSubnetRequest{SubnetId: resp.Subnets[0].Id})

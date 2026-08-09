@@ -18,8 +18,8 @@
 //     return rows of EVERY project). A use-case that cannot be found is
 //     treated fail-closed: an unprovable backstop is a finding;
 //  3. the body of that same use-case List runs the page it just read through a
-//     per-object visibility filter (authzfilter.FilterVisiblePage /
-//     FilterVisibleIDs → kacho-iam AuthorizeService.BatchCheck).
+//     per-object visibility filter (listnarrow.Page /
+//     listnarrow.IDs → kacho-iam AuthorizeService.BatchCheck).
 //
 // (1)+(2) are project scope. They answer "whose project is this", never "may
 // this caller see THESE objects" — without (3) every project member sees every
@@ -45,7 +45,7 @@
 //
 // Two further things follow from parsing rather than grepping, and both were
 // previously handled by hand: comments are not code (a comment naming
-// FilterVisibleIDs can never satisfy check (3), and one explaining why
+// listnarrow.IDs can never satisfy check (3), and one explaining why
 // ListObjects is banned can never trip (3a)), and the use-case List is found
 // anywhere in its package — splitting a package into list.go/create.go is
 // routine and must neither hide a leak nor manufacture a false red.
@@ -95,8 +95,8 @@ var projectNarrowRe = regexp.MustCompile(`(?:[A-Za-z_][A-Za-z0-9_]*\.)?project_i
 
 // perObjectFilters are the accepted per-object visibility calls (check 3).
 var perObjectFilters = map[string]bool{
-	"FilterVisiblePage": true,
-	"FilterVisibleIDs":  true,
+	"Page": true, // listnarrow.Page — сужатель общего фундамента
+	"IDs":  true, // listnarrow.IDs — он же над голыми идентификаторами
 }
 
 // enumerateThenNarrow are the rejected enumerate-all-allowed-ids calls (check 3a).
@@ -325,7 +325,7 @@ func checkListing(root, key string, l Listing, m useCaseMethod, adapters map[str
 		if !callsAnyOf(m.fn, perObjectFilters) {
 			findings = append(findings, fmt.Sprintf(
 				"%s — declared RowFilter, but does not filter the page per object "+
-					"(FilterVisiblePage/FilterVisibleIDs)\n  service: %s", key, m.file))
+					"(listnarrow.Page/listnarrow.IDs)\n  service: %s", key, m.file))
 		}
 	case SubjectScoped:
 		if !callsAnyOf(m.fn, subjectScopers) {
@@ -414,7 +414,7 @@ func checkResource(root, res string, lm listMethod) []string {
 
 	if !callsAnyOf(uc.fn, perObjectFilters) {
 		return append(findings, fmt.Sprintf(
-			"%s — use-case List does not filter the page per-object (FilterVisiblePage/FilterVisibleIDs)\n  service: %s",
+			"%s — use-case List does not filter the page per-object (listnarrow.Page/listnarrow.IDs)\n  service: %s",
 			res, uc.file))
 	}
 

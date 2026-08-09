@@ -13,6 +13,7 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/repomock"
 )
@@ -125,8 +126,20 @@ func volumeIDsOf(att []*domain.VolumeAttachment) []string {
 
 // TestListAttachments_NoGrantReturnsNothing — грантов нет вообще → не возвращается
 // ничего (и по форме ответа тоже ничего не узнать).
+// Код отказа безымянному вызывающему приведён к общему: `Unauthenticated`.
+//
+// Прежде storage отвечал здесь `PermissionDenied "permission denied"`, схлопывая
+// «личность не предъявлена» и «прав нет» в один ответ. Отличие НЕ было записано
+// решением ни в docs/architecture, ни где-либо ещё — его держали только эти пробы, —
+// поэтому при сведении реализаций оно приведено к эталонной клетке (nlb): ответ
+// обязан говорить о ЛИЧНОСТИ, а не о правах, иначе оператор ищет отсутствующую
+// выдачу вместо потерянного по дороге принципала.
+//
+// Сужение при этом не ослаблено ни на шаг: обе линии по-прежнему ОТКАЗЫВАЮТ, ни одна
+// строка не отдаётся, и модель на безымянном запросе не тревожится вовсе.
+
 func TestListAttachments_NoGrantReturnsNothing(t *testing.T) {
-	f := &fakeListFilter{}
+	f := narrowtest.DenyingAll()
 	uc := newListUC(readerAttachments(attPair()), f)
 
 	got, err := uc.ListAttachments(aliceCtx(), []string{"ins-mine", "ins-theirs"})
@@ -141,24 +154,21 @@ func TestListAttachments_NoGrantReturnsNothing(t *testing.T) {
 // TestListAttachments_EmptySubjectFailsClosed — не извлечённая identity значит «не
 // знаю, кто ты», а не «доверенный»: страницу не отдаём и модель не спрашиваем.
 func TestListAttachments_EmptySubjectFailsClosed(t *testing.T) {
-	f := &fakeListFilter{allow: map[string]bool{
-		"vol00000000000000001": true,
-		"vol00000000000000002": true,
-	}}
+	f, peer := narrowtest.Recording("vol00000000000000001", "vol00000000000000002")
 	reader := newCountingReader(attPair())
 	uc := newListUC(reader, f)
 
 	got, err := uc.ListAttachments(context.Background(), []string{"ins-mine", "ins-theirs"})
 	// Пустой ответ здесь означал бы «у этих инстансов привязок нет», и снос,
 	// поверив, удалил бы инстанс, оставив привязку сиротой. Отказ, не пустота.
-	if status.Code(err) != codes.PermissionDenied {
-		t.Fatalf("err = %v, want PermissionDenied — an empty answer would read as \"no attachments\"", err)
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("err = %v, want Unauthenticated — an empty answer would read as \"no attachments\"", err)
 	}
 	if len(got) != 0 {
 		t.Fatalf("ListAttachments without a caller identity returned %v, want nothing", volumeIDsOf(got))
 	}
-	if f.calls != 0 {
-		t.Fatalf("filter calls = %d, want 0 — with no identity there is nothing to ask the model about", f.calls)
+	if peer.Calls != 0 {
+		t.Fatalf("filter calls = %d, want 0 — with no identity there is nothing to ask the model about", peer.Calls)
 	}
 	if reader.calls != 0 {
 		t.Fatalf("rows were read (%d calls) for a caller whose identity was not extracted", reader.calls)
@@ -177,8 +187,8 @@ func TestListAttachments_EmptySubjectFailsClosedEvenWithoutFilter(t *testing.T) 
 	uc := newListUC(reader, nil)
 
 	got, err := uc.ListAttachments(context.Background(), []string{"ins-mine", "ins-theirs"})
-	if status.Code(err) != codes.PermissionDenied {
-		t.Fatalf("err = %v, want PermissionDenied", err)
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("err = %v, want Unauthenticated", err)
 	}
 	if len(got) != 0 {
 		t.Fatalf("ListAttachments without a caller identity returned %v with no filter configured, "+
@@ -194,26 +204,26 @@ func TestListAttachments_EmptySubjectFailsClosedEvenWithoutFilter(t *testing.T) 
 // FGA-субъекта (authzfilter.SubjectFromPrincipal → ""), поэтому он попадает в ту же
 // fail-closed ветку. Зафиксировано, чтобы passthrough нельзя было ввести молча.
 func TestListAttachments_SystemPrincipalFailsClosed(t *testing.T) {
-	f := &fakeListFilter{allow: map[string]bool{"vol00000000000000001": true}}
+	f, peer := narrowtest.Recording("vol00000000000000001")
 	reader := newCountingReader(attPair())
 	uc := newListUC(reader, f)
 
 	ctx := operations.WithPrincipal(context.Background(),
 		operations.Principal{Type: "system", ID: "bootstrap"})
 	got, err := uc.ListAttachments(ctx, []string{"ins-mine"})
-	if status.Code(err) != codes.PermissionDenied {
-		t.Fatalf("err = %v, want PermissionDenied", err)
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("err = %v, want Unauthenticated", err)
 	}
-	if len(got) != 0 || f.calls != 0 || reader.calls != 0 {
+	if len(got) != 0 || peer.Calls != 0 || reader.calls != 0 {
 		t.Fatalf("system principal: rows=%v filter-calls=%d reader-calls=%d, want none/0/0",
-			volumeIDsOf(got), f.calls, reader.calls)
+			volumeIDsOf(got), peer.Calls, reader.calls)
 	}
 }
 
 // TestListAttachments_FilterErrorFailsClosed — недоступный ответ модели не есть
 // ответ «да»: страница не отдаётся, отказ доезжает как есть.
 func TestListAttachments_FilterErrorFailsClosed(t *testing.T) {
-	f := &fakeListFilter{err: status.Error(codes.Unavailable, "list filter: iam unreachable")}
+	f := narrowtest.Failing(status.Error(codes.Unavailable, "list filter: iam unreachable"))
 	uc := newListUC(readerAttachments(attPair()), f)
 
 	got, err := uc.ListAttachments(aliceCtx(), []string{"ins-mine", "ins-theirs"})
@@ -240,7 +250,7 @@ func TestListAttachments_FilterErrorFailsClosed(t *testing.T) {
 // инстансов и правда нет привязок — утверждать там нечего. Осмысленный остаток —
 // пустой вход.
 func TestListAttachments_NoInstancesNamedAsksNothingAndReadsNothing(t *testing.T) {
-	f := &fakeListFilter{}
+	f, peer := narrowtest.Recording()
 	reader := newCountingReader(attPair())
 	uc := newListUC(reader, f)
 
@@ -248,9 +258,9 @@ func TestListAttachments_NoInstancesNamedAsksNothingAndReadsNothing(t *testing.T
 	if err != nil {
 		t.Fatalf("ListAttachments: %v", err)
 	}
-	if len(got) != 0 || f.calls != 0 || reader.calls != 0 {
+	if len(got) != 0 || peer.Calls != 0 || reader.calls != 0 {
 		t.Fatalf("no instances named: rows=%v filter-calls=%d reader-calls=%d, want none/0/0",
-			volumeIDsOf(got), f.calls, reader.calls)
+			volumeIDsOf(got), peer.Calls, reader.calls)
 	}
 }
 
@@ -281,7 +291,7 @@ func TestListAttachments_NoInstancesNamedAsksNothingAndReadsNothing(t *testing.T
 func TestListAttachments_TeardownSeesEveryAttachmentOfAnInstanceItMayDelete(t *testing.T) {
 	// The subject may see the instance. One of its two volumes is not separately
 	// visible to them — irrelevant to whether the instance can be torn down.
-	f := &fakeListFilter{allow: map[string]bool{"ins-mine": true}}
+	f, _ := narrowtest.Recording("ins-mine")
 	uc := newListUC(readerAttachments([]*domain.VolumeAttachment{
 		{VolumeID: "vol00000000000000001", InstanceID: "ins-mine", ProjectID: "prj-mine", DeviceName: "vda", IsBoot: true},
 		{VolumeID: "vol00000000000000009", InstanceID: "ins-mine", ProjectID: "prj-mine", DeviceName: "vdb"},
@@ -305,7 +315,7 @@ func TestListAttachments_TeardownSeesEveryAttachmentOfAnInstanceItMayDelete(t *t
 // caller names an instance that is not theirs and learns nothing about it. This
 // is the defect the narrowing was introduced for, restated against the instance.
 func TestListAttachments_ForeignInstanceReturnsNothing(t *testing.T) {
-	f := &fakeListFilter{allow: map[string]bool{"ins-mine": true}}
+	f, _ := narrowtest.Recording("ins-mine")
 	uc := newListUC(readerAttachments(attPair()), f) // ins-mine + ins-theirs
 
 	got, err := uc.ListAttachments(aliceCtx(), []string{"ins-mine", "ins-theirs"})

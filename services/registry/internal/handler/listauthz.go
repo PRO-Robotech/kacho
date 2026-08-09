@@ -23,7 +23,6 @@ import (
 	"context"
 	"log/slog"
 
-	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -47,6 +46,19 @@ const repoAuthzConcurrency = 8
 // check.IAMCheckClient. nil → breakglass (authz bypass).
 type Authorizer interface {
 	Check(ctx context.Context, subject, relation, object string) (bool, error)
+	// CheckMany — ТОТ ЖЕ вопрос про МНОГО объектов одного типа, одним запросом.
+	//
+	// Не «возможность по желанию», а часть порта: страница каталога спрашивалась
+	// ПОШТУЧНО — партия из одного при веере восемь, то есть 125 последовательных волн
+	// на контрактной странице против двух у соседних сервисов. Отдельная дверь
+	// заведена потому, что предмет вопроса другой (страница, а не объект), а не
+	// потому, что реализация может её не иметь: реализация без неё оставила бы
+	// поштучный опрос, и «перевели на пакетный вопрос» стало бы утверждением без
+	// предмета.
+	//
+	// Возвращает ПОДМНОЖЕСТВО objectIDs, видимое субъекту, СОХРАНЯЯ порядок входа.
+	// Ошибка — fail-closed: вызывающий обязан пробросить её, а не отдать страницу.
+	CheckMany(ctx context.Context, subject, relation, objectType string, objectIDs []string) ([]string, error)
 }
 
 // verb-relations per-repo authz — локальные alias'ы единого источника internal/domain
@@ -188,6 +200,27 @@ func (a repoAuthz) requireRegistryAdmin(ctx context.Context, registryID, msg str
 	return a.gate(ctx, relationAdmin, registryObjectRef(registryID), status.Error(codes.PermissionDenied, msg))
 }
 
+// checkManyRefs — общий пакетный вопрос трёх строчных фильтров.
+//
+// Он один, потому что все три задают ОДИН и тот же вопрос про набор объектов одного
+// типа и отличаются лишь тем, из чего берут идентификаторы. Три отдельные петли с
+// errgroup, которые здесь стояли, спрашивали ПОШТУЧНО и расходились между собой
+// ровно там, где расхождение не видно.
+func (a repoAuthz) checkManyRefs(ctx context.Context, subject, objectType string, ids []string) (map[string]bool, error) {
+	if len(ids) == 0 {
+		return map[string]bool{}, nil
+	}
+	visible, err := a.az.CheckMany(ctx, subject, relationVList, objectType, ids)
+	if err != nil {
+		return nil, errAuthzUnavailable()
+	}
+	out := make(map[string]bool, len(visible))
+	for _, id := range visible {
+		out[id] = true
+	}
+	return out, nil
+}
+
 // filterRegistries — row-filter коллекции реестров: оставляет только реестры, на
 // registry_registry:<id> которых subject имеет v_list. non-member → пустой список
 // (200+empty, НЕ 403 — List не гейтится per-object Check). breakglass → все;
@@ -205,25 +238,17 @@ func (a repoAuthz) filterRegistries(ctx context.Context, regs []*domain.Registry
 	if a.az == nil {
 		return regs, nil
 	}
-	allowed := make([]bool, len(regs))
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(repoAuthzConcurrency)
-	for i, r := range regs {
-		g.Go(func() error {
-			ok, err := a.az.Check(gctx, subject, relationVList, registryObjectRef(r.ID))
-			if err != nil {
-				return err
-			}
-			allowed[i] = ok
-			return nil
-		})
+	ids := make([]string, 0, len(regs))
+	for _, r := range regs {
+		ids = append(ids, r.ID)
 	}
-	if err := g.Wait(); err != nil {
-		return nil, errAuthzUnavailable()
+	allowed, err := a.checkManyRefs(ctx, subject, domain.FGAObjectTypeRegistry, ids)
+	if err != nil {
+		return nil, err
 	}
 	out := make([]*domain.Registry, 0, len(regs))
-	for i, r := range regs {
-		if allowed[i] {
+	for _, r := range regs {
+		if allowed[r.ID] {
 			out = append(out, r)
 		}
 	}
@@ -246,25 +271,17 @@ func (a repoAuthz) filterRepos(ctx context.Context, registryID string, repos []*
 	if a.az == nil {
 		return repos, nil
 	}
-	allowed := make([]bool, len(repos))
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(repoAuthzConcurrency)
-	for i, r := range repos {
-		g.Go(func() error {
-			ok, err := a.az.Check(gctx, subject, relationVList, repositoryObjectRef(registryID, r.Name))
-			if err != nil {
-				return err
-			}
-			allowed[i] = ok
-			return nil
-		})
+	ids := make([]string, 0, len(repos))
+	for _, r := range repos {
+		ids = append(ids, registryID+"/"+r.Name)
 	}
-	if err := g.Wait(); err != nil {
-		return nil, errAuthzUnavailable()
+	allowed, err := a.checkManyRefs(ctx, subject, domain.FGAObjectTypeRepository, ids)
+	if err != nil {
+		return nil, err
 	}
 	out := make([]*domain.Repository, 0, len(repos))
-	for i, r := range repos {
-		if allowed[i] {
+	for _, r := range repos {
+		if allowed[registryID+"/"+r.Name] {
 			out = append(out, r)
 		}
 	}
@@ -311,32 +328,30 @@ func (a repoAuthz) filterOperations(ctx context.Context, registryID string, ops 
 		return ops, nil
 	}
 	keep := make([]bool, len(ops))
+	scoped := make([]string, 0, len(ops))
+	scopedRef := make([]string, len(ops))
 	unclassified := 0
-	g, gctx := errgroup.WithContext(ctx)
-	g.SetLimit(repoAuthzConcurrency)
 	for i := range ops {
 		repository, scope := repositoryOfOperation(&ops[i])
 		switch scope {
 		case opScopeRegistry:
 			keep[i] = true // registry-level op — namespace v_list (interceptor) достаточно
-			continue
 		case opScopeUnknown:
 			unclassified++ // принадлежность не установлена → строка не отдаётся
-			continue
 		case opScopeRepository:
+			ref := registryID + "/" + repository
+			scopedRef[i] = ref
+			scoped = append(scoped, ref)
 		}
-
-		g.Go(func() error {
-			ok, err := a.az.Check(gctx, subject, relationVList, repositoryObjectRef(registryID, repository))
-			if err != nil {
-				return err
-			}
-			keep[i] = ok
-			return nil
-		})
 	}
-	if err := g.Wait(); err != nil {
-		return nil, errAuthzUnavailable()
+	allowed, err := a.checkManyRefs(ctx, subject, domain.FGAObjectTypeRepository, scoped)
+	if err != nil {
+		return nil, err
+	}
+	for i := range ops {
+		if scopedRef[i] != "" {
+			keep[i] = allowed[scopedRef[i]]
+		}
 	}
 	if unclassified > 0 {
 		a.logger().Warn(

@@ -12,6 +12,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
@@ -34,47 +36,6 @@ import (
 // личностью инициатора и держит `v_delete`, поэтому отцепление принимает
 // `v_update` ЛИБО `v_delete` — иначе удаление машины с томом стало бы невозможным
 // для роли, у которой есть только право удаления.
-
-// fakeInstanceGate — фейк порта вопроса про один названный объект. Разрешает
-// только перечисленные (объект, отношение) пары и запоминает форму вопроса, чтобы
-// тест утверждал ПРЕДМЕТ спроса, а не только его исход.
-type fakeInstanceGate struct {
-	// allow[objectID][relation] = true
-	allow map[string]map[string]bool
-	err   error
-
-	calls     int
-	subject   string
-	resType   string
-	action    string
-	relations []string
-	objectID  string
-}
-
-func (g *fakeInstanceGate) AllowedOnObject(
-	_ context.Context, subject, resourceType, action string, relations []string, id string,
-) (bool, error) {
-	g.calls++
-	g.subject, g.resType, g.action, g.objectID = subject, resourceType, action, id
-	g.relations = append([]string(nil), relations...)
-	if g.err != nil {
-		return false, g.err
-	}
-	for _, rel := range relations {
-		if g.allow[id][rel] {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func gateAllowing(objectID string, relations ...string) *fakeInstanceGate {
-	rel := make(map[string]bool, len(relations))
-	for _, r := range relations {
-		rel[r] = true
-	}
-	return &fakeInstanceGate{allow: map[string]map[string]bool{objectID: rel}}
-}
 
 const (
 	gateVolumeID   = "vol00000000000000001"
@@ -103,7 +64,7 @@ func attachedVolume() *domain.Volume {
 }
 
 // newAttachUC собирает use-case с фейковым writer'ом, reader'ом и гейтом инстанса.
-func newAttachUC(w volume.Writer, g authzfilter.ObjectGate) *volume.UseCase {
+func newAttachUC(w volume.Writer, g *listnarrow.Narrower) *volume.UseCase {
 	reader := &repomock.VolumeReader{
 		GetFunc: func(context.Context, string) (*domain.Volume, error) { return attachedVolume(), nil },
 	}
@@ -128,9 +89,21 @@ func attachSpec(instanceID string) *domain.VolumeAttachment {
 // его пропускает) и называет ЧУЖОЙ instance_id. Отказ обязан прийти ДО записи:
 // строка, попавшая в набор привязок чужой машины, занимает её загрузочный слот и
 // делает саму машину неудаляемой.
+// Код отказа безымянному вызывающему приведён к общему: `Unauthenticated`.
+//
+// Прежде storage отвечал здесь `PermissionDenied "permission denied"`, схлопывая
+// «личность не предъявлена» и «прав нет» в один ответ. Отличие НЕ было записано
+// решением ни в docs/architecture, ни где-либо ещё — его держали только эти пробы, —
+// поэтому при сведении реализаций оно приведено к эталонной клетке (nlb): ответ
+// обязан говорить о ЛИЧНОСТИ, а не о правах, иначе оператор ищет отсутствующую
+// выдачу вместо потерянного по дороге принципала.
+//
+// Сужение при этом не ослаблено ни на шаг: обе линии по-прежнему ОТКАЗЫВАЮТ, ни одна
+// строка не отдаётся, и модель на безымянном запросе не тревожится вовсе.
+
 func TestAttach_ForeignInstanceIsRefusedBeforeTheRowIsWritten(t *testing.T) {
 	w := newCountingWriter()
-	g := gateAllowing(gateOwnInst, authzfilter.RelationInstanceUpdate)
+	g, _ := narrowtest.AllowingRelations(gateOwnInst, authzfilter.RelationInstanceUpdate)
 	uc := newAttachUC(w, g)
 
 	_, err := uc.Attach(aliceCtx(), attachSpec(gateForeignIns))
@@ -148,7 +121,7 @@ func TestAttach_ForeignInstanceIsRefusedBeforeTheRowIsWritten(t *testing.T) {
 // всем».
 func TestAttach_OwnInstanceProceeds(t *testing.T) {
 	w := newCountingWriter()
-	uc := newAttachUC(w, gateAllowing(gateOwnInst, authzfilter.RelationInstanceUpdate))
+	uc := newAttachUC(w, mustGate(narrowtest.AllowingRelations(gateOwnInst, authzfilter.RelationInstanceUpdate)))
 
 	v, err := uc.Attach(aliceCtx(), attachSpec(gateOwnInst))
 	if err != nil {
@@ -166,31 +139,31 @@ func TestAttach_OwnInstanceProceeds(t *testing.T) {
 // спрашивается ИНСТАНС из запроса, тип объекта чужого домена, отношение — то же,
 // которым compute гейтит AttachDisk, субъект — вызывающий.
 func TestAttach_AsksAboutTheInstanceTheCallerNamed(t *testing.T) {
-	g := gateAllowing(gateOwnInst, authzfilter.RelationInstanceUpdate)
+	g, peer := narrowtest.AllowingRelations(gateOwnInst, authzfilter.RelationInstanceUpdate)
 	uc := newAttachUC(newCountingWriter(), g)
 
 	if _, err := uc.Attach(aliceCtx(), attachSpec(gateOwnInst)); err != nil {
 		t.Fatalf("Attach: %v", err)
 	}
-	if g.calls != 1 {
-		t.Fatalf("gate calls = %d, want exactly 1 question per Attach", g.calls)
+	if peer.Calls != 1 {
+		t.Fatalf("gate calls = %d, want exactly 1 question per Attach", peer.Calls)
 	}
-	if g.subject != "user:usr_alice" {
-		t.Fatalf("gate subject = %q, want %q", g.subject, "user:usr_alice")
+	if peer.Subject != "user:usr_alice" {
+		t.Fatalf("gate subject = %q, want %q", peer.Subject, "user:usr_alice")
 	}
-	if g.resType != authzfilter.ResourceTypeComputeInstance {
-		t.Fatalf("gate object type = %q, want %q", g.resType, authzfilter.ResourceTypeComputeInstance)
+	if peer.ResourceType != authzfilter.ResourceTypeComputeInstance {
+		t.Fatalf("gate object type = %q, want %q", peer.ResourceType, authzfilter.ResourceTypeComputeInstance)
 	}
-	if g.objectID != gateOwnInst {
-		t.Fatalf("gate object id = %q, want the instance the caller named (%q)", g.objectID, gateOwnInst)
+	if peer.IDs[0] != gateOwnInst {
+		t.Fatalf("gate object id = %q, want the instance the caller named (%q)", peer.IDs[0], gateOwnInst)
 	}
-	if g.action != authzfilter.ActionVolumeAttach {
+	if peer.Action != authzfilter.ActionVolumeAttach {
 		t.Fatalf("gate action = %q, want %q (the same permission string the catalog carries)",
-			g.action, authzfilter.ActionVolumeAttach)
+			peer.Action, authzfilter.ActionVolumeAttach)
 	}
-	if len(g.relations) != 1 || g.relations[0] != authzfilter.RelationInstanceUpdate {
+	if len(peer.Relations) != 1 || peer.Relations[0] != authzfilter.RelationInstanceUpdate {
 		t.Fatalf("gate relations = %v, want exactly [%s] — attaching mutates the instance",
-			g.relations, authzfilter.RelationInstanceUpdate)
+			peer.Relations, authzfilter.RelationInstanceUpdate)
 	}
 }
 
@@ -198,7 +171,7 @@ func TestAttach_AsksAboutTheInstanceTheCallerNamed(t *testing.T) {
 // снести машину не есть право что-то к ней подвесить.
 func TestAttach_DeleteVerbAloneDoesNotAllowAttaching(t *testing.T) {
 	w := newCountingWriter()
-	uc := newAttachUC(w, gateAllowing(gateOwnInst, authzfilter.RelationInstanceDelete))
+	uc := newAttachUC(w, mustGate(narrowtest.AllowingRelations(gateOwnInst, authzfilter.RelationInstanceDelete)))
 
 	_, err := uc.Attach(aliceCtx(), attachSpec(gateOwnInst))
 	if status.Code(err) != codes.PermissionDenied {
@@ -213,15 +186,15 @@ func TestAttach_DeleteVerbAloneDoesNotAllowAttaching(t *testing.T) {
 // «не знаю, кто ты», а не «доверенный»: ни вопроса модели, ни записи.
 func TestAttach_EmptySubjectIsRefusedUnconditionally(t *testing.T) {
 	w := newCountingWriter()
-	g := gateAllowing(gateOwnInst, authzfilter.RelationInstanceUpdate)
+	g, peer := narrowtest.AllowingRelations(gateOwnInst, authzfilter.RelationInstanceUpdate)
 	uc := newAttachUC(w, g)
 
 	_, err := uc.Attach(context.Background(), attachSpec(gateOwnInst))
-	if status.Code(err) != codes.PermissionDenied {
-		t.Fatalf("Attach without a caller identity: err = %v, want PermissionDenied", err)
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("Attach without a caller identity: err = %v, want Unauthenticated", err)
 	}
-	if w.attaches != 0 || g.calls != 0 {
-		t.Fatalf("no identity: writer calls=%d gate calls=%d, want 0/0", w.attaches, g.calls)
+	if w.attaches != 0 || peer.Calls != 0 {
+		t.Fatalf("no identity: writer calls=%d gate calls=%d, want 0/0", w.attaches, peer.Calls)
 	}
 }
 
@@ -229,12 +202,12 @@ func TestAttach_EmptySubjectIsRefusedUnconditionally(t *testing.T) {
 // на этом пути: system не резолвится в FGA-субъекта и попадает в ту же ветку.
 func TestAttach_SystemPrincipalIsRefused(t *testing.T) {
 	w := newCountingWriter()
-	uc := newAttachUC(w, gateAllowing(gateOwnInst, authzfilter.RelationInstanceUpdate))
+	uc := newAttachUC(w, mustGate(narrowtest.AllowingRelations(gateOwnInst, authzfilter.RelationInstanceUpdate)))
 
 	ctx := operations.WithPrincipal(context.Background(),
 		operations.Principal{Type: "system", ID: "bootstrap"})
-	if _, err := uc.Attach(ctx, attachSpec(gateOwnInst)); status.Code(err) != codes.PermissionDenied {
-		t.Fatalf("Attach under a system principal: err = %v, want PermissionDenied", err)
+	if _, err := uc.Attach(ctx, attachSpec(gateOwnInst)); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("Attach under a system principal: err = %v, want Unauthenticated", err)
 	}
 	if w.attaches != 0 {
 		t.Fatalf("row written (%d calls) under a system principal", w.attaches)
@@ -261,7 +234,7 @@ func TestAttach_MissingGateIsRefused(t *testing.T) {
 // отказ доезжает как есть, строка не пишется.
 func TestAttach_GateErrorFailsClosed(t *testing.T) {
 	w := newCountingWriter()
-	g := &fakeInstanceGate{err: status.Error(codes.Unavailable, "instance gate: iam unreachable")}
+	g := narrowtest.Failing(status.Error(codes.Unavailable, "instance gate: iam unreachable"))
 	uc := newAttachUC(w, g)
 
 	_, err := uc.Attach(aliceCtx(), attachSpec(gateOwnInst))
@@ -279,15 +252,15 @@ func TestAttach_GateErrorFailsClosed(t *testing.T) {
 // InvalidArgument.
 func TestAttach_EmptyInstanceIdIsRejectedByName(t *testing.T) {
 	w := newCountingWriter()
-	g := gateAllowing(gateOwnInst, authzfilter.RelationInstanceUpdate)
+	g, peer := narrowtest.AllowingRelations(gateOwnInst, authzfilter.RelationInstanceUpdate)
 	uc := newAttachUC(w, g)
 
 	_, err := uc.Attach(aliceCtx(), attachSpec(""))
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("Attach with an empty instance_id: code = %v, want InvalidArgument", status.Code(err))
 	}
-	if g.calls != 0 || w.attaches != 0 {
-		t.Fatalf("empty instance_id: gate calls=%d writer calls=%d, want 0/0", g.calls, w.attaches)
+	if peer.Calls != 0 || w.attaches != 0 {
+		t.Fatalf("empty instance_id: gate calls=%d writer calls=%d, want 0/0", peer.Calls, w.attaches)
 	}
 }
 
@@ -295,7 +268,7 @@ func TestAttach_EmptyInstanceIdIsRejectedByName(t *testing.T) {
 // `editor` на томе не снимает его привязку с ЛЮБОЙ названной машины.
 func TestDetach_ForeignInstanceIsRefusedBeforeTheRowIsRemoved(t *testing.T) {
 	w := newCountingWriter()
-	uc := newAttachUC(w, gateAllowing(gateOwnInst, authzfilter.RelationInstanceUpdate))
+	uc := newAttachUC(w, mustGate(narrowtest.AllowingRelations(gateOwnInst, authzfilter.RelationInstanceUpdate)))
 
 	_, err := uc.Detach(aliceCtx(), gateVolumeID, gateForeignIns)
 	if status.Code(err) != codes.PermissionDenied {
@@ -310,7 +283,7 @@ func TestDetach_ForeignInstanceIsRefusedBeforeTheRowIsRemoved(t *testing.T) {
 // `v_update`).
 func TestDetach_UpdateVerbProceeds(t *testing.T) {
 	w := newCountingWriter()
-	uc := newAttachUC(w, gateAllowing(gateOwnInst, authzfilter.RelationInstanceUpdate))
+	uc := newAttachUC(w, mustGate(narrowtest.AllowingRelations(gateOwnInst, authzfilter.RelationInstanceUpdate)))
 
 	if _, err := uc.Detach(aliceCtx(), gateVolumeID, gateOwnInst); err != nil {
 		t.Fatalf("Detach with the update verb: %v", err)
@@ -326,7 +299,7 @@ func TestDetach_UpdateVerbProceeds(t *testing.T) {
 // изменения: шаг отцепления отказал бы, а строка машины удаляется последней.
 func TestDetach_DeleteVerbProceeds(t *testing.T) {
 	w := newCountingWriter()
-	uc := newAttachUC(w, gateAllowing(gateOwnInst, authzfilter.RelationInstanceDelete))
+	uc := newAttachUC(w, mustGate(narrowtest.AllowingRelations(gateOwnInst, authzfilter.RelationInstanceDelete)))
 
 	if _, err := uc.Detach(aliceCtx(), gateVolumeID, gateOwnInst); err != nil {
 		t.Fatalf("Detach under the delete verb (teardown path): %v", err)
@@ -339,29 +312,29 @@ func TestDetach_DeleteVerbProceeds(t *testing.T) {
 // TestDetach_AsksBothVerbsAboutTheInstance — форма вопроса отцепления: тот же
 // объект, оба принимаемых отношения.
 func TestDetach_AsksBothVerbsAboutTheInstance(t *testing.T) {
-	g := gateAllowing(gateOwnInst, authzfilter.RelationInstanceUpdate)
+	g, peer := narrowtest.AllowingRelations(gateOwnInst, authzfilter.RelationInstanceUpdate)
 	uc := newAttachUC(newCountingWriter(), g)
 
 	if _, err := uc.Detach(aliceCtx(), gateVolumeID, gateOwnInst); err != nil {
 		t.Fatalf("Detach: %v", err)
 	}
-	if g.resType != authzfilter.ResourceTypeComputeInstance || g.objectID != gateOwnInst {
+	if peer.ResourceType != authzfilter.ResourceTypeComputeInstance || peer.IDs[0] != gateOwnInst {
 		t.Fatalf("gate asked about (%q,%q), want (%q,%q)",
-			g.resType, g.objectID, authzfilter.ResourceTypeComputeInstance, gateOwnInst)
+			peer.ResourceType, peer.IDs[0], authzfilter.ResourceTypeComputeInstance, gateOwnInst)
 	}
-	if g.action != authzfilter.ActionVolumeDetach {
-		t.Fatalf("gate action = %q, want %q", g.action, authzfilter.ActionVolumeDetach)
+	if peer.Action != authzfilter.ActionVolumeDetach {
+		t.Fatalf("gate action = %q, want %q", peer.Action, authzfilter.ActionVolumeDetach)
 	}
 	want := map[string]bool{
 		authzfilter.RelationInstanceUpdate: true,
 		authzfilter.RelationInstanceDelete: true,
 	}
-	if len(g.relations) != len(want) {
-		t.Fatalf("gate relations = %v, want both %v", g.relations, want)
+	if len(peer.Relations) != len(want) {
+		t.Fatalf("gate relations = %v, want both %v", peer.Relations, want)
 	}
-	for _, r := range g.relations {
+	for _, r := range peer.Relations {
 		if !want[r] {
-			t.Fatalf("gate relations = %v, contains unexpected %q", g.relations, r)
+			t.Fatalf("gate relations = %v, contains unexpected %q", peer.Relations, r)
 		}
 	}
 }
@@ -381,19 +354,19 @@ func TestDetach_MissingGateIsRefused(t *testing.T) {
 
 func TestDetach_EmptySubjectIsRefusedUnconditionally(t *testing.T) {
 	w := newCountingWriter()
-	g := gateAllowing(gateOwnInst, authzfilter.RelationInstanceUpdate)
+	g, peer := narrowtest.AllowingRelations(gateOwnInst, authzfilter.RelationInstanceUpdate)
 	uc := newAttachUC(w, g)
-	if _, err := uc.Detach(context.Background(), gateVolumeID, gateOwnInst); status.Code(err) != codes.PermissionDenied {
-		t.Fatalf("Detach without a caller identity: err = %v, want PermissionDenied", err)
+	if _, err := uc.Detach(context.Background(), gateVolumeID, gateOwnInst); status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("Detach without a caller identity: err = %v, want Unauthenticated", err)
 	}
-	if w.detaches != 0 || g.calls != 0 {
-		t.Fatalf("no identity: writer calls=%d gate calls=%d, want 0/0", w.detaches, g.calls)
+	if w.detaches != 0 || peer.Calls != 0 {
+		t.Fatalf("no identity: writer calls=%d gate calls=%d, want 0/0", w.detaches, peer.Calls)
 	}
 }
 
 func TestDetach_GateErrorFailsClosed(t *testing.T) {
 	w := newCountingWriter()
-	g := &fakeInstanceGate{err: status.Error(codes.Unavailable, "instance gate: iam unreachable")}
+	g := narrowtest.Failing(status.Error(codes.Unavailable, "instance gate: iam unreachable"))
 	uc := newAttachUC(w, g)
 	if _, err := uc.Detach(aliceCtx(), gateVolumeID, gateOwnInst); status.Code(err) != codes.Unavailable {
 		t.Fatalf("Detach on a gate error: code = %v, want Unavailable", status.Code(err))
@@ -405,12 +378,16 @@ func TestDetach_GateErrorFailsClosed(t *testing.T) {
 
 func TestDetach_EmptyInstanceIdIsRejectedByName(t *testing.T) {
 	w := newCountingWriter()
-	g := gateAllowing(gateOwnInst, authzfilter.RelationInstanceUpdate)
+	g, peer := narrowtest.AllowingRelations(gateOwnInst, authzfilter.RelationInstanceUpdate)
 	uc := newAttachUC(w, g)
 	if _, err := uc.Detach(aliceCtx(), gateVolumeID, ""); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("Detach with an empty instance_id: err = %v, want InvalidArgument", err)
 	}
-	if g.calls != 0 || w.detaches != 0 {
-		t.Fatalf("empty instance_id: gate calls=%d writer calls=%d, want 0/0", g.calls, w.detaches)
+	if peer.Calls != 0 || w.detaches != 0 {
+		t.Fatalf("empty instance_id: gate calls=%d writer calls=%d, want 0/0", peer.Calls, w.detaches)
 	}
 }
+
+// mustGate — читаемая форма для мест, где сосед не опрашивается: важен только
+// сужатель. Отдельный помощник, а не «_» по месту, чтобы вызов оставался выражением.
+func mustGate(n *listnarrow.Narrower, _ *narrowtest.Peer) *listnarrow.Narrower { return n }

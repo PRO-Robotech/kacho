@@ -55,7 +55,7 @@ var Profile = listfiltergate.Profile{
 	// One package per resource, all declaring the same transport type.
 	PerPackage:     true,
 	ReceiverSuffix: "Handler",
-	Filters:        []string{"FilterVisiblePage", "FilterVisibleIDs"},
+	Filters:        []string{"listnarrow.Page", "listnarrow.IDs"},
 	Banned:         []string{"ListAllowedIDs", "ListObjects"},
 	SubjectScopers: []string{"ListForCaller"},
 

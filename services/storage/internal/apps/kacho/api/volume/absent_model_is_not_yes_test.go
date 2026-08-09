@@ -26,6 +26,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 )
 
@@ -57,7 +58,7 @@ func TestListAttachments_AbsentModelRefusesANamedCaller(t *testing.T) {
 // TestListAttachments_PresentModelStillAnswers — ПАРНЫЙ ПОЛОЖИТЕЛЬНЫЙ. Без него отказ
 // выше неотличим от «отказывает всегда» и зеленел бы на полностью сломанном пути.
 func TestListAttachments_PresentModelStillAnswers(t *testing.T) {
-	f := &fakeListFilter{allow: map[string]bool{"ins-mine": true}}
+	f, _ := narrowtest.Recording("ins-mine")
 	uc := newListUC(readerAttachments(attPair()), f)
 
 	got, err := uc.ListAttachments(namedCallerCtx(), []string{"ins-mine", "ins-theirs"})

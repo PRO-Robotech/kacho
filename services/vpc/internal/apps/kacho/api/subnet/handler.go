@@ -83,8 +83,7 @@ func (h *Handler) Get(ctx context.Context, req *vpcv1.GetSubnetRequest) (*vpcv1.
 // List — project_id required + per-object FGA list-filter. Project-scope AuthZ
 // (`viewer @ project:<project_id>`) энфорсит per-RPC authz-interceptor.
 func (h *Handler) List(ctx context.Context, req *vpcv1.ListSubnetsRequest) (*vpcv1.ListSubnetsResponse, error) {
-	subject := pbconv.SubjectFromContext(ctx)
-	subs, nextToken, err := h.list.Execute(ctx, subject, SubnetFilter{
+	subs, nextToken, err := h.list.Execute(ctx, SubnetFilter{
 		ProjectID: req.ProjectId,
 		Filter:    req.Filter,
 	}, Pagination{

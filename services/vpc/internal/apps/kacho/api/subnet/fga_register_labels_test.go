@@ -14,6 +14,8 @@ import (
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // vpc публикует labels+parent в FGA register-intent, чтобы kacho-iam
@@ -56,7 +58,7 @@ func createSubnet(t *testing.T, h *Handler, or *repomock.OpsRepo, netID, project
 	require.True(t, saved.Done)
 	require.Nil(t, saved.Error, "Create op must succeed")
 
-	resp, err := h.List(ctx, &vpcv1.ListSubnetsRequest{ProjectId: projectID})
+	resp, err := h.List(narrowtest.Caller(), &vpcv1.ListSubnetsRequest{ProjectId: projectID})
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.Subnets)
 	return resp.Subnets[0].Id

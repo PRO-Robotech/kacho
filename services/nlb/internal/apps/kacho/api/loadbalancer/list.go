@@ -11,6 +11,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/shared"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 )
 
 // ListLoadBalancersUseCase — sync list с фильтром `project_id` (required) +
@@ -28,12 +30,12 @@ import (
 // пропусков это не ломает.
 type ListLoadBalancersUseCase struct {
 	repo  Repo
-	authz authzfilter.Filter
+	authz *listnarrow.Narrower
 }
 
 // NewListLoadBalancersUseCase конструктор. authz может быть nil
 // (list-filter disabled / dev) → нефильтрованный project-scoped passthrough.
-func NewListLoadBalancersUseCase(repo Repo, authz authzfilter.Filter) *ListLoadBalancersUseCase {
+func NewListLoadBalancersUseCase(repo Repo, authz *listnarrow.Narrower) *ListLoadBalancersUseCase {
 	return &ListLoadBalancersUseCase{repo: repo, authz: authz}
 }
 
@@ -69,6 +71,14 @@ func (u *ListLoadBalancersUseCase) Execute(
 		return nil, err
 	}
 
+	// Предусловие сужения — ДО чтения страницы из БД: и «никого не назвали», и
+	// «спросить негде» решаются одной функцией общего фундамента, поэтому ответ
+	// совпадает у всех списков по построению, а не по внимательности. Проверка
+	// формата остаётся ПЕРВОЙ и выше — ответ на некорректный ввод не должен
+	// зависеть от того, что вызывающему выдано.
+	if err := listnarrow.Precheck(ctx, u.authz); err != nil {
+		return nil, err
+	}
 	// Страница читается и read-TX ЗАКРЫВАЕТСЯ до опроса прав (см. readPage).
 	recs, next, err := u.readPage(ctx, filter, kachorepo.Pagination{
 		PageToken: req.GetPageToken(),
@@ -79,7 +89,7 @@ func (u *ListLoadBalancersUseCase) Execute(
 	}
 
 	// RBAC: оставить из страницы только видимые subject'у строки (per-object).
-	recs, err = authzfilter.FilterVisiblePage(ctx, u.authz,
+	recs, err = listnarrow.Page(ctx, u.authz,
 		authzfilter.ResourceTypeLoadBalancer, authzfilter.ActionLoadBalancerList,
 		recs, func(rec *kachorepo.LoadBalancerRecord) string { return string(rec.ID) })
 	if err != nil {

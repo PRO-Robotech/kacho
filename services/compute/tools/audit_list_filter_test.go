@@ -119,7 +119,7 @@ func patch(t *testing.T, root, rel, old, replacement string) {
 // that searches the FILE for that token keeps reporting OK while the List leaks.
 func dropPerObjectFilter(t *testing.T, root string) {
 	t.Helper()
-	patch(t, root, "instance_handler.go", "visible, err := filterVisible(ctx,", "visible, err := unfiltered(ctx,")
+	patch(t, root, "instance_handler.go", "visible, err := listnarrow.Page(ctx,", "visible, err := unfiltered(ctx,")
 }
 
 // renameReceiver applies a legitimate refactor: the receiver VARIABLE of every

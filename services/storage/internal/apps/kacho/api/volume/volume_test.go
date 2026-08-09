@@ -14,6 +14,7 @@ import (
 
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/volume"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
@@ -76,7 +77,7 @@ func TestListRequiresProjectID(t *testing.T) {
 		},
 	}
 	uc := volume.New(reader, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
-	_, _, err := uc.List(context.Background(), volume.Pagination{PageSize: 50})
+	_, _, err := uc.List(narrowtest.Caller(), volume.Pagination{PageSize: 50})
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("List empty projectId code = %v, want InvalidArgument", status.Code(err))
 	}
@@ -95,8 +96,9 @@ func TestListWithProjectIDDelegates(t *testing.T) {
 			return []*domain.Volume{{ID: "vol00000000000000000", ProjectID: p.ProjectID}}, "", nil
 		},
 	}
-	uc := volume.New(reader, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
-	got, _, err := uc.List(context.Background(), volume.Pagination{PageSize: 50, ProjectID: "prj-1"})
+	uc := volume.New(reader, &repomock.VolumeWriter{}, &repomock.PeerClient{}, &repomock.PeerClient{},
+		nil, serviceerr.ToStatus).WithListFilter(narrowtest.AllowingAll())
+	got, _, err := uc.List(narrowtest.Caller(), volume.Pagination{PageSize: 50, ProjectID: "prj-1"})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}

@@ -91,8 +91,7 @@ func (h *Handler) Get(ctx context.Context, req *vpcv1.GetNetworkRequest) (*vpcv1
 // Subject из ctx (principal-extractor) → страница из БД → per-object BatchCheck,
 // который сужает результат ПОВЕРХ Check'а, но не заменяет его.
 func (h *Handler) List(ctx context.Context, req *vpcv1.ListNetworksRequest) (*vpcv1.ListNetworksResponse, error) {
-	subject := pbconv.SubjectFromContext(ctx)
-	nets, nextToken, err := h.list.Execute(ctx, subject, NetworkFilter{
+	nets, nextToken, err := h.list.Execute(ctx, NetworkFilter{
 		ProjectID: req.ProjectId,
 		Filter:    req.Filter,
 	}, Pagination{

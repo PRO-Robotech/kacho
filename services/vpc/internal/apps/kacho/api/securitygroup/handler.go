@@ -84,8 +84,7 @@ func (h *Handler) Get(ctx context.Context, req *vpcv1.GetSecurityGroupRequest) (
 // List — project_id required + FGA list-filter. Project-scope AuthZ (`viewer @
 // project:<project_id>`) энфорсит per-RPC authz-interceptor.
 func (h *Handler) List(ctx context.Context, req *vpcv1.ListSecurityGroupsRequest) (*vpcv1.ListSecurityGroupsResponse, error) {
-	subject := pbconv.SubjectFromContext(ctx)
-	sgs, nextToken, err := h.list.Execute(ctx, subject, SecurityGroupFilter{
+	sgs, nextToken, err := h.list.Execute(ctx, SecurityGroupFilter{
 		ProjectID: req.ProjectId,
 		Filter:    req.Filter,
 	}, Pagination{

@@ -88,7 +88,7 @@ func filterCapable(t *testing.T, cfg config.Config) bool {
 		t.Cleanup(func() { _ = c.Close() })
 		conn = c
 	}
-	vis := watchVisibility(buildListFilter(cfg, conn, discardLogger()))
+	vis := buildListFilter(cfg, conn, discardLogger())
 	return vis != nil && vis.Narrows()
 }
 
@@ -105,12 +105,12 @@ func filterCapable(t *testing.T, cfg config.Config) bool {
 // expression; every conjunct in it is a way to disable narrowing and therefore needs a
 // knob in the guard. If the expression grows, this fails and names what to add.
 func TestGuardCoversEveryConditionThatDisablesNarrowing(t *testing.T) {
-	src, err := os.ReadFile(filepath.Join("..", "..", "internal", "authzfilter", "filter.go"))
+	src, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "pkg", "listnarrow", "narrower.go"))
 	if err != nil {
 		t.Fatalf("read the filter source that defines narrowing: %v", err)
 	}
 	fset := token.NewFileSet()
-	af, err := parser.ParseFile(fset, "filter.go", src, 0)
+	af, err := parser.ParseFile(fset, "narrower.go", src, 0)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}

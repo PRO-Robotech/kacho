@@ -127,7 +127,7 @@ func (u *UseCase) List() error {
 		return errRequired
 	}
 	vols, next, err := u.reader.List(ctx, p)
-	visible, ferr := authzfilter.FilterVisiblePage(ctx, u.listFilter,
+	visible, ferr := listnarrow.Page(ctx, u.listFilter,
 		authzfilter.ResourceTypeVolume, authzfilter.ActionVolumeList, vols, idOf)
 	return nil
 }
@@ -137,7 +137,7 @@ func (u *UseCase) List() error {
 
 func (u *UseCase) List() error {
 	vols, next, err := u.reader.List(ctx, p)
-	visible, ferr := authzfilter.FilterVisiblePage(ctx, u.listFilter,
+	visible, ferr := listnarrow.Page(ctx, u.listFilter,
 		authzfilter.ResourceTypeVolume, authzfilter.ActionVolumeList, vols, idOf)
 	return nil
 }
@@ -173,7 +173,7 @@ func (u *UseCase) List() error {
 }
 `
 	// ucFilterOnlyInComment — prose must never satisfy the gate: a comment naming
-	// FilterVisibleIDs next to a List that filters nothing is the exact "form without
+	// listnarrow.IDs next to a List that filters nothing is the exact "form without
 	// substance" this gate exists to catch.
 	ucFilterOnlyInComment = `package volume
 
@@ -181,7 +181,7 @@ func (u *UseCase) List() error {
 	if p.ProjectID == "" {
 		return errRequired
 	}
-	// Visibility is narrowed per-object via authzfilter.FilterVisibleIDs.
+	// Visibility is narrowed per-object via listnarrow.IDs.
 	vols, next, err := u.reader.List(ctx, p)
 	return nil
 }
@@ -210,7 +210,7 @@ func (u *UseCase) List() error {
 	}
 	vols, next, err := u.reader.List(ctx, p)
 	// Never ListAllowedIDs/ListObjects here: the enumeration is capped server-side.
-	visible, ferr := authzfilter.FilterVisiblePage(ctx, u.listFilter,
+	visible, ferr := listnarrow.Page(ctx, u.listFilter,
 		authzfilter.ResourceTypeVolume, authzfilter.ActionVolumeList, vols, idOf)
 	return nil
 }

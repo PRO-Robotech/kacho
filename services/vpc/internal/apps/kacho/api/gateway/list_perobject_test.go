@@ -15,6 +15,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // Per-page фильтрованный List для GatewayService: возвращаем ТОЛЬКО
@@ -90,10 +92,10 @@ func TestGatewayListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedGatewaysLabeled(t, kr, "prj_1", "gw_aaa", "gw_bbb", "gw_ccc")
 
-	filter := &fakeListFilter{allowed: []string{"gw_aaa", "gw_bbb"}}
+	filter, peer := narrowtest.Recording("gw_aaa", "gw_bbb")
 	uc := NewListGatewaysUseCase(kr, filter)
 
-	gws, _, err := uc.Execute(context.Background(), "user:usr_alice", GatewayFilter{ProjectID: "prj_1"}, Pagination{})
+	gws, _, err := uc.Execute(narrowtest.Caller(), GatewayFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	require.Len(t, gws, 2)
 	got := map[string]bool{}
@@ -106,10 +108,10 @@ func TestGatewayListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 
 	// read==enforce: фильтр зовется с read-verb (action vpc.gateways.list,
 	// FGA-тип vpc_gateway) и получает РОВНО идентификаторы страницы.
-	assert.Equal(t, "user:usr_alice", filter.gotSubject)
-	assert.Equal(t, "vpc_gateway", filter.gotResourceType)
-	assert.Equal(t, "vpc.gateways.list", filter.gotAction)
-	assert.ElementsMatch(t, []string{"gw_aaa", "gw_bbb", "gw_ccc"}, filter.gotIDs,
+	assert.Equal(t, "user:usr_alice", peer.Subject)
+	assert.Equal(t, "vpc_gateway", peer.ResourceType)
+	assert.Equal(t, "vpc.gateways.list", peer.Action)
+	assert.ElementsMatch(t, []string{"gw_aaa", "gw_bbb", "gw_ccc"}, peer.IDs,
 		"visibility must be asked for the page's ids, never for the whole universe")
 }
 
@@ -118,10 +120,10 @@ func TestGatewayListPerObject_NoLeak(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedGatewaysLabeled(t, kr, "prj_1", "gw_visible", "gw_secret")
 
-	filter := &fakeListFilter{allowed: []string{"gw_visible"}}
+	filter := narrowtest.Allowing("gw_visible")
 	uc := NewListGatewaysUseCase(kr, filter)
 
-	gws, _, err := uc.Execute(context.Background(), "user:usr_alice", GatewayFilter{ProjectID: "prj_1"}, Pagination{})
+	gws, _, err := uc.Execute(narrowtest.Caller(), GatewayFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	require.Len(t, gws, 1)
 	assert.Equal(t, "gw_visible", gws[0].ID)
@@ -132,10 +134,10 @@ func TestGatewayListPerObject_EmptyGrantEmptyList(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedGatewaysLabeled(t, kr, "prj_1", "gw_a", "gw_b")
 
-	filter := &fakeListFilter{allowed: nil}
+	filter := narrowtest.DenyingAll()
 	uc := NewListGatewaysUseCase(kr, filter)
 
-	gws, next, err := uc.Execute(context.Background(), "user:usr_alice", GatewayFilter{ProjectID: "prj_1"}, Pagination{})
+	gws, next, err := uc.Execute(narrowtest.Caller(), GatewayFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Empty(t, gws)
 	assert.Empty(t, next)
@@ -146,10 +148,10 @@ func TestGatewayListPerObject_AllVisibleReturnsAll(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedGatewaysLabeled(t, kr, "prj_1", "gw_a", "gw_b", "gw_c")
 
-	filter := &fakeListFilter{allowAll: true}
+	filter := narrowtest.AllowingAll()
 	uc := NewListGatewaysUseCase(kr, filter)
 
-	gws, _, err := uc.Execute(context.Background(), "user:usr_alice", GatewayFilter{ProjectID: "prj_1"}, Pagination{})
+	gws, _, err := uc.Execute(narrowtest.Caller(), GatewayFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, gws, 3)
 }
@@ -159,10 +161,10 @@ func TestGatewayListPerObject_FailClosedUnavailable(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedGatewaysLabeled(t, kr, "prj_1", "gw_a")
 
-	filter := &fakeListFilter{err: status.Error(codes.Unavailable, "iam down")}
+	filter := narrowtest.Failing(status.Error(codes.Unavailable, "iam down"))
 	uc := NewListGatewaysUseCase(kr, filter)
 
-	_, _, err := uc.Execute(context.Background(), "user:usr_alice", GatewayFilter{ProjectID: "prj_1"}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), GatewayFilter{ProjectID: "prj_1"}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.Unavailable, st.Code())
@@ -174,10 +176,10 @@ func TestGatewayListPerObject_FailClosedPlainError(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedGatewaysLabeled(t, kr, "prj_1", "gw_a")
 
-	filter := &fakeListFilter{err: errors.New("boom")}
+	filter := narrowtest.Failing(errors.New("boom"))
 	uc := NewListGatewaysUseCase(kr, filter)
 
-	_, _, err := uc.Execute(context.Background(), "user:usr_alice", GatewayFilter{ProjectID: "prj_1"}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), GatewayFilter{ProjectID: "prj_1"}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.NotEqual(t, codes.OK, st.Code())
@@ -188,8 +190,8 @@ func TestGatewayListPerObject_NilFilterPassthrough(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedGatewaysLabeled(t, kr, "prj_1", "gw_a", "gw_b")
 
-	uc := NewListGatewaysUseCase(kr, nil)
-	gws, _, err := uc.Execute(context.Background(), "user:usr_alice", GatewayFilter{ProjectID: "prj_1"}, Pagination{})
+	uc := NewListGatewaysUseCase(kr, narrowtest.AllowingAll())
+	gws, _, err := uc.Execute(narrowtest.Caller(), GatewayFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, gws, 2)
 }
@@ -197,9 +199,9 @@ func TestGatewayListPerObject_NilFilterPassthrough(t *testing.T) {
 // project_id по-прежнему обязателен (контракт не меняется).
 func TestGatewayListPerObject_ProjectIDRequired(t *testing.T) {
 	kr := kachomock.NewRepository()
-	uc := NewListGatewaysUseCase(kr, &fakeListFilter{allowAll: true})
+	uc := NewListGatewaysUseCase(kr, narrowtest.AllowingAll())
 
-	_, _, err := uc.Execute(context.Background(), "user:usr_alice", GatewayFilter{}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), GatewayFilter{}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
@@ -212,10 +214,10 @@ func TestGatewayListPerObject_EmptySubjectFailsClosed(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedGatewaysLabeled(t, kr, "prj_1", "gw_a", "gw_b")
 
-	filter := &fakeListFilter{allowed: []string{"unused_id"}}
+	filter := narrowtest.Allowing("unused_id")
 	uc := NewListGatewaysUseCase(kr, filter)
 
-	gws, _, err := uc.Execute(context.Background(), "", GatewayFilter{ProjectID: "prj_1"}, Pagination{})
+	gws, _, err := uc.Execute(narrowtest.Caller(), GatewayFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Empty(t, gws, "empty subject + filter enabled -> fail-closed empty, NOT leak")
 }

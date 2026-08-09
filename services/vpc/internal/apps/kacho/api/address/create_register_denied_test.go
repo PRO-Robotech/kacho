@@ -13,6 +13,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // Отказ sync-регистрации owner-tuple приходит ПОСЛЕ `w.Commit()` — на адресе,
@@ -29,7 +31,7 @@ func TestCreateUseCase_OwnerTupleRegisterDenied_OperationSucceedsAndAddressExist
 	reg := &repomock.DenyingRegistrar{}
 
 	uc := NewCreateAddressUseCase(kr, sr, &repomock.ProjectClient{OK: true}, or, nil).WithRegistrar(reg)
-	listUC := NewListAddressesUseCase(kr, nil)
+	listUC := NewListAddressesUseCase(kr, narrowtest.AllowingAll())
 
 	op, err := uc.Execute(ctx, CreateInput{
 		ProjectID: "f1",
@@ -56,7 +58,7 @@ func TestCreateUseCase_OwnerTupleRegisterDenied_OperationSucceedsAndAddressExist
 		"owner-tuple registration runs after the durable commit — its refusal must not fail the mutation; got %s",
 		detail)
 
-	addrs, _, lerr := listUC.Execute(ctx, "", AddressFilter{ProjectID: "f1"}, Pagination{})
+	addrs, _, lerr := listUC.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "f1"}, Pagination{})
 	require.NoError(t, lerr)
 	require.Len(t, addrs, 1, "resource is durable: commit happened before registration")
 

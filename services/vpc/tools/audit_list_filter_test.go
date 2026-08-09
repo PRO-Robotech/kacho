@@ -125,7 +125,7 @@ func patch(t *testing.T, root, rel, old, replacement string) {
 // filterCall is the per-object narrowing the Network List performs. It sits in a
 // package-local helper, not in the use-case body — which is why the gate follows
 // the calls List makes rather than reading one method.
-const filterCall = "visibleIDs, err := filter.FilterVisibleIDs(ctx, subjectID,"
+const filterCall = "visible, ferr := listnarrow.Page(ctx, u.narrower,"
 
 // dropPerObjectFilter removes the per-object visibility filter from the Network
 // List and leaves behind a comment that names it — the ordinary shape of a
@@ -134,8 +134,8 @@ const filterCall = "visibleIDs, err := filter.FilterVisibleIDs(ctx, subjectID,"
 func dropPerObjectFilter(t *testing.T, root string) {
 	t.Helper()
 	patch(t, root, "network/list.go", filterCall,
-		"// per-object: filter.FilterVisibleIDs(ctx, subjectID, …) сужает страницу.\n\t"+
-			"visibleIDs, err := filter.AllIDs(ctx, subjectID,")
+		"// пообъектно: listnarrow.Page(ctx, u.narrower, …) сужает страницу.\n\t"+
+			"visible, ferr := listnarrow.AllOf(ctx, u.narrower,")
 }
 
 // renameHandlerFile applies a legitimate refactor: handler.go becomes

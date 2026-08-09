@@ -27,6 +27,8 @@ import (
 	computev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 )
 
 // catchupBatchSize — сколько событий читаем за один SELECT при initial-catchup.
@@ -39,24 +41,16 @@ const catchupBatchSize = 100
 // журнала укладывается в один вопрос.
 const watchVisibilityBatchSize = 100
 
-// EventVisibility — то, чем поток сужается до прав вызывающего.
+// Сужение потока — тем же сужателем, что и списки.
 //
-// Порт УЖЕ, чем authzfilter.Filter, и требует на одну вещь больше — Narrows().
-// Причина в том, что общий фильтр при выключенном мастер-переключателе (или без
-// клиента к модели) возвращает идентификаторы КАК ЕСТЬ. Для списочного RPC это
-// защитимо: под ним остаётся per-RPC Check на проектном ярусе. Под этим потоком
-// не остаётся ничего, поэтому «фильтр подвешен» само по себе не является
-// утверждением о сужении, и спросить об этом нужно отдельно.
-type EventVisibility interface {
-	// FilterVisibleIDs возвращает подмножество ids, видимое subject'у. err != nil —
-	// fail-closed: вызывающий ОБЯЗАН пробросить ошибку, а не отдать строки.
-	FilterVisibleIDs(ctx context.Context, subject, resourceType, action string, ids []string) ([]string, error)
-	// Narrows сообщает, что фильтр действительно сужает выдачу, а не пропускает
-	// идентификаторы сквозь себя (выключен / без клиента к модели / отдаёт
-	// нефильтрованное на ошибке).
-	Narrows() bool
-}
-
+// Прежде здесь стоял СВОЙ порт (`EventVisibility`), объявленный уже общего фильтра и
+// требовавший на одну вещь больше — `Narrows()`. Причина была верной: общий фильтр
+// при выключенном переключателе пропускал идентификаторы сквозь себя, и «фильтр
+// подвешен» само по себе не являлось утверждением о сужении. Причина СНЯТА: сужатель
+// больше не пропускает молча — посадка без модели отвечает отказом, а пропуск
+// требуется объявить аварийным режимом. `Narrows()` при этом остался и читается
+// здесь: у потока под ним нет второй линии, и он вправе требовать не «фильтр есть», а
+// «фильтр сужает».
 // InternalWatchHandler реализует computev1.InternalWatchServiceServer.
 type InternalWatchHandler struct {
 	computev1.UnimplementedInternalWatchServiceServer
@@ -64,7 +58,7 @@ type InternalWatchHandler struct {
 	dsn        string
 	log        *slog.Logger
 	streamSlot chan struct{}
-	vis        EventVisibility
+	vis        *listnarrow.Narrower
 }
 
 // NewInternalWatchHandler создаёт handler. pool — для catchup-SELECT'ов; dsn —
@@ -72,7 +66,7 @@ type InternalWatchHandler struct {
 // maxStreams — лимит одновременных Watch-streams (0 → fallback 32); vis —
 // per-row сужение потока по правам вызывающего (обязателен: nil → Watch
 // отказывает, поток не открывается).
-func NewInternalWatchHandler(pool *pgxpool.Pool, dsn string, log *slog.Logger, maxStreams int, vis EventVisibility) *InternalWatchHandler {
+func NewInternalWatchHandler(pool *pgxpool.Pool, dsn string, log *slog.Logger, maxStreams int, vis *listnarrow.Narrower) *InternalWatchHandler {
 	if maxStreams <= 0 {
 		maxStreams = 32
 	}
@@ -106,8 +100,7 @@ func (h *InternalWatchHandler) Watch(req *computev1.WatchRequest, stream compute
 	// per-RPC Check, на который можно откатиться (он снят по построению, см.
 	// internal/check/permission_map.go), поэтому неназванный вызывающий обязан
 	// отбиваться здесь, а не «в боевом режиме».
-	subject := authzfilter.SubjectFromPrincipal(ctx)
-	if subject == "" {
+	if _, subjErr := listnarrow.SubjectFromContext(ctx); subjErr != nil {
 		h.log.Warn("watch refused: request names no caller")
 		return status.Error(codes.PermissionDenied, "watch requires an authenticated caller")
 	}
@@ -155,7 +148,7 @@ func (h *InternalWatchHandler) Watch(req *computev1.WatchRequest, stream compute
 		cancelClose()
 	}()
 
-	if newCursor, err := h.streamSince(ctx, conn, cursor, kinds, subject, stream); err != nil {
+	if newCursor, err := h.streamSince(ctx, conn, cursor, kinds, stream); err != nil {
 		return err
 	} else {
 		cursor = newCursor
@@ -179,7 +172,7 @@ func (h *InternalWatchHandler) Watch(req *computev1.WatchRequest, stream compute
 				return status.Error(codes.Unavailable, "watch notification stream lost")
 			}
 		}
-		if newCursor, err := h.streamSince(ctx, conn, cursor, kinds, subject, stream); err != nil {
+		if newCursor, err := h.streamSince(ctx, conn, cursor, kinds, stream); err != nil {
 			return err
 		} else {
 			cursor = newCursor
@@ -205,7 +198,6 @@ func (h *InternalWatchHandler) streamSince(
 	conn *pgx.Conn,
 	cursor int64,
 	kinds []string,
-	subject string,
 	stream computev1.InternalWatchService_WatchServer,
 ) (int64, error) {
 	for {
@@ -261,7 +253,7 @@ func (h *InternalWatchHandler) streamSince(
 			return cursor, internalMapErr("outbox iter", err)
 		}
 
-		visible, err := h.narrowToSubject(ctx, subject, batch)
+		visible, err := h.narrowToSubject(ctx, batch)
 		if err != nil {
 			// Модель не ответила — это НЕ «да». Позиция не двигается, строки не уходят.
 			return cursor, err
@@ -300,9 +292,11 @@ var watchObjectTypes = map[string]struct{ objectType, action string }{
 // Вопрос задаётся партиями не больше watchVisibilityBatchSize и группируется по типу
 // объекта: у модели спрашивают про однотипные идентификаторы. Ошибка любой партии
 // прекращает обработку батча целиком — частично сужённый батч отдавать нельзя.
+// Субъект больше НЕ ПАРАМЕТР: он приходит контекстом, тем же путём и той же
+// функцией, что у списков. Дублировать его аргументом значило бы завести второй
+// ответ на один вопрос — и разъехаться они смогли бы молча.
 func (h *InternalWatchHandler) narrowToSubject(
 	ctx context.Context,
-	subject string,
 	batch []*computev1.Event,
 ) ([]*computev1.Event, error) {
 	if len(batch) == 0 {
@@ -348,7 +342,7 @@ func (h *InternalWatchHandler) narrowToSubject(
 			if end > len(ids) {
 				end = len(ids)
 			}
-			visible, err := h.vis.FilterVisibleIDs(ctx, subject, mapping.objectType, mapping.action, ids[start:end])
+			visible, err := listnarrow.IDs(ctx, h.vis, mapping.objectType, mapping.action, ids[start:end])
 			if err != nil {
 				return nil, err
 			}

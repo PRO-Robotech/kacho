@@ -20,6 +20,8 @@ import (
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // Тесты Address use-case'ов и handler'а.
@@ -59,7 +61,7 @@ func makeHandler(t *testing.T,
 	deleteUC := NewDeleteAddressUseCase(kr, or)
 	get := NewGetAddressUseCase(kr)
 	getByValue := NewGetByValueUseCase(kr)
-	list := NewListAddressesUseCase(kr, nil)
+	list := NewListAddressesUseCase(kr, narrowtest.AllowingAll())
 	listBySubnet := NewListBySubnetUseCase(kr, sr)
 	listOps := NewListOperationsUseCase(or)
 	return NewHandler(create, update, deleteUC, get, getByValue, list, listBySubnet, listOps)
@@ -94,7 +96,7 @@ func TestHandler_Get_NotFound(t *testing.T) {
 
 func TestHandler_List_Empty(t *testing.T) {
 	h, _, _, _ := minimalHandler(t, true)
-	resp, err := h.List(context.Background(), &vpcv1.ListAddressesRequest{ProjectId: "f1"})
+	resp, err := h.List(narrowtest.Caller(), &vpcv1.ListAddressesRequest{ProjectId: "f1"})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Addresses)
 }
@@ -169,7 +171,7 @@ func TestCreateUseCase_External_OK(t *testing.T) {
 	sr := repomock.NewSubnetRepo()
 	or := repomock.NewOpsRepo()
 	uc := NewCreateAddressUseCase(kr, sr, &repomock.ProjectClient{OK: true}, or, nil)
-	listUC := NewListAddressesUseCase(kr, nil)
+	listUC := NewListAddressesUseCase(kr, narrowtest.AllowingAll())
 
 	op, err := uc.Execute(context.Background(), CreateInput{
 		ProjectID: "f1",
@@ -186,7 +188,7 @@ func TestCreateUseCase_External_OK(t *testing.T) {
 	assert.True(t, savedOp.Done)
 	assert.Nil(t, savedOp.Error)
 
-	addrs, _, err := listUC.Execute(context.Background(), "", AddressFilter{ProjectID: "f1"}, Pagination{})
+	addrs, _, err := listUC.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "f1"}, Pagination{})
 	require.NoError(t, err)
 	require.Len(t, addrs, 1)
 	assert.Equal(t, domain.AddressTypeExternal, addrs[0].Type)
@@ -226,7 +228,7 @@ func TestCreateUseCase_External_NoAutoAlloc_PoolsNil(t *testing.T) {
 	sr := repomock.NewSubnetRepo()
 	or := repomock.NewOpsRepo()
 	uc := NewCreateAddressUseCase(kr, sr, &repomock.ProjectClient{OK: true}, or, nil)
-	listUC := NewListAddressesUseCase(kr, nil)
+	listUC := NewListAddressesUseCase(kr, narrowtest.AllowingAll())
 
 	op, err := uc.Execute(context.Background(), CreateInput{
 		ProjectID:    "f1",
@@ -235,7 +237,7 @@ func TestCreateUseCase_External_NoAutoAlloc_PoolsNil(t *testing.T) {
 	require.NoError(t, err)
 	repomock.AwaitOpDone(t, or, op.ID)
 
-	addrs, _, _ := listUC.Execute(context.Background(), "", AddressFilter{ProjectID: "f1"}, Pagination{})
+	addrs, _, _ := listUC.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "f1"}, Pagination{})
 	require.Len(t, addrs, 1)
 	assert.Equal(t, "", addrs[0].ExternalIpv4.Address,
 		"with pools=nil use-case must NOT auto-allocate")
@@ -278,7 +280,7 @@ func TestCreateUseCase_Internal_WithSubnet(t *testing.T) {
 	or := repomock.NewOpsRepo()
 	sub := makeSubnet(sr, ids.NewID(ids.PrefixNetwork))
 	uc := NewCreateAddressUseCase(kr, sr, &repomock.ProjectClient{OK: true}, or, nil)
-	listUC := NewListAddressesUseCase(kr, nil)
+	listUC := NewListAddressesUseCase(kr, narrowtest.AllowingAll())
 
 	op, err := uc.Execute(context.Background(), CreateInput{
 		ProjectID: "f1",
@@ -289,7 +291,7 @@ func TestCreateUseCase_Internal_WithSubnet(t *testing.T) {
 	require.NoError(t, err)
 	repomock.AwaitOpDone(t, or, op.ID)
 
-	addrs, _, _ := listUC.Execute(context.Background(), "", AddressFilter{ProjectID: "f1"}, Pagination{})
+	addrs, _, _ := listUC.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "f1"}, Pagination{})
 	require.Len(t, addrs, 1)
 	assert.Equal(t, domain.AddressTypeInternal, addrs[0].Type)
 	assert.Equal(t, sub.ID, addrs[0].InternalIpv4.SubnetID)
@@ -321,7 +323,7 @@ func TestCreateUseCase_Internal_ExplicitIP_InCIDR(t *testing.T) {
 	or := repomock.NewOpsRepo()
 	sub := makeSubnet(sr, ids.NewID(ids.PrefixNetwork))
 	uc := NewCreateAddressUseCase(kr, sr, &repomock.ProjectClient{OK: true}, or, nil)
-	listUC := NewListAddressesUseCase(kr, nil)
+	listUC := NewListAddressesUseCase(kr, narrowtest.AllowingAll())
 
 	op, err := uc.Execute(context.Background(), CreateInput{
 		ProjectID: "f1",
@@ -332,7 +334,7 @@ func TestCreateUseCase_Internal_ExplicitIP_InCIDR(t *testing.T) {
 	})
 	require.NoError(t, err)
 	repomock.AwaitOpDone(t, or, op.ID)
-	addrs, _, _ := listUC.Execute(context.Background(), "", AddressFilter{ProjectID: "f1"}, Pagination{})
+	addrs, _, _ := listUC.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "f1"}, Pagination{})
 	require.Len(t, addrs, 1)
 	assert.Equal(t, "10.0.0.5", addrs[0].InternalIpv4.Address)
 }
@@ -443,8 +445,8 @@ func TestDeleteUseCase_InUseByNIC(t *testing.T) {
 
 func TestListUseCase_RequiresProject(t *testing.T) {
 	kr := kachomock.NewRepository()
-	uc := NewListAddressesUseCase(kr, nil)
-	_, _, err := uc.Execute(context.Background(), "", AddressFilter{}, Pagination{})
+	uc := NewListAddressesUseCase(kr, narrowtest.AllowingAll())
+	_, _, err := uc.Execute(narrowtest.Caller(), AddressFilter{}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
@@ -493,7 +495,7 @@ func TestHandler_FullFlow(t *testing.T) {
 	require.NoError(t, err)
 	repomock.AwaitOpDone(t, or, createOp.Id)
 
-	resp, _ := h.List(context.Background(), &vpcv1.ListAddressesRequest{ProjectId: "f1"})
+	resp, _ := h.List(narrowtest.Caller(), &vpcv1.ListAddressesRequest{ProjectId: "f1"})
 	require.Len(t, resp.Addresses, 1)
 	addrID := resp.Addresses[0].Id
 

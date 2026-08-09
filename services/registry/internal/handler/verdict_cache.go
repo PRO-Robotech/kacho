@@ -65,3 +65,51 @@ func (c *cachedAuthorizer) Check(ctx context.Context, subject, relation, object 
 	}
 	return allowed, nil
 }
+
+// CheckMany отвечает из кеша по тем объектам, чей ПОЛОЖИТЕЛЬНЫЙ вердикт уже получен
+// и не истёк, а про остальные задаёт ОДИН пакетный вопрос.
+//
+// Промах по кешу стоит элемент партии, а не отдельный запрос — в этом и разница с
+// поштучным опросом, который здесь стоял. Отрицательный вердикт не кешируется
+// никогда: иначе свежая выдача не была бы видна до истечения окна.
+//
+// Порядок входа сохраняется: страница уже упорядочена, и переупорядочивание сломало
+// бы пагинацию.
+func (c *cachedAuthorizer) CheckMany(
+	ctx context.Context, subject, relation, objectType string, objectIDs []string,
+) ([]string, error) {
+	cached := make(map[string]bool, len(objectIDs))
+	pending := make([]string, 0, len(objectIDs))
+	seen := make(map[string]struct{}, len(objectIDs))
+	for _, id := range objectIDs {
+		if _, dup := seen[id]; dup {
+			continue // одна страница не платит дважды за повтор
+		}
+		seen[id] = struct{}{}
+		if allowed, hit := c.cache.Get(subject, relation, objectType, id); hit && allowed {
+			cached[id] = true
+			continue
+		}
+		pending = append(pending, id)
+	}
+
+	if len(pending) > 0 {
+		fresh, err := c.inner.CheckMany(ctx, subject, relation, objectType, pending)
+		if err != nil {
+			return nil, err // отказ хранилища не кешируется и не становится «разрешено»
+		}
+		for _, id := range fresh {
+			cached[id] = true
+			c.cache.SetAllowed(subject, relation, objectType, id)
+		}
+	}
+
+	out := make([]string, 0, len(cached))
+	for _, id := range objectIDs {
+		if cached[id] {
+			out = append(out, id)
+			delete(cached, id) // повтор во входе не удваивает выход
+		}
+	}
+	return out, nil
+}

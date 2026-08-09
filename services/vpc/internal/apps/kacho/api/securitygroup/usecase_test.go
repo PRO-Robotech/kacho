@@ -18,6 +18,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // Тесты SecurityGroup use-case'ов и handler'а (против `*securitygroup.Handler`).
@@ -67,7 +69,7 @@ func makeHandler(
 	updateRule := NewUpdateRuleUseCase(sgr, or, sgReader)
 	deleteUC := NewDeleteSecurityGroupUseCase(sgr, or)
 	get := NewGetSecurityGroupUseCase(sgr)
-	list := NewListSecurityGroupsUseCase(sgr, nil)
+	list := NewListSecurityGroupsUseCase(sgr, narrowtest.AllowingAll())
 	listOps := NewListOperationsUseCase(sgr, or)
 	return NewHandler(create, update, updateRules, updateRule, deleteUC, get, list, listOps)
 }
@@ -102,7 +104,7 @@ func TestHandler_Get_NotFound(t *testing.T) {
 
 func TestHandler_List_Empty(t *testing.T) {
 	h, _, _ := minimalHandler(t)
-	resp, err := h.List(context.Background(), &vpcv1.ListSecurityGroupsRequest{ProjectId: "f1"})
+	resp, err := h.List(narrowtest.Caller(), &vpcv1.ListSecurityGroupsRequest{ProjectId: "f1"})
 	require.NoError(t, err)
 	assert.Empty(t, resp.SecurityGroups)
 }
@@ -274,7 +276,7 @@ func TestDeleteUseCase_InvalidArg(t *testing.T) {
 
 func TestListUseCase_RequiresProject(t *testing.T) {
 	uc := NewListSecurityGroupsUseCase(kachomock.NewRepository(), nil)
-	_, _, err := uc.Execute(context.Background(), "", SecurityGroupFilter{}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), SecurityGroupFilter{}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())

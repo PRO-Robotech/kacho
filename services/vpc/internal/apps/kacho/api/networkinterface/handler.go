@@ -74,8 +74,7 @@ func (h *Handler) Get(ctx context.Context, req *vpcv1.GetNetworkInterfaceRequest
 // List — project_id required + FGA list-filter. Project-scope AuthZ (`viewer @
 // project:<project_id>`) энфорсит per-RPC authz-interceptor.
 func (h *Handler) List(ctx context.Context, req *vpcv1.ListNetworkInterfacesRequest) (*vpcv1.ListNetworkInterfacesResponse, error) {
-	subject := pbconv.SubjectFromContext(ctx)
-	out, next, err := h.list.Execute(ctx, subject, NetworkInterfaceFilter{
+	out, next, err := h.list.Execute(ctx, NetworkInterfaceFilter{
 		ProjectID:  req.ProjectId,
 		InstanceID: req.InstanceId,
 		SubnetID:   req.SubnetId,

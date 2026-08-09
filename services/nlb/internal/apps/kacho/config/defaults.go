@@ -98,6 +98,9 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("authz.list-filter.cache-ttl", "5s")
 	v.SetDefault("authz.list-filter.cache-max-entries", 10000)
 	v.SetDefault("authz.list-filter.fail-open", false)
+	// breakglass — аварийный пропуск при отсутствующей модели прав. Умолчание
+	// false: «модели нет» само по себе разрешением не бывает.
+	v.SetDefault("authz.list-filter.breakglass", false)
 	v.SetDefault("authz.breakglass", false)
 	// trusted-forwarder-sans: круг личностей клиентского сертификата, которым
 	// разрешено передавать личность конечного пользователя (api-gateway).

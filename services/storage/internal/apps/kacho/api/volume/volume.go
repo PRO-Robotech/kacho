@@ -35,6 +35,8 @@ import (
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/fgaregister"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/protoconv"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 )
 
 // Pagination — вход для List: cursor-пагинация (page_size + opaque page_token) +
@@ -128,12 +130,12 @@ type UseCase struct {
 	// listFilter — per-object фильтр видимости страницы List (kacho-iam
 	// AuthorizeService.BatchCheck). nil → passthrough (dev / list-filter disabled;
 	// production boot-guard такую посадку запрещает). Инжектится WithListFilter.
-	listFilter authzfilter.Filter
+	listFilter *listnarrow.Narrower
 	// instanceGate — вопрос модели прав про ВТОРОЙ объект запросов Attach/Detach:
 	// инстанс, в чей набор привязок пишется (или из чьего удаляется) строка. nil →
 	// спрашивать негде, и это ОТКАЗ, не passthrough (см. requireInstanceControl).
 	// Инжектится WithInstanceGate.
-	instanceGate authzfilter.ObjectGate
+	instanceGate *listnarrow.Narrower
 }
 
 // New собирает UseCase для Volume. reader/writer — CQRS-разделённые порты;
@@ -158,14 +160,14 @@ func (u *UseCase) WithRegistrar(r fgaregister.Registrar) *UseCase {
 }
 
 // WithListFilter подключает per-object фильтр видимости публичного List.
-func (u *UseCase) WithListFilter(f authzfilter.Filter) *UseCase {
+func (u *UseCase) WithListFilter(f *listnarrow.Narrower) *UseCase {
 	u.listFilter = f
 	return u
 }
 
 // WithInstanceGate подключает вопрос модели прав про ИНСТАНС — второй объект
 // запросов Attach/Detach. См. requireInstanceControl.
-func (u *UseCase) WithInstanceGate(g authzfilter.ObjectGate) *UseCase {
+func (u *UseCase) WithInstanceGate(g *listnarrow.Narrower) *UseCase {
 	u.instanceGate = g
 	return u
 }
@@ -245,7 +247,7 @@ func (u *UseCase) List(ctx context.Context, p Pagination) ([]*domain.Volume, str
 	// Вызывается ПОСЛЕ валидации page_size (выше) и page_token (repo) — мусорный
 	// маркер страницы даёт InvalidArgument независимо от grant-state, а не пустую
 	// страницу (api-conventions.md, security.md §7).
-	visible, ferr := authzfilter.FilterVisiblePage(ctx, u.listFilter,
+	visible, ferr := listnarrow.Page(ctx, u.listFilter,
 		authzfilter.ResourceTypeVolume, authzfilter.ActionVolumeList, vols,
 		func(v *domain.Volume) string { return v.ID })
 	if ferr != nil {
@@ -457,15 +459,14 @@ func (u *UseCase) requireInstanceControl(ctx context.Context, instanceID, action
 	if instanceID == "" {
 		return u.errStatus(fmt.Errorf("%w: instance_id: required", storageerr.ErrInvalidArg))
 	}
-	if authzfilter.SubjectFromPrincipal(ctx) == "" {
-		return status.Error(codes.PermissionDenied, "permission denied")
-	}
-	if u.instanceGate == nil {
-		return status.Error(codes.PermissionDenied, "permission denied")
-	}
-	allowed, err := u.instanceGate.AllowedOnObject(ctx, authzfilter.SubjectFromPrincipal(ctx),
+	// Личность вызывающего и провязанность модели решает та же функция, что и на
+	// списках: два ответа на один вопрос разъезжаются молча.
+	allowed, err := listnarrow.AllowedOnObject(ctx, u.instanceGate,
 		authzfilter.ResourceTypeComputeInstance, action, relations, instanceID)
 	if err != nil {
+		if _, isStatus := status.FromError(err); isStatus {
+			return err
+		}
 		return u.errStatus(err)
 	}
 	if !allowed {
@@ -556,30 +557,18 @@ func (u *UseCase) Detach(ctx context.Context, volumeID, instanceID string) (*dom
 // посадка без фильтра отдавала бы привязки всего кластера кому угодно, что ровно та
 // дыра, ради которой сюда пришли.
 func (u *UseCase) ListAttachments(ctx context.Context, instanceIDs []string) ([]*domain.VolumeAttachment, error) {
-	if authzfilter.SubjectFromPrincipal(ctx) == "" {
-		// Пустой ответ здесь означал бы «привязок нет», а единственные потребители
-		// этого RPC действуют по ответу РАЗРУШИТЕЛЬНО (см. godoc выше). Отказ.
-		return nil, status.Error(codes.PermissionDenied, "permission denied")
-	}
-	if u.listFilter == nil {
-		// Порт есть, спросить негде. Это состояние ПОСАДКИ, а не ответ модели, —
-		// поэтому отказ, а не «да» (эталон существа и формулировки — соседний
-		// authzfilter.AllowedOnObject, отказывающий на том же условии).
-		//
-		// Вторая половина того же рассуждения, что абзацем выше: там закрыт
-		// вызывающий без личности, здесь — отсутствующая модель. Общий помощник
-		// FilterVisiblePage закрыть это не может и не должен: за ним стоят ещё и
-		// публичные List'ы, у которых per-RPC Check остаётся, — одно имя обслуживает
-		// две РАЗНЫЕ точки, и правильное значение у них разное. У ЭТОГО RPC второй
-		// линии нет (ScopeFiltered), поэтому решение принимается здесь.
-		return nil, status.Error(codes.PermissionDenied,
-			"list attachments: the rights model is not configured for this deployment")
+	// Пустой ответ здесь означал бы «привязок нет», а единственные потребители этого
+	// RPC действуют по ответу РАЗРУШИТЕЛЬНО (см. godoc выше). Поэтому обе линии —
+	// безымянный вызывающий и непровязанная модель — отвечают ОТКАЗОМ, и решает их
+	// одна функция общего фундамента.
+	if err := listnarrow.Precheck(ctx, u.listFilter); err != nil {
+		return nil, err
 	}
 	// Спрашиваем про ИНСТАНСЫ, которые назвал вызывающий, а не про тома. Ответ
 	// становится «всё или ничего» на инстанс, и это несущее свойство: снос видит
 	// ВСЕ привязки инстанса, который вправе снести, а на чужой инстанс не получает
 	// ни строки.
-	visibleInstances, ferr := authzfilter.FilterVisiblePage(ctx, u.listFilter,
+	visibleInstances, ferr := listnarrow.Page(ctx, u.listFilter,
 		authzfilter.ResourceTypeComputeInstance, authzfilter.ActionAttachmentsList,
 		instanceIDs, func(id string) string { return id })
 	if ferr != nil {

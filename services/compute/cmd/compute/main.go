@@ -385,7 +385,7 @@ func runServe(cfg config.Config) error {
 		grpc.ChainStreamInterceptor(internalStream...),
 	)
 	registerPublicServices(grpcSrv, svcs, opsRepo, listFilter)
-	registerInternalServices(internalSrv, svcs, pool, cfg.MigrateDSN(), logger, cfg.WatchMaxStreams, watchVisibility(listFilter))
+	registerInternalServices(internalSrv, svcs, pool, cfg.MigrateDSN(), logger, cfg.WatchMaxStreams, listFilter)
 
 	// Dependency-aware readiness: /readyz отражает здоровье критичных зависимостей
 	// (database / register-drainer / lro-worker / iam-authz), /healthz — только
@@ -962,52 +962,52 @@ func buildServices(pool *pgxpool.Pool, projectClient instance.ProjectClient, geo
 // FGA-фильтрация на List отключена (dev/breakglass). Catalog (DiskType) — public
 // read, FGA bypass not needed (handler skips). Region/Zone serving снят —
 // Geography принадлежит kacho-geo.
-func registerPublicServices(srv *grpc.Server, svcs *services, opsRepo operations.Repo, listFilter authzfilter.Filter) {
+func registerPublicServices(srv *grpc.Server, svcs *services, opsRepo operations.Repo, listFilter *authzfilter.Narrower) {
 	computev1.RegisterMachineTypeServiceServer(srv, handler.NewMachineTypeHandler(svcs.machineType))
 	computev1.RegisterInstanceServiceServer(srv, handler.NewInstanceHandler(svcs.instance, listFilter))
 	operationpb.RegisterOperationServiceServer(srv, handler.NewOperationHandler(opsRepo))
 }
 
-// buildListFilter возвращает authzfilter.Filter (per-object видимость страницы
-// через iam AuthorizeService.BatchCheck), готовый к подвешиванию в public
-// List handlers. Если KACHO_COMPUTE_LIST_FILTER_ENABLED=false
-// либо authzConn=nil (dev без iam) — возвращает nil, что означает «handler
-// делает bypass FGA filter и возвращает всё подряд». Production-strict
-// валидация — выше (validateAuthMode).
-func buildListFilter(cfg config.Config, authzConn *grpc.ClientConn, logger *slog.Logger) authzfilter.Filter {
-	if !cfg.ListFilterEnabled {
-		logger.Info("list filter disabled (KACHO_COMPUTE_LIST_FILTER_ENABLED=false)")
-		return nil
+// buildListFilter собирает сужатель страницы (пообъектная видимость через iam
+// `AuthorizeService.BatchCheck`) для публичных List и для потока журнала изменений.
+//
+// Выключенный фильтр БОЛЬШЕ НЕ ОЗНАЧАЕТ сквозной проход: сужатель собирается всегда
+// и ОТКАЗЫВАЕТ, пока ему не с кем говорить. Пропуск возможен только объявленным
+// аварийным режимом, и каждое его срабатывание считается и называется.
+func buildListFilter(cfg config.Config, authzConn *grpc.ClientConn, logger *slog.Logger) *authzfilter.Narrower {
+	breakglass := !cfg.ListFilterEnabled || authzConn == nil
+	var conn grpc.ClientConnInterface
+	if !breakglass {
+		conn = authzConn
+	} else {
+		logger.Warn("list filter has no rights model to ask — every list REFUSES and the change "+
+			"stream refuses to start, unless the emergency bypass is armed",
+			"enabled", cfg.ListFilterEnabled, "authz_conn", authzConn != nil,
+			"breakglass", cfg.ListFilterBreakglass)
 	}
-	if authzConn == nil {
-		logger.Warn("list filter requested but KACHO_COMPUTE_AUTHZ_IAM_GRPC_ADDR is unset — disabled")
-		return nil
-	}
-	cli := authzfilter.NewIAMAuthorizeClient(authzConn)
 	cacheMax := cfg.ListFilterCacheMaxEntries
 	if cacheMax <= 0 {
 		cacheMax = 10000
 	}
-	fcfg := authzfilter.Config{
-		Enabled:         true,
-		Timeout:         time.Duration(cfg.ListFilterTimeoutMs) * time.Millisecond,
-		CacheTTL:        time.Duration(cfg.ListFilterCacheTTLMs) * time.Millisecond,
-		CacheMaxEntries: cacheMax,
-		FailOpen:        cfg.ListFilterFailOpen,
-	}
-	f := authzfilter.NewFGAFilter(cli, fcfg).WithLogger(logger)
-	logger.Info("list filter enabled",
+	f := authzfilter.New(conn, authzfilter.Config{
+		Timeout:               time.Duration(cfg.ListFilterTimeoutMs) * time.Millisecond,
+		CacheTTL:              time.Duration(cfg.ListFilterCacheTTLMs) * time.Millisecond,
+		CacheMaxEntries:       cacheMax,
+		SoftPassOnPeerFailure: cfg.ListFilterFailOpen,
+		Breakglass:            breakglass && cfg.ListFilterBreakglass,
+	}).WithLogger(logger)
+	logger.Info("list filter wired",
 		// per_call_timeout_ms gates ONE BatchCheck; operation_budget caps the whole
-		// page filter (derived from per-call and batch_parallelism). All three are
-		// logged: otherwise the config alone does not reveal which number actually
-		// bounds a request.
+		// page filter (derived from per-call and the fan-out). All three are logged:
+		// otherwise the config alone does not reveal which number actually bounds a
+		// request.
 		"per_call_timeout_ms", cfg.ListFilterTimeoutMs,
-		"batch_parallelism", f.Parallelism(),
 		"operation_budget", f.Budget(),
 		"worst_case_depth_waves", f.WorstCaseDepth(),
 		"cache_ttl_ms", cfg.ListFilterCacheTTLMs,
 		"cache_max_entries", cacheMax,
-		"fail_open", cfg.ListFilterFailOpen,
+		"soft_pass_on_peer_failure", cfg.ListFilterFailOpen,
+		"narrows", f.Narrows(),
 	)
 	return f
 }
@@ -1155,24 +1155,7 @@ func buildSyncRegistrar(cfg config.Config, logger *slog.Logger) (*clients.SyncRe
 // (`internal/check/permission_map.go`), а для потока журнала изменений — сужение по
 // правам вызывающего на КАЖДУЮ отдаваемую строку. Сетевая политика была бы
 // эшелонированием поверх этого, а не заменой ему.
-func registerInternalServices(srv *grpc.Server, svcs *services, pool *pgxpool.Pool, dsn string, logger *slog.Logger, watchMaxStreams int, vis handler.EventVisibility) {
+func registerInternalServices(srv *grpc.Server, svcs *services, pool *pgxpool.Pool, dsn string, logger *slog.Logger, watchMaxStreams int, vis *authzfilter.Narrower) {
 	computev1.RegisterInternalWatchServiceServer(srv, handler.NewInternalWatchHandler(pool, dsn, logger.With("component", "internal-watch"), watchMaxStreams, vis))
 	computev1.RegisterInternalMachineTypeServiceServer(srv, handler.NewInternalMachineTypeHandler(svcs.machineType))
-}
-
-// watchVisibility адаптирует построенный per-object фильтр под порт потока журнала.
-//
-// Ветка нужна из-за НЕСОВПАДЕНИЯ ТИПОВ, а не из-за паники: `authzfilter.Filter` несёт
-// только FilterVisibleIDs, а порт потока требует ещё и Narrows(), поэтому значение
-// приходится сузить до конкретного типа. Проверка `f == nil` рядом отсекает
-// типизированный nil: интерфейс, несущий nil-указатель, сам НЕ равен nil, и handler
-// принял бы его за работающий фильтр. Panic'и на таком значении не было бы —
-// `FGAFilter.Narrows()` начинается с `f != nil` и корректно отвечает «не сужаю»
-// (см. её godoc, первый подслучай); опасность именно в том, что это тихо, а не громко.
-func watchVisibility(listFilter authzfilter.Filter) handler.EventVisibility {
-	f, ok := listFilter.(*authzfilter.FGAFilter)
-	if !ok || f == nil {
-		return nil
-	}
-	return f
 }
