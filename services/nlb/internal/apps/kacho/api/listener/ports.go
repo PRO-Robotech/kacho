@@ -62,9 +62,11 @@ const (
 	outboxActionDeleted = "DELETED"
 )
 
-// FGA relation strings live in `internal/domain`:
-// `domain.FGARelationAdmin` / `domain.FGARelationLoadBalancer` (named in the model;
-// not emitted in register-intents — the iam proxy refuses both).
+// FGA relation strings live in `internal/domain`: `domain.FGARelationAdmin` is
+// named there because the AccessBinding flow writes it; it is not emitted in a
+// register-intent, because the iam proxy refuses a privilege relation from a
+// module. The parent-link relation that used to be named alongside it is gone
+// from the model as well — nothing wrote it.
 //
 // Acting-subject FGA-id извлекается inline в create.go как в sibling-пакетах
 // (loadbalancer/targetgroup): `domain.FGASubjectFromPrincipal(p.Type, p.ID)` над
