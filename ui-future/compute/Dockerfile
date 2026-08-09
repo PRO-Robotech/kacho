@@ -1,4 +1,4 @@
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 
 WORKDIR /app
 
@@ -23,7 +23,7 @@ RUN npm run build
 # (см. deploy/templates/deployment-*.yaml). Конфиг в кластере приезжает шаблоном из
 # ConfigMap и рендерится в /etc/nginx/conf.d, куда деплоймент подкладывает emptyDir;
 # конфиг ниже — запечённый, для одиночного `docker run`.
-FROM nginxinc/nginx-unprivileged:1.27-alpine
+FROM nginxinc/nginx-unprivileged:1.31-alpine
 
 COPY compute/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/compute/dist /usr/share/nginx/html

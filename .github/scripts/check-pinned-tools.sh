@@ -60,15 +60,47 @@ cd "$REPO_ROOT" || exit 2
 # значение с ведущей v, у buf без» — особенность формата их релизов, а не признак
 # принадлежности; предикат, опирающийся на неё, ответил бы верно только пока это
 # случайное различие держится.
+#
+# ДОМЕН — пятое поле зонда, потому что «где исполняется пин» у разных пинов разное.
+# Прежняя редакция знала ОДИН домен на всех — определения конвейера — и обосновывала
+# это так: «пин ИСПОЛНЯЕТСЯ только из определений конвейера». Для тулчейнов (buf, kind,
+# grpcurl, gosec) это верно и сегодня. Для БАЗОВЫХ ОБРАЗОВ — неверно: они исполняются
+# из Dockerfile'ов и из чартов, то есть ровно там, куда сторож не смотрел, и потому
+# отставали молча при зелёном стороже. Домен теперь объявляет КАЖДЫЙ зонд.
+D_WF='.github/workflows/*.yml .github/workflows/*.yaml'
+D_IMG='*Dockerfile *Dockerfile.* *.yaml *.yml *.tpl'
+
+# АПСТРИМ — с префиксом источника, потому что источников два:
+#   gh:<owner>/<repo>          — последний не-prerelease релиз GitHub;
+#   dh:<ns>/<name>/<ERE тега>  — старший тег Docker Hub, подходящий под ERE.
+# ERE тега обязателен: у образа десятки семейств тегов (`26-alpine`, `26-slim`, `26`,
+# `lts`), и «последний тег» без указания семейства сравнивал бы пин с чужой линией.
+# Это то же требование, что и анкер у шага, — назвать, чему принадлежит значение.
 S='§'
 PROBES=(
-  "helm${S}helm/helm${S}uses:[[:space:]]*azure/setup-helm@${S}version:[[:space:]]*v?[0-9]+\.[0-9]+\.[0-9]+"
-  "buf${S}bufbuild/buf${S}uses:[[:space:]]*bufbuild/buf-setup-action@${S}version:[[:space:]]*v?[0-9]+\.[0-9]+\.[0-9]+"
-  "golangci-lint${S}golangci/golangci-lint${S}${S}golangci-lint@v?[0-9]+\.[0-9]+\.[0-9]+"
-  "kind${S}kubernetes-sigs/kind${S}${S}kind\.sigs\.k8s\.io/dl/v?[0-9]+\.[0-9]+\.[0-9]+/"
-  "grpcurl${S}fullstorydev/grpcurl${S}${S}grpcurl/releases/download/v?[0-9]+\.[0-9]+\.[0-9]+/"
-  "grpcurl${S}fullstorydev/grpcurl${S}${S}grpcurl_[0-9]+\.[0-9]+\.[0-9]+_linux"
-  "gosec${S}securego/gosec${S}${S}gosec@v?[0-9]+\.[0-9]+\.[0-9]+"
+  "helm${S}gh:helm/helm${S}uses:[[:space:]]*azure/setup-helm@${S}version:[[:space:]]*v?[0-9]+\.[0-9]+\.[0-9]+${S}${D_WF}"
+  "buf${S}gh:bufbuild/buf${S}uses:[[:space:]]*bufbuild/buf-setup-action@${S}version:[[:space:]]*v?[0-9]+\.[0-9]+\.[0-9]+${S}${D_WF}"
+  "golangci-lint${S}gh:golangci/golangci-lint${S}${S}golangci-lint@v?[0-9]+\.[0-9]+\.[0-9]+${S}${D_WF}"
+  "kind${S}gh:kubernetes-sigs/kind${S}${S}kind\.sigs\.k8s\.io/dl/v?[0-9]+\.[0-9]+\.[0-9]+/${S}${D_WF}"
+  "grpcurl${S}gh:fullstorydev/grpcurl${S}${S}grpcurl/releases/download/v?[0-9]+\.[0-9]+\.[0-9]+/${S}${D_WF}"
+  "grpcurl${S}gh:fullstorydev/grpcurl${S}${S}grpcurl_[0-9]+\.[0-9]+\.[0-9]+_linux${S}${D_WF}"
+  "gosec${S}gh:securego/gosec${S}${S}gosec@v?[0-9]+\.[0-9]+\.[0-9]+${S}${D_WF}"
+
+  # БАЗОВЫЕ ОБРАЗЫ. Пин образа держит то же свойство, что пин тулчейна: он решает,
+  # каким компилятором и рантаймом собран и исполняется артефакт. Разница только в
+  # том, откуда он исполняется, — а это теперь поле зонда, а не допущение сторожа.
+  #
+  # `node` пинится ДВАЖДЫ и в двух формах — тегом образа в Dockerfile'е и входом
+  # `node-version` у setup-node в конвейере. Это ОДИН инструмент: конвейер собирает
+  # те же пакеты, что и образ. Разъехавшись, они дают «в конвейере собирается, в
+  # образе нет» — то самое local≠CI, ради которого пины и заводились. Поэтому оба
+  # вхождения сверяются как ОДНО множество (см. §«у инструмента может быть несколько
+  # зондов»), и у второго зонда домен — определения конвейера.
+  "node${S}dh:library/node/^[0-9]+-alpine\$${S}${S}node:[0-9]+-alpine${S}${D_IMG}"
+  "node${S}dh:library/node/^[0-9]+-alpine\$${S}${S}node-version:[[:space:]]*'?[0-9]+${S}${D_WF}"
+  "nginx-unprivileged${S}dh:nginxinc/nginx-unprivileged/^[0-9]+\.[0-9]+-alpine\$${S}${S}nginx-unprivileged:[0-9]+\.[0-9]+-alpine${S}${D_IMG}"
+  "golang${S}dh:library/golang/^1\.[0-9]+-alpine\$${S}${S}library/golang:1\.[0-9]+-alpine${S}${D_IMG}"
+  "alpine${S}dh:library/alpine/^3\.[0-9]+\$${S}${S}library/alpine:3\.[0-9]+${S}${D_IMG}"
 )
 
 # HOLD — пины, которые мы держим ОСОЗНАННО. Сторож обязан молчать об их ОТСТАВАНИИ,
@@ -101,13 +133,18 @@ declare -A HOLD=()
 # работает — там обход файловой системы; для репозитория авторитет у версионного
 # контроля. Тот же приём и по той же причине — в deploy/scripts/run-gate-self-tests.sh.
 pin_domain() {
-  local root="$1"
+  local root="$1"; shift
+  local globs=("$@")
+  [ ${#globs[@]} -eq 0 ] && globs=('.github/workflows/*.yml' '.github/workflows/*.yaml')
   if [ "$root" = "$REPO_ROOT" ] && git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
-    git -C "$root" ls-files '.github/workflows/*.yml' '.github/workflows/*.yaml'
+    git -C "$root" ls-files -- "${globs[@]}"
   else
-    ( cd "$root" 2>/dev/null && find .github/workflows -type f \
-        \( -name '*.yml' -o -name '*.yaml' \) 2>/dev/null | sed 's#^\./##' )
-  fi | LC_ALL=C sort
+    # Синтетическое дерево самопроверки: те же шаблоны, но обходом ФС. `-path` с
+    # ведущим `*/` эмулирует git-pathspec, у которого `*` перекрывает и `/`.
+    local g args=()
+    for g in "${globs[@]}"; do args+=(-o -path "./$g" -o -path "*/$g"); done
+    ( cd "$root" 2>/dev/null && find . -type f \( "${args[@]:1}" \) 2>/dev/null | sed 's#^\./##' )
+  fi | LC_ALL=C sort -u
 }
 
 # ── ПЕРЕПИСЬ ОДНОГО ЗОНДА ────────────────────────────────────────────────────
@@ -121,14 +158,35 @@ pin_domain() {
 # v3.17.0`. Без отбрасывания первый же подъём версии превратил бы каждое такое
 # объяснение в мнимое расхождение — и сторожа сняли бы как шумный.
 #
-# Версия — первая тройка `N.N.N` внутри совпадения: у awk нет групп захвата, а все
-# зонды каталога несут ровно одну тройку. Ведущая `v` отпадает by construction.
+# Версия — САМАЯ ДЛИННАЯ группа цифр, разделённых точками, внутри совпадения. Ведущая
+# `v` отпадает by construction.
+#
+# Компонентов НЕ ровно три: тулчейны пинятся тройкой (`2.12.2`), теги образов — парой
+# (`1.31-alpine`) или одним числом (`26-alpine`). Прежний предикат требовал именно
+# тройку и потому не смог бы прочесть ни один тег образа: зонд совпал бы, а версия из
+# него не извлеклась — вхождение молча исчезло бы из переписи.
+#
+# ПОЧЕМУ «самая длинная», а не «первая». Ослабив предикат до «первой группы», я тут же
+# получил `kind: 8`: в совпадении `kind.sigs.k8s.io/dl/v0.32.0/` первая числовая группа
+# — это `8` из `k8s`, а не версия. Сторож напечатал при этом `✓ сходится`, то есть
+# зелёное о величине, которая версией не является. Тройка-предикат закрывала это
+# случайно (пропускала `8`, потому что в ней нет двух точек), и на ослаблении защита
+# ушла вместе с ней. Длина различает надёжно: доменное имя даёт короткие обрывки, а
+# версия — самую длинную группу совпадения.
 #
 # ERE передаются через ОКРУЖЕНИЕ, а не через `awk -v`: -v обрабатывает
 # escape-последовательности, и `\.` доехал бы до awk уже без обратной косой — то
 # есть точка стала бы «любым символом», а предикат — шире объявленного.
 census() {
-  local anchor="$1" pin="$2" root="${3:-$REPO_ROOT}" f
+  local anchor="$1" pin="$2" root="${3:-$REPO_ROOT}" domain="${4:-}" f
+  # Разбор домена на слова — через `read -a`, а НЕ через безкавычное развёртывание.
+  # Безкавычное `local globs=($domain)` подставляет не только разделение по словам, но
+  # и РАСКРЫТИЕ ПУТЕЙ: `.github/workflows/*.yml` тут же превращается в список реальных
+  # файлов ТЕКУЩЕГО каталога, и зонд начинает искать по именам вместо шаблонов. На
+  # синтетическом дереве самопроверки это давало ноль вхождений, то есть сторож
+  # рапортовал бы «пин не найден» на дереве, где пин есть.
+  local globs=()
+  read -r -a globs <<<"$domain"
   while IFS= read -r f; do
     [ -f "$root/$f" ] || continue
     ANCHOR="$anchor" PIN="$pin" FILE="$f" awk '
@@ -143,21 +201,32 @@ census() {
         if (!live) next
         if (match(line, pin)) {
           m = substr(line, RSTART, RLENGTH)
-          if (match(m, /[0-9]+\.[0-9]+\.[0-9]+/))
-            printf "%s:%d:%s\n", ENVIRON["FILE"], NR, substr(m, RSTART, RLENGTH)
+          best = ""
+          rest = m
+          while (match(rest, /[0-9]+(\.[0-9]+)*/)) {
+            cand = substr(rest, RSTART, RLENGTH)
+            if (length(cand) > length(best)) best = cand
+            rest = substr(rest, RSTART + RLENGTH)
+          }
+          if (best != "")
+            printf "%s:%d:%s\n", ENVIRON["FILE"], NR, best
         }
       }' "$root/$f"
-  done < <(pin_domain "$root")
+  done < <(pin_domain "$root" "${globs[@]}")
 }
 
 # tool_hits <инструмент> <корень> → перепись по ВСЕМ зондам этого инструмента.
 tool_hits() {
-  local name="$1" root="${2:-$REPO_ROOT}" p rest
+  local name="$1" root="${2:-$REPO_ROOT}" p rest anchor pin domain
   for p in "${PROBES[@]}"; do
     [ "${p%%"$S"*}" = "$name" ] || continue
-    rest="${p#*"$S"}"                    # <репо>§<анкер>§<пин>
-    rest="${rest#*"$S"}"                 # <анкер>§<пин>
-    census "${rest%"$S"*}" "${rest##*"$S"}" "$root"
+    rest="${p#*"$S"}"                    # <апстрим>§<анкер>§<пин>§<домен>
+    rest="${rest#*"$S"}"                 # <анкер>§<пин>§<домен>
+    anchor="${rest%%"$S"*}"
+    rest="${rest#*"$S"}"                 # <пин>§<домен>
+    pin="${rest%%"$S"*}"
+    domain="${rest#*"$S"}"
+    census "$anchor" "$pin" "$root" "$domain"
   done
 }
 
@@ -171,7 +240,7 @@ tool_list() {
   done
 }
 
-# upstream_of <инструмент> → репозиторий апстрима из каталога.
+# upstream_of <инструмент> → спецификация апстрима из каталога (с префиксом источника).
 upstream_of() {
   local p rest
   for p in "${PROBES[@]}"; do
@@ -181,12 +250,57 @@ upstream_of() {
   done
 }
 
+# upstream_label <спец> → человекочитаемый адрес для тела issue. ERE тега в issue не
+# идёт: он часть предиката сторожа, а не координата, по которой читатель что-то ищет.
+upstream_label() {
+  case "$1" in
+    gh:*) echo "${1#gh:}" ;;
+    dh:*) local r="${1#dh:}"; echo "docker.io/${r%%/*}/$(t="${r#*/}"; echo "${t%%/*}")" ;;
+    *)    echo "$1" ;;
+  esac
+}
+
 # latest_gh <owner/repo> → последний НЕ-prerelease тег, без ведущей v.
 latest_gh() {
   local auth=()
   [ -n "${GH_TOKEN:-}" ] && auth=(-H "Authorization: Bearer ${GH_TOKEN}")
   curl -fsSL "${auth[@]}" "https://api.github.com/repos/$1/releases/latest" 2>/dev/null \
     | jq -r '.tag_name // empty' | sed 's/^v//'
+}
+
+# latest_dh <ns/name> <ERE тега> → старший тег СВОЕГО семейства, версией без суффикса.
+#
+# Семейство задаёт ERE зонда, а не догадка: у образа десятки линий тегов, и «самый
+# свежий» без семейства вернул бы, например, `26-slim` для пина `26-alpine`.
+#
+# Серверная подстрока `name=` — последнее буквенное слово ERE (`^[0-9]+-alpine$` →
+# `alpine`). Она не сужает СМЫСЛ (окончательный отбор всё равно делает ERE), а лишь
+# заставляет апстрим отдать нужное семейство внутри одной страницы: у library/node
+# тегов тысячи, и без подсказки страница «последних изменённых» может не содержать
+# ни одного тега нашей линии. Если слова нет — запрашиваем без подсказки.
+#
+# Старший выбирается `sort -V` по ЧИСЛОВОЙ части, а не лексикографически: иначе
+# `9-alpine` оказался бы старше `26-alpine`.
+latest_dh() {
+  local repo="$1" tagre="$2" hint url
+  hint="$(printf '%s' "$tagre" | grep -oE '[a-zA-Z][a-zA-Z0-9]*' | tail -1)"
+  url="https://hub.docker.com/v2/repositories/${repo}/tags?page_size=100"
+  [ -n "$hint" ] && url="${url}&name=${hint}"
+  curl -fsSL "$url" 2>/dev/null | jq -r '.results[].name // empty' \
+    | grep -E "$tagre" \
+    | grep -oE '^[0-9]+(\.[0-9]+)*' \
+    | sort -V | tail -1
+}
+
+# latest_upstream <спец> → версия апстрима по префиксу источника.
+latest_upstream() {
+  local spec="$1"
+  case "$spec" in
+    gh:*) latest_gh "${spec#gh:}" ;;
+    dh:*) local r="${spec#dh:}"           # <ns>/<name>/<ERE тега>
+          latest_dh "${r%%/*}/$(t="${r#*/}"; echo "${t%%/*}")" "${r#*/*/}" ;;
+    *)    echo "неизвестный источник апстрима: $spec" >&2; return 1 ;;
+  esac
 }
 
 # ── ПРОХОД ───────────────────────────────────────────────────────────────────
@@ -239,7 +353,7 @@ run_pass() {
       continue
     fi
 
-    want="$(latest_gh "$(upstream_of "$name")")"
+    want="$(latest_upstream "$(upstream_of "$name")")"
     if [ -z "$want" ]; then
       echo "  ⚠ $name — апстрим недоступен (rate-limit?)" >&2; continue
     fi
@@ -249,11 +363,71 @@ run_pass() {
         continue
       fi
       echo "  ✗ $name: пин $value, апстрим $want" >&2
-      stale="${stale}- **${name}** — запинен \`${value}\`, апстрим \`${want}\` ($(upstream_of "$name"))"$'\n'
+      stale="${stale}- **${name}** — запинен \`${value}\`, апстрим \`${want}\` ($(upstream_label "$(upstream_of "$name")"))"$'\n'
     else
       echo "  ✓ $name: $value" >&2
     fi
   done
+}
+
+# ── РАСХОЖДЕНИЕ ДЕЙСТВИЙ: БЕЗ КАТАЛОГА ───────────────────────────────────────
+#
+# Каталог PROBES — список, который ведёт человек, и потому он отстаёт от дерева ровно
+# так же, как отстают сами пины. `actions/upload-artifact` был поднят 4→7 отдельным PR,
+# бамп доехал не до всех вызовов, и дерево стало исполнять ДВА мажора одного действия.
+# Ни один зонд каталога этого не заметил — не потому, что сторож сломан, а потому что
+# такой строки в каталоге никто не завёл. Заводить её (и строку на каждое следующее
+# действие) значит воспроизводить исходную причину.
+#
+# Поэтому расхождение действий проверяется БЕЗ каталога: берём КАЖДЫЙ `uses:` домена и
+# требуем, чтобы у одного действия было одно значение ссылки. Список вести не нужно —
+# предмет выводится из дерева, а новое действие попадает под проверку в тот же день,
+# когда появляется.
+#
+# СВЕЖЕСТЬ действий здесь НЕ проверяется, и это граница, а не упущение: `uses:` — это
+# ровно то, что обновляет dependabot, и дублировать его значило бы шуметь о том, по
+# чему уже открыт PR. Расхождение же не открывает PR никому: оно возникает МЕЖДУ
+# бампами и не видно ни одному из них.
+actions_census() {
+  local root="${1:-$REPO_ROOT}" f
+  while IFS= read -r f; do
+    [ -f "$root/$f" ] || continue
+    FILE="$f" awk '
+      {
+        line = $0
+        if (line ~ /^[[:space:]]*#/) next                    # строка-комментарий целиком
+        sub(/[[:space:]]#[[:space:]].*$/, "", line)          # хвостовой комментарий
+        if (match(line, /uses:[[:space:]]*[A-Za-z0-9_.-]+\/[A-Za-z0-9_.\/-]+@[A-Za-z0-9_.-]+/)) {
+          m = substr(line, RSTART, RLENGTH)
+          sub(/^uses:[[:space:]]*/, "", m)
+          at = index(m, "@")
+          printf "%s %s %s:%d\n", substr(m, 1, at - 1), substr(m, at + 1), ENVIRON["FILE"], NR
+        }
+      }' "$root/$f"
+  done < <(pin_domain "$root" '.github/workflows/*.yml' '.github/workflows/*.yaml')
+}
+
+# actions_divergence <корень> → печатает находки в stderr, markdown в stdout,
+# возвращает 1 при расхождении. Локальные действия (`./.github/...`) и `docker://`
+# не имеют формы `owner/repo@ref` и в перепись не попадают by construction.
+actions_divergence() {
+  local root="${1:-$REPO_ROOT}" rows name refs files n total
+  rows="$(actions_census "$root")"
+  total="$(printf '%s\n' "$rows" | grep -c . || true)"
+  local uniq_names rc_local=0
+  uniq_names="$(printf '%s\n' "$rows" | awk 'NF{print $1}' | LC_ALL=C sort -u)"
+  for name in $uniq_names; do
+    refs="$(printf '%s\n' "$rows" | awk -v n="$name" '$1==n{print $2}' | LC_ALL=C sort -u)"
+    n="$(printf '%s\n' "$refs" | grep -c .)"
+    [ "$n" -gt 1 ] || continue
+    files="$(printf '%s\n' "$rows" | awk -v n="$name" '$1==n{printf "`%s` (%s), ", $2, $3}' | sed 's/, $//')"
+    echo "  ✗ $name — действие запинено РАЗНЫМИ версиями: $files" >&2
+    printf -- '- **%s** — одно действие запинено **разными** версиями: %s. Шаги исполняют разные редакции действия; приведи к одному значению.\n' \
+      "$name" "$files"
+    rc_local=1
+  done
+  echo "  === осмотрено вызовов действий: $total по $(printf '%s\n' "$uniq_names" | grep -c .) действиям ===" >&2
+  return $rc_local
 }
 
 # ── САМОПРОВЕРКА: инъекция в ОБЕ стороны, сети не требует ─────────────────────
@@ -353,19 +527,105 @@ if [ "${1:-}" = "--self-test" ]; then
     echo "  ПРОВАЛ домен переписи не измеряется"; st_rc=1
   fi
 
+  # (7) БАЗОВЫЙ ОБРАЗ В DOCKERFILE'АХ — домен вне определений конвейера. Это тот самый
+  #     дефект, который сторож не видел by construction: пин исполняется из Dockerfile'а,
+  #     а перепись читала только `.github/workflows`.
+  mkdir -p "$tmp/svc-a" "$tmp/svc-b"
+  dockerline() { printf 'FROM node:%s-alpine AS build\n' "$1"; }
+  N=22; M=26
+  dockerline "$N" >"$tmp/svc-a/Dockerfile"
+  dockerline "$M" >"$tmp/svc-b/Dockerfile"
+  hits="$(probe node)"
+  if [ "$(distinct node)" -gt 1 ] \
+     && printf '%s\n' "$hits" | grep -q '^svc-a/Dockerfile:.*:'"$N"'$' \
+     && printf '%s\n' "$hits" | grep -q '^svc-b/Dockerfile:.*:'"$M"'$'; then
+    echo "  ОК  расхождение базового образа видно вне определений конвейера"
+  else
+    echo "  ПРОВАЛ Dockerfile не попал в домен зонда образа"
+    printf '%s\n' "$hits" | sed 's/^/      /'; st_rc=1
+  fi
+
+  # (8) ТЕ ЖЕ ДВА DOCKERFILE'А, СВЕДЁННЫЕ К ОДНОМУ ТЕГУ — обязано молчать.
+  dockerline "$N" >"$tmp/svc-b/Dockerfile"
+  if [ "$(distinct node)" -eq 1 ] && [ "$(probe node | grep -c .)" -eq 2 ]; then
+    echo "  ОК  два Dockerfile'а с одним тегом расхождением НЕ считаются"
+  else
+    echo "  ПРОВАЛ законный дубль базового образа принят за расхождение"
+    probe node | sed 's/^/      /'; st_rc=1
+  fi
+  rm -rf "$tmp/svc-a" "$tmp/svc-b"
+
+  # (9) ЦИФРА В ДОМЕННОМ ИМЕНИ — НЕ ВЕРСИЯ. `kind.sigs.k8s.io/dl/v0.32.0/` несёт `8`
+  #     раньше версии, и предикат «первая числовая группа» прочёл бы `8`, напечатав
+  #     при этом `✓ сходится` — зелёное о величине, которая версией не является.
+  #     Ровно это и случилось при ослаблении предиката под теги образов.
+  rm -f "$src/one.yml" "$src/two.yml"          # фикстуры (1)-(2) несут свой kind-пин
+  { echo 'jobs:'; echo '  f:'; echo '    steps:'; kindline 0.32.0; } >"$src/k8s.yml"
+  if [ "$(probe kind | awk -F: '{print $NF}' | LC_ALL=C sort -u | tr -d '\n')" = "0.32.0" ]; then
+    echo "  ОК  версия отличается от цифры в доменном имени (0.32.0, не 8)"
+  else
+    echo "  ПРОВАЛ извлечена не версия: $(probe kind | awk -F: '{print $NF}' | tr '\n' ' ')"; st_rc=1
+  fi
+  rm -f "$src/k8s.yml"
+
+  # (10) РАСХОЖДЕНИЕ ДЕЙСТВИЯ — БЕЗ КАТАЛОГА. Действие, которого нет ни в одном зонде,
+  #      обязано быть проверено: именно отсутствие строки в каталоге и было причиной,
+  #      по которой два мажора одного действия ужились в дереве незамеченными.
+  { echo 'jobs:'; echo '  g:'; echo '    steps:'
+    echo '      - uses: some-org/never-listed-action@v4'
+    echo '      - uses: some-org/never-listed-action@v7'; } >"$src/acts.yml"
+  # Вывод забирается ДО grep'а, а не через конвейер: при `set -o pipefail` находка
+  # (ненулевой код функции) уронила бы весь конвейер, и проверка прочла бы «не нашли»
+  # ровно тогда, когда нашли.
+  act_out="$(actions_divergence "$tmp" 2>/dev/null || true)"
+  if printf '%s\n' "$act_out" | grep -q 'never-listed-action'; then
+    echo "  ОК  расхождение действия найдено БЕЗ записи в каталоге"
+  else
+    echo "  ПРОВАЛ действие вне каталога не проверяется"; st_rc=1
+  fi
+
+  # (11) ТО ЖЕ ДЕЙСТВИЕ, ОДНА ВЕРСИЯ В ДВУХ ШАГАХ — обязано молчать. Без этой половины
+  #      проверка ловила бы форму (действие названо дважды), а не существо.
+  { echo 'jobs:'; echo '  g:'; echo '    steps:'
+    echo '      - uses: some-org/never-listed-action@v7'
+    echo '      - uses: some-org/never-listed-action@v7'
+    echo '      # - uses: some-org/never-listed-action@v4   # прежде было v4'; } >"$src/acts.yml"
+  if actions_divergence "$tmp" >/dev/null 2>&1; then
+    echo "  ОК  повтор одной версии (и версия в комментарии) расхождением НЕ считаются"
+  else
+    echo "  ПРОВАЛ законный повтор действия принят за расхождение"
+    actions_divergence "$tmp" 2>&1 >/dev/null | sed 's/^/      /'; st_rc=1
+  fi
+  rm -f "$src/acts.yml"
+
   echo
   [ $st_rc -eq 0 ] && echo "PASS: check-pinned-tools --self-test" \
                    || echo "FAIL: check-pinned-tools --self-test"
   exit $st_rc
 fi
 
-scanned="$(pin_domain "$REPO_ROOT" | grep -c .)"
+# ОБЪЁМ ОСМОТРЕННОГО — объединение доменов ВСЕХ зондов, а не один домен на всех.
+# Пока домен был общим, это число совпадало с числом определений конвейера; теперь
+# зонды смотрят в разные части дерева, и «9 файлов» рядом с находкой в Dockerfile'е
+# читалось бы как заведомая неправда о том, что сторож прочёл.
+scanned="$(
+  for p in "${PROBES[@]}"; do
+    g=(); read -r -a g <<<"${p##*"$S"}"   # см. census: без раскрытия путей
+    pin_domain "$REPO_ROOT" "${g[@]}"
+  done | LC_ALL=C sort -u | grep -c .
+)"
 run_pass
+
+# Расхождение действий — тот же класс, что расхождение пинов, и тоже НЕ глушится HOLD:
+# «держим осознанно» можно только одно значение. Сети не требует, поэтому идёт и в
+# полном проходе, и в `--divergence-only`.
+act_md="$(actions_divergence)" || rc=1
+stale="${stale}${act_md}"
 
 # ОБЪЁМ ОСМОТРЕННОГО. «Ноль находок» обязано быть отличимо от «ноль прочитанного»:
 # без этих чисел сообщение «пины сходятся» одинаково читается и когда перепись
 # прочла все определения конвейера, и когда она не дошла ни до одного файла.
-echo "=== осмотрено определений конвейера: $scanned; найдено вхождений пинов: $found_total" \
+echo "=== осмотрено файлов дерева: $scanned; найдено вхождений пинов: $found_total" \
      "по $(tool_list | grep -c .) инструментам ===" >&2
 if [ "$scanned" -eq 0 ]; then
   echo "  ✗ домен переписи ПУСТ — сверка не состоялась" >&2

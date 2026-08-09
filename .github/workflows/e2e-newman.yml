@@ -296,7 +296,7 @@ jobs:
         with:
           version: v4.2.3
       - uses: actions/setup-node@v4
-        with: { node-version: '22' }
+        with: { node-version: '26' }
       - uses: azure/setup-kubectl@v4
 
       # buf нужен пробе ban #6: она берёт дескрипторы из `buf build proto`, а не из

@@ -1,4 +1,4 @@
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 
 WORKDIR /app
 
@@ -25,7 +25,7 @@ RUN npm run build --workspace kacho-ui-future-system
 # (см. deploy/templates/deployment-*.yaml). Конфиг в кластере приезжает шаблоном из
 # ConfigMap и рендерится в /etc/nginx/conf.d, куда деплоймент подкладывает emptyDir;
 # конфиг ниже — запечённый, для одиночного `docker run`.
-FROM nginxinc/nginx-unprivileged:1.27-alpine
+FROM nginxinc/nginx-unprivileged:1.31-alpine
 
 COPY system/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/system/dist /usr/share/nginx/html

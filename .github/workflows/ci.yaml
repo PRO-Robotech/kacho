@@ -1328,7 +1328,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '26'
           cache: npm
           # Ключ кэша — по ВСЕМ восьми lock-файлам сразу: сайты ставят зависимости
           # каждый в своём каталоге, и кэш, привязанный к одному из них, обновлялся бы
@@ -1355,7 +1355,7 @@ jobs:
       # предмет — размеры, пересечения маршрутов, дубли разделов — по которому решение
       # можно принять по фактам, а не по вкусу.
       - name: выложить собранные сайты
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: docs-sites
           path: |
