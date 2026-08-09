@@ -138,3 +138,101 @@ func TestStandGeoBaselineSeedCoversFixtureIds(t *testing.T) {
 		require.Equal(t, "UP", status, "%s=%s посеян закрытым", key, id)
 	}
 }
+
+// TestStandGeoBaselineSeedDoesNotClobberExistingRows — стенд поднимают и НА
+// НЕПУСТОЙ базе, поэтому посев обязан не только не дублировать, но и не
+// ПЕРЕЗАПИСЫВАТЬ уже существующее.
+//
+// Чем это отличается от TestStandGeoBaselineSeedIsIdempotent, и почему одной
+// той пробы мало. Та применяет посев поверх строк, которые он же и записал, —
+// все значения там тождественны тем, что посев собирается писать, поэтому
+// затирание в ней НЕНАБЛЮДАЕМО: перезапись 'UP' на 'UP' не меняет ни одного
+// столбца и не даёт ни одной audit-строки. Здесь предсуществующие строки
+// ОТЛИЧАЮТСЯ от посевных (администратор закрыл зону на обслуживание, проставил
+// код страны, завёл собственный регион), и только на таком входе разница между
+// «не тронул» и «вернул к своему» становится видимой.
+//
+// Проверено инъекцией в обе стороны: добавление в geo-baseline.sql оператора
+// `UPDATE zones SET status='UP' WHERE id IN (…)` — ровно того «оживления»,
+// которым чинят непригодный стенд, — оставляет три пробы выше ЗЕЛЁНЫМИ и роняет
+// эту. Обратно: на поставляемом ON CONFLICT DO NOTHING зелены все четыре.
+//
+// Отрицание стоит В ПАРЕ с положительным контролем: проба утверждает и то, что
+// недостающие строки посев ВСЁ ЖЕ завёл. Без него «ничего не изменилось» было бы
+// неотличимо от «посев умер», и проба зеленела бы на пустом файле.
+func TestStandGeoBaselineSeedDoesNotClobberExistingRows(t *testing.T) {
+	pool := newTestPool(t)
+	ctx := context.Background()
+
+	// Предсуществующее состояние, отличное от посевного:
+	//  (1) регион посева, закрытый администратором + непустой country_code;
+	//  (2) зона посева, снятая с размещения на обслуживание;
+	//  (3) регион и зона, которых в посеве нет вовсе (чужая запись).
+	_, err := pool.Exec(ctx, `
+		INSERT INTO regions (id, name, country_code, status, numeric_infra_id)
+		     VALUES ('ru-central1', 'ru-central1', 'RU', 'DOWN', 77),
+		            ('ru-central9', 'ru-central9', 'ZZ', 'UP',   99);
+		INSERT INTO zones (id, region_id, name, status, numeric_infra_id)
+		     VALUES ('ru-central1-a', 'ru-central1', 'ru-central1-a', 'DOWN', 11),
+		            ('ru-central9-a', 'ru-central9', 'ru-central9-a', 'UP',   99);`)
+	require.NoError(t, err, "не удалось подготовить непустую базу")
+
+	var auditBefore int
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM geo_outbox`).Scan(&auditBefore))
+
+	applyStandBaseline(t, pool)
+
+	// (1) закрытый регион остался закрытым, его поля не переписаны посевными.
+	var status, country string
+	var infra int64
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT status, country_code, numeric_infra_id FROM regions WHERE id = 'ru-central1'`).
+		Scan(&status, &country, &infra))
+	require.Equal(t, "DOWN", status,
+		"посев вернул администраторски закрытый регион в 'UP' — стенд затирает существующее")
+	require.Equal(t, "RU", country, "посев переписал country_code существующего региона")
+	require.EqualValues(t, 77, infra, "посев переписал numeric_infra_id существующего региона")
+
+	// (2) зона, снятая с размещения, осталась снятой.
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT status, numeric_infra_id FROM zones WHERE id = 'ru-central1-a'`).Scan(&status, &infra))
+	require.Equal(t, "DOWN", status,
+		"посев вернул снятую с обслуживания зону в 'UP' — стенд затирает существующее")
+	require.EqualValues(t, 11, infra, "посев переписал numeric_infra_id существующей зоны")
+
+	// (3) чужие строки, которых посев не называет, целы.
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT status, country_code FROM regions WHERE id = 'ru-central9'`).Scan(&status, &country))
+	require.Equal(t, "UP", status)
+	require.Equal(t, "ZZ", country, "посев тронул регион, которого он не сеет")
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT status FROM zones WHERE id = 'ru-central9-a'`).Scan(&status))
+	require.Equal(t, "UP", status, "посев тронул зону, которой он не сеет")
+
+	// Положительный контроль: недостающее посев всё же завёл — иначе «ничего не
+	// изменилось» означало бы мёртвый посев, и все утверждения выше были бы
+	// тождественно истинны.
+	var seededNew int
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT count(*) FROM zones WHERE id IN ('ru-central1-b','ru-central1-c','ru-central1-d')`).
+		Scan(&seededNew))
+	require.Equal(t, 3, seededNew,
+		"посев не завёл недостающие зоны — проба «ничего не затёрто» стала бы вакуумной")
+	var region2 string
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT status FROM regions WHERE id = 'ru-central2'`).Scan(&region2))
+	require.Equal(t, "UP", region2, "посев не завёл недостающий регион")
+
+	// Audit-строки написаны ТОЛЬКО на реально вставленное: конфликтующие id
+	// аудита не порождают (иначе журнал утверждал бы создание того, что уже было).
+	var auditAfter, auditForExisting int
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM geo_outbox`).Scan(&auditAfter))
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT count(*) FROM geo_outbox
+		  WHERE resource_id IN ('ru-central1','ru-central1-a','ru-central9','ru-central9-a')`).
+		Scan(&auditForExisting))
+	require.Zero(t, auditForExisting,
+		"аудит объявил CREATED для строк, которые уже существовали до посева")
+	t.Logf("непустая база: audit до=%d, после=%d (записано только на вставленное); "+
+		"осмотрено предсуществующих строк: 4", auditBefore, auditAfter)
+}
