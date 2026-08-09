@@ -46,7 +46,7 @@ existing pattern, no separate catalogue entry needed").
 - `*-CR-VAL-MALFORMED-JSON` — VAL/P2 — invalid JSON syntax → 400/415
 
 ### Negative + cross-service NotFound
-- `*-CR-NEG-REGION-UNKNOWN` — NEG/P0 — unknown region_id → async Operation error INVALID_ARGUMENT "Region ... not found" (cross-domain ref-not-found via kacho-geo) (Verifies REQ-NLB-CR-NEG-REGION)
+- `*-CR-NEG-REGION-UNKNOWN` — NEG/P0 — unknown region_id → async Operation error FAILED_PRECONDITION "Region ... not found" (cross-domain ref-not-found via kacho-geo) (Verifies REQ-NLB-CR-NEG-REGION)
 - `*-CR-NEG-PROJECT-UNKNOWN` — NEG/P0 — unknown project_id (cross-service NotFound)
 - `*-GET-NEG-NF-UNKNOWN` — NEG/P0 — unknown id → 404 NotFound (Verifies REQ-NLB-GET-NEG)
 - `*-UPD-NEG-NF-UNKNOWN` — NEG/P1 — Update unknown id → 404
@@ -213,7 +213,7 @@ Immutability + drain toggle + lean projection + delete-release:
 - `*-CR-VAL-TARGET-BOGON-LINKLOCAL` — VAL/P1 — external_ip=169.254.x.x → bogon rejected
 - `*-CR-VAL-TARGET-BOGON-MULTICAST` — VAL/P1 — external_ip=224.0.0.0 → bogon rejected
 - `*-CR-VAL-TARGET-BOGON-BROADCAST` — VAL/P1 — external_ip=255.255.255.255 → bogon rejected
-- `*-CR-NEG-REGION-UNKNOWN` — NEG/P0 — unknown region_id → async Operation error INVALID_ARGUMENT "Region ... not found" (cross-domain ref-not-found)
+- `*-CR-NEG-REGION-UNKNOWN` — NEG/P0 — unknown region_id → async Operation error FAILED_PRECONDITION "Region ... not found" (cross-domain ref-not-found)
 
 ### CONF / STATE / NEG
 - `*-CR-CONF-ALREADY-EXISTS` — CONF,IDEM,NEG/P1 — duplicate (project_id,name) → 409 ALREADY_EXISTS (Verifies REQ-DB-TGR-NAME-UNIQ)

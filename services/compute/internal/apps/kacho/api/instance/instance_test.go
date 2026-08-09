@@ -553,7 +553,9 @@ func TestInstance_COMP_1_33_ZoneReject(t *testing.T) {
 	require.NoError(t, err)
 	done2 := portmock.AwaitOpDone(t, ops, op2.ID)
 	require.NotNil(t, done2.Error)
-	require.Equal(t, int32(codes.InvalidArgument), done2.Error.Code)
+	// Полоса peer-validate: зона названа корректно, но у владельца Geography не
+	// резолвится — предусловие на ЧУЖОЙ ресурс не выполнено, а не «ввод неверен».
+	require.Equal(t, int32(codes.FailedPrecondition), done2.Error.Code)
 	require.Contains(t, done2.Error.Message, "no-such-zone")
 }
 

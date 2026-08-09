@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -39,6 +40,8 @@ func TestRegistry_REG_1_12_Create_RegionMissing_FailedPrecondition(t *testing.T)
 	_, err := uc.Create(aliceCtx(), registry.CreateSpec{ProjectID: "prj-P", Name: "payments", RegionID: "eu-west-9"})
 	require.Equal(t, codes.FailedPrecondition, codeOf(t, err))
 	require.Contains(t, status.Convert(err).Message(), "eu-west-9")
+	require.Equal(t, "PEER_RESOURCE_MISSING", reasonTokenOf(t, err),
+		"полоса называется машинно — прежде её объявлял только комментарий")
 	require.True(t, geo.called, "geo RegionService.Get вызван на request-path")
 	require.Equal(t, "eu-west-9", geo.lastArg)
 	require.Nil(t, repo.insertReg, "registry НЕ создаётся с висячим regionId")
@@ -53,6 +56,7 @@ func TestRegistry_REG_1_13_Create_GeoUnavailable_FailClosed(t *testing.T) {
 
 	_, err := uc.Create(aliceCtx(), registry.CreateSpec{ProjectID: "prj-P", Name: "payments", RegionID: "eu-north-1"})
 	require.Equal(t, codes.Unavailable, codeOf(t, err))
+	require.Equal(t, "PEER_UNAVAILABLE", reasonTokenOf(t, err))
 	require.Nil(t, repo.insertReg, "fail-closed: реестр не вставлен при недоступном geo")
 }
 
@@ -78,4 +82,16 @@ func TestRegistry_REG_1_14_Update_RegionPlacementImmutable(t *testing.T) {
 			require.Nil(t, repo.updateSpec.Mask, "immutable reject — до writer.Update")
 		})
 	}
+}
+
+// reasonTokenOf — машинный признак полосы из деталей отказа; пустая строка, если
+// детали нет (отсутствие токена значимо и отличимо от «токен не тот»).
+func reasonTokenOf(t *testing.T, err error) string {
+	t.Helper()
+	for _, d := range status.Convert(err).Details() {
+		if info, ok := d.(*errdetails.ErrorInfo); ok {
+			return info.GetReason()
+		}
+	}
+	return ""
 }

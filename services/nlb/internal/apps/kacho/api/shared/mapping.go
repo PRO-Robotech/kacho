@@ -78,13 +78,25 @@ func ErrInvalidArg(field, msg string) error {
 	return st.Err()
 }
 
-// PeerErrToStatus — peer-client error (sentinel-wrapped) → gRPC-status. Единый
-// источник истины (раньше продублирован в loadbalancer/targetgroup).
-// Используется при sync project/region precheck и в worker per-target
-// peer-validate.
+// PeerErrToStatus — peer-client error → gRPC-status. Единый источник истины
+// (раньше продублирован в loadbalancer/targetgroup). Используется при sync
+// project/region precheck и в worker per-target peer-validate.
+//
+// Порядок веток несущий, а не косметический. Peer-клиент, уже собравший полосу
+// резолва (код + машинный признак в details), проходит НАСКВОЗЬ: пересборка
+// статуса в sentinel-ветке потеряла бы details, а несовпадение с sentinel'ами
+// увело бы готовую полосу в общую ветку INTERNAL — то есть отказ переставал бы
+// быть отличимым ровно на пути к клиенту. Sentinel'ы, которые классифицирует
+// сам маппер, идут после и работают как прежде.
+//
+// codes.Unknown под pass-through НЕ попадает: это код, который status.FromError
+// присваивает не-статусной ошибке, а не заявление полосы.
 func PeerErrToStatus(err error, kind, id string) error {
 	if err == nil {
 		return nil
+	}
+	if st, ok := status.FromError(err); ok && st.Code() != codes.Unknown {
+		return err
 	}
 	switch {
 	case errors.Is(err, domain.ErrNotFound):

@@ -14,6 +14,7 @@ import (
 
 	geopb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
+	kerrors "github.com/PRO-Robotech/kacho/pkg/errors"
 	"github.com/PRO-Robotech/kacho/pkg/retry"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
@@ -37,15 +38,18 @@ type Region struct {
 
 // RegionClient — port-интерфейс для service-слоя.
 type RegionClient interface {
-	// Get возвращает Region. Семантика ошибок:
-	//   - kacho-geo NotFound (regionID не существует) → domain.ErrInvalidArg
-	//     с текстом "Region <id> not found" — на input-time это не NotFound от
-	//     tenant perspective, а bad input.
-	//   - Unavailable/DeadlineExceeded → domain.ErrUnavailable (fail-closed на мутации).
+	// Get возвращает Region. Семантика ошибок — по полосам резолва
+	// (api-conventions.md §By-lane code-split), собранным статусом:
+	//   - kacho-geo NotFound (regionID не существует) → полоса peer-validate:
+	//     FAILED_PRECONDITION "Region <id> not found" + PEER_RESOURCE_MISSING.
+	//     Консумер здесь не «не нашёл своё», а «предусловие на ЧУЖОЙ ресурс не
+	//     выполнено».
 	//   - PermissionDenied (region — публичный read-only справочник, но edge-
-	//     case при agg-route filtering) → domain.ErrInvalidArg "Region... not
-	//     found" (не лик'аем authz).
-	//   - Любая другая ошибка → wrapped error без sentinel-обёртки.
+	//     case при agg-route filtering) → ТА ЖЕ полоса и тот же текст: иначе по
+	//     коду отличали бы «нет региона» от «есть, но не виден» — оракул.
+	//   - Unavailable/DeadlineExceeded → UNAVAILABLE + PEER_UNAVAILABLE
+	//     (fail-closed на мутации).
+	//   - Любая другая ошибка → wrapped error без обёртки полосы.
 	Get(ctx context.Context, regionID string) (*Region, error)
 }
 
@@ -118,23 +122,51 @@ func (c *regionClient) Get(ctx context.Context, regionID string) (*Region, error
 	return &Region{ID: resp.GetId(), Name: resp.GetName()}, nil
 }
 
-// mapRegionErr транслирует gRPC-status в domain-sentinel-ошибки.
+// mapRegionErr транслирует ответ владельца Geography в полосу резолва.
+//
+// Возвращается СОБРАННЫЙ статус, а не sentinel: полоса обязана пережить
+// сервисный маппер (shared.PeerErrToStatus отдаёт готовый статус как есть),
+// иначе машинный признак теряется ровно там, где собирается ответ клиенту.
+//
+// Текст промаха прежний — "Region <id> not found". Сменился код (полоса
+// peer-validate) и ушёл двойной sentinel-префикс, которым сообщение обрастало
+// по дороге: клиент видел "region: invalid argument: Region <id> not found",
+// где «invalid argument» — текст внутреннего sentinel, а не утверждение о
+// регионе.
 func mapRegionErr(regionID string, err error) error {
 	st, ok := status.FromError(err)
 	if !ok {
 		return fmt.Errorf("geo region get %q: %w", regionID, err)
 	}
 	switch st.Code() {
-	case codes.NotFound:
-		return fmt.Errorf("%w: Region %s not found", domain.ErrInvalidArg, regionID)
-	case codes.PermissionDenied:
-		// edge-case: agg-route filtering — не лик'аем authz.
-		return fmt.Errorf("%w: Region %s not found", domain.ErrInvalidArg, regionID)
+	case codes.NotFound, codes.PermissionDenied:
+		// PermissionDenied — edge-case agg-route filtering. Полоса и текст те же,
+		// что у промаха: authz-факт наружу не течёт.
+		return regionMissing(regionID)
 	case codes.Unavailable, codes.DeadlineExceeded:
-		return fmt.Errorf("%w: geo region %s: %s", domain.ErrUnavailable, regionID, st.Message())
+		return regionUnavailable(regionID)
 	case codes.InvalidArgument:
-		return fmt.Errorf("%w: geo region %s: %s", domain.ErrInvalidArg, regionID, st.Message())
+		return regionMissing(regionID)
 	default:
 		return fmt.Errorf("geo region get %q: %w", regionID, err)
 	}
+}
+
+// serviceDomain — источник отказа в ErrorInfo.domain. Назван один раз на сервис.
+const serviceDomain = "nlb"
+
+// regionMissing / regionUnavailable — две полосы ребра nlb→geo. Тексты — часть
+// контракта: "Region <id> not found" утверждается пробами и e2e, а
+// "region lookup unavailable" дословно повторяет то, что прежде собирал
+// сервисный маппер из kind'а.
+func regionMissing(regionID string) error {
+	return kerrors.ReasonPeerResourceMissing.Errf(
+		kerrors.PeerRef{Service: serviceDomain, ResourceType: "geo.region", ResourceID: regionID},
+		"Region %s not found", regionID)
+}
+
+func regionUnavailable(regionID string) error {
+	return kerrors.ReasonPeerUnavailable.Errf(
+		kerrors.PeerRef{Service: serviceDomain, ResourceType: "geo.region", ResourceID: regionID},
+		"region lookup unavailable")
 }

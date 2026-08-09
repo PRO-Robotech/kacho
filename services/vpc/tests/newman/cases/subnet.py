@@ -158,7 +158,7 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="SUB-CR-VAL-ZONE-UNKNOWN",
-    title="Create с несуществующей зоной → sync 400 INVALID_ARGUMENT \"unknown zone id '...'\"",
+    title="Create с несуществующей зоной → sync 400 FAILED_PRECONDITION \"unknown zone id '...'\"",
     classes=["VAL"],
     priority="P0",
     steps=[
@@ -170,7 +170,7 @@ CASES.append(Case(
             body={"projectId": "{{_suiteProjectId}}", "networkId": "{{netId}}",
                   "name": "sub-zu-{{runId}}", "zoneId": "zone-z-fake"},
             # Отказ — flat {code,message} body, не Operation.
-            test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+            test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
                          "pm.test('unknown zone text', () => pm.expect(pm.response.json().message).to.match(/^unknown zone id '.*'$/));"],
         ),
         _cleanup_net(),

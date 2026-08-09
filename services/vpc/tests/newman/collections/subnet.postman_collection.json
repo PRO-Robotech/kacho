@@ -1585,7 +1585,7 @@
       ]
     },
     {
-      "name": "SUB-CR-VAL-ZONE-UNKNOWN — Create с несуществующей зоной → sync 400 INVALID_ARGUMENT \"unknown zone id '...'\"",
+      "name": "SUB-CR-VAL-ZONE-UNKNOWN — Create с несуществующей зоной → sync 400 FAILED_PRECONDITION \"unknown zone id '...'\"",
       "description": "class:VAL | priority:P0",
       "item": [
         {
@@ -1735,9 +1735,9 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status 400', () => pm.expect(pm.response.code).to.eql(400));",
-                  "pm.test('grpc code 3 (INVALID_ARGUMENT)', () => {",
+                  "pm.test('grpc code 9 (FAILED_PRECONDITION)', () => {",
                   "  const j = pm.response.json();",
-                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(3);",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(9);",
                   "});",
                   "pm.test('unknown zone text', () => pm.expect(pm.response.json().message).to.match(/^unknown zone id '.*'$/));"
                 ]

@@ -229,9 +229,13 @@ func subtractCIDRs(existing, remove []string) ([]string, int) {
 
 // validateZoneID — sync-валидация zone_id: required + existence у владельца.
 //
-// Возвращает gRPC InvalidArgument с FieldViolation для пустого значения; для
-// несуществующей зоны — flat-message `unknown zone id '<zoneId>'`. Любая другая
-// ошибка → mapRepoErr.
+// Две РАЗНЫЕ полосы, и коды у них разные (api-conventions.md §By-lane):
+//   - пустое/malformed значение — своя, синтаксическая: InvalidArgument с
+//     FieldViolation;
+//   - зона не резолвится у владельца — peer-validate: FailedPrecondition с
+//     машинным признаком (serviceerr.UnknownZone), текст `unknown zone id '<id>'`.
+//
+// Любая другая ошибка → MapRepoErr (geo недоступен → Unavailable, fail-closed).
 //
 // `zr == nil` — безопасный fallback для тестов без zoneReg (existence не проверяем).
 func validateZoneID(ctx context.Context, zr ZoneRegistry, field, zoneID string) error {
@@ -246,7 +250,7 @@ func validateZoneID(ctx context.Context, zr ZoneRegistry, field, zoneID string) 
 		return nil
 	}
 	if errors.Is(err, repo.ErrNotFound) {
-		return status.Errorf(codes.InvalidArgument, "unknown zone id '%s'", zoneID)
+		return serviceerr.UnknownZone(zoneID)
 	}
 	return serviceerr.MapRepoErr(err)
 }
@@ -254,10 +258,11 @@ func validateZoneID(ctx context.Context, zr ZoneRegistry, field, zoneID string) 
 // validateRegionID — sync-валидация region_id REGIONAL-подсети: required +
 // existence у owner-домена Geography (kacho-geo). Зеркало validateZoneID.
 //
-// Пустое значение → InvalidArgument `region_id is required`; несуществующий
-// регион → `unknown region id '<regionId>'`; geo недоступен → пробрасывается
-// (Unavailable, fail-closed на мутации). `rr == nil` — fallback для тестов без
-// regionReg (existence не проверяем).
+// Пустое значение → InvalidArgument `region_id is required` (своя полоса);
+// несуществующий регион → FailedPrecondition `unknown region id '<regionId>'` с
+// машинным признаком (peer-validate, serviceerr.UnknownRegion); geo недоступен →
+// пробрасывается (Unavailable, fail-closed на мутации). `rr == nil` — fallback
+// для тестов без regionReg (existence не проверяем).
 func validateRegionID(ctx context.Context, rr RegionRegistry, field, regionID string) error {
 	if regionID == "" {
 		return serviceerr.InvalidArg(field, field+" is required")
@@ -270,7 +275,7 @@ func validateRegionID(ctx context.Context, rr RegionRegistry, field, regionID st
 		return nil
 	}
 	if errors.Is(err, repo.ErrNotFound) {
-		return status.Errorf(codes.InvalidArgument, "unknown region id '%s'", regionID)
+		return serviceerr.UnknownRegion(regionID)
 	}
 	return serviceerr.MapRepoErr(err)
 }

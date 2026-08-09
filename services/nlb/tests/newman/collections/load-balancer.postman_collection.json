@@ -10549,7 +10549,7 @@
       ]
     },
     {
-      "name": "NLB-CR-NEG-REGION-UNKNOWN — Create with unknown region_id → async Operation error INVALID_ARGUMENT 'Region ... not found' (Verifies REQ-NLB-CR-NEG-REGION)",
+      "name": "NLB-CR-NEG-REGION-UNKNOWN — Create with unknown region_id → async Operation error FAILED_PRECONDITION 'Region ... not found' (Verifies REQ-NLB-CR-NEG-REGION)",
       "description": "class:NEG | priority:P0",
       "item": [
         {
@@ -10704,7 +10704,7 @@
                   "pm.environment.unset('_authRetryStarted');",
                   "const j = pm.response.json();",
                   "pm.test('operation failed', () =>   pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
-                  "pm.test('error code 3 INVALID_ARGUMENT (cross-domain ref-not-found)', () =>   pm.expect(j.error && j.error.code).to.eql(3));",
+                  "pm.test('error code 9 FAILED_PRECONDITION (peer-validate lane)', () =>   pm.expect(j.error && j.error.code).to.eql(9));",
                   "pm.test('message mentions region not found', () =>   pm.expect(((j.error && j.error.message) || '').toLowerCase()).to.include('not found'));"
                 ]
               }

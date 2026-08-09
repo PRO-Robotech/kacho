@@ -6,10 +6,10 @@ package loadbalancer
 import (
 	"errors"
 
-	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	kerrors "github.com/PRO-Robotech/kacho/pkg/errors"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/shared"
 	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
@@ -158,23 +158,20 @@ func linkedAddressErr(err error) error {
 	return status.Error(codes.Internal, "address lookup failed")
 }
 
-// peerResourceMissing — единая форма полосы peer-validate «чужого ресурса нет у
-// владельца»: код `FAILED_PRECONDITION`, машинный `reason`-token в деталях,
-// проза — та, что передана вызывающим (здесь она намеренно генерическая).
+// peerResourceMissing — полоса peer-validate «чужого ресурса нет у владельца».
+//
+// Форма поднята в общий фундамент (pkg/errors): код полосы, машинный признак в
+// details, проза — та, что передана вызывающим. Здесь она намеренно
+// ГЕНЕРИЧЕСКАЯ и остаётся такой: на этой полосе мы не подтверждаем ни
+// существование, ни placement, ни принадлежность чужого адреса. По той же
+// причине идентификатор в details НЕ едет — фундамент опускает пустое поле, а не
+// шлёт пустую строку.
 //
 // Детали не влияют на HTTP-статус края (grpc-gateway отображает по КОДУ), но
 // именно по ним клиент отличает переходную полосу от терминальной, не парся
 // сообщение (api-conventions.md §By-lane code-split).
 func peerResourceMissing(resourceType, msg string) error {
-	st := status.New(codes.FailedPrecondition, msg)
-	withDetails, derr := st.WithDetails(&errdetails.ErrorInfo{
-		Reason:   "PEER_RESOURCE_MISSING",
-		Domain:   "nlb.kacho.cloud",
-		Metadata: map[string]string{"resource_type": resourceType},
-	})
-	if derr != nil {
-		// Деталь не прикрепилась — код полосы важнее детали, отдаём его как есть.
-		return st.Err()
-	}
-	return withDetails.Err()
+	return kerrors.ReasonPeerResourceMissing.Errf(
+		kerrors.PeerRef{Service: "nlb", ResourceType: resourceType},
+		"%s", msg)
 }
