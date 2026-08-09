@@ -678,7 +678,26 @@ func protoMessageFromAny(req any) (protoreflect.Message, bool) {
 // extractByProtoReflect walks the message fields looking up the named field.
 // Supports nested ResourceRef (`from_request_field:"resource"`
 // where `resource` is a ResourceRef message → read `.id`).
+//
+// A DOTTED name ("address.project_id") names the scope inside an embedded body
+// message and is walked segment by segment. It exists for requests that wrap a
+// whole creation body instead of restating its fields, where the scope of the
+// call is a field of the wrapped message. Without it such a call cannot state its
+// scope in the catalog at all, and the check its owning service performs would
+// have no counterpart in the artefact operators read. An unresolvable segment
+// yields the wildcard, exactly as an unknown flat field does.
 func extractByProtoReflect(msg protoreflect.Message, field string) ResourceID {
+	if base, rest, ok := strings.Cut(field, "."); ok {
+		fd := msg.Descriptor().Fields().ByName(protoreflect.Name(base))
+		if fd == nil || fd.Kind() != protoreflect.MessageKind || fd.IsList() || fd.IsMap() {
+			return ResourceID("*")
+		}
+		sub := msg.Get(fd).Message()
+		if sub == nil || !sub.IsValid() {
+			return ResourceID("*")
+		}
+		return extractByProtoReflect(sub, rest)
+	}
 	// Find the field descriptor matching the supplied name. We try direct
 	// match first; common field aliases (snake_case vs camelCase) are
 	// covered by protobuf's standard JSON marshalling so we don't need

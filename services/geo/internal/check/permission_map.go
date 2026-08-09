@@ -4,152 +4,37 @@
 package check
 
 import (
+	// Дескрипторы обслуживаемых RPC обязаны быть в бинаре ЭТОГО пакета: карта
+	// строится из их аннотаций, и пустой реестр дал бы карту без единой записи —
+	// то есть отказ на каждом вызове. Импорт делает предпосылку вывода
+	// принадлежностью пакета, а не удачей чужого графа импортов.
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 )
 
-// FGA-скоупинг для kacho-geo: Region/Zone — глобальные cluster-scoped read-only
-// справочники. Публичные Get/List — ambient project-scope EXEMPT (authN-only, снят
-// per-RPC ReBAC-Check, GEO-1 documented-exception); admin Internal* CRUD — system_admin
-// на cluster-синглтоне (зеркалит аннотации proto geo.v1: <exempt> reads / system_admin
-// admin, scope_extractor.object_type=cluster). cluster_kacho_root — ClusterSingletonID
-// из kacho-iam, один на деплой.
-const (
-	objectTypeCluster      = "cluster"
-	clusterSingletonObject = "cluster_kacho_root"
-
-	relationSystemAdmin = "system_admin"
-)
-
-// staticClusterCatalog — extractor, всегда возвращающий (cluster, cluster_kacho_root).
-func staticClusterCatalog() authz.ObjectExtractor {
-	return func(req any) (string, string, error) {
-		return objectTypeCluster, clusterSingletonObject, nil
-	}
+// protoPackages — proto-пакеты, чьи gRPC-сервисы поднимает geo.
+//
+// Это ЕДИНСТВЕННОЕ, что сервис заявляет здесь о правах, и заявляет он не права,
+// а «какие RPC я обслуживаю». Требуемое отношение, тип объекта, поле с
+// идентификатором и форма отказа приезжают из аннотаций тех же методов — из того
+// же источника, из которого генерируется каталог края. Поэтому «сервис
+// спрашивает не то, что объявлено оператору» перестало быть выразимым: двух
+// объявлений больше нет.
+var protoPackages = []string{
+	"kacho.cloud.geo.v1",
+	// LRO-конверт: Operation.Get/Cancel поднимает каждый сервис.
+	"kacho.cloud.operation",
 }
 
-// PermissionMap сопоставляет каждый geo-RPC → требуемое relation + object extractor.
+// PermissionMap — карта `<gRPC FullMethod>` → требуемое право, выведенная из
+// аннотаций.
 //
-// Публичное чтение (Region/Zone Get/List) → viewer на cluster:cluster_kacho_root.
-// Admin Internal* CRUD → system_admin на cluster:cluster_kacho_root.
-//
-// Permission-строки используют корректный geo.* FQN. Интерсептор сейчас гейтит по
-// Relation; Permission несется ради будущей fine-grained модели и parity с
-// permission_catalog в api-gateway.
+// Отказывает в старте (а не на первом запросе) при аннотации, называющей
+// несуществующее поле запроса, при несвязанном пакете и при методе без
+// аннотации вовсе: всё это свойства собранного бинаря, одинаковые на каждом
+// старте, и каждое иначе выглядело бы как отказ по правам.
 func PermissionMap() authz.RPCMap {
-	return authz.RPCMap{
-		// ---- публичный read-only справочник (ambient project-scope EXEMPT, GEO-1) ----
-		// Region/Zone Get/List — admin-curated глобальный catalog: КАЖДЫЙ
-		// аутентифицированный tenant читает его без project-scope гранта (zero-binding
-		// project → 200). `Public:true` тут = «снят per-RPC ReBAC-Check», НЕ
-		// «доступно без аутентификации». Это documented-exception, зеркалит gateway
-		// `<exempt>` на тех же 4 RPC и note в security.md («geo public-read —
-		// project-scope EXEMPT»). Anti-регресс: снятие Check — ТОЛЬКО для этих
-		// read-only catalog-RPC; admin Internal* CRUD ниже остаётся system_admin-гейтед.
-		//
-		// ЧТО ИМЕННО СНЯТО, а что нет (не описывать это как «anti-anon сохраняется» —
-		// правка «под комментарий» вернула бы дыру; тот же разбор ниже, у LRO):
-		// на записи с `Public:true` corelib-интерсептор отдаёт allow СРАЗУ, ДО
-		// извлечения субъекта, а principal-цепочка geo (cert-identity →
-		// trusted-principal) личность только ПРОСТАВЛЯЕТ и никого не отвергает.
-		// Собственного барьера «нет принципала → UNAUTHENTICATED» у geo на этих
-		// четырёх RPC НЕТ.
-		//
-		// Реально их закрывают два слоя, оба вне этой таблицы:
-		//   * ОБЯЗАТЕЛЬНЫЙ mTLS на ОБОИХ листенерах — `validateSecurityConfig`
-		//     отказывает в старте без него, а breakglass не honored в production
-		//     posture. Дозвониться сюда без platform-issued client-cert'а нельзя;
-		//   * для tenant-трафика — ветка `<exempt>` авторизации api-gateway: она
-		//     пропускает FGA-Check, но ТРЕБУЕТ аутентифицированного принципала и
-		//     отвечает UNAUTHENTICATED без него.
-		// Ответ этих RPC ни от какой личности не зависит (глобальный каталог, ни
-		// owner-ключа, ни per-caller фильтрации), поэтому запрос без личности не
-		// получает здесь ни личности, ни чужих данных. Появится RPC, чей ответ
-		// зависит от вызывающего, — `Public:true` ему НЕ подходит.
-		"/kacho.cloud.geo.v1.RegionService/Get":  {Public: true},
-		"/kacho.cloud.geo.v1.RegionService/List": {Public: true},
-		"/kacho.cloud.geo.v1.ZoneService/Get":    {Public: true},
-		"/kacho.cloud.geo.v1.ZoneService/List":   {Public: true},
-
-		// ---- admin CRUD (Internal*, system_admin) ----
-		"/kacho.cloud.geo.v1.InternalRegionService/Create": {
-			Relation:   relationSystemAdmin,
-			Extract:    staticClusterCatalog(),
-			Permission: "geo.regions.create",
-		},
-		"/kacho.cloud.geo.v1.InternalRegionService/Update": {
-			Relation:   relationSystemAdmin,
-			Extract:    staticClusterCatalog(),
-			Permission: "geo.regions.update",
-		},
-		"/kacho.cloud.geo.v1.InternalRegionService/Delete": {
-			Relation:   relationSystemAdmin,
-			Extract:    staticClusterCatalog(),
-			Permission: "geo.regions.delete",
-		},
-		"/kacho.cloud.geo.v1.InternalZoneService/Create": {
-			Relation:   relationSystemAdmin,
-			Extract:    staticClusterCatalog(),
-			Permission: "geo.zones.create",
-		},
-		"/kacho.cloud.geo.v1.InternalZoneService/Update": {
-			Relation:   relationSystemAdmin,
-			Extract:    staticClusterCatalog(),
-			Permission: "geo.zones.update",
-		},
-		"/kacho.cloud.geo.v1.InternalZoneService/Delete": {
-			Relation:   relationSystemAdmin,
-			Extract:    staticClusterCatalog(),
-			Permission: "geo.zones.delete",
-		},
-
-		// GetInternal (two-projection admin read — infra°/status на :9091, system_admin).
-		// Пропущены в backend-map (были Create/Update/Delete, не GetInternal) → corelib
-		// authz fail-closed "rpc not mapped" (GEO-1 F1 registration gap; gateway-catalog
-		// их имел). Тот же класс, что compute InternalMachineType / storage ImageService.
-		"/kacho.cloud.geo.v1.InternalRegionService/GetInternal": {
-			Relation:   relationSystemAdmin,
-			Extract:    staticClusterCatalog(),
-			Permission: "geo.regions.getInternal",
-		},
-		"/kacho.cloud.geo.v1.InternalZoneService/GetInternal": {
-			Relation:   relationSystemAdmin,
-			Extract:    staticClusterCatalog(),
-			Permission: "geo.zones.getInternal",
-		},
-
-		// ---- LRO Operation-envelope (ReBAC-exempt, owner-scoped в handler) ----
-		// Все admin Region/Zone Create/Update/Delete асинхронны и возвращают
-		// Operation, который клиент поллит через OperationService.Get. Оба RPC
-		// подняты на public (:9090) и internal (:9091) листенерах и помечены
-		// Public:true.
-		//
-		// `Public:true` тут означает «снят per-RPC ReBAC-Check», а НЕ
-		// «unauthenticated / без owner-гейта»: в FGA-модели нет object type
-		// `geo_operation` и per-operation tuple'ы не эмитятся, поэтому
-		// `Check viewer on geo_operation:<id>` не имеет пути и отверг бы даже
-		// owner-poll.
-		//
-		// ВНИМАНИЕ, про anti-anon: цепочка интерсепторов geo — recovery →
-		// principal-extract → authz, и на записи с Public:true authz возвращает
-		// allow СРАЗУ, ДО извлечения субъекта. Principal-extract личность только
-		// ПРОСТАВЛЯЕТ и никого не отвергает. То есть отдельного anti-anon-барьера
-		// на этих двух RPC НЕТ (в отличие от kacho-vpc, где в цепочке стоит
-		// TenantUnaryInterceptor, отвергающий anonymous в production-mode). Не
-		// описывать это как «anti-anon сохраняется»: правка «под комментарий»
-		// вернула бы дыру. Реально защищают owner-гейт (ниже) и обязательный mTLS
-		// на обоих листенерах.
-		//
-		// Ownership энфорсится В HANDLER'е (sec-hardening-r3): OperationHandler.
-		// Get/Cancel через ownership-scoped GetOwned/CancelOwned (owner —
-		// creator-principal из доверенного ctx, предикат в SQL WHERE; чужой op-id →
-		// NotFound, no-leak). Op-id опакен, но это прямой object-reference — раньше
-		// ЕДИНСТВЕННЫМ барьером был негадаемый id (capability-style), что позволяло
-		// BOLA (read/cancel чужой in-flight admin-мутации по утёкшему id). Теперь
-		// закрыто owner-предикатом: owner-ключ выводится через
-		// operations.OwnerFromContext, поэтому запрос БЕЗ принципала ключа не
-		// получает вовсе и отваливается тем же no-leak NotFound. Анти-регресс:
-		// пометка Public снимает ReBAC-Check, но НЕ owner-гейт.
-		"/kacho.cloud.operation.OperationService/Get":    {Public: true},
-		"/kacho.cloud.operation.OperationService/Cancel": {Public: true},
-	}
+	return catalogderive.MustDerive(protoPackages...)
 }

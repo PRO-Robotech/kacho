@@ -1880,11 +1880,11 @@ const file_kacho_cloud_registry_v1_registry_service_proto_rawDesc = "" +
 	"\x0esubject_digest\x18\x03 \x01(\tR\rsubjectDigest\x12#\n" +
 	"\rartifact_type\x18\x04 \x01(\tR\fartifactType\"X\n" +
 	"\x15ListReferrersResponse\x12?\n" +
-	"\treferrers\x18\x01 \x03(\v2!.kacho.cloud.registry.v1.ReferrerR\treferrers2\xd9\x1a\n" +
+	"\treferrers\x18\x01 \x03(\v2!.kacho.cloud.registry.v1.ReferrerR\treferrers2\xee\x1c\n" +
 	"\x0fRegistryService\x12\xd1\x01\n" +
 	"\x03Get\x12+.kacho.cloud.registry.v1.GetRegistryRequest\x1a!.kacho.cloud.registry.v1.Registry\"z\x8a\xb5\x18\x17registry.registries.get\x92\xb5\x18\x05v_get\x9a\xb5\x18 \n" +
-	"\x11registry_registry\x12\vregistry_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02'\x12%/registry/v1/registries/{registry_id}\x12\x94\x01\n" +
-	"\x04List\x12..kacho.cloud.registry.v1.ListRegistriesRequest\x1a/.kacho.cloud.registry.v1.ListRegistriesResponse\"+\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02\x19\x12\x17/registry/v1/registries\x12\xeb\x01\n" +
+	"\x11registry_registry\x12\vregistry_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x02'\x12%/registry/v1/registries/{registry_id}\x12\xad\x01\n" +
+	"\x04List\x12..kacho.cloud.registry.v1.ListRegistriesRequest\x1a/.kacho.cloud.registry.v1.ListRegistriesResponse\"D\x8a\xb5\x18\x18registry.registries.list\xa2\xb5\x18\x011\xb0\xb5\x18\x01\x82\xd3\xe4\x93\x02\x19\x12\x17/registry/v1/registries\x12\xeb\x01\n" +
 	"\x06Create\x12..kacho.cloud.registry.v1.CreateRegistryRequest\x1a .kacho.cloud.operation.Operation\"\x8e\x01\x8a\xb5\x18\x1aregistry.registries.create\x92\xb5\x18\x06editor\x9a\xb5\x18\x15\n" +
 	"\aproject\x12\n" +
 	"project_id\xa2\xb5\x18\x011\xb2\xd2*\"\n" +
@@ -1896,24 +1896,24 @@ const file_kacho_cloud_registry_v1_registry_service_proto_rawDesc = "" +
 	"\x11registry_registry\x12\vregistry_id\xa2\xb5\x18\x011\xa8\xb5\x18\x01\xb2\xd2*/\n" +
 	"\x16DeleteRegistryMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02'*%/registry/v1/registries/{registry_id}\x12\x95\x02\n" +
 	"\x0eListOperations\x126.kacho.cloud.registry.v1.ListRegistryOperationsRequest\x1a7.kacho.cloud.registry.v1.ListRegistryOperationsResponse\"\x91\x01\x8a\xb5\x18\"registry.registries.listOperations\x92\xb5\x18\x06v_list\x9a\xb5\x18 \n" +
-	"\x11registry_registry\x12\vregistry_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x022\x120/registry/v1/registries/{registry_id}/operations\x12\xbb\x01\n" +
-	"\rGetRepository\x12-.kacho.cloud.registry.v1.GetRepositoryRequest\x1a#.kacho.cloud.registry.v1.Repository\"V\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02D\x12B/registry/v1/registries/{registry_id}/repositories/{repository=**}\x12\xbf\x01\n" +
-	"\x10ListRepositories\x120.kacho.cloud.registry.v1.ListRepositoriesRequest\x1a1.kacho.cloud.registry.v1.ListRepositoriesResponse\"F\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x024\x122/registry/v1/registries/{registry_id}/repositories\x12\xdb\x01\n" +
-	"\x10CreateRepository\x120.kacho.cloud.registry.v1.CreateRepositoryRequest\x1a .kacho.cloud.operation.Operation\"s\x8a\xb5\x18\b<exempt>\xb2\xd2*&\n" +
+	"\x11registry_registry\x12\vregistry_id\xa2\xb5\x18\x011\x82\xd3\xe4\x93\x022\x120/registry/v1/registries/{registry_id}/operations\x12\xd5\x01\n" +
+	"\rGetRepository\x12-.kacho.cloud.registry.v1.GetRepositoryRequest\x1a#.kacho.cloud.registry.v1.Repository\"p\x8a\xb5\x18\x19registry.repositories.get\xa2\xb5\x18\x011\xb0\xb5\x18\x01\x82\xd3\xe4\x93\x02D\x12B/registry/v1/registries/{registry_id}/repositories/{repository=**}\x12\xda\x01\n" +
+	"\x10ListRepositories\x120.kacho.cloud.registry.v1.ListRepositoriesRequest\x1a1.kacho.cloud.registry.v1.ListRepositoriesResponse\"a\x8a\xb5\x18\x1aregistry.repositories.list\xa2\xb5\x18\x011\xb0\xb5\x18\x01\x82\xd3\xe4\x93\x024\x122/registry/v1/registries/{registry_id}/repositories\x12\xf9\x01\n" +
+	"\x10CreateRepository\x120.kacho.cloud.registry.v1.CreateRepositoryRequest\x1a .kacho.cloud.operation.Operation\"\x90\x01\x8a\xb5\x18\x1cregistry.repositories.create\xa2\xb5\x18\x011\xb0\xb5\x18\x01\xb2\xd2*&\n" +
 	"\x18CreateRepositoryMetadata\x12\n" +
-	"Repository\x82\xd3\xe4\x93\x027:\x01*\"2/registry/v1/registries/{registry_id}/repositories\x12\xec\x01\n" +
-	"\x10UpdateRepository\x120.kacho.cloud.registry.v1.UpdateRepositoryRequest\x1a .kacho.cloud.operation.Operation\"\x83\x01\x8a\xb5\x18\b<exempt>\xb2\xd2*&\n" +
+	"Repository\x82\xd3\xe4\x93\x027:\x01*\"2/registry/v1/registries/{registry_id}/repositories\x12\x89\x02\n" +
+	"\x10UpdateRepository\x120.kacho.cloud.registry.v1.UpdateRepositoryRequest\x1a .kacho.cloud.operation.Operation\"\xa0\x01\x8a\xb5\x18\x1cregistry.repositories.update\xa2\xb5\x18\x011\xb0\xb5\x18\x01\xb2\xd2*&\n" +
 	"\x18UpdateRepositoryMetadata\x12\n" +
-	"Repository\x82\xd3\xe4\x93\x02G:\x01*2B/registry/v1/registries/{registry_id}/repositories/{repository=**}\x12\xf4\x01\n" +
-	"\x10DeleteRepository\x120.kacho.cloud.registry.v1.DeleteRepositoryRequest\x1a .kacho.cloud.operation.Operation\"\x8b\x01\x8a\xb5\x18\b<exempt>\xb2\xd2*1\n" +
-	"\x18DeleteRepositoryMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02D*B/registry/v1/registries/{registry_id}/repositories/{repository=**}\x12\xb9\x01\n" +
-	"\bListTags\x12(.kacho.cloud.registry.v1.ListTagsRequest\x1a).kacho.cloud.registry.v1.ListTagsResponse\"X\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02F\x12D/registry/v1/registries/{registry_id}/repositories/{repository}/tags\x12\xe7\x01\n" +
-	"\tDeleteTag\x12).kacho.cloud.registry.v1.DeleteTagRequest\x1a .kacho.cloud.operation.Operation\"\x8c\x01\x8a\xb5\x18\b<exempt>\xb2\xd2**\n" +
-	"\x11DeleteTagMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02L*J/registry/v1/registries/{registry_id}/repositories/{repository}/tags/{tag}\x12\xf3\x01\n" +
-	"\x10RenameRepository\x120.kacho.cloud.registry.v1.RenameRepositoryRequest\x1a .kacho.cloud.operation.Operation\"\x8a\x01\x8a\xb5\x18\b<exempt>\xb2\xd2*&\n" +
+	"Repository\x82\xd3\xe4\x93\x02G:\x01*2B/registry/v1/registries/{registry_id}/repositories/{repository=**}\x12\x91\x02\n" +
+	"\x10DeleteRepository\x120.kacho.cloud.registry.v1.DeleteRepositoryRequest\x1a .kacho.cloud.operation.Operation\"\xa8\x01\x8a\xb5\x18\x1cregistry.repositories.delete\xa2\xb5\x18\x011\xb0\xb5\x18\x01\xb2\xd2*1\n" +
+	"\x18DeleteRepositoryMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02D*B/registry/v1/registries/{registry_id}/repositories/{repository=**}\x12\xd4\x01\n" +
+	"\bListTags\x12(.kacho.cloud.registry.v1.ListTagsRequest\x1a).kacho.cloud.registry.v1.ListTagsResponse\"s\x8a\xb5\x18\x1aregistry.repositories.list\xa2\xb5\x18\x011\xb0\xb5\x18\x01\x82\xd3\xe4\x93\x02F\x12D/registry/v1/registries/{registry_id}/repositories/{repository}/tags\x12\x84\x02\n" +
+	"\tDeleteTag\x12).kacho.cloud.registry.v1.DeleteTagRequest\x1a .kacho.cloud.operation.Operation\"\xa9\x01\x8a\xb5\x18\x1cregistry.repositories.delete\xa2\xb5\x18\x011\xb0\xb5\x18\x01\xb2\xd2**\n" +
+	"\x11DeleteTagMetadata\x12\x15google.protobuf.Empty\x82\xd3\xe4\x93\x02L*J/registry/v1/registries/{registry_id}/repositories/{repository}/tags/{tag}\x12\x90\x02\n" +
+	"\x10RenameRepository\x120.kacho.cloud.registry.v1.RenameRepositoryRequest\x1a .kacho.cloud.operation.Operation\"\xa7\x01\x8a\xb5\x18\x1cregistry.repositories.update\xa2\xb5\x18\x011\xb0\xb5\x18\x01\xb2\xd2*&\n" +
 	"\x18RenameRepositoryMetadata\x12\n" +
-	"Repository\x82\xd3\xe4\x93\x02N:\x01*\"I/registry/v1/registries/{registry_id}/repositories/{repository=**}:rename\x12\xd0\x01\n" +
-	"\rListReferrers\x12-.kacho.cloud.registry.v1.ListReferrersRequest\x1a..kacho.cloud.registry.v1.ListReferrersResponse\"`\x8a\xb5\x18\b<exempt>\x82\xd3\xe4\x93\x02N\x12L/registry/v1/registries/{registry_id}/repositories/{repository=**}/referrersBJZHgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1;registryv1b\x06proto3"
+	"Repository\x82\xd3\xe4\x93\x02N:\x01*\"I/registry/v1/registries/{registry_id}/repositories/{repository=**}:rename\x12\xea\x01\n" +
+	"\rListReferrers\x12-.kacho.cloud.registry.v1.ListReferrersRequest\x1a..kacho.cloud.registry.v1.ListReferrersResponse\"z\x8a\xb5\x18\x19registry.repositories.get\xa2\xb5\x18\x011\xb0\xb5\x18\x01\x82\xd3\xe4\x93\x02N\x12L/registry/v1/registries/{registry_id}/repositories/{repository=**}/referrersBJZHgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1;registryv1b\x06proto3"
 
 var (
 	file_kacho_cloud_registry_v1_registry_service_proto_rawDescOnce sync.Once

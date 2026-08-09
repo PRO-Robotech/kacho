@@ -34,15 +34,18 @@ service TargetGroupService {
     // Scope-filtered List: handler читает страницу курсором из своей БД и сужает
     // её пообъектно, батчами, тем же отношением, которым каталог гейтит одиночное
     // чтение — `v_get` на `nlb_target_group:<id>`. Страница не может быть шире
-    // чтения: это один и тот же вопрос, заданный по строке. Поэтому gateway
-    // освобождает RPC от per-RPC Check (<exempt>) — единый project-scope Check
-    // отклонил бы вызывающего `no path` 403 ещё до сужения. authn остаётся (JWT).
+    // чтения: это один и тот же вопрос, заданный по строке. Поэтому каталог
+    // объявляет полосу `scope_filtered` — единый project-scope Check отклонил бы
+    // вызывающего `no path` 403 ещё до сужения. Снят именно Check, а НЕ аутентификация:
+    // полоса требует названного принципала, иначе сужать не для кого.
     //
     // Прежде здесь назывался обратный порядок — перечислить у iam разрешённые
     // объекты и отфильтровать ими. Перечисление снято: у него жёсткий серверный
     // предел и нет продолжения, поэтому ресурсы сверх предела становились владельцу
     // невидимы при живых правах.
-    option (kacho.iam.authz.v1.permission) = "<exempt>";
+    option (kacho.iam.authz.v1.permission) = "loadbalancer.targetGroups.list";
+    option (kacho.iam.authz.v1.scope_filtered) = true;
+    option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
   rpc Create(CreateTargetGroupRequest) returns (operation.Operation) {

@@ -198,9 +198,10 @@ const file_kacho_cloud_loadbalancer_v1_internal_resource_lifecycle_service_proto
 	"\x12parent_resource_id\x18\x06 \x01(\tR\x10parentResourceId\x12$\n" +
 	"\x0eold_project_id\x18\a \x01(\tR\foldProjectId\x129\n" +
 	"\n" +
-	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt2\xa3\x01\n" +
-	" InternalResourceLifecycleService\x12\x7f\n" +
-	"\tSubscribe\x12-.kacho.cloud.loadbalancer.v1.SubscribeRequest\x1a3.kacho.cloud.loadbalancer.v1.ResourceLifecycleEvent\"\f\x8a\xb5\x18\b<exempt>0\x01BRZPgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1b\x06proto3"
+	"created_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt2\xea\x01\n" +
+	" InternalResourceLifecycleService\x12\xc5\x01\n" +
+	"\tSubscribe\x12-.kacho.cloud.loadbalancer.v1.SubscribeRequest\x1a3.kacho.cloud.loadbalancer.v1.ResourceLifecycleEvent\"R\x8a\xb5\x18(loadbalancer.resourceLifecycle.subscribe\x92\xb5\x18\rsystem_viewer\x9a\xb5\x18\f\n" +
+	"\acluster\x12\x01*\xa2\xb5\x18\x0110\x01BRZPgithub.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1;loadbalancerv1b\x06proto3"
 
 var (
 	file_kacho_cloud_loadbalancer_v1_internal_resource_lifecycle_service_proto_rawDescOnce sync.Once

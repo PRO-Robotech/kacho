@@ -157,7 +157,11 @@ func TestPermissionCatalog_RegistryV1Present_EntryFloor(t *testing.T) {
 
 	// registry.v1 methods MUST be present (the regressed surface).
 	for _, want := range []struct{ fqn, perm string }{
-		{"kacho.cloud.registry.v1.RegistryService/List", "<exempt>"},
+		// Строка перестала быть `<exempt>` и назвала полосу сужения: реестр
+		// действительно сужает страницу пообъектно в хендлере, а `<exempt>` этого не
+		// выражал — он говорил лишь «край не спрашивает», ничего не обещая о том,
+		// спрашивает ли кто-нибудь.
+		{"kacho.cloud.registry.v1.RegistryService/List", "registry.registries.list"},
 		{"kacho.cloud.registry.v1.RegistryService/Get", "registry.registries.get"},
 		{"kacho.cloud.registry.v1.RegistryService/Create", "registry.registries.create"},
 		{"kacho.cloud.registry.v1.RegistryService/Delete", "registry.registries.delete"},
@@ -568,16 +572,51 @@ func TestPermissionCatalog_VBC22_VerbBearingFlip(t *testing.T) {
 		assert.True(t, entry.IsExempt(), "%s must stay exempt", fqn)
 	}
 
-	// Invariant: no Internal.* RPC carries a v_* verb-bearing relation —
-	// cluster-internal admin methods are tier/system_admin, never object-self verbs.
+	// Invariant: an Internal.* RPC anchored on the CLUSTER SINGLETON must not carry
+	// a v_* verb-bearing relation. Such a method is administrative — it answers
+	// about the deployment, not about anybody's object — and a verb relation there
+	// is one a tenant can hold, which is how infra reads end up tenant-readable.
+	//
+	// The invariant used to say "no Internal.* RPC, full stop", and that was too
+	// broad by exactly one case: an internal method anchored on a TENANT OBJECT,
+	// which acts for the tenant under the initiator's forwarded identity. vpc's
+	// internal address path (allocate / set-reference / mark-in-use) is that case —
+	// compute calls it while attaching an interface, on the caller's own address,
+	// and the relation it needs is the same `v_update` the public path needs. A
+	// tier relation there would refuse every legitimate use.
+	//
+	// The old wording read as true only because those rows carried `<exempt>` — the
+	// catalog named no relation at all, while kacho-vpc required `v_update` all
+	// along. The invariant held over the catalog and was false about what was
+	// enforced; now that both come from one source, it says what it means.
+	verbOnCluster, verbOnObject := 0, 0
 	for _, fqn := range c.FQNs() {
 		if !strings.Contains(fqn, "Internal") {
 			continue
 		}
 		entry, _ := c.Lookup(fqn)
-		assert.False(t, strings.HasPrefix(entry.RequiredRelation, "v_"),
-			"Internal.* RPC %s must not carry a verb-bearing relation %q", fqn, entry.RequiredRelation)
+		if !strings.HasPrefix(entry.RequiredRelation, "v_") {
+			continue
+		}
+		if entry.ScopeExtractor.ObjectType == "cluster" {
+			verbOnCluster++
+			assert.Fail(t, "verb-bearing relation on a cluster-anchored Internal RPC",
+				"%s carries %q on the cluster singleton: that relation is tenant-holdable, and the "+
+					"method answers about the deployment", fqn, entry.RequiredRelation)
+			continue
+		}
+		verbOnObject++
 	}
+	assert.Zero(t, verbOnCluster)
+	// Положительный контроль: случай, ради которого инвариант сужен, обязан в
+	// дереве БЫТЬ. Ноль таких строк означал бы, что утверждение выше не отличает
+	// сужение от отсутствия предмета.
+	assert.NotZero(t, verbOnObject,
+		"ни один Internal.* RPC не якорится на объекте тенанта с глагольным отношением — "+
+			"сужение инварианта стало беспредметным, и его надо либо вернуть к прежнему виду, "+
+			"либо перепроверить распознавание")
+	t.Logf("перепись: Internal.* с глаголом на кластере %d, на объекте тенанта %d",
+		verbOnCluster, verbOnObject)
 }
 
 func TestPermissionCatalog_RejectBadVersionFlavour(t *testing.T) {

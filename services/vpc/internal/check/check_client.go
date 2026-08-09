@@ -12,6 +12,7 @@ import (
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/auth"
 	"github.com/PRO-Robotech/kacho/pkg/authz"
+	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 )
 
 // ResourceExistenceProbe — порт проверки существования object-scoped ресурса в
@@ -32,15 +33,13 @@ type ResourceExistenceProbe interface {
 // vpcObjectTypes — object-scoped vpc-ресурсы, для которых применяется
 // existence-hiding (Get/List/Update/Delete на самом ресурсе). `project`/`cluster`
 // — collection/cluster-scoped, существование объекта там не скрывается.
-var vpcObjectTypes = map[string]struct{}{
-	objectTypeNetwork:          {},
-	objectTypeSubnet:           {},
-	objectTypeAddress:          {},
-	objectTypeRouteTable:       {},
-	objectTypeSecurityGroup:    {},
-	objectTypeGateway:          {},
-	objectTypeNetworkInterface: {},
-}
+//
+// Набор ВЫВОДИТСЯ из карты прав, а не выписывается. Выписанный перечень — то
+// место, которое забывают дополнить: новый тип ресурса приезжает в карту своей
+// аннотацией, а в перечне его нет, и отказ по такому ресурсу молча перестаёт
+// скрывать существование. Состав закреплён пробой
+// TestVPCObjectTypesCoverEveryResourceScope.
+var vpcObjectTypes = catalogderive.ObjectScopedTypes(PermissionMap())
 
 // IAMCheckClient — gRPC adapter, реализующий port `authz.CheckClient`
 // поверх `kacho-iam.InternalIAMService.Check`.

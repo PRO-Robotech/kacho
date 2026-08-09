@@ -39,15 +39,22 @@ func TestPermissionMap_ScopeFiltered(t *testing.T) {
 	}
 }
 
-// TestPermissionMap_List_CatalogRetained — List остаётся ScopeFiltered, но несёт
-// v_list Relation как permission-catalog документацию (энфорс — row-filter в
-// хендлере по registry_registry v_list, non-member → 200+empty). REG-06.
-func TestPermissionMap_List_CatalogRetained(t *testing.T) {
+// TestPermissionMap_List_IsNarrowedNotChecked — List сужается пообъектно в
+// хендлере (non-member → 200 + пустая страница), поэтому единичного Check у
+// края нет. REG-06.
+//
+// Здесь дополнительно закреплялось `v_list` в поле Relation — «как документация
+// каталога». Документацией это не было: каталог несёт своё имя права отдельно, а
+// интерсептор на полосе сужения до отношения не доходит вовсе. То есть поле
+// закреплялось ради читателя, а читалось как объявление — второе объявление о
+// том же вызове, ничем не связанное с первым.
+func TestPermissionMap_List_IsNarrowedNotChecked(t *testing.T) {
 	m := PermissionMap()
 	e, ok := m["/kacho.cloud.registry.v1.RegistryService/List"]
 	require.True(t, ok, "List must be mapped")
 	require.True(t, e.ScopeFiltered, "List must be ScopeFiltered (handler row-filter, not per-object Check)")
-	require.Equal(t, relVList, e.Relation, "List keeps v_list as permission-catalog doc")
+	require.Empty(t, e.Relation, "на полосе сужения отношение не читается")
+	require.Equal(t, "registry.registries.list", e.Permission, "имя права каталога сохранено")
 }
 
 // TestPermissionMap_CRUD_InterceptorGated — стандартный CRUD registry-namespace
@@ -78,7 +85,7 @@ func TestPermissionMap_ListOperations_InterceptorGated(t *testing.T) {
 	e, ok := m["/kacho.cloud.registry.v1.RegistryService/ListOperations"]
 	require.True(t, ok, "ListOperations must be mapped (interceptor fail-closes unmapped RPC)")
 	require.False(t, e.ScopeFiltered, "ListOperations interceptor-gated (single-object Check)")
-	require.Equal(t, relVList, e.Relation, "ListOperations gated by v_list")
+	require.Equal(t, "v_list", e.Relation, "ListOperations gated by v_list")
 	require.Equal(t, "registry.registries.listOperations", e.Permission)
 }
 
@@ -120,17 +127,27 @@ func TestPermissionMap_OperationService_PublicExempt(t *testing.T) {
 }
 
 // TestPermissionMap_Internal — InternalRegistryService (:9091) под per-RPC Check
-// (internal НЕ освобождён, security.md): Stats read-tier (v_get), GC mutation-tier
-// (v_delete). REG-38.
+// (internal НЕ освобождён, security.md), и оба его RPC гейтятся ОПЕРАТОРСКИМ
+// ярусом, а не тенантским глаголом. REG-38.
+//
+// Прежде здесь закреплялись `v_get` у статистики и `v_delete` у сборки мусора —
+// то, что объявляла рукописная карта, пока каталог края объявлял другое.
+// Разошлись они по существу, а не по недосмотру: `v_get` и `v_delete` на реестре
+// держит его ВЛАДЕЛЕЦ (модель выводит глаголы из `owner`, и запись `owner`
+// пишется при создании каждого реестра), а статистика namespace — инфра-проекция,
+// и сборка мусора — операционное действие. Тенант не должен получать ни того, ни
+// другого на своём реестре; кластерный ярус этого и не даёт.
 func TestPermissionMap_Internal(t *testing.T) {
 	m := PermissionMap()
 
 	stats, ok := m["/kacho.cloud.registry.v1.InternalRegistryService/GetRegistryStats"]
 	require.True(t, ok)
 	require.False(t, stats.ScopeFiltered, "internal Stats interceptor-gated")
-	require.Equal(t, relVGet, stats.Relation, "Stats viewer-gated (v_get)")
+	require.Equal(t, "system_viewer", stats.Relation,
+		"статистика namespace — инфра-данные: операторский ярус, не глагол владельца")
 
 	gc, ok := m["/kacho.cloud.registry.v1.InternalRegistryService/TriggerGarbageCollection"]
 	require.True(t, ok)
-	require.Equal(t, relVDelete, gc.Relation, "GC mutation-tier (v_delete)")
+	require.Equal(t, "admin", gc.Relation,
+		"сборка мусора — операционное действие: admin-ярус, а не глагол владельца")
 }

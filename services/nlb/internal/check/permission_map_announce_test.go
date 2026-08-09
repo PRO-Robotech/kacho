@@ -27,14 +27,20 @@ func TestAnnounce_GetIsViewerGatedNotExempt(t *testing.T) {
 	require.True(t, ok, "GetAnnounceState must be mapped (internal RPC fail-closed)")
 	require.False(t, e.Public, "GetAnnounceState must NOT be exempt (per-RPC Check)")
 	require.False(t, e.ScopeFiltered)
-	require.Equal(t, "v_get", e.Relation, "read announce-state → viewer-tier verb-bearing relation")
+	// Отношение — кластерный операторский ярус, а НЕ пообъектный глагол.
+	// Разница не в строгости вопроса, а в том, кто на него отвечает «да»:
+	// `v_get` на балансировщике держит владелец-тенант, `system_viewer` на
+	// кластерном синглтоне — только тот, кому его выдали прямым назначением.
+	// Announce-state — инфра-данные (security.md), поэтому тенант читать её не
+	// должен даже на своём балансировщике.
+	require.Equal(t, "system_viewer", e.Relation,
+		"read announce-state → кластерный операторский ярус, не тенантский глагол")
 	require.NotNil(t, e.Extract)
 
-	const id = "nlb-xyz"
-	objType, objID, err := e.Extract(&lbv1.GetLoadBalancerAnnounceStateRequest{NetworkLoadBalancerId: id})
+	objType, objID, err := e.Extract(&lbv1.GetLoadBalancerAnnounceStateRequest{NetworkLoadBalancerId: "nlb-xyz"})
 	require.NoError(t, err)
-	require.Equal(t, "nlb_network_load_balancer", objType)
-	require.Equal(t, id, objID)
+	require.Equal(t, "cluster", objType)
+	require.Equal(t, "cluster_kacho_root", objID)
 }
 
 func TestAnnounce_ReportIsWriterGatedNotExempt(t *testing.T) {
@@ -53,12 +59,18 @@ func TestAnnounce_ReportIsWriterGatedNotExempt(t *testing.T) {
 	require.Equal(t, id, objID)
 }
 
-// Announce-permissions намеренно НЕ входят в 30-string tenant catalog (это
-// internal RPC, relation-based gate; каталогизация announce-permission на iam-
-// стороне — отдельная задача). Catalog остаётся ровно 30.
-func TestAnnounce_PermissionsNotInTenantCatalog(t *testing.T) {
+// TestAnnounce_PermissionsAreNamed — у обоих announce-RPC есть имя права, и это
+// имя — то же, что в каталоге края.
+//
+// Здесь стояло обратное утверждение: «announce-permissions намеренно НЕ входят в
+// каталог, поле пустое». Оно описывало рукописную карту, а не каталог: каталог
+// края нёс оба имени всё это время, и пустое поле означало лишь, что домен о них
+// умалчивал у себя. Умолчание — не «не входят»: право называлось одним артефактом
+// и не называлось другим, и утверждение про «ровно 26 имён» было числом одной из
+// двух сторон.
+func TestAnnounce_PermissionsAreNamed(t *testing.T) {
 	get := check.PermissionMap()[announceGetFM]
 	rep := check.PermissionMap()[announceReportFM]
-	require.Empty(t, get.Permission)
-	require.Empty(t, rep.Permission)
+	require.Equal(t, "loadbalancer.networkLoadBalancers.getAnnounceState", get.Permission)
+	require.Equal(t, "loadbalancer.networkLoadBalancers.reportAnnounceState", rep.Permission)
 }

@@ -43,15 +43,18 @@ func StaticExtractor(objectType string, extractID func(req any) (string, error))
 
 // RPCEntry — описание прав, требуемых на конкретный RPC.
 //
-// Заполняется в per-service `internal/metadata/permission_map.go`:
+// НЕ ЗАПОЛНЯЕТСЯ РУКАМИ. Запись выводится из аннотаций метода в proto —
+// `pkg/authz/catalogderive`, — то есть из того же источника, из которого
+// генерируется каталог прав шлюза:
 //
-//	var PermissionMap = authz.RPCMap{
-//	    "/kacho.cloud.vpc.v1.NetworkService/Get": {
-//	        Relation: "viewer",
-//	        Extract:  authz.StaticExtractor("vpc_network", ...),
-//	    },
-//	    ...
+//	func PermissionMap() authz.RPCMap {
+//	    return catalogderive.MustDerive("kacho.cloud.vpc.v1", "kacho.cloud.operation")
 //	}
+//
+// Литеральная карта рядом с выведенной — второе объявление одного и того же
+// права: действующим требованием становится их пересечение, а пересечение не
+// записано ни в одном документе, по которому выдают права. За этим следит
+// internal/repohygiene TestNoServiceDeclaresItsPermissionsASecondTime.
 type RPCEntry struct {
 	// Relation — FGA-relation, требуемое на object'е.
 	// "viewer" | "editor" | "admin" | "use" | "start_stop" | etc.

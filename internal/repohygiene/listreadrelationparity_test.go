@@ -137,6 +137,14 @@ var listReadRelationExceptions = map[string]string{
 var (
 	catalogFqnDomainRe    = regexp.MustCompile(`^kacho\.cloud\.([a-z0-9]+)\.v1\.([A-Za-z0-9]+)/([A-Za-z0-9]+)$`)
 	permissionMapDomainRe = regexp.MustCompile(`/kacho\.cloud\.([a-z0-9]+)\.v1\.`)
+	// protoPackageDomainRe — второй способ прочитать домен из того же файла.
+	//
+	// Карта прав перестала быть перечнем FQN и стала выводом из аннотаций: домен
+	// теперь назван ОДИН раз, объявлением обслуживаемых proto-пакетов, а не
+	// восемьюдесятью повторами в ключах. Первое выражение на таком файле не
+	// находит ничего, и гейт объявил бы «домен не выведен» там, где он назван
+	// яснее прежнего.
+	protoPackageDomainRe = regexp.MustCompile(`"kacho\.cloud\.([a-z0-9]+)\.v1"`)
 )
 
 // relationStoreQuestions — закрытый список имён, которыми в этом дереве задаётся
@@ -726,6 +734,9 @@ func deriveServiceDomain(svcDir string) string {
 			return nil
 		}
 		for _, m := range permissionMapDomainRe.FindAllStringSubmatch(string(b), -1) {
+			counts[m[1]]++
+		}
+		for _, m := range protoPackageDomainRe.FindAllStringSubmatch(string(b), -1) {
 			counts[m[1]]++
 		}
 		return nil

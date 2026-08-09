@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
-	"github.com/PRO-Robotech/kacho/pkg/authz/catalogparity"
+	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/check"
 )
 
@@ -187,9 +187,9 @@ func TestPermissionMap_NoTenantDataOnTheClusterSingleton(t *testing.T) {
 	seen := 0
 	for fullMethod, entry := range check.PermissionMap() {
 		// Тип объекта восстанавливается вызовом extractor'а на НУЛЕВОМ запросе метода
-		// (catalogparity: тот же приём, которым сверяется gateway-каталог) — сам
+		// (тот же приём, которым сверяется gateway-каталог) — сам
 		// extractor хранится замыканием и прочитан быть не может.
-		objType, ok := catalogparity.ScopeObjectType(fullMethod, entry)
+		objType, ok := catalogderive.ScopeObjectType(fullMethod, entry)
 		if !ok || objType != "cluster" {
 			continue // object-scoped запись: её extractor читает поле запроса
 		}

@@ -38,7 +38,7 @@ import (
 // стенде, поэтому проба краснеет, если скрытие снимут.
 func viewerCheckClient() authz.CheckClient {
 	return authz.CheckClientFunc(func(_ context.Context, _, relation, _ string) (bool, error) {
-		return relation == relVGet, nil
+		return relation == "v_get", nil
 	})
 }
 
