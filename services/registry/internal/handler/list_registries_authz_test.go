@@ -10,8 +10,8 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
@@ -22,55 +22,72 @@ import (
 	regerrors "github.com/PRO-Robotech/kacho/services/registry/internal/errors"
 )
 
-// barrierAuthorizer — Check блокируется до тех пор, пока в barrier не соберётся `want`
-// одновременных вызовов; затем все разблокируются. Если filterRegistries вызывает
-// Check последовательно, второй вызов никогда не стартует → barrier не наберётся →
-// filterRegistries зависнет (тест ловит по таймауту). Доказывает bounded-concurrency
-// fan-out (паритет с filterRepos/filterOperations).
-type barrierAuthorizer struct {
-	want    int
-	arrived chan struct{}
-	release chan struct{}
+// batchRecorder — приёмная сторона, считающая ЗАПРОСЫ и ВОПРОСЫ раздельно.
+//
+// Раздельно — потому что предмет пробы именно в их отношении: поштучный опрос давал
+// столько же запросов, сколько вопросов, и страница каталога стоила до тысячи
+// обращений при веере восемь. Пакетный вопрос оставляет вопросы теми же и сокращает
+// запросы до ceil(n/партия).
+type batchRecorder struct {
+	requests  int
+	questions int
+	maxBatch  int
+	allow     map[string]bool
+	allowAll  bool
 }
 
-func newBarrierAuthorizer(want int) *barrierAuthorizer {
-	return &barrierAuthorizer{want: want, arrived: make(chan struct{}, want), release: make(chan struct{})}
+func (b *batchRecorder) Check(_ context.Context, _, _, object string) (bool, error) {
+	b.requests++
+	b.questions++
+	return b.allowAll || b.allow[object], nil
 }
 
-func (b *barrierAuthorizer) Check(_ context.Context, _, _, _ string) (bool, error) {
-	b.arrived <- struct{}{}
-	if len(b.arrived) == b.want {
-		close(b.release) // достигнут порог одновременности → отпускаем всех
+func (b *batchRecorder) CheckMany(
+	_ context.Context, _, _, objectType string, objectIDs []string,
+) ([]string, error) {
+	b.requests++
+	b.questions += len(objectIDs)
+	if len(objectIDs) > b.maxBatch {
+		b.maxBatch = len(objectIDs)
 	}
-	<-b.release
-	return true, nil
+	out := make([]string, 0, len(objectIDs))
+	for _, id := range objectIDs {
+		if b.allowAll || b.allow[domain.FGAObjectRef(objectType, id)] {
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }
 
-// REG-06 concurrency — filterRegistries фанит per-registry Check bounded-concurrency
-// (как filterRepos), а не последовательно: barrier требует 2 одновременных Check →
-// последовательная реализация зависла бы (второй Check не стартовал бы, пока первый
-// блокирован). Тест проходит только при параллельном fan-out.
-func TestRepoAuthz_REG06_FilterRegistries_Concurrent(t *testing.T) {
-	az := newBarrierAuthorizer(2)
-	ra := newRepoAuthz(az)
-	regs := []*domain.Registry{
-		{ID: regA, ProjectID: "prj-P", Name: "team-a", Status: domain.RegistryStatusActive},
-		{ID: regB, ProjectID: "prj-P", Name: "team-b", Status: domain.RegistryStatusActive},
+// REG-06 стоимость — страница спрашивается ПАРТИЯМИ, а не поштучно.
+//
+// Прежде здесь стояло утверждение об одновременности поштучных вопросов: реализация
+// фанила Check по одному, и проба ловила последовательность зависанием на барьере.
+// Одновременность поштучных вопросов больше не является свойством, которое надо
+// доказывать, — вопросов-запросов стало на два порядка меньше, и доказывать надо
+// именно это. Старая проба не «устарела по форме»: она утверждала механизм, которого
+// в коде больше нет, и осталась бы зелёной ровно до тех пор, пока кто-нибудь не
+// вернул бы поштучный опрос обратно.
+func TestRepoAuthz_REG06_FilterRegistries_AsksInBatchesNotOneByOne(t *testing.T) {
+	const rows = 250
+
+	az := &batchRecorder{allowAll: true}
+	regs := make([]*domain.Registry, 0, rows)
+	for i := 0; i < rows; i++ {
+		regs = append(regs, &domain.Registry{
+			ID: fmt.Sprintf("reg%017d", i), ProjectID: "prj-P",
+			Name: fmt.Sprintf("team-%03d", i), Status: domain.RegistryStatusActive,
+		})
 	}
-	done := make(chan struct{})
-	var got []*domain.Registry
-	var ferr error
-	go func() {
-		got, ferr = ra.filterRegistries(carolCtx(), regs)
-		close(done)
-	}()
-	select {
-	case <-done:
-		require.NoError(t, ferr)
-		require.Len(t, got, 2, "оба реестра allow → оба видны")
-	case <-time.After(2 * time.Second):
-		t.Fatal("filterRegistries не фанит Check concurrently (barrier не набрался) — последовательная реализация")
-	}
+
+	got, err := newRepoAuthz(az).filterRegistries(carolCtx(), regs)
+	require.NoError(t, err)
+	require.Len(t, got, rows, "все реестры разрешены → все видны")
+
+	require.Equal(t, rows, az.questions, "вопросов ровно по строке страницы")
+	require.Equal(t, 1, az.requests,
+		"страница обязана уходить одним обращением к порту, а не по одному на строку")
+	require.Equal(t, rows, az.maxBatch, "и обращение обязано нести всю страницу разом")
 }
 
 // REG-06 order — row-filter сохраняет входной порядок реестров (детерминизм после

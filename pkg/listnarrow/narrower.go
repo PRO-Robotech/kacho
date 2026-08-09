@@ -636,3 +636,71 @@ func (n *Narrower) CacheSize() int {
 	defer n.mu.Unlock()
 	return n.lruLst.Len()
 }
+
+// Visible — сужение набора для УЖЕ УСТАНОВЛЕННОГО субъекта и ЯВНО названного
+// отношения.
+//
+// Нижняя дверь того же механизма, и заведена она ради вызывающего, у которого
+// личность устанавливается СВОИМИ правилами с записанной причиной: у registry ответ
+// безымянному приведён к тому, что даёт его же интерсептор на всех прочих RPC —
+// иначе сам код ответа сообщал бы неаутентифицированному пробующему, какие RPC
+// авторизуются на уровне данных, а какие интерсептором. Пропусти его через IDs — и
+// это решение подменилось бы общим.
+//
+// Отношение здесь тоже ЯВНОЕ: предикат страницы registry (`v_list` на каталоге имён)
+// намеренно шире отношения чтения, и это записанное отступление — страница каталога
+// отдаёт голые ИМЕНА, а не сообщение ресурса, поэтому «видно в перечне без
+// содержимого» там реализуемо. Брать предикат из карты значило бы молча сузить
+// чужое решение.
+//
+// Всё остальное — то же: партии ≤ MaxBatchSize, ограниченный веер, бюджет операции,
+// окно ПОЛОЖИТЕЛЬНЫХ вердиктов, fail-closed на первой ошибке.
+func (n *Narrower) Visible(ctx context.Context, subject, resourceType, action, relation string, ids []string) ([]string, error) {
+	if n == nil || n.cli == nil {
+		return nil, ErrModelNotWired()
+	}
+	if subject == "" {
+		return nil, ErrUnnamedCaller()
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	if n.cfg.OverallTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, n.cfg.OverallTimeout)
+		defer cancel()
+	}
+
+	visible := make(map[string]struct{}, len(ids))
+	pending := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		if n.getCache(subject, resourceType, id) {
+			visible[id] = struct{}{}
+			continue
+		}
+		pending = append(pending, id)
+	}
+	if len(pending) > 0 {
+		allowed, _, err := n.askRelation(ctx, subject, resourceType, action, relation, pending)
+		if err != nil {
+			return n.handleErr(ids, err)
+		}
+		for _, id := range allowed {
+			visible[id] = struct{}{}
+			n.putCache(subject, resourceType, id)
+		}
+	}
+	out := make([]string, 0, len(visible))
+	for _, id := range ids {
+		if _, ok := visible[id]; ok {
+			delete(visible, id)
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
