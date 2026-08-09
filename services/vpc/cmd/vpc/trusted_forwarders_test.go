@@ -169,14 +169,15 @@ func TestPrincipalChain_ListedForwarderSpeaksForTheUser(t *testing.T) {
 // Круг сужается ПО ФАКТИЧЕСКИМ отправителям, а не по догадке «наверное только
 // шлюз»: у vpc личность конечного пользователя законно передают ещё compute
 // (привязка интерфейса, резолв подсети), nlb (резолв подсети/адреса/группы) и
-// оператор (SEC-G read). Сузив список до одного шлюза, мы бы сломали их — и это
-// проверяется исходом, а не чтением values.
+// Сузив список до одного шлюза, мы бы сломали их — и это проверяется исходом, а не
+// чтением values. Здесь стоял ещё один отправитель — компонент, которого в дереве
+// нет и репозитория под который не существует; снят решением владельца 2026-08-09,
+// потому что круг пинится по ФАКТИЧЕСКИМ отправителям.
 func TestPrincipalChain_EveryListedSenderIsAccepted(t *testing.T) {
 	senders := []string{
 		sanGateway,
 		"spiffe://kacho.cloud/ns/kacho/sa/kacho-compute",
 		"spiffe://kacho.cloud/ns/kacho/sa/kacho-nlb",
-		"spiffe://kacho.cloud/ns/kacho-vpc-operator/sa/kacho-vpc-operator",
 	}
 	for _, san := range senders {
 		t.Run(san, func(t *testing.T) {

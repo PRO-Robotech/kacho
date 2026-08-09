@@ -87,7 +87,7 @@ const (
 		"(set KACHO_VPC_AUTHZ__TRUSTED_FORWARDER_SANS) — an empty list does NOT mean \"nobody\": the corelib " +
 		"trust contract narrows the circle only when the list is non-empty, so empty means ANY peer holding " +
 		"an internal-CA client certificate may forward an end-user identity and act as that tenant. Pin the " +
-		"SPIFFE SANs of the senders that legitimately forward one: api-gateway, compute, nlb, vpc-operator"
+		"SPIFFE SANs of the senders that legitimately forward one: api-gateway, compute, nlb"
 
 	// S4-гардрейлы (транспорт исходящих vpc→iam рёбер обязан быть verified в
 	// production). %s = Mode.String(). Тексты — часть контракта (наблюдаемый отказ

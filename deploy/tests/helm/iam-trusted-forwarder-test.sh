@@ -37,7 +37,6 @@ PROD="$DEPLOY_ROOT/helm/umbrella/values.prod.yaml"
 GATE="$DEPLOY_ROOT/scripts/assert-production-posture.sh"
 
 GATEWAY_SAN="spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"
-OPERATOR_SAN="spiffe://kacho.cloud/ns/kacho-vpc-operator/sa/kacho-vpc-operator"
 
 N=0
 fail() { echo "FAIL: $1"; exit 1; }
@@ -95,6 +94,7 @@ DEFAULT_RENDER="$(helm template iam "$CHART" --show-only templates/configmap.yam
 def_list="$(rendered_list "$DEFAULT_RENDER")"
 [ -n "$def_list" ] \
   || fail "trusted-forwarder-sans отсутствует в конфиге пода ИЛИ пуст по умолчанию: профиль, не задавший ручку, отгрузил бы «доверяем любому пиру с сертификатом» (в боевом режиме — отказ старта)"
+EXPECTED_SANS=""
 for chart in "$REPO_ROOT/gateway/deploy" "$REPO_ROOT/services/vpc/deploy" \
              "$REPO_ROOT/services/compute/deploy" "$REPO_ROOT/services/nlb/deploy" \
              "$REPO_ROOT/services/storage/deploy" "$REPO_ROOT/services/registry/deploy" \
@@ -103,11 +103,27 @@ for chart in "$REPO_ROOT/gateway/deploy" "$REPO_ROOT/services/vpc/deploy" \
   [ -n "$san" ] || fail "чарт $chart не отрендерил сертификат — тест разошёлся с деревом, обнови его"
   printf '%s\n' "$def_list" | grep -qxF "$san" \
     || fail "дефолт iam не содержит $san (чарт $chart) — этот пир перестал бы говорить за пользователя, и его путь под личностью тенанта молча отвечал бы как неаутентифицированный"
+  EXPECTED_SANS="$EXPECTED_SANS$san
+"
 done
-# Оператор пространств имён — вне дерева (sibling), его чарта здесь нет; строка
-# зафиксирована по ребру SEC-G. Проверяем хотя бы, что её не потеряли.
-printf '%s\n' "$def_list" | grep -qxF "$OPERATOR_SAN" \
-  || fail "дефолт чарта не содержит оператора пространств имён ($OPERATOR_SAN) — его веерное чтение (SEC-G) стало бы анонимным и вернуло пустоту"
+# Обратная сторона: в круге нет НИКОГО, кроме фактических отправителей.
+#
+# Здесь стояло требование держать запись под компонент вне дерева — «его чарта
+# здесь нет, проверим хотя бы, что строку не потеряли». Требование пережило свой
+# предмет: компонента с таким именем в дереве нет, репозитория под него не
+# существует, и запись описывала отправителя, которого мы не выпускаем. Правило
+# велит пинить круг по ФАКТИЧЕСКИМ отправителям, найденным по графу рёбер, —
+# запись сверх этого разрешает говорить за пользователя предъявителю чужого
+# сертификата (решение владельца 2026-08-09).
+#
+# Проверка перевёрнута и стала строже: раньше тест ТРЕБОВАЛ запись под
+# несуществующее, теперь он на ней ПАДАЕТ. Появится компонент со своим чартом —
+# его сертификат отрендерится, попадёт в EXPECTED и проверка пройдёт сама:
+# послабление истекает от появления предмета, а не от чьей-то памяти.
+for san in $def_list; do
+  printf '%s\n' "$EXPECTED_SANS" | grep -qxF "$san" \
+    || fail "круг доверенных отправителей содержит $san, которому в дереве не соответствует ни один чарт: круг обязан совпадать с фактическими отправителями, иначе он разрешает говорить за пользователя предъявителю сертификата, которого мы не выпускаем"
+done
 ok
 
 # ── 2. Оператор всё ещё может выразить пустой список ─────────────────────────
@@ -145,8 +161,13 @@ awk '/^kacho-iam:[[:space:]]*$/{i=1;next} i&&/^[A-Za-z0-9_.-]+:/{exit} i{sub(/^ 
 PROD_RENDER="$(helm template iam "$CHART" -f "$IAM_BLOCK" --show-only templates/configmap.yaml 2>/dev/null)" \
   || fail "iam chart does not render with the production profile"
 prod_list="$(rendered_list "$PROD_RENDER")"
-printf '%s\n' "$prod_list" | grep -qxF "$OPERATOR_SAN" \
-  || fail "боевой профиль потерял оператора пространств имён ($OPERATOR_SAN) — его веерное чтение встанет"
+# Та же обратная проверка на боевом профиле: круг не шире фактических отправителей.
+# Здесь стояло требование держать в профиле запись под компонент вне дерева; предмета
+# у него нет (см. разбор в блоке 1).
+for san in $prod_list; do
+  printf '%s\n' "$EXPECTED_SANS" | grep -qxF "$san" \
+    || fail "боевой профиль держит в круге $san, которому в дереве не соответствует ни один чарт — круг обязан совпадать с фактическими отправителями"
+done
 for chart in "$REPO_ROOT/gateway/deploy" "$REPO_ROOT/services/vpc/deploy" \
              "$REPO_ROOT/services/compute/deploy" "$REPO_ROOT/services/nlb/deploy" \
              "$REPO_ROOT/services/storage/deploy" "$REPO_ROOT/services/registry/deploy" \

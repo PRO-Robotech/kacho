@@ -107,7 +107,6 @@ type AuthZConfig struct {
 	//     инициатора (services/compute/internal/clients/vpc_{nic,subnet}_client.go);
 	//   - nlb         — резолв подсети/адреса/группы безопасности/интерфейса
 	//     (services/nlb/internal/clients/vpc/*.go);
-	//   - vpc-operator — SEC-G sync-poll read.
 	// Канонические значения — в values.prod.
 	//
 	// Пусто допустимо ТОЛЬКО в dev (in-process фикстуры): contract corelib сужает

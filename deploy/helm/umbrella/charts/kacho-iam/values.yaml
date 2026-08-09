@@ -313,7 +313,11 @@ config:
       - spiffe://kacho.cloud/ns/kacho-storage/sa/kacho-storage
       - spiffe://kacho.cloud/ns/kacho/sa/kacho-registry
       - spiffe://kacho.cloud/ns/kacho/sa/kacho-geo
-      - spiffe://kacho.cloud/ns/kacho-vpc-operator/sa/kacho-vpc-operator
+      # Здесь стояла запись оператора сети — компонента с таким именем в дереве нет,
+      # и репозитория под него не существует. Круг доверенных отправителей пинится по
+      # ФАКТИЧЕСКИМ отправителям: запись под несуществующего разрешала бы говорить за
+      # пользователя предъявителю сертификата, которого мы не выпускаем. Появится
+      # компонент — запись вернётся вместе с его кодом (решение владельца 2026-08-09).
   extapi:
     openfga:
       # Only the Secret coordinates are consumed (deployment.yaml wires
