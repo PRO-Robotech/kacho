@@ -132,7 +132,14 @@ export function antdStub(): Record<string, unknown> {
     useForm: () => [{}],
     useWatch: () => undefined,
   });
-  const Modal = Object.assign(Component, {
+  // Настоящее модальное окно СКРЫВАЕТ своё содержимое, пока `open` ложно.
+  // Заменитель-`<div>` рисовал его всегда, и утверждение «после клика окно
+  // показало X» проходило ещё ДО клика — то есть проба закрепляла форму
+  // дублёра, а не наблюдаемое. Пропуск `open` (неуправляемое окно) сохраняет
+  // прежнее поведение: скрывать нечего.
+  const ModalRoot = ({ children, open, ...props }: React.PropsWithChildren<{ open?: boolean }>) =>
+    open === false ? null : React.createElement("div", props, children);
+  const Modal = Object.assign(ModalRoot, {
     confirm: jest.fn(),
     destroyAll: jest.fn(),
   });

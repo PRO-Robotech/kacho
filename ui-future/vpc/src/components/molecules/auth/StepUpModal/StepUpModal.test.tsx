@@ -33,8 +33,13 @@ jest.unstable_mockModule("@/pages/auth/Login", () => ({
 let StepUpModal: typeof StepUpModalExport;
 
 const modal = () => screen.getByTestId("stepup-modal");
-/** `open` булев: React выкидывает атрибут при false, поэтому его наличие и есть состояние. */
-const isOpen = () => modal().hasAttribute("open");
+/**
+ * Закрытое окно НЕ показывает своего содержимого — это и есть наблюдаемое.
+ * Прежде состояние читалось атрибутом `open` на подменённом узле, то есть
+ * утверждалась форма дублёра: настоящее окно antd содержимого при `open=false`
+ * не рисует вовсе, а заменитель рисовал его всегда.
+ */
+const isOpen = () => screen.queryByText(/дополнительной проверки безопасности/) !== null;
 
 describe("StepUpModal", () => {
   beforeAll(async () => {
@@ -65,6 +70,7 @@ describe("StepUpModal", () => {
     render(<StepUpModal />);
 
     expect(isOpen()).toBe(false);
+    expect(screen.queryByTestId("stepup-confirm")).not.toBeInTheDocument();
   });
 
   it("по запросу открывается и называет затребованный уровень", () => {
