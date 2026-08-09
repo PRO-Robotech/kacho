@@ -80,7 +80,7 @@
       "id": "compute-storage",
       "suites": ["compute", "storage"],
       "components": ["vpc", "pg-vpc", "compute", "pg-compute", "storage", "pg-storage"],
-      "why": "6+9 коллекций / 1071 запрос. compute→vpc (networkInterfaceSpecs на existingSubnetId, посев prodseed_compute_ext.py) и compute→storage (attach тома в саге запуска). storage едет вместе, потому что его сервис здесь уже поднят."
+      "why": "7+9 коллекций / 1172 запроса. compute→vpc (networkInterfaceSpecs на existingSubnetId, посев prodseed_compute_ext.py; плюс привязка интерфейса — instance-nic-attach ходит на vpc-маршруты за своей сетью/подсетью/интерфейсом) и compute→storage (attach тома в саге запуска). storage едет вместе, потому что его сервис здесь уже поднят."
     },
     {
       "id": "edge",
