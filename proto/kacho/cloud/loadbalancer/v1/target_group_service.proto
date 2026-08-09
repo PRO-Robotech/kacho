@@ -268,7 +268,10 @@ message UpdateTargetGroupRequest {
 
   // Targets list replacement is rejected on this RPC — use AddTargets /
   // RemoveTargets so each target mutation goes through its own Operation
-  // history and idempotency keys (design §3.4).
+  // history and idempotency keys (design §3.4). The refusal is driven by the
+  // BODY, not by update_mask: a non-empty list is refused whatever the mask says
+  // (including the empty full-object PATCH mask), because accepted-and-ignored
+  // is not a lawful outcome.
   repeated Target targets = 6;
 
   HealthCheck health_check = 7;

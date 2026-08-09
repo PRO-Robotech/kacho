@@ -374,7 +374,10 @@ type UpdateTargetGroupRequest struct {
 	Labels        map[string]string      `protobuf:"bytes,5,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Targets list replacement is rejected on this RPC — use AddTargets /
 	// RemoveTargets so each target mutation goes through its own Operation
-	// history and idempotency keys (design §3.4).
+	// history and idempotency keys (design §3.4). The refusal is driven by the
+	// BODY, not by update_mask: a non-empty list is refused whatever the mask says
+	// (including the empty full-object PATCH mask), because accepted-and-ignored
+	// is not a lawful outcome.
 	Targets     []*Target    `protobuf:"bytes,6,rep,name=targets,proto3" json:"targets,omitempty"`
 	HealthCheck *HealthCheck `protobuf:"bytes,7,opt,name=health_check,json=healthCheck,proto3" json:"health_check,omitempty"`
 	// NLB-1c (B8): Duration, bounds [0s, 3600s]. Replaces int32

@@ -203,6 +203,16 @@ func RejectUnsupportedCreateFields(req *computev1.CreateInstanceRequest) error {
 	if len(req.GetSshPublicKeys()) > 0 {
 		add("ssh_public_keys", "sshPublicKeys is not supported: compute does not deliver keys into the guest")
 	}
+	// containerSpec.exitCode — восьмое поле того же класса, найденное обходом
+	// полей внутри `oneof` (прежде обход их не раскрывал). Код возврата —
+	// величина ВЫХОДНАЯ: её выставляет терминальное состояние задания, и сервис
+	// заполняет её на пути ответа. `ContainerSpec` стоит и в теле создания, а
+	// `containerSpecFromProto` этого поля не переносит, — то есть присланное
+	// значение принималось и молча выбрасывалось.
+	if req.GetContainerSpec().GetExitCode() != 0 {
+		add("container_spec.exit_code",
+			"containerSpec.exitCode is output-only: it is set by the job's terminal state")
+	}
 	if n == 0 {
 		return nil
 	}

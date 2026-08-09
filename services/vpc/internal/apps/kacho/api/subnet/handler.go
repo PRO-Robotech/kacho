@@ -14,6 +14,7 @@ import (
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/pbconv"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/dto"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
@@ -240,6 +241,19 @@ func (h *Handler) RemoveCidrBlocks(ctx context.Context, req *vpcv1.RemoveSubnetC
 func (h *Handler) ListUsedAddresses(ctx context.Context, req *vpcv1.ListUsedAddressesRequest) (*vpcv1.ListUsedAddressesResponse, error) {
 	if req.SubnetId == "" {
 		return nil, status.Error(codes.InvalidArgument, "subnet_id required")
+	}
+	// `filter` НЕ ПРИНИМАЕТСЯ — и отвергается явно, а не выбрасывается молча.
+	// Ответ этого RPC — не ресурс Address, а проекция занятости подсети
+	// (address / ipVersion / references); поля, по которому можно построить
+	// выражение фильтра, у неё нет, а сужение по невидимому в ответе имени
+	// вызывающему нечем проверить. Поле оставлено на контракте намеренно: край
+	// REST молча выбрасывает неизвестные ключи запроса, поэтому удаление вернуло
+	// бы `?filter=…` в тихий 200 с несуженным списком — ровно то, что здесь и
+	// чинится.
+	if req.Filter != "" {
+		return nil, serviceerr.InvalidArg("filter",
+			"filter is not supported by ListUsedAddresses: the response is a subnet "+
+				"occupancy projection (address/ipVersion/references), not the Address resource")
 	}
 	if _, err := h.get.Execute(ctx, req.SubnetId); err != nil {
 		return nil, err
