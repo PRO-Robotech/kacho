@@ -654,7 +654,7 @@ def retry_create_until_present(step: Step, budget: int = 25, interval_ms: int = 
                    test_script=guard + list(step.test_script))
 
 
-def retry_delete_until_released(step: Step, budget: int = 25, interval_ms: int = 500) -> Step:
+def retry_delete_until_released(step: Step, budget: int = 60, interval_ms: int = 500) -> Step:
     """Обернуть УБОРКУ подсети в ограниченный повтор на время освобождения адресов.
 
     Удаление балансировщика отвечает Operation `done` — предмет мутации долговечен. Но
@@ -696,6 +696,22 @@ def retry_delete_until_released(step: Step, budget: int = 25, interval_ms: int =
         "}",
         "pm.environment.unset('_dlRetryCount');",
         "pm.environment.unset('_dlRetryStarted');",
+        # ДИАГНОСТИКА ТЕРМИНАЛЬНОГО ИСХОДА. Без неё падение уборки печатает только
+        # «delete accepted: status 200» — то есть НЕ говорит ни кода, ни сообщения,
+        # и разбор упирается в незнание того, что ответил сервер. Именно так и вышло
+        # в шарде nlb: чинить пришлось бы гадая, временный это отказ (аренда ещё не
+        # вернулась, окно мало) или иной по существу (тогда повтор вообще не при чём
+        # и расширять бюджет — значит прятать другой дефект).
+        #
+        # Печатается ТОЛЬКО на не-200: на успехе шум не нужен. Это не утверждение и
+        # ничего не смягчает — само строгое `delete accepted` остаётся ниже и падает
+        # как падало.
+        "if (pm.response.code !== 200) {",
+        "  let _dlm = '';",
+        "  try { _dlm = (pm.response.json().message || '').slice(0, 200); } catch (e) { _dlm = '<не JSON>'; }",
+        "  console.log('[cleanup] ' + pm.info.requestName + ': код ' + pm.response.code"
+        " + ', повторов ' + _dlc + ', сообщение: ' + _dlm);",
+        "}",
     ]
     _RYA_SEQ[0] += 1
     return replace(step, name=f"{step.name}-dl{_RYA_SEQ[0]}",
