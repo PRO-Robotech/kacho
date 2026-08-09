@@ -4,6 +4,8 @@
 package check
 
 import (
+	"time"
+
 	"errors"
 	"log/slog"
 
@@ -18,6 +20,17 @@ type Options struct {
 	IAMConn     grpc.ClientConnInterface
 	Breakglass  bool
 	Logger      *slog.Logger
+
+	// CacheTTL — окно кеша положительных вердиктов, оно же ОКНО ОТЗЫВА: столько
+	// субъект, у которого право уже отобрали, продолжает проходить. Отрицательные
+	// вердикты не кешируются никогда, поэтому свежая выдача видна сразу.
+	//
+	// Величина приходит из конфигурации, а не берётся умолчанием библиотеки:
+	// параметр безопасности, которого никто не выбирал, нельзя ни обсудить, ни
+	// сузить на конкретной посадке. Значение не изменилось — изменилось то, что
+	// оно теперь выбрано. Ноль означает «беру объявленную политику»
+	// (pkg/authz.RevocationPolicy.Default).
+	CacheTTL time.Duration
 }
 
 // ErrIAMConnNotConfigured — IAM conn = nil И Breakglass=false.
@@ -44,7 +57,7 @@ func NewInterceptor(opts Options) (*authz.Interceptor, error) {
 		ServiceName: opts.ServiceName,
 		Map:         PermissionMap(),
 		Client:      client,
-		Cache:       authz.NewCache(0),
+		Cache:       authz.NewCache(opts.CacheTTL),
 		Logger:      opts.Logger,
 		Breakglass:  opts.Breakglass,
 	}), nil

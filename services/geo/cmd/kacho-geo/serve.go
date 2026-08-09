@@ -130,14 +130,15 @@ func runServe(cfg config.Config) error {
 		IAMConn:    authzIAMConn(authzConn),
 		Breakglass: cfg.AuthZBreakglass,
 		Logger:     logger,
+		CacheTTL:   cfg.AuthZCacheTTL,
 	})
 
 	// ── цепочки интерсепторов ──────────────────────────────────────────────
-	// WithTrustedForwarders ограничивает форвард end-user principal'а allow-list'ом
-	// SAN'ов (api-gateway SA): verified-но-не-форвардер peer (внутренний сервис со
-	// своим валидным client-cert'ом) НЕ может выдать себя за пользователя. Пустой
-	// allow-list (default) сохраняет прежнее «любой verified peer доверен» (dev
-	// back-compat) — enforce задаётся конфигом в production.
+	// Круг отправителей ограничивает передачу личности конечного пользователя
+	// перечнем личностей клиентского сертификата (SAN шлюза): пир, проверенный, но
+	// не входящий в круг, за другого говорить не может. Несуженный круг означает
+	// «любой проверенный пир доверен» — поэтому на нём отказывает старт
+	// (config.Config.Validate), а не только боевой профиль.
 	forwarders := cfg.TrustedForwarders()
 	// Оба листенера получают ОДНУ И ТУ ЖЕ trust-aware principal-цепочку
 	// (cert-identity → trusted-principal с allow-list форвардеров) — единый source

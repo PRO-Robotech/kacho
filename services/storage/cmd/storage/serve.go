@@ -145,6 +145,7 @@ func runServe(cfg config.Config) error {
 			ServiceName: "kacho-storage",
 			IAMConn:     authzConn,
 			Logger:      logger,
+			CacheTTL:    cfg.AuthZCacheTTL,
 		})
 		if aerr != nil {
 			return fmt.Errorf("build authz interceptor: %w", aerr)

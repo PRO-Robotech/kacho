@@ -307,6 +307,7 @@ func runServe(cfg config.Config) error {
 		IAMConn:     authzConn,
 		Breakglass:  cfg.AuthZBreakglass,
 		Logger:      logger,
+		CacheTTL:    cfg.AuthZCacheTTL,
 	})
 	// Fail-closed (defense-in-depth): в production отсутствие authz-interceptor'а —
 	// фатально (без per-RPC FGA Check подделанная x-kacho-* metadata даёт эскалацию,

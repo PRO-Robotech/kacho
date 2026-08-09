@@ -4,6 +4,8 @@
 package config
 
 import (
+	"time"
+
 	"fmt"
 
 	"google.golang.org/grpc"
@@ -103,6 +105,21 @@ type Config struct {
 	// AuthZBreakglass — emergency-режим: пропускать все RPC без Check + WARN.
 	// Dev / break-glass only.
 	AuthZBreakglass bool `envconfig:"KACHO_COMPUTE_AUTHZ_BREAKGLASS" default:"false"`
+
+	// AuthZCacheTTL — окно кеша положительных вердиктов авторизации, оно же ОКНО
+	// ОТЗЫВА: столько субъект, у которого право уже отобрали, продолжает
+	// проходить. Отрицательные вердикты не кешируются никогда, поэтому свежая
+	// выдача видна сразу, а ждёт один лишь отзыв.
+	//
+	// Ручка заведена не ради нового поведения: значение то же, что было
+	// умолчанием платформы. Изменилось то, что число стало ВЫБРАННЫМ — параметр
+	// безопасности, которого никто не выбирал, нельзя ни обсудить, ни отозвать,
+	// ни сузить на конкретной посадке. Потолок объявлен политикой
+	// (pkg/authz.RevocationPolicy.Ceiling), перепись — там же; смена значения без
+	// правки политики роняет гейт и называет оба числа.
+	//
+	// Ноль означает «беру объявленную политику», а не «кеша нет».
+	AuthZCacheTTL time.Duration `envconfig:"KACHO_COMPUTE_AUTHZ_CACHE_TTL" default:"5s"`
 
 	// AuthZTrustedForwarderSANs — allow-list cert-identity SAN'ов, которым разрешено
 	// форвардить end-user principal в x-kacho-principal-* metadata (обычно
