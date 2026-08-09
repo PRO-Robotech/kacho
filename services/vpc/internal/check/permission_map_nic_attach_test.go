@@ -14,7 +14,7 @@ import (
 
 	vpcv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
 
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/check"
+	"github.com/PRO-Robotech/kacho/services/vpc/internal/check"
 )
 
 // INV-2a — AuthN+AuthZ на :9091 ВЕЗДЕ: ни один RPC internal

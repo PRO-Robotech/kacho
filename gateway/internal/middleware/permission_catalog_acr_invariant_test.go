@@ -362,7 +362,7 @@ func TestPermissionCatalog_ACR_CountsAndByteIdentity(t *testing.T) {
 	// listener :9091 and is never routed through the gateway, so the gateway has no
 	// request of its own to check. Its actual gate is the vpc interceptor, which is
 	// wired on BOTH listeners and resolves this method through
-	// services/vpc/internal/apps/kacho/check/permission_map.go: `editor` on the project
+	// services/vpc/internal/check/permission_map.go: `editor` on the project
 	// taken from the creation body — the very same requirement the public
 	// AddressService/Create carries. All nine InternalAddressService methods sit in this
 	// catalog the same way, so the new one follows the established shape rather than

@@ -67,7 +67,7 @@ type IAMConfig struct {
 
 // AuthZConfig — секция authz. Если IAMEndpoint пуст и Breakglass=false —
 // interceptor НЕ навешивается (graceful start без kacho-iam в dev).
-// См. internal/apps/kacho/check/factory.go.
+// См. internal/check/factory.go.
 type AuthZConfig struct {
 	// IAMEndpoint — gRPC адрес kacho-iam internal-port'а (обычно
 	// `kacho-iam.kacho.svc.cluster.local:9091`). Пустая строка → interceptor

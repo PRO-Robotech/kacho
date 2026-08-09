@@ -37,7 +37,7 @@ const (
 // РЕШЕНИЕ принимается по явному `required_relation`, который фильтр пинит на батч
 // (`v_get` — см. filter.go visibilityRelations), а НЕ по server-side деривации
 // verb→relation. `v_get` — то же отношение, которым per-RPC Check гейтит Get
-// (`internal/apps/kacho/check/permission_map.go`), поэтому предикат страницы равен
+// (`internal/check/permission_map.go`), поэтому предикат страницы равен
 // отношению чтения (read==enforce).
 //
 // Прежняя редакция утверждала, что verb-деривация iam (`list` → `viewer`) даёт «ту

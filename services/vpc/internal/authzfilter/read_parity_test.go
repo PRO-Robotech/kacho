@@ -12,7 +12,7 @@ import (
 )
 
 // readRelation — отношение, на котором per-RPC Check энфорсит ЧТЕНИЕ одиночного
-// объекта этого домена (`internal/apps/kacho/check/permission_map.go`,
+// объекта этого домена (`internal/check/permission_map.go`,
 // `<Resource>Service/Get` → `v_get`; то же значение несёт запись каталога шлюза).
 //
 // Здесь оно выписано отдельной константой НАМЕРЕННО: тест обязан провалиться,

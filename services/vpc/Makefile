@@ -81,7 +81,7 @@ docker:
 
 # proto-install-plugins — ставит protoc-плагины в $GOBIN (lookup через $PATH для buf).
 # Доменный proto vpc генерируется этими тремя плагинами; permission-catalog для vpc —
-# hand-written (internal/apps/kacho/check/permission_map.go), buf-catalog-плагин не нужен.
+# hand-written (internal/check/permission_map.go), buf-catalog-плагин не нужен.
 proto-install-plugins:
 	go install google.golang.org/protobuf/cmd/protoc-gen-go
 	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc
