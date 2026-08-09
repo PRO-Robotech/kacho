@@ -504,7 +504,7 @@ func TestAZD019_CatalogCount_26(t *testing.T) {
 	for _, p := range cat {
 		uniq[p] = struct{}{}
 	}
-	require.Len(t, uniq, 26, "design §6.2 + acceptance §AZD-019: exactly 26 permission strings (NLB CONTRACT dropped start/stop/attach/detach)")
+	require.Len(t, uniq, 29, catalogCountRationale)
 }
 
 // ────────────────────────────────────────────────────────────────────────────

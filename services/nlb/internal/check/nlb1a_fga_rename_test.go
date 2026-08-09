@@ -120,26 +120,30 @@ func TestNLB1a03_ReadViewerFloorAndListScopeNlb(t *testing.T) {
 		})
 	}
 
-	// List → viewer on parent project, ScopeFiltered (per-object listauthz under nlb_*).
-	listCases := []struct {
-		fm  string
-		req any
-	}{
-		{"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/List",
-			&lbv1.ListNetworkLoadBalancersRequest{ProjectId: id}},
-		{"/kacho.cloud.loadbalancer.v1.ListenerService/List",
-			&lbv1.ListListenersRequest{ProjectId: id}},
-		{"/kacho.cloud.loadbalancer.v1.TargetGroupService/List",
-			&lbv1.ListTargetGroupsRequest{ProjectId: id}},
+	// List → полоса «сужает владелец»: единого объекта у списка нет, страница
+	// сужается пообъектно после чтения.
+	//
+	// Здесь стояло ещё два утверждения — про отношение `viewer` и про область
+	// `project` у этих же записей. Оба закрепляли поля, которых интерсептор на
+	// этой полосе НЕ ЧИТАЕТ: он ветвится на ScopeFiltered раньше, чем доходит до
+	// отношения (pkg/authz/types.go). То есть проба утверждала то, что ни на что
+	// не влияет, и осталась бы зелёной, если бы там стояло любое другое
+	// отношение на любом другом объекте. С переходом карты на вывод из аннотаций
+	// эти поля у полосы отсутствуют — что и есть верное состояние: полоса
+	// объявляется одна, и наличие рядом непрочитанного отношения было бы вторым
+	// объявлением о том же вызове.
+	listMethods := []string{
+		"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/List",
+		"/kacho.cloud.loadbalancer.v1.ListenerService/List",
+		"/kacho.cloud.loadbalancer.v1.TargetGroupService/List",
 	}
-	for _, c := range listCases {
-		t.Run("list "+c.fm, func(t *testing.T) {
-			e := m[c.fm]
-			gotType, _, err := e.Extract(c.req)
-			require.NoError(t, err)
-			require.Equal(t, "project", gotType, "List scope is the parent project")
-			require.Equal(t, "viewer", e.Relation, "List gated by viewer-floor")
+	for _, fm := range listMethods {
+		t.Run("list "+fm, func(t *testing.T) {
+			e := m[fm]
 			require.True(t, e.ScopeFiltered, "List must be listauthz ScopeFiltered")
+			require.False(t, e.Public, "полоса сужения требует принципала, в отличие от exempt")
+			require.Empty(t, e.Relation, "на этой полосе отношение не читается — его и не должно быть")
+			require.Nil(t, e.Extract, "единого объекта у списка нет by construction")
 		})
 	}
 }

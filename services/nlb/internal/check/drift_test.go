@@ -172,17 +172,53 @@ func TestDrift_PublicRPCsHaveNoRelation(t *testing.T) {
 	}
 }
 
-// TestDrift_ExtractNonNilForNonPublic — у не-Public RPC должен быть Extract.
-// Без него interceptor упадёт на nil-deref в runtime.
-func TestDrift_ExtractNonNilForNonPublic(t *testing.T) {
+// TestDrift_EveryEntryIsExactlyOneLane — у каждой записи РОВНО одна полоса, и
+// поля заполнены ровно те, которые эта полоса читает.
+//
+// Прежде здесь стояло «у не-Public RPC должен быть Extract», и это было верно на
+// две полосы из трёх. Полоса сужения (ScopeFiltered) объекта не имеет by
+// construction: интерсептор ветвится на неё РАНЬШЕ, чем доходит до отношения, —
+// поэтому отношение и экстрактор на ней не читаются, а заполненные означали бы
+// второе объявление о том же вызове.
+func TestDrift_EveryEntryIsExactlyOneLane(t *testing.T) {
+	lanes := map[string]int{}
 	for fm, e := range check.PermissionMap() {
-		if e.Public {
-			continue
+		require.Falsef(t, e.Public && e.ScopeFiltered,
+			"RPC %q объявлен сразу двумя полосами — полос ровно три и они исключают друг друга", fm)
+		switch {
+		case e.Public:
+			lanes["exempt"]++
+			require.Emptyf(t, e.Relation, "RPC %q: exempt не читает отношение", fm)
+			require.Nilf(t, e.Extract, "RPC %q: exempt не читает экстрактор", fm)
+		case e.ScopeFiltered:
+			lanes["scope-filtered"]++
+			require.Emptyf(t, e.Relation, "RPC %q: полоса сужения не читает отношение", fm)
+			require.Nilf(t, e.Extract, "RPC %q: у сужаемого списка нет единого объекта", fm)
+		default:
+			lanes["edge-checks"]++
+			require.NotNilf(t, e.Extract, "RPC %q: Extract must be non-nil", fm)
+			require.NotEmptyf(t, e.Relation, "RPC %q: Relation must be non-empty", fm)
 		}
-		require.NotNilf(t, e.Extract, "RPC %q: Extract must be non-nil", fm)
-		require.NotEmptyf(t, e.Relation, "RPC %q: Relation must be non-empty (viewer/editor/owner)", fm)
 	}
+	require.NotZero(t, lanes["edge-checks"], "предпосылка: хотя бы одна запись спрашивает отношение")
+	require.NotZero(t, lanes["scope-filtered"], "предпосылка: полоса сужения в домене есть")
+	t.Logf("перепись полос: %v", lanes)
 }
+
+// catalogCountRationale — почему имён 29, а не 26.
+//
+// 26 было числом РУКОПИСНОЙ карты, и оно расходилось с каталогом края в трёх
+// местах. Два имени — `loadbalancer.networkLoadBalancers.{getAnnounceState,
+// reportAnnounceState}` — каталог нёс всё это время, а рукописная карта
+// оставляла их поле permission пустым «намеренно, это не tenant-facing». Третье
+// — `loadbalancer.resourceLifecycle.subscribe` — появилось вместе с тем, что
+// строка потока жизненного цикла перестала быть `<exempt>` и назвала отношение,
+// которое сервис и без того требовал.
+//
+// Теперь имена берутся из аннотаций, то есть ровно из того, из чего собирается
+// каталог, и «домен назвал одно, каталог другое» перестало быть выразимым.
+const catalogCountRationale = "имён прав домена loadbalancer — 29: 26 прежних + два имени announce, " +
+	"которые каталог нёс, а рукописная карта не называла, + поток жизненного цикла"
 
 // TestDrift_CatalogCompleteness — Catalog возвращает ровно 26 уникальных
 // permission строк (NLB CONTRACT удалил loadbalancer.networkLoadBalancers.
@@ -193,13 +229,12 @@ func TestDrift_CatalogCompleteness(t *testing.T) {
 	for _, p := range cat {
 		uniq[p] = struct{}{}
 	}
-	require.Lenf(t, uniq, 26,
-		"Catalog must have 26 unique permission strings (design §6.2 §AZD-019); got %d: %v",
-		len(uniq), sortedKeys(uniq))
+	require.Lenf(t, uniq, 29,
+		catalogCountRationale+"; got %d: %v", len(uniq), sortedKeys(uniq))
 	require.Equal(t, len(cat), len(uniq), "Catalog() contains duplicates")
 }
 
-// TestDrift_CatalogRegex — все 26 строк каталога соответствуют regex
+// TestDrift_CatalogRegex — все 29 имён каталога соответствуют regex
 // (включая catalog-only `loadbalancer.operations.{get,cancel,list}`).
 func TestDrift_CatalogRegex(t *testing.T) {
 	for _, p := range check.Catalog() {
@@ -259,9 +294,6 @@ func TestExtract_AllRPCEntries(t *testing.T) {
 		{"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Get",
 			&lbv1.GetNetworkLoadBalancerRequest{NetworkLoadBalancerId: id},
 			"nlb_network_load_balancer", id},
-		{"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/List",
-			&lbv1.ListNetworkLoadBalancersRequest{ProjectId: id},
-			"project", id},
 		{"/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Create",
 			&lbv1.CreateNetworkLoadBalancerRequest{ProjectId: id},
 			"project", id},
@@ -284,9 +316,6 @@ func TestExtract_AllRPCEntries(t *testing.T) {
 		{"/kacho.cloud.loadbalancer.v1.ListenerService/Get",
 			&lbv1.GetListenerRequest{ListenerId: id},
 			"nlb_listener", id},
-		{"/kacho.cloud.loadbalancer.v1.ListenerService/List",
-			&lbv1.ListListenersRequest{ProjectId: id},
-			"project", id},
 		{"/kacho.cloud.loadbalancer.v1.ListenerService/Create",
 			&lbv1.CreateListenerRequest{LoadBalancerId: id},
 			"nlb_network_load_balancer", id},
@@ -303,9 +332,6 @@ func TestExtract_AllRPCEntries(t *testing.T) {
 		{"/kacho.cloud.loadbalancer.v1.TargetGroupService/Get",
 			&lbv1.GetTargetGroupRequest{TargetGroupId: id},
 			"nlb_target_group", id},
-		{"/kacho.cloud.loadbalancer.v1.TargetGroupService/List",
-			&lbv1.ListTargetGroupsRequest{ProjectId: id},
-			"project", id},
 		{"/kacho.cloud.loadbalancer.v1.TargetGroupService/Create",
 			&lbv1.CreateTargetGroupRequest{ProjectId: id},
 			"project", id},
@@ -337,17 +363,30 @@ func TestExtract_AllRPCEntries(t *testing.T) {
 		{"/kacho.cloud.loadbalancer.v1.InternalResourceLifecycleService/Subscribe",
 			&lbv1.SubscribeRequest{},
 			"cluster", "cluster_kacho_root"},
+		// GetAnnounceState якорится на КЛАСТЕРЕ, а не на балансировщике, и это
+		// намеренно: announce-state — инфра-данные, `v_get` на балансировщике
+		// держит его владелец-тенант, а `system_viewer` на кластере — нет.
+		// Рукописная карта якорила пообъектно и расходилась с каталогом; сторона
+		// каталога выбрана по разбору «кто удовлетворяет отношение», а не «про
+		// какой объект спрашивают».
 		{"/kacho.cloud.loadbalancer.v1.InternalLoadBalancerAnnounceService/GetAnnounceState",
 			&lbv1.GetLoadBalancerAnnounceStateRequest{NetworkLoadBalancerId: id},
-			"nlb_network_load_balancer", id},
+			"cluster", "cluster_kacho_root"},
 		{"/kacho.cloud.loadbalancer.v1.InternalLoadBalancerAnnounceService/ReportAnnounceState",
 			&lbv1.ReportLoadBalancerAnnounceStateRequest{NetworkLoadBalancerId: id},
 			"nlb_network_load_balancer", id},
 	}
+	// Три top-level `List` в таблице отсутствуют намеренно: они несут полосу
+	// сужения, у которой объекта нет by construction, поэтому извлекать нечего.
+	// Сверка ниже идёт по полосе edge-checks и потому их не требует.
+
 	// Reconcile the table against the map itself, in both directions.
 	wantCovered := map[string]struct{}{}
 	for fm, e := range m {
-		if !e.Public {
+		// Только полоса edge-checks: у exempt и у полосы сужения экстрактора нет
+		// by construction, и требовать для них случая значило бы требовать
+		// проверку извлечения объекта, которого не существует.
+		if !e.Public && !e.ScopeFiltered {
 			wantCovered[fm] = struct{}{}
 		}
 	}

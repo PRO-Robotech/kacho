@@ -1,39 +1,37 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-// catalogparity_test.go — гейт против расхождения между картой прав сервиса и
-// каталогом шлюза.
+// catalogparity_test.go — гейты шва «каталог края ↔ право, которое исполняет
+// сервис».
 //
-// На один вызов принимается ДВА независимых решения о доступе: шлюз спрашивает
-// модель по записи каталога, а сервис-владелец переспрашивает по своей карте.
-// Пока обе стороны называют одно и то же отношение на одном и том же объекте,
-// это защита в глубину. Как только они называют разное, фактическим требованием
-// становится ПЕРЕСЕЧЕНИЕ, и оно не записано нигде: каталог — документ, который
-// читает оператор и по которому выдаются права, а карта сервиса — то, что
-// реально исполняется.
+// ЧТО ЗДЕСЬ ИЗМЕНИЛОСЬ И ПОЧЕМУ ФАЙЛ ПЕРЕПИСАН. Прежде на один вызов было ДВА
+// объявления: строка каталога, сгенерированная из аннотаций proto, и рукописная
+// карта прав сервиса. Пока их два, действующим требованием оказывается их
+// пересечение, и оно не записано ни в одном документе, по которому выдают права.
+// Гейты этого файла сверяли объявления между собой и вели репо-широкий реестр
+// расхождений.
 //
-// Наблюдаемое следствие измерено, а не предположено (2026-07-29): по семи
-// списочным RPC каталог называл глагольное отношение на проекте, а карта —
-// читательский ярус, и это в модели РАЗНЫЕ множества (ни одно не выводится из
-// другого). Субъект, которому выдали ровно объявленное каталогом, получал отказ
-// на методном гейте — при живом пообъектном гранте, по которому чтение
-// одиночного объекта проходило. Дефект пережил и обзоры, и прогоны, потому что
-// администратор кластера удовлетворяет ОБА отношения сразу: расхождение видно
-// только обычному тенанту.
+// Второго объявления больше нет: карта каждого сервиса ВЫВОДИТСЯ из тех же
+// аннотаций (`pkg/authz/catalogderive`). Поэтому прежние гейты потеряли предмет —
+// сверять карту с каталогом стало сверкой значения с самим собой. Вместо них
+// здесь стоят три утверждения о том, что в этой схеме ЕЩЁ МОЖЕТ разойтись:
 //
-// Пообъектные тесты чётности уже стоят в каждом сервисе (catalog_parity_test.go
-// рядом с его permission_map.go). Здесь — то, чего они не могут сказать про
-// себя:
-//
-//   - сервис может приехать БЕЗ такого теста, и его карта окажется вне гейта
-//     целиком (свой тест не умеет заметить собственное отсутствие);
-//   - каждый список исключений локален, поэтому репо-широкой картины «сколько
-//     сейчас расхождений и каких» не существует ни в одном месте — а именно она
-//     и нужна, чтобы исключение не разрослось молча.
+//  1. КАТАЛОГ ПРОТИВ АННОТАЦИЙ. Каталог — закоммиченный файл, аннотации — proto.
+//     Правка proto без перегенерации оставляет край исполняющим устаревшее
+//     правило, а сервис — новое. Прежде это ловил только CI-таргет, требующий
+//     `buf`; здесь то же утверждение доступно обычным `go test`.
+//  2. ВОЗВРАТ ВТОРОГО ОБЪЯВЛЕНИЯ. Карта, собранная литералом вместо вывода,
+//     возвращает ровно ту болезнь, ради которой всё делалось, и выглядит при
+//     этом как обычный код.
+//  3. ПОЛОСА `scope_filtered` БЕЗ ИСПОЛНИТЕЛЯ. Строка каталога с этой полосой —
+//     ПОЛОЖИТЕЛЬНОЕ обещание: край перестаёт спрашивать модель, потому что
+//     сужает владелец. Домен, который не провязывает выведенную карту в цепочку
+//     интерсепторов, этого обещания не подтверждает ничем, что видно снаружи.
 package repohygiene
 
 import (
 	"encoding/json"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -41,594 +39,482 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
+
+	"google.golang.org/protobuf/reflect/protoreflect"
+
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/api"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/geo/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/registry/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 )
 
 // catalogEmbedPath / iamCatalogMirrorPath — две вшитые копии каталога. Первая —
-// та, которую исполняет шлюз (pkg/authz/catalogparity.CatalogPath); вторая —
-// зеркало, вшитое в iam. Гейт ниже говорит «каталог» в единственном числе, и это
-// осмысленно ровно пока копии совпадают побайтово.
+// та, которую исполняет шлюз; вторая — зеркало, вшитое в iam. Гейты ниже говорят
+// «каталог» в единственном числе, и это осмысленно ровно пока копии совпадают
+// побайтово.
 const (
 	catalogEmbedPath     = "gateway/internal/middleware/embed/permission_catalog.json"
 	iamCatalogMirrorPath = "services/iam/internal/apps/kacho/seed/embedded/permission_catalog.json"
 )
 
-// divergenceVarName — имя переменной, в которой каждый пообъектный тест чётности
-// перечисляет свои исключения. Реестр ниже собирается разбором ИМЕННО этой
-// переменной, поэтому её имя — часть предпосылки гейта (см.
-// TestCatalogParityRosterPremiseHolds).
-const divergenceVarName = "knownCatalogDivergences"
-
-// knownDivergenceRoster — репо-широкий реестр расхождений «каталог ↔ карта
-// сервиса», которые сегодня существуют осознанно.
+// catalogProtoPackages — proto-пакеты, чьи RPC попадают в каталог.
 //
-// Реестр — ПИН, а не разрешение: он обязан совпадать с объединением локальных
-// списков по всему дереву. Появилось расхождение где угодно — падает здесь;
-// исчезло — тоже падает, чтобы запись не пережила свой предмет.
-//
-// Что осталось и почему (обе записи — ОДИН класс, отличный от списочного):
-// внутренний административный RPC, где каталог якорится на кластерном ярусе
-// (`system_viewer` на singleton-объекте кластера), а сервис — на глагольном
-// отношении САМОГО ресурса. Это не «занижено на одно отношение», а два разных
-// вопроса о двух разных объектах, и свести их — продуктовое решение про то, кто
-// вправе читать состояние конкретного балансировщика/реестра: кластерный
-// наблюдатель или держатель гранта на объект. Оно принимается в своём домене со
-// своим обоснованием, а не заодно со списочным классом.
-//
-// Третья запись (registry TriggerGarbageCollection) — тот же домен, тот же
-// разбор: объект один и тот же, но `admin` и `v_delete` в модели независимы
-// (`v_delete` дополнительно выводится из `owner`), поэтому это снова
-// пересечение, а не строгость одной стороны.
-var knownDivergenceRoster = []string{
-	`/kacho.cloud.loadbalancer.v1.InternalLoadBalancerAnnounceService/GetAnnounceState: catalog anchors scope on object type "cluster", service map anchors on "nlb_network_load_balancer"`,
-	`/kacho.cloud.loadbalancer.v1.InternalLoadBalancerAnnounceService/GetAnnounceState: catalog requires relation "system_viewer", service map requires "v_get"`,
-	`/kacho.cloud.registry.v1.InternalRegistryService/GetRegistryStats: catalog anchors scope on object type "cluster", service map anchors on "registry_registry"`,
-	`/kacho.cloud.registry.v1.InternalRegistryService/GetRegistryStats: catalog requires relation "system_viewer", service map requires "v_get"`,
-	`/kacho.cloud.registry.v1.InternalRegistryService/TriggerGarbageCollection: catalog requires relation "admin", service map requires "v_delete"`,
+// Перечень выписан, а не выведен, и это осознанно: вывести его можно было бы
+// только из самого каталога, и тогда «в каталоге нет целого домена» стало бы
+// невыразимым — гейт молча перестал бы рассматривать то, чего в файле нет.
+// Появился домен — строка добавляется сюда, и до тех пор гейт краснеет на его
+// строках как на незаявленных.
+var catalogProtoPackages = []string{
+	"kacho.cloud.iam.v1",
+	"kacho.cloud.vpc.v1",
+	"kacho.cloud.compute.v1",
+	"kacho.cloud.storage.v1",
+	"kacho.cloud.loadbalancer.v1",
+	"kacho.cloud.registry.v1",
+	"kacho.cloud.geo.v1",
+	"kacho.cloud.operation",
 }
 
-// unbackedScopeFilteredRows — строки каталога, которые ОБЕЩАЮТ, что сужение
-// делает сервис-владелец, тогда как ни одна карта прав в дереве этого не
-// подтверждает.
+// domainsWithoutAWiredMap — домены, у которых каталог несёт строки
+// `scope_filtered`, но выведенная карта НЕ провязывается в цепочку
+// интерсепторов.
 //
-// Почему это отдельный гейт, а не следствие сверки выше. `catalogparity.Compare`
-// обходит методы КАРТЫ СЕРВИСА и сверяет их с каталогом. Метод, которого в карте
-// нет вовсе — включая случай «у сервиса карты нет ни одной», — в обход не
-// попадает, поэтому самое сильное расхождение (обещали сужение, не заявил никто)
-// проходит молча. Полоса `scope_filtered` — это ПОЛОЖИТЕЛЬНОЕ обещание, на
-// основании которого край перестаёт спрашивать модель; необеспеченное, оно
-// оставляет вызов с одной лишь аутентификацией.
+// Ровно одна запись, и у неё есть причина, а не отговорка: iam сам является
+// сервисом авторизации. Провязать ему пообъектный Check значило бы заставить его
+// спрашивать самого себя на каждом вызове; проектный принципал получал бы отказ
+// на собственных ресурсах — это уже случалось и записано. Его девять строк
+// сужаются в хендлерах (`services/iam/internal/authzfilter`), и подтверждение
+// этому — пробы того пакета, а не запись в карте.
 //
-// Что осталось и почему: девять RPC iam про сам граф выдач. У iam карты прав нет
-// (он и есть сервис авторизации — своё решение он принимает в хендлерах, а не
-// картой), поэтому подтвердить обещание в этом дереве нечем. Запись здесь — не
-// разрешение, а СЧЁТ: пока она стоит, «край не спрашивает» держится на разборе
-// хендлеров iam, а не на проверяемом объявлении.
-var unbackedScopeFilteredRows = []string{
-	"kacho.cloud.iam.v1.AccessBindingService/ExpandAccess",
-	"kacho.cloud.iam.v1.AccessBindingService/List",
-	"kacho.cloud.iam.v1.AccessBindingService/ListByRole",
-	"kacho.cloud.iam.v1.AccessBindingService/ListBySubject",
-	"kacho.cloud.iam.v1.AccessBindingService/ListSubjectPrivileges",
-	"kacho.cloud.iam.v1.AuthorizeService/Check",
-	"kacho.cloud.iam.v1.AuthorizeService/ExpandRelations",
-	"kacho.cloud.iam.v1.AuthorizeService/ListObjects",
-	"kacho.cloud.iam.v1.AuthorizeService/ListSubjects",
+// Перечень самоистекает: провязали карту — запись обязана уйти, иначе она
+// объявляет исключением то, чего больше нет.
+var domainsWithoutAWiredMap = []string{
+	"kacho.cloud.iam.v1",
 }
 
-// catalogRow — минимальная форма строки каталога, нужная этому файлу.
-type catalogRow struct {
-	FQN           string `json:"fqn"`
-	ScopeFiltered bool   `json:"scope_filtered"`
-}
-
-// TestScopeFilteredCatalogRowsAreBackedByAServiceMap — обещание полосы
-// `scope_filtered` обязано быть подтверждено картой прав владельца.
+// TestCatalogMatchesTheAnnotationsItWasGeneratedFrom — закоммиченный каталог
+// обязан совпадать с аннотациями, из которых он порождён, по КАЖДОЙ строке и в
+// обе стороны.
 //
-// Что делать, если гейт сработал, — ровно три исхода, четвёртого нет:
+// Что ловится: правка `.proto` без `make -C gateway permission-catalog-apply`.
+// Тогда край исполняет старое правило, а сервис — новое (его карта выводится из
+// аннотаций), и расходятся они молча: обе стороны выглядят исправными, а
+// действующим требованием становится их пересечение.
 //
-//  1. сервис действительно сужает страницу сам -> объявить это в его карте
-//     (`ScopeFiltered: true`), чтобы обещание каталога было проверяемым;
-//  2. сервис НЕ сужает -> строка каталога лжёт: край не спрашивает модель, а
-//     сервис не спрашивает её за него. Убрать `scope_filtered` из аннотации proto
-//     и перегенерировать каталог;
-//  3. подтвердить нечем прямо сейчас (у владельца нет карты) -> внести сюда с
-//     разбором, чем именно держится сужение.
-//
-// «Оставить необеспеченным молча» исходом не является: край перестаёт спрашивать
-// модель на основании обещания, которого никто не давал.
-func TestScopeFilteredCatalogRowsAreBackedByAServiceMap(t *testing.T) {
+// Что делать, если гейт сработал, — ровно два исхода: перегенерировать каталог
+// (обе копии) либо вернуть аннотацию. «Поправить JSON руками» исходом не
+// является: он генерируется, и правка переживёт ровно до следующей генерации.
+func TestCatalogMatchesTheAnnotationsItWasGeneratedFrom(t *testing.T) {
 	root := repoRoot(t)
 
 	raw, err := os.ReadFile(filepath.Join(root, catalogEmbedPath))
 	if err != nil {
 		t.Fatalf("не прочитан вшитый каталог %s: %v", catalogEmbedPath, err)
 	}
-	var rows []catalogRow
+	var rows []catalogderive.Entry
 	if err := json.Unmarshal(raw, &rows); err != nil {
 		t.Fatalf("разбор каталога %s: %v", catalogEmbedPath, err)
 	}
-
-	declared := map[string]bool{}
+	if len(rows) == 0 {
+		t.Fatalf("каталог пуст — гейт беспредметен")
+	}
+	byFQN := make(map[string]catalogderive.Entry, len(rows))
 	for _, r := range rows {
-		if r.ScopeFiltered {
-			declared[r.FQN] = true
-		}
-	}
-	if len(declared) == 0 {
-		t.Fatalf("в каталоге нет ни одной строки `scope_filtered` — гейт беспредметен. Либо "+
-			"полоса снята (тогда удали и его, и %s), либо изменился ключ поля.", "unbackedScopeFilteredRows")
+		byFQN["/"+r.FQN] = r
 	}
 
-	backed := map[string]bool{}
-	fset := token.NewFileSet()
-	for _, p := range discoverAuthzMapPackages(t, root) {
-		f, perr := parser.ParseFile(fset, filepath.Join(root, p.MapFile), nil, 0)
-		if perr != nil {
-			t.Fatalf("разбор карты прав %s: %v", p.MapFile, perr)
-		}
-		for _, m := range scopeFilteredMethods(f) {
-			backed[m] = true
-		}
-	}
-	if len(backed) == 0 {
-		t.Fatalf("ни одна карта прав не объявляет `ScopeFiltered: true` — либо разбор перестал "+
-			"видеть эту форму, либо полосу больше никто не заявляет. В обоих случаях гейт ниже "+
-			"объявил бы НЕОБЕСПЕЧЕННЫМИ все %d строк каталога, что было бы неверно.", len(declared))
-	}
-
-	var actual []string
-	for fqn := range declared {
-		if !backed[fqn] {
-			actual = append(actual, fqn)
-		}
-	}
-	sort.Strings(actual)
-
-	pinned := slices.Clone(unbackedScopeFilteredRows)
-	sort.Strings(pinned)
-
-	for _, fqn := range actual {
-		if !slices.Contains(pinned, fqn) {
-			t.Errorf("каталог обещает `scope_filtered`, но карта прав владельца этого не "+
-				"подтверждает:\n  %s\n\n"+
-				"Край на этом обещании ПЕРЕСТАЁТ спрашивать модель. Исходы: объявить сужение в "+
-				"карте сервиса / снять `scope_filtered` из аннотации proto и перегенерировать "+
-				"каталог / внести сюда с разбором.", fqn)
-		}
-	}
-	for _, fqn := range pinned {
-		if !slices.Contains(actual, fqn) {
-			t.Errorf("запись пережила свой предмет — эта строка каталога больше не является "+
-				"необеспеченной:\n  %s\n\n"+
-				"Удали её из unbackedScopeFilteredRows, иначе список перестаёт быть счётом и "+
-				"становится слепой зоной, которую унаследует следующий.", fqn)
-		}
-	}
-
-	// Перепись: «ноль необеспеченных» обязано быть отличимо от «ноль прочитанных
-	// строк каталога» и от «ноль найденных карт прав». Обе предпосылки выше уже
-	// роняют гейт на пустоте, но их прохождение молчаливо — а молчание неотличимо
-	// от того, что осмотра не было.
-	t.Logf("перепись: строк каталога %d, из них scope_filtered %d; карт прав осмотрено %d, "+
-		"объявляют сужение %d; необеспеченных %d (внесено с разбором %d)",
-		len(rows), len(declared), len(discoverAuthzMapPackages(t, root)), len(backed),
-		len(actual), len(pinned))
-}
-
-// scopeFilteredMethods — ключи карты прав, значение которых объявляет
-// `ScopeFiltered: true`.
-//
-// Разбор идёт по дереву, а не регуляркой: та же строка встречается в прозе
-// комментариев рядом с каждым таким объявлением (они объясняют, почему полоса
-// выбрана), и текстовый поиск зачёл бы объяснение за объявление.
-func scopeFilteredMethods(f *ast.File) []string {
-	var out []string
-	ast.Inspect(f, func(n ast.Node) bool {
-		kv, ok := n.(*ast.KeyValueExpr)
+	seen := map[string]bool{}
+	var mismatches []string
+	methods := 0
+	catalogderive.RangeAnnotated(catalogProtoPackages, func(fullMethod string, _ protoreflect.MethodDescriptor, a catalogderive.Annotations) {
+		methods++
+		seen[fullMethod] = true
+		row, ok := byFQN[fullMethod]
 		if !ok {
-			return true
+			mismatches = append(mismatches, fmt.Sprintf(
+				"%s: RPC аннотирован, но строки в каталоге нет", fullMethod))
+			return
 		}
-		key, ok := kv.Key.(*ast.BasicLit)
-		if !ok || key.Kind != token.STRING {
-			return true
+		for _, d := range diffAnnotationAgainstRow(fullMethod, a, row) {
+			mismatches = append(mismatches, d)
 		}
-		lit, ok := kv.Value.(*ast.CompositeLit)
-		if !ok {
-			return true
-		}
-		for _, el := range lit.Elts {
-			field, ok := el.(*ast.KeyValueExpr)
-			if !ok {
-				continue
-			}
-			name, ok := field.Key.(*ast.Ident)
-			if !ok || name.Name != "ScopeFiltered" {
-				continue
-			}
-			if v, ok := field.Value.(*ast.Ident); ok && v.Name == "true" {
-				if method, uerr := strconv.Unquote(key.Value); uerr == nil {
-					out = append(out, strings.TrimPrefix(method, "/"))
-				}
-			}
-		}
-		return true
 	})
-	return out
-}
-
-// authzMapPackage — пакет, объявляющий карту прав сервиса, и его тест чётности.
-type authzMapPackage struct {
-	// Dir — rel-путь каталога пакета.
-	Dir string
-	// MapFile — rel-путь файла с `func PermissionMap() authz.RPCMap`.
-	MapFile string
-	// ParityFiles — rel-пути тестов в том же пакете, вызывающих
-	// catalogparity.Compare.
-	ParityFiles []string
-	// Divergences — строки, перечисленные в divergenceVarName этого пакета.
-	Divergences []string
-	// DivergenceVarDecls — сколько раз divergenceVarName объявлена в пакете.
-	// Ровно одна — предпосылка разбора реестра.
-	DivergenceVarDecls int
-	// DiffCalls — сколько раз divergenceVarName передана в `.Diff(` — то есть
-	// действительно работает как список исключений, а не лежит рядом.
-	DiffCalls int
-}
-
-// TestEveryServiceAuthzMapIsComparedAgainstTheCatalog — карта прав, которую
-// никто не сверяет с каталогом, находится вне гейта целиком.
-//
-// Что делать, если гейт сработал, — ровно три исхода, четвёртого нет:
-//
-//  1. пакет действительно несёт карту прав сервиса -> положить рядом
-//     catalog_parity_test.go по образцу любого существующего (загрузить каталог
-//     через catalogparity.LoadCatalog, сравнить catalogparity.Compare, отдиффить
-//     против списка knownCatalogDivergences);
-//  2. функция называется PermissionMap, но картой прав НЕ является -> переименовать,
-//     чтобы имя не обещало того, чего нет;
-//  3. карта устарела и больше не подключена -> удалить её вместе с пакетом.
-//
-// «Оставить как есть» исходом не является: карта без сверки — это второе решение
-// о доступе, которое ничему не подотчётно.
-func TestEveryServiceAuthzMapIsComparedAgainstTheCatalog(t *testing.T) {
-	root := repoRoot(t)
-	pkgs := discoverAuthzMapPackages(t, root)
-
-	var missing []string
-	for _, p := range pkgs {
-		if len(p.ParityFiles) == 0 {
-			missing = append(missing, p.MapFile)
+	if methods == 0 {
+		t.Fatalf("обход аннотаций не нашёл ни одного RPC — либо стабы не слинкованы, либо перечень "+
+			"пакетов (%d) назван неверно. Гейт в таком состоянии не утверждает ничего.",
+			len(catalogProtoPackages))
+	}
+	for fqn := range byFQN {
+		if !seen[fqn] {
+			mismatches = append(mismatches, fmt.Sprintf(
+				"%s: строка каталога есть, а RPC с такой аннотацией в дереве нет", fqn))
 		}
 	}
-	if len(missing) > 0 {
-		t.Errorf("%d карт(а) прав сервиса не сверяется с каталогом шлюза:\n  %s\n\n"+
-			"На вызов принимается два решения о доступе — шлюза и сервиса. Несверенная "+
-			"карта делает второе из них ничему не подотчётным: она может требовать не то "+
-			"отношение и не на том объекте, и узнается это только пробой.\n"+
-			"Исходы: добавить catalog_parity_test.go в тот же пакет / переименовать функцию, "+
-			"если это не карта прав / удалить неподключённую карту.",
-			len(missing), strings.Join(missing, "\n  "))
+	sort.Strings(mismatches)
+	for _, m := range mismatches {
+		t.Errorf("каталог разошёлся с аннотациями, из которых он порождён:\n  %s\n\n"+
+			"Исходы: перегенерировать каталог (`make -C gateway permission-catalog-apply` + "+
+			"синхронизация копии iam) либо вернуть аннотацию. Правка JSON руками исходом не "+
+			"является — он порождаемый.", m)
 	}
 
-	// Перепись: «ни одна карта не осталась несверенной» значит что-то только если
-	// карт вообще нашлось. Ноль найденных дал бы ровно тот же зелёный вердикт.
-	pf := 0
-	for _, p := range pkgs {
-		pf += len(p.ParityFiles)
-	}
-	t.Logf("перепись: карт прав найдено %d, сверяющих проб при них %d, несверенных %d",
-		len(pkgs), pf, len(missing))
-}
-
-// TestCatalogDivergenceRosterIsPinned — репо-широкий реестр расхождений обязан
-// совпадать с объединением локальных списков.
-//
-// Локальный список видит только свой сервис, поэтому по нему нельзя ответить на
-// вопрос «сколько сейчас мест, где выданное по каталогу недостаточно». Пин здесь
-// делает ответ одним, и любое движение — в любую сторону — становится видимым
-// изменением ЭТОГО файла.
-//
-// Что делать, если гейт сработал, — ровно три исхода, четвёртого нет:
-//
-//  1. каталог называет настоящее требование, а карта сервиса отстала -> отзеркалить
-//     карту по каталогу (каталог — авторитет, он генерируется из аннотаций proto);
-//  2. требование исполняет сервис, а каталог его ЗАНИЖАЕТ -> починить аннотацию
-//     proto и перегенерировать каталог, чтобы выданное по каталогу было достаточно
-//     (`make -C gateway permission-catalog-apply` + синхронизация копии iam);
-//  3. свести стороны прямо сейчас нельзя -> внести расхождение И сюда, И в
-//     knownCatalogDivergences своего сервиса, с письменным разбором по модели:
-//     какие tuple выполняют каждое из двух отношений и кто из-за этого получает
-//     отказ.
-//
-// «Оставить разное молча» исходом не является: фактическое требование становится
-// пересечением двух отношений, а пересечение не записано ни в одном документе,
-// по которому выдают права.
-func TestCatalogDivergenceRosterIsPinned(t *testing.T) {
-	root := repoRoot(t)
-	pkgs := discoverAuthzMapPackages(t, root)
-
-	seen := map[string]string{} // расхождение -> файл, где оно перечислено
-	var actual []string
-	for _, p := range pkgs {
-		for _, d := range p.Divergences {
-			if _, dup := seen[d]; !dup {
-				actual = append(actual, d)
-			}
-			seen[d] = p.Dir
-		}
-	}
-	sort.Strings(actual)
-
-	pinned := slices.Clone(knownDivergenceRoster)
-	sort.Strings(pinned)
-
-	for _, d := range actual {
-		if !slices.Contains(pinned, d) {
-			t.Errorf("расхождение каталога и карты сервиса не внесено в репо-широкий реестр "+
-				"(%s, перечислено в %s):\n  %s\n\n"+
-				"Исходы: отзеркалить карту по каталогу / починить аннотацию proto и "+
-				"перегенерировать каталог / внести сюда с разбором по модели.",
-				divergenceVarName, seen[d], d)
-		}
-	}
-	for _, d := range pinned {
-		if !slices.Contains(actual, d) {
-			t.Errorf("запись реестра пережила свой предмет — такого расхождения в дереве "+
-				"больше нет:\n  %s\n\n"+
-				"Удали её из knownDivergenceRoster, иначе реестр перестаёт быть счётом "+
-				"расхождений и становится списком, которому никто не верит.", d)
-		}
-	}
-
-	// Перепись: пустой обход дал бы «расхождений нет» — вердикт, неотличимый от
-	// зелёного по существу. Числа отделяют одно от другого.
-	t.Logf("перепись: пакетов с картой прав %d, расхождений в дереве %d, в реестре %d",
-		len(pkgs), len(actual), len(pinned))
-}
-
-// TestCatalogParityRosterPremiseHolds — гейт выше опирается на факты, которые
-// могут перестать быть верными, и тогда он замолчит, продолжая выглядеть
-// работающим.
-//
-// Предпосылок три, и каждая проверяется отдельно:
-//
-//  1. обход вообще что-то находит. Ноль карт прав — это не «расхождений нет», это
-//     «гейт ничего не утверждает»;
-//  2. реестр собирается разбором переменной с фиксированным именем. Пакет,
-//     объявивший её дважды или не объявивший вовсе, разбирается неверно ТИХО;
-//     а переменная, объявленная, но не переданная в `.Diff(`, вообще не работает
-//     как список исключений — тест рядом с ней сравнивает против пустоты;
-//  3. «каталог» — одна вещь. Две вшитые копии обязаны совпадать побайтово, иначе
-//     непонятно, с какой из них шла сверка (ту же проверку делает CI-таргет
-//     `make -C gateway permission-catalog-check`, но он требует buf — здесь она
-//     доступна обычным `go test`).
-func TestCatalogParityRosterPremiseHolds(t *testing.T) {
-	root := repoRoot(t)
-	pkgs := discoverAuthzMapPackages(t, root)
-
-	if len(pkgs) == 0 {
-		t.Fatalf("обход не нашёл ни одной карты прав сервиса (`func PermissionMap() authz.RPCMap`). "+
-			"Гейты в этом файле в таком состоянии не утверждают НИЧЕГО. Либо изменилась сигнатура/"+
-			"имя карты — поправь discoverAuthzMapPackages, либо карт действительно не осталось — "+
-			"тогда удали и гейт, и реестр %s.", divergenceVarName)
-	}
-
-	for _, p := range pkgs {
-		if len(p.ParityFiles) == 0 {
-			continue // об этом ругается TestEveryServiceAuthzMapIsComparedAgainstTheCatalog
-		}
-		if p.DivergenceVarDecls != 1 {
-			t.Errorf("%s: переменная %s объявлена %d раз(а), ожидается ровно одна. Реестр "+
-				"расхождений собирается разбором именно её — при другом количестве разбор "+
-				"молча читает не то, и репо-широкий пин перестаёт что-либо ловить.",
-				p.Dir, divergenceVarName, p.DivergenceVarDecls)
-		}
-		if p.DiffCalls == 0 {
-			t.Errorf("%s: %s объявлена, но никуда не передана (ожидается `.Diff(%s)`). "+
-				"Список исключений, который не участвует в сравнении, оставляет тест "+
-				"сравнивающим против пустоты — расхождения он будет показывать как новые, "+
-				"а реестр здесь — как пустой.",
-				p.Dir, divergenceVarName, divergenceVarName)
-		}
-	}
-
-	embedded, err := os.ReadFile(filepath.Join(root, catalogEmbedPath))
-	if err != nil {
-		t.Fatalf("не прочитан вшитый каталог %s: %v — реестр расхождений сверяется с ним, "+
-			"без него гейт беспредметен", catalogEmbedPath, err)
-	}
+	// Обе вшитые копии обязаны совпадать побайтово: гейты говорят «каталог» в
+	// единственном числе, и при разъезде копий неясно, по какой из них выданы
+	// права.
 	mirror, err := os.ReadFile(filepath.Join(root, iamCatalogMirrorPath))
 	if err != nil {
 		t.Fatalf("не прочитано зеркало каталога %s: %v", iamCatalogMirrorPath, err)
 	}
-	if string(embedded) != string(mirror) {
-		t.Errorf("две вшитые копии каталога разошлись:\n  %s\n  %s\n\n"+
-			"Гейты выше говорят «каталог» в единственном числе; при разъезде копий неясно, "+
-			"с какой из них сверялась карта сервиса и по какой выдаются права. "+
-			"Пересинхронизируй обе из перегенерированной (`make -C gateway permission-catalog-apply`).",
-			catalogEmbedPath, iamCatalogMirrorPath)
+	if string(raw) != string(mirror) {
+		t.Errorf("две вшитые копии каталога разошлись:\n  %s\n  %s", catalogEmbedPath, iamCatalogMirrorPath)
 	}
 
-	// Перепись предпосылок: сколько пакетов осмотрено и у скольких из них найдены обе
-	// несущие конструкции. Проверка предпосылки, о результате которой не сказано,
-	// сама становится тем, от чего защищает.
-	withVar, withDiff := 0, 0
-	for _, p := range pkgs {
-		if p.DivergenceVarDecls == 1 {
-			withVar++
-		}
-		if p.DiffCalls > 0 {
-			withDiff++
-		}
-	}
-	t.Logf("перепись предпосылок: пакетов с картой прав %d; из них объявляют реестр ровно "+
-		"один раз %d, передают его в сравнение %d; копий каталога сверено 2, байт %d",
-		len(pkgs), withVar, withDiff, len(embedded))
+	t.Logf("перепись: строк каталога %d, аннотированных RPC %d в %d пакетах, расхождений %d; "+
+		"копий сверено 2, байт %d",
+		len(rows), methods, len(catalogProtoPackages), len(mismatches), len(raw))
 }
 
-// discoverAuthzMapPackages — находит пакеты с `func PermissionMap() authz.RPCMap`
-// и собирает по каждому тесты чётности + перечисленные исключения.
+// diffAnnotationAgainstRow сверяет одну аннотацию с одной строкой каталога по
+// всем осям, которые каталог несёт.
+func diffAnnotationAgainstRow(fqn string, a catalogderive.Annotations, row catalogderive.Entry) []string {
+	var out []string
+	add := func(axis, want, got string) {
+		out = append(out, fmt.Sprintf("%s: %s — аннотация %q, каталог %q", fqn, axis, want, got))
+	}
+	if a.Permission != row.Permission {
+		add("permission", a.Permission, row.Permission)
+	}
+	if a.RequiredRelation != row.RequiredRelation {
+		add("required_relation", a.RequiredRelation, row.RequiredRelation)
+	}
+	if a.ScopeObjectType != row.ScopeExtractor.ObjectType {
+		add("scope_extractor.object_type", a.ScopeObjectType, row.ScopeExtractor.ObjectType)
+	}
+	if a.ScopeFromRequestField != row.ScopeExtractor.FromRequestField {
+		add("scope_extractor.from_request_field", a.ScopeFromRequestField, row.ScopeExtractor.FromRequestField)
+	}
+	if a.ScopeObjectTypeFromRequest != row.ScopeExtractor.ObjectTypeFromRequestField {
+		add("scope_extractor.object_type_from_request_field",
+			a.ScopeObjectTypeFromRequest, row.ScopeExtractor.ObjectTypeFromRequestField)
+	}
+	if a.HideExistence != row.HideExistence {
+		add("hide_existence", fmt.Sprint(a.HideExistence), fmt.Sprint(row.HideExistence))
+	}
+	if a.ScopeFiltered != row.ScopeFiltered {
+		add("scope_filtered", fmt.Sprint(a.ScopeFiltered), fmt.Sprint(row.ScopeFiltered))
+	}
+	return out
+}
+
+// TestNoServiceDeclaresItsPermissionsASecondTime — карта прав обязана выводиться,
+// а не собираться литералом.
 //
-// Разбор идёт через go/ast, а не регулярками: предмет — объявления и вызовы, и
-// строковый поиск по ним даёт ложные срабатывания на прозе и закомментированном
-// коде.
-func discoverAuthzMapPackages(t *testing.T, root string) []authzMapPackage {
+// Литеральная карта возвращает то самое второе объявление: она выглядит обычным
+// кодом, компилируется, проходит обзор диффа — и с этого момента действующим
+// требованием снова становится пересечение двух объявлений, не записанное нигде.
+//
+// Что делать, если гейт сработал: собрать карту через `catalogderive.MustDerive`
+// от списка proto-пакетов сервиса, а требуемое отношение объявить аннотацией
+// метода в proto.
+func TestNoServiceDeclaresItsPermissionsASecondTime(t *testing.T) {
+	root := repoRoot(t)
+	tt := newTrackedTree(t, root)
+
+	rels := make([]string, 0, tt.count())
+	for rel := range tt.files {
+		rels = append(rels, rel)
+	}
+	sort.Strings(rels)
+
+	fset := token.NewFileSet()
+	var literals []string
+	derived, scanned := 0, 0
+	for _, rel := range rels {
+		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
+			continue
+		}
+		if strings.HasPrefix(rel, "pkg/api/") || strings.HasPrefix(rel, "pkg/authz/catalogderive/") ||
+			strings.HasPrefix(rel, "vendor/") || strings.HasPrefix(rel, "ui-future/") ||
+			strings.HasPrefix(rel, "docs-site/") {
+			continue
+		}
+		f, perr := parser.ParseFile(fset, filepath.Join(root, filepath.FromSlash(rel)), nil, 0)
+		if perr != nil {
+			continue
+		}
+		scanned++
+		lits, calls := inspectRPCMapConstruction(f)
+		derived += calls
+		for range lits {
+			literals = append(literals, rel)
+		}
+	}
+
+	if scanned == 0 {
+		t.Fatalf("обход не прочитал ни одного не-тестового файла — гейт не утверждает ничего")
+	}
+	// Положительный контроль: вывод обязан быть НАЙДЕН. Ноль найденных вызовов
+	// означает, что распознавание сломалось, и тогда «ноль литералов» — не
+	// свойство дерева, а слепота гейта.
+	if derived == 0 {
+		t.Fatalf("ни одного вывода карты (`catalogderive.Derive`/`MustDerive`) не найдено в %d "+
+			"файлах — распознавание сломано либо вывод сняли; в обоих случаях молчание про "+
+			"литералы ничего не значит", scanned)
+	}
+
+	slices.Sort(literals)
+	literals = slices.Compact(literals)
+	for _, rel := range literals {
+		t.Errorf("карта прав собрана литералом, а не выведена из аннотаций:\n  %s\n\n"+
+			"Это второе объявление того же права: с ним действующим требованием снова "+
+			"становится пересечение карты и каталога, а пересечение не записано ни в одном "+
+			"документе, по которому выдают права. Собери карту через "+
+			"`catalogderive.MustDerive(protoPackages...)`, а отношение объяви аннотацией метода.", rel)
+	}
+
+	t.Logf("перепись: прочитано не-тестовых файлов %d, выводов карты %d, литеральных карт %d",
+		scanned, derived, len(literals))
+}
+
+// inspectRPCMapConstruction — сколько в файле литералов `authz.RPCMap{…}` с
+// записями и сколько вызовов вывода.
+//
+// Пустой литерал (`authz.RPCMap{}`) находкой НЕ считается: им пользуются
+// фикстуры и конструкторы, и он ничего не объявляет о правах.
+func inspectRPCMapConstruction(f *ast.File) (literals int, deriveCalls int) {
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch node := n.(type) {
+		case *ast.CompositeLit:
+			sel, ok := node.Type.(*ast.SelectorExpr)
+			if !ok || sel.Sel == nil || sel.Sel.Name != "RPCMap" {
+				return true
+			}
+			if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "authz" && len(node.Elts) > 0 {
+				literals++
+			}
+		case *ast.CallExpr:
+			sel, ok := node.Fun.(*ast.SelectorExpr)
+			if !ok || sel.Sel == nil {
+				return true
+			}
+			if sel.Sel.Name != "Derive" && sel.Sel.Name != "MustDerive" {
+				return true
+			}
+			if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "catalogderive" {
+				deriveCalls++
+			}
+		}
+		return true
+	})
+	return literals, deriveCalls
+}
+
+// TestScopeFilteredRowsBelongToADomainThatEnforcesThem — полоса `scope_filtered`
+// снимает вопрос края на ПОЛОЖИТЕЛЬНОМ обещании: сужает владелец. Домен,
+// который не провязывает свою карту в цепочку интерсепторов, этого обещания
+// ничем видимым не подтверждает.
+//
+// Что делать, если гейт сработал, — ровно три исхода:
+//
+//  1. домен действительно сужает, но карта не провязана -> провязать её
+//     (`check.NewInterceptor` в композиционном корне);
+//  2. домен НЕ сужает -> снять `scope_filtered` с аннотации и перегенерировать
+//     каталог: край перестал спрашивать модель под обещание, которого нет;
+//  3. провязать нельзя по существу -> внести домен в domainsWithoutAWiredMap с
+//     разбором, чем именно держится сужение.
+func TestScopeFilteredRowsBelongToADomainThatEnforcesThem(t *testing.T) {
+	root := repoRoot(t)
+
+	raw, err := os.ReadFile(filepath.Join(root, catalogEmbedPath))
+	if err != nil {
+		t.Fatalf("не прочитан вшитый каталог %s: %v", catalogEmbedPath, err)
+	}
+	var rows []catalogderive.Entry
+	if err := json.Unmarshal(raw, &rows); err != nil {
+		t.Fatalf("разбор каталога %s: %v", catalogEmbedPath, err)
+	}
+
+	scopeFilteredByPackage := map[string]int{}
+	for _, r := range rows {
+		if !r.ScopeFiltered {
+			continue
+		}
+		scopeFilteredByPackage[protoPackageOfFQN(r.FQN)]++
+	}
+	if len(scopeFilteredByPackage) == 0 {
+		t.Fatalf("в каталоге нет ни одной строки `scope_filtered` — гейт беспредметен. Либо полоса "+
+			"снята (тогда удали и его, и %s), либо изменился ключ поля.", "domainsWithoutAWiredMap")
+	}
+
+	wired := wiredMapPackages(t, root)
+	if len(wired) == 0 {
+		t.Fatalf("не найдено ни одного домена с провязанной картой — распознавание сломано; " +
+			"иначе гейт объявил бы необеспеченными ВСЕ строки полосы, что было бы неверно")
+	}
+
+	var unwired []string
+	for pkg := range scopeFilteredByPackage {
+		if !wired[pkg] {
+			unwired = append(unwired, pkg)
+		}
+	}
+	sort.Strings(unwired)
+
+	pinned := slices.Clone(domainsWithoutAWiredMap)
+	sort.Strings(pinned)
+
+	for _, pkg := range unwired {
+		if !slices.Contains(pinned, pkg) {
+			t.Errorf("каталог обещает `scope_filtered` в домене %s (%d строк), но выведенная карта "+
+				"этого домена не провязана ни в одну цепочку интерсепторов:\n\n"+
+				"Край на этом обещании ПЕРЕСТАЁТ спрашивать модель. Исходы: провязать карту / "+
+				"снять полосу с аннотации и перегенерировать каталог / внести домен в "+
+				"domainsWithoutAWiredMap с разбором.", pkg, scopeFilteredByPackage[pkg])
+		}
+	}
+	for _, pkg := range pinned {
+		if !slices.Contains(unwired, pkg) {
+			t.Errorf("запись пережила свой предмет — домен %s больше не является непровязанным:\n\n"+
+				"Удали его из domainsWithoutAWiredMap, иначе перечень объявляет исключением то, "+
+				"чего нет, и слепую зону унаследует следующий.", pkg)
+		}
+	}
+
+	t.Logf("перепись: строк каталога %d, из них scope_filtered %d в %d доменах; доменов с "+
+		"провязанной картой %d; непровязанных с полосой %d (внесено с разбором %d)",
+		len(rows), countScopeFiltered(rows), len(scopeFilteredByPackage), len(wired),
+		len(unwired), len(pinned))
+}
+
+func countScopeFiltered(rows []catalogderive.Entry) int {
+	n := 0
+	for _, r := range rows {
+		if r.ScopeFiltered {
+			n++
+		}
+	}
+	return n
+}
+
+// protoPackageOfFQN — "kacho.cloud.vpc.v1.NetworkService/List" → "kacho.cloud.vpc.v1".
+func protoPackageOfFQN(fqn string) string {
+	svc := fqn
+	if i := strings.Index(fqn, "/"); i >= 0 {
+		svc = fqn[:i]
+	}
+	if i := strings.LastIndex(svc, "."); i >= 0 {
+		return svc[:i]
+	}
+	return svc
+}
+
+// wiredMapPackages — proto-пакеты, чью выведенную карту сервис действительно
+// вручает интерсептору.
+//
+// Признак — не «в дереве есть файл с картой», а «карта попадает в
+// authz.InterceptorOptions». Первое переживает снятие проводки и осталось бы
+// зелёным ровно там, где защита выключена; второе — нет.
+func wiredMapPackages(t *testing.T, root string) map[string]bool {
 	t.Helper()
 
-	byDir := map[string]*authzMapPackage{}
-	fset := token.NewFileSet()
-
-	// Состав дерева — из индекса git, а не с диска: под корнем лежат
-	// git-игнорируемые рабочие копии (`.claude/worktrees/`), и прочитанный
-	// оттуда PermissionMap приписал бы пакет, которого в репозитории нет.
-	// Отсев по ИМЕНИ каталога (`.claude`) здесь стоял, и он же был хрупок:
-	// он закрывал ровно одно известное имя, а не класс.
 	tt := newTrackedTree(t, root)
 	rels := make([]string, 0, tt.count())
 	for rel := range tt.files {
 		rels = append(rels, rel)
 	}
 	sort.Strings(rels)
-	err := func() error {
-		for _, rel := range rels {
-			if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") {
-				continue
-			}
-			if strings.HasPrefix(rel, "pkg/api/") || // сгенерированные стабы
-				strings.HasPrefix(rel, "vendor/") ||
-				strings.HasPrefix(rel, "node_modules/") ||
-				strings.HasPrefix(rel, "ui-future/") ||
-				strings.HasPrefix(rel, "docs-site/") {
-				continue
-			}
-			path := filepath.Join(root, filepath.FromSlash(rel))
-			f, perr := parser.ParseFile(fset, path, nil, 0)
-			if perr != nil {
-				continue // не компилируемый/шаблонный файл — не предмет этого гейта
-			}
-			if !declaresPermissionMap(f) {
-				continue
-			}
-			dir := filepath.Dir(rel)
-			byDir[dir] = &authzMapPackage{Dir: dir, MapFile: rel}
-		}
-		return nil
-	}()
-	if err != nil {
-		t.Fatalf("обход дерева: %v", err)
-	}
 
-	for dir, p := range byDir {
-		entries, rerr := os.ReadDir(filepath.Join(root, dir))
-		if rerr != nil {
-			t.Fatalf("чтение каталога %s: %v", dir, rerr)
+	fset := token.NewFileSet()
+	// Пакет каталога (директория) → объявленные им proto-пакеты.
+	declared := map[string][]string{}
+	wiredDirs := map[string]bool{}
+
+	for _, rel := range rels {
+		if !strings.HasSuffix(rel, ".go") || strings.HasSuffix(rel, "_test.go") ||
+			!strings.HasPrefix(rel, "services/") {
+			continue
 		}
-		for _, e := range entries {
-			if e.IsDir() || !strings.HasSuffix(e.Name(), "_test.go") {
-				continue
-			}
-			rel := filepath.Join(dir, e.Name())
-			f, perr := parser.ParseFile(fset, filepath.Join(root, rel), nil, 0)
-			if perr != nil {
-				continue
-			}
-			comparesAgainstCatalog, decls, diffCalls, divergences := inspectParityTest(f)
-			p.DivergenceVarDecls += decls
-			p.DiffCalls += diffCalls
-			p.Divergences = append(p.Divergences, divergences...)
-			if comparesAgainstCatalog {
-				p.ParityFiles = append(p.ParityFiles, rel)
-			}
+		f, perr := parser.ParseFile(fset, filepath.Join(root, filepath.FromSlash(rel)), nil, 0)
+		if perr != nil {
+			continue
+		}
+		dir := filepath.Dir(rel)
+		if pkgs := declaredProtoPackages(f); len(pkgs) > 0 {
+			declared[dir] = append(declared[dir], pkgs...)
+		}
+		if mapHandedToInterceptor(f) {
+			wiredDirs[dir] = true
 		}
 	}
 
-	out := make([]authzMapPackage, 0, len(byDir))
-	for _, p := range byDir {
-		sort.Strings(p.ParityFiles)
-		out = append(out, *p)
+	out := map[string]bool{}
+	for dir, pkgs := range declared {
+		if !wiredDirs[dir] {
+			continue
+		}
+		for _, p := range pkgs {
+			out[p] = true
+		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Dir < out[j].Dir })
 	return out
 }
 
-// declaresPermissionMap — файл объявляет `func PermissionMap() authz.RPCMap`.
-func declaresPermissionMap(f *ast.File) bool {
-	for _, d := range f.Decls {
-		fn, ok := d.(*ast.FuncDecl)
-		if !ok || fn.Recv != nil || fn.Name == nil || fn.Name.Name != "PermissionMap" {
-			continue
-		}
-		if fn.Type.Results == nil || len(fn.Type.Results.List) != 1 {
-			continue
-		}
-		sel, ok := fn.Type.Results.List[0].Type.(*ast.SelectorExpr)
-		if !ok || sel.Sel == nil || sel.Sel.Name != "RPCMap" {
-			continue
-		}
-		if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "authz" {
+// declaredProtoPackages — строковые элементы объявления `protoPackages`.
+func declaredProtoPackages(f *ast.File) []string {
+	var out []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		vs, ok := n.(*ast.ValueSpec)
+		if !ok {
 			return true
 		}
-	}
-	return false
-}
-
-// inspectParityTest — читает один _test.go: сверяется ли он с каталогом, сколько
-// раз объявляет divergenceVarName, сколько раз передаёт её в `.Diff(`, и какие
-// строки она содержит.
-func inspectParityTest(f *ast.File) (compares bool, decls int, diffCalls int, divergences []string) {
-	ast.Inspect(f, func(n ast.Node) bool {
-		switch node := n.(type) {
-		case *ast.CallExpr:
-			sel, ok := node.Fun.(*ast.SelectorExpr)
-			if !ok || sel.Sel == nil {
-				return true
+		for i, name := range vs.Names {
+			if name.Name != "protoPackages" || i >= len(vs.Values) {
+				continue
 			}
-			if sel.Sel.Name == "Compare" {
-				if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "catalogparity" {
-					compares = true
-				}
+			lit, ok := vs.Values[i].(*ast.CompositeLit)
+			if !ok {
+				continue
 			}
-			if sel.Sel.Name == "Diff" {
-				for _, arg := range node.Args {
-					if id, ok := arg.(*ast.Ident); ok && id.Name == divergenceVarName {
-						diffCalls++
-					}
-				}
-			}
-		case *ast.ValueSpec:
-			for i, name := range node.Names {
-				if name.Name != divergenceVarName {
-					continue
-				}
-				// Объявление считается ВСЕГДА, в том числе `var x []string` без
-				// значения: сервис без исключений записывает его именно так, и
-				// пропустить его значило бы объявить работающий пакет
-				// неразбираемым.
-				decls++
-				if i >= len(node.Values) {
-					continue
-				}
-				lit, ok := node.Values[i].(*ast.CompositeLit)
-				if !ok {
-					continue
-				}
-				for _, el := range lit.Elts {
-					bl, ok := el.(*ast.BasicLit)
-					if !ok || bl.Kind != token.STRING {
-						continue
-					}
-					s, uerr := strconv.Unquote(bl.Value)
-					if uerr != nil {
-						continue
-					}
-					divergences = append(divergences, s)
+			for _, el := range lit.Elts {
+				if bl, ok := el.(*ast.BasicLit); ok && bl.Kind == token.STRING {
+					out = append(out, strings.Trim(bl.Value, `"`))
 				}
 			}
 		}
 		return true
 	})
-	return compares, decls, diffCalls, divergences
+	return out
+}
+
+// mapHandedToInterceptor — файл передаёт карту в `authz.InterceptorOptions{Map: …}`.
+func mapHandedToInterceptor(f *ast.File) bool {
+	found := false
+	ast.Inspect(f, func(n ast.Node) bool {
+		lit, ok := n.(*ast.CompositeLit)
+		if !ok {
+			return true
+		}
+		sel, ok := lit.Type.(*ast.SelectorExpr)
+		if !ok || sel.Sel == nil || sel.Sel.Name != "InterceptorOptions" {
+			return true
+		}
+		for _, el := range lit.Elts {
+			kv, ok := el.(*ast.KeyValueExpr)
+			if !ok {
+				continue
+			}
+			if key, ok := kv.Key.(*ast.Ident); ok && key.Name == "Map" {
+				found = true
+			}
+		}
+		return true
+	})
+	return found
 }

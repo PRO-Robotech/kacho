@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz/catalogparity"
+	"github.com/PRO-Robotech/kacho/pkg/authz/catalogderive"
 )
 
 // filter_get_parity_test.go — the list page may not name an object the object's
@@ -32,7 +32,7 @@ import (
 // catalog rather than restating a literal, so a future catalog change cannot leave
 // this file quietly describing the old contract.
 func TestVisibilityRelationsMatchCatalogGetRelation(t *testing.T) {
-	catalog, err := catalogparity.LoadCatalog(".")
+	catalog, err := catalogderive.LoadCatalog(".")
 	require.NoError(t, err, "load permission catalog")
 
 	// Every per-object read storage publishes. If the catalog ever gates these on

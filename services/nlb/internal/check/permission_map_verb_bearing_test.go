@@ -146,12 +146,20 @@ func TestPermissionMap_VerbBearing_Create_StaysEditor(t *testing.T) {
 	}
 }
 
-func TestPermissionMap_VerbBearing_ProjectList_StaysViewer(t *testing.T) {
+// TestPermissionMap_VerbBearing_ProjectList_IsNarrowedNotTierChecked — top-level
+// список не гейтится ярусом, он сужается пообъектно.
+//
+// Здесь закреплялось отношение `viewer` на этих записях. Полоса сужения
+// отношение не читает, поэтому утверждение было вакуумным: оно осталось бы
+// зелёным, если бы там стояло `admin`, и покраснело бы только от отсутствия
+// записи вовсе.
+func TestPermissionMap_VerbBearing_ProjectList_IsNarrowedNotTierChecked(t *testing.T) {
 	m := check.PermissionMap()
 	for _, rpc := range projectListRPCs {
 		e, ok := m[rpc]
 		require.Truef(t, ok, "%s must be mapped", rpc)
-		require.Equalf(t, "viewer", e.Relation, "%s: top-level project List stays viewer (visibility via the per-object iam union)", rpc)
+		require.Truef(t, e.ScopeFiltered, "%s: top-level project List сужается пообъектно", rpc)
+		require.Emptyf(t, e.Relation, "%s: на полосе сужения отношение не читается", rpc)
 	}
 }
 
