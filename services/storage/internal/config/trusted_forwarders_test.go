@@ -46,13 +46,19 @@ const computeSANEnv = "spiffe://kacho.cloud/ns/kacho/sa/kacho-compute"
 // измерение — список отправителей.
 func prodEnv(forwarders string) map[string]string {
 	return map[string]string{
-		"KACHO_STORAGE_DB_PASSWORD":                  "secret",
-		"KACHO_STORAGE_AUTH_MODE":                    "production",
-		"KACHO_STORAGE_DB_SSLMODE":                   "require",
-		"KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR":          "kacho-iam-internal:9091",
-		"KACHO_STORAGE_LIST_FILTER_ENABLED":          "true",
-		"KACHO_STORAGE_PUBLIC_SERVER_MTLS_ENABLE":    "true",
-		"KACHO_STORAGE_INTERNAL_SERVER_MTLS_ENABLE":  "true",
+		"KACHO_STORAGE_DB_PASSWORD":                 "secret",
+		"KACHO_STORAGE_AUTH_MODE":                   "production",
+		"KACHO_STORAGE_DB_SSLMODE":                  "require",
+		"KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR":         "kacho-iam-internal:9091",
+		"KACHO_STORAGE_LIST_FILTER_ENABLED":         "true",
+		"KACHO_STORAGE_PUBLIC_SERVER_MTLS_ENABLE":   "true",
+		"KACHO_STORAGE_INTERNAL_SERVER_MTLS_ENABLE": "true",
+		// Транспорт ребра storage→iam: с тех пор как страж требует его в боевом
+		// режиме, окружение без этой ручки боевым не является. Фикстура,
+		// снисходительнее продукта, делает невидимым ровно тот дефект, ради
+		// которого её подставляют, — поэтому измерение выставлено и здесь, а
+		// ослабляется только в своей пробе (peer_transport_test.go).
+		"KACHO_STORAGE_IAM_CLIENT_MTLS_ENABLE":       "true",
 		"KACHO_STORAGE_AUTHZ_TRUSTED_FORWARDER_SANS": forwarders,
 	}
 }

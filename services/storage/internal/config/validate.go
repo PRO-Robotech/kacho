@@ -174,6 +174,45 @@ func (c Config) Validate() error {
 				"service can act as any tenant; pin the api-gateway SAN and the compute SAN)")
 	}
 
+	// ── транспорт ИСХОДЯЩИХ рёбер ───────────────────────────────────────────
+	// Выше проверены листенеры — то, КАК с нами говорят. Здесь — то, как говорим
+	// мы: клиентская сторона рёбер storage→iam и storage→geo.
+	//
+	// Почему это отдельное измерение, а не следствие проверки листенеров.
+	// Невзведённая ручка клиента не даёт ошибки сама по себе:
+	// grpcclient.TLSClientCreds на Enable=false возвращает insecure-creds БЕЗ
+	// ошибки, поэтому процесс поднимается, печатает «peer edge configured» и
+	// «authz interceptor enabled», а каждый Check уходит по открытому каналу.
+	// Контроль, от которого зависит решение о доступе, при этом присутствует и
+	// не отказывает ни разу за свою жизнь.
+	//
+	// Предикат активности — ТОТ ЖЕ, что читает проводка: composition root зовёт
+	// dialPeer(addr, creds, …), и dialPeer поднимает соединение ровно при
+	// непустом адресе (cmd/storage/serve.go). Поэтому «страж увидел ребро» ⟺
+	// «ребро дилится»: незаданный адрес не порождает требования к транспорту, а
+	// заданный — порождает всегда. Связь стража с проводкой заперта
+	// cmd/storage/peer_transport_wiring_test.go.
+	//
+	// Ручка на все три ребра к iam одна (IAMClientMTLS) — это записанное
+	// отступление storage от соседей, см. docs/architecture/known-divergences.md
+	// §1. Страж от него не зависит: он требует того же предиката, который читает
+	// проводка, каким бы ни было число ручек.
+	if c.AuthZIAMGRPCAddr != "" || c.IAMGRPCAddr != "" {
+		if !c.IAMClientMTLS.Enable {
+			problems = append(problems,
+				"verified transport required on the storage→iam edges: set KACHO_STORAGE_IAM_CLIENT_MTLS_ENABLE=true "+
+					"(with cert/key/CA) — the per-RPC authorization Check, the per-object List filter, the owner-tuple "+
+					"registration and the project existence lookup all travel over this connection, and unarmed client "+
+					"credentials degrade to cleartext silently, so the process starts and reports authorization as enabled")
+		}
+	}
+	if c.GeoGRPCAddr != "" && !c.GeoClientMTLS.Enable {
+		problems = append(problems,
+			"verified transport required on the storage→geo edge: set KACHO_STORAGE_GEO_CLIENT_MTLS_ENABLE=true "+
+				"(with cert/key/CA) — zone existence and the volume/image placement coherence check are decided on "+
+				"this connection, and unarmed client credentials degrade to cleartext silently")
+	}
+
 	if len(problems) > 0 {
 		return fmt.Errorf("%s mode refuses insecure config: %s", mode, strings.Join(problems, "; "))
 	}
