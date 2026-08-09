@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 )
 
 // FGA-register-intent — чистые domain-value-типы transactional-outbox owner-tuple
@@ -39,17 +41,20 @@ const FGAObjectTypeRepository = "registry_repository"
 const FGAObjectTypeProject = "project"
 
 // FGA relation-строки owner-hierarchy tuple'ов registry_registry. `project`
-// линкует ресурс к project-у (cascade tier'ов); `owner` — creator-tuple
-// (обязателен: модель несёт relation owner, иначе creator-intent застрял бы unsent
-// в outbox). Обе входят в allowedProxyRelations iam (fga-proxy privilege-guard).
+// линкует ресурс к project-у; `owner` — creator-tuple (обязателен: модель несёт
+// relation owner, иначе creator-intent застрял бы unsent в outbox); `parent` —
+// hierarchy-relation репозитория к его namespace-реестру
+// (registry_repository #parent @registry_registry).
+//
+// Все три НАЗЫВАЮТСЯ из объявления приёмной стороны (pkg/authz/proxytuple), а не
+// пишутся здесь литералом: закрытый набор принадлежит kacho-iam, и второе написание
+// чужого набора — копия, которая разойдётся молча. Цена расхождения не «красный
+// тест»: отвергнутое отношение отвергается на КАЖДОЙ доставке, а очередь считает
+// отказ временным и заклинивает голову партиции на всё окно повторов.
 const (
-	FGARelationProject = "project"
-	FGARelationOwner   = "owner"
-	// FGARelationParent — hierarchy-relation репозитория к его namespace-реестру
-	// (registry_repository #parent @registry_registry). Входит в allowedProxyRelations
-	// iam (fga-proxy privilege-guard): модуль вправе проксировать только
-	// {project,account,parent,owner}.
-	FGARelationParent = "parent"
+	FGARelationProject = string(proxytuple.RelationProject)
+	FGARelationOwner   = string(proxytuple.RelationOwner)
+	FGARelationParent  = string(proxytuple.RelationParent)
 )
 
 // FGA register-intent event-types (parity с CHECK-constraint registry_outbox и с
