@@ -15,6 +15,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // Per-page фильтрованный List для AddressService: возвращаем ТОЛЬКО
@@ -91,10 +93,10 @@ func TestAddressListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedAddressesLabeled(t, kr, "prj_1", "adr_aaa", "adr_bbb", "adr_ccc")
 
-	filter := &fakeListFilter{allowed: []string{"adr_aaa", "adr_bbb"}}
+	filter, peer := narrowtest.Recording("adr_aaa", "adr_bbb")
 	uc := NewListAddressesUseCase(kr, filter)
 
-	addrs, _, err := uc.Execute(context.Background(), "user:usr_alice", AddressFilter{ProjectID: "prj_1"}, Pagination{})
+	addrs, _, err := uc.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	require.Len(t, addrs, 2)
 	got := map[string]bool{}
@@ -107,10 +109,10 @@ func TestAddressListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 
 	// read==enforce: фильтр зовется с read-verb (action vpc.addresses.list,
 	// FGA-тип vpc_address) и получает РОВНО идентификаторы страницы.
-	assert.Equal(t, "user:usr_alice", filter.gotSubject)
-	assert.Equal(t, "vpc_address", filter.gotResourceType)
-	assert.Equal(t, "vpc.addresses.list", filter.gotAction)
-	assert.ElementsMatch(t, []string{"adr_aaa", "adr_bbb", "adr_ccc"}, filter.gotIDs,
+	assert.Equal(t, "user:usr_alice", peer.Subject)
+	assert.Equal(t, "vpc_address", peer.ResourceType)
+	assert.Equal(t, "vpc.addresses.list", peer.Action)
+	assert.ElementsMatch(t, []string{"adr_aaa", "adr_bbb", "adr_ccc"}, peer.IDs,
 		"visibility must be asked for the page's ids, never for the whole universe")
 }
 
@@ -119,10 +121,10 @@ func TestAddressListPerObject_NoLeak(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedAddressesLabeled(t, kr, "prj_1", "adr_visible", "adr_secret")
 
-	filter := &fakeListFilter{allowed: []string{"adr_visible"}}
+	filter := narrowtest.Allowing("adr_visible")
 	uc := NewListAddressesUseCase(kr, filter)
 
-	addrs, _, err := uc.Execute(context.Background(), "user:usr_alice", AddressFilter{ProjectID: "prj_1"}, Pagination{})
+	addrs, _, err := uc.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	require.Len(t, addrs, 1)
 	assert.Equal(t, "adr_visible", addrs[0].ID)
@@ -133,10 +135,10 @@ func TestAddressListPerObject_EmptyGrantEmptyList(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedAddressesLabeled(t, kr, "prj_1", "adr_a", "adr_b")
 
-	filter := &fakeListFilter{allowed: nil}
+	filter := narrowtest.DenyingAll()
 	uc := NewListAddressesUseCase(kr, filter)
 
-	addrs, next, err := uc.Execute(context.Background(), "user:usr_alice", AddressFilter{ProjectID: "prj_1"}, Pagination{})
+	addrs, next, err := uc.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Empty(t, addrs)
 	assert.Empty(t, next)
@@ -147,10 +149,10 @@ func TestAddressListPerObject_AllVisibleReturnsAll(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedAddressesLabeled(t, kr, "prj_1", "adr_a", "adr_b", "adr_c")
 
-	filter := &fakeListFilter{allowAll: true}
+	filter := narrowtest.AllowingAll()
 	uc := NewListAddressesUseCase(kr, filter)
 
-	addrs, _, err := uc.Execute(context.Background(), "user:usr_alice", AddressFilter{ProjectID: "prj_1"}, Pagination{})
+	addrs, _, err := uc.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, addrs, 3)
 }
@@ -160,10 +162,10 @@ func TestAddressListPerObject_FailClosedUnavailable(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedAddressesLabeled(t, kr, "prj_1", "adr_a")
 
-	filter := &fakeListFilter{err: status.Error(codes.Unavailable, "iam down")}
+	filter := narrowtest.Failing(status.Error(codes.Unavailable, "iam down"))
 	uc := NewListAddressesUseCase(kr, filter)
 
-	_, _, err := uc.Execute(context.Background(), "user:usr_alice", AddressFilter{ProjectID: "prj_1"}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "prj_1"}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.Unavailable, st.Code())
@@ -175,10 +177,10 @@ func TestAddressListPerObject_FailClosedPlainError(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedAddressesLabeled(t, kr, "prj_1", "adr_a")
 
-	filter := &fakeListFilter{err: errors.New("boom")}
+	filter := narrowtest.Failing(errors.New("boom"))
 	uc := NewListAddressesUseCase(kr, filter)
 
-	_, _, err := uc.Execute(context.Background(), "user:usr_alice", AddressFilter{ProjectID: "prj_1"}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "prj_1"}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.NotEqual(t, codes.OK, st.Code())
@@ -189,8 +191,8 @@ func TestAddressListPerObject_NilFilterPassthrough(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedAddressesLabeled(t, kr, "prj_1", "adr_a", "adr_b")
 
-	uc := NewListAddressesUseCase(kr, nil)
-	addrs, _, err := uc.Execute(context.Background(), "user:usr_alice", AddressFilter{ProjectID: "prj_1"}, Pagination{})
+	uc := NewListAddressesUseCase(kr, narrowtest.AllowingAll())
+	addrs, _, err := uc.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, addrs, 2)
 }
@@ -198,9 +200,9 @@ func TestAddressListPerObject_NilFilterPassthrough(t *testing.T) {
 // project_id по-прежнему обязателен (контракт не меняется).
 func TestAddressListPerObject_ProjectIDRequired(t *testing.T) {
 	kr := kachomock.NewRepository()
-	uc := NewListAddressesUseCase(kr, &fakeListFilter{allowAll: true})
+	uc := NewListAddressesUseCase(kr, narrowtest.AllowingAll())
 
-	_, _, err := uc.Execute(context.Background(), "user:usr_alice", AddressFilter{}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), AddressFilter{}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
@@ -213,10 +215,10 @@ func TestAddressListPerObject_EmptySubjectFailsClosed(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedAddressesLabeled(t, kr, "prj_1", "adr_a", "adr_b")
 
-	filter := &fakeListFilter{allowed: []string{"unused_id"}}
+	filter := narrowtest.Allowing("unused_id")
 	uc := NewListAddressesUseCase(kr, filter)
 
-	addrs, _, err := uc.Execute(context.Background(), "", AddressFilter{ProjectID: "prj_1"}, Pagination{})
+	addrs, _, err := uc.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Empty(t, addrs, "empty subject + filter enabled -> fail-closed empty, NOT leak")
 }

@@ -52,6 +52,23 @@ var identityPredicateVocabulary = map[string]string{
 	"is-anonymous-call": "" +
 		"вызов `IsAnonymous(...)` — форма iam: принципал отсутствует либо " +
 		"опознан как неаутентифицированный.",
+	"narrowing-precheck-call": "" +
+		"`if err := listnarrow.Precheck(ctx, …); err != nil { return … }` — " +
+		"предусловие сужения общего фундамента: вызывающий не назван либо модель " +
+		"прав не провязана. Отличается от двух форм выше ИСХОДОМ (отказ, а не " +
+		"пустая страница) и НЕ отличается требованием к порядку: ответ на " +
+		"некорректный формат не должен зависеть от того, что вызывающему выдано, " +
+		"поэтому проверка формата обязана стоять и перед ним.",
+}
+
+// narrowingPrecheckNames — имена предусловий сужения: вызов, чей ненулевой
+// результат немедленно завершает списочный метод отказом по личности или по
+// посадке.
+//
+// Проверяется предмет каждого имени (TestNarrowingPrecheckNamesHaveSubject):
+// имя, которого в дереве больше нет, создаёт впечатление покрытия, которого нет.
+var narrowingPrecheckNames = map[string]string{
+	"Precheck": "listnarrow.Precheck — личность вызывающего и провязанность модели, до чтения страницы",
 }
 
 // paginationValidatorNames — имена функций, вызов которых считается проверкой
@@ -242,6 +259,89 @@ func (u *uc) Execute(ctx ctxT, subjectID string, f filterT, p pageT) ([]row, str
 	}
 }
 
+// TestGateRedOnInjectedRefusalBeforeFormat — та же инъекция для ТРЕТЬЕЙ формы:
+// отказ по предусловию сужения, поставленный раньше проверки формата.
+//
+// Форма отличается от двух предыдущих исходом — вызывающий получает отказ, а не
+// пустую страницу, — но дефект тот же: ответ на мусорный курсор зависит от того,
+// назван ли вызывающий. Без этой пары расширение словаря было бы объявлением, а не
+// проверкой.
+func TestGateRedOnInjectedRefusalBeforeFormat(t *testing.T) {
+	const src = `package x
+
+func (u *uc) Execute(ctx ctxT, f filterT, p pageT) ([]row, string, error) {
+	if err := listnarrow.Precheck(ctx, u.narrower); err != nil {
+		return nil, "", err
+	}
+	if err := ValidatePagination(p.PageToken, p.PageSize); err != nil {
+		return nil, "", err
+	}
+	return u.repo.List(ctx, f, p)
+}
+`
+	got := analyzeListPaginationOrder(t, "injected_refusal.go", []byte(src))
+
+	if got.shortCircuits != 1 {
+		t.Fatalf("отказ по предусловию сужения не распознан: shortCircuits=%d", got.shortCircuits)
+	}
+	if len(got.hits) != 1 {
+		t.Fatalf("дефект не найден: hits=%v", got.hits)
+	}
+	if got.hits[0].line != 4 {
+		t.Errorf("гейт обязан назвать координату: ожидалась строка 4, получена %d", got.hits[0].line)
+	}
+}
+
+// TestGateSilentOnLawfulRefusalAfterFormat — ЗАКОННЫЙ БЛИЗНЕЦ той же формы: тот же
+// отказ, поставленный ПОСЛЕ проверки формата, гейт не задевает. Без этой половины
+// проверка ловила бы форму, а не существо, и первый же ложный срабат её отключил бы.
+func TestGateSilentOnLawfulRefusalAfterFormat(t *testing.T) {
+	const src = `package x
+
+func (u *uc) Execute(ctx ctxT, f filterT, p pageT) ([]row, string, error) {
+	if err := ValidatePagination(p.PageToken, p.PageSize); err != nil {
+		return nil, "", err
+	}
+	if err := listnarrow.Precheck(ctx, u.narrower); err != nil {
+		return nil, "", err
+	}
+	return u.repo.List(ctx, f, p)
+}
+`
+	got := analyzeListPaginationOrder(t, "lawful_refusal.go", []byte(src))
+
+	if got.shortCircuits != 1 {
+		t.Fatalf("законная форма обязана оставаться ПОСЧИТАННОЙ, иначе молчание неотличимо от слепоты: shortCircuits=%d", got.shortCircuits)
+	}
+	if len(got.hits) != 0 {
+		t.Fatalf("законная конструкция той же формы не должна быть находкой: hits=%v", got.hits)
+	}
+}
+
+// TestGateIgnoresOrdinaryErrorReturnsThatAreNotPrechecks — отрицательный контроль
+// распознавания: обычный `if err != nil { return nil, "", err }` предусловием
+// сужения не является и в перепись не попадает. Иначе счётчик замыканий раздулся бы
+// каждым проверенным вызовом, а нижняя граница перестала бы ловить усадку словаря.
+func TestGateIgnoresOrdinaryErrorReturnsThatAreNotPrechecks(t *testing.T) {
+	const src = `package x
+
+func (u *uc) Execute(ctx ctxT, f filterT, p pageT) ([]row, string, error) {
+	rd, err := u.repo.Reader(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	return rd.List(ctx, f, p)
+}
+`
+	got := analyzeListPaginationOrder(t, "ordinary.go", []byte(src))
+	if got.shortCircuits != 0 {
+		t.Fatalf("обычный проброс ошибки засчитан замыканием по личности: shortCircuits=%d", got.shortCircuits)
+	}
+	if len(got.hits) != 0 {
+		t.Fatalf("обычный проброс ошибки объявлен находкой: hits=%v", got.hits)
+	}
+}
+
 // TestGateSilentOnLawfulSameShape — законные конструкции ТОЙ ЖЕ формы гейт не
 // задевает.
 //
@@ -408,6 +508,20 @@ func scanStmtsForShortCircuits(fset *token.FileSet, fnName string, stmts []ast.S
 		// Init выполняется безусловно ещё до вычисления условия.
 		initValidators := validatorCallsIn(ifStmt.Init)
 		branchInherited := append(append([]token.Pos(nil), running...), initValidators...)
+
+		if ret := directRefusalReturn(ifStmt.Body); ret != nil && initIsNarrowingPrecheck(ifStmt.Init) {
+			// Отказ по предусловию сужения — то же требование к порядку, что и у
+			// пустой страницы: проверка формата обязана стоять ПЕРЕД ним, иначе
+			// один и тот же мусорный курсор получает разный ответ в зависимости от
+			// того, опознан ли вызывающий.
+			out.shortCircuits++
+			if !anyValidatorBefore(running, ret.Pos()) {
+				out.hits = append(out.hits, paginationHit{
+					line: fset.Position(ifStmt.Pos()).Line,
+					fn:   fnName,
+				})
+			}
+		}
 
 		if ret := directEmptyPageReturn(ifStmt.Body); ret != nil && condHasIdentityPredicate(ifStmt.Cond) {
 			out.shortCircuits++
@@ -625,6 +739,45 @@ func directEmptyPageReturn(b *ast.BlockStmt) *ast.ReturnStmt {
 	return nil
 }
 
+// directRefusalReturn — `return nil, "", <err>` немедленно в теле ветки: списочный
+// метод завершается ОТКАЗОМ. Третий результат ненулевой — этим форма и отличается
+// от пустой страницы.
+func directRefusalReturn(b *ast.BlockStmt) *ast.ReturnStmt {
+	if b == nil {
+		return nil
+	}
+	for _, stmt := range b.List {
+		ret, ok := stmt.(*ast.ReturnStmt)
+		if !ok || len(ret.Results) != 3 {
+			continue
+		}
+		if isNilIdent(ret.Results[0]) && isEmptyStringLit(ret.Results[1]) && !isNilIdent(ret.Results[2]) {
+			return ret
+		}
+	}
+	return nil
+}
+
+// initIsNarrowingPrecheck — Init инструкции `if` есть вызов предусловия сужения.
+func initIsNarrowingPrecheck(init ast.Stmt) bool {
+	if init == nil {
+		return false
+	}
+	found := false
+	ast.Inspect(init, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if _, named := narrowingPrecheckNames[calleeName(call)]; named {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
+
 func isNilIdent(e ast.Expr) bool { return isIdentNamed(e, "nil") }
 
 // calleeName — имя вызываемой функции без квалификатора пакета/приёмника.
@@ -653,6 +806,11 @@ func countIdentityPredicateForms(t *testing.T, rel string, body []byte) map[stri
 		}
 		if k := identityPredicateKind(ifStmt.Cond); k != "" {
 			out[k]++
+		}
+		// Третья форма распознаётся по Init, а не по условию: отказ приходит из
+		// предусловия сужения, а само условие — обычное `err != nil`.
+		if initIsNarrowingPrecheck(ifStmt.Init) {
+			out["narrowing-precheck-call"]++
 		}
 		return true
 	})
@@ -721,4 +879,34 @@ func forEachProductionGoFileForPagination(t *testing.T, root string, fn func(rel
 			t.Fatalf("обход %s: %v", sub, err)
 		}
 	}
+}
+
+// TestNarrowingPrecheckNamesHaveSubject — перечень предусловий сужения обязан
+// истекать сам.
+//
+// Имя, которого в прод-дереве больше нет, снимает с наблюдения целую форму молча:
+// следующий читатель увидит запись и решит, что этот случай гейт ловит. Проба
+// печатает объём осмотренного, поэтому «ноль находок» отличимо от «ноль
+// прочитанного».
+func TestNarrowingPrecheckNamesHaveSubject(t *testing.T) {
+	root := repoRoot(t)
+	counts := map[string]int{}
+	files := 0
+	forEachProductionGoFileForPagination(t, root, func(rel string, body []byte) {
+		files++
+		for name := range narrowingPrecheckNames {
+			counts[name] += countCallsByName(t, rel, body, name)
+		}
+	})
+	if files == 0 {
+		t.Fatalf("не прочитано ни одного прод-файла — предпосылка обхода сломана")
+	}
+	for name, why := range narrowingPrecheckNames {
+		if counts[name] == 0 {
+			t.Errorf("предусловие %q (%s) в прод-дереве не вызывается ни разу: "+
+				"запись создаёт впечатление покрытия, которого нет — удали её либо "+
+				"установи, куда делись места", name, why)
+		}
+	}
+	t.Logf("вызовов предусловий сужения: %v (прод-файлов прочитано: %d)", counts, files)
 }

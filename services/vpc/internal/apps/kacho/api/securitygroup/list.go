@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/listpage"
@@ -33,19 +34,19 @@ import (
 // это нормально для cursor-пагинации, next_page_token берётся от последней
 // ПРОСМОТРЕННОЙ строки, поэтому обхода без пропусков это не ломает.
 type ListSecurityGroupsUseCase struct {
-	repo   Repo
-	filter ListFilter
+	repo     Repo
+	narrower *listnarrow.Narrower
 }
 
 // NewListSecurityGroupsUseCase создает ListSecurityGroupsUseCase. filter может
 // быть nil (list-filter disabled / dev) → unfiltered passthrough.
-func NewListSecurityGroupsUseCase(r Repo, filter ListFilter) *ListSecurityGroupsUseCase {
-	return &ListSecurityGroupsUseCase{repo: r, filter: filter}
+func NewListSecurityGroupsUseCase(r Repo, n *listnarrow.Narrower) *ListSecurityGroupsUseCase {
+	return &ListSecurityGroupsUseCase{repo: r, narrower: n}
 }
 
 // Execute — проверяет project_id, читает страницу и фильтрует её per-object.
 // iam недоступен → fail-closed Unavailable (страница НЕ отдается нефильтрованной).
-func (u *ListSecurityGroupsUseCase) Execute(ctx context.Context, subjectID string, f SecurityGroupFilter, p Pagination) ([]*kacho.SecurityGroupRecord, string, error) {
+func (u *ListSecurityGroupsUseCase) Execute(ctx context.Context, f SecurityGroupFilter, p Pagination) ([]*kacho.SecurityGroupRecord, string, error) {
 	// Формат пагинации — ПЕРВЫМ стейтментом, до всего остального.
 	//
 	// Ниже стоит замыкание по личности вызывающего: при неизвлечённом принципале
@@ -60,55 +61,37 @@ func (u *ListSecurityGroupsUseCase) Execute(ctx context.Context, subjectID strin
 	if f.ProjectID == "" {
 		return nil, "", status.Error(codes.InvalidArgument, "project_id required")
 	}
+	// Предусловие сужения — ДО чтения страницы из БД.
+	//
+	// Оно стоит здесь, а не внутри сужателя, потому что между решением и сужением
+	// лежит курсорный запрос к своей базе: безымянный запрос оплачивал бы его, чтобы
+	// получить отказ на прочитанном. Проверка формата остаётся ПЕРВОЙ и выше —
+	// ответ на некорректный ввод не должен зависеть от того, что вызывающему выдано.
+	if err := listnarrow.Precheck(ctx, u.narrower); err != nil {
+		return nil, "", err
+	}
 	rd, err := u.repo.Reader(ctx)
 	if err != nil {
 		return nil, "", serviceerr.MapRepoErr(err)
 	}
 	defer func() { _ = rd.Close() }()
 
-	if subjectID == "" && u.filter != nil {
-		// identity не извлечен (anon) при включенном фильтре → fail-closed (no-leak).
-		return nil, "", nil
-	}
 	// Формат page_token/page_size уже проверен выше — repo.List повторяет обе
 	// проверки как авторитетный backstop служимого пути.
 	sgs, next, lerr := rd.SecurityGroups().List(ctx, f, p)
 	if lerr != nil {
 		return nil, "", lerr
 	}
-	if u.filter == nil || len(sgs) == 0 {
+	if len(sgs) == 0 {
 		return sgs, next, nil
 	}
-	visible, ferr := filterVisibleSecurityGroups(ctx, u.filter, subjectID, sgs)
+	visible, ferr := listnarrow.Page(ctx, u.narrower,
+		authzfilter.ResourceTypeSecurityGroup, authzfilter.ActionSecurityGroupList, sgs,
+		func(rec *kacho.SecurityGroupRecord) string { return rec.ID })
 	if ferr != nil {
 		return nil, "", ferr
 	}
 	return visible, next, nil
-}
-
-// filterVisibleSecurityGroups оставляет из страницы только видимые subject'у
-// строки, сохраняя порядок курсора.
-func filterVisibleSecurityGroups(ctx context.Context, filter ListFilter, subjectID string, sgs []*kacho.SecurityGroupRecord) ([]*kacho.SecurityGroupRecord, error) {
-	pageIDs := make([]string, 0, len(sgs))
-	for _, sg := range sgs {
-		pageIDs = append(pageIDs, sg.ID)
-	}
-	visibleIDs, err := filter.FilterVisibleIDs(ctx, subjectID,
-		authzfilter.ResourceTypeSecurityGroup, authzfilter.ActionSecurityGroupList, pageIDs)
-	if err != nil {
-		return nil, err
-	}
-	visible := make(map[string]struct{}, len(visibleIDs))
-	for _, id := range visibleIDs {
-		visible[id] = struct{}{}
-	}
-	out := make([]*kacho.SecurityGroupRecord, 0, len(visibleIDs))
-	for _, sg := range sgs {
-		if _, ok := visible[sg.ID]; ok {
-			out = append(out, sg)
-		}
-	}
-	return out, nil
 }
 
 // ListOperationsUseCase — операции, относящиеся к конкретному SG.

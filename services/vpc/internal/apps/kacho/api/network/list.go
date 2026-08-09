@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/listpage"
@@ -32,14 +33,14 @@ import (
 // это нормально для cursor-пагинации, next_page_token берётся от последней
 // ПРОСМОТРЕННОЙ строки, поэтому обхода без пропусков это не ломает.
 type ListNetworksUseCase struct {
-	repo   Repo
-	filter ListFilter
+	repo     Repo
+	narrower *listnarrow.Narrower
 }
 
 // NewListNetworksUseCase создает ListNetworksUseCase. filter может быть nil
 // (list-filter disabled / dev) → unfiltered passthrough.
-func NewListNetworksUseCase(r Repo, filter ListFilter) *ListNetworksUseCase {
-	return &ListNetworksUseCase{repo: r, filter: filter}
+func NewListNetworksUseCase(r Repo, n *listnarrow.Narrower) *ListNetworksUseCase {
+	return &ListNetworksUseCase{repo: r, narrower: n}
 }
 
 // Execute — проверяет project_id, читает страницу и фильтрует её per-object.
@@ -49,7 +50,7 @@ func NewListNetworksUseCase(r Repo, filter ListFilter) *ListNetworksUseCase {
 //   - subjectID: FGA-subject ("user:usr_xxx"). Пустой при включенном фильтре →
 //     fail-closed (no-leak). Сквозного пропуска фильтра нет ни для какого значения
 //     субъекта — см. authzfilter/actions.go.
-func (u *ListNetworksUseCase) Execute(ctx context.Context, subjectID string, f NetworkFilter, p Pagination) ([]*kachorepo.NetworkRecord, string, error) {
+func (u *ListNetworksUseCase) Execute(ctx context.Context, f NetworkFilter, p Pagination) ([]*kachorepo.NetworkRecord, string, error) {
 	// Формат пагинации — ПЕРВЫМ стейтментом, до всего остального.
 	//
 	// Ниже стоит замыкание по личности вызывающего: при неизвлечённом принципале
@@ -64,57 +65,37 @@ func (u *ListNetworksUseCase) Execute(ctx context.Context, subjectID string, f N
 	if f.ProjectID == "" {
 		return nil, "", status.Error(codes.InvalidArgument, "project_id required")
 	}
+	// Предусловие сужения — ДО чтения страницы из БД.
+	//
+	// Оно стоит здесь, а не внутри сужателя, потому что между решением и сужением
+	// лежит курсорный запрос к своей базе: безымянный запрос оплачивал бы его, чтобы
+	// получить отказ на прочитанном. Проверка формата остаётся ПЕРВОЙ и выше —
+	// ответ на некорректный ввод не должен зависеть от того, что вызывающему выдано.
+	if err := listnarrow.Precheck(ctx, u.narrower); err != nil {
+		return nil, "", err
+	}
 	r, err := u.repo.Reader(ctx)
 	if err != nil {
 		return nil, "", serviceerr.MapRepoErr(err)
 	}
 	defer func() { _ = r.Close() }()
 
-	if subjectID == "" && u.filter != nil {
-		// identity не извлечен (anon / gateway не проставил principal) при
-		// включенном фильтре → fail-closed (пустой список), НЕ unfiltered
-		// passthrough: «не знаю, кто ты» ≠ «доверенный system-вызов» (no-leak).
-		return nil, "", nil
-	}
 	// Формат page_token/page_size уже проверен выше — repo.List повторяет обе
 	// проверки как авторитетный backstop служимого пути.
 	nets, next, lerr := r.Networks().List(ctx, f, p)
 	if lerr != nil {
 		return nil, "", lerr
 	}
-	if u.filter == nil || len(nets) == 0 {
+	if len(nets) == 0 {
 		return nets, next, nil
 	}
-	visible, ferr := filterVisibleNetworks(ctx, u.filter, subjectID, nets)
+	visible, ferr := listnarrow.Page(ctx, u.narrower,
+		authzfilter.ResourceTypeNetwork, authzfilter.ActionNetworkList, nets,
+		func(rec *kachorepo.NetworkRecord) string { return rec.ID })
 	if ferr != nil {
 		return nil, "", ferr
 	}
 	return visible, next, nil
-}
-
-// filterVisibleNetworks оставляет из страницы только видимые subject'у строки,
-// сохраняя порядок курсора.
-func filterVisibleNetworks(ctx context.Context, filter ListFilter, subjectID string, nets []*kachorepo.NetworkRecord) ([]*kachorepo.NetworkRecord, error) {
-	pageIDs := make([]string, 0, len(nets))
-	for _, n := range nets {
-		pageIDs = append(pageIDs, n.ID)
-	}
-	visibleIDs, err := filter.FilterVisibleIDs(ctx, subjectID,
-		authzfilter.ResourceTypeNetwork, authzfilter.ActionNetworkList, pageIDs)
-	if err != nil {
-		return nil, err
-	}
-	visible := make(map[string]struct{}, len(visibleIDs))
-	for _, id := range visibleIDs {
-		visible[id] = struct{}{}
-	}
-	out := make([]*kachorepo.NetworkRecord, 0, len(visibleIDs))
-	for _, n := range nets {
-		if _, ok := visible[n.ID]; ok {
-			out = append(out, n)
-		}
-	}
-	return out, nil
 }
 
 // ListSubnetsUseCase — список Subnets конкретной Network. Network-existence-check

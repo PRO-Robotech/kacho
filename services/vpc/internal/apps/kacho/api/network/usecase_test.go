@@ -19,6 +19,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // Тесты Network use-case'ов и handler'а.
@@ -58,7 +60,7 @@ func makeHandler(t *testing.T,
 	update := NewUpdateNetworkUseCase(kr, or)
 	deleteUC := NewDeleteNetworkUseCase(kr, sReader, rtReader, sgRepoIface, or)
 	get := NewGetNetworkUseCase(kr)
-	list := NewListNetworksUseCase(kr, nil) // authz nil → unfiltered list path
+	list := NewListNetworksUseCase(kr, narrowtest.AllowingAll()) // authz nil → unfiltered list path
 	addCidr := NewAddCidrBlocksUseCase(kr, or)
 	removeCidr := NewRemoveCidrBlocksUseCase(kr, or)
 	listSub := NewListSubnetsUseCase(kr, sReader)
@@ -98,7 +100,7 @@ func TestHandler_Get_NotFound(t *testing.T) {
 
 func TestHandler_List_Empty(t *testing.T) {
 	h, _, _ := minimalHandler(t, true)
-	resp, err := h.List(context.Background(), &vpcv1.ListNetworksRequest{ProjectId: "f1"})
+	resp, err := h.List(narrowtest.Caller(), &vpcv1.ListNetworksRequest{ProjectId: "f1"})
 	require.NoError(t, err)
 	assert.Empty(t, resp.Networks)
 }
@@ -328,7 +330,7 @@ func TestDeleteUseCase_InvalidArg(t *testing.T) {
 
 func TestListUseCase_RequiresProject(t *testing.T) {
 	uc := NewListNetworksUseCase(kachomock.NewRepository(), nil)
-	_, _, err := uc.Execute(context.Background(), "", NetworkFilter{}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), NetworkFilter{}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
@@ -387,7 +389,7 @@ func TestHandler_Delete_ResponseIsEmpty(t *testing.T) {
 	require.NoError(t, err)
 	repomock.AwaitOpDone(t, or, createOp.Id)
 
-	resp, _ := h.List(context.Background(), &vpcv1.ListNetworksRequest{ProjectId: "f1"})
+	resp, _ := h.List(narrowtest.Caller(), &vpcv1.ListNetworksRequest{ProjectId: "f1"})
 	require.Len(t, resp.Networks, 1)
 
 	delOp, err := h.Delete(context.Background(), &vpcv1.DeleteNetworkRequest{NetworkId: resp.Networks[0].Id})
@@ -409,7 +411,7 @@ func TestHandler_Update_MaskApplication(t *testing.T) {
 	savedOp := repomock.AwaitOpDone(t, or, createOp.Id)
 	require.NotNil(t, savedOp.Metadata)
 
-	resp, _ := h.List(context.Background(), &vpcv1.ListNetworksRequest{ProjectId: "f1"})
+	resp, _ := h.List(narrowtest.Caller(), &vpcv1.ListNetworksRequest{ProjectId: "f1"})
 	require.Len(t, resp.Networks, 1)
 	netID := resp.Networks[0].Id
 
@@ -454,7 +456,7 @@ func TestHandler_Update_Happy(t *testing.T) {
 	require.NoError(t, err)
 	repomock.AwaitOpDone(t, or, createOp.Id)
 
-	resp, _ := h.List(context.Background(), &vpcv1.ListNetworksRequest{ProjectId: "f1"})
+	resp, _ := h.List(narrowtest.Caller(), &vpcv1.ListNetworksRequest{ProjectId: "f1"})
 	require.Len(t, resp.Networks, 1)
 	netID := resp.Networks[0].Id
 

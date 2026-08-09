@@ -34,7 +34,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/serviceerr"
+
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
@@ -51,16 +53,6 @@ const attachMaxRetries = 64
 // `*clients.GeoZoneClient` (per-call deadline, positive-TTL кэш).
 type ZoneRegistry = repo.ZoneRegistry
 
-// ListFilter — port per-page фильтра видимости. Реализация —
-// `authzfilter.AsPort(*authzfilter.FGAFilter)`. Возвращает подмножество переданных
-// id, видимое subject'у (порядок сохраняется); err → fail-closed (страница не
-// отдаётся). nil → unfiltered passthrough, поэтому в production его наличие
-// гарантируется boot-guard'ом `config.ValidateListFilter` (ListByInstance помечен
-// ScopeFiltered в check.PermissionMap и попадает в ScopeFilteredRPCs()).
-type ListFilter interface {
-	FilterVisibleIDs(ctx context.Context, subject, resourceType, action string, ids []string) ([]string, error)
-}
-
 // Service — координатор NIC↔Instance attach поверх CQRS-Repository.
 type Service struct {
 	repo kachorepo.Repository
@@ -68,7 +60,7 @@ type Service struct {
 	// placement-coherence (anycast-подсеть). nil → полоса fail-closed.
 	zones ZoneRegistry
 	// filter — per-object видимость для ListByInstance (see package doc).
-	filter ListFilter
+	narrower *listnarrow.Narrower
 }
 
 // NewService создаёт Service.
@@ -78,8 +70,8 @@ func NewService(r kachorepo.Repository) *Service {
 
 // WithListFilter подключает per-page фильтр видимости для ListByInstance.
 // Вызывается один раз из composition-root до приёма трафика.
-func (s *Service) WithListFilter(f ListFilter) *Service {
-	s.filter = f
+func (s *Service) WithListFilter(f *listnarrow.Narrower) *Service {
+	s.narrower = f
 	return s
 }
 
@@ -224,9 +216,12 @@ func (s *Service) Detach(ctx context.Context, nicID, instanceID string) (*kachor
 // RPC помечен ScopeFiltered, то есть Check за него не задаётся вовсе. Привяжи мы
 // fail-closed к наличию фильтра — конфигурация без фильтра отдавала бы вообще всё и
 // вообще всем, что ровно та дыра, ради которой сюда пришли.
-func (s *Service) ListByInstance(ctx context.Context, subject string, instanceIDs []string) ([]*kachorepo.NetworkInterfaceAttachment, error) {
-	if subject == "" {
-		return nil, nil
+func (s *Service) ListByInstance(ctx context.Context, instanceIDs []string) ([]*kachorepo.NetworkInterfaceAttachment, error) {
+	// Предусловие — ДО чтения из БД: и «никого не назвали», и «спросить негде»
+	// решаются здесь, одной функцией общего фундамента, поэтому ответ этого RPC
+	// совпадает с ответом публичных списков по построению, а не по внимательности.
+	if err := listnarrow.Precheck(ctx, s.narrower); err != nil {
+		return nil, err
 	}
 	rd, err := s.repo.Reader(ctx)
 	if err != nil {
@@ -237,51 +232,10 @@ func (s *Service) ListByInstance(ctx context.Context, subject string, instanceID
 	if err != nil {
 		return nil, serviceerr.MapRepoErrLeakSafe(err, "list network interfaces by instance failed")
 	}
-	if s.filter == nil {
-		// Порт есть, спросить негде. Это состояние ПОСАДКИ, а не ответ модели, —
-		// поэтому отказ, а не «да» (эталон существа и формулировки — storage
-		// AllowedOnObject, отказывающий на том же условии).
-		//
-		// Это ровно та конфигурация, о которой предупреждает godoc выше: инстансы
-		// называет ВЫЗЫВАЮЩИЙ, per-RPC Check за этим RPC не задаётся вовсе, поэтому
-		// проход означал выдачу привязок любых названных инстансов — из чужих
-		// проектов и аккаунтов. Отсечку безымянного вызывающего сделали безусловной
-		// по этой же причине; здесь рассуждение не было доведено до конца.
-		return nil, status.Error(codes.PermissionDenied,
-			"list by instance: the rights model is not configured for this deployment")
-	}
 	if len(att) == 0 {
 		return att, nil
 	}
-	return s.filterVisible(ctx, subject, att)
-}
-
-// filterVisible оставляет только те привязки, чей NIC видим subject'у, сохраняя
-// порядок. Ошибка резолва видимости — fail-closed: страницу не отдаём (недоступный
-// ответ модели не есть ответ «да»).
-func (s *Service) filterVisible(
-	ctx context.Context,
-	subject string,
-	att []*kachorepo.NetworkInterfaceAttachment,
-) ([]*kachorepo.NetworkInterfaceAttachment, error) {
-	pageIDs := make([]string, 0, len(att))
-	for _, a := range att {
-		pageIDs = append(pageIDs, a.NICID)
-	}
-	visibleIDs, err := s.filter.FilterVisibleIDs(ctx, subject,
-		authzfilter.ResourceTypeNetworkInterface, authzfilter.ActionNetworkInterfaceList, pageIDs)
-	if err != nil {
-		return nil, err
-	}
-	visible := make(map[string]struct{}, len(visibleIDs))
-	for _, id := range visibleIDs {
-		visible[id] = struct{}{}
-	}
-	out := make([]*kachorepo.NetworkInterfaceAttachment, 0, len(visibleIDs))
-	for _, a := range att {
-		if _, ok := visible[a.NICID]; ok {
-			out = append(out, a)
-		}
-	}
-	return out, nil
+	return listnarrow.Page(ctx, s.narrower,
+		authzfilter.ResourceTypeNetworkInterface, authzfilter.ActionNetworkInterfaceList, att,
+		func(a *kachorepo.NetworkInterfaceAttachment) string { return a.NICID })
 }

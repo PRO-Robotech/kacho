@@ -68,8 +68,7 @@ func (h *Handler) Get(ctx context.Context, req *vpcv1.GetRouteTableRequest) (*vp
 // List — project_id required + FGA list-filter. Project-scope AuthZ (`viewer @
 // project:<project_id>`) энфорсит per-RPC authz-interceptor.
 func (h *Handler) List(ctx context.Context, req *vpcv1.ListRouteTablesRequest) (*vpcv1.ListRouteTablesResponse, error) {
-	subject := pbconv.SubjectFromContext(ctx)
-	rts, nextToken, err := h.list.Execute(ctx, subject, RouteTableFilter{
+	rts, nextToken, err := h.list.Execute(ctx, RouteTableFilter{
 		ProjectID: req.ProjectId,
 		Filter:    req.Filter,
 	}, Pagination{

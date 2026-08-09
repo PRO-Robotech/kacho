@@ -32,6 +32,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/pg"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // ---- helpers ----
@@ -52,7 +54,7 @@ func newNetworkHandler(t *testing.T, pool *pgxpool.Pool) (*networkapp.Handler, *
 	update := networkapp.NewUpdateNetworkUseCase(r, or)
 	// Read/list/delete use-cases здесь не задействованы, но нужны NewHandler.
 	get := networkapp.NewGetNetworkUseCase(r)
-	list := networkapp.NewListNetworksUseCase(r, nil)
+	list := networkapp.NewListNetworksUseCase(r, narrowtest.AllowingAll())
 	listSub := networkapp.NewListSubnetsUseCase(r, nil)
 	listSG := networkapp.NewListSecurityGroupsUseCase(r, nil)
 	listRT := networkapp.NewListRouteTablesUseCase(r, nil)
@@ -78,7 +80,7 @@ func createNetworkVia(t *testing.T, h *networkapp.Handler, or *repomock.OpsRepo,
 	require.True(t, saved.Done)
 	require.Nil(t, saved.Error, "Create op must succeed")
 
-	resp, err := h.List(ctx, &vpcv1.ListNetworksRequest{ProjectId: projectID})
+	resp, err := h.List(narrowtest.Caller(), &vpcv1.ListNetworksRequest{ProjectId: projectID})
 	require.NoError(t, err)
 	require.NotEmpty(t, resp.Networks)
 	return resp.Networks[0].Id

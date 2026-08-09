@@ -22,6 +22,8 @@ import (
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // Тесты NetworkInterface use-case'ов и handler'а.
@@ -51,7 +53,7 @@ func makeHandler(t *testing.T,
 	update := NewUpdateNetworkInterfaceUseCase(kr, or)
 	deleteUC := NewDeleteNetworkInterfaceUseCase(kr, or)
 	get := NewGetNetworkInterfaceUseCase(kr)
-	list := NewListNetworkInterfacesUseCase(kr, nil)
+	list := NewListNetworkInterfacesUseCase(kr, narrowtest.AllowingAll())
 	listOps := NewListOperationsUseCase(or)
 	return NewHandler(create, update, deleteUC, get, list, listOps)
 }
@@ -99,7 +101,7 @@ func TestHandler_Get_NotFound(t *testing.T) {
 
 func TestHandler_List_Empty(t *testing.T) {
 	h, _, _ := minimalHandler(t, true)
-	resp, err := h.List(context.Background(), &vpcv1.ListNetworkInterfacesRequest{ProjectId: "f1"})
+	resp, err := h.List(narrowtest.Caller(), &vpcv1.ListNetworkInterfacesRequest{ProjectId: "f1"})
 	require.NoError(t, err)
 	assert.Empty(t, resp.NetworkInterfaces)
 }
@@ -423,7 +425,7 @@ func TestDeleteUseCase_InvalidArg(t *testing.T) {
 
 func TestListUseCase_RequiresProject(t *testing.T) {
 	uc := NewListNetworkInterfacesUseCase(kachomock.NewRepository(), nil)
-	_, _, err := uc.Execute(context.Background(), "", NetworkInterfaceFilter{}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), NetworkInterfaceFilter{}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())

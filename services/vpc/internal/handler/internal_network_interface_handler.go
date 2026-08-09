@@ -29,7 +29,6 @@ import (
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/services/nicinternal"
-	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/pbconv"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/dto"
 	kachorepo "github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 
@@ -109,7 +108,7 @@ func (h *InternalNetworkInterfaceHandler) Detach(ctx context.Context, req *vpcv1
 // видимость решается по каждому возвращаемому NIC в use-case'е. Здесь — только
 // извлечение subject'а из принципала запроса (тот же шов, что публичные List).
 func (h *InternalNetworkInterfaceHandler) ListByInstance(ctx context.Context, req *vpcv1.ListNetworkInterfacesByInstanceRequest) (*vpcv1.ListNetworkInterfacesByInstanceResponse, error) {
-	att, err := h.svc.ListByInstance(ctx, pbconv.SubjectFromContext(ctx), req.GetInstanceIds())
+	att, err := h.svc.ListByInstance(ctx, req.GetInstanceIds())
 	if err != nil {
 		return nil, err
 	}

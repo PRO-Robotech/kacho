@@ -13,6 +13,8 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // Формат пагинации проверяется ДО замыкания по личности вызывающего.
@@ -44,10 +46,9 @@ func TestListPaginationFormatCheckedBeforeIdentityShortCircuit(t *testing.T) {
 	const garbageToken = "not-a-real-token!!"
 
 	t.Run("названный вызывающий — отказ по формату (положительный контроль)", func(t *testing.T) {
-		uc := NewListRouteTablesUseCase(kachomock.NewRepository(), &fakeListFilter{allowAll: true})
+		uc := NewListRouteTablesUseCase(kachomock.NewRepository(), narrowtest.AllowingAll())
 
-		_, _, err := uc.Execute(context.Background(), "user:usr_alice",
-			RouteTableFilter{ProjectID: "prj_1"}, Pagination{PageToken: garbageToken})
+		_, _, err := uc.Execute(narrowtest.Caller(), RouteTableFilter{ProjectID: "prj_1"}, Pagination{PageToken: garbageToken})
 
 		require.Error(t, err)
 		assert.Equal(t, codes.InvalidArgument, status.Code(err),
@@ -55,10 +56,9 @@ func TestListPaginationFormatCheckedBeforeIdentityShortCircuit(t *testing.T) {
 	})
 
 	t.Run("вызывающий не опознан — тот же отказ по формату", func(t *testing.T) {
-		uc := NewListRouteTablesUseCase(kachomock.NewRepository(), &fakeListFilter{allowAll: true})
+		uc := NewListRouteTablesUseCase(kachomock.NewRepository(), narrowtest.AllowingAll())
 
-		_, _, err := uc.Execute(context.Background(), "",
-			RouteTableFilter{ProjectID: "prj_1"}, Pagination{PageToken: garbageToken})
+		_, _, err := uc.Execute(context.Background(), RouteTableFilter{ProjectID: "prj_1"}, Pagination{PageToken: garbageToken})
 
 		require.Error(t, err,
 			"пустая страница вместо отказа: замыкание по личности опередило проверку формата")
@@ -66,12 +66,14 @@ func TestListPaginationFormatCheckedBeforeIdentityShortCircuit(t *testing.T) {
 	})
 
 	t.Run("page_size вне диапазона — отказ независимо от личности", func(t *testing.T) {
-		for name, subject := range map[string]string{"названный": "user:usr_alice", "неопознанный": ""} {
+		for name, caller := range map[string]context.Context{
+			"названный":    narrowtest.Caller(),
+			"неопознанный": context.Background(),
+		} {
 			t.Run(name, func(t *testing.T) {
-				uc := NewListRouteTablesUseCase(kachomock.NewRepository(), &fakeListFilter{allowAll: true})
+				uc := NewListRouteTablesUseCase(kachomock.NewRepository(), narrowtest.AllowingAll())
 
-				_, _, err := uc.Execute(context.Background(), subject,
-					RouteTableFilter{ProjectID: "prj_1"}, Pagination{PageSize: 1001})
+				_, _, err := uc.Execute(caller, RouteTableFilter{ProjectID: "prj_1"}, Pagination{PageSize: 1001})
 
 				require.Error(t, err)
 				assert.Equal(t, codes.InvalidArgument, status.Code(err))
@@ -80,10 +82,9 @@ func TestListPaginationFormatCheckedBeforeIdentityShortCircuit(t *testing.T) {
 	})
 
 	t.Run("законная первая страница проходит — проба не отвергает всё подряд", func(t *testing.T) {
-		uc := NewListRouteTablesUseCase(kachomock.NewRepository(), &fakeListFilter{allowAll: true})
+		uc := NewListRouteTablesUseCase(kachomock.NewRepository(), narrowtest.AllowingAll())
 
-		_, _, err := uc.Execute(context.Background(), "user:usr_alice",
-			RouteTableFilter{ProjectID: "prj_1"}, Pagination{PageSize: 50})
+		_, _, err := uc.Execute(narrowtest.Caller(), RouteTableFilter{ProjectID: "prj_1"}, Pagination{PageSize: 50})
 
 		require.NoError(t, err)
 	})

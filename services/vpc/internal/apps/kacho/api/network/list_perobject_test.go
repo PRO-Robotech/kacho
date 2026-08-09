@@ -15,6 +15,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // Per-page фильтрованный List для NetworkService: возвращаем ТОЛЬКО
@@ -85,10 +87,10 @@ func TestNetworkListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedNetworksLabeled(t, kr, "prj_1", "net_aaa", "net_bbb", "net_ccc")
 
-	filter := &fakeListFilter{allowed: []string{"net_aaa", "net_bbb"}}
+	filter, peer := narrowtest.Recording("net_aaa", "net_bbb")
 	uc := NewListNetworksUseCase(kr, filter)
 
-	nets, _, err := uc.Execute(context.Background(), "user:usr_alice", NetworkFilter{ProjectID: "prj_1"}, Pagination{})
+	nets, _, err := uc.Execute(narrowtest.Caller(), NetworkFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	require.Len(t, nets, 2)
 	got := map[string]bool{}
@@ -101,10 +103,10 @@ func TestNetworkListPerObject_ReturnsOnlyAllowed(t *testing.T) {
 
 	// read==enforce: фильтр зовется с read-verb (action vpc.networks.list,
 	// FGA-тип vpc_network) и получает РОВНО идентификаторы страницы.
-	assert.Equal(t, "user:usr_alice", filter.gotSubject)
-	assert.Equal(t, "vpc_network", filter.gotResourceType)
-	assert.Equal(t, "vpc.networks.list", filter.gotAction)
-	assert.ElementsMatch(t, []string{"net_aaa", "net_bbb", "net_ccc"}, filter.gotIDs,
+	assert.Equal(t, "user:usr_alice", peer.Subject)
+	assert.Equal(t, "vpc_network", peer.ResourceType)
+	assert.Equal(t, "vpc.networks.list", peer.Action)
+	assert.ElementsMatch(t, []string{"net_aaa", "net_bbb", "net_ccc"}, peer.IDs,
 		"visibility must be asked for the page's ids, never for the whole universe")
 }
 
@@ -113,10 +115,10 @@ func TestNetworkListPerObject_NoLeak(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedNetworksLabeled(t, kr, "prj_1", "net_visible", "net_secret")
 
-	filter := &fakeListFilter{allowed: []string{"net_visible"}}
+	filter := narrowtest.Allowing("net_visible")
 	uc := NewListNetworksUseCase(kr, filter)
 
-	nets, _, err := uc.Execute(context.Background(), "user:usr_alice", NetworkFilter{ProjectID: "prj_1"}, Pagination{})
+	nets, _, err := uc.Execute(narrowtest.Caller(), NetworkFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	require.Len(t, nets, 1)
 	assert.Equal(t, "net_visible", nets[0].ID)
@@ -127,10 +129,10 @@ func TestNetworkListPerObject_EmptyGrantEmptyList(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedNetworksLabeled(t, kr, "prj_1", "net_a", "net_b")
 
-	filter := &fakeListFilter{allowed: nil}
+	filter := narrowtest.DenyingAll()
 	uc := NewListNetworksUseCase(kr, filter)
 
-	nets, next, err := uc.Execute(context.Background(), "user:usr_alice", NetworkFilter{ProjectID: "prj_1"}, Pagination{})
+	nets, next, err := uc.Execute(narrowtest.Caller(), NetworkFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Empty(t, nets)
 	assert.Empty(t, next)
@@ -141,10 +143,10 @@ func TestNetworkListPerObject_AllVisibleReturnsAll(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedNetworksLabeled(t, kr, "prj_1", "net_a", "net_b", "net_c")
 
-	filter := &fakeListFilter{allowAll: true}
+	filter := narrowtest.AllowingAll()
 	uc := NewListNetworksUseCase(kr, filter)
 
-	nets, _, err := uc.Execute(context.Background(), "user:usr_alice", NetworkFilter{ProjectID: "prj_1"}, Pagination{})
+	nets, _, err := uc.Execute(narrowtest.Caller(), NetworkFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, nets, 3)
 }
@@ -154,10 +156,10 @@ func TestNetworkListPerObject_FailClosedUnavailable(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedNetworksLabeled(t, kr, "prj_1", "net_a")
 
-	filter := &fakeListFilter{err: status.Error(codes.Unavailable, "iam down")}
+	filter := narrowtest.Failing(status.Error(codes.Unavailable, "iam down"))
 	uc := NewListNetworksUseCase(kr, filter)
 
-	_, _, err := uc.Execute(context.Background(), "user:usr_alice", NetworkFilter{ProjectID: "prj_1"}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), NetworkFilter{ProjectID: "prj_1"}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.Unavailable, st.Code())
@@ -169,10 +171,10 @@ func TestNetworkListPerObject_FailClosedPlainError(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedNetworksLabeled(t, kr, "prj_1", "net_a")
 
-	filter := &fakeListFilter{err: errors.New("boom")}
+	filter := narrowtest.Failing(errors.New("boom"))
 	uc := NewListNetworksUseCase(kr, filter)
 
-	_, _, err := uc.Execute(context.Background(), "user:usr_alice", NetworkFilter{ProjectID: "prj_1"}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), NetworkFilter{ProjectID: "prj_1"}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.NotEqual(t, codes.OK, st.Code())
@@ -183,8 +185,8 @@ func TestNetworkListPerObject_NilFilterPassthrough(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedNetworksLabeled(t, kr, "prj_1", "net_a", "net_b")
 
-	uc := NewListNetworksUseCase(kr, nil)
-	nets, _, err := uc.Execute(context.Background(), "user:usr_alice", NetworkFilter{ProjectID: "prj_1"}, Pagination{})
+	uc := NewListNetworksUseCase(kr, narrowtest.AllowingAll())
+	nets, _, err := uc.Execute(narrowtest.Caller(), NetworkFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Len(t, nets, 2)
 }
@@ -192,9 +194,9 @@ func TestNetworkListPerObject_NilFilterPassthrough(t *testing.T) {
 // project_id по-прежнему обязателен (контракт не меняется).
 func TestNetworkListPerObject_ProjectIDRequired(t *testing.T) {
 	kr := kachomock.NewRepository()
-	uc := NewListNetworksUseCase(kr, &fakeListFilter{allowAll: true})
+	uc := NewListNetworksUseCase(kr, narrowtest.AllowingAll())
 
-	_, _, err := uc.Execute(context.Background(), "user:usr_alice", NetworkFilter{}, Pagination{})
+	_, _, err := uc.Execute(narrowtest.Caller(), NetworkFilter{}, Pagination{})
 	require.Error(t, err)
 	st, _ := status.FromError(err)
 	assert.Equal(t, codes.InvalidArgument, st.Code())
@@ -207,10 +209,10 @@ func TestNetworkListPerObject_EmptySubjectFailsClosed(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedNetworksLabeled(t, kr, "prj_1", "net_a", "net_b")
 
-	filter := &fakeListFilter{allowed: []string{"unused_id"}}
+	filter := narrowtest.Allowing("unused_id")
 	uc := NewListNetworksUseCase(kr, filter)
 
-	nets, _, err := uc.Execute(context.Background(), "", NetworkFilter{ProjectID: "prj_1"}, Pagination{})
+	nets, _, err := uc.Execute(narrowtest.Caller(), NetworkFilter{ProjectID: "prj_1"}, Pagination{})
 	require.NoError(t, err)
 	assert.Empty(t, nets, "empty subject + filter enabled -> fail-closed empty, NOT leak")
 }

@@ -132,6 +132,10 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("authz.list-filter.cache-ttl", 5*time.Second)
 	v.SetDefault("authz.list-filter.max-entries", 10000)
 	v.SetDefault("authz.list-filter.fail-open", false)
+	// breakglass — аварийный пропуск при отсутствующей модели прав. Умолчание
+	// false: «модели нет» само по себе разрешением не бывает, пропуск требуется
+	// объявить.
+	v.SetDefault("authz.list-filter.breakglass", false)
 
 	// iam — интеграция с kacho-iam. require — fail-closed boot-gate (default off:
 	// dev/Create разрешён, только Warn). register-drainer-enabled — default-on

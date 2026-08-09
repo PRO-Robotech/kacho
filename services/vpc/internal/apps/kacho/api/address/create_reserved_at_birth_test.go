@@ -43,6 +43,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // TestCreateUseCase_FreshAddressIsReserved pins the birth state: an address
@@ -52,7 +54,7 @@ func TestCreateUseCase_FreshAddressIsReserved(t *testing.T) {
 	sr := repomock.NewSubnetRepo()
 	or := repomock.NewOpsRepo()
 	uc := NewCreateAddressUseCase(kr, sr, &repomock.ProjectClient{OK: true}, or, nil)
-	listUC := NewListAddressesUseCase(kr, nil)
+	listUC := NewListAddressesUseCase(kr, narrowtest.AllowingAll())
 
 	op, err := uc.Execute(context.Background(), CreateInput{
 		ProjectID:    "f1",
@@ -62,7 +64,7 @@ func TestCreateUseCase_FreshAddressIsReserved(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, repomock.AwaitOpDone(t, or, op.ID).Error)
 
-	addrs, _, _ := listUC.Execute(context.Background(), "", AddressFilter{ProjectID: "f1"}, Pagination{})
+	addrs, _, _ := listUC.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "f1"}, Pagination{})
 	require.Len(t, addrs, 1)
 	require.True(t, addrs[0].Reserved,
 		"an address the tenant asked for is held for the project from the moment it exists")
@@ -80,7 +82,7 @@ func TestUpdateUseCase_ReservedIsClearedThroughUpdate(t *testing.T) {
 	or := repomock.NewOpsRepo()
 	createUC := NewCreateAddressUseCase(kr, sr, &repomock.ProjectClient{OK: true}, or, nil)
 	updateUC := NewUpdateAddressUseCase(kr, or)
-	listUC := NewListAddressesUseCase(kr, nil)
+	listUC := NewListAddressesUseCase(kr, narrowtest.AllowingAll())
 
 	op, err := createUC.Execute(context.Background(), CreateInput{
 		ProjectID:    "f1",
@@ -90,7 +92,7 @@ func TestUpdateUseCase_ReservedIsClearedThroughUpdate(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, repomock.AwaitOpDone(t, or, op.ID).Error)
 
-	addrs, _, _ := listUC.Execute(context.Background(), "", AddressFilter{ProjectID: "f1"}, Pagination{})
+	addrs, _, _ := listUC.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "f1"}, Pagination{})
 	require.Len(t, addrs, 1)
 	require.True(t, addrs[0].Reserved, "precondition: born reserved")
 
@@ -102,7 +104,7 @@ func TestUpdateUseCase_ReservedIsClearedThroughUpdate(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, repomock.AwaitOpDone(t, or, upOp.ID).Error)
 
-	addrs, _, _ = listUC.Execute(context.Background(), "", AddressFilter{ProjectID: "f1"}, Pagination{})
+	addrs, _, _ = listUC.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "f1"}, Pagination{})
 	require.Len(t, addrs, 1)
 	require.False(t, addrs[0].Reserved,
 		"giving up the reservation is a tenant decision, taken through Update")

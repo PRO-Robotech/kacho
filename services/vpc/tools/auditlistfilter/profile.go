@@ -85,7 +85,7 @@ var Profile = listfiltergate.Profile{
 	// One package per resource, all declaring the same transport type.
 	PerPackage:     true,
 	ReceiverSuffix: "Handler",
-	Filters:        []string{"FilterVisibleIDs", "FilterVisiblePage"},
+	Filters:        []string{"listnarrow.Page", "listnarrow.IDs"},
 	Banned:         []string{"ListAllowedIDs", "ListObjects"},
 	SubjectScopers: []string{"ListForCaller"},
 	ProtoFiles:     []string{"kacho/cloud/vpc/v1/address_service.proto"},
@@ -152,7 +152,7 @@ var InternalProfile = listfiltergate.Profile{
 	// the same two reasons: renaming the field turns the gate RED rather than quiet,
 	// and the far side is asserted by internal_nic_test.go in this package instead of
 	// being assumed.
-	Filters:        []string{"FilterVisibleIDs", "FilterVisiblePage", "svc.ListByInstance"},
+	Filters:        []string{"listnarrow.Page", "listnarrow.IDs", "svc.ListByInstance"},
 	Banned:         []string{"ListAllowedIDs", "ListObjects"},
 	SubjectScopers: []string{"ListForCaller"},
 

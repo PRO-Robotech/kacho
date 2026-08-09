@@ -330,7 +330,7 @@ func runServe(cfg config.Config) error {
 		syncRegistrar = reg
 	}
 
-	svcs := buildServices(pool, slavePool, projectClient, geoClient, geoRegionClient, authzfilter.AsPort(listFilter), opsRepo, syncRegistrar, cfg, logger)
+	svcs := buildServices(pool, slavePool, projectClient, geoClient, geoRegionClient, listFilter, opsRepo, syncRegistrar, cfg, logger)
 
 	// Fail-closed boot-gate: при KACHO_VPC_REQUIRE_IAM мутирующий Create отвергается,
 	// а readiness = NotReady, пока register-drainer не подключен к IAM. Стартует
@@ -728,40 +728,44 @@ func dialPeer(
 	return clients.Build(ctx, opts)
 }
 
-// buildListFilter — возвращает per-page фильтр видимости для List use-case'ов
-// (`AuthorizeService.BatchCheck` на id прочитанной страницы). Выключен (или нет
-// conn) → nil, который use-case'ы трактуют как passthrough (нефильтрованный list;
-// per-RPC interceptor все равно гейтит). Get use-case'ы фильтр НЕ получают —
-// единичное чтение авторизует прямой per-object Check в interceptor'е.
-func buildListFilter(cfg config.Config, conn clients.Conn, logger *slog.Logger) authzfilter.Filter {
-	if !cfg.AuthZ.ListFilter.Enabled {
-		logger.Info("per-object list-filter disabled (authz.list-filter.enabled=false)")
-		return nil
+// buildListFilter — сужатель списочной страницы (`AuthorizeService.BatchCheck` на
+// идентификаторах прочитанной страницы). Get его НЕ получает — единичное чтение
+// авторизует прямой пообъектный Check в интерсепторе.
+//
+// Выключенный фильтр БОЛЬШЕ НЕ ОЗНАЧАЕТ сквозной проход. Прежняя редакция отдавала
+// здесь nil, и use-case'ы трактовали его как «сужение выключено, страницу отдать»:
+// посадка без модели показывала каждому участнику проекта каждую его строку, а у
+// помеченных scope-filtered RPC пропадала единственная пообъектная авторизация
+// вовсе. Теперь сужатель собирается ВСЕГДА и отказывает, пока ему не с кем говорить;
+// пропуск возможен только явным аварийным режимом, и каждое его срабатывание
+// считается и называется.
+func buildListFilter(cfg config.Config, conn clients.Conn, logger *slog.Logger) *authzfilter.Narrower {
+	breakglass := !cfg.AuthZ.ListFilter.Enabled || conn == nil
+	if breakglass {
+		logger.Warn("per-object list-filter has no rights model to ask — every list will REFUSE "+
+			"unless the emergency bypass is armed",
+			"enabled", cfg.AuthZ.ListFilter.Enabled, "authorize_conn", conn != nil,
+			"breakglass", cfg.AuthZ.ListFilter.Breakglass)
+		conn = nil
 	}
-	if conn == nil {
-		logger.Warn("per-object list-filter enabled but authorize conn is nil — disabled (passthrough)")
-		return nil
-	}
-	cli := clients.NewIAMAuthorizeClient(conn)
-	f := authzfilter.NewFGAFilter(cli, authzfilter.Config{
-		Enabled:         true,
-		Timeout:         time.Duration(cfg.AuthZ.ListFilter.TimeoutMs) * time.Millisecond,
-		CacheTTL:        cfg.AuthZ.ListFilter.CacheTTL,
-		CacheMaxEntries: cfg.AuthZ.ListFilter.MaxEntries,
-		FailOpen:        cfg.AuthZ.ListFilter.FailOpen,
+	f := authzfilter.New(conn, authzfilter.Config{
+		Timeout:               time.Duration(cfg.AuthZ.ListFilter.TimeoutMs) * time.Millisecond,
+		CacheTTL:              cfg.AuthZ.ListFilter.CacheTTL,
+		CacheMaxEntries:       cfg.AuthZ.ListFilter.MaxEntries,
+		SoftPassOnPeerFailure: cfg.AuthZ.ListFilter.FailOpen,
+		Breakglass:            breakglass && cfg.AuthZ.ListFilter.Breakglass,
 	}).WithLogger(logger)
-	logger.Info("per-object list-filter enabled",
+	logger.Info("per-object list-filter wired",
 		// per_call_timeout_ms гейтит ОДИН BatchCheck; operation_budget — потолок
-		// всей фильтрации страницы (выводится из per-call и batch_parallelism).
-		// Логируем все три: иначе по конфигу не видно, какое число реально
-		// ограничивает запрос.
+		// всей фильтрации страницы (выводится из per-call и веера). Логируем все
+		// три: иначе по конфигу не видно, какое число реально ограничивает запрос.
 		"per_call_timeout_ms", cfg.AuthZ.ListFilter.TimeoutMs,
-		"batch_parallelism", f.Parallelism(),
 		"operation_budget", f.Budget(),
 		"worst_case_depth_waves", f.WorstCaseDepth(),
 		"cache_ttl", cfg.AuthZ.ListFilter.CacheTTL,
 		"max_entries", cfg.AuthZ.ListFilter.MaxEntries,
-		"fail_open", cfg.AuthZ.ListFilter.FailOpen,
+		"soft_pass_on_peer_failure", cfg.AuthZ.ListFilter.FailOpen,
+		"narrows", f.Narrows(),
 	)
 	return f
 }
@@ -867,7 +871,7 @@ func startRegisterDrainer(ctx context.Context, iamAddr string, mtlsCfg config.MT
 //
 // slavePool — опц. read-replica pool; nil → kachopg.New делает fallback и Reader-TX
 // идут на master.
-func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClient, geoClient repo.ZoneRegistry, regionClient repo.RegionRegistry, listFilter authzfilter.UseCasePort, opsRepo operations.Repo, registrar fgaregister.Registrar, cfg config.Config, logger *slog.Logger) *services {
+func buildServices(pool, slavePool *pgxpool.Pool, projectClient repo.ProjectClient, geoClient repo.ZoneRegistry, regionClient repo.RegionRegistry, listFilter *authzfilter.Narrower, opsRepo operations.Repo, registrar fgaregister.Registrar, cfg config.Config, logger *slog.Logger) *services {
 	if !cfg.Network.DefaultSGInline {
 		logger.Warn("network.default-sg-inline=false — Network.Create НЕ создает default SG")
 	}

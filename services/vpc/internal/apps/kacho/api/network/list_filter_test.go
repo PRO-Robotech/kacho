@@ -9,7 +9,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
@@ -17,6 +19,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // seedNetworks помещает N networks в репозиторий через writer-TX. Общий helper
@@ -81,21 +85,43 @@ func TestSubjectFromCtx_DeclaredSystemTypeNamesNobody(t *testing.T) {
 // не подставляется тестом, а выводится из ctx, как в проде. Вызывающий, объявивший
 // себя `system`, не получает ни строки — и модель о нём не спрашивают, потому что
 // спрашивать не о ком.
-func TestNetworkList_DeclaredSystemTypeSeesNothing(t *testing.T) {
+//
+// Полярность сменилась: теперь это ОТКАЗ, а не пустая страница. «Пусто» неотличимо
+// от «личность потеряна по дороге», и именно этим неразличением класс живёт годами.
+func TestNetworkList_DeclaredSystemTypeIsRefused(t *testing.T) {
 	kr := kachomock.NewRepository()
 	seedNetworksLabeled(t, kr, "prj_1", "net_a", "net_b")
 
-	filter := &fakeListFilter{allowAll: true}
+	filter, peer := narrowtest.Recording()
 	uc := NewListNetworksUseCase(kr, filter)
 
 	ctx := operations.WithPrincipal(context.Background(),
 		operations.Principal{Type: "system", ID: "anonymous"})
-	nets, _, err := uc.Execute(ctx, pbconv.SubjectFromContext(ctx),
-		NetworkFilter{ProjectID: "prj_1"}, Pagination{})
+	nets, _, err := uc.Execute(ctx, NetworkFilter{ProjectID: "prj_1"}, Pagination{})
+
+	require.Error(t, err, "объявленный тип принципала не открывает чужие сети")
+	assert.Equal(t, codes.Unauthenticated, status.Code(err))
+	assert.Empty(t, nets)
+	assert.Zero(t, peer.Calls, "спрашивать не о ком — модель не тревожат")
+}
+
+// Парный положительный: НАЗВАННЫЙ вызывающий доходит до модели и получает строки.
+// Без него отказ выше зеленел бы на списке, отвергающем всех.
+func TestNetworkList_NamedCallerReachesTheModel(t *testing.T) {
+	kr := kachomock.NewRepository()
+	seedNetworksLabeled(t, kr, "prj_1", "net_a", "net_b")
+
+	filter, peer := narrowtest.Recording("net_a")
+	uc := NewListNetworksUseCase(kr, filter)
+
+	nets, _, err := uc.Execute(narrowtest.Caller(), NetworkFilter{ProjectID: "prj_1"}, Pagination{})
 
 	require.NoError(t, err)
-	assert.Empty(t, nets, "объявленный тип принципала не открывает чужие сети")
-	assert.Zero(t, filter.calls)
+	require.Len(t, nets, 1)
+	assert.Equal(t, "net_a", nets[0].ID)
+	assert.Equal(t, 1, peer.Calls)
+	assert.Equal(t, []string{"v_get"}, peer.Relations,
+		"страница спрашивается тем же отношением, которым гейтится чтение")
 }
 
 func TestSubjectFromCtx_NoPrincipalReturnsEmpty(t *testing.T) {

@@ -37,18 +37,12 @@ func ErrModelNotWired() error {
 //  3. пустая страница ⇒ ничего, без обращения к соседу;
 //  4. сужение.
 func IDs(ctx context.Context, n *Narrower, resourceType, action string, ids []string) ([]string, error) {
-	subject, err := SubjectFromContext(ctx)
+	subject, err := gate(ctx, n)
 	if err != nil {
 		return nil, err
 	}
-	if n == nil {
-		return nil, ErrModelNotWired()
-	}
 	if n.cfg.Breakglass {
 		return n.breakglassPass(ids, subject, resourceType, action), nil
-	}
-	if n.cli == nil {
-		return nil, ErrModelNotWired()
 	}
 	if len(ids) == 0 {
 		return nil, nil

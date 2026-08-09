@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/PRO-Robotech/kacho/pkg/ids"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/apps/kacho/shared/listpage"
@@ -32,20 +33,40 @@ import (
 // это нормально для cursor-пагинации, next_page_token берётся от последней
 // ПРОСМОТРЕННОЙ строки, поэтому обхода без пропусков это не ломает.
 type ListAddressesUseCase struct {
-	repo   Repo
-	filter ListFilter
+	repo     Repo
+	narrower *listnarrow.Narrower
 }
 
 // NewListAddressesUseCase создает ListAddressesUseCase. filter может быть nil.
-func NewListAddressesUseCase(r Repo, filter ListFilter) *ListAddressesUseCase {
-	return &ListAddressesUseCase{repo: r, filter: filter}
+func NewListAddressesUseCase(r Repo, n *listnarrow.Narrower) *ListAddressesUseCase {
+	return &ListAddressesUseCase{repo: r, narrower: n}
 }
 
 // Execute — project_id required + per-object фильтр видимости + load UsedBy.
 // iam недоступен → fail-closed Unavailable (страница НЕ отдается нефильтрованной).
-func (u *ListAddressesUseCase) Execute(ctx context.Context, subjectID string, f AddressFilter, p Pagination) ([]*kachorepo.AddressRecord, string, error) {
+func (u *ListAddressesUseCase) Execute(ctx context.Context, f AddressFilter, p Pagination) ([]*kachorepo.AddressRecord, string, error) {
+	// Формат пагинации — ПЕРВЫМ стейтментом, до всего остального.
+	//
+	// Ниже стоит замыкание по личности вызывающего: безымянный запрос до чтения
+	// страницы не доходит вовсе. Пока формат курсора проверял только репозиторий,
+	// один и тот же мусорный page_token получал разный ответ в зависимости от того,
+	// опознан ли вызывающий, — то есть проверка ввода зависела от прав. Проверка
+	// формата решением о доступе не является; репозиторий остаётся авторитетным на
+	// служимом пути.
+	if err := listpage.ValidatePagination(p.PageToken, p.PageSize); err != nil {
+		return nil, "", err
+	}
 	if f.ProjectID == "" {
 		return nil, "", status.Error(codes.InvalidArgument, "project_id required")
+	}
+	// Предусловие сужения — ДО чтения страницы из БД.
+	//
+	// Оно стоит здесь, а не внутри сужателя, потому что между решением и сужением
+	// лежит курсорный запрос к своей базе: безымянный запрос оплачивал бы его, чтобы
+	// получить отказ на прочитанном. Проверка формата остаётся ПЕРВОЙ и выше —
+	// ответ на некорректный ввод не должен зависеть от того, что вызывающему выдано.
+	if err := listnarrow.Precheck(ctx, u.narrower); err != nil {
+		return nil, "", err
 	}
 	r, err := u.repo.Reader(ctx)
 	if err != nil {
@@ -53,7 +74,7 @@ func (u *ListAddressesUseCase) Execute(ctx context.Context, subjectID string, f 
 	}
 	defer func() { _ = r.Close() }()
 
-	addrs, nextToken, err := u.listFiltered(ctx, r, subjectID, f, p)
+	addrs, nextToken, err := u.listFiltered(ctx, r, f, p)
 	if err != nil {
 		return nil, "", err
 	}
@@ -62,61 +83,23 @@ func (u *ListAddressesUseCase) Execute(ctx context.Context, subjectID string, f 
 }
 
 // listFiltered читает страницу и оставляет из неё только видимые subject'у строки.
-func (u *ListAddressesUseCase) listFiltered(ctx context.Context, r Reader, subjectID string, f AddressFilter, p Pagination) ([]*kachorepo.AddressRecord, string, error) {
-	// Формат пагинации — ПЕРВЫМ стейтментом, до всего остального.
-	//
-	// Ниже стоит замыкание по личности вызывающего: при неизвлечённом принципале
-	// и включенном фильтре видимости страница не читается вовсе. Пока формат
-	// курсора проверял только репозиторий, один и тот же мусорный page_token
-	// получал разный ответ в зависимости от того, опознан ли вызывающий, — то
-	// есть проверка ввода зависела от прав. Проверка формата решением о доступе
-	// не является; репозиторий остаётся авторитетным на служимом пути.
-	if err := listpage.ValidatePagination(p.PageToken, p.PageSize); err != nil {
-		return nil, "", err
-	}
-	if subjectID == "" && u.filter != nil {
-		// identity не извлечен (anon) при включенном фильтре → fail-closed (no-leak).
-		return nil, "", nil
-	}
-	// Формат page_token/page_size уже проверен выше — repo.List повторяет обе
+func (u *ListAddressesUseCase) listFiltered(ctx context.Context, r Reader, f AddressFilter, p Pagination) ([]*kachorepo.AddressRecord, string, error) {
+	// Формат page_token/page_size проверен вызывающим (Execute) — repo.List повторяет обе
 	// проверки как авторитетный backstop служимого пути.
 	addrs, next, lerr := r.Addresses().List(ctx, f, p)
 	if lerr != nil {
 		return nil, "", serviceerr.MapRepoErr(lerr)
 	}
-	if u.filter == nil || len(addrs) == 0 {
+	if len(addrs) == 0 {
 		return addrs, next, nil
 	}
-	visible, ferr := filterVisibleAddresses(ctx, u.filter, subjectID, addrs)
+	visible, ferr := listnarrow.Page(ctx, u.narrower,
+		authzfilter.ResourceTypeAddress, authzfilter.ActionAddressList, addrs,
+		func(rec *kachorepo.AddressRecord) string { return rec.ID })
 	if ferr != nil {
 		return nil, "", ferr
 	}
 	return visible, next, nil
-}
-
-// filterVisibleAddresses оставляет из страницы только видимые subject'у строки,
-// сохраняя порядок курсора.
-func filterVisibleAddresses(ctx context.Context, filter ListFilter, subjectID string, addrs []*kachorepo.AddressRecord) ([]*kachorepo.AddressRecord, error) {
-	pageIDs := make([]string, 0, len(addrs))
-	for _, a := range addrs {
-		pageIDs = append(pageIDs, a.ID)
-	}
-	visibleIDs, err := filter.FilterVisibleIDs(ctx, subjectID,
-		authzfilter.ResourceTypeAddress, authzfilter.ActionAddressList, pageIDs)
-	if err != nil {
-		return nil, err
-	}
-	visible := make(map[string]struct{}, len(visibleIDs))
-	for _, id := range visibleIDs {
-		visible[id] = struct{}{}
-	}
-	out := make([]*kachorepo.AddressRecord, 0, len(visibleIDs))
-	for _, a := range addrs {
-		if _, ok := visible[a.ID]; ok {
-			out = append(out, a)
-		}
-	}
-	return out, nil
 }
 
 // ListBySubnetUseCase — child-list адресов конкретной подсети. Использует

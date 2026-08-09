@@ -39,6 +39,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/kacho/kachomock"
 	"github.com/PRO-Robotech/kacho/services/vpc/internal/repo/repomock"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 func TestCreateUseCase_OwnedAddressIsLinkedInTheSameTransaction(t *testing.T) {
@@ -46,7 +48,7 @@ func TestCreateUseCase_OwnedAddressIsLinkedInTheSameTransaction(t *testing.T) {
 	sr := repomock.NewSubnetRepo()
 	or := repomock.NewOpsRepo()
 	uc := NewCreateAddressUseCase(kr, sr, &repomock.ProjectClient{OK: true}, or, nil)
-	listUC := NewListAddressesUseCase(kr, nil)
+	listUC := NewListAddressesUseCase(kr, narrowtest.AllowingAll())
 
 	op, err := uc.Execute(context.Background(), CreateInput{
 		ProjectID:    "f1",
@@ -62,7 +64,7 @@ func TestCreateUseCase_OwnedAddressIsLinkedInTheSameTransaction(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, repomock.AwaitOpDone(t, or, op.ID).Error)
 
-	addrs, _, _ := listUC.Execute(context.Background(), "", AddressFilter{ProjectID: "f1"}, Pagination{})
+	addrs, _, _ := listUC.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "f1"}, Pagination{})
 	require.Len(t, addrs, 1)
 	require.True(t, addrs[0].Used,
 		"адрес, рождённый под владельца, использован с момента существования")
@@ -82,7 +84,7 @@ func TestCreateUseCase_OwnedAddressLinkRollsBackWithTheTransaction(t *testing.T)
 	or := repomock.NewOpsRepo()
 	kr.SetOutboxEmitErr(errors.New("outbox down")) // отказ ПОСЛЕ Insert и привязки, до Commit
 	uc := NewCreateAddressUseCase(kr, sr, &repomock.ProjectClient{OK: true}, or, nil)
-	listUC := NewListAddressesUseCase(kr, nil)
+	listUC := NewListAddressesUseCase(kr, narrowtest.AllowingAll())
 
 	op, err := uc.Execute(context.Background(), CreateInput{
 		ProjectID:    "f1",
@@ -98,7 +100,7 @@ func TestCreateUseCase_OwnedAddressLinkRollsBackWithTheTransaction(t *testing.T)
 	require.NotNil(t, repomock.AwaitOpDone(t, or, op.ID).Error,
 		"предусловие: операция обязана завершиться ошибкой")
 
-	addrs, _, _ := listUC.Execute(context.Background(), "", AddressFilter{ProjectID: "f1"}, Pagination{})
+	addrs, _, _ := listUC.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "f1"}, Pagination{})
 	require.Empty(t, addrs, "откат снимает вставку адреса")
 	_, err = mustReader(t, kr).Addresses().GetReference(context.Background(), "любой")
 	require.Error(t, err, "привязки без адреса не остаётся")
@@ -113,7 +115,7 @@ func TestCreateUseCase_WithoutOwnerNothingIsLinked(t *testing.T) {
 	sr := repomock.NewSubnetRepo()
 	or := repomock.NewOpsRepo()
 	uc := NewCreateAddressUseCase(kr, sr, &repomock.ProjectClient{OK: true}, or, nil)
-	listUC := NewListAddressesUseCase(kr, nil)
+	listUC := NewListAddressesUseCase(kr, narrowtest.AllowingAll())
 
 	op, err := uc.Execute(context.Background(), CreateInput{
 		ProjectID:    "f1",
@@ -123,7 +125,7 @@ func TestCreateUseCase_WithoutOwnerNothingIsLinked(t *testing.T) {
 	require.NoError(t, err)
 	require.Nil(t, repomock.AwaitOpDone(t, or, op.ID).Error)
 
-	addrs, _, _ := listUC.Execute(context.Background(), "", AddressFilter{ProjectID: "f1"}, Pagination{})
+	addrs, _, _ := listUC.Execute(narrowtest.Caller(), AddressFilter{ProjectID: "f1"}, Pagination{})
 	require.Len(t, addrs, 1)
 	require.True(t, addrs[0].Reserved, "путь тенанта прежний: адрес зарезервирован")
 	require.False(t, addrs[0].Used, "никто на него не ссылается")
