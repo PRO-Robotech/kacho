@@ -114,6 +114,7 @@ tests/authz-fixtures/ceremony_credentials.py
 tests/authz-fixtures/prodseed_all.py
 tests/authz-fixtures/prodseed_ceremony.py
 tools/mixedoutcomeaudit/mixed_outcome_audit.py
+tools/unreadfieldaudit/unread_field_audit.py
 "
 
 # Четыре законные формы разбора аргумента --self-test. Все четыре — КОД: bash-тест,

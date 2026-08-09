@@ -50,7 +50,7 @@ sha256 сохранённого содержимого, поэтому прив�
       "terminatorPort"       ($s.terminatorPort       | default 4445)
       "providerListenerPort" ($s.providerListenerPort | default 4455)
       "upstreamTimeout"      ($s.upstreamTimeout      | default "30s")
-      "image"                ($s.image                | default "nginxinc/nginx-unprivileged:1.27-alpine")
+      "image"                ($s.image                | default "nginxinc/nginx-unprivileged:1.31-alpine")
       "preStopSeconds"       ($s.preStopSeconds       | default 5)
     | toYaml -}}
 {{- end -}}

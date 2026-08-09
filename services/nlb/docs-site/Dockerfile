@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.6
 # Build stage — Docusaurus static build
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
@@ -14,7 +14,7 @@ RUN npm run build
 # nginx-unprivileged: работает под non-root uid 101, слушает 8080, pid и временные
 # файлы уводит в /tmp — поэтому уживается с runAsNonRoot + readOnlyRootFilesystem
 # (см. deploy/templates/deployment.yaml).
-FROM nginxinc/nginx-unprivileged:1.27-alpine
+FROM nginxinc/nginx-unprivileged:1.31-alpine
 COPY --from=build /app/build /usr/share/nginx/html
 COPY deploy/default.conf /etc/nginx/conf.d/default.conf
 

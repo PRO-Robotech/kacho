@@ -62,6 +62,19 @@ type Index struct {
 	Patterns []string            `json:"patterns"`
 	Packages []Package           `json:"packages"`
 	Reads    map[string][]string `json:"reads"`
+	// Discriminated — ключ "<пакет типа>|<Тип>", значение — пакеты прод-кода, где
+	// по этому типу РАЗЛИЧАЮТ ветку (`switch x.(type)` / `x.(*T)`).
+	//
+	// Отдельная карта, а не запись в `Reads`, потому что это другой факт: читается
+	// не значение поля, а то, КАКАЯ ветка `oneof` выбрана. Для члена с пустой
+	// полезной нагрузкой (`message X {}`) это единственно возможное чтение —
+	// обращаться в нём не к чему, и без этой карты такой член объявлялся бы
+	// «принятым и выброшенным» при живом и единственно возможном читателе.
+	//
+	// КОНСТРУИРОВАНИЕ СЮДА НЕ ПОПАДАЕТ. Составной литерал `&pb.M_Foo{…}` на пути
+	// ответа — запись, а не чтение запроса; засчитать её значило бы закрывать поле
+	// запроса собственным выводом сервиса.
+	Discriminated map[string][]string `json:"discriminated"`
 	// SkippedNoProdFiles — пакеты, у которых нет ни одного непроверочного файла
 	// (сплошь `_test.go` либо всё отсечено build-тегом). Читателя в них нет by
 	// construction, но объём осмотренного обязан называть и их: «ноль находок»
@@ -126,8 +139,13 @@ func Build(patterns ...string) (*Index, error) {
 		return os.Open(f)
 	})
 
-	ix := &Index{Patterns: patterns, Reads: map[string][]string{}}
+	ix := &Index{
+		Patterns:      patterns,
+		Reads:         map[string][]string{},
+		Discriminated: map[string][]string{},
+	}
 	readers := map[string]map[string]bool{}
+	discs := map[string]map[string]bool{}
 
 	for _, p := range pkgs {
 		if p.DepOnly {
@@ -158,7 +176,12 @@ func Build(patterns ...string) (*Index, error) {
 		if failed {
 			continue
 		}
-		info := &types.Info{Selections: map[*ast.SelectorExpr]*types.Selection{}}
+		info := &types.Info{
+			Selections: map[*ast.SelectorExpr]*types.Selection{},
+			// Types нужен, чтобы резолвить ТИП из ветки переключателя и из
+			// тип-ассершена: там нет селектора, значит и Selections пуст.
+			Types: map[ast.Expr]types.TypeAndValue{},
+		}
 		var terr error
 		cfg := &types.Config{
 			Importer: imp,
@@ -191,15 +214,26 @@ func Build(patterns ...string) (*Index, error) {
 			}
 			readers[key][p.ImportPath] = true
 		}
+		for _, f := range syn {
+			for _, expr := range discriminatedTypes(f) {
+				tp, tn, ok := namedOf(info.Types[expr].Type)
+				if !ok {
+					continue
+				}
+				key := tp + "|" + tn
+				if discs[key] == nil {
+					discs[key] = map[string]bool{}
+				}
+				discs[key][p.ImportPath] = true
+			}
+		}
 	}
 
 	for k, v := range readers {
-		l := make([]string, 0, len(v))
-		for r := range v {
-			l = append(l, r)
-		}
-		sort.Strings(l)
-		ix.Reads[k] = l
+		ix.Reads[k] = sortedKeys(v)
+	}
+	for k, v := range discs {
+		ix.Discriminated[k] = sortedKeys(v)
 	}
 	sort.Slice(ix.Packages, func(i, j int) bool { return ix.Packages[i].Path < ix.Packages[j].Path })
 	sort.Strings(ix.SkippedNoProdFiles)
@@ -228,6 +262,46 @@ func readField(sel *ast.SelectorExpr, s *types.Selection) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+func sortedKeys(m map[string]bool) []string {
+	l := make([]string, 0, len(m))
+	for k := range m {
+		l = append(l, k)
+	}
+	sort.Strings(l)
+	return l
+}
+
+// discriminatedTypes — выражения-типы, по которым код РАЗЛИЧАЕТ ветку значения:
+// ветки `switch x.(type)` и тип-ассершен `x.(*T)`.
+//
+// Составной литерал `&pb.M_Foo{…}` сюда НЕ попадает by construction: он не
+// выражение-тип ни в одной из этих двух форм. Различие принципиальное —
+// конструирование ветки на пути ответа не является чтением поля запроса.
+//
+// `case nil:` пропускается: у него нет именованного типа, и «ветка не выбрана» —
+// не член oneof.
+func discriminatedTypes(f *ast.File) []ast.Expr {
+	var out []ast.Expr
+	ast.Inspect(f, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.TypeAssertExpr:
+			if x.Type != nil { // `x.(type)` вне переключателя невозможен
+				out = append(out, x.Type)
+			}
+		case *ast.TypeSwitchStmt:
+			for _, stmt := range x.Body.List {
+				cc, ok := stmt.(*ast.CaseClause)
+				if !ok {
+					continue
+				}
+				out = append(out, cc.List...)
+			}
+		}
+		return true
+	})
+	return out
 }
 
 // namedOf — именованный тип получателя без указателей и алиасов.

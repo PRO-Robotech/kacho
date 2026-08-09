@@ -53,7 +53,14 @@ message StaticRoute {
   oneof next_hop {
     // Next hop IP address
     string next_hop_address = 2;
-    // Next hop gateway id
+
+    // NOT ACCEPTED. Routing a next hop through a Gateway resource has no
+    // subsystem in vpc: the stored route carries an IP address only. A set value
+    // is refused synchronously with INVALID_ARGUMENT naming
+    // `static_routes[<i>].gateway_id` (accepted-and-ignored is not a lawful
+    // outcome). Kept on the contract rather than removed because the REST edge
+    // discards unknown body keys, so removal would turn a named refusal back
+    // into the neighbouring arm's "next_hop_address is required".
     string gateway_id = 4;
   }
 

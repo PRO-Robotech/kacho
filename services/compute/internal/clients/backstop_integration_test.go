@@ -203,14 +203,34 @@ func Test_1_4_32_LongOutageNoPoison_ThenMetricsSurface(t *testing.T) {
 		`SELECT sent_at IS NULL FROM compute_fga_register_outbox WHERE resource_id='epd-long'`).Scan(&sentNull))
 	assert.True(t, sentNull, "intent durable (pending) through a transient outage longer than MaxAttempts")
 
-	// IAM recovers → delivered exactly once.
+	// IAM recovers → the same durable intent is delivered exactly once.
+	//
+	// BOTH facts are waited for in ONE condition: the applier ran exactly once AND
+	// the row is marked sent. Waiting on the call alone does not order the two —
+	// the drainer sets sent_at in a SEPARATE statement (markSuccess), committed
+	// AFTER the applier returns, so a read placed right behind the wait lands in
+	// the gap between them. That gap is narrow and on a quiet machine almost
+	// always closed; under contention for the host (parallel testcontainers
+	// suites) it opens, and the probe reddens on a healthy product — reporting the
+	// load on the machine rather than the behaviour of the drain. Ask the witness
+	// you waited on: what ends this wait is the OUTCOME (the row is marked), not a
+	// deadline. Tree-wide the shape is held by
+	// internal/repohygiene.TestDurableStateNeverAssertedAfterInProcessWait.
 	iam.down.Store(false)
 	require.Eventually(t, func() bool {
-		return iam.applied.Load() == 1
-	}, 10*time.Second, 100*time.Millisecond, "tuple delivered exactly once after long transient outage (no poison)")
-
-	sent, _ := countSent(ctx, t, pool)
-	assert.Equal(t, 1, sent, "intent ultimately delivered (not lost)")
+		if iam.applied.Load() != 1 {
+			return false
+		}
+		var sent bool
+		if err := pool.QueryRow(ctx,
+			`SELECT sent_at IS NOT NULL FROM compute_fga_register_outbox WHERE resource_id='epd-long'`).
+			Scan(&sent); err != nil {
+			return false
+		}
+		return sent
+	}, 10*time.Second, 100*time.Millisecond,
+		"tuple delivered exactly once after a long transient outage, and the intent marked sent "+
+			"(no poison, not lost)")
 
 	require.NoError(t, col.Scan(ctx))
 	assert.Equal(t, float64(0), rec.PoisonedCount(computeOutboxTbl),

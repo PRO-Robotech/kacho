@@ -76,8 +76,10 @@ describe("RequireMFAFresh", () => {
   it("без autoTrigger сам не уходит, а предлагает подтвердить — и содержимое всё равно закрыто", () => {
     renderAt("/admins", <RequireMFAFresh autoTrigger={false}>{<div data-testid="admins" />}</RequireMFAFresh>);
 
-    const prompt = screen.getByTestId("require-mfa-fresh");
-    expect(prompt).toHaveAttribute("title", "Подтвердите свежесть MFA");
+    // Заголовок утверждается ВИДИМЫМ текстом, а не атрибутом подменённого узла:
+    // настоящий `Result` рисует его, и прежняя проверка закрепляла форму дублёра.
+    expect(screen.getByTestId("require-mfa-fresh")).toBeInTheDocument();
+    expect(screen.getByText("Подтвердите свежесть MFA")).toBeInTheDocument();
     // Отказ обязан быть закрытым: без свежей 2FA содержимое не показывается ни
     // при каком значении autoTrigger — переключатель управляет только тем, уводит
     // ли guard пользователя сам.

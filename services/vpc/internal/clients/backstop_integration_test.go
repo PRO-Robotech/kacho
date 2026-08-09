@@ -259,6 +259,11 @@ func Test_1_4_32_LongOutageNoPoison_ThenMetricsSurface(t *testing.T) {
 	// здоровом продукте, то есть меряет загрузку машины, а не поведение дренажа.
 	// Соседний iam_register_drainer_integration_test.go читает sent_at внутри
 	// ожидания — здесь та же форма.
+	//
+	// Эта правка приехала сюда первой и БРАТЬЕВ не задела: те же пробы compute и
+	// nlb прожили с зазором ещё волну, потому что разбор лежал только в этом
+	// комментарии, а комментарий ничего не роняет. Форму держит гейт по дереву —
+	// internal/repohygiene.TestDurableStateNeverAssertedAfterInProcessWait.
 	down.Store(false)
 	require.Eventually(t, func() bool {
 		if iam.count("vpc_network:net-long") != 1 {
