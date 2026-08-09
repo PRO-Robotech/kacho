@@ -51,8 +51,10 @@ type ServiceAccount struct {
 	Enabled bool `protobuf:"varint,7,opt,name=enabled,proto3" json:"enabled,omitempty"`
 	// Tenant-facing метки. Единая модель видимости IAM-ресурсов: ServiceAccount —
 	// label-selectable, как account/project; ARM_LABELS-грант на
-	// iam.serviceAccount материализует v_list по совпадению `labels @>
-	// matchLabels` (iam-direct same-DB), а List фильтрует через `viewer ∪ v_list`.
+	// iam.serviceAccount материализует глаголы своей роли на объектах, чьи `labels`
+	// покрывают `matchLabels` (iam-direct same-DB), а страница List сужается тем же
+	// отношением, которым каталог гейтит одиночное чтение — `v_get`; строка попадает
+	// в выдачу ровно тогда, когда вызывающий вправе прочитать её по id.
 	// Mutable через Update (`labels` в update_mask).
 	Labels        map[string]string `protobuf:"bytes,8,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields

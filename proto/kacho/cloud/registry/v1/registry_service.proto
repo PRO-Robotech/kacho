@@ -32,8 +32,15 @@ service RegistryService {
     option (kacho.iam.authz.v1.required_acr_min) = "1";
   }
 
-  // List — sync-список реестров project'а. Scope-filtered (handler фильтрует
-  // через iam ListObjects viewer∪v_list) → gateway <exempt>, authn остаётся.
+  // List — sync-список реестров project'а. Scope-filtered: handler читает страницу
+  // из своей БД и спрашивает модель про идентификаторы ЭТОЙ страницы — пообъектный
+  // Check с ограниченной конкурентностью, отношение `v_list` на
+  // `registry_registry:<id>`; отказ модели — fail-closed UNAVAILABLE, нефильтрованная
+  // страница не отдаётся никогда. → gateway <exempt>, authn остаётся.
+  //
+  // Прежде здесь назывались перечисление разрешённых объектов у iam и союз
+  // отношений. Перечисления в потоке нет (у него жёсткий серверный предел без
+  // продолжения), союза тоже: спрашивается одно отношение.
   rpc List(ListRegistriesRequest) returns (ListRegistriesResponse) {
     option (google.api.http) = {get: "/registry/v1/registries"};
     option (kacho.iam.authz.v1.permission) = "<exempt>";

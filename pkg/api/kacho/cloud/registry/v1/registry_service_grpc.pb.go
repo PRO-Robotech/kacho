@@ -51,8 +51,15 @@ const (
 type RegistryServiceClient interface {
 	// Get — sync-чтение одного реестра. v_get на registry_registry.
 	Get(ctx context.Context, in *GetRegistryRequest, opts ...grpc.CallOption) (*Registry, error)
-	// List — sync-список реестров project'а. Scope-filtered (handler фильтрует
-	// через iam ListObjects viewer∪v_list) → gateway <exempt>, authn остаётся.
+	// List — sync-список реестров project'а. Scope-filtered: handler читает страницу
+	// из своей БД и спрашивает модель про идентификаторы ЭТОЙ страницы — пообъектный
+	// Check с ограниченной конкурентностью, отношение `v_list` на
+	// `registry_registry:<id>`; отказ модели — fail-closed UNAVAILABLE, нефильтрованная
+	// страница не отдаётся никогда. → gateway <exempt>, authn остаётся.
+	//
+	// Прежде здесь назывались перечисление разрешённых объектов у iam и союз
+	// отношений. Перечисления в потоке нет (у него жёсткий серверный предел без
+	// продолжения), союза тоже: спрашивается одно отношение.
 	List(ctx context.Context, in *ListRegistriesRequest, opts ...grpc.CallOption) (*ListRegistriesResponse, error)
 	// Create — async. create-child = editor-tier на parent-project (Check на
 	// iam_project, объекта registry ещё нет). Owner-tuple эмитится в outbox.
@@ -305,8 +312,15 @@ func (c *registryServiceClient) ListReferrers(ctx context.Context, in *ListRefer
 type RegistryServiceServer interface {
 	// Get — sync-чтение одного реестра. v_get на registry_registry.
 	Get(context.Context, *GetRegistryRequest) (*Registry, error)
-	// List — sync-список реестров project'а. Scope-filtered (handler фильтрует
-	// через iam ListObjects viewer∪v_list) → gateway <exempt>, authn остаётся.
+	// List — sync-список реестров project'а. Scope-filtered: handler читает страницу
+	// из своей БД и спрашивает модель про идентификаторы ЭТОЙ страницы — пообъектный
+	// Check с ограниченной конкурентностью, отношение `v_list` на
+	// `registry_registry:<id>`; отказ модели — fail-closed UNAVAILABLE, нефильтрованная
+	// страница не отдаётся никогда. → gateway <exempt>, authn остаётся.
+	//
+	// Прежде здесь назывались перечисление разрешённых объектов у iam и союз
+	// отношений. Перечисления в потоке нет (у него жёсткий серверный предел без
+	// продолжения), союза тоже: спрашивается одно отношение.
 	List(context.Context, *ListRegistriesRequest) (*ListRegistriesResponse, error)
 	// Create — async. create-child = editor-tier на parent-project (Check на
 	// iam_project, объекта registry ещё нет). Owner-tuple эмитится в outbox.

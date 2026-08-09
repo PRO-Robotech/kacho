@@ -123,8 +123,13 @@ type User struct {
 	InvitedBy string `protobuf:"bytes,8,opt,name=invited_by,json=invitedBy,proto3" json:"invited_by,omitempty"`
 	// Tenant-facing метки. Единая модель видимости IAM-ресурсов: User —
 	// label-selectable, как account/project; ARM_LABELS-грант на iam.user
-	// материализует v_list по совпадению `labels @> matchLabels` (iam-direct
-	// same-DB), а List фильтрует через `viewer ∪ v_list`. Mutable через
+	// материализует глаголы своей роли на объектах, чьи `labels` покрывают
+	// `matchLabels` (iam-direct same-DB), а страница List сужается тем же
+	// отношением, которым каталог гейтит одиночное чтение — `v_get`; строка
+	// попадает в выдачу ровно тогда, когда вызывающий вправе прочитать её по id.
+	// Роль, дающая только `list` без `get`, объект в списке не показывает — иначе
+	// выдача раскрывала бы содержимое, которое чтение по id отказывает (List
+	// возвращает то же сообщение ресурса, что и Get). Mutable через
 	// UserService.Update (`labels` в update_mask). Аннотации (size/key/value
 	// pattern) энфорсят sync-INVALID_ARGUMENT на request-layer — паритет
 	// account/project/group request `labels`; это request-input для UpdateUser
