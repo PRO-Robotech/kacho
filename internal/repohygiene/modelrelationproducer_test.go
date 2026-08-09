@@ -198,7 +198,7 @@ func countLatent(rels []modelRelation) int {
 func collectStructuralRelations(t *testing.T, root string) ([]modelRelation, int, int) {
 	t.Helper()
 	path := filepath.Join(root, fgaModelPath)
-	body, err := os.ReadFile(path) //nolint:gosec // путь константный, внутри дерева
+	body, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("читаю %s: %v", path, err)
 	}
