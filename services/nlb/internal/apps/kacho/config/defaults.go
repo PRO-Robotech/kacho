@@ -99,10 +99,17 @@ func RegisterDefaults(v *viper.Viper) {
 	v.SetDefault("authz.list-filter.cache-max-entries", 10000)
 	v.SetDefault("authz.list-filter.fail-open", false)
 	v.SetDefault("authz.breakglass", false)
-	// trusted-forwarder-sans: allow-list cert-identity SAN'ов доверенных форвардеров
-	// (api-gateway). Пусто (default) → любой mTLS-verified peer доверен (back-compat).
+	// trusted-forwarder-sans: круг личностей клиентского сертификата, которым
+	// разрешено передавать личность конечного пользователя (api-gateway).
+	// Умолчание пусто, и это НЕ «доверяем любому»: на пустом круге старт
+	// отказывает (Validate), пока не задан явный опт-ин ниже.
 	// ENV KACHO_NLB_AUTHZ__TRUSTED_FORWARDER_SANS (comma-separated).
 	v.SetDefault("authz.trusted-forwarder-sans", []string{})
+	// trust-any-forwarder: явный опт-ин «круг не сужаем» для локальных
+	// in-process фикстур. Вне боевого режима — единственный способ поднять
+	// процесс с пустым кругом; в боевом НЕ действует.
+	v.SetDefault("authz.trust-any-forwarder", false)
+	_ = v.BindEnv("authz.trust-any-forwarder", "KACHO_NLB_AUTHZ__TRUST_ANY_FORWARDER")
 
 	// FGA register-drainer (Вариант A).: default-on — drainer
 	// is an in-process goroutine; without it created resources never get an

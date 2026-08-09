@@ -120,17 +120,38 @@ func TestValidate_Production_AcceptsPinnedForwarderAllowList(t *testing.T) {
 	}
 }
 
-// TestValidate_Dev_ToleratesEmptyForwarderAllowList — dev осознанно терпит
-// insecure-дефолты (in-process фикстуры без mTLS вовсе). Держит правку от поломки
-// локальных тестов; на РАЗВЁРНУТОМ стенде dev запрещён отдельным правилом.
-func TestValidate_Dev_ToleratesEmptyForwarderAllowList(t *testing.T) {
+// devEnvWithEmptyCircle — dev-окружение, в котором insecure всё, включая круг.
+func devEnvWithEmptyCircle() map[string]string {
 	env := prodEnv("")
 	env["KACHO_STORAGE_AUTH_MODE"] = "dev"
 	env["KACHO_STORAGE_DB_SSLMODE"] = "disable"
 	env["KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR"] = ""
 	env["KACHO_STORAGE_PUBLIC_SERVER_MTLS_ENABLE"] = "false"
 	env["KACHO_STORAGE_INTERNAL_SERVER_MTLS_ENABLE"] = "false"
+	return env
+}
+
+// TestValidate_Dev_RefusesAnUnnarrowedCircleWithoutTheOptIn — стража круга
+// срабатывает на ЛЮБОМ старте, а не только в боевом режиме: контроль, чья ветка
+// на локальном стенде не исполняется ни разу, находит «забыл выставить круг»
+// только на боевом профиле, где цена ошибки максимальна.
+func TestValidate_Dev_RefusesAnUnnarrowedCircleWithoutTheOptIn(t *testing.T) {
+	err := loadEnv(t, devEnvWithEmptyCircle()).Validate()
+	if err == nil {
+		t.Fatal("dev с несуженным кругом и без опт-ина обязан отказать в старте")
+	}
+	if !strings.Contains(err.Error(), "KACHO_STORAGE_AUTHZ_TRUST_ANY_FORWARDER") {
+		t.Fatalf("отказ обязан назвать ручку опт-ина, иначе стенд не поднять: %v", err)
+	}
+}
+
+// TestValidate_Dev_ToleratesAnUnnarrowedCircleWithTheExplicitOptIn —
+// положительный контроль: без него отрицание выше зеленело бы и на «отказывать
+// всегда».
+func TestValidate_Dev_ToleratesAnUnnarrowedCircleWithTheExplicitOptIn(t *testing.T) {
+	env := devEnvWithEmptyCircle()
+	env["KACHO_STORAGE_AUTHZ_TRUST_ANY_FORWARDER"] = "true"
 	if err := loadEnv(t, env).Validate(); err != nil {
-		t.Fatalf("dev must tolerate an empty allow-list (in-process fixtures), got: %v", err)
+		t.Fatalf("явный опт-ин обязан пропускать локальную фикстуру: %v", err)
 	}
 }

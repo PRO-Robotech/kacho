@@ -98,7 +98,12 @@ func TestValidate_Dev_Breakglass_Passes(t *testing.T) {
 	require.NoError(t, c.Validate())
 }
 
-// vpc8-C-05: dev-режим гардрейлом не затронут.
+// vpc8-C-05: dev-режим гардрейлом authz-эндпоинта не затронут.
+//
+// Круг отправителей — отдельное измерение: его стража срабатывает на ЛЮБОМ
+// non-breakglass старте, поэтому здесь выставлен явный dev-опт-ин. Иначе тест
+// перестал бы отвечать на свой вопрос (про authz.iam-endpoint) и падал бы по
+// чужой причине.
 func TestValidate_Dev_NoGuardrail(t *testing.T) {
 	var c Config
 	c.AuthN.Mode = ModeDev
@@ -106,6 +111,7 @@ func TestValidate_Dev_NoGuardrail(t *testing.T) {
 	c.APIServer.InternalEndpoint = "tcp://0.0.0.0:9091"
 	c.Repository.Postgres.URL = "postgres://u@h:5432/db"
 	c.Repository.Postgres.SSLMode = "disable"
+	c.AuthZ.TrustAnyForwarder = true
 	c.Logger.Level = "INFO"
 	require.NoError(t, c.Validate())
 	require.NotContains(t, errString(c.Validate()), "authz.iam-endpoint is required")
@@ -281,6 +287,7 @@ func TestValidate_Dev_SSLModeDisable_Passes(t *testing.T) {
 	c.APIServer.InternalEndpoint = "tcp://0.0.0.0:9091"
 	c.Repository.Postgres.URL = "postgres://u@h:5432/db"
 	c.Repository.Postgres.SSLMode = "disable"
+	c.AuthZ.TrustAnyForwarder = true
 	c.Logger.Level = "INFO"
 	require.NoError(t, c.Validate())
 }

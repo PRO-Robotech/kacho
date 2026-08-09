@@ -89,6 +89,18 @@ type Config struct {
 	// Validate() отказывает в старте (fail-closed, зеркалит geo/compute/nlb).
 	AuthZTrustedForwarderSANs []string `envconfig:"KACHO_STORAGE_AUTHZ_TRUSTED_FORWARDER_SANS"`
 
+	// AuthZTrustAnyForwarder — ЯВНЫЙ опт-ин «круг не сужаем», действующий ТОЛЬКО
+	// вне боевого режима. Нужен для локальных in-process фикстур, где ни
+	// сертификатов, ни шлюза нет.
+	//
+	// Он существует потому, что стража круга срабатывает на ЛЮБОМ старте, а не
+	// только в боевом режиме: контроль, чья ветка на локальном стенде не
+	// исполняется ни разу, обнаруживает «забыл выставить круг» только на боевом
+	// профиле, где цена ошибки максимальна. Оставленный незаданным (false) =
+	// отказ старта на пустом круге. В боевом режиме НЕ действует — иначе это была
+	// бы ручка, снимающая защиту на развёрнутом стенде.
+	AuthZTrustAnyForwarder bool `envconfig:"KACHO_STORAGE_AUTHZ_TRUST_ANY_FORWARDER" default:"false"`
+
 	// FGARegisterDrainerEnabled — включает register-drainer owner-tuple'ов (SEC-D):
 	// применяет fga_register_outbox-intents через kacho-iam RegisterResource/
 	// UnregisterResource по ребру storage→iam (AuthZIAMGRPCAddr, mTLS). Default true;

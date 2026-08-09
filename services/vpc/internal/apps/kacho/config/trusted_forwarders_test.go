@@ -79,13 +79,34 @@ func TestValidate_Production_ForwardersThatDegenerateToEmpty_RefusesToStart(t *t
 	}
 }
 
-// dev терпит пусто — там доверенной пары нет смысла сужать (на insecure-листенере
-// сертификата нет вовсе). На РАЗВЁРНУТОМ стенде dev-посадка запрещена отдельным
-// правилом (production-mode ВЕЗДЕ), поэтому дыры это не оставляет.
-func TestValidate_Dev_EmptyTrustedForwarders_Allowed(t *testing.T) {
+// Вне боевого режима пустой круг ВОЗМОЖЕН, но только как ЯВНЫЙ опт-ин: стража
+// срабатывает на любом non-breakglass старте. Молчащая вне боевого режима стража —
+// контроль, чья ветка на локальном стенде не исполняется ни разу, поэтому «забыл
+// выставить круг» находится только на боевом профиле, где цена ошибки максимальна.
+func TestValidate_Dev_EmptyTrustedForwarders_RefusesWithoutOptIn(t *testing.T) {
 	c := fwdCfg(ModeDev, nil)
 	c.Repository.Postgres.SSLMode = "disable"
+	err := c.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "authz.trusted-forwarder-sans")
+	assert.Contains(t, err.Error(), "authz.trust-any-forwarder")
+}
+
+func TestValidate_Dev_EmptyTrustedForwarders_AllowedWithExplicitOptIn(t *testing.T) {
+	c := fwdCfg(ModeDev, nil)
+	c.Repository.Postgres.SSLMode = "disable"
+	c.AuthZ.TrustAnyForwarder = true
 	require.NoError(t, c.Validate())
+}
+
+// Опт-ин НЕ действует в боевом режиме: иначе он был бы ручкой, снимающей защиту
+// на развёрнутом стенде.
+func TestValidate_Production_OptInDoesNotUnlockAnEmptyCircle(t *testing.T) {
+	c := fwdCfg(ModeProduction, nil)
+	c.AuthZ.TrustAnyForwarder = true
+	err := c.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "authz.trusted-forwarder-sans")
 }
 
 // TrustedForwarders() — ЕДИНСТВЕННЫЙ источник значения на процесс: его читает и

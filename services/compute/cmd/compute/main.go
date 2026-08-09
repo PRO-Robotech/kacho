@@ -89,6 +89,13 @@ func runServe(cfg config.Config) error {
 	logger := observability.NewSlogger(os.Stdout)
 	slog.SetDefault(logger)
 
+	// Стража круга отправителей живёт рядом с конфигурацией и срабатывает на ЛЮБОМ
+	// non-breakglass старте — поэтому зовётся здесь, до разбора режима, а не
+	// внутри его боевых веток.
+	if verr := cfg.Validate(); verr != nil {
+		return verr
+	}
+
 	productionMode, err := validateAuthMode(cfg, logger)
 	if err != nil {
 		return err
@@ -538,9 +545,6 @@ func validateAuthMode(cfg config.Config, logger *slog.Logger) (productionMode bo
 		if terr := requireDBSSLMode(cfg); terr != nil {
 			return false, terr
 		}
-		if terr := requireTrustedForwarders(cfg); terr != nil {
-			return false, terr
-		}
 		if terr := requireListFilter(cfg); terr != nil {
 			return false, terr
 		}
@@ -555,9 +559,6 @@ func validateAuthMode(cfg config.Config, logger *slog.Logger) (productionMode bo
 			return false, terr
 		}
 		if terr := requireDBSSLMode(cfg); terr != nil {
-			return false, terr
-		}
-		if terr := requireTrustedForwarders(cfg); terr != nil {
 			return false, terr
 		}
 		if terr := requireListFilter(cfg); terr != nil {
@@ -589,28 +590,6 @@ func requireDBSSLMode(cfg config.Config) error {
 	default:
 		return fmt.Errorf("production mode: KACHO_COMPUTE_DB_SSLMODE must be one of require|verify-ca|verify-full (got %q)", cfg.DBSSLMode)
 	}
-}
-
-// requireTrustedForwarders — в любом production-режиме allow-list доверенных
-// forwarder-SAN'ов (обычно единственный — api-gateway SA) обязан быть непустым.
-// Пустой список → principalIsTrusted (corelib grpcsrv) доверяет forwarded
-// x-kacho-principal-* ЛЮБОМУ mTLS-verified peer'у: любой sibling с валидным
-// mesh-cert'ом форжит end-user principal и проходит FGA-Check как жертва
-// (confused deputy → tenant crossing, CWE-441/CWE-290). Fail-closed зеркалит
-// insecureListenersInProduction / requireDBSSLMode. В dev допустимо пусто
-// (принимаем любой principal — back-compat локальных фикстур).
-//
-// Спрашиваем ТОТ ЖЕ объект и ТОТ ЖЕ предикат, что и проводка с самоотчётом
-// (grpcsrv.TrustedForwarders.IsNarrowed): WithTrustedForwarders принимает только
-// непустые записи, поэтому список из одних пустых строк (`SANS=","`) вырождается
-// там в пустое множество — то есть снова «доверяем любому». Проверка по длине
-// сырого среза пропускала такое значение, и сервис стартовал, доверяя всем.
-func requireTrustedForwarders(cfg config.Config) error {
-	if !cfg.TrustedForwarders().IsNarrowed() {
-		return fmt.Errorf("production mode requires a non-empty KACHO_COMPUTE_AUTHZ_TRUSTED_FORWARDER_SANS allow-list " +
-			"(empty → any mTLS peer is trusted to forward the end-user principal → subject spoofing / tenant crossing)")
-	}
-	return nil
 }
 
 // requireListFilter — в любом production-режиме per-object FGA-фильтр обязан быть

@@ -58,6 +58,11 @@ func runServe(cfg config.Config) error {
 	// Secure-by-default: per-RPC authz Check и mTLS на ОБОИХ листенерах
 	// обязательны. Единственный способ запустить без авторизации и mTLS —
 	// аварийный KACHO_REGISTRY_AUTHZ_BREAKGLASS=true.
+	// Стража круга отправителей живёт рядом с конфигурацией и срабатывает на ЛЮБОМ
+	// non-breakglass старте — поэтому зовётся отдельно и до разбора режима.
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
 	if err := validateSecurityConfig(cfg); err != nil {
 		return err
 	}
@@ -716,10 +721,7 @@ func validateSecurityConfig(cfg config.Config) error {
 	if !cfg.PublicServerMTLS.Enable || !cfg.InternalServerMTLS.Enable {
 		return errors.New("mTLS required on both listeners: set KACHO_REGISTRY_PUBLIC_SERVER_MTLS_ENABLE and KACHO_REGISTRY_INTERNAL_SERVER_MTLS_ENABLE=true (or KACHO_REGISTRY_AUTHZ_BREAKGLASS=true to bypass)")
 	}
-	if err := requirePeerTransport(cfg); err != nil {
-		return err
-	}
-	return requireTrustedForwarders(cfg)
+	return requirePeerTransport(cfg)
 }
 
 // requirePeerTransport — в любом боевом режиме транспорт КАЖДОГО поднимаемого
@@ -769,41 +771,6 @@ func requirePeerTransport(cfg config.Config) error {
 		return errors.New("verified transport required on the registry→geo edge: set " +
 			"KACHO_REGISTRY_GEO_MTLS_ENABLE=true (with cert/key/CA) — region existence for registry " +
 			"placement is decided on this connection, and unarmed client credentials degrade to cleartext silently")
-	}
-	return nil
-}
-
-// requireTrustedForwarders — в любом боевом режиме круг отправителей чужой
-// личности обязан быть сужен.
-//
-// Оба листенера строят цепочку CertIdentityExtract →
-// TrustedPrincipalExtract(WithTrustedForwarders(cfg.TrustedForwarders())).
-// Контракт corelib (pkg/grpcsrv principalIsTrusted) сужает круг ТОЛЬКО на непустом
-// списке; на пустом он отвечает «доверяем» ЛЮБОМУ пиру, прошедшему проверку
-// сертификата, и переданная в метаданных личность становится субъектом проверки
-// прав (pkg/authz subject_extract). То есть на пустом списке сосед со своим
-// законным сертификатом (compute, nlb, vpc, storage, оператор) читает, меняет и
-// удаляет чужие реестры и репозитории от имени жертвы, а на внутреннем листенере
-// ещё и дёргает административные RPC. Внутренний периметр у нас объявлен
-// НЕдоверенным, сетевой политики на поды registry нет, и слой TLS имена не сверяет
-// — сужает только этот список.
-//
-// Проверяем результат TrustedForwarders(), а не длину сырого поля: там же, где
-// сужение реально произойдёт, отбрасываются пустые записи, поэтому `SANS=","` не
-// может пройти гейт и вернуть дыру.
-//
-// dev осознанно терпит пусто (in-process фикстуры) — но только там: на РАЗВЁРНУТОМ
-// стенде dev-посадка запрещена отдельным правилом (production-mode ВЕЗДЕ).
-func requireTrustedForwarders(cfg config.Config) error {
-	switch cfg.AuthMode {
-	case "production", "production-strict":
-	default:
-		return nil
-	}
-	if !cfg.TrustedForwarders().IsNarrowed() {
-		return errors.New("trusted-forwarder allow-list required: set KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS " +
-			"(empty → any certificate-verified peer may forward an end-user identity, so a neighbouring " +
-			"service can act as any tenant; pin the api-gateway SAN)")
 	}
 	return nil
 }

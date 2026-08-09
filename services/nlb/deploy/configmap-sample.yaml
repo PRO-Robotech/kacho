@@ -106,11 +106,16 @@ authz:
     cache-max-entries: 10000  # cache bound (записей «(subject,type,id) видим»)
     fail-open: false          # iam down → List → UNAVAILABLE (НЕ нефильтрованный)
   breakglass: false           # dev-only; production validation rejects true
-  # Anti-impersonation allow-list: cert-identity SAN'ы, которым разрешено
-  # форвардить end-user principal (x-kacho-principal-*). Пусто = доверять ЛЮБОМУ
-  # mTLS-verified peer'у (confused-deputy в общем mTLS-mesh). ОБЯЗАН быть непустым
-  # при mode=production И mtls.server.enable=true (обычно SAN api-gateway).
+  # Круг отправителей: личности клиентского сертификата, которым разрешено
+  # передавать личность конечного пользователя (x-kacho-principal-*). Пустой круг
+  # означает «доверять ЛЮБОМУ пиру с проверенным сертификатом» (confused-deputy в
+  # общем mTLS-mesh), поэтому старт на нём ОТКАЗЫВАЕТ — на любом non-breakglass
+  # старте, а не только в боевом режиме.
   trusted-forwarder-sans: []
+  # Этот образец — локальная dev-посадка без сертификатов и без шлюза, поэтому он
+  # ЯВНО просит «круг не сужаем». На боевом профиле опт-ин НЕ действует: там
+  # обязателен непустой круг (обычно SAN api-gateway).
+  trust-any-forwarder: true
 
 # ─── FGA tuple write (D-11 sync hierarchy tuples) ───────────────────────────
 fga:

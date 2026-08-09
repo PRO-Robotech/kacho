@@ -99,6 +99,18 @@ type Config struct {
 	// geo/compute/nlb/storage).
 	AuthZTrustedForwarderSANs []string `envconfig:"KACHO_REGISTRY_AUTHZ_TRUSTED_FORWARDER_SANS"`
 
+	// AuthZTrustAnyForwarder — ЯВНЫЙ опт-ин «круг не сужаем», действующий ТОЛЬКО
+	// вне боевого режима. Нужен для локальных in-process фикстур, где ни
+	// сертификатов, ни шлюза нет.
+	//
+	// Он существует потому, что стража круга срабатывает на ЛЮБОМ старте, а не
+	// только в боевом режиме: контроль, чья ветка на локальном стенде не
+	// исполняется ни разу, обнаруживает «забыл выставить круг» только на боевом
+	// профиле, где цена ошибки максимальна. Оставленный незаданным (false) =
+	// отказ старта на пустом круге. В боевом режиме НЕ действует — иначе это была
+	// бы ручка, снимающая защиту на развёрнутом стенде.
+	AuthZTrustAnyForwarder bool `envconfig:"KACHO_REGISTRY_AUTHZ_TRUST_ANY_FORWARDER" default:"false"`
+
 	// AuthZBreakglass — аварийный режим: пропускать все RPC без Check + WARN
 	// (только dev / break-glass).
 	AuthZBreakglass bool `envconfig:"KACHO_REGISTRY_AUTHZ_BREAKGLASS" default:"false"`

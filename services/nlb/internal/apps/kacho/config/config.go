@@ -229,6 +229,18 @@ type AuthzConfig struct {
 	// своим валидным cert'ом не может выдать себя за пользователя). ENV
 	// `KACHO_NLB_AUTHZ__TRUSTED_FORWARDER_SANS` (comma-separated).
 	TrustedForwarderSANs []string `mapstructure:"trusted-forwarder-sans"`
+
+	// TrustAnyForwarder — ЯВНЫЙ опт-ин «круг не сужаем», действующий ТОЛЬКО вне
+	// боевого режима. Нужен для локальных in-process фикстур, где ни сертификатов,
+	// ни шлюза нет.
+	//
+	// Он существует потому, что стража круга срабатывает на ЛЮБОМ старте, а не
+	// только в боевом режиме: контроль, чья ветка на локальном стенде не
+	// исполняется ни разу, обнаруживает «забыл выставить круг» только на боевом
+	// профиле, где цена ошибки максимальна. Оставленный незаданным (false) = отказ
+	// старта на пустом круге. В боевом режиме НЕ действует — иначе это была бы
+	// ручка, снимающая защиту на развёрнутом стенде.
+	TrustAnyForwarder bool `mapstructure:"trust-any-forwarder"`
 }
 
 // AuthzListFilterConfig — per-object filtered List (RBAC).

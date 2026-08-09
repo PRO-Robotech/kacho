@@ -4,6 +4,7 @@
 package grpcsrv
 
 import (
+	"fmt"
 	"strings"
 
 	"google.golang.org/grpc"
@@ -123,6 +124,59 @@ func (f TrustedForwarders) String() string {
 		return "<not narrowed>"
 	}
 	return strings.Join(f.sans, ",")
+}
+
+// ForwarderGate — вход стражи круга отправителей: то, что стража обязана знать
+// о посадке, чтобы решить, поднимать ли процесс.
+//
+// Ручки называются ЯВНО, потому что текст отказа читает оператор: сообщение, не
+// называющее ручку, оставляет стенд неподнятым и непонятным. Это одно из трёх
+// мест, выведенных из-под запрета на подробности в публичных артефактах, —
+// рантайм-диагностика, а не рассказ о том, где было открыто.
+type ForwarderGate struct {
+	// Production — боевой режим (production ИЛИ production-strict). В нём круг
+	// обязан быть сужен, и опт-ин ниже НЕ действует.
+	Production bool
+	// DevTrustAny — явный dev-опт-ин «не сужаем». Действует только вне боевого
+	// режима и только там, где посадка заведомо локальная (in-process фикстуры).
+	DevTrustAny bool
+	// SANsKnob — имя ручки, которой круг задаётся (для текста отказа).
+	SANsKnob string
+	// TrustAnyKnob — имя ручки опт-ина (для текста отказа).
+	TrustAnyKnob string
+}
+
+// Require — стража круга отправителей, ОДНА на все семь сервисов.
+//
+// # Почему она срабатывает на ЛЮБОМ старте, а не только в боевом режиме
+//
+// Развёрнутый стенд обязан работать в боевой посадке независимо от того, dev он
+// называется или нет. Стража, молчащая вне боевого режима, — контроль, чья ветка
+// на локальном стенде не исполняется ни разу, поэтому «забыл выставить круг»
+// обнаруживается только на боевом профиле, где цена ошибки максимальна. Вне
+// боевого режима пустой круг остаётся возможным, но становится ЯВНЫМ опт-ином:
+// его надо попросить, а не получить умолчанием.
+//
+// # Почему опт-ин не действует в боевом режиме
+//
+// Иначе он был бы ручкой, снимающей защиту на боевом стенде, — то есть ровно тем
+// именованным обходом, которого у нас быть не должно.
+func (f TrustedForwarders) Require(g ForwarderGate) error {
+	if f.IsNarrowed() {
+		return nil
+	}
+	if !g.Production && g.DevTrustAny {
+		return nil
+	}
+	if g.Production {
+		return fmt.Errorf("production mode: %s must pin at least one trusted-forwarder SAN "+
+			"(an unnarrowed circle lets ANY certificate-verified peer forward an end-user identity, "+
+			"so a neighbouring service acts as any tenant); the dev opt-in %s is not honoured in production",
+			g.SANsKnob, g.TrustAnyKnob)
+	}
+	return fmt.Errorf("secure-by-default: %s is empty, which trusts ANY certificate-verified peer "+
+		"to forward an end-user identity; pin the api-gateway SAN, or opt into trust-any for local "+
+		"in-process fixtures by setting %s to true", g.SANsKnob, g.TrustAnyKnob)
 }
 
 // PrincipalExtractUnary — пара звеньев, отвечающая на вопрос «чью личность несёт

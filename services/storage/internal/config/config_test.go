@@ -56,10 +56,16 @@ func TestLoad_defaultAuthModeProduction(t *testing.T) {
 // TestValidate_devTolerant — dev-режим осознанно терпит insecure-дефолты (plaintext
 // DB, mTLS off, authz off): локальные фикстуры и dev-стенд стартуют без kacho-iam.
 // Validate НЕ отказывает старту в dev (WARN эмитит serve.go, не fatal).
+//
+// Круг отправителей — исключение из этой терпимости и потому выставлен явно: его
+// стража срабатывает на ЛЮБОМ старте, а опт-ин и есть тот способ, которым
+// локальная фикстура объявляет себя локальной. Собственная проба круга
+// (trusted_forwarders_test.go) опт-ина не ставит.
 func TestValidate_devTolerant(t *testing.T) {
 	c := config.Config{
-		AuthMode:  "dev",
-		DBSSLMode: "disable",
+		AuthMode:               "dev",
+		DBSSLMode:              "disable",
+		AuthZTrustAnyForwarder: true,
 		// mTLS off, authz addr empty — всё insecure, но dev это допускает.
 	}
 	if err := c.Validate(); err != nil {

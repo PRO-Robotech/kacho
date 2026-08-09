@@ -174,17 +174,51 @@ func TestValidateAuthMode_ProductionStrict_DBSSLModeStillEnforced(t *testing.T) 
 func TestValidateAuthMode_Production_RequiresTrustedForwarders(t *testing.T) {
 	cfg := securedProduction()
 	cfg.AuthZTrustedForwarderSANs = nil
-	_, err := validateAuthMode(cfg, discardLogger())
+	err := cfg.Validate()
 	if err == nil {
-		t.Fatalf("production must reject empty AuthZTrustedForwarderSANs (any mTLS peer trusted as forwarder → subject spoofing)")
+		t.Fatalf("production must reject an unnarrowed circle (any mTLS peer trusted as forwarder → subject spoofing)")
 	}
 	if !strings.Contains(err.Error(), "AUTHZ_TRUSTED_FORWARDER_SANS") {
 		t.Errorf("gate error must name the empty forwarder allow-list; got: %v", err)
 	}
-	// с непустым allow-list — стартует.
+	// с непустым кругом — стартует.
 	cfg.AuthZTrustedForwarderSANs = []string{"spiffe://kacho.cloud/ns/kacho-system/sa/kacho-api-gateway"}
-	if _, err := validateAuthMode(cfg, discardLogger()); err != nil {
-		t.Fatalf("production with a non-empty forwarder allow-list must pass; got: %v", err)
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("production with a narrowed circle must pass; got: %v", err)
+	}
+}
+
+// Вне боевого режима круг тоже гейтится — но пустой круг остаётся возможным как
+// ЯВНЫЙ опт-ин. Стража, молчащая вне боевого режима, ни разу не исполняется на
+// локальном стенде, и «забыл выставить круг» находится только на боевом профиле.
+func TestValidate_Dev_RefusesAnUnnarrowedCircleWithoutTheOptIn(t *testing.T) {
+	cfg := securedProduction()
+	cfg.AuthMode = "dev"
+	cfg.AuthZTrustedForwarderSANs = nil
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("dev с несуженным кругом и без опт-ина обязан отказать в старте")
+	}
+	if !strings.Contains(err.Error(), "AUTHZ_TRUST_ANY_FORWARDER") {
+		t.Errorf("отказ обязан назвать ручку опт-ина, иначе стенд не поднять; got: %v", err)
+	}
+
+	// Положительный контроль: без него отрицание зеленело бы и на «отказывать всегда».
+	cfg.AuthZTrustAnyForwarder = true
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("явный опт-ин обязан пропускать локальную фикстуру; got: %v", err)
+	}
+}
+
+// Опт-ин НЕ действует в боевом режиме: иначе он был бы ручкой, снимающей защиту
+// на развёрнутом стенде.
+func TestValidate_Production_IgnoresTheDevOptIn(t *testing.T) {
+	cfg := securedProduction()
+	cfg.AuthZTrustedForwarderSANs = nil
+	cfg.AuthZTrustAnyForwarder = true
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("боевой режим обязан отказать на несуженном круге даже с опт-ином")
 	}
 }
 
@@ -192,9 +226,9 @@ func TestValidateAuthMode_Production_RequiresTrustedForwarders(t *testing.T) {
 func TestValidateAuthMode_ProductionStrict_RequiresTrustedForwarders(t *testing.T) {
 	cfg := allEdgesSecured()
 	cfg.AuthZTrustedForwarderSANs = nil
-	_, err := validateAuthMode(cfg, discardLogger())
+	err := cfg.Validate()
 	if err == nil {
-		t.Fatalf("production-strict must reject empty AuthZTrustedForwarderSANs")
+		t.Fatalf("production-strict must reject an unnarrowed circle")
 	}
 	if !strings.Contains(err.Error(), "AUTHZ_TRUSTED_FORWARDER_SANS") {
 		t.Errorf("gate error must name the empty forwarder allow-list; got: %v", err)
@@ -431,7 +465,7 @@ func TestValidateAuthMode_Production_RejectsBlankOnlyTrustedForwarders(t *testin
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := tc.cfg()
 			cfg.AuthZTrustedForwarderSANs = []string{"", ""}
-			_, err := validateAuthMode(cfg, discardLogger())
+			err := cfg.Validate()
 			if err == nil {
 				t.Fatal("a list of blank entries passed the guard: corelib drops empty strings, " +
 					"so the resulting allow-list is empty and every certificate-verified peer " +

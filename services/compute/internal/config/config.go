@@ -118,6 +118,18 @@ type Config struct {
 	// (или вне allow-list) forwarded principal снимается.
 	AuthZTrustedForwarderSANs []string `envconfig:"KACHO_COMPUTE_AUTHZ_TRUSTED_FORWARDER_SANS"`
 
+	// AuthZTrustAnyForwarder — ЯВНЫЙ опт-ин «круг не сужаем», действующий ТОЛЬКО
+	// вне боевого режима. Нужен для локальных in-process фикстур, где ни
+	// сертификатов, ни шлюза нет.
+	//
+	// Он существует потому, что стража круга срабатывает на ЛЮБОМ старте, а не
+	// только в боевом режиме: контроль, чья ветка на локальном стенде не
+	// исполняется ни разу, обнаруживает «забыл выставить круг» только на боевом
+	// профиле, где цена ошибки максимальна. Оставленный незаданным (false) =
+	// отказ старта на пустом круге. В боевом режиме НЕ действует — иначе это была
+	// бы ручка, снимающая защиту на развёрнутом стенде.
+	AuthZTrustAnyForwarder bool `envconfig:"KACHO_COMPUTE_AUTHZ_TRUST_ANY_FORWARDER" default:"false"`
+
 	// ===== per-object filtered List =====
 	//
 	// Все ListFilter* — production-edition: configurable, no hardcoded.
