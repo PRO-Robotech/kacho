@@ -454,12 +454,12 @@ CASES.append(Case(
 
 CASES.append(Case(
     id="VOL-CR-NEG-ZONE-UNKNOWN",
-    title="Create с unknown zoneId → sync 400 INVALID_ARGUMENT 'unknown zone id '<X>'' (peer geo.ZoneService.Get NotFound)",
+    title="Create с unknown zoneId → sync 400 FAILED_PRECONDITION 'unknown zone id '<X>'' (peer geo.ZoneService.Get NotFound)",
     classes=["NEG", "VAL", "CONF"], priority="P1",
     # verifies CS1-S1-08
     # # requires peer-validation enabled (geo peer reachable)
     steps=[Step(name="cr-bad-zone", method="POST", path=VOL, body=_vol_body("bz", zoneId="region-9-z"),
-                test_script=[*assert_status(400), *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                test_script=[*assert_status(400), *assert_grpc_code(9, "FAILED_PRECONDITION"),
                              *_assert_msg("unknown zone id 'region-9-z'")])],
 ))
 

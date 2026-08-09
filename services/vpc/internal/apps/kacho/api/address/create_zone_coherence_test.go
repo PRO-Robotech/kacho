@@ -10,20 +10,21 @@ package address
 // Инвариант (data-integrity.md §Placement-coherence): «Существование zone_id —
 // валидировать peer-вызовом geo.v1.ZoneService.Get, fail-closed. Пропуск (напр.
 // непроверенная зона внешнего адреса) — баг». Зеркалит subnet.validateZoneID
-// (internal/apps/kacho/api/subnet/helpers.go:185-200,
-// InvalidArgument "unknown zone id '%s'"). Отличие: для external Address пустой
-// zone_id ВАЛИДЕН (anycast из global-пула) — проверка условная.
+// (internal/apps/kacho/api/subnet/helpers.go, полоса peer-validate:
+// FailedPrecondition "unknown zone id '%s'" + машинный признак
+// PEER_RESOURCE_MISSING). Отличие: для external Address пустой zone_id ВАЛИДЕН
+// (anycast из global-пула) — проверка условная.
 //
 // RED-состояние (до фикса): CreateAddressUseCase не валидирует
 // ExternalSpec.ZoneID / ExternalIpv6Spec.ZoneID через geo — external Address с
 // несуществующей зоной создаётся. Execute возвращает (op, nil) вместо sync
-// InvalidArgument → ZC-VPC-ADDR-ZONE-01/02 падают по feature-absent.
+// отказа → ZC-VPC-ADDR-ZONE-01/02 падают по feature-absent.
 //
 // GREEN-step (rpc-implementer, тот же PR, план Stage 2):
 //   1. добавить локальный порт address.ZoneRegistry { Get(ctx, id) (*domain.Zone, error) }
 //      (как subnet/iface.go) + wiring в cmd/ (impl clients.GeoZoneClient);
 //   2. в Execute — условная geo-validation ExternalSpec.ZoneID/ExternalIpv6Spec.ZoneID
-//      (непустой → Get → ErrNotFound → InvalidArgument "unknown zone id '<X>'";
+//      (непустой → Get → ErrNotFound → полоса peer-validate "unknown zone id '<X>'";
 //      пустой → skip), fail-closed Unavailable;
 //   3. заменить ТЕЛО хелпера newCreateUCWithZones ниже на инъекцию zr в use-case —
 //      единственная точка правки, после чего ZC-VPC-ADDR-ZONE-01/02 → GREEN.
@@ -47,7 +48,7 @@ import (
 
 // fakeZoneRegistry — двойник geo ZoneRegistry (geo.v1.ZoneService.Get) для
 // existence-валидации external Address.zone_id. Известные зоны → *domain.Zone;
-// прочее → repo.ErrNotFound (use-case транслирует в InvalidArgument
+// прочее → repo.ErrNotFound (use-case транслирует в полосу peer-validate
 // "unknown zone id '<X>'", зеркало subnet.validateZoneID).
 type fakeZoneRegistry struct {
 	known map[string]bool
@@ -84,8 +85,8 @@ func newCreateUCWithZones(
 // ---- GAP-3 RED — external zone existence ------------------------------------
 
 // TestCreateUseCase_ZCVPCADDRZONE01_ExternalV4UnknownZone_Rejected — ZC-VPC-ADDR-ZONE-01:
-// external IPv4 Address с несуществующей zone_id → sync INVALID_ARGUMENT
-// "unknown zone id 'zzz-nonexistent-9'". RED: external zone не валидируется в geo.
+// external IPv4 Address с несуществующей zone_id → sync FAILED_PRECONDITION
+// "unknown zone id 'zzz-nonexistent-9'" на полосе peer-validate.
 func TestCreateUseCase_ZCVPCADDRZONE01_ExternalV4UnknownZone_Rejected(t *testing.T) {
 	kr := kachomock.NewRepository()
 	sr := repomock.NewSubnetRepo()
@@ -97,7 +98,7 @@ func TestCreateUseCase_ZCVPCADDRZONE01_ExternalV4UnknownZone_Rejected(t *testing
 		ProjectID:    "f1",
 		ExternalSpec: &ExternalAddrSpec{ZoneID: "zzz-nonexistent-9"},
 	})
-	require.Equal(t, codes.InvalidArgument, status.Code(err),
+	require.Equal(t, codes.FailedPrecondition, status.Code(err),
 		"external v4 with nonexistent zone must be rejected synchronously")
 	require.Equal(t, "unknown zone id 'zzz-nonexistent-9'", status.Convert(err).Message())
 
@@ -121,7 +122,7 @@ func TestCreateUseCase_ZCVPCADDRZONE02_ExternalV6UnknownZone_Rejected(t *testing
 		ProjectID:        "f1",
 		ExternalIpv6Spec: &ExternalAddrSpec{ZoneID: "zzz-nonexistent-9"},
 	})
-	require.Equal(t, codes.InvalidArgument, status.Code(err),
+	require.Equal(t, codes.FailedPrecondition, status.Code(err),
 		"external v6 with nonexistent zone must be rejected synchronously")
 	require.Equal(t, "unknown zone id 'zzz-nonexistent-9'", status.Convert(err).Message())
 }

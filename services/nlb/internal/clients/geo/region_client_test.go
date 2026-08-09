@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -53,24 +54,34 @@ func TestRegionClient_Get_HappyPath(t *testing.T) {
 	assert.Equal(t, "ru-central1", regions.gotReq.GetRegionId())
 }
 
-func TestRegionClient_Get_NotFoundMapsToInvalidArg(t *testing.T) {
+// Промах peer-валидации — FAILED_PRECONDITION + машинный признак (§9 п.1
+// приёмки XC-6). Прежде здесь возвращался sentinel ErrInvalidArg, который
+// сервисный маппер разворачивал в INVALID_ARGUMENT.
+func TestRegionClient_Get_NotFoundIsPeerValidateLane(t *testing.T) {
 	regions := &fakeRegionService{err: status.Error(codes.NotFound, "no region")}
 	conn := startFakeGeo(t, regions)
 	c := NewRegionClient(conn)
 
 	_, err := c.Get(ctxBackground(), "atlantis")
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, domain.ErrInvalidArg), "expected ErrInvalidArg: %v", err)
+	assert.Equal(t, codes.FailedPrecondition, status.Code(err))
+	assert.Equal(t, "Region atlantis not found", status.Convert(err).Message())
+	assert.Equal(t, "PEER_RESOURCE_MISSING", reasonTokenOf(t, err))
 }
 
-func TestRegionClient_Get_PermissionDeniedMapsToInvalidArg(t *testing.T) {
+// Отказ в правах от владельца справочника отвечает ТОЙ ЖЕ полосой, что и
+// промах: иначе по коду отличали бы «региона нет» от «region есть, но не виден»
+// — то есть заводился бы оракул существования на чужом ресурсе.
+func TestRegionClient_Get_PermissionDeniedIsSameLaneAsMiss(t *testing.T) {
 	regions := &fakeRegionService{err: status.Error(codes.PermissionDenied, "scope filter")}
 	conn := startFakeGeo(t, regions)
 	c := NewRegionClient(conn)
 
 	_, err := c.Get(ctxBackground(), "secret-region")
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, domain.ErrInvalidArg))
+	assert.Equal(t, codes.FailedPrecondition, status.Code(err))
+	assert.Equal(t, "Region secret-region not found", status.Convert(err).Message())
+	assert.Equal(t, "PEER_RESOURCE_MISSING", reasonTokenOf(t, err))
 	assert.NotContains(t, err.Error(), "permission")
 }
 
@@ -83,9 +94,24 @@ func TestRegionClient_Get_Unavailable(t *testing.T) {
 
 	_, err := c.Get(ctx, "ru-central1")
 	require.Error(t, err)
-	if !errors.Is(err, domain.ErrUnavailable) && !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("expected ErrUnavailable or DeadlineExceeded; got %v", err)
+	if status.Code(err) != codes.Unavailable && !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected UNAVAILABLE lane or DeadlineExceeded; got %v", err)
 	}
+	if status.Code(err) == codes.Unavailable {
+		assert.Equal(t, "PEER_UNAVAILABLE", reasonTokenOf(t, err))
+	}
+}
+
+// reasonTokenOf — машинный признак полосы из деталей отказа; пустая строка,
+// если детали нет (отсутствие токена значимо и отличимо от «токен не тот»).
+func reasonTokenOf(t *testing.T, err error) string {
+	t.Helper()
+	for _, d := range status.Convert(err).Details() {
+		if info, ok := d.(*errdetails.ErrorInfo); ok {
+			return info.GetReason()
+		}
+	}
+	return ""
 }
 
 // blockingRegionService — fake RegionServiceServer that never returns from
@@ -123,8 +149,12 @@ func TestRegionClient_Get_HangingPeer_BoundsToConfiguredTimeout(t *testing.T) {
 	close(fake.release)
 
 	require.Error(t, err)
-	assert.True(t, errors.Is(err, domain.ErrUnavailable),
-		"expected fail-closed domain.ErrUnavailable on peer hang; got %v", err)
+	// Свойство, которое лочит проба, прежнее — fail-closed и ограниченное время.
+	// Сменилось лишь ПРЕДСТАВЛЕНИЕ отказа: полоса UNAVAILABLE с машинным
+	// признаком вместо sentinel'а domain.ErrUnavailable.
+	assert.Equal(t, codes.Unavailable, status.Code(err),
+		"expected fail-closed UNAVAILABLE lane on peer hang; got %v", err)
+	assert.Equal(t, "PEER_UNAVAILABLE", reasonTokenOf(t, err))
 	assert.Less(t, elapsed, 2*time.Second,
 		"Get must bound to the configured per-call timeout (~%s), not hang on an unresponsive peer; took %s",
 		configuredTimeout, elapsed)

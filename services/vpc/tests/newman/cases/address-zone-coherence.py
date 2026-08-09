@@ -5,7 +5,8 @@
 
 Acceptance: docs/specs/sub-phase-nlb-vpc-zone-coherence-acceptance.md
   * ZC-VPC-ADDR-ZONE-01/02 — external Address (v4/v6) с несуществующей zone_id →
-    sync InvalidArgument "unknown zone id '<X>'" (verbatim-зеркало subnet.validateZoneID).
+    sync FAILED_PRECONDITION "unknown zone id '<X>'" (полоса peer-validate,
+    verbatim-зеркало subnet.validateZoneID; HTTP-статус по-прежнему 400).
   * ZC-VPC-ADDR-ZONE-03 — существующая zone_id → проходит.
   * ZC-VPC-ADDR-ZONE-04 — anycast (zone_id='') → освобождён от проверки.
     Кейс доводится до конца ЗОНЕ-НЕЗАВИСИМОЙ полосой резолва пула, а она обслуживается
@@ -74,7 +75,7 @@ CASES.append(Case(
                    "externalIpv4AddressSpec": {"zoneId": _UNKNOWN_ZONE}},
              test_script=[
                  *assert_status(400),
-                 *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                 *assert_grpc_code(9, "FAILED_PRECONDITION"),
                  f"pm.test('unknown zone id verbatim', () => pm.expect(pm.response.json().message).to.eql({_MSG_UNKNOWN_ZONE!r}));",
              ]),
     ],
@@ -92,7 +93,7 @@ CASES.append(Case(
                    "externalIpv6AddressSpec": {"zoneId": _UNKNOWN_ZONE}},
              test_script=[
                  *assert_status(400),
-                 *assert_grpc_code(3, "INVALID_ARGUMENT"),
+                 *assert_grpc_code(9, "FAILED_PRECONDITION"),
                  f"pm.test('unknown zone id verbatim', () => pm.expect(pm.response.json().message).to.eql({_MSG_UNKNOWN_ZONE!r}));",
              ]),
     ],

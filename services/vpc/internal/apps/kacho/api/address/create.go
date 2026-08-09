@@ -412,8 +412,10 @@ func mapRequirements(r *AddrRequirements) *domain.AddressRequirements {
 //   - пустой zone_id → пропуск (anycast из global-пула, зоне-независим — в
 //     отличие от Subnet, где ZONAL требует непустой zone_id);
 //   - zoneReg == nil → пропуск (тест-fallback без geo);
-//   - зона не найдена (geo NotFound → repo.ErrNotFound) → InvalidArgument
-//     `unknown zone id '<X>'` (verbatim-зеркало subnet.validateZoneID);
+//   - зона не найдена (geo NotFound → repo.ErrNotFound) → полоса peer-validate:
+//     FailedPrecondition `unknown zone id '<X>'` с машинным признаком
+//     (verbatim-зеркало subnet.validateZoneID — общий serviceerr.UnknownZone,
+//     а не совпадающая копия текста);
 //   - geo недоступен → fail-closed (MapRepoErr пробрасывает Unavailable).
 //
 // internal Address зону НЕ несёт (наследует через subnet_id) — сюда не попадает.
@@ -423,7 +425,7 @@ func (u *CreateAddressUseCase) validateExternalZone(ctx context.Context, zoneID 
 	}
 	if _, err := u.zoneReg.Get(ctx, zoneID); err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
-			return status.Errorf(codes.InvalidArgument, "unknown zone id '%s'", zoneID)
+			return serviceerr.UnknownZone(zoneID)
 		}
 		return serviceerr.MapRepoErr(err)
 	}

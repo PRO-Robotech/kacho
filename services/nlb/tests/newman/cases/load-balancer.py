@@ -1208,15 +1208,16 @@ CASES.append(Case(
 # the async Create worker (doCreate → regionClient.Get), so Create returns 200 +
 # an Operation envelope synchronously and the failure surfaces on the polled
 # Operation. geo returns NotFound for an absent (well-formed slug) region id;
-# the nlb region client maps that to a cross-domain ref-not-found →
-# domain.ErrInvalidArg "Region <id> not found" (region_client.go mapRegionErr),
-# which peerErrToStatus renders as INVALID_ARGUMENT (code 3), NOT NotFound — a
-# non-existent peer ref is bad input, per the data-integrity cross-domain
-# convention. Techniques: ECP (unknown cross-domain ref class), error-guessing
-# (garbage region slug), state-transition (Operation done:false→true with error).
+# the nlb region client maps that to the peer-validate lane → FAILED_PRECONDITION
+# (code 9) with the machine-readable reason token PEER_RESOURCE_MISSING and the
+# text "Region <id> not found" (region_client.go mapRegionErr). NOT NotFound: the
+# consumer did not fail to find its OWN resource, a precondition on someone
+# else's was not met (api-conventions §By-lane code-split). Techniques: ECP
+# (unknown cross-domain ref class), error-guessing (garbage region slug),
+# state-transition (Operation done:false→true with error).
 CASES.append(Case(
     id="NLB-CR-NEG-REGION-UNKNOWN",
-    title="Create with unknown region_id → async Operation error INVALID_ARGUMENT 'Region ... not found' "
+    title="Create with unknown region_id → async Operation error FAILED_PRECONDITION 'Region ... not found' "
           "(Verifies REQ-NLB-CR-NEG-REGION)",
     classes=["NEG"], priority="P0",
     steps=[
@@ -1231,8 +1232,8 @@ CASES.append(Case(
                  "const j = pm.response.json();",
                  "pm.test('operation failed', () => "
                  "  pm.expect(j.error, JSON.stringify(j)).to.be.an('object'));",
-                 "pm.test('error code 3 INVALID_ARGUMENT (cross-domain ref-not-found)', () => "
-                 "  pm.expect(j.error && j.error.code).to.eql(3));",
+                 "pm.test('error code 9 FAILED_PRECONDITION (peer-validate lane)', () => "
+                 "  pm.expect(j.error && j.error.code).to.eql(9));",
                  "pm.test('message mentions region not found', () => "
                  "  pm.expect(((j.error && j.error.message) || '').toLowerCase()).to.include('not found'));",
              ]),
