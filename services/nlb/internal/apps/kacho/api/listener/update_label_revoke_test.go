@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
+	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 )
@@ -27,13 +28,12 @@ import (
 // RegisterResource call as an additive payload field.
 //
 // THE PART THAT MAKES THIS MORE THAN "did we emit something". kacho-iam guards
-// that proxy write-path with a least-privilege relation allow-list
-// (services/iam/internal/authzguard/proxy_tuple_policy.go: allowedProxyRelations =
-// {project, account, parent, owner}). ValidateProxyTuple runs BEFORE the mirror
-// UPSERT, so a RegisterResource carrying a relation outside that set is rejected
-// with PermissionDenied and its labels/parent payload is dropped on the floor —
-// the mirror is never refreshed, no `mirror.upsert` reconcile event is enqueued,
-// and the stale label keeps matching the selector. Access is never revoked.
+// that proxy write-path with a least-privilege rule over the whole tuple
+// (pkg/authz/proxytuple.ValidateTuple). It runs BEFORE the mirror UPSERT, so a
+// RegisterResource carrying a tuple the rule refuses is rejected and its
+// labels/parent payload is dropped on the floor — the mirror is never refreshed,
+// no `mirror.upsert` reconcile event is enqueued, and the stale label keeps
+// matching the selector. Access is never revoked.
 //
 // nlb's own creator (`admin`) and parent-link (`load_balancer`) relations are
 // deliberately NOT in that set (create.go documents this: the drainer applies
@@ -49,36 +49,32 @@ import (
 // label removal, with `lsn-post-grant-allow` green (Create emits a project tuple,
 // Update emitted only the rejected parent-link).
 
-// proxyRegistrableRelations mirrors kacho-iam's allowedProxyRelations. It is
-// duplicated here rather than imported because Go's `internal/` visibility rule
-// forbids services/nlb from importing services/iam/internal/authzguard — the two
-// services are peers that talk over gRPC, never by build (polyrepo.md). The set is
-// a stable least-privilege security boundary (ownership/parent relations only);
-// kacho-iam holds the authoritative copy and its own tests over it.
-var proxyRegistrableRelations = map[string]struct{}{
-	"project": {},
-	"account": {},
-	"parent":  {},
-	"owner":   {},
-}
-
 // requireCarriesProxyRegistrableTuple asserts the intent carries at least one
 // tuple kacho-iam will actually accept — i.e. that the labels/parent payload
 // reaches resource_mirror instead of being rejected before the UPSERT.
+//
+// It asks the RECEIVING SIDE'S OWN RULE, by import (pkg/authz/proxytuple), and
+// about the whole TRIPLE the wire carries — subject, relation, object. Its
+// predecessor held a HAND-WRITTEN COPY of the accepted relation set, because the
+// rule then lived under services/iam/internal/ and Go's visibility rule made
+// importing it impossible; a copy that cannot be compiled against the original
+// drifts silently. Asking about the relation alone is also weaker than the rule in
+// BOTH directions: it would pass a tuple the owner refuses for its object type, and
+// it would fail the legitimate public-read pair, which no relation set covers.
 func requireCarriesProxyRegistrableTuple(t *testing.T, intent domain.FGARegisterIntent) {
 	t.Helper()
 	require.NotEmpty(t, intent.Tuples, "mirror-feed intent carries no tuples at all")
 	seen := make([]string, 0, len(intent.Tuples))
 	for _, tu := range intent.Tuples {
 		seen = append(seen, tu.Relation)
-		if _, ok := proxyRegistrableRelations[tu.Relation]; ok {
+		if proxytuple.ValidateTuple("nlb", tu.SubjectID, tu.Relation, tu.Object) == nil {
 			return
 		}
 	}
 	t.Fatalf("mirror-feed intent carries no proxy-registrable tuple: relations=%v; "+
-		"kacho-iam ValidateProxyTuple rejects all of these with PermissionDenied BEFORE the "+
-		"resource_mirror UPSERT, so the refreshed labels never land and an ARM_LABELS grant "+
-		"is never revoked (allowed stays true)", seen)
+		"kacho-iam refuses all of these BEFORE the resource_mirror UPSERT, so the "+
+		"refreshed labels never land and an ARM_LABELS grant is never revoked "+
+		"(allowed stays true)", seen)
 }
 
 // findListenerMirrorTuple returns the project-hierarchy tuple for the listener,
@@ -234,7 +230,7 @@ func requireEveryTupleProxyRegistrable(t *testing.T, intent domain.FGARegisterIn
 	t.Helper()
 	require.NotEmpty(t, intent.Tuples, "durable intent carries no tuples at all")
 	for _, tu := range intent.Tuples {
-		if _, ok := proxyRegistrableRelations[tu.Relation]; !ok {
+		if proxytuple.ValidateTuple("nlb", tu.SubjectID, tu.Relation, tu.Object) != nil {
 			t.Fatalf("durable intent carries a tuple kacho-iam always rejects: relation=%q object=%q; "+
 				"a refusal from the model owner is TERMINAL (drainer.ErrPermanent), so the applier stops "+
 				"at that tuple and the row poisons on its first attempt — the registration this object "+

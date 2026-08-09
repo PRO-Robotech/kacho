@@ -1,0 +1,250 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+// Package proxytuple holds the ONE declaration of what a resource-owning module
+// may write into the authorization model through kacho-iam's FGA proxy —
+// RegisterResource / UnregisterResource / WriteCreatorTuple.
+//
+// WHY THIS LIVES IN THE SHARED FOUNDATION AND NOT UNDER THE OWNER'S `internal/`.
+// The rule has two sides that must never disagree: kacho-iam decides whether to
+// ACCEPT a delivered tuple, and five consumers decide what to EMIT. While the rule
+// lived under `services/iam/internal/`, Go's visibility rule forbade a consumer
+// from importing it, so every consumer knew the rule only as prose — six files
+// repeated it in comments, and the single probe that asserted the receiving side's
+// contract carried a HAND-WRITTEN COPY of the set because importing was impossible.
+// A copy that cannot be compiled against the original drifts silently, and the cost
+// of that drift is not a failing test: a relation the owner refuses is refused on
+// EVERY delivery, the queue classifies the refusal as retryable, and the row wedges
+// its partition for the whole retry window (data-integrity.md §«Межсервисное
+// намерение — контракт ПРИНИМАЮЩЕЙ стороны»). Moving the rule here makes the copy
+// unnecessary: the owner imports it into its accept-check, consumers import it into
+// their intent builders, and the tree gate reads the same declaration.
+//
+// WHAT THE RULE DECIDES — A TRIPLE, NOT A RELATION. Acceptance is a verdict about
+// «subject, relation, object type» together. A check that knows only the relation
+// set is WRONG in the permissive direction as well as the strict one: public read
+// is expressed by the pair `user:* #v_get`, which no hierarchical relation covers
+// and for which no separate «public» flag exists — the tuple IS the visibility. Do
+// not reintroduce a bare relation-membership gate on the write path; ValidateTuple
+// is the whole rule.
+package proxytuple
+
+import (
+	"errors"
+	"strings"
+)
+
+// ErrRefused is the single verdict this rule produces: the tuple is not one this
+// module may write. It carries NO reason — which clause refused is deliberately not
+// observable to the caller (fail-closed, no oracle) — and it is transport-free, so
+// the rule stays importable by a domain layer that may not depend on gRPC
+// (architecture.md dependency rule). The owner maps it to PermissionDenied at its
+// transport boundary, in ONE place, and a test there locks the code and the text.
+var ErrRefused = errors.New("proxy tuple refused")
+
+// Relation is one relation name of the authorization model as it appears on the
+// wire of a proxy write. It is a distinct type rather than a bare string so a
+// consumer's intent builder names the SAME constant the owner's accept-check
+// evaluates; `string(RelationProject)` is a constant expression, so a consumer
+// keeps its own untyped constant without re-typing the value.
+type Relation string
+
+// The owner-hierarchy relations a module may write through the proxy. ONLY
+// ownership / parent links: the resource belongs to a scope (`project`, `parent`)
+// or was created by somebody (`owner`). Privilege relations
+// (`system_admin`/`admin`/`editor`/`viewer`/`v_*`/`fga_writer`/`use`) are absent on
+// purpose — those are authored by the AccessBinding flow, where a grant is
+// enumerable, scoped and revocable, never by a module speaking for itself.
+//
+// `account` USED TO BE HERE AND IS NOT, and its absence is load-bearing rather
+// than an oversight. No module owns a resource whose containment pointer is an
+// account: iam writes its own account links directly, on its own object types,
+// without the proxy. An accepted relation nobody emits cannot be observed either
+// working or broken — nothing reaches it — while the next reader takes it for a
+// live capability of the product and builds a resource on it. Held by
+// TestEveryAcceptedRelationHasAnEmitter, which reddens on any entry that loses its
+// producer, and by TestProxyRegistrationTriplesAreAcceptedByOwner, which reddens
+// with a coordinate the moment somebody emits a relation that is not here — so
+// putting the tier back when a resource actually needs it is a deliberate edit.
+const (
+	RelationProject Relation = "project"
+	RelationParent  Relation = "parent"
+	RelationOwner   Relation = "owner"
+)
+
+// hierarchicalRelations — the set above, in the form the rule evaluates.
+var hierarchicalRelations = map[Relation]struct{}{
+	RelationProject: {},
+	RelationParent:  {},
+	RelationOwner:   {},
+}
+
+// Hierarchical reports whether r is one of the owner-hierarchy relations. It is
+// NOT the accept rule — a tuple also has to satisfy the object-type and domain
+// constraints of ValidateTuple, and a legitimate public-read pair is not
+// hierarchical at all. Exported for the census of the tree gate and for the removal
+// direction (IsProxyWritable), never as a write-path gate on its own.
+func Hierarchical(r Relation) bool {
+	_, ok := hierarchicalRelations[r]
+	return ok
+}
+
+// HierarchicalRelations returns the accepted owner-hierarchy relations, sorted the
+// way they are declared. Consumers of the census (gates, reports) get a copy.
+func HierarchicalRelations() []Relation {
+	return []Relation{RelationProject, RelationParent, RelationOwner}
+}
+
+// PublicReadRelation / PublicReadSubject — the only NON-hierarchical pair the proxy
+// accepts: «anybody reads this module's resource».
+//
+// Publicness is expressed by the tuple itself: kacho-registry writes
+// `user:* #v_get @registry_repository:<reg>/<repo>` and that tuple IS the
+// visibility an anonymous pull resolves — there is no separate flag. Without the
+// pair the intent would be emitted and refused whole, and a public repository would
+// not exist under any configuration.
+//
+// The narrowing is by SUBJECT, not by relation: the wildcard `user:*` names NO
+// individual recipient, so a module still cannot hand read access to a particular
+// user or service account — that stays with AccessBinding, where it is enumerable,
+// scoped and revocable. Every other constraint (object domain, forbidden types)
+// applies unchanged.
+const (
+	PublicReadRelation Relation = "v_get"
+	PublicReadSubject           = "user:*"
+)
+
+// publicReadObjectTypes — the CLOSED list of object types for which publicness is a
+// product capability of the resource. Subject narrowing alone already prevents
+// granting read to a NAMED recipient, but without this list a module could make any
+// of its own resources world-readable — and «anybody reads my network» is not a
+// capability of the product. A type is added here deliberately, together with the
+// feature that makes publicness part of that resource's contract.
+var publicReadObjectTypes = map[string]struct{}{
+	// registry: a public repository is an anonymous `docker pull`; the existence of
+	// the tuple IS visibility=PUBLIC (there is no flag the data plane reads).
+	"registry_repository": {},
+}
+
+// PublicReadObjectTypes returns the closed list above, for censuses and gates.
+func PublicReadObjectTypes() []string { return []string{"registry_repository"} }
+
+// forbiddenObjectTypes — object types that are never a module's resource and
+// therefore can never be the object of a proxy tuple: the platform singleton
+// `cluster` and the entities of the iam domain. Forbidden even when the caller's
+// domain is unknown, so that these objects are unreachable through the proxy under
+// every configuration.
+var forbiddenObjectTypes = map[string]struct{}{
+	"cluster":         {},
+	"account":         {},
+	"project":         {},
+	"user":            {},
+	"service_account": {},
+	"group":           {},
+	"role":            {},
+}
+
+// moduleObjectDomain maps a module's service short name (from its verified mTLS
+// SAN, e.g. "nlb") onto the prefix of the object domain its resources actually own,
+// WHEN the two differ. By default (empty map) the domain equals the service name:
+// vpc→`vpc_*`, compute→`compute_*`, nlb→`nlb_*`. Kept as the extension point for a
+// future module whose object domain diverges from its SAN short name.
+var moduleObjectDomain = map[string]string{}
+
+// IsPublicReadGrant reports whether the pair is «anybody reads this resource»
+// (`user:* #v_get`).
+//
+// It differs from a hierarchical intent in kind: it does not describe the state of
+// the resource (no parent scope, no labels) — it only opens reading. The applying
+// side must therefore treat it as a PURE tuple and leave the resource projection
+// alone: a register would otherwise blank the parent scope and an unregister would
+// delete the projection row of a live resource. Exported so the policy and the
+// apply path share ONE predicate.
+func IsPublicReadGrant(subject, relation string) bool {
+	return Relation(strings.TrimSpace(relation)) == PublicReadRelation &&
+		strings.TrimSpace(subject) == PublicReadSubject
+}
+
+// IsProxyWritable — could THIS relation have been written by a module through the
+// proxy?
+//
+// The same closed set ValidateTuple decides «accept this write» with, asked in the
+// other direction: «is this one of ours» when the object is torn down. One
+// predicate for both directions — otherwise removal drifts away from acceptance,
+// and it drifts silently: a set that was accepted but not removed is access left
+// behind.
+//
+// Relations outside the set are deliberately not claimed here: per-object verbs are
+// derived by the reconciler from grants, and removing those is its work, not this
+// path's. A second place deciding the same question is a race and a divergence, not
+// a safety net.
+func IsProxyWritable(subject, relation string) bool {
+	if IsPublicReadGrant(subject, relation) {
+		return true
+	}
+	return Hierarchical(Relation(strings.TrimSpace(relation)))
+}
+
+// publicReadAllowed — a publication is accepted only for a type from the closed
+// list. The type check is separate from IsPublicReadGrant on purpose: the latter
+// answers «is this intent a publication?» (the apply path asks the same, so as not
+// to touch the resource projection), the list answers «is publicness due to this
+// resource at all?».
+func publicReadAllowed(subject, relation, objType string) bool {
+	if !IsPublicReadGrant(subject, relation) {
+		return false
+	}
+	_, ok := publicReadObjectTypes[objType]
+	return ok
+}
+
+// objectDomainForCaller — the object domain a module may own. Equal to the service
+// name by default; exceptions live in moduleObjectDomain.
+func objectDomainForCaller(callerDomain string) string {
+	if d, ok := moduleObjectDomain[callerDomain]; ok {
+		return d
+	}
+	return callerDomain
+}
+
+// ValidateTuple constrains the proxy write path to least privilege: a module writes
+// an owner-hierarchy tuple (plus the publication for anonymous reading — see
+// PublicReadRelation) ONLY onto an object of its own domain. callerDomain is the
+// service short name from the verified mTLS SAN (vpc/compute/nlb/registry); empty
+// (domain unknown) disables the domain binding, while the relation set, the subject
+// narrowing of a publication and the forbidden object types apply always. Any
+// violation → PermissionDenied, fail-closed, without leaking which clause refused.
+func ValidateTuple(callerDomain, subject, relation, object string) error {
+	subject = strings.TrimSpace(subject)
+	rel := Relation(strings.TrimSpace(relation))
+	object = strings.TrimSpace(object)
+	if rel == "" || object == "" {
+		return ErrRefused
+	}
+	hierarchical := Hierarchical(rel)
+	if !hierarchical && !IsPublicReadGrant(subject, string(rel)) {
+		return ErrRefused
+	}
+	colon := strings.IndexByte(object, ':')
+	if colon <= 0 || colon == len(object)-1 {
+		return ErrRefused
+	}
+	objType := object[:colon]
+	if _, bad := forbiddenObjectTypes[objType]; bad {
+		return ErrRefused
+	}
+	// A publication is allowed only for a type publicness is due to (closed list).
+	// Hierarchical relations do not take this branch: they are already bound to the
+	// caller's domain below.
+	if !hierarchical && !publicReadAllowed(subject, string(rel), objType) {
+		return ErrRefused
+	}
+	// Domain binding: the object must belong to the caller's domain (vpc→`vpc_*`,
+	// compute→`compute_*`, nlb→`nlb_*`). An empty callerDomain skips this clause,
+	// while the forbidden set and the relation set above still hold the boundary
+	// against cluster / iam / privilege objects.
+	if callerDomain != "" && !strings.HasPrefix(objType, objectDomainForCaller(callerDomain)+"_") {
+		return ErrRefused
+	}
+	return nil
+}

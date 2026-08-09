@@ -382,10 +382,10 @@ func (u *UpdateUseCase) doUpdate(ctx context.Context, next domain.Listener, expe
 //
 // THE TUPLE MUST BE THE PROJECT ONE, and that is the whole substance of this feed.
 // kacho-iam writes resource_mirror only as a side effect of RegisterResource, and
-// it guards that proxy write-path with a least-privilege relation allow-list
-// (authzguard.allowedProxyRelations = {project, account, parent, owner}) evaluated
-// BEFORE the mirror UPSERT. nlb's parent-link relation `load_balancer` is not in
-// that set (see listenerRegisterIntent). Feeding the refresh through the
+// it guards that proxy write-path with a least-privilege rule over the whole tuple
+// (pkg/authz/proxytuple.ValidateTuple) evaluated BEFORE the mirror UPSERT. nlb's
+// parent-link relation `load_balancer` is not accepted by it (see
+// listenerRegisterIntent). Feeding the refresh through the
 // parent-link alone made every labels-Update a PermissionDenied that dropped the
 // labels payload on the floor: the mirror kept the labels a listener had at
 // creation, so clearing the label an ARM_LABELS grant selects on revoked nothing

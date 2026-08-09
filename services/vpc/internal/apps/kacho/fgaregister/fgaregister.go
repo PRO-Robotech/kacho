@@ -31,6 +31,8 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+
+	"github.com/PRO-Robotech/kacho/pkg/authz/proxytuple"
 )
 
 // Registrar — порт синхронной регистрации owner-tuple'ов в kacho-iam. Create-flow
@@ -163,10 +165,14 @@ func Decode(b []byte) (Payload, error) {
 // чтобы решить, какие биндинги материализуют per-object v_* на объекте. Под flat-моделью
 // (Contract-A) он НЕ потребляется деривационным каскадом `<rel> from project` (удалён).
 // objectType — FGA-тип vpc_* ("vpc_network", "vpc_subnet", ...).
+//
+// Отношение НАЗЫВАЕТСЯ из объявления приёмной стороны (pkg/authz/proxytuple), а не
+// пишется здесь литералом: закрытый набор принадлежит kacho-iam, и второе написание
+// чужого набора — копия, которая разойдётся молча.
 func ProjectHierarchy(projectID, objectType, objectID string) Tuple {
 	return Tuple{
 		SubjectID: "project:" + projectID,
-		Relation:  "project",
+		Relation:  string(proxytuple.RelationProject),
 		Object:    objectType + ":" + objectID,
 	}
 }

@@ -340,8 +340,8 @@ func (u *CreateUseCase) syncRegister(ctx context.Context, intent domain.FGARegis
 // outbox-emitter из DB-clock.
 //
 // ONLY PROXY-REGISTRABLE TUPLES BELONG IN A DURABLE INTENT. kacho-iam's
-// least-privilege proxy policy accepts exactly {project, account, parent, owner}
-// (authzguard.allowedProxyRelations); privilege relations are writable only by the
+// least-privilege proxy policy is declared in pkg/authz/proxytuple and decides the
+// whole tuple, not the relation alone; privilege relations are writable only by the
 // AccessBinding flow, never by a module proxy. So the creator (`admin`) and
 // parent-link (`load_balancer`) tuples this intent used to carry were refused on
 // EVERY delivery and never once landed in FGA — the model's own `load_balancer`
@@ -378,8 +378,8 @@ func listenerRegisterIntent(l *kachorepo.ListenerRecord) domain.FGARegisterInten
 //
 // The tuple must be the project one for the same reason listenerMirrorIntent's
 // must (see update.go): UnregisterResource runs the identical least-privilege
-// ValidateProxyTuple gate, and the parent-link relation `load_balancer` is not
-// registrable. A retraction built from it is rejected before the resource_mirror
+// rule (pkg/authz/proxytuple.ValidateTuple), and the parent-link relation
+// `load_balancer` is not registrable. A retraction built from it is rejected before the resource_mirror
 // DELETE, so the mirror row of a DELETED listener survives and the reconciler
 // keeps re-materialising per-object grants from it — a deleted listener retaining
 // its access. Parity with lbUnregisterIntent / tgUnregisterIntent, which already

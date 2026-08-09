@@ -1,7 +1,7 @@
 // Copyright (c) PRO-Robotech
 // SPDX-License-Identifier: BUSL-1.1
 
-package authzguard
+package proxytuple
 
 // proxy_tuple_public_read_test.go — the proxy must accept the ONE intent a module
 // emits to publish a resource for anonymous read, and nothing more.
@@ -22,27 +22,24 @@ package authzguard
 
 import (
 	"testing"
-
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
-// TestValidateProxyTuple_PublicReadGrant — the exact register/unregister intent
+// TestValidateTuple_PublicReadGrant — the exact register/unregister intent
 // kacho-registry emits for a public repository is accepted.
-func TestValidateProxyTuple_PublicReadGrant(t *testing.T) {
-	err := ValidateProxyTuple("registry", "user:*", "v_get", "registry_repository:reg53eeeg3578y4ah0q9/team/app")
+func TestValidateTuple_PublicReadGrant(t *testing.T) {
+	err := ValidateTuple("registry", "user:*", "v_get", "registry_repository:reg53eeeg3578y4ah0q9/team/app")
 	if err != nil {
 		t.Fatalf("the public-read grant a module emits to publish its own repository must be accepted, got %v", err)
 	}
 }
 
-// TestValidateProxyTuple_PublicReadIsWildcardOnly — the read relation is opened
+// TestValidateTuple_PublicReadIsWildcardOnly — the read relation is opened
 // for the anonymous wildcard ONLY, and only on a type whose publicness is a
 // product capability. A module may still not hand a named subject read access to
 // its resources (that is the AccessBinding flow's decision, made where it can be
 // listed, scoped and revoked), and it may not publish an arbitrary resource of
 // its own.
-func TestValidateProxyTuple_PublicReadIsWildcardOnly(t *testing.T) {
+func TestValidateTuple_PublicReadIsWildcardOnly(t *testing.T) {
 	for _, tt := range []struct {
 		name     string
 		domain   string
@@ -74,16 +71,16 @@ func TestValidateProxyTuple_PublicReadIsWildcardOnly(t *testing.T) {
 		{"unknown domain, wildcard read on the cluster", "", "user:*", "v_get", "cluster:cluster_kacho_root", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateProxyTuple(tt.domain, tt.subject, tt.relation, tt.object)
+			err := ValidateTuple(tt.domain, tt.subject, tt.relation, tt.object)
 			if tt.wantOK {
 				if err != nil {
-					t.Fatalf("ValidateProxyTuple(%q,%q,%q,%q) = %v; want accepted",
+					t.Fatalf("ValidateTuple(%q,%q,%q,%q) = %v; want accepted",
 						tt.domain, tt.subject, tt.relation, tt.object, err)
 				}
 				return
 			}
-			if code := status.Code(err); code != codes.PermissionDenied {
-				t.Fatalf("ValidateProxyTuple(%q,%q,%q,%q) code = %v; want PermissionDenied (err=%v)",
+			if code := verdictOf(err); code != refused {
+				t.Fatalf("ValidateTuple(%q,%q,%q,%q) code = %v; want PermissionDenied (err=%v)",
 					tt.domain, tt.subject, tt.relation, tt.object, code, err)
 			}
 		})
