@@ -1,0 +1,638 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+package listnarrow
+
+import (
+	"container/list"
+	"context"
+	"errors"
+	"log/slog"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	"github.com/PRO-Robotech/kacho/pkg/validate"
+)
+
+// MaxBatchSize — контрактный предел `AuthorizeService.BatchCheck` приёмной стороны
+// (>100 → InvalidArgument). Партии режутся по нему.
+const MaxBatchSize = 100
+
+// DefaultParallelism — сколько партий ОДНОГО отношения летят в kacho-iam
+// одновременно (ограниченный пул исполнителей, не «горутина на партию»).
+//
+// 5 выбрано из арифметики контракта, а не на глаз: оно РОВНО делит максимум партий
+// на предельной странице (validate.MaxPageSize / MaxBatchSize = 10), поэтому каждое
+// отношение — ровно две полные волны без рваного хвоста. Глубина worst-case падает
+// с 10 последовательных до 2, и это ОСВОБОЖДАЕТ бюджет под реалистичный срок одного
+// вызова: пока партии обходились по одной, срок приходилось пилить под число
+// последовательных хопов, и первый же перешагнувший его хоп ронял весь
+// ПОЛОЖИТЕЛЬНЫЙ список в отказ доступности.
+//
+// Всплеск на приёмной стороне ограничен 5 одновременными запросами (≤500 вопросов
+// в полёте) на запрос — предсказуемый малый множитель.
+const DefaultParallelism = 5
+
+// budgetHeadroom{Num,Den} — множитель бюджета операции над worst-case стеной
+// (×3/2 ⇒ запас 50%). Бюджет обязан быть ПОТОЛКОМ, который в здоровом режиме не
+// срабатывает: срабатывать должны сроки отдельных вызовов.
+const (
+	budgetHeadroomNum = 3
+	budgetHeadroomDen = 2
+)
+
+// defaultRelationsKey — ключ записи «все прочие типы» в предикате страницы.
+// Объявление с такой записью ТОТАЛЬНО: у типа, не названного поимённо, предикат всё
+// равно объявлен, а не спрятан в теле функции.
+const defaultRelationsKey = ""
+
+// AuthorizeClient — узкий порт к kacho-iam `AuthorizeService`. Сигнатура совпадает со
+// сгенерированным клиентом, поэтому боевая реализация — тонкий проброс.
+type AuthorizeClient interface {
+	BatchCheck(ctx context.Context, in *iamv1.BatchAuthorizeCheckRequest,
+		opts ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error)
+}
+
+// Config — посадка сужателя.
+type Config struct {
+	// Relations — предикат членства страницы ПО ТИПУ объекта. Обязан быть ТОТАЛЬНЫМ:
+	// запись под пустым ключом — умолчание для типа, не названного поимённо.
+	//
+	// Это ПОЛЕ, а не константа пакета, намеренно (решение владельца 2026-08-09):
+	// сведение предиката к одному значению меняло бы ВИДИМОСТЬ, а это продуктовое
+	// решение по каждому ресурсу. Тотальность позволяет гейту паритета прочитать
+	// объявление вызывающего и сверить его с каталогом прав потипно.
+	Relations map[string][]string
+
+	// Timeout — срок ОДНОГО запроса к приёмной стороне. НЕ бюджет операции.
+	Timeout time.Duration
+	// Parallelism — сколько партий одного отношения летят одновременно.
+	// 0 → DefaultParallelism.
+	Parallelism int
+	// OverallTimeout — бюджет ВСЕЙ операции. 0 → выводится из Timeout и Parallelism
+	// так, чтобы worst-case стена на предельной странице помещалась внутрь с
+	// запасом. Потолок нужен, потому что срок одного вызова ограничивает ОДИН хоп, а
+	// не их последовательность.
+	OverallTimeout time.Duration
+
+	// CacheTTL — окно жизни ОДНОГО положительного вердикта.
+	CacheTTL time.Duration
+	// CacheMaxEntries — предел размера окна.
+	CacheMaxEntries int
+
+	// SoftPassOnPeerFailure — задокументированный мягкий проход: на отказе приёмной
+	// стороны страница уходит НЕсуженной. Защитим ровно пока отказ действительно
+	// временный, поэтому здесь он классифицируется и считается (см. Counts).
+	SoftPassOnPeerFailure bool
+
+	// Breakglass — аварийный режим: страница отдаётся несуженной, потому что модели
+	// на этой посадке нет вовсе. Остаётся явным исключением (решение владельца
+	// 2026-08-09), но КАЖДОЕ срабатывание считается и называется — иначе аварийный
+	// режим становится тихим штатным.
+	//
+	// Личности он НЕ отменяет: безымянный вызывающий отвергается и здесь.
+	Breakglass bool
+}
+
+// Counts — прочитанные величины сужателя. Именно ПРОЧИТАННЫЕ: по отсутствию строк в
+// журнале «прохода не было» и «счётчика нет» неразличимы, а прочитанный ноль их
+// различает.
+type Counts struct {
+	// Breakglass — сколько раз страница ушла несуженной по аварийному режиму.
+	Breakglass uint64
+	// SoftPassMisconfigured — сколько раз мягкий проход сработал на ответе,
+	// ДОКАЗЫВАЮЩЕМ неверную настройку (сам не пройдёт никогда).
+	SoftPassMisconfigured uint64
+	// SoftPassTransient — сколько раз мягкий проход сработал на отказе, который
+	// может пройти сам.
+	SoftPassTransient uint64
+}
+
+// Narrower — сужатель списочной страницы поверх `AuthorizeService.BatchCheck` с
+// окном ПОЛОЖИТЕЛЬНЫХ вердиктов (TTL + вытеснение давно не использованных).
+type Narrower struct {
+	cli AuthorizeClient
+	cfg Config
+
+	logger *slog.Logger
+	now    func() time.Time
+
+	breakglass    atomic.Uint64
+	misconfigured atomic.Uint64
+	transient     atomic.Uint64
+
+	mu     sync.Mutex
+	cache  map[string]*list.Element
+	lruLst *list.List
+}
+
+type cacheEntry struct {
+	key     string
+	expires time.Time
+}
+
+// New собирает сужатель. cli == nil означает, что спросить негде: без аварийного
+// режима такой сужатель ОТКАЗЫВАЕТ, а не пропускает.
+//
+// Нормализует веер и ВЫВОДИТ бюджет операции, если тот не задан явно: бюджет — не
+// независимая ручка, а функция контракта (максимум страницы, предел партии) и срока
+// одного вызова. Так арифметика «сумма worst-case ожиданий помещается в бюджет»
+// держится ПО ПОСТРОЕНИЮ, а не по надежде на когерентную настройку.
+func New(cli AuthorizeClient, cfg Config) *Narrower {
+	if cfg.Timeout <= 0 {
+		cfg.Timeout = time.Second
+	}
+	if cfg.Parallelism <= 0 {
+		cfg.Parallelism = DefaultParallelism
+	}
+	if cfg.OverallTimeout <= 0 {
+		cfg.OverallTimeout = deriveOverallTimeout(cfg.Timeout, cfg.Parallelism, cfg.Relations)
+	}
+	if cfg.CacheTTL <= 0 {
+		cfg.CacheTTL = 5 * time.Second
+	}
+	if cfg.CacheMaxEntries <= 0 {
+		cfg.CacheMaxEntries = 10000
+	}
+	return &Narrower{
+		cli:    cli,
+		cfg:    cfg,
+		logger: slog.Default(),
+		now:    time.Now,
+		cache:  make(map[string]*list.Element, cfg.CacheMaxEntries),
+		lruLst: list.New(),
+	}
+}
+
+// WithLogger подменяет приёмник записей о проходах (композиционный корень / тесты).
+func (n *Narrower) WithLogger(l *slog.Logger) *Narrower {
+	if n != nil && l != nil {
+		n.logger = l
+	}
+	return n
+}
+
+// WithClock подменяет часы окна вердиктов. Нужен там, где проба утверждает ИСТЕЧЕНИЕ:
+// ожидание настоящего срока сделало бы её медленной и недетерминированной.
+func (n *Narrower) WithClock(clock func() time.Time) *Narrower {
+	if n != nil && clock != nil {
+		n.now = clock
+	}
+	return n
+}
+
+// Counts — прочитанные величины (см. Counts).
+func (n *Narrower) Counts() Counts {
+	if n == nil {
+		return Counts{}
+	}
+	return Counts{
+		Breakglass:            n.breakglass.Load(),
+		SoftPassMisconfigured: n.misconfigured.Load(),
+		SoftPassTransient:     n.transient.Load(),
+	}
+}
+
+// Narrows сообщает, СУЖАЕТ ли сужатель на самом деле: собеседник есть, аварийный
+// режим не взведён, мягкий проход не превращает отказ в сквозной пропуск. Читается
+// загрузочным стражем — «поле есть» и «значение меняет исход» разные вещи.
+func (n *Narrower) Narrows() bool {
+	return n != nil && n.cli != nil && !n.cfg.Breakglass && !n.cfg.SoftPassOnPeerFailure
+}
+
+// Budget — фактический бюджет одной операции.
+func (n *Narrower) Budget() time.Duration { return n.cfg.OverallTimeout }
+
+// WorstCaseDepth — worst-case число ПОСЛЕДОВАТЕЛЬНЫХ волн на предельной странице при
+// текущем веере.
+func (n *Narrower) WorstCaseDepth() int {
+	return worstCaseDepth(n.cfg.Parallelism, n.cfg.Relations)
+}
+
+// Relations — предикат страницы для одного типа объекта. Второе значение false
+// означает, что предикат для типа НЕ ОБЪЯВЛЕН: карта не тотальна.
+func (n *Narrower) Relations(resourceType string) ([]string, bool) {
+	if rels, ok := n.cfg.Relations[resourceType]; ok && len(rels) > 0 {
+		return rels, true
+	}
+	rels, ok := n.cfg.Relations[defaultRelationsKey]
+	return rels, ok && len(rels) > 0
+}
+
+func ceilDiv(a, b int) int { return (a + b - 1) / b }
+
+// maxRelationsDepth — сколько отношений глубже всего спрашивается по одному объекту.
+// Отношения последовательны по построению (следующее спрашивается только у отказанных
+// предыдущим), поэтому в глубину волн они входят множителем.
+func maxRelationsDepth(relations map[string][]string) int {
+	depth := 1
+	for _, rels := range relations {
+		if len(rels) > depth {
+			depth = len(rels)
+		}
+	}
+	return depth
+}
+
+func worstCaseDepth(parallelism int, relations map[string][]string) int {
+	if parallelism <= 0 {
+		parallelism = DefaultParallelism
+	}
+	batches := ceilDiv(int(validate.MaxPageSize), MaxBatchSize)
+	return maxRelationsDepth(relations) * ceilDiv(batches, parallelism)
+}
+
+func deriveOverallTimeout(perCall time.Duration, parallelism int, relations map[string][]string) time.Duration {
+	return time.Duration(worstCaseDepth(parallelism, relations)) * perCall * budgetHeadroomNum / budgetHeadroomDen
+}
+
+// visibleIDs — сужение страницы для УЖЕ НАЗВАННОГО субъекта. Публичный вход — IDs /
+// Page: именно они держат безусловный порядок «личность → посадка → страница».
+func (n *Narrower) visibleIDs(ctx context.Context, subject, resourceType, action string, ids []string) ([]string, error) {
+	relations, ok := n.Relations(resourceType)
+	if !ok {
+		// Тип без предиката прошёл бы БЕЗ вопроса. Это не настройка, а дыра, и она
+		// обязана быть отказом, а не молчаливым пропуском.
+		return nil, status.Errorf(codes.Internal,
+			"list filter: no page predicate declared for resource type %q and no default entry", resourceType)
+	}
+
+	// Бюджет ВСЕЙ операции. Сроки отдельных вызовов остаются, но выводятся уже из
+	// этого контекста — раньший срок выигрывает автоматически, поэтому
+	// последовательность волн не может суммарно пережить бюджет.
+	if n.cfg.OverallTimeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, n.cfg.OverallTimeout)
+		defer cancel()
+	}
+
+	visible := make(map[string]struct{}, len(ids))
+	pending := make([]string, 0, len(ids))
+	seen := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if _, dup := seen[id]; dup {
+			continue // одна страница не платит дважды за повторяющийся идентификатор
+		}
+		seen[id] = struct{}{}
+		if n.getCache(subject, resourceType, id) {
+			visible[id] = struct{}{}
+			continue
+		}
+		pending = append(pending, id)
+	}
+
+	for _, relation := range relations {
+		if len(pending) == 0 {
+			break
+		}
+		allowed, denied, err := n.askRelation(ctx, subject, resourceType, action, relation, pending)
+		if err != nil {
+			return n.handleErr(ids, err)
+		}
+		for _, id := range allowed {
+			visible[id] = struct{}{}
+			n.putCache(subject, resourceType, id)
+		}
+		pending = denied
+	}
+
+	// Порядок входа сохраняется — страница уже упорядочена курсором,
+	// переупорядочивание сломало бы пагинацию.
+	out := make([]string, 0, len(visible))
+	for _, id := range ids {
+		if _, ok := visible[id]; ok {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
+// batchVerdicts — вердикты ОДНОЙ партии. Каждая горутина пишет в СВОЙ элемент среза, а
+// склейка идёт по индексу партии, а не по порядку завершения: разбиение обязано быть
+// детерминированным независимо от того, кто ответил первым.
+type batchVerdicts struct {
+	allowed []string
+	denied  []string
+}
+
+func splitBatches(ids []string) [][]string {
+	out := make([][]string, 0, ceilDiv(len(ids), MaxBatchSize))
+	for start := 0; start < len(ids); start += MaxBatchSize {
+		end := start + MaxBatchSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		out = append(out, ids[start:end])
+	}
+	return out
+}
+
+// askRelation спрашивает ОДНО отношение про набор идентификаторов партиями ≤
+// MaxBatchSize. Партии независимы, поэтому идут ОГРАНИЧЕННЫМ веером: обход по одной
+// давал на предельной странице десять запросов подряд и вынуждал держать срок одного
+// вызова неестественно узким.
+//
+// Fail-closed: ПЕРВАЯ ошибка отменяет соседей и возвращается как есть; частично
+// разрешённый набор не отдаётся никогда.
+func (n *Narrower) askRelation(
+	ctx context.Context,
+	subject, resourceType, action, relation string,
+	ids []string,
+) (allowed, denied []string, err error) {
+	batches := splitBatches(ids)
+	results := make([]batchVerdicts, len(batches))
+
+	// Одиночная партия (страница ≤ MaxBatchSize) не платит за пул — общий случай
+	// остаётся ровно тем же одним запросом.
+	if len(batches) == 1 {
+		if cerr := n.askBatch(ctx, subject, resourceType, action, relation, batches[0], &results[0]); cerr != nil {
+			return nil, nil, cerr
+		}
+		return joinVerdicts(results, len(ids))
+	}
+
+	workers := n.cfg.Parallelism
+	if workers > len(batches) {
+		workers = len(batches)
+	}
+
+	// cctx отменяется ПЕРВОЙ ошибкой — соседние партии не дорабатывают страницу,
+	// которую всё равно не отдадут.
+	cctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	var (
+		mu       sync.Mutex
+		firstErr error
+		wg       sync.WaitGroup
+	)
+	queue := make(chan int)
+	wg.Add(workers)
+	for w := 0; w < workers; w++ {
+		go func() {
+			defer wg.Done()
+			for b := range queue {
+				cerr := n.askBatch(cctx, subject, resourceType, action, relation, batches[b], &results[b])
+				if cerr == nil {
+					continue
+				}
+				mu.Lock()
+				if firstErr == nil {
+					firstErr = cerr
+					cancel()
+				}
+				mu.Unlock()
+				return
+			}
+		}()
+	}
+feed:
+	for b := range batches {
+		select {
+		case queue <- b:
+		case <-cctx.Done():
+			break feed // кто-то уже упал fail-closed либо истёк бюджет
+		}
+	}
+	close(queue)
+	wg.Wait()
+
+	if firstErr != nil {
+		return nil, nil, firstErr
+	}
+	// cancel() зовётся только после установки firstErr, поэтому завершённый cctx без
+	// зафиксированной ошибки означает, что истёк РОДИТЕЛЬСКИЙ контекст (бюджет
+	// операции или срок вызывающего) посреди страницы. Сообщаем об этом, а не отдаём
+	// недорешённый набор за ответ.
+	if cerr := ctx.Err(); cerr != nil {
+		return nil, nil, cerr
+	}
+	return joinVerdicts(results, len(ids))
+}
+
+// joinVerdicts склеивает вердикты в порядке ПАРТИЙ (не завершения).
+func joinVerdicts(results []batchVerdicts, total int) (allowed, denied []string, err error) {
+	allowed = make([]string, 0, total)
+	denied = make([]string, 0, total)
+	for i := range results {
+		allowed = append(allowed, results[i].allowed...)
+		denied = append(denied, results[i].denied...)
+	}
+	return allowed, denied, nil
+}
+
+func (n *Narrower) askBatch(
+	ctx context.Context,
+	subject, resourceType, action, relation string,
+	batch []string,
+	out *batchVerdicts,
+) error {
+	checks := make([]*iamv1.AuthorizeCheckRequest, 0, len(batch))
+	for _, id := range batch {
+		checks = append(checks, &iamv1.AuthorizeCheckRequest{
+			Subject:          subject,
+			Resource:         &iamv1.ResourceRef{Type: resourceType, Id: id},
+			Action:           action,
+			RequiredRelation: relation,
+		})
+	}
+
+	resp, cerr := n.askOnce(ctx, &iamv1.BatchAuthorizeCheckRequest{Checks: checks})
+	if cerr != nil {
+		return cerr
+	}
+	// Контракт приёмной стороны: вердикты в порядке вопросов и той же длины.
+	// Расхождение — не «считаем отказом», а fail-closed ошибка: молчаливое смещение
+	// индексов выдало бы вердикт одного объекта за другой, и страница была бы неверна
+	// так, что вызывающий этого не обнаружит.
+	if len(resp.GetResponses()) != len(batch) {
+		return &misalignedAnswerError{got: len(resp.GetResponses()), want: len(batch), relation: relation}
+	}
+	out.allowed = make([]string, 0, len(batch))
+	out.denied = make([]string, 0, len(batch))
+	for i, r := range resp.GetResponses() {
+		if r.GetAllowed() {
+			out.allowed = append(out.allowed, batch[i])
+		} else {
+			out.denied = append(out.denied, batch[i])
+		}
+	}
+	return nil
+}
+
+// misalignedAnswerError — ответ, который невозможно выровнять с вопросами. Отдельный
+// тип, а не строка: классификатор мягкого прохода обязан узнавать его как
+// ДОКАЗАТЕЛЬСТВО неверной настройки (сосед отвечает по другому контракту), а не как
+// временный сбой.
+type misalignedAnswerError struct {
+	got, want int
+	relation  string
+}
+
+func (e *misalignedAnswerError) Error() string {
+	return "list filter: peer answered " + itoa(e.got) + " of " + itoa(e.want) +
+		" checks for relation " + e.relation
+}
+
+func itoa(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var b [20]byte
+	i := len(b)
+	for n > 0 {
+		i--
+		b[i] = byte('0' + n%10)
+		n /= 10
+	}
+	return string(b[i:])
+}
+
+// askOnce делает ровно один запрос под собственным сроком. Контекст уже несёт бюджет
+// операции, поэтому фактическим сроком становится РАНЬШИЙ из двух.
+func (n *Narrower) askOnce(ctx context.Context, req *iamv1.BatchAuthorizeCheckRequest) (
+	*iamv1.BatchAuthorizeCheckResponse, error) {
+	callCtx, cancel := context.WithTimeout(ctx, n.cfg.Timeout)
+	defer cancel()
+	return n.cli.BatchCheck(callCtx, req)
+}
+
+// handleErr — реакция на отказ приёмной стороны.
+func (n *Narrower) handleErr(ids []string, err error) ([]string, error) {
+	if n.cfg.SoftPassOnPeerFailure {
+		return n.softPass(ids, err)
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		// Оба числа названы явно: сработать мог как срок одного вызова, так и бюджет
+		// операции, и по ошибке контекста их не различить.
+		return nil, status.Errorf(codes.Unavailable,
+			"list filter: AuthorizeService.BatchCheck deadline exceeded (per-call %s, operation budget %s)",
+			n.cfg.Timeout, n.cfg.OverallTimeout)
+	}
+	if s, ok := status.FromError(err); ok && s.Code() != codes.OK && s.Code() != codes.Unknown {
+		return nil, status.Errorf(codes.Unavailable, "list filter: AuthorizeService.BatchCheck %s: %s", s.Code(), s.Message())
+	}
+	return nil, status.Errorf(codes.Unavailable, "list filter: AuthorizeService.BatchCheck: %v", err)
+}
+
+// softPass — задокументированный мягкий проход: страница уходит вызывающему
+// НЕсуженной. Он защитим ровно пока отказ действительно временный, поэтому здесь он
+// (а) классифицируется и (б) считается.
+//
+// Классификация решает, чем это НАЗВАНО. Ответ соседа, доказывающий, что мы
+// обращаемся не туда (нет такого метода, учётные данные не приняты, ответ не той
+// формы), — это НАСТРОЙКА: она не пройдёт сама, и пока её не поправят, сужатель
+// исполняется на каждом запросе и не сужает ни одной страницы. Постоянное состояние
+// не может называться предупреждением о временном.
+func (n *Narrower) softPass(ids []string, err error) ([]string, error) {
+	if provesMisconfiguration(err) {
+		total := n.misconfigured.Add(1)
+		n.logger.Error("list filter soft pass: iam.BatchCheck answered in a way that proves a MISCONFIGURED edge, "+
+			"not an outage — this will not clear on its own; the per-object filter decides nothing "+
+			"and the page is returned UNFILTERED",
+			"error", err, "misconfigured_soft_passes_total", total)
+		return ids, nil
+	}
+	total := n.transient.Add(1)
+	n.logger.Warn("list filter soft pass: iam.BatchCheck unreachable, bypassing per-object authz "+
+		"(returning the UNFILTERED page)",
+		"error", err, "transient_soft_passes_total", total)
+	return ids, nil
+}
+
+// provesMisconfiguration — доказывает ли ответ, что дело не в доступности соседа.
+//
+// Различие проводится по одному вопросу: может ли повтор ТОГО ЖЕ запроса когда-нибудь
+// пройти? Истёкший срок и отменённый контекст — может (медленный, но живой сосед), и
+// проверяется это ПЕРВЫМ: голый истёкший срок не является статусом, и без этой ветки
+// истёкший бюджет читался бы как доказательство неверной настройки — ложная тревога на
+// здоровом, но нагруженном стенде.
+//
+// Остальные коды оставлены временными намеренно: ошибиться в эту сторону значит
+// недосказать тревогу, ошибиться в другую — поднимать её на здоровом стенде и приучить
+// оператора её игнорировать.
+func provesMisconfiguration(err error) bool {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return false
+	}
+	var misaligned *misalignedAnswerError
+	if errors.As(err, &misaligned) {
+		// До разбора мы дошли, а разобрать не смогли: сосед отвечает по другому
+		// контракту — повтор не поможет.
+		return true
+	}
+	s, ok := status.FromError(err)
+	if !ok {
+		return true
+	}
+	switch s.Code() {
+	case codes.Unimplemented, codes.Unauthenticated, codes.PermissionDenied, codes.InvalidArgument:
+		return true
+	default:
+		return false
+	}
+}
+
+// cacheKey — ключ ПОЛОЖИТЕЛЬНОГО вердикта. Отношение в ключ не входит: кешируется
+// итоговое «видим», а не отдельная ветка предиката.
+func cacheKey(subject, resourceType, id string) string {
+	return subject + "|" + resourceType + "|" + id
+}
+
+func (n *Narrower) getCache(subject, resourceType, id string) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	el, ok := n.cache[cacheKey(subject, resourceType, id)]
+	if !ok {
+		return false
+	}
+	e, _ := el.Value.(*cacheEntry)
+	if n.now().After(e.expires) {
+		n.lruLst.Remove(el)
+		delete(n.cache, e.key)
+		return false
+	}
+	n.lruLst.MoveToFront(el)
+	return true
+}
+
+// Отзыв доступа виден по ИСТЕЧЕНИИ записи, и другого механизма здесь нет: кешируются
+// ТОЛЬКО положительные вердикты и только на CacheTTL, поэтому снятый доступ перестаёт
+// действовать самое позднее через окно, а отрицательный вердикт не кешируется вовсе —
+// свежая выдача видна сразу.
+func (n *Narrower) putCache(subject, resourceType, id string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	key := cacheKey(subject, resourceType, id)
+	exp := n.now().Add(n.cfg.CacheTTL)
+	if el, ok := n.cache[key]; ok {
+		e, _ := el.Value.(*cacheEntry)
+		e.expires = exp
+		n.lruLst.MoveToFront(el)
+		return
+	}
+	el := n.lruLst.PushFront(&cacheEntry{key: key, expires: exp})
+	n.cache[key] = el
+	for n.lruLst.Len() > n.cfg.CacheMaxEntries {
+		tail := n.lruLst.Back()
+		if tail == nil {
+			break
+		}
+		te, _ := tail.Value.(*cacheEntry)
+		n.lruLst.Remove(tail)
+		delete(n.cache, te.key)
+	}
+}
+
+// CacheSize — текущий размер окна вердиктов.
+func (n *Narrower) CacheSize() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.lruLst.Len()
+}
