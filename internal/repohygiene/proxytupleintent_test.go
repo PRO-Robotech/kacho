@@ -235,6 +235,8 @@ func collectProxyIntentSites(t *testing.T, root string) ([]proxyIntentSite, int)
 		t.Fatalf("читаю %s: %v", servicesDir, err)
 	}
 
+	modelTypes := collectModelObjectTypes(t, root)
+
 	var sites []proxyIntentSite
 	filesRead := 0
 
@@ -270,7 +272,7 @@ func collectProxyIntentSites(t *testing.T, root string) ([]proxyIntentSite, int)
 			t.Fatalf("обход %s: %v", dir, err)
 		}
 
-		collectFGAObjectTypes(consts, service, objectTypes)
+		collectFGAObjectTypes(consts, service, modelTypes, objectTypes)
 
 		types := make([]string, 0, len(objectTypes))
 		for ot := range objectTypes {
@@ -342,17 +344,48 @@ func collectConstExprs(f *ast.File, out map[string]ast.Expr) {
 var objectTypeRe = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 // collectFGAObjectTypes отбирает типы объектов домена сервиса среди его констант:
-// значения вида `<домен>_<...>`. Именно с этим множеством владелец сверяет
-// префикс, поэтому оно и есть законный набор типов, с которыми кортеж может
-// уехать из конструктора, принимающего тип параметром.
-func collectFGAObjectTypes(consts map[string]ast.Expr, service string, out map[string]struct{}) {
+// значения вида `<домен>_<...>`, ОБЪЯВЛЕННЫЕ В МОДЕЛИ.
+//
+// Пересечение с моделью существенно, а не косметично. Под форму `<домен>_<...>`
+// в этих сервисах попадают ещё и имена таблиц-очередей (`<домен>_outbox` и
+// подобные): они не являются типами объектов ни в каком смысле, и без пересечения
+// точка с параметрическим типом проверялась бы по выдуманным тройкам. Отвергнуть
+// законное это не могло бы (домен у них тот же), но перепись врала бы про объём —
+// а число проверенных троек здесь и есть утверждение об объёме.
+func collectFGAObjectTypes(consts map[string]ast.Expr, service string, modelTypes map[string]struct{}, out map[string]struct{}) {
 	prefix := service + "_"
 	for _, e := range consts {
 		v, complete := evalString(e, consts, 0)
-		if complete && strings.HasPrefix(v, prefix) && objectTypeRe.MatchString(v) {
-			out[v] = struct{}{}
+		if !complete || !strings.HasPrefix(v, prefix) || !objectTypeRe.MatchString(v) {
+			continue
+		}
+		if _, declared := modelTypes[v]; !declared {
+			continue
+		}
+		out[v] = struct{}{}
+	}
+}
+
+// collectModelObjectTypes — имена типов, объявленных в модели прав. Кортеж,
+// объект которого не такого типа, модель отвергает независимо от правила приёма,
+// поэтому именно это множество ограничивает разбор.
+func collectModelObjectTypes(t *testing.T, root string) map[string]struct{} {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join(root, fgaModelPath))
+	if err != nil {
+		t.Fatalf("читаю модель: %v", err)
+	}
+	out := map[string]struct{}{}
+	for _, line := range strings.Split(string(body), "\n") {
+		if m := fgaTypeRe.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
+			out[m[1]] = struct{}{}
 		}
 	}
+	if len(out) == 0 {
+		t.Fatal("в модели не найдено ни одного типа — разбор модели разошёлся с её " +
+			"синтаксисом, и всякое «ноль находок» ниже относилось бы к непрочитанному")
+	}
+	return out
 }
 
 // collectTupleLiterals находит составные литералы подписи proxyTupleFieldSet и
