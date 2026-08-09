@@ -1,0 +1,448 @@
+{
+  "info": {
+    "_postman_id": "4d4b76e3-9d7a-5a83-b0a0-ceb4b2287a2e",
+    "name": "kacho-api-gateway / newman / authn_edge",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.environment.get('runId') || pm.environment.get('runId') === '') {",
+          "  const t = Date.now().toString(36);",
+          "  const r = Math.floor(Math.random() * 1e9).toString(36);",
+          "  pm.environment.set('runId', ('r' + t + r).replace(/[^a-z0-9]/g, '').slice(0, 11));",
+          "}",
+          "(function () {",
+          "  var _u = '';",
+          "  try { _u = pm.request.url.toString(); } catch (e) { return; }",
+          "  var _all = _u.match(/\\{\\{[A-Za-z0-9_]+\\}\\}/g);",
+          "  if (!_all) { return; }",
+          "  var _n = null;",
+          "  for (var _i = 0; _i < _all.length; _i++) {",
+          "    var _c = _all[_i].slice(2, -2);",
+          "    if (!pm.variables.has(_c)) { _n = _c; break; }",
+          "  }",
+          "  if (_n === null) { return; }",
+          "  pm.test('предусловие: {{' + _n + '}} не было захвачено — запрос не отправлен', function () {",
+          "    pm.expect.fail(_n + ' не определена ни в одной области. Мутация, которая должна была её захватить, не вернула Operation (была отвергнута), либо захват не состоялся. Отправка ушла бы литералом и повтор не сошёлся бы никогда.');",
+          "  });",
+          "  pm.execution.skipRequest();",
+          "})();"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "IBT-04-BOOTSTRAP-RS256-ACCEPTED — bootstrap RS256 Bearer is accepted by the edge on a public route → 200",
+      "description": "class:AUTHN | class:CONF | class:FLOW | priority:P0",
+      "item": [
+        {
+          "name": "list-accounts-as-bootstrap",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: bearer from env 'jwtBootstrap'",
+                  "const __t = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (__t) {",
+                  "  pm.request.headers.upsert({key: 'Authorization', value: 'Bearer ' + __t});",
+                  "} else {",
+                  "  pm.test('harness config: jwtBootstrap is set (subject under test)', () => {",
+                  "    pm.expect.fail('jwtBootstrap is not set — the authz-fixture seed (tests/authz-fixtures/setup.sh, or prodseed_all.py under production posture) did not provide this subject. Running the step anonymously would test a DIFFERENT principal and pass for the wrong reason.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const _sent = (pm.request.headers.get('Authorization') || '');",
+                  "const _tok = _sent.replace(/^Bearer /, '');",
+                  "pm.test('проба представилась предъявителем посева', () => {",
+                  "  pm.expect(_sent.startsWith('Bearer '), 'Authorization: ' + _sent).to.eql(true);",
+                  "});",
+                  "pm.test('это трёхсегментный JWS', () => {",
+                  "  pm.expect(_tok.split('.').length, _tok).to.eql(3);",
+                  "});",
+                  "pm.test('его заголовок объявляет асимметричный алгоритм', () => {",
+                  "  const _cj = require('crypto-js');",
+                  "  const _b64 = _tok.split('.')[0].replace(/-/g, '+').replace(/_/g, '/');",
+                  "  const _h = JSON.parse(_cj.enc.Utf8.stringify(_cj.enc.Base64.parse(_b64)));",
+                  "  pm.expect(['RS256', 'ES256', 'EdDSA'], JSON.stringify(_h)).to.include(_h.alg);",
+                  "});",
+                  "pm.test('status 200', () => pm.expect(pm.response.code, pm.response.text()).to.eql(200));",
+                  "pm.test('ответ — страница списка (поле accounts — массив)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(Array.isArray(j.accounts || []), JSON.stringify(j)).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IBT-10-ANONYMOUS-REJECTED — no credential on an authenticated route → 401, never a page",
+      "description": "class:AUTHN | class:NEG | class:CONF | priority:P0",
+      "item": [
+        {
+          "name": "list-accounts-anonymously",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// per-step auth: DELIBERATE anonymous step",
+                  "pm.request.headers.remove('Authorization');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('запрос ушёл БЕЗ Authorization (иначе это другой кейс)', () => {",
+                  "  const _sent = pm.request.headers.get('Authorization');",
+                  "  pm.expect(_sent === undefined || _sent === null || _sent === '',",
+                  "    'Authorization как отправлен: ' + _sent).to.eql(true);",
+                  "});",
+                  "pm.test('край ответил 401 — предъявитель не принят', () => {",
+                  "  pm.expect(pm.response.code, pm.response.text()).to.eql(401);",
+                  "});",
+                  "pm.test('grpc code 16 (Unauthenticated), а не 7 (PermissionDenied)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(16);",
+                  "});",
+                  "pm.test('ответ несёт вызов RFC 6750 (WWW-Authenticate: Bearer …)', () => {",
+                  "  const h = pm.response.headers.get('WWW-Authenticate') || '';",
+                  "  pm.expect(h.startsWith('Bearer'), 'WWW-Authenticate: ' + h).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IBT-10-HS256-FORGED-REJECTED — symmetrically signed (HS256) Bearer asserting a service_account → 401",
+      "description": "class:AUTHN | class:NEG | class:SEC | class:CONF | priority:P0",
+      "item": [
+        {
+          "name": "list-accounts-with-hs256-forgery",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const _cj = require('crypto-js');",
+                  "function _b64u(wa) { return _cj.enc.Base64.stringify(wa).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, ''); }",
+                  "function _b64uStr(s) { return _b64u(_cj.enc.Utf8.parse(s)); }",
+                  "const _now = Math.floor(Date.now() / 1000);",
+                  "const _h = _b64uStr(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));",
+                  "const _p = _b64uStr(JSON.stringify({",
+                  "  sub: 'sva-forged-by-the-conformance-probe',",
+                  "  kacho_principal_type: 'service_account',",
+                  "  kacho_sa_id: 'sva-forged-by-the-conformance-probe',",
+                  "  iat: _now, exp: _now + 900,",
+                  "}));",
+                  "const _si = _h + '.' + _p;",
+                  "const _key = 'a-key-this-deployment-has-never-issued-' + Math.random().toString(36).slice(2);",
+                  "pm.request.headers.upsert({ key: 'Authorization',",
+                  "  value: 'Bearer ' + _si + '.' + _b64u(_cj.HmacSHA256(_si, _key)) });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// ПРОИЗВОДИТЕЛЬ ВХОДА: сначала — что отправили, потом — что ответили.",
+                  "const _sent = (pm.request.headers.get('Authorization') || '');",
+                  "const _tok = _sent.replace(/^Bearer /, '');",
+                  "pm.test('проба отправила Bearer (иначе это анонимный кейс, а не этот)', () => {",
+                  "  pm.expect(_sent.startsWith('Bearer '), 'Authorization как отправлен: ' + _sent).to.eql(true);",
+                  "});",
+                  "pm.test('отправленный предъявитель — JWS из 3 сегментов', () => {",
+                  "  pm.expect(_tok.split('.').length, _tok).to.eql(3);",
+                  "});",
+                  "pm.test(\"заголовок отправленного предъявителя объявляет alg=HS256\", () => {",
+                  "  const _cj = require('crypto-js');",
+                  "  const _b64 = _tok.split('.')[0].replace(/-/g, '+').replace(/_/g, '/');",
+                  "  const _h = JSON.parse(_cj.enc.Utf8.stringify(_cj.enc.Base64.parse(_b64)));",
+                  "  pm.expect(_h.alg, JSON.stringify(_h)).to.eql('HS256');",
+                  "});",
+                  "pm.test('сегмент подписи длиной 43 — подпись действительно поставлена', () => {",
+                  "  pm.expect(_tok.split('.')[2].length, _tok).to.eql(43);",
+                  "});",
+                  "pm.test('край ответил 401 — предъявитель не принят', () => {",
+                  "  pm.expect(pm.response.code, pm.response.text()).to.eql(401);",
+                  "});",
+                  "pm.test('grpc code 16 (Unauthenticated), а не 7 (PermissionDenied)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(16);",
+                  "});",
+                  "pm.test('ответ несёт вызов RFC 6750 (WWW-Authenticate: Bearer …)', () => {",
+                  "  const h = pm.response.headers.get('WWW-Authenticate') || '';",
+                  "  pm.expect(h.startsWith('Bearer'), 'WWW-Authenticate: ' + h).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IBT-10-ALG-NONE-REJECTED — unsigned Bearer (alg=none) asserting a service_account → 401",
+      "description": "class:AUTHN | class:NEG | class:SEC | class:CONF | priority:P0",
+      "item": [
+        {
+          "name": "list-accounts-with-alg-none",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const _cj = require('crypto-js');",
+                  "function _b64u(wa) { return _cj.enc.Base64.stringify(wa).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, ''); }",
+                  "function _b64uStr(s) { return _b64u(_cj.enc.Utf8.parse(s)); }",
+                  "const _now = Math.floor(Date.now() / 1000);",
+                  "const _h = _b64uStr(JSON.stringify({ alg: 'none', typ: 'JWT' }));",
+                  "const _p = _b64uStr(JSON.stringify({",
+                  "  sub: 'sva-forged-by-the-conformance-probe',",
+                  "  kacho_principal_type: 'service_account',",
+                  "  kacho_sa_id: 'sva-forged-by-the-conformance-probe',",
+                  "  iat: _now, exp: _now + 900,",
+                  "}));",
+                  "pm.request.headers.upsert({ key: 'Authorization',",
+                  "  value: 'Bearer ' + _h + '.' + _p + '.' });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// ПРОИЗВОДИТЕЛЬ ВХОДА: сначала — что отправили, потом — что ответили.",
+                  "const _sent = (pm.request.headers.get('Authorization') || '');",
+                  "const _tok = _sent.replace(/^Bearer /, '');",
+                  "pm.test('проба отправила Bearer (иначе это анонимный кейс, а не этот)', () => {",
+                  "  pm.expect(_sent.startsWith('Bearer '), 'Authorization как отправлен: ' + _sent).to.eql(true);",
+                  "});",
+                  "pm.test('отправленный предъявитель — JWS из 3 сегментов', () => {",
+                  "  pm.expect(_tok.split('.').length, _tok).to.eql(3);",
+                  "});",
+                  "pm.test(\"заголовок отправленного предъявителя объявляет alg=none\", () => {",
+                  "  const _cj = require('crypto-js');",
+                  "  const _b64 = _tok.split('.')[0].replace(/-/g, '+').replace(/_/g, '/');",
+                  "  const _h = JSON.parse(_cj.enc.Utf8.stringify(_cj.enc.Base64.parse(_b64)));",
+                  "  pm.expect(_h.alg, JSON.stringify(_h)).to.eql('none');",
+                  "});",
+                  "pm.test('сегмент подписи ПУСТ — это форма alg=none, а не обрезок', () => {",
+                  "  pm.expect(_tok.split('.')[2], _tok).to.eql('');",
+                  "});",
+                  "pm.test('край ответил 401 — предъявитель не принят', () => {",
+                  "  pm.expect(pm.response.code, pm.response.text()).to.eql(401);",
+                  "});",
+                  "pm.test('grpc code 16 (Unauthenticated), а не 7 (PermissionDenied)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(16);",
+                  "});",
+                  "pm.test('ответ несёт вызов RFC 6750 (WWW-Authenticate: Bearer …)', () => {",
+                  "  const h = pm.response.headers.get('WWW-Authenticate') || '';",
+                  "  pm.expect(h.startsWith('Bearer'), 'WWW-Authenticate: ' + h).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IBT-10-RS256-TAMPERED-SIGNATURE-REJECTED — genuine bootstrap Bearer with one signature byte flipped → 401",
+      "description": "class:AUTHN | class:NEG | class:SEC | class:CONF | priority:P0",
+      "item": [
+        {
+          "name": "list-accounts-with-tampered-signature",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/iam/v1/accounts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "iam",
+                "v1",
+                "accounts"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const _base = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "if (!_base) {",
+                  "  pm.test('harness config: jwtBootstrap is set (нечего портить)', () => {",
+                  "    pm.expect.fail('jwtBootstrap не задан — посев фикстур (tests/authz-fixtures/setup.sh) не выдал предъявителя. Испортить подпись не у чего, а запрос без заголовка проверил бы анонимный доступ, то есть другой кейс.');",
+                  "  });",
+                  "  pm.execution.skipRequest();",
+                  "} else {",
+                  "  const _s = _base.split('.');",
+                  "  const _sig = _s[2];",
+                  "  const _c = _sig.slice(-1);",
+                  "  const _flipped = _sig.slice(0, -1) + (_c === 'A' ? 'B' : 'A');",
+                  "  pm.request.headers.upsert({ key: 'Authorization',",
+                  "    value: 'Bearer ' + _s[0] + '.' + _s[1] + '.' + _flipped });",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const _sent = (pm.request.headers.get('Authorization') || '');",
+                  "const _tok = _sent.replace(/^Bearer /, '');",
+                  "const _base = pm.environment.get('jwtBootstrap') || pm.variables.get('jwtBootstrap') || '';",
+                  "pm.test('отправлен предъявитель, отличный от исходного', () => {",
+                  "  pm.expect(_tok, 'отправленный предъявитель').to.not.eql(_base);",
+                  "});",
+                  "pm.test('заголовок и тело совпадают с исходными — испорчена ТОЛЬКО подпись', () => {",
+                  "  const _a = _tok.split('.');",
+                  "  const _b = _base.split('.');",
+                  "  pm.expect(_a[0], 'заголовок').to.eql(_b[0]);",
+                  "  pm.expect(_a[1], 'тело').to.eql(_b[1]);",
+                  "  pm.expect(_a[2], 'подпись').to.not.eql(_b[2]);",
+                  "  pm.expect(_a[2].length, 'длина подписи').to.eql(_b[2].length);",
+                  "});",
+                  "pm.test('край ответил 401 — предъявитель не принят', () => {",
+                  "  pm.expect(pm.response.code, pm.response.text()).to.eql(401);",
+                  "});",
+                  "pm.test('grpc code 16 (Unauthenticated), а не 7 (PermissionDenied)', () => {",
+                  "  const j = pm.response.json();",
+                  "  pm.expect(j.code, JSON.stringify(j)).to.eql(16);",
+                  "});",
+                  "pm.test('ответ несёт вызов RFC 6750 (WWW-Authenticate: Bearer …)', () => {",
+                  "  const h = pm.response.headers.get('WWW-Authenticate') || '';",
+                  "  pm.expect(h.startsWith('Bearer'), 'WWW-Authenticate: ' + h).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": []
+}
