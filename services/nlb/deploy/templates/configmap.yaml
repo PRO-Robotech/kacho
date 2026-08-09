@@ -121,6 +121,18 @@ data:
       endpoint: {{ .Values.config.fga.endpoint | quote }}
       store-id: {{ .Values.config.fga.storeId | quote }}
       model-id: {{ .Values.config.fga.modelId | quote }}
+      # require-iam — fail-closed загрузочный гейт (pkg/outbox/bootgate):
+      # мутирующий Create отвергается, а под остаётся NotReady, пока
+      # register-drainer не подключён к kacho-iam. Ресурс не создаётся, пока его
+      # намерение о владении некуда доставить, — иначе созданный в этом окне
+      # балансировщик остаётся без владельца, а его создатель получает отказ на
+      # собственном ресурсе.
+      #
+      # Рендерится НАПРЯМУЮ, без `default`: умолчание, вписанное здесь вторым
+      # местом, пережило бы удаление ключа из values.yaml и молча вернуло бы
+      # выключенный гейт — правка одного values.yaml не имела бы силы. Так же и
+      # по той же причине рендерится соседний фильтр видимости.
+      require-iam: {{ .Values.config.fga.requireIam }}
       tuple-write:
         timeout: {{ .Values.config.fga.tupleWrite.timeout }}
         max-retries: {{ .Values.config.fga.tupleWrite.maxRetries }}
