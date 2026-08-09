@@ -100,10 +100,33 @@ spec:
   template:
     spec:
       restartPolicy: Never
+      # Хардening пода (trivy KSV-0118): непривилегированный запуск + seccomp.
+      # uid 12345 — собственный пользователь образа grafana/k6 (замерено:
+      # `docker run --entrypoint id grafana/k6:0.55.0` → uid=12345(k6)). Берётся
+      # именно он, чтобы владелец файлов образа совпадал с тем, кто их читает.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 12345
+        runAsGroup: 12345
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: k6
           image: grafana/k6:0.55.0
           imagePullPolicy: IfNotPresent
+          # Хардening контейнера (trivy KSV-0014/KSV-0118): корень только на чтение,
+          # без повышения привилегий, все capabilities сняты. Тома под запись НЕ
+          # нужны: сценарий приезжает ConfigMap'ом только на чтение, отчёт уходит в
+          # stdout. Проверено прогоном, а не выведено из чтения: k6 0.55.0 под
+          # `--read-only` и uid 12345 отработал 247 запросов и вышел кодом 0.
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           args: ["run", "--quiet", "/scripts/script.js"]
           env:
             - name: BASE_URL
