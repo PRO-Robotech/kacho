@@ -176,17 +176,10 @@ func runServe(cfg config.Config) error {
 	// Нулевой указатель раскладывается в НУЛЕВЫЕ интерфейсы намеренно: typed-nil в
 	// интерфейсе не равен nil, и проверки вида `filter == nil` у потребителей
 	// молча перестали бы срабатывать.
-	fgaFilter := buildListFilter(cfg, authzConn, logger)
-	var (
-		listFilter   authzfilter.Filter
-		instanceGate authzfilter.ObjectGate
-	)
-	if fgaFilter != nil {
-		listFilter, instanceGate = fgaFilter, fgaFilter
-	}
-	volumeUC.WithListFilter(listFilter).WithInstanceGate(instanceGate)
-	snapshotUC.WithListFilter(listFilter)
-	imageUC.WithListFilter(listFilter)
+	narrower := buildListFilter(cfg, authzConn, logger)
+	volumeUC.WithListFilter(narrower).WithInstanceGate(narrower)
+	snapshotUC.WithListFilter(narrower)
+	imageUC.WithListFilter(narrower)
 
 	// ── FGA owner-tuple register-drainer + sync-registrar (SEC-D, анти-BOLA) ──
 	// Volume/Snapshot Create/Delete эмитят register/unregister-intent в
@@ -454,38 +447,38 @@ func serveResult(publicErr, internalErr error) error {
 // operation_budget — фильтрацию всей страницы (выводится из per-call и
 // параллелизма), worst_case_depth — сколько волн он покрывает. По одному конфигу не
 // видно, какое из них реально ограничивает запрос.
-// Возвращается КОНКРЕТНЫЙ тип, а не интерфейс: один и тот же клиент модели прав
-// обслуживает два разных порта (видимость страницы и гейт мутации по названному
-// объекту), и вызывающий раскладывает его сам. Возврат интерфейса заставил бы
-// приводить типы либо строить второй клиент к тому же эндпоинту.
-func buildListFilter(cfg config.Config, authzConn *grpc.ClientConn, logger *slog.Logger) *authzfilter.FGAFilter {
-	if !cfg.ListFilterEnabled {
-		logger.Warn("list filter DISABLED (KACHO_STORAGE_LIST_FILTER_ENABLED=false) — " +
-			"public List returns every row of the project regardless of per-object grants; dev only")
-		return nil
+// Возвращается КОНКРЕТНЫЙ тип: один и тот же сужатель обслуживает обе двери
+// механизма — видимость страницы и гейт мутации по названному объекту.
+//
+// Выключенный фильтр БОЛЬШЕ НЕ ОЗНАЧАЕТ сквозной проход: сужатель собирается всегда
+// и ОТКАЗЫВАЕТ, пока ему не с кем говорить. Пропуск возможен только объявленным
+// аварийным режимом, и каждое его срабатывание считается и называется.
+func buildListFilter(cfg config.Config, authzConn *grpc.ClientConn, logger *slog.Logger) *authzfilter.Narrower {
+	breakglass := !cfg.ListFilterEnabled || authzConn == nil
+	var conn grpc.ClientConnInterface
+	if !breakglass {
+		conn = authzConn
+	} else {
+		logger.Warn("list filter has no rights model to ask — every list and every object gate "+
+			"will REFUSE unless the emergency bypass is armed",
+			"enabled", cfg.ListFilterEnabled, "authz_conn", authzConn != nil,
+			"breakglass", cfg.ListFilterBreakglass)
 	}
-	if authzConn == nil {
-		logger.Warn("list filter requested but KACHO_STORAGE_AUTHZ_IAM_GRPC_ADDR is unset — disabled")
-		return nil
-	}
-	f := authzfilter.NewFGAFilter(
-		authzfilter.NewIAMAuthorizeClient(authzConn),
-		authzfilter.Config{
-			Enabled:         true,
-			Timeout:         time.Duration(cfg.ListFilterTimeoutMs) * time.Millisecond,
-			CacheTTL:        time.Duration(cfg.ListFilterCacheTTLMs) * time.Millisecond,
-			CacheMaxEntries: cfg.ListFilterCacheMaxEntries,
-			FailOpen:        cfg.ListFilterFailOpen,
-		},
-	).WithLogger(logger)
-	logger.Info("list filter enabled",
+	f := authzfilter.New(conn, authzfilter.Config{
+		Timeout:               time.Duration(cfg.ListFilterTimeoutMs) * time.Millisecond,
+		CacheTTL:              time.Duration(cfg.ListFilterCacheTTLMs) * time.Millisecond,
+		CacheMaxEntries:       cfg.ListFilterCacheMaxEntries,
+		SoftPassOnPeerFailure: cfg.ListFilterFailOpen,
+		Breakglass:            breakglass && cfg.ListFilterBreakglass,
+	}).WithLogger(logger)
+	logger.Info("list filter wired",
 		"iam_authorize_endpoint", cfg.AuthZIAMGRPCAddr,
 		"per_call_timeout_ms", cfg.ListFilterTimeoutMs,
-		"batch_parallelism", f.Parallelism(),
 		"operation_budget", f.Budget(),
 		"worst_case_depth_waves", f.WorstCaseDepth(),
 		"cache_ttl_ms", cfg.ListFilterCacheTTLMs,
 		"cache_max_entries", cfg.ListFilterCacheMaxEntries,
-		"fail_open", cfg.ListFilterFailOpen)
+		"soft_pass_on_peer_failure", cfg.ListFilterFailOpen,
+		"narrows", f.Narrows())
 	return f
 }

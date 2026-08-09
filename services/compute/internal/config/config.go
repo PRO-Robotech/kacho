@@ -161,6 +161,17 @@ type Config struct {
 	// false** (fail-closed = secure). Set to true только в break-glass.
 	ListFilterFailOpen bool `envconfig:"KACHO_COMPUTE_LIST_FILTER_FAIL_OPEN" default:"false"`
 
+	// ListFilterBreakglass — аварийный режим: когда модели прав на этой посадке нет
+	// вовсе (фильтр выключен либо эндпоинт не задан), списки отдаются НЕсуженными, а
+	// поток журнала изменений стартует, вместо отказа.
+	//
+	// Он остаётся явным исключением, а не умолчанием: прежде «фильтр выключен» само
+	// по себе означало сквозной проход, и вся защита держалась на загрузочном страже
+	// — то есть существовала ровно до первой конфигурации, которая его не взвела.
+	// Теперь пропуск требуется ОБЪЯВИТЬ, и каждое срабатывание считается и
+	// называется (`listnarrow.Counts`).
+	ListFilterBreakglass bool `envconfig:"KACHO_COMPUTE_LIST_FILTER_BREAKGLASS" default:"false"`
+
 	// ===== register-drainer (FGA owner-tuple через kacho-iam) =====
 	//
 	// FGARegisterDrainerEnabled — включает register-drainer (corelib outbox/drainer):

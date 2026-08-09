@@ -63,7 +63,7 @@ var Profile = listfiltergate.Profile{
 	// filterVisible is the service's own generic helper (internal/handler/
 	// list_filter.go); FilterVisibleIDs is the port it calls, accepted so a handler
 	// that talks to the port directly still counts.
-	Filters:        []string{"filterVisible", "FilterVisibleIDs"},
+	Filters:        []string{"listnarrow.Page", "listnarrow.IDs"},
 	Banned:         []string{"ListAllowedIDs", "ListObjects"},
 	SubjectScopers: []string{"ListForCaller"},
 

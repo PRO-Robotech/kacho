@@ -19,10 +19,13 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/loadbalancer"
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachopg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"
+	"google.golang.org/grpc"
 )
 
 // The unit-level order assertion (list_reader_release_test.go) says the reader is
@@ -80,9 +83,13 @@ type secondReaderProbe struct {
 	acquireErr error
 }
 
-var _ authzfilter.Filter = (*secondReaderProbe)(nil)
+var _ listnarrow.AuthorizeClient = (*secondReaderProbe)(nil)
 
-func (p *secondReaderProbe) FilterVisibleIDs(_ context.Context, _, _, _ string, ids []string) ([]string, error) {
+// BatchCheck стоит там, где стоит kacho-iam: наблюдение переехало на СОСЕДА, потому
+// что сужатель теперь один на дерево, и подставлять его целиком значило бы наблюдать
+// не тот момент. Момент здесь — сетевой вопрос о правах со страницей на руках.
+func (p *secondReaderProbe) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckRequest,
+	_ ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
 	p.calls++
 	ctx, cancel := context.WithTimeout(context.Background(), p.budget)
 	defer cancel()
@@ -90,13 +97,17 @@ func (p *secondReaderProbe) FilterVisibleIDs(_ context.Context, _, _, _ string, 
 	rd, err := p.repo.Reader(ctx)
 	p.waited = time.Since(start)
 	if err != nil {
-		// Reported through the probe rather than as a filter error, so the failure
-		// is attributed to the acquire and not to some mapping of it.
+		// Сообщается через пробу, а не ошибкой сужателя, чтобы отказ относился к
+		// захвату соединения, а не к какому-то его отображению.
 		p.acquireErr = err
-		return ids, nil
+	} else {
+		_ = rd.Close()
 	}
-	_ = rd.Close()
-	return ids, nil
+	out := make([]*iamv1.AuthorizeCheckResponse, 0, len(in.GetChecks()))
+	for range in.GetChecks() {
+		out = append(out, &iamv1.AuthorizeCheckResponse{Allowed: true})
+	}
+	return &iamv1.BatchAuthorizeCheckResponse{Responses: out}, nil
 }
 
 // TestListLoadBalancers_DoesNotHoldPooledConnectionAcrossAuthz — with a pool of one,
@@ -122,7 +133,7 @@ func TestListLoadBalancers_DoesNotHoldPooledConnectionAcrossAuthz(t *testing.T) 
 	require.NoError(t, w.Commit())
 
 	probe := &secondReaderProbe{repo: repo, budget: 3 * time.Second}
-	uc := loadbalancer.NewListLoadBalancersUseCase(repo, probe)
+	uc := loadbalancer.NewListLoadBalancersUseCase(repo, narrowtest.New(probe))
 
 	callerCtx := operations.WithPrincipal(ctx,
 		operations.Principal{Type: "user", ID: "usr_pool_probe"})

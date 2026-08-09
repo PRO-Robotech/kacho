@@ -37,4 +37,16 @@ package authzfilter
 // нереализуемо.
 var PageRelations = map[string][]string{
 	"": {"v_get"}, // умолчание: отношение, которым каталог гейтит `<Service>/Get`
+
+	// Типы названы ПОИМЁННО, хотя предикат у всех один. Смысл не в значении, а в
+	// том, что гейт паритета сверяет объявление с каталогом прав ПОТИПНО: под одним
+	// умолчанием ему нечего сопоставлять, и «сверено типов = 0» выглядело бы как
+	// зелёное, будучи пустым.
+	"vpc_network":           {"v_get"},
+	"vpc_subnet":            {"v_get"},
+	"vpc_security_group":    {"v_get"},
+	"vpc_route_table":       {"v_get"},
+	"vpc_address":           {"v_get"},
+	"vpc_gateway":           {"v_get"},
+	"vpc_network_interface": {"v_get"},
 }

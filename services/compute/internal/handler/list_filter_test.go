@@ -33,6 +33,8 @@ import (
 	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/apps/kacho/api/instance"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
@@ -41,7 +43,7 @@ import (
 
 // newInstanceHandlerWithFilter — InstanceHandler over portmock repos + the real
 // list-filter. Returns the handler and the repo, for deterministic seeding.
-func newInstanceHandlerWithFilter(t *testing.T, filter authzfilter.Filter) (*InstanceHandler, *portmock.InstanceRepo) {
+func newInstanceHandlerWithFilter(t *testing.T, filter *listnarrow.Narrower) (*InstanceHandler, *portmock.InstanceRepo) {
 	t.Helper()
 	insRepo := portmock.NewInstanceRepo()
 	svc := instance.NewInstanceService(
@@ -108,12 +110,16 @@ func (m *mockAuthCli) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeChec
 	return out, nil
 }
 
-func newFilter(t *testing.T, cli authzfilter.AuthorizeClient) authzfilter.Filter {
+// newFilter — НАСТОЯЩИЙ сужатель над подставным соседом: подменяется только тот, кто
+// отвечает, а все ветки — личность, посадка, партии, окно вердиктов — исполняются те
+// же, что в бою.
+func newFilter(t *testing.T, cli listnarrow.AuthorizeClient) *listnarrow.Narrower {
 	t.Helper()
-	cfg := authzfilter.DefaultConfig()
-	cfg.Timeout = 200 * time.Millisecond
-	cfg.CacheTTL = time.Second
-	return authzfilter.NewFGAFilter(cli, cfg)
+	return listnarrow.New(cli, listnarrow.Config{
+		Relations: authzfilter.PageRelations,
+		Timeout:   200 * time.Millisecond,
+		CacheTTL:  time.Second,
+	})
 }
 
 // ctxWithSubject — кладёт в ctx Principal, эквивалентный FGA-subject "type:id".
@@ -127,15 +133,32 @@ func ctxWithSubject(subject string) context.Context {
 	return operations.WithPrincipal(context.Background(), operations.Principal{Type: t, ID: id})
 }
 
-// SCENARIO 1: filter == nil → handler bypasses (FGA disabled config-gate / dev).
-// This is the deliberate config-off bypass, NOT the missing-identity bypass.
-func TestInstanceHandler_List_FilterNil_Bypass(t *testing.T) {
+// SCENARIO 1: сужателя нет → ОТКАЗ, а не сквозной проход.
+//
+// Полярность сменилась: прежде nil означал «сужение выключено, страницу отдать», и
+// посадка без модели показывала каждому участнику проекта каждую его строку. Пропуск
+// теперь возможен только объявленным аварийным режимом — и он считается.
+func TestInstanceHandler_List_AbsentModelIsRefused(t *testing.T) {
 	h, insRepo := newInstanceHandlerWithFilter(t, nil)
 	seedInstances(t, insRepo, "proj", "d1", "d2", "d3")
 
 	resp, err := h.List(ctxWithSubject("user:usr_alice"), &computev1.ListInstancesRequest{ProjectId: "proj"})
+	require.Error(t, err, "спросить негде — значит отказ, а не «да»")
+	require.Equal(t, codes.PermissionDenied, status.Code(err))
+	require.Empty(t, resp.GetInstances())
+}
+
+// ПАРНЫЙ к предыдущему: аварийный режим остаётся, но он ОБЪЯВЛЕН и посчитан.
+func TestInstanceHandler_List_BreakglassPassesAndIsCounted(t *testing.T) {
+	n := narrowtest.Breakglass()
+	h, insRepo := newInstanceHandlerWithFilter(t, n)
+	seedInstances(t, insRepo, "proj", "d1", "d2", "d3")
+
+	resp, err := h.List(ctxWithSubject("user:usr_alice"), &computev1.ListInstancesRequest{ProjectId: "proj"})
 	require.NoError(t, err)
-	require.Len(t, resp.Instances, 3, "filter=nil must return all instances")
+	require.Len(t, resp.Instances, 3)
+	require.Equal(t, uint64(1), n.Counts().Breakglass,
+		"аварийный режим без счётчика становится тихим штатным")
 }
 
 // CLL-03: cluster-admin / owner → all. The IAM ListObjects returns ALL ids for
@@ -198,9 +221,10 @@ func TestInstanceHandler_List_CLL07_IAMDown_FailClosed(t *testing.T) {
 // iam-down + fail-open → all results (degraded-mode bypass, opt-in config).
 func TestInstanceHandler_List_IAMDown_FailOpen(t *testing.T) {
 	cli := &mockAuthCli{err: errors.New("network err")}
-	cfg := authzfilter.DefaultConfig()
-	cfg.FailOpen = true
-	filter := authzfilter.NewFGAFilter(cli, cfg)
+	filter := listnarrow.New(cli, listnarrow.Config{
+		Relations:             authzfilter.PageRelations,
+		SoftPassOnPeerFailure: true,
+	})
 
 	h, insRepo := newInstanceHandlerWithFilter(t, filter)
 	seedInstances(t, insRepo, "proj", "a", "b")
@@ -211,32 +235,35 @@ func TestInstanceHandler_List_IAMDown_FailOpen(t *testing.T) {
 }
 
 // CLL-02 (the leak root): subject=="" (no principal / system) → fail-closed.
-// Previously this short-circuited to bypass-all and leaked every instance. The fix
-// must return an EMPTY list (existence of disks must stay unknowable) and must
-// NOT short-circuit to bypass. The filter is consulted with subject="" which is
-// fail-closed at the FGA layer, OR the handler returns empty directly — either
-// way the response is empty.
-func TestInstanceHandler_List_CLL02_NoPrincipal_FailClosed(t *testing.T) {
+// Прежде это замыкалось в сквозной проход и отдавало каждую машину. Теперь ответ —
+// ОТКАЗ, а не пустая страница: «пусто» неотличимо от «личность потеряна по дороге»,
+// и именно этим неразличением класс живёт годами. Модель при этом не тревожится
+// вовсе — спрашивать не о ком.
+func TestInstanceHandler_List_CLL02_NoPrincipalIsRefused(t *testing.T) {
 	cli := &mockAuthCli{}
 	h, insRepo := newInstanceHandlerWithFilter(t, newFilter(t, cli))
 	seedInstances(t, insRepo, "proj", "a", "b", "c")
 
-	// No principal in ctx at all → SystemPrincipal → subject="".
 	resp, err := h.List(context.Background(), &computev1.ListInstancesRequest{ProjectId: "proj"})
-	require.NoError(t, err, "no-principal must not be a 5xx; it is fail-closed empty")
-	require.Len(t, resp.Instances, 0, "LEAK: no-principal must NOT bypass to all instances")
+	require.Error(t, err, "запрос никого не назвал — страница не отдаётся")
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+	require.Empty(t, resp.GetInstances(), "LEAK: no-principal must NOT bypass to all instances")
+	require.Zero(t, cli.calls, "спрашивать не о ком — модель не тревожат")
 }
 
-// CLL-02 variant: explicit SystemPrincipal → fail-closed empty (not bypass-all).
-func TestInstanceHandler_List_CLL02_SystemPrincipal_FailClosed(t *testing.T) {
+// CLL-02 вариант: явный служебный принципал — тот же отказ. Служебный ТИП объявляет
+// отправитель заголовков, поэтому личностью он не является.
+func TestInstanceHandler_List_CLL02_SystemPrincipalIsRefused(t *testing.T) {
 	cli := &mockAuthCli{}
 	h, insRepo := newInstanceHandlerWithFilter(t, newFilter(t, cli))
 	seedInstances(t, insRepo, "proj", "a", "b")
 
 	ctx := operations.WithPrincipal(context.Background(), operations.SystemPrincipal())
 	resp, err := h.List(ctx, &computev1.ListInstancesRequest{ProjectId: "proj"})
-	require.NoError(t, err)
-	require.Len(t, resp.Instances, 0, "LEAK: system principal must NOT bypass to all instances")
+	require.Error(t, err)
+	require.Equal(t, codes.Unauthenticated, status.Code(err))
+	require.Empty(t, resp.GetInstances(), "LEAK: system principal must NOT bypass to all instances")
+	require.Zero(t, cli.calls)
 }
 
 // SCENARIO: cache hit — a positive per-object verdict within TTL is reused, so

@@ -15,6 +15,8 @@ import (
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 
 	vpcclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/vpc"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // TestHandler_DispatchesAll — Handler — тонкая обёртка над use-case'ами.
@@ -33,7 +35,7 @@ func TestHandler_DispatchesAll(t *testing.T) {
 			ID: id, ProjectID: "prj-a", NetworkID: "net-1",
 			PlacementType: vpcclient.SubnetPlacementRegional, RegionID: "ru-central1",
 		}, nil
-	}}, &fakeAddressReader{}, &fakeAddressClient{}, allowAll(), slog.Default())
+	}}, &fakeAddressReader{}, &fakeAddressClient{}, narrowtest.AllowingAll(), slog.Default())
 
 	ctx := ctxWithUser("usr_lister")
 
@@ -91,13 +93,13 @@ func TestHandler_DispatchesAll(t *testing.T) {
 
 func TestHandler_NewHandler_NilLogger_OK(t *testing.T) {
 	t.Parallel()
-	h := NewHandler(newFakeRepo(), newFakeOpsRepo(), nil, nil, nil, nil, nil, nil, nil, nil, allowAll(), nil)
+	h := NewHandler(newFakeRepo(), newFakeOpsRepo(), nil, nil, nil, nil, nil, nil, nil, nil, narrowtest.AllowingAll(), nil)
 	require.NotNil(t, h)
 }
 
 func TestHandler_Get_PropagatesErr(t *testing.T) {
 	t.Parallel()
-	h := NewHandler(newFakeRepo(), newFakeOpsRepo(), nil, nil, nil, nil, nil, nil, nil, nil, allowAll(), slog.Default())
+	h := NewHandler(newFakeRepo(), newFakeOpsRepo(), nil, nil, nil, nil, nil, nil, nil, nil, narrowtest.AllowingAll(), slog.Default())
 	_, err := h.Get(context.Background(), &lbv1.GetNetworkLoadBalancerRequest{})
 	require.Equal(t, codes.InvalidArgument, status.Code(err))
 }

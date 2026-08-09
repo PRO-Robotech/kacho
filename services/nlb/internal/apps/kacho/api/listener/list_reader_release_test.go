@@ -11,8 +11,11 @@ import (
 
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
+	"google.golang.org/grpc"
 )
 
 // Same property as loadbalancer/list_reader_release_test.go: the pooled read-TX
@@ -57,6 +60,10 @@ func (rd *releaseTrackingReader) Close() error {
 }
 
 // readerStateProbe records the reader ledger at the instant rights are asked about.
+//
+// Наблюдение переехало на СОСЕДА: сужатель теперь один на дерево, и подставлять
+// его целиком значило бы наблюдать не тот момент. Момент, ради которого проба
+// написана, — сетевой вопрос к kacho-iam, и он здесь и перехватывается.
 type readerStateProbe struct {
 	repo         *releaseTrackingRepo
 	calls        int
@@ -64,12 +71,17 @@ type readerStateProbe struct {
 	closedAtCall int
 }
 
-var _ authzfilter.Filter = (*readerStateProbe)(nil)
+var _ listnarrow.AuthorizeClient = (*readerStateProbe)(nil)
 
-func (p *readerStateProbe) FilterVisibleIDs(_ context.Context, _, _, _ string, ids []string) ([]string, error) {
+func (p *readerStateProbe) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckRequest,
+	_ ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
 	p.calls++
 	p.openedAtCall, p.closedAtCall = p.repo.opened, p.repo.closed
-	return ids, nil
+	out := make([]*iamv1.AuthorizeCheckResponse, 0, len(in.GetChecks()))
+	for range in.GetChecks() {
+		out = append(out, &iamv1.AuthorizeCheckResponse{Allowed: true})
+	}
+	return &iamv1.BatchAuthorizeCheckResponse{Responses: out}, nil
 }
 
 // TestListListeners_ReleasesReaderBeforeAuthz — pooled read-TX released first.
@@ -79,7 +91,7 @@ func TestListListeners_ReleasesReaderBeforeAuthz(t *testing.T) {
 	seedListenerLF(t, repo.fakeRepo, "prj-a", "nlb_lb1", "l-a1")
 
 	probe := &readerStateProbe{repo: repo}
-	uc := NewListUseCase(repo, probe)
+	uc := NewListUseCase(repo, narrowtest.New(probe))
 
 	resp, err := uc.Run(ctxWithUser("usr_alice"),
 		&lbv1.ListListenersRequest{ProjectId: "prj-a"})

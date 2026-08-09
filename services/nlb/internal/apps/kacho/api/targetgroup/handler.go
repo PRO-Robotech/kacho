@@ -26,7 +26,7 @@ import (
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 )
 
 // Handler реализует lbv1.TargetGroupServiceServer. Per-RPC файлы в этом же
@@ -59,7 +59,7 @@ func NewHandler(
 	peerNIC NetworkInterfaceClient,
 	peerSubnet SubnetClient,
 	peerZoneRegion ZoneRegionClient,
-	listFilter authzfilter.Filter,
+	listFilter *listnarrow.Narrower,
 	logger *slog.Logger,
 ) *Handler {
 	if logger == nil {

@@ -11,6 +11,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/api/shared"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 )
 
 // ListTargetGroupsUseCase — sync list filter by project_id (required) + optional
@@ -19,11 +21,11 @@ import (
 // .
 type ListTargetGroupsUseCase struct {
 	repo  Repo
-	authz authzfilter.Filter
+	authz *listnarrow.Narrower
 }
 
 // NewListTargetGroupsUseCase конструктор. authz может быть nil (disabled / dev).
-func NewListTargetGroupsUseCase(repo Repo, authz authzfilter.Filter) *ListTargetGroupsUseCase {
+func NewListTargetGroupsUseCase(repo Repo, authz *listnarrow.Narrower) *ListTargetGroupsUseCase {
 	return &ListTargetGroupsUseCase{repo: repo, authz: authz}
 }
 
@@ -53,6 +55,14 @@ func (u *ListTargetGroupsUseCase) Execute(
 		return nil, err
 	}
 
+	// Предусловие сужения — ДО чтения страницы из БД: и «никого не назвали», и
+	// «спросить негде» решаются одной функцией общего фундамента, поэтому ответ
+	// совпадает у всех списков по построению, а не по внимательности. Проверка
+	// формата остаётся ПЕРВОЙ и выше — ответ на некорректный ввод не должен
+	// зависеть от того, что вызывающему выдано.
+	if err := listnarrow.Precheck(ctx, u.authz); err != nil {
+		return nil, err
+	}
 	// Страница читается и read-TX ЗАКРЫВАЕТСЯ до опроса прав (см. readPage).
 	recs, next, err := u.readPage(ctx, filter, kachorepo.Pagination{
 		PageToken: req.GetPageToken(),
@@ -64,7 +74,7 @@ func (u *ListTargetGroupsUseCase) Execute(
 
 	// RBAC: per-object FGA filter — страница из БД ПЕРВОЙ, права на её id
 	// (см. loadbalancer/list.go и package-doc internal/authzfilter).
-	recs, err = authzfilter.FilterVisiblePage(ctx, u.authz,
+	recs, err = listnarrow.Page(ctx, u.authz,
 		authzfilter.ResourceTypeTargetGroup, authzfilter.ActionTargetGroupList,
 		recs, func(rec *kachorepo.TargetGroupRecord) string { return string(rec.ID) })
 	if err != nil {

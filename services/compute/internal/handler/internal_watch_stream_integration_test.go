@@ -52,7 +52,7 @@ func TestIntegration_WatchStreamSince_BatchBoundary(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := ctxWithUser(context.Background(), "usr_alice")
 	dsn := setupWatchDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -76,7 +76,7 @@ func TestIntegration_WatchStreamSince_BatchBoundary(t *testing.T) {
 	}
 	h := NewInternalWatchHandler(pool, dsn, slog.Default(), 0, allowAllVisibility(ids...))
 	fs := &fakeWatchStream{ctx: ctx}
-	newCursor, err := h.streamSince(ctx, conn, 0, nil, watchTestSubject, fs)
+	newCursor, err := h.streamSince(ctx, conn, 0, nil, fs)
 	require.NoError(t, err)
 
 	require.Len(t, fs.sent, total, "all outbox rows must be delivered across batch boundaries")
@@ -109,7 +109,7 @@ func TestIntegration_WatchStreamSince_KindsFilter(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := ctxWithUser(context.Background(), "usr_alice")
 	dsn := setupWatchDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -133,28 +133,28 @@ func TestIntegration_WatchStreamSince_KindsFilter(t *testing.T) {
 	defer func() { _ = conn.Close(ctx) }()
 
 	// Просим только Disk — kind без типа объекта.
-	visDisk := allowAllVisibility(append([]string{"r-001", "r-004"}, instanceIDs...)...)
+	visDisk, visDiskStub := recordingVisibility(append([]string{"r-001", "r-004"}, instanceIDs...)...)
 	h := NewInternalWatchHandler(pool, dsn, slog.Default(), 0, visDisk)
 	fs := &fakeWatchStream{ctx: ctx}
-	_, err = h.streamSince(ctx, conn, 0, []string{"Disk"}, watchTestSubject, fs)
+	_, err = h.streamSince(ctx, conn, 0, []string{"Disk"}, fs)
 	require.NoError(t, err)
 
 	assert.Empty(t, fs.sent, "kind без типа объекта в модели прав не доставляется")
-	assert.Empty(t, visDisk.asked,
+	assert.Empty(t, visDiskStub.asked,
 		"запрос про Disk не должен читать Instance-строки — иначе про них был бы задан вопрос")
 
 	// Просим Instance — предикат обязан привести именно их.
-	visInst := allowAllVisibility(instanceIDs...)
+	visInst, visInstStub := recordingVisibility(instanceIDs...)
 	h2 := NewInternalWatchHandler(pool, dsn, slog.Default(), 0, visInst)
 	fs2 := &fakeWatchStream{ctx: ctx}
-	_, err = h2.streamSince(ctx, conn, 0, []string{"Instance"}, watchTestSubject, fs2)
+	_, err = h2.streamSince(ctx, conn, 0, []string{"Instance"}, fs2)
 	require.NoError(t, err)
 
 	require.Len(t, fs2.sent, len(instanceIDs), "предикат обязан привести все Instance-строки")
 	for _, ev := range fs2.sent {
 		assert.Equal(t, "Instance", ev.GetResourceKind())
 	}
-	assert.ElementsMatch(t, instanceIDs, visInst.asked, "вопрос задаётся ровно про прочитанные строки")
+	assert.ElementsMatch(t, instanceIDs, visInstStub.asked, "вопрос задаётся ровно про прочитанные строки")
 }
 
 // TestIntegration_WatchStreamSince_ResumeFromCursor — from_sequence_no resume:
@@ -163,7 +163,7 @@ func TestIntegration_WatchStreamSince_ResumeFromCursor(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := ctxWithUser(context.Background(), "usr_alice")
 	dsn := setupWatchDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -190,7 +190,7 @@ func TestIntegration_WatchStreamSince_ResumeFromCursor(t *testing.T) {
 	h := NewInternalWatchHandler(pool, dsn, slog.Default(), 0, allowAllVisibility(resumeIDs...))
 	fs := &fakeWatchStream{ctx: ctx}
 	// resume from the 3rd row → expect exactly the last 2 rows.
-	_, err = h.streamSince(ctx, conn, seqs[2], nil, watchTestSubject, fs)
+	_, err = h.streamSince(ctx, conn, seqs[2], nil, fs)
 	require.NoError(t, err)
 
 	require.Len(t, fs.sent, 2, "resume must skip rows with sequence_no <= cursor")
@@ -205,7 +205,7 @@ func TestIntegration_WatchStreamSince_BadPayloadFallback(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test")
 	}
-	ctx := context.Background()
+	ctx := ctxWithUser(context.Background(), "usr_alice")
 	dsn := setupWatchDB(t)
 	pool, err := coredb.NewPool(ctx, dsn)
 	require.NoError(t, err)
@@ -222,7 +222,7 @@ func TestIntegration_WatchStreamSince_BadPayloadFallback(t *testing.T) {
 
 	h := NewInternalWatchHandler(pool, dsn, slog.Default(), 0, allowAllVisibility("epi-bad"))
 	fs := &fakeWatchStream{ctx: ctx}
-	_, err = h.streamSince(ctx, conn, 0, nil, watchTestSubject, fs)
+	_, err = h.streamSince(ctx, conn, 0, nil, fs)
 	require.NoError(t, err)
 
 	require.Len(t, fs.sent, 1, "bad-payload row must still be delivered (fallback), not dropped")

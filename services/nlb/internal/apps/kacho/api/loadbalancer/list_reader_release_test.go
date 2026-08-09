@@ -11,8 +11,11 @@ import (
 
 	lbv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/loadbalancer/v1"
 
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
+	iamv1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/iam/v1"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
+	"google.golang.org/grpc"
 )
 
 // The read-TX is a BORROWED POOL CONNECTION, so the order in which List does its
@@ -69,8 +72,11 @@ func (rd *releaseTrackingReader) Close() error {
 	return rd.inner.Close()
 }
 
-// readerStateProbe stands in for the visibility filter and records what the reader
-// ledger said at the instant the caller's rights were asked about.
+// readerStateProbe records the reader ledger at the instant rights are asked about.
+//
+// Наблюдение переехало на СОСЕДА: сужатель теперь один на дерево, и подставлять его
+// целиком значило бы наблюдать не тот момент. Момент, ради которого проба написана,
+// — сетевой вопрос к kacho-iam, и он здесь и перехватывается.
 type readerStateProbe struct {
 	repo         *releaseTrackingRepo
 	calls        int
@@ -78,12 +84,17 @@ type readerStateProbe struct {
 	closedAtCall int
 }
 
-var _ authzfilter.Filter = (*readerStateProbe)(nil)
+var _ listnarrow.AuthorizeClient = (*readerStateProbe)(nil)
 
-func (p *readerStateProbe) FilterVisibleIDs(_ context.Context, _, _, _ string, ids []string) ([]string, error) {
+func (p *readerStateProbe) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckRequest,
+	_ ...grpc.CallOption) (*iamv1.BatchAuthorizeCheckResponse, error) {
 	p.calls++
 	p.openedAtCall, p.closedAtCall = p.repo.opened, p.repo.closed
-	return ids, nil
+	out := make([]*iamv1.AuthorizeCheckResponse, 0, len(in.GetChecks()))
+	for range in.GetChecks() {
+		out = append(out, &iamv1.AuthorizeCheckResponse{Allowed: true})
+	}
+	return &iamv1.BatchAuthorizeCheckResponse{Responses: out}, nil
 }
 
 // TestListLoadBalancers_ReleasesReaderBeforeAuthz — the pooled read-TX must be
@@ -94,7 +105,7 @@ func TestListLoadBalancers_ReleasesReaderBeforeAuthz(t *testing.T) {
 	seedLB(t, repo.fakeRepo, "prj-a", "lb-a1")
 
 	probe := &readerStateProbe{repo: repo}
-	uc := NewListLoadBalancersUseCase(repo, probe)
+	uc := NewListLoadBalancersUseCase(repo, narrowtest.New(probe))
 
 	resp, err := uc.Execute(ctxWithUser("usr_alice"),
 		&lbv1.ListNetworkLoadBalancersRequest{ProjectId: "prj-a"})

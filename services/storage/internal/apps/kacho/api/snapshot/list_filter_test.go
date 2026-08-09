@@ -14,6 +14,8 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	corevalidate "github.com/PRO-Robotech/kacho/pkg/validate"
 
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/authzfilter"
@@ -21,32 +23,6 @@ import (
 	storageerr "github.com/PRO-Robotech/kacho/services/storage/internal/errors"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/repo/repomock"
 )
-
-// fakeListFilter — фейк порта per-object видимости (authzfilter.Filter).
-type fakeListFilter struct {
-	allow map[string]bool
-	err   error
-
-	calls   int
-	subject string
-	resType string
-	action  string
-}
-
-func (f *fakeListFilter) FilterVisibleIDs(_ context.Context, subject, resourceType, action string, ids []string) ([]string, error) {
-	f.calls++
-	f.subject, f.resType, f.action = subject, resourceType, action
-	if f.err != nil {
-		return nil, f.err
-	}
-	out := make([]string, 0, len(ids))
-	for _, id := range ids {
-		if f.allow[id] {
-			out = append(out, id)
-		}
-	}
-	return out, nil
-}
 
 func aliceCtx() context.Context {
 	return operations.WithPrincipal(context.Background(),
@@ -60,7 +36,7 @@ func snapPage() []*domain.Snapshot {
 	}
 }
 
-func newListUC(repo snapshot.Repo, f authzfilter.Filter) *snapshot.UseCase {
+func newListUC(repo snapshot.Repo, f *listnarrow.Narrower) *snapshot.UseCase {
 	return snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithListFilter(f)
 }
 
@@ -75,7 +51,7 @@ func repoReturning(page []*domain.Snapshot, next string) *repomock.SnapshotRepo 
 // TestList_HidesSnapshotsWithoutPerObjectGrant — член проекта не имеет права видеть
 // снимок, на который у него нет per-object гранта (дыра видимости storage).
 func TestList_HidesSnapshotsWithoutPerObjectGrant(t *testing.T) {
-	f := &fakeListFilter{allow: map[string]bool{"snp00000000000000001": true}}
+	f, peer := narrowtest.Recording("snp00000000000000001")
 	uc := newListUC(repoReturning(snapPage(), "next-tok"), f)
 
 	got, next, err := uc.List(aliceCtx(), snapshot.Pagination{ProjectID: "prj-1", PageSize: 50})
@@ -92,17 +68,17 @@ func TestList_HidesSnapshotsWithoutPerObjectGrant(t *testing.T) {
 	if next != "next-tok" {
 		t.Fatalf("next page token = %q, want preserved cursor", next)
 	}
-	if f.calls != 1 || f.subject != "user:usr_alice" ||
-		f.resType != authzfilter.ResourceTypeSnapshot || f.action != authzfilter.ActionSnapshotList {
+	if peer.Calls != 1 || peer.Subject != "user:usr_alice" ||
+		peer.ResourceType != authzfilter.ResourceTypeSnapshot || peer.Action != authzfilter.ActionSnapshotList {
 		t.Fatalf("filter asked calls=%d subject=%q (%q,%q); want 1 batched call for (%q,%q) as user:usr_alice",
-			f.calls, f.subject, f.resType, f.action,
+			peer.Calls, peer.Subject, peer.ResourceType, peer.Action,
 			authzfilter.ResourceTypeSnapshot, authzfilter.ActionSnapshotList)
 	}
 }
 
 // TestList_FilterErrorIsFailClosed — ошибка iam не отдаёт нефильтрованную страницу.
 func TestList_FilterErrorIsFailClosed(t *testing.T) {
-	f := &fakeListFilter{err: status.Error(codes.Unavailable, "list filter: iam unreachable")}
+	f := narrowtest.Failing(status.Error(codes.Unavailable, "list filter: iam unreachable"))
 	uc := newListUC(repoReturning(snapPage(), ""), f)
 
 	got, _, err := uc.List(aliceCtx(), snapshot.Pagination{ProjectID: "prj-1", PageSize: 50})
@@ -114,26 +90,32 @@ func TestList_FilterErrorIsFailClosed(t *testing.T) {
 	}
 }
 
-// TestList_NoPrincipalYieldsEmptyPage — запрос без caller-identity не обходит фильтр.
-func TestList_NoPrincipalYieldsEmptyPage(t *testing.T) {
-	f := &fakeListFilter{allow: map[string]bool{
-		"snp00000000000000001": true, "snp00000000000000002": true,
-	}}
+// TestList_NoPrincipalIsRefused — запрос без caller-identity получает ОТКАЗ.
+//
+// Полярность сменилась: прежде здесь была пустая страница. «Пусто» неотличимо от
+// «личность потеряна по дороге», и именно этим неразличением класс живёт годами.
+// Сужатель тут разрешает всё — значит отказ приходит именно с линии личности, а не
+// «потому что всё сломано».
+func TestList_NoPrincipalIsRefused(t *testing.T) {
+	f, peer := narrowtest.Recording("snp00000000000000001", "snp00000000000000002")
 	uc := newListUC(repoReturning(snapPage(), ""), f)
 
 	got, _, err := uc.List(context.Background(), snapshot.Pagination{ProjectID: "prj-1", PageSize: 50})
-	if err != nil {
-		t.Fatalf("List: %v", err)
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("List without a caller principal: code = %v, want Unauthenticated", status.Code(err))
 	}
 	if len(got) != 0 {
-		t.Fatalf("List without a caller principal returned %d rows, want 0 (fail-closed)", len(got))
+		t.Fatalf("List without a caller principal returned %d rows, want 0", len(got))
+	}
+	if peer.Calls != 0 {
+		t.Fatalf("no identity means there is nothing to ask the model about (calls=%d)", peer.Calls)
 	}
 }
 
 // TestList_PaginationValidatedBeforeVisibilityShortCircuit — формат страничных
 // параметров отвергается ДО любого authz-решения (даже без principal'а).
 func TestList_PaginationValidatedBeforeVisibilityShortCircuit(t *testing.T) {
-	f := &fakeListFilter{}
+	f, peer := narrowtest.Recording()
 	repo := &repomock.SnapshotRepo{
 		ListFunc: func(_ context.Context, p snapshot.Pagination) ([]*domain.Snapshot, string, error) {
 			if p.PageToken == "" {
@@ -154,7 +136,7 @@ func TestList_PaginationValidatedBeforeVisibilityShortCircuit(t *testing.T) {
 	}); status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("garbage page_token = %v, want InvalidArgument", status.Code(err))
 	}
-	if f.calls != 0 {
-		t.Fatalf("filter must not be consulted for a malformed request (calls=%d)", f.calls)
+	if peer.Calls != 0 {
+		t.Fatalf("filter must not be consulted for a malformed request (calls=%d)", peer.Calls)
 	}
 }

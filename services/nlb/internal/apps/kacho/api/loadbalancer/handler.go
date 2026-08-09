@@ -24,7 +24,7 @@ import (
 	operationpb "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/operation"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 )
 
 // Handler реализует lbv1.NetworkLoadBalancerServiceServer.
@@ -64,7 +64,7 @@ func NewHandler(
 	peerSubnet SubnetClient,
 	peerAddress AddressClient,
 	peerInternalAddr InternalAddressClient,
-	listFilter authzfilter.Filter,
+	listFilter *listnarrow.Narrower,
 	logger *slog.Logger,
 ) *Handler {
 	if logger == nil {

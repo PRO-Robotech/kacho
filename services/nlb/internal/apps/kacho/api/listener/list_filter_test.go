@@ -17,49 +17,15 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/ids"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // RBAC  per-object filtered List — Listener.
 // Страница из БД сужается per-object проверкой (iam BatchCheck, viewer ∪ v_list);
 // no-leak / fail-closed / passthrough — как в loadbalancer/list_filter_test.go.
-
-type fakeListFilter struct {
-	bypass  bool
-	err     error
-	allowed map[string][]string
-	gotSubj string
-	gotType string
-	gotAct  string
-	gotIDs  []string
-}
-
-// Compile-time guard: the fake must implement the real port — a drift in the
-// filter's signature must break here, not silently skip the authz layer.
-var _ authzfilter.Filter = (*fakeListFilter)(nil)
-
-func (f *fakeListFilter) FilterVisibleIDs(_ context.Context, subject, resourceType, action string, ids []string) ([]string, error) {
-	f.gotSubj, f.gotType, f.gotAct, f.gotIDs = subject, resourceType, action, ids
-	if f.err != nil {
-		return nil, f.err
-	}
-	if f.bypass {
-		return ids, nil
-	}
-	allowed := make(map[string]struct{}, len(f.allowed[resourceType]))
-	for _, id := range f.allowed[resourceType] {
-		allowed[id] = struct{}{}
-	}
-	out := make([]string, 0, len(ids))
-	for _, id := range ids {
-		if _, ok := allowed[id]; ok {
-			out = append(out, id)
-		}
-	}
-	return out, nil
-}
 
 func ctxWithUser(id string) context.Context {
 	return operations.WithPrincipal(context.Background(),
@@ -95,9 +61,7 @@ func TestListListenersFilter_OnlyAccessible(t *testing.T) {
 	b := seedListenerLF(t, repo, "prj-a", "nlb_lb1", "l-a2")
 	_ = seedListenerLF(t, repo, "prj-a", "nlb_lb1", "l-a3") // НЕ в гранте
 
-	flt := &fakeListFilter{allowed: map[string][]string{
-		"nlb_listener": {a, b},
-	}}
+	flt, peer := narrowtest.Recording(a, b)
 	uc := NewListUseCase(repo, flt)
 
 	resp, err := uc.Run(ctxWithUser("usr_alice"),
@@ -111,9 +75,9 @@ func TestListListenersFilter_OnlyAccessible(t *testing.T) {
 	assert.True(t, got[a])
 	assert.True(t, got[b])
 
-	assert.Equal(t, "user:usr_alice", flt.gotSubj)
-	assert.Equal(t, "nlb_listener", flt.gotType)
-	assert.Equal(t, "loadbalancer.listeners.list", flt.gotAct)
+	assert.Equal(t, "user:usr_alice", peer.Subject)
+	assert.Equal(t, "nlb_listener", peer.ResourceType)
+	assert.Equal(t, "loadbalancer.listeners.list", peer.Action)
 }
 
 // no-leak: пустой грант → пустой List.
@@ -121,7 +85,7 @@ func TestListListenersFilter_EmptyGrantEmptyList(t *testing.T) {
 	repo := newFakeRepo()
 	seedListenerLF(t, repo, "prj-a", "nlb_lb1", "l-secret")
 
-	flt := &fakeListFilter{allowed: map[string][]string{}}
+	flt := narrowtest.Allowing()
 	uc := NewListUseCase(repo, flt)
 
 	resp, err := uc.Run(ctxWithUser("usr_bob"),
@@ -135,7 +99,7 @@ func TestListListenersFilter_FailClosed(t *testing.T) {
 	repo := newFakeRepo()
 	seedListenerLF(t, repo, "prj-a", "nlb_lb1", "l-a1")
 
-	flt := &fakeListFilter{err: status.Error(codes.Unavailable, "iam down")}
+	flt := narrowtest.Failing(status.Error(codes.Unavailable, "iam down"))
 	uc := NewListUseCase(repo, flt)
 
 	_, err := uc.Run(ctxWithUser("usr_alice"),

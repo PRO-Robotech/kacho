@@ -19,6 +19,8 @@ import (
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
 	kachorepo "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 )
 
 // TestHandler_RoutesEachRPC — smoke-tests that Handler thin-transport correctly
@@ -66,7 +68,7 @@ func TestHandler_RoutesEachRPC(t *testing.T) {
 	opsListener := seedListener("handler-ops", 8084)
 
 	ops := newFakeOpsRepo()
-	h := NewHandler(repo, ops, allowAll(), slog.Default())
+	h := NewHandler(repo, ops, narrowtest.AllowingAll(), slog.Default())
 
 	t.Run("Get", func(t *testing.T) {
 		t.Parallel()

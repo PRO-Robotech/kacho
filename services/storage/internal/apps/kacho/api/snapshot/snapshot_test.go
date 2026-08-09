@@ -15,6 +15,7 @@ import (
 
 	storagev1 "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/storage/v1"
 
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow/narrowtest"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/api/snapshot"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/apps/kacho/shared/serviceerr"
 	"github.com/PRO-Robotech/kacho/services/storage/internal/domain"
@@ -31,7 +32,7 @@ func TestGetMalformedID(t *testing.T) {
 			return nil, nil
 		},
 	}
-	uc := snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithListFilter(narrowtest.AllowingAll())
 	_, err := uc.Get(context.Background(), "not-a-snp-id")
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("Get malformed code = %v, want InvalidArgument", status.Code(err))
@@ -53,7 +54,7 @@ func TestGetWellFormedDelegates(t *testing.T) {
 			return want, nil
 		},
 	}
-	uc := snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithListFilter(narrowtest.AllowingAll())
 	got, err := uc.Get(context.Background(), wantID)
 	if err != nil || got != want {
 		t.Fatalf("Get = (%+v, %v)", got, err)
@@ -108,7 +109,7 @@ func TestListRequiresProjectID(t *testing.T) {
 			return nil, "", nil
 		},
 	}
-	uc := snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
+	uc := snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithListFilter(narrowtest.AllowingAll())
 	_, _, err := uc.List(context.Background(), snapshot.Pagination{PageSize: 50})
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("List empty projectId code = %v, want InvalidArgument", status.Code(err))
@@ -128,8 +129,8 @@ func TestListWithProjectIDDelegates(t *testing.T) {
 			return []*domain.Snapshot{{ID: "snp00000000000000000", ProjectID: p.ProjectID}}, "", nil
 		},
 	}
-	uc := snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus)
-	got, _, err := uc.List(context.Background(), snapshot.Pagination{PageSize: 50, ProjectID: "prj-1"})
+	uc := snapshot.New(repo, &repomock.PeerClient{}, nil, serviceerr.ToStatus).WithListFilter(narrowtest.AllowingAll())
+	got, _, err := uc.List(narrowtest.Caller(), snapshot.Pagination{PageSize: 50, ProjectID: "prj-1"})
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}

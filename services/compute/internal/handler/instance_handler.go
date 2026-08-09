@@ -18,6 +18,8 @@ import (
 	"github.com/PRO-Robotech/kacho/services/compute/internal/authzfilter"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/domain"
 	"github.com/PRO-Robotech/kacho/services/compute/internal/protoconv"
+
+	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
 )
 
 // InstanceHandler реализует computev1.InstanceServiceServer (тонкий transport-слой).
@@ -33,12 +35,12 @@ import (
 type InstanceHandler struct {
 	computev1.UnimplementedInstanceServiceServer
 	svc        *instance.InstanceService
-	listFilter authzfilter.Filter
+	listFilter *listnarrow.Narrower
 }
 
 // NewInstanceHandler создаёт InstanceHandler. listFilter может быть nil — тогда
 // FGA-фильтрация на List отключена (dev/breakglass).
-func NewInstanceHandler(s *instance.InstanceService, listFilter authzfilter.Filter) *InstanceHandler {
+func NewInstanceHandler(s *instance.InstanceService, listFilter *listnarrow.Narrower) *InstanceHandler {
 	return &InstanceHandler{svc: s, listFilter: listFilter}
 }
 
@@ -74,7 +76,7 @@ func (h *InstanceHandler) List(ctx context.Context, req *computev1.ListInstances
 	if err != nil {
 		return nil, err
 	}
-	visible, err := filterVisible(ctx, h.listFilter,
+	visible, err := listnarrow.Page(ctx, h.listFilter,
 		authzfilter.ResourceTypeInstance, authzfilter.ActionInstanceRead, ins,
 		func(in *domain.Instance) string { return in.ID })
 	if err != nil {

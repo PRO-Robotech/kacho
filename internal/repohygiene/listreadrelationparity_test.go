@@ -126,6 +126,15 @@ var (
 // мёртвая запись делает узнавание уже, чем гейт о себе заявляет.
 var relationStoreQuestions = []string{"Check", "CheckWithContext", "BatchCheck"}
 
+// sharedNarrowerImportPath — общий сужатель списков. Пакет сервиса, который его
+// импортирует и при этом объявляет предикат страницы, задаёт вопрос хранилищу прав
+// ЧЕРЕЗ него — и подлежит той же сверке, что и пакет, спрашивающий сам.
+//
+// Предпосылка проверяется: TestListReadRelationParity_PremiseHolds требует, чтобы
+// импорт оставался живым хотя бы у одного пакета, иначе третья форма узнавания
+// молча перестала бы что-либо узнавать.
+const sharedNarrowerImportPath = "github.com/PRO-Robotech/kacho/pkg/listnarrow"
+
 // listReadCatalogEntry — запись сгенерированного каталога прав (нужные поля).
 type listReadCatalogEntry struct {
 	FQN              string `json:"fqn"`
@@ -437,6 +446,21 @@ func discoverPageFilters(t *testing.T, root string) (pkgs []pageFilterPkg, files
 			})
 		}
 
+		// Третья форма узнавания: пакет ОБЪЯВЛЯЕТ предикат и ПЕРЕДАЁТ его общему
+		// сужателю.
+		//
+		// Она заведена вместе с переносом механики в `pkg/listnarrow`. До переноса
+		// «фильтрует страницу» и «спрашивает хранилище прав» лежали в одном пакете, и
+		// двух признаков хватало. После переноса у сервиса остаётся ровно то, что у
+		// него СВОЁ — словарь ресурсов и предикат, — а вопрос задаёт общий код;
+		// два прежних признака перестают выполняться, и четыре сервиса ушли бы
+		// из-под сверки МОЛЧА, оставив гейт зелёным на том, что он больше не читает.
+		//
+		// Признак — значение, а не написание: передача предиката общему сужателю
+		// видна по ИМПОРТУ его пакета, а не по имени переменной или функции.
+		if p.imports[sharedNarrowerImportPath] && p.declares() {
+			p.pageShape, p.relStore = true, true
+		}
 		if !p.pageShape || !p.relStore {
 			continue
 		}
@@ -1391,4 +1415,64 @@ func TestListReadRelationParity_CatchesTheFifthInstance(t *testing.T) {
 	}
 	t.Logf("инъекция: союз возвращён %d типам (%v) → %d находок, координата названа",
 		len(restored), restored, len(got))
+}
+
+// TestListReadRelationParity_SeesDeclarersThatDelegateToTheSharedNarrower —
+// инъекция ТРЕТЬЕЙ формы узнавания, в обе стороны.
+//
+// Форма заведена вместе с переносом механики в общий фундамент: у сервиса остаётся
+// словарь и предикат, а вопрос задаёт общий код. Два прежних признака («функция
+// формы страницы» + «зовёт хранилище прав») при этом перестают выполняться, и без
+// третьего четыре сервиса ушли бы из-под сверки МОЛЧА — гейт остался бы зелёным на
+// том, чего больше не читает. Это и есть класс, который он ловит у других.
+//
+// Половина «краснеет» здесь достигается не подменой предиката, а самим фактом
+// УЗНАВАНИЯ: если форма не узнаётся, пакета нет в переписи, и сверять нечего.
+func TestListReadRelationParity_SeesDeclarersThatDelegateToTheSharedNarrower(t *testing.T) {
+	root := repoRoot(t)
+	pkgs, _ := discoverPageFilters(t, root)
+
+	byDir := map[string]pageFilterPkg{}
+	for _, p := range pkgs {
+		byDir[p.dir] = p
+	}
+
+	// (а) положительная сторона: каждый сервис, отдавший механику общему сужателю,
+	// ОБЯЗАН быть в переписи и объявлять предикат. Иначе он вне сверки.
+	delegators := []string{
+		"services/vpc/internal/authzfilter",
+		"services/compute/internal/authzfilter",
+		"services/nlb/internal/authzfilter",
+		"services/storage/internal/authzfilter",
+	}
+	for _, dir := range delegators {
+		p, ok := byDir[dir]
+		if !ok {
+			t.Errorf("%s передаёт предикат общему сужателю, но гейтом НЕ УЗНАН: "+
+				"он вне сверки, и его расхождение с каталогом не покраснеет ни при каком значении", dir)
+			continue
+		}
+		if !p.declares() {
+			t.Errorf("%s узнан, но предиката не объявляет — сверять не с чем", dir)
+			continue
+		}
+		if !p.imports[sharedNarrowerImportPath] {
+			t.Errorf("%s узнан НЕ по передаче предиката общему сужателю — предпосылка формы не выполняется", dir)
+		}
+	}
+
+	// (б) отрицательная сторона: узнавание держится на ЗНАЧЕНИИ (импорт + объявление),
+	// а не на месте в дереве. Пакет с тем же импортом, но БЕЗ предиката, третьей формой
+	// не узнаётся — иначе гейт считал бы фильтром любого потребителя общего кода.
+	probe := &pageFilterPkg{
+		dir:     "services/probe/internal/consumer",
+		service: "probe",
+		imports: map[string]bool{sharedNarrowerImportPath: true},
+	}
+	if probe.declares() {
+		t.Fatalf("предпосылка пробы сломана: у неё не должно быть объявления")
+	}
+	if probe.imports[sharedNarrowerImportPath] && probe.declares() {
+		t.Errorf("пакет без предиката признан фильтром страницы — узнавание ловит импорт, а не предмет")
+	}
 }

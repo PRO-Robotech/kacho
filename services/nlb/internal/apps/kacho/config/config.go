@@ -254,6 +254,17 @@ type AuthzListFilterConfig struct {
 	// FailOpen — на FGA error: false (default) → Unavailable (fail-closed,
 	// security.md); true → bypass + audit-warn (dev escape-hatch).
 	FailOpen bool `mapstructure:"fail-open"`
+
+	// Breakglass — аварийный режим: когда модели прав на этой посадке нет вовсе
+	// (`enabled=false` либо соединение с kacho-iam не собрано), списки отдаются
+	// НЕсуженными вместо отказа.
+	//
+	// Он остаётся явным исключением, а не умолчанием: прежде «фильтр выключен» само
+	// по себе означало сквозной проход, и вся защита держалась на загрузочном страже
+	// — то есть существовала ровно до первой конфигурации, которая его не взвела.
+	// Теперь пропуск требуется ОБЪЯВИТЬ, и каждое срабатывание считается и
+	// называется (`listnarrow.Counts`).
+	Breakglass bool `mapstructure:"breakglass"`
 }
 
 // AuthzIAMConfig — параметры ВЫЗОВА per-RPC Check. Адрес здесь НЕ живёт:

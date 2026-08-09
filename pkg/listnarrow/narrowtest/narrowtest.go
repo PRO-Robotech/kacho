@@ -26,6 +26,10 @@ import (
 type Peer struct {
 	// Allow — идентификаторы, которые видимы. nil при AllowAll=false → не видно ничего.
 	Allow map[string]bool
+	// AllowRel — разрешение ПО ПАРЕ (идентификатор, отношение). Нужно там, где
+	// предмет вопроса — распоряжение объектом, а не членство строки в странице: там
+	// отношения передаются явно и различать их обязательно.
+	AllowRel map[string]map[string]bool
 	// AllowAll — видно всё, что спросили.
 	AllowAll bool
 	// Err — если задана, возвращается вместо ответа (отказ соседа).
@@ -62,9 +66,11 @@ func (p *Peer) BatchCheck(_ context.Context, in *iamv1.BatchAuthorizeCheckReques
 	}
 	out := make([]*iamv1.AuthorizeCheckResponse, 0, len(in.GetChecks()))
 	for _, c := range in.GetChecks() {
-		out = append(out, &iamv1.AuthorizeCheckResponse{
-			Allowed: p.AllowAll || p.Allow[c.GetResource().GetId()],
-		})
+		allowed := p.AllowAll || p.Allow[c.GetResource().GetId()]
+		if !allowed && p.AllowRel != nil {
+			allowed = p.AllowRel[c.GetResource().GetId()][c.GetRequiredRelation()]
+		}
+		out = append(out, &iamv1.AuthorizeCheckResponse{Allowed: allowed})
 	}
 	return &iamv1.BatchAuthorizeCheckResponse{Responses: out}, nil
 }
@@ -133,5 +139,16 @@ func Recording(allow ...string) (*listnarrow.Narrower, *Peer) {
 		set[id] = true
 	}
 	peer := &Peer{Allow: set}
+	return New(peer), peer
+}
+
+// AllowingRelations — сужатель, у которого сосед разрешает названные ОТНОШЕНИЯ на
+// названном объекте, вместе с самим соседом для утверждений о форме вопроса.
+func AllowingRelations(objectID string, relations ...string) (*listnarrow.Narrower, *Peer) {
+	rel := make(map[string]bool, len(relations))
+	for _, r := range relations {
+		rel[r] = true
+	}
+	peer := &Peer{AllowRel: map[string]map[string]bool{objectID: rel}}
 	return New(peer), peer
 }
