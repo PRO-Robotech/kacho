@@ -977,11 +977,18 @@ func (x *ListSubnetOperationsResponse) GetNextPageToken() string {
 }
 
 type ListUsedAddressesRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	SubnetId      string                 `protobuf:"bytes,1,opt,name=subnet_id,json=subnetId,proto3" json:"subnet_id,omitempty"`
-	PageSize      int64                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken     string                 `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	Filter        string                 `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	SubnetId  string                 `protobuf:"bytes,1,opt,name=subnet_id,json=subnetId,proto3" json:"subnet_id,omitempty"`
+	PageSize  int64                  `protobuf:"varint,2,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken string                 `protobuf:"bytes,3,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	// NOT ACCEPTED. The response is a subnet occupancy projection
+	// (address / ipVersion / references), not the Address resource, so there is no
+	// field a filter expression could name. A set value is refused synchronously
+	// with INVALID_ARGUMENT naming this field (accepted-and-ignored is not a
+	// lawful outcome). Kept on the contract rather than removed because the REST
+	// edge discards unknown query keys, so removal would turn a named refusal back
+	// into a silent 200 over an unnarrowed list.
+	Filter        string `protobuf:"bytes,4,opt,name=filter,proto3" json:"filter,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }

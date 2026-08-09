@@ -418,6 +418,14 @@ message ListUsedAddressesRequest {
   string subnet_id = 1 [(required) = true];
   int64 page_size = 2 [(value) = "0-1000"];
   string page_token = 3;
+
+  // NOT ACCEPTED. The response is a subnet occupancy projection
+  // (address / ipVersion / references), not the Address resource, so there is no
+  // field a filter expression could name. A set value is refused synchronously
+  // with INVALID_ARGUMENT naming this field (accepted-and-ignored is not a
+  // lawful outcome). Kept on the contract rather than removed because the REST
+  // edge discards unknown query keys, so removal would turn a named refusal back
+  // into a silent 200 over an unnarrowed list.
   string filter = 4;
 }
 
