@@ -49,6 +49,14 @@ interface TagProps {
   [key: string]: unknown;
 }
 
+interface ResultProps {
+  children?: React.ReactNode;
+  title?: React.ReactNode;
+  subTitle?: React.ReactNode;
+  extra?: React.ReactNode;
+  [key: string]: unknown;
+}
+
 interface AlertProps {
   children?: React.ReactNode;
   message?: React.ReactNode;
@@ -323,7 +331,17 @@ export function antdStub(): Record<string, unknown> {
     Menu: Component,
     Modal,
     Popconfirm: Component,
-    Result: Component,
+    // Настоящий `Result` показывает заголовок и пояснение; заменитель ронял их
+    // в атрибуты, и текст отказа (в т.ч. сообщение края) был ненаблюдаем.
+    Result: ({ children, title, subTitle, extra, ...rest }: ResultProps) =>
+      React.createElement(
+        "div",
+        domAttrs(rest),
+        React.createElement("div", null, title as React.ReactNode),
+        React.createElement("div", null, subTitle as React.ReactNode),
+        React.createElement("div", null, extra as React.ReactNode),
+        children,
+      ),
     Row: Component,
     Segmented: Component,
     Select,
