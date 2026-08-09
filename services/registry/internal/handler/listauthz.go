@@ -33,13 +33,6 @@ import (
 	"github.com/PRO-Robotech/kacho/services/registry/internal/domain"
 )
 
-// repoAuthzConcurrency — верхняя граница параллельных per-repo authz-Check при
-// row-фильтрации ОДНОЙ страницы каталога. Паритет с data-plane serveCatalog
-// (catalogAuthzConcurrency): fan-out в iam ограничен, а не «по одному синхронно».
-// Само число Check ограничивается окном page_size ДО фильтра (см. ListRepositories),
-// поэтому здесь только concurrency-bound.
-const repoAuthzConcurrency = 8
-
 // Authorizer — узкий порт per-repo authz-Check (InternalIAMService.Check →
 // OpenFGA/ReBAC). subject — FGA subject-строка ("user:usr_…" / "service_account:…"),
 // relation — verb-relation (v_list/v_delete), object — FGA object-строка. Реализуется
@@ -226,10 +219,10 @@ func (a repoAuthz) checkManyRefs(ctx context.Context, subject, objectType string
 // (200+empty, НЕ 403 — List не гейтится per-object Check). breakglass → все;
 // az-error → UNAVAILABLE (не отдаём нефильтрованный список — no-leak).
 //
-// Fan-out ограничен: сами Check выполняются bounded-concurrency (repoAuthzConcurrency)
-// — паритет с filterRepos/filterOperations (List latency не масштабируется линейно по
-// числу реестров страницы). Результат детерминирован (indexed slice сохраняет входной
-// порядок).
+// Вопрос задаётся ОДИН на всю страницу (checkManyRefs), а не по объекту: прежняя
+// редакция держала здесь ограниченный веер поштучных Check, и его верхняя граница
+// была отдельной константой. Механизма больше нет — вместе с ним снята и она.
+// Результат детерминирован (indexed slice сохраняет входной порядок).
 func (a repoAuthz) filterRegistries(ctx context.Context, regs []*domain.Registry) ([]*domain.Registry, error) {
 	subject, serr := callerSubject(ctx)
 	if serr != nil {
@@ -261,7 +254,7 @@ func (a repoAuthz) filterRegistries(ctx context.Context, regs []*domain.Registry
 //
 // Fan-out ограничен: (1) вызывающий (ListRepositories) передаёт УЖЕ окно page_size
 // (bounded число Check per RPC — anti-DoS, CWE-770), (2) сами Check выполняются
-// bounded-concurrency (repoAuthzConcurrency) — паритет с data-plane serveCatalog.
+// одним пакетным вопросом на страницу — паритет с data-plane serveCatalog.
 // Результат детерминирован (indexed slice сохраняет входной порядок имён ASC).
 func (a repoAuthz) filterRepos(ctx context.Context, registryID string, repos []*domain.Repository) ([]*domain.Repository, error) {
 	subject, serr := callerSubject(ctx)
@@ -318,7 +311,7 @@ func (a repoAuthz) filterRepos(ctx context.Context, registryID string, repos []*
 // use-case'ом по resource_id=registryID, а доверять registry_id из metadata для
 // построения authz-объекта незачем. breakglass → все; az-error → UNAVAILABLE
 // (fail-closed, не отдаём частичный список — паритет с filterRepos/filterRegistries).
-// Fan-out bounded-concurrency (repoAuthzConcurrency), детерминированный порядок.
+// Один пакетный вопрос на страницу, детерминированный порядок.
 func (a repoAuthz) filterOperations(ctx context.Context, registryID string, ops []operations.Operation) ([]operations.Operation, error) {
 	subject, serr := callerSubject(ctx)
 	if serr != nil {

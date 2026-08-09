@@ -51,6 +51,13 @@ var (
 
 	// ReasonResourceNotFound — direct-read: own-owned id корректен, строки в
 	// своей БД нет.
+	//
+	// #nosec G101 -- это МАШИННЫЙ ПРИЗНАК ПОЛОСЫ ОТКАЗА, уезжающий клиенту в
+	// деталях ответа, а не секрет. Эвристика статического анализа ключуется на
+	// форме имени (заглавные с подчёркиваниями рядом со строковым литералом) и
+	// не различает токен контракта и учётные данные. Все пять токенов этого
+	// набора публичны by design: клиент машинно различает по ним полосы вместо
+	// разбора прозы сообщения.
 	ReasonResourceNotFound = Reason{token: "RESOURCE_NOT_FOUND", code: codes.NotFound}
 
 	// ReasonPeerResourceMissing — peer-validate: чужой id не существует у
@@ -64,6 +71,9 @@ var (
 
 	// ReasonPeerUnavailable — peer-validate: владелец недоступен. Fail-closed
 	// для мутаций — непроверяемое предусловие не считается выполненным.
+	//
+	// #nosec G101 -- см. обоснование у ReasonResourceNotFound: публичный признак
+	// полосы, не секрет.
 	ReasonPeerUnavailable = Reason{token: "PEER_UNAVAILABLE", code: codes.Unavailable}
 )
 

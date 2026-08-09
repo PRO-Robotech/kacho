@@ -393,7 +393,8 @@ were "carried but never read" are now absent, and the dead-field class (CWE-561)
 construction rather than by review.
 
 The ten entries are unchanged in what they DO: per-repo enforcement still lives in
-`internal/handler/listauthz.go`, bounded at `repoAuthzConcurrency`. What changed is that the
+`internal/handler/listauthz.go`, now asked as ONE batched question per page (the bounded
+fan-out of per-object checks, and the constant that capped it, are gone). What changed is that the
 catalog now says so — those ten rows read `<exempt>` before, which stated only "the edge does not
 check" and promised nothing about anyone else checking. `scope_filtered` is the positive form of
 the same fact, and it additionally requires an authenticated principal at the edge, which

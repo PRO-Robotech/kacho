@@ -111,7 +111,11 @@ func HierarchicalRelations() []Relation {
 // applies unchanged.
 const (
 	PublicReadRelation Relation = "v_get"
-	PublicReadSubject           = "user:*"
+	// Тип назван явно: в группе констант вторая строка без типа унаследовала бы
+	// не тип соседа, а нетипизированную константу — и `PublicReadSubject` стал бы
+	// строкой там, где рядом стоит `Relation`. Читается как «оба одного типа»,
+	// проверяется компилятором как разные.
+	PublicReadSubject string = "user:*"
 )
 
 // publicReadObjectTypes — the CLOSED list of object types for which publicness is a
