@@ -13,6 +13,13 @@ jest.unstable_mockModule("@monaco-editor/react", () => ({
   default: (props: React.HTMLAttributes<HTMLDivElement>) => React.createElement("div", props),
 }));
 
+interface ModalProps {
+  open?: boolean;
+  title?: React.ReactNode;
+  footer?: React.ReactNode;
+  children?: React.ReactNode;
+}
+
 jest.unstable_mockModule("antd", () => {
   const Component = ({ children, ...props }: React.PropsWithChildren<Record<string, unknown>>) =>
     React.createElement("div", props, children);
@@ -40,7 +47,22 @@ jest.unstable_mockModule("antd", () => {
     useForm: () => [{}],
     useWatch: () => undefined,
   });
-  const Modal = Object.assign(Component, {
+  // Настоящее окно antd СКРЫВАЕТ содержимое при `open=false` и показывает свои
+  // заголовок и подвал. Прежний заменитель рисовал детей всегда и терял и то и
+  // другое: утверждение «после клика окно показало X» проходило до клика, а
+  // текст заголовка/кнопок подвала был ненаблюдаем вовсе. Заменитель обязан
+  // выполнять контракт настоящего, иначе проба закрепляет его форму.
+  const ModalRoot = ({ open, title, footer, children, ...props }: ModalProps) =>
+    open === false
+      ? null
+      : React.createElement(
+          "div",
+          { role: "dialog", ...props },
+          React.createElement("div", null, title as React.ReactNode),
+          React.createElement("div", null, children),
+          React.createElement("div", null, footer as React.ReactNode),
+        );
+  const Modal = Object.assign(ModalRoot, {
     confirm: jest.fn(),
     destroyAll: jest.fn(),
   });

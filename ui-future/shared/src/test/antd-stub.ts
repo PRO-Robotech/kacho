@@ -28,6 +28,65 @@ interface MockColumn {
   render?: (value: unknown, row: unknown, index: number) => React.ReactNode;
 }
 
+interface SelectOption {
+  value: unknown;
+  label?: React.ReactNode;
+}
+
+interface SelectProps {
+  children?: React.ReactNode;
+  options?: SelectOption[];
+  onChange?: (value: string, option?: SelectOption) => void;
+  value?: string;
+  placeholder?: React.ReactNode;
+  [key: string]: unknown;
+}
+
+interface TagProps {
+  children?: React.ReactNode;
+  closable?: boolean;
+  onClose?: (e: { preventDefault: () => void }) => void;
+  [key: string]: unknown;
+}
+
+interface ResultProps {
+  children?: React.ReactNode;
+  title?: React.ReactNode;
+  subTitle?: React.ReactNode;
+  extra?: React.ReactNode;
+  [key: string]: unknown;
+}
+
+interface AlertProps {
+  children?: React.ReactNode;
+  message?: React.ReactNode;
+  description?: React.ReactNode;
+}
+
+interface ButtonProps {
+  children?: React.ReactNode;
+  loading?: boolean;
+  disabled?: boolean;
+  onClick?: (e: React.MouseEvent) => void;
+  htmlType?: string;
+  [key: string]: unknown;
+}
+
+interface CardProps {
+  children?: React.ReactNode;
+  title?: React.ReactNode;
+  extra?: React.ReactNode;
+  [key: string]: unknown;
+}
+
+interface ModalRootProps {
+  children?: React.ReactNode;
+  open?: boolean;
+  className?: string;
+  style?: React.CSSProperties;
+  [key: string]: unknown;
+}
+
 interface MockTableProps {
   columns?: MockColumn[];
   dataSource?: unknown[];
@@ -55,12 +114,54 @@ function keyOf(row: unknown, rowKey: MockTableProps["rowKey"], index: number): s
   return index;
 }
 
+/**
+ * Только те свойства, которые настоящий компонент доносит до DOM: `data-*`,
+ * `aria-*`, `id`, `title`. Остальные (`width`, `destroyOnClose`, `maskClosable`,
+ * …) — параметры виджета: React ругается на них как на неизвестные атрибуты, а
+ * проба, которая начнёт их читать, будет утверждать форму дублёра.
+ */
+function domAttrs(props: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(props)) {
+    if (k.startsWith("data-") || k.startsWith("aria-") || k === "id" || k === "title") out[k] = v;
+  }
+  return out;
+}
+
 export function antdStub(): Record<string, unknown> {
   const Component = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
     React.createElement("div", props, children);
-  const Button = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
-    React.createElement("button", { type: "button", ...props }, children);
-  const Input = (props: AnyProps) => React.createElement("input", props);
+  // Настоящая кнопка antd в состоянии `loading` НЕ принимает нажатий (защита от
+  // повторной отправки), а её вид задаётся `type`/`size`/`danger` — это
+  // параметры виджета, а не атрибуты DOM. Заменитель, отдававший всё в DOM,
+  // делал повторную отправку возможной и ронял `type="primary"` в атрибут
+  // нативной кнопки.
+  const Button = ({ children, loading, disabled, onClick, htmlType, ...props }: ButtonProps) =>
+    React.createElement(
+      "button",
+      {
+        type: (htmlType as string) ?? "button",
+        disabled: Boolean(disabled) || Boolean(loading),
+        onClick,
+        className: props.className as string | undefined,
+        style: props.style as React.CSSProperties | undefined,
+        ...domAttrs(props),
+      },
+      children,
+    );
+  // Настоящее поле ввода показывает свои `prefix`/`suffix` (замок с причиной,
+  // единицы измерения). Заменитель ронял их, и объяснение «почему нельзя
+  // править» было ненаблюдаемо, хотя пользователь его видит.
+  const Input = ({ prefix, suffix, ...props }: AnyProps & { prefix?: React.ReactNode; suffix?: React.ReactNode }) =>
+    prefix || suffix
+      ? React.createElement(
+          "span",
+          null,
+          prefix as React.ReactNode,
+          React.createElement("input", props),
+          suffix as React.ReactNode,
+        )
+      : React.createElement("input", props);
   const Search = (props: AnyProps) => React.createElement("input", { type: "search", ...props });
   const Textarea = (props: AnyProps) => React.createElement("textarea", props);
 
@@ -102,8 +203,28 @@ export function antdStub(): Record<string, unknown> {
             ),
       ),
     );
-  const Select = ({ children, ...props }: React.PropsWithChildren<AnyProps>) =>
-    React.createElement("select", props, children);
+  // Настоящий `Select` рисует ВАРИАНТЫ и отдаёт в `onChange` выбранное
+  // ЗНАЧЕНИЕ (не DOM-событие). Заменитель-`<select>` с `options` в атрибуте не
+  // показывал ни одного варианта и передавал событие: состав списка был
+  // ненаблюдаем, а выбор — невоспроизводим, поэтому проба поневоле утверждала
+  // бы форму дублёра.
+  const Select = ({ children, options, onChange, value, placeholder, ...props }: SelectProps) =>
+    React.createElement(
+      "select",
+      {
+        ...props,
+        value: value ?? "",
+        onChange: (e: { target: { value: string } }) => {
+          const picked = (options ?? []).find((o) => String(o.value) === e.target.value);
+          onChange?.(e.target.value, picked);
+        },
+      },
+      React.createElement("option", { key: "__placeholder__", value: "" }, placeholder as React.ReactNode),
+      ...(options ?? []).map((o) =>
+        React.createElement("option", { key: String(o.value), value: String(o.value) }, o.label as React.ReactNode),
+      ),
+      children,
+    );
   // Настоящий `Checkbox` — это флажок с подписью. Прежде здесь стоял тот же
   // заменитель, что у текстового поля: у него нет ни роли флажка, ни `checked`
   // у цели события, поэтому настройка видимости колонок была ненаблюдаема
@@ -126,13 +247,27 @@ export function antdStub(): Record<string, unknown> {
     Header: Component,
     Sider: Component,
   });
+  // Настоящий `Form.Item` ПОКАЗЫВАЕТ подпись поля; заменитель ронял её в
+  // атрибут, поэтому «какие поля видит пользователь» было ненаблюдаемо, а
+  // проба о составе формы утверждала бы форму дублёра.
+  const FormItem = ({ children, label }: { children?: React.ReactNode; label?: React.ReactNode }) =>
+    React.createElement("div", null, React.createElement("label", null, label as React.ReactNode), children);
   const Form = Object.assign(Component, {
-    Item: Component,
+    Item: FormItem,
     List: Component,
     useForm: () => [{}],
     useWatch: () => undefined,
   });
-  const Modal = Object.assign(Component, {
+  // Настоящее модальное окно СКРЫВАЕТ своё содержимое, пока `open` ложно.
+  // Заменитель-`<div>` рисовал его всегда, и утверждение «после клика окно
+  // показало X» проходило ещё ДО клика — то есть проба закрепляла форму
+  // дублёра, а не наблюдаемое. Пропуск `open` (неуправляемое окно) сохраняет
+  // прежнее поведение: скрывать нечего.
+  const ModalRoot = ({ children, open, className, style, ...rest }: ModalRootProps) =>
+    open === false
+      ? null
+      : React.createElement("div", { className, style, role: "dialog", ...domAttrs(rest) }, children);
+  const Modal = Object.assign(ModalRoot, {
     confirm: jest.fn(),
     destroyAll: jest.fn(),
   });
@@ -156,13 +291,26 @@ export function antdStub(): Record<string, unknown> {
 
   return {
     __esModule: true,
-    Alert: Component,
+    // Настоящее уведомление показывает свои `message` и `description`;
+    // заменитель ронял их в атрибуты, и текст предупреждения был ненаблюдаем.
+    Alert: ({ children, message, description }: AlertProps) =>
+      React.createElement("div", { role: "alert" }, message as React.ReactNode, description as React.ReactNode, children),
     App: Component,
     AutoComplete: Input,
     Avatar: Component,
     Badge: Component,
     Button,
-    Card: Component,
+    // Настоящая карточка показывает свои заголовок и дополнение; заменитель
+    // ронял их в атрибуты, поэтому счётчик/подпись в шапке карточки были
+    // ненаблюдаемы вовсе.
+    Card: ({ children, title, extra, ...rest }: CardProps) =>
+      React.createElement(
+        "div",
+        domAttrs(rest),
+        React.createElement("div", null, title as React.ReactNode),
+        React.createElement("div", null, extra as React.ReactNode),
+        children,
+      ),
     Cascader: Select,
     Checkbox,
     Col: Component,
@@ -183,7 +331,17 @@ export function antdStub(): Record<string, unknown> {
     Menu: Component,
     Modal,
     Popconfirm: Component,
-    Result: Component,
+    // Настоящий `Result` показывает заголовок и пояснение; заменитель ронял их
+    // в атрибуты, и текст отказа (в т.ч. сообщение края) был ненаблюдаем.
+    Result: ({ children, title, subTitle, extra, ...rest }: ResultProps) =>
+      React.createElement(
+        "div",
+        domAttrs(rest),
+        React.createElement("div", null, title as React.ReactNode),
+        React.createElement("div", null, subTitle as React.ReactNode),
+        React.createElement("div", null, extra as React.ReactNode),
+        children,
+      ),
     Row: Component,
     Segmented: Component,
     Select,
@@ -193,8 +351,31 @@ export function antdStub(): Record<string, unknown> {
     Switch: Input,
     Table,
     Tabs: Component,
-    Tag: Component,
-    Tooltip: Component,
+    // Настоящий закрываемый `Tag` рисует крестик с доступным именем `close`
+    // (aria-label самого antd). Заменитель-`<div>` его не рисовал вовсе, и
+    // снятие элемента из набора было ненаблюдаемо — то есть проверялась
+    // только та половина виджета, где ничего не меняется.
+    Tag: ({ children, closable, onClose, color: _color, ...rest }: TagProps) =>
+      React.createElement(
+        "span",
+        rest,
+        children,
+        closable
+          ? React.createElement(
+              "button",
+              {
+                type: "button",
+                "aria-label": "close",
+                onClick: () => onClose?.({ preventDefault: () => {} }),
+              },
+              "\u00d7",
+            )
+          : null,
+      ),
+    // Подпись подсказки достаётся нативным `title`: у настоящего antd она видна
+    // при наведении, здесь — читается атрибутом. Пропасть она не может.
+    Tooltip: ({ children, title }: { children?: React.ReactNode; title?: React.ReactNode }) =>
+      React.createElement("span", title ? { title: String(title) } : {}, children),
     Tree: Component,
     Typography,
     theme,

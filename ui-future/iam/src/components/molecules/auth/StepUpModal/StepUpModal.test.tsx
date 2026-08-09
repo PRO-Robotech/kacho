@@ -34,7 +34,12 @@ let StepUpModal: typeof StepUpModalExport;
 
 const modal = () => screen.getByTestId("stepup-modal");
 /** `open` булев: React выкидывает атрибут при false, поэтому его наличие и есть состояние. */
-const isOpen = () => modal().hasAttribute("open");
+/**
+ * Закрытое окно НЕ показывает содержимого — это и есть наблюдаемое. Прежде
+ * состояние читалось атрибутом `open` подменённого узла, то есть утверждалась
+ * форма дублёра: настоящее окно antd при `open=false` содержимого не рисует.
+ */
+const isOpen = () => screen.queryByText(/дополнительной проверки безопасности/) !== null;
 
 describe("StepUpModal", () => {
   beforeAll(async () => {
