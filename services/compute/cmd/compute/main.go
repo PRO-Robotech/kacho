@@ -537,9 +537,14 @@ func validateAuthMode(cfg config.Config, logger *slog.Logger) (productionMode bo
 		// api-gateway, форжит x-kacho-principal-id: usr_<victim> и проходит FGA-Check
 		// как жертва (CWE-290 subject spoofing → tenant crossing). Поэтому production
 		// ОТКАЗЫВАЕТСЯ стартовать с plaintext-листенерами (раньше это гейтилось только
-		// в production-strict). Peer-рёбра (iam/geo/authz) остаются послаблением plain
-		// production (mesh-encrypted) — их строгий mTLS требует production-strict.
+		// в production-strict). Прочие peer-рёбра (project/geo/vpc/storage/register)
+		// остаются послаблением plain production (mesh-encrypted) — их строгий mTLS
+		// требует production-strict. Ребро проверки прав из этого послабления
+		// ВЫВЕДЕНО, см. requireAuthzEdgeTransport ниже.
 		if terr := insecureListenersInProduction(cfg); terr != nil {
+			return false, terr
+		}
+		if terr := requireAuthzEdgeTransport(cfg); terr != nil {
 			return false, terr
 		}
 		if terr := requireDBSSLMode(cfg); terr != nil {
@@ -578,6 +583,37 @@ func validateAuthMode(cfg config.Config, logger *slog.Logger) (productionMode bo
 	}
 	// breakglass в production сюда не доходит — отвергнут в самом начале функции.
 	return productionMode, nil
+}
+
+// requireAuthzEdgeTransport — транспорт ребра, несущего РЕШЕНИЕ о доступе, обязан
+// быть verified в ЛЮБОМ боевом режиме, а не только в строгом.
+//
+// Ребро compute→iam (per-RPC InternalIAMService.Check) несёт и вердикт о доступе,
+// и переданную личность вызывающего. Невзведённая ручка не даёт ошибки сама по
+// себе: grpcclient.TLSClientTransportCreds на Enable=false возвращает
+// insecure-creds БЕЗ ошибки — процесс поднимается, отчитывается «authz enabled», и
+// каждый Check уходит по открытому каналу.
+//
+// Прежде требование стояло только в production-strict, и это было записанным
+// послаблением. Оно снято: обычный production не является более слабой посадкой —
+// это та же посадка, а страж, не срабатывающий в ней, есть контроль, чья ветка не
+// исполнялась ни разу за свою жизнь.
+//
+// Страж читает ТЕ ЖЕ предикаты, что и проводка: соединение поднимается ровно
+// когда задан адрес (main.go: `if cfg.AuthZIAMGRPCAddr != ""`), а аварийный режим
+// снимает проверку целиком. Поэтому «страж увидел ребро» ⟺ «ребро дилится» — по
+// построению, а не по совпадению двух одинаково написанных условий.
+func requireAuthzEdgeTransport(cfg config.Config) error {
+	if cfg.AuthZIAMGRPCAddr == "" || cfg.AuthZBreakglass {
+		return nil
+	}
+	if cfg.IAMAuthzMTLS.Enable {
+		return nil
+	}
+	return fmt.Errorf("production mode: verified transport required on the compute→iam authz Check edge " +
+		"— set KACHO_COMPUTE_IAM_AUTHZ_MTLS_ENABLE=true (with cert/key/CA). Without it the per-RPC " +
+		"authorization Check and the forwarded end-user principal travel over cleartext gRPC: the client " +
+		"credentials silently degrade to insecure, so the process starts and reports authz as enabled")
 }
 
 // requireDBSSLMode — DB-канал в любом production-режиме обязан быть TLS

@@ -310,6 +310,12 @@ func securedProduction() config.Config {
 		// per-object FGA List-filter active (production fail-closed gate).
 		ListFilterEnabled: true,
 		AuthZIAMGRPCAddr:  "kacho-iam.kacho.svc.cluster.local:9091",
+		// Транспорт ребра проверки прав: с тех пор как страж требует его в ОБОИХ
+		// боевых режимах, окружение без этой ручки боевым не является. Фикстура,
+		// снисходительнее продукта, делает невидимым ровно тот дефект, ради
+		// которого её подставляют, — поэтому измерение выставлено и здесь, а
+		// ослабляется только в своей пробе.
+		IAMAuthzMTLS: grpcclient.TLSClient{Enable: true},
 	}
 }
 
@@ -605,5 +611,54 @@ func TestRunServe_SkipPeerValidationInProduction_RefusesToStart(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatalf("runServe did not refuse to start — the process came up with every cross-service check disabled")
+	}
+}
+
+// ── транспорт ребра, несущего решение о доступе ──
+
+// Ребро compute→iam несёт РЕШЕНИЕ о доступе (per-RPC Check) и переданную личность
+// вызывающего. Невзведённая ручка не даёт ошибки сама по себе: клиентские creds
+// вырождаются в insecure БЕЗ ошибки, процесс поднимается, отчитывается «authz
+// enabled», и каждый Check уходит по открытому каналу.
+//
+// Требование действует в ОБОИХ боевых режимах. Прежде оно стояло только в
+// строгом, и это было записанным послаблением: обычный production не является
+// более слабой посадкой — это та же посадка, а страж, не срабатывающий в ней,
+// есть контроль, чья ветка не исполнялась ни разу.
+//
+// Проверяется в обе стороны: невзведённое ребро → отказ с именем ручки;
+// взведённое → молчание (страж не запрещает законное).
+func TestValidateAuthMode_Production_RequiresAuthzEdgeTransport(t *testing.T) {
+	cfg := securedProduction()
+	cfg.IAMAuthzMTLS = grpcclient.TLSClient{Enable: false}
+
+	_, err := validateAuthMode(cfg, discardLogger())
+	if err == nil {
+		t.Fatal("plain production must refuse an unarmed transport on the authz Check edge")
+	}
+	if !strings.Contains(err.Error(), "IAM_AUTHZ_MTLS_ENABLE") {
+		t.Fatalf("the refusal must name the knob the operator has to set; got: %v", err)
+	}
+
+	// Законный близнец той же формы: ребро взведено — страж молчит.
+	cfg.IAMAuthzMTLS = grpcclient.TLSClient{Enable: true}
+	if _, err := validateAuthMode(cfg, discardLogger()); err != nil {
+		t.Fatalf("an armed authz edge must boot; got: %v", err)
+	}
+}
+
+// Ребро, которого НЕТ, требовать не за что: без адреса composition root его не
+// поднимает вовсе. Страж обязан читать тот же предикат, что и проводка, — иначе
+// он либо запрещает законное, либо пропускает открытый канал.
+func TestValidateAuthMode_Production_AuthzEdgeNotDialled_NoRequirement(t *testing.T) {
+	cfg := securedProduction()
+	cfg.AuthZIAMGRPCAddr = ""
+	cfg.IAMAuthzMTLS = grpcclient.TLSClient{Enable: false}
+	// Фильтр видимости требует того же адреса, поэтому изолируем измерение.
+	cfg.ListFilterEnabled = false
+
+	if _, err := validateAuthMode(cfg, discardLogger()); err != nil &&
+		strings.Contains(err.Error(), "IAM_AUTHZ_MTLS_ENABLE") {
+		t.Fatalf("страж требует транспорт ребра, которое не поднимается: %v", err)
 	}
 }
