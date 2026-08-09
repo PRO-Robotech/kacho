@@ -179,10 +179,10 @@ func runServe(cfg config.Config) error {
 	// под guard-тестом serve_interceptor_order_test.go) вместо императивного
 	// append/prepend по четырём срезам: recovery ПЕРВЫМ (outermost), затем
 	// principal-extract, затем authz. Оба листенера строятся идентично.
-	publicUnary := assembleUnaryChain(recoveryUnaryInterceptor(logger), publicPrincipalUnary, authzUnary)
-	publicStream := assembleStreamChain(recoveryStreamInterceptor(logger), publicPrincipalStream, authzStream)
-	internalUnary := assembleUnaryChain(recoveryUnaryInterceptor(logger), internalPrincipalUnary, authzUnary)
-	internalStream := assembleStreamChain(recoveryStreamInterceptor(logger), internalPrincipalStream, authzStream)
+	publicUnary := assembleUnaryChain(grpcsrv.UnaryPanicRecovery(logger), publicPrincipalUnary, authzUnary)
+	publicStream := assembleStreamChain(grpcsrv.StreamPanicRecovery(logger), publicPrincipalStream, authzStream)
+	internalUnary := assembleUnaryChain(grpcsrv.UnaryPanicRecovery(logger), internalPrincipalUnary, authzUnary)
+	internalStream := assembleStreamChain(grpcsrv.StreamPanicRecovery(logger), internalPrincipalStream, authzStream)
 
 	// ── server-creds (mTLS обязателен на обоих листенерах, кроме breakglass —
 	// это проверено validateSecurityConfig выше) ──

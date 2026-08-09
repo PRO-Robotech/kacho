@@ -1,0 +1,200 @@
+// Copyright (c) PRO-Robotech
+// SPDX-License-Identifier: BUSL-1.1
+
+// Доказательство того, что гейт восстановления паники СПОСОБЕН упасть — и что
+// падает он на существе, а не на форме.
+//
+// Обе пробы гоняют ТУ ЖЕ функцию, что и гейт по дереву (auditPanicRecoveryWiring),
+// на синтетическом дереве: проба, повторяющая логику гейта своей копией,
+// доказывала бы свойство копии.
+package repohygiene
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// синтетическое общее звено — распознаётся по существу: возвращает
+// grpc-интерсептор и зовёт recover().
+const synthSharedLink = `package grpcsrv
+
+import (
+	"context"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
+func UnaryPanicRecovery() grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, h grpc.UnaryHandler) (resp any, err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				err = status.Error(codes.Internal, "internal error")
+			}
+		}()
+		return h(ctx, req)
+	}
+}
+
+func StreamPanicRecovery() grpc.StreamServerInterceptor {
+	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, h grpc.StreamHandler) (err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				err = status.Error(codes.Internal, "internal error")
+			}
+		}()
+		return h(srv, ss)
+	}
+}
+`
+
+// ЛОВУШКА ТЕМЫ. Файл называется recovery.go, функция называется
+// startLRORecovery, в тексте пять раз слово Recovery — и к панике всё это не
+// имеет никакого отношения: это разрешитель осиротевших операций. Текстовый
+// гейт нашёл бы здесь «recovery» и позеленел бы при снятой защите.
+const synthLRORecoveryDecoy = `package main
+
+// Durable LRO recovery wiring: recovery of orphaned operations after a restart.
+// Recovery here means operation recovery, not panic recovery.
+func startLRORecovery() error {
+	// RecoverAll before serving traffic; periodic Run as a backstop.
+	return nil
+}
+`
+
+// composition root СО звеном.
+const synthRootWired = `package main
+
+import (
+	"google.golang.org/grpc"
+
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+)
+
+func serve() {
+	publicUnary := []grpc.UnaryServerInterceptor{
+		grpcsrv.UnaryPanicRecovery(),
+		authzUnary(),
+	}
+	publicStream := []grpc.StreamServerInterceptor{
+		grpcsrv.StreamPanicRecovery(),
+	}
+	_ = grpcsrv.NewServer(
+		grpc.ChainUnaryInterceptor(publicUnary...),
+		grpc.ChainStreamInterceptor(publicStream...),
+	)
+}
+
+func authzUnary() grpc.UnaryServerInterceptor { return nil }
+`
+
+// composition root БЕЗ звена — та же форма, звено снято.
+const synthRootUnwired = `package main
+
+import (
+	"google.golang.org/grpc"
+
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
+)
+
+func serve() {
+	publicUnary := []grpc.UnaryServerInterceptor{
+		authzUnary(),
+	}
+	publicStream := []grpc.StreamServerInterceptor{}
+	_ = grpcsrv.NewServer(
+		grpc.ChainUnaryInterceptor(publicUnary...),
+		grpc.ChainStreamInterceptor(publicStream...),
+	)
+}
+
+func authzUnary() grpc.UnaryServerInterceptor { return nil }
+`
+
+// synthTree строит минимальное дерево: go.mod (по нему резолвятся импорты
+// модуля), общее звено и один сервис с одним композиционным корнем.
+func synthTree(t *testing.T, rootGo string, extra map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	write := func(rel, body string) {
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", rel, err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatalf("write %s: %v", rel, err)
+		}
+	}
+	write("go.mod", "module github.com/PRO-Robotech/kacho\n\ngo 1.25\n")
+	write("pkg/grpcsrv/panicrecovery.go", synthSharedLink)
+	write("services/demo/cmd/demo/main.go", rootGo)
+	for rel, body := range extra {
+		write(rel, body)
+	}
+	return root
+}
+
+// TestPanicRecoveryGateRedOnInjectedDefect — направление (а): звено снято ->
+// гейт краснеет И НАЗЫВАЕТ КООРДИНАТУ. Без координаты находка не действие.
+func TestPanicRecoveryGateRedOnInjectedDefect(t *testing.T) {
+	root := synthTree(t, synthRootUnwired, nil)
+	res := auditPanicRecoveryWiring(t, root)
+	t.Log(res.summary)
+
+	if len(res.findings) == 0 {
+		t.Fatalf("звено снято, а гейт молчит — он не способен упасть.\n%s", res.summary)
+	}
+	joined := strings.Join(res.findings, "\n")
+	if !strings.Contains(joined, "services/demo/cmd/demo/main.go") {
+		t.Fatalf("находка не называет файл — по ней нечего чинить:\n%s", joined)
+	}
+	if !strings.Contains(joined, "unary") || !strings.Contains(joined, "stream") {
+		t.Fatalf("находка не называет вид цепочки (unary/stream):\n%s", joined)
+	}
+	t.Logf("направление (а): гейт покраснел и назвал координату:\n%s", joined)
+}
+
+// TestPanicRecoveryGateSilentOnLawfulSameShape — направление (б): законная
+// конструкция ТОЙ ЖЕ ФОРМЫ гейта не задевает.
+//
+// «Той же формы» здесь взято в самом неудобном для гейта виде: рядом с
+// провязанным листенером лежит файл recovery.go с функцией startLRORecovery и
+// пятью упоминаниями слова Recovery. Если бы гейт читал текст, он засчитал бы
+// этот файл за защиту (ложно-зелёный на снятом звене) либо споткнулся бы о него;
+// он читает исполняемую часть, поэтому не делает ни того, ни другого.
+func TestPanicRecoveryGateSilentOnLawfulSameShape(t *testing.T) {
+	root := synthTree(t, synthRootWired, map[string]string{
+		"services/demo/cmd/demo/recovery.go": synthLRORecoveryDecoy,
+	})
+	res := auditPanicRecoveryWiring(t, root)
+	t.Log(res.summary)
+
+	if len(res.findings) != 0 {
+		t.Fatalf("законная конструкция объявлена находкой — гейт ловит форму, "+
+			"а не существо:\n%s", strings.Join(res.findings, "\n"))
+	}
+	if res.covered == 0 {
+		t.Fatalf("гейт не засчитал ни одного листенера — молчание означает "+
+			"«не нашёл», а не «всё есть».\n%s", res.summary)
+	}
+	t.Logf("направление (б): гейт молчит, засчитано листенеров %d", res.covered)
+}
+
+// TestPanicRecoveryGateIgnoresLRORecoveryDecoyEvenWhenUnwired — прямая проверка
+// самой ловушки: приманка лежит рядом, звено снято. Гейт обязан всё равно
+// покраснеть. Эта проба и есть доказательство, что распознавание не по имени:
+// без неё «гейт читает существо» осталось бы утверждением о намерении.
+func TestPanicRecoveryGateIgnoresLRORecoveryDecoyEvenWhenUnwired(t *testing.T) {
+	root := synthTree(t, synthRootUnwired, map[string]string{
+		"services/demo/cmd/demo/recovery.go": synthLRORecoveryDecoy,
+	})
+	res := auditPanicRecoveryWiring(t, root)
+	if len(res.findings) == 0 {
+		t.Fatalf("приманка «recovery» засчитана за защиту — гейт читает текст, "+
+			"а не исполняемую часть.\n%s", res.summary)
+	}
+	t.Logf("ловушка не обманула гейт: %s", strings.Join(res.findings, "\n"))
+}

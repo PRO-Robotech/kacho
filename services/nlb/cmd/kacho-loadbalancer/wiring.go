@@ -53,33 +53,50 @@ type bgWorker struct {
 }
 
 // buildInterceptorChains собирает unary/stream цепочки для public :9090 и
-// internal :9091 listener'ов. Public: fgaboot boot-gate FIRST → cert-identity →
-// trusted-principal → authz. Internal: тот же authN+authZ БЕЗ boot-gate (он
-// охраняет только tenant-facing Create на public). anti-spoof:
+// internal :9091 listener'ов. Обе цепочки обоих листенеров начинаются звеном
+// восстановления паники: panic-recovery FIRST → (public: fgaboot boot-gate) →
+// cert-identity → trusted-principal → authz. Internal: тот же authN+authZ БЕЗ
+// boot-gate (он охраняет только tenant-facing Create на public). anti-spoof:
 // TrustedPrincipalExtract идёт ПОСЛЕ CertIdentityExtract (см. runServe doc).
-func buildInterceptorChains(bootGate *bootgate.Gate, authzIntr *authz.Interceptor, forwarders []string) (
+//
+// Почему звено первое. grpc-go панику обработчика не восстанавливает: она
+// уходит из серверной горутины и завершает процесс, то есть дефект в обработке
+// одного запроса прекращает обслуживание всех тенантов. Оно обязано стоять НАД
+// boot-gate, принципалом и authz — фильтр паникует так же, как обработчик.
+// Наблюдающего звена в этих цепочках нет, поэтому «под наблюдением» здесь
+// совпадает с «снаружи всего».
+func buildInterceptorChains(
+	logger *slog.Logger,
+	bootGate *bootgate.Gate,
+	authzIntr *authz.Interceptor,
+	forwarders []string,
+) (
 	publicUnary []grpc.UnaryServerInterceptor,
 	publicStream []grpc.StreamServerInterceptor,
 	internalUnary []grpc.UnaryServerInterceptor,
 	internalStream []grpc.StreamServerInterceptor,
 ) {
 	publicUnary = []grpc.UnaryServerInterceptor{
+		grpcsrv.UnaryPanicRecovery(logger),
 		fgaboot.GuardCreateUnary(bootGate),
 		grpcsrv.UnaryCertIdentityExtract(),
 		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
 		authzIntr.Unary(),
 	}
 	publicStream = []grpc.StreamServerInterceptor{
+		grpcsrv.StreamPanicRecovery(logger),
 		grpcsrv.StreamCertIdentityExtract(),
 		grpcsrv.StreamTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
 		authzIntr.Stream(),
 	}
 	internalUnary = []grpc.UnaryServerInterceptor{
+		grpcsrv.UnaryPanicRecovery(logger),
 		grpcsrv.UnaryCertIdentityExtract(),
 		grpcsrv.UnaryTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
 		authzIntr.Unary(),
 	}
 	internalStream = []grpc.StreamServerInterceptor{
+		grpcsrv.StreamPanicRecovery(logger),
 		grpcsrv.StreamCertIdentityExtract(),
 		grpcsrv.StreamTrustedPrincipalExtract(grpcsrv.WithTrustedForwarders(forwarders...)),
 		authzIntr.Stream(),

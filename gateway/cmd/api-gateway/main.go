@@ -27,6 +27,7 @@ import (
 	// "failed to marshal error message".
 	_ "google.golang.org/genproto/googleapis/rpc/errdetails"
 
+	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 
 	// Обслуживается только нативный API kacho.cloud.*.
@@ -518,12 +519,12 @@ func main() {
 	resolver := proxy.Resolver(backends)
 	grpcUnaryInterceptors := []grpc.UnaryServerInterceptor{
 		middleware.UnaryRequestID,
-		middleware.UnaryRecovery(logger),
+		grpcsrv.UnaryPanicRecovery(logger),
 		authInterceptor.Unary(),
 	}
 	grpcStreamInterceptors := []grpc.StreamServerInterceptor{
 		middleware.StreamRequestID,
-		middleware.StreamRecovery(logger),
+		grpcsrv.StreamPanicRecovery(logger),
 		authInterceptor.Stream(),
 	}
 	// cnf-binding enforcement runs AFTER auth (token already shape-validated) and
