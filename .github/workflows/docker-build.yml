@@ -155,7 +155,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "ветка=$branch коммит=${sha:0:8}"
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # НЕ убирать: без явного ref здесь собирался бы main (см. шаг выше).
           ref: ${{ steps.subject.outputs.ref }}

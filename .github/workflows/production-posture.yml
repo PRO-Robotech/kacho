@@ -85,7 +85,7 @@ jobs:
     # dev-up ~13м + фаза 3 (перезапуск всех подов с production-конфигом) + rollout-wait.
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Тулчейны ставим сами и с ПИНАМИ, не полагаясь на состав образа ранера: он
       # меняется без нашего участия, и «оно там было» — не инвариант.
