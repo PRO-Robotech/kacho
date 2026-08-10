@@ -60,6 +60,11 @@ config:
   apiServer:
     gracefulShutdown: 10s
     grpcGwEnable: false       # gRPC-gateway lives in kacho-api-gateway
+    # Upper bound on handling ONE call, set by the shared serving carrier on the
+    # incoming context. Mandatory: a call with no deadline holds a pooled DB
+    # connection for as long as its query runs, so pool_max_conns such calls take
+    # the whole service down (CWE-770).
+    handlingBudget: 30s
   authn:
     type: none                # none | tls
     # When type=tls fill these:
@@ -73,10 +78,13 @@ config:
     cache:
       enable: true
       ttl: 5s
-    listenInvalidator:
-      enable: false
-      channel: kacho_iam_subjects
-      iamDsn: ""              # required when listenInvalidator.enable=true
+    # Sustained rate (per second, per principal) of the authorization checks the
+    # verdict cache does NOT absorb: denials, no-path misses, model outages.
+    # Beyond it the decision link answers ResourceExhausted without asking
+    # kacho-iam — it sheds the denial storm off the neighbour. Must be > 0:
+    # a non-positive value reads as "no limit" to the mechanism, so the cut-off
+    # would switch itself off silently.
+    denyBudgetPerSec: 100
     # RBAC sub-phase D §11 (issue #111): per-object filtered List via kacho-iam
     # AuthorizeService.BatchCheck (reuse peers.iam conn). default on.
     # fail-closed (security.md) — failOpen=false; iam down → List → UNAVAILABLE.
@@ -89,7 +97,6 @@ config:
       cacheTtl: 5s
       cacheMaxEntries: 10000
       failOpen: false
-    breakglass: false         # production validation forbids true
     # Anti-impersonation allow-list: cert-identity SANs permitted to forward the
     # end-user principal (x-kacho-principal-*). Empty list = trust ANY mTLS-verified
     # peer (back-compat), which is a confused-deputy vector in a shared mTLS mesh.

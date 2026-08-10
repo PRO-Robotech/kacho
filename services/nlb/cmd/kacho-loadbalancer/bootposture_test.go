@@ -50,7 +50,7 @@ func TestBootPosture_Production(t *testing.T) {
 	cfg.Repository.Postgres.URL = "postgres://u:p@pg-nlb:5432/kacho_nlb?sslmode=require&search_path=kacho_nlb,public"
 	cfg.MTLS.Server.Enable = true
 
-	requireFields(t, captureBootPosture(t, bootPosture(&cfg, true)), map[string]any{
+	requireFields(t, captureBootPosture(t, bootPosture(&cfg)), map[string]any{
 		"msg":           observability.BootPostureMsg,
 		"service":       "nlb",
 		"auth_mode":     "production",
@@ -62,27 +62,40 @@ func TestBootPosture_Production(t *testing.T) {
 }
 
 // TestBootPosture_InsecureIsReportedHonestly — dev + DSN без sslmode (libpq
-// деградирует в plaintext-fallback `prefer`) + листенеры без mTLS + не поднятый
-// Check-клиент обязаны быть видны как есть.
+// деградирует в plaintext-fallback `prefer`) + листенеры без mTLS обязаны быть
+// видны как есть.
+//
+// Прежняя редакция утверждала здесь ещё и `authz_check: false` — «Check-клиент не
+// поднят». Этого состояния БОЛЬШЕ НЕ СУЩЕСТВУЕТ: звено решения о доступе ставит
+// носитель контура, и ветки «поднять слушатели без него» у него нет — либо контур
+// собран, либо старт отвергнут (`servicecontract.New` требует объявленного ребра,
+// `servicehost.Serve` ставит звено всегда). Утверждение снято не потому, что стало
+// неудобным, а потому, что его предмет невыразим; остальные три измерения
+// продолжают отчитываться честно, и падают они по-прежнему.
 func TestBootPosture_InsecureIsReportedHonestly(t *testing.T) {
 	var cfg config.Config
 	cfg.ModeRaw = "dev"
 	cfg.Repository.Postgres.URL = "postgres://u:p@pg-nlb:5432/kacho_nlb"
 
-	requireFields(t, captureBootPosture(t, bootPosture(&cfg, false)), map[string]any{
+	requireFields(t, captureBootPosture(t, bootPosture(&cfg)), map[string]any{
 		"service":       "nlb",
 		"auth_mode":     "dev",
 		"db_sslmode":    "prefer",
 		"public_mtls":   false,
 		"internal_mtls": false,
-		"authz_check":   false,
 	})
 }
 
-// TestBootPosture_EmittedFromTheLiveBootPath — статический guard размещения:
-// строка обязана эмититься ИЗ composition root'а реальным логгером, ПОСЛЕ
-// config.Load→Validate и построения server-creds, но ДО подъёма листенеров, и
-// брать authz_check из УЖЕ поднятой проводки (peers.Check), а не из конфига.
+// TestBootPosture_EmittedFromTheLiveBootPath — статический guard РАЗМЕЩЕНИЯ:
+// строка обязана эмититься ИЗ композиционного корня, ПОСЛЕ приёма дескриптора
+// (то есть после всех отказов старта, являющихся свойствами объявленного) и ДО
+// того, как слушатели поднимет носитель.
+//
+// Порядок несущий и он же был предметом дефекта посадки: гейт обязан утверждать
+// на посадке, ОБЪЯВЛЕННОЙ ПРОЦЕССОМ ПРИ СТАРТЕ, а не на хранимом конфиге —
+// правка настроек без переката пода оставляет процесс с прежним окружением.
+// Строка, напечатанная до приёма дескриптора, описывала бы намерение; строка,
+// напечатанная после подъёма слушателей, опоздала бы к первому соединению.
 func TestBootPosture_EmittedFromTheLiveBootPath(t *testing.T) {
 	src, err := os.ReadFile("main.go")
 	if err != nil {
@@ -90,17 +103,23 @@ func TestBootPosture_EmittedFromTheLiveBootPath(t *testing.T) {
 	}
 	root := string(src)
 
-	call := strings.Index(root, "observability.LogBootPosture(logger, bootPosture(cfg, peers.Check != nil))")
+	call := strings.Index(root, "observability.LogBootPosture(logger, bootPosture(cfg))")
 	if call < 0 {
-		t.Fatal("composition root must emit the posture line with the WIRED Check client: " +
-			"observability.LogBootPosture(logger, bootPosture(cfg, peers.Check != nil))")
+		t.Fatal("composition root must emit the posture line: " +
+			"observability.LogBootPosture(logger, bootPosture(cfg))")
 	}
-	guard := strings.Index(root, "grpcsrv.TLSServerCreds(cfg.MTLS.Server)")
-	if guard < 0 || call < guard {
-		t.Fatal("posture line must be emitted AFTER the listener server-creds are resolved")
+	// Якорь — начало вызова, а не полный его текст: проба утверждает ПОРЯДОК
+	// («посадка печатается после принятия дескриптора»), и список аргументов к
+	// этому утверждению отношения не имеет. Прежний якорь нёс полную сигнатуру и
+	// потому ломался на всяком новом поле дескриптора — то есть краснел на верном
+	// коде, а это первый шаг к тому, чтобы пробу сняли как капризную.
+	accepted := strings.Index(root, "desc, err := describe(")
+	if accepted < 0 || call < accepted {
+		t.Fatal("posture line must be emitted AFTER the descriptor is accepted by its constructor — " +
+			"before that it would describe an intent, not a posture the process actually took")
 	}
-	listener := strings.Index(root, "publicSrv := grpcsrv.NewServer(")
-	if listener < 0 || call > listener {
-		t.Fatal("posture line must be emitted BEFORE the gRPC listeners are built")
+	serve := strings.Index(root, "servicehost.Serve(serveCtx, desc,")
+	if serve < 0 || call > serve {
+		t.Fatal("posture line must be emitted BEFORE the carrier raises the listeners")
 	}
 }

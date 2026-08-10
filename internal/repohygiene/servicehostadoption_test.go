@@ -148,7 +148,6 @@ var hostAdoptionExceptions = map[string]hostAdoptionException{
 	},
 	"vpc":     {kind: adoptionPending, why: "переводится вслед за первым: 11 файлов с проводкой сужателя, каждый обязан сойтись с каталогом по обеим половинам О3/О4"},
 	"compute": {kind: adoptionPending, why: "переводится вслед за первым"},
-	"nlb":     {kind: adoptionPending, why: "переводится вслед за первым"},
 }
 
 // adoptionFinding — одна находка с координатой.

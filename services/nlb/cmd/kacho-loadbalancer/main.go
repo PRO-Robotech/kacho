@@ -3,23 +3,28 @@
 
 // Command kacho-loadbalancer — API-сервер kacho-nlb (gRPC public :9090 +
 // internal :9091). Composition root (workspace CLAUDE.md «Чистая архитектура»):
-// единственное место, где собираются adapter'ы (pgxpool, gRPC clients, FGA
-// check-client) и пробрасываются в handler-слой.
+// единственное место, где собираются adapter'ы (pgxpool, gRPC clients, peer-
+// клиенты) и пробрасываются в handler-слой.
 //
 // Поддерживает один subcommand `serve`. Миграции — в отдельном binary
 // `cmd/migrator` (один CLI use-case = один binary).
 //
-// Параллельные серверы (public + internal + shutdown waiter) — через
-// `H-BF/corlib/pkg/parallel.ExecAbstract`: первая
-// ошибка / SIGTERM триггерит ctx cancel → GracefulStop обоих серверов.
+// # Чего этот корень БОЛЬШЕ НЕ делает
+//
+// Он не собирает серверы, не выстраивает цепочки звеньев, не строит карту прав и
+// не держит собственного звена решения о доступе: всё это переехало в носитель
+// контура (`pkg/servicehost`), которому сервис приносит ОБЪЯВЛЕНИЕ о себе —
+// дескриптор (`describe.go`). Оба слушателя поднимает `servicehost.Serve`, он же
+// гасит их по отмене контекста.
+//
+// Здесь остаётся домен: пул, слой доступа к данным, use-cases, peer-клиенты,
+// фоновые loop'ы под супервизором, диагностический слушатель и readiness.
 package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
-	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -35,15 +40,14 @@ import (
 
 	coredb "github.com/PRO-Robotech/kacho/pkg/db"
 	"github.com/PRO-Robotech/kacho/pkg/grpcclient"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/observability"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
+	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/apps/kacho/config"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/authzfilter"
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/check"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/clients"
 	computeclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/compute"
 	geoclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/geo"
@@ -135,10 +139,33 @@ func runServe(configPath string) error {
 		"internal_endpoint", cfg.APIServer.InternalEndpoint,
 	)
 
-	// Context: SIGTERM / SIGINT триггерит cancel → graceful stop через
-	// shutdown-task в parallel.ExecAbstract.
+	// Context: SIGTERM / SIGINT триггерит cancel → graceful stop.
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer cancel()
+
+	// Fail-closed boot-gate: при KACHO_NLB_REQUIRE_IAM=true мутирующий Create
+	// отвергается (UNAVAILABLE), а готовность пода остаётся NotReady, пока дренаж
+	// регистраций не подключён к kacho-iam, — ни один ресурс не создаётся без
+	// доставляемого намерения о владельце. Стартует НЕ подключённым;
+	// SetConnected(true) вызывается ниже, когда дренаж собран с живым пиром.
+	//
+	// Строится ДО дескриптора: гейт — ось дескриптора (`Spec.BootGate`), и
+	// исполняет его теперь носитель, а не собственное звено сервиса.
+	bootGate := bootgate.New(bootgate.Config{RequireIAM: cfg.FGA.RequireIAM, Service: "kacho-nlb"})
+
+	// Peer-gRPC clients (corlib client-builder) — ДО дескриптора: из соединения с
+	// внутренним листенером kacho-iam строится сужатель списочной выдачи, а он
+	// объявляется осью дескриптора (`Spec.Narrowers`).
+	peerConns, peers, err := dialPeers(ctx, cfg, logger)
+	if err != nil {
+		return fmt.Errorf("dial peers: %w", err)
+	}
+	defer closeAll(peerConns, logger)
+
+	// Самоотчёт о посадке — ПОСЛЕ приёма дескриптора и ДО подъёма слушателей.
+	// Гейт посадки обязан утверждать на этом наблюдаемом факте, а не на хранимом
+	// конфиге: правка настроек без переката пода оставляет процесс с прежним
+	// окружением, и «под Ready» доказательством посадки не является.
 
 	// pgxpool. Строится из cfg.DSN() — URL плюс `pool_max_conns` /
 	// `pool_max_conn_lifetime`: только там ширина пула, объявленная в конфиге,
@@ -151,6 +178,24 @@ func runServe(configPath string) error {
 		return fmt.Errorf("open pgxpool: %w", err)
 	}
 	defer pool.Close()
+
+	// Дескриптор процесса. Все отказы старта, являющиеся свойствами объявленного
+	// (круг отправителей, ребро решения о доступе, окна и бюджеты, боевая посадка,
+	// незаявленная ось), отрабатывают ЗДЕСЬ — до единого слушателя.
+	//
+	// После пула, а не до него: порт сверки существования живёт НА пуле, и принести
+	// его раньше значило бы принести порт, отвечающий «соединения нет». Открытие
+	// пула обратимо (`defer` выше) и дешевле ложной сверки.
+	desc, err := describe(cfg, logger, peers.ListFilter, bootGate, kachopg.NewExistenceProbe(pool))
+	if err != nil {
+		return err
+	}
+
+	// Самоотчёт о посадке — ПОСЛЕ принятия дескриптора: до него он описывал бы
+	// намерение, а не посадку, которую процесс действительно занял. Гейт посадки
+	// читает эту строку у живого процесса, поэтому печатать её раньше отказов
+	// значило бы отчитываться за старт, который может не состояться.
+	observability.LogBootPosture(logger, bootPosture(cfg))
 
 	// CQRS-Repository. Реплики нет ни в одной посадке — второй пул не создаётся,
 	// поэтому Reader идёт на тот же master-пул, что и Writer (`New(pool, nil)`).
@@ -167,50 +212,17 @@ func runServe(configPath string) error {
 	// напрямую — OperationService.Get/Cancel (см. ниже).
 	opsRepo := operations.NewRepo(pool, "kacho_nlb")
 
-	// Peer-gRPC clients (corlib client-builder).
-	// Возвращается bundle conn'ов + типизированных adapter'ов; conn'ы
-	// закрываются по defer ниже. Use-case'ы получают clients
-	// через port-интерфейсы (`internal/apps/kacho/api/<resource>/ports.go`).
-	peerConns, peers, err := dialPeers(ctx, cfg, logger)
-	if err != nil {
-		return fmt.Errorf("dial peers: %w", err)
-	}
-	defer closeAll(peerConns, logger)
-	// peers — типизированные clients потребляются handler'ами (NLB / Listener
-	// wired ниже; TG handler —). Композиционный root владеет gRPC-conn'ами
-	// и закрывает их через defer выше — peers держит ссылки на stub'ы поверх этих
-	// conn'ов, отдельного Close не требуется.
-
-	// FGA Check interceptor. Per-RPC Check через
-	// `iam.InternalIAMService.Check` + positive-cache (TTL 5s) +
-	// pg_notify-driven invalidation (kacho_iam_subjects).
+	// peers — типизированные clients потребляются handler'ами. Композиционный root
+	// владеет gRPC-conn'ами и закрывает их через defer выше — peers держит ссылки
+	// на stub'ы поверх этих conn'ов, отдельного Close не требуется.
 	//
-	// В dev-mode (без peer.iam) caller передаёт Breakglass=true в config'е —
-	// взамен Check'ов выдаёт WARN allow для аутентифицированных principal'ов.
-	// Anonymous всё равно denied (CRIT-6/7 fix). Production-mode
-	// config-validation rejects breakglass=true (см. config/validate.go).
-	//
-	// authzCache отдаётся отдельно (а не только через interceptor) чтобы
-	// ListenInvalidator (task 4 ниже) делил с interceptor'ом один экземпляр —
-	// pg_notify-driven invalidations применяются к тому же cache.
-	authzIntr, authzCache, err := check.NewInterceptor(check.Options{
-		ServiceName:         "kacho-nlb",
-		IAMCheck:            peers.Check,
-		Breakglass:          cfg.Authz.Breakglass,
-		Logger:              logger,
-		CheckTimeout:        cfg.Authz.IAM.RequestTimeout,
-		CacheTTL:            cfg.Authz.Cache.TTL,
-		DenyRateLimitPerSec: 100, // I10 default; tunable в будущем config-поле.
-	})
-	if err != nil {
-		return fmt.Errorf("build authz interceptor: %w", err)
-	}
-
-	// Fail-closed boot-gate: when KACHO_NLB_REQUIRE_IAM=true, mutating Create is
-	// refused (UNAVAILABLE) and readiness is NotReady until the register-drainer is
-	// IAM-connected. Starts NOT connected; SetConnected(true) fires once the drainer
-	// is wired with a real iam peer (below).
-	bootGate := bootgate.New(bootgate.Config{RequireIAM: cfg.FGA.RequireIAM, Service: "kacho-nlb"})
+	// Звена решения о доступе здесь БОЛЬШЕ НЕТ: его строит носитель по объявленному
+	// ребру (`Spec.CheckEdge`), окну кэша, сроку вопроса и бюджету отказов. Прежде
+	// оно собиралось тут же, и бюджет отказов стоял литералом рядом с конструктором;
+	// теперь это ручка `authz.deny-budget-per-sec`, которую видно в обзоре и можно
+	// сузить на конкретной посадке. peers.Check остаётся — его зовут ОБРАБОТЧИКИ
+	// (пообъектная проверка целевой группы в Listener/LoadBalancer), а это другой
+	// путь, чем per-RPC гейт.
 
 	// Prometheus observability adapter: приватный реестр, питает outbox-recorder,
 	// LRO-worker/reconciler recorder и diagnostic /metrics. Заменяет in-memory
@@ -227,8 +239,8 @@ func runServe(configPath string) error {
 		return fmt.Errorf("start LRO worker: %w", err)
 	}
 
-	// Supervised background loop'ы (errgroup): LRO-reconciler, target-drain, free-ip,
-	// authz-invalidator, fga-register-drainer + outbox-backstop. Собираются здесь
+	// Supervised background loop'ы (errgroup): LRO-reconciler, target-drain,
+	// free-ip, fga-register-drainer + outbox-backstop. Собираются здесь
 	// (drainer/backstop-ресурсы + bootGate.SetConnected как side-effect), но
 	// запускаются errgroup'ом перед Serve.
 	background, err := assembleBackgroundWorkers(ctx, backgroundDeps{
@@ -237,7 +249,6 @@ func runServe(configPath string) error {
 		lroRec:          lroRec,
 		outboxRec:       outboxRec,
 		bootGate:        bootGate,
-		authzCache:      authzCache,
 		peers:           peers,
 		cfg:             cfg,
 		logger:          logger,
@@ -247,103 +258,43 @@ func runServe(configPath string) error {
 		return err
 	}
 
-	// gRPC servers (public :9090 + internal :9091).
-	// OperationService зарегистрирован здесь как полный end-to-end путь.
-	// Per-resource handler'ы (load_balancer / listener / target_group) подключаются
-	// в + (..154,..158).
+	// Регистраторы обработчиков. Носитель зовёт КАЖДЫЙ ровно один раз и передаёт
+	// ему `grpc.ServiceRegistrar` — интерфейс с единственным методом, поэтому
+	// сервера у корня не остаётся ни в каком виде и приделать к нему своё звено
+	// нельзя. Разделение public/internal сохраняется: `Internal.*` регистрируется
+	// ТОЛЬКО на внутреннем слушателе (ban #6).
 	//
-	// authzIntr applied to BOTH public + internal listeners — внешние clients
-	// (через api-gateway) и cluster-internal callers (admin-tooling / другие
-	// kacho-services) идут через тот же permission_map. Internal RPC
-	// (InternalResourceLifecycleService.Subscribe) явно замаплен в PermissionMap на
-	// cluster-floor `system_viewer` — internal-листенер гоняет реальный Check, как
-	// public (security.md «authN+authZ на ОБОИХ listener'ах»; «Internal = trusted» —
-	// запрещённое допущение).
-	//
-	// principal — единственный subject per-RPC FGA Check. На ОБОИХ листенерах он
-	// привязан к транспорту через trust-aware связку (anti-spoof):
-	//   1. UnaryCertIdentityExtract — извлекает module-identity SAN из verified
-	//      mTLS client-cert'а и помечает peer'а verified/unverified; insecure
-	//      dev-listener (mTLS off) → no-op (back-compat).
-	//   2. UnaryTrustedPrincipalExtract(WithTrustedForwarders(<gateway-SAN>)) —
-	//      выставляет x-kacho-principal-* downstream (operations.PrincipalFromContext
-	//      → subject Check'а + Operation.created_by) ТОЛЬКО когда peer mTLS-verified И
-	//      (если allow-list задан) его SAN — доверенный форвардер (api-gateway). На
-	//      недоверенном peer'е forwarded principal снимается → SystemPrincipal →
-	//      Check fail-closed. MUST идти ПОСЛЕ CertIdentityExtract.
-	// Прежняя grpcsrv.UnaryPrincipalExtract доверяла x-kacho-principal-* любого
-	// peer'а безусловно (spoof: peer без cert'а форжил чужого principal'а).
-	//
-	// opt-in mTLS server-creds. enable=false (default) → insecure
-	// (dev backward-compat). enable=true → RequireAndVerifyClientCert (server-cert +
-	// client-CA). Applied to BOTH listeners (one server-cert).
-	serverCreds, err := grpcsrv.TLSServerCreds(cfg.MTLS.Server)
+	// Синхронный регистратор владельца собирается ЗДЕСЬ, а не внутри регистрации:
+	// его сборка умеет отказать, а у регистратора носителя возврата ошибки нет —
+	// и это правильно, отказ обязан случиться до подъёма слушателей.
+	syncRegistrar, err := buildSyncRegistrar(peers)
 	if err != nil {
-		return fmt.Errorf("build server TLS creds: %w", err)
-	}
-
-	// Самоотчёт о security-posture: ПОСЛЕ boot-guard'а (config.Load → Validate,
-	// т.е. конфиг ПРИНЯТ процессом) и ДО подъёма листенеров; authz_check берётся
-	// из УЖЕ поднятой проводки (peers.Check != nil), а не из адреса в конфиге.
-	// Production-posture гейт обязан утверждать на этом наблюдаемом факте, а не
-	// на хранимом конфиге (см. observability.BootPosture).
-	observability.LogBootPosture(logger, bootPosture(cfg, peers.Check != nil))
-
-	// boot-gate: fgaboot.GuardCreateUnary FIRST on the public chain —
-	// a mutating tenant-resource Create is refused (UNAVAILABLE) when require-iam is
-	// armed and the register-drainer is not IAM-connected, so no resource is created
-	// without a deliverable owner-tuple intent. Read RPCs are untouched.
-	publicUnary, publicStream, internalUnary, internalStream := buildInterceptorChains(
-		logger, bootGate, authzIntr, cfg.TrustedForwarders())
-	publicSrv := grpcsrv.NewServer(
-		serverCreds,
-		grpc.ChainUnaryInterceptor(publicUnary...),
-		grpc.ChainStreamInterceptor(publicStream...),
-	)
-	internalSrv := grpcsrv.NewServer(
-		serverCreds,
-		grpc.ChainUnaryInterceptor(internalUnary...),
-		grpc.ChainStreamInterceptor(internalStream...),
-	)
-
-	// Регистрация всех per-resource handler'ов на public/internal серверах
-	// (Internal-vs-external инвариант: Internal.* — только на internalSrv). См.
-	// registerGRPCServices (wiring.go) — per-service распределение/doc'и там же.
-	if err := registerGRPCServices(publicSrv, internalSrv, grpcWiring{
-		repo:    repo,
-		opsRepo: opsRepo,
-		peers:   peers,
-		pool:    pool,
-		cfg:     cfg,
-		logger:  logger,
-	}); err != nil {
 		return err
 	}
-
-	publicListener, err := listenEndpoint(cfg.APIServer.Endpoint)
-	if err != nil {
-		return fmt.Errorf("listen public %q: %w", cfg.APIServer.Endpoint, err)
+	wiring := grpcWiring{
+		repo:          repo,
+		opsRepo:       opsRepo,
+		peers:         peers,
+		pool:          pool,
+		cfg:           cfg,
+		logger:        logger,
+		syncRegistrar: syncRegistrar,
 	}
-	internalListener, err := listenEndpoint(cfg.APIServer.InternalEndpoint)
-	if err != nil {
-		_ = publicListener.Close()
-		return fmt.Errorf("listen internal %q: %w", cfg.APIServer.InternalEndpoint, err)
-	}
-	logger.Info("kacho-loadbalancer listening",
-		"public", publicListener.Addr().String(),
-		"internal", internalListener.Addr().String(),
-	)
 
 	// Dependency-aware readiness: /readyz отражает здоровье database / register-
-	// drainer (= IAM-достижимость в nlb) / lro-worker / vip-origin-reconcile;
-	// /healthz — только живость процесса (защита от restart-storm). Результат
-	// зеркалится в dependency_up Prometheus-gauge.
+	// drainer (= IAM-достижимость в nlb) / lro-worker; /healthz — только живость
+	// процесса (защита от restart-storm). Результат зеркалится в dependency_up
+	// Prometheus-gauge.
 	healthAgg := health.New(
 		buildReadinessCheckers(pool, bootGate),
 		health.WithResultObserver(metricsAdapter.SetDependencyUp),
 	)
 	// Diagnostic HTTP-listener (cluster-internal): /metrics + /healthz + /readyz.
 	// metrics.enable=false ИЛИ пустой metrics.address → не поднимается (back-compat).
+	//
+	// Эта поверхность НЕ входит в контур носителя: она не gRPC, у неё другая
+	// цепочка, и втягивать её полями общего дескриптора значило бы превратить
+	// дескриптор в свалку. До отдельной фазы она честно остаётся вне контура.
 	diagAddr := ""
 	if cfg.Metrics.Enable {
 		diagAddr = cfg.Metrics.Address
@@ -353,11 +304,21 @@ func runServe(configPath string) error {
 		return fmt.Errorf("start diagnostic listener: %w", err)
 	}
 
-	// Единый shutdown-триггер (sync.Once): флипает readiness в shutting_down
-	// (kubelet перестаёт слать трафик ДО GracefulStop), отменяет ctx (фоновые
-	// loop'ы выходят), гасит оба gRPC-сервера с таймаутом. Вызывается из
-	// shutdown-waiter (SIGTERM), из краша любого supervised-task'а и из
-	// superviseBackground при неожиданном exit'е.
+	// Отдельный контекст слушателей. Носитель гасит оба слушателя по отмене СВОЕГО
+	// контекста, поэтому флип готовности в shutting_down обязан произойти РАНЬШЕ
+	// этой отмены, а не одновременно с ней: kubelet перестаёт слать трафик до
+	// того, как соединения начнут закрываться. Одним контекстом на всё этот
+	// порядок был бы неразличим.
+	serveCtx, stopServe := context.WithCancel(context.Background())
+	defer stopServe()
+	// serveDone закрывается, когда носитель вернул управление. Нужен сторожу
+	// срока штатного завершения ниже.
+	serveDone := make(chan struct{})
+
+	// Единый shutdown-триггер (sync.Once): флипает готовность, отменяет фоновые
+	// loop'ы, затем просит носитель погасить слушатели. Вызывается из
+	// shutdown-waiter (SIGTERM), из краха любого supervised-task'а и из
+	// superviseBackground при неожиданном выходе.
 	var shutdownOnce sync.Once
 	shutdownCh := make(chan struct{})
 	triggerShutdown := func() {
@@ -365,23 +326,25 @@ func runServe(configPath string) error {
 			healthAgg.SetShuttingDown()
 			close(shutdownCh)
 			cancel()
-			gracefulCtx, gracefulCancel := context.WithTimeout(
-				context.Background(), cfg.APIServer.GracefulShutdown)
-			defer gracefulCancel()
-			done := make(chan struct{})
+			stopServe()
+			// Сторож срока штатного завершения. Носитель гасит слушатели ТОЛЬКО
+			// мягко (GracefulStop) — принудительного `Stop()` по истечении срока у
+			// него нет, и принести его сервису нечем: сервера корень не получает ни
+			// в каком виде. Поэтому величина `api-server.graceful-shutdown`
+			// сохраняет свой предмет — срок, за который завершение обязано
+			// уложиться, — но её нарушение сегодня НАБЛЮДАЕТСЯ, а не исполняется.
+			// Молчаливой альтернативой было бы зависшее завершение, неотличимое от
+			// штатного, и ручка без читателя вдобавок.
 			go func() {
-				internalSrv.GracefulStop()
-				publicSrv.GracefulStop()
-				close(done)
+				select {
+				case <-serveDone:
+				case <-time.After(cfg.APIServer.GracefulShutdown):
+					logger.Error("graceful stop exceeded its budget; listeners are still draining",
+						"budget", cfg.APIServer.GracefulShutdown,
+						"knob", "api-server.graceful-shutdown",
+						"note", "the carrier stops listeners gracefully only; there is no forced Stop behind this budget")
+				}
 			}()
-			select {
-			case <-done:
-			case <-gracefulCtx.Done():
-				logger.Warn("graceful stop timeout — forcing Stop",
-					"timeout", cfg.APIServer.GracefulShutdown)
-				internalSrv.Stop()
-				publicSrv.Stop()
-			}
 		})
 	}
 
@@ -404,26 +367,27 @@ func runServe(configPath string) error {
 			return nil
 		})
 	}
-	// internal gRPC server.
+	// ОБА gRPC-слушателя — носитель контура. Он поднимает их с одной цепочкой
+	// звеньев, прогоняет отказы старта, которым нужен служимый набор RPC, и
+	// обслуживает до отмены serveCtx. Исход внутреннего слушателя учитывается
+	// наравне с публичным — это его свойство, а не наше.
 	g.Go(func() error {
-		if serr := internalSrv.Serve(internalListener); serr != nil && !errors.Is(serr, grpc.ErrServerStopped) {
-			logger.Error("internal grpc server stopped", "err", serr)
+		serr := servicehost.Serve(serveCtx, desc,
+			func(reg grpc.ServiceRegistrar) { registerPublic(reg, wiring) },
+			func(reg grpc.ServiceRegistrar) { registerInternal(reg, wiring) },
+		)
+		close(serveDone)
+		if serr != nil {
+			logger.Error("grpc listeners stopped", "err", serr)
 			triggerShutdown()
-			return fmt.Errorf("internal grpc: %w", serr)
+			return fmt.Errorf("grpc: %w", serr)
 		}
+		triggerShutdown()
 		return nil
 	})
-	// public gRPC server.
-	g.Go(func() error {
-		if serr := publicSrv.Serve(publicListener); serr != nil && !errors.Is(serr, grpc.ErrServerStopped) {
-			triggerShutdown()
-			return fmt.Errorf("public grpc: %w", serr)
-		}
-		return nil
-	})
-	// shutdown-waiter: SIGTERM/SIGINT (ctx) ИЛИ краш любого task'а (shutdownCh) →
+	// shutdown-waiter: SIGTERM/SIGINT (ctx) ИЛИ крах любого task'а (shutdownCh) →
 	// triggerShutdown → дрейн LRO worker'ов → гашение diagnostic-listener'а
-	// последним (probe-flip /readyz→503 успевает отработать до закрытия порта).
+	// последним (флип /readyz→503 успевает отработать до закрытия порта).
 	g.Go(func() error {
 		select {
 		case <-ctx.Done():
@@ -446,13 +410,6 @@ func runServe(configPath string) error {
 	}
 	logger.Info("kacho-loadbalancer stopped cleanly")
 	return nil
-}
-
-// listenEndpoint парсит `tcp://host:port` и открывает net.Listen.
-func listenEndpoint(endpoint string) (net.Listener, error) {
-	// config.Validate уже проверил scheme=tcp; здесь strip префикс.
-	addr := strings.TrimPrefix(endpoint, "tcp://")
-	return net.Listen("tcp", addr)
 }
 
 // peerDialSpec — декларативная единица wiring одного peer-conn'а: имя, dial-addr,

@@ -32,9 +32,9 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/metrics"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/reconciler"
+	"github.com/PRO-Robotech/kacho/pkg/servicehost"
 
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/fgaboot"
 	kachopg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"
 )
 
@@ -88,48 +88,49 @@ func Test_1_4_30_ReconcilerRedrivesPoisoned(t *testing.T) {
 }
 
 // Test_1_4_31_FailClosedBootGate_RefusesCreate — 1.4-31: require-iam armed +
-// register-drainer not connected → guardCreateUnary refuses a mutating Create
+// register-drainer not connected → a mutating Create of THIS service is refused
 // (UNAVAILABLE); read RPCs pass; connect → Create allowed.
+//
+// Since kacho-nlb moved onto the shared carrier (`pkg/servicehost`), the
+// interceptor that composes these two halves is the carrier's — and the carrier
+// pins its own behaviour on the executing code
+// (`TestBootGateRefusesCreateWhileTheDeliveryPathIsDown`,
+// `TestBootGateIsSilentOnEverythingButTenantCreate`,
+// `TestChainWithoutTheGateAcceptsCreateWhileTheDeliveryPathIsDown`). What is left
+// here is the part that is OURS and that no carrier test can make: that the
+// predicate classifies THIS service's own method names the way we expect. It is
+// asked of `servicehost.IsGatedMutation` — the very predicate the gate executes —
+// and not of a local copy, because a copy would diverge silently and exactly
+// where the divergence is invisible.
 func Test_1_4_31_FailClosedBootGate_RefusesCreate(t *testing.T) {
+	const (
+		createMethod = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Create"
+		getMethod    = "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Get"
+	)
+	require.True(t, servicehost.IsGatedMutation(createMethod),
+		"tenant Create of this service must fall under the gate — otherwise a resource is created "+
+			"while its owner-registration intent has nowhere to go")
+	require.False(t, servicehost.IsGatedMutation(getMethod),
+		"a read must NOT be gated: refusing reads while the delivery path is down would take the "+
+			"service down for everyone over a write-path dependency")
+
 	gate := bootgate.New(bootgate.Config{RequireIAM: true, Service: "kacho-nlb"})
 	assert.False(t, gate.Ready(), "require-iam + not connected → NotReady")
-	guard := fgaboot.GuardCreateUnary(gate)
 
-	createInvoked := false
-	createHandler := func(_ context.Context, _ any) (any, error) { createInvoked = true; return "ok", nil }
-	_, err := guard(context.Background(), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Create"}, createHandler)
+	err := gate.GuardMutation()
 	require.Error(t, err)
 	assert.Equal(t, codes.Unavailable, status.Code(err), "Create refused fail-closed (UNAVAILABLE)")
-	assert.False(t, createInvoked, "resource not created — handler never reached")
-
-	getInvoked := false
-	_, err = guard(context.Background(), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Get"},
-		func(_ context.Context, _ any) (any, error) { getInvoked = true; return "lb", nil })
-	require.NoError(t, err)
-	assert.True(t, getInvoked, "read RPC works on a not-yet-ready instance")
 
 	gate.SetConnected(true)
 	assert.True(t, gate.Ready(), "connected → Ready")
-	createInvoked = false
-	_, err = guard(context.Background(), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Create"}, createHandler)
-	require.NoError(t, err)
-	assert.True(t, createInvoked, "Create allowed once IAM-register path connected")
+	assert.NoError(t, gate.GuardMutation(), "Create allowed once IAM-register path connected")
 }
 
 // Test_1_4_31_RequireIAMOff_NoOp — contrast: require-iam=false (dev) → no-op gate.
 func Test_1_4_31_RequireIAMOff_NoOp(t *testing.T) {
 	gate := bootgate.New(bootgate.Config{RequireIAM: false, Service: "kacho-nlb"})
 	assert.True(t, gate.Ready(), "require-iam off → always Ready (dev)")
-	guard := fgaboot.GuardCreateUnary(gate)
-	invoked := false
-	_, err := guard(context.Background(), nil,
-		&grpc.UnaryServerInfo{FullMethod: "/kacho.cloud.loadbalancer.v1.NetworkLoadBalancerService/Create"},
-		func(_ context.Context, _ any) (any, error) { invoked = true; return "ok", nil })
-	require.NoError(t, err)
-	assert.True(t, invoked, "Create allowed in dev back-compat mode")
+	assert.NoError(t, gate.GuardMutation(), "Create allowed in dev back-compat mode")
 }
 
 // downIAM — a fake RegisterResourceClient whose outage is flipped by the test.

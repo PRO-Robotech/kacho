@@ -17,8 +17,8 @@
 # Полный документ-описание полей и mode-specific требований — `internal/apps/kacho/config/config.go`.
 
 # ─── Mode ───────────────────────────────────────────────────────────────────
-# dev — relaxed validation (TLS optional, breakglass allowed).
-# production — TLS required, extapi.iam.internal-addr required, breakglass forbidden.
+# dev — relaxed validation (TLS optional).
+# production — TLS required, extapi.iam.internal-addr required.
 mode: dev
 
 # ─── Logger ─────────────────────────────────────────────────────────────────
@@ -31,6 +31,7 @@ api-server:
   internal-endpoint: tcp://0.0.0.0:9091  # cluster-internal — peer-сервисы
   graceful-shutdown: 10s
   grpc-gw-enable: false                  # gateway = separate service (api-gateway)
+  handling-budget: 30s                   # верхняя граница обработки ОДНОГО вызова
 
 # ─── Metrics / Healthcheck ──────────────────────────────────────────────────
 metrics:
@@ -82,7 +83,7 @@ extapi:
     dial-duration: 0s
     tls: false
 
-# ─── Authz (FGA per-RPC Check + cache + listen-invalidator) ─────────────────
+# ─── Authz (FGA per-RPC Check + cache + бюджет отказов) ─────────────────────
 authz:
   iam:
     # Адреса здесь нет: Check идёт по соединению из extapi.iam.internal-addr.
@@ -92,10 +93,7 @@ authz:
     enable: true              # positive-only LRU cache над Check (KAC-108)
     ttl: 5s                   # NFR KAC-108: ≤ 10s — выдерживается с margin
     size: 10000               # LRU capacity (entries)
-  listen-invalidator:
-    enable: false             # LISTEN kacho_iam_subjects (если iam-pool доступен)
-    channel: kacho_iam_subjects
-    iam-dsn: ""               # dedicated pgx conn к iam-DB (если listen-invalidator.enable=true)
+  deny-budget-per-sec: 100  # отсечка шторма непоглощаемых кэшем проверок (на принципала)
   # RBAC sub-phase D §11 (issue #111): per-object filtered List через kacho-iam
   # AuthorizeService.BatchCheck (reuse iam conn). default on,
   # fail-closed (security.md). ENV: KACHO_NLB_AUTHZ__LIST_FILTER__ENABLED etc.
@@ -105,12 +103,11 @@ authz:
     cache-ttl: 5s             # visibility-cache TTL (NFR ≤ 10s)
     cache-max-entries: 10000  # cache bound (записей «(subject,type,id) видим»)
     fail-open: false          # iam down → List → UNAVAILABLE (НЕ нефильтрованный)
-  breakglass: false           # dev-only; production validation rejects true
   # Круг отправителей: личности клиентского сертификата, которым разрешено
   # передавать личность конечного пользователя (x-kacho-principal-*). Пустой круг
   # означает «доверять ЛЮБОМУ пиру с проверенным сертификатом» (confused-deputy в
-  # общем mTLS-mesh), поэтому старт на нём ОТКАЗЫВАЕТ — на любом non-breakglass
-  # старте, а не только в боевом режиме.
+  # общем mTLS-mesh), поэтому старт на нём ОТКАЗЫВАЕТ — на ЛЮБОМ старте, а не
+  # только в боевом режиме.
   trusted-forwarder-sans: []
   # Этот образец — локальная dev-посадка без сертификатов и без шлюза, поэтому он
   # ЯВНО просит «круг не сужаем». На боевом профиле опт-ин НЕ действует: там

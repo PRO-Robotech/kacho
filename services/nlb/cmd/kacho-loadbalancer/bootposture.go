@@ -22,22 +22,26 @@ import (
 //   - public/internal mtls — у nlb ОДИН server-cert (cfg.MTLS.Server), который
 //     применяется к ОБОИМ gRPC-листенерам (:9090 и :9091), поэтому оба поля
 //     отражают одно и то же реальное состояние — асимметрии тут не существует.
-//   - authz_check   — не адрес, а факт проводки: клиент
-//     InternalIAMService.Check поднимается только при успешном dial'е
-//     iam-internal (peers.Check != nil).
+//   - authz_check   — не адрес и БОЛЬШЕ НЕ nil-проверка клиента: звено решения о
+//     доступе ставит носитель контура (`pkg/servicehost`), и ветки «поднять
+//     слушатели без него» у него нет — либо контур собран, либо старт отвергнут.
+//     Самоотчёт печатается ПОСЛЕ приёма дескриптора, поэтому здесь это факт
+//     построения, а не наблюдение над указателем. Прежний предикат
+//     (`peers.Check != nil`) описывал бы теперь ДРУГОЙ предмет — соединение,
+//     которым обработчики делают пообъектные проверки, — под тем же именем.
 //   - trusted_forwarders — сужен ли круг отправителей, которым разрешено передавать
 //     личность конечного пользователя. Считается по НЕПУСТЫМ записям, а не по длине
 //     среза: corelib отбрасывает пустые строки, поэтому список из одних пустых
 //     записей вырождается там в «доверяем любому» — рапортовать его как сужение
 //     значило бы отчитываться о намерении вместо исхода.
-func bootPosture(cfg *config.Config, authzCheckWired bool) observability.BootPosture {
+func bootPosture(cfg *config.Config) observability.BootPosture {
 	return observability.BootPosture{
 		Service:           "nlb",
 		AuthMode:          cfg.Mode().String(),
 		DBSSLMode:         coredb.SSLModeFromDSN(cfg.Repository.Postgres.URL),
 		PublicMTLS:        cfg.MTLS.Server.Enable,
 		InternalMTLS:      cfg.MTLS.Server.Enable,
-		AuthZCheck:        authzCheckWired,
+		AuthZCheck:        true,
 		TrustedForwarders: cfg.TrustedForwarders().IsNarrowed(),
 	}
 }

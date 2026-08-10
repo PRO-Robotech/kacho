@@ -6,7 +6,7 @@
 // Иерархия секций — спека `docs/superpowers/specs/2026-05-23-kacho-nlb-design.md `:
 //
 //	logger / api-server / metrics / healthcheck / repository.postgres /
-//	authn / extapi / authz.iam (+ cache, listen-invalidator) /
+//	authn / extapi / authz.iam (+ cache, deny-budget) /
 //	fga.register-drainer  / mtls (opt-in).
 //
 // ENV-binding через viper с делимитером `__`:
@@ -81,6 +81,24 @@ type APIServerConfig struct {
 	InternalEndpoint  string        `mapstructure:"internal-endpoint"` // tcp://0.0.0.0:9091
 	GracefulShutdown  time.Duration `mapstructure:"graceful-shutdown"` // default 10s
 	GRPCGatewayEnable bool          `mapstructure:"grpc-gw-enable"`    // false (gateway = separate svc)
+
+	// HandlingBudget — верхняя граница обработки ОДНОГО вызова: носитель контура
+	// (`pkg/servicehost`) ставит этот срок входящему контексту, если своего у него
+	// нет либо он дальше границы. Более строгий срок вызывающего уважается — окно
+	// не расширяется никогда.
+	//
+	// Величина обязательна и «не применимо» у неё нет: вызов без срока держит
+	// соединение из ограниченного пула столько, сколько выполняется его запрос,
+	// поэтому `pool_max_conns` таких вызовов отказывают весь сервис (CWE-770).
+	//
+	// 30s — тот же порядок, что у соседей: он обязан накрывать самую длинную
+	// ЗАКОННУЮ обработку запроса nlb, а это страница списка предельного размера
+	// (`page_size=1000`), чью фильтрацию по правам сужатель проводит волнами с
+	// собственным бюджетом ≈6s (см. `authz.list-filter.timeout` и
+	// `listnarrow.Budget`), плюс запросы к своей БД. Величина сознательно с
+	// запасом: её предмет — не тонкая настройка задержки, а недопущение вызова
+	// БЕЗ срока вовсе.
+	HandlingBudget time.Duration `mapstructure:"handling-budget"`
 }
 
 // ─── Metrics / Healthcheck ───────────────────────────────────────────────────
@@ -211,14 +229,29 @@ type ExtAPIEndpoint struct {
 	TLS          bool          `mapstructure:"tls"`           // production-mode требует true
 }
 
-// ─── Authz (FGA Check + cache + listen-invalidator) ──────────────────────────
+// ─── Authz (FGA Check + cache + бюджет отказов) ──────────────────────────────
 
 type AuthzConfig struct {
-	IAM               AuthzIAMConfig               `mapstructure:"iam"`
-	Cache             AuthzCacheConfig             `mapstructure:"cache"`
-	ListenInvalidator AuthzListenInvalidatorConfig `mapstructure:"listen-invalidator"`
-	ListFilter        AuthzListFilterConfig        `mapstructure:"list-filter"`
-	Breakglass        bool                         `mapstructure:"breakglass"` // dev-only; production validation rejects
+	IAM        AuthzIAMConfig        `mapstructure:"iam"`
+	Cache      AuthzCacheConfig      `mapstructure:"cache"`
+	ListFilter AuthzListFilterConfig `mapstructure:"list-filter"`
+
+	// DenyBudgetPerSec — устойчивый темп (в секунду на принципала) тех проверок
+	// прав, чей исход кэш НЕ поглощает: отказ, промах «нет пути», недоступность
+	// модели. По исчерпании звено решения отвечает `ResourceExhausted`, не
+	// обращаясь к kacho-iam, — то есть сбрасывает шторм отказов с соседа.
+	//
+	// 100/с — та же величина, что до перевода на носитель стояла в композиционном
+	// корне литералом (`DenyRateLimitPerSec: 100`). Штатную работу тенанта она не
+	// задевает: положительные вердикты поглощает кэш (`authz.cache.ttl`), а сотня
+	// ОТКАЗОВ в секунду от одного принципала — это уже перебор доступа, а не
+	// работа.
+	//
+	// Ноль здесь запрещён и ловится `Validate`: механизм читает неположительное
+	// значение как «ограничения нет», то есть отсечка выключилась бы МОЛЧА, ветка
+	// `ResourceExhausted` стала бы недостижимой, а её счётчик — навсегда нулевым.
+	// Ровно так эта величина однажды и пропала.
+	DenyBudgetPerSec float64 `mapstructure:"deny-budget-per-sec"`
 
 	// TrustedForwarderSANs — allow-list cert-identity SAN'ов, которым разрешено
 	// форвардить end-user principal-metadata (обычно единственный — api-gateway SA).
@@ -292,12 +325,6 @@ type AuthzIAMConfig struct {
 type AuthzCacheConfig struct {
 	Enable bool          `mapstructure:"enable"` // default true (positive-only)
 	TTL    time.Duration `mapstructure:"ttl"`    // default 5s (≤10s)
-}
-
-type AuthzListenInvalidatorConfig struct {
-	Enable       bool   `mapstructure:"enable"`  // LISTEN kacho_iam_subjects on iam-PG
-	Channel      string `mapstructure:"channel"` // default "kacho_iam_subjects"
-	IAMDirectDSN string `mapstructure:"iam-dsn"` // dedicated pgx conn to iam-DB (optional)
 }
 
 // ─── FGA (owner-tuple registration via IAM) ───────────────────────────

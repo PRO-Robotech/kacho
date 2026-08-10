@@ -19,6 +19,7 @@ data:
       endpoint: tcp://0.0.0.0:{{ .Values.ports.grpc }}
       internal-endpoint: tcp://0.0.0.0:{{ .Values.ports.internalGrpc }}
       graceful-shutdown: {{ .Values.config.apiServer.gracefulShutdown }}
+      handling-budget: {{ .Values.config.apiServer.handlingBudget }}
       grpc-gw-enable: {{ .Values.config.apiServer.grpcGwEnable }}
 
     metrics:
@@ -96,10 +97,7 @@ data:
       cache:
         enable: {{ .Values.config.authz.cache.enable }}
         ttl: {{ .Values.config.authz.cache.ttl }}
-      listen-invalidator:
-        enable: {{ .Values.config.authz.listenInvalidator.enable }}
-        channel: {{ .Values.config.authz.listenInvalidator.channel | quote }}
-        iam-dsn: {{ .Values.config.authz.listenInvalidator.iamDsn | quote }}
+      deny-budget-per-sec: {{ .Values.config.authz.denyBudgetPerSec }}
       # RBAC sub-phase D §11 (issue #111): per-object filtered List via
       # kacho-iam AuthorizeService.BatchCheck (iam conn reuse). default on.
       list-filter:
@@ -108,7 +106,6 @@ data:
         cache-ttl: {{ .Values.config.authz.listFilter.cacheTtl }}
         cache-max-entries: {{ .Values.config.authz.listFilter.cacheMaxEntries }}
         fail-open: {{ .Values.config.authz.listFilter.failOpen }}
-      breakglass: {{ .Values.config.authz.breakglass }}
       # Anti-impersonation allow-list (trusted x-kacho-principal-* forwarders).
       # Required non-empty in production+mTLS (config.Validate fail-closed gate).
       trusted-forwarder-sans:

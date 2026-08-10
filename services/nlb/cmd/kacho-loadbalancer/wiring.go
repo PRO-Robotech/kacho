@@ -12,7 +12,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"log/slog"
 
@@ -20,8 +19,6 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/PRO-Robotech/kacho/pkg/authz"
-	"github.com/PRO-Robotech/kacho/pkg/grpcsrv"
 	"github.com/PRO-Robotech/kacho/pkg/operations"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/bootgate"
 	"github.com/PRO-Robotech/kacho/pkg/outbox/drainer"
@@ -41,7 +38,6 @@ import (
 	geoclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/geo"
 	iamclient "github.com/PRO-Robotech/kacho/services/nlb/internal/clients/iam"
 	"github.com/PRO-Robotech/kacho/services/nlb/internal/domain"
-	"github.com/PRO-Robotech/kacho/services/nlb/internal/fgaboot"
 	kachopg "github.com/PRO-Robotech/kacho/services/nlb/internal/repo/kacho/pg"
 )
 
@@ -52,57 +48,6 @@ type bgWorker struct {
 	run  func(context.Context) error
 }
 
-// buildInterceptorChains собирает unary/stream цепочки для public :9090 и
-// internal :9091 listener'ов. Обе цепочки обоих листенеров начинаются звеном
-// восстановления паники: panic-recovery FIRST → (public: fgaboot boot-gate) →
-// cert-identity → trusted-principal → authz. Internal: тот же authN+authZ БЕЗ
-// boot-gate (он охраняет только tenant-facing Create на public). anti-spoof:
-// TrustedPrincipalExtract идёт ПОСЛЕ CertIdentityExtract (см. runServe doc).
-//
-// Почему звено первое. grpc-go панику обработчика не восстанавливает: она
-// уходит из серверной горутины и завершает процесс, то есть дефект в обработке
-// одного запроса прекращает обслуживание всех тенантов. Оно обязано стоять НАД
-// boot-gate, принципалом и authz — фильтр паникует так же, как обработчик.
-// Наблюдающего звена в этих цепочках нет, поэтому «под наблюдением» здесь
-// совпадает с «снаружи всего».
-func buildInterceptorChains(
-	logger *slog.Logger,
-	bootGate *bootgate.Gate,
-	authzIntr *authz.Interceptor,
-	forwarders grpcsrv.TrustedForwarders,
-) (
-	publicUnary []grpc.UnaryServerInterceptor,
-	publicStream []grpc.StreamServerInterceptor,
-	internalUnary []grpc.UnaryServerInterceptor,
-	internalStream []grpc.StreamServerInterceptor,
-) {
-	publicUnary = []grpc.UnaryServerInterceptor{
-		grpcsrv.UnaryPanicRecovery(logger),
-		fgaboot.GuardCreateUnary(bootGate),
-	}
-	publicUnary = append(publicUnary, grpcsrv.PrincipalExtractUnary(forwarders)...)
-	publicUnary = append(publicUnary, authzIntr.Unary())
-
-	publicStream = []grpc.StreamServerInterceptor{
-		grpcsrv.StreamPanicRecovery(logger),
-	}
-	publicStream = append(publicStream, grpcsrv.PrincipalExtractStream(forwarders)...)
-	publicStream = append(publicStream, authzIntr.Stream())
-
-	internalUnary = []grpc.UnaryServerInterceptor{
-		grpcsrv.UnaryPanicRecovery(logger),
-	}
-	internalUnary = append(internalUnary, grpcsrv.PrincipalExtractUnary(forwarders)...)
-	internalUnary = append(internalUnary, authzIntr.Unary())
-
-	internalStream = []grpc.StreamServerInterceptor{
-		grpcsrv.StreamPanicRecovery(logger),
-	}
-	internalStream = append(internalStream, grpcsrv.PrincipalExtractStream(forwarders)...)
-	internalStream = append(internalStream, authzIntr.Stream())
-	return publicUnary, publicStream, internalUnary, internalStream
-}
-
 // grpcWiring — зависимости регистрации gRPC-сервисов (composition root bundle).
 type grpcWiring struct {
 	repo    *kachopg.Repository
@@ -111,41 +56,49 @@ type grpcWiring struct {
 	pool    *pgxpool.Pool
 	cfg     *config.Config
 	logger  *slog.Logger
+	// syncRegistrar — синхронный регистратор владельца ресурса у kacho-iam.
+	// Собирается в композиционном корне ДО подъёма слушателей: его сборка умеет
+	// отказать, а регистратор носителя возврата ошибки не имеет — и не должен,
+	// отказ обязан случиться раньше первого принятого соединения.
+	syncRegistrar iamclient.Registrar
 }
 
-// registerGRPCServices регистрирует все per-resource handler'ы на public :9090 /
-// internal :9091 серверах (Internal-vs-external инвариант: Internal.* — только на
-// internalSrv). Порядок и распределение по listener'ам идентичны прежнему inline-
-// блоку runServe (см. per-service doc-комментарии).
-func registerGRPCServices(publicSrv, internalSrv *grpc.Server, w grpcWiring) error {
-	// OperationService (public, exempt: op-id опакен, owner-scoped Get/Cancel).
-	operationpb.RegisterOperationServiceServer(publicSrv, operation.NewHandler(w.opsRepo))
-
-	// Create-ops дренятся через plain operations.Run: durable commit → op done
-	// сразу. Owner-tuple ресурса материализуется eventually-consistent (writer-TX
-	// fga_register_outbox intent → register-drainer → kacho-iam RegisterResource →
-	// reconciler backstop) и не гейтит Operation.done. Sync-primary registrar
-	// (ниже) дополнительно регистрирует owner-tuple СРАЗУ после commit'а, закрывая
-	// read-your-writes окно; durable intent + drainer остаются at-least-once
-	// backstop'ом (Operation.done по-прежнему не гейтится на видимость, ban #9).
-
-	// Sync-primary owner-tuple registrar (kacho-iam RegisterResource) поверх того
-	// же mTLS-conn к iam-internal :9091, что и register-drainer. nil peer
-	// (dev/no-iam) → nil registrar → sync-путь пропускается. Typed-nil gotcha:
-	// строим конкретный *SyncRegistrar ТОЛЬКО при наличии peer'а.
-	var syncRegistrar iamclient.Registrar
-	if w.peers.Register != nil {
-		// Отказ, а не пустая операция: несобранный регистратор — это
-		// ускоритель, который никогда ничего не ускорит, и заметить это было
-		// бы нечем.
-		reg, rerr := iamclient.NewSyncRegistrar(w.peers.Register)
-		if rerr != nil {
-			return fmt.Errorf("собрать синхронный registrar: %w", rerr)
-		}
-		syncRegistrar = reg
+// buildSyncRegistrar собирает синхронный регистратор owner-tuple поверх того же
+// mTLS-соединения с внутренним листенером kacho-iam, которым идёт дренаж
+// регистраций. Пира нет (dev / без iam) → nil-регистратор, синхронный путь
+// пропускается; durable-намерение в очереди остаётся at-least-once backstop'ом.
+//
+// Typed-nil: конкретный `*SyncRegistrar` строится ТОЛЬКО при наличии пира — иначе
+// в интерфейсном поле лежал бы non-nil интерфейс с nil внутри.
+func buildSyncRegistrar(peers *peerClients) (iamclient.Registrar, error) {
+	if peers.Register == nil {
+		return nil, nil
 	}
+	// Отказ, а не пустая операция: несобранный регистратор — это ускоритель,
+	// который никогда ничего не ускорит, и заметить это было бы нечем.
+	reg, err := iamclient.NewSyncRegistrar(peers.Register)
+	if err != nil {
+		return nil, fmt.Errorf("собрать синхронный registrar: %w", err)
+	}
+	return reg, nil
+}
 
-	// NetworkLoadBalancerService (public only).
+// registerPublic регистрирует обработчики ПУБЛИЧНОГО слушателя :9090.
+//
+// Носитель контура зовёт эту функцию ровно один раз и передаёт ей
+// `grpc.ServiceRegistrar` — интерфейс с единственным методом. Сервера здесь нет и
+// быть не может, поэтому «зарегистрировать и приделать своё звено» невыразимо.
+//
+// Owner-tuple ресурса материализуется eventually-consistent (намерение в
+// writer-TX → дренаж → kacho-iam RegisterResource → реконсайлер-backstop) и НЕ
+// гейтит `Operation.done`. Синхронный регистратор дополнительно регистрирует его
+// сразу после коммита, закрывая read-your-writes окно; durable-намерение остаётся
+// at-least-once backstop'ом (ban #9).
+func registerPublic(reg grpc.ServiceRegistrar, w grpcWiring) {
+	// OperationService (exempt: op-id опакен, owner-scoped Get/Cancel).
+	operationpb.RegisterOperationServiceServer(reg, operation.NewHandler(w.opsRepo))
+
+	// NetworkLoadBalancerService.
 	lbHandler := lbhandler.NewHandler(
 		w.repo, w.opsRepo,
 		w.peers.Project, w.peers.Check, w.peers.Region, w.peers.Zone,
@@ -153,22 +106,23 @@ func registerGRPCServices(publicSrv, internalSrv *grpc.Server, w grpcWiring) err
 		w.peers.Subnet, w.peers.Address, w.peers.InternalAddress,
 		w.peers.ListFilter,
 		w.logger,
-	).WithRegistrar(syncRegistrar).WithSecurityGroupClient(w.peers.SecurityGroup)
-	lbv1.RegisterNetworkLoadBalancerServiceServer(publicSrv, lbHandler)
+	).WithRegistrar(w.syncRegistrar).WithSecurityGroupClient(w.peers.SecurityGroup)
+	lbv1.RegisterNetworkLoadBalancerServiceServer(reg, lbHandler)
 
-	// ListenerService (public only). InternalAddress нужен только для release
-	// legacy-VIP в Delete (nil → Unavailable). Check — object-scoped authz-gate на
-	// caller-supplied `targetGroupId` в Create/Update (per-RPC interceptor скоупит
-	// только parent LB / сам Listener, TG остался бы необойдённым — CWE-863).
+	// ListenerService. InternalAddress нужен только для release legacy-VIP в
+	// Delete (nil → Unavailable). Check — пообъектный гейт на caller-supplied
+	// `targetGroupId` в Create/Update (per-RPC звено скоупит только родительский
+	// балансировщик и сам листенер, целевая группа осталась бы необойдённой —
+	// CWE-863).
 	listenerHandler := listener.NewHandler(
 		w.repo,
 		w.opsRepo,
 		w.peers.ListFilter,
 		w.logger,
-	).WithRegistrar(syncRegistrar).WithCheckClient(w.peers.Check)
-	lbv1.RegisterListenerServiceServer(publicSrv, listenerHandler)
+	).WithRegistrar(w.syncRegistrar).WithCheckClient(w.peers.Check)
+	lbv1.RegisterListenerServiceServer(reg, listenerHandler)
 
-	// TargetGroupService (public only). Фаза B drain — отдельный background-runner.
+	// TargetGroupService. Фаза B drain — отдельный фоновый runner.
 	tgHandler := targetgroup.NewHandler(
 		w.repo, w.opsRepo,
 		w.peers.Project, w.peers.Check, w.peers.Region,
@@ -176,23 +130,35 @@ func registerGRPCServices(publicSrv, internalSrv *grpc.Server, w grpcWiring) err
 		tgZoneRegion(w.peers.ZoneRegion),
 		w.peers.ListFilter,
 		w.logger,
-	).WithRegistrar(syncRegistrar)
-	lbv1.RegisterTargetGroupServiceServer(publicSrv, tgHandler)
+	).WithRegistrar(w.syncRegistrar)
+	lbv1.RegisterTargetGroupServiceServer(reg, tgHandler)
+}
 
-	// InternalResourceLifecycleService (internal only) — FGA tuple-sync для kacho-iam.
+// registerInternal регистрирует обработчики ВНУТРЕННЕГО слушателя :9091.
+//
+// `Internal.*` живёт ТОЛЬКО здесь — на внешнем endpoint эти службы не публикуются
+// (ban #6). Разделение проверяемо: носитель снимает служимый набор у самих
+// серверов (`grpc.Server.GetServiceInfo`), поэтому «зарегистрировали не туда»
+// видно наблюдением, а не обзором диффа.
+func registerInternal(reg grpc.ServiceRegistrar, w grpcWiring) {
+	// InternalResourceLifecycleService — FGA tuple-sync для kacho-iam.
 	lifecycleHandler := internallifecycle.NewHandler(
 		kachopg.NewLifecycleFeed(w.cfg.Repository.Postgres.URL),
 		w.cfg.InternalLifecycle.MaxStreams,
 		w.logger,
 	)
-	lbv1.RegisterInternalResourceLifecycleServiceServer(internalSrv, lifecycleHandler)
+	lbv1.RegisterInternalResourceLifecycleServiceServer(reg, lifecycleHandler)
 
-	// InternalLoadBalancerAnnounceService (internal only) — announce-state feedback.
-	// Инфра-чувствительные данные (BGP/route/VRF/kernel/infra-id) не выходят на external.
+	// InternalLoadBalancerAnnounceService — обратная связь состояния анонса.
+	// Инфра-чувствительные данные (BGP/route/VRF/kernel/infra-id) на внешнюю
+	// поверхность не выходят.
 	announceHandler := announceapi.NewHandler(kachopg.NewAnnounceStore(w.pool), w.logger)
-	lbv1.RegisterInternalLoadBalancerAnnounceServiceServer(internalSrv, announceHandler)
+	lbv1.RegisterInternalLoadBalancerAnnounceServiceServer(reg, announceHandler)
 
-	return nil
+	// Опроса операций здесь НЕТ намеренно: до перевода на носитель он жил только
+	// на публичном слушателе, и добавить его «за компанию» значило бы расширить
+	// внутреннюю поверхность правкой об оформлении контура. Распределение служб
+	// по слушателям остаётся ровно прежним.
 }
 
 // tgZoneRegion — typed-nil guard: `*geoclient.ZoneRegionClient(nil)` в
@@ -216,15 +182,14 @@ func lbZoneRegion(c *geoclient.ZoneRegionClient) lbhandler.ZoneRegionClient {
 
 // backgroundDeps — зависимости сборки supervised background-loop'ов.
 type backgroundDeps struct {
-	pool       *pgxpool.Pool
-	repo       *kachopg.Repository
-	lroRec     operations.Recorder
-	outboxRec  metrics.Recorder
-	bootGate   *bootgate.Gate
-	authzCache *authz.Cache
-	peers      *peerClients
-	cfg        *config.Config
-	logger     *slog.Logger
+	pool      *pgxpool.Pool
+	repo      *kachopg.Repository
+	lroRec    operations.Recorder
+	outboxRec metrics.Recorder
+	bootGate  *bootgate.Gate
+	peers     *peerClients
+	cfg       *config.Config
+	logger    *slog.Logger
 	// freeIPPoisonObs — poison-observer free-ip reconciler'а (nil-safe): каждый
 	// раз при изоляции ядовитой строки инкрементит free_ip_poisoned-метрику.
 	freeIPPoisonObs func()
@@ -265,26 +230,6 @@ func assembleBackgroundWorkers(ctx context.Context, d backgroundDeps) ([]bgWorke
 		background = append(background, bgWorker{"free-ip-runner", freeIPRunner.Run})
 	} else {
 		d.logger.Warn("free_ip_runner_disabled — no vpc internal-address client; stuck load-balancer VIP reconcile inactive")
-	}
-
-	// FGA Check cache invalidator: LISTEN kacho_iam_subjects на iam-DB через
-	// dedicated pgx-conn. Включается ТОЛЬКО при enable=true И заданном IAMDirectDSN.
-	if d.cfg.Authz.ListenInvalidator.Enable && strings.TrimSpace(d.cfg.Authz.ListenInvalidator.IAMDirectDSN) != "" {
-		channel := d.cfg.Authz.ListenInvalidator.Channel
-		if channel == "" {
-			channel = "kacho_iam_subjects"
-		}
-		inv := &authz.ListenInvalidator{
-			ConnString: d.cfg.Authz.ListenInvalidator.IAMDirectDSN,
-			Channel:    channel,
-			Cache:      d.authzCache,
-			Logger:     d.logger,
-		}
-		background = append(background, bgWorker{"authz-listen-invalidator", inv.Run})
-	} else {
-		d.logger.Info("authz_listen_invalidator_disabled",
-			"enable", d.cfg.Authz.ListenInvalidator.Enable,
-			"dsn_configured", d.cfg.Authz.ListenInvalidator.IAMDirectDSN != "")
 	}
 
 	// FGA register-drainer: corelib outbox/drainer on kacho_nlb.fga_register_outbox
