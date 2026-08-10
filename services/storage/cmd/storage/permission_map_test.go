@@ -504,3 +504,66 @@ func TestScopeFilteredRPCsAreBackedByTheProductionBootGuard(t *testing.T) {
 	t.Log(fmt.Sprintf("осмотрено scope_filtered-записей: %d (%s)",
 		len(scopeFiltered), strings.Join(scopeFiltered, ", ")))
 }
+
+// TestPublicListenerServesNoInternalService — ban #6 на уровне НАБОРА, а не обзора.
+//
+// Комментарий у `registerInternal` обещает, что разделение «Internal* только на
+// внутреннем слушателе» проверяется через `grpc.Server.GetServiceInfo`. Обещание
+// было ложным: единственный потребитель обоих регистраторов сливал их наборы в один
+// список и различия между ними не утверждал никогда. Комментарий о защите, которой
+// нет, — ловушка (`security.md` §Hardening инв. 5): следующий контрибьютор добавит
+// `Internal*`-службу в публичный регистратор, получит зелёное и прочтёт комментарий
+// как подтверждение.
+//
+// Проба спрашивает наборы ПОРОЗНЬ и утверждает про каждый своё: в публичном нет ни
+// одной службы с `Internal` в имени, во внутреннем — есть хотя бы одна. Вторая
+// половина не украшение: без неё проба зеленела бы и на пустом внутреннем наборе,
+// то есть «Internal* нигде не служится» читалось бы как «разделение соблюдено».
+func TestPublicListenerServesNoInternalService(t *testing.T) {
+	volumeUC := volume.New(nil, nil, nil, nil, nil, nil)
+	snapshotUC := snapshot.New(nil, nil, nil, nil)
+	imageUC := image.New(nil, nil, nil, nil, nil, nil)
+	diskTypeUC := disktype.New(nil)
+	opHandler := handler.NewOperationHandler(operations.NewRepo(nil, "kacho_storage"))
+
+	names := func(reg func(grpc.ServiceRegistrar)) []string {
+		srv := grpc.NewServer()
+		reg(srv)
+		var out []string
+		for name := range srv.GetServiceInfo() {
+			out = append(out, name)
+		}
+		sort.Strings(out)
+		return out
+	}
+
+	public := names(func(r grpc.ServiceRegistrar) {
+		registerPublic(r, volumeUC, snapshotUC, imageUC, diskTypeUC, opHandler)
+	})
+	internal := names(func(r grpc.ServiceRegistrar) {
+		registerInternal(r, volumeUC, imageUC, diskTypeUC, opHandler)
+	})
+
+	if len(public) == 0 || len(internal) == 0 {
+		t.Fatalf("пустой набор делает утверждение вакуумным: публичных служб %d, внутренних %d",
+			len(public), len(internal))
+	}
+	for _, n := range public {
+		if strings.Contains(n, ".Internal") {
+			t.Errorf("служба %q зарегистрирована на ПУБЛИЧНОМ слушателе: `Internal*` "+
+				"не публикуется на внешнем endpoint (ban #6)", n)
+		}
+	}
+	var internalFound bool
+	for _, n := range internal {
+		if strings.Contains(n, ".Internal") {
+			internalFound = true
+			break
+		}
+	}
+	if !internalFound {
+		t.Errorf("во внутреннем наборе нет ни одной службы `Internal*` (%v) — положительный "+
+			"контроль не выполнен, и отрицание выше зеленело бы на пустоте", internal)
+	}
+	t.Logf("перепись: публичных служб %d, внутренних %d", len(public), len(internal))
+}
