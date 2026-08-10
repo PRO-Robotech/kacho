@@ -103,7 +103,7 @@ CASES.append(Case(
                 "const _path = _realm.replace(/^[a-z]+:\\/\\/[^/]+/i, '');",
                 "pm.test('the realm PATH is the facade docker-token handle', () => {",
                 "  pm.expect(_path, 'realm ' + _realm + ' — the docker client follows this address; "
-                "it must be iam\\'s handle').to.eql('/iam/token');",
+                "it must be the facade handle').to.eql('/iam/token');",
                 "});",
                 "pm.test('the realm is NOT the provider token endpoint (that would route every '",
                 "  + 'docker client around the facade, silently)', () => {",
