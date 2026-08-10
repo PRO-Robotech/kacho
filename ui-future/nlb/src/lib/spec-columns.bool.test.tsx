@@ -10,45 +10,51 @@
 // Ground truth поля: proto/kacho/cloud/geo/v1/region.proto — `bool
 // open_for_placement = 5`, публичная проекция.
 //
-// ГДЕ ЭТО РИСУЕТСЯ. Список регионов рисует ОБЩИЙ `ResourceListPage`
-// (`@shared/components/organisms/ResourceListPage` — локальный модуль этого
-// пакета его ре-экспортирует), а он строит ячейки общим
-// `@shared/lib/spec-columns`. Импортировать общий модуль сюда нельзя: у
-// `ui-future/shared` нет собственных node_modules, и его компоненты из тестов
-// этого пакета не резолвятся (падает вся суита, сообщением не про себя).
-// Поэтому проба идёт через локальный `buildSpecColumns` — у него ТОТ ЖЕ
-// контракт, — а совпадение контракта с общим утверждается отдельно, чтением
-// исходного файла общего рендера. Разъедутся — предпосылка покраснеет, и это
-// будет видно, а не молча.
+// ГДЕ ЭТО РИСУЕТСЯ. Список регионов рисует ОБЩИЙ `ResourceListPage`, а он
+// строит ячейки общим `@shared/lib/spec-columns`. Проба берёт ОБА сборщика —
+// локальный и общий — и утверждает про КАЖДЫЙ одно и то же наблюдаемое: что
+// показано в ячейке. Прежняя редакция вместо этого читала исходник общего
+// рендера и искала в нём подстроки-образцы; такое утверждение говорит о
+// символах файла, переживает любую перепись той же логики и не может упасть на
+// изменении того, что человек видит.
 
 import { render } from "@testing-library/react";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { ReactNode } from "react";
+
+import { buildSpecColumns as buildShared } from "@shared/lib/spec-columns";
 
 import { REGISTRY } from "./resource-registry";
 import { buildSpecColumns } from "./spec-columns";
-
-const SHARED_SPEC_COLUMNS = join(process.cwd(), "..", "shared", "src", "lib", "spec-columns.tsx");
 
 function textOf(node: ReactNode): string {
   return render(<div>{node}</div>).container.textContent ?? "";
 }
 
-function cellText(header: RegExp, row: Record<string, unknown>): string {
-  const col = buildSpecColumns(REGISTRY["compute-regions"]).find((c) => header.test(c.header));
+type Builder = typeof buildSpecColumns;
+
+function cellTextWith(build: Builder, header: RegExp, row: Record<string, unknown>): string {
+  const col = build(REGISTRY["compute-regions"]).find((c) => header.test(c.header));
   if (!col) throw new Error(`колонки ${header} нет в списке регионов`);
   return textOf(col.cell(row));
 }
 
+/** Оба сборщика — локальный этого пакета и общий, которым рисует список. */
+const BUILDERS: Array<[string, Builder]> = [
+  ["локальный", buildSpecColumns],
+  ["общий", buildShared as Builder],
+];
+
+const cellText = (header: RegExp, row: Record<string, unknown>) =>
+  cellTextWith(buildSpecColumns, header, row);
+
 describe("логическая колонка в списке регионов", () => {
-  it("предпосылка: общий рендер списков уважает собственный render колонки", () => {
-    // Без этого проба утверждала бы про рендер, который эту страницу не рисует.
-    const shared = readFileSync(SHARED_SPEC_COLUMNS, "utf8");
-    expect(shared).toMatch(/c\.render\s*\?\s*c\.render\(row\)/);
-    // И вторая половина того же факта: ветка "text"/default общего рендера
-    // логическое значение не различает — именно поэтому колонка несёт render.
-    expect(shared).toMatch(/case "text":\s*\n\s*default:/);
+  it.each(BUILDERS)("%s сборщик рисует закрытый регион одинаково", (_name, build) => {
+    // Прежде это была «предпосылка», прочитанная из исходника общего рендера.
+    // Теперь утверждается наблюдаемое у ОБОИХ: разъедутся — покраснеет тот, кто
+    // разошёлся, и будет названо, какой именно.
+    const text = cellTextWith(build, /размещ/i, { open_for_placement: false });
+    expect(text).not.toContain("false");
+    expect(text).not.toBe("");
   });
 
   it("предпосылка: колонка над логическим полем в списке есть", () => {

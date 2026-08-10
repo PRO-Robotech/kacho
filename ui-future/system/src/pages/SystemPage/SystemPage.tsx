@@ -16,9 +16,9 @@
 // Плюс /system/search — общая admin-страница поиска по id/имени (живёт в shared).
 // Адрес держит рейл хоста («Поиск»), а хост маршрутизирует весь /system/* сюда;
 // страница строит ссылки на /system/regions|zones|address-pools, то есть на
-// маршруты ЭТОГО модуля, и каждый домен, который она опрашивает (/geo, /iam,
-// /vpc), уже есть в dev-прокси system. Перечень держит не память, а
-// SystemPage.search-domains.test.ts — он читает домены из самой страницы поиска.
+// маршруты ЭТОГО модуля. Достижимость её доменов через dev-прокси держит не
+// память, а SystemPage.proxy-coverage.test.ts: он берёт таблицу целей у самой
+// страницы поиска и правила — у загруженного vite.config.ts.
 
 import { lazy, Suspense } from "react";
 import { Navigate, Route, Routes } from "react-router";
@@ -42,6 +42,18 @@ const spin = (
   </div>
 );
 
+/**
+ * Спеки, адреса которых этот модуль маршрутизирует.
+ *
+ * Один источник для маршрутов НИЖЕ и для проверки достижимости их доменов через
+ * dev-прокси: выписанный рядом с проверкой перечень разошёлся бы с маршрутами
+ * молча, и «все домены покрыты» стало бы утверждением о другом наборе.
+ */
+const regionsSpec = REGISTRY.regions;
+const zonesSpec = REGISTRY.zones;
+const addressPoolsSpec = REGISTRY["address-pools"];
+export const ROUTED_SPECS = [regionsSpec, zonesSpec, addressPoolsSpec];
+
 export function SystemRoutes() {
   return (
     <Routes>
@@ -49,9 +61,9 @@ export function SystemRoutes() {
 
       {/* List/cluster страницы — в AdminLayout (горизонтальные табы). */}
       <Route element={<AdminLayout />}>
-        <Route path="regions" element={<ResourceListPage spec={REGISTRY.regions} panelForms />} />
-        <Route path="zones" element={<ResourceListPage spec={REGISTRY.zones} panelForms />} />
-        <Route path="address-pools" element={<ResourceListPage spec={REGISTRY["address-pools"]} panelForms />} />
+        <Route path="regions" element={<ResourceListPage spec={regionsSpec} panelForms />} />
+        <Route path="zones" element={<ResourceListPage spec={zonesSpec} panelForms />} />
+        <Route path="address-pools" element={<ResourceListPage spec={addressPoolsSpec} panelForms />} />
         <Route
           path="cluster/admins"
           element={
@@ -63,23 +75,28 @@ export function SystemRoutes() {
       </Route>
 
       {/* Create/Detail/Edit — страница-формы (без AdminLayout-табов). */}
-      <Route path="regions/create" element={<ResourceCreatePage spec={REGISTRY.regions} />} />
-      <Route path="regions/:uid" element={<ResourceDetailPage spec={REGISTRY.regions} />} />
-      <Route path="regions/:uid/edit" element={<ResourceEditPage spec={REGISTRY.regions} />} />
+      <Route path="regions/create" element={<ResourceCreatePage spec={regionsSpec} />} />
+      <Route path="regions/:uid" element={<ResourceDetailPage spec={regionsSpec} />} />
+      <Route path="regions/:uid/edit" element={<ResourceEditPage spec={regionsSpec} />} />
 
-      <Route path="zones/create" element={<ResourceCreatePage spec={REGISTRY.zones} />} />
-      <Route path="zones/:uid" element={<ResourceDetailPage spec={REGISTRY.zones} />} />
-      <Route path="zones/:uid/edit" element={<ResourceEditPage spec={REGISTRY.zones} />} />
+      <Route path="zones/create" element={<ResourceCreatePage spec={zonesSpec} />} />
+      <Route path="zones/:uid" element={<ResourceDetailPage spec={zonesSpec} />} />
+      <Route path="zones/:uid/edit" element={<ResourceEditPage spec={zonesSpec} />} />
 
       {/* Поиск — адрес, который рекламирует рейл хоста; без этого маршрута
           «Поиск» молча уводил на список регионов через catch-all ниже. */}
       <Route path="search" element={<SystemSearchPage />} />
 
-      <Route path="address-pools/create" element={<ResourceCreatePage spec={REGISTRY["address-pools"]} />} />
+      <Route path="address-pools/create" element={<ResourceCreatePage spec={addressPoolsSpec} />} />
       <Route path="address-pools/:uid" element={<AddressPoolDetailPage />} />
-      <Route path="address-pools/:uid/edit" element={<ResourceEditPage spec={REGISTRY["address-pools"]} />} />
+      <Route path="address-pools/:uid/edit" element={<ResourceEditPage spec={addressPoolsSpec} />} />
 
-      <Route path="*" element={<Navigate to="regions" replace />} />
+      {/* Адрес назначения АБСОЛЮТНЫЙ. Относительный «regions» внутри splat-маршрута
+          резолвится от УЖЕ СОПОСТАВЛЕННОГО пути (`/system/что-угодно`), давая
+          `/system/что-угодно/regions`; он снова попадает сюда — и перенаправление
+          зацикливается, наращивая адрес до бесконечности. Наблюдаемо это как
+          «страница не открывается» без единого сообщения. */}
+      <Route path="*" element={<Navigate to="/system/regions" replace />} />
     </Routes>
   );
 }

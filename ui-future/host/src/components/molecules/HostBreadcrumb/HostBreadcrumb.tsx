@@ -18,7 +18,12 @@ import {
 // Метки модулей и ресурсов для хлебных крошек в шапке (как в kacho-ui):
 // «<Модуль> / <ресурс>» выводится из URL. Хост держит собственную карту, т.к. по
 // Module Federation не импортирует реестры remote'ов.
-const MODULE_LABELS: Record<string, string> = {
+/**
+ * Подписи разделов и ресурсов. Экспортированы, чтобы проба утверждала о САМИХ
+ * картах как о значениях, а не разбирала исходник этого файла как текст:
+ * текстовый разбор говорит о форме записи и переживает любую её смену молча.
+ */
+export const MODULE_LABELS: Record<string, string> = {
   iam: "IAM",
   vpc: "VPC",
   compute: "Compute",
@@ -28,7 +33,7 @@ const MODULE_LABELS: Record<string, string> = {
   system: "Администрирование",
 };
 
-const RESOURCE_LABELS: Record<string, string> = {
+export const RESOURCE_LABELS: Record<string, string> = {
   // iam
   accounts: "Аккаунты",
   projects: "Проекты",

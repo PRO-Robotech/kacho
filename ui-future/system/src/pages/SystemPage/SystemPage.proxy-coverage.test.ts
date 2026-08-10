@@ -1,41 +1,32 @@
-// Dev-прокси system обязан покрывать домены спек, которые монтирует его таблица
-// маршрутов.
+// Dev-прокси system обязан покрывать домены, к которым модуль реально ходит.
 //
-// Тот же класс, что уже сработал в iam: промах прокси в dev не печатает ничего —
-// список просто пуст, форма просто без опций, — поэтому расхождение между
-// «какие ресурсы модуль показывает» и «куда он умеет дозвониться» живёт молча.
-// Здесь оно закрыто предикатом, а не памятью: перечень спек читается из САМОЙ
-// таблицы маршрутов, а адреса — из общего реестра.
+// Промах прокси в dev не печатает ничего: список просто пуст, форма просто без
+// вариантов, — поэтому расхождение между «какие ресурсы модуль показывает» и
+// «куда он умеет дозвониться» живёт молча.
 //
-// Проверяются все три канала спеки: публичный apiPath, admin.basePath (внутренний
-// CRUD) и internalGetPath (вкладка internal-проекции) — модуль ходит по каждому.
+// Обе стороны берутся ЗНАЧЕНИЯМИ: маршрутизируемые спеки — тот самый перечень,
+// по которому построены маршруты (`ROUTED_SPECS`), домены страницы поиска — её
+// собственная таблица целей, правила прокси — `server.proxy` загруженного
+// `vite.config.ts`. Прежняя редакция разбирала SystemPage.tsx и vite.config.ts
+// как ТЕКСТ: такой разбор молча возвращает пустой набор при любой смене формы
+// записи, и «все домены покрыты» становится истинным даром.
+//
+// Страница поиска включена сюда намеренно: она монтируется ЭТИМ модулем, ходит
+// в чужие домены (`/iam`, `/vpc`, `/geo`) и на промах прокси отвечает пустой
+// выдачей, неотличимой от «ничего не найдено». Отдельная проба, стерегущая
+// СЛОВА о её доменах в комментариях, снята: она утверждала о тексте, а не о
+// достижимости, и упасть на промахе прокси не могла.
 
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { REGISTRY } from "@shared/lib/resource-registry";
+import { jest } from "@jest/globals";
+import { SEARCH_DOMAINS } from "@shared/pages/SystemSearchPage";
+import { ROUTED_SPECS } from "./SystemPage";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const systemRoot = path.resolve(here, "../../..");
+const covered = (address: string, prefixes: string[]) => prefixes.some((p) => address.startsWith(p));
 
-const pageSource = readFileSync(path.join(here, "SystemPage.tsx"), "utf8");
-const viteSource = readFileSync(path.join(systemRoot, "vite.config.ts"), "utf8");
-
-/** Спеки, на которые ссылается таблица маршрутов модуля. */
-function routedSpecIds(): string[] {
-  const ids = new Set<string>();
-  for (const m of pageSource.matchAll(/REGISTRY\.([A-Za-z][A-Za-z0-9]*)/g)) ids.add(m[1]);
-  for (const m of pageSource.matchAll(/REGISTRY\["([^"]+)"\]/g)) ids.add(m[1]);
-  return [...ids].sort();
-}
-
-/** Все адреса, по которым модуль может пойти ради этих спек. */
-function addressesOf(ids: string[]): string[] {
+/** Все адреса, по которым модуль может пойти ради маршрутизируемых спек. */
+function specAddresses(): string[] {
   const out = new Set<string>();
-  for (const id of ids) {
-    const spec = REGISTRY[id] as
-      { apiPath?: string; admin?: { basePath?: string }; internalGetPath?: string } | undefined;
-    if (!spec) continue;
+  for (const spec of ROUTED_SPECS) {
     for (const p of [spec.apiPath, spec.admin?.basePath, spec.internalGetPath]) {
       if (p) out.add(p);
     }
@@ -43,32 +34,40 @@ function addressesOf(ids: string[]): string[] {
   return [...out].sort();
 }
 
-function proxyPrefixes(): string[] {
-  const start = viteSource.indexOf("proxy: {");
-  expect(start).toBeGreaterThan(-1);
-  const end = viteSource.indexOf("\n    },", start);
-  return [...viteSource.slice(start, end).matchAll(/^\s{6}"(\/[^"]+)":/gm)].map((m) => m[1]);
-}
+const searchAddresses = () => [...new Set(SEARCH_DOMAINS.map((d) => d.path))].sort();
 
-const covered = (address: string, prefixes: string[]) => prefixes.some((p) => address.startsWith(p));
+let prefixes: string[] = [];
 
-describe("system dev-прокси против маршрутизируемых спек", () => {
-  const ids = routedSpecIds();
-  const addresses = addressesOf(ids);
-  const prefixes = proxyPrefixes();
+beforeAll(async () => {
+  jest.unstable_mockModule("vite", () => ({ defineConfig: (c: unknown) => c }));
+  jest.unstable_mockModule("@originjs/vite-plugin-federation", () => ({ default: () => ({ name: "federation" }) }));
+  jest.unstable_mockModule("@vitejs/plugin-react", () => ({ default: () => ({ name: "react" }) }));
+  (globalThis as unknown as { __dirname: string }).__dirname = new URL("../../..", import.meta.url).pathname;
+  const configModule = "../../../vite.config";
+  const mod = (await import(configModule)) as unknown as {
+    default: { server?: { proxy?: Record<string, unknown> } };
+  };
+  prefixes = Object.keys(mod.default.server?.proxy ?? {});
+});
 
+describe("system dev-прокси против адресов, по которым ходит модуль", () => {
   it("объём осмотренного назван: сколько спек, адресов и прокси прочитано", () => {
-    expect(ids.length).toBeGreaterThanOrEqual(3);
-    expect(addresses.length).toBeGreaterThanOrEqual(5);
+    expect(ROUTED_SPECS.length).toBeGreaterThanOrEqual(3);
+    expect(specAddresses().length).toBeGreaterThanOrEqual(3);
+    expect(searchAddresses().length).toBeGreaterThanOrEqual(5);
     expect(prefixes.length).toBeGreaterThanOrEqual(3);
-    // Модуль обязан выходить за пределы одного домена — иначе утверждение ниже
-    // было бы тождественно истинным.
-    expect(new Set(addresses.map((a) => a.split("/")[1])).size).toBeGreaterThanOrEqual(2);
+    // Модуль обязан выходить за пределы одного домена — иначе утверждения ниже
+    // были бы тождественно истинными.
+    const domains = new Set([...specAddresses(), ...searchAddresses()].map((a) => a.split("/")[1]));
+    expect(domains.size).toBeGreaterThanOrEqual(3);
   });
 
   it("каждый адрес маршрутизируемой спеки резолвится через прокси", () => {
-    const unreachable = addresses.filter((a) => !covered(a, prefixes));
-    expect(unreachable).toEqual([]);
+    expect(specAddresses().filter((a) => !covered(a, prefixes))).toEqual([]);
+  });
+
+  it("каждый адрес страницы поиска резолвится через прокси", () => {
+    expect(searchAddresses().filter((a) => !covered(a, prefixes))).toEqual([]);
   });
 
   it("непокрытый префикс предикат считает недостижимым (контроль в обратную сторону)", () => {

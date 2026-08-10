@@ -1,12 +1,16 @@
-// IAM-1 UI-support regression — spec-driven registry (shared) + api/iam helpers +
-// bespoke-form/detail-extension source-conformance. Мирроит паттерн compute/storage
-// resource-registry.test.ts: импортирует REGISTRY/helpers и ассертит форму IAM-1
-// ресурсов (Account/Project/Role/AccessBinding) по acceptance
+// IAM-1 UI-support regression — spec-driven registry (shared) + api/iam helpers.
+// Импортирует REGISTRY/helpers и утверждает форму IAM-1 ресурсов
+// (Account/Project/Role/AccessBinding) по acceptance
 // docs/specs/sub-phase-IAM-1-tenancy-authz-core-acceptance.md (F1..F10).
-
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+//
+// Здесь был третий блок — «source-conformance»: он читал с диска три `.tsx`
+// формы и расширения и искал в их тексте подстроки. Такое утверждение говорит о
+// СИМВОЛАХ файла: перепиши ту же отправку другой формой записи — и оно осталось
+// бы зелёным, ничего не проверив. Предмет каждого его пункта закрыт по
+// поведению и без него: форму тела гранта держат утверждения о значении,
+// которое возвращает `buildCreateAccessBindingBody` (ниже) и провод
+// `shared/src/api/iam.wire.test.ts`; что показывает карточка привязки —
+// `access-binding-field-names.test.tsx`, где расширение ИСПОЛНЯЕТСЯ.
 
 import { REGISTRY } from "@shared/lib/resource-registry";
 import type { FormField } from "@shared/lib/form-schema";
@@ -29,7 +33,6 @@ const grantInput: CreateAccessBindingInput = {
   scopeId: "acc-1",
 };
 
-const here = path.dirname(fileURLToPath(import.meta.url));
 const fieldByName = (fields: FormField[] | undefined, name: string) => (fields ?? []).find((f) => f.name === name);
 const colByHeader = (id: string, header: string) => REGISTRY[id].columns.find((c) => c.header === header);
 
@@ -131,54 +134,18 @@ describe("IAM-1 F7/F8/F10 — access-bindings spec", () => {
   });
 });
 
-// ─────────────────────── source-conformance: bespoke forms + extensions ───────────────────────
-describe("IAM-1 — bespoke forms conformance", () => {
-  const roleCreate = readFileSync(
-    path.join(here, "components/organisms/iam/InlineRoleCreateForm/InlineRoleCreateForm.tsx"),
-    "utf8",
-  );
-  const bindingCreate = readFileSync(
-    path.join(here, "components/organisms/iam/AccessBindingCreateForm/AccessBindingCreateForm.tsx"),
-    "utf8",
-  );
-  const ext = readFileSync(path.join(here, "registerExtensions.tsx"), "utf8");
-
-  it("Role create шлёт definition_tier{tier_type,tier_id}, НЕ плоский account_id", () => {
-    expect(roleCreate).toContain("definition_tier: { tier_type:");
-    // permissions[] не отправляется (F5).
-    expect(roleCreate).not.toContain("permissions:");
-  });
-
-  it("AccessBinding create несёт target-дискриминатор allInScope|resources[] (F8)", () => {
-    // Форма даёт дискриминатор и набор объектов; САМО тело собирает
-    // buildCreateAccessBindingBody — его форма зафиксирована на уровне провода в
-    // shared/src/api/iam.wire.test.ts (там же, что и оба арма target'а).
-    expect(bindingCreate).toContain("_target_kind");
-    expect(bindingCreate).toContain("targetResources");
-    expect(bindingCreate).toContain("buildCreateAccessBindingBody");
+// ─────────────────────── тело гранта: значение, а не текст формы ───────────────────────
+describe("IAM-1 F8 — тело создания привязки", () => {
+  it("без перечня объектов target — «вся область»", () => {
     expect(buildCreateAccessBindingBody({ ...grantInput, targetResources: undefined }).target).toEqual({
       all_in_scope: {},
     });
+  });
+
+  it("с перечнем объектов target — именно они", () => {
     expect(
       buildCreateAccessBindingBody({ ...grantInput, targetResources: [{ type: "compute.instance", id: "ins-1" }] })
         .target,
     ).toEqual({ resources: { resources: [{ type: "compute.instance", id: "ins-1" }] } });
-  });
-
-  it("AccessBinding create требует непустой resources при target=resources (least-priv)", () => {
-    expect(bindingCreate).toContain("targetResources.length === 0");
-  });
-
-  it("detail-extension: Role definitionTier + честные verb-наборы (F4/F6)", () => {
-    expect(ext).toContain("roleDefinitionTier");
-    expect(ext).toContain("effective_verbs");
-    expect(ext).toContain("authored_verbs");
-  });
-
-  it("detail-extension: AccessBinding scopeType/target + :revoke soft-action (F7/F8/F10)", () => {
-    expect(ext).toContain("RevokeBindingButton");
-    expect(ext).toContain(":revoke");
-    expect(ext).toContain("scope_type");
-    expect(ext).toContain("targetView");
   });
 });

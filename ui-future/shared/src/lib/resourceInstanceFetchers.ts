@@ -23,7 +23,7 @@ import { getResource, type ResourceSpec } from "@shared/lib/resource-registry";
 
 // Токен каталога `<module>.<resource>` → id ресурса в REGISTRY. resource-токены —
 // как в backend objectTypes (camelCase singular / loadbalancer plural).
-const TOKEN_TO_REGISTRY_ID: Record<string, string> = {
+export const TOKEN_TO_REGISTRY_ID: Record<string, string> = {
   // ── vpc (per-object filtered public List) ──
   "vpc.network": "networks",
   "vpc.subnet": "subnets",

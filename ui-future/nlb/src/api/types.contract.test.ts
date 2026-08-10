@@ -10,14 +10,13 @@
 //     (excess property check), а отсутствующее обязательное поле — тоже.
 //     Так «интерфейс отстал от контракта» становится наблюдаемым событием,
 //     а не немой правдой в файле, который никто не читает.
-//  2) ТЕКСТОВЫЙ слой — файл не должен ОБЪЯВЛЯТЬ имена, снятые в стволе.
-//     Типовой слой этого не ловит: лишнее необязательное поле в интерфейсе
-//     никому не мешает компилироваться, оно просто обещает то, чего не придёт.
-//     Комментарии из текста вырезаются — иначе гейт нашёл бы снятое имя в
-//     объяснении того, почему оно снято.
-
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+//  2) ОТРИЦАТЕЛЬНЫЙ типовой слой — снятое в стволе имя интерфейс обязан
+//     ОТВЕРГАТЬ. Утверждается тем же компилятором (`@ts-expect-error`): если
+//     имя вернут в интерфейс, подавление станет лишним и ts-jest уронит суиту.
+//     Прежняя редакция вместо этого читала СВОЙ ЖЕ `types.ts` с диска и искала
+//     в тексте подстроки — то есть утверждала о символах файла, а не о том,
+//     что тип принимает и что отвергает: такая проба переживала любую смену
+//     формы записи, не покраснев.
 
 import type {
   Listener,
@@ -25,33 +24,6 @@ import type {
   NlbHealthCheck,
   TargetGroup,
 } from "./types";
-
-const TYPES_FILE = "src/api/types.ts";
-
-function declarationsOnly(): string {
-  const raw = readFileSync(join(process.cwd(), TYPES_FILE), "utf8");
-  return raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
-}
-
-// Имена, снятые в стволе вместе со своими ресурсами (блочное хранение уехало из
-// compute в storage, а перечисленные поля не переехали, а исчезли). Здесь НЕТ
-// `v4_cidr_blocks`/`v6_cidr_blocks`: они остаются живыми у vpc SecurityGroup
-// (message CidrBlocks) — запрет по имени вообще отвергал бы законное объявление.
-const RETIRED_DECLARATIONS = [
-  "platform_id",
-  "storage_size",
-  "min_disk_size",
-  "product_ids",
-  "source_disk_id",
-  "disk_size",
-  "pooled",
-  "dhcp_options",
-  "attached_target_groups",
-  "deregistration_delay_seconds",
-  "slow_start_seconds",
-  "tcp_options",
-  "http_options",
-];
 
 describe("типы домена балансировщика против контракта ствола", () => {
   it("NetworkLoadBalancer несёт placement, admin_state и разделяемые SG", () => {
@@ -132,18 +104,29 @@ describe("типы домена балансировщика против кон
     expect([tcp.tcp, https.https, grpc.grpc].filter(Boolean)).toHaveLength(3);
   });
 
-  it("файл типов не объявляет имён, снятых в стволе", () => {
-    const text = declarationsOnly();
-    for (const name of RETIRED_DECLARATIONS) {
-      expect(text).not.toContain(name);
-    }
-  });
+  it("снятое в стволе имя интерфейс отвергает", () => {
+    // Утверждение отрицательное и проверяется КОМПИЛЯТОРОМ: вернут поле в
+    // интерфейс — подавление станет лишним, и ts-jest уронит суиту. Без пары
+    // с положительными присваиваниями выше оно зеленело бы и на пустом типе.
+    const withRetired: TargetGroup = {
+      id: "tg-000000000000000",
+      project_id: "prj-1",
+      region_id: "ru-central1",
+      status: "ACTIVE",
+      // @ts-expect-error deregistration_delay_seconds снят: канал объявлен Duration-строкой
+      deregistration_delay_seconds: 300,
+    };
+    expect(withRetired.id).toBe("tg-000000000000000");
 
-  it("файл типов объявляет то, что контракт действительно несёт", () => {
-    // Положительный контроль отрицания выше: гейт обязан молчать на живых именах.
-    const text = declarationsOnly();
-    for (const name of ["deregistration_delay", "effective_port", "placement", "target_group_id"]) {
-      expect(text).toContain(name);
-    }
+    const lbWithRetired: NetworkLoadBalancer = {
+      id: "nlb-000000000000000",
+      project_id: "prj-1",
+      region_id: "ru-central1",
+      placement: "INTERNAL_ZONAL",
+      status: "ACTIVE",
+      // @ts-expect-error привязка целевых групп переехала на листенер
+      attached_target_groups: [],
+    };
+    expect(lbWithRetired.placement).toBe("INTERNAL_ZONAL");
   });
 });

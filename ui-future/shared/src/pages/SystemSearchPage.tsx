@@ -19,7 +19,7 @@ interface Hit {
   extras?: Record<string, string>;
 }
 
-const DOMAINS = [
+export const SEARCH_DOMAINS = [
   // KAC-124: Resource Manager (orgs/clouds/folders) → IAM (accounts/projects).
   { resource: "accounts", path: "/iam/v1/accounts", key: "accounts", linkBase: "/iam/accounts" },
   { resource: "projects", path: "/iam/v1/projects", key: "projects", linkBase: "/projects/:id" },
@@ -59,7 +59,7 @@ export function SystemSearchPage() {
   const [q, setQ] = useState("");
 
   const queries = useQueries({
-    queries: DOMAINS.map((d) => ({
+    queries: SEARCH_DOMAINS.map((d) => ({
       queryKey: ["search", d.resource],
       queryFn: () => api.list<Record<string, unknown>>(d.path, { pageSize: "500" }),
       staleTime: 10_000,
@@ -72,7 +72,7 @@ export function SystemSearchPage() {
 
     const out: Hit[] = [];
     queries.forEach((qry, i) => {
-      const d = DOMAINS[i];
+      const d = SEARCH_DOMAINS[i];
       if (!qry.data) return;
       const list = (qry.data[d.key] as Record<string, unknown>[] | undefined) ?? [];
       list.forEach((r) => {

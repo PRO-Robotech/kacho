@@ -16,22 +16,9 @@
 
 import { render, screen } from "@testing-library/react";
 import { jest } from "@jest/globals";
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { HostBreadcrumb } from ".";
+import { MODULE_LABELS, RESOURCE_LABELS } from "./HostBreadcrumb";
 import type { HostContext } from "../../../utils";
-
-const here = path.dirname(fileURLToPath(import.meta.url));
-const source = readFileSync(path.join(here, "HostBreadcrumb.tsx"), "utf8");
-
-function mapKeys(name: string): string[] {
-  const start = source.indexOf(`const ${name}`);
-  const end = source.indexOf("\n};", start);
-  expect(start).toBeGreaterThan(-1);
-  expect(end).toBeGreaterThan(start);
-  return [...source.slice(start, end).matchAll(/^ {2}"?([a-z][a-z-]*)"?:/gm)].map((m) => m[1]);
-}
 
 const jsonResponse = (body: unknown) =>
   Promise.resolve({ ok: true, text: () => Promise.resolve(JSON.stringify(body)), statusText: "OK" } as Response);
@@ -39,10 +26,10 @@ const jsonResponse = (body: unknown) =>
 const emptyContext: HostContext = { account: null, project: null };
 
 describe("HostBreadcrumb — метки против поверхности ствола", () => {
-  const resources = mapKeys("RESOURCE_LABELS");
-  const modules = mapKeys("MODULE_LABELS");
+  const resources = Object.keys(RESOURCE_LABELS);
+  const modules = Object.keys(MODULE_LABELS);
 
-  it("объём осмотренного назван: обе карты распарсены", () => {
+  it("объём осмотренного назван: обе карты непусты", () => {
     expect(resources.length).toBeGreaterThanOrEqual(20);
     expect(modules.length).toBeGreaterThanOrEqual(4);
   });
