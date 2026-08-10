@@ -291,17 +291,21 @@ func TestAccessLogRecordsThePanickingStreamCall(t *testing.T) {
 	}
 }
 
-// TestHandlingBudgetReachesTheStreamHandler — верхняя граница обработки доезжает
-// до СТРИМ-обработчика.
+// TestStreamBudgetReachesTheStreamHandler — срок жизни подписки доезжает до
+// СТРИМ-обработчика, и это ЕГО величина, а не граница обработки запроса.
 //
-// Инъекция, ради которой проба написана: сделать `handlingBudgetStream`
-// пропускающим (`return h(srv, ss)`) — до неё это не краснело нигде. Это ровно
-// та ветка «границы нет», про которую сказано, что её нет намеренно: на unary она
-// невозможна и проверена двумя пробами, на стриме воспроизводилась молча. Для
-// стрима цена выше: он держит соединение дольше запроса.
-func TestHandlingBudgetReachesTheStreamHandler(t *testing.T) {
+// Числа выбраны так, чтобы проба различала два ответа: граница обработки — 5
+// секунд, срок подписки — час. Возьми носитель унарную величину, и обработчик
+// увидел бы срок в пределах пяти секунд; проба, где обе величины совпадают, эту
+// подмену пропустила бы — и именно так выглядел бы возврат дефекта, ради
+// которого ось заведена.
+//
+// Инъекция, ради которой проба написана: сделать `streamBudgetLink`
+// пропускающим (`return h(srv, ss)`) — до неё это не краснело нигде.
+func TestStreamBudgetReachesTheStreamHandler(t *testing.T) {
 	spec := chainSpec()
 	spec.HandlingBudget = 5 * time.Second
+	spec.StreamBudget = servicecontract.Value(time.Hour)
 	var slot decisionSlot
 	chain := streamChain(spec, &slot)
 	chain = chain[:len(chain)-1]
@@ -319,11 +323,16 @@ func TestHandlingBudgetReachesTheStreamHandler(t *testing.T) {
 		t.Fatalf("стрим-вызов отвергнут: %v", err)
 	}
 	if !has {
-		t.Fatal("стрим-обработчик получил контекст БЕЗ срока — граница обработки до него не доехала, " +
-			"и стрим вправе держать соединение из ограниченного пула сколько угодно")
+		t.Fatal("стрим-обработчик получил контекст БЕЗ срока — срок жизни подписки до него не доехал, " +
+			"и подписка вправе держать соединение из ограниченного пула сколько угодно")
 	}
-	if left := time.Until(dl); left <= 0 || left > 5*time.Second {
-		t.Fatalf("срок вне объявленной границы: осталось %v при границе 5s", left)
+	left := time.Until(dl)
+	if left <= 5*time.Second {
+		t.Fatalf("подписка получила срок %v — не больше границы обработки ОДИНОЧНОГО вызова (5s): "+
+			"носитель взял унарную величину, и подписка рвалась бы по потолку запроса", left)
+	}
+	if left > time.Hour {
+		t.Fatalf("срок %v превышает объявленный срок жизни подписки (1h)", left)
 	}
 }
 
@@ -351,7 +360,7 @@ func TestStreamChainWithoutTheBudgetLinkLeavesTheStreamUnbounded(t *testing.T) {
 // строгий срок вызывающего уважается и на стриме.
 func TestStreamBudgetNeverWidensTheCallersDeadline(t *testing.T) {
 	spec := chainSpec()
-	spec.HandlingBudget = time.Hour
+	spec.StreamBudget = servicecontract.Value(time.Hour)
 	var slot decisionSlot
 	chain := streamChain(spec, &slot)
 	chain = chain[:len(chain)-1]

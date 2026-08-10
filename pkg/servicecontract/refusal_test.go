@@ -72,6 +72,7 @@ func lawful() servicecontract.Spec {
 		Delivery:      servicecontract.NotApplicable[servicecontract.DeliveryProvenance]("демо ничего не регистрирует у владельца прав"),
 		DenyBudget:    servicecontract.Value(100.0),
 		BootGate:      servicecontract.NotApplicable[servicecontract.BootGate]("демо ничего не эмитит владельцу прав, поднимать нечего"),
+		StreamBudget:  servicecontract.NotApplicable[time.Duration]("демо не служит серверных стримов"),
 	}
 }
 
@@ -308,6 +309,50 @@ func TestO10_UndeclaredAxisRefusesStartNamingIt(t *testing.T) {
 		s.HideExistence = servicecontract.Axis[map[servicecontract.ObjectType]servicecontract.NotFoundFormat]{}
 		refuses(t, s, "HideExistence")
 	})
+	t.Run("StreamBudget", func(t *testing.T) {
+		s := lawful()
+		s.StreamBudget = servicecontract.Axis[time.Duration]{}
+		refuses(t, s, "StreamBudget")
+	})
+}
+
+// ── срок жизни подписки: величина, судимая соседним полем ───────────────────
+
+// TestStreamBudgetMustOutliveTheHandlingBudget — существо оси, а не её наличие.
+//
+// Ось заводилась потому, что граница обработки ЗАПРОСА рвёт подписку. Величина,
+// не превосходящая эту границу, возвращает тот же разрыв — только объявленный, а
+// значит выглядящий решением. Отказ обязан отличать её от законной.
+func TestStreamBudgetMustOutliveTheHandlingBudget(t *testing.T) {
+	// (а) равна границе обработки — разрыв ровно по потолку одиночного вызова.
+	s := lawful()
+	s.HandlingBudget = 30 * time.Second
+	s.StreamBudget = servicecontract.Value(30 * time.Second)
+	msg := refuses(t, s, "StreamBudget", "HandlingBudget")
+	t.Logf("равная величина отвергнута: %s", msg)
+
+	// (б) короче границы обработки — подписка живёт меньше одного запроса.
+	s.StreamBudget = servicecontract.Value(5 * time.Second)
+	refuses(t, s, "StreamBudget")
+
+	// (в) ЗАКОННЫЙ БЛИЗНЕЦ: величина, отвечающая сроку подписки, принимается.
+	// Без него отказ (а)+(б) был бы неотличим от запрета объявлять ось величиной
+	// вовсе, и первый же служащий стрим сервис остался бы без двери.
+	s.StreamBudget = servicecontract.Value(30 * time.Minute)
+	if _, err := servicecontract.New(s); err != nil {
+		t.Fatalf("законный срок жизни подписки отвергнут — двери у отказа нет: %v", err)
+	}
+}
+
+// TestStreamBudgetRejectsNonPositiveValue — неположительная величина означает
+// стрим, оборванный в момент открытия. «Не применимо» у оси есть и оформляется
+// причиной, а не нулём.
+func TestStreamBudgetRejectsNonPositiveValue(t *testing.T) {
+	for _, v := range []time.Duration{0, -time.Second} {
+		s := lawful()
+		s.StreamBudget = servicecontract.Value(v)
+		refuses(t, s, "StreamBudget")
+	}
 }
 
 // TestO10_EmptyReasonIsNotADeclaration — «не применимо» без причины объявлением

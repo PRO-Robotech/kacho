@@ -21,6 +21,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/PRO-Robotech/kacho/pkg/authz"
 	"github.com/PRO-Robotech/kacho/pkg/listnarrow"
@@ -68,8 +69,24 @@ func naAxes() servicecontract.Spec {
 			"ни один метод демо не сужается по правам"),
 		HideExistence: servicecontract.NotApplicable[map[servicecontract.ObjectType]servicecontract.NotFoundFormat](
 			"демо не скрывает существование ни одного типа"),
+		StreamBudget: servicecontract.NotApplicable[time.Duration](
+			"демо не служит серверных стримов"),
 	}
 }
+
+// streamingCatalog — тот же каталог, у которого ОДИН метод отдаёт серверный
+// стрим. Признак ставится там же, где его снимает носитель, — в строке
+// каталога, выведенной из дескриптора метода.
+func streamingCatalog() catalogView {
+	cat := lawfulCatalog()
+	row := cat.rows[streamMethod]
+	row.ServerStreaming = true
+	cat.rows[streamMethod] = row
+	return cat
+}
+
+// streamMethod — метод, которому в пробах ниже приписывается стрим.
+const streamMethod servicecontract.MethodFQN = "/kacho.cloud.demo.v1.WidgetService/Get"
 
 // TestAuditAcceptsLawfulTree — положительный контроль. Первым намеренно: пока он
 // красный, каждое отрицание ниже утверждает «отказано» по чужой причине.
@@ -467,24 +484,66 @@ func TestO5b_ProbeWithNothingToAskAboutRefusesStart(t *testing.T) {
 	refusesAudit(t, probedSpec(), lawfulServed(), lawfulCatalog(), lawfulMap(), "Existence")
 }
 
-// ── О11: служимый серверный стрим против границы обработки ──────────────────
+// ── О11: служимые серверные стримы против оси срока жизни подписки ──────────
+//
+// Четыре ветви, и каждая со своей парой «инъекция + законный близнец»:
+// (1) стрим служится, ось не объявлена вовсе; (2) стрим служится, ось объявлена
+// неприменимой — истечение заявления; (3) величина объявлена, а стримов нет —
+// проводка без предмета; (4) величина объявлена и стрим служится — молчание.
 
-// TestO11_ServedServerStreamRefusesStart — граница обработки для подписки
-// означает срок её ЖИЗНИ, а не срок вызова. Решение обязано быть принято явно.
-func TestO11_ServedServerStreamRefusesStart(t *testing.T) {
-	cat := lawfulCatalog()
-	row := cat.rows["/kacho.cloud.demo.v1.WidgetService/Get"]
-	row.ServerStreaming = true
-	cat.rows["/kacho.cloud.demo.v1.WidgetService/Get"] = row
-
-	msg := refusesAudit(t, naAxes(), lawfulServed(), cat, lawfulMap(),
-		"/kacho.cloud.demo.v1.WidgetService/Get", "стрим")
-	t.Logf("О11 красный: %s", msg)
+// TestO11_ServedServerStreamWithUndeclaredAxisRefusesStart — ветвь (1). Ось не
+// объявлена вовсе: до носителя такой дескриптор доезжает только мимо
+// конструктора, но отказ обязан быть способен упасть и здесь — иначе решение
+// «что делать со стримом» принимало бы умолчание.
+func TestO11_ServedServerStreamWithUndeclaredAxisRefusesStart(t *testing.T) {
+	s := naAxes()
+	s.StreamBudget = servicecontract.Axis[time.Duration]{}
+	msg := refusesAudit(t, s, lawfulServed(), streamingCatalog(), lawfulMap(),
+		string(streamMethod), "СЕРВЕРНЫЙ СТРИМ", "StreamBudget")
+	t.Logf("О11 ветвь (1) красная: %s", msg)
 }
 
-// TestO11_UnaryMethodsAreSilent — ЗАКОННЫЙ БЛИЗНЕЦ: те же методы без стрима →
-// молчание. Без него отказ краснел бы на каждом сервисе, то есть ловил бы
-// «служимый набор непуст», а не «в нём есть подписка».
+// TestO11_ServedServerStreamExpiresTheNotApplicableClaim — ветвь (2), и она же
+// самоистечение изъятия: заявление «серверных стримов не служу» перестаёт быть
+// верным в тот момент, когда процесс начинает служить первый. Отказ обязан
+// назвать и метод, и саму причину — иначе автор не поймёт, какое из его
+// заявлений устарело.
+func TestO11_ServedServerStreamExpiresTheNotApplicableClaim(t *testing.T) {
+	msg := refusesAudit(t, naAxes(), lawfulServed(), streamingCatalog(), lawfulMap(),
+		string(streamMethod), "ИСТЕКЛО", "демо не служит серверных стримов")
+	t.Logf("О11 ветвь (2) красная: %s", msg)
+}
+
+// TestO11_DeclaredValueWithoutAnyServedStreamRefusesStart — ветвь (3),
+// ПОЛОЖИТЕЛЬНЫЙ БЛИЗНЕЦ оси. Без неё ось ловила бы форму («автор что-то
+// объявил»), а не предмет: величина пережила бы снятие последней подписки и
+// продолжала бы утверждать решение про стримы там, где стримов нет.
+func TestO11_DeclaredValueWithoutAnyServedStreamRefusesStart(t *testing.T) {
+	s := naAxes()
+	s.StreamBudget = servicecontract.Value(30 * time.Minute)
+	msg := refusesAudit(t, s, lawfulServed(), lawfulCatalog(), lawfulMap(), "StreamBudget", "НЕТ НИ ОДНОГО")
+	t.Logf("О11 ветвь (3) красная: %s", msg)
+}
+
+// TestO11_DeclaredValueWithAServedStreamIsAccepted — ветвь (4): решение принято
+// и предмет у него есть. Это и есть ДВЕРЬ, которой у отказа не было: сервис со
+// служимой подпиской обязан иметь способ подняться.
+func TestO11_DeclaredValueWithAServedStreamIsAccepted(t *testing.T) {
+	s := naAxes()
+	s.StreamBudget = servicecontract.Value(30 * time.Minute)
+	c, err := audit(s, lawfulServed(), streamingCatalog(), lawfulMap())
+	if err != nil {
+		t.Fatalf("объявленный срок жизни подписки при служимом стриме отвергнут — двери нет: %v", err)
+	}
+	if c.streams != 1 {
+		t.Fatalf("перепись насчитала %d стримов, а служится один: %s", c.streams, c)
+	}
+}
+
+// TestO11_UnaryMethodsAreSilent — ЗАКОННЫЙ БЛИЗНЕЦ ветвей (1) и (2): те же
+// методы без стрима при объявленном изъятии → молчание. Без него отказ краснел
+// бы на каждом сервисе, то есть ловил бы «служимый набор непуст», а не «в нём
+// есть подписка».
 func TestO11_UnaryMethodsAreSilent(t *testing.T) {
 	c, err := audit(naAxes(), lawfulServed(), lawfulCatalog(), lawfulMap())
 	if err != nil {
@@ -497,6 +556,28 @@ func TestO11_UnaryMethodsAreSilent(t *testing.T) {
 	// «стримы не считали» иначе неразличимы.
 	if !strings.Contains(c.String(), "стримов 0") {
 		t.Fatalf("перепись не называет числа стримов: %s", c)
+	}
+}
+
+// TestO11_PlatformStreamIsNotASubject — граница ветвей (1)-(3), названная
+// прямо: наблюдение за здоровьем отдаёт стрим и приезжает вместе с сервером, а
+// не с доменом. Строк каталога у него нет, поэтому предметом оси он не
+// является, и изъятие «стримов не служу» остаётся верным при нём.
+//
+// Без этой пробы первая же платформенная служба сделала бы отказ красным на
+// КАЖДОМ процессе, и его сняли бы целиком.
+func TestO11_PlatformStreamIsNotASubject(t *testing.T) {
+	sv := lawfulServed()
+	sv.methods = append(sv.methods, "/grpc.health.v1.Health/Watch")
+	c, err := audit(naAxes(), sv, lawfulCatalog(), lawfulMap())
+	if err != nil {
+		t.Fatalf("платформенный стрим засчитан предметом оси: %v", err)
+	}
+	if c.streams != 0 {
+		t.Fatalf("перепись засчитала платформенный стрим в число доменных: %s", c)
+	}
+	if c.exempted != 1 {
+		t.Fatalf("платформенная служба не попала в изъятия: %s", c)
 	}
 }
 
