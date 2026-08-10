@@ -50,7 +50,7 @@ openfgaBootstrap:
   # alpine/k8s ships kubectl+jq+curl+coreutils. INFRA sec-hardening r3: the Job now
   # runs non-root (uid 65532) with a read-only rootfs (see podSecurityContext /
   # containerSecurityContext above); kubectl caches under HOME=/tmp (emptyDir).
-  image: alpine/k8s:1.29.2
+  image: alpine/k8s:1.36.2
   # cliImage unused since the DSL→JSON transform moved to commit-time (the
   # openfga-model-stub ConfigMap carries both model.fga + model.json).
   cliImage: ""

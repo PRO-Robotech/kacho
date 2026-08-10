@@ -72,8 +72,8 @@ jobs:
     name: gosec (Go static analysis)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -253,7 +253,7 @@ jobs:
     name: trivy (fs + IaC)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Каждый скан идёт ДВАЖДЫ: sarif (exit-code 0, только в Security-tab) и table
       # (exit-code 1 — реальный гейт). Причина: с `format: sarif` trivy-action

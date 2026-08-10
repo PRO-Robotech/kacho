@@ -52,7 +52,7 @@ set -uo pipefail
 SCRIPT="$(basename "$0")"
 DEPLOY_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 NS="${NS:-kacho}"
-PROBE_IMAGE="${PROBE_IMAGE:-docker.io/alpine/k8s:1.29.2}"
+PROBE_IMAGE="${PROBE_IMAGE:-docker.io/alpine/k8s:1.36.2}"
 
 FAILED=0
 ASSERTIONS=0

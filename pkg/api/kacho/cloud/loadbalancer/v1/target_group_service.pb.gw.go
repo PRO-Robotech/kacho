@@ -41,9 +41,6 @@ func request_TargetGroupService_Get_0(ctx context.Context, marshaler runtime.Mar
 		metadata runtime.ServerMetadata
 		err      error
 	)
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
 	val, ok := pathParams["target_group_id"]
 	if !ok {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "target_group_id")
@@ -51,6 +48,9 @@ func request_TargetGroupService_Get_0(ctx context.Context, marshaler runtime.Mar
 	protoReq.TargetGroupId, err = runtime.String(val)
 	if err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "target_group_id", err)
+	}
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
 	}
 	msg, err := client.Get(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -81,14 +81,14 @@ func request_TargetGroupService_List_0(ctx context.Context, marshaler runtime.Ma
 		protoReq ListTargetGroupsRequest
 		metadata runtime.ServerMetadata
 	)
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
 	if err := req.ParseForm(); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_TargetGroupService_List_0); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
 	}
 	msg, err := client.List(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -145,9 +145,6 @@ func request_TargetGroupService_Update_0(ctx context.Context, marshaler runtime.
 	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
 	val, ok := pathParams["target_group_id"]
 	if !ok {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "target_group_id")
@@ -155,6 +152,9 @@ func request_TargetGroupService_Update_0(ctx context.Context, marshaler runtime.
 	protoReq.TargetGroupId, err = runtime.String(val)
 	if err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "target_group_id", err)
+	}
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
 	}
 	msg, err := client.Update(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -187,9 +187,6 @@ func request_TargetGroupService_Delete_0(ctx context.Context, marshaler runtime.
 		metadata runtime.ServerMetadata
 		err      error
 	)
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
 	val, ok := pathParams["target_group_id"]
 	if !ok {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "target_group_id")
@@ -197,6 +194,9 @@ func request_TargetGroupService_Delete_0(ctx context.Context, marshaler runtime.
 	protoReq.TargetGroupId, err = runtime.String(val)
 	if err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "target_group_id", err)
+	}
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
 	}
 	msg, err := client.Delete(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -229,9 +229,6 @@ func request_TargetGroupService_Move_0(ctx context.Context, marshaler runtime.Ma
 	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
 	val, ok := pathParams["target_group_id"]
 	if !ok {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "target_group_id")
@@ -239,6 +236,9 @@ func request_TargetGroupService_Move_0(ctx context.Context, marshaler runtime.Ma
 	protoReq.TargetGroupId, err = runtime.String(val)
 	if err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "target_group_id", err)
+	}
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
 	}
 	msg, err := client.Move(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -274,9 +274,6 @@ func request_TargetGroupService_AddTargets_0(ctx context.Context, marshaler runt
 	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
 	val, ok := pathParams["target_group_id"]
 	if !ok {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "target_group_id")
@@ -284,6 +281,9 @@ func request_TargetGroupService_AddTargets_0(ctx context.Context, marshaler runt
 	protoReq.TargetGroupId, err = runtime.String(val)
 	if err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "target_group_id", err)
+	}
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
 	}
 	msg, err := client.AddTargets(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -319,9 +319,6 @@ func request_TargetGroupService_RemoveTargets_0(ctx context.Context, marshaler r
 	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
 	val, ok := pathParams["target_group_id"]
 	if !ok {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "target_group_id")
@@ -329,6 +326,9 @@ func request_TargetGroupService_RemoveTargets_0(ctx context.Context, marshaler r
 	protoReq.TargetGroupId, err = runtime.String(val)
 	if err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "target_group_id", err)
+	}
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
 	}
 	msg, err := client.RemoveTargets(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -363,9 +363,6 @@ func request_TargetGroupService_ListOperations_0(ctx context.Context, marshaler 
 		metadata runtime.ServerMetadata
 		err      error
 	)
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
 	val, ok := pathParams["target_group_id"]
 	if !ok {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "target_group_id")
@@ -379,6 +376,9 @@ func request_TargetGroupService_ListOperations_0(ctx context.Context, marshaler 
 	}
 	if err := runtime.PopulateQueryParameters(&protoReq, req.Form, filter_TargetGroupService_ListOperations_0); err != nil {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
+	}
+	if req.Body != nil {
+		_, _ = io.Copy(io.Discard, req.Body)
 	}
 	msg, err := client.ListOperations(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err

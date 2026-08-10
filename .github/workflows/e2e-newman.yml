@@ -108,7 +108,7 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: pyyaml (нужен гейту связности суита↔гейт↔артефакт)
         run: python3 -m pip install --quiet pyyaml
 
@@ -270,11 +270,11 @@ jobs:
       # на общем раннере это отказ, неотличимый от дефекта продукта.
       CLUSTER_NAME: kacho-${{ matrix.shard.id }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Тулчейны ставим сами и с ПИНАМИ, не полагаясь на состав образа ранера: он
       # меняется без нашего участия, и «оно там было» — не инвариант.
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -294,7 +294,7 @@ jobs:
       # поднимает стенд С НУЛЯ и делает три фазы helm подряд, поэтому проходит
       # ровно тот путь, где задание впервые записывает аннотацию, а следующая
       # фаза применяет релиз поверх уже записанного.
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
         with:
           version: v4.2.3
       - uses: actions/setup-node@v4
@@ -659,8 +659,8 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true

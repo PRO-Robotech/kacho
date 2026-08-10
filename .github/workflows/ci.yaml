@@ -67,8 +67,8 @@ jobs:
     name: build · vet · gofmt · test -race
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -107,8 +107,8 @@ jobs:
       matrix:
         svc: [iam, vpc, compute, geo, nlb, storage, registry]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -169,8 +169,8 @@ jobs:
     name: authz — модель прав на настоящем OpenFGA (пропуск = отказ)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -199,8 +199,8 @@ jobs:
     name: Postgres-пробы вне отбора интеграционной джобы (пропуск = отказ)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -213,9 +213,9 @@ jobs:
     name: buf lint · breaking · generate-diff
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           # cache: false — ОСОЗНАННО, не оплошность. С `cache: true` джоба флакала:
@@ -293,8 +293,8 @@ jobs:
     name: permission-catalog · rest-route-table (staleness + copy-drift)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           # cache: false — та же причина, что в job `proto` выше: go.mod несёт
@@ -935,8 +935,8 @@ jobs:
     name: golangci-lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -967,8 +967,8 @@ jobs:
     name: govulncheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -981,7 +981,7 @@ jobs:
     name: helm lint · template (dev + prod)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # ПИН ОБЯЗАТЕЛЕН: без `version` setup-helm ставит ПОСЛЕДНЮЮ, то есть версия
       # менялась бы без единой правки в дереве, а гейт проверял бы чарты не тем,
       # чем поднимается стенд. Значение обязано совпадать с e2e-newman.yml и
@@ -994,7 +994,7 @@ jobs:
       # задание начальной настройки хранилища прав (kacho#3). Второй писатель снят:
       # поле объявляет только тот, кто его и заполняет. Держит это
       # deploy/tests/helm/podtemplate-annotation-single-owner-test.sh.
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
         with:
           version: v4.2.3
 
@@ -1241,7 +1241,7 @@ jobs:
     name: перенос ветки не откатил ствол
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Гейт судит ГРАФ — родителей посадки и точку расхождения ветки со
           # стволом. Мелкий клон их не содержит: merge-base не разрешается,
@@ -1325,7 +1325,7 @@ jobs:
     # Полный прогон восьми сборок — минуты; backstop, чтобы зависший webpack не держал очередь.
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
         with:
           node-version: '26'
