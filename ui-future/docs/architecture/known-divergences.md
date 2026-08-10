@@ -223,6 +223,40 @@ reads as a coordinate that the next contributor will go looking for.
    `getByPath` — so importers stay unchanged. Land behind snapshot tests of the
    composed `REGISTRY` keys.
 
+## `getByPath` re-exported by a registry: two implementations, one latent gap
+
+**Status:** measured, latent (no input in the tree reaches the difference), not
+fixed here — it is behaviour, and KAC #132 unified the *form* only.
+
+Each of the five registries re-exports a `getByPath`, and they are **not** the
+same function. `shared` delegates to `getByPath` in its own `path.ts`, which
+parses the path through `parsePath` and therefore resolves array indices
+(`spec.rules[0].direction` — the very shape `FormField.name` documents). The four
+private registries (compute, nlb, registry, storage) instead carry an **inline**
+re-implementation that does `path.split(".")` and so cannot resolve an index at
+all: it would return `undefined` where `shared` returns the value.
+
+**Why it is not a live defect today, stated as a measurement rather than a
+reassurance:** no spec in any of the five registries uses an indexed path —
+`grep -oE '(path|name): "[^"]*\[[0-9]+\][^"]*"' <pkg>/src/lib/resource-registry.tsx`
+returns 0 for all five, `shared` included (2026-08-10). Both implementations
+agree on every input the tree actually produces, which is exactly why the
+difference has never shown up and why it will not announce itself.
+
+**Why it is written down instead of left alone:** this is the same class KAC #132
+closed for the form — a duplicated surface nobody compares — and the fix there
+does not cover it, because the single-source gate guards *type declarations*, not
+function bodies. The trap arms itself the day someone adds an indexed `path` to a
+compute/nlb/registry/storage spec: the column silently renders empty in four apps
+and correctly in the other four. Note also that `path.ts` itself is byte-identical
+in all five packages (`md5` of the `getByPath` body agrees), so the divergence is
+not between the `path.ts` copies — it is the registry's inline duplicate that
+drifted away from the helper sitting next to it.
+
+**Closing it** means deleting the inline body and delegating to `./path`, in all
+four, behind a probe that feeds an indexed path and asserts the resolved value —
+a failing test first, per the test-first rule, since this changes behaviour.
+
 ## `react-hooks/exhaustive-deps` count after shared-source extraction
 
 The prior audit's "pervasive exhaustive-deps suppressions" finding remains
