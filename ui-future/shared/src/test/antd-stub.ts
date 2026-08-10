@@ -79,6 +79,52 @@ interface CardProps {
   [key: string]: unknown;
 }
 
+interface DescriptionItem {
+  key?: string | number;
+  label?: React.ReactNode;
+  children?: React.ReactNode;
+}
+
+interface DescriptionsProps {
+  items?: DescriptionItem[];
+  title?: React.ReactNode;
+  children?: React.ReactNode;
+  [key: string]: unknown;
+}
+
+interface MenuItemProps {
+  key?: string;
+  label?: React.ReactNode;
+  type?: string;
+  disabled?: boolean;
+}
+
+interface MenuProps {
+  items?: MenuItemProps[];
+  selectedKeys?: string[];
+  onClick?: (info: { key: string }) => void;
+  children?: React.ReactNode;
+  [key: string]: unknown;
+}
+
+interface RadioOption {
+  value: unknown;
+  label?: React.ReactNode;
+}
+
+interface RadioGroupProps {
+  options?: RadioOption[];
+  value?: unknown;
+  onChange?: (e: { target: { value: unknown } }) => void;
+  children?: React.ReactNode;
+}
+
+interface SwitchProps {
+  checked?: boolean;
+  onChange?: (checked: boolean) => void;
+  [key: string]: unknown;
+}
+
 interface ModalRootProps {
   children?: React.ReactNode;
   open?: boolean;
@@ -263,10 +309,67 @@ export function antdStub(): Record<string, unknown> {
   // показало X» проходило ещё ДО клика — то есть проба закрепляла форму
   // дублёра, а не наблюдаемое. Пропуск `open` (неуправляемое окно) сохраняет
   // прежнее поведение: скрывать нечего.
-  const ModalRoot = ({ children, open, className, style, ...rest }: ModalRootProps) =>
-    open === false
-      ? null
-      : React.createElement("div", { className, style, role: "dialog", ...domAttrs(rest) }, children);
+  //
+  // `title` и `footer` РИСУЮТСЯ: настоящее окно показывает и то, и другое, а
+  // заменитель ронял их в атрибуты. В `footer` живут кнопки действия — то есть
+  // единственное, ради чего окно открывают; пока их не было, ни одна проба не
+  // могла нажать «Выдать»/«Сохранить», и всё поведение за этой кнопкой
+  // оставалось непроверяемым. `footer={null}` (окно без действий) уважается.
+  const ModalRoot = ({
+    children,
+    open,
+    title,
+    footer,
+    okText,
+    cancelText,
+    onOk,
+    onCancel,
+    okButtonProps,
+    className,
+    style,
+    ...rest
+  }: ModalRootProps) => {
+    if (open === false) return null;
+    // `footer={null}` — окно без действий, уважается. Отсутствие `footer` у
+    // настоящего окна означает НЕ «нет кнопок», а «кнопки по умолчанию»
+    // (`okText`/`cancelText`): именно ими подтверждают подключение тома,
+    // удаление и всякое другое необратимое действие. Пока их не было, эти
+    // пути были недостижимы для проб целиком.
+    const ok = okButtonProps as { disabled?: boolean; loading?: boolean } | undefined;
+    const defaultFooter =
+      footer === undefined
+        ? [
+            React.createElement(
+              "button",
+              {
+                key: "cancel",
+                type: "button",
+                onClick: onCancel as () => void,
+              },
+              (cancelText as React.ReactNode) ?? "Cancel",
+            ),
+            React.createElement(
+              "button",
+              {
+                key: "ok",
+                type: "button",
+                disabled: Boolean(ok?.disabled) || Boolean(ok?.loading),
+                onClick: onOk as () => void,
+              },
+              (okText as React.ReactNode) ?? "OK",
+            ),
+          ]
+        : footer === null
+          ? null
+          : [footer as React.ReactNode];
+    return React.createElement(
+      "div",
+      { className, style, role: "dialog", ...domAttrs(rest) },
+      React.createElement("div", null, title as React.ReactNode),
+      children,
+      defaultFooter === null ? null : React.createElement("div", null, ...defaultFooter),
+    );
+  };
   const Modal = Object.assign(ModalRoot, {
     confirm: jest.fn(),
     destroyAll: jest.fn(),
@@ -299,6 +402,12 @@ export function antdStub(): Record<string, unknown> {
     AutoComplete: Input,
     Avatar: Component,
     Badge: Component,
+    // Поставщик темы обёртывает КАЖДЫЙ remote (`shared/src/lib/theme-context`).
+    // Пока его в наборе не было, любая проба, чей граф импортов доходит до темы,
+    // падала ссылкой на отсутствующий экспорт — и падала СУИТОЙ ЦЕЛИКОМ, ещё до
+    // первого утверждения, то есть сообщением не про свой предмет. Тема на
+    // наблюдаемое не влияет, поэтому заменитель — прозрачная обёртка.
+    ConfigProvider: ({ children }: React.PropsWithChildren) => React.createElement(React.Fragment, null, children),
     Button,
     // Настоящая карточка показывает свои заголовок и дополнение; заменитель
     // ронял их в атрибуты, поэтому счётчик/подпись в шапке карточки были
@@ -315,7 +424,25 @@ export function antdStub(): Record<string, unknown> {
     Checkbox,
     Col: Component,
     Collapse: Component,
-    Descriptions: Component,
+    // Настоящий список свойств рисует ПАРЫ подпись→значение, и на карточке
+    // ресурса это весь обзор целиком. Заменитель-`<div>` ронял `items` в
+    // атрибут: ни одна строка обзора не была наблюдаема, поэтому «карточка
+    // показывает описание» проверить было нечем.
+    Descriptions: ({ items, title, children }: DescriptionsProps) =>
+      React.createElement(
+        "dl",
+        null,
+        title === undefined ? null : React.createElement("div", null, title as React.ReactNode),
+        (items ?? []).map((it, i) =>
+          React.createElement(
+            "div",
+            { key: it.key ?? i },
+            React.createElement("dt", null, it.label as React.ReactNode),
+            React.createElement("dd", null, it.children as React.ReactNode),
+          ),
+        ),
+        children,
+      ),
     Divider: Component,
     Dropdown: Component,
     // Настоящий `Empty` рисует своё пояснение; заменитель-`<div>` прятал его в
@@ -328,7 +455,31 @@ export function antdStub(): Record<string, unknown> {
     InputNumber: Input,
     Layout,
     List: Component,
-    Menu: Component,
+    // Настоящее меню рисует свои пункты. На карточке ресурса это рейл вкладок:
+    // пока пункты уезжали в атрибут, «какие вкладки обещаны» было ненаблюдаемо,
+    // и утверждение «вкладки, которой быть не должно, нет» зеленело на пустом
+    // заменителе — то есть на всём сразу.
+    Menu: ({ items, selectedKeys, onClick, children }: MenuProps) =>
+      React.createElement(
+        "nav",
+        null,
+        (items ?? []).map((item, i) =>
+          item.type === "divider"
+            ? React.createElement("hr", { key: item.key ?? `d${i}` })
+            : React.createElement(
+                "button",
+                {
+                  key: item.key ?? i,
+                  type: "button",
+                  disabled: Boolean(item.disabled),
+                  "aria-current": (selectedKeys ?? []).includes(item.key ?? "") ? "page" : undefined,
+                  onClick: () => onClick?.({ key: item.key ?? "" }),
+                },
+                item.label as React.ReactNode,
+              ),
+        ),
+        children,
+      ),
     Modal,
     Popconfirm: Component,
     // Настоящий `Result` показывает заголовок и пояснение; заменитель ронял их
@@ -342,13 +493,60 @@ export function antdStub(): Record<string, unknown> {
         React.createElement("div", null, extra as React.ReactNode),
         children,
       ),
+    // Настоящая радиогруппа — набор переключателей с общим именем. Её
+    // отсутствие в наборе не «обедняло проверку», а роняло суиту целиком:
+    // ESM-линкер не находит binding и уводит прогон ещё до первого утверждения.
+    Radio: Object.assign(
+      ({ children, value, ...rest }: React.PropsWithChildren<AnyProps>) =>
+        React.createElement(
+          "label",
+          null,
+          React.createElement("input", { type: "radio", value: value as string, ...domAttrs(rest) }),
+          children,
+        ),
+      {
+        Group: ({ children, options, value, onChange }: RadioGroupProps) =>
+          React.createElement(
+            "div",
+            { role: "radiogroup" },
+            (options ?? []).map((o) =>
+              React.createElement(
+                "label",
+                { key: String(o.value) },
+                React.createElement("input", {
+                  type: "radio",
+                  value: String(o.value),
+                  checked: value === o.value,
+                  onChange: () => onChange?.({ target: { value: o.value } }),
+                }),
+                o.label as React.ReactNode,
+              ),
+            ),
+            children,
+          ),
+        Button: ({ children, ...rest }: React.PropsWithChildren<AnyProps>) =>
+          React.createElement("button", { type: "button", ...domAttrs(rest) }, children),
+      },
+    ),
     Row: Component,
     Segmented: Component,
     Select,
     Space,
     Spin: Component,
     Statistic: Component,
-    Switch: Input,
+    // Настоящий переключатель отдаёт в `onChange` НОВОЕ СОСТОЯНИЕ (`boolean`),
+    // а не событие DOM. Заменитель-поле ввода отдавал событие: оно истинно
+    // всегда, поэтому «выключить» не срабатывало НИ РАЗУ, а проба, написанная
+    // на таком дублёре, закрепляла бы это как норму. Роль — `switch`, как у
+    // настоящего: иначе переключатель недостижим по доступному имени.
+    Switch: ({ checked, onChange, ...rest }: SwitchProps) =>
+      React.createElement("input", {
+        type: "checkbox",
+        role: "switch",
+        checked: Boolean(checked),
+        onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChange?.(e.target.checked),
+        ...domAttrs(rest),
+      }),
     Table,
     Tabs: Component,
     // Настоящий закрываемый `Tag` рисует крестик с доступным именем `close`

@@ -1,89 +1,95 @@
-// Шапка `src/api/types.ts` против того, что реально происходит на проводе.
+// Имена полей на проводе против имён, которыми говорит домен.
 //
-// Предмет пробы — не стиль текста, а расхождение двух мест об одном предмете.
-// Типы в этом файле объявлены в snake_case, и шапка обязана объяснить, почему:
-// край отдаёт camelCase, а обратно в snake_case их переводит `api/client.ts`
-// (`lib/case.ts`). Формулировка «grpc-gateway сериализует proto snake_case →
-// JSON snake_case (прямой маппинг)» утверждает ОБРАТНОЕ — что переводить нечего.
-// Следующий читатель, поверивший ей, снимет перевод как лишний, и весь домен
-// начнёт читать поля, которых в ответе нет.
+// Край отдаёт JSON в camelCase, а типы этого домена объявлены в snake_case:
+// перевод в обе стороны делает `api/client.ts` (`lib/case.ts`). Пока перевод
+// есть, расхождения не видно вовсе; сними его — и домен начнёт читать поля,
+// которых в ответе нет, а тела запросов уедут с именами, которых край не
+// принимает. Оба отказа МОЛЧАЛИВЫ: список просто пуст, правка просто без
+// эффекта.
 //
-// Гейт заякорен на ствол, а не на память: посадку края читает
-// `gateway/internal/restmux/strict_enum.go`, наличие перевода — `api/client.ts`.
-// Сменят посадку края на `UseProtoNames: true` — предпосылка перестанет
-// выполняться, и проба скажет об этом отдельным утверждением, а не молча
-// позеленеет.
+// Поэтому предмет пробы — сам перевод, наблюдаемый по кругу: что ушло на
+// провод и что вернулось домену. Прежняя редакция вместо этого читала ШАПКУ
+// файла типов и утверждала о её словах — то есть проверяла, что в комментарии
+// написано то, что написано, и не могла упасть на снятом переводе.
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { jest } from "@jest/globals";
 
-const REPO_ROOT = join(process.cwd(), "..", "..");
-const STRICT_ENUM = join(REPO_ROOT, "gateway", "internal", "restmux", "strict_enum.go");
-const TYPES_FILE = join(process.cwd(), "src", "api", "types.ts");
-const CLIENT_FILE = join(process.cwd(), "src", "api", "client.ts");
-
-/** Объявления имён полей в маршалере края (обе посадки mux'а). */
-function edgeNameDeclarations(): string[] {
-  return readFileSync(STRICT_ENUM, "utf8").match(/UseProtoNames:\s*(true|false)/g) ?? [];
+interface Captured {
+  url: string;
+  method: string;
+  body: Record<string, unknown> | null;
 }
 
-/** Первый блок `//`-строк файла — его шапка. */
-function headerOf(file: string): string {
-  const lines = readFileSync(file, "utf8").split("\n");
-  const header: string[] = [];
-  for (const line of lines) {
-    if (!line.startsWith("//")) break;
-    header.push(line);
-  }
-  return header.join("\n");
+const realFetch = globalThis.fetch;
+let captured: Captured[] = [];
+
+function stubFetch(reply: Record<string, unknown>) {
+  captured = [];
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+    captured.push({
+      url: String(input),
+      method: init?.method ?? "GET",
+      body: init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null,
+    });
+    return Promise.resolve({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      text: () => Promise.resolve(JSON.stringify(reply)),
+    } as Response);
+  }) as typeof globalThis.fetch;
 }
 
-/**
- * Утверждает ли шапка, что перевода имён нет (край отдаёт то же, что объявлено)?
- * Обе формулировки — настоящие входы: именно они стояли в дереве.
- */
-export function claimsUntranslatedWire(header: string): boolean {
-  const flat = header.replace(/\s+/g, " ");
-  return /JSON\s+snake_case/i.test(flat) || /прямой\s+маппинг/i.test(flat);
-}
+const { api } = await import("./client");
 
-/** Называет ли шапка настоящий механизм — перевод в api/client.ts? */
-export function namesTranslator(header: string): boolean {
-  return /camelCase/.test(header) && /client\.ts/.test(header);
-}
+afterEach(() => {
+  globalThis.fetch = realFetch;
+  jest.clearAllMocks();
+});
 
-describe("шапка типов домена против посадки края", () => {
-  it("предпосылка: край отдаёт camelCase (UseProtoNames: false на обеих посадках)", () => {
-    const decls = edgeNameDeclarations();
-    expect(decls.length).toBeGreaterThan(0);
-    expect(decls.filter((d) => /true/.test(d))).toEqual([]);
+describe("перевод имён между доменом и проводом", () => {
+  it("ответ края в camelCase домен получает в snake_case", async () => {
+    stubFetch({ regionId: "ru-central1", createdAt: "2026-08-01T00:00:00Z", projectId: "prj-1" });
+
+    const got = (await api.get<Record<string, unknown>>("/x/v1/things/thg-1")) as Record<string, unknown>;
+
+    expect(got.region_id).toBe("ru-central1");
+    expect(got.created_at).toBe("2026-08-01T00:00:00Z");
+    // Имена провода домену не видны: иначе в дереве завелись бы обе формы
+    // одного поля, и одна из них молча оставалась бы пустой.
+    expect(got).not.toHaveProperty("regionId");
   });
 
-  it("предпосылка: клиент домена действительно переводит имена в обе стороны", () => {
-    const client = readFileSync(CLIENT_FILE, "utf8");
-    expect(client).toMatch(/snakeToCamel\(/);
-    expect(client).toMatch(/camelToSnake\(/);
+  it("тело запроса из snake_case уходит на провод в camelCase", async () => {
+    stubFetch({});
+
+    await api.create("/x/v1/things", { region_id: "ru-central1", update_mask: "name", project_id: "prj-1" });
+
+    const body = captured[0].body!;
+    expect(body.regionId).toBe("ru-central1");
+    expect(body.updateMask).toBe("name");
+    expect(body).not.toHaveProperty("region_id");
   });
 
-  it("шапка не утверждает, что перевода нет", () => {
-    expect(claimsUntranslatedWire(headerOf(TYPES_FILE))).toBe(false);
+  it("перевод рекурсивен — вложенное и списки тоже", async () => {
+    stubFetch({ healthCheck: { effectivePort: 8081, expectedCodes: "200-299" }, targetIds: ["tg-1"] });
+
+    const got = (await api.get<Record<string, unknown>>("/x/v1/things/thg-1")) as Record<string, unknown>;
+
+    expect((got.health_check as Record<string, unknown>).effective_port).toBe(8081);
+    expect((got.health_check as Record<string, unknown>).expected_codes).toBe("200-299");
+    expect(got.target_ids).toEqual(["tg-1"]);
   });
 
-  it("шапка называет переводчик, а не оставляет snake_case без объяснения", () => {
-    expect(namesTranslator(headerOf(TYPES_FILE))).toBe(true);
-  });
+  it("имя без границы слов не трогается — контроль в обратную сторону", async () => {
+    // Без него «перевод работает» удовлетворялось бы функцией, портящей ЛЮБОЕ
+    // имя: односложные ключи обязаны доезжать как есть.
+    stubFetch({ id: "thg-1", name: "web", status: "ACTIVE" });
 
-  it("инъекция: прежняя формулировка предикатом ловится", () => {
-    const injected = "// grpc-gateway сериализует proto snake_case → JSON snake_case (прямой маппинг).";
-    expect(claimsUntranslatedWire(injected)).toBe(true);
-  });
+    const got = (await api.get<Record<string, unknown>>("/x/v1/things/thg-1")) as Record<string, unknown>;
 
-  it("законный близнец: верная формулировка предикатом не ловится", () => {
-    const legal = [
-      "// На проводе край отдаёт camelCase (UseProtoNames: false);",
-      "// объявления ниже — в snake_case, перевод делает api/client.ts.",
-    ].join("\n");
-    expect(claimsUntranslatedWire(legal)).toBe(false);
-    expect(namesTranslator(legal)).toBe(true);
+    expect(got.id).toBe("thg-1");
+    expect(got.name).toBe("web");
+    expect(got.status).toBe("ACTIVE");
   });
 });

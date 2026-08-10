@@ -7,56 +7,84 @@
 // проверкой «каждый listPath существует», потому что отсутствующая плитка не
 // называет ни одного пути.
 //
-// Ground truth — маршрутизатор консоли `ui-future/host/src/App.tsx`: строки
-// `/projects/:projectId/<segment>/*`. Перечень ВЫВОДИТСЯ из него, а не
-// выписывается здесь: смонтируют новый remote — гейт потребует плитку сам.
+// ПРЕДМЕТ — СОСТАВ ДЕРЕВА, а не текст одного файла. Прежняя редакция читала
+// ровно один известный ей исходник маршрутизатора: смонтируй раздел в другом
+// месте — и проверка осталась бы зелёной, ничего не заметив. Поэтому объявления
+// `/projects/:projectId/<segment>/*` ищутся ОБХОДОМ всего дерева консоли;
+// приложение, заведённое завтра, попадает под гейт само, а объём осмотренного
+// утверждается отдельно — «ноль находок» обязано быть отличимо от «ноль
+// прочитанного».
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { SERVICE_MODULES } from "./service-modules";
 
-const HOST_ROUTES = join(process.cwd(), "..", "host", "src", "App.tsx");
+const uiRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+
+// Ровно ФОРМА МОНТИРОВАНИЯ remote'а: сегмент со звёздочкой. Собственный
+// маршрут приложения (`/projects/:projectId/edit`) разделом консоли не
+// является и плитки не требует — без звёздочки предикат ловил бы и его.
+const MOUNT = /path="\/projects\/:projectId\/([a-z-]+)\/\*"/g;
+
+function sources(dir: string, out: string[] = []): string[] {
+  if (!existsSync(dir)) return out;
+  for (const entry of readdirSync(dir)) {
+    if (entry === "node_modules") continue;
+    const p = path.join(dir, entry);
+    if (statSync(p).isDirectory()) sources(p, out);
+    else if (/\.tsx?$/.test(entry) && !/\.test\.tsx?$/.test(entry)) out.push(p);
+  }
+  return out;
+}
+
+function consoleSources(): string[] {
+  const out: string[] = [];
+  for (const pkg of readdirSync(uiRoot)) {
+    if (pkg === "node_modules") continue;
+    const src = path.join(uiRoot, pkg, "src");
+    if (existsSync(src) && statSync(src).isDirectory()) sources(src, out);
+  }
+  return out;
+}
 
 /**
- * Сегменты `/projects/:projectId/<segment>/*` из маршрутизатора консоли.
+ * Сегменты `/projects/:projectId/<segment>/*`, объявленные ГДЕ УГОДНО в дереве.
  *
  * `dashboard` исключён — это сама витрина, плитки на себя она не заводит.
- * Параметрический `:moduleKey` — заглушка «раздел ещё не подключён», доменом
- * не является.
+ * Параметрический `:moduleKey` доменом не является (заглушка «раздел ещё не
+ * подключён») и в этот предикат не попадает by construction: он ловит только
+ * буквенные сегменты.
  */
-export function mountedProjectSegments(routerSource: string): string[] {
-  const found = routerSource.match(/path="\/projects\/:projectId\/([a-z-]+)\/\*"/g) ?? [];
+export function mountedProjectSegments(source: string): string[] {
   return [
     ...new Set(
-      found
-        .map((m) => /\/projects\/:projectId\/([a-z-]+)\//.exec(m)?.[1] ?? "")
-        .filter((seg) => seg && seg !== "dashboard"),
+      [...source.matchAll(MOUNT)].map((m) => m[1]).filter((seg) => seg && seg !== "dashboard"),
     ),
   ];
 }
 
-const routerSource = readFileSync(HOST_ROUTES, "utf8");
+const files = consoleSources();
+const mounted = [...new Set(files.flatMap((f) => mountedProjectSegments(readFileSync(f, "utf8"))))].sort();
 
 describe("витрина против смонтированных разделов консоли", () => {
-  it("предпосылка: маршрутизатор консоли прочитан и несёт project-разделы", () => {
-    // «Ноль находок» обязано быть отличимо от «ноль прочитанного».
-    expect(routerSource.length).toBeGreaterThan(0);
-    expect(mountedProjectSegments(routerSource).length).toBeGreaterThan(2);
+  it("объём осмотренного назван: сколько исходников прочитано и сколько разделов найдено", () => {
+    expect(files.length).toBeGreaterThan(100);
+    expect(mounted.length).toBeGreaterThan(2);
+    expect(SERVICE_MODULES.length).toBeGreaterThan(2);
   });
 
   it("у каждого смонтированного раздела есть плитка", () => {
     const tiles = new Set(SERVICE_MODULES.map((m) => m.segment));
-    const invisible = mountedProjectSegments(routerSource).filter((seg) => !tiles.has(seg));
-    expect(invisible).toEqual([]);
+    expect(mounted.filter((seg) => !tiles.has(seg))).toEqual([]);
   });
 
   it("плитка, требующая проект, ведёт в смонтированный раздел", () => {
     // Контроль в обратную сторону: плитка на несмонтированный сегмент отправляет
     // человека на заглушку «раздел не подключён».
-    const mounted = new Set(mountedProjectSegments(routerSource));
-    const dangling = SERVICE_MODULES.filter((m) => m.requiresProject).filter((m) => !mounted.has(m.segment));
-    expect(dangling).toEqual([]);
+    const set = new Set(mounted);
+    expect(SERVICE_MODULES.filter((m) => m.requiresProject).filter((m) => !set.has(m.segment))).toEqual([]);
   });
 
   it("плитка, требующая проект, отдаёт адрес при наличии проекта и молчит без него", () => {
@@ -70,6 +98,9 @@ describe("витрина против смонтированных раздел�
     const synthetic = '<Route path="/projects/:projectId/quantum/*" element={<QuantumRemote />} />';
     expect(mountedProjectSegments(synthetic)).toEqual(["quantum"]);
     expect(SERVICE_MODULES.map((m) => m.segment)).not.toContain("quantum");
+    // И обратная сторона того же различия: собственный маршрут приложения,
+    // а не монтирование раздела, предикатом не ловится.
+    expect(mountedProjectSegments('<Route path="/projects/:projectId/edit" element={<E />} />')).toEqual([]);
   });
 
   it("законный близнец: витрина сама себе плитку не требует", () => {

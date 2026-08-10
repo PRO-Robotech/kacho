@@ -104,7 +104,11 @@ describe("StepUpModal — что видит пользователь", () => {
       void currentHandler()("2");
     });
 
-    expect(screen.getByText(/passkey/i)).toBeInTheDocument();
+    // Способ подтверждения назван И в пояснении, И на самой кнопке: заменитель
+    // окна теперь рисует его действия, поэтому совпадений два — и это ровно то,
+    // что видит человек.
+    expect(screen.getByText(/Подтвердите запрос вашим passkey/i)).toBeInTheDocument();
+    expect(screen.getByTestId("stepup-confirm").textContent).toMatch(/passkey/i);
   });
 });
 
