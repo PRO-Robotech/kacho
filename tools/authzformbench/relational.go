@@ -246,10 +246,10 @@ func (r *relStore) seed(ctx context.Context, structural, grant []Tuple) error {
 
 	// Зеркало кладётся ОДНИМ стейтментом на весь набор: строку на объект пишет
 	// продукт пообъектно, но замер меряет форму, а не способ её вызова.
-	inSet := map[string]bool{}
-	for _, o := range r.sc.Objects() {
-		inSet[o] = true
-	}
+	// Метка строки зеркала — не только у объектов набора: помечен и объект чужого
+	// арендатора. Иначе отказ на нём объяснялся бы селектором, и конъюнкт области
+	// остался бы без единого утверждения о себе (см. Scenario.ForeignObject).
+	labelled := r.sc.LabelledInMirror()
 	var (
 		types    []string
 		ids      []string
@@ -264,7 +264,7 @@ func (r *relStore) seed(ctx context.Context, structural, grant []Tuple) error {
 		types = append(types, ot)
 		ids = append(ids, oid)
 		projIDs = append(projIDs, t.User)
-		labelSet = append(labelSet, inSet[t.Object])
+		labelSet = append(labelSet, labelled[t.Object])
 	}
 	if len(ids) > 0 {
 		if _, err := tx.Exec(ctx, `

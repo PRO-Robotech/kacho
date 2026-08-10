@@ -28,11 +28,21 @@ type Question struct {
 // (green on "was it emitted", wrong on "was it withdrawn"). So: an outsider, an
 // object outside the set, a verb the role does not grant, and — after mutation —
 // a revoked subject and an object taken back out.
+//
+// И — вопрос про ЧУЖОГО арендатора, без которого предпосылка эквивалентности была
+// обеспечена только на одноарендной фикстуре. Он единственный, где у формы E
+// выполнены все конъюнкты вердикта, кроме области: субъект назван в привязке,
+// роль даёт спрошенный глагол, метка объекта попадает под селектор — и отказать
+// обязана ровно транзитивная вложенность области. У форм движка тот же отказ
+// СТРУКТУРЕН (на чужой объект не написано ни одного кортежа), и в этом весь смысл
+// пары: вопрос один, а держат его у двух форм разные механизмы, поэтому именно
+// здесь реляционная переписка правдоподобно разошлась бы с движком.
 func questionSet(sc Scenario, phase string) []Question {
 	var qs []Question
 	inSet := sc.Object(0)
 	inSet2 := sc.Object(sc.N - 1)
-	outSet := sc.Object(sc.N) // spare — never granted
+	outSet := sc.Object(sc.N)     // spare — never granted
+	foreign := sc.ForeignObject() // помечен меткой набора, но лежит у чужого арендатора
 	granted := map[string]bool{}
 	for _, v := range sc.Verbs {
 		granted[v] = true
@@ -50,6 +60,9 @@ func questionSet(sc Scenario, phase string) []Question {
 			Question{fmt.Sprintf("%s/other/%s/in-set-first", phase, v), other, v, inSet, want},
 			// object outside the selected set — never allowed, whatever the verb
 			Question{fmt.Sprintf("%s/member/%s/out-of-set", phase, v), member, v, outSet, false},
+			// объект ЧУЖОГО арендатора, помеченный меткой набора: отказать обязана
+			// область выдачи, все прочие конъюнкты выполнены
+			Question{fmt.Sprintf("%s/member/%s/foreign-tenant", phase, v), member, v, foreign, false},
 			// a principal in no binding at all — never allowed
 			Question{fmt.Sprintf("%s/stranger/%s/in-set", phase, v), stranger, v, inSet, false},
 		)
