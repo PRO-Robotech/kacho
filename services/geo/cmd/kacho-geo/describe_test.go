@@ -161,6 +161,64 @@ func TestGeoServesNoGatedMutation(t *testing.T) {
 	t.Logf("осмотрено служимых методов: %d, гейтируемых мутаций среди них: 0", len(served))
 }
 
+// TestGeoServesNoServerStream — САМОИСТЕЧЕНИЕ изъятия по сроку жизни подписки.
+//
+// Дескриптор объявляет ось `StreamBudget` неприменимой с причиной «серверных
+// стримов geo не служит». Утверждение проверяемое, и проверяется оно СОСТАВОМ
+// ЗАРЕГИСТРИРОВАННОГО, а не памятью автора: появится у geo первая подписка —
+// проба покраснеет и назовёт метод.
+//
+// Источник признака назван честно: здесь читается самоописание сервера
+// (`grpc.ServiceInfo`), носитель на старте читает дескриптор метода. Оба
+// порождены одним `.proto`, поэтому для утверждения «стримов нет» годится любой;
+// расхождение между ними было бы дефектом генерации, а не этого изъятия.
+//
+// Носитель отказал бы и сам (О11), но на СТАРТЕ ПРОЦЕССА — то есть при
+// развёртывании. Проба переносит тот же отказ в прогон.
+func TestGeoServesNoServerStream(t *testing.T) {
+	regionUC := region.New(nil, nil, nil, nil)
+	zoneUC := zone.New(nil, nil, nil, nil)
+	opHandler := handler.NewOperationHandler(operations.NewRepo(nil, "kacho_geo"))
+
+	methods, streams := 0, []string{}
+	for _, reg := range []func(grpc.ServiceRegistrar){
+		func(r grpc.ServiceRegistrar) { registerPublic(r, regionUC, zoneUC, opHandler) },
+		func(r grpc.ServiceRegistrar) { registerInternal(r, regionUC, zoneUC, opHandler) },
+	} {
+		srv := grpc.NewServer()
+		reg(srv)
+		for name, info := range srv.GetServiceInfo() {
+			for _, m := range info.Methods {
+				methods++
+				if m.IsServerStream {
+					streams = append(streams, "/"+name+"/"+m.Name)
+				}
+			}
+		}
+	}
+	if methods == 0 {
+		t.Fatal("ни один метод не зарегистрирован — «серверных стримов нет» было бы верно и на " +
+			"пустом наборе, то есть проба не отличала бы исправное от сломанного")
+	}
+	if len(streams) != 0 {
+		t.Fatalf("geo служит серверный стрим: %v.\nИзъятие StreamBudget в describe() пережило свой "+
+			"предмет: объявите срок жизни подписки величиной (больше HandlingBudget) либо "+
+			"перепишите причину", streams)
+	}
+	// Вторая сторона той же оси, и на СВОЁМ дескрипторе: величина, объявленная
+	// процессом без единой подписки, — проводка без предмета. Носитель откажет в
+	// этом и сам (О11), но на старте процесса; проба переносит отказ в прогон.
+	desc, err := describe(bootConfig(t, nil), slog.New(slog.NewTextHandler(&strings.Builder{}, nil)))
+	if err != nil {
+		t.Fatalf("дескриптор отвергнут: %v", err)
+	}
+	if budget, ok := desc.Spec().StreamBudget.Get(); ok && len(streams) == 0 {
+		t.Fatalf("дескриптор объявляет срок жизни подписки (%v), а служимых серверных стримов "+
+			"нет ни одного: величина утверждает решение про подписки там, где подписок нет", budget)
+	}
+	t.Logf("осмотрено служимых методов: %d, серверных стримов среди них: 0", methods)
+}
+
 // TestBootPostureStillReportsWhatTheDescriptorCarries — самоотчёт о посадке
 // печатается ПОСЛЕ приёма дескриптора, поэтому обе половины обязаны сходиться на
 // одном конфиге. Проба тонкая намеренно: посадку судит `bootposture_test.go`,

@@ -36,12 +36,17 @@ import (
 	"github.com/PRO-Robotech/kacho/pkg/servicecontract"
 )
 
+// chainSpec — дескриптор, от которого отталкиваются пробы контура. Срок жизни
+// подписки объявлен ВЕЛИЧИНОЙ и намеренно отличается от границы обработки: обе
+// полосы обязаны брать СВОЁ число, и проба, где они совпадают, этого не
+// различила бы.
 func chainSpec() servicecontract.Spec {
 	return servicecontract.Spec{
 		Service:        "kacho-demo",
 		Logger:         slog.Default(),
 		Forwarders:     grpcsrv.NewTrustedForwarders("spiffe://kacho.cloud/ns/kacho/sa/kacho-api-gateway"),
 		HandlingBudget: 30 * time.Second,
+		StreamBudget:   servicecontract.Value(30 * time.Minute),
 	}
 }
 
@@ -93,8 +98,12 @@ func TestAccessLogIsOutermostPanicRecoveryNextAndDecisionIsLast(t *testing.T) {
 	if got, want := funcID(unary[2]), funcID(handlingBudgetUnary(time.Second)); got != want {
 		t.Fatalf("третьим unary-звеном стоит %s, а обязана — верхняя граница обработки (%s)", got, want)
 	}
-	if got, want := funcID(stream[2]), funcID(handlingBudgetStream(time.Second)); got != want {
-		t.Fatalf("третьим stream-звеном стоит %s, а обязана — верхняя граница обработки (%s)", got, want)
+	// На стриме третьим стоит звено СРОКА ЖИЗНИ ПОДПИСКИ — другое звено и другая
+	// величина. Совпадение имён («граница») здесь обманчиво: у запроса и у
+	// подписки разные предметы, и подмена одного другим рвала бы подписку по
+	// потолку одиночного вызова.
+	if got, want := funcID(stream[2]), funcID(streamBudgetLink(time.Second)); got != want {
+		t.Fatalf("третьим stream-звеном стоит %s, а обязан — срок жизни подписки (%s)", got, want)
 	}
 	// Последним — слот решения о доступе. Проверяем ПОВЕДЕНИЕМ, а не именем:
 	// пустой слот отказывает, и это его единственная наблюдаемая примета.
@@ -103,6 +112,43 @@ func TestAccessLogIsOutermostPanicRecoveryNextAndDecisionIsLast(t *testing.T) {
 		func(context.Context, any) (any, error) { return nil, nil })
 	if err == nil {
 		t.Fatal("последнее unary-звено не является слотом решения о доступе: пустой слот обязан отказать")
+	}
+}
+
+// TestStreamChainDropsTheBudgetLinkOnANotApplicableAxis — вторая половина оси
+// на уровне ЦЕПОЧКИ: изъятие «серверных стримов не служу» снимает звено срока
+// целиком, а не подменяет его границей обработки запроса.
+//
+// Пара «инъекция + законный близнец» здесь в одном теле: та же цепочка с
+// объявленной величиной звено несёт (проверено выше и повторено сравнением
+// длин), с изъятием — нет. Без этой пробы изъятие могло бы молча означать
+// «взять унарную величину», то есть ровно тот разрыв, ради которого ось и
+// заведена.
+func TestStreamChainDropsTheBudgetLinkOnANotApplicableAxis(t *testing.T) {
+	var slot decisionSlot
+	withValue := streamChain(chainSpec(), &slot)
+
+	na := chainSpec()
+	na.StreamBudget = servicecontract.NotApplicable[time.Duration]("демо не служит серверных стримов")
+	withoutValue := streamChain(na, &slot)
+
+	if len(withoutValue) != len(withValue)-1 {
+		t.Fatalf("изъятие не сняло звена срока: с величиной %d звеньев, с изъятием %d",
+			len(withValue), len(withoutValue))
+	}
+	for _, link := range withoutValue {
+		if funcID(link) == funcID(streamBudgetLink(time.Second)) {
+			t.Fatal("звено срока жизни подписки осталось в цепочке при объявленном изъятии — " +
+				"значит изъятие означает не «сроком не накрываем», а что-то другое")
+		}
+	}
+	// Порядок остальных звеньев изъятием не меняется: журнал остаётся внешним,
+	// восстановление паники — вторым.
+	if got, want := funcID(withoutValue[0]), funcID(accessLogStream(chainSpec().Logger)); got != want {
+		t.Fatalf("снятие звена срока переставило журнал доступа: первым стоит %s", got)
+	}
+	if got, want := funcID(withoutValue[1]), funcID(grpcsrv.StreamPanicRecovery(chainSpec().Logger)); got != want {
+		t.Fatalf("снятие звена срока переставило восстановление паники: вторым стоит %s", got)
 	}
 }
 

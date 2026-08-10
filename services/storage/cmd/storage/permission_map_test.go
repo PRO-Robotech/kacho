@@ -52,19 +52,8 @@ import (
 // вызывается, предмет — только состав зарегистрированного.
 func servedMethods(t *testing.T) []string {
 	t.Helper()
-	volumeUC := volume.New(nil, nil, nil, nil, nil, nil)
-	snapshotUC := snapshot.New(nil, nil, nil, nil)
-	imageUC := image.New(nil, nil, nil, nil, nil, nil)
-	diskTypeUC := disktype.New(nil)
-	opHandler := handler.NewOperationHandler(operations.NewRepo(nil, "kacho_storage"))
-
 	var served []string
-	for _, reg := range []func(grpc.ServiceRegistrar){
-		func(r grpc.ServiceRegistrar) {
-			registerPublic(r, volumeUC, snapshotUC, imageUC, diskTypeUC, opHandler)
-		},
-		func(r grpc.ServiceRegistrar) { registerInternal(r, volumeUC, imageUC, diskTypeUC, opHandler) },
-	} {
+	for _, reg := range registrarsOfBothListeners() {
 		srv := grpc.NewServer()
 		reg(srv)
 		for name, info := range srv.GetServiceInfo() {

@@ -22,6 +22,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -41,6 +42,11 @@ import (
 	// ПУСТОЙ набор — и проба зеленела бы ровно на снятой провязке. Имя метода
 	// обязано быть настоящим.
 	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/vpc/v1"
+
+	// Дескрипторы compute — по той же причине и ради другой пробы: домен несёт
+	// единственную подписку дерева, и признак «серверный стрим» снимается с её
+	// настоящего дескриптора. Без линковки каталог домена пуст.
+	_ "github.com/PRO-Robotech/kacho/pkg/api/kacho/cloud/compute/v1"
 )
 
 // probedMethod — настоящий пообъектный МУТИРУЮЩИЙ метод.
@@ -291,17 +297,21 @@ func TestAccessLogRecordsThePanickingStreamCall(t *testing.T) {
 	}
 }
 
-// TestHandlingBudgetReachesTheStreamHandler — верхняя граница обработки доезжает
-// до СТРИМ-обработчика.
+// TestStreamBudgetReachesTheStreamHandler — срок жизни подписки доезжает до
+// СТРИМ-обработчика, и это ЕГО величина, а не граница обработки запроса.
 //
-// Инъекция, ради которой проба написана: сделать `handlingBudgetStream`
-// пропускающим (`return h(srv, ss)`) — до неё это не краснело нигде. Это ровно
-// та ветка «границы нет», про которую сказано, что её нет намеренно: на unary она
-// невозможна и проверена двумя пробами, на стриме воспроизводилась молча. Для
-// стрима цена выше: он держит соединение дольше запроса.
-func TestHandlingBudgetReachesTheStreamHandler(t *testing.T) {
+// Числа выбраны так, чтобы проба различала два ответа: граница обработки — 5
+// секунд, срок подписки — час. Возьми носитель унарную величину, и обработчик
+// увидел бы срок в пределах пяти секунд; проба, где обе величины совпадают, эту
+// подмену пропустила бы — и именно так выглядел бы возврат дефекта, ради
+// которого ось заведена.
+//
+// Инъекция, ради которой проба написана: сделать `streamBudgetLink`
+// пропускающим (`return h(srv, ss)`) — до неё это не краснело нигде.
+func TestStreamBudgetReachesTheStreamHandler(t *testing.T) {
 	spec := chainSpec()
 	spec.HandlingBudget = 5 * time.Second
+	spec.StreamBudget = servicecontract.Value(time.Hour)
 	var slot decisionSlot
 	chain := streamChain(spec, &slot)
 	chain = chain[:len(chain)-1]
@@ -319,11 +329,16 @@ func TestHandlingBudgetReachesTheStreamHandler(t *testing.T) {
 		t.Fatalf("стрим-вызов отвергнут: %v", err)
 	}
 	if !has {
-		t.Fatal("стрим-обработчик получил контекст БЕЗ срока — граница обработки до него не доехала, " +
-			"и стрим вправе держать соединение из ограниченного пула сколько угодно")
+		t.Fatal("стрим-обработчик получил контекст БЕЗ срока — срок жизни подписки до него не доехал, " +
+			"и подписка вправе держать соединение из ограниченного пула сколько угодно")
 	}
-	if left := time.Until(dl); left <= 0 || left > 5*time.Second {
-		t.Fatalf("срок вне объявленной границы: осталось %v при границе 5s", left)
+	left := time.Until(dl)
+	if left <= 5*time.Second {
+		t.Fatalf("подписка получила срок %v — не больше границы обработки ОДИНОЧНОГО вызова (5s): "+
+			"носитель взял унарную величину, и подписка рвалась бы по потолку запроса", left)
+	}
+	if left > time.Hour {
+		t.Fatalf("срок %v превышает объявленный срок жизни подписки (1h)", left)
 	}
 }
 
@@ -351,7 +366,7 @@ func TestStreamChainWithoutTheBudgetLinkLeavesTheStreamUnbounded(t *testing.T) {
 // строгий срок вызывающего уважается и на стриме.
 func TestStreamBudgetNeverWidensTheCallersDeadline(t *testing.T) {
 	spec := chainSpec()
-	spec.HandlingBudget = time.Hour
+	spec.StreamBudget = servicecontract.Value(time.Hour)
 	var slot decisionSlot
 	chain := streamChain(spec, &slot)
 	chain = chain[:len(chain)-1]
@@ -479,4 +494,51 @@ func TestBothListenersReachTheHandlerOnceTheDecisionLinkIsInstalled(t *testing.T
 		t.Fatalf("с установленным звеном вызов не дошёл до обработчика: публичный %v, внутренний %v — "+
 			"значит отрицание выше зеленеет на всём сломанном", pub, intl)
 	}
+}
+
+// TestServerStreamingIsReadFromTheRealMethodDescriptor — СТЫК, а не ответ.
+//
+// Признак «метод отдаёт серверный стрим» рождается ровно в одном месте —
+// `catalogOf` снимает его с дескриптора метода (`md.IsStreamingServer()`), и
+// единственный его потребитель — отказ старта про стримы. Все прочие пробы этого
+// отказа кормятся СИНТЕТИЧЕСКИМ каталогом, где флаг выставлен рукой: они
+// закрепляют, что отказ верно читает уже готовый признак, и молчат о том, откуда
+// он берётся. Инъекция, ради которой написана эта проба: заменить
+// `md.IsStreamingServer()` на `false` — весь прогон оставался зелёным, а отказ
+// становился недостижимым на реальном пути.
+//
+// Поэтому здесь берётся НАСТОЯЩИЙ домен с настоящей подпиской (compute несёт
+// единственный серверный стрим дерева) и проверяются ОБЕ стороны: у подписки
+// признак поднят, у соседнего одиночного метода того же домена — нет. Без второй
+// половины проба зеленела бы и на `true` для всех подряд.
+func TestServerStreamingIsReadFromTheRealMethodDescriptor(t *testing.T) {
+	const domain = "kacho.cloud.compute.v1"
+	cat := catalogOf([]string{domain})
+	if len(cat.rows) == 0 {
+		t.Fatalf("каталог домена %s пуст — проба ничего не осмотрела, и её молчание "+
+			"неотличимо от исправности", domain)
+	}
+
+	var streams, unary []string
+	for m, row := range cat.rows {
+		if row.ServerStreaming {
+			streams = append(streams, string(m))
+			continue
+		}
+		unary = append(unary, string(m))
+	}
+	sort.Strings(streams)
+	sort.Strings(unary)
+
+	if len(streams) == 0 {
+		t.Errorf("ни один метод домена %s не объявлен серверным стримом, хотя подписка у него "+
+			"есть: признак не снимается с дескриптора — отказ старта про стримы недостижим "+
+			"на реальном пути (осмотрено методов: %d)", domain, len(cat.rows))
+	}
+	if len(unary) == 0 {
+		t.Errorf("ВСЕ методы домена %s объявлены стримами — положительный контроль не выполнен, "+
+			"и утверждение выше зеленело бы на признаке, поднятом для всех подряд", domain)
+	}
+	t.Logf("перепись: домен %s, методов %d, из них серверных стримов %d (%v)",
+		domain, len(cat.rows), len(streams), streams)
 }
