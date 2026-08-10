@@ -106,36 +106,51 @@ func TestAccessLogIsOutermostPanicRecoveryNextAndDecisionIsLast(t *testing.T) {
 	}
 }
 
-// TestBothListenersGetTheSameChain — оба слушателя получают ОДНУ И ТУ ЖЕ
-// цепочку.
+// TestChainBuilderIsDeterministic — строитель цепочки на одном дескрипторе даёт
+// одно и то же.
 //
-// «Internal = доверенный» — запрещённое допущение, и внутренний слушатель от
-// звеньев не освобождён. До носителя это держалось тем, что автор написал два
-// одинаковых литерала; здесь — тем, что литерал один и другого нет.
-func TestBothListenersGetTheSameChain(t *testing.T) {
+// # Чего эта проба НЕ утверждает, и почему это сказано в заголовке
+//
+// Прежняя её редакция называлась «оба слушателя получают одну и ту же цепочку», а
+// в теле сравнивала `unaryChain(spec,&slot)` с ним же. Это детерминизм строителя,
+// и только он: правка `Serve`, освобождающая внутренний слушатель от звена,
+// оставляла пробу зелёной, потому что тела `Serve` она не касалась вовсе.
+// Заголовок был шире тела — и ровно на ту величину, ради которой проба писалась.
+//
+// Свойство «обоим слушателям подаётся одно» теперь держится ДВУМЯ вещами, и обе
+// вне этой пробы: построением (`serverPair` строит цепочку один раз и передаёт её
+// обоим) и наблюдаемой проверкой `TestBothListenersRefuseIdenticallyOnTheWire`,
+// которая поднимает оба сервера и сверяет то, что видит вызывающий.
+//
+// Детерминизм при этом остаётся нужным сам по себе: без него сравнение чего бы то
+// ни было со строителем ничего не значит.
+func TestChainBuilderIsDeterministic(t *testing.T) {
 	var slot decisionSlot
 	spec := chainSpec()
-	pub, intl := unaryChain(spec, &slot), unaryChain(spec, &slot)
-	if len(pub) != len(intl) {
-		t.Fatalf("цепочки слушателей разной длины: %d против %d", len(pub), len(intl))
+	first, second := unaryChain(spec, &slot), unaryChain(spec, &slot)
+	if len(first) != len(second) {
+		t.Fatalf("строитель дал цепочки разной длины: %d против %d", len(first), len(second))
 	}
-	for i := range pub {
-		if funcID(pub[i]) != funcID(intl[i]) {
-			t.Fatalf("звено %d различается: публичный %s, внутренний %s",
-				i, funcID(pub[i]), funcID(intl[i]))
+	for i := range first {
+		if funcID(first[i]) != funcID(second[i]) {
+			t.Fatalf("звено %d различается между двумя сборками одного дескриптора: %s против %s",
+				i, funcID(first[i]), funcID(second[i]))
 		}
 	}
 }
 
-// TestForwarderCircleReachesBothChains — круг отправителей ДОЕЗЖАЕТ до звена
-// обоих слушателей.
+// TestForwarderCircleReachesTheChain — круг отправителей ДОЕЗЖАЕТ до звена
+// цепочки, которую строит носитель.
 //
 // Проба нужна потому, что круг легко «объявить и не провязать»: дескриптор его
 // несёт, отказ старта его проверяет, а до транспорта он не доходит — и тогда
 // переданную личность принимает любой проверенный пир. Здесь фиксируется, что
-// значение действительно уезжает в пару звеньев извлечения личности, причём то
-// же самое на обоих слушателях.
-func TestForwarderCircleReachesBothChains(t *testing.T) {
+// значение действительно уезжает в пару звеньев извлечения личности.
+//
+// Про ОБА слушателя проба не утверждает ничего, и прежний её заголовок это
+// обещал напрасно: тело строит одну цепочку. Что цепочка у слушателей общая —
+// предмет `serverPair` и `TestBothListenersRefuseIdenticallyOnTheWire`.
+func TestForwarderCircleReachesTheChain(t *testing.T) {
 	spec := chainSpec()
 	pair := grpcsrv.PrincipalExtractUnary(spec.Forwarders)
 	if len(pair) != 2 {

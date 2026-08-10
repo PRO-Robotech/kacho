@@ -18,6 +18,7 @@
 package servicehost
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -376,6 +377,127 @@ func TestO5_FormForATypeTheCatalogNeverHidesIsRefused(t *testing.T) {
 		"demo_ghost": "Ghost %s not found",
 	})
 	refusesAudit(t, s, lawfulServed(), lawfulCatalog(), lawfulMap(), "demo_ghost")
+}
+
+// ── О5б: тип, о котором СПРОСЯТ порт, обязан иметь голос владельца ──────────
+
+// probedSpec — дескриптор сервиса, ПРИНЁСШЕГО порт существования. Пока порта
+// нет, спрашивать некого и отказ молчит по построению.
+func probedSpec() servicecontract.Spec {
+	s := naAxes()
+	s.Existence = probeFunc(func(context.Context, string, string) (bool, error) { return true, nil })
+	return s
+}
+
+// mapScopedOn — карта прав, чей единственный метод пообъектен на названном типе.
+//
+// Имя метода НАСТОЯЩЕЕ: вывод пообъектных типов резолвит запрос через глобальный
+// реестр, поэтому синтетическое имя дало бы пустой набор — и проба утверждала бы
+// про пустоту, а не про тип.
+func mapScopedOn(objectType string) authz.RPCMap {
+	return authz.RPCMap{
+		"/kacho.cloud.vpc.v1.NetworkService/Update": {
+			Relation: "v_update",
+			Extract: authz.StaticExtractor(objectType, func(req any) (string, error) {
+				id, _ := req.(string)
+				return id, nil
+			}),
+		},
+	}
+}
+
+func probedServed() servedSet {
+	return servedSet{methods: []servicecontract.MethodFQN{"/kacho.cloud.vpc.v1.NetworkService/Update"}}
+}
+
+func probedCatalog() catalogView {
+	return catalogView{rows: map[servicecontract.MethodFQN]catalogRow{
+		"/kacho.cloud.vpc.v1.NetworkService/Update": {
+			Method: "/kacho.cloud.vpc.v1.NetworkService/Update",
+			Domain: "kacho.cloud.vpc.v1",
+		},
+	}}
+}
+
+// TestO5b_ProbedTypeWithoutAnOwnerVoiceRefusesStart — предмет находки: множество
+// типов, о которых спрашивают порт, ШИРЕ того, что осматривает О5.
+//
+// О5 судит типы, названные КАТАЛОГОМ среди скрывающих. Порт спрашивается о
+// пообъектных типах, ВЫВЕДЕННЫХ из карты прав. Тип, попавший во второе множество
+// и не попавший в первое, доезжал до сокрытия неосмотренным — и отвечал
+// нейтральным «not found», не похожим ни на один ответ владельца.
+func TestO5b_ProbedTypeWithoutAnOwnerVoiceRefusesStart(t *testing.T) {
+	const absent = "demo_widget"
+	if _, ok := authz.OwnerNotFoundFormat(absent); ok {
+		t.Fatalf("тип %q завели в таблицу промахов владельцев — проба потеряла предмет", absent)
+	}
+	msg := refusesAudit(t, probedSpec(), probedServed(), probedCatalog(), mapScopedOn(absent),
+		absent, "Existence")
+	t.Logf("О5б красный: %s", msg)
+}
+
+// TestO5b_ProbedTypeWithAnOwnerVoiceIsAccepted — ЗАКОННЫЙ БЛИЗНЕЦ той же формы:
+// тот же порт, та же карта, тип с голосом владельца → молчание.
+//
+// Без него отказ ловил бы форму («порт принесён»), а не существо («за тип нечем
+// говорить»), и закрыл бы перевод любому сервису со сверкой существования.
+func TestO5b_ProbedTypeWithAnOwnerVoiceIsAccepted(t *testing.T) {
+	ot, _ := ownerVoicedType(t)
+	c, err := audit(probedSpec(), probedServed(), probedCatalog(), mapScopedOn(string(ot)))
+	if err != nil {
+		t.Fatalf("тип с голосом владельца объявлен находкой: %v", err)
+	}
+	if c.probed != 1 {
+		t.Fatalf("перепись насчитала %d спрашиваемых типов вместо 1 — «находок нет» неотличимо "+
+			"от «ничего не осмотрено»: %s", c.probed, c)
+	}
+}
+
+// TestO5b_SilentWhenNoProbeIsBrought — вторая законная сторона: порта нет →
+// спрашивать некого → отказ молчит, каким бы ни был набор типов.
+func TestO5b_SilentWhenNoProbeIsBrought(t *testing.T) {
+	if _, err := audit(naAxes(), probedServed(), probedCatalog(), mapScopedOn("demo_widget")); err != nil {
+		t.Fatalf("отказ сработал у сервиса без порта существования: %v", err)
+	}
+}
+
+// TestO5b_ProbeWithNothingToAskAboutRefusesStart — ноль целей есть отказ: порт
+// принесён, а пообъектных типов из карты не вывелось ни одного.
+func TestO5b_ProbeWithNothingToAskAboutRefusesStart(t *testing.T) {
+	refusesAudit(t, probedSpec(), lawfulServed(), lawfulCatalog(), lawfulMap(), "Existence")
+}
+
+// ── О11: служимый серверный стрим против границы обработки ──────────────────
+
+// TestO11_ServedServerStreamRefusesStart — граница обработки для подписки
+// означает срок её ЖИЗНИ, а не срок вызова. Решение обязано быть принято явно.
+func TestO11_ServedServerStreamRefusesStart(t *testing.T) {
+	cat := lawfulCatalog()
+	row := cat.rows["/kacho.cloud.demo.v1.WidgetService/Get"]
+	row.ServerStreaming = true
+	cat.rows["/kacho.cloud.demo.v1.WidgetService/Get"] = row
+
+	msg := refusesAudit(t, naAxes(), lawfulServed(), cat, lawfulMap(),
+		"/kacho.cloud.demo.v1.WidgetService/Get", "стрим")
+	t.Logf("О11 красный: %s", msg)
+}
+
+// TestO11_UnaryMethodsAreSilent — ЗАКОННЫЙ БЛИЗНЕЦ: те же методы без стрима →
+// молчание. Без него отказ краснел бы на каждом сервисе, то есть ловил бы
+// «служимый набор непуст», а не «в нём есть подписка».
+func TestO11_UnaryMethodsAreSilent(t *testing.T) {
+	c, err := audit(naAxes(), lawfulServed(), lawfulCatalog(), lawfulMap())
+	if err != nil {
+		t.Fatalf("унарный набор объявлен находкой: %v", err)
+	}
+	if c.streams != 0 {
+		t.Fatalf("перепись насчитала %d стримов в унарном наборе: %s", c.streams, c)
+	}
+	// Перепись обязана НАЗЫВАТЬ ноль, а не подразумевать его: «стримов нет» и
+	// «стримы не считали» иначе неразличимы.
+	if !strings.Contains(c.String(), "стримов 0") {
+		t.Fatalf("перепись не называет числа стримов: %s", c)
+	}
 }
 
 // ── перепись: «ноль находок» обязано быть отличимо от «ноль прочитанного» ────

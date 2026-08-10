@@ -35,6 +35,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
@@ -76,16 +77,7 @@ func Serve(ctx context.Context, d servicecontract.Descriptor, public, internal R
 	// ── звено решения о доступе: слот, заполняемый ПОСЛЕ отказов старта ──────
 	var slot decisionSlot
 
-	publicSrv := grpcsrv.NewServer(
-		grpc.Creds(spec.PublicCreds),
-		grpc.ChainUnaryInterceptor(unaryChain(spec, &slot)...),
-		grpc.ChainStreamInterceptor(streamChain(spec, &slot)...),
-	)
-	internalSrv := grpcsrv.NewServer(
-		grpc.Creds(spec.InternalCreds),
-		grpc.ChainUnaryInterceptor(unaryChain(spec, &slot)...),
-		grpc.ChainStreamInterceptor(streamChain(spec, &slot)...),
-	)
+	publicSrv, internalSrv := serverPair(spec, &slot)
 
 	public(publicSrv)
 	internal(internalSrv)
@@ -125,6 +117,31 @@ func Serve(ctx context.Context, d servicecontract.Descriptor, public, internal R
 	slot.install(intr)
 
 	return listenAndServe(ctx, spec, publicSrv, internalSrv)
+}
+
+// serverPair собирает ОБА сервера из ОДНОЙ пары цепочек.
+//
+// Цепочки строятся по одному разу и подаются обоим слушателям — то есть
+// «внутренний получает то же, что публичный» перестаёт быть свойством, которое
+// автор обязан выдержать, и становится свойством построения: другой цепочки в
+// этой функции просто нет. «Internal = доверенный» — запрещённое допущение, и
+// прежняя редакция звала строитель дважды, оставляя место для того, чтобы однажды
+// освободить внутренний слушатель от звена.
+//
+// Наблюдаемая половина того же свойства держится пробой
+// `TestBothListenersRefuseIdenticallyOnTheWire`: она поднимает ОБА сервера,
+// собранных этой функцией, и сверяет, что вызывающий видит от них одно и то же.
+func serverPair(spec servicecontract.Spec, slot *decisionSlot) (public, internal *grpc.Server) {
+	unary := unaryChain(spec, slot)
+	stream := streamChain(spec, slot)
+	build := func(creds credentials.TransportCredentials) *grpc.Server {
+		return grpcsrv.NewServer(
+			grpc.Creds(creds),
+			grpc.ChainUnaryInterceptor(unary...),
+			grpc.ChainStreamInterceptor(stream...),
+		)
+	}
+	return build(spec.PublicCreds), build(spec.InternalCreds)
 }
 
 // decisionLink строит звено решения о доступе — ОДНО на семь сервисов.
@@ -436,7 +453,7 @@ func domainsOf(served servedSet) ([]string, error) {
 // Второго объявления не существует, поэтому расходиться нечему.
 func catalogOf(domains []string) catalogView {
 	out := catalogView{rows: map[servicecontract.MethodFQN]catalogRow{}}
-	catalogderive.RangeAnnotated(domains, func(fullMethod string, _ protoreflect.MethodDescriptor, a catalogderive.Annotations) {
+	catalogderive.RangeAnnotated(domains, func(fullMethod string, md protoreflect.MethodDescriptor, a catalogderive.Annotations) {
 		m := servicecontract.MethodFQN(fullMethod)
 		dom, err := domainOf(m)
 		if err != nil {
@@ -451,6 +468,10 @@ func catalogOf(domains []string) catalogView {
 			ScopeFiltered: a.ScopeFiltered,
 			HideExistence: a.HideExistence,
 			ObjectType:    servicecontract.ObjectType(a.ScopeObjectType),
+			// Признак снимается с дескриптора метода — с того же источника, из
+			// которого приезжают аннотации. Выводить его из имени («Watch»,
+			// «Subscribe») значило бы гадать: имя подписки нам никто не обещал.
+			ServerStreaming: md.IsStreamingServer(),
 		}
 	})
 	return out
